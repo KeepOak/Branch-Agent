@@ -78,14 +78,24 @@ describe("People › People › Sign out everywhere", () => {
     const btn = button("Sign out everywhere")!;
     expect(btn).toBeTruthy();
     expect(btn.disabled).toBe(true);
-    expect(btn.title).toBe("No device of Mira's is connected now.");
+    expect(btn.title).toBe("No device of Mira’s is connected now.");
   });
 
   it("as non-owner, the button is disabled", async () => {
-    const nonOwner = fakeEngine({ ...BASE, "users.setRole": { profile: {} } }, ["operator.read"]);
-    await mount(nonOwner.engine, "p-mira", "gateway-owner");
-    const btn = button("Sign out everywhere");
-    expect(btn).toBeUndefined();
+    const users = {
+      profiles: [
+        ...BASE["users.list"].profiles,
+        { id: "p-june", displayName: "June Park", emails: [], mergedInto: null, role: "adult" },
+      ],
+    };
+    const nonOwner = fakeEngine({ ...BASE, "users.list": users, "users.setRole": { profile: {} } }, ["operator.read"]);
+    host = document.createElement("div"); document.body.append(host);
+    root = createRoot(host);
+    await act(async () => { root!.render(<PeopleTab engine={nonOwner.engine} users={{ data: users, loading: false, error: null, reload: vi.fn() }} me="p-mira" level="regular" selected="p-june" onSelect={() => {}} openConversation={() => {}} />); });
+    await act(async () => { await Promise.resolve(); });
+    const btn = button("Sign out everywhere")!;
+    expect(btn.disabled).toBe(true);
+    expect(btn.title).toBe("Only the owner can do this.");
   });
 
   it("shows an error when device.pair.list returns no tokens to revoke", async () => {

@@ -52,7 +52,7 @@ export function PeopleTab({ engine, users, me, level, selected, onSelect, openCo
       </div>
       {current && <Detail key={current.id} engine={engine} person={current} me={me} people={people} conns={conns} presenceData={live.data} config={config.data} level={level} reload={users.reload} openConversation={openConversation} />}
     </div>}
-    <p className="pp-hint">Separation on one computer, not separate accounts. Each person's conversations and memory are their own.</p>
+    <p className="pp-hint">Separation on one computer, not separate accounts. Each person’s conversations and memory are their own.</p>
     {invite && <InviteDialog engine={engine} onClose={() => setInvite(false)} />}
   </>;
 }
@@ -67,14 +67,14 @@ function Detail({ engine, person, me, people, conns, presenceData, config, level
   return <div className="pp-detail">
     <div className="pp-dh"><Avatar id={person.id} name={nameOf(person)} size={44} activity={activityOf(theirs)} />
       <span className="grow"><b>{nameOf(person)}</b><small>{reach}</small>
-        {shows(level, "technical") && <small className="pp-id"><code>{person.id}</code><button type="button" className="btn ghost sm" onClick={() => { void copyText(person.id).then(ok => setCopied(ok ? "Copied." : "Couldn't copy.")); }}>Copy</button>{copied && <span role="status" className="pp-mut">{copied}</span>}</small>}
+        {shows(level, "technical") && <small className="pp-id"><code>{person.id}</code><button type="button" className="btn ghost sm" onClick={() => { void copyText(person.id).then(ok => setCopied(ok ? "Copied." : "Couldn’t copy.")); }}>Copy</button>{copied && <span role="status" className="pp-mut">{copied}</span>}</small>}
       </span><span className={owner ? "pill ok" : "pill idle"}>{roleWord(person)}</span></div>
     <Section title="May">
       <div className="pp-may" title={owner ? undefined : shownWhy(MAY_OFF)}>{MAY.map(m => <label key={m} className={owner ? "pp-chk" : "pp-chk no"}><input type="checkbox" checked={owner} disabled aria-label={m} readOnly /> {m}</label>)}</div>
       {!owner && shownWhy(MAY_OFF) && <p className="pp-hint" style={{ marginTop: 8 }}>{shownWhy(MAY_OFF)}</p>}
     </Section>
     <Facts person={person} theirs={theirs} config={config} signedOut={signedOut} />
-    {owner ? <p className="pp-hint">You're the owner. Only you change how Branch is set up.</p> : null}
+    {owner ? <p className="pp-hint">You’re the owner. Only you change how Branch is set up.</p> : null}
     <Now engine={engine} person={person} theirs={theirs} openConversation={openConversation} />
     {!owner && <Actions engine={engine} person={person} me={me} people={people} conns={conns} presenceData={presenceData} config={config} level={level} reload={reload} signedOut={signedOut} onSignOut={() => setSignedOut(true)} />}
   </div>;
@@ -122,32 +122,22 @@ function Actions({ engine, person, me, people, conns, presenceData, config, leve
   const [error, setError] = useState<string | null>(null);
   const first = firstName(nameOf(person));
   const owner = me === OWNER_ID;
-  
   const keep = keptDevices(presenceData, me);
   const devices = conns.filter(c => c.profileId === person.id && c.deviceId && !keep.has(c.deviceId)).map(c => c.deviceId);
-  
   const signOut = async () => {
     setError(null);
     try {
-      const paired = await engine.request<unknown>("device.pair.list", {});
-      const plan = revokePlan(devices, keep, paired);
-      
+      const plan = revokePlan(devices, keep, await engine.request("device.pair.list", {}));
       if (!plan.length) throw new Error("Branch found no sign-in to end on their devices.");
-      
-      for (const t of plan) {
-        await engine.request("device.token.revoke", t);
-      }
-      
+      for (const t of plan) await engine.request("device.token.revoke", t);
       onSignOut();
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sign out failed.");
     }
   };
-  
-  const signOutWhy = !owner ? "Only the owner can do this." : !devices.length ? `No device of ${first}'s is connected now.` : undefined;
+  const signOutWhy = !owner ? "Only the owner can do this." : !devices.length ? `No device of ${first}’s is connected now.` : undefined;
   const signOutDisabled = signedOut || Boolean(signOutWhy);
-  
   return <div className="pp-acts" style={{ marginTop: 14 }}>
     <button type="button" className="btn sm" disabled title={shownWhy(SWITCH_OFF)}>Switch to {first}</button>
     <RoleSeg engine={engine} person={person} roles={roleNames(config)} reload={reload} />
