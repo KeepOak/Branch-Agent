@@ -75,4 +75,4 @@ Every merge to `main` that touches `engine/`, `window/`, or `desktop/` triggers 
 - [ ] No placeholder implementations or skipped tests.
 - [ ] Visual changes include screenshots.
 - [ ] Tests prove the fix (failing on old head, passing on new).
-- [ ] FIX any change that logs credentials or bypasses the redaction helper.
+- [ ] FIX any change that logs credentials or bypasses the redaction helper. The documented exception is a same-line `// credential-logging-allowed: <reason>` comment.

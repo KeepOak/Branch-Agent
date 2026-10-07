@@ -2,6 +2,7 @@
 
 // Rejects log calls that pass credential-named identifiers without a redaction helper.
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,6 +21,10 @@ const CREDENTIAL_IDENTIFIERS = [
   "session_secret",
   "apiKey",
   "api_key",
+  "authToken",
+  "auth_token",
+  "botToken",
+  "bot_token",
   "clientSecret",
   "client_secret",
   "secret",
@@ -34,6 +39,8 @@ const CREDENTIAL_IDENTIFIERS = [
 const LOG_SEARCH_PATTERNS = [
   "console\\.(log|info|warn|error|debug)",
   "logger\\.(trace|debug|info|warn|error|fatal)",
+  "(^|[^A-Za-z0-9_$])log\\.(trace|debug|info|warn|error|fatal)",
+  "getLogger\\(\\)\\.(trace|debug|info|warn|error|fatal)",
 ];
 
 const REDACTION_HELPERS = [
@@ -48,8 +55,6 @@ const REDACTION_HELPERS = [
   "redactText",
   "redactJsonRecord",
 ];
-
-const OPT_OUT_COMMENT_PATTERN = /credential-logging-allowed:\s*(.+)/i;
 
 const GREP_EXCLUDES = [
   ":!*.test.*",
@@ -70,19 +75,74 @@ const IDENTIFIER_RE = new RegExp(
   "i",
 );
 
+const REDACTION_RE = new RegExp(
+  String.raw`(?:^|[^A-Za-z0-9_$])(?:${REDACTION_HELPERS.join("|")})(?![A-Za-z0-9_$])`,
+);
+
+const CALL_OPEN_RE =
+  /(?:getLogger\s*\(\s*\)|console|logger|(?:^|[^A-Za-z0-9_$])log)\s*\.\s*(?:trace|debug|info|warn|error|fatal|log)\s*\(/g;
+
+const MAX_CALL_LINES = 80;
+const GIT_IO = { encoding: "utf8", windowsHide: true };
+
+function isQuote(ch) {
+  return ch === "'" || ch === '"' || ch === "`";
+}
+
+function skipString(text, start) {
+  const quote = text[start];
+  let i = start + 1;
+  let content = "";
+  let interpolations = "";
+  while (i < text.length) {
+    if (text[i] === "\\") {
+      content += text.slice(i, i + 2);
+      i += 2;
+      continue;
+    }
+    if (quote === "`" && text[i] === "$" && text[i + 1] === "{") {
+      i += 2;
+      let depth = 1;
+      const interpStart = i;
+      while (i < text.length && depth > 0) {
+        if (isQuote(text[i])) {
+          i = skipString(text, i).end;
+          continue;
+        }
+        if (text[i] === "{") {
+          depth += 1;
+        } else if (text[i] === "}") {
+          depth -= 1;
+        }
+        i += 1;
+      }
+      const inner = text.slice(interpStart, Math.max(interpStart, i - 1));
+      interpolations += ` ${inner} `;
+      content += ` ${inner} `;
+      continue;
+    }
+    if (text[i] === quote) {
+      return { content, interpolations, end: i + 1 };
+    }
+    content += text[i];
+    i += 1;
+  }
+  return { content, interpolations, end: text.length };
+}
+
 /**
- * Drops quoted text so words like "session" or "token" in messages are ignored,
- * while keeping `${…}` interpolations (those can hold identifiers).
+ * Drops quoted message text and comments so words like "session" or "token"
+ * are ignored, while keeping quoted object keys (`{ "password": v }`) and
+ * `${…}` interpolations.
  */
 export function stripStringLiterals(line) {
   let out = "";
   let i = 0;
   while (i < line.length) {
-    const ch = line[i];
-    if (ch === "/" && line[i + 1] === "/") {
+    if (line[i] === "/" && line[i + 1] === "/") {
       break;
     }
-    if (ch === "/" && line[i + 1] === "*") {
+    if (line[i] === "/" && line[i + 1] === "*") {
       const end = line.indexOf("*/", i + 2);
       if (end === -1) {
         break;
@@ -90,41 +150,124 @@ export function stripStringLiterals(line) {
       i = end + 2;
       continue;
     }
-    if (ch === "'" || ch === '"' || ch === "`") {
-      const quote = ch;
-      i += 1;
-      while (i < line.length) {
-        if (line[i] === "\\") {
-          i += 2;
-          continue;
-        }
-        if (quote === "`" && line[i] === "$" && line[i + 1] === "{") {
-          i += 2;
-          let depth = 1;
-          const start = i;
-          while (i < line.length && depth > 0) {
-            if (line[i] === "{") {
-              depth += 1;
-            } else if (line[i] === "}") {
-              depth -= 1;
-            }
-            i += 1;
-          }
-          out += ` ${stripStringLiterals(line.slice(start, Math.max(start, i - 1)))} `;
-          continue;
-        }
-        if (line[i] === quote) {
-          i += 1;
-          break;
-        }
-        i += 1;
+    if (isQuote(line[i])) {
+      const skipped = skipString(line, i);
+      i = skipped.end;
+      let j = i;
+      while (j < line.length && (line[j] === " " || line[j] === "\t")) {
+        j += 1;
+      }
+      if (line[j] === ":") {
+        out += skipped.content;
+      } else {
+        out += skipped.interpolations;
       }
       continue;
     }
-    out += ch;
+    out += line[i];
     i += 1;
   }
   return out;
+}
+
+export function extractCommentBodies(text) {
+  const bodies = [];
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === "/" && text[i + 1] === "/") {
+      const end = text.indexOf("\n", i + 2);
+      bodies.push(end === -1 ? text.slice(i + 2) : text.slice(i + 2, end));
+      i = end === -1 ? text.length : end;
+      continue;
+    }
+    if (text[i] === "/" && text[i + 1] === "*") {
+      const end = text.indexOf("*/", i + 2);
+      if (end === -1) {
+        bodies.push(text.slice(i + 2));
+        break;
+      }
+      bodies.push(text.slice(i + 2, end));
+      i = end + 2;
+      continue;
+    }
+    if (isQuote(text[i])) {
+      i = skipString(text, i).end;
+      continue;
+    }
+    i += 1;
+  }
+  return bodies;
+}
+
+export function isOptedOut(content) {
+  for (const body of extractCommentBodies(content)) {
+    const match = body.match(/credential-logging-allowed:\s*(.+)/i);
+    if (match?.[1]?.trim()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function includesRedaction(content) {
+  return REDACTION_RE.test(stripStringLiterals(content));
+}
+
+function hasCredentialIdentifier(content) {
+  return IDENTIFIER_RE.test(stripStringLiterals(content));
+}
+
+function findCallOpenParen(line) {
+  CALL_OPEN_RE.lastIndex = 0;
+  let open = -1;
+  let match;
+  while ((match = CALL_OPEN_RE.exec(line))) {
+    open = match.index + match[0].length - 1;
+  }
+  return open;
+}
+
+function collectLogCall(lines, startLine) {
+  const first = lines[startLine] ?? "";
+  const open = findCallOpenParen(first);
+  if (open < 0) {
+    return first;
+  }
+  let depth = 0;
+  const collected = [];
+  for (let lineIndex = startLine; lineIndex < lines.length && collected.length < MAX_CALL_LINES; lineIndex++) {
+    const line = lines[lineIndex];
+    collected.push(line);
+    let i = lineIndex === startLine ? open : 0;
+    while (i < line.length) {
+      if (line[i] === "/" && line[i + 1] === "/") {
+        break;
+      }
+      if (line[i] === "/" && line[i + 1] === "*") {
+        const end = line.indexOf("*/", i + 2);
+        if (end === -1) {
+          i = line.length;
+          break;
+        }
+        i = end + 2;
+        continue;
+      }
+      if (isQuote(line[i])) {
+        i = skipString(line, i).end;
+        continue;
+      }
+      if (line[i] === "(" || line[i] === "{" || line[i] === "[") {
+        depth += 1;
+      } else if (line[i] === ")" || line[i] === "}" || line[i] === "]") {
+        depth -= 1;
+        if (depth === 0) {
+          return collected.join("\n");
+        }
+      }
+      i += 1;
+    }
+  }
+  return collected.join("\n");
 }
 
 function parseGitGrepOutput(stdout) {
@@ -145,19 +288,6 @@ function parseGitGrepOutput(stdout) {
   return violations;
 }
 
-function isOptedOut(content) {
-  const match = content.match(OPT_OUT_COMMENT_PATTERN);
-  return Boolean(match?.[1]?.trim());
-}
-
-function includesRedaction(content) {
-  return REDACTION_HELPERS.some((helper) => content.includes(helper));
-}
-
-function hasCredentialIdentifier(content) {
-  return IDENTIFIER_RE.test(stripStringLiterals(content));
-}
-
 function isExcludedPath(file) {
   return (
     /\.(test|spec)\./.test(file) ||
@@ -172,16 +302,21 @@ function isExcludedPath(file) {
   );
 }
 
+function runGit(cwd, args, extra = {}) {
+  return spawnSync("git", args, {
+    cwd,
+    ...GIT_IO,
+    ...extra,
+  });
+}
+
 /**
  * Changed paths versus the PR base (first parent of the merge commit, matching
  * scripts/changed-test-coverage.mjs). Override with CREDENTIAL_LOGGING_BASE.
  */
 export function changedFiles(cwd = process.cwd()) {
   const base = process.env.CREDENTIAL_LOGGING_BASE || "HEAD^1";
-  const result = spawnSync("git", ["diff", "--name-only", "--diff-filter=d", base, "HEAD"], {
-    cwd,
-    encoding: "utf8",
-  });
+  const result = runGit(cwd, ["diff", "--name-only", "--diff-filter=d", base, "HEAD"]);
   if (result.status !== 0) {
     const stderr = result.stderr?.trim();
     throw new Error(stderr || `git diff failed with status ${result.status ?? "unknown"}`);
@@ -202,11 +337,7 @@ function grepLogCalls(cwd, paths) {
     } else {
       args.push(".", ...GREP_EXCLUDES);
     }
-    const result = spawnSync("git", args, {
-      cwd,
-      encoding: "utf8",
-      maxBuffer: 50 * 1024 * 1024,
-    });
+    const result = runGit(cwd, args, { maxBuffer: 50 * 1024 * 1024 });
     if (result.status === 1) {
       continue;
     }
@@ -217,6 +348,20 @@ function grepLogCalls(cwd, paths) {
     candidates.push(...parseGitGrepOutput(Buffer.from(result.stdout)));
   }
   return candidates;
+}
+
+function loadFileLines(cwd, filePath, cache) {
+  if (cache.has(filePath)) {
+    return cache.get(filePath);
+  }
+  try {
+    const lines = readFileSync(path.join(cwd, filePath), "utf8").split(/\r?\n/);
+    cache.set(filePath, lines);
+    return lines;
+  } catch {
+    cache.set(filePath, null);
+    return null;
+  }
 }
 
 /**
@@ -233,16 +378,25 @@ export function findCredentialLoggingViolations(cwd = process.cwd(), checkAll = 
     }
   }
 
+  const fileCache = new Map();
   const violations = [];
   for (const candidate of unique.values()) {
-    if (isOptedOut(candidate.content)) {
+    const lines = loadFileLines(cwd, candidate.filePath, fileCache);
+    const call =
+      lines && candidate.lineNumber > 0
+        ? collectLogCall(lines, candidate.lineNumber - 1)
+        : candidate.content;
+    if (isOptedOut(call)) {
       continue;
     }
-    if (includesRedaction(candidate.content)) {
+    if (includesRedaction(call)) {
       continue;
     }
-    if (hasCredentialIdentifier(candidate.content)) {
-      violations.push(candidate);
+    if (hasCredentialIdentifier(call)) {
+      violations.push({
+        ...candidate,
+        content: call.split("\n").map((line) => line.trim()).find(Boolean) || candidate.content,
+      });
     }
   }
   return violations;
