@@ -37,6 +37,13 @@ the Responses API and expose `low`, `medium`, `high`, `xhigh`, and `max` on the
 Branch Agent runtime. `/think ultra` remains a separate orchestration mode; it uses
 the highest supported native effort rather than sending `ultra` to the API.
 
+On the Branch Agent runtime, Daybreak Blue supports Standard and Fast processing;
+Daybreak Red uses Standard. Neither alias supports Ultrafast. The Control UI
+disables unavailable speed choices, and requests apply the same limits: saved
+Ultrafast preferences use Fast on Blue and Standard on Red. Explicit low-level
+`serviceTier` / `service_tier` overrides remain operator-controlled and may be
+rejected by the API.
+
 Daybreak aliases can resolve to different snapshots as access programs evolve.
 Branch Agent preserves the requested alias instead of replacing it with a snapshot.
 Blue keeps reasoning enabled; Red also supports `/think off`. Explicit configured

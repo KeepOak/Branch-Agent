@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
@@ -138,14 +139,14 @@ describe("Canopy › Now", () => {
     const { calls } = await mount();
     await click(button("Allow", runCard("Report")));
     expect(calls).toContainEqual(["approval.resolve", { id: "ap1", kind: "exec", decision: "allow-once" }]);
-    await click(button("Don’t", runCard("Report")));
+    await click(button("Don’t allow", runCard("Report")));
     expect(calls).toContainEqual(["approval.resolve", { id: "ap1", kind: "exec", decision: "deny" }]);
   });
   it("stops with sessions.abort, pauses only a goal and greys Pause with a reason otherwise", async () => {
     const { calls } = await mount();
     const pause = button("Pause", runCard("Check the invoice"));
     expect(pause.disabled).toBe(true);
-    expect(pause.title).toBe("Needs the engine's per-run pause method.");
+    expect(pause.title).toBe(""); expect(visibleDevNotes(runCard("Check the invoice"))).toEqual([]);
     await click(button("Stop", runCard("Check the invoice")));
     expect(calls).toContainEqual(["sessions.abort", { key: "agent:a:main" }]);
     await click(button("Pause", runCard("Tidy files")));
@@ -166,10 +167,11 @@ describe("Canopy › Now", () => {
     const { calls } = await mount();
     await click(button("Start now", runCard("Morning brief")));
     expect(calls).toContainEqual(["cron.run", { id: "j1", mode: "force" }]);
-    expect(button("Skip", runCard("Morning brief")).title).toBe("Needs the engine's skip-next-run method.");
+    expect(button("Skip", runCard("Morning brief")).disabled).toBe(true); expect(button("Skip", runCard("Morning brief")).title).toBe("");
     await click(button("Start now", runCard("Ready card")));
     expect(calls).toContainEqual(["canopy.cards.start", { id: "k1" }]);
-    expect(button("Skip", runCard("Ready card")).title).toBe("Needs the engine's skip method for Ready cards.");
+    expect(button("Skip", runCard("Ready card")).disabled).toBe(true); expect(button("Skip", runCard("Ready card")).title).toBe("");
+    expect(visibleDevNotes(host)).toEqual([]);
   });
   it("offers Try again and Hand to… on a stuck card whose Trunk is gone", async () => {
     const { calls } = await mount();
@@ -188,7 +190,15 @@ describe("Canopy › Now", () => {
     await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = "";
     await mount(fx(), "advanced");
     expect(host.textContent).toContain("Every step, live");
-    expect(button("Check tasks").title).toBe("Needs the engine's background task list method.");
+    expect(button("Check tasks").disabled).toBe(true); expect(button("Check tasks").title).toBe(""); expect(visibleDevNotes(host)).toEqual([]);
+  });
+  it("greys a background task's Tell me… choices, without the developer note", async () => {
+    await mount(fx({ "sessions.list": { sessions: [...SESSIONS, { key: "agent:a:bg", agentId: "a", label: "Index the photos", isBackground: true, status: "running" }], hasMore: false } }), "advanced");
+    await click(document.querySelector<HTMLElement>("[aria-label='More for Index the photos']")!);
+    const choices = [...document.querySelectorAll<HTMLButtonElement>(".cn-menu [role=menuitemradio]")];
+    expect(choices.map(b => b.textContent)).toEqual(["When it’s done", "At every change", "Never"]);
+    for (const b of choices) { expect(b.disabled).toBe(true); expect(b.title).toBe(""); }
+    expect(visibleDevNotes(document.body)).toEqual([]);
   });
 });
 
@@ -206,6 +216,15 @@ describe("Canopy › Cards", () => {
     await act(async () => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!; set.call(title, "Write the notes"); title.dispatchEvent(new Event("input", { bubbles: true })); });
     await click(button("Create"));
     expect(calls).toContainEqual(["canopy.cards.create", { title: "Write the notes", notes: "", status: "todo", priority: "normal", labels: [] }]);
+  });
+  it("greys Open with Claude and Open with OpenAI in a card's menu, without a developer note", async () => {
+    await mount();
+    await click(button("Cards"));
+    await click(document.querySelector<HTMLElement>("[aria-label='More for “Ready card”']")!);
+    const items = [...document.querySelectorAll<HTMLButtonElement>("[role=menuitem]")].filter(b => b.textContent?.startsWith("Open with"));
+    expect(items.map(b => b.textContent)).toEqual(["Open with Claude", "Open with OpenAI"]);
+    for (const b of items) { expect(b.disabled).toBe(true); expect(b.title).toBe(""); }
+    expect(visibleDevNotes(document.body)).toEqual([]);
   });
   it("gates View and Details by level", async () => {
     await mount();
@@ -265,11 +284,24 @@ describe("Canopy states", () => {
     await mount(fx(), "advanced");
     await act(async () => emit("session.tool", { runId: "r9", seq: 1, stream: "tool", sessionKey: "agent:b:main", data: { phase: "start", name: "read_file", toolCallId: "t1", args: { path: "x", limit: 2 } } }));
     const steps = host.querySelector("[aria-label='Every step, live']")!;
-    expect(steps.textContent).toContain("read_file");
+    expect(steps.textContent).toContain("Using read file");
+    expect(steps.textContent).not.toContain("read_file");
     expect(steps.textContent).toContain("2 details hidden");
     expect(steps.textContent).not.toContain("\"path\"");
     await act(async () => emit("session.tool", { runId: "r9", seq: 2, stream: "tool", sessionKey: "agent:b:main", data: { phase: "result", name: "read_file", toolCallId: "t1", result: { content: "ok" } } }));
     expect(steps.textContent).toContain("Done");
+  });
+  it("names Every step, live rows in plain words, never by raw tool id [A]", async () => {
+    await mount(fx(), "advanced");
+    const changes = [{ path: "a.ts", stat: { added: 1, removed: 0 } }, { path: "b.ts", stat: { added: 2, removed: 1 } }];
+    await act(async () => emit("session.tool", { runId: "r8", seq: 1, stream: "tool", sessionKey: "agent:b:main", data: { phase: "start", name: "apply_patch", toolCallId: "p1", args: { changes } } }));
+    await act(async () => emit("session.tool", { runId: "r8", seq: 2, stream: "tool", sessionKey: "agent:b:main", data: { phase: "start", name: "bash", toolCallId: "c1", args: { command: "ls" } } }));
+    const steps = host.querySelector("[aria-label='Every step, live']")!;
+    expect(steps.textContent).toContain("Editing 2 files");
+    expect(steps.textContent).toContain("Running a command");
+    await act(async () => emit("session.tool", { runId: "r8", seq: 3, stream: "tool", sessionKey: "agent:b:main", data: { phase: "result", name: "apply_patch", toolCallId: "p1", result: { content: "ok" } } }));
+    expect(steps.textContent).toContain("Edited 2 files");
+    expect(steps.textContent).not.toMatch(/apply_patch|bash/);
   });
 });
 

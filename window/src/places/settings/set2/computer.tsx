@@ -2,9 +2,10 @@
 // (device.pair.* and node.pair.*), the computers Trunks may use (node.list, computer.status) with their ⋯ menu and
 // details, and which Trunk uses which (agents.list[].tools.exec.node). The sections below those live in
 // computer-more.tsx.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
-import { Acts, Btn, Ctl, Hint, Page, Pill, Plist, Sec, Switch, useConfig, type RowEntry } from "../kit";
+import { Acts, Btn, Hint, Page, Pill, Plist, Sec, useConfig, type RowEntry } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
 import { Face } from "../../../face/Face";
@@ -13,6 +14,8 @@ import { bytes, CallLine, CopyBtn, Kv, lvOf, rec, str, Tile, useCall, useLive, w
 import { Ico } from "./icons";
 import { ComputerMore, NewCloud, ROWS as MORE_ROWS } from "./computer-more";
 import { Icon } from "../../../shell/icons";
+import { DesktopCtl } from "../desktop-ctl";
+import { shownWhy } from "../../../shell/shown-why";
 
 const PAIR_EVENTS = ["device.pair", "node.pair", "node"];
 const ALLOW_DELAY_MS = 1500;
@@ -34,11 +37,11 @@ const OS: Record<string, string> = { win32: "Windows", windows: "Windows", darwi
 
 export const ROWS: RowEntry[] = [
   ...MORE_ROWS,
-  { page: "computer", title: "Waiting for your yes", lv: 0 }, { page: "computer", title: "Computers they may use", lv: 0 },
-  { page: "computer", title: "Keep this computer awake", sec: "Computers they may use", lv: 0 }, { page: "computer", title: "Which Trunk uses which", lv: 0 },
+  { page: "computer", title: "Waiting for your yes", group: "Waiting for your yes", lv: 0 }, { page: "computer", title: "Computers they may use", group: "Computers they may use", lv: 0 },
+  { page: "computer", title: "Keep this computer awake", sec: "Computers they may use", group: "Computers they may use", lv: 0 }, { page: "computer", title: "Which Trunk uses which", group: "Which Trunk uses which", lv: 0 },
 ];
 
-type Req = { id: string; kind: "device" | "node"; name: string; plat: string; access: string[]; more: boolean; ts: number; deviceId: string; ip: string; version: string; engine: string };
+type Req = { id: string; kind: "device" | "node"; name: string; plat: string; access: string[]; more: boolean; ts: number; deviceId: string; ip: string; version: string };
 
 function accessOf(words: unknown): string[] {
   return [...new Set((Array.isArray(words) ? words : []).map((w) => ACCESS[String(w)] ?? "").filter(Boolean))];
@@ -52,12 +55,12 @@ function requests(devices: RecordValue, nodes: RecordValue): Req[] {
   const fromDevices = list(devices.pending).map((r): Req => ({
     id: str(r.requestId), kind: "device", name: str(r.displayName) || str(r.clientId) || "A device", plat: osOf(r.platform),
     access: accessOf(r.scopes), more: pairedDevices.has(str(r.deviceId)) || r.isRepair === true, ts: Number(r.ts) || 0,
-    deviceId: str(r.deviceId), ip: str(r.remoteIp), version: "", engine: "",
+    deviceId: str(r.deviceId), ip: str(r.remoteIp), version: "",
   }));
   const fromNodes = list(nodes.pending).map((r): Req => ({
     id: str(r.requestId), kind: "node", name: str(r.displayName) || "A computer", plat: osOf(r.platform),
     access: accessOf(r.commands), more: pairedNodes.has(str(r.nodeId)), ts: Number(r.ts) || 0,
-    deviceId: str(r.nodeId), ip: str(r.remoteIp), version: str(r.uiVersion) || str(r.version), engine: str(r.coreVersion),
+    deviceId: str(r.nodeId), ip: str(r.remoteIp), version: str(r.uiVersion) || str(r.version),
   }));
   return [...fromDevices, ...fromNodes].filter((r) => r.id).sort((a, b) => b.ts - a.ts);
 }
@@ -123,7 +126,7 @@ function RequestRow({ r, lv, busy, onAllow, onRefuse }: { r: Req; lv: number; bu
           {r.access.length ? <> · {r.access.map((a, i) => <span key={a} className={RISKY.has(a) ? "s2-warn" : undefined}>{i ? ", " : ""}{a}</span>)}</> : null}
         </small>
         {r.more ? <small className="s2-note">Asks for more access than before</small> : null}
-        {lv >= 2 ? <details className="s2-det"><summary>Details</summary><Kv rows={[["Device ID", r.deviceId], ["Address it came from", r.ip], ["App", r.version], ["Engine", r.engine]]} /></details> : null}
+        {lv >= 2 ? <details className="s2-det"><summary>Details</summary><Kv rows={[["Device ID", r.deviceId], ["Address it came from", r.ip], ["App", r.version]]} /></details> : null}
       </span>
       <Btn sm ghost disabled={busy} onClick={onRefuse}>Don’t allow</Btn>
       <Btn sm pri disabled={busy || !ready} title={ready ? undefined : "Allow is ready in a moment"} onClick={onAllow}>Allow</Btn>
@@ -144,7 +147,8 @@ function usersOf(node: Node, agents: RecordValue, cfgAgents: RecordValue[]): str
 function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: number; nodes: Res; agents: RecordValue }) {
   const status = useLive<RecordValue>(engine, "computer.status", {}, []);
   const config = useConfig(engine);
-  const cfgAgents = list(config.get("agents.list"));
+  // Each Trunk's own entry, keyed by id in agents.entries.
+  const cfgAgents = Object.entries(rec(config.get("agents.entries"))).map(([id, entry]) => ({ ...rec(entry), id }));
   const [find, setFind] = useState({ q: "", sort: "Online first", show: "All" });
   const paired = list(rec(nodes.data).nodes).filter((n) => n.approvalState !== "pending-approval" && n.approvalState !== "unapproved");
   const all = lv >= 1 ? arrange(paired, find) : paired;
@@ -157,7 +161,7 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
       {nodes.error ? <p className="hint s2-err" role="alert">{nodes.error}</p> : null}
       {lv >= 1 ? <FindRow find={find} onFind={setFind} onRefresh={() => { void nodes.reload(); void status.reload(); }} /> : null}
       {lv >= 1 && paired.length && !all.length ? <Hint>No computer matches.</Hint> : null}
-      {here.length || (status.data && !find.q) ? <div className="s2-grp">On this PC</div> : null}
+      {here.length || (status.data && !find.q) ? <div className="s2-grp">On this computer</div> : null}
       <div className="s2-comps">
         {here.map(card)}
         {status.data && !here.length && !find.q ? <ThisComputer status={local} /> : null}
@@ -165,9 +169,7 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
       {other.length ? <><div className="s2-grp">Your other computers</div><div className="s2-comps">{other.map(card)}</div></> : null}
       {nodes.data && !all.length && !status.data ? <Hint>No computers are paired yet.</Hint> : null}
       <InTheCloud engine={engine} />
-      <Ctl title="Keep this computer awake" sub="Stays awake between tasks while Trunks may use it. Locking and signing out still work; Branch never unlocks it. Off until you choose: it stops this computer sleeping on its power plan." off="Keeping this PC awake is done by the Branch app on it.">
-        <Switch label="Keep this computer awake" checked={false} onChange={() => undefined} />
-      </Ctl>
+      <DesktopCtl title="Keep this computer awake" sub="Keeps this computer awake while Trunks use it." help="Stays awake between tasks while Trunks may use it. Locking and signing out still work; Branch never unlocks it. Off until you choose: it stops this computer sleeping on its power plan." name="keepAwake" />
       <Acts><Btn pri onClick={() => window.dispatchEvent(new CustomEvent("branch:add-computer"))}><Icon name="plus" small />Add a computer</Btn></Acts>
     </Sec>
   );
@@ -176,7 +178,7 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
 /** In the cloud: KeepOak's own card (greyed until keepoak.com has a sign-in) and a cloud computer from a profile the
  *  engine has (environments.list, environments.create). */
 function InTheCloud({ engine }: Pick<SettingsPageProps, "engine">) {
-  const envs = useLive<RecordValue>(engine, "environments.list", {}, ["node", "environments", "worker"]);
+  const envs = useLive<RecordValue>(engine, "environments.list", {}, ["node", "environments"]);
   const [open, setOpen] = useState(false);
   const profiles = list(rec(envs.data).profiles);
   return (
@@ -244,7 +246,7 @@ function ThisComputer({ status }: { status: RecordValue }) {
       <span className="grow">
         <b>This computer</b>
         <small>{str(rec(use.provider).label) || "The computer Branch runs on"}</small>
-        <span className="s2-reach">{ok ? "Your screen, mouse and apps. It asks before an app it hasn’t used, and you can take over any time." : str(status.error) || "Computer control isn’t set up in this engine."}</span>
+        <span className="s2-reach">{ok ? "Your screen, mouse and apps. It asks before an app it hasn’t used, and you can take over any time." : str(status.error) || shownWhy("Computer control isn’t set up in this engine.")}</span>
       </span>
       <Pill tone={ok ? "ok" : "idle"}>{ok ? "Ready" : "Not set up"}</Pill>
     </div>
@@ -310,7 +312,7 @@ function DetailsDialog({ node, lv, users, onClose }: { node: Node; lv: number; u
   const caps = (Array.isArray(node.caps) ? node.caps : []).map(String);
   const s = rec(node.hostStats);
   return (
-    <Dialog title={name} wide onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title={name} wide onClose={onClose}>
       <p>{node.connected === true ? "Connected" : `Offline${node.lastSeenAtMs ? ` · last reported ${when(node.lastSeenAtMs)}` : ""}`}</p>
       <Kv rows={[["Kind", node.gatewayLocal === true ? "The computer Branch runs on" : "Another computer"], ["System", [osOf(node.platform), str(node.modelIdentifier)].filter(Boolean).join(" · ")], ["Version", str(node.version)], ...(lv >= 2 ? [["ID", <code key="id">{str(node.nodeId)}</code>] as [string, ReactNode]] : [])]} />
       {lv >= 1 ? (
@@ -353,29 +355,22 @@ function RemoveDialog({ engine, node, onClose }: Pick<SettingsPageProps, "engine
   );
 }
 
-/** Which Trunk uses which: a Trunk pinned to a computer runs its commands there (agents.list[].tools.exec.node). */
+/** Which Trunk uses which: a Trunk pinned to a computer runs its commands there (agents.entries.<id>.tools.exec.node). */
 function WhichTrunk({ engine, nodes, agents, defaultId }: SettingsPageProps & { nodes: Node[]; agents: RecordValue[]; defaultId: unknown }) {
   const config = useConfig(engine);
-  const entries = list(config.get("agents.list"));
+  const entries = rec(config.get("agents.entries"));
   const usable = nodes.filter((n) => n.approvalState !== "pending-approval" && n.approvalState !== "unapproved");
   if (!agents.length) return null;
   const main = str(defaultId);
   const ordered = [...agents.filter((a) => str(a.id) !== main), ...agents.filter((a) => str(a.id) === main)];
-  const pin = (agentId: string, nodeId: string | null) => {
-    const next = entries.map((a) => {
-      if (str(a.id) !== agentId) return a;
-      const tools = rec(a.tools); const exec = { ...rec(tools.exec) };
-      if (nodeId) exec.node = nodeId; else delete exec.node;
-      return { ...a, tools: { ...tools, exec } };
-    });
-    void config.set("agents.list", next);
-  };
+  // One Trunk's own entry only (a hot-applied, single-Trunk change; null puts the default back).
+  const pin = (agentId: string, nodeId: string | null) => void config.set(`agents.entries.${agentId}.tools.exec.node`, nodeId);
   return (
     <Sec title="Which Trunk uses which" hint="A Trunk can use several computers side by side.">
       <Plist>
         {ordered.map((a) => {
           const id = str(a.id); const name = str(rec(a.identity).name) || str(a.name) || id;
-          const entry = entries.find((e) => str(e.id) === id);
+          const entry = id in entries ? rec(entries[id]) : undefined;
           const pinned = str(rec(rec(entry?.tools).exec).node);
           return (
             <div key={id} className="prow s2-percomp" data-row={name}>

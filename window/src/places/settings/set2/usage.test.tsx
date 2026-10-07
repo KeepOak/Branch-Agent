@@ -18,7 +18,7 @@ function engineWith(answers: Answers) {
 }
 let host: HTMLDivElement; let root: Root;
 beforeEach(() => { (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true; host = document.createElement("div"); host.className = "set-col"; document.body.append(host); root = createRoot(host); });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.restoreAllMocks(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; delete (window as { branchDesktop?: unknown }).branchDesktop; vi.restoreAllMocks(); });
 
 const flush = async () => { for (let i = 0; i < 8; i++) await act(async () => { await Promise.resolve(); }); };
 async function show(engine: WindowEngine, level: "regular" | "advanced" | "technical" = "regular") {
@@ -84,25 +84,28 @@ describe("Settings › Data & usage", () => {
     const claude = document.querySelector('[data-provider="anthropic"]')!;
     expect(claude.textContent).toContain("Measured");
     expect(claude.textContent).toContain("58% left · resets");
-    expect(claude.textContent).toContain("as of 4 min ago, asked Claude plan");
+    expect(claude.textContent).toContain("as of 4 min ago, asked Claude");
     expect(document.querySelector('[data-provider="google"]')!.textContent).toContain("Not published");
     expect(document.querySelector('[data-provider="zai"]')!.textContent).toContain("Token expired");
   });
-  it("draws spend per Trunk by name and this month's total", async () => {
+  it("draws spend per Trunk from the same period as the spend picker", async () => {
     const { engine, request } = engineWith(BASE);
     await show(engine);
-    const sec = document.querySelector('[data-sec="Spend, last 7 days"]')!;
+    const sec = document.querySelector('[data-sec="Spend by Trunk · last 30 days"]')!;
     expect(sec.textContent).toContain("Sapling$1.10");
     expect(sec.textContent).toContain("Helper$0.42");
-    expect(sec.textContent).toContain("This month: $14.20.");
-    expect(calls(request, "usage.cost")[0]).toMatchObject({ agentScope: "all" });
+    expect(sec.textContent).not.toContain("This month:");
+    expect(calls(request, "sessions.usage").filter((params) => params.range === "30d")).toHaveLength(2);
+    await click("7 days", document.querySelector(".s2usage-rep")!);
+    expect(document.querySelector('[data-sec="Spend by Trunk · last 7 days"]')).not.toBeNull();
+    expect(calls(request, "sessions.usage").at(-1)?.range).toBe("7d");
   });
   it("greys what the engine can't do, with the reason", async () => {
     const { engine } = engineWith(BASE);
     await show(engine, "advanced");
-    expect(row("Spend caps per service")?.textContent).toContain("Spend caps need the engine");
-    expect(row("Keep conversations")?.getAttribute("aria-disabled")).toBe("true");
-    expect(row("Reset Branch")?.textContent).toContain("no reset method");
+    expect(row("Spend caps per service")?.getAttribute("aria-disabled")).toBe("true"); expect(row("Spend caps per service")?.textContent).not.toContain("Spend caps need the engine");
+    expect(row("Keep conversations")?.getAttribute("aria-disabled")).toBeNull();
+    expect(row("Reset Branch")?.textContent).not.toContain("no reset method");
     expect(button("Run the test").disabled).toBe(true);
   });
 });
@@ -169,6 +172,30 @@ describe("the usage report", () => {
 });
 
 describe("keeping things", () => {
+  it("Keep conversations saves 30 days as enforced pruning", async () => {
+    const { engine, request } = engineWith({ ...BASE, ...CFG({ session: { maintenance: { mode: "enforce", pruneAfter: "365d" } } }) });
+    await show(engine);
+    await click("30 days", row("Keep conversations")!);
+    expect(patched(request)).toContainEqual({ session: { maintenance: { mode: "enforce", pruneAfter: "30d" } } });
+  });
+  it("Keep conversations saves Forever as warn mode", async () => {
+    const { engine, request } = engineWith({ ...BASE, ...CFG() });
+    await show(engine);
+    await click("Forever", row("Keep conversations")!);
+    expect(patched(request)).toContainEqual({ session: { maintenance: { mode: "warn" } } });
+  });
+  it("Keep conversations selects 1 year from enforced 365-day config", async () => {
+    const { engine } = engineWith({ ...BASE, ...CFG({ session: { maintenance: { mode: "enforce", pruneAfter: "365d" } } }) });
+    await show(engine);
+    expect(button("1 year", row("Keep conversations")!).getAttribute("aria-pressed")).toBe("true");
+  });
+  it("Keep conversations shows a custom 90-day retention without selecting a preset", async () => {
+    const { engine } = engineWith({ ...BASE, ...CFG({ session: { maintenance: { mode: "enforce", pruneAfter: "90d" } } }) });
+    await show(engine);
+    const keep = row("Keep conversations")!;
+    expect(keep.textContent).toContain("Now: 90 days.");
+    expect([...keep.querySelectorAll('button[aria-pressed="true"]')]).toHaveLength(0);
+  });
   it("saves the tidy rules and the upload clean-up through config.patch", async () => {
     const { engine, request } = engineWith({ ...BASE, ...CFG() });
     await show(engine, "advanced");
@@ -235,6 +262,8 @@ describe("keeping things", () => {
     expect(document.querySelector('[data-row="session.identityLinks"]')?.textContent).toContain("isn’t valid JSON");
   });
   it("Manage deletes the picked conversations one by one", async () => {
+    const forget = vi.fn(async () => undefined);
+    (window as { branchDesktop?: unknown }).branchDesktop = { conversationWindows: { forget } };
     const { engine, request } = engineWith({ ...BASE, "sessions.list": { sessions: [{ key: "agent:main:x", agentId: "main", label: "Old chat", updatedAt: 1 }] }, "sessions.delete": { ok: true } });
     await show(engine, "advanced");
     await click("Manage");
@@ -243,6 +272,7 @@ describe("keeping things", () => {
     await click("Delete", document.querySelector(".dlg")!);
     await click("Delete", document.querySelector(".dlg")!);
     expect(calls(request, "sessions.delete")[0]).toEqual({ key: "agent:main:x", agentId: "main" });
+    expect(forget).toHaveBeenCalledWith("agent:main:x");
   });
 });
 
@@ -292,9 +322,9 @@ describe("moving and backups", () => {
 describe("helpers", () => {
   it("words the reset time", () => {
     const now = new Date(2026, 9, 3, 12, 0).getTime();
-    expect(resetWords(new Date(2026, 9, 3, 18, 0).getTime(), now)).toBe("resets at 6 pm");
-    expect(resetWords(new Date(2026, 9, 3, 19, 40).getTime(), now)).toBe("resets at 7:40 pm");
-    expect(resetWords(new Date(2026, 9, 5, 9, 0).getTime(), now)).toMatch(/^resets [A-Z][a-z]+day$/);
+    expect(resetWords(new Date(2026, 9, 3, 18, 0).getTime(), now)).toBe("resets 6 PM");
+    expect(resetWords(new Date(2026, 9, 3, 19, 40).getTime(), now)).toBe("resets 7:40 PM");
+    expect(resetWords(new Date(2026, 9, 5, 9, 0).getTime(), now)).toMatch(/^resets 9 AM Mon$/);
   });
   it("reads durations and sizes", () => {
     expect(daysFrom("30d")).toBe("30"); expect(daysFrom("12h")).toBe("0.5"); expect(daysFrom(7)).toBe("7");

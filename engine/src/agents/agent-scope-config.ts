@@ -7,13 +7,13 @@ import {
   resolvePrimaryStringValue,
 } from "@branch/normalization-core/string-coerce";
 import { formatCliCommand } from "../cli/command-format.js";
-import { getRetainedLegacyDefaultAgentId } from "../config/legacy.default-agent-owner-state.js";
 import { hasExplicitModelPolicyAllow } from "../config/model-policy-allowlist-migration.js";
 import { resolveStateDir } from "../config/paths.js";
 import type {
   AgentContextLimitsConfig,
   AgentDefaultsConfig,
 } from "../config/types.agent-defaults.js";
+import type { AgentConfig } from "../config/types.agents.js";
 import type { BranchConfig } from "../config/types.js";
 import { LEGACY_IMPLICIT_AGENT_ID, normalizeAgentId } from "../routing/session-key.js";
 import { isDeeplyFrozenPlainData } from "../shared/immutable-data.js";
@@ -41,7 +41,7 @@ export {
   type ListedAgentEntry,
 } from "./agent-roster.js";
 
-type AgentEntry = NonNullable<NonNullable<BranchConfig["agents"]>["list"]>[number];
+type AgentEntry = AgentConfig;
 type AgentEntriesConfig = NonNullable<NonNullable<BranchConfig["agents"]>["entries"]>;
 type MutableAgentEntry = AgentEntry | AgentEntriesConfig[string];
 export type AgentSelectionContext = {
@@ -78,7 +78,6 @@ export type ResolvedAgentConfig = {
   params?: AgentEntry["params"];
   runtime?: AgentEntry["runtime"];
   modelPolicy?: AgentEntry["modelPolicy"];
-  agentRuntime?: AgentEntry["agentRuntime"];
   utilityModel?: AgentEntry["utilityModel"];
   decisionModel?: AgentEntry["decisionModel"];
   thinkingDefault?: AgentEntry["thinkingDefault"];
@@ -154,10 +153,7 @@ type AgentRosterFactsBatch = {
 };
 
 let activeAgentRosterFactsBatch: AgentRosterFactsBatch | undefined;
-const immutableAgentRosterFacts = new WeakMap<
-  BranchConfig,
-  { legacyOwner: string | undefined; facts: AgentRosterFacts }
->();
+const immutableAgentRosterFacts = new WeakMap<BranchConfig, AgentRosterFacts>();
 
 /**
  * Runs a read-only callback with batch-scoped roster memoization.
@@ -184,14 +180,12 @@ function readAgentRosterFacts(cfg: BranchConfig): AgentRosterFacts | undefined {
   if (!isDeeplyFrozenPlainData(cfg)) {
     return undefined;
   }
-  // Migration provenance lives outside the immutable config and can still change.
-  const legacyOwner = getRetainedLegacyDefaultAgentId(cfg);
   let cached = immutableAgentRosterFacts.get(cfg);
-  if (!cached || cached.legacyOwner !== legacyOwner) {
-    cached = { legacyOwner, facts: {} };
+  if (!cached) {
+    cached = {};
     immutableAgentRosterFacts.set(cfg, cached);
   }
-  return cached.facts;
+  return cached;
 }
 
 /** Converts either supported roster representation into the canonical keyed shape. */
@@ -423,7 +417,6 @@ export function resolveAgentConfig(
     ...(entry.params ? { params: entry.params } : {}),
     ...(entry.runtime ? { runtime: entry.runtime } : {}),
     ...(hasExplicitModelPolicyAllow(entry.modelPolicy) ? { modelPolicy: entry.modelPolicy } : {}),
-    ...(entry.agentRuntime ? { agentRuntime: entry.agentRuntime } : {}),
     utilityModel: readStringValue(entry.utilityModel),
     decisionModel: readStringValue(entry.decisionModel),
     thinkingDefault: entry.thinkingDefault,

@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { toAgentEntriesRecord } from "../agents/agent-scope-config.js";
 import { createExecTool } from "../agents/bash-tools.exec-run.js";
 import { resolveConversationCapabilityProfile } from "../agents/conversation-capability-profile.js";
 import {
@@ -201,10 +202,10 @@ describe("Grove tool policy consent provenance", () => {
     const mixedConfig = {
       agents: {
         ...config.agents,
+        ownership: "explicit" as const,
         entries: {
           ...config.agents.entries,
-          created: created.agent.config,
-          legacy: legacy.agent.config,
+          ...toAgentEntriesRecord([created.agent.config, legacy.agent.config]),
         },
       },
     };
@@ -238,7 +239,7 @@ describe("Grove tool policy consent provenance", () => {
     closeBranchStateDatabase();
     const external = new DatabaseSync(databasePath);
     const snapshot = vi.spyOn(sqliteSnapshot, "prepareSqliteReadOnlyLocationSync");
-    const config = { agents: { list: [plan.agent.config] } };
+    const config = { agents: { entries: toAgentEntriesRecord([plan.agent.config]) } };
     try {
       setRuntimeConfigSnapshot(config);
       expect(() =>
@@ -264,149 +265,97 @@ describe("Grove tool policy consent provenance", () => {
     }
   });
 
-  it("does not create writable state for an ordinary named profile", () => {
-    const root = tempDirs.make("branch-non-grove-tool-consent-");
-    vi.stubEnv("BRANCH_STATE_DIR", join(root, "state"));
-    const config = { agents: { list: [{ id: "worker", tools: { profile: "coding" as const } }] } };
-    setRuntimeConfigSnapshot(config);
+  it.each([{ profile: "coding" as const }, { profile: "full" as const, allow: ["read"] }])(
+    "does not infer ownership or create state for uninitialized tools %j",
+    (tools) => {
+      const root = tempDirs.make("branch-uninitialized-tool-consent-");
+      const stateDir = join(root, "state");
+      vi.stubEnv("BRANCH_STATE_DIR", stateDir);
+      const config = { agents: { entries: { worker: { tools } } } };
+      setRuntimeConfigSnapshot(config);
+      expect(() =>
+        resolveConversationCapabilityProfile({ agentId: "worker", config }),
+      ).not.toThrow();
+      expect(existsSync(stateDir)).toBe(false);
+    },
+  );
 
-    expect(() =>
-      resolveConversationCapabilityProfile({
-        agentId: "worker",
-        config,
-      }),
-    ).not.toThrow();
-    expect(existsSync(join(root, "state"))).toBe(false);
-  });
+  it.each([false, true])(
+    "fails closed without mutating unreadable provenance (known=%s)",
+    async (known) => {
+      const root = tempDirs.make("branch-unreadable-tool-consent-");
+      const env = stateEnv(root);
+      vi.stubEnv("BRANCH_STATE_DIR", env.BRANCH_STATE_DIR);
+      const databasePath = resolveBranchStateSqlitePath(env);
+      let config: BranchConfig = {
+        agents: { entries: { worker: { tools: { profile: "coding" } } } },
+      };
+      if (known) {
+        const { plan } = await makeToolConsentPlan(root);
+        persistGroveInstallRecord(plan, { env });
+        closeBranchStateDatabase();
+        config = { agents: { entries: toAgentEntriesRecord([plan.agent.config]) } };
+      }
+      mkdirSync(dirname(databasePath), { recursive: true });
+      writeFileSync(databasePath, "not a sqlite database");
+      const before = readFileSync(databasePath);
+      if (known) {
+        expect(() => openBranchStateDatabase({ env })).toThrow();
+      }
+      setRuntimeConfigSnapshot(config);
+      expect(() => resolveConversationCapabilityProfile({ agentId: "worker", config })).toThrow(
+        "Cannot verify the installed tool authority",
+      );
+      expect(readFileSync(databasePath)).toEqual(before);
+    },
+  );
 
-  it("does not infer Grove ownership before consent provenance is initialized", () => {
-    const root = tempDirs.make("branch-uninitialized-grove-tool-consent-");
-    const stateDir = join(root, "state");
-    vi.stubEnv("BRANCH_STATE_DIR", stateDir);
-    const config = {
-      agents: {
-        list: [{ id: "worker", tools: { profile: "full" as const, allow: ["read"] } }],
-      },
-    };
-    setRuntimeConfigSnapshot(config);
+  it.each(["closed", "modified"] as const)(
+    "fails closed when prepared consent is %s",
+    async (kind) => {
+      const root = tempDirs.make("branch-invalidated-tool-consent-");
+      const env = stateEnv(root);
+      vi.stubEnv("BRANCH_STATE_DIR", env.BRANCH_STATE_DIR);
+      const { plan } = await makeToolConsentPlan(root);
+      persistGroveInstallRecord(plan, { env });
+      const config = {
+        agents: {
+          entries: toAgentEntriesRecord([
+            {
+              ...plan.agent.config,
+              ...(kind === "modified"
+                ? { tools: { profile: "full" as const, allow: ["read", "exec"] } }
+                : {}),
+            },
+          ]),
+        },
+      };
+      setRuntimeConfigSnapshot(config);
+      if (kind === "closed") {
+        closeBranchStateDatabase();
+      }
+      expect(() => resolveConversationCapabilityProfile({ agentId: "worker", config })).toThrow(
+        "Cannot verify the installed tool authority",
+      );
+    },
+  );
 
-    expect(() =>
-      resolveConversationCapabilityProfile({
-        agentId: "worker",
-        config,
-      }),
-    ).not.toThrow();
-    expect(existsSync(stateDir)).toBe(false);
-  });
-
-  it("fails an ordinary named profile closed when initial ownership is unreadable", () => {
-    const root = tempDirs.make("branch-unreadable-non-grove-tool-consent-");
-    const stateDir = join(root, "state");
-    const env = { BRANCH_STATE_DIR: stateDir };
-    const databasePath = resolveBranchStateSqlitePath(env);
-    mkdirSync(dirname(databasePath), { recursive: true });
-    writeFileSync(databasePath, "not a sqlite database");
-    const before = readFileSync(databasePath);
-    vi.stubEnv("BRANCH_STATE_DIR", env.BRANCH_STATE_DIR);
-
-    const config = {
-      agents: {
-        list: [{ id: "worker", tools: { profile: "coding" as const } }],
-      },
-    };
-    setRuntimeConfigSnapshot(config);
-
-    expect(() =>
-      resolveConversationCapabilityProfile({
-        agentId: "worker",
-        config,
-      }),
-    ).toThrow("Cannot verify the installed tool authority");
-    expect(readFileSync(databasePath)).toEqual(before);
-  });
-
-  it("fails a known Grove closed without mutating unreadable consent provenance", async () => {
-    const root = tempDirs.make("branch-unreadable-grove-tool-consent-");
-    const stateDir = join(root, "state");
-    const env = { BRANCH_STATE_DIR: stateDir };
-    const databasePath = resolveBranchStateSqlitePath(env);
-    vi.stubEnv("BRANCH_STATE_DIR", env.BRANCH_STATE_DIR);
-    const { plan } = await makeToolConsentPlan(root);
-    persistGroveInstallRecord(plan, { env });
-    closeBranchStateDatabase();
-    writeFileSync(databasePath, "not a sqlite database");
-    const before = readFileSync(databasePath);
-
-    const config = { agents: { list: [plan.agent.config] } };
-    expect(() => openBranchStateDatabase({ env })).toThrow();
-    setRuntimeConfigSnapshot(config);
-
-    expect(() =>
-      resolveConversationCapabilityProfile({
-        agentId: "worker",
-        config,
-      }),
-    ).toThrow("Cannot verify the installed tool authority");
-    expect(readFileSync(databasePath)).toEqual(before);
-  });
-
-  it("fails closed after the prepared state database closes", async () => {
-    const root = tempDirs.make("branch-closed-grove-tool-consent-");
+  it.each([
+    { profile: "coding" as const, message: "uses a legacy dynamic tool policy" },
+    {
+      profile: "full" as const,
+      message:
+        "Add an explicit tools.allow list to its package Branch Agent profile, then run `branch groves update worker`",
+    },
+  ])("rejects legacy $profile authority with a repair path", async ({ profile, message }) => {
+    const root = tempDirs.make("branch-legacy-tool-consent-");
     const env = stateEnv(root);
     vi.stubEnv("BRANCH_STATE_DIR", env.BRANCH_STATE_DIR);
-    const { plan } = await makeToolConsentPlan(root);
+    const { plan } = await makeToolConsentPlan(root, { profile, allow: ["read"] });
     persistGroveInstallRecord(plan, { env });
-    const config = { agents: { list: [plan.agent.config] } };
+    const config = { agents: { entries: toAgentEntriesRecord([plan.agent.config]) } };
     setRuntimeConfigSnapshot(config);
-    closeBranchStateDatabase();
-
-    expect(() =>
-      resolveConversationCapabilityProfile({
-        agentId: "worker",
-        config,
-      }),
-    ).toThrow("Cannot verify the installed tool authority");
-  });
-
-  it("fails closed when the active agent config does not match consent provenance", async () => {
-    const root = tempDirs.make("branch-modified-grove-tool-consent-");
-    const env = stateEnv(root);
-    vi.stubEnv("BRANCH_STATE_DIR", env.BRANCH_STATE_DIR);
-    const { plan } = await makeToolConsentPlan(root);
-    persistGroveInstallRecord(plan, { env });
-    const config = {
-      agents: {
-        list: [
-          {
-            ...plan.agent.config,
-            tools: { profile: "full" as const, allow: ["read", "exec"] },
-          },
-        ],
-      },
-    };
-    setRuntimeConfigSnapshot(config);
-
-    expect(() =>
-      resolveConversationCapabilityProfile({
-        agentId: "worker",
-        config,
-      }),
-    ).toThrow("Cannot verify the installed tool authority");
-  });
-
-  it("fails closed after a host upgrade leaves legacy profile provenance", async () => {
-    const root = tempDirs.make("branch-grove-tool-consent-");
-    const env = stateEnv(root);
-    vi.stubEnv("BRANCH_STATE_DIR", join(root, "state"));
-    const { plan } = await makeToolConsentPlan(root, { profile: "coding", allow: ["read"] });
-    persistGroveInstallRecord(plan, { env });
-
-    const config = { agents: { list: [plan.agent.config] } };
-    setRuntimeConfigSnapshot(config);
-    const capabilityProfile = resolveConversationCapabilityProfile({
-      agentId: "worker",
-      config,
-    });
+    const capabilityProfile = resolveConversationCapabilityProfile({ agentId: "worker", config });
     const policies = resolveConversationToolPolicies({ capabilityProfile });
     const filtered = applyToolPolicyPipeline({
       tools: [{ name: "read" }, { name: "future_tool" }],
@@ -419,66 +368,20 @@ describe("Grove tool policy consent provenance", () => {
       }),
     });
     expect(filtered.map((tool) => tool.name)).toEqual(["read"]);
-
     openBranchStateDatabase({ env })
-      .db /* sqlite-allow-raw: test-only downgrade simulates an install created by the previous host. */
+      .db
+      /* sqlite-allow-raw: test-only downgrade simulates an install created by the previous host. */
       .prepare("UPDATE grove_installs SET schema_version = ? WHERE agent_id = ?")
       .run("branch.groveInstallRecord.v1", "worker");
     closeBranchStateDatabase();
     openBranchStateDatabase({ env });
-
     const legacyConfig = {
-      agents: {
-        list: [
-          {
-            ...plan.agent.config,
-            tools: { profile: "coding" as const },
-          },
-        ],
-      },
+      agents: { entries: toAgentEntriesRecord([{ ...plan.agent.config, tools: { profile } }]) },
     };
     setRuntimeConfigSnapshot(legacyConfig);
     expect(() =>
-      resolveConversationCapabilityProfile({
-        agentId: "worker",
-        config: legacyConfig,
-      }),
-    ).toThrow("uses a legacy dynamic tool policy");
-  });
-
-  it("gives a legacy unbounded full profile an actionable repair path", async () => {
-    const root = tempDirs.make("branch-grove-full-tool-consent-");
-    const env = stateEnv(root);
-    vi.stubEnv("BRANCH_STATE_DIR", join(root, "state"));
-    const { plan } = await makeToolConsentPlan(root);
-    persistGroveInstallRecord(plan, { env });
-    openBranchStateDatabase({ env })
-      .db /* sqlite-allow-raw: test-only downgrade simulates a legacy unbounded full profile. */
-      .prepare("UPDATE grove_installs SET schema_version = ? WHERE agent_id = ?")
-      .run("branch.groveInstallRecord.v1", "worker");
-    closeBranchStateDatabase();
-    openBranchStateDatabase({ env });
-
-    const config = {
-      agents: {
-        list: [
-          {
-            ...plan.agent.config,
-            tools: { profile: "full" as const },
-          },
-        ],
-      },
-    };
-    setRuntimeConfigSnapshot(config);
-
-    expect(() =>
-      resolveConversationCapabilityProfile({
-        agentId: "worker",
-        config,
-      }),
-    ).toThrow(
-      "Add an explicit tools.allow list to its package Branch Agent profile, then run `branch groves update worker`",
-    );
+      resolveConversationCapabilityProfile({ agentId: "worker", config: legacyConfig }),
+    ).toThrow(message);
   });
 
   it("isolates an unsupported install record from other agents", async () => {
@@ -508,7 +411,12 @@ describe("Grove tool policy consent provenance", () => {
     closeBranchStateDatabase();
     openBranchStateDatabase({ env });
 
-    const config = { agents: { list: [validPlan.agent.config, invalidPlan.agent.config] } };
+    const config = {
+      agents: {
+        ownership: "explicit" as const,
+        entries: toAgentEntriesRecord([validPlan.agent.config, invalidPlan.agent.config]),
+      },
+    };
     setRuntimeConfigSnapshot(config);
 
     expect(() =>
@@ -534,7 +442,7 @@ describe("Grove tool policy consent provenance", () => {
 
     const config = {
       tools: { profile: "minimal" as const },
-      agents: { list: [plan.agent.config] },
+      agents: { entries: toAgentEntriesRecord([plan.agent.config]) },
     };
     setRuntimeConfigSnapshot(config);
     const capabilityProfile = resolveConversationCapabilityProfile({

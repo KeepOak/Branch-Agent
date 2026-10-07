@@ -3,7 +3,7 @@ import { AgentSelectionRequiredError } from "../agents/agent-scope-config.js";
 import { resolveTalkSessionAgentId } from "./agent-target.js";
 
 const explicitRoster = {
-  agents: { list: [{ id: "main" }, { id: "sprig" }] },
+  agents: { entries: { main: {}, sprig: {} } },
 };
 
 describe("resolveTalkSessionAgentId", () => {

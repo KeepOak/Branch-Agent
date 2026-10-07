@@ -24,7 +24,6 @@ import {
 import { createAgentSession } from "../../sessions/sdk.js";
 import { makeProviderModelFixture } from "../../test-helpers/provider-model-fixture.js";
 import { registerAgentWorkspaceAccess } from "../../workspace-access.js";
-import { applySystemPromptToSession } from "../system-prompt.js";
 import { createAttemptSetupFixture } from "./attempt-setup.test-support.js";
 import { prepareEmbeddedAttemptSystemPrompt } from "./attempt-system-prompt-prepare.js";
 import type { EmbeddedRunAttemptParams } from "./types.js";
@@ -195,22 +194,17 @@ async function providerSession(params: ReturnType<typeof parameters>, requests: 
     retry: { enabled: false },
   });
   const resourceLoader = new DefaultResourceLoader({
-    cwd: params.attempt.workspaceDir,
+    cwd: params.setup.effectiveCwd,
     agentDir: params.attempt.agentDir!,
-    settingsManager,
-    noExtensions: true,
-    noSkills: true,
-    noPromptTemplates: true,
-    noThemes: true,
-    noContextFiles: true,
   });
   await resourceLoader.reload();
+  // The prepared prompt is installed per turn below, as the embedded runner does.
   const result = await createAgentSession({
-    cwd: params.attempt.workspaceDir,
-    agentDir: params.attempt.agentDir,
-    noTools: "all",
+    systemPrompt: "",
+    cwd: params.setup.effectiveCwd,
+    tools: [],
     model: params.attempt.model,
-    authStorage,
+    thinkingLevel: "off",
     modelRegistry,
     settingsManager,
     resourceLoader,
@@ -225,7 +219,7 @@ it("delivers fresh real rule state through actual prompt preparation and the pro
   const requests: string[] = [];
   const session = await providerSession(params, requests);
   const first = await prepareEmbeddedAttemptSystemPrompt(params);
-  applySystemPromptToSession(session, first.systemPromptText);
+  session.setBaseSystemPrompt(first.systemPromptText.trim());
   await session.prompt("First real fixture turn");
   expect(requests[0]).toContain("CURSOR_LEGACY");
   expect(requests[0]).toContain("CURSOR_DIRECTORY");
@@ -234,7 +228,7 @@ it("delivers fresh real rule state through actual prompt preparation and the pro
   expect(requests[0]).toContain("UNRELATED_EXTRA");
   await toggleExternalProjectRule(scope, "cursor", ".cursorrules", false);
   const second = await prepareEmbeddedAttemptSystemPrompt(params);
-  applySystemPromptToSession(session, second.systemPromptText);
+  session.setBaseSystemPrompt(second.systemPromptText.trim());
   await session.prompt("Next real fixture turn");
   expect(requests[1]).not.toContain("CURSOR_LEGACY");
   expect(requests[1]).toContain("CURSOR_DIRECTORY");
@@ -242,7 +236,7 @@ it("delivers fresh real rule state through actual prompt preparation and the pro
   await toggleExternalProjectRule(scope, "windsurf", ".windsurfrules", false);
   await toggleExternalProjectRule(scope, "cursor", ".cursorrules", true);
   const third = await prepareEmbeddedAttemptSystemPrompt(params);
-  applySystemPromptToSession(session, third.systemPromptText);
+  session.setBaseSystemPrompt(third.systemPromptText.trim());
   await session.prompt("Enabled again");
   expect(requests[2]).toContain("CURSOR_LEGACY");
   expect(requests[2]).not.toContain("WINDSURF_RULE");

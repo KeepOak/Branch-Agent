@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/compaction.ts (atlas AGENT-LOOP-0099). Changed for Branch: OpenHands overflow scaling and R-1541 oldest-item recovery (AGENT-LOOP-0104); Hermes summary-input tool pruning protecting 40k recent tokens (AGENT-LOOP-0102); Goose middle-out tool response retry (AGENT-LOOP-0100); existing runtime adapters and owner-context safeguards; upstream assertions retained.
 import {
   CompactionError,
   SummaryOutputBudgetError,
@@ -11,6 +12,7 @@ import { sleepWithAbort } from "../infra/backoff.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { retryAsync } from "../infra/retry.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { summarizeWithCompactionOverflowRetry } from "./compaction-overflow-retry.js";
 import {
   buildOversizedFallbackPlanWithWorker,
   buildStageSplitPlanWithWorker,
@@ -18,6 +20,7 @@ import {
 } from "./compaction-planning-worker.js";
 import { DEFAULT_CONTEXT_TOKENS } from "./defaults.js";
 import { isTimeoutError } from "./failover-error.js";
+import { pruneBeforeSummarizing } from "./proactive-tool-result-pruning.js";
 import type {
   AgentMessage,
   CompactionSummaryPrompt,
@@ -27,6 +30,10 @@ import type {
 import type { SessionModelUsageSink } from "./sessions/compaction/runtime.js";
 import type { ExtensionContext } from "./sessions/index.js";
 import { generateSummary } from "./sessions/index.js";
+import {
+  SummaryRemovalExhaustedError,
+  summarizeWithToolResponseRemoval,
+} from "./structured-summary-retry.js";
 export { estimateMessagesTokens, SUMMARIZATION_OVERHEAD_TOKENS } from "./compaction-planning.js";
 
 const log = createSubsystemLogger("compaction");
@@ -76,24 +83,18 @@ type CompactionSummaryParams = {
   usageSink?: SessionModelUsageSink;
 };
 
-function resolveIdentifierPreservationInstructions(
-  instructions?: CompactionSummarizationInstructions,
-): string | undefined {
-  if (instructions?.identifierPolicy === "off") {
-    return undefined;
-  }
-  return instructions?.identifierPolicy === "custom"
-    ? instructions.identifierInstructions?.trim() || IDENTIFIER_PRESERVATION_INSTRUCTIONS
-    : IDENTIFIER_PRESERVATION_INSTRUCTIONS;
-}
-
 /** Combines identifier-preservation and caller-provided compaction instructions. */
 function buildCompactionSummarizationInstructions(
   customInstructions?: string,
   instructions?: CompactionSummarizationInstructions,
 ): string | undefined {
   const custom = customInstructions?.trim();
-  const identifierPreservation = resolveIdentifierPreservationInstructions(instructions);
+  const identifierPreservation =
+    instructions?.identifierPolicy === "off"
+      ? undefined
+      : instructions?.identifierPolicy === "custom"
+        ? instructions.identifierInstructions?.trim() || IDENTIFIER_PRESERVATION_INSTRUCTIONS
+        : IDENTIFIER_PRESERVATION_INSTRUCTIONS;
   if (!custom) {
     return identifierPreservation;
   }
@@ -108,7 +109,7 @@ async function summarizeChunks(params: CompactionSummaryParams): Promise<string>
   }
 
   const chunks = await buildSummaryChunksWithWorker({
-    messages: params.messages,
+    messages: await pruneBeforeSummarizing(params.messages),
     maxChunkTokens: params.maxChunkTokens,
     signal: params.signal,
   });
@@ -121,19 +122,26 @@ async function summarizeChunks(params: CompactionSummaryParams): Promise<string>
     try {
       summary = await retryAsync(
         () =>
-          generateSummary(
+          summarizeWithCompactionOverflowRetry(
             chunk,
-            params.model,
-            params.reserveTokens,
-            params.apiKey,
-            params.headers,
-            params.signal,
-            effectiveInstructions,
-            summary,
-            params.thinkingLevel,
-            params.streamFn,
-            params.usageSink,
-            params.summaryPrompt,
+            (candidate) =>
+              summarizeWithToolResponseRemoval(candidate, (messages) =>
+                generateSummary(
+                  messages,
+                  params.model,
+                  params.reserveTokens,
+                  params.apiKey,
+                  params.headers,
+                  params.signal,
+                  effectiveInstructions,
+                  summary,
+                  params.thinkingLevel,
+                  params.streamFn,
+                  params.usageSink,
+                  params.summaryPrompt,
+                ),
+              ),
+            { signal: params.signal },
           ),
         {
           attempts: 3,
@@ -149,6 +157,7 @@ async function summarizeChunks(params: CompactionSummaryParams): Promise<string>
           shouldRetry: (err) =>
             !params.signal.aborted &&
             !(err instanceof SummaryOutputBudgetError) &&
+            !(err instanceof SummaryRemovalExhaustedError) &&
             (isAbortError(err) || !isTimeoutError(err)),
         },
       );
@@ -163,10 +172,7 @@ async function summarizeChunks(params: CompactionSummaryParams): Promise<string>
       ) {
         throw err;
       }
-      // At least one chunk succeeded — throw with the partial summary
-      // attached so summarizeWithFallback can try the oversized-message
-      // retry first and only fall back to the partial summary if that
-      // also fails.
+      // Preserve partial progress if the oversized-message retry also fails.
       log.warn("chunk summarization failed after retries; partial summary available", {
         err,
         completedChunks,
@@ -189,11 +195,6 @@ async function summarizeChunks(params: CompactionSummaryParams): Promise<string>
 async function summarizeWithFallback(params: CompactionSummaryParams): Promise<string> {
   const { messages, contextWindow } = params;
 
-  if (messages.length === 0) {
-    return params.previousSummary ?? DEFAULT_SUMMARY_FALLBACK;
-  }
-
-  // Try full summarization first
   let partialSummaryFallback: string | undefined;
   let lastError: unknown;
   try {
@@ -207,7 +208,6 @@ async function summarizeWithFallback(params: CompactionSummaryParams): Promise<s
     partialSummaryFallback = (lastError as PartialSummaryError).partialSummary;
   }
 
-  // Fallback 1: Summarize only small messages, note oversized ones.
   const { smallMessages, oversizedNotes } = await buildOversizedFallbackPlanWithWorker({
     messages,
     contextWindow,
@@ -240,7 +240,6 @@ async function summarizeWithFallback(params: CompactionSummaryParams): Promise<s
     }
   }
 
-  // Final fallback: use best available partial summary, otherwise throw error
   if (partialSummaryFallback) {
     return partialSummaryFallback;
   }
@@ -315,27 +314,15 @@ export async function summarizeInStages(
       });
       partialSummaries.push(summary);
     } catch (err) {
-      // A chunk summarization failed — fail the whole stages compaction.
-      // This prevents silent infinite retry loops where compaction reports
-      // success but no tokens are reclaimed.
       if (err instanceof CompactionError) {
         throw err;
       }
-      // Wrap non-CompactionError failures for consistent error handling
       throw new CompactionError(
         "summarization_failed",
         `Chunk ${index + 1} summarization failed: ${err instanceof Error ? err.message : String(err)}`,
         err instanceof Error ? err : undefined,
       );
     }
-  }
-
-  if (partialSummaries.length === 1) {
-    const summary = partialSummaries.at(0);
-    if (summary === undefined) {
-      throw new Error("Compaction summary plan produced no summary");
-    }
-    return summary;
   }
 
   // Capture once so timestamps are strictly monotonic across

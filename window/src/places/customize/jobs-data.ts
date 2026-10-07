@@ -1,3 +1,4 @@
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../connect/engine";
 import { errorText, type FileEntry } from "../library/data";
 import { createReadyTrunk } from "../trunk/api";
@@ -11,8 +12,8 @@ export const JOBS = [
   { name: "Trip Planner", description: "Finds and books refundable travel" , color: "#8A5AA8", shape: "62% 38% 50% 50% / 45% 55% 45% 55%" },
 ];
 /** Create an actual Trunk, then append the selected job to its source-generated instructions. */
-export async function createJob(engine: WindowEngine, job: typeof JOBS[number], current: () => boolean = () => true) {
-  const agentId = await createReadyTrunk(engine, job.name, current);
+export async function createJob(engine: WindowEngine, job: typeof JOBS[number], current: () => boolean = () => true, avatar?: string, name = job.name) {
+  const agentId = await createReadyTrunk(engine, name, current, avatar);
   try {
     if (!current()) throw new Error("You left this screen before its job instructions were saved.");
     const { file } = await engine.request<{ file: FileEntry }>("agents.files.get", { agentId, name: "SOUL.md" });

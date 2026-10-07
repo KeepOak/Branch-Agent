@@ -130,6 +130,7 @@ export async function tombstoneMainRestartRecoveryWithNotice(params: {
           },
           runtimeMs: Math.max(0, now - (entry.startedAt ?? now)),
           status: "failed",
+          lastRunError: params.reason,
           updatedAt: now,
         },
       });

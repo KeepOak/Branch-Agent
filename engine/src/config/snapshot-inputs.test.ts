@@ -5,7 +5,10 @@ import {
   getConfigResolutionFacts,
   setConfigResolutionFacts,
 } from "./resolution-facts.js";
-import { describeConfigSnapshotInputChange } from "./snapshot-inputs.js";
+import {
+  describeConfigSnapshotInputChange,
+  isLockdownOnlyConfigChange,
+} from "./snapshot-inputs.js";
 import type { ConfigFileSnapshot, BranchConfig } from "./types.js";
 
 const snapshot: ConfigFileSnapshot = {
@@ -47,45 +50,92 @@ describe("config snapshot input identity", () => {
     [{ raw: "{}", hash: "changed" }, "authored config file contents changed"],
     [{ hash: "changed-include" }, "included config contents or targets changed"],
     [{ sourceConfig: { gateway: { port: 18790 } } }, "resolved config values changed"],
-  ] satisfies [Partial<ConfigFileSnapshot>, string][])("detects %j", (change, reason) => {
-    expect(describeConfigSnapshotInputChange(snapshot, { ...snapshot, ...change })).toBe(reason);
-  });
+    [{ valid: false, runtimeConfig: {}, config: {} }, undefined],
+  ] satisfies [Partial<ConfigFileSnapshot>, string | undefined][])(
+    "compares %j",
+    (change, reason) => {
+      expect(describeConfigSnapshotInputChange(snapshot, { ...snapshot, ...change })).toBe(reason);
+    },
+  );
 
-  it("allows validation and runtime projections to differ for unchanged inputs", () => {
-    expect(
-      describeConfigSnapshotInputChange(snapshot, {
-        ...snapshot,
-        valid: false,
-        runtimeConfig: {},
-        config: {},
-      }),
-    ).toBeUndefined();
-  });
-
-  it("detects pending references becoming same-text resolved literals", () => {
+  it.each([undefined, "${TOKEN}"])("compares same-text resolution with TOKEN=%s", (TOKEN) => {
     const before = resolveTokenSnapshot({});
-    const after = resolveTokenSnapshot({ TOKEN: "${TOKEN}" });
+    const after = resolveTokenSnapshot({ TOKEN });
     expect(after.sourceConfig).toEqual(before.sourceConfig);
+    expect(getConfigResolutionFacts(after.sourceConfig)).not.toBe(
+      getConfigResolutionFacts(before.sourceConfig),
+    );
     expect(getAuthoredConfigSecretRef(before.sourceConfig, "gateway.auth.token")).toEqual({
       source: "env",
       provider: "default",
       id: "TOKEN",
     });
-    expect(getAuthoredConfigSecretRef(after.sourceConfig, "gateway.auth.token")).toBeNull();
+    expect(getAuthoredConfigSecretRef(after.sourceConfig, "gateway.auth.token")).toEqual(
+      TOKEN === undefined ? { source: "env", provider: "default", id: "TOKEN" } : null,
+    );
     expect(describeConfigSnapshotInputChange(before, after)).toBe(
-      "resolved config provenance changed",
+      TOKEN === undefined ? undefined : "resolved config provenance changed",
     );
     expect(
       describeConfigSnapshotInputChange(before, after, { compareResolvedConfig: false }),
     ).toBeUndefined();
   });
+});
 
-  it("accepts independently resolved equivalent facts", () => {
-    const before = resolveTokenSnapshot({});
-    const after = resolveTokenSnapshot({});
-    expect(getConfigResolutionFacts(after.sourceConfig)).not.toBe(
-      getConfigResolutionFacts(before.sourceConfig),
-    );
-    expect(describeConfigSnapshotInputChange(before, after)).toBeUndefined();
+describe("Lockdown-only config changes (P45 standby)", () => {
+  const withSecurity = (
+    security: Record<string, unknown> | undefined,
+    extra: Record<string, unknown> = {},
+  ): ConfigFileSnapshot => {
+    const parsed = { ...(snapshot.parsed as object), ...extra, ...(security ? { security } : {}) };
+    const sourceConfig = {
+      ...snapshot.sourceConfig,
+      ...extra,
+      ...(security ? { security } : {}),
+    } as BranchConfig;
+    return {
+      ...snapshot,
+      raw: JSON.stringify(parsed),
+      hash: JSON.stringify(parsed),
+      parsed,
+      sourceConfig,
+    };
+  };
+
+  it("ignores switching Lockdown on or off, with or without other security settings", () => {
+    expect(
+      isLockdownOnlyConfigChange(withSecurity(undefined), withSecurity({ lockdown: true })),
+    ).toBe(true);
+    expect(
+      isLockdownOnlyConfigChange(
+        withSecurity({ lockdown: true }),
+        withSecurity({ lockdown: false }),
+      ),
+    ).toBe(true);
+    const audit = { audit: { suppressions: [] } };
+    expect(
+      isLockdownOnlyConfigChange(withSecurity(audit), withSecurity({ ...audit, lockdown: true })),
+    ).toBe(true);
+  });
+
+  it("still sees any other change", () => {
+    expect(
+      isLockdownOnlyConfigChange(
+        withSecurity(undefined),
+        withSecurity({ lockdown: true }, { tools: {} }),
+      ),
+    ).toBe(false);
+    expect(
+      isLockdownOnlyConfigChange(
+        withSecurity(undefined),
+        withSecurity({ lockdown: true, audit: {} }),
+      ),
+    ).toBe(false);
+    expect(
+      isLockdownOnlyConfigChange(withSecurity(undefined), {
+        ...withSecurity({ lockdown: true }),
+        path: "/other/branch.json",
+      }),
+    ).toBe(false);
   });
 });

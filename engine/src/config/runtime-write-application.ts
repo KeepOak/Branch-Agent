@@ -29,7 +29,7 @@ export type RuntimeConfigWriteApplicationClaim = {
   runTransaction?: <T>(run: () => Promise<T>) => Promise<T>;
 };
 
-type RuntimeConfigWriteApplication = {
+export type RuntimeConfigWriteApplication = {
   result: Promise<RuntimeConfigWriteApplicationStatus>;
   readonly claimed: boolean;
   claim: () => RuntimeConfigWriteApplicationClaim | null;

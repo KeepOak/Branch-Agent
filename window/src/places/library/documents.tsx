@@ -2,7 +2,9 @@
 // trashR318): Work with documents, Write a new document, List / Map, the documents in every Trunk's project folder
 // (agents.workspace.*), Managing what it reads [A], Test what it finds [A] (memory.search), Places it reads from [A],
 // Recently deleted.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState, type FormEvent } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { shows, type Level } from "../../places-nav/level";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
@@ -18,7 +20,7 @@ export const DOC_REASONS = {
   map: "Needs an engine method that returns the documents’ topics and the links between them.",
   trash: "Needs the engine’s recently-deleted list for documents, with restore and delete for good.",
   kb: "Needs the engine’s knowledge-base management methods.",
-  folder: "Needs the engine’s guided folder tour.",
+  folder: "Needs the engine’s guided folder walkthrough.",
   sources: "Needs the engine’s synced outside sources.",
   pages: "Needs the engine’s kept-answers pages.",
   connect: "Needs the engine’s connector for this source.",
@@ -100,7 +102,7 @@ export function DocumentsTab({ engine, level, trunks, defaultId, mainKey }: { en
     {shows(level, "advanced") && <Managing />}
     {shows(level, "advanced") && <TestWhatItFinds engine={engine} trunks={trunks} files={files} />}
     {shows(level, "advanced") && <PlacesItReads />}
-    <Section title="Recently deleted" testid="recently-deleted"><p className="lib-hint">{DOC_REASONS.trash}</p></Section>
+    <Section title="Recently deleted" testid="recently-deleted">{shownWhy(DOC_REASONS.trash) && <p className="lib-hint">{shownWhy(DOC_REASONS.trash)}</p>}<div className="lib-acts"><Grey label="Restore" reason={DOC_REASONS.trash} /><Grey ghost label="Delete for good" reason={DOC_REASONS.trash} /></div></Section>
     {open && <FileDialog engine={engine} agentId={open.agentId} path={open.path} onClose={() => setOpen(null)} />}
   </div>;
 }
@@ -112,27 +114,27 @@ function DocumentTools({ trunks, creation }: { trunks: Trunk[]; creation: Return
       <ToolTile icon="diff" title="Compare or edit exactly" line="What changed between two versions, and edits that leave every other byte as it was." reason={DOC_REASONS.compare} />
     </div></Section>
     <div className="lib-docacts">
-      <button type="button" className="btn" disabled={creation.busy || !!creation.reason} title={creation.reason || undefined} onClick={() => void creation.create()}><LibIcon name="file" />Write a new document</button>
+      <button type="button" className="btn" disabled={creation.busy || !!creation.reason} title={shownWhy(creation.reason)} onClick={() => void creation.create()}><LibIcon name="file" />Write a new document</button>
       <select className="inp" aria-label="Trunk for new document" value={creation.selected} onChange={event => creation.choose(event.target.value)}>
         {!trunks.some(t => t.id === creation.selected) && <option value="">Choose a Trunk…</option>}
         {trunks.map(t => <option key={t.id} value={t.id}>{trunkName(t)}</option>)}
       </select>
       <div className="lib-seg" role="radiogroup" aria-label="Documents view">
         <button type="button" role="radio" aria-checked="true"><LibIcon name="list" size={13} />List</button>
-        <button type="button" role="radio" aria-checked="false" disabled title={DOC_REASONS.map} data-reason={DOC_REASONS.map}><LibIcon name="map" size={13} />Map</button>
+        <button type="button" role="radio" aria-checked="false" disabled title={shownWhy(DOC_REASONS.map)} data-reason={DOC_REASONS.map}><LibIcon name="map" size={13} />Map</button>
       </div>
     </div>
   </>;
 }
 
 function ToolTile({ icon, title, line, reason }: { icon: LibIconName; title: string; line: string; reason: string }) {
-  return <button type="button" className="lib-tool" disabled title={reason} data-reason={reason}><IcoTile icon={icon} /><span className="lib-grow"><b>{title}</b><small>{line}</small></span></button>;
+  return <button type="button" className="lib-tool" disabled title={shownWhy(reason)} data-reason={reason}><IcoTile icon={icon} /><span className="lib-grow"><b>{title}</b><small>{line}</small></span></button>;
 }
 
 function Managing() {
   const rows: [LibIconName, string, string, string, string][] = [
     ["folder", "Knowledge bases", "Folders it reads, kept as quotable passages. Rename, merge, split and choose how long they stay.", "Manage", DOC_REASONS.kb],
-    ["box", "Understand a folder", "A map of a folder, then a short guided tour of what’s in it.", "Try a folder", DOC_REASONS.folder],
+    ["box", "Understand a folder", "A map of a folder, then a short guided walkthrough.", "Try a folder", DOC_REASONS.folder],
     ["repeat", "Bring things in from other services", "Keeps a copy of chosen items from Drive, Notion or a notes vault, in sync.", "See sources", DOC_REASONS.sources],
     ["book", "Kept answers and long articles", "An answer you like becomes a page you can reopen; a long article is written section by section.", "See pages", DOC_REASONS.pages],
   ];
@@ -181,7 +183,7 @@ function PlacesItReads() {
   ];
   return <Section title="Places it reads from" testid="places-it-reads"><div className="lib-plain">
     <Row icon="globe" title="A web page or video" line="Reads the page, or a video’s captions, safely." />
-    <div className="lib-form lib-form-row"><input className="inp" disabled placeholder="https://… or a video link" aria-label="A web page or video link" title={DOC_REASONS.connect} /><Grey label="Add" reason={DOC_REASONS.connect} /></div>
+    <div className="lib-form lib-form-row"><input className="inp" disabled placeholder="https://… or a video link" aria-label="A web page or video link" title={shownWhy(DOC_REASONS.connect)} /><Grey label="Add" reason={DOC_REASONS.connect} /></div>
     {rows.map(([icon, title, line]) => <Row key={title} icon={icon} title={title} line={line}><Grey ghost label="Connect" reason={DOC_REASONS.connect} /></Row>)}
   </div></Section>;
 }

@@ -21,7 +21,7 @@
 .set-col .lm-h-k b { font-size: 15px; font-weight: 600; }
 .set-col .lm-h-k .pill { margin-left: auto; }
 .set-col .lm-tags-k { display: flex; flex-wrap: wrap; gap: 4px; }
-.set-col .tag-k { padding: 2px 6px; border-radius: 6px; background: var(--brand-tint); color: var(--ok); font: 500 10px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; }
+.set-col .tag-k { padding: 2px 6px; border-radius: 6px; background: var(--brand-tint); color: var(--ok); font: 500 10px var(--sans); }
 .set-col .pill.done-k { background: var(--fill); color: var(--ink-2); }
 .set-col .lm-grid-k + .ctl { margin-top: 10px; }
 

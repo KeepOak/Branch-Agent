@@ -9,10 +9,16 @@ export interface ComponentAsset {
   platform?: string;
   arch?: string;
 }
+/** The desktop app's own code (app.asar), or the whole packaged app when Electron itself changes. */
+export interface DesktopAsset extends ComponentAsset {
+  electronVersion: string; platform: string; arch: string;
+  /** SHA256 of the app.asar the component carries; an installed desktop with the same bytes stays as it is. */
+  appAsarSha256?: string;
+}
 export interface ComponentRelease {
   schemaVersion: 1;
   version: string;
-  components: { engine: ComponentAsset; window: ComponentAsset };
+  components: { engine: ComponentAsset; window: ComponentAsset; desktop?: DesktopAsset; desktopRuntime?: DesktopAsset };
 }
 
 function asset(value: unknown): ComponentAsset {
@@ -31,13 +37,26 @@ function asset(value: unknown): ComponentAsset {
   return item;
 }
 
+/** Releases before the desktop component carry none; a present one must name its exact target and Electron. */
+function desktopAsset(value: unknown): DesktopAsset | undefined {
+  if (value === undefined) return undefined;
+  const item = asset(value) as DesktopAsset;
+  if (!item.platform || !item.arch) throw new Error("Desktop component must name its target");
+  if (typeof item.electronVersion !== "string" || !/^\d+\.\d+\.\d+$/.test(item.electronVersion)) throw new Error("Invalid desktop Electron version");
+  if (item.appAsarSha256 !== undefined && !/^[a-f0-9]{64}$/.test(item.appAsarSha256)) throw new Error("Invalid desktop app.asar SHA256");
+  return item;
+}
+
 export function parseComponentRelease(value: unknown): ComponentRelease {
   const item = value as ComponentRelease | undefined;
   if (item?.schemaVersion !== 1 || typeof item.version !== "string" || !/^[\w.-]+$/.test(item.version)) {
     throw new Error("Unsupported release manifest");
   }
+  const desktop = desktopAsset(item.components?.desktop);
+  const desktopRuntime = desktopAsset(item.components?.desktopRuntime);
   return { schemaVersion: 1, version: item.version,
-    components: { engine: asset(item.components?.engine), window: asset(item.components?.window) } };
+    components: { engine: asset(item.components?.engine), window: asset(item.components?.window),
+      ...(desktop ? { desktop } : {}), ...(desktopRuntime ? { desktopRuntime } : {}) } };
 }
 
 export function trustedDownloadResponse(response: Response): void {

@@ -9,6 +9,7 @@ import {
 import { restoreTerminalState } from "../../packages/terminal-core/src/restore.js";
 import { isRich, theme } from "../../packages/terminal-core/src/theme.js";
 import type { RuntimeEnv } from "../runtime.js";
+import { sleep as defaultSleep } from "../utils/sleep.js";
 
 // Mascot and wordmark are separate so they can be tinted independently; the
 // wordmark starts on mascot row 3, keeping the groves above the text line.
@@ -90,11 +91,6 @@ function plainTitleLine(): string {
   const icon = decorativeEmoji("🌿");
   return supportsDecorativeEmoji() && icon ? `${icon} BRANCH ${icon}` : "BRANCH";
 }
-
-const defaultSleep = (ms: number) =>
-  new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-  });
 
 // One combined entrance: a left-to-right shed wipe reveals the color, a
 // shimmer band sweeps the wordmark, and the groves snip once. The 330ms sequence

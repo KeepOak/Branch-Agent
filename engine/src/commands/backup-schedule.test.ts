@@ -70,7 +70,7 @@ describe("scheduled backups", () => {
     gatewayRpc.call.mockReset();
     gatewayRpc.isImplicitLocalTarget.mockReset().mockResolvedValue(true);
     configMocks.getRuntimeConfig.mockReset().mockReturnValue({
-      agents: { list: [{ id: "main" }, { id: "ops-team" }] },
+      agents: { entries: { main: {}, "ops-team": {} } },
       storage: {
         locations: {
           archive: {
@@ -266,6 +266,8 @@ describe("scheduled backups", () => {
           everyMs: 86_400_000,
           target: "/backups/git",
           enabled: true,
+          push: true,
+          excludeSecrets: true,
         },
       ]);
     },
@@ -324,38 +326,20 @@ describe("scheduled backups", () => {
     { options: { to: "archive", repository: "/backups" }, message: "cannot be combined" },
     { options: { repository: "/backups", keepDaily: "7" }, message: "require --to" },
     { options: { to: "missing" }, message: 'Storage location "missing" is not configured' },
+    {
+      options: { repository: "/tmp/branch-backups", agent: "nope-agent" },
+      message: 'Unknown agent id "nope-agent". Run branch agents list to see configured agents.',
+    },
+    {
+      options: { repository: "/tmp/branch-backups", agent: "   " },
+      message: "--agent must not be blank",
+    },
+    {
+      options: { repository: "/tmp/branch-backups", every: "   " },
+      message: "Invalid duration (empty)",
+    },
   ])("rejects invalid schedule options $options", async ({ options, message }) => {
     await expect(backupEnableCommand(createTestRuntime(), options)).rejects.toThrow(message);
-    expect(gatewayRpc.call).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    [
-      "unknown",
-      "nope-agent",
-      'Unknown agent id "nope-agent". Run branch agents list to see configured agents.',
-    ],
-    ["whitespace-only", "   ", "--agent must not be blank"],
-  ])("rejects an %s scheduled backup agent", async (_label, agent, message) => {
-    const runtime = createTestRuntime();
-
-    await expect(
-      backupEnableCommand(runtime, {
-        repository: "/tmp/branch-backups",
-        agent,
-      }),
-    ).rejects.toThrow(message);
-
-    expect(gatewayRpc.call).not.toHaveBeenCalled();
-  });
-
-  it("rejects an explicit blank interval before scheduling", async () => {
-    const runtime = createTestRuntime();
-    gatewayRpc.call.mockResolvedValue({ created: true, job: { id: "backup-job" } });
-
-    await expect(
-      backupEnableCommand(runtime, { repository: "/tmp/branch-backups", every: "   " }),
-    ).rejects.toThrow("Invalid duration (empty)");
     expect(gatewayRpc.call).not.toHaveBeenCalled();
   });
 

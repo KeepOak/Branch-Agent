@@ -62,7 +62,7 @@ export function resolveConfiguredRuntimePluginInstallCandidate(
   );
 }
 
-function acpxRuntimeIsConfigured(cfg: BranchConfig): boolean {
+export function acpxRuntimeIsConfigured(cfg: BranchConfig): boolean {
   const acp = asOptionalRecord(cfg.acp);
   const backend = typeof acp?.backend === "string" ? acp.backend.trim().toLowerCase() : "";
   return (

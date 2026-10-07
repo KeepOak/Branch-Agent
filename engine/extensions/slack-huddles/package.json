@@ -1,6 +1,6 @@
 {
   "name": "@branch/slack-huddles",
-  "version": "2026.9.7",
+  "version": "2026.9.8",
   "description": "Branch Agent Slack huddle browser meeting participant plugin.",
   "repository": {
     "type": "git",
@@ -12,7 +12,7 @@
     "branch": "workspace:*"
   },
   "peerDependencies": {
-    "branch": ">=2026.9.7"
+    "branch": ">=2026.9.8"
   },
   "peerDependenciesMeta": {
     "branch": {
@@ -33,7 +33,7 @@
       "pluginApi": ">=2026.9.8"
     },
     "build": {
-      "branchVersion": "2026.9.7",
+      "branchVersion": "2026.9.8",
       "bundledDist": false
     },
     "release": {

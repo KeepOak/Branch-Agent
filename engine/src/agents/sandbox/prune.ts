@@ -7,6 +7,7 @@ import { asDateTimestampMs } from "@branch/normalization-core/number-coercion";
 import { getRuntimeConfig } from "../../config/config.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { defaultRuntime } from "../../runtime.js";
+import type { WorkspaceStateGuard } from "../workspace-state-store.worker-contract.js";
 import { getSandboxBackendManager, usesSandboxRuntimeReservations } from "./backend.js";
 import { stopCachedBrowserBridgesForContainer } from "./browser-bridges.js";
 import { resolveSandboxConfigForAgent } from "./config.js";
@@ -59,6 +60,7 @@ function shouldPruneSandboxEntry(
 /** Removes expired registry entries and their backing runtime resources. */
 async function pruneSandboxRegistryEntries<TEntry extends SandboxRegistryEntry>(params: {
   config: BranchConfig;
+  assertCurrent?: () => void;
   read: () => Promise<{ entries: TEntry[] }>;
   remove: (
     entry: TEntry,
@@ -67,6 +69,7 @@ async function pruneSandboxRegistryEntries<TEntry extends SandboxRegistryEntry>(
 }) {
   const now = Date.now();
   const registry = await params.read();
+  params.assertCurrent?.();
   for (const entry of registry.entries) {
     if (!shouldPruneSandboxEntry(resolveEntryPruneConfig(params.config, entry), now, entry)) {
       continue;
@@ -75,7 +78,9 @@ async function pruneSandboxRegistryEntries<TEntry extends SandboxRegistryEntry>(
       await params.remove(entry, (current) =>
         shouldPruneSandboxEntry(resolveEntryPruneConfig(params.config, current), now, current),
       );
+      params.assertCurrent?.();
     } catch (error) {
+      params.assertCurrent?.();
       const message =
         error instanceof Error
           ? error.message
@@ -90,9 +95,11 @@ async function pruneSandboxRegistryEntries<TEntry extends SandboxRegistryEntry>(
 }
 
 /** Prunes ordinary sandbox runtime containers from the configured backend manager. */
-async function pruneSandboxContainers(config: BranchConfig) {
+async function pruneSandboxContainers(config: BranchConfig, guard: WorkspaceStateGuard) {
+  const assertCurrent = guard.beforeLegacyApply;
   await pruneSandboxRegistryEntries<SandboxRegistryEntry>({
     config,
+    assertCurrent,
     read: readRegistry,
     remove: (entry, shouldRemove) =>
       removeSandboxRegistryRuntime(
@@ -105,30 +112,36 @@ async function pruneSandboxContainers(config: BranchConfig) {
               `Sandbox backend "${backendId}" is unavailable; enable its plugin before removing this runtime.`,
             );
           }
+          assertCurrent?.();
           await manager.removeRuntime({
             entry: current,
             config,
             agentId: resolveSandboxAgentId(current.sessionKey),
           });
+          assertCurrent?.();
         },
         {
           reserveRuntime: usesSandboxRuntimeReservations(entry.backendId ?? "docker"),
           shouldRemove,
+          guard,
         },
       ),
   });
 }
 
 /** Prunes browser bridge containers and closes matching in-process bridge servers. */
-async function pruneSandboxBrowsers(config: BranchConfig) {
+async function pruneSandboxBrowsers(config: BranchConfig, assertCurrent?: () => void) {
   await pruneSandboxRegistryEntries<SandboxBrowserRegistryEntry>({
     config,
+    assertCurrent,
     read: readBrowserRegistry,
     remove: async (entry, shouldRemove) => {
       await withSandboxRegistryEntryLock({ ...entry, backendId: "docker" }, async () => {
+        assertCurrent?.();
         const current = (await readBrowserRegistry()).entries.find(
           (candidate) => candidate.containerName === entry.containerName,
         );
+        assertCurrent?.();
         if (!current || !shouldRemove(current)) {
           return;
         }
@@ -137,7 +150,9 @@ async function pruneSandboxBrowsers(config: BranchConfig) {
         } catch {
           return;
         }
-        await stopCachedBrowserBridgesForContainer(current.containerName);
+        assertCurrent?.();
+        await stopCachedBrowserBridgesForContainer(current.containerName, assertCurrent);
+        assertCurrent?.();
         await dockerSandboxBackendManager.removeRuntime({
           entry: {
             ...current,
@@ -148,16 +163,21 @@ async function pruneSandboxBrowsers(config: BranchConfig) {
           config,
           agentId: resolveSandboxAgentId(current.sessionKey),
         });
-        removeSandboxRegistryGeneration("browser", current, () =>
-          assertSandboxBrowserRegistryEntryCurrent(current),
-        );
+        assertCurrent?.();
+        await removeSandboxRegistryGeneration("browser", current, assertCurrent);
+        assertCurrent?.();
       });
     },
   });
 }
 
 /** Runs sandbox pruning at most once per throttle window. */
-export async function maybePruneSandboxes(config?: BranchConfig) {
+export async function maybePruneSandboxes(
+  config?: BranchConfig,
+  assertCurrent?: () => void,
+  assertHost?: () => void,
+) {
+  assertCurrent?.();
   const now = Date.now();
   if (now - lastPruneAtMs < 5 * 60 * 1000) {
     return;
@@ -165,9 +185,12 @@ export async function maybePruneSandboxes(config?: BranchConfig) {
   lastPruneAtMs = now;
   try {
     const currentConfig = config ?? getRuntimeConfig();
-    await pruneSandboxContainers(currentConfig);
-    await pruneSandboxBrowsers(currentConfig);
+    await pruneSandboxContainers(currentConfig, { assertHost, beforeLegacyApply: assertCurrent });
+    assertCurrent?.();
+    await pruneSandboxBrowsers(currentConfig, assertCurrent);
+    assertCurrent?.();
   } catch (error) {
+    assertCurrent?.();
     const message =
       error instanceof Error
         ? error.message

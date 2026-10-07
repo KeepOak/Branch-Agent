@@ -4,6 +4,7 @@ import { access, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import "branch/plugin-sdk/compiled-subprocess-testing";
 import type { BranchPluginNodeHostCommandIo } from "branch/plugin-sdk/node-host";
 import type {
   BranchPluginNodeHostCommand,

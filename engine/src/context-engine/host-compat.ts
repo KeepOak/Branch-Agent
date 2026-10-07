@@ -21,12 +21,6 @@ export function supportsContextEngineDurableTurnAdvancement(engine: ContextEngin
   );
 }
 
-const GENERIC_CLI_CONTEXT_ENGINE_HOST_CAPABILITIES = [
-  "bootstrap",
-  "after-turn",
-  "maintain",
-] as const satisfies readonly ContextEngineHostCapability[];
-
 export const BRANCH_EMBEDDED_CONTEXT_ENGINE_HOST = {
   id: "branch-embedded",
   label: "Branch Agent embedded runner",
@@ -74,7 +68,7 @@ export function buildGenericCliContextEngineHostSupport(params: {
   return {
     id: `cli:${params.backendId}`,
     label: `CLI backend "${params.backendId}"`,
-    capabilities: params.capabilities ?? GENERIC_CLI_CONTEXT_ENGINE_HOST_CAPABILITIES,
+    capabilities: params.capabilities ?? ["bootstrap", "after-turn", "maintain"],
   };
 }
 

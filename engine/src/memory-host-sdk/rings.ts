@@ -18,10 +18,6 @@ import {
 import { resolveWorkspaceStateIdentity } from "../agents/workspace-state-identity.js";
 import type { BranchConfig } from "../config/types.branch.js";
 
-const DEFAULT_MEMORY_RINGS_ENABLED = true;
-const DEFAULT_MEMORY_RINGS_VERBOSE_LOGGING = false;
-const DEFAULT_MEMORY_RINGS_STORAGE_MODE = "separate";
-const DEFAULT_MEMORY_RINGS_SEPARATE_REPORTS = false;
 export const DEFAULT_MEMORY_RINGS_FREQUENCY = "0 3 * * *";
 export const DEFAULT_MEMORY_RINGS_PLUGIN_ID = "memory-core";
 export const MANAGED_MEMORY_RINGS_CRON_NAME = "Memory Rings Promotion";
@@ -34,33 +30,15 @@ export const LEGACY_MEMORY_LIGHT_RINGS_EVENT_TEXT = "__branch_memory_core_light_
 export const LEGACY_MEMORY_REM_RINGS_CRON_NAME = "Memory REM Rings";
 export const LEGACY_MEMORY_REM_RINGS_CRON_TAG = "[managed-by=memory-core.rings.rem]";
 export const LEGACY_MEMORY_REM_RINGS_EVENT_TEXT = "__branch_memory_core_rem_sleep__";
-const DEFAULT_MEMORY_LIGHT_RINGS_LOOKBACK_DAYS = 2;
-const DEFAULT_MEMORY_LIGHT_RINGS_LIMIT = 100;
-const DEFAULT_MEMORY_LIGHT_RINGS_DEDUPE_SIMILARITY = 0.9;
-export const DEFAULT_MEMORY_DEEP_RINGS_LIMIT = 10;
+const DEFAULT_MEMORY_DEEP_RINGS_LIMIT = 10;
 // Deterministic calibration scores 3-day/3-query durable facts at 0.750-0.756,
 // versus repeated filler at 0.489-0.549 and high-relevance one-offs at 0.529-0.606.
 export const DEFAULT_MEMORY_DEEP_RINGS_MIN_SCORE = 0.75;
 export const DEFAULT_MEMORY_DEEP_RINGS_MIN_RECALL_COUNT = 3;
 export const DEFAULT_MEMORY_DEEP_RINGS_MIN_UNIQUE_QUERIES = 3;
 export const DEFAULT_MEMORY_DEEP_RINGS_RECENCY_HALF_LIFE_DAYS = 14;
-const DEFAULT_MEMORY_DEEP_RINGS_MAX_AGE_DAYS = 30;
 export const DEFAULT_MEMORY_DEEP_RINGS_MAX_PROMOTED_SNIPPET_TOKENS = 160;
-export const DEFAULT_MEMORY_DEEP_RINGS_MAX_PRIOR_ENTRY_LOSS_FRACTION = 0.25;
-
-const DEFAULT_MEMORY_DEEP_RINGS_RECOVERY_ENABLED = true;
-const DEFAULT_MEMORY_DEEP_RINGS_RECOVERY_TRIGGER_BELOW_HEALTH = 0.35;
-const DEFAULT_MEMORY_DEEP_RINGS_RECOVERY_LOOKBACK_DAYS = 30;
-const DEFAULT_MEMORY_DEEP_RINGS_RECOVERY_MAX_CANDIDATES = 20;
-const DEFAULT_MEMORY_DEEP_RINGS_RECOVERY_MIN_CONFIDENCE = 0.9;
-const DEFAULT_MEMORY_DEEP_RINGS_RECOVERY_AUTO_WRITE_MIN_CONFIDENCE = 0.97;
-const DEFAULT_MEMORY_REM_RINGS_LOOKBACK_DAYS = 7;
-const DEFAULT_MEMORY_REM_RINGS_LIMIT = 10;
-const DEFAULT_MEMORY_REM_RINGS_MIN_PATTERN_STRENGTH = 0.75;
-
-const DEFAULT_MEMORY_RINGS_SPEED = "balanced";
-const DEFAULT_MEMORY_RINGS_THINKING = "medium";
-const DEFAULT_MEMORY_RINGS_BUDGET = "medium";
+const DEFAULT_MEMORY_DEEP_RINGS_MAX_PRIOR_ENTRY_LOSS_FRACTION = 0.25;
 
 type MemoryRingsSpeed = "fast" | "balanced" | "slow";
 type MemoryRingsThinking = "low" | "medium" | "high";
@@ -386,9 +364,9 @@ export function resolveMemoryRingsConfig(params: {
   const topLevelModel = normalizeOptionalString(rings?.model);
 
   const defaultExecution = resolveExecutionConfig(execution?.defaults, {
-    speed: DEFAULT_MEMORY_RINGS_SPEED,
-    thinking: DEFAULT_MEMORY_RINGS_THINKING,
-    budget: DEFAULT_MEMORY_RINGS_BUDGET,
+    speed: "balanced",
+    thinking: "medium",
+    budget: "medium",
     ...(topLevelModel ? { model: topLevelModel } : {}),
   });
 
@@ -400,17 +378,13 @@ export function resolveMemoryRingsConfig(params: {
   const maxPromotedSnippetTokens = parseStrictPositiveInteger(deep?.maxPromotedSnippetTokens);
 
   return {
-    enabled: parseBoolean(rings?.enabled) ?? DEFAULT_MEMORY_RINGS_ENABLED,
+    enabled: parseBoolean(rings?.enabled) ?? true,
     frequency,
     ...(timezone ? { timezone } : {}),
-    verboseLogging:
-      parseBoolean(rings?.verboseLogging) ?? DEFAULT_MEMORY_RINGS_VERBOSE_LOGGING,
+    verboseLogging: parseBoolean(rings?.verboseLogging) ?? false,
     storage: {
-      mode:
-        normalizeChoice(storage?.mode, ["inline", "separate", "both"]) ??
-        DEFAULT_MEMORY_RINGS_STORAGE_MODE,
-      separateReports:
-        parseBoolean(storage?.separateReports) ?? DEFAULT_MEMORY_RINGS_SEPARATE_REPORTS,
+      mode: normalizeChoice(storage?.mode, ["inline", "separate", "both"]) ?? "separate",
+      separateReports: parseBoolean(storage?.separateReports) ?? false,
     },
     execution: {
       defaults: defaultExecution,
@@ -419,14 +393,9 @@ export function resolveMemoryRingsConfig(params: {
       light: {
         enabled: parseBoolean(light?.enabled) ?? true,
         cron: frequency,
-        lookbackDays:
-          parseStrictNonNegativeInteger(light?.lookbackDays) ??
-          DEFAULT_MEMORY_LIGHT_RINGS_LOOKBACK_DAYS,
-        limit: parseStrictNonNegativeInteger(light?.limit) ?? DEFAULT_MEMORY_LIGHT_RINGS_LIMIT,
-        dedupeSimilarity: normalizeScore(
-          light?.dedupeSimilarity,
-          DEFAULT_MEMORY_LIGHT_RINGS_DEDUPE_SIMILARITY,
-        ),
+        lookbackDays: parseStrictNonNegativeInteger(light?.lookbackDays) ?? 2,
+        limit: parseStrictNonNegativeInteger(light?.limit) ?? 100,
+        dedupeSimilarity: normalizeScore(light?.dedupeSimilarity, 0.9),
         sources: normalizeStringArray(light?.sources, DEFAULT_MEMORY_LIGHT_RINGS_SOURCES),
         execution: resolveExecutionConfig(light?.execution, {
           ...defaultExecution,
@@ -449,7 +418,7 @@ export function resolveMemoryRingsConfig(params: {
         recencyHalfLifeDays:
           parseStrictNonNegativeInteger(deep?.recencyHalfLifeDays) ??
           DEFAULT_MEMORY_DEEP_RINGS_RECENCY_HALF_LIFE_DAYS,
-        maxAgeDays: maxAgeDays ?? DEFAULT_MEMORY_DEEP_RINGS_MAX_AGE_DAYS,
+        maxAgeDays: maxAgeDays ?? 30,
         maxPromotedSnippetTokens:
           maxPromotedSnippetTokens ?? DEFAULT_MEMORY_DEEP_RINGS_MAX_PROMOTED_SNIPPET_TOKENS,
         maxPriorEntryLossFraction: normalizeScore(
@@ -458,26 +427,13 @@ export function resolveMemoryRingsConfig(params: {
         ),
         sources: normalizeStringArray(deep?.sources, DEFAULT_MEMORY_DEEP_RINGS_SOURCES),
         recovery: {
-          enabled:
-            parseBoolean(deepRecovery?.enabled) ?? DEFAULT_MEMORY_DEEP_RINGS_RECOVERY_ENABLED,
-          triggerBelowHealth: normalizeScore(
-            deepRecovery?.triggerBelowHealth,
-            DEFAULT_MEMORY_DEEP_RINGS_RECOVERY_TRIGGER_BELOW_HEALTH,
-          ),
-          lookbackDays:
-            parseStrictNonNegativeInteger(deepRecovery?.lookbackDays) ??
-            DEFAULT_MEMORY_DEEP_RINGS_RECOVERY_LOOKBACK_DAYS,
+          enabled: parseBoolean(deepRecovery?.enabled) ?? true,
+          triggerBelowHealth: normalizeScore(deepRecovery?.triggerBelowHealth, 0.35),
+          lookbackDays: parseStrictNonNegativeInteger(deepRecovery?.lookbackDays) ?? 30,
           maxRecoveredCandidates:
-            parseStrictNonNegativeInteger(deepRecovery?.maxRecoveredCandidates) ??
-            DEFAULT_MEMORY_DEEP_RINGS_RECOVERY_MAX_CANDIDATES,
-          minRecoveryConfidence: normalizeScore(
-            deepRecovery?.minRecoveryConfidence,
-            DEFAULT_MEMORY_DEEP_RINGS_RECOVERY_MIN_CONFIDENCE,
-          ),
-          autoWriteMinConfidence: normalizeScore(
-            deepRecovery?.autoWriteMinConfidence,
-            DEFAULT_MEMORY_DEEP_RINGS_RECOVERY_AUTO_WRITE_MIN_CONFIDENCE,
-          ),
+            parseStrictNonNegativeInteger(deepRecovery?.maxRecoveredCandidates) ?? 20,
+          minRecoveryConfidence: normalizeScore(deepRecovery?.minRecoveryConfidence, 0.9),
+          autoWriteMinConfidence: normalizeScore(deepRecovery?.autoWriteMinConfidence, 0.97),
         },
         execution: resolveExecutionConfig(deep?.execution, {
           ...defaultExecution,
@@ -489,14 +445,9 @@ export function resolveMemoryRingsConfig(params: {
       rem: {
         enabled: parseBoolean(rem?.enabled) ?? true,
         cron: frequency,
-        lookbackDays:
-          parseStrictNonNegativeInteger(rem?.lookbackDays) ??
-          DEFAULT_MEMORY_REM_RINGS_LOOKBACK_DAYS,
-        limit: parseStrictNonNegativeInteger(rem?.limit) ?? DEFAULT_MEMORY_REM_RINGS_LIMIT,
-        minPatternStrength: normalizeScore(
-          rem?.minPatternStrength,
-          DEFAULT_MEMORY_REM_RINGS_MIN_PATTERN_STRENGTH,
-        ),
+        lookbackDays: parseStrictNonNegativeInteger(rem?.lookbackDays) ?? 7,
+        limit: parseStrictNonNegativeInteger(rem?.limit) ?? 10,
+        minPatternStrength: normalizeScore(rem?.minPatternStrength, 0.75),
         sources: normalizeStringArray(rem?.sources, DEFAULT_MEMORY_REM_RINGS_SOURCES),
         execution: resolveExecutionConfig(rem?.execution, {
           ...defaultExecution,

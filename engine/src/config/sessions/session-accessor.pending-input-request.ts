@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "@branch/normalization-core/node-crypto";
 import { asOptionalRecord } from "@branch/normalization-core/record-coerce";
 import { stableStringify } from "@branch/normalization-core/stable-stringify";
 import { MAX_PAYLOAD_BYTES } from "../../gateway/server-constants.js";
@@ -12,9 +12,7 @@ function resolvePendingInputRequestHash(
   message: Record<string, unknown>,
   requestFingerprint?: string,
 ): string {
-  return requestFingerprint
-    ? `request:${requestFingerprint}`
-    : createHash("sha256").update(stableStringify(message)).digest("hex");
+  return requestFingerprint ? `request:${requestFingerprint}` : sha256Hex(stableStringify(message));
 }
 
 function preparePendingInputMessage(

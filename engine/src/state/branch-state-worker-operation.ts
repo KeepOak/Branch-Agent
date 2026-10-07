@@ -3,18 +3,15 @@ import type { SqliteWorkerAdmissionFactory } from "../infra/sqlite-worker-operat
 import {
   getSqliteWorkerActorIdentity,
   runSqliteWorkerStoreOperation,
-  type SqliteWorkerStore,
 } from "../infra/sqlite-worker-store.js";
 import { StateDatabaseReadAdmissionInvalidatedError } from "./branch-state-db-async-lifecycle.js";
 import { branchStateDatabaseCache } from "./branch-state-db-cache.js";
 import type { BranchStateWorkerContext } from "./branch-state-worker-context.types.js";
 import type {
-  BranchStateWorkerOperations,
-  BranchStateWorkerInspectionOperations,
-} from "./branch-state-worker-contract.js";
-
-type StoreOperations = BranchStateWorkerOperations & BranchStateWorkerInspectionOperations;
-type Store = SqliteWorkerStore<StoreOperations>;
+  OpeningAdmission,
+  Store,
+  StoreOperations,
+} from "./branch-state-worker-store.types.js";
 
 /** A live alias cannot authorize a worker still bound to a vanished opening path. */
 export function assertBranchStateWorkerActorPath(
@@ -67,13 +64,14 @@ export function captureBranchStateWorkerOpeningGuard(
   context: BranchStateWorkerContext,
   assertCurrent?: () => void,
 ) {
-  const admission: { assertCurrent?: () => void; refusal?: { error: unknown } } = {
+  const databaseAdmission = context.admission;
+  const admission: OpeningAdmission = {
     assertCurrent,
   };
   let captured: (() => void) | undefined = AsyncLocalStorage.bind(() => {
-    context.admission.assertCurrent();
+    databaseAdmission.assertCurrent();
     try {
-      assertCurrent?.();
+      admission.assertCurrent?.();
     } catch (error) {
       admission.refusal = { error };
       throw error;

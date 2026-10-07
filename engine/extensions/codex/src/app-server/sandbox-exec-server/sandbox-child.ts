@@ -244,6 +244,7 @@ export async function spawnSandboxChild(params: SandboxChildStartParams): Promis
     assertCurrent();
     child = spawn(command, args, {
       detached: process.platform !== "win32",
+      windowsHide: true,
       env: params.env,
       cwd: params.cwd,
       stdio: ["pipe", "pipe", "pipe"],

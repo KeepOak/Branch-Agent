@@ -134,6 +134,8 @@ export type CreateGatewaySessionParams = {
    * operator sessions and forks stay spawn-capable roots.
    */
   spawnDepth?: number;
+  /** Origin in the parent contact thread; stored only on a newly created topic. */
+  contactAnchor?: SessionEntry["contactAnchor"];
   /** Trusted effective policy captured by an in-process visible spawn. */
   spawnToolPolicy?: {
     version: 1;
@@ -195,6 +197,8 @@ export type CreateGatewaySessionParams = {
     actor?: SessionCreatedActor;
     /** Host-verified human requester for matching spawn-owner inheritance. */
     requesterProfileId?: string;
+    /** Trusted owner status of the spawning invocation, never synthetic child launch authority. */
+    requesterSenderIsOwner?: boolean;
     sandbox?: "required";
     skillLibrarySelections?: import("../../packages/gateway-protocol/src/schema/skill-library.js").SkillLibrarySelection[];
     /** Trusted config-resolved spawn model provenance for the `model` field. */

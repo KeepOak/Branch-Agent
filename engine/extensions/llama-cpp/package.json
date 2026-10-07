@@ -1,6 +1,6 @@
 {
   "name": "@branch/llama-cpp-provider",
-  "version": "2026.9.7",
+  "version": "2026.9.8",
   "description": "Branch Agent provider for managed and external llama.cpp servers",
   "repository": {
     "type": "git",
@@ -21,10 +21,10 @@
       "minHostVersion": ">=2026.6.2"
     },
     "compat": {
-      "pluginApi": ">=2026.9.7"
+      "pluginApi": ">=2026.9.8"
     },
     "build": {
-      "branchVersion": "2026.9.7"
+      "branchVersion": "2026.9.8"
     },
     "release": {
       "bundleRuntimeDependencies": false,
@@ -33,6 +33,6 @@
     }
   },
   "dependencies": {
-    "@openclaw/fs-safe": "0.22.0"
+    "@openclaw/fs-safe": "0.23.0"
   }
 }

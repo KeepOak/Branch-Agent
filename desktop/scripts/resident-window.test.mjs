@@ -36,12 +36,13 @@ function electronFixture() {
     hide() { this.hidden = true; } show() { this.hidden = false; } focus() { this.focused = true; }
     isMinimized() { return this.minimized ?? false; } restore() { this.minimized = false; }
     setMenuBarVisibility() {}
+    maximize() {} isMaximized() { return false; } isDestroyed() { return false; } getNormalBounds() { return { x: 0, y: 0, width: 1280, height: 840 }; }
   }
   class Tray extends EventEmitter { constructor() { super(); tray = this; }
     setToolTip(value) { this.tooltip = value; } setContextMenu(value) { this.menu = value; }
     destroy() { this.destroyed = true; } }
   return { app, get window() { return window; }, get tray() { return tray; }, electron: { app, BrowserWindow, Tray,
-    Menu: { buildFromTemplate: value => value }, ipcMain: Object.assign(new EventEmitter(), { handle() {} }), dialog: { showErrorBox: assert.fail },
+    Menu: { buildFromTemplate: value => value }, screen: { getAllDisplays: () => [], getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1280, height: 840 } }) }, ipcMain: Object.assign(new EventEmitter(), { handle() {} }), dialog: { showErrorBox: assert.fail },
     session: { defaultSession: { setPermissionRequestHandler() {} } }, shell: { openExternal() {} } } };
 }
 async function fixture(run, hidden = false) {
@@ -62,8 +63,8 @@ async function fixture(run, hidden = false) {
     if (name === 'electron') return runtime.electron;
     const loaded = originalLoad.call(this, name, ...args);
     if (name !== './resident-window') return loaded;
-    return { ...loaded, keepWindowsWindowResident(app, window, icon, options) {
-      return loaded.keepWindowsWindowResident(app, window, icon, { ...options, platform: 'win32' });
+    return { ...loaded, keepWindowResident(app, window, icon, options) {
+      return loaded.keepWindowResident(app, window, icon, { ...options, platform: 'win32' });
     } };
   };
   globalThis.fetch = (url, options) => String(url).startsWith('https://github.com/') ? Promise.resolve(new Response('', { status: 404 })) : originalFetch(url, options);
@@ -103,6 +104,14 @@ test('actual second instance and tray Open reuse the same window, gateway and in
   assert.equal(Number(await readFile(join(root, 'gateway.pid'), 'utf8')), pid);
   assert.equal((await readFile(join(root, 'desktop.log'), 'utf8')).match(/gateway started from/g).length, 1);
 }));
+test('Dock activate restores the resident window without restarting its gateway or losing its draft', () => fixture(async ({ app, window, root, pid }) => {
+  window.draft = { text: 'private draft' }; const draft = window.draft;
+  const loads = window.loads.length; window.close(); window.minimized = true; app.emit('activate');
+  assert.equal(window.hidden, false); assert.equal(window.minimized, false); assert.equal(window.focused, true);
+  assert.equal(window.draft, draft); assert.equal(window.loads.length, loads);
+  assert.equal(Number(await readFile(join(root, 'gateway.pid'), 'utf8')), pid);
+  assert.equal((await readFile(join(root, 'desktop.log'), 'utf8')).match(/gateway started from/g).length, 1);
+}));
 test('tray Quit and session end perform normal owned-child shutdown', () => fixture(async ({ tray, window, pid }) => {
   assert.ok(tray); tray.menu.find(item => item.label === 'Quit Branch').click();
   assert.equal(window.destroyed, true); assert.equal(tray.destroyed, true);
@@ -117,11 +126,20 @@ test('hidden native fixtures retain close policy without creating a visible tray
   app.quit(); assert.equal(window.destroyed, true);
   await eventually(() => { try { process.kill(pid, 0); return false; } catch { return true; } });
 }, true));
-test('non-Windows platforms retain their existing close policy', () => {
-  const { keepWindowsWindowResident } = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'resident-window.js'));
+test('macOS and Linux keep the gateway resident after the window closes', () => {
+  const { keepWindowResident } = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'resident-window.js'));
   for (const platform of ['darwin', 'linux']) {
     const app = new EventEmitter(), window = new EventEmitter();
-    assert.equal(keepWindowsWindowResident(app, window, 'unused.ico', { platform }), undefined);
-    assert.equal(window.listenerCount('close'), 0); assert.equal(app.listenerCount('before-quit'), 0);
+    let hidden = false;
+    window.hide = () => { hidden = true; };
+    keepWindowResident(app, window, 'unused.ico', { platform, hidden: true });
+    const close = { prevented: false, preventDefault() { this.prevented = true; } };
+    window.emit('close', close);
+    assert.equal(close.prevented, true);
+    assert.equal(hidden, true);
+    app.emit('before-quit');
+    const quitClose = { prevented: false, preventDefault() { this.prevented = true; } };
+    window.emit('close', quitClose);
+    assert.equal(quitClose.prevented, false);
   }
 });

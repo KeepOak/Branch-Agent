@@ -4,7 +4,7 @@
   max-width: min(360px, calc(100vw - 16px));
 }
 .pop.sp-wide {
-  max-width: min(490px, calc(100vw - 16px));
+  max-width: min(360px, calc(100vw - 16px));
 }
 .pop .pt {
   padding: 8px 10px 2px;
@@ -12,6 +12,21 @@
   font-size: 14px;
   letter-spacing: -0.01em;
 }
+.pop .sp-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.pop .sp-title small { color: var(--ink-3); font-size: 11.5px; font-weight: 400; white-space: nowrap; }
+.sp-mode { display: grid; gap: 7px; padding: 6px 10px; font-size: 13px; }
+.sp-mode .sp-seg { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); white-space: nowrap; }
+.sp-health { margin: 8px 10px; font-size: 11.5px; color: var(--ink-2); }
+.sp-provider { padding: 8px 10px 3px; }
+.sp-account { display: grid; gap: 5px; padding: 7px 10px; font-size: 12px; }
+.sp-account-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sp-account-head .sp-email { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-account-head strong { min-width: 66px; text-align: right; font-variant-numeric: tabular-nums; }
+.sp-account-head > span:not(.sp-email), .sp-account small { color: var(--ink-3); }
+.sp-account-track { display: block; height: 5px; border-radius: 3px; background: var(--fill-2); overflow: hidden; }
+.sp-account-track i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.lim-foot { display: grid !important; }
+.lim-foot .mi { width: 100%; }
 .pop .pp {
   padding: 0 10px 8px;
   font-size: 12.5px;
@@ -37,13 +52,6 @@
 .sp-seg[aria-disabled="true"] {
   opacity: 0.55;
 }
-.row-in.sp-ev {
-  display: block;
-}
-.row-in.sp-ev > span {
-  display: block;
-}
-.row-in.sp-ev small,
 .sp-off,
 .sp-note {
   display: block;
@@ -93,7 +101,8 @@
   border-radius: 4px;
 }
 .brow .v {
-  font: 12px var(--mono);
+  width: 82px;
+  font-size: 12px;
   text-align: right;
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
@@ -165,61 +174,10 @@
 .lims {
   display: grid;
   gap: 2px;
-  width: min(460px, calc(100vw - 32px));
+  width: min(340px, calc(100vw - 32px));
 }
 .lims .ph {
   padding: 4px 6px 6px;
-}
-.lim {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 10px;
-  padding: 9px 6px;
-  border-radius: 10px;
-}
-.lim:hover {
-  background: var(--fill);
-}
-.lim-h {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  font-size: 13px;
-}
-.lim-h b {
-  font-weight: 600;
-}
-.lim-h .muted {
-  color: var(--ink-3);
-  font-size: 12px;
-}
-.lim-w {
-  display: grid;
-  grid-template-columns: 118px 1fr auto;
-  gap: 10px;
-  align-items: center;
-  font-size: 12px;
-  color: var(--ink-2);
-  margin-top: 5px;
-}
-.lim-bar {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--fill-2);
-  overflow: hidden;
-}
-.lim-bar i {
-  display: block;
-  height: 100%;
-  background: var(--ink-2);
-  border-radius: 3px;
-}
-.lim small {
-  display: block;
-  font-size: 11.5px;
-  color: var(--ink-3);
-  margin-top: 4px;
 }
 .lim-foot {
   display: flex;
@@ -272,6 +230,20 @@
 }
 
 /* The bar's own items (§4.9.1) */
+.statusbar .status-symbol { min-width: 24px; justify-content: center; padding: 0 6px; gap: 4px; }
+.status-glyph { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; color: var(--ink-2); flex: none; }
+.status-glyph-context { width: 20px; }
+.status-number { font: 500 11px/1 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.status-ring { gap: 6px; }
+.status-ring-label { display: inline-block; max-width: 340px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; transition: max-width .35s ease, opacity .25s; }
+.status-ring-label.collapsed { max-width: 0; opacity: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .sb-gw[data-state="on"] .status-gateway-pulse { animation: status-link-pulse 1.6s ease-in-out infinite; }
+  .status-running-ring { stroke-dasharray: 26 13; transform-origin: 8px 8px; animation: status-run-spin 1.6s linear infinite; }
+}
+@keyframes status-link-pulse { 0% { transform: translateX(-3px); opacity: .3; } 50% { opacity: 1; } 100% { transform: translateX(3px); opacity: .3; } }
+@keyframes status-run-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .status-ring-label { transition: none; } }
 .sb.usage {
   gap: 7px;
   color: var(--ink-2);
@@ -293,14 +265,6 @@
   border-radius: 50%;
   background: var(--accent);
 }
-@media (max-width: 760px) {
-  .lim-w {
-    grid-template-columns: 90px 1fr;
-  }
-  .lim-w span:last-child {
-    grid-column: 1 / -1;
-  }
-}
 .pop .mi > span.sp-spin {
   flex: none;
 }
@@ -315,9 +279,6 @@
 }
 /* ≤520 px: the meter keeps its figure and drops its words; the computer's name shortens (preview at 520) */
 @media (max-width: 520px) {
-  .sb-room-w {
-    display: none;
-  }
   .statusbar > .sb:first-child {
     min-width: 0;
     flex-shrink: 1;
@@ -387,3 +348,23 @@
     animation: none;
   }
 }
+
+/* "Offer to save progress at 95%" (the preview's .ckpt-q) */
+.ckpt-q { position: fixed; left: 50%; top: 44px; translate: -50% 0; z-index: 97; width: min(560px, calc(100% - 24px)); background: var(--raise); border-radius: 16px; box-shadow: var(--pop); padding: 12px 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; animation: rise 0.25s ease-out; }
+.ckpt-q .grow { flex: 1; min-width: 200px; }
+.ckpt-q b { display: block; font-weight: 600; font-size: 13.5px; }
+.ckpt-q small { color: var(--ink-3); font-size: 12px; }
+
+/* Get the apps (the preview's .appsPA18 and its .tile) */
+.appsPA18 { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.appsPA18 .tile { border: 1px solid var(--hair17); border-radius: var(--r3-17); padding: 16px; display: grid; gap: 8px; align-content: start; background: var(--raise); }
+.appsPA18 .th { display: flex; align-items: center; gap: 10px; }
+.appsPA18 .ico-tile { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: var(--r2-17); background: var(--wash17); color: var(--ink-2); }
+.appsPA18 .tile p { margin: 4px 0 8px; font-size: 12.5px; color: var(--ink-3); }
+.appsPA18 .tile .btn { justify-self: stretch; }
+
+/* Guide › What Branch can do (the preview's .r618-cando and .r618-pick) */
+.r618-cando { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.r618-pick { display: grid; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: none; color: var(--ink); font: inherit; cursor: pointer; }
+.r618-pick:hover { background: var(--fill); }
+.r618-pick small { color: var(--ink-3); }

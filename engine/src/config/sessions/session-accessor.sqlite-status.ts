@@ -5,8 +5,8 @@ import {
   iterateSqliteQuerySync,
   sqliteStringSet,
 } from "../../infra/kysely-sync.js";
+import type { BranchAgentDatabase } from "../../state/branch-agent-db-contract.js";
 import type { DB as BranchAgentKyselyDatabase } from "../../state/branch-agent-db.generated.js";
-import type { BranchAgentDatabase } from "../../state/branch-agent-db.js";
 import type {
   SessionEntryStatus,
   SessionEntrySummary,
@@ -127,7 +127,7 @@ export function hasSessionEntriesByStatus(
 }
 
 export function readSessionEntriesByStatus(
-  database: BranchAgentDatabase,
+  database: Pick<BranchAgentDatabase, "db">,
   statuses: readonly SessionEntryStatus[],
   sessionKeys?: readonly string[],
 ): SessionEntrySummary[] {

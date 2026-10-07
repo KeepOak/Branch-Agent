@@ -1,6 +1,9 @@
 import { createPluginRuntimeMock } from "branch/plugin-sdk/channel-test-helpers";
 import type { BranchPluginApi, PluginRuntime } from "branch/plugin-sdk/core";
-import { createTestPluginApi } from "branch/plugin-sdk/plugin-test-api";
+import {
+  createTestPluginApi,
+  createTestPluginServiceScheduler,
+} from "branch/plugin-sdk/plugin-test-api";
 import { registerSessionDiscussionProvider } from "branch/plugin-sdk/session-discussion";
 import { createSessionVisibilityChecker } from "branch/plugin-sdk/session-visibility";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -60,7 +63,12 @@ describe("ClickClack discussion registration lifecycle", () => {
       if (!service || !cleanup || !provider) {
         throw new Error("Expected the registered ClickClack discussion lifecycle");
       }
-      const context = { config, stateDir: "/unused", logger: api.logger };
+      const context = {
+        scheduler: createTestPluginServiceScheduler(),
+        config,
+        stateDir: "/unused",
+        logger: api.logger,
+      };
       const request = { sessionKey: "agent:main:discussion", agentId: "main" };
       try {
         await service.start(context);

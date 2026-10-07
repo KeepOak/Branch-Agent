@@ -1,16 +1,6 @@
-import {
-  updateConfigMachineState,
-  updateConfigMachineStateInDatabase,
-} from "../state/config-machine-state-write.js";
-import {
-  readConfigMachineState,
-  readConfigMachineStateRowInDatabase,
-} from "../state/config-machine-state.js";
+import { readConfigMachineState } from "../state/config-machine-state.js";
 import { isArtifactPreservingStateRead } from "../state/branch-state-db-readonly.js";
-import {
-  runBranchStateWriteTransaction,
-  type BranchStateDatabaseOptions,
-} from "../state/branch-state-db.js";
+import type { BranchStateDatabaseOptions } from "../state/branch-state-db.js";
 import type { BranchStateWorkerContext } from "../state/branch-state-worker-context.types.js";
 
 type RemoteModelCatalogStoreRow = {
@@ -24,19 +14,20 @@ type RemoteModelCatalogStoreRow = {
   checked_at: number;
 };
 
-type RemoteModelCatalogSnapshot = Omit<RemoteModelCatalogStoreRow, "id">;
+export type RemoteModelCatalogSnapshot = Omit<RemoteModelCatalogStoreRow, "id">;
 
-type RemoteModelCatalogWriteResult =
+export type RemoteModelCatalogWriteResult =
   | { status: "written" }
   | { status: "retained-newer"; row: RemoteModelCatalogStoreRow };
 
 // Older clients retain their v1 slot, including when both versions refresh the same mirror.
-const REMOTE_MODEL_CATALOG_STATE_KEY = "modelCatalog.remote.v2";
+export const REMOTE_MODEL_CATALOG_STATE_KEY = "modelCatalog.remote.v2";
 // Upgrades read the older client's row until this client stores its own. The row parses as
 // a v1 bundle, and activation still checks its source and age. It is never written here, so
 // a downgraded client keeps its catalog.
-const LEGACY_REMOTE_MODEL_CATALOG_STATE_KEY = "modelCatalog.remote";
+export const LEGACY_REMOTE_MODEL_CATALOG_STATE_KEY = "modelCatalog.remote";
 
+/** Synchronous boot snapshot capture and offline inspection only; refreshes use the worker. */
 export function readRemoteModelCatalog(
   options: BranchStateDatabaseOptions = {},
 ): RemoteModelCatalogStoreRow | undefined {
@@ -49,7 +40,7 @@ export function readRemoteModelCatalog(
   return snapshot ? { id: 1, ...snapshot } : undefined;
 }
 
-/** Read the startup catalog through the existing shared-state inspection owner. */
+/** Read through the existing shared-state owner, retaining the originally selected store. */
 export async function readRemoteModelCatalogAsync(
   context: BranchStateWorkerContext,
 ): Promise<RemoteModelCatalogStoreRow | undefined> {
@@ -71,87 +62,63 @@ export async function readRemoteModelCatalogAsync(
   );
 }
 
-export function writeRemoteModelCatalog(
+export type RemoteModelCatalogCheck = {
+  expected: Pick<
+    RemoteModelCatalogStoreRow,
+    "source_url" | "generated_at" | "etag" | "last_modified"
+  >;
+  etag?: string | null;
+  lastModified?: string | null;
+};
+
+export async function writeRemoteModelCatalogAsync(
   row: RemoteModelCatalogSnapshot,
-  options: BranchStateDatabaseOptions = {},
-): RemoteModelCatalogWriteResult {
-  let result: RemoteModelCatalogWriteResult = { status: "written" };
-  updateConfigMachineState<RemoteModelCatalogSnapshot>(
-    REMOTE_MODEL_CATALOG_STATE_KEY,
-    (current) => {
-      // CLI and Gateway refreshes race across processes; compare inside the write transaction.
-      if (
-        current &&
-        current.source_url === row.source_url &&
-        (current.generated_at > row.generated_at ||
-          (current.generated_at === row.generated_at && current.bundle_json !== row.bundle_json))
-      ) {
-        result = { status: "retained-newer", row: { id: 1, ...current } };
-        return current;
-      }
-      return row;
+  context: BranchStateWorkerContext,
+): Promise<RemoteModelCatalogWriteResult> {
+  const input = { ...row };
+  const { runBranchStateWorkerOperation } =
+    await import("../state/branch-state-worker-store.js");
+  const { createSqliteWorkerWriteAdmission } = await import("../infra/sqlite-worker-store.js");
+  return runBranchStateWorkerOperation(
+    context,
+    (scope) => scope.execute({ type: "modelCatalog.remote.write", input }),
+    {
+      createAdmission: createSqliteWorkerWriteAdmission(
+        () => context.admission.assertCurrent(),
+        [context.admission.databasePath],
+      ),
     },
-    options,
   );
-  return result;
 }
 
-export function markRemoteModelCatalogChecked(
+export async function markRemoteModelCatalogCheckedAsync(
   checkedAt: number,
-  metadata: {
-    expected: Pick<
-      RemoteModelCatalogStoreRow,
-      "source_url" | "generated_at" | "etag" | "last_modified"
-    >;
-    etag?: string | null;
-    lastModified?: string | null;
-  },
-  options: BranchStateDatabaseOptions = {},
-): boolean {
-  let matched = false;
-  runBranchStateWriteTransaction(
-    ({ db }) => {
-      // Read the legacy slot in this transaction so an older client's concurrent refresh
-      // is seen. Only a matching legacy row is adopted into this client's slot; the legacy
-      // slot itself is never written.
-      const legacyJson = readConfigMachineStateRowInDatabase(
-        db,
-        LEGACY_REMOTE_MODEL_CATALOG_STATE_KEY,
-      )?.value_json;
-      let legacy: RemoteModelCatalogSnapshot | undefined;
-      if (legacyJson !== undefined) {
-        // SAFETY: Only Branch Agent catalog stores write this key, always as a catalog snapshot.
-        legacy = JSON.parse(legacyJson) as RemoteModelCatalogSnapshot;
-      }
-      updateConfigMachineStateInDatabase<RemoteModelCatalogSnapshot>(
-        db,
-        REMOTE_MODEL_CATALOG_STATE_KEY,
-        (stored) => {
-          const current = stored ?? legacy;
-          if (
-            !current ||
-            current.source_url !== metadata.expected.source_url ||
-            current.generated_at !== metadata.expected.generated_at ||
-            current.etag !== metadata.expected.etag ||
-            current.last_modified !== metadata.expected.last_modified
-          ) {
-            return stored;
-          }
-          matched = true;
-          return {
-            ...current,
-            checked_at: checkedAt,
-            ...(metadata.etag !== undefined ? { etag: metadata.etag } : {}),
-            ...(metadata.lastModified !== undefined
-              ? { last_modified: metadata.lastModified }
-              : {}),
-          };
-        },
-        Date.now(),
-      );
+  metadata: RemoteModelCatalogCheck,
+  context: BranchStateWorkerContext,
+): Promise<boolean> {
+  const input = {
+    checkedAt,
+    metadata: {
+      ...metadata,
+      expected: {
+        source_url: metadata.expected.source_url,
+        generated_at: metadata.expected.generated_at,
+        etag: metadata.expected.etag,
+        last_modified: metadata.expected.last_modified,
+      },
     },
-    options,
-    { operationLabel: "model-catalog.remote.mark-checked" },
+  };
+  const { runBranchStateWorkerOperation } =
+    await import("../state/branch-state-worker-store.js");
+  const { createSqliteWorkerWriteAdmission } = await import("../infra/sqlite-worker-store.js");
+  return runBranchStateWorkerOperation(
+    context,
+    (scope) => scope.execute({ type: "modelCatalog.remote.markChecked", input }),
+    {
+      createAdmission: createSqliteWorkerWriteAdmission(
+        () => context.admission.assertCurrent(),
+        [context.admission.databasePath],
+      ),
+    },
   );
-  return matched;
 }

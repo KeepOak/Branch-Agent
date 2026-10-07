@@ -1,0 +1,6 @@
+window:src/connect/own-sends.test.ts
+window:src/thread/own-sends-thread.test.tsx
+window:src/connect/queued-messages.test.ts
+window:src/thread/queued-messages.test.tsx
+window:src/connect/unconfirmed.test.ts
+window:src/composer/waiting-line-windows.test.tsx

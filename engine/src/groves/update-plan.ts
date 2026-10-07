@@ -89,18 +89,11 @@ export async function buildGroveUpdatePlan(params: {
   const ownsDatabase = !params.stateOptions?.database;
   const database =
     params.stateOptions?.database ??
-    (await openExistingBranchStateDatabaseReadOnly(params.stateOptions));
+    (await openExistingBranchStateDatabaseReadOnly({
+      ...params.stateOptions,
+      requireCanonicalSchema: true,
+    }));
   if (!database) {
-    return notFound();
-  }
-  if (
-    !database.db /* sqlite-allow-raw: read-only Grove install table-existence probe. */
-      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'grove_installs'")
-      .get()
-  ) {
-    if (ownsDatabase) {
-      database.walMaintenance.close();
-    }
     return notFound();
   }
   const readOnlyStateOptions: BranchStateDatabaseOptions & {

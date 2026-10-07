@@ -3,21 +3,18 @@ import { projectMessageTokenMetrics } from "./message-token-metrics.js";
 import path from "node:path";
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
 import { truncateUtf16Safe } from "@branch/normalization-core/utf16-slice";
+import { resolveAgentDir } from "../agents/agent-scope-config.js";
 import { stripInboundMetadata } from "../auto-reply/reply/strip-inbound-meta.js";
 import { stripUserEnvelopeForDisplay } from "../auto-reply/reply/user-envelope-display.js";
 import { isToolCallContentType } from "../chat/tool-content.js";
 import { isPrimarySessionTranscriptFileName } from "../config/sessions/artifacts.js";
 import { parseSqliteSessionFileMarker } from "../config/sessions/legacy-sqlite-marker.js";
-import type { SessionEntry } from "../config/sessions/types.js";
 import type { BranchConfig } from "../config/types.branch.js";
-import {
-  refreshCostUsageCacheForAgent,
-  resolveUsageCostAgentDir,
-} from "./session-cost-usage-aggregation.js";
+import { refreshCostUsageCacheForAgent } from "./session-cost-usage-aggregation.js";
 import {
   readTranscriptRecords,
   readTranscriptRecordsBestEffort,
-  resolveExistingUsageSessionFile,
+  resolveUsageSessionSource,
 } from "./session-cost-usage-collection.js";
 import {
   createUsageCostResolver,
@@ -41,10 +38,6 @@ import type {
 
 const USAGE_COST_DIRECT_REFRESH_RETRY_MS = 25;
 
-/**
- * Scan all transcript files to discover sessions not in the session store.
- * Returns basic metadata for each discovered session.
- */
 export async function discoverAllSessions(params: {
   agentId: string;
   startMs?: number;
@@ -87,14 +80,11 @@ export async function discoverAllSessions(params: {
     }
   }
 
-  const sessions = Array.from(discovered.values());
-  sessions.sort((a, b) => b.mtime - a.mtime);
-  return sessions;
+  return Array.from(discovered.values()).toSorted((a, b) => b.mtime - a.mtime);
 }
 
 export async function loadSessionCostSummary(params: {
   sessionId?: string;
-  sessionEntry?: SessionEntry;
   sessionFile?: string;
   config?: BranchConfig;
   agentId: string;
@@ -109,10 +99,11 @@ export async function loadSessionCostSummary(params: {
   includeUntimestamped?: boolean;
   dayBucket?: UsageDailyBucket;
 }): Promise<SessionCostSummary | null> {
-  const sessionFile = resolveExistingUsageSessionFile(params);
-  if (!sessionFile) {
+  const source = await resolveUsageSessionSource(params);
+  if (!source) {
     return null;
   }
+  const { sessionFile } = source;
   const prepared = prepareUsageCostWorker({ ...params, sessionFiles: [sessionFile] });
   const inventory = await runUsageCostWorker(prepared, {
     kind: "inventory",
@@ -160,16 +151,16 @@ export async function loadSessionCostSummary(params: {
 
 export async function loadSessionUsageTimeSeries(params: {
   sessionId?: string;
-  sessionEntry?: SessionEntry;
   sessionFile?: string;
   config?: BranchConfig;
   agentId: string;
   maxPoints?: number;
 }): Promise<SessionUsageTimeSeries | null> {
-  const sessionFile = resolveExistingUsageSessionFile(params);
-  if (!sessionFile) {
+  const source = await resolveUsageSessionSource(params);
+  if (!source) {
     return null;
   }
+  const { sessionFile } = source;
   if (!parseSqliteSessionFileMarker(sessionFile) && !fs.existsSync(sessionFile)) {
     return null;
   }
@@ -181,7 +172,7 @@ export async function loadSessionUsageTimeSeries(params: {
   }
 
   let points: Array<Omit<SessionUsageTimePoint, "cumulativeTokens" | "cumulativeCost">> = [];
-  const agentDir = resolveUsageCostAgentDir(params.config, params.agentId);
+  const agentDir = resolveAgentDir(params.config ?? {}, params.agentId);
   const resolveCost = createUsageCostResolver({ config: params.config, agentDir });
 
   for await (const record of readTranscriptRecords(sessionFile)) {
@@ -253,16 +244,16 @@ export async function loadSessionUsageTimeSeries(params: {
 
 export async function loadSessionLogs(params: {
   sessionId?: string;
-  sessionEntry?: SessionEntry;
   sessionFile?: string;
   config?: BranchConfig;
   agentId: string;
   limit?: number;
 }): Promise<SessionLogEntry[] | null> {
-  const sessionFile = resolveExistingUsageSessionFile(params);
-  if (!sessionFile) {
+  const source = await resolveUsageSessionSource(params);
+  if (!source) {
     return null;
   }
+  const { sessionFile } = source;
   if (!parseSqliteSessionFileMarker(sessionFile) && !fs.existsSync(sessionFile)) {
     return null;
   }
@@ -276,7 +267,7 @@ export async function loadSessionLogs(params: {
   const limit = params.limit ?? 50;
   const boundedLimit = Number.isInteger(limit);
   const retentionLimit = limit * 2;
-  const agentDir = resolveUsageCostAgentDir(params.config, params.agentId);
+  const agentDir = resolveAgentDir(params.config ?? {}, params.agentId);
   const resolveCost = createUsageCostResolver({ config: params.config, agentDir });
 
   for await (const parsed of readTranscriptRecordsBestEffort(sessionFile)) {
@@ -344,15 +335,13 @@ export async function loadSessionLogs(params: {
         : rawToolCalls
           ? [rawToolCalls]
           : [];
-      if (toolCalls.length > 0) {
-        for (const call of toolCalls) {
-          const callObj = call as Record<string, unknown>;
-          const directName = typeof callObj.name === "string" ? callObj.name : undefined;
-          const fn = callObj.function as Record<string, unknown> | undefined;
-          const fnName = typeof fn?.name === "string" ? fn.name : undefined;
-          const name = directName ?? fnName ?? "unknown";
-          contentParts.push(`[Tool: ${name}]`);
-        }
+      for (const call of toolCalls) {
+        const callObj = call as Record<string, unknown>;
+        const directName = typeof callObj.name === "string" ? callObj.name : undefined;
+        const fn = callObj.function as Record<string, unknown> | undefined;
+        const fnName = typeof fn?.name === "string" ? fn.name : undefined;
+        const name = directName ?? fnName ?? "unknown";
+        contentParts.push(`[Tool: ${name}]`);
       }
 
       const rawText = contentParts.join("\n");

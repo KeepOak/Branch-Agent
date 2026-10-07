@@ -158,7 +158,8 @@ export async function runUpdateLeaseChild(): Promise<void> {
     if (scenario.verifyRepairOwner) {
       const runId = process.env.BRANCH_UPDATE_RUN_ID;
       assert.ok(runId, "Doctor did not inherit its invoking repair run ID");
-      const { DatabaseSync } = await import("node:sqlite");
+      const { requireNodeSqlite } = await import("../../infra/node-sqlite.js");
+      const { DatabaseSync } = requireNodeSqlite();
       const { readUpdateRunRecord } = await import("../../infra/update-run-read.kernel.js");
       const { resolveBranchStateSqlitePath } =
         await import("../../state/branch-state-db.paths.js");

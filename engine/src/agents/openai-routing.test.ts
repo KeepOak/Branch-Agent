@@ -1,5 +1,6 @@
 // Verifies OpenAI model selections route between Branch Agent and Codex runtimes.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { BranchConfigWithLegacyRoster } from "../config/legacy.roster.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import {
   listOpenAIAuthProfileProvidersForAgentRuntime,
@@ -269,9 +270,9 @@ describe("OpenAI runtime routing policy", () => {
     const config = {
       agents: {
         defaults: { agentRuntime: { id: "branch" } },
-        list: [{ id: "worker", agentRuntime: { id: "branch" } }],
+        entries: { worker: { agentRuntime: { id: "branch" } } },
       },
-    } satisfies BranchConfig;
+    } satisfies BranchConfigWithLegacyRoster;
 
     expect(modelSelectionShouldEnsureCodexPlugin({ model: "openai/gpt-5.5", config })).toBe(false);
     expect(
@@ -293,7 +294,7 @@ describe("OpenAI runtime routing policy", () => {
           },
         },
       },
-    } satisfies BranchConfig;
+    } satisfies BranchConfigWithLegacyRoster;
 
     expect(modelSelectionShouldEnsureCodexPlugin({ model: "openai/gpt-5.5", config })).toBe(true);
   });
@@ -308,7 +309,7 @@ describe("OpenAI runtime routing policy", () => {
           },
         },
       },
-    } satisfies BranchConfig;
+    } satisfies BranchConfigWithLegacyRoster;
 
     expect(modelSelectionShouldEnsureCodexPlugin({ model: "openai/gpt-5.5", config })).toBe(true);
   });

@@ -14,6 +14,8 @@ on:
       - "scripts/priority-capabilities-ci*.mjs"
       - "scripts/feature-batch-ci-runtime.mjs"
       - ".github/workflows/priority-capabilities-checks.yml"
+  schedule:
+    - cron: '23 7 * * *'
   workflow_dispatch:
 
 permissions:
@@ -21,7 +23,7 @@ permissions:
 
 concurrency:
   group: priority-capabilities-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   priority-capabilities:

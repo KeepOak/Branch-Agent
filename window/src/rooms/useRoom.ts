@@ -22,6 +22,8 @@ export type Room = {
   members: Members;
   /** Where an A2A agent runs (its peer address's host), or null when the engine has no address for it. */
   whereRuns: (peer: string) => string | null;
+  /** Whether an outside agent is connected now (the green dot on its face). */
+  isOnline: (peer: string) => boolean;
   /** Who answers, once this window set it: the engine doesn't report the current value yet. */
   rule: Rule | null;
   setRule: (rule: Rule) => Promise<void>;
@@ -83,17 +85,37 @@ function useDescribe(engine: WindowEngine | undefined, key: string | null): unkn
   return session;
 }
 
-function usePeerHosts(engine: WindowEngine | undefined, wanted: boolean): Record<string, string> {
-  const [hosts, setHosts] = useState<Record<string, string>>({});
+/** Where each outside agent runs, and which are online: configured A2A peers' hosts (config.get) and the
+ *  engine's peer list (a2a.peers.list), which also carries agents connected through `branch mcp serve`. */
+export function readPeerList(result: unknown): { hosts: Record<string, string>; online: string[] } {
+  const peers = Array.isArray(rec(result).peers) ? (rec(result).peers as unknown[]) : [];
+  const hosts: Record<string, string> = {};
+  const online: string[] = [];
+  for (const peer of peers.map(rec)) {
+    const name = str(peer.name);
+    if (!name) continue;
+    if (str(peer.where)) hosts[name] = str(peer.where);
+    if (peer.online === true) online.push(name);
+  }
+  return { hosts, online };
+}
+
+function usePeerHosts(engine: WindowEngine | undefined, wanted: boolean): { hosts: Record<string, string>; online: string[] } {
+  const [peers, setPeers] = useState<{ hosts: Record<string, string>; online: string[] }>({ hosts: {}, online: [] });
   useEffect(() => {
     if (!engine || !wanted) return;
     let live = true;
-    engine.request("config.get", {}).then((r) => live && setHosts(readPeerHosts(rec(r).config)), () => undefined);
+    Promise.all([
+      engine.request("config.get", {}).then((r) => readPeerHosts(rec(r).config), () => ({})),
+      engine.request("a2a.peers.list", {}).then(readPeerList, () => ({ hosts: {}, online: [] })),
+    ]).then(([configured, listed]) => {
+      if (live) setPeers({ hosts: { ...listed.hosts, ...configured }, online: listed.online });
+    });
     return () => {
       live = false;
     };
   }, [engine, wanted]);
-  return hosts;
+  return peers;
 }
 
 export function useRoom(engine: WindowEngine | undefined, rowKind: string | undefined, history: readonly Block[]): Room {
@@ -104,7 +126,7 @@ export function useRoom(engine: WindowEngine | undefined, rowKind: string | unde
   const [rules, setRules] = useState<Record<string, Rule>>({});
   const participants = useMemo(() => (session ? readParticipants(session, ownAgentId, selfId) : NO_MEMBERS), [session, ownAgentId, selfId]);
   const members = useMemo(() => withSenders(participants, history, ownAgentId, selfId), [participants, history, ownAgentId, selfId]);
-  const hosts = usePeerHosts(engine, members.agents.length > 0);
+  const peers = usePeerHosts(engine, members.agents.length > 0);
   const rule = key ? rules[key] ?? null : null;
   const setRule = useCallback(
     async (next: Rule) => {
@@ -120,7 +142,8 @@ export function useRoom(engine: WindowEngine | undefined, rowKind: string | unde
     selfId,
     ownAgentId,
     members,
-    whereRuns: (peer) => hosts[peer] ?? null,
+    whereRuns: (peer) => peers.hosts[peer] ?? null,
+    isOnline: (peer) => peers.online.includes(peer),
     rule,
     setRule,
     line: (ownTrunk, trunkName) => {
