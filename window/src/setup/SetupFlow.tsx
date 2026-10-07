@@ -166,6 +166,9 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [talking]);
   const doneChecks = checks.filter((c) => c.state !== "checking").length;
+  const modelNeedsConnection = checks.some((c) => c.name === "The model" && c.state === "bad")
+    && !known?.model
+    && !(models.detected && firstOn(models.detected, choices.modelsOff));
   const body = renderStep(step, { p, choices, set, models, inUse: known?.model ?? null, test, setTest, setLogin, apps, setConnecting, setPairing, autoUpdate: autoUpdate ?? known?.autoUpdate ?? false, setAutoUpdate, boot: boot ?? (known?.promise ? null : true), setBoot, checks, setStep });
   const [title, lede] = step === 6 ? [TITLES[6][0], reachLede(apps)] : TITLES[step];
   const footer = (
@@ -182,8 +185,8 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
         </button>
       ) : null}
       {step === LAST ? (
-        <button type="button" className="btn pri" data-testid="setup-finish" disabled={busy || doneChecks < checks.length} onClick={() => checks.some((c) => c.name === "The model" && c.state === "bad") ? (setStep(2), setLogin({ agentId: p.defaultAgentId ?? p.engine.agentId ?? "", provider: "", choiceId: "", method: SECRET })) : void close(true)}>
-          {checks.some((c) => c.name === "The model" && c.state === "bad") ? "Connect a model" : doneChecks < checks.length ? `Checking… ${doneChecks} of ${checks.length}` : "Open Branch and take the walkthrough"}
+        <button type="button" className="btn pri" data-testid="setup-finish" disabled={busy || doneChecks < checks.length} onClick={() => modelNeedsConnection ? (setStep(2), setLogin({ agentId: p.defaultAgentId ?? p.engine.agentId ?? "", provider: "", choiceId: "", method: SECRET })) : void close(true)}>
+          {modelNeedsConnection ? "Connect a model" : doneChecks < checks.length ? `Checking… ${doneChecks} of ${checks.length}` : "Open Branch and take the walkthrough"}
         </button>
       ) : (
         <button type="button" className="btn pri" data-testid="setup-next" disabled={step === 0 && !choices.promise} onClick={() => setStep(step === 0 ? firstUndone(done, 1) : step + 1)}>
