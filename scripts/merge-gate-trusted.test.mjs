@@ -6,6 +6,7 @@ import {
   evaluateOtherChecks,
   evaluateTrustedGate,
   findForeignTrustedChecks,
+  parseNamedTestList,
   formatGateChangeSummary,
   listCoreWorkflows,
   missingCoreWorkflows,
@@ -15,11 +16,19 @@ import {
   workflowAppliesToChanges,
 } from './merge-gate-trusted.mjs';
 
-const trustedWorkflow = { path: TRUSTED_WORKFLOW_PATH, name: 'Merge gate trusted' };
-const mergeGateWorkflow = { path: '.github/workflows/merge-gate.yml', name: 'Merge gate' };
+const CURRENT_RUN_ID = 303;
+const trustedWorkflow = {
+  path: TRUSTED_WORKFLOW_PATH,
+  name: 'Merge gate trusted',
+  id: CURRENT_RUN_ID,
+  event: 'pull_request_target',
+};
+const mergeGateWorkflow = { path: '.github/workflows/merge-gate.yml', name: 'Merge gate', id: 301, event: 'pull_request' };
 const featureBatchWorkflow = {
   path: '.github/workflows/feature-batch-checks.yml',
   name: 'Feature batch checks',
+  id: 302,
+  event: 'pull_request',
 };
 
 const passCheckRuns = [
@@ -66,6 +75,7 @@ test('pass case: recorded check runs all succeed and core workflows are present'
     workflowsByCheckId: passWorkflows,
     changedFiles: ['engine/src/gateway/contacts.ts'],
     coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
   });
   assert.equal(result.ok, true);
   assert.equal(result.ready, true);
@@ -97,6 +107,7 @@ test('failed check: recorded unsuccessful conclusion fails the gate', () => {
     workflowsByCheckId: passWorkflows,
     changedFiles: ['engine/src/gateway/contacts.ts'],
     coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
   });
   assert.equal(result.ok, false);
   assert.match(result.errors.join('\n'), /Failed checks/);
@@ -116,9 +127,11 @@ test('duplicate-name forgery: merge-gate-trusted from another workflow fails', (
   ];
   const workflowsByCheckId = {
     ...passWorkflows,
-    104: { path: '.github/workflows/merge-gate.yml', name: 'Merge gate' },
+    104: { path: '.github/workflows/merge-gate.yml', name: 'Merge gate', id: 304, event: 'pull_request' },
   };
-  const foreign = findForeignTrustedChecks(checkRuns, workflowsByCheckId);
+  const foreign = findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
+    allowedRunId: CURRENT_RUN_ID,
+  });
   assert.equal(foreign.length, 1);
   assert.equal(foreign[0].id, 104);
   const result = evaluateTrustedGate({
@@ -126,6 +139,7 @@ test('duplicate-name forgery: merge-gate-trusted from another workflow fails', (
     workflowsByCheckId,
     changedFiles: ['engine/src/gateway/contacts.ts'],
     coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
   });
   assert.equal(result.ok, false);
   assert.match(result.errors.join('\n'), /Forged or extra merge-gate-trusted/);
@@ -146,6 +160,7 @@ test('missing-core-workflow: absent merge-gate job fails', () => {
     workflowsByCheckId: passWorkflows,
     changedFiles: ['README.md'],
     coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
   });
   assert.equal(result.ok, false);
   assert.match(result.errors.join('\n'), /merge-gate \(not present\)/);
@@ -158,6 +173,7 @@ test('missing-core-workflow: path-filtered workflow that should have run is requ
     workflowsByCheckId: passWorkflows,
     changedFiles: ['engine/src/gateway/contacts.ts'],
     coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
   });
   assert.equal(result.ok, false);
   assert.match(result.errors.join('\n'), /feature-batch-checks\.yml/);
@@ -187,6 +203,93 @@ test('workflowAppliesToChanges uses GitHub-style path filters', () => {
   assert.equal(workflowAppliesToChanges(['engine/src/foo.ts'], ['engine/**']), true);
   assert.equal(workflowAppliesToChanges(['README.md'], ['engine/**']), false);
   assert.equal(workflowAppliesToChanges(['README.md'], null), true);
+});
+
+test('same-path merge-gate-trusted from another run with pull_request event fails', () => {
+  const checkRuns = [
+    ...passCheckRuns,
+    {
+      id: 104,
+      name: 'merge-gate-trusted',
+      status: 'completed',
+      conclusion: 'success',
+      check_suite: { id: 204 },
+      details_url: 'https://github.com/example/repo/actions/runs/304/job/104',
+    },
+  ];
+  const workflowsByCheckId = {
+    ...passWorkflows,
+    104: {
+      path: TRUSTED_WORKFLOW_PATH,
+      name: 'Merge gate trusted',
+      id: 304,
+      event: 'pull_request',
+    },
+  };
+  const foreign = findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
+    allowedRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(foreign.length, 1);
+  assert.equal(foreign[0].id, 104);
+  const result = evaluateTrustedGate({
+    checkRuns,
+    workflowsByCheckId,
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join('\n'), /Forged or extra merge-gate-trusted/);
+  assert.match(result.errors.join('\n'), /run 304 event pull_request/);
+});
+
+test('unattributed merge-gate-trusted check fails closed', () => {
+  const workflowsByCheckId = {
+    101: mergeGateWorkflow,
+    102: featureBatchWorkflow,
+  };
+  const foreign = findForeignTrustedChecks(passCheckRuns, workflowsByCheckId, {
+    allowedRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(foreign.length, 1);
+  assert.equal(foreign[0].id, 103);
+  const result = evaluateTrustedGate({
+    checkRuns: passCheckRuns,
+    workflowsByCheckId,
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join('\n'), /unattributed/);
+});
+
+test('current run alone is accepted as the trusted check', () => {
+  const checkRuns = [passCheckRuns[0], passCheckRuns[2]];
+  const foreign = findForeignTrustedChecks(checkRuns, passWorkflows, {
+    allowedRunId: CURRENT_RUN_ID,
+  });
+  assert.deepEqual(foreign, []);
+  const result = evaluateTrustedGate({
+    checkRuns,
+    workflowsByCheckId: passWorkflows,
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.foreignTrusted.length, 0);
+});
+
+test('PR-only named list entry covers a changed test', () => {
+  const files = [{ filename: 'engine/src/pr-only.test.ts', status: 'added' }];
+  const workflow = '      - run: node --test scripts/none.test.mjs\n';
+  const without = coverageFromPrFiles(files, workflow);
+  assert.ok(without.uncovered.includes('engine/src/pr-only.test.ts'));
+  const extraNamed = parseNamedTestList('engine:src/pr-only.test.ts\n# comment\n');
+  assert.deepEqual(extraNamed, [{ lane: 'engine', file: 'src/pr-only.test.ts' }]);
+  const withList = coverageFromPrFiles(files, workflow, extraNamed);
+  assert.ok(!withList.uncovered.includes('engine/src/pr-only.test.ts'));
 });
 
 test('nameStatusFromPrFiles and coverageFromPrFiles treat API files as data', () => {

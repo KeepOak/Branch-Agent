@@ -13,11 +13,19 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: merge-gate-trusted-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  # Head SHA is in the group so a new commit starts its own run. `edited` (title/body)
+  # keeps the same SHA, so cancel-in-progress is off for that action and cannot abort
+  # the wait already running for this SHA.
+  group: merge-gate-trusted-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: ${{ github.event.action != 'edited' }}
 
 jobs:
   merge-gate-trusted:
+    permissions:
+      contents: read
+      checks: read
+      actions: read
+      pull-requests: read
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -40,4 +48,5 @@ jobs:
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
         run: node scripts/merge-gate-trusted.mjs

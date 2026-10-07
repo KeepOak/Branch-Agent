@@ -57,13 +57,24 @@ export function evaluateOtherChecks(checkRuns, ignoreName = TRUSTED_JOB) {
   return { others, pending, failed };
 }
 
+export function lookupWorkflow(workflowsByCheckId, checkRunId) {
+  return workflowsByCheckId[checkRunId] ?? workflowsByCheckId[String(checkRunId)] ?? null;
+}
+
 export function findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
   jobName = TRUSTED_JOB,
   allowedWorkflowPath = TRUSTED_WORKFLOW_PATH,
+  allowedRunId,
+  allowedEvent = 'pull_request_target',
 } = {}) {
+  const currentId = allowedRunId == null || allowedRunId === '' ? null : Number(allowedRunId);
   return checkRuns.filter((run) => run.name === jobName).filter((run) => {
-    const workflow = workflowsByCheckId[run.id] ?? workflowsByCheckId[String(run.id)];
-    return !workflow || workflow.path !== allowedWorkflowPath;
+    const workflow = lookupWorkflow(workflowsByCheckId, run.id);
+    if (!workflow || workflow.id == null || workflow.id === '') return true;
+    if (currentId == null || !Number.isFinite(currentId) || Number(workflow.id) !== currentId) return true;
+    if (workflow.path !== allowedWorkflowPath) return true;
+    if (workflow.event !== allowedEvent) return true;
+    return false;
   });
 }
 
@@ -195,10 +206,7 @@ export function missingCoreWorkflows({
 
   for (const workflow of coreWorkflows) {
     if (!workflowAppliesToChanges(changedFiles, workflow.pullRequestPaths)) continue;
-    const ran = checkRuns.some((run) => {
-      const info = workflowsByCheckId[run.id] ?? workflowsByCheckId[String(run.id)];
-      return info?.path === workflow.path;
-    });
+    const ran = checkRuns.some((run) => lookupWorkflow(workflowsByCheckId, run.id)?.path === workflow.path);
     if (!ran) missing.push(`${workflow.path} (path filter matched, no check run)`);
   }
 
@@ -210,9 +218,12 @@ export function evaluateTrustedGate({
   workflowsByCheckId,
   changedFiles,
   coreWorkflows,
+  currentRunId,
 }) {
   const { others, pending, failed } = evaluateOtherChecks(checkRuns);
-  const foreignTrusted = findForeignTrustedChecks(checkRuns, workflowsByCheckId);
+  const foreignTrusted = findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
+    allowedRunId: currentRunId,
+  });
   const missingCore = missingCoreWorkflows({
     checkRuns,
     workflowsByCheckId,
@@ -226,8 +237,11 @@ export function evaluateTrustedGate({
   }
   if (foreignTrusted.length) {
     const details = foreignTrusted.map((run) => {
-      const workflow = workflowsByCheckId[run.id] ?? workflowsByCheckId[String(run.id)];
-      return `${run.name} from ${workflow?.path ?? 'unknown workflow'}`;
+      const workflow = lookupWorkflow(workflowsByCheckId, run.id);
+      if (!workflow || workflow.id == null || workflow.id === '') {
+        return `${run.name} check ${run.id} (unattributed)`;
+      }
+      return `${run.name} from ${workflow.path ?? 'unknown path'} run ${workflow.id} event ${workflow.event ?? 'unknown'}`;
     });
     errors.push(`Forged or extra ${TRUSTED_JOB} check(s): ${details.join(', ')}`);
   }
@@ -267,9 +281,25 @@ export function formatGateChangeSummary(changedFiles) {
   return lines.join('\n');
 }
 
-export function coverageFromPrFiles(files, desktopWorkflow) {
+export function parseNamedTestList(text, source = 'scripts/feature-batch-ci-named/<list>.txt') {
+  const files = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const match = /^(engine|window):(.+)$/.exec(line);
+    if (!match) {
+      throw new Error(`${source}: expected engine:<file> or window:<file>, got "${line}"`);
+    }
+    files.push({ lane: match[1], file: match[2].trim() });
+  }
+  return files;
+}
+
+export function coverageFromPrFiles(files, desktopWorkflow, extraNamed = []) {
   const changed = changedTestPaths(nameStatusFromPrFiles(files));
-  const uncovered = uncoveredTests(changed, coverageTargets(desktopWorkflow));
+  const covered = coverageTargets(desktopWorkflow);
+  for (const entry of extraNamed) covered.add(`${entry.lane}/${entry.file}`);
+  const uncovered = uncoveredTests(changed, covered);
   return { changed, uncovered };
 }
 
@@ -307,7 +337,12 @@ export function fetchFileText(repo, sha, token, filePath) {
 
 export function workflowFromActionsRun(run) {
   if (!run) return null;
-  return { path: run.path ?? null, name: run.name ?? null, id: run.id ?? null };
+  return {
+    path: run.path ?? null,
+    name: run.name ?? null,
+    id: run.id ?? null,
+    event: run.event ?? null,
+  };
 }
 
 export function resolveWorkflowForCheckRun(repo, token, checkRun) {
@@ -344,9 +379,27 @@ function writeSummary(text) {
   console.log(text);
 }
 
-function runCoverage(files) {
+export function fetchNamedTestLists(repo, sha, token) {
+  let entries;
+  try {
+    entries = ghApi(repo, token, `contents/scripts/feature-batch-ci-named?ref=${sha}`);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(entries)) return [];
+  const extra = [];
+  for (const entry of entries) {
+    if (entry.type !== 'file' || !entry.name?.endsWith('.txt') || entry.name === 'README.txt') continue;
+    const text = fetchFileText(repo, sha, token, entry.path);
+    if (text == null) continue;
+    extra.push(...parseNamedTestList(text, entry.path));
+  }
+  return extra;
+}
+
+function runCoverage(files, extraNamed) {
   const workflow = readFileSync(path.join(root, '.github/workflows/desktop-checks.yml'), 'utf8');
-  const { changed, uncovered } = coverageFromPrFiles(files, workflow);
+  const { changed, uncovered } = coverageFromPrFiles(files, workflow, extraNamed);
   if (uncovered.length) {
     for (const file of uncovered) {
       console.error(`Uncovered changed test: ${file}\n  Add: ${additionFor(file)}`);
@@ -390,7 +443,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 
   writeSummary(formatGateChangeSummary(changedFiles));
 
-  if (!runCoverage(files)) process.exit(1);
+  const extraNamed = fetchNamedTestLists(repo, sha, token);
+  if (!runCoverage(files, extraNamed)) process.exit(1);
   if (!runMergeCommandCheck(repo, sha, token)) {
     console.error('Merge-command check failed on the pull request documentation.');
     process.exit(1);
@@ -408,6 +462,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       workflowsByCheckId,
       changedFiles,
       coreWorkflows,
+      currentRunId: process.env.GITHUB_RUN_ID,
     });
 
     if (result.failed.length || result.foreignTrusted.length) {
