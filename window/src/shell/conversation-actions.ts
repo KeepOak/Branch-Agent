@@ -216,7 +216,7 @@ export function conversationActions(request: Request, list: ConversationList, op
           notify("The conversation has no finished entries to copy.", { tone: "bad" });
           return;
         }
-        const result = rec(await request("sessions.fork", { ...target(row), entryId: lastFinishedEntryId }));
+        const result = rec(await request("sessions.fork", { sessionKey: row.key, ...(row.agentId ? { agentId: row.agentId } : {}), entryId: lastFinishedEntryId }));
         const newKey = str(result.sessionKey);
         if (!newKey) {
           notify("The engine didn't return the new conversation.", { tone: "bad" });

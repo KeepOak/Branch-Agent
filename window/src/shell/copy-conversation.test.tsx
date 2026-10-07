@@ -48,7 +48,7 @@ describe("copy conversation", () => {
     await forkItem.run();
 
     expect(request).toHaveBeenNthCalledWith(1, "chat.history", { sessionKey: key, agentId: "research" });
-    expect(request).toHaveBeenNthCalledWith(2, "sessions.fork", { key, agentId: "research", expectedSessionId: "session-1", entryId: "e4" });
+    expect(request).toHaveBeenNthCalledWith(2, "sessions.fork", { sessionKey: key, agentId: "research", entryId: "e4" });
     expect(request).toHaveBeenNthCalledWith(3, "sessions.patch", { key: "agent:research:xyz", label: "Research (copy)" });
     expect(refresh).toHaveBeenCalledOnce();
     expect(open).toHaveBeenCalledWith("agent:research:xyz");
@@ -77,7 +77,7 @@ describe("copy conversation", () => {
     if (!forkItem || forkItem.kind !== undefined) throw new Error("Fork item is missing");
     await forkItem.run();
 
-    expect(request).toHaveBeenCalledWith("sessions.fork", { key, agentId: "research", expectedSessionId: "session-1", entryId: "e2" });
+    expect(request).toHaveBeenCalledWith("sessions.fork", { sessionKey: key, agentId: "research", entryId: "e2" });
   });
 
   it("shows an error when the conversation has no finished entries", async () => {
@@ -130,7 +130,7 @@ describe("copy conversation", () => {
     expect(forkItem && "disabled" in forkItem ? forkItem.disabled : undefined).toBeUndefined();
     if (!forkItem || forkItem.kind !== undefined) throw new Error("Fork item is missing");
     await forkItem.run();
-    expect(request).toHaveBeenCalledWith("sessions.fork", { key, agentId: "research", expectedSessionId: "session-1", entryId: "e2" });
+    expect(request).toHaveBeenCalledWith("sessions.fork", { sessionKey: key, agentId: "research", entryId: "e2" });
     expect(open).toHaveBeenCalledWith("agent:research:xyz");
   });
 });
