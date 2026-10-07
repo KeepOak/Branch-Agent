@@ -133,7 +133,11 @@ test("ring bitmap draws the share left as an arc over a faint track", () => {
 test("branch shim reads the published engine and token at run time", () => {
   const shim = branchShim({ dataDir: "C:\\Data", engineDir: "C:\\App\\engine", nodePath: "C:\\App\\node.exe", gatewayPort: 19031 });
   assert.ok(shim.includes('set /p ENGINE=<"%BRANCH_DATA%\\engine-current.txt"'));
+  // The engine that runs, not a staged one still waiting to be applied.
+  assert.ok(shim.indexOf("engine-current.txt") < shim.indexOf('set /p ENGINE=<"%BRANCH_DATA%\\engine-running.txt"'));
   assert.ok(shim.includes('set /p BRANCH_GATEWAY_TOKEN=<"%BRANCH_DATA%\\gateway-token"'));
+  // The configured port is the default; the live port an update moved the engine to wins.
+  assert.ok(shim.indexOf('set "BRANCH_GATEWAY_PORT=19031"') < shim.indexOf('set /p BRANCH_GATEWAY_PORT=<"%BRANCH_DATA%\\gateway-port"'));
   assert.ok(shim.includes('"C:\\App\\node.exe" "%ENGINE%\\branch.mjs" %*'));
   assert.doesNotMatch(shim, /[0-9a-f]{64}/);
 });
@@ -143,6 +147,13 @@ test("Git Bash shim reads the same files, drops CR and passes arguments through"
   assert.ok(shim.startsWith("#!/bin/sh\n"));
   assert.ok(shim.includes("data='C:/Data'\\''s'"));
   assert.ok(shim.includes("tr -d '\\r'"));
+  assert.ok(shim.indexOf("engine-current.txt") < shim.indexOf('if [ -f "$data/engine-running.txt" ]'));
+  // An empty read (never expected: the desktop renames the file into place) keeps the configured port.
+  assert.ok(shim.includes(`if [ -f "$data/gateway-port" ]; then live=$(head -n 1 "$data/gateway-port" | tr -d '\\r'); if [ -n "$live" ]; then BRANCH_GATEWAY_PORT=$live; fi; fi`));
+  assert.ok(shim.indexOf("BRANCH_GATEWAY_PORT=19031") < shim.indexOf("$data/gateway-port"));
+  // As the cmd shim: a long-running `branch mcp serve` finds the desktop's gateway-port again after an update.
+  assert.ok(shim.includes("BRANCH_DATA='C:\\Data'\\''s'"));
+  assert.match(shim, /export BRANCH_DATA /);
   assert.ok(shim.includes(`exec 'C:/App/node.exe' "$engine/branch.mjs" "$@"`));
   assert.doesNotMatch(shim, /\r/);
 });

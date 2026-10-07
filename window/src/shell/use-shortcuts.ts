@@ -12,7 +12,9 @@ export type ShortcutHandlers = {
   toggleList: () => void;
   inbox: () => void;
   focusSearch: () => void;
+  focusPastSearch: () => void;
   archiveOpen: () => void;
+  lockdown: () => void;
   talkBeside: () => void;
   talkLive: () => void;
   stop: () => void;
@@ -23,7 +25,7 @@ export type ShortcutHandlers = {
 
 const DEFAULT_KEYS = currentKeys(keyActions(""), {});
 /** Keys that aren't settable in the dialog (§3.6). */
-const FIXED: Record<string, keyof ShortcutHandlers> = { "Ctrl B": "toggleList", "Ctrl G": "focusSearch", "Ctrl Shift Space": "quickAsk" };
+const FIXED: Record<string, keyof ShortcutHandlers> = { "Ctrl B": "toggleList", "Ctrl G": "focusSearch", "Ctrl P": "focusPastSearch", "Ctrl Shift Space": "quickAsk" };
 
 /** Which shortcut a key press means, or null, under the person's keys. Exported for its test. */
 export function shortcutFor(
@@ -54,7 +56,7 @@ export function paneKeyFor(
   mac: boolean,
   keys: Record<ActionId, string> = DEFAULT_KEYS,
 ): PaneTarget | null {
-  if (!(e.ctrlKey || e.metaKey) || shortcutFor(e, mac, keys) || document.querySelector("[data-listening]")) {
+  if (!(e.ctrlKey || e.metaKey) || shortcutFor(e, mac, keys) || document.querySelector("[data-listening], [role=dialog][aria-modal=true]")) {
     return null;
   }
   const combo = comboOf({ key: e.key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey, altKey: e.altKey, code: e.code ?? "" }, mac);
@@ -72,6 +74,7 @@ const HANDLED: Partial<Record<ActionId, keyof ShortcutHandlers>> = {
   inbox: "inbox",
   nextConversation: "nextConversation",
   archiveOpen: "archiveOpen",
+  lockdown: "lockdown",
   talkBeside: "talkBeside",
   talkLive: "talkLive",
 };
@@ -91,6 +94,11 @@ export function useShortcuts(handlers: ShortcutHandlers): void {
       }
       const which = shortcutFor(e, mac, keys);
       if (!which) {
+        return;
+      }
+      // A modal owns its keyboard. In particular Ctrl+K cannot open a palette over a dialog,
+      // and the pane keys must not change the page behind one (§3.6).
+      if (which !== "escape" && document.querySelector("[role=dialog][aria-modal=true]")) {
         return;
       }
       const t = e.target as HTMLElement | null;

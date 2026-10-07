@@ -50,7 +50,7 @@ export function NotificationsPage(props: SettingsPageProps) {
   const agents = useResource<RecordValue>(props.engine, "agents.list", {});
   const trunks: Trunk[] = list(agents.data?.agents).map((a) => ({ id: String(a.id), name: visible(record(a.identity).name ?? a.name ?? a.id) }));
   const level = useLevel();
-  const device = /Mac/i.test(typeof navigator === "undefined" ? "" : navigator.platform) ? "This Mac" : "This PC";
+  const device = "This computer";
   return (
     <Page title={props.title} lede="When Branch may interrupt you.">
       <QuietStatus prefs={prefs} />
@@ -128,7 +128,7 @@ function TellMore({ prefs, trunks }: { prefs: Prefs; trunks: Trunk[] }) {
       <Ctl title="Which sound" sub="The system’s sound is your computer’s own notification sound." keep="everywhere" off="Sounds play from the Branch app on your computer.">
         <Seg label="Which sound" value="" disabled options={[{ id: "system", label: "The system’s sound" }, { id: "chime", label: "Branch’s chime" }]} onChange={() => undefined} />
       </Ctl>
-      <Ctl title="Recent notifications" sub="The last 100 Branch showed on this device, after they leave the screen." off="Branch doesn’t keep the notifications it showed yet.">
+      <Ctl title="Recent notifications" sub="Keep the last 100 notices shown on this device." help="The last 100 Branch showed on this device, after they leave the screen." off="Branch doesn’t keep the notifications it showed yet.">
         <Btn sm disabled>Show</Btn>
       </Ctl>
     </>
@@ -160,7 +160,7 @@ function QuietSec({ prefs }: { prefs: Prefs }) {
   );
 }
 
-const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "notifications", title, sec, lv }));
+const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "notifications", title, sec, group: sec.replace(/, (more|technical|in depth)$/, ""), lv }));
 const TELL_TITLES = TELL.map((t) => t.title);
 export const NOTIFICATIONS_ROWS: RowEntry[] = [
   ...rows("Tell me when…", 0, ["Notifications on this computer", ...TELL_TITLES, "Send a test notification"]),
@@ -170,6 +170,6 @@ export const NOTIFICATIONS_ROWS: RowEntry[] = [
   ...rows("When work stalls", 0, ["A conversation stopped moving"]),
   ...rows("Live activity", 0, ["Live activity at the top of the screen (Mac)"]),
   ...rows("Kinds of notice", 1, KINDS),
-  ...rows("This PC", 1, ["Name on its notifications", "On a locked screen", "Quiet hours", "Only these Trunks", ...TELL_TITLES]),
+  ...rows("This computer", 1, ["Name on its notifications", "On a locked screen", "Quiet hours", "Only these Trunks", ...TELL_TITLES]),
   ...rows("Sorting notifications", 2, ["Use the kind a Trunk gives", "Add a rule"]),
 ];

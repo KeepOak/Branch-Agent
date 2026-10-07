@@ -1,6 +1,6 @@
 // Opens the right status-bar popover and carries out what its items do (DESIGN-SPEC §4.9): restart the engine,
 // tidy up a conversation, install an update or remind tomorrow. Outcomes are toasted only once the engine has answered.
-import { useState, type MouseEvent } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
 import type { Conversation, ConversationList } from "../connect/conversations";
 import type { SaplingSession } from "../connect/session";
 import { readLevel } from "../places-nav/SettingsFrame";
@@ -187,7 +187,7 @@ export function StatusPopover({ item, above, onClose, ctx }: Props) {
   const desktopControls = useDesktopControls();
   const [confirm, setConfirm] = useState<Conversation | null>(null);
   const level = readLevel();
-  const request = ctx.session.request.bind(ctx.session) as <T = unknown>(m: string, p?: unknown) => Promise<T>;
+  const request = useMemo(() => ctx.session.request.bind(ctx.session) as <T = unknown>(m: string, p?: unknown) => Promise<T>, [ctx.session]);
   const base = { above, onClose };
   const close = (run: () => void) => () => {
     onClose();

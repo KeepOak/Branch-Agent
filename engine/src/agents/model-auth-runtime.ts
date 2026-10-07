@@ -268,6 +268,7 @@ type SyntheticProviderAuthResolution = {
 type SyntheticProviderAuthParams = {
   cfg: BranchConfig | undefined;
   provider: string;
+  route?: { api?: string | null; baseUrl?: unknown };
   modelApi?: string;
   secretSentinels?: boolean;
   workspaceDir?: string;

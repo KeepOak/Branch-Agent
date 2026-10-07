@@ -1212,7 +1212,7 @@ export function buildGatewayCronService(params: {
   cron.stop = () => {
     stopCronLifecycle();
   };
-  const stopAndDrainCron = async (preserveExitWatchers = false) => {
+  const stopAndDrainCron = async (preserveExitWatchers = false, preserveActiveRuns = false) => {
     stopCronLifecycle(preserveExitWatchers);
     await drainGatewayCron({
       settlements: [
@@ -1223,10 +1223,14 @@ export function buildGatewayCronService(params: {
         stopStreamWatchers(),
       ],
       logger: cronLogger,
+      preserveActiveRuns,
     });
   };
   cron.stopAndDrain = async () => {
     await stopAndDrainCron();
+  };
+  cron.stopAndDrainForHandoff = async () => {
+    await stopAndDrainCron(false, true);
   };
   // Serialize accepted-config convergence; newer requests and stop supersede this tail.
   let systemJobReconcileTail = Promise.resolve<GatewaySystemJobReconciliationResult>("converged");
