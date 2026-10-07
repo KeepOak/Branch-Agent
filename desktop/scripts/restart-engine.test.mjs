@@ -945,6 +945,36 @@ function idleWindow(runtime) {
   };
   return sent;
 }
+test("automatic flagged handoff keeps a busy run and shows one confirmed notice across reload", () => fixture(async ({ root, runtime, starts, offerStaged }) => {
+  const sent = idleWindow(runtime);
+  const old = (await starts())[0];
+  await writeFile(join(root, "busy-run"), "1");
+  await stageFixtureUpdate(root); await writeFile(join(root, "release-ready"), "ready");
+  offerStaged();
+  await eventually(() => sent.some(([channel]) => channel === "branch-desktop:update-applied"), 30_000);
+  const notice = sent.find(([channel]) => channel === "branch-desktop:update-applied")[1];
+  assert.equal(notice.version, "fixture-next");
+  assert.ok(notice.expiresAt > Date.now());
+  assert.equal(alive(old), true, "automatic update killed the busy predecessor");
+  assert.doesNotMatch(await readFile(join(root, "desktop.log"), "utf8"), /auto-apply: idle hold|old engine drained/);
+  runtime.window.webContents.emit("did-finish-load");
+  await eventually(() => sent.filter(([channel]) => channel === "branch-desktop:update-applied").length === 2);
+  assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:update-applied").map(([, value]) => value), [notice, notice]);
+}, false, false, false, true, false, handoffOn()));
+
+test("failed automatic flagged standby postpones once without draining the serving engine", () => fixture(async ({ root, runtime, starts, offerStaged, clock }) => {
+  const sent = idleWindow(runtime);
+  const old = (await starts())[0];
+  await stageFixtureUpdate(root); await writeFile(join(root, "release-ready"), "ready"); await writeFile(join(root, "fail-standby"), "fail");
+  offerStaged();
+  await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"), 30_000);
+  assert.equal(alive(old), true);
+  assert.equal(existsSync(join(root, `drained-${old}`)), false, "automatic failure drained the serving engine");
+  assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-update-failed"), []);
+  clock.skew = 61_000; offerStaged();
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("failed 1 time(s)"), 30_000);
+  assert.equal(sent.filter(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept").length, 1);
+}, false, false, false, true, false, handoffOn()));
 test("an Update click or an automatic update during a staged-update replacement waits for it, then the click runs once", () => fixture(async ({ root, runtime, starts, restart, offerStaged, swapGuard, clock }) => {
   const sent = idleWindow(runtime);
   const log = () => readFile(join(root, "desktop.log"), "utf8");

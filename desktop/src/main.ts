@@ -12,7 +12,7 @@ import { createGatewayCrashSupervisor } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowResident } from "./resident-window";
-import { confirmComponentUpdate, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, watchComponentUpdates } from "./component-update";
+import { canUndoComponentUpdate, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, watchComponentUpdates } from "./component-update";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
@@ -180,6 +180,9 @@ let withdrawnUpdateVersion: string | undefined;
 let recoveryDeferred = false;
 /** A failed update left nothing serving: once recovery brings the previous build back, the bar says it was kept. */
 let keptNoticeAfterRecovery = false;
+let updateNotice: { version: string; canUndo: boolean; expiresAt: number } | undefined;
+let lastNotifiedVersion: string | undefined;
+let lastPostponedVersion: string | undefined;
 let gatewayRecoveryError: string | undefined;
 const gatewaySupervisor = createGatewayCrashSupervisor({
   current: () => gateway,
@@ -290,6 +293,9 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
     if (preparation.signal.aborted || !engineServing()) throw new Error("The serving engine exited during update preparation");
     await prepareUpdateStandby(label, explicit);
     if (preparation.signal.aborted || !engineServing()) throw new Error("The serving engine exited during standby warmup");
+    if (!explicit && seamlessHandoff() && (!standby || retiring.size > 0)) {
+      throw new Error("A standby is needed to hand off without interrupting running work");
+    }
     priorGateway.off("exit", priorExited);
     stillOpen();
     const started = Date.now();
@@ -299,6 +305,10 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
     if (standby && seamlessHandoff() && retiring.size > 0) log(`update ${label}: an old engine is still finishing its sessions; using the guarded swap`);
     const handoff = standby && seamlessHandoff() && retiring.size === 0
       ? await handOffToStandby(label, priorGateway, standby, resumeSupervision, attempt) : "drain";
+    if (!explicit && seamlessHandoff() && handoff === "drain") {
+      resumeSupervision();
+      throw new Error("The previous engine could not hand off; it keeps serving until a retry");
+    }
     let rolledBack = handoff === "kept";
     const stopped = Date.now();
     if (handoff === "drain") {
@@ -320,7 +330,7 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
     log(`update ${label}: engine ${rolledBack ? "rolled back" : "swapped"} in place${handoff === "drain" ? "" : " by handoff"}; stop ${stopped - started} ms, start ${Date.now() - stopped} ms, app and window kept open`);
     engineUpdateReady = false;
     if (rolledBack) {
-      sendToBranchWindows("branch-desktop:engine-update", "kept");
+      if (explicit) sendToBranchWindows("branch-desktop:engine-update", "kept");
       handWindowToGateway();
     } else {
       // The engine may now serve on the standby's port: hand the window the address it answered /readyz on first,
@@ -334,7 +344,7 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
     standby = undefined;
     if (quitting) throw error;
     const message = error instanceof Error ? error.message : String(error);
-    sendToBranchWindows("branch-desktop:engine-update-failed", message);
+    if (explicit) sendToBranchWindows("branch-desktop:engine-update-failed", message);
     // Still serving only if the engine from before the update is the one running and ready (and not retiring): a new
     // engine that failed may not have exited yet, and it never became ready. After a step-down was asked for, the old
     // engine must also prove it on /readyz.
@@ -343,8 +353,7 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
     if (!priorServing && gateway === priorGateway) notServing(priorGateway);
     if (priorServing) {
       recoveryDeferred = false;
-      const state = controls.settings().autoApplyUpdates ? "auto-wait" : "ready";
-      sendToBranchWindows("branch-desktop:engine-update", state);
+      if (explicit) sendToBranchWindows("branch-desktop:engine-update", "ready");
     } else {
       // A new engine that failed may still be alive: stop it (SIGKILL after a grace) before recovery starts another.
       const failed = gateway;
@@ -614,6 +623,7 @@ const autoApply = createAutoApplyUpdate({
     return version === withdrawnUpdateVersion ? null : version;
   },
   enabled: () => controls.settings().autoApplyUpdates,
+  seamlessHandoff,
   activity: async () => {
     if (!gateway) throw new Error("The gateway is not running");
     // The approval RPCs themselves count as gateway work; sample after they settle.
@@ -622,7 +632,22 @@ const autoApply = createAutoApplyUpdate({
     return { activeRuns: Math.max(engine.activeRuns, engine.totalActive), pendingApprovals: window.pendingApprovals,
       streaming: engine.pendingReplies > 0 || window.streaming, unsavedDraftFiles: window.unsavedDraftFiles };
   },
-  restart: version => swapEngineInPlace(version, false),
+  restart: async version => {
+    await swapEngineInPlace(version, false);
+    if ((await readComponentUpdateStatus(cfg)).currentVersion !== version) throw new Error("The new release was not confirmed");
+  },
+  onApplied: async version => {
+    if (lastNotifiedVersion === version) return;
+    const canUndo = await canUndoComponentUpdate(cfg);
+    lastNotifiedVersion = version;
+    updateNotice = { version, canUndo, expiresAt: Date.now() + 10 * 60_000 };
+    sendToBranchWindows("branch-desktop:update-applied", updateNotice);
+  },
+  onFailure: version => {
+    if (!engineServing() || lastPostponedVersion === version) return;
+    lastPostponedVersion = version;
+    sendToBranchWindows("branch-desktop:engine-update", "kept");
+  },
   log,
 });
 
@@ -654,7 +679,11 @@ async function hotSwapWindow(): Promise<void> {
   const windows = branchWindows().filter(w => w.webContents.getURL().startsWith(windowUrl()));
   if (!windows.length) return;
   // Attached files live only in memory; the swap waits until they are sent or removed.
-  while (branchWindows().length && (await probeWindowState().catch(() => undefined))?.unsavedDraftFiles) await pause(5_000);
+  const deadline = Date.now() + 10 * 60_000;
+  while (branchWindows().length && (await probeWindowState().catch(() => undefined))?.unsavedDraftFiles) {
+    if (Date.now() >= deadline) { log("window swap postponed: unsent attachments remain"); return; }
+    await pause(5_000);
+  }
   await Promise.all(windows.filter(w => !w.isDestroyed()).map(async w => {
     const id = ++nextProbeId;
     await new Promise<void>(resolve => {
@@ -882,6 +911,12 @@ async function start(): Promise<void> {
     saveConversationWindows();
   });
   ipcMain.on("branch-desktop:restart-engine", e => { if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) void restartEngine(); });
+  ipcMain.on("branch-desktop:dismiss-update-notice", e => {
+    if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) updateNotice = undefined;
+  });
+  ipcMain.on("branch-desktop:undo-update", e => {
+    if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) void undoLastUpdate();
+  });
   registerComponentUpdateIpc(ipcMain, e => ownedWebContents(e.sender), windowUrl(), componentUpdates);
   registerDesktopControlsIpc(ipcMain, e => ownedWebContents(e.sender), windowUrl(), controls);
   registerTitleBarIpc(ipcMain, () => win?.webContents, windowUrl(), (overlay) => win?.setTitleBarOverlay(overlay));
@@ -1077,6 +1112,33 @@ function offerWindowStatus(w: BrowserWindow): void {
   if (w.isDestroyed() || !w.webContents.getURL().startsWith(windowUrl())) return;
   if (engineUpdateReady) w.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
   if (gatewayRecoveryError) w.webContents.send("branch-desktop:gateway-recovery-failed", gatewayRecoveryError);
+  if (updateNotice && updateNotice.expiresAt > Date.now()) w.webContents.send("branch-desktop:update-applied", updateNotice);
+}
+
+/** Undo owns the same lock as update, recovery and staged-release replacement, including its publication moves. */
+async function undoLastUpdate(): Promise<void> {
+  const lock = updateLock.acquire("undo update");
+  if (!lock) return;
+  try {
+    if (!gateway || !engineServing()) throw new Error("The engine is not ready to switch");
+    const active = await gatewayActivity(gateway);
+    const window = await probeWindowState();
+    if (active.activeRuns || active.totalActive || active.pendingReplies || window.pendingApprovals ||
+        window.streaming || window.unsavedDraftFiles) throw new Error("The previous version cannot take over while work is running");
+    if (!await prepareComponentUpdateUndo(cfg, dir => { servedWindowDir = dir; })) throw new Error("The previous version is no longer available");
+    const previousVersion = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
+    await swapEngineInPlace("previous version", true, lock);
+    if ((await readComponentUpdateStatus(cfg)).currentVersion !== previousVersion) throw new Error("The previous version could not take over");
+    await confirmComponentUpdateUndo(cfg);
+    updateNotice = undefined;
+    sendToBranchWindows("branch-desktop:update-undone");
+  } catch (error) {
+    try { await rollbackComponentUpdateUndo(cfg); }
+    catch (rollbackError) { log(`update undo rollback failed: ${String(rollbackError)}`); }
+    if (!existsSync(servedWindowDir)) servedWindowDir = cfg.windowDir;
+    log(`update undo failed: ${String(error)}`);
+    sendToBranchWindows("branch-desktop:update-undo-failed", String(error));
+  } finally { await updateLock.release(lock); }
 }
 
 /** The owner's Update click: applies a staged engine/window pair, or a rebuilt engine, in place. */
