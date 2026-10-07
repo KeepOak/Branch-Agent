@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { mkdtemp, mkdir, readFile, readdir, readlink, rm, symlink, writeFile, rename } from "node:fs/promises";
+import { createReadStream, existsSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { mkdtemp, mkdir, readFile, readdir, readlink, rm, stat, symlink, utimes, writeFile, rename } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createServer as createPortProbe } from "node:net";
 import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { gzipSync, gunzipSync } from "node:zlib";
 import test, { mock } from "node:test";
@@ -22,6 +23,7 @@ const { defaultDataDirectory } = await import(pathToFileURL(join(process.env.BRA
 const { readToken } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
 const { GatewayReadinessTimeoutError } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
 const { bootSelectedEngineWithRollback } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "boot-selected-engine.js")));
+const exists = async file => stat(file).then(() => true, error => { if (error.code === "ENOENT") return false; throw error; });
 
 async function fixture(run, modify = () => {}) {
   const parent = join(tmpdir(), "Codex-session-files", "resume-desktop-updater-20261003");
@@ -103,6 +105,143 @@ test("manual component bridge checks configured release then stages actual HTTP 
   assert.equal(await source.rollbackComponentUpdate(cfg), true); await unchanged(cfg);
 }));
 
+async function newerRelease({ root, engine, window }, version = "0.4.4") {
+  const output = join(root, `release-${version}`);
+  await writeFile(join(window, "index.html"), `<title>${version} window</title>`);
+  const release = await makeComponentRelease({ version, tag: `v${version}`, engine, window, output });
+  const request = async (url) => {
+    const filename = new URL(url).pathname.split("/").at(-1);
+    if (filename === `branch-release-${process.platform}-${process.arch}.json`) return new Response(JSON.stringify(release));
+    return new Response(await readFile(join(output, filename)));
+  };
+  return { release, request };
+}
+
+const freeGuard = async (replace) => await replace();
+const busyGuard = async () => undefined;
+
+test("a newer release replaces a staged update the running engine never started, in place", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  assert.equal(await source.refreshComponentUpdate(cfg, request), true);
+  const staged = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  const served = (await source.readComponentUpdateStatus(cfg)).previousWindowDir;
+  const newer = await newerRelease(context);
+  // Without the desktop's swap guard nothing is replaced.
+  assert.equal(await source.refreshComponentUpdate(cfg, newer.request), false);
+  // The served window (the running build's) must stay valid at every moment of the replacement.
+  let checks = 0, missing = 0;
+  const guard = async (replace) => {
+    const probe = setInterval(() => { checks++; if (!existsSync(join(served, "index.html"))) missing++; }, 0);
+    try { return await replace(); } finally { clearInterval(probe); }
+  };
+  assert.equal(await source.refreshComponentUpdate(cfg, newer.request, { underSwapGuard: guard }), true);
+  assert.ok(checks > 0); assert.equal(missing, 0, "the window the desktop serves went missing during the replacement");
+  const status = await source.readComponentUpdateStatus(cfg);
+  assert.equal(status.componentsPendingVersion, "0.4.4");
+  assert.equal(status.previousWindowDir, served, "the running build's window moved");
+  assert.equal(await readFile(join(served, "index.html"), "utf8"), "old window");
+  const selected = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  assert.notEqual(selected, staged);
+  assert.equal(await readFile(join(cfg.windowDir, "index.html"), "utf8"), "<title>0.4.4 window</title>");
+  await assert.rejects(readdir(staged), { code: "ENOENT" }, "the superseded staged engine was left on disk");
+  assert.equal(await source.rollbackComponentUpdate(cfg), true); await unchanged(cfg);
+}));
+
+test("a staged update is not replaced while the swap guard is held, or once its engine runs", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  await source.refreshComponentUpdate(cfg, request);
+  const staged = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  const newer = await newerRelease(context);
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  // An update or recovery holds the guard: the newer download is discarded, the staged pair stays.
+  assert.equal(await source.refreshComponentUpdate(cfg, newer.request, { underSwapGuard: busyGuard }), false);
+  assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), staged);
+  assert.deepEqual((await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.4-")), [], "the discarded download was left on disk");
+  // The staged engine already runs: it is never replaced underneath itself.
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), staged + "\n");
+  assert.equal(await source.refreshComponentUpdate(cfg, newer.request, { underSwapGuard: freeGuard }), false);
+  assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), staged);
+}));
+
+/** Fails the replacement's folder moves chosen by `fails(from, to)`; every other move runs for real. */
+async function withFailingMoves(fails, run) {
+  const files = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update-files.js")));
+  source.setReplacementMoveForTests(async (from, to) => {
+    if (fails(from, to)) throw Object.assign(new Error(`EPERM: operation not permitted, rename '${from}'`), { code: "EPERM" });
+    return files.move(from, to);
+  });
+  try { return await run(); } finally { source.setReplacementMoveForTests(undefined); }
+}
+
+test("a replacement that fails part way puts the staged pair back; the served window never moves", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  await source.refreshComponentUpdate(cfg, request);
+  const staged = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  const journal = await readFile(join(cfg.dataDir, "component-update-pending.json"), "utf8");
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  const served = (await source.readComponentUpdateStatus(cfg)).previousWindowDir;
+  const newer = await newerRelease(context);
+  const logs = [];
+  let checks = 0, missing = 0;
+  const guard = async (replace) => {
+    const probe = setInterval(() => { checks++; if (!existsSync(join(served, "index.html"))) missing++; }, 0);
+    try { return await replace(); } finally { clearInterval(probe); }
+  };
+  // As Defender holding the just-extracted window: moving the newer window into place fails.
+  await withFailingMoves((from, to) => to === cfg.windowDir && from.includes("release-0.4.4-"), () =>
+    assert.rejects(source.refreshComponentUpdate(cfg, newer.request, { underSwapGuard: guard, log: line => logs.push(line) }), /EPERM/));
+  assert.ok(checks > 0); assert.equal(missing, 0, "the window the desktop serves went missing");
+  assert.equal(await readFile(join(served, "index.html"), "utf8"), "old window");
+  // The held staged pair is back exactly as it was, still offered.
+  assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), staged);
+  assert.equal(await readFile(join(cfg.dataDir, "component-update-pending.json"), "utf8"), journal);
+  assert.equal(await readFile(join(cfg.windowDir, "index.html"), "utf8"), "<title>new window</title>");
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.3");
+  assert.deepEqual((await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.4-")), [], "the newer download was left on disk");
+  assert.match(logs.join("\n"), /0\.4\.3 stays staged/);
+}));
+
+test("a replacement whose undo also fails rolls back to the running build, and says where the window now is", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  await source.refreshComponentUpdate(cfg, request);
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  const newer = await newerRelease(context);
+  await withFailingMoves((from, to) => to === cfg.windowDir, () =>
+    assert.rejects(source.refreshComponentUpdate(cfg, newer.request, { underSwapGuard: async replace => await replace() }), /EPERM/));
+  await unchanged(cfg);
+  const status = await source.readComponentUpdateStatus(cfg);
+  assert.equal(status.publicationInProgress, false);
+  assert.equal(status.previousWindowDir, null, "the desktop must now serve windowDir, which holds the running build");
+}));
+
+test("a manifest that goes back to the running version withdraws the staged pair instead of staging a copy", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  await source.refreshComponentUpdate(cfg, request);
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  await writeFile(join(cfg.dataDir, "component-update-version.txt"), "0.4.2\n");
+  const back = await newerRelease(context, "0.4.2");
+  const withdrawn = [];
+  assert.equal(await source.refreshComponentUpdate(cfg, back.request, { underSwapGuard: freeGuard,
+    onWithdrawal: version => withdrawn.push(version) }), false);
+  assert.deepEqual(withdrawn, ["0.4.3"]);
+  await unchanged(cfg);
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, null);
+  assert.deepEqual((await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.2-")), [], "a copy of the running version was staged");
+}));
+
+test("a replacement interrupted mid-way rolls back to the running build", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  await source.refreshComponentUpdate(cfg, request);
+  const staged = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  const journal = JSON.parse(await readFile(join(cfg.dataDir, "component-update-pending.json"), "utf8"));
+  // As a crash right after the replacement journal was written and the staged window moved aside.
+  await writeFile(join(cfg.dataDir, "component-update-pending.json"), JSON.stringify({ ...journal, phase: "prepared", engineNext: join(cfg.dataDir, "updates", "next", "engine"), engineReplaced: staged }));
+  await rename(cfg.windowDir, `${staged}-superseded-window`);
+  await source.recoverComponentUpdate(cfg);
+  await unchanged(cfg);
+}));
+
 test("readiness confirmation records version and repeated poll avoids assets", async () => fixture(async ({ cfg, request, requests }) => {
   await source.refreshComponentUpdate(cfg, request); await source.confirmComponentUpdate(cfg);
   assert.equal(await readFile(join(cfg.dataDir, "component-update-version.txt"), "utf8"), "0.4.3\n");
@@ -110,6 +249,130 @@ test("readiness confirmation records version and repeated poll avoids assets", a
   assert.equal(await source.refreshComponentUpdate(cfg, request), false);
   assert.equal(requests.length, 1);
   assert.equal(await source.rollbackComponentUpdate(cfg), false);
+}));
+
+test("Undo stages the previous release, confirms it, and never rejects the current good release", async () => fixture(async ({ cfg, request, release }) => {
+  await source.refreshComponentUpdate(cfg, request);
+  await source.confirmComponentUpdate(cfg, undefined, true);
+  assert.equal(await source.canUndoComponentUpdate(cfg), true);
+  const current = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  assert.equal(await source.prepareComponentUpdateUndo(cfg), true);
+  assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), cfg.engineDir);
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.2");
+  await source.confirmComponentUpdate(cfg, undefined, true);
+  await source.confirmComponentUpdateUndo(cfg);
+  assert.equal((await source.readComponentUpdateStatus(cfg)).currentVersion, "0.4.2");
+  assert.equal(await source.componentReleaseRejected(cfg, release), true, "the intentionally undone release must not be restaged");
+  assert.equal(await exists(current), true, "Undo retained the outgoing release for rollback");
+}, async ({ cfg }) => {
+  await mkdir(cfg.engineDir, { recursive: true });
+  await writeFile(join(cfg.dataDir, "component-update-version.txt"), "0.4.2\n");
+}));
+
+test("a failed Undo restores its receipt and leaves the current release eligible", async () => fixture(async ({ cfg, request, release }) => {
+  await source.refreshComponentUpdate(cfg, request);
+  await source.confirmComponentUpdate(cfg, undefined, true);
+  const current = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  assert.equal(await source.prepareComponentUpdateUndo(cfg), true);
+  await source.rollbackComponentUpdateUndo(cfg);
+  assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), current);
+  assert.equal(await source.canUndoComponentUpdate(cfg), true, "Undo should be retryable");
+  assert.equal(await source.componentReleaseRejected(cfg, release), false, "failed Undo must not blacklist the current release");
+}, async ({ cfg }) => {
+  await mkdir(cfg.engineDir, { recursive: true });
+  await writeFile(join(cfg.dataDir, "component-update-version.txt"), "0.4.2\n");
+}));
+
+test("confirmed update retains current and previous releases but prunes older updater folders", async () => fixture(async ({ cfg, request }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const previous = join(updates, "release-0.4.2-abcdef");
+  const stale = join(updates, "release-0.4.1-123abc");
+  const desktopStage = join(updates, "desktop-0.4.3-123abc");
+  for (const folder of [previous, stale, desktopStage]) {
+    await mkdir(join(folder, "engine"), { recursive: true });
+    await writeFile(join(folder, "engine", "branch.mjs"), "old engine");
+    await writeFile(join(folder, ".release-complete"), "");
+  }
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(previous, "engine") + "\n");
+  await source.refreshComponentUpdate(cfg, request);
+  const current = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  assert.equal(await exists(stale), true, "nothing is pruned before readiness confirmation");
+  const prune = await source.confirmComponentUpdate(cfg, undefined, true);
+  assert.equal(await exists(stale), true, "confirmation does not prune before the app reports ready");
+  assert.equal(typeof prune, "function");
+  await prune();
+  assert.equal(await exists(current), true);
+  assert.equal(await exists(previous), true, "the last healthy engine remains available for rollback");
+  assert.equal(await exists(stale), false);
+  assert.equal(await exists(desktopStage), true, "desktop staging is not an engine release");
+}));
+
+test("prune retains live and incomplete releases while deleting an unrelated complete release", async () => fixture(async ({ cfg, request }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const live = join(updates, "release-0.4.0-111aaa");
+  const desktopRunning = join(updates, "release-0.4.0-444ddd");
+  const staging = join(updates, "release-0.4.0-222bbb");
+  const stale = join(updates, "release-0.4.0-333ccc");
+  for (const folder of [live, desktopRunning, staging, stale]) await mkdir(join(folder, "engine"), { recursive: true });
+  for (const folder of [live, desktopRunning, stale]) await writeFile(join(folder, ".release-complete"), "");
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), join(desktopRunning, "engine") + "\n");
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", join(live, "engine", "branch.mjs")], { stdio: "ignore", windowsHide: true });
+  try {
+    await new Promise((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject); });
+    await source.refreshComponentUpdate(cfg, request);
+    await source.confirmComponentUpdate(cfg);
+    assert.equal(await exists(live), true, "a node host using an older release stays runnable");
+    assert.equal(await exists(desktopRunning), true, "the desktop's running-engine pointer is retained");
+    assert.equal(await exists(staging), true, "an incomplete download is not pruned");
+    assert.equal(await exists(stale), false, "unrelated completed release is pruned");
+  } finally {
+    child.kill();
+    await new Promise(resolve => child.once("exit", resolve));
+  }
+}));
+
+test("prune retains an engine selected through a symlinked data directory", { skip: process.platform === "win32" }, async () => fixture(async ({ root, cfg, request }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const live = join(updates, "release-0.4.0-111aaa");
+  const stale = join(updates, "release-0.4.0-222bbb");
+  for (const folder of [live, stale]) {
+    await mkdir(join(folder, "engine"), { recursive: true });
+    await writeFile(join(folder, ".release-complete"), "");
+  }
+  const alias = join(root, "linked-data");
+  await symlink(cfg.dataDir, alias, "dir");
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), join(alias, "updates", "release-0.4.0-111aaa", "engine") + "\n");
+  await source.refreshComponentUpdate(cfg, request);
+  await source.confirmComponentUpdate(cfg);
+  assert.equal(await exists(live), true, "the running engine's real path is retained");
+  assert.equal(await exists(stale), false, "an unrelated stale release is pruned");
+}));
+
+test("confirmed update adopts only old marker-less releases with matching build hashes", async () => fixture(async ({ cfg, request }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const valid = join(updates, "release-0.4.1-build-abcdef123456-111aaa");
+  const previous = join(updates, "release-0.4.1-build-abcdef123456-444ddd");
+  const badHash = join(updates, "release-0.4.1-build-999999999999-222bbb");
+  const incomplete = join(updates, "release-0.4.1-build-abcdef123456-333ccc");
+  const commit = "abcdef123456" + "0".repeat(28);
+  for (const folder of [valid, previous, badHash, incomplete]) {
+    await mkdir(join(folder, "engine", "dist"), { recursive: true });
+    await writeFile(join(folder, "engine", "dist", "build-info.json"), JSON.stringify({ commit, buildId: `2026.9.8-${commit.slice(0, 12)}` }));
+    await utimes(folder, new Date(0), new Date(0));
+  }
+  for (const folder of [valid, previous, badHash]) {
+    await writeFile(join(folder, "engine", "branch.mjs"), "entry");
+    await writeFile(join(folder, "engine", "package.json"), "{}");
+  }
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(previous, "engine") + "\n");
+  await source.refreshComponentUpdate(cfg, request);
+  await source.confirmComponentUpdate(cfg);
+  assert.equal(await exists(valid), false, "verified legacy release is pruned");
+  assert.equal(await exists(previous), true, "rollback release remains available");
+  assert.equal(await exists(join(previous, ".release-complete")), true, "verified rollback release gains its marker");
+  assert.equal(await exists(badHash), true, "mismatched build hash is retained");
+  assert.equal(await exists(incomplete), true, "incomplete legacy folder is retained");
+  assert.equal(await exists(join(badHash, ".release-complete")), false);
 }));
 
 test("new per-user installation stages components and creates a stable local token", async () => fixture(async ({ cfg, request }) => {
