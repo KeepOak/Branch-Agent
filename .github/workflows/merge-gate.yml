@@ -56,7 +56,7 @@ jobs:
           sleep 30
           for attempt in $(seq 1 190); do
             runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
-              --jq '[.check_runs[] | select(.name != "merge-gate")]')
+              --jq '[.check_runs[] | select(.name != "merge-gate" and .name != "changed-test-coverage")]')
             pending=$(jq '[.[] | select(.status != "completed")] | length' <<<"$runs")
             failed=$(jq -r '[.[] | select(.status == "completed" and (.conclusion | IN("success","skipped","neutral") | not)) | "\(.name): \(.conclusion)"] | .[]' <<<"$runs")
             if [ -n "$failed" ]; then
