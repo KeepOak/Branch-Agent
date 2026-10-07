@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:extensions/reef/protocol/guard.test.ts (atlas SAFETY-0127). Changed for Branch: Preserved current-main immutable guard model coverage; SDK and grove names follow the rebrand map.
 import { describe, expect, it } from "vitest";
 import { createAnthropicGuard, createOpenAiGuard, type FetchLike } from "./guard-adapters.js";
 import {
