@@ -1,10 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
 import { createServer, request as httpRequest } from "node:http";
-import { getFreePort } from "../../test-utils/ports.js";
+import { describe, expect, it, vi } from "vitest";
 import {
   isStandbyPortPlaceholderHeld,
   releaseStandbyPortPlaceholder,
 } from "../../infra/standby-port-placeholder.js";
+import { getFreePort } from "../../test-utils/ports.js";
 import {
   GATEWAY_STANDBY_READY_MESSAGE,
   GATEWAY_STANDBY_TAKE_OVER_MESSAGE,
@@ -173,7 +173,9 @@ describe("gateway standby", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 400));
     expect(done).toBe(false);
-    expect(notify).not.toHaveBeenCalledWith(expect.objectContaining({ type: GATEWAY_STANDBY_TAKING_OVER_MESSAGE }));
+    expect(notify).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: GATEWAY_STANDBY_TAKING_OVER_MESSAGE }),
+    );
     signal();
     await standby;
     expect(done).toBe(true);
@@ -207,30 +209,34 @@ describe("gateway standby", () => {
 
   it("hears the launcher's take-over message even when it arrives before the standby reports ready", async () => {
     const sent: string[] = [];
-    const standby = waitInGatewayStandby(
-      {},
-      {
-        // A fast launcher: the message lands while the standby is still warming.
-        warm: async () => {
-          process.emit("message", { type: "something-else" }, undefined);
-          process.emit("message", { type: GATEWAY_STANDBY_TAKE_OVER_MESSAGE }, undefined);
-        },
-        hasLiveOwner: async () => false,
-        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-        notify: (message) => sent.push(message.type),
-        launcherGone: () => false,
-        launchedWithChannel: true,
+    const env = { BRANCH_GATEWAY_STANDBY: "1" };
+    const standby = waitInGatewayStandby(env, {
+      // A fast launcher: the message lands while the standby is still warming.
+      warm: async () => {
+        process.emit("message", { type: "something-else" }, undefined);
+        process.emit("message", { type: GATEWAY_STANDBY_TAKE_OVER_MESSAGE }, undefined);
       },
-    );
+      hasLiveOwner: async () => false,
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      notify: (message) => sent.push(message.type),
+      launcherGone: () => false,
+      launchedWithChannel: true,
+    });
     await standby;
     expect(sent).toEqual([GATEWAY_STANDBY_READY_MESSAGE, GATEWAY_STANDBY_TAKING_OVER_MESSAGE]);
+    expect(env.BRANCH_GATEWAY_STANDBY).toBeUndefined();
   });
 
   it("refuses to run as a standby without a launcher that can tell it to take over", async () => {
     await expect(
       waitInGatewayStandby(
         {},
-        { warm: async () => {}, hasLiveOwner: async () => false, notify: () => {}, launchedWithChannel: false },
+        {
+          warm: async () => {},
+          hasLiveOwner: async () => false,
+          notify: () => {},
+          launchedWithChannel: false,
+        },
       ),
     ).rejects.toThrow(/IPC channel/);
   });

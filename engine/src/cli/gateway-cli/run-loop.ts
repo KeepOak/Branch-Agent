@@ -8,6 +8,7 @@ import {
   markGatewayRestartTrace,
   startGatewayRestartTrace,
 } from "../../gateway/restart-trace.js";
+import { isGatewayHandoffFatalError } from "../../gateway/server-handoff-error.js";
 import { GatewayStartupCleanupError } from "../../gateway/server-shutdown.js";
 import type { startGatewayServer } from "../../gateway/server.js";
 import type { GatewayInstallationReplacement } from "../../gateway/stale-install.js";
@@ -16,7 +17,6 @@ import type { GatewayBootLifecycleCompletion } from "../../infra/gateway-boot-li
 import { acquireGatewayLock, readActiveGatewayLockIdentity } from "../../infra/gateway-lock.js";
 import { consumeGatewaySuspendHandoff } from "../../infra/gateway-suspend-coordinator.js";
 import type { GatewayRestartIntent } from "../../infra/restart-intent.js";
-import { isGatewayHandoffFatalError } from "../../gateway/server-handoff-error.js";
 import { cleanupSnapshotOperations } from "../../infra/sqlite-readonly-location-cleanup.js";
 import { findStartupMaintenanceRequiredError } from "../../infra/startup-maintenance-required.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -77,7 +77,13 @@ export async function runGatewayLoop(params: {
   completeBoot?: (completion: GatewayBootLifecycleCompletion) => void;
   onRestartStartupFailure?: GatewayRestartStartupFailureHandler;
   /** Internal lifecycle probe for tests of requests that bypass signal prefilters. */
-  onRequestReady?: (request: (action: GatewayRunSignalAction, signal: GatewayRunSignalRequest["signal"], reason?: string) => void) => void;
+  onRequestReady?: (
+    request: (
+      action: GatewayRunSignalAction,
+      signal: GatewayRunSignalRequest["signal"],
+      reason?: string,
+    ) => void,
+  ) => void;
   /** The host attach role, handed over with the state in a desktop handoff and taken back on rollback. */
   hostRole?: { release: () => Promise<void>; reclaim: () => Promise<boolean> };
 }) {
@@ -114,6 +120,7 @@ export async function runGatewayLoop(params: {
   processLifetime?.port1.ref();
   let server: Awaited<ReturnType<typeof startGatewayServer>> | null = null;
   let desktopDeactivation: Promise<void> | undefined;
+  let desktopDeactivationDeadline = 0;
   let handoffHardExitTimer: ReturnType<typeof setTimeout> | undefined;
   let hostLifecycle: ReturnType<typeof createGatewayHostLifecycle> | undefined;
   let startupOperations = createGatewayStartupOperations();
@@ -175,7 +182,11 @@ export async function runGatewayLoop(params: {
     void hostLifecycle?.retire();
     cleanupSignals();
     params.runtime.exit(
-      fatalHandoffFailure ? 1 : hostExitRequested && code === 0 ? Number(process.exitCode ?? 0) : code,
+      fatalHandoffFailure
+        ? 1
+        : hostExitRequested && code === 0
+          ? Number(process.exitCode ?? 0)
+          : code,
     );
   };
   const exitProcessAfterLogFlush = async (
@@ -965,7 +976,9 @@ export async function runGatewayLoop(params: {
     hostedStop?: ReturnType<typeof createGatewayHostLifecycle>,
   ) => {
     if (action !== "stop" && desktopDeactivation) {
-      gatewayLog.warn(`restart ignored while desktop handoff is deactivated (${restartReason ?? signal})`);
+      gatewayLog.warn(
+        `restart ignored while desktop handoff is deactivated (${restartReason ?? signal})`,
+      );
       return;
     }
     if (hostExitRequested && action !== "stop") {
@@ -1180,6 +1193,7 @@ export async function runGatewayLoop(params: {
         return;
       }
       if (!desktopDeactivation) deadlineRecovery = undefined;
+      if (!desktopDeactivation) desktopDeactivationDeadline = Date.now() + 18_000;
       desktopDeactivation ??= activeServer.deactivate().catch((error: unknown) => {
         if (isGatewayHandoffFatalError(error)) {
           fatalHandoffFailure = true;
@@ -1195,9 +1209,64 @@ export async function runGatewayLoop(params: {
       void desktopDeactivation.then(
         async () => {
           // The successor claims the host role as it takes over: let it go with the state.
-          await params.hostRole?.release().catch((error: unknown) => {
-            gatewayLog.warn(`desktop handoff could not release the host role: ${String(error)}`);
-          });
+          try {
+            if (params.hostRole) {
+              const remaining = desktopDeactivationDeadline - Date.now();
+              if (remaining <= 0) {
+                throw new GatewayHandoffFatalError(
+                  "desktop handoff host-role release exceeded 18 seconds",
+                );
+              }
+              let timer: ReturnType<typeof setTimeout> | undefined;
+              try {
+                await Promise.race([
+                  params.hostRole.release(),
+                  new Promise<never>((_, reject) => {
+                    timer = setTimeout(
+                      () =>
+                        reject(
+                          new GatewayHandoffFatalError(
+                            "desktop handoff host-role release exceeded 18 seconds",
+                          ),
+                        ),
+                      remaining,
+                    );
+                  }),
+                ]);
+              } finally {
+                clearTimeout(timer);
+              }
+            }
+          } catch (error) {
+            gatewayLog.error(`desktop handoff could not release the host role: ${String(error)}`);
+            process.send?.({
+              type: "branch-desktop:deactivate-result",
+              id: incoming.id,
+              ok: false,
+              error: String(error),
+            });
+            if (isGatewayHandoffFatalError(error)) {
+              fatalHandoffFailure = true;
+              request("stop", "SIGTERM");
+              return;
+            }
+            void rollbackDesktopDeactivation("host-role release failed").then(
+              (restored) => {
+                if (!restored) {
+                  fatalHandoffFailure = true;
+                  request("stop", "SIGTERM");
+                }
+              },
+              (rollbackError: unknown) => {
+                gatewayLog.error(
+                  `desktop handoff host-role rollback failed: ${String(rollbackError)}`,
+                );
+                fatalHandoffFailure = true;
+                request("stop", "SIGTERM");
+              },
+            );
+            return;
+          }
           process.send?.({ type: "branch-desktop:deactivate-result", id: incoming.id, ok: true });
           // Even if the desktop never sends drain-stop, the predecessor must
           // stop before the successor considers its leases expired.
@@ -1232,12 +1301,22 @@ export async function runGatewayLoop(params: {
       }
       void desktopDeactivation.then(
         () => {
-          void rollbackDesktopDeactivation("desktop rollback").then((restored) => {
-            process.send?.({ type: "branch-desktop:rollback-result", id: incoming.id, ok: restored });
-          }).catch((error: unknown) => {
-            gatewayLog.error(`desktop handoff rollback failed: ${String(error)}`);
-            process.send?.({ type: "branch-desktop:rollback-result", id: incoming.id, ok: false });
-          });
+          void rollbackDesktopDeactivation("desktop rollback")
+            .then((restored) => {
+              process.send?.({
+                type: "branch-desktop:rollback-result",
+                id: incoming.id,
+                ok: restored,
+              });
+            })
+            .catch((error: unknown) => {
+              gatewayLog.error(`desktop handoff rollback failed: ${String(error)}`);
+              process.send?.({
+                type: "branch-desktop:rollback-result",
+                id: incoming.id,
+                ok: false,
+              });
+            });
         },
         () =>
           process.send?.({ type: "branch-desktop:rollback-result", id: incoming.id, ok: false }),
@@ -1302,7 +1381,26 @@ export async function runGatewayLoop(params: {
     // A failed deactivate restored the still-healthy owner and cleared the
     // handoff. Disconnect is not a reason to stop that engine.
     if (!desktopDeactivation || shuttingDown) return;
-    const successor = await readActiveGatewayLockIdentity({ env: process.env }).catch(() => null);
+    let successor: Awaited<ReturnType<typeof readActiveGatewayLockIdentity>>;
+    try {
+      successor = await readActiveGatewayLockIdentity({ env: process.env });
+    } catch (error) {
+      gatewayLog.warn(`desktop handoff could not inspect successor lock: ${String(error)}`);
+      // Unknown ownership is not evidence of a successor. Reclaim if possible,
+      // but never stop this predecessor solely because inspection failed.
+      try {
+        if (await rollbackDesktopDeactivation("desktop disconnected after lock read failed"))
+          return;
+      } catch (rollbackError) {
+        gatewayLog.error(
+          `desktop handoff rollback failed after lock read: ${String(rollbackError)}`,
+        );
+      }
+      // If another process temporarily holds the lock, inspect again rather
+      // than treating this failed read as proof that it became the successor.
+      setTimeout(() => void recoverAfterDesktopDisconnect(), 1_000);
+      return;
+    }
     if (successor === undefined) {
       try {
         if (await rollbackDesktopDeactivation("desktop disconnected")) return;

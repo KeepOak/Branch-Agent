@@ -22,7 +22,8 @@ export const GATEWAY_STANDBY_TAKING_OVER_MESSAGE = "branch-desktop:taking-over";
 function waitForTakeOverMessage(): Promise<void> {
   return new Promise((resolve) => {
     const onMessage = (message: unknown) => {
-      if ((message as { type?: unknown } | null)?.type !== GATEWAY_STANDBY_TAKE_OVER_MESSAGE) return;
+      if ((message as { type?: unknown } | null)?.type !== GATEWAY_STANDBY_TAKE_OVER_MESSAGE)
+        return;
       process.off("message", onMessage);
       resolve();
     };
@@ -136,12 +137,19 @@ export async function waitInGatewayStandby(
   const warmMs = now() - started;
   const port = standbyPort(env);
   // Holding the port from now on means nothing else can take it before the real gateway binds it.
-  const listener = port === undefined ? undefined : await (deps.listen ?? listenGatewayStandbyPort)(port);
+  const listener =
+    port === undefined ? undefined : await (deps.listen ?? listenGatewayStandbyPort)(port);
   let handedOver = false;
   try {
     const notify =
-      deps.notify ?? ((message: object) => (process.connected ? process.send?.(message) : undefined));
-    notify({ type: GATEWAY_STANDBY_READY_MESSAGE, pid: process.pid, warmMs, ...(port ? { port } : {}) });
+      deps.notify ??
+      ((message: object) => (process.connected ? process.send?.(message) : undefined));
+    notify({
+      type: GATEWAY_STANDBY_READY_MESSAGE,
+      pid: process.pid,
+      warmMs,
+      ...(port ? { port } : {}),
+    });
     log.info(
       `standby: ready in ${Math.round(warmMs)}ms${port ? ` on port ${port}` : ""}; waiting for the launcher to hand over`,
     );
@@ -158,10 +166,17 @@ export async function waitInGatewayStandby(
       throw new Error("standby: the launcher went away before the current owner released state");
     }
     const waitMs = now() - waitStarted;
-    log.info(`standby: told to take over and the state is free after ${Math.round(waitMs)}ms; starting`);
-    notify({ type: GATEWAY_STANDBY_TAKING_OVER_MESSAGE, pid: process.pid, ...(port ? { port } : {}) });
+    log.info(
+      `standby: told to take over and the state is free after ${Math.round(waitMs)}ms; starting`,
+    );
+    notify({
+      type: GATEWAY_STANDBY_TAKING_OVER_MESSAGE,
+      pid: process.pid,
+      ...(port ? { port } : {}),
+    });
     // Keep the port until the real gateway binds it (server/http-listen.ts releases the placeholder then).
     if (listener) holdStandbyPortPlaceholder(listener);
+    delete env.BRANCH_GATEWAY_STANDBY;
     handedOver = true;
     return { warmMs, waitMs };
   } finally {

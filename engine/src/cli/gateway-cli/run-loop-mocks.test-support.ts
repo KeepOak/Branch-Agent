@@ -72,6 +72,9 @@ vi.mock("../../infra/launchd-stop-timeout.js", () => ({
 const acquireGatewayLock = vi.fn(async (_opts?: { port?: number }) => ({
   release: vi.fn(async () => {}),
 }));
+const readActiveGatewayLockIdentity = vi.fn<
+  typeof import("../../infra/gateway-lock.js").readActiveGatewayLockIdentity
+>(async () => undefined);
 const hostedStopExecute = vi.fn<HostedGatewayStop["execute"]>();
 const hostedStopDispose = vi.fn<HostedGatewayStop["dispose"]>();
 const hostedStopPrepare =
@@ -240,6 +243,8 @@ const armShutdownHardExitWatchdog = vi.fn(
 vi.mock("../../infra/gateway-lock.js", async (original) => ({
   ...(await original<typeof import("../../infra/gateway-lock.js")>()),
   acquireGatewayLock: (opts?: { port?: number }) => acquireGatewayLock(opts),
+  readActiveGatewayLockIdentity: (...args: Parameters<typeof readActiveGatewayLockIdentity>) =>
+    readActiveGatewayLockIdentity(...args),
 }));
 
 vi.mock("../../infra/restart.js", async (importOriginal) => {
@@ -380,6 +385,7 @@ async function runLoopWithStart(params: {
   beginBoot?: (startedAtMs: number) => void | Promise<void>;
   completeBoot?: (completion: GatewayBootLifecycleCompletion) => void;
   onRequestReady?: Parameters<typeof import("./run-loop.js").runGatewayLoop>[0]["onRequestReady"];
+  hostRole?: Parameters<typeof import("./run-loop.js").runGatewayLoop>[0]["hostRole"];
 }) {
   vi.resetModules();
   const { runGatewayLoop } = await import("./run-loop.js");
@@ -392,6 +398,7 @@ async function runLoopWithStart(params: {
     beginBoot: params.beginBoot,
     completeBoot: params.completeBoot,
     onRequestReady: params.onRequestReady,
+    hostRole: params.hostRole,
   });
   return { loopPromise };
 }
@@ -443,6 +450,15 @@ beforeEach(async () => {
   acquireGatewayLock.mockReset().mockImplementation(async () => ({
     release: vi.fn(async () => {}),
   }));
+  readActiveGatewayLockIdentity
+    .mockReset()
+    .mockImplementation(
+      (
+        await vi.importActual<typeof import("../../infra/gateway-lock.js")>(
+          "../../infra/gateway-lock.js",
+        )
+      ).readActiveGatewayLockIdentity,
+    );
   setPlatform("linux");
   readCgroup.mockReset().mockResolvedValue("0::/\n");
   systemctl.mockReset().mockResolvedValue({
@@ -556,6 +572,7 @@ export const runLoopFixture = {
   markGatewayRestartHandled,
   markUpdateRestartSentinelFailure,
   peekGatewayRestartReason,
+  readActiveGatewayLockIdentity,
   readCgroup,
   readLaunchdStopTimeout,
   readRestartSentinelReadOnly,
