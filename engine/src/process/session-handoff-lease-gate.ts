@@ -49,7 +49,18 @@ const gate = resolveGlobalSingleton(Symbol.for("branch.sessionHandoffLeaseGate")
   // A turn waits at most as long as a lease can live; normally the lease's own release or expiry frees it first.
   maxWaitMs: SESSION_HANDOFF_LEASE_MAX_AGE_MS,
   env: undefined as NodeJS.ProcessEnv | undefined,
+  /** When this process started stepping down (its own hold), if it is. */
+  ownHoldStartedAt: undefined as number | undefined,
 }));
+
+/**
+ * Called by this process's own hold (session-handoff-lease-holder.ts) as it starts stepping down, and with
+ * undefined when it calls the step-down off. From then on, a lease written at or after that moment belongs to an
+ * engine that came after this one, and this engine never waits for its successors: they wait for it.
+ */
+export function noteOwnSessionHandoffHold(startedAt: number | undefined): void {
+  gate.ownHoldStartedAt = startedAt;
+}
 
 /** The lane is free once its last holder's lease expires, whatever the holders still do. */
 function laneExpiresAt(held: HeldLane): number {
@@ -60,6 +71,9 @@ function laneExpiresAt(held: HeldLane): number {
 function admitLease(file: string, lease: SessionHandoffLease): void {
   // Our own leases (a step-down in this process) never hold our own work back.
   if (lease.pid === process.pid) return;
+  // Nor do our successors' (A steps down for B, B for C: A finishing a run must not wait on B's lease for it,
+  // while B waits on A). Every one of them was written after our own step-down started.
+  if (gate.ownHoldStartedAt !== undefined && lease.acquiredAt >= gate.ownHoldStartedAt) return;
   const existing = gate.lanes.get(lease.lane);
   if (existing?.holders.has(lease.ownerId)) return;
   if (!isSessionHandoffLeaseLive(lease)) {
@@ -206,4 +220,5 @@ export function resetSessionHandoffLeaseGateForTest(maxWaitMs = SESSION_HANDOFF_
   gate.scannedAt = Number.NEGATIVE_INFINITY;
   gate.maxWaitMs = maxWaitMs;
   gate.env = undefined;
+  gate.ownHoldStartedAt = undefined;
 }

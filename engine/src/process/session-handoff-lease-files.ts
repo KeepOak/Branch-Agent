@@ -213,7 +213,7 @@ export function writeSessionHandoffLease(dir: string, lane: string): { file: str
   return { file, lease };
 }
 
-/** Removes this holder's own lease file. */
-export function removeSessionHandoffLease(file: string, _lease?: SessionHandoffLease): void {
-  removeFile(file);
+/** Removes this holder's own lease file; false (and logged) when it is still there. */
+export function removeSessionHandoffLease(file: string, _lease?: SessionHandoffLease): boolean {
+  return removeFile(file);
 }

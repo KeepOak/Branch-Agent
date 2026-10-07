@@ -5,6 +5,7 @@ import {
   registerSessionLaneHandoffEnqueue,
 } from "./command-queue.js";
 import { GatewayDrainingError } from "./gateway-work-admission.js";
+import { noteOwnSessionHandoffHold } from "./session-handoff-lease-gate.js";
 import {
   removeSessionHandoffLease,
   resolveSessionHandoffLeaseDir,
@@ -22,12 +23,12 @@ export type SessionHandoffLeaseHold = {
   /** Resolves once every kept session was released (and `hasPendingWork` reports none). */
   readonly released: Promise<void>;
   /**
-   * Resolves true SESSION_HANDOFF_LEASE_MAX_WAIT_MS (330 s) after the hold started while sessions are still kept, or
-   * false once they were all released. At true the caller must stop the work it still runs in kept sessions (stop or
+   * Resolves true SESSION_HANDOFF_LEASE_MAX_WAIT_MS (330 s) after the hold started while it still holds (a kept
+   * session, or `hasPendingWork`), or false once it was released. At true the caller must stop the work it still runs in kept sessions (stop or
    * exit the process) before `expiresAt`, when successors run those sessions regardless.
    */
   readonly deadline: Promise<boolean>;
-  /** When the first kept lease expires for successors (its acquiredAt + SESSION_HANDOFF_LEASE_MAX_AGE_MS). */
+  /** When successors run the kept sessions regardless: the hold's start + SESSION_HANDOFF_LEASE_MAX_AGE_MS. */
   readonly expiresAt: number;
   /**
    * Stops leasing new sessions; from then on work for a session this hold does not keep is refused with
@@ -92,21 +93,36 @@ export function holdSessionHandoffLeases(
   let unregisterEnqueue: (() => void) | undefined;
   let sealed = false;
   let finished = false;
+  let leftoverTimer: ReturnType<typeof setInterval> | undefined;
   const lease = (lane: string) => {
     if (!held.has(lane)) held.set(lane, writeSessionHandoffLease(dir, lane));
   };
+  /** Removes a released lane's lease; one that could not be removed stays held and is tried again. */
+  const releaseLane = (lane: string) => {
+    const kept = held.get(lane);
+    if (kept && removeSessionHandoffLease(kept.file, kept.lease)) held.delete(lane);
+  };
   const releaseSync = () => {
-    for (const [lane, { file, lease: written }] of held) {
-      removeSessionHandoffLease(file, written);
-      held.delete(lane);
-    }
+    for (const lane of [...held.keys()]) releaseLane(lane);
   };
   const stopTimers = () => {
     if (timer) clearInterval(timer);
     if (deadlineTimer) clearTimeout(deadlineTimer);
     timer = undefined;
     deadlineTimer = undefined;
-    process.off("exit", releaseSync);
+    // A lease that could not be removed yet is tried again until it is gone, and once more at exit.
+    if (held.size === 0) {
+      process.off("exit", releaseSync);
+      return;
+    }
+    leftoverTimer ??= setInterval(() => {
+      releaseSync();
+      if (held.size > 0) return;
+      clearInterval(leftoverTimer);
+      leftoverTimer = undefined;
+      process.off("exit", releaseSync);
+    }, POLL_MS);
+    leftoverTimer.unref?.();
   };
   const finish = () => {
     if (finished) return;
@@ -135,28 +151,28 @@ export function holdSessionHandoffLeases(
     }
   };
   const poll = () => {
-    for (const [lane, { file, lease: written }] of held) {
-      if (stillBusy(lane)) continue;
-      removeSessionHandoffLease(file, written);
-      held.delete(lane);
+    for (const lane of [...held.keys()]) {
+      if (!stillBusy(lane)) releaseLane(lane);
     }
     if (held.size === 0 && !pendingWork()) finish();
+  };
+  const onEnqueue = (lane: string) => {
+    if (held.has(lane)) return;
+    // Sealed: the state is (being) released, so a session this engine does not keep is its successor's now.
+    if (sealed) throw new GatewayDrainingError();
+    if (!finished && opts.leaseNewLanes) lease(lane);
   };
   try {
     for (const lane of opts.lanes ?? listBusySessionLanes()) {
       if (lane.startsWith(SESSION_LANE_PREFIX)) lease(lane);
     }
-    unregisterEnqueue = registerSessionLaneHandoffEnqueue((lane) => {
-      if (held.has(lane)) return;
-      // Sealed: the state is (being) released, so a session this engine does not keep is its successor's now.
-      if (sealed) throw new GatewayDrainingError();
-      if (!finished && opts.leaseNewLanes) lease(lane);
-    });
+    unregisterEnqueue = registerSessionLaneHandoffEnqueue(onEnqueue);
   } catch (error) {
     releaseSync();
     unregisterEnqueue?.();
     throw error;
   }
+  noteOwnSessionHandoffHold(holdStartedAt);
   const lanes = [...held.keys()];
   // An engine that exits with leases still held must not leave its successor waiting for a dead holder's files.
   process.once("exit", releaseSync);
@@ -176,12 +192,15 @@ export function holdSessionHandoffLeases(
     },
     seal: () => {
       sealed = true;
+      // A hold that already finished dropped its hook; a sealed engine still refuses unheld sessions until exit.
+      unregisterEnqueue ??= registerSessionLaneHandoffEnqueue(onEnqueue);
     },
     releaseAll: () => {
       releaseSync();
       sealed = false;
       finished = false;
       finish();
+      noteOwnSessionHandoffHold(undefined);
     },
   };
 }
