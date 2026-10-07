@@ -4,7 +4,6 @@ engine:src/commands/control-ui-handoff.test.ts
 engine:src/commands/dashboard.links.test.ts
 engine:src/commands/dashboard.test.ts
 engine:src/config/config-write-guard.test.ts
-engine:src/config/env-substitution.behaviour.test.ts
 engine:src/config/env-substitution.test.ts
 engine:src/config/includes.test.ts
 engine:src/config/includes.top-level-key.test.ts
@@ -20,7 +19,6 @@ engine:src/gateway/server-tailscale.test.ts
 engine:src/infra/dotenv-global.test.ts
 engine:src/infra/dotenv-homebrew.test.ts
 engine:src/infra/dotenv-workspace-blocklist.test.ts
-engine:src/infra/dotenv.behaviour.test.ts
 engine:src/infra/dotenv.test.ts
 engine:src/infra/ssh-client.test.ts
 engine:src/infra/ssh-client.windows.test.ts
