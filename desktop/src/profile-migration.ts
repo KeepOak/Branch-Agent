@@ -181,12 +181,12 @@ export function prepareNormalProfile(home: string, afterCopy?: () => void, log?:
       created.push(normal);
     } else if (!lstatSync(normal).isDirectory()) {
       archive = pending.length ? join(home, pending[pending.length - 1]!) : undefined;
-      throw new Error("Normal profile root is not a directory");
+      throw Object.assign(new Error("Normal profile root is not a directory"), { path: normal });
     }
     if (!existsSync(marker)) {
       if (pending.length) archive = join(home, pending[pending.length - 1]!);
       else if (existsSync(dev)) {
-        if (!lstatSync(dev).isDirectory()) throw new Error("Legacy profile root is not a directory");
+        if (!lstatSync(dev).isDirectory()) throw Object.assign(new Error("Legacy profile root is not a directory"), { path: dev });
         const stamp = new Date().toISOString().replace(/[:.]/g, "-");
         archive = join(home, `.branch-dev.migrated-${stamp}`);
         backup = join(home, `.migration-backup-${stamp}`);
@@ -211,7 +211,7 @@ export function prepareNormalProfile(home: string, afterCopy?: () => void, log?:
       // fs.cpSync on Node 24 died natively on a dangling junction before this catch could run.
       mergeMissing(source, normal, counts, created, afterCopy, true, log);
       if (existsSync(dev) && archive && !existsSync(archive)) renameWithRetry(dev, archive);
-      if (archive && !lstatSync(archive).isDirectory()) throw new Error("Legacy profile archive is not a directory");
+      if (archive && !lstatSync(archive).isDirectory()) throw Object.assign(new Error("Legacy profile archive is not a directory"), { path: archive });
     }
     if (writeDefaultConfig(config, normal)) created.push(config);
     if (!existsSync(marker)) {
