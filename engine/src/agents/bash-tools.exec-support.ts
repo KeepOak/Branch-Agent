@@ -1,3 +1,4 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/agents/bash-tools.exec-support.ts (atlas TOOLS-0169). Changed for Branch: apply DECISIONS.md item 133 to escaped-newline OOM guidance through the rename map.
 import type { ExecHost } from "../infra/exec-approvals.js";
 import { requireValidExecTarget } from "../infra/exec-approvals.js";
 import { normalizeAgentId } from "../routing/session-key.js";
@@ -39,7 +40,7 @@ export function buildExecForegroundResult(params: {
       params.outcome.exitReason === "signal" &&
       params.outcome.oomScoreWrapperSelected === true &&
       (params.outcome.exitSignal === "SIGKILL" || params.outcome.exitSignal === 9)
-        ? "\n\nBranch selected its Linux OOM-score wrapper, which attempts to set this child's oom_score_adj to 1000. " +
+        ? "\n\nBranch Agent selected its Linux OOM-score wrapper, which attempts to set this child's oom_score_adj to 1000. " +
           "SIGKILL alone does not identify whether the Linux OOM killer, an operator, or another process sent it. " +
           "Check cgroup memory events or kernel logs. If they show memory pressure, narrow the command or adjust memory, concurrency, or resource limits."
         : "";

@@ -205,6 +205,12 @@
       "key": "openclaw"
     },
     {
+      "why": "exec OOM guidance starts with escaped newline characters; retain the product name from DECISIONS.md item 133",
+      "re": "(?<=\\\\n\\\\n)OpenClaw(?= selected its Linux OOM-score wrapper)",
+      "to": "Branch Agent",
+      "key": "openclaw"
+    },
+    {
       "why": "an outside service or tool keeps its own ids in code; only the name people read changes (item 135) Also before a closing quote or backtick and before an ellipsis (\"ClawHub.\" and \"ClawHub…\" inside strings).",
       "re": "(?<![\\w./@:$#%&=+-])ClawHub(?=(?:'s)?(?:[\\s,;!?)\"'`<>*\\]…]|[.:](?:[\\s\"'`]|$)|$))",
       "to": "Seedbank",
