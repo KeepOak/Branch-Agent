@@ -431,9 +431,11 @@ export function registerControlUiMobileBootstrapSuite(): void {
           bootstrapToken: bootstrap.bootstrapToken,
         });
         const pendingResponse = await connectWatch();
-        expect(pendingResponse.status).toBe(202);
-        await approvePendingDevice(identity.deviceId);
-        const response = await connectWatch();
+        expect(pendingResponse.status).toBe(voice ? 202 : 200);
+        if (voice) {
+          await approvePendingDevice(identity.deviceId);
+        }
+        const response = voice ? await connectWatch() : pendingResponse;
         expect(response.status).toBe(200);
         await readJson(response);
       } else {
@@ -457,7 +459,9 @@ export function registerControlUiMobileBootstrapSuite(): void {
       }
       expect(new Set((await getPairedDevice(identity.deviceId))?.approvedScopes)).toEqual(
         new Set(
-          voice ? ["operator.read", "operator.talk"] : ["operator.read", "operator.approvals"],
+          voice
+            ? ["operator.read", "operator.approvals", "operator.talk"]
+            : ["operator.read", "operator.approvals"],
         ),
       );
 
@@ -465,7 +469,9 @@ export function registerControlUiMobileBootstrapSuite(): void {
         oldOperatorClosed,
         rpcReq(oldOperator, "health").then((reply) => reply.ok),
       ]);
-      expect(oldGrantStillConnected).toBe(!voice);
+      // Manual approval merges the operator grant without closing an already
+      // authenticated narrow WebSocket. Watch HTTP rotates its token at handoff.
+      expect(oldGrantStillConnected).toBe(!voice || !watchHttp);
     } finally {
       for (const socket of sockets) {
         socket.close();
