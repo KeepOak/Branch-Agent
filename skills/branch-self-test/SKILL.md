@@ -55,7 +55,3 @@ The lead logs the failure in WEAKNESSES.md and gets it fixed.
 
 ## Clean up (mandatory)
 Stop the scratch gateway, vite preview and headless Chrome by PID (`Stop-Process -Id <pid>`) as soon as the screenshots are taken, and list the stopped PIDs in the PR body. A PR that leaves scratch processes running is sent back.
-
-## CI tour (additional evidence)
-
-The `visual-tour.yml` workflow also runs a shared-shell click-through on GitHub-hosted runners. Inspect its sticky PR comment, screenshots, dead-control report, and console errors. Fix red checks and link the successful run in the PR body. The CI tour supplements the local self-test above; it does not replace it while the workflow is being stabilized. Add new visible flows to `scripts/visual-tour/screens.json` with a visible response assertion for each click.
