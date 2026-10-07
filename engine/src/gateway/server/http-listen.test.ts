@@ -3,6 +3,10 @@ import { EventEmitter } from "node:events";
 import { createServer, type Server as HttpServer } from "node:http";
 import { describe, expect, it, vi } from "vitest";
 import { GatewayLockError } from "../../infra/gateway-lock.js";
+import {
+  holdStandbyPortPlaceholder,
+  isStandbyPortPlaceholderHeld,
+} from "../../infra/standby-port-placeholder.js";
 import { listenGatewayHttpServer } from "./http-listen.js";
 
 /**
@@ -143,5 +147,27 @@ describe("listenGatewayHttpServer", () => {
     ).rejects.toBeInstanceOf(GatewayLockError);
 
     expect(fake.closeCalls).toBe(0);
+  });
+
+  it("frees a standby's placeholder on the same port right before binding, and only that port", async () => {
+    const order: string[] = [];
+    holdStandbyPortPlaceholder({
+      port: 40123,
+      close: async () => {
+        order.push("placeholder closed");
+      },
+    });
+    const other = createFakeHttpServer([{ kind: "listening" }]);
+    await listenGatewayHttpServer({ httpServer: other as unknown as HttpServer, bindHost: "127.0.0.1", port: 40124 });
+    expect(isStandbyPortPlaceholderHeld(40123)).toBe(true);
+    const fake = createFakeHttpServer([{ kind: "listening" }]);
+    const listen = fake.listen.bind(fake);
+    fake.listen = (...args: unknown[]) => {
+      order.push("bind");
+      return listen(...args);
+    };
+    await listenGatewayHttpServer({ httpServer: fake as unknown as HttpServer, bindHost: "127.0.0.1", port: 40123 });
+    expect(order).toEqual(["placeholder closed", "bind"]);
+    expect(isStandbyPortPlaceholderHeld(40123)).toBe(false);
   });
 });
