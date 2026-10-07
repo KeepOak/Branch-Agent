@@ -1299,6 +1299,9 @@ export async function runGatewayLoop(params: {
   };
   const recoverAfterDesktopDisconnect = async () => {
     await desktopDeactivation?.catch(() => {});
+    // A failed deactivate restored the still-healthy owner and cleared the
+    // handoff. Disconnect is not a reason to stop that engine.
+    if (!desktopDeactivation || shuttingDown) return;
     const successor = await readActiveGatewayLockIdentity({ env: process.env }).catch(() => null);
     if (successor === undefined) {
       try {

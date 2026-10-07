@@ -49,6 +49,54 @@ async function within<T>(work: Promise<T>, label: string, timeoutMs = 10_000): P
 }
 
 describe("desktop engine handoff", () => {
+  it("keeps a healthy owner serving when the desktop disconnects during a failed deactivate", async () => {
+    await withIsolatedSignals(async ({ captureSignal }) => {
+      const sendDescriptor = Object.getOwnPropertyDescriptor(process, "send");
+      const previousMessageListeners = new Set(process.listeners("message"));
+      const previousDisconnectListeners = new Set(process.listeners("disconnect"));
+      if (!process.send) {
+        Object.defineProperty(process, "send", { configurable: true, value: vi.fn() });
+      }
+      const close = createCloseMock();
+      const { start, started } = createSignaledStart(close);
+      const originalStart = start.getMockImplementation();
+      let failDeactivate!: (error: Error) => void;
+      const deactivate = vi.fn(() => new Promise<void>((_resolve, reject) => {
+        failDeactivate = reject;
+      }));
+      start.mockImplementation(async (...args) => ({
+        ...(await originalStart!(...args)),
+        deactivate,
+      }));
+      const { runtime, exited } = createRuntimeWithExitSignal();
+      await within(runLoopWithStart({ start, runtime }), "run-loop import", 120_000);
+      try {
+        await within(waitForStart(started), "run-loop start", 120_000);
+        const onMessage = process.listeners("message").find(
+          (listener) => !previousMessageListeners.has(listener),
+        );
+        const onDisconnect = process.listeners("disconnect").find(
+          (listener) => !previousDisconnectListeners.has(listener),
+        );
+        expect(onDisconnect).toBeDefined();
+        onMessage?.({ type: "branch-desktop:deactivate", id: 1 } as never);
+        await waitForLoopCondition(() => deactivate.mock.calls.length > 0, "deactivation did not start");
+        onDisconnect?.();
+        failDeactivate(new Error("deactivate failed but serving was restored"));
+        await vi.waitFor(() => expect(gatewayLog.error).toHaveBeenCalledWith(
+          expect.stringContaining("desktop handoff deactivation failed"),
+        ));
+        expect(close).not.toHaveBeenCalled();
+        expect(start).toHaveBeenCalledTimes(1);
+      } finally {
+        captureSignal("SIGTERM")();
+        await within(exited, "desktop handoff loop stop");
+        if (sendDescriptor) Object.defineProperty(process, "send", sendDescriptor);
+        else Reflect.deleteProperty(process, "send");
+      }
+    });
+  }, 240_000);
+
   it("exits for supervisor recovery when deactivation cannot restore serving", async () => {
     await withIsolatedSignals(async () => {
       const sendDescriptor = Object.getOwnPropertyDescriptor(process, "send");
