@@ -1,3 +1,4 @@
+/* @vitest-environment jsdom */
 import "../../test/dom.setup.ts";
 import { GatewayProtocolRequestError } from "@branch/gateway-client/browser";
 import { expectDefined } from "@branch/normalization-core";
