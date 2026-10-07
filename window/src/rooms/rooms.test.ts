@@ -115,10 +115,10 @@ describe("room menu and rules", () => {
 
   it("draws the preview's room rows; Add a Trunk is greyed with the engine reason", () => {
     const items = roomMenuItems({ ruleWords: "mentions only", canLeave: true, run });
-    expect(items.map((i) => ("label" in i ? i.label : i.kind))).toEqual(["Add a Trunk to this room", "Rename room", "Room rules", "sep", "Leave and archive", "sep", "Delete…"]);
+    expect(items.map((i) => ("label" in i ? i.label : i.kind))).toEqual(["Add a Trunk to this group", "Rename group", "Group rules", "sep", "Leave and archive", "sep", "Delete…"]);
     expect(items[0]).toMatchObject({ disabled: ROOM_REASONS.addTrunk });
     expect(items[2]).toMatchObject({ hint: "mentions only" });
-    expect(roomMenuItems({ ruleWords: null, canLeave: false, run }).map((i) => ("label" in i ? i.label : i.kind))).toEqual(["Add a Trunk to this room", "Rename room", "Room rules", "sep"]);
+    expect(roomMenuItems({ ruleWords: null, canLeave: false, run }).map((i) => ("label" in i ? i.label : i.kind))).toEqual(["Add a Trunk to this group", "Rename group", "Group rules", "sep"]);
   });
 
   it("sets who answers through the engine only in a chat-app group", () => {
@@ -148,4 +148,3 @@ describe("outside agents from a2a.peers.list", () => {
     expect(readPeerList(undefined)).toEqual({ hosts: {}, online: [] });
   });
 });
-

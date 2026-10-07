@@ -7,7 +7,7 @@ export function ContactTopicsPane({ items, name, onOpen }: { items: TopicListIte
   const [mode, setMode] = useState<TopicMode>("time");
   const [query, setQuery] = useState("");
   const groups = groupContactTopics(items, mode, query);
-  return <section className="contact-topics" aria-label={`Conversations with ${name}`}>
+  return <section className="contact-topics" aria-label={`Threads with ${name}`}>
     <div className="contact-topics-controls">
       <input type="search" aria-label="Search conversations in this contact" placeholder="Search conversations" value={query} onChange={(e) => setQuery(e.target.value)} />
       <select aria-label="Group conversations by" value={mode} onChange={(e) => setMode(e.target.value as TopicMode)}>

@@ -421,6 +421,9 @@ export async function authorizeGatewayConnectDevice(
               profile: plan.bootstrapApprovalProfile,
             })
           : pairingStateAllowsRequestedAccess(livePaired));
+      if (pairingResolved && plan.bootstrapApprovalProfile) {
+        handoffBootstrapProfile = plan.bootstrapApprovalProfile;
+      }
       if (!pairingResolved) {
         if (inlineApprovalAttempted && recoveryRequestId === pairing.request.requestId) {
           requestContext.broadcast("device.pair.requested", pairing.request, { dropIfSlow: true });

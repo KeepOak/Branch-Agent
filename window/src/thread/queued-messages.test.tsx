@@ -5,7 +5,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mergeQueued } from "../connect/session";
-import { saveLine } from "../composer/queue";
+import { loadLine, nextToSend, saveLine } from "../composer/queue";
 import { QueuedMessages, useOwnWaitingLine } from "./QueuedMessages";
 
 const KEY = "agent:lead:main";
@@ -52,6 +52,21 @@ describe("waiting messages in the thread", () => {
 
     await act(async () => saveLine(localStorage, KEY, []));
     expect(host.querySelectorAll('[data-testid="queued-message"]')).toHaveLength(1);
+  });
+
+  it("draws a message sent but not confirmed as Not confirmed yet, and holds the line behind it", async () => {
+    saveLine(localStorage, KEY, [
+      { id: "lost", text: "Did this arrive?", files: [], state: "checking" },
+      { id: "next", text: "After it", files: [], state: "waiting" },
+    ]);
+    await act(async () => root.render(<QueuedMessages queued={[]} own={loadLine(localStorage, KEY)} />));
+    const rows = [...host.querySelectorAll('[data-testid="queued-message"]')];
+    expect(rows.map((r) => [r.getAttribute("data-state"), r.querySelector(".queue-mark")?.textContent])).toEqual([
+      ["checking", "Not confirmed yet"],
+      ["queued", "Queued"],
+    ]);
+    expect(host.querySelector('[data-testid="not-sent"]')).toBeNull();
+    expect(nextToSend(loadLine(localStorage, KEY))).toBeUndefined();
   });
 
   it("marks a picked-up post Delivered", async () => {
