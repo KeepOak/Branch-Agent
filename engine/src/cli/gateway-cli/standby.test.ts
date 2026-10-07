@@ -7,6 +7,7 @@ import {
 } from "../../infra/standby-port-placeholder.js";
 import {
   GATEWAY_STANDBY_READY_MESSAGE,
+  GATEWAY_STANDBY_TAKE_OVER_MESSAGE,
   GATEWAY_STANDBY_TAKING_OVER_MESSAGE,
   listenGatewayStandbyPort,
   waitInGatewayStandby,
@@ -202,6 +203,27 @@ describe("gateway standby", () => {
     expect(done).toBe(false);
     owner = false;
     await standby;
+  });
+
+  it("hears the launcher's take-over message even when it arrives before the standby reports ready", async () => {
+    const sent: string[] = [];
+    const standby = waitInGatewayStandby(
+      {},
+      {
+        // A fast launcher: the message lands while the standby is still warming.
+        warm: async () => {
+          process.emit("message", { type: "something-else" }, undefined);
+          process.emit("message", { type: GATEWAY_STANDBY_TAKE_OVER_MESSAGE }, undefined);
+        },
+        hasLiveOwner: async () => false,
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        notify: (message) => sent.push(message.type),
+        launcherGone: () => false,
+        launchedWithChannel: true,
+      },
+    );
+    await standby;
+    expect(sent).toEqual([GATEWAY_STANDBY_READY_MESSAGE, GATEWAY_STANDBY_TAKING_OVER_MESSAGE]);
   });
 
   it("refuses to run as a standby without a launcher that can tell it to take over", async () => {
