@@ -115,6 +115,18 @@ export function waitForGatewayStandby(child: ChildProcess, timeoutMs: number): P
 
 export interface PreparedGateway { child: ChildProcess; port: number }
 
+/** The launcher's go-ahead to a warmed standby (engine standby.ts GATEWAY_STANDBY_TAKE_OVER_MESSAGE, #411). */
+export const STANDBY_TAKE_OVER_MESSAGE = "branch-desktop:take-over";
+
+/**
+ * Tells a warmed standby it may take the state over once it is free. A standby never takes over on a bare lock
+ * release (#411), so it is sent once the old engine has stopped (or stepped down). Older standbys ignore it.
+ */
+export function sendStandbyTakeOver(child: ChildProcess): void {
+  if (!child.connected) return;
+  try { child.send({ type: STANDBY_TAKE_OVER_MESSAGE }, () => undefined); } catch { /* the channel closed: the standby is gone */ }
+}
+
 /**
  * A second engine (candidate check, warming standby) runs below normal priority so it never starves the live engine
  * on a busy machine; a promoted standby goes back to normal.

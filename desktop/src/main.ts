@@ -5,7 +5,7 @@ import type { Server } from "node:http";
 import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { drainStopGateway, gatewayActivity, portIsFree, prepareStandbyGateway, readToken, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, waitForReady, type PreparedGateway } from "./gateway";
+import { drainStopGateway, gatewayActivity, portIsFree, prepareStandbyGateway, readToken, setEnginePriority, sendStandbyTakeOver, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, waitForReady, type PreparedGateway } from "./gateway";
 import { readPreparedNormalProfile } from "./profile-migration";
 import { createGatewayCrashSupervisor } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
@@ -671,7 +671,11 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   const started = Date.now();
   const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port);
   if (prepared?.child.pid !== undefined) writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prepared.child.pid));
-  if (prepared) setEnginePriority(prepared.child, false);
+  if (prepared) {
+    setEnginePriority(prepared.child, false);
+    // The old engine has released the state: the standby takes over only on this word (#411).
+    sendStandbyTakeOver(prepared.child);
+  }
   gateway = child;
   const observed = gatewaySupervisor.observe(child);
   log(`gateway started from ${engineDir}, pid ${child.pid}, port ${port}`);
