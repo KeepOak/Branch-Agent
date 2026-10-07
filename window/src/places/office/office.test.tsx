@@ -4,6 +4,7 @@ import { parseRoute } from "../../places-nav/routes";
 import { readLayout, readOfficeStore, writeLayout, writeOfficeSetting } from "./index";
 import { a2aVisit, officeRoster, officeToolEvent } from "./model";
 import { Storage, defaultPrefs } from "./pixel/webview-ui/src/branch/storage";
+import { BranchServer } from "./pixel/webview-ui/src/branch/branchServer";
 import { defaultSpriteKey } from "./pixel/webview-ui/src/branch/trunkSprites";
 
 describe("Pixel office", () => {
@@ -16,6 +17,41 @@ describe("Pixel office", () => {
     expect(agents.map(defaultSpriteKey)).toEqual([
       "look:ember", "look:bolt", "pebble:2:wide:#2F8C86",
     ]);
+  });
+
+  it("gives the owner's colourless emoji and classic Trunks distinct stable pebbles", () => {
+    const roster = { agents: [
+      { id: "main", identity: { name: "Branch Agent", avatar: "classic" } },
+      { id: "c3po", identity: { name: "C3-PO", emoji: "🤖" } },
+    ] };
+    const keys = () => officeRoster(roster, {}, {}).agents.map(defaultSpriteKey);
+    expect(keys()).toEqual(["pebble:0:round:#B84A6B", "pebble:0:round:#8A5AA8"]);
+    expect(keys()).toEqual(keys());
+  });
+
+  it("refreshes an already-mounted character and its helper when a Trunk's look changes", () => {
+    const store = new Storage({ layout: null, seats: {}, looks: {}, prefs: defaultPrefs() }, vi.fn());
+    const characters = new Map<number, { id: number; parentAgentId?: number; spriteKey?: string; palette: number; hueShift: number; needsCount?: number; waitingSticky?: boolean; offline?: boolean }>();
+    const office = { characters, seats: new Map(), setHeadless: vi.fn() };
+    const initial = { id: "main", name: "Branch Agent", kind: "trunk" as const, state: "resting" as const, colorHint: "#B84A6B", look: "classic" };
+    const server = new BranchServer({ agents: [initial], storage: store }, store, {} as ConstructorParameters<typeof BranchServer>[2], () => office as unknown as ReturnType<ConstructorParameters<typeof BranchServer>[3]>, () => false);
+    const created: number[] = [];
+    server.onMessage((event) => {
+      const message = event as unknown as { type: string; id?: number; spriteKey?: string; palette?: number; hueShift?: number };
+      if (message.type === "agentCreated" && message.id !== undefined) {
+        created.push(message.id);
+        characters.set(message.id, { id: message.id, spriteKey: message.spriteKey, palette: message.palette ?? 0, hueShift: message.hueShift ?? 0 });
+      }
+    });
+    server.send({ type: "webviewReady" } as Parameters<typeof server.send>[0]);
+    const id = created[0];
+    expect(characters.get(id)?.spriteKey).toBe("pebble:0:round:#B84A6B");
+    characters.set(99, { id: 99, parentAgentId: id, spriteKey: "pebble:0:round:#B84A6B", palette: 0, hueShift: 0 });
+    server.update([{ ...initial, colorHint: "#8A5AA8" }], undefined);
+    expect(created).toEqual([id]);
+    expect(characters.get(id)?.spriteKey).toBe("pebble:0:round:#8A5AA8");
+    expect(characters.get(99)?.spriteKey).toBe("pebble:0:round:#8A5AA8");
+    server.dispose();
   });
 
   it("seats the live Trunk roster, guests, and groups with registry states and real chat targets", () => {

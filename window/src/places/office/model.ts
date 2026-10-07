@@ -1,5 +1,6 @@
 import type { Contact } from "@branch/gateway-protocol";
 import { lookOf } from "../trunk/model";
+import { COLOURS } from "../trunk/LookTab";
 
 export type OfficeAgent = {
   id: string; name: string; kind: "trunk" | "grafted" | "group";
@@ -14,6 +15,13 @@ type Row = Record<string, unknown>;
 const obj = (v: unknown): Row => v && typeof v === "object" && !Array.isArray(v) ? v as Row : {};
 const str = (v: unknown): string => typeof v === "string" ? v : "";
 const rows = (v: unknown): Row[] => Array.isArray(v) ? v.map(obj) : [];
+
+/** Colourless Trunks still need a steady, distinct pebble, using the editor's own palette. */
+function officeColour(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  return COLOURS[(hash >>> 0) % (COLOURS.length - 1)];
+}
 
 /** Live session.message metadata marks a Grafted speaker with the engine's A2A sender identity. */
 export function a2aVisit(payload: unknown, now = Date.now()): OfficeLink | null {
@@ -65,7 +73,7 @@ export function officeRoster(agentsValue: unknown, sessionsValue: unknown, conta
     const activity = str(obj(active[0]?.activitySummary).text) || str(active[0]?.lastMessagePreview);
     const reading = active.some(s => [...(tools.get(str(s.key))?.values() ?? [])].some(name => /^(read|read_file|grep|glob|search|web_fetch|web_search)$/i.test(name)));
     return { id: t.id, name: t.name, kind: "trunk", state: ownApproval || contact?.needsYou && !helperOnly ? "needs_you" : active.length ? reading ? "reading" : "working" : "resting",
-      activity, needsYou: needs, unread: Boolean(contact?.threadUnread || contact?.unreadTopics), colorHint: t.colour,
+      activity, needsYou: needs, unread: Boolean(contact?.threadUnread || contact?.unreadTopics), colorHint: t.colour || officeColour(t.id),
       look: lookOf(t.avatar, t.name), shape: Math.max(0, ["Circle", "Stone", "Leaf", "Acorn", "Shield"].indexOf(t.shape)),
       eyes: ["round", "wide", "sleepy"].includes(t.eyes.toLowerCase()) ? t.eyes.toLowerCase() : "round",
       subagents: children.map(s => ({ id: str(s.key), label: str(s.label) || str(s.displayName) || "Job", state: "working" as const })) };
