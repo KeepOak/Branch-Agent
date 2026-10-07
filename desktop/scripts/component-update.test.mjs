@@ -492,6 +492,25 @@ test("an exited staged engine records exit and is not automatically retried", as
   assert.equal(await source.refreshComponentUpdate(cfg, request), false);
 }));
 
+test("a staged boot that ends because the app quits stops the failed engine and never records, rolls back or retries", async () => fixture(async ({ cfg, request }) => {
+  await source.refreshComponentUpdate(cfg, request);
+  const selected = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  const calls = [];
+  await assert.rejects(bootSelectedEngineWithRollback({
+    boot: async () => { calls.push("boot"); throw new Error("the engine exited with code 0"); },
+    stopFailedGateway: async () => { await new Promise(resolve => setTimeout(resolve, 20)); calls.push("stopped"); },
+    recordTimeout: async () => { calls.push("record"); return 1; },
+    rejectExited: async () => { calls.push("reject"); },
+    rollback: async () => { calls.push("rollback"); return true; },
+    waitForPortRelease: async () => {},
+    quitting: () => true,
+    log: () => {},
+  }), /exited/);
+  assert.deepEqual(calls, ["boot", "stopped"], "a quit was treated as a failed release");
+  assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), selected);
+  await assert.rejects(readFile(join(cfg.dataDir, "component-update-rejected.json")), { code: "ENOENT" });
+}));
+
 async function bootTimedOutRelease(cfg) {
   const selected = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
   let stoppedPid;

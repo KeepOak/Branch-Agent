@@ -156,16 +156,20 @@ export async function prepareStandbyGateway(cfg: DesktopConfig, engineDir: strin
 
 export interface GatewayActivity { idle: boolean; activeRuns: number; pendingReplies: number; totalActive: number }
 let nextActivityId = 0;
-/** Query the engine's process-wide restart-drain inventory through its owned child channel. */
-export function gatewayActivity(child: ChildProcess, stop: boolean | "drain" = false, timeoutMs = 5_000): Promise<GatewayActivity> {
-  if (!child.connected) return Promise.reject(new Error("The gateway activity channel is unavailable"));
+
+/** One activity request in flight: `answered` turns true synchronously when its reply arrives. */
+interface ActivityRequest { reply: Promise<GatewayActivity>; readonly answered: boolean; cancel(): void }
+
+/** Sends one activity request over the owned child channel; the reply has no deadline of its own. */
+function sendActivityRequest(child: ChildProcess, stop: boolean | "drain"): ActivityRequest {
   const id = ++nextActivityId;
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { cleanup(); reject(new Error("The gateway activity check timed out")); }, timeoutMs);
-    const cleanup = () => { clearTimeout(timer); child.off("message", onMessage); child.off("exit", onExit); child.off("error", onError); };
+  let answered = false, cleanup = () => {};
+  const reply = new Promise<GatewayActivity>((resolve, reject) => {
+    cleanup = () => { child.off("message", onMessage); child.off("exit", onExit); child.off("error", onError); };
     const onMessage = (value: unknown) => {
       const response = value as { type?: unknown; id?: unknown } & Partial<GatewayActivity>;
       if (response?.type !== "branch-desktop:activity-result" || response.id !== id) return;
+      answered = true;
       cleanup();
       if (typeof response.idle !== "boolean" || typeof response.activeRuns !== "number" ||
         typeof response.pendingReplies !== "number" || typeof response.totalActive !== "number") {
@@ -181,6 +185,22 @@ export function gatewayActivity(child: ChildProcess, stop: boolean | "drain" = f
     const type = stop === "drain" ? "branch-desktop:drain-stop" : stop ? "branch-desktop:stop-if-idle" : "branch-desktop:activity";
     child.send({ type, id }, error => { if (error) onError(error); });
   });
+  reply.catch(() => undefined);
+  return { reply, get answered() { return answered; }, cancel: () => cleanup() };
+}
+
+/** Rejects with `message` unless `promise` settles within `timeoutMs`. */
+function within<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error(message)), timeoutMs); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/** Query the engine's process-wide restart-drain inventory through its owned child channel. */
+export function gatewayActivity(child: ChildProcess, stop: boolean | "drain" = false, timeoutMs = 5_000): Promise<GatewayActivity> {
+  if (!child.connected) return Promise.reject(new Error("The gateway activity channel is unavailable"));
+  const request = sendActivityRequest(child, stop);
+  return within(request.reply, timeoutMs, "The gateway activity check timed out").finally(() => request.cancel());
 }
 
 /**
@@ -205,17 +225,24 @@ export async function stopGatewayCleanly(child: ChildProcess, timeoutMs = 90_000
  */
 export async function drainStopGateway(child: ChildProcess, timeoutMs = DRAIN_EXIT_TIMEOUT_MS): Promise<"drained" | "stopped idle" | "killed"> {
   if (child.exitCode !== null || child.signalCode !== null) return "drained";
-  try { await gatewayActivity(child, "drain"); }
-  catch {
-    // No answer. An engine from before drain-stop still answers a plain activity check: stop it only while idle; a
-    // busy one is never killed. One too busy to answer anything has the drain request queued, and it still lands:
-    // wait for that drain to finish, as for an answered one.
-    const answers = await gatewayActivity(child, false, DRAIN_PROBE_TIMEOUT_MS).then(() => true, () => false);
-    if (answers) {
-      await stopGatewayCleanly(child);
-      return "stopped idle";
+  // No channel to ask: treat it as an engine from before drain-stop, which is stopped only while idle (that check
+  // fails the same way, so the update fails and the engine keeps serving; it is never waited on and killed).
+  if (!child.connected) { await stopGatewayCleanly(child); return "stopped idle"; }
+  const drain = sendActivityRequest(child, "drain");
+  try {
+    const answered = await within(drain.reply, DRAIN_REPLY_TIMEOUT_MS, "no drain reply").then(() => true, () => false);
+    if (!answered && child.exitCode === null && child.signalCode === null) {
+      // No answer yet. An engine from before drain-stop still answers a plain activity check: stop it only while
+      // idle; a busy one is never killed. The channel is FIFO, so an engine that knows drain-stop answers the drain
+      // request before this probe: a late drain reply means it is draining, and its exit is awaited below. One too
+      // busy to answer anything has the drain request queued, and it still lands.
+      const answers = await gatewayActivity(child, false, DRAIN_PROBE_TIMEOUT_MS).then(() => true, () => false);
+      if (answers && !drain.answered) {
+        await stopGatewayCleanly(child);
+        return "stopped idle";
+      }
     }
-  }
+  } finally { drain.cancel(); }
   try { await waitForExit(child, timeoutMs); return "drained"; }
   catch {
     stopGateway(child);
@@ -224,6 +251,8 @@ export async function drainStopGateway(child: ChildProcess, timeoutMs = DRAIN_EX
   }
 }
 
+/** How long the drain request's reply is awaited before a plain activity check tells a busy engine from an old one. */
+const DRAIN_REPLY_TIMEOUT_MS = 5_000;
 /** How long an engine that did not answer its drain request gets to answer a plain activity check. */
 const DRAIN_PROBE_TIMEOUT_MS = 10_000;
 
@@ -276,12 +305,28 @@ export async function waitForReady(cfg: DesktopConfig, child: ChildProcess, ms: 
 }
 
 /** Stops the gateway and its own child processes by its PID only. */
-export function stopGateway(child: ChildProcess): void {
+export function stopGateway(child: ChildProcess, signal: "SIGTERM" | "SIGKILL" = "SIGTERM"): void {
   if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
   try {
     if (process.platform === "win32") execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
-    else process.kill(-child.pid, "SIGTERM");
+    else process.kill(-child.pid, signal);
   } catch {
     // already gone
   }
+}
+
+/** How long a failed engine's own shutdown (SIGTERM) may take before its process group is killed. */
+export const FAILED_ENGINE_STOP_GRACE_MS = 15_000;
+
+/**
+ * Stops an engine that failed or never became ready, and resolves once it has exited: SIGTERM first so its shutdown
+ * runs, then SIGKILL to its process group after `graceMs`. Only for failed engines: a serving engine's drain has the
+ * engine's own budget and is never cut short. Windows' taskkill /F is already immediate.
+ */
+export async function stopFailedEngine(child: ChildProcess, graceMs = FAILED_ENGINE_STOP_GRACE_MS): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  stopGateway(child);
+  if (await waitForExit(child, graceMs).then(() => true, () => false)) return;
+  stopGateway(child, "SIGKILL");
+  await waitForExit(child, 5_000).catch(() => undefined);
 }

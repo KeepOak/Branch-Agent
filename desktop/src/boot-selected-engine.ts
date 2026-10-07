@@ -3,15 +3,19 @@ import { GatewayReadinessTimeoutError } from "./gateway";
 /** Restore the retained engine after a failed staged boot, including a live readiness timeout. */
 export async function bootSelectedEngineWithRollback(steps: {
   boot(): Promise<void>;
-  stopFailedGateway(): void;
+  /** Stops the failed engine and resolves once it has exited, so the retained build never waits on its state. */
+  stopFailedGateway(): Promise<void>;
   waitForPortRelease(): Promise<void>;
   rollback(): Promise<boolean>;
   recordTimeout(): Promise<number>;
   rejectExited(): Promise<void>;
+  /** The app is quitting: a boot that ends now says nothing about the release, and nothing may start after it. */
+  quitting?(): boolean;
   log(message: string): void;
 }): Promise<boolean> {
   try { await steps.boot(); return false; } catch (error) {
-    steps.stopFailedGateway();
+    await steps.stopFailedGateway();
+    if (steps.quitting?.()) throw error;
     try {
       if (error instanceof GatewayReadinessTimeoutError) {
         const attempts = await steps.recordTimeout();
@@ -26,10 +30,11 @@ export async function bootSelectedEngineWithRollback(steps: {
     if (!await steps.rollback()) throw error;
     steps.log("Updated engine failed readiness; restored prior components");
     await steps.waitForPortRelease();
+    if (steps.quitting?.()) throw error;
     try { await steps.boot(); }
     catch (retryError) {
       // The retained build failed too: never leave its child running unready and unsupervised.
-      steps.stopFailedGateway();
+      await steps.stopFailedGateway();
       throw retryError;
     }
     return true;

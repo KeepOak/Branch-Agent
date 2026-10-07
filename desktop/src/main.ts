@@ -5,7 +5,7 @@ import type { Server } from "node:http";
 import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { drainStopGateway, gatewayActivity, portIsFree, prepareStandbyGateway, readToken, setEnginePriority, startGateway, stopGateway, stopGatewayCleanly, stopWarmingStandby, waitForGatewayExit, waitForReady, type PreparedGateway } from "./gateway";
+import { drainStopGateway, gatewayActivity, portIsFree, prepareStandbyGateway, readToken, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, waitForReady, type PreparedGateway } from "./gateway";
 import { readPreparedNormalProfile } from "./profile-migration";
 import { createGatewayCrashSupervisor } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
@@ -38,8 +38,13 @@ const ICON = process.platform === "win32"
 const TRAY_ICON = process.platform === "darwin"
   ? join(__dirname, "..", "assets", "brand", "linux", "branch-16.png")
   : ICON;
+/** A positive whole number of milliseconds from the environment, else `fallback` (a typo never means "0 ms"). */
+function envMs(value: string | undefined, fallback: number): number {
+  const ms = Number(value);
+  return value && Number.isInteger(ms) && ms > 0 ? ms : fallback;
+}
 /** Tests shorten it with BRANCH_DESKTOP_READY_TIMEOUT_MS. */
-const READY_TIMEOUT_MS = Number(process.env.BRANCH_DESKTOP_READY_TIMEOUT_MS ?? 600_000);
+const READY_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_READY_TIMEOUT_MS, 600_000);
 /** A standby only loads code before it reports warm; one that takes longer is stopped and the old engine keeps serving. */
 const STANDBY_WARM_TIMEOUT_MS = 120_000;
 /** Failed standbys per update before the guarded stop/start swap takes over, so an update never becomes impossible. */
@@ -77,6 +82,8 @@ if (readSettings(join(cfg.dataDir, "desktop-settings.json")).agentControl) {
 }
 
 let gateway: ChildProcess | undefined;
+/** The engine that last answered /readyz; a live engine that never did is a failed one, not a serving one. */
+let readyGateway: ChildProcess | undefined;
 /**
  * The loopback port the serving engine listens on. It starts as the configured port; an update's standby comes up on
  * its own spare port, and once it is ready this follows it (in memory only) until the next launch.
@@ -142,6 +149,8 @@ let servedWindowDir = cfg.windowDir;
 let engineRestartInProgress = false;
 /** The engine exited while an update ran: the update's end decides, then recovery runs once with a full budget. */
 let recoveryDeferred = false;
+/** A failed update left nothing serving: once recovery brings the previous build back, the bar says it was kept. */
+let keptNoticeAfterRecovery = false;
 let quitting = false;
 let gatewayRecoveryError: string | undefined;
 const gatewaySupervisor = createGatewayCrashSupervisor({
@@ -156,18 +165,25 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
   restart: async () => {
     // An update in progress owns the engine; spending restart attempts against it would exhaust the budget.
     if (engineRestartInProgress) { recoveryDeferred = true; log("gateway exit during an update; recovery waits for it"); return; }
-    if (engineRunning()) return;
+    if (quitting || engineServing()) return;
     engineRestartInProgress = true;
     try {
+      // A live engine that never became ready (a failed update's new engine slow to exit) is not serving: stop it.
+      if (gateway && engineRunning()) await stopFailedEngine(gateway);
       await waitForGatewayPort();
+      if (quitting) return;
       // The selected pointer may already name a staged update. Recover the build that exited;
       // only the normal update path may validate and confirm the staged engine/window pair.
       const engineDir = lastGoodEngineDir ?? readFileSync(join(cfg.dataDir, "engine-running.txt"), "utf8").trim();
       await bootEngine(engineDir, false, undefined, await recoveryPort());
       handWindowToGateway();
       log("gateway recovered after unexpected exit");
+      if (keptNoticeAfterRecovery) {
+        keptNoticeAfterRecovery = false;
+        win?.webContents.send("branch-desktop:engine-update", "kept");
+      }
     } catch (error) {
-      if (gateway) stopGateway(gateway);
+      if (gateway) await stopFailedEngine(gateway);
       throw error;
     } finally {
       engineRestartInProgress = false;
@@ -211,6 +227,8 @@ async function probeWindowState(): Promise<{ pendingApprovals: number; streaming
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const windowBuild = (dir: string): string => { try { return readFileSync(join(dir, "branch-build.txt"), "utf8").trim(); } catch { return ""; } };
 const engineRunning = (): boolean => Boolean(gateway && gateway.exitCode === null && gateway.signalCode === null);
+/** Running and ready: the engine the window can use. */
+const engineServing = (): boolean => engineRunning() && gateway === readyGateway;
 
 /**
  * Applies a staged engine/window update, or a rebuilt engine, inside the running app: the app and its window stay
@@ -224,8 +242,9 @@ const engineRunning = (): boolean => Boolean(gateway && gateway.exitCode === nul
  */
 async function swapEngineInPlace(label: string, explicit: boolean): Promise<void> {
   if (!gateway || !win || engineRestartInProgress) throw new Error("The desktop is not ready to update");
+  // A crash restart always runs first: an update never cancels it, and never starts with no engine serving.
+  if (!engineServing()) throw new Error("The engine is restarting after an exit; the update waits for it");
   engineRestartInProgress = true;
-  gatewaySupervisor.cancelPending();
   const windowBefore = windowBuild(servedWindowDir);
   const priorGateway = gateway;
   const stillOpen = () => { if (quitting) throw new Error("Branch Agent is quitting"); };
@@ -277,22 +296,21 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
       const state = controls.settings().autoApplyUpdates && !autoApplyWaitsForOwner(label) ? "auto-wait" : "ready";
       sendToBranchWindows("branch-desktop:engine-update", state);
     } else {
+      // A new engine that failed may still be alive: stop it (SIGKILL after a grace) before recovery starts another.
       const failed = gateway;
-      if (failed && failed !== priorGateway && engineRunning()) {
-        stopGateway(failed);
-        await waitForGatewayExit(failed, 15_000).catch(() => undefined);
-      }
-      // Never leave zero engines: the crash supervisor brings back the build that last ran, with a fresh budget.
-      recoveryDeferred = false;
-      gatewaySupervisor.recover(new Error(`the update failed with no engine serving: ${message}`));
+      if (failed && failed !== priorGateway) await stopFailedEngine(failed);
+      keptNoticeAfterRecovery = true;
     }
     throw error;
   } finally {
     engineRestartInProgress = false;
-    // The engine exited during an update that still ended with nothing serving.
-    if (recoveryDeferred && !quitting) {
-      recoveryDeferred = false;
-      if (!engineRunning()) gatewaySupervisor.recover(new Error("the engine exited during an update"));
+    const exitedDuring = recoveryDeferred;
+    recoveryDeferred = false;
+    // Never leave zero engines: whatever ended the update, the crash supervisor brings back the build that last ran,
+    // with a fresh budget, when nothing serves now.
+    if (!quitting && !engineServing()) {
+      if (gateway && engineRunning()) await stopFailedEngine(gateway);
+      gatewaySupervisor.recover(new Error(exitedDuring ? "the engine exited during an update" : "the update ended with no engine serving"));
     }
   }
 }
@@ -666,6 +684,7 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   if (confirmUpdate) await confirmComponentUpdate(cfg);
   adoptGatewayPort(port);
   lastGoodEngineDir = engineDir;
+  readyGateway = child;
   observed.ready();
   gatewayRecoveryError = undefined;
   log(`gateway ready after ${Date.now() - started} ms; launch elapsed ${Date.now() - launchStarted} ms`);
@@ -701,14 +720,16 @@ async function bootSelectedEngine(prepared?: PreparedGateway): Promise<boolean> 
         if (!exited || await portIsFree(selected.port)) throw error;
         log(`standby port ${selected.port} was taken before the engine could bind it; starting on port ${gatewayPort}`);
         await waitForGatewayPort();
+        if (quitting) throw error;
         await bootEngine(resolveEngineDir(cfg), true);
       }
     },
-    stopFailedGateway: () => { if (gateway) stopGateway(gateway); },
+    stopFailedGateway: async () => { if (gateway) await stopFailedEngine(gateway); },
     recordTimeout: () => recordComponentUpdateTimeout(cfg, selectedEngine),
     rejectExited: () => rejectFailedComponentUpdate(cfg, selectedEngine),
     rollback: () => rollbackComponentUpdate(cfg),
     waitForPortRelease: waitForGatewayPort,
+    quitting: () => quitting,
     log,
   });
 }
@@ -734,14 +755,19 @@ function offerWindowStatus(w: BrowserWindow): void {
 /** The owner's Update click: applies a staged engine/window pair, or a rebuilt engine, in place. */
 async function restartEngine(): Promise<void> {
   if (!gateway || !win || !componentsReady || engineRestartInProgress) return;
-  gatewaySupervisor.cancelPending();
+  if (!engineServing()) {
+    // A crash restart wins: the click never cancels it. If recovery already gave up, the click retries it now.
+    log("update requested while the engine is restarting; recovery runs first");
+    gatewaySupervisor.recover(new Error("the engine was not running when Update was clicked"));
+    return;
+  }
   const staged = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
   log(`update requested (${staged ?? "rebuilt engine"}); old engine pid ${gateway.pid}`);
   try { await swapEngineInPlace(staged ?? "rebuilt engine", true); }
   catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log(`update failed: ${msg}`);
-    if (!engineRunning() && !HIDDEN) dialog.showErrorBox("Branch couldn't finish the update", msg);
+    if (!quitting && !engineRunning() && !HIDDEN) dialog.showErrorBox("Branch couldn't finish the update", msg);
   }
 }
 
