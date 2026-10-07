@@ -67,7 +67,7 @@ if(starts.length===1&&fs.existsSync(root+"/slow-drain-reply")){if(m.type==="bran
 // late-drain-ack: a saturated first engine answers nothing, yet the drain request lands and it exits 12 s later.
 if(starts.length===1&&fs.existsSync(root+"/late-drain-ack")){if(m.type==="branch-desktop:drain-stop"&&!globalThis.draining){globalThis.draining=true;setTimeout(()=>{fs.writeFileSync(root+"/drained-"+process.pid,"1");process.exit(0);},12000);}return;}// A current engine steps down for its standby: it releases the state and keeps its run in flight (busy-run).
 // fenced: a stepped-down engine admits nothing new (fence-readyz: its /readyz says so). slow-deactivate: it answers late.
-if(m.type==="branch-desktop:deactivate"){if(fs.existsSync(root+"/older-engine")||fs.existsSync(root+"/no-handoff"))return;if(starts.length===1&&fs.existsSync(root+"/refuse-deactivate-exit")){process.send({type:"branch-desktop:deactivate-result",id:m.id,ok:false},()=>process.exit(1));return;}globalThis.fenced=true;fs.writeFileSync(root+"/released-"+process.pid,"1");if(fs.existsSync(root+"/busy-run")&&!globalThis.run){globalThis.run=new Promise(r=>setTimeout(()=>{fs.appendFileSync(root+"/transcript.txt","old run final\\n");r();},2000));}setTimeout(()=>process.send({type:"branch-desktop:deactivate-result",id:m.id,ok:!fs.existsSync(root+"/refuse-deactivate")}),fs.existsSync(root+"/slow-deactivate")?3000:0);return;}
+if(m.type==="branch-desktop:deactivate"){if(fs.existsSync(root+"/older-engine")||fs.existsSync(root+"/no-handoff"))return;if(starts.length===1&&fs.existsSync(root+"/refuse-deactivate-exit")){process.send({type:"branch-desktop:deactivate-result",id:m.id,ok:false},()=>process.exit(1));return;}if(fs.existsSync(root+"/deactivate-overrun-exit")){globalThis.fenced=true;setTimeout(()=>process.exit(1),100);return;}globalThis.fenced=true;fs.writeFileSync(root+"/released-"+process.pid,"1");if(fs.existsSync(root+"/busy-run")&&!globalThis.run){globalThis.run=new Promise(r=>setTimeout(()=>{fs.appendFileSync(root+"/transcript.txt","old run final\\n");r();},2000));}setTimeout(()=>process.send({type:"branch-desktop:deactivate-result",id:m.id,ok:!fs.existsSync(root+"/refuse-deactivate")}),fs.existsSync(root+"/slow-deactivate")?3000:0);return;}
 // rollback records which other engines were still alive when it ran: the failed standby must already be gone.
 if(m.type==="branch-desktop:rollback"){if(fs.existsSync(root+"/older-engine")||fs.existsSync(root+"/no-handoff"))return;const ok=!fs.existsSync(root+"/refuse-rollback");if(ok){globalThis.fenced=false;if(fs.existsSync(root+"/rollback-ready-delay"))globalThis.rollbackReadyAt=Date.now()+11000;try{fs.unlinkSync(root+"/released-"+process.pid);}catch{}}fs.writeFileSync(root+"/rolled-back-"+process.pid,JSON.stringify(starts.filter(p=>p!==process.pid&&(()=>{try{process.kill(p,0);return true;}catch{return false;}})())));process.send({type:"branch-desktop:rollback-result",id:m.id,ok});return;}
 if(m.type==="branch-desktop:drain-stop"&&fs.existsSync(root+"/older-engine"))return;process.send({type:"branch-desktop:activity-result",id:m.id,idle:!fs.existsSync(root+"/busy"),activeRuns:fs.existsSync(root+"/busy")?1:0,pendingReplies:0,totalActive:0});
@@ -110,7 +110,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
   };
   if (holdStartup) await writeFile(join(root, "hold-startup"), "wait");
   await prepare?.(root);
-  let onStaged, onWithdrawal, swapGuard, pendingVersion, engineWatchTick;
+  let onStaged, onWithdrawal, swapGuard, pendingVersion, engineWatchTick, stopWatching, stopEngineWatch, stopWindowWatch, stopAutoApply, windowServer;
   // Auto-apply's clock: a test moves it past the 60 s idle hold instead of waiting for it.
   const clock = { skew: 0 };
   Module._load = function(name, ...args) {
@@ -120,20 +120,29 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
       return { ...source, bootSelectedEngineWithRollback: async options => {
         const result = await source.bootSelectedEngineWithRollback(options);
         await writeFile(join(root, "startup-awaiting-continuation"), "1");
-        while (!existsSync(join(root, "release-start-continuation"))) await pause(5);
+        // Stop if the fixture root is gone: otherwise a late boot after rm() polls forever and hangs `node --test`.
+        while (existsSync(root) && !existsSync(join(root, "release-start-continuation"))) await pause(5);
         return result;
       } };
     }
-    if (manualEngineWatch && name === "./updates") {
+    if (name === "./updates") {
       const source = originalLoad.call(this, name, ...args);
       return { ...source, watchEngineBuild: (signature, onChange) => {
-        let last = signature();
-        const tick = () => {
-          const next = signature();
-          if (next && next !== last) { last = next; onChange(); }
-        };
-        engineWatchTick = tick;
-        return () => { if (engineWatchTick === tick) engineWatchTick = undefined; };
+        if (manualEngineWatch) {
+          let last = signature();
+          const tick = () => {
+            const next = signature();
+            if (next && next !== last) { last = next; onChange(); }
+          };
+          engineWatchTick = tick;
+          stopEngineWatch = () => { if (engineWatchTick === tick) engineWatchTick = undefined; };
+          return stopEngineWatch;
+        }
+        stopEngineWatch = source.watchEngineBuild(signature, onChange);
+        return stopEngineWatch;
+      }, watchWindowBuild: (dir, onChange) => {
+        stopWindowWatch = source.watchWindowBuild(dir, onChange);
+        return stopWindowWatch;
       } };
     }
     if (fastSupervisor && name === "./gateway-supervisor") {
@@ -146,7 +155,16 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
       const source = originalLoad.call(this, name, ...args);
       return { ...source, createAutoApplyUpdate: options => {
         pendingVersion = options.pendingVersion;
-        return source.createAutoApplyUpdate({ ...options, now: () => Date.now() + clock.skew });
+        const created = source.createAutoApplyUpdate({ ...options, now: () => Date.now() + clock.skew });
+        stopAutoApply = () => created.stop();
+        return created;
+      } };
+    }
+    if (name === "./static-server") {
+      const source = originalLoad.call(this, name, ...args);
+      return { ...source, serveWindow: async (...args) => {
+        windowServer = await source.serveWindow(...args);
+        return windowServer;
       } };
     }
     if (name === "./component-update") {
@@ -154,12 +172,13 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
       return { ...source, watchComponentUpdates: (cfg, log, options) => {
         if (existsSync(join(root, "hold-start-continuation"))) writeFileSync(join(root, "component-watch-started"), "1");
         onStaged = options.onStaged; onWithdrawal = options.onWithdrawal; swapGuard = options.underSwapGuard;
-        return source.watchComponentUpdates(cfg, log, options);
+        stopWatching = source.watchComponentUpdates(cfg, log, options);
+        return stopWatching;
       }, prepareComponentUpdateUndo: async (...args) => {
         const prepared = await source.prepareComponentUpdateUndo(...args);
         if (prepared && holdUndo) {
           await writeFile(join(root, "undo-prepared"), "ready");
-          while (!existsSync(join(root, "release-undo"))) await pause(5);
+          while (existsSync(root) && !existsSync(join(root, "release-undo"))) await pause(5);
         }
         return prepared;
       }, confirmComponentUpdate: async (...args) => {
@@ -189,7 +208,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
       const source = originalLoad.call(this, name, ...args);
       return { ...source, stopCandidate: () => { void writeFile(join(root, "candidate-aborted"), "1"); source.stopCandidate(); }, checkCandidateBeside: async () => {
         await writeFile(join(root, "candidate-started"), "1");
-        while (!existsSync(join(root, "release-candidate")) && !existsSync(join(root, "candidate-aborted"))) await pause(5);
+        while (existsSync(root) && !existsSync(join(root, "release-candidate")) && !existsSync(join(root, "candidate-aborted"))) await pause(5);
         return "exited";
       } };
     }
@@ -208,9 +227,18 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
   } finally {
     await writeFile(join(root, "release-ready"), "ready");
     if (holdUndo) await writeFile(join(root, "release-undo"), "release");
+    await writeFile(join(root, "release-start-continuation"), "1");
+    await writeFile(join(root, "release-candidate"), "1");
     await pause(600);
     runtime.app.emit("will-quit");
     await eventually(async () => (await starts()).every(pid => !alive(pid)));
+    stopWatching?.();
+    stopEngineWatch?.();
+    stopWindowWatch?.();
+    stopAutoApply?.();
+    windowServer?.closeAllConnections?.();
+    await new Promise(resolve => windowServer ? windowServer.close(() => resolve()) : resolve());
+    for (const pid of await starts()) try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
     Module._load = originalLoad; globalThis.fetch = originalFetch;
     previous === undefined ? delete process.env.BRANCH_DESKTOP_DATA : process.env.BRANCH_DESKTOP_DATA = previous;
     previousCandidateMin === undefined ? delete process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB : process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB = previousCandidateMin;
@@ -599,6 +627,21 @@ test("a step-down slower than its deadline is never trusted: the standby is kill
   assert.ok(existsSync(join(root, `drained-${old}`))); assert.equal(alive(old), false);
   assert.equal(alive((await starts()).at(-1)), true);
 }, false, false, false, true, false, handoffOn({ STEP_DOWN_TIMEOUT_MS: 1000 })));
+test("desktop restarts cleanly when an overrun deactivate exits its engine for supervisor recovery", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  const old = (await starts())[0];
+  await writeFile(join(root, "release-ready"), "ready");
+  await writeFile(join(root, "deactivate-overrun-exit"), "1");
+  restart();
+  await eventually(async () => {
+    const launched = await starts();
+    const latest = launched.at(-1);
+    return launched.length >= 3 && latest !== old && alive(latest) && await servingOn(gatewayPort);
+  }, 40_000);
+  assert.equal(alive(old), false);
+  assert.equal(runtime.window.reloads, 0, "supervisor recovery reloaded the window");
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /gateway restart attempt/);
+}, false, true, false, true, false, handoffOn({ STEP_DOWN_TIMEOUT_MS: 1000 })));
 test("a refused step-down is trusted only when the old engine proves it still serves; a fenced one is replaced", () => fixture(async ({ root, runtime, starts, restart }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
   const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
