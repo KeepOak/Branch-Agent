@@ -79,6 +79,20 @@ Saved `dist/` outputs are source build artifacts. `Source builds` does not creat
 
 [`CONTRIBUTING.md`](CONTRIBUTING.md) is the contributor workflow: repository layout, setting up a worktree with `node scripts/install-worktree.mjs`, the local strict type checks, running tests by name, the merge gate and the 15-minute CI cap, component releases and updates, and working with AI agents through Graft (`branch graft`). [`AGENTS.md`](AGENTS.md) is the short rule list for coding agents.
 
+## Screenshot proof for UI changes
+
+After making UI changes, capture proof screenshots with:
+
+```bash
+pnpm proof -- --screens <screen-ids>
+```
+
+For example, `pnpm proof -- --screens main-chat,settings-general` captures those two screens. Omit `--screens` to capture all screens. The script builds the engine and window, seeds test data, and runs Playwright against the visual tour screens (defined in `scripts/visual-tour/screens.json`). Screenshots are written to `artifacts/proof/`.
+
+Available screen IDs: `main-chat`, `new-menu`, `connection`, `gateway`, `usage`, `running`, `header-more`, `composer-plus`, `composer-tune`, `composer-plug`, `settings-general`, `settings-accounts`, `add-claude-account`, `settings-updates`, `pixel-office`, `group-chat`, `topics`. The proof script captures each screen in light/dark themes and at 1280px/700px widths.
+
+Requires Node.js 24.19.0 or higher. If your Node version is too old, the script will print installation instructions.
+
 ## Working with AI agents
 
 Graft (`branch graft`) lets Claude Code, Codex, Gemini CLI, Hermes or any MCP client work with your Trunks, group chats and the Branch window. Turn on "Type branch in any terminal" in the desktop app, then add it once, for example `claude mcp add --scope user branch -- branch graft`. Grafted agents appear in Settings › Grafts. Details: [`engine/docs/cli/mcp/serve.md`](engine/docs/cli/mcp/serve.md).

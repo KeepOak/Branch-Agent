@@ -32,6 +32,9 @@
       "dist/native-hook-relay/entry.js"
     ]
   },
+  "engines": {
+    "node": ">=24.19.0 <25.0.0 || >=24.19"
+  },
   "directories": {
     "doc": "docs",
     "test": "test"
