@@ -56,6 +56,7 @@ function List({ data, find, level, write, busy, actions, open }: { data: Data; f
 export function ScheduledTab({ engine, level, openConversation }: Props) {
   const state = usePlaceData(engine, loadScheduled), { busy, run } = useAct(state.refresh);
   const [words, setWords] = useState(""), [draft, setDraft] = useState<Draft | null>(null), [error, setError] = useState("");
+  const [idea, setIdea] = useState<string | null>(null);
   const [open, setOpen] = useState<Open>(null), [find, setFind] = useState<Find>(FIND0), [leaving, setLeaving] = useState(false);
   const write = canAdmin(engine), data = state.data, adv = shows(level, "advanced");
   const models = useModels(engine, level, Boolean(draft) || open?.kind === "sheet");
@@ -87,8 +88,8 @@ export function ScheduledTab({ engine, level, openConversation }: Props) {
   return <div className="au-tab">
     <p className="au-hint">Work a Trunk does on a schedule.</p>
     {paused && <PausedBanner canWrite={write} busy={busy} resume={() => setPaused(false)} />}
-    <form className="au-describe" onSubmit={e => { e.preventDefault(); if (words.trim()) { setError(""); setDraft(draftFromWords(words, agentFor())); setWords(""); } }}>
-      <input className="inp" aria-label="Describe a new automation" placeholder={"Describe it: “every weekday at 8, check my inbox for invoices”"} value={words} disabled={!write} title={write ? undefined : "Needs an owner"} onChange={e => setWords(e.target.value)} />
+    <form className="au-describe" onSubmit={e => { e.preventDefault(); if (words.trim()) { setError(""); setDraft(idea ? draftFromIdea(idea, words, agentFor()) : draftFromWords(words, agentFor())); setWords(""); setIdea(null); } }}>
+      <input className="inp" aria-label="Describe a new automation" placeholder={"Describe it: “every weekday at 8, check my inbox for invoices”"} value={words} disabled={!write} title={write ? undefined : "Needs an owner"} onChange={e => { setWords(e.target.value); setIdea(null); }} />
       <button type="submit" className="btn pri" disabled={!write || !words.trim()}>Add</button>
     </form>
     {draft && <Proposal draft={draft} change={p => setDraft(d => d && { ...d, ...p })} level={level} trunks={data?.trunks ?? []} models={models} busy={busy} canWrite={write} error={error} onCancel={() => (draft && editChanged(draft) ? setLeaving(true) : setDraft(null))} onConfirm={runNow => void confirm(runNow)} />}
@@ -101,7 +102,10 @@ export function ScheduledTab({ engine, level, openConversation }: Props) {
     {adv && sum && sum.count > 0 && <p className="au-hint au-summary">{sum.count} automation{sum.count === 1 ? "" : "s"} · <span className={sum.failing ? "au-warn" : ""}>{sum.failing} failing</span>{sum.next ? ` · next run ${sum.next}` : ""}</p>}
     {adv && data && data.jobs.some(j => !isTrigger(j)) && <FindBar find={find} set={setFind} />}
     {data && <List data={data} find={find} level={level} write={write} busy={busy} actions={actions} open={open} />}
-    <Ideas canWrite={write} pick={(title, message) => { setError(""); setDraft(draftFromIdea(title, message, agentFor())); }} />
+    <Ideas canWrite={write} pick={(title, message) => {
+      setError(""); setWords(message); setIdea(title);
+      notify("Filled in. Change anything, then Add.");
+    }} />
     <StandingOrders />
     {adv && <RunningMore paused={paused} canWrite={write} busy={busy} setPaused={setPaused} />}
     <Reminders />

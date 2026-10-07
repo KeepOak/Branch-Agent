@@ -1,0 +1,5 @@
+engine:src/node-host/worker.test.ts
+engine:src/tui/tui-task-suggestions.behaviour.test.ts
+engine:src/tui/tui-task-suggestions.test.ts
+window:src/places/automations/scheduled-ideas.behaviour.test.tsx
+window:src/places/automations/scheduled.test.tsx
