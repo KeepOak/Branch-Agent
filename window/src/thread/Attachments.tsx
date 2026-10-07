@@ -118,14 +118,15 @@ function FileChip({ item }: { item: Attachment }) {
 }
 
 /** The pictures, sounds, videos and files of one message. */
-export function Attachments({ items, mine = false }: { items: Attachment[]; mine?: boolean }) {
+/** `onError`: a picture that didn't load (the caller can say so and offer Try again). */
+export function Attachments({ items, mine = false, onError }: { items: Attachment[]; mine?: boolean; onError?: () => void }) {
   const [open, setOpen] = useState<number | null>(null);
   const pictures = items.filter((a) => a.kind === "image" && a.kept);
   return (
     <div className={mine ? "attachments mine" : "attachments"}>
       {pictures.map((p, i) => (
         <button key={`p${i}`} type="button" className="picture" onClick={() => setOpen(i)} aria-label={`Open ${p.name}`}>
-          <img src={p.src} alt={p.name} loading="lazy" />
+          <img src={p.src} alt={p.name} loading="lazy" referrerPolicy="no-referrer" onError={onError} />
         </button>
       ))}
       {items

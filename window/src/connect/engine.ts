@@ -1,5 +1,6 @@
 // The one engine handle the window's areas share (thread, composer, places). SaplingSession builds it
 // from the live connection; `sessionKey` is the open conversation.
+import type { MediaPicture } from "./session";
 export type WindowEngine = {
   /** Actual connection address, used to distinguish the owned desktop gateway from Connect elsewhere. */
   gatewayUrl?: string;
@@ -7,6 +8,9 @@ export type WindowEngine = {
   onEvent(listener: (e: { event: string; payload?: unknown }) => void): () => void;
   sessionKey: string | null;
   agentId?: string;
+  /** A picture on the Trunk's computer, read through the engine's assistant-media route (`assistant.media.get`) for
+   *  the open conversation: an address carrying a short media ticket, never the gateway credential. */
+  mediaPicture?: (source: string) => Promise<MediaPicture>;
   scopes: string[];
   attachmentPolicy?: { maxBytes?: number; maxImageBytes?: number };
 };

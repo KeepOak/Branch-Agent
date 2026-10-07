@@ -5,6 +5,7 @@ import type { EventFrame, HelloOk } from "@branch/gateway-client/browser";
 import { BranchGateway, type GatewayStatus } from "./gateway";
 import type { SendExtras, WindowEngine } from "./engine";
 import { RunStreams, readRunEvent } from "./stream-order";
+import { storedOperatorToken } from "./device-token-store";
 import { withOwner } from "./agent-owner";
 import { projectRun, type Approval, type Block } from "../thread/model";
 import { historyToBlocks, readApprovalRecords } from "../thread/history";
@@ -90,6 +91,10 @@ export class SaplingSession {
   private retiringGateway: BranchGateway | null = null;
   private retiringRunId: string | null = null;
   private sharedToken: string | undefined;
+  /** The credential the engine's HTTP routes accept from this window: the shared token, else the paired device's. */
+  get httpToken(): string | null {
+    return this.sharedToken || storedOperatorToken(this.gatewayUrl);
+  }
 
   /** `initialKey` reopens the conversation the window last showed (§3.3 "Reopen where you were"). */
   constructor(url: string, sharedToken: string | undefined, initialKey: string | null = null) {
@@ -533,6 +538,7 @@ function buildEngine(session: SaplingSession, sessionKey: string | null, hello: 
     onEvent: (listener) => session.onGatewayEvent((event, payload) => listener({ event, payload })),
     sessionKey,
     ...(agentId ? { agentId } : {}),
+    mediaPicture: (source) => (sessionKey ? loadMediaPicture(session.gatewayUrl, source, sessionKey, agentId, session.httpToken) : Promise.resolve({ error: "unavailable" as const })),
     scopes: hello ? [...hello.auth.scopes] : [],
     ...(attachments ? { attachmentPolicy: { maxBytes: attachments.maxBytes, maxImageBytes: attachments.maxImageBytes } } : {}),
   };
@@ -562,4 +568,52 @@ function readAgentName(result: unknown): string {
     return "";
   }
   return str(rec(agent.identity).name) || str(agent.name) || str(agent.id);
+}
+
+/** A picture on the Trunk's computer, ready to show, or why it can't. */
+export type MediaPicture = { src: string } | { error: "outside" | "unavailable" };
+
+/** The engine's assistant-media route for a gateway address (engine gateway/control-ui.ts, `assistant.media.get`). */
+function assistantMediaBase(gatewayUrl: string): string | null {
+  try {
+    const base = new URL(gatewayUrl);
+    base.protocol = base.protocol === "wss:" ? "https:" : "http:";
+    return `${base.origin}/__branch__/assistant-media`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reads a picture on the Trunk's computer through the engine's assistant-media route. The window asks for its
+ * availability (`meta=1`) with the gateway credential in an Authorization header (the route answers CORS for this
+ * window), and gets back a media ticket: signed, five minutes, bound to that one file and conversation. The picture
+ * then loads with the ticket alone. The credential never goes in a URL, so it can't leak through "Open in your
+ * browser", a saved or copied picture address, or logs.
+ */
+export async function loadMediaPicture(
+  gatewayUrl: string,
+  source: string,
+  sessionKey: string,
+  agentId: string | undefined,
+  token: string | null,
+  fetcher: typeof fetch = fetch,
+): Promise<MediaPicture> {
+  const base = assistantMediaBase(gatewayUrl);
+  if (!base) return { error: "unavailable" };
+  const where = { source, sessionKey, ...(agentId ? { agentId } : {}) };
+  try {
+    const res = await fetcher(`${base}?${new URLSearchParams({ meta: "1", ...where })}`, {
+      headers: { Accept: "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+    });
+    if (!res.ok) return { error: "unavailable" };
+    const meta = rec(await res.json());
+    if (meta.available !== true) return { error: str(meta.code) === "outside-allowed-folders" ? "outside" : "unavailable" };
+    const ticket = str(meta.mediaTicket);
+    return { src: `${base}?${new URLSearchParams({ ...where, ...(ticket ? { mediaTicket: ticket } : {}) })}` };
+  } catch {
+    return { error: "unavailable" };
+  }
 }
