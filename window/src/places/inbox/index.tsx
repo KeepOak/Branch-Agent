@@ -8,7 +8,7 @@ import { has, loadNeeds, loadNeedsCount, markRead, refreshesInbox, usePlaceData 
 import { takeInboxHandoff, type InboxTab } from "./handoff";
 import { History, loadHistory, type HistoryData } from "./History";
 import { NeedsYou, needsCount } from "./NeedsYou";
-import { Finished, Later, Messages, finishedRows } from "./Tabs";
+import { Finished, Later, Messages, finishedRows, snoozedRows } from "./Tabs";
 import "../overview/overview.css";
 import "./inbox.css";
 
@@ -72,7 +72,7 @@ export function InboxPlace({ engine, level, openConversation, openPlace, openSet
   const canMark = (tab === "needs" || tab === "finished") && unread.length > 0 && has(engine, "operator.sessions.write");
   const markAll = () => void needs.act(() => markRead(engine, unread), "All marked read.");
   return <PlaceFrame title="Inbox" lede="Everything a Trunk is waiting on you for, what finished, and a record of what ran.">
-    <TabRow tab={tab} set={setTab} counts={{ needs: needsCount(data) }} markAll={canMark ? markAll : undefined} bell={<NoticesBell data={data} openConversation={openConversation} openSettings={openSettings} />} />
+    <TabRow tab={tab} set={setTab} counts={{ needs: needsCount(data), later: data ? snoozedRows(data.sessions).length : 0 }} markAll={canMark ? markAll : undefined} bell={<NoticesBell data={data} openConversation={openConversation} openSettings={openSettings} />} />
     {needs.loading && !data ? <p role="status" className="ib-hint">Reading the Inbox…</p> : null}
     {needs.error ? <p role="alert" className="ib-err">{needs.error}</p> : null}
     {tab === "needs" ? data?.errors.map(error => <p className="ib-err" role="alert" key={error}>{error}</p>) : null}
@@ -85,7 +85,7 @@ export function InboxPlace({ engine, level, openConversation, openPlace, openSet
       {history.data?.errors.map(error => <p className="ib-err" role="alert" key={error}>{error}</p>)}
       {history.data ? <History engine={engine} data={history.data} level={level} people={handoff?.people} open={openConversation} /> : null}
     </> : null}
-    {tab === "later" ? <Later /> : null}
+    {tab === "later" && data ? <Later list={data.sessions} agents={data.agents.list} open={openConversation} wake={s => void needs.act(() => engine.request("sessions.patch", { key: s.key, ...(s.agentId ? { agentId: s.agentId } : {}), snoozedUntil: null }), "Woke now.")} /> : null}
     <Messages />
   </PlaceFrame>;
 }
