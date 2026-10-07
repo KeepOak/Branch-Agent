@@ -32,7 +32,6 @@ export function BoardTab({
   engine, 
   openCard,
   write,
-  busy,
   act
 }: { 
   openPlace: (place: PlaceId) => void;
@@ -40,7 +39,6 @@ export function BoardTab({
   engine: WindowEngine | null;
   openCard: (id: string) => void;
   write: boolean;
-  busy: boolean;
   act: (op: () => Promise<unknown>, message: string) => Promise<boolean>;
 }) {
   const [menu, setMenu] = useState<{ cardId: string; at: MenuAnchor } | null>(null);

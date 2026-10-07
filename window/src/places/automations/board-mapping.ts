@@ -32,7 +32,7 @@ export function columnToStatus(col: BoardCol): CanopyStatus | null {
 }
 
 /** The reason a move to this column is disabled, or null when the move is allowed. */
-export function moveDisabledReason(col: BoardCol): string | null {
+export function moveDisabledReason(_col: BoardCol): string | null {
   // All columns have canopy.cards.move support via columnToStatus
   return null;
 }

@@ -36,11 +36,10 @@ async function mount(props: {
   data: CanopyData | null;
   engine: WindowEngine | null;
   write?: boolean;
-  busy?: boolean;
 }) {
   const openPlace = vi.fn();
   const openCard = vi.fn();
-  const actFn = vi.fn(async (op, msg) => { await op(); return true; });
+  const actFn = vi.fn(async (op, _msg) => { await op(); return true; });
   const mockEngine = props.engine || {
     request: vi.fn().mockResolvedValue({ ok: true }),
     scopes: ["operator.write"],
@@ -58,7 +57,6 @@ async function mount(props: {
       engine={mockEngine}
       openCard={openCard}
       write={props.write ?? true}
-      busy={props.busy ?? false}
       act={actFn}
     />);
   });

@@ -39,8 +39,8 @@ describe("Procedures and Board", () => {
   });
   it("Board draws Orchard's six columns empty, greyed with the reason, and opens Canopy", async () => {
     const openPlace = vi.fn();
-    await render(<BoardTab openPlace={openPlace} />);
-    expect([...host.querySelectorAll(".au-col h3")].map(h => h.firstChild?.textContent)).toEqual(ORCHARD_COLUMNS);
+    await render(<BoardTab openPlace={openPlace} data={null} engine={null} openCard={vi.fn()} write={true} act={vi.fn(async () => true)} />);
+    expect([...host.querySelectorAll(".au-col h3")].map(h => h.firstChild?.textContent)).toEqual(ORCHARD_COLUMNS.map(([_, name]) => name));
     expect(byText("Bring in issues").disabled).toBe(true); expect(byText("Bring in issues").title).toBe("");
     expect(host.textContent).not.toContain(ORCHARD_NEEDS); expect(visibleDevNotes(host)).toEqual([]);
     await act(async () => { byText("Open Canopy").click(); });

@@ -46,7 +46,6 @@ export function tabFromEvent(detail: unknown): Tab | null {
 
 export function AutomationsPlace({ engine, openConversation, openPlace, level }: PlaceProps) {
   const [tab, setTab] = useState<Tab>("scheduled");
-  const [sheet, setSheet] = useState("");
   const state = usePlaceData(engine, loadCanopy);
   
   const moveTab = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -71,9 +70,10 @@ export function AutomationsPlace({ engine, openConversation, openPlace, level }:
   }, [state]);
   
   const openCard = useCallback((id: string) => {
-    setSheet(id);
     openPlace("canopy");
     setTimeout(() => window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "canopy", tab: "Cards" } })), 0);
+    // Card sheet will open in Canopy with the id - Canopy handles displaying the sheet
+    void id; // Suppress unused variable warning
   }, [openPlace]);
   
   return <PlaceFrame title="Automations" lede="Work your Trunks do on their own.">
@@ -90,7 +90,6 @@ export function AutomationsPlace({ engine, openConversation, openPlace, level }:
         engine={engine}
         openCard={openCard}
         write={canWrite(engine)}
-        busy={state.busy}
         act={act}
       />}
     </div>
