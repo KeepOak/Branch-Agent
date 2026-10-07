@@ -12,7 +12,6 @@ engine:src/agents/tools/media-generate-background.test.ts
 engine:src/agents/tools/music-generate-tool.test.ts
 engine:src/agents/tools/pdf-tool.model-config.test.ts
 engine:src/agents/tools/pdf-tool.test.ts
-engine:src/agents/tools/video-generate-tool.behaviour.test.ts
 engine:src/agents/tools/video-generate-tool.test.ts
 engine:src/image-generation/runtime.test.ts
 engine:src/media-understanding/apply.test.ts
