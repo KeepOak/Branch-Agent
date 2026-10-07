@@ -30,7 +30,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 5. **List new test files for CI** in `scripts/feature-batch-ci-named/<branch-name>.txt` (`engine:<path>` or `window:<path>`, one per line, sorted). For desktop tests, add a `node --test` step to `.github/workflows/desktop-checks.yml`.
 
-6. **Lint before pushing:** `cd window && pnpm lint` for window changes; `cd engine && pnpm lint` for engine changes (uses oxlint with strict rules). Fix all lint errors.
+6. **Lint before pushing:** `cd window && pnpm lint` for window changes; `cd engine && pnpm lint` for engine changes (uses oxlint with strict rules). Fix all lint errors. If engine lint reports raw-copy or i18n catalog-fallback baseline drift, regenerate with `cd engine && pnpm ui:i18n:baseline` and `cd engine && pnpm ui:i18n:sync`, then commit the updated files under `engine/ui/src/i18n/.i18n/`.
 
 7. **Type-check before pushing:** `pnpm -C window typecheck` for window changes; `node scripts/strict-typecheck.mjs` for engine changes (about 6 GB).
 

@@ -38,6 +38,7 @@ Conventions and common failure modes for this repository. Bugbot should check th
 ### Lint and type errors
 - **Wrong:** Pushing code with oxlint errors or TypeScript strict errors.
 - **Right:** Run `pnpm lint` in engine or window, and the appropriate typecheck (`pnpm -C window typecheck` or `node scripts/strict-typecheck.mjs`) before pushing.
+- **I18n baselines:** Flag PRs that add Control UI copy or i18n strings without updating `engine/ui/src/i18n/.i18n/raw-copy-baseline.json` or `engine/ui/src/i18n/.i18n/catalog-fallbacks.json`.
 
 ### Merge commands
 - **Wrong:** Merging without pinning to the reviewed head SHA, or using squash/rebase.

@@ -1,0 +1,51 @@
+name: Engine lint baselines
+
+# merge-gate waits for every check on the PR head. Root workflows never ran
+# `pnpm lint` or the Control UI i18n baseline steps, so main could merge with
+# a red local `cd engine && pnpm lint`. This job is the smallest required
+# check that catches that drift before merge.
+on:
+  pull_request:
+    paths:
+      - 'engine/**'
+      - '.github/workflows/engine-lint-baselines.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'engine/**'
+      - '.github/workflows/engine-lint-baselines.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engine-lint-baselines-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint-baselines:
+    name: Control UI i18n baselines
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up reviewed Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Install pinned pnpm
+        run: npm install --global pnpm@12.5.1
+      - name: Install frozen engine dependencies
+        working-directory: engine
+        run: pnpm install --frozen-lockfile
+      - name: Verify Control UI source catalog and raw-copy baseline
+        working-directory: engine
+        run: pnpm ui:i18n:verify
+      - name: Verify Control UI catalog fallback baseline
+        working-directory: engine
+        run: node --import ./scripts/tsx.mjs scripts/control-ui-i18n-verify.ts generated
