@@ -111,6 +111,8 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
   if (holdStartup) await writeFile(join(root, "hold-startup"), "wait");
   await prepare?.(root);
   let onStaged, swapGuard;
+  // Auto-apply's clock: a test moves it past the 60 s idle hold instead of waiting for it.
+  const clock = { skew: 0 };
   Module._load = function(name, ...args) {
     if (name === "electron") return runtime.electron;
     if (fastSupervisor && name === "./gateway-supervisor") {
@@ -118,6 +120,10 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
       return { createGatewayCrashSupervisor: options => source.createGatewayCrashSupervisor({ ...options,
         policy: typeof fastSupervisor === "object" ? fastSupervisor :
           { maxAttempts: 1, initialDelayMs: 10, maxDelayMs: 10, stableAfterMs: 60_000 } }) };
+    }
+    if (name === "./auto-apply-update") {
+      const source = originalLoad.call(this, name, ...args);
+      return { ...source, createAutoApplyUpdate: options => source.createAutoApplyUpdate({ ...options, now: () => Date.now() + clock.skew }) };
     }
     if (name === "./component-update") {
       const source = originalLoad.call(this, name, ...args);
@@ -148,7 +154,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
   try {
     require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "main.js"));
     if (!holdStartup) await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway ready"), 30_000);
-    await run({ root, runtime, starts, restart, offerStaged: () => onStaged(), swapGuard: (work) => swapGuard(work) });
+    await run({ root, runtime, starts, restart, offerStaged: () => onStaged(), swapGuard: (work) => swapGuard(work), clock });
   } finally {
     await writeFile(join(root, "release-ready"), "ready"); await pause(600);
     runtime.app.emit("will-quit");
@@ -866,24 +872,65 @@ test("a standby that fails after the old engine drained brings the previous buil
   assert.ok(log.lastIndexOf(`gateway started from ${engineDir}`) > log.indexOf("update failed"), "the previous build was not restarted");
   assert.ok(sent.some(([channel]) => channel === "branch-desktop:engine-update-failed"));
 }, false, false, false, true));
-test("an Update click or an automatic update during a staged-update replacement is refused, and works afterwards", () => fixture(async ({ root, runtime, starts, restart, offerStaged, swapGuard }) => {
-  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+/** Answers the window's approval/draft probes as an idle window would, recording everything sent to it. */
+function idleWindow(runtime) {
+  const sent = [], owner = runtime.window.webContents; owner.isDestroyed = () => false;
+  owner.send = (channel, value) => {
+    sent.push([channel, value]);
+    if (channel === "branch-desktop:auto-apply:probe") setTimeout(() => runtime.ipcMain.emit("branch-desktop:auto-apply:result",
+      { sender: owner, senderFrame: owner.mainFrame }, value, { pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }), 5);
+  };
+  return sent;
+}
+test("an Update click or an automatic update during a staged-update replacement waits for it, then the click runs once", () => fixture(async ({ root, runtime, starts, restart, offerStaged, swapGuard, clock }) => {
+  const sent = idleWindow(runtime);
+  const log = () => readFile(join(root, "desktop.log"), "utf8");
   await writeFile(join(root, "release-ready"), "ready");
   await stageFixtureUpdate(root);
+  // Auto-apply first holds an idle update for 60 s.
+  offerStaged();
+  await eventually(async () => (await log()).includes("auto-apply: idle hold for fixture-next"));
   let releaseGuard;
   const held = new Promise(resolve => { releaseGuard = resolve; });
   const replacement = swapGuard(async () => { await held; return true; });
-  restart();                                  // the owner's click
-  offerStaged();                              // the automatic path (auto-apply is on by default)
-  await pause(1_000);
+  // Past the hold, auto-apply really applies the update, and the replacement's lock refuses it.
+  clock.skew = 61_000;
+  offerStaged();
+  await eventually(async () => (await log()).includes("auto-apply: restarting for fixture-next"));
+  await eventually(async () => (await log()).includes("auto-apply: waiting; activity check failed: The desktop is not ready to update"));
+  // The owner's click is kept: the bar says the update is being prepared.
+  restart();
+  await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "preparing"));
+  assert.match(await log(), /update requested while a newer release replaces the staged one/);
   assert.equal((await starts()).length, 1, "an update started while the staged pair was being replaced");
-  assert.doesNotMatch(await readFile(join(root, "desktop.log"), "utf8"), /update requested|swapped in place/);
+  assert.doesNotMatch(await log(), /update requested \(|swapped in place/);
   // A second replacement cannot start either while one runs.
   assert.equal(await swapGuard(async () => true), undefined);
   releaseGuard(); assert.equal(await replacement, true);
-  restart();
+  // The kept click runs by itself once the replacement ends, exactly once.
   await eventually(() => swapped(root), 30_000);
+  assert.equal((await log()).split("update requested (").length - 1, 1);
 }));
+test("a staged-update replacement that ends rolled back keeps the served window valid and never reloads it", () => fixture(async ({ root, runtime, offerStaged, swapGuard }) => {
+  idleWindow(runtime);
+  const cfg = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  await stageFixtureUpdate(root);
+  await writeFile(join(cfg.windowDir, "branch-build.txt"), "staged-build");
+  offerStaged();
+  const page = async () => { const response = await fetch(`http://127.0.0.1:${cfg.windowPort}/`); return [response.status, await response.text()]; };
+  await eventually(async () => (await page())[1] === "<html>fixture</html>");
+  await pause(3_500); // the window watcher has seen the staged build
+  const reloads = runtime.window.reloads;
+  // The worst failure: the replacement's undo failed too, so the publication rolled back to the running build,
+  // moving the window folder the desktop served into windowDir.
+  const updates = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update.js"));
+  await assert.rejects(swapGuard(async () => { await updates.rollbackComponentUpdate(cfg); throw Error("fixture: replacement rolled back"); }), /rolled back/);
+  assert.deepEqual(await page(), [200, "<html>fixture</html>"], "the served window went missing");
+  await pause(4_000); // more than one watcher poll
+  assert.equal(runtime.window.reloads, reloads, "the live window was reloaded");
+  assert.doesNotMatch(await readFile(join(root, "desktop.log"), "utf8"), /new window build found/);
+  assert.deepEqual(await page(), [200, "<html>fixture</html>"]);
+}, false, false, false, "never", async root => { await writeFile(join(root, "window", "branch-build.txt"), "running-build"); }));
 test("a new window build swaps in place after attached files are sent, keeping the engine", () => fixture(async ({ root, runtime, starts }) => {
   const main = runtime.window;
   await runtime.handlers.get("branch-desktop:open-conversation")(

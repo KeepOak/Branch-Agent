@@ -24,6 +24,7 @@ import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from 
 import { createAutoApplyUpdate } from "./auto-apply-update";
 import { checkCandidateBeside, stopCandidate } from "./candidate-check";
 import { clearEngineRecords, retireRecordedEngines } from "./engine-records";
+import { createUpdateLock, type UpdateLockHandle } from "./update-lock";
 import { freemem } from "node:os";
 import { createHash } from "node:crypto";
 import type { Tray } from "electron";
@@ -166,7 +167,14 @@ function runConfirmedReleasePrune(): void {
 }
 /** The window build the static server serves: the staged one only once its engine runs. */
 let servedWindowDir = cfg.windowDir;
-let engineRestartInProgress = false;
+/**
+ * The one update lock: an in-place update, crash recovery, a staged-update replacement and #380's Undo each hold it
+ * for their whole run. Undo holds it across its prepare and passes the handle to swapEngineInPlace.
+ */
+const updateLock = createUpdateLock(released => afterUpdateLockRelease(released));
+const RECOVERY = "crash recovery", REPLACING = "replace the staged update";
+/** An Update click that arrived while a newer release replaced the staged one: it runs once the replacement ends. */
+let updateClickQueued = false;
 /** The engine exited while an update ran: the update's end decides, then recovery runs once with a full budget. */
 let recoveryDeferred = false;
 /** A failed update left nothing serving: once recovery brings the previous build back, the bar says it was kept. */
@@ -183,9 +191,9 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
   },
   restart: async () => {
     // An update in progress owns the engine; spending restart attempts against it would exhaust the budget.
-    if (engineRestartInProgress) { recoveryDeferred = true; log("gateway exit during an update; recovery waits for it"); return; }
+    if (updateLock.held) { recoveryDeferred = true; log(`gateway exit during an update (${updateLock.purpose}); recovery waits for it`); return; }
     if (quitting || engineServing()) return;
-    engineRestartInProgress = true;
+    const lock = updateLock.acquire(RECOVERY)!;
     try {
       // A live engine that never became ready (a failed update's new engine slow to exit) is not serving: stop it.
       if (gateway && engineRunning()) await stopFailedEngine(gateway);
@@ -205,7 +213,7 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
       if (gateway) await stopFailedEngine(gateway);
       throw error;
     } finally {
-      engineRestartInProgress = false;
+      await updateLock.release(lock);
     }
   },
 });
@@ -259,11 +267,12 @@ const engineServing = (): boolean => engineRunning() && gateway === readyGateway
  * engine's state lock means the standby can only bind and become ready after the old engine has released state.
  * A staged desktop app is never applied here; it waits for the next natural launch.
  */
-async function swapEngineInPlace(label: string, explicit: boolean): Promise<void> {
-  if (!gateway || !win || engineRestartInProgress) throw new Error("The desktop is not ready to update");
+async function swapEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle): Promise<void> {
+  // `held`: the caller (Undo) already holds the update lock and keeps it; otherwise the swap takes it.
+  if (!gateway || !win || (held ? !updateLock.holds(held) : updateLock.held)) throw new Error("The desktop is not ready to update");
   // A crash restart always runs first: an update never cancels it, and never starts with no engine serving.
   if (!engineServing()) throw new Error("The engine is restarting after an exit; the update waits for it");
-  engineRestartInProgress = true;
+  const lock = held ?? updateLock.acquire(`update ${label}`)!;
   const windowBefore = windowBuild(servedWindowDir);
   const priorGateway = gateway;
   const attempt = { stepDownSent: false };
@@ -344,15 +353,27 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
     throw error;
   } finally {
     priorGateway.off("exit", priorExited);
-    engineRestartInProgress = false;
-    const exitedDuring = recoveryDeferred;
-    recoveryDeferred = false;
-    // Never leave zero engines: whatever ended the update, the crash supervisor brings back the build that last ran,
-    // with a fresh budget, when nothing serves now.
-    if (!quitting && !engineServing()) {
-      if (gateway && engineRunning()) await stopFailedEngine(gateway);
-      gatewaySupervisor.recover(new Error(exitedDuring ? "the engine exited during an update" : "the update ended with no engine serving"));
-    }
+    // A held lock stays with its holder, whose release runs the same recovery check.
+    if (!held) await updateLock.release(lock);
+  }
+}
+
+/**
+ * After an update, a replacement or Undo releases the lock: never leave zero engines. Whatever the holder did, the
+ * crash supervisor brings back the build that last ran, with a fresh budget, when nothing serves now. Crash recovery
+ * itself retries within its own budget. A queued Update click runs next.
+ */
+async function afterUpdateLockRelease(released: UpdateLockHandle): Promise<void> {
+  if (released.purpose === RECOVERY) return;
+  const exitedDuring = recoveryDeferred;
+  recoveryDeferred = false;
+  if (quitting) return;
+  if (!engineServing()) {
+    if (gateway && engineRunning()) await stopFailedEngine(gateway);
+    gatewaySupervisor.recover(new Error(exitedDuring ? `the engine exited during "${released.purpose}"` : `nothing served after "${released.purpose}"`));
+  } else if (updateClickQueued) {
+    updateClickQueued = false;
+    void restartEngine();
   }
 }
 
@@ -535,15 +556,23 @@ async function recoveryPort(): Promise<number> {
  * undefined when an update or recovery already holds it. Used to replace a staged update with a newer release.
  */
 async function underSwapGuard(work: () => Promise<boolean>): Promise<boolean | undefined> {
-  if (engineRestartInProgress) return undefined;
-  engineRestartInProgress = true;
+  const lock = updateLock.acquire(REPLACING);
+  if (!lock) return undefined;
   try { return await work(); }
   finally {
-    engineRestartInProgress = false;
-    if (recoveryDeferred && !quitting) {
-      recoveryDeferred = false;
-      if (!engineRunning()) gatewaySupervisor.recover(new Error("the engine exited while a staged update was replaced"));
-    }
+    // Replaced, withdrawn, put back or rolled back: serve the window of the build that runs, and offer only what is
+    // still staged. The window the desktop serves never points at a folder that moved.
+    await followStagedUpdate().catch(error => log(`Component update status: ${String(error)}`));
+    await updateLock.release(lock);
+  }
+}
+
+async function followStagedUpdate(): Promise<void> {
+  const { componentsPendingVersion, previousWindowDir } = await readComponentUpdateStatus(cfg);
+  servedWindowDir = previousWindowDir ?? cfg.windowDir;
+  if (!componentsPendingVersion && engineUpdateReady) {
+    engineUpdateReady = false;
+    watchEngine();
   }
 }
 
@@ -596,7 +625,7 @@ const autoApply = createAutoApplyUpdate({
 async function offerStagedUpdate(): Promise<void> {
   const { componentsPendingVersion, previousWindowDir } = await readComponentUpdateStatus(cfg);
   if (!componentsPendingVersion) return;
-  if (previousWindowDir && !engineRestartInProgress) servedWindowDir = previousWindowDir;
+  if (previousWindowDir && !updateLock.held) servedWindowDir = previousWindowDir;
   engineUpdateReady = true;
   sendToBranchWindows("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
   void autoApply.tick();
@@ -1009,17 +1038,22 @@ async function bootSelectedEngine(prepared?: PreparedGateway): Promise<boolean> 
   });
 }
 
+/** The window build the open window last loaded; the watcher never reloads onto the same build. */
+let shownWindowBuild: string | undefined;
 function watchUpdates(w: BrowserWindow): void {
+  shownWindowBuild = windowBuild(servedWindowDir);
   stopWindowWatch = watchWindowBuild(cfg.windowDir, () => {
     void readComponentUpdateStatus(cfg).then(({ publicationInProgress }) => {
       // A staged engine/window pair activates together through the in-place swap.
-      if (publicationInProgress || engineRestartInProgress) return;
+      if (publicationInProgress || updateLock.held) return;
+      // The window already shows this build (a staged pair was put back, or rolled back to the build it runs).
+      if (windowBuild(servedWindowDir) === shownWindowBuild) return;
       log("new window build found; swapping it in");
       void hotSwapWindow();
     }).catch(error => log(`Window update status: ${String(error)}`));
   });
   // A reload re-runs the preload; show the bar again if an engine update is still waiting.
-  w.webContents.on("did-finish-load", () => offerWindowStatus(w));
+  w.webContents.on("did-finish-load", () => { shownWindowBuild = windowBuild(servedWindowDir); offerWindowStatus(w); });
 }
 function offerWindowStatus(w: BrowserWindow): void {
   if (w.isDestroyed() || !w.webContents.getURL().startsWith(windowUrl())) return;
@@ -1029,7 +1063,16 @@ function offerWindowStatus(w: BrowserWindow): void {
 
 /** The owner's Update click: applies a staged engine/window pair, or a rebuilt engine, in place. */
 async function restartEngine(): Promise<void> {
-  if (!gateway || !win || !componentsReady || engineRestartInProgress) return;
+  if (!gateway || !win || !componentsReady) return;
+  if (updateLock.held) {
+    if (updateLock.purpose === REPLACING && !updateClickQueued) {
+      // A newer release is replacing the staged one: the click is kept and runs right after, on the newer release.
+      updateClickQueued = true;
+      log("update requested while a newer release replaces the staged one; it runs right after");
+      win.webContents.send("branch-desktop:engine-update", "preparing");
+    }
+    return;
+  }
   if (!engineServing()) {
     // A crash restart wins: the click never cancels it. If recovery already gave up, the click retries it now.
     log("update requested while the engine is restarting; recovery runs first");
