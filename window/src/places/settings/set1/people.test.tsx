@@ -49,7 +49,7 @@ const pick = async (name: string) => act(async () => [...host.querySelectorAll<H
 describe("Settings › People", () => {
   it("lists people from users.list grouped by where they use Branch, merged profiles left out", async () => {
     await render(engineOf().engine);
-    expect(host.querySelector("p.lede")?.textContent).toContain("The same list as People › People in the People place.");
+    expect(host.querySelector("p.lede")?.textContent).toBe("Everyone who uses Branch, on this computer or their own.");
     expect([...host.querySelectorAll(".grp-pp")].map((g) => g.textContent)).toEqual(["On this computer", "On their own device"]);
     expect([...host.querySelectorAll(".pitem-pp b")].map((b) => b.textContent)).toEqual(["Alex · you", "Dana Okafor"]);
     expect([...host.querySelectorAll(".pitem-pp small")].map((m) => m.textContent)).toEqual(["Owner · last used Now", "last used 5 min ago"]);
@@ -81,7 +81,7 @@ describe("Settings › People", () => {
     expect(dlg.textContent).toContain("Invite someone");
     await act(async () => [...dlg.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "On their own device")!.click());
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg button")].find((b) => b.textContent === "Make a one-time code")!.click());
-    expect(request).toHaveBeenCalledWith("device.pair.setupCode", { bootstrapProfile: "limited" });
+    expect(request).toHaveBeenCalledWith("device.pair.setupCode", { bootstrapProfile: "limited", includeQr: true });
     expect(document.querySelector(".dlg .pp-code")?.textContent).toBe("INV-1");
   });
 

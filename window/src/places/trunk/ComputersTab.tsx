@@ -45,7 +45,7 @@ export function ComputersTab({ name, draft, computers, set, openSettings }: Prop
       </div>
       <div className="tk-offer" role="note">
         <span className="tk-ico"><LineIcon name="cloud" /></span>
-        <span className="tk-grow"><b>Add a cloud computer</b><small>A fresh machine for each conversation on your own cloud account or KeepOak, thrown away when its work stops. Off until you choose: the provider bills while machines run.</small></span>
+        <span className="tk-grow"><b>Add a cloud computer</b><small>A fresh computer for each conversation, removed when work stops.</small></span>
         <button type="button" className="btn sm" disabled={!openSettings} onClick={() => openSettings?.("computer")}>Set one up</button>
       </div>
     </div>

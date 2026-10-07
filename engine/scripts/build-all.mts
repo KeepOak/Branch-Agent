@@ -239,6 +239,13 @@ const FULL_BUILD_STEP_LABELS = [
 const BUILD_ALL_PROFILES: Record<string, string[]> = {
   full: [...FULL_BUILD_STEP_LABELS],
   package: ["clean:dist", ...FULL_BUILD_STEP_LABELS],
+  ciBuildSeed: [
+    "native-protocol",
+    "plugins:assets:build",
+    "tsdown-ai",
+    "tsdown-packages",
+    "tsdown-unified",
+  ],
   ciArtifacts: [...CI_ARTIFACT_STEP_LABELS],
   // Smoke builds retain typed compilation and publication checks without the UI/metadata tail.
   strictSmoke: [...FULL_RUNTIME_STEP_LABELS, ...SDK_DECLARATION_STEP_LABELS],
@@ -265,6 +272,11 @@ const BUILD_ALL_PROFILE_STEP_ENV: Record<string, Record<string, NodeJS.ProcessEn
     tsdown: {
       BRANCH_PRESERVE_CLI_STARTUP_METADATA: "1",
     },
+    "tsdown-unified": {
+      BRANCH_PRESERVE_CLI_STARTUP_METADATA: "1",
+    },
+  },
+  ciBuildSeed: {
     "tsdown-unified": {
       BRANCH_PRESERVE_CLI_STARTUP_METADATA: "1",
     },

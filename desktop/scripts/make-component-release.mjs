@@ -7,7 +7,7 @@ import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { createGzip } from "node:zlib";
 
-function header(name, size, mode) {
+function header(name, size, mode, type = "0", link = "") {
   const originalName = name;
   let prefix = "";
   if (Buffer.byteLength(name) > 100) {
@@ -23,13 +23,15 @@ function header(name, size, mode) {
   const field = (value, offset, width) => block.write(value, offset, width, "utf8");
   const number = (value, offset, width) => field(value.toString(8).padStart(width - 1, "0") + "\0", offset, width);
   field(name, 0, 100); number(mode & 0o777, 100, 8); number(0, 108, 8); number(0, 116, 8);
-  number(size, 124, 12); number(0, 136, 12); block.fill(32, 148, 156); block[156] = 48;
+  number(size, 124, 12); number(0, 136, 12); block.fill(32, 148, 156); block[156] = type.charCodeAt(0);
+  if (Buffer.byteLength(link) > 100) throw new Error(`Archive link target exceeds ustar format: ${name}`);
+  field(link, 157, 100);
   field("ustar\0", 257, 6); field("00", 263, 2); field(prefix, 345, 155);
   field(block.reduce((sum, byte) => sum + byte, 0).toString(8).padStart(6, "0") + "\0 ", 148, 8);
   return block;
 }
 
-async function files(root, folder = root, ancestors = new Set()) {
+async function files(root, folder = root, ancestors = new Set(), preserveLinks = false) {
   const actual = await realpath(folder);
   if (actual !== root && !actual.startsWith(root + sep)) throw new Error("Component symlink leaves deployment root");
   if (ancestors.has(actual)) throw new Error("Component symlink cycle");
@@ -39,9 +41,17 @@ async function files(root, folder = root, ancestors = new Set()) {
     const file = join(folder, name);
     const target = await realpath(file);
     if (!target.startsWith(root + sep)) throw new Error("Component symlink leaves deployment root");
+    if (preserveLinks) {
+      const { lstat, readlink } = await import("node:fs/promises");
+      const linkInfo = await lstat(file);
+      if (linkInfo.isSymbolicLink()) {
+        result.push({ file, name: relative(root, file).split(sep).join("/"), size: 0, mode: linkInfo.mode, link: await readlink(file) });
+        continue;
+      }
+    }
     const info = await stat(file);
     if (info.isDirectory()) {
-      for (const entry of await files(root, file, seen)) result.push(entry);
+      for (const entry of await files(root, file, seen, preserveLinks)) result.push(entry);
     }
     else if (info.isFile()) result.push({ file, name: relative(root, file).split(sep).join("/"), size: info.size, mode: info.mode });
     else throw new Error("Unsupported component file type");
@@ -61,12 +71,12 @@ function portableGzipHeader() {
   } });
 }
 
-async function archive(root, destination, fileMode) {
-  const entries = await files(await realpath(root));
+async function archive(root, destination, fileMode, preserveLinks = false) {
+  const entries = await files(await realpath(root), await realpath(root), new Set(), preserveLinks);
   async function* bytes() {
     for (const entry of entries) {
-      yield header(entry.name, entry.size, fileMode ?? entry.mode);
-      for await (const chunk of createReadStream(entry.file)) yield chunk;
+      yield header(entry.name, entry.size, fileMode ?? entry.mode, entry.link === undefined ? "0" : "2", entry.link);
+      if (entry.link === undefined) for await (const chunk of createReadStream(entry.file)) yield chunk;
       const padding = (512 - entry.size % 512) % 512;
       if (padding) yield Buffer.alloc(padding);
     }
@@ -101,8 +111,8 @@ async function existingDigest(file) {
 }
 
 /**
- * The desktop component: `app` holds app.asar alone (applied while Electron stays the same); `runtime`, when given,
- * is the whole packaged app folder, published as the native bootstrap package and applied when Electron changes.
+ * The desktop component: `app` holds app.asar alone for Windows/Linux. `runtime` is the whole packaged app
+ * folder, published as the native bootstrap package and applied when Electron changes or on sealed macOS apps.
  */
 async function desktopComponents({ app, runtime, electronVersion }, { stage, output, version, tag, platform, arch }) {
   if (!/^\d+\.\d+\.\d+$/.test(electronVersion ?? "")) throw new Error("Desktop component needs its exact Electron version");
@@ -112,9 +122,10 @@ async function desktopComponents({ app, runtime, electronVersion }, { stage, out
   const components = {};
   for (const [name, root, filename] of parts) {
     if (await existingDigest(join(output, filename))) throw new Error(`Release asset collision: ${filename}`);
-    const info = await archive(root, join(stage, filename));
+    const info = await archive(root, join(stage, filename), undefined, name === "desktopRuntime" && platform === "darwin");
     // The app.asar this component carries, so an installed desktop with the same bytes skips the download and swap.
-    const appAsarSha256 = await existingDigest(join(root, name === "desktop" ? "app.asar" : "resources/app.asar"));
+    const appAsarSha256 = await existingDigest(join(root, name === "desktop" ? "app.asar"
+      : platform === "darwin" ? "Branch Agent.app/Contents/Resources/app.asar" : "resources/app.asar"));
     components[name] = { url: `https://github.com/KeepOak/Branch-Agent/releases/download/${tag}/${filename}`, ...info, platform, arch, electronVersion,
       ...(appAsarSha256 ? { appAsarSha256 } : {}) };
   }

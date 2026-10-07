@@ -22,11 +22,15 @@ describe("P54 pet home and typing row", () => {
     expect(hidden).not.toContain('class="keeper"');
   });
 
-  it("shows typing… in the contact row only while its real working state is active", () => {
+  it("shows work instead of typing while the Trunk runs and no leading dot while waiting", () => {
     const render = (working: boolean) => renderToStaticMarkup(<ConversationRow row={row} current={false} time="now" showPreview state={{ working, waiting: false }} trunkName="Ada" onOpen={() => {}} onMenu={() => {}} />);
-    expect(render(true)).toContain("typing…");
+    expect(render(true)).toContain("Thinking");
+    expect(render(true)).not.toContain("typing…");
     expect(render(true)).not.toContain("Previous reply");
     expect(render(false)).toContain("Previous reply");
     expect(render(false)).not.toContain("typing…");
+    const waiting = renderToStaticMarkup(<ConversationRow row={row} current={false} time="now" showPreview state={{ working: true, waiting: true }} trunkName="Ada" onOpen={() => {}} onMenu={() => {}} />);
+    expect(waiting).toContain("Waiting on you");
+    expect(waiting).not.toContain("· Waiting on you");
   });
 });
