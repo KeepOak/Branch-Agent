@@ -114,14 +114,18 @@ it("lets a process with an active owner heartbeat exit naturally", () => {
 it("lets the worker close its lock descriptor before exiting on stop", async () => {
   const rootPath = path.join(tempDirs.make("branch-owner-worker-stop-"), "root.lock");
   fs.writeFileSync(rootPath, "root-owner");
+  const oldStamp = new Date(Date.now() - 60_000);
+  fs.utimesSync(rootPath, oldStamp, oldStamp);
   const { workers, ready } = observeHeartbeatWorkers("close");
   const heartbeat = startGatewayStateOwnerHeartbeat(
     [{ lockPath: rootPath, verifyStillHeld: () => true }],
     () => {},
   );
+  expect(workers).toHaveLength(1);
   const worker = workers[0]!;
   try {
     await Promise.all(ready);
+    expect(fs.statSync(rootPath).mtimeMs).toBeGreaterThan(oldStamp.getTime());
     const closed = once(worker, "message");
     const exited = once(worker, "exit");
     heartbeat.stop();
@@ -135,7 +139,40 @@ it("lets the worker close its lock descriptor before exiting on stop", async () 
   }
 });
 
-async function startRuntime(locks: Record<string, string>) {
+it("force-terminates a heartbeat worker that ignores stop after the grace period", async () => {
+  const rootPath = path.join(tempDirs.make("branch-owner-worker-forced-stop-"), "root.lock");
+  fs.writeFileSync(rootPath, "root-owner");
+  const { workers, ready } = observeHeartbeatWorkers();
+  const heartbeat = startGatewayStateOwnerHeartbeat(
+    [{ lockPath: rootPath, verifyStillHeld: () => true }],
+    () => {},
+  );
+  expect(workers).toHaveLength(1);
+  const worker = workers[0]!;
+  try {
+    await Promise.all(ready);
+    vi.spyOn(worker, "postMessage").mockImplementation(() => {});
+    const terminate = vi.spyOn(worker, "terminate");
+    const exited = once(worker, "exit");
+    vi.useFakeTimers();
+    heartbeat.stop();
+    expect(worker.postMessage).toHaveBeenCalledWith("stop", []);
+    vi.advanceTimersByTime(999);
+    expect(terminate).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(terminate).toHaveBeenCalledOnce();
+    await exited;
+  } finally {
+    vi.useRealTimers();
+    heartbeat.stop();
+    await worker.terminate();
+  }
+});
+
+async function startRuntime(
+  locks: Record<string, string>,
+  lastBeat = new BigInt64Array(new SharedArrayBuffer(BigInt64Array.BYTES_PER_ELEMENT)),
+) {
   vi.useFakeTimers();
   vi.resetModules();
   const { runGatewayStateOwnerHeartbeat } =
@@ -143,7 +180,6 @@ async function startRuntime(locks: Record<string, string>) {
   const events = new MessageChannel();
   const parent = new MessageChannel();
   const closed = once(parent.port2, "close");
-  const lastBeat = new BigInt64Array(new SharedArrayBuffer(BigInt64Array.BYTES_PER_ELEMENT));
   Atomics.store(lastBeat, 0, process.hrtime.bigint() / 1_000_000n);
   runGatewayStateOwnerHeartbeat(
     {
@@ -173,6 +209,29 @@ async function startRuntime(locks: Record<string, string>) {
     },
   };
 }
+
+it("does not publish a stale beat after the main thread re-asserts ownership", async () => {
+  const rootPath = path.join(tempDirs.make("branch-owner-beat-publication-"), "root.lock");
+  fs.writeFileSync(rootPath, "root-owner");
+  const lastBeat = new BigInt64Array(new SharedArrayBuffer(BigInt64Array.BYTES_PER_ELEMENT));
+  const touch = fs.futimesSync;
+  let reassertedAt: bigint | undefined;
+  vi.spyOn(fs, "futimesSync").mockImplementation((fd, atime, mtime) => {
+    // The worker entered its syscall with an older observation. The main thread
+    // re-asserts while it is blocked, before the worker can publish its old stamp.
+    reassertedAt = process.hrtime.bigint() / 1_000_000n + 1_000n;
+    Atomics.store(lastBeat, 0, reassertedAt);
+    touch(fd, atime, mtime);
+  });
+  const runtime = await startRuntime({ [rootPath]: "root-owner" }, lastBeat);
+  try {
+    expect(reassertedAt).toBeDefined();
+    expect(Atomics.load(lastBeat, 0)).toBe(reassertedAt);
+    expect(runtime.readEvents()).toEqual([null]);
+  } finally {
+    await runtime.stop();
+  }
+});
 
 it.each(["persistent", "transient"] as const)(
   "bounds %s EIO renewal failures without losing healthy custody",
