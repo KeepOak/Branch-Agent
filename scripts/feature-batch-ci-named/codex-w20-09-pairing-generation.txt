@@ -1,0 +1,3 @@
+window:src/places/customize/catalog-action.test.tsx
+window:src/places/customize/pairing-reset.test.tsx
+window:src/places/people/devices.test.tsx
