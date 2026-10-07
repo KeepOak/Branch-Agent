@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Skip publication (stop after building and verifying all targets)'
+        description: 'Stop after readiness and identity; do not build natives or publish'
         required: false
         default: false
         type: boolean
@@ -54,57 +54,50 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          decide_scheduled() {
+            git fetch origin main
+            local main_commit latest_release latest_commit failed_checks
+            main_commit="$(git rev-parse origin/main)"
+            latest_release=$(gh api repos/KeepOak/Branch-Agent/releases/latest --jq .tag_name 2>/dev/null || echo "")
+            if [[ -z "$latest_release" ]]; then
+              echo "No previous release found; proceeding with release" >&2
+              printf '%s %s\n' true "$main_commit"
+              return
+            fi
+            # Resolves lightweight and annotated tags to the commit they point at.
+            latest_commit=$(gh api repos/KeepOak/Branch-Agent/commits/"$latest_release" --jq .sha)
+            if [[ "$main_commit" == "$latest_commit" ]]; then
+              echo "Main has not changed since $latest_release ($latest_commit); skipping release" >&2
+              printf '%s %s\n' false "$main_commit"
+              return
+            fi
+            # Skip only when a check on main's head actually failed. Missing or pending checks do not block.
+            failed_checks=$(gh api --paginate "repos/KeepOak/Branch-Agent/commits/$main_commit/check-runs" \
+              --jq '[.check_runs[] | select(.conclusion == "failure")] | length' | awk '{s+=$1} END {print s+0}')
+            if [[ "$failed_checks" != "0" ]]; then
+              echo "Main has $failed_checks failed check(s) at $main_commit; skipping release" >&2
+              printf '%s %s\n' false "$main_commit"
+              return
+            fi
+            echo "Main has new changes since $latest_release and no failed checks; proceeding with release" >&2
+            printf '%s %s\n' true "$main_commit"
+          }
+
           should_release="false"
           commit=""
-          
-          # PR checks always run without the readiness gate
+
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            echo "scheduled rehearsal (does not decide this pull-request build):"
+            decide_scheduled >/dev/null
             should_release="true"
             commit="$(git rev-parse HEAD)"
-            printf 'should_release=%s\ncommit=%s\n' "$should_release" "$commit" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          
-          # Tag-triggered releases always run
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
             should_release="true"
             commit="$(git rev-parse HEAD)"
-            printf 'should_release=%s\ncommit=%s\n' "$should_release" "$commit" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          
-          # Scheduled and manual runs: check if main has changes since the last release
-          git fetch origin main
-          commit="$(git rev-parse origin/main)"
-          
-          # Find the last release tag and resolve it to a commit
-          latest_release=$(gh api repos/KeepOak/Branch-Agent/releases/latest --jq .tag_name 2>/dev/null || echo "")
-          
-          if [[ -z "$latest_release" ]]; then
-            echo "No previous release found; proceeding with release"
-            should_release="true"
           else
-            # Resolve tag to commit (handles both lightweight and annotated tags)
-            latest_commit=$(gh api repos/KeepOak/Branch-Agent/commits/"$latest_release" --jq .sha)
-            
-            if [[ "$commit" == "$latest_commit" ]]; then
-              echo "Main has not changed since $latest_release ($latest_commit); skipping release"
-              should_release="false"
-            else
-              # Check if any check run on main's head has actually failed (ignore missing/pending)
-              failed_checks=$(gh api "repos/KeepOak/Branch-Agent/commits/$commit/check-runs" \
-                --jq '[.check_runs[] | select(.conclusion == "failure")] | length')
-              
-              if [[ "$failed_checks" != "0" ]]; then
-                echo "Main has $failed_checks failed check(s) at $commit; skipping release"
-                should_release="false"
-              else
-                echo "Main has new changes since $latest_release and no failed checks; proceeding with release"
-                should_release="true"
-              fi
-            fi
+            read -r should_release commit < <(decide_scheduled)
           fi
-          
+
           printf 'should_release=%s\ncommit=%s\n' "$should_release" "$commit" >> "$GITHUB_OUTPUT"
   
   identity:
@@ -141,7 +134,7 @@ jobs:
           printf 'commit=%s\nversion=%s\n' "$commit" "$version" >> "$GITHUB_OUTPUT"
   window:
     needs: [readiness, identity]
-    if: needs.readiness.outputs.should_release == 'true'
+    if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -168,7 +161,7 @@ jobs:
   # renderer artifact is fetched only when packaging needs it (release-build.mjs waits for the ready file).
   native:
     needs: [readiness, identity]
-    if: needs.readiness.outputs.should_release == 'true'
+    if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     permissions:
@@ -284,16 +277,32 @@ jobs:
           path: ${{ runner.temp }}/release-assets/
           if-no-files-found: error
           retention-days: 3
+  report:
+    needs: [readiness, identity]
+    if: always() && github.event_name != 'pull_request' && (needs.readiness.outputs.should_release != 'true' || (github.event_name == 'workflow_dispatch' && inputs.dry_run))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Record readiness without publishing
+        env:
+          SHOULD_RELEASE: ${{ needs.readiness.outputs.should_release }}
+          RELEASE_COMMIT: ${{ needs.readiness.outputs.commit }}
+          IDENTITY_RESULT: ${{ needs.identity.result }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          echo "dry_run=${DRY_RUN}"
+          echo "should_release=${SHOULD_RELEASE}"
+          echo "commit=${RELEASE_COMMIT}"
+          echo "identity=${IDENTITY_RESULT}"
+          echo "publish skipped"
   publish:
     needs: [readiness, identity, native]
-    if: needs.readiness.outputs.should_release == 'true' && github.event.inputs.dry_run != 'true'
+    if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
-    env:
-      # For batched releases: allow publishing the frozen commit as long as it's newer than latest
-      GITHUB_COMPONENT_RELEASE_BATCHED: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -319,5 +328,4 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
-          GITHUB_COMPONENT_RELEASE_BATCHED: ${{ env.GITHUB_COMPONENT_RELEASE_BATCHED }}
         run: node desktop/scripts/publish-component-release.mjs "${{ runner.temp }}/release-assets" "${{ needs.identity.outputs.commit }}" "${{ needs.identity.outputs.version }}"
