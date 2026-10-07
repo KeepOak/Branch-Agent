@@ -1,0 +1,1 @@
+window:src/composer/waiting-line-offline.test.tsx
