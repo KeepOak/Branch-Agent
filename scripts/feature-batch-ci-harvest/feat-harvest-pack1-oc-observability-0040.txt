@@ -27,7 +27,6 @@ engine:src/agents/tools/sessions-history-tool.test.ts
 engine:src/agents/tools/sessions-list-tool.test.ts
 engine:src/agents/tools/sessions-search-tool.matching.test.ts
 engine:src/agents/tools/sessions-search-tool.test.ts
-engine:src/agents/tools/sessions-send-tool.a2a.test.ts
 engine:src/agents/tools/web-search.redirect.test.ts
 engine:src/agents/tools/web-search.test.ts
 engine:src/agents/usage.test.ts
