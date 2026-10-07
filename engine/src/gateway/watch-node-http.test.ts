@@ -24,7 +24,7 @@ import { withDevicePairingLock } from "../infra/device-pairing-lock.js";
 import { listNodePairing } from "../infra/device-pairing-node.js";
 import { loadDevicePairSetupCompletionRecord } from "../infra/device-pairing-store.js";
 import { revokeDeviceToken, verifyDeviceToken } from "../infra/device-pairing-tokens.js";
-import { getPairedDevice, requestDevicePairing } from "../infra/device-pairing.js";
+import { getPairedDevice, listDevicePairing, requestDevicePairing } from "../infra/device-pairing.js";
 import {
   FULL_ACCESS_PAIRING_SETUP_BOOTSTRAP_PROFILE,
   NODE_PAIRING_SETUP_BOOTSTRAP_PROFILE,
@@ -107,7 +107,36 @@ async function createWatchNodeFixture(
   };
 }
 
+async function preapproveWatchDevice(baseDir: string, identity: ReturnType<typeof loadOrCreateDeviceIdentity>) {
+  const pairing = await requestDevicePairing({
+    deviceId: identity.deviceId,
+    publicKey: publicKeyRawBase64UrlFromPem(identity.publicKeyPem),
+    clientId: GATEWAY_CLIENT_IDS.WATCHOS_APP,
+    clientMode: GATEWAY_CLIENT_MODES.NODE,
+    platform: "watchOS 11.5.0",
+    deviceFamily: "Apple Watch",
+    role: "node",
+    roles: ["node"],
+    scopes: [],
+  }, baseDir);
+  expect((await approveDevicePairing(pairing.request.requestId, { callerScopes: ["operator.admin"] }, baseDir))?.status).toBe("approved");
+}
+
 describe("watch node HTTP transport", () => {
+  it("requires owner approval despite canonical client-reported Watch metadata", async () => {
+    const { identity, issued, baseDir, baseUrl } = await createWatchNodeFixture(
+      "branch-watch-node-owner-approval-",
+      { bootstrapProfile: VOICE_NODE_PAIRING_SETUP_BOOTSTRAP_PROFILE },
+    );
+    const response = await connectWatchNode({ baseUrl, identity, bootstrapToken: issued.token, approvePending: false });
+    expect(response.status).toBe(202);
+    expect(await readJson(response)).toMatchObject({ reason: "pairing required" });
+    expect(await getPairedDevice(identity.deviceId, baseDir)).toBeFalsy();
+    expect((await listDevicePairing(baseDir)).pending).toEqual([expect.objectContaining({
+      deviceId: identity.deviceId,
+      scopes: ["operator.read", "operator.talk"],
+    })]);
+  });
   it("uses Gateway time for skew-independent device proof", async () => {
     const now = vi.fn(() => 1_700_000_000_123);
     const { identity, issued, baseUrl, runtime } = await createWatchNodeFixture(
@@ -225,7 +254,7 @@ describe("watch node HTTP transport", () => {
         }),
       ),
     });
-    expect(connectResponse.status).toBe(200);
+    expect(connectResponse.status).toBe(202);
     runtime.close();
   });
 
@@ -565,8 +594,9 @@ describe("watch node HTTP transport", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(connect),
     });
-    expect(connectResponse.status).toBe(200);
+    expect(connectResponse.status).toBe(202);
     await readJson(connectResponse);
+    expect((await connectWatchNode({ baseUrl, identity, bootstrapToken: issued.token })).status).toBe(200);
     await waitForLastConnectedMetadata(baseDir, identity.deviceId);
     runtime.close();
   });
@@ -588,6 +618,7 @@ describe("watch node HTTP transport", () => {
       baseDir: abortedBaseDir,
       profile: NODE_PAIRING_SETUP_BOOTSTRAP_PROFILE,
     });
+    await preapproveWatchDevice(abortedBaseDir, abortedIdentity);
     const abortedLimiter = createGatewayAuthRateLimiter(limiterConfig, {
       scheduler: createTestGatewayScheduler(),
     });
@@ -729,6 +760,7 @@ describe("watch node HTTP transport", () => {
     });
     fixtureBaseDir = fixture.baseDir;
     setupId = fixture.issued.setupId;
+    await preapproveWatchDevice(fixture.baseDir, fixture.identity);
 
     const response = await connectWatchNode({
       baseUrl: fixture.baseUrl,
@@ -891,7 +923,7 @@ describe("watch node HTTP transport", () => {
     expect(connected.deviceToken).toEqual(expect.any(String));
     expect(connected.deviceTokens).toBeUndefined();
     expect(nodeRegistry.get(identity.deviceId)?.commands).toEqual(["device.info", "device.status"]);
-    expect(broadcasts.map((entry) => entry.event)).toContain("device.pair.resolved");
+    expect(broadcasts.map((entry) => entry.event)).toContain("device.pair.requested");
     expect(broadcasts.map((entry) => entry.event)).toContain("node.pair.resolved");
     expect(connectedNodes).toEqual([identity.deviceId]);
 

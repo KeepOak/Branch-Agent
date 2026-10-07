@@ -1,9 +1,6 @@
 // Non-interactive pairing approval lanes: which lane (if any) may resolve a
 // pairing request before it reaches an operator prompt.
-import {
-  normalizeSortedUniqueTrimmedStringList,
-  uniqueStrings,
-} from "@branch/normalization-core/string-normalization";
+import { normalizeSortedUniqueTrimmedStringList, uniqueStrings } from "@branch/normalization-core/string-normalization";
 import type { ConnectPairingRequiredReason } from "../../../../packages/gateway-protocol/src/connect-error-details.js";
 import { getBoundDeviceBootstrapProfile } from "../../../infra/device-bootstrap.js";
 import type { getPairedDevice } from "../../../infra/device-pairing.js";
@@ -202,16 +199,13 @@ export async function resolvePairingApprovalPlan(
           publicKey: params.devicePublicKey,
         })
       : null;
-  const allowSetupCodeHandoffBootstrapPairing =
-    boundBootstrapProfile !== null &&
-    isSetupCodeMobileNodeConnect &&
-    isSetupCodeHandoffBootstrapClient({
-      profile: boundBootstrapProfile,
-      client: connectParams.client,
-    });
-  const setupCodeHandoffBootstrapProfile = allowSetupCodeHandoffBootstrapPairing
-    ? boundBootstrapProfile
-    : null;
+  const allowSetupCodeHandoffBootstrapPairing = false;
+  // Claimed app metadata may select the requested profile, but never approves
+  // it. A person must review and approve the complete role/scope request.
+  const setupCodeHandoffBootstrapProfile =
+    boundBootstrapProfile && isSetupCodeMobileNodeConnect &&
+    isSetupCodeHandoffBootstrapClient({ profile: boundBootstrapProfile, client: connectParams.client })
+      ? boundBootstrapProfile : null;
   const allowControlUiOwnerBootstrapPairing =
     reason === "scope-upgrade" &&
     isControlUiOwnerBootstrapProfile({
@@ -228,11 +222,6 @@ export async function resolvePairingApprovalPlan(
   const controlUiOperatorBootstrapProfile = allowControlUiOperatorBootstrapPairing
     ? boundBootstrapProfile
     : null;
-  // This is the native QR/setup-code onboarding seam. Mobile clients
-  // must prove their canonical client id and platform/family metadata
-  // agree before the Gateway can skip owner approval and hand off the
-  // selected operator profile below. Full mobile setup includes admin;
-  // limited setup retains the previous bounded operator scope set.
   const bootstrapPairingRoles = setupCodeHandoffBootstrapProfile
     ? uniqueStrings([role, ...setupCodeHandoffBootstrapProfile.roles])
     : controlUiOperatorBootstrapProfile
@@ -259,7 +248,6 @@ export async function resolvePairingApprovalPlan(
     // without a prompt they could bypass with a fresh identity anyway.
     silent:
       localApproval !== null ||
-      allowSetupCodeHandoffBootstrapPairing ||
       allowControlUiOperatorBootstrapPairing,
     localApproval,
     trustedProxyAutoApproveScopes,

@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
+import { pairingCheckCode } from "../../shared/pairing-check-code";
 import { shows, type Level } from "../../places-nav/level";
 import { has, num, str, type Row } from "./data";
 import { InboxRow, Tile, minutesAgo, minutesLeft } from "./Rows";
@@ -58,6 +59,7 @@ function DeviceDialog({ engine, busy, act, row, others, level, close }: Props & 
     <button type="button" className="btn ghost" onClick={close}>Later</button>
     <button type="button" className="btn pri" disabled={!armed || busy} onClick={() => void decide("device.pair.approve", `${name} is connected.`)}>Allow</button></>}>
     <div className="ib-devw"><Tile icon={str(row.deviceFamily).toLowerCase().includes("phone") ? "phone" : "plug"} /><span className="ib-grow"><b>{name}</b><small>{[str(row.platform), str(row.role)].filter(Boolean).join(" · ")}</small></span>{row.isRepair === true ? <span className="ib-pill warn">Already paired: allowing replaces its key</span> : null}</div>
+    <p className="ib-hint">Check code: <strong>{pairingCheckCode(id)}</strong>. Compare it with the code on the other Branch before allowing.</p>
     <h3 className="ib-h3">What it asks to do</h3>
     {asks.length ? <ul className="ib-asks">{asks.map(a => <li key={a} className={risky(a) ? "warn" : ""}>{a}</li>)}</ul> : <p className="ib-hint">It asks for no access beyond connecting.</p>}
     {shows(level, "technical") ? <details className="ib-det"><summary>Details</summary><pre>{JSON.stringify(details, null, 1)}</pre></details> : null}

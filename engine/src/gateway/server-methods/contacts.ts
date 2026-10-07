@@ -337,6 +337,22 @@ export const contactHandlers: GatewayRequestHandlers = {
     const { readGraftLinks } = await import("../../mcp/graft-join.js");
     respond(true, { links: readGraftLinks().map(({ url, name, joinedAt }) => ({ url, name, joinedAt })) });
   },
+  "graft.links.forget": async ({ params, respond, context }) => {
+    const url = params && typeof params === "object" ? (params as { url?: unknown }).url : undefined;
+    if (typeof url !== "string" || !url.trim()) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Choose a linked Branch to forget."));
+      return;
+    }
+    const { readGraftLinks, forgetGraftLink } = await import("../../mcp/graft-join.js");
+    if (!readGraftLinks().some((link) => link.url === url)) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "That Branch is not linked."));
+      return;
+    }
+    forgetGraftLink(url);
+    const { ensureGraftLinks } = await import("../../mcp/graft-link.js");
+    ensureGraftLinks((line) => context.logGateway.info(line));
+    respond(true, { forgotten: url });
+  },
   "graft.join": async ({ params, respond }) => {
     const input = params && typeof params === "object" ? params as Record<string, unknown> : {};
     if (typeof input.code !== "string" || !input.code.trim() ||

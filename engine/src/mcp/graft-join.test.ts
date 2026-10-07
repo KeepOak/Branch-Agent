@@ -131,6 +131,7 @@ describe("branch graft join", () => {
   it("invites with a loopback address unless the owner opened the gateway to the network", () => {
     expect(graftInviteParams({} as never, 41002)).toEqual({
       includeQr: false,
+      bootstrapProfile: "limited",
       publicUrl: "ws://127.0.0.1:41002",
     });
     expect(graftInviteParams({ gateway: { bind: "loopback" } } as never, 41002).publicUrl).toBe(
@@ -138,6 +139,7 @@ describe("branch graft join", () => {
     );
     expect(graftInviteParams({ gateway: { bind: "lan" } } as never, 41002)).toEqual({
       includeQr: false,
+      bootstrapProfile: "limited",
     });
   });
 });

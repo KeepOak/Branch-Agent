@@ -17,6 +17,7 @@ const removed = vi.hoisted(() => ({ calls: [] as string[], fail: "" }));
 const replyStep = vi.hoisted(() => vi.fn(async () => undefined));
 vi.mock("../../agents/tools/agent-step.js", () => ({ runAgentStep: replyStep }));
 vi.mock("../call.js", () => ({ callGateway: vi.fn() }));
+vi.mock("../../mcp/graft-link.js", () => ({ ensureGraftLinks: vi.fn(() => ({ states: () => ({}) })) }));
 vi.mock("./devices.js", () => ({
   deviceHandlers: {
     "device.pair.remove": async ({
@@ -62,7 +63,7 @@ async function call(method: string, params: Record<string, unknown>, client: unk
   await contactHandlers[method]!({
     params,
     client,
-    context: { broadcast: () => undefined, getRuntimeConfig: () => ({}), logGateway: { warn: () => undefined } },
+    context: { broadcast: () => undefined, getRuntimeConfig: () => ({}), logGateway: { warn: () => undefined, info: () => undefined } },
     respond: (ok: boolean, payload?: unknown, error?: { message?: string }) => {
       reply = { ok, payload, error };
     },
@@ -79,6 +80,14 @@ describe("Branch-to-Branch graft on the host", () => {
     const invalid = await call("graft.join", { code: "" }, owner);
     expect(invalid.ok).toBe(false);
     expect(invalid.error?.message).toContain("Enter a setup code");
+  });
+  it("forgets only a saved link from the joining Branch", async () => {
+    const { saveGraftLink } = await import("../../mcp/graft-join.js");
+    saveGraftLink({ url: "wss://first.example.test", name: "First", joinedAt: Date.now() });
+    saveGraftLink({ url: "wss://second.example.test", name: "Second", joinedAt: Date.now() });
+    expect((await call("graft.links.forget", { url: "wss://missing.example.test" }, owner)).ok).toBe(false);
+    expect((await call("graft.links.forget", { url: "wss://first.example.test" }, owner)).payload).toEqual({ forgotten: "wss://first.example.test" });
+    expect((await call("graft.links.list", {}, owner)).payload.links).toMatchObject([{ url: "wss://second.example.test" }]);
   });
 
   it("treats only non-admin device connections as grafted devices", () => {

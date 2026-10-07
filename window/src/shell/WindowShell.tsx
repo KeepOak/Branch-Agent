@@ -387,16 +387,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const [stageComputer, setStageComputer] = useState<string | null>(null);
   const [addingComputer, setAddingComputer] = useState(false);
   const [linkingBranch, setLinkingBranch] = useState(false);
-  const [linkedHosts, setLinkedHosts] = useState<{ url: string }[]>([]);
-  const [linksRevision, setLinksRevision] = useState(0);
-  useEffect(() => {
-    if (!ready) return;
-    let live = true;
-    void session.request<{ links?: { url: string }[] }>("graft.links.list", {}).then(result => {
-      if (live) setLinkedHosts(Array.isArray(result.links) ? result.links : []);
-    }).catch(() => undefined);
-    return () => { live = false; };
-  }, [session, ready, linksRevision]);
   const [stageTakeOver, setStageTakeOver] = useState(false);
   const [guide, setGuide] = useState<"news" | "news-ready" | "tour" | null>(null);
   const [characterShown, setCharacterShown] = useCharacterShown();
@@ -820,7 +810,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const machineMenu = (e: MouseEvent<HTMLElement>, id: string, upward = false) => {
     const bridge = (window as { branchDesktop?: { gatewayUrl?: string; getGatewayUrl?: () => string } }).branchDesktop;
     const homeUrl = bridge?.getGatewayUrl?.() ?? bridge?.gatewayUrl ?? import.meta.env.VITE_GATEWAY_URL ?? LOCAL_ADDRESS;
-    showMenu(e, id, machineMenuItems({ machineName: machine?.name || readTargetName(url) || "", currentUrl: url, homeUrl, linkedHosts, online: ready, level: readLevel(), roundTripMs: gateway.health?.durationMs ?? null, openSettings,
+    showMenu(e, id, machineMenuItems({ machineName: machine?.name || readTargetName(url) || "", currentUrl: url, homeUrl, online: ready, level: readLevel(), roundTripMs: gateway.health?.durationMs ?? null, openSettings,
       onLinkBranch: () => setLinkingBranch(true), onSwitch: target => window.dispatchEvent(new CustomEvent("branch:switch-computer", { detail: { url: target } })) }), "Which computer", upward);
   };
   const guideItems = (): MenuItem[] => [
@@ -1404,7 +1394,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         {main}
       </main>
       {addingComputer && ready ? <AddComputer engine={session.engine} onClose={() => setAddingComputer(false)} onAdded={computersChanged} /> : null}
-      {linkingBranch && ready ? <BranchLinkDialog engine={session.engine} onClose={() => setLinkingBranch(false)} onLinked={() => setLinksRevision(n => n + 1)} /> : null}
+      {linkingBranch && ready ? <BranchLinkDialog engine={session.engine} onClose={() => setLinkingBranch(false)} onOpenGatewaySettings={() => { setLinkingBranch(false); openSettings("gateway"); }} /> : null}
       {route.kind === "chat" && pip && !stage ? (
         <StagePip key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} computer={pip} blocks={[...s.history, ...s.live]} onOpen={() => { setPip(null); setStage(pip.kind === "browser" ? "Browser" : "Computer"); }} onClose={() => setPip(null)} />
       ) : null}

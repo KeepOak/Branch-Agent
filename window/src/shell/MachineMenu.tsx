@@ -22,22 +22,20 @@ export function MachineSwitcher({ name = "This computer", online, connecting, on
   );
 }
 
-type Ctx = { machineName: string; currentUrl: string; homeUrl: string; linkedHosts?: { url: string }[]; online: boolean; level: Level; roundTripMs: number | null; openSettings: (page: string) => void; onLinkBranch: () => void; onSwitch: (url: string) => void };
+type Ctx = { machineName: string; currentUrl: string; homeUrl: string; online: boolean; level: Level; roundTripMs: number | null; openSettings: (page: string) => void; onLinkBranch: () => void; onSwitch: (url: string) => void };
 
 /** The computer menu shows only the selected, gateway-backed computer and navigation actions. */
 export function machineMenuItems(c: Ctx): MenuItem[] {
   const status = c.online ? "Online · here" : "Offline";
   const trip = c.level === "technical" && c.online && c.roundTripMs !== null ? ` · ${c.roundTripMs} ms` : "";
   const saved = readSavedTargets().filter(row => row.url !== c.homeUrl && row.url !== c.currentUrl);
-  const linked = (c.linkedHosts ?? []).filter(row => /^wss?:\/\/\S+$/.test(row.url) && row.url !== c.homeUrl && row.url !== c.currentUrl && !saved.some(savedRow => savedRow.url === row.url));
   return [
     { kind: "head", label: "Talk to the assistant on…" },
     c.currentUrl === c.homeUrl
       ? { kind: "info", label: c.machineName || "This computer", sub: `${status}${trip}`, checked: true }
       : { label: "This computer", sub: "On this computer", run: () => c.onSwitch(c.homeUrl), testid: "machine-home" },
     ...(c.currentUrl !== c.homeUrl ? [{ kind: "info" as const, label: c.machineName || "Another computer", sub: `${status}${trip}`, checked: true }] : []),
-    ...saved.map(row => ({ label: row.name, sub: row.url, run: () => c.onSwitch(row.url), testid: "machine-saved" })),
-    ...linked.map(row => ({ label: (() => { try { return new URL(row.url).hostname; } catch { return row.url; } })(), sub: "Linked teammate · Sign in to talk", run: () => c.onSwitch(row.url), testid: "machine-linked" })),
+    ...saved.map(row => ({ label: row.name, sub: "Saved computer", run: () => c.onSwitch(row.url), testid: "machine-saved" })),
     { kind: "sep" },
     { label: "Add a computer or phone…", run: () => c.openSettings("computer"), testid: "machine-add" },
     { label: "Link another Branch…", run: c.onLinkBranch, testid: "machine-link-branch" },

@@ -677,6 +677,7 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["contacts.outside.set", "contacts", "operator.admin", "2026.9"],
   ["graft.links.sync", "contacts", "operator.admin", "2026.9"],
   ["graft.links.list", "contacts", "operator.admin", "2026.10"],
+  ["graft.links.forget", "contacts", "operator.admin", "2026.10"],
   ["graft.join", "contacts", "operator.admin", "2026.10"],
   ["graft.work.send", "contacts", "operator.write", "2026.10"],
   ["graft.work.poll", "contacts", "operator.read", "2026.10"],

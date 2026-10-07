@@ -2,9 +2,15 @@ engine:src/agents/tools/sessions-send-tool.graft.test.ts
 engine:src/gateway/contacts/graft-work.test.ts
 engine:src/gateway/contacts/outside-agents.test.ts
 engine:src/gateway/graft-join-ui.test.ts
+engine:src/gateway/server-methods-list.test.ts
 engine:src/gateway/server-methods/contacts.graft.test.ts
+engine:src/gateway/server.auth.control-ui.test.ts
+engine:src/gateway/watch-node-http.test.ts
+engine:src/mcp/graft-join.test.ts
 engine:src/mcp/graft-link.test.ts
+window:src/places/inbox/inbox.test.tsx
 window:src/places/settings/set2/agents.test.tsx
 window:src/shell/BranchLinkDialog.test.tsx
 window:src/shell/contacts-model.test.ts
+window:src/shell/status-redesign.test.tsx
 window:src/stage/AddComputer.test.tsx
