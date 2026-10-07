@@ -941,6 +941,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       copyMarkdown: (r) => void copyMarkdown(session.engine, r.key, rowName(r.key)),
       copyText: (text) => void copyText(text),
       copyLink: (r) => void copyText(conversationLink(r.key)),
+      copyConversation: (r) => void actions.copyConversation(r, openConversation),
       lookItem: iconColourItem(row, (change) => actions.setLook(row, change)),
     }), "Conversation", e.type === "contextmenu"); // a right-click opens it above the row, at its left edge, as the artifact does
   const changeTheme = (t: ThemeChoice) => setTheme(setThemeChoice(t));
