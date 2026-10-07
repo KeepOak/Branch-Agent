@@ -12,6 +12,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { quoteCliArg } from "../cli/quote-cli-arg.js";
 import { bindCronJobAdmittedRun, resetCronActiveJobs } from "../cron/active-jobs.js";
 import { resolveCronJobConfigRevision } from "../cron/config-revision.js";
+import { cronStoreKey } from "../cron/store/key.js";
 import { prepareCronRunAdmission } from "../cron/run-admission.js";
 import { markServiceCronJobActive } from "../cron/service/run-receipts.js";
 import { createCronServiceState } from "../cron/service/state.js";
@@ -1875,7 +1876,6 @@ describe("processGatewayAllowlist", () => {
   });
 
   describe("cron standing grants", () => {
-    const CRON_STORE_KEY = "/tmp/branch-exec-host-cron-store";
     // Real resolvable executables only: OpenClaw main (9a1e00e2a) denies
     // approval unless PATH resolution succeeds. Windows uses the existing
     // read-only where.exe fixture so mutable node.exe is not required.
@@ -1883,6 +1883,7 @@ describe("processGatewayAllowlist", () => {
     const grantTempDirs: string[] = [];
     let stateDirBackup: string | undefined;
     let hadStateDirBackup = false;
+    let cronStorePath: string;
     let workdir: string;
     let unregisterCronSource: (() => void) | undefined;
     let ownedDatabasePath: string | undefined;
@@ -1900,6 +1901,7 @@ describe("processGatewayAllowlist", () => {
       );
       grantTempDirs.push(stateDir);
       process.env.BRANCH_STATE_DIR = stateDir;
+      cronStorePath = path.join(stateDir, "cron", "jobs.json");
       workdir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "branch-cron-grant-cwd-")));
       grantTempDirs.push(workdir);
       // Grants are consulted only when policy would otherwise prompt, before
@@ -1950,8 +1952,8 @@ describe("processGatewayAllowlist", () => {
         wakeMode: "now",
         payload: { kind: "agentTurn", message: "run the backup" },
       } as CronStoredJob;
-      upsertCronJobRow(database.db, CRON_STORE_KEY, job, 0);
-      const loaded = loadedCronStoreFromRows(loadCronRows(database.db, CRON_STORE_KEY));
+      upsertCronJobRow(database.db, cronStoreKey(cronStorePath), job, 0);
+      const loaded = loadedCronStoreFromRows(loadCronRows(database.db, cronStoreKey(cronStorePath)));
       const loadedJob = loaded.store.jobs.find((entry) => entry.id === "job-1");
       if (!loadedJob) {
         throw new Error("seeded cron job did not load back");
@@ -2025,17 +2027,17 @@ describe("processGatewayAllowlist", () => {
     async function prepareCronRun(mintGrant: boolean) {
       const revision = seedCronJobRow();
       const database = openBranchStateDatabase(databaseOptions());
-      const loaded = loadedCronStoreFromRows(loadCronRows(database.db, CRON_STORE_KEY));
+      const loaded = loadedCronStoreFromRows(loadCronRows(database.db, cronStoreKey(cronStorePath)));
       const job = loaded.store.jobs.find((entry) => entry.id === "job-1");
       if (!job) {
         throw new Error("seeded cron job did not load back");
       }
-      const receipt = claimCronRunReceiptForTest(CRON_STORE_KEY, job, Date.now());
+      const receipt = claimCronRunReceiptForTest(cronStorePath, job, Date.now());
       releases.push(() => releaseLocalCronRunReceiptOwnership(receipt));
       const marker = markServiceCronJobActive(
         createCronServiceState({
           scheduler: createTestGatewayScheduler(),
-          storePath: CRON_STORE_KEY,
+          storePath: cronStorePath,
           cronEnabled: true,
           log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
           enqueueSystemEvent: vi.fn(),
