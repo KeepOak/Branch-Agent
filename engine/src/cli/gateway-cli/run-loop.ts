@@ -1103,6 +1103,7 @@ export async function runGatewayLoop(params: {
     // owns the lock, only that engine may continue writing.
     const reacquired = await acquireGatewayLock({
       port: params.lockPort,
+      timeoutMs: 0,
       listenerMode: supervisorMode ? "supervised" : "foreground",
       supervisor,
     });
@@ -1117,6 +1118,13 @@ export async function runGatewayLoop(params: {
   const stopPredecessorAtLeaseDeadline = (expiresAt?: number) =>
     (deadlineRecovery ??= (async () => {
       if (!desktopDeactivation) return;
+      handoffHardExitTimer ??= setTimeout(
+        () => {
+          gatewayLog.error("desktop handoff predecessor exceeded lease expiry margin");
+          process.exit(1);
+        },
+        Math.max(0, (expiresAt ?? Date.now()) - Date.now() - 1_000),
+      );
       try {
         if (await rollbackDesktopDeactivation("desktop successor lost")) {
           gatewayLog.warn("desktop successor is gone; restoring the last engine in place");
@@ -1126,13 +1134,6 @@ export async function runGatewayLoop(params: {
         gatewayLog.error(`desktop handoff recovery failed: ${String(error)}`);
       }
       gatewayLog.error("desktop handoff lease deadline elapsed; stopping predecessor");
-      handoffHardExitTimer ??= setTimeout(
-        () => {
-          gatewayLog.error("desktop handoff predecessor exceeded lease expiry margin");
-          process.exit(1);
-        },
-        Math.max(0, (expiresAt ?? Date.now()) - Date.now() - 1_000),
-      );
       onSigterm();
     })());
   const onDesktopStop = (message: unknown) => {
@@ -1145,6 +1146,7 @@ export async function runGatewayLoop(params: {
         process.send({ type: "branch-desktop:deactivate-result", id: incoming.id, ok: false });
         return;
       }
+      if (!desktopDeactivation) deadlineRecovery = undefined;
       desktopDeactivation ??= activeServer.deactivate().catch((error: unknown) => {
         desktopDeactivation = undefined;
         throw error;

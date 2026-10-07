@@ -3,6 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { closePreparedModelRuntimeSnapshots } from "../agents/prepared-model-runtime.lifecycle.js";
 import { readConfigFileSnapshotWithPluginMetadata } from "../config/io.js";
 import { isNixMode, resolveIsConfigReadOnly } from "../config/paths.js";
+import { captureConfigOverrideApplier } from "../config/runtime-overrides.js";
 import {
   beginCronReceiptAuthorityClose,
   startCronReceiptAuthorityHost,
@@ -134,9 +135,10 @@ export async function prepareGatewayKernel(
   const startupConfigSnapshotRead =
     opts.startupConfigSnapshotRead ??
     (await readConfigFileSnapshotWithPluginMetadata({ observe: false }));
-  const cfg = startupConfigSnapshotRead.snapshot.config;
+  const cfg = captureConfigOverrideApplier()(startupConfigSnapshotRead.snapshot.config);
+  const controlUiRoot = cfg.gateway?.controlUi?.root?.trim() || undefined;
   const preparedControlUiRootLifecycle = createGatewayControlUiRootLifecycle({
-    controlUiRootOverride: cfg.gateway?.controlUi?.root,
+    controlUiRootOverride: controlUiRoot,
     controlUiEnabled: opts.controlUiEnabled ?? cfg.gateway?.controlUi?.enabled ?? true,
     gatewayRuntime,
     log,

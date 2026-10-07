@@ -9,7 +9,7 @@ import {
   withIsolatedSignals,
 } from "./run-loop.test-support.js";
 
-const { gatewayLog, runLoopWithStart } = runLoopFixture;
+const { acquireGatewayLock, gatewayLog, runLoopWithStart } = runLoopFixture;
 
 async function within<T>(work: Promise<T>, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -61,6 +61,9 @@ describe("desktop engine handoff", () => {
           "last engine did not reclaim state",
         );
         expect(deactivate).toHaveBeenCalledTimes(1);
+        expect(acquireGatewayLock).toHaveBeenCalledWith(
+          expect.objectContaining({ timeoutMs: 0 }),
+        );
         expect(gatewayLog.warn).toHaveBeenCalledWith(
           "desktop successor is gone; restoring the last engine in place",
         );
