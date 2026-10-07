@@ -7,6 +7,7 @@ import { GatewayClientRequestError } from "../../packages/gateway-client/src/req
 import type { ErrorShape } from "../../packages/gateway-protocol/src/schema/frames.js";
 import { createAbortError } from "../infra/abort-signal.js";
 import { registerDiagnosticToolExecutionDeadline } from "../infra/diagnostic-tool-execution-liveness.js";
+import { SESSION_HANDOFF_LEASE_MAX_WAIT_MS } from "../process/session-handoff-lease-gate.js";
 import { createDeferredCore, type Deferred } from "../shared/deferred.js";
 import { resolveSafeTimeoutDelayMs } from "../utils/timer-delay.js";
 import type { GatewayMethodRegistry } from "./methods/registry.js";
@@ -225,6 +226,9 @@ export async function dispatchGatewayRequestInProcessRaw(
                 ? { hasCurrentClientAuthority: options.hasCurrentClientAuthority }
                 : {}),
               ...(options.signal ? { signal: options.signal } : {}),
+              // No transport timeout here: wait for a session the previous engine still finishes, as a turn does.
+              sessionHandoffLeaseMaxWaitMs:
+                resolveRemainingDispatchTimeoutMs(deadlineMs) ?? SESSION_HANDOFF_LEASE_MAX_WAIT_MS,
             },
             options.assertCreatedInputSourceCurrent,
             options.assertPreparationCurrent,

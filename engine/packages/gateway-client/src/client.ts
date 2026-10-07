@@ -162,6 +162,8 @@ class GatewayClientTransportPolicyError extends GatewayWebSocketTransportConfigu
 
 export type GatewayClientOptions = GatewayWebSocketTargetOptions &
   NonNullable<ConnectParams["auth"]> & {
+    /** Re-read on every (re)connect, before `url`: for a local gateway whose port can move while this client runs. */
+    resolveUrl?: () => string | undefined;
     origin?: string;
     /** Already-resolved edge-proxy auth headers (identity-aware proxy in front of the Gateway). */
     edgeAuthHeaders?: Readonly<Record<string, string>>;
@@ -425,7 +427,7 @@ export class GatewayClient {
   }
 
   private createSocket(handlers: GatewayProtocolSocketHandlers): GatewayProtocolSocket {
-    const url = this.opts.url ?? DEFAULT_GATEWAY_CLIENT_URL;
+    const url = this.opts.resolveUrl?.() ?? this.opts.url ?? DEFAULT_GATEWAY_CLIENT_URL;
     const configuredEdgeAuthHeaders = this.opts.edgeAuthHeaders;
     const edgeAuthHeaders =
       configuredEdgeAuthHeaders && Object.keys(configuredEdgeAuthHeaders).length > 0

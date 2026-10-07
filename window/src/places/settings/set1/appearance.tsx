@@ -11,7 +11,7 @@ import { ThemeEditor, type EditStart } from "./appearance-editor";
 import { DEFAULT_THEME, SLATE, toPalette, type Pair } from "./appearance-look";
 import { AppearanceMore } from "./appearance-more";
 import { PetSec } from "./appearance-pet";
-import { AgentsSec, BackgroundSec, LanguageSec, ReadingMoreSec, ReadingSec, ShownSec, TraySec, WindowSec, type Look } from "./appearance-sections";
+import { AgentsSec, BackgroundSec, LanguageSec, ReadingSec, ShownSec, TraySec, WindowSec, type Look } from "./appearance-sections";
 import { useLook } from "./appearance-store";
 import { localId, newThemeId, themeName, ThemesDialog, useThemes, type Extra, type ThemeDesc, type Themes } from "./appearance-themes";
 import { LightDarkSec, ThemeSec, useThemeChoice, useTrunk } from "./appearance-top";
@@ -46,7 +46,6 @@ export function AppearancePage(props: SettingsPageProps) {
       <ShownSec look={look} />
       <LanguageSec />
       <TraySec />
-      <ReadingMoreSec look={look} />
       <WindowSec look={look} />
       <AppearanceMore engine={props.engine} look={look} trunk={trunk} openSettings={props.openSettings} />
       {open?.kind === "gallery" ? (

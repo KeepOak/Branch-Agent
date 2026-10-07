@@ -244,7 +244,7 @@ button.c-mi:focus-visible { outline: 0; box-shadow: inset 0 0 0 1.5px color-mix(
 
 /* Segmented control (§5.2) and switch (§5.3) */
 /* The preview's .seg. */
-.c-seg { display: inline-flex; flex-wrap: wrap; padding: 2px; border-radius: 10px; background: var(--fill); gap: 2px; flex: none; }
+.c-seg { display: inline-flex; flex-wrap: nowrap; white-space: nowrap; padding: 2px; border-radius: 10px; background: var(--fill); gap: 2px; flex: none; }
 .c-seg button {
   border: 0;
   background: transparent;
@@ -257,6 +257,11 @@ button.c-mi:focus-visible { outline: 0; box-shadow: inset 0 0 0 1.5px color-mix(
   transition: background-color 280ms cubic-bezier(.3,.8,.3,1), color 200ms;
 }
 .c-seg button.on { background: var(--raise); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
+.c-seg.c-seg-list { display: grid; width: 100%; min-width: 0; background: transparent; padding: 0; }
+.c-seg-list button { width: 100%; display: flex; align-items: center; gap: 8px; text-align: left; }
+.c-seg-list button.on { background: var(--accent-soft); color: var(--accent); box-shadow: none; }
+.c-seg-list button > span { flex: none; width: 12px; }
+.c-row:has(.c-seg-list) { flex-direction: column; align-items: stretch; }
 .c-seg button:disabled { cursor: not-allowed; opacity: 0.5; }
 .c-switch {
   flex: none;
@@ -400,3 +405,4 @@ button.c-mi:focus-visible { outline: 0; box-shadow: inset 0 0 0 1.5px color-mix(
 .c-librow { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 10px; flex-wrap: wrap; }
 .c-librow .c-tool-t { flex: 1 1 160px; }
 .c-libhint { margin: 8px; font-size: 12px; }
+.c-tune-button.lockdown { color: var(--bad); }

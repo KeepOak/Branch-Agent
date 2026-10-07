@@ -22,7 +22,7 @@ export function VoicePage(props: SettingsPageProps) {
   const wake = useKept<RecordValue>(props.engine, "voicewake.get", {});
   const word = wakeWordOf(wake.data);
   return (
-    <Page title={props.title} lede="Talking to Branch. Voice stays on this computer unless a voice service is connected.">
+    <Page title={props.title} lede="Talking to Branch." help="Talking to Branch. Voice stays on this computer unless a voice service is connected.">
       <Sec title="Talking">
         <Greyed why={APP} rows={[
           { t: "Listening", sub: `Push to talk holds the key; wake word listens for ${word}.`, c: { seg: ["Off", "Push to talk", "Wake word"], v: "Off" } },
@@ -69,7 +69,7 @@ function VoiceRow({ engine, tts, voices }: VoiceProps) {
   );
 }
 
-const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "voice", title, sec, lv }));
+const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "voice", title, sec, group: sec.replace(/, (more|technical|in depth)$/, ""), lv }));
 export const VOICE_ROWS: RowEntry[] = [
   ...rows("Talking", 0, ["Listening", "Push-to-talk key", "Microphone", "Test the microphone"]),
   ...rows("Speaking back", 0, ["Voice", "Dictation in the message box"]),
@@ -85,5 +85,5 @@ export const VOICE_ROWS: RowEntry[] = [
   ...rows("Listening, services", 1, ["Listening engine", "A program of yours as an engine", "Try again when a service hiccups", "Use the chat app’s own transcript first", "Turn audio and video files into documents"]),
   ...rows("A spoken turn", 1, ["Set up voice", "Keep voice ready", "Speak while the answer is written", "Remember spoken lines", "Trunks may change their voice in a reply", "Send dictation by itself", "Countdown", "Wait while I’m mid-thought", "Ignore its own voice", "Stop phrases", "Start answering while I finish", "Talk to a Trunk by name", "Act on each part as I say it", "Clean up background noise", "Lower other sound while we talk", "Tell a real interruption from a cough", "While it thinks", "Say how background tasks are going", "Hand slow work to a helper and keep talking", "Every spoken turn ends with speech", "Risky actions asked by voice need a spoken yes", "Quick spoken commands", "Notice how I sound", "Dictate into any app", "Dictate-anywhere key"]),
   ...rows("Calls and meetings, more", 1, ["Recognise who is speaking", "Split recordings by speaker", "Notes from any call, without joining", "Record and transcribe", "Answer questions it hears", "Sum up each call", "Call numbers", "Press keypad tones on phone menus", "Call a list of people", "Practice calls", "FaceTime", "A face on live voice", "Smart glasses", "Make a podcast from a document", "Narrate a screen recording", "Make a voice of your own"]),
-  ...rows("Live voice, more services", 2, ["Live voice with a ChatGPT plan"]),
+  ...rows("Live voice, more services", 2, ["Live voice with a ChatGPT account"]),
 ];
