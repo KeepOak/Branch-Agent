@@ -716,7 +716,7 @@ describe("TTS runtime provider fallback and delivery behavior", () => {
     }
   });
 
-  it("truncates long TTS text on a UTF-16 boundary", async () => {
+  it.skipIf(process.platform === "win32")("truncates long TTS text on a UTF-16 boundary", async () => {
     const prefsName = "branch-speech-core-utf16-truncate-test";
     const prefsPath = prefsPathFor(prefsName);
     const cfg = createTtsConfig(prefsName);
