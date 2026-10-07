@@ -7,6 +7,7 @@ import {
   emitTrustedDiagnosticEvent,
   emitTrustedDiagnosticEventWithPrivateData,
 } from "../infra/diagnostic-events.js";
+import { isLockdownOn, LOCKDOWN_MESSAGE } from "../config/lockdown.js";
 import { resolveDiagnosticModelContentCapturePolicy } from "../infra/diagnostic-llm-content.js";
 import {
   createChildDiagnosticTraceContext,
@@ -492,6 +493,15 @@ export function wrapToolWithBeforeToolCallHook(
         return await blockToolCall({
           reason: voiceConfirmation.reason,
           deniedReason: "client-voice-confirmation",
+          toolParams: executeParams,
+        });
+      }
+      // Lockdown: every tool call is refused at its last boundary, whichever path started the run
+      // (channel, cron, hook, subagent) and even when the run slipped past the runner's own check.
+      if (isLockdownOn()) {
+        return await blockToolCall({
+          reason: LOCKDOWN_MESSAGE,
+          deniedReason: "lockdown",
           toolParams: executeParams,
         });
       }

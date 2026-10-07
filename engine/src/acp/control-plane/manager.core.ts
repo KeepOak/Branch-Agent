@@ -1,5 +1,6 @@
 import type { AcpRuntime, AcpRuntimeHandle } from "@branch/acp-core/runtime/types";
 import { AgentSelectionRequiredError } from "../../agents/agent-scope-config.js";
+import { assertLockdownOff } from "../../config/lockdown.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { logVerbose } from "../../globals.js";
 import { toErrorObject } from "../../infra/errors.js";
@@ -325,6 +326,8 @@ export class AcpSessionManager {
   }
 
   async runTurn(input: AcpRunTurnInput): Promise<void> {
+    // Lockdown: an ACP turn drives an external harness with its own tools, so it never starts while locked.
+    assertLockdownOff();
     const target = resolveAcpSessionTarget(input);
     const startedAt = Date.now();
     await runAcceptedManagerTurn({
@@ -390,6 +393,23 @@ export class AcpSessionManager {
           isCurrentActor,
         }),
     });
+  }
+
+  /** Cancels every accepted turn (Lockdown turning on); sessions and their runtimes stay open. */
+  async cancelAllTurns(reason: string): Promise<void> {
+    const acceptedTurns = [];
+    for (const turns of this.acceptedTurns.values()) {
+      acceptedTurns.push(...turns);
+    }
+    await Promise.all(
+      acceptedTurns.map(async (acceptedTurn) => {
+        try {
+          await cancelManagerAcceptedTurn({ acceptedTurn, reason });
+        } catch (error) {
+          logVerbose(`acp-manager: cancel failed for ${acceptedTurn.requestId}: ${String(error)}`);
+        }
+      }),
+    );
   }
 
   async cancelSession(params: {

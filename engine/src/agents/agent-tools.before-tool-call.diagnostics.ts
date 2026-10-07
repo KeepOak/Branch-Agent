@@ -510,6 +510,12 @@ export function emitToolBlockedSecurityEvent(params: {
           controlId: "talk-client-voice-confirmation",
           family: "approval",
         } as const)
+      : params.deniedReason === "lockdown"
+        ? ({
+            policyId: "lockdown",
+            controlId: "lockdown",
+            family: "authorization",
+          } as const)
       : params.deniedReason === "tool-loop"
         ? ({
             policyId: "tool-loop-detection",
