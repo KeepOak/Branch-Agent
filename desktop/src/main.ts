@@ -22,6 +22,7 @@ import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate } from "./auto-apply-update";
 import { checkCandidateBeside, stopCandidate } from "./candidate-check";
+import { retireRecordedEngines } from "./engine-records";
 import { freemem } from "node:os";
 import { createHash } from "node:crypto";
 import type { Tray } from "electron";
@@ -621,6 +622,8 @@ async function start(): Promise<void> {
   log(`starting page shown after ${Date.now() - launchStarted} ms`);
   const desktopVersion = await confirmDesktopUpdate(cfg);
   if (desktopVersion) log(`desktop update ${desktopVersion} started; confirmed`);
+  // Engines the last session started and left running (a crash mid-update): retire them before starting our own.
+  await retireRecordedEngines(cfg.dataDir, log);
   for (const port of [cfg.gatewayPort, cfg.windowPort]) {
     if (!(await portIsFree(port))) throw new Error(`port ${port} is already in use; is Branch Agent already running?`);
   }

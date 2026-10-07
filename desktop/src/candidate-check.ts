@@ -7,6 +7,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { DesktopConfig } from "./config";
 import { freeLoopbackPort, setEnginePriority, stopGateway, waitForReady } from "./gateway";
+import { recordEngine } from "./engine-records";
 
 export type CandidateResult = "ready" | "exited" | "slow";
 
@@ -31,6 +32,7 @@ function startCandidate(cfg: DesktopConfig, engineDir: string, token: string, po
 export async function checkCandidateBeside(cfg: DesktopConfig, engineDir: string, token: string, timeoutMs: number): Promise<CandidateResult> {
   const port = await freeLoopbackPort();
   const child = startCandidate(cfg, engineDir, token, port);
+  recordEngine(cfg.dataDir, child, port, "candidate");
   setEnginePriority(child, true);
   running = child;
   try {

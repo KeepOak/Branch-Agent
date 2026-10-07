@@ -586,6 +586,28 @@ test("quitting while the new engine boots never rejects the release or starts an
   assert.equal(existsSync(join(root, "component-update-rejected.json")), false, "a healthy release was rejected for a quit");
   assert.doesNotMatch(await readFile(join(root, "desktop.log"), "utf8"), /restored prior components|Updated engine failure/);
 }));
+test("launch retires the engines the last session recorded and left holding their ports, and nothing else", async () => {
+  const { spawn } = await import("node:child_process");
+  const holdPort = "const s=require('net').createServer().listen(0,'127.0.0.1',()=>process.send(s.address().port));setInterval(()=>{},1000)";
+  const orphan = spawn(process.execPath, ["-e", holdPort], { stdio: ["ignore", "ignore", "ignore", "ipc"], detached: process.platform !== "win32" });
+  const orphanPort = await new Promise(resolve => orphan.once("message", resolve));
+  // A live process on a free port is not an engine the last session left (a reused PID): never touched.
+  const bystander = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { stdio: "ignore" });
+  try {
+    await fixture(async ({ root, starts }) => {
+      await eventually(() => !alive(orphan.pid), 10_000);
+      assert.equal(alive(bystander.pid), true, "a process the last session did not leave holding its port was stopped");
+      assert.match(await readFile(join(root, "desktop.log"), "utf8"), new RegExp(`retiring the last session's standby engine ${orphan.pid} on port ${orphanPort}`));
+      // Only the engine this launch started is recorded now.
+      assert.deepEqual(JSON.parse(await readFile(join(root, "gateway-engines.json"), "utf8")).map(record => record.pid), await starts());
+    }, false, false, false, "never", async (root) => {
+      await writeFile(join(root, "gateway-engines.json"), JSON.stringify([{ pid: orphan.pid, port: orphanPort, role: "standby" },
+        { pid: bystander.pid, port: await freePort(), role: "candidate" }]));
+    });
+  } finally {
+    orphan.kill(); bystander.kill();
+  }
+});
 test("launch refuses plainly when the last session's engine still runs on a moved port", async () => {
   const squatter = createServer(); await new Promise(resolve => squatter.listen(0, "127.0.0.1", resolve));
   const { spawn } = await import("node:child_process");

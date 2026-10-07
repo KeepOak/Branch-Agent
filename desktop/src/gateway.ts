@@ -7,6 +7,7 @@ import { constants as osConstants, setPriority } from "node:os";
 import { join } from "node:path";
 import type { DesktopConfig } from "./config";
 import { prepareNormalProfile, readPreparedNormalProfile } from "./profile-migration";
+import { recordEngine } from "./engine-records";
 
 export function readToken(cfg: DesktopConfig): string {
   mkdirSync(cfg.dataDir, { recursive: true });
@@ -86,6 +87,8 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
     detached: process.platform !== "win32",
     stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
+  // Recorded as soon as it exists, so a launch after a desktop crash finds every engine this one started.
+  recordEngine(cfg.dataDir, child, port, standby ? "standby" : "engine");
   child.stdout?.pipe(log);
   child.stderr?.pipe(log);
   if (!standby && child.pid !== undefined) {
