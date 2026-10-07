@@ -119,3 +119,21 @@ engine/src/agents/embedded-agent-runner/compact.hooks.upstream-main.test.ts,AGEN
 engine/packages/agent-core/src/harness/compaction/compaction.upstream-main.test.ts,AGENT-LOOP-0099,openclaw/openclaw,c656ee5227cdfc8930c6eff095937e53e0516886,packages/agent-core/src/harness/compaction/compaction.test.ts,2026-10-06
 engine/src/agents/compaction-overflow-retry.ts,AGENT-LOOP-0104,OpenHands/software-agent-sdk,0a9abc87641ad7ffe02e2dadf5e2cb3976b35217,openhands-sdk/openhands/sdk/context/condenser/llm_summarizing_condenser.py,2026-10-06
 engine/src/agents/compaction-overflow-retry.test.ts,AGENT-LOOP-0104,OpenHands/software-agent-sdk,0a9abc87641ad7ffe02e2dadf5e2cb3976b35217,openhands-sdk/openhands/sdk/context/condenser/llm_summarizing_condenser.py (Branch behaviour tests; source live integration not claimed),2026-10-06
+engine/src/commands/onboard-remote.test.ts,OPS-0327,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/onboard-remote.test.ts,2026-10-06
+engine/src/commands/onboard-remote-gateway.test.ts,OPS-0327,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/onboard-remote-gateway.test.ts,2026-10-06
+engine/src/commands/setup.test.ts,OPS-0328,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/commands/setup.test.ts,2026-10-06
+engine/src/commands/setup.doctor-recovery.test.ts,OPS-0328,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/setup.doctor-recovery.test.ts,2026-10-06
+engine/src/commands/channels/add-wizard.owner.test.ts,OPS-0331,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/channels/add-wizard.owner.test.ts,2026-10-06
+engine/src/channels/plugins/setup-wizard.test.ts,OPS-0331,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/channels/plugins/setup-wizard.test.ts,2026-10-06
+engine/src/commands/doctor-lint.test.ts,OPS-0335,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/doctor-lint.test.ts,2026-10-06
+engine/src/commands/doctor-lint.config-snapshot.test.ts,OPS-0335,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/commands/doctor-lint.config-snapshot.test.ts,2026-10-06
+engine/src/commands/doctor-lint.crabbox.test.ts,OPS-0335,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/doctor-lint.crabbox.test.ts,2026-10-06
+engine/src/commands/doctor-disk-space.test.ts,OPS-0336,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/doctor-disk-space.test.ts,2026-10-06
+engine/src/commands/doctor-db-bloat.read.test.ts,OPS-0337,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/doctor-db-bloat.read.test.ts,2026-10-06
+engine/src/commands/doctor-db-bloat.worker.test.ts,OPS-0337,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/commands/doctor-db-bloat.worker.test.ts (changed: retain current vacuum-mode coverage and assert the protected upstream documentation URL),2026-10-06
+engine/src/commands/triage.test.ts,OPS-0339,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/commands/triage.test.ts,2026-10-06
+engine/src/commands/triage-prompt.test.ts,OPS-0339,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/triage-prompt.test.ts,2026-10-06
+engine/src/commands/triage-update.test.ts,OPS-0339,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/triage-update.test.ts,2026-10-06
+engine/src/commands/doctor.test.ts,OPS-0333,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/commands/doctor.test.ts,2026-10-06
+engine/src/commands/doctor.auth-profile-consumers.e2e.test.ts,OPS-0333,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/commands/doctor.auth-profile-consumers.e2e.test.ts,2026-10-06
+engine/src/commands/doctor.refuses-newer-database-schemas.e2e.test.ts,OPS-0333,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/doctor.refuses-newer-database-schemas.e2e.test.ts,2026-10-06

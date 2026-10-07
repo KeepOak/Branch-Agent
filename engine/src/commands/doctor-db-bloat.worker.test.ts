@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/commands/doctor-db-bloat.worker.test.ts (atlas OPS-0337). Changed for Branch: preserve the upstream documentation URL under the rename map's external-link rule while retaining both vacuum-mode and artifact-preservation assertions.
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import { afterEach, expect, it, vi } from "vitest";
@@ -28,7 +29,7 @@ it.each([
   {
     autoVacuum: "NONE",
     remedy:
-      /offline Doctor SQLite compaction to reclaim it and enable incremental vacuum.*gateway stopped.*https:\/\/docs\.branch\.ai\/cli\/doctor\/sqlite-maintenance/,
+      /offline Doctor SQLite compaction to reclaim it and enable incremental vacuum.*gateway stopped/,
   },
 ])(
   "reports $autoVacuum database bloat off the host without changing stored artifacts",
@@ -81,6 +82,11 @@ it.each([
           "SQLite database size",
         );
         expect(notes.mock.calls[0]?.[0]).toMatch(remedy);
+        if (autoVacuum === "NONE") {
+          expect(notes.mock.calls[0]?.[0]).toContain(
+            "https://docs.openclaw.ai/cli/doctor/sqlite-maintenance",
+          );
+        }
         sql.expectIdle();
         expect(await snapshot()).toEqual(before);
       } finally {
