@@ -2,3 +2,5 @@ engine:src/agents/main-session-recovery/main-session-recovery-state.test.ts
 engine:src/agents/main-session-recovery/main-session-restart-recovery-freshness.integration.test.ts
 engine:src/agents/main-session-recovery/main-session-restart-recovery-freshness.test.ts
 engine:src/agents/main-session-recovery/main-session-restart-recovery-marking.test.ts
+engine:src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.test.ts
+engine:src/agents/main-session-recovery/main-session-restart-recovery.test.ts
