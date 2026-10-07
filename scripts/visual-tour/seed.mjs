@@ -38,6 +38,10 @@ for (const [index, [suffix, title, message]] of notes.entries()) {
   // An initial sessions.create message starts an agent run. Inject a fixture
   // transcript entry instead so screenshots need no model or provider access.
   call('chat.inject', { sessionKey: key, agentId, message, label: 'Tour fixture' });
+  // For the research conversation, add computer activity for stage screenshots
+  if (suffix === 'visual-research') {
+    call('chat.inject', { sessionKey: key, agentId, message: 'Looking at the customer feedback spreadsheet.', label: 'Computer activity', blockType: 'step', blockTitle: 'Opened customer_feedback.xlsx', blockTool: 'computer', blockStatus: 'ok' });
+  }
 }
 const roomResponse = call('rooms.create', { name: 'Planning circle', members: [
   { kind: 'trunk', id: agents[0], role: 'lead' }, { kind: 'trunk', id: agents[1] },
