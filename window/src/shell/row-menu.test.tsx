@@ -20,9 +20,9 @@ const row = (done: boolean): Conversation => ({
 function menu(done: boolean, actions: ReturnType<typeof conversationActions>) {
   return rowMenuItems(row(done), {
     actions, now: Date.now(), trunkName: "Research", level: "regular",
-    open: () => {}, rename: () => {}, confirmDelete: () => {},
+    open: () => {}, ownWindow: () => {}, rename: () => {}, confirmDelete: () => {},
     ask: () => {}, editTrunk: () => {}, tidy: () => {}, copyMarkdown: () => {},
-    copyText: () => {}, copyLink: () => {},
+    copyText: () => {}, copyLink: () => {}, copyConversation: () => {},
   });
 }
 
