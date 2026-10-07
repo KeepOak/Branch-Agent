@@ -119,12 +119,42 @@ describe("session handoff lease request gate: which requests", () => {
     ).toEqual([]);
   });
 
-  it("waits on every held session for a write that names none, and never for a new session", () => {
-    const leased = ["session:agent:main:main", "session:agent:main:work"];
-    expect(findSessionHandoffLeasedLanes("agent", { message: "hi" }, leased)).toEqual(leased);
+  it("sends a write that names no session where its handler would write it", () => {
+    const leased = ["session:agent:main:main", "session:agent:main:work", "session:agent:ops:main"];
+    // agent: a fresh session; with an owner, that owner's main session; with a recipient, any session.
+    expect(findSessionHandoffLeasedLanes("agent", { message: "hi" }, leased)).toEqual([]);
     expect(
-      findSessionHandoffLeasedLanes("sessions.create", { key: "agent:main:new" }, leased),
-    ).toEqual([]);
+      findSessionHandoffLeasedLanes("agent", { message: "hi", agentId: "ops" }, leased),
+    ).toEqual(["session:agent:ops:main"]);
+    expect(findSessionHandoffLeasedLanes("agent", { message: "hi", to: "+1555" }, leased)).toEqual(
+      leased,
+    );
+    // Main-session writers, with the configured main key.
+    expect(findSessionHandoffLeasedLanes("tools.invoke", { tool: "x" }, leased)).toEqual([
+      "session:agent:main:main",
+      "session:agent:ops:main",
+    ]);
+    expect(
+      findSessionHandoffLeasedLanes(
+        "wake",
+        { mode: "now", text: "hi" },
+        ["session:agent:main:home"],
+        {
+          mainKey: "home",
+        },
+      ),
+    ).toEqual(["session:agent:main:home"]);
+    // A delivery target, or a group's members, may be any session.
+    expect(findSessionHandoffLeasedLanes("send", { to: "+1555", message: "hi" }, leased)).toEqual(
+      leased,
+    );
+    expect(findSessionHandoffLeasedLanes("sessions.groups.rename", { name: "a" }, leased)).toEqual(
+      leased,
+    );
+    // No session write: a voice choice, a plugin action, a new session.
+    expect(findSessionHandoffLeasedLanes("talk.voice.set", { voice: "x" }, leased)).toEqual([]);
+    expect(findSessionHandoffLeasedLanes("sessions.create", {}, leased)).toEqual([]);
+    // Creating writes the parent, and an existing session it adopts.
     expect(
       findSessionHandoffLeasedLanes(
         "sessions.create",
@@ -133,8 +163,24 @@ describe("session handoff lease request gate: which requests", () => {
       ),
     ).toEqual(["session:agent:main:work"]);
     expect(
+      findSessionHandoffLeasedLanes("sessions.create", { key: "agent:main:work" }, leased),
+    ).toEqual(["session:agent:main:work"]);
+    // A session named only by its id is matched by its stored key.
+    expect(
+      findSessionHandoffLeasedLanes("agent", { sessionId: "s-1" }, leased, {
+        sessionIdKey: "agent:main:work",
+      }),
+    ).toEqual(["session:agent:main:work"]);
+    expect(
       findSessionHandoffLeasedLanes("chat.abort", { sessionKey: "agent:main:main" }, leased),
     ).toEqual([]);
+    expect(
+      findSessionHandoffLeasedLanes(
+        "session.reactions.set",
+        { sessionKey: "agent:main:work" },
+        leased,
+      ),
+    ).toEqual(["session:agent:main:work"]);
   });
 });
 
@@ -204,6 +250,31 @@ describe("session handoff lease request gate: waiting", () => {
       kind: "refused",
       error: { code: "UNAVAILABLE", message: expect.stringContaining("shutdown") },
     });
+  });
+
+  it("stops waiting without running the write when the caller's connection closes", async () => {
+    leaseFromPreviousEngine("session:agent:main:held");
+    const socket = new AbortController();
+    const closed = waitForSessionHandoffLeasesBeforeRequest({
+      method: "sessions.reset",
+      params: { key: "agent:main:held" },
+      connectionSignal: socket.signal,
+    });
+    socket.abort();
+    await expect(closed).resolves.toEqual({ kind: "aborted" });
+  });
+
+  it("finds a session named only by its id through its stored key", async () => {
+    leaseFromPreviousEngine("session:agent:main:held");
+    const resolveSessionIdKey = vi.fn(async () => "agent:main:held");
+    const waited = waitForSessionHandoffLeasesBeforeRequest({
+      method: "agent",
+      params: { sessionId: "s-held", message: "hi" },
+      resolveSessionIdKey,
+      maxWaitMs: 50,
+    });
+    await expect(waited).resolves.toMatchObject({ kind: "refused" });
+    expect(resolveSessionIdKey).toHaveBeenCalledWith("s-held", undefined);
   });
 });
 

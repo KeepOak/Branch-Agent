@@ -341,7 +341,18 @@ export async function handleGatewayRequest(
         method: req.method,
         params: req.params,
         signal,
+        connectionSignal: client?.connectionSignal,
         shutdownSignal: context.requestEntryLifetime?.signal,
+        mainKey: () => context.getRuntimeConfig?.()?.session?.mainKey,
+        resolveSessionIdKey: async (sessionId, agentId) => {
+          const { resolveExistingSessionKeyForRequest } =
+            await import("../agents/command/session.js");
+          return resolveExistingSessionKeyForRequest({
+            cfg: context.getRuntimeConfig(),
+            sessionId,
+            ...(agentId ? { agentId } : {}),
+          }).sessionKey;
+        },
         maxWaitMs: opts.sessionHandoffLeaseMaxWaitMs,
       });
       if (leaseWait) {
