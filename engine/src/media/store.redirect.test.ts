@@ -1,4 +1,4 @@
-// Media store remote-source tests cover canonical guarded-fetch delegation.
+// MEDIA-0015: Branch native guarded-fetch tests assert the canonical store's explicit mode finalization, including restrictive caller umasks.
 import fs from "node:fs/promises";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { withServer } from "../plugin-sdk/test-helpers/http-test-server.js";
@@ -242,7 +242,7 @@ describe("media store remote sources", () => {
     expect(secondHeaders.get("authorization")).toBeNull();
     expect(secondHeaders.get("accept")).toBe("text/plain");
     await expect(fs.readFile(saved.path, "utf8")).resolves.toBe("redirected");
-    const expectedMode = process.platform === "win32" ? 0o666 : 0o644 & ~process.umask();
+    const expectedMode = process.platform === "win32" ? 0o666 : 0o644;
     expect((await fs.stat(saved.path)).mode & 0o777).toBe(expectedMode);
   });
 
