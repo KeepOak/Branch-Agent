@@ -475,7 +475,7 @@ test("actual desktop caller retains running engine and checks a failing engine b
   const desktop = { ...cfg, nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort() };
   await mkdir(join(cfg.engineDir, "dist"), { recursive: true });
   await writeFile(join(cfg.engineDir, "dist", "build-info.json"), '{"version":"old"}');
-  await writeFile(join(cfg.engineDir, "branch.mjs"), 'import http from "node:http"; process.on("message", m => { if(m.type?.startsWith("branch-desktop:")){ process.send({type:"branch-desktop:activity-result",id:m.id,idle:true,activeRuns:0,pendingReplies:0,totalActive:0}); if(m.type==="branch-desktop:stop-if-idle"||m.type==="branch-desktop:drain-stop")setTimeout(()=>process.exit(0),20); }}); setTimeout(()=>http.createServer((_req,res)=>res.writeHead(200).end()).listen(Number(process.argv[process.argv.indexOf("--port")+1]),"127.0.0.1"),1000);');
+  await writeFile(join(cfg.engineDir, "branch.mjs"), 'import http from "node:http"; process.on("message", m => { if(m.type?.startsWith("branch-desktop:")){ process.send({type:"branch-desktop:activity-result",id:m.id,idle:true,userIdle:true,activeRuns:0,userRuns:0,pendingReplies:0,totalActive:0}); if(m.type==="branch-desktop:stop-if-idle"||m.type==="branch-desktop:drain-stop"||m.type==="branch-desktop:drain-if-user-idle")setTimeout(()=>process.exit(0),20); }}); setTimeout(()=>http.createServer((_req,res)=>res.writeHead(200).end()).listen(Number(process.argv[process.argv.indexOf("--port")+1]),"127.0.0.1"),1000);');
   await writeFile(join(cfg.dataDir, "desktop.json"), JSON.stringify(desktop));
   let relaunches = 0;
   const app = new EventEmitter(); Object.assign(app, { getVersion: () => "fixture", setPath: () => {}, setAppUserModelId: () => {},
