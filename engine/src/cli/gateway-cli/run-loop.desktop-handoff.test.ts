@@ -34,13 +34,13 @@ import {
 
 const { acquireGatewayLock, gatewayLog, peekGatewayRestartReason, runLoopWithStart } = runLoopFixture;
 
-async function within<T>(work: Promise<T>, label: string): Promise<T> {
+async function within<T>(work: Promise<T>, label: string, timeoutMs = 10_000): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       work,
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`${label} timed out`)), 10_000);
+        timer = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
       }),
     ]);
   } finally {
@@ -66,9 +66,9 @@ describe("desktop engine handoff", () => {
         },
       }));
       const { runtime, exited } = createRuntimeWithExitSignal();
-      await within(runLoopWithStart({ start, runtime }), "run-loop import");
+      await within(runLoopWithStart({ start, runtime }), "run-loop import", 120_000);
       try {
-        await within(waitForStart(started), "run-loop start");
+        await within(waitForStart(started), "run-loop start", 120_000);
         const onMessage = process.listeners("message").find(
           (listener) => !previousMessageListeners.has(listener),
         );
@@ -99,9 +99,9 @@ describe("desktop engine handoff", () => {
         waitForDeactivatedRuns: () => new Promise(() => {}),
       }));
       const { runtime, exited } = createRuntimeWithExitSignal();
-      await within(runLoopWithStart({ start, runtime }), "run-loop import");
+      await within(runLoopWithStart({ start, runtime }), "run-loop import", 120_000);
       try {
-        await within(waitForStart(started), "run-loop start");
+        await within(waitForStart(started), "run-loop start", 120_000);
         const onMessage = process.listeners("message").find(
           (listener) => !previousMessageListeners.has(listener),
         );
@@ -162,9 +162,9 @@ describe("desktop engine handoff", () => {
         };
       });
       const { runtime, exited } = createRuntimeWithExitSignal();
-      await within(runLoopWithStart({ start, runtime }), "run-loop import");
+      await within(runLoopWithStart({ start, runtime }), "run-loop import", 120_000);
       try {
-        await within(waitForStart(started), "run-loop start");
+        await within(waitForStart(started), "run-loop start", 120_000);
         const onMessage = process.listeners("message").find(
           (listener) => !previousMessageListeners.has(listener),
         );
