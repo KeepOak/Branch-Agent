@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, readlink, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
+import { promisify } from "node:util";
 import type { DesktopConfig } from "./config";
 import { extractComponentArchive } from "./component-update-archive";
 import { downloadComponent, move, replaceFile } from "./component-update-files";
@@ -90,15 +92,56 @@ export async function rollbackComponentUpdate(cfg: DesktopConfig): Promise<boole
   return true;
 }
 
-/** Only release folders created directly under this data directory are owned by the component updater. */
-async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previous: string): Promise<void> {
+const runProcessList = promisify(execFile);
+
+/** If inspection fails, keep releases: deleting an active engine is worse than retaining an old one. */
+async function runningProcessCommands(): Promise<string> {
+  if (process.platform === "linux") {
+    const commands: string[] = [];
+    for (const entry of await readdir("/proc", { withFileTypes: true })) {
+      if (!/^\d+$/.test(entry.name)) continue;
+      try {
+        commands.push(await readFile(`/proc/${entry.name}/cmdline`, "utf8"));
+        commands.push(await readlink(`/proc/${entry.name}/cwd`));
+      }
+      catch (error) { if (!["ENOENT", "EACCES", "EPERM"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error; }
+    }
+    return commands.join("\n");
+  }
+  const command = process.platform === "win32" ? "powershell.exe" : "ps";
+  const args = process.platform === "win32"
+    ? ["-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process | Select-Object -ExpandProperty CommandLine"]
+    : ["-axo", "command="];
+  return (await runProcessList(command, args, { encoding: "utf8", windowsHide: true, maxBuffer: 16 * 1024 * 1024 })).stdout;
+}
+
+/** Only completed release folders created directly under this data directory are owned by the updater. */
+async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previous: string, reportFailure?: (error: unknown) => void): Promise<void> {
   const updates = join(cfg.dataDir, "updates");
   const retained = new Set([current, previous].filter(engine => engine && basename(engine) === "engine").map(engine =>
     resolve(dirname(engine))).filter(folder => dirname(folder) === resolve(updates)));
+  const pending = await publication(cfg);
+  if (pending) retained.add(resolve(dirname(pending.engineNext)));
+  let commands: string;
+  try { commands = await runningProcessCommands(); }
+  catch (error) { reportFailure?.(error); return; }
   for (const entry of await readdir(updates, { withFileTypes: true })) {
-    if (!entry.isDirectory() || !/^release-[\w.-]+-[A-Za-z0-9]{6}$/.test(entry.name)) continue;
+    if (entry.isDirectory() && entry.name.startsWith(".trash-release-")) {
+      try { await rm(join(updates, entry.name), { recursive: true, force: true }); }
+      catch (error) { reportFailure?.(new Error(`Could not finish pruning ${entry.name}: ${String(error)}`)); }
+      continue;
+    }
+    if (!entry.isDirectory() || !/^release-[\w.-]+-[A-Za-z0-9]{6}$/.test(entry.name)
+      || /(?:^|[-.])(staging|pending)(?:[-.]|$)/i.test(entry.name)) continue;
     const folder = resolve(updates, entry.name);
-    if (!retained.has(folder)) await rm(folder, { recursive: true, force: true });
+    // A download has the same release-* name until staging completes; never select it for pruning.
+    if (!existsSync(join(folder, ".release-complete"))) continue;
+    if (retained.has(folder) || commands.toLowerCase().includes(`${folder}${process.platform === "win32" ? "\\" : "/"}`.toLowerCase())) continue;
+    const trash = join(updates, `.trash-${entry.name}-${process.pid}-${Math.random().toString(36).slice(2)}`);
+    try {
+      await rename(folder, trash);
+      await rm(trash, { recursive: true, force: true });
+    } catch (error) { reportFailure?.(new Error(`Could not prune ${entry.name}: ${String(error)}`)); }
   }
 }
 
@@ -111,7 +154,7 @@ export async function confirmComponentUpdate(cfg: DesktopConfig, reportPruneFail
   await rm(journalFile(cfg));
   await rm(timeoutFile(cfg), { force: true });
   // Cleanup is maintenance, not a readiness failure: never roll back a healthy engine because a stale folder is locked.
-  try { await pruneConfirmedReleases(cfg, pending.engineNext, pending.enginePrevious); }
+  try { await pruneConfirmedReleases(cfg, pending.engineNext, pending.enginePrevious, reportPruneFailure); }
   catch (error) { reportPruneFailure?.(error); }
 }
 
@@ -163,6 +206,7 @@ async function publish(cfg: DesktopConfig, release: ComponentRelease, next: { en
     await replaceFile(join(cfg.dataDir, "engine-current.txt"), `${next.engine}\n`);
     pending.phase = "pending";
     await replaceFile(journalFile(cfg), JSON.stringify(pending));
+    await writeFile(join(dirname(next.engine), ".release-complete"), "");
   } catch (error) { await rollbackComponentUpdate(cfg); throw error; }
 }
 

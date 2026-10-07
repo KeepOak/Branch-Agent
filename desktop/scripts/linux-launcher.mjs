@@ -12,10 +12,8 @@ export async function installLinuxLauncher(app) {
     await chmod(target, 0o755);
   }
   await writeFile(join(app, "LINUX-SETUP.txt"), `Launch Branch Agent with ./branch-agent or ./Branch\\ Agent.
-The launchers set up Chromium's chrome-sandbox before starting Electron.
-If the authorization prompt is unavailable, run these commands from this folder:
-  sudo chown root:root chrome-sandbox
-  sudo chmod 4755 chrome-sandbox
-Then launch Branch Agent again. A whole-runtime update may require this for its new sandbox binary.
+The launcher uses unprivileged user namespaces when available. Otherwise it offers one authorization prompt to set up Chromium's chrome-sandbox safely.
+If the authorization prompt is unavailable, launch from a terminal with sudo available and try again.
+A whole-runtime update may require setup for its new sandbox binary.
 `);
 }

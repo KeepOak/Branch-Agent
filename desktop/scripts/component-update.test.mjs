@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
+import { spawn } from "node:child_process";
 import { mkdtemp, mkdir, readFile, readdir, readlink, rm, stat, symlink, writeFile, rename } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createServer as createPortProbe } from "node:net";
@@ -121,6 +122,7 @@ test("confirmed update retains current and previous releases but prunes older up
   for (const folder of [previous, stale, desktopStage]) {
     await mkdir(join(folder, "engine"), { recursive: true });
     await writeFile(join(folder, "engine", "branch.mjs"), "old engine");
+    await writeFile(join(folder, ".release-complete"), "");
   }
   await writeFile(join(cfg.dataDir, "engine-current.txt"), join(previous, "engine") + "\n");
   await source.refreshComponentUpdate(cfg, request);
@@ -131,6 +133,27 @@ test("confirmed update retains current and previous releases but prunes older up
   assert.equal(await exists(previous), true, "the last healthy engine remains available for rollback");
   assert.equal(await exists(stale), false);
   assert.equal(await exists(desktopStage), true, "desktop staging is not an engine release");
+}));
+
+test("prune retains live and incomplete releases while deleting an unrelated complete release", async () => fixture(async ({ cfg, request }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const live = join(updates, "release-0.4.0-111aaa");
+  const staging = join(updates, "release-0.4.0-222bbb");
+  const stale = join(updates, "release-0.4.0-333ccc");
+  for (const folder of [live, staging, stale]) await mkdir(join(folder, "engine"), { recursive: true });
+  for (const folder of [live, stale]) await writeFile(join(folder, ".release-complete"), "");
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", join(live, "engine", "branch.mjs")], { stdio: "ignore", windowsHide: true });
+  try {
+    await new Promise((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject); });
+    await source.refreshComponentUpdate(cfg, request);
+    await source.confirmComponentUpdate(cfg);
+    assert.equal(await exists(live), true, "a node host using an older release stays runnable");
+    assert.equal(await exists(staging), true, "an incomplete download is not pruned");
+    assert.equal(await exists(stale), false, "unrelated completed release is pruned");
+  } finally {
+    child.kill();
+    await new Promise(resolve => child.once("exit", resolve));
+  }
 }));
 
 test("new per-user installation stages components and creates a stable local token", async () => fixture(async ({ cfg, request }) => {
