@@ -538,7 +538,7 @@ function buildEngine(session: SaplingSession, sessionKey: string | null, hello: 
     onEvent: (listener) => session.onGatewayEvent((event, payload) => listener({ event, payload })),
     sessionKey,
     ...(agentId ? { agentId } : {}),
-    mediaUrl: (source) => (sessionKey ? assistantMediaUrl(session.gatewayUrl, source, sessionKey, agentId, session.httpToken) : null),
+    mediaPicture: (source) => (sessionKey ? loadMediaPicture(session.gatewayUrl, source, sessionKey, agentId, session.httpToken) : Promise.resolve({ error: "unavailable" as const })),
     scopes: hello ? [...hello.auth.scopes] : [],
     ...(attachments ? { attachmentPolicy: { maxBytes: attachments.maxBytes, maxImageBytes: attachments.maxImageBytes } } : {}),
   };
@@ -570,20 +570,50 @@ function readAgentName(result: unknown): string {
   return str(rec(agent.identity).name) || str(agent.name) || str(agent.id);
 }
 
-/**
- * The engine's assistant-media address for a file on the Trunk's computer (engine gateway/control-ui.ts, method
- * `assistant.media.get`): same host as the gateway, over http(s). The window is served from another origin, so it
- * can't send a header with a picture request; the route takes the credential as `token` for plain GETs, and the
- * picture is requested with no referrer.
- */
-export function assistantMediaUrl(gatewayUrl: string, source: string, sessionKey: string, agentId: string | undefined, token: string | null): string | null {
-  let base: URL;
+/** A picture on the Trunk's computer, ready to show, or why it can't. */
+export type MediaPicture = { src: string } | { error: "outside" | "unavailable" };
+
+/** The engine's assistant-media route for a gateway address (engine gateway/control-ui.ts, `assistant.media.get`). */
+function assistantMediaBase(gatewayUrl: string): string | null {
   try {
-    base = new URL(gatewayUrl);
+    const base = new URL(gatewayUrl);
+    base.protocol = base.protocol === "wss:" ? "https:" : "http:";
+    return `${base.origin}/__branch__/assistant-media`;
   } catch {
     return null;
   }
-  base.protocol = base.protocol === "wss:" ? "https:" : "http:";
-  const params = new URLSearchParams({ source, sessionKey, ...(agentId ? { agentId } : {}), ...(token ? { token } : {}) });
-  return `${base.origin}/__branch__/assistant-media?${params.toString()}`;
+}
+
+/**
+ * Reads a picture on the Trunk's computer through the engine's assistant-media route. The window asks for its
+ * availability (`meta=1`) with the gateway credential in an Authorization header (the route answers CORS for this
+ * window), and gets back a media ticket: signed, five minutes, bound to that one file and conversation. The picture
+ * then loads with the ticket alone. The credential never goes in a URL, so it can't leak through "Open in your
+ * browser", a saved or copied picture address, or logs.
+ */
+export async function loadMediaPicture(
+  gatewayUrl: string,
+  source: string,
+  sessionKey: string,
+  agentId: string | undefined,
+  token: string | null,
+  fetcher: typeof fetch = fetch,
+): Promise<MediaPicture> {
+  const base = assistantMediaBase(gatewayUrl);
+  if (!base) return { error: "unavailable" };
+  const where = { source, sessionKey, ...(agentId ? { agentId } : {}) };
+  try {
+    const res = await fetcher(`${base}?${new URLSearchParams({ meta: "1", ...where })}`, {
+      headers: { Accept: "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+    });
+    if (!res.ok) return { error: "unavailable" };
+    const meta = rec(await res.json());
+    if (meta.available !== true) return { error: str(meta.code) === "outside-allowed-folders" ? "outside" : "unavailable" };
+    const ticket = str(meta.mediaTicket);
+    return { src: `${base}?${new URLSearchParams({ ...where, ...(ticket ? { mediaTicket: ticket } : {}) })}` };
+  } catch {
+    return { error: "unavailable" };
+  }
 }

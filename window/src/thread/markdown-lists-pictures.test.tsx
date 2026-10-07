@@ -7,23 +7,36 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { WindowEngine } from "../connect/engine";
 import { ThreadContext } from "./context";
 import { Markdown, parseMarkdown } from "./markdown";
-import { assistantMediaUrl } from "../connect/session";
+import { loadMediaPicture } from "../connect/session";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | undefined;
 afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; });
 
 const KEY = "agent:juniper:main";
-/** The engine handle as the session builds it: pictures on the Trunk's computer come from the assistant-media route. */
-const engine: WindowEngine = {
-  sessionKey: KEY, agentId: "juniper", scopes: [], onEvent: () => () => {}, request: (async () => ({})) as WindowEngine["request"],
-  mediaUrl: (source) => assistantMediaUrl("ws://127.0.0.1:19700", source, KEY, "juniper", "tok"),
-};
+const BASE = "http://127.0.0.1:19700/__branch__/assistant-media";
+type Call = { url: string; init?: RequestInit };
+/** The gateway's assistant-media route as the window reaches it: meta=1 with a Bearer header answers a ticket. */
+function gateway(answer: (source: string) => Record<string, unknown> | number = () => ({ available: true, mediaTicket: "v1.t.s" })) {
+  const calls: Call[] = [];
+  const fetcher = (async (url: string, init?: RequestInit) => {
+    calls.push({ url, init });
+    const result = answer(new URL(url).searchParams.get("source") ?? "");
+    return typeof result === "number" ? new Response("", { status: result }) : new Response(JSON.stringify(result), { status: 200 });
+  }) as typeof fetch;
+  const engine: WindowEngine = {
+    sessionKey: KEY, agentId: "juniper", scopes: [], onEvent: () => () => {}, request: (async () => ({})) as WindowEngine["request"],
+    mediaPicture: (source) => loadMediaPicture("ws://127.0.0.1:19700", source, KEY, "juniper", "secret-gateway-token", fetcher),
+  };
+  return { engine, calls };
+}
+const engine = gateway().engine;
 
 async function mount(text: string, e: WindowEngine | undefined = engine) {
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
   await act(async () => root!.render(<ThreadContext.Provider value={{ engine: e, name: "Juniper", toast: () => undefined, running: false }}><Markdown text={text} /></ThreadContext.Provider>));
+  await act(async () => {});
   await act(async () => {});
   return host;
 }
@@ -72,19 +85,39 @@ describe("code blocks under list items", () => {
 });
 
 describe("pictures in replies", () => {
-  it("shows a screenshot the Trunk saved inline, of any size, through the assistant-media route", async () => {
-    const host = await mount("Here it is:\n\n[screenshot](/home/ubuntu/ws/shot.png)");
+  it("shows a screenshot the Trunk saved through a media ticket: the gateway credential is never in a URL", async () => {
+    const { engine: e, calls } = gateway();
+    const host = await mount("Here it is:\n\n[screenshot](/home/ubuntu/ws/shot.png)", e);
+    expect(calls).toHaveLength(1);
+    const meta = new URL(calls[0]!.url);
+    expect(meta.origin + meta.pathname).toBe(BASE);
+    expect(Object.fromEntries(meta.searchParams)).toEqual({ meta: "1", source: "/home/ubuntu/ws/shot.png", sessionKey: KEY, agentId: "juniper" });
+    expect(calls[0]!.init?.headers).toMatchObject({ Authorization: "Bearer secret-gateway-token" });
     const img = host.querySelector(".picture img") as HTMLImageElement;
     const url = new URL(img.getAttribute("src")!);
-    expect(url.origin + url.pathname).toBe("http://127.0.0.1:19700/__branch__/assistant-media");
-    expect(Object.fromEntries(url.searchParams)).toEqual({ source: "/home/ubuntu/ws/shot.png", sessionKey: KEY, agentId: "juniper", token: "tok" });
+    expect(Object.fromEntries(url.searchParams)).toEqual({ source: "/home/ubuntu/ws/shot.png", sessionKey: KEY, agentId: "juniper", mediaTicket: "v1.t.s" });
+    expect(img.getAttribute("src")).not.toContain("secret-gateway-token");
+    expect(img.getAttribute("src")).not.toMatch(/[?&]token=/);
     expect(img.getAttribute("referrerpolicy")).toBe("no-referrer");
-    expect(img.alt).toBe("screenshot");
     expect(host.textContent).not.toContain("/home/ubuntu");
   });
 
-  it("uses https for a wss gateway", () => {
-    expect(assistantMediaUrl("wss://hub.example:443/", "/a.png", KEY, undefined, null)).toBe(`https://hub.example/__branch__/assistant-media?source=%2Fa.png&sessionKey=${encodeURIComponent(KEY)}`);
+  it("passes a file: address to the engine as written", async () => {
+    const { engine: e, calls } = gateway();
+    await mount("![s](file:///C:/Users/First%20Last/s.png)", e);
+    expect(new URL(calls[0]!.url).searchParams.get("source")).toBe("file:///C:/Users/First%20Last/s.png");
+  });
+
+  it("uses https for a wss gateway", async () => {
+    const calls: string[] = [];
+    await loadMediaPicture("wss://hub.example:443/", "/a.png", KEY, undefined, null, (async (url: string) => { calls.push(url); return new Response("{}"); }) as typeof fetch);
+    expect(calls[0]).toBe(`https://hub.example/__branch__/assistant-media?meta=1&source=%2Fa.png&sessionKey=${encodeURIComponent(KEY)}`);
+  });
+
+  it("says Outside allowed folders when the engine says so, with no Try again", async () => {
+    const { engine: e } = gateway(() => ({ available: false, code: "outside-allowed-folders" }));
+    const host = await mount("![Screen](/etc/shot.png)", e);
+    expect(host.querySelector('[data-testid="picture-unavailable"]')?.textContent).toBe("IMGScreenOutside allowed folders");
   });
 
   it("never fetches a picture on the web by itself: it stays a link to open on purpose", async () => {
@@ -100,14 +133,17 @@ describe("pictures in replies", () => {
     expect((host.querySelector(".picture img") as HTMLImageElement).getAttribute("src")).toBe("data:image/png;base64,iVBORw0KGgo=");
   });
 
-  it("says Picture unavailable when it doesn't load, and Try again asks again", async () => {
-    const host = await mount("![Screen](/tmp/shot.png)");
+  it("says Picture unavailable when it doesn't load, and Try again asks for a new ticket", async () => {
+    const { engine: e, calls } = gateway();
+    const host = await mount("![Screen](/tmp/shot.png)", e);
     const img = host.querySelector(".picture img")!;
     await act(async () => img.dispatchEvent(new Event("error")));
     const gone = host.querySelector('[data-testid="picture-unavailable"]')!;
     expect(gone.textContent).toBe("IMGScreenPicture unavailableTry again");
     await act(async () => (gone.querySelector("button") as HTMLButtonElement).click());
-    expect(new URL(host.querySelector(".picture img")!.getAttribute("src")!).searchParams.get("try")).toBe("1");
+    await act(async () => {});
+    expect(calls).toHaveLength(2);
+    expect(host.querySelector(".picture img")).not.toBeNull();
   });
 
   it("shows a picture named inside a sentence small and inline (no block inside the paragraph)", async () => {
