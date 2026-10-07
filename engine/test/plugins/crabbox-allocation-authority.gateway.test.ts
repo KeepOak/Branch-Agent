@@ -9,10 +9,13 @@ import {
   createPluginStateKeyedStoreForTests,
   resetPluginStateStoreForTests,
 } from "../../src/plugin-sdk/plugin-state-test-runtime.js";
-import { createTestPluginApi } from "../../src/plugin-sdk/plugin-test-api.js";
+import {
+  createTestPluginApi,
+  createTestPluginServiceScheduler,
+} from "../../src/plugin-sdk/plugin-test-api.js";
 import * as processRuntime from "../../src/plugin-sdk/process-runtime.js";
 import { createPluginRuntimeMock } from "../../src/plugin-sdk/test-helpers/plugin-runtime-mock.js";
-import type { BranchPluginService, WorkerProvider } from "../../src/plugins/types.js";
+import type { BranchPluginApi, WorkerProvider } from "../../src/plugins/types.js";
 import { createDeferredCore } from "../../src/shared/deferred.js";
 import { closeBranchAgentDatabases } from "../../src/state/branch-agent-db.js";
 
@@ -146,7 +149,8 @@ describe("Cuttings allocation through Gateway ownership", () => {
           return result();
         });
       const providers: WorkerProvider[] = [];
-      const services: BranchPluginService[] = [];
+      const services: Parameters<BranchPluginApi["registerService"]>[0][] = [];
+      const scheduler = createTestPluginServiceScheduler();
       const api = createTestPluginApi({
         id: "crabbox",
         runtime,
@@ -238,13 +242,19 @@ describe("Cuttings allocation through Gateway ownership", () => {
         }
       } finally {
         released.resolve();
-        await service.stop();
-        for (const owner of services) {
-          await owner.stop?.({
-            config: support.testState.config,
-            stateDir: support.testState.root,
-            logger: api.logger,
-          });
+        scheduler.beginClose();
+        try {
+          await service.stop();
+          for (const owner of services) {
+            await owner.stop?.({
+              config: support.testState.config,
+              stateDir: support.testState.root,
+              logger: api.logger,
+              scheduler,
+            });
+          }
+        } finally {
+          await scheduler.stop();
         }
       }
     },

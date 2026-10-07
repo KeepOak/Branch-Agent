@@ -1,11 +1,12 @@
 // Settings › Chat apps › Manage <app> (§4.7.10.1): who answers there, who may message it (channels.<id>.dmPolicy and
 // allowFrom), who is asking, its live state with Pause/Start (channels.stop/start, kept with channels.<id>.enabled),
 // its token (the engine's setup steps again) and Disconnect. Advanced and Technical parts are in chatapps-manage-more.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";
 import { record, text, visible } from "../adapter";
-import { Btn, Ctl, Hint, LinkBtn, Pick, Pill, Seg, Status, Switch, Val, useSaveRunner } from "../kit";
+import { Btn, Ctl, Hint, LinkBtn, Pick, Pill, Seg, Switch, Val, useSaveRunner } from "../kit";
 import { ChatLogo as Logo } from "./chatapps-logo";
 import type { App, Trunk } from "./chatapps-data";
 import type { Cfg } from "./chatapps-kit";
@@ -38,14 +39,13 @@ export function ManageDialog(p: ManageProps) {
     void p.cfg.set(base, { dmPolicy: w.policy, ...(withStar !== allow ? { allowFrom: withStar } : {}) });
   };
   return (
-    <Dialog title={`Manage ${p.app.name}`} wide onClose={p.onClose} testid="chatapps-manage" footer={<button type="button" className="btn pri" onClick={p.onClose}>Done</button>}>
+    <Dialog title={`Manage ${p.app.name}`} wide onClose={p.onClose} testid="chatapps-manage"
+      footer={<button type="button" className="btn ghost" title="The setup steps again: a new token, a new check" onClick={p.onSetup}>Back</button>}>
       <div className="ca-head"><Logo id={p.app.id} name={p.app.name} size={40} /><span className="grow"><b>{p.app.name}</b>{p.app.detail ? <small>{p.app.detail}</small> : null}</span></div>
-      <div className={p.app.tone === "ok" ? "ready-ca" : undefined}><Status tone={p.app.tone === "ok" ? "ok" : p.app.tone === "work" ? "idle" : "bad"} title={p.app.tone === "ok" ? `${p.app.name} is ready` : p.app.tone === "work" ? `${p.app.name} is connecting` : `${p.app.name} needs you`}>
-        {p.app.tone === "ok" ? "Choose who answers there and who may use it." : p.app.sub}
-      </Status></div>
+      {p.app.tone === "ok" ? null : <SetupSteps done={false} />}
       <div className="fld-ca"><span>Who answers in {p.app.name}</span><WhoSeg app={p.app} cfg={p.cfg} trunks={p.trunks} defaultId={p.defaultId} /><LinkBtn onClick={p.onPerChat}>Choose per chat</LinkBtn></div>
       <Ctl title="Who may message it" sub="Everyone else gets no answer.">
-        <Seg label="Who may message it" value={WHO.find((w) => w.policy === policy)?.id ?? ""} options={WHO.map((w) => ({ id: w.id, label: w.label, off: w.id === "me" && !allow.filter((a) => a !== "*").length ? "Add yourself below first." : w.off }))} disabled={p.cfg.loading} onChange={setWho} />
+        <Seg layout="radio" label="Who may message it" value={WHO.find((w) => w.policy === policy)?.id ?? ""} options={WHO.map((w) => ({ id: w.id, label: w.label, off: w.id === "me" && !allow.filter((a) => a !== "*").length ? "Add yourself below first." : w.off }))} disabled={p.cfg.loading} onChange={setWho} />
       </Ctl>
       {policy === "pairing" || policy === "allowlist" ? <Approved {...p} base={base} allow={allow} /> : null}
       {policy === "pairing" ? <AskingHere {...p} /> : null}
@@ -125,8 +125,8 @@ function Running({ engine, app, cfg, base, reload, onSetup }: ManageProps & { ba
   const state = app.paused ? "paused" : app.running ? "running" : "stopped";
   return (
     <div className="box-ca">
-      <div className="box-h-ca"><Pill tone={app.tone === "ok" ? "ok" : app.tone === "work" ? "work" : "bad"}>{app.word}</Pill><small>{app.sub}</small></div>
-      <Ctl title={`${app.name} is ${state}`} sub={`A paused app stays paused after a restart.`}><Btn sm disabled={cfg.loading} onClick={() => void toggle()}>{state === "running" ? "Pause" : "Start"}</Btn></Ctl>
+      <div className="box-h-ca"><Pill tone={app.paused ? "idle" : app.tone === "ok" ? "ok" : app.tone === "work" ? "work" : "bad"}>{app.paused ? "Paused" : app.word}</Pill>{!app.paused && app.tone === "bad" ? <small>{app.sub}</small> : null}</div>
+      <Ctl title="Connection"><Btn sm disabled={cfg.loading} onClick={() => void toggle()}>{state === "running" ? "Pause" : "Start"}</Btn></Ctl>
       {isLinked(app) ? <Ctl title={app.accounts.some((a) => a.linked === true) ? `Linked to your ${app.name} account` : "Not linked"} sub={`This computer keeps the link to your ${app.name} account.`}><Btn sm disabled={!app.accounts.some((a) => a.linked === true)} onClick={() => void save(async () => { await eachAccount(engine, app, "channels.logout"); await reload(); })}>Unlink</Btn></Ctl> : null}
       {source ? <Ctl title="Token" sub={`Replacing it restarts ${app.name} with the new one.`}><Val>{SOURCE_WORDS[source] ?? visible(source)}</Val><Btn sm onClick={onSetup}>Replace</Btn></Ctl> : null}
       {[["Sees edited messages", "It answers the latest version."], ["Photo albums as one message", "Not one reply per photo."], [`Online status in ${app.name}`, "“Online” or “Offline, back soon” in the bot’s description."]].map(([t, s]) => (
@@ -157,6 +157,18 @@ function Disconnect({ engine, app, cfg, base, reload, onClose }: ManageProps & {
       {ask ? <Dialog title={`Disconnect ${app.name}?`} onClose={() => setAsk(false)} testid="chatapps-disconnect" footer={<><button type="button" className="btn ghost" onClick={() => setAsk(false)}>Cancel</button><button type="button" className="btn bad" onClick={() => void go()}>Disconnect</button></>}>
         <p className="dlg-p-ca">{env ? "Branch stops listening there and turns it off. You can connect it again later." : isLinked(app) ? "Branch stops listening there and unlinks this computer. You can connect it again later." : "Branch stops listening there and deletes its saved token. You can connect it again later."}</p>
       </Dialog> : null}
+    </div>
+  );
+}
+
+/** The five setup steps (the preview's .chw-steps12): every one ticked once the app is connected. Changes here save as
+ *  they are made, so Save closes; Back goes through the engine's setup steps again. */
+function SetupSteps({ done }: { done: boolean }) {
+  return (
+    <div className="chw-steps12" aria-label="Setup steps">
+      {["Create", "Paste", "Check", "Pair", "Save"].map((name, i) => (
+        <span key={name} className={done ? "done" : undefined}><em>{done ? "✓" : i + 1}</em>{name}</span>
+      ))}
     </div>
   );
 }

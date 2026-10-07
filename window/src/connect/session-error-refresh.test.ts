@@ -11,6 +11,8 @@ const fake = vi.hoisted(() => ({
   options: null as Options | null,
   transcript: [] as Record<string, unknown>[],
   historyReads: 0,
+  historyFailures: 0,
+  historyFailureText: "Agent builder-oak has not completed startup inspection and preparation; run branch doctor --fix",
 }));
 
 vi.mock("./gateway", () => ({
@@ -24,6 +26,7 @@ vi.mock("./gateway", () => ({
       switch (method) {
         case "chat.history":
           fake.historyReads += 1;
+          if (fake.historyFailures-- > 0) throw new Error(fake.historyFailureText);
           return { messages: fake.transcript.map((m) => ({ ...m })) };
         case "chat.send":
           fake.transcript.push({ role: "user", content: String(params?.message ?? ""), timestamp: 1 });
@@ -76,9 +79,56 @@ afterEach(() => {
   fake.options = null;
   fake.transcript = [];
   fake.historyReads = 0;
+  fake.historyFailures = 0;
+  fake.historyFailureText = "Agent builder-oak has not completed startup inspection and preparation; run branch doctor --fix";
 });
 
 describe("a failing turn's error receipt reaches the thread after it is persisted", () => {
+  it("retries a temporary preparation refusal and clears it when history becomes available", async () => {
+    fake.historyFailures = 1;
+    const session = new SaplingSession("ws://fake", undefined);
+    session.start();
+    fake.options?.onStatus({ phase: "connected", hello } as unknown as GatewayStatus);
+    await vi.waitFor(() => expect(session.getSnapshot().error).toContain("startup inspection"));
+    await vi.waitFor(() => expect(session.getSnapshot().error).toBeNull(), { timeout: 5_000 });
+    expect(fake.historyReads).toBeGreaterThanOrEqual(2);
+    session.stop();
+  });
+
+  it("shows a disabled plugin error without calling it startup preparation", async () => {
+    fake.transcript = [{ role: "user", content: "Earlier message", timestamp: 1 }];
+    fake.historyFailures = 1;
+    fake.historyFailureText = "PluginInstanceUnavailableError: Plugin openai was reloaded or disabled; use its current tools.";
+    const session = new SaplingSession("ws://fake", undefined);
+    session.start();
+    fake.options?.onStatus({ phase: "connected", hello } as unknown as GatewayStatus);
+    await vi.waitFor(() => expect(session.getSnapshot().error).toContain("PluginInstanceUnavailableError"));
+    expect(session.getSnapshot().error).toContain("reloaded or disabled");
+    expect(session.getSnapshot().error).not.toContain("starting up");
+    expect(fake.historyReads).toBe(1);
+    session.stop();
+  });
+
+  it("ends a persistent startup refusal with one plain message after the retry cap", async () => {
+    vi.useFakeTimers();
+    try {
+      fake.historyFailures = 1_000;
+      const session = new SaplingSession("ws://fake", undefined);
+      session.start();
+      fake.options?.onStatus({ phase: "connected", hello } as unknown as GatewayStatus);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(session.getSnapshot().error).toContain("startup inspection");
+      await vi.advanceTimersByTimeAsync(120_001);
+      expect(session.getSnapshot().error).toBe("Main is still starting up. Try again in a minute.");
+      const reads = fake.historyReads;
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(fake.historyReads).toBe(reads);
+      session.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shows Couldn't finish once the engine announces the persisted receipt after the early lifecycle error", async () => {
     const session = await failTurnBeforeReceipt();
     const readsAfterEarlyTerminal = fake.historyReads;

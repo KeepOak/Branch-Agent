@@ -1,9 +1,11 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/embedded-agent-runner/compact.ts (atlas AGENT-LOOP-0099). Changed for Branch: existing runtime adapters and owner-context safeguards; upstream assertions retained.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { resolveAgentModelFallbackValues } from "../../config/model-input.js";
 import { loadSessionEntryReadOnly } from "../../config/sessions/session-accessor.js";
 import { projectPublicSessionEntry } from "../../config/sessions/session-entry-projection.js";
 import { isAbortError } from "../../infra/abort-signal.js";
 import { formatErrorMessage } from "../../infra/errors.js";
+import { loadPluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.js";
 import {
   runOutsidePluginRuntimeGenerationScope,
   withPluginRuntimeGenerationScope,
@@ -52,15 +54,12 @@ import { resolveCompactionTimeoutMs } from "./compaction-safety-timeout.js";
 import type { PreparedCompactEmbeddedAgentSessionParams } from "./direct-compaction-preparation.js";
 import { compactEmbeddedAgentSessionDirectOnce } from "./direct-compaction.js";
 import { readCompactionAccountingRecorder } from "./run/compaction-accounting-bridge.js";
+import { resolveSharedPluginRuntimeWorkspace } from "./run/prepared-runtime-context.js";
 import { prepareEmbeddedSessionActiveProjectKeys } from "./session-prompt-state.js";
 import { consumeTranscriptBytePreflightClaim } from "./transcript-byte-preflight-authority.js";
 import type { EmbeddedAgentCompactResult } from "./types.js";
 
 export type { CompactEmbeddedAgentSessionParams } from "./compact.types.js";
-
-type CompactEmbeddedAgentSessionParamsWithSessionFile = CompactEmbeddedAgentSessionRuntimeParams & {
-  sessionFile: string;
-};
 
 function lockedHarnessCompactionFailure(runtime: string): EmbeddedAgentCompactResult {
   return {
@@ -73,7 +72,7 @@ function lockedHarnessCompactionFailure(runtime: string): EmbeddedAgentCompactRe
 
 export async function compactNativeCliSession(params: {
   runtime: string | undefined;
-  compactParams: CompactEmbeddedAgentSessionParamsWithSessionFile;
+  compactParams: CompactEmbeddedAgentSessionParams;
   runControlOperation?: (run: () => Promise<void>) => Promise<void>;
 }): Promise<EmbeddedAgentCompactResult | undefined> {
   const runtime = normalizeOptionalAgentRuntimeId(params.runtime);
@@ -242,7 +241,7 @@ export async function compactEmbeddedAgentSessionDirect(
     lockedHarnessRuntime,
   );
   const transcriptBytePreflightAuthority = transcriptBytePreflightClaim?.authority;
-  const requestedParams: CompactEmbeddedAgentSessionParamsWithSessionFile = {
+  const requestedParams: CompactEmbeddedAgentSessionParams = {
     ...paramsBase,
     config: projectCodexHostTranscriptBytePreflightConfig(
       paramsBase.config,
@@ -305,6 +304,20 @@ export async function compactEmbeddedAgentSessionDirect(
   ) {
     return lockedHarnessCompactionFailure(lockedHarnessRuntime);
   }
+  const sharedRuntimeWorkspace = resolveSharedPluginRuntimeWorkspace(
+    {
+      ...requestedParams,
+      workspaceDir: requestedWorkspaceDir,
+      agentId: requestedAgentIds.sessionAgentId,
+      isCanonicalWorkspace: requestedWorkspaceDir === canonicalWorkspaceDir,
+    },
+    () =>
+      loadPluginMetadataSnapshot({
+        config: requestedParams.config ?? {},
+        workspaceDir: requestedWorkspaceDir,
+        env: process.env,
+      }),
+  );
   const callerResult = createDeferredCore<EmbeddedAgentCompactResult>();
   const trackOwner = captureAsyncWorkTracker();
   const parentSignal = getAsyncWorkSignal();
@@ -324,8 +337,9 @@ export async function compactEmbeddedAgentSessionDirect(
           config: requestedParams.config ?? {},
           agentId: requestedAgentIds.sessionAgentId,
           agentDir: requestedAgentDir,
-          workspaceDir: requestedWorkspaceDir,
-          preserveWorkspaceDirOnRefresh: requestedWorkspaceDir !== canonicalWorkspaceDir,
+          workspaceDir: sharedRuntimeWorkspace?.workspaceDir ?? requestedWorkspaceDir,
+          preserveWorkspaceDirOnRefresh:
+            !sharedRuntimeWorkspace && requestedWorkspaceDir !== canonicalWorkspaceDir,
           ...(requestedParams.allowGatewaySubagentBinding
             ? { allowGatewaySubagentBinding: true }
             : {}),
@@ -392,8 +406,9 @@ export async function compactEmbeddedAgentSessionDirect(
           preparedModelRuntimeOwnerSnapshot.config,
           Boolean(transcriptBytePreflightAuthority),
         ) ?? preparedModelRuntimeOwnerSnapshot.config;
-      const preparedWorkspaceDir =
-        preparedModelRuntimeOwnerSnapshot.workspaceDir ?? requestedWorkspaceDir;
+      const preparedWorkspaceDir = sharedRuntimeWorkspace
+        ? requestedWorkspaceDir
+        : (preparedModelRuntimeOwnerSnapshot.workspaceDir ?? requestedWorkspaceDir);
       const repoRoot =
         resolveSystemPromptRepoRoot({
           config: preparedConfig,
@@ -424,6 +439,12 @@ export async function compactEmbeddedAgentSessionDirect(
         ...(transcriptBytePreflightClaim
           ? {
               transcriptBytePreflightAuthority: true as const,
+              ...(transcriptBytePreflightClaim.withCompactionPersistenceAsync
+                ? {
+                    transcriptByteCompactionPersistenceAsync:
+                      transcriptBytePreflightClaim.withCompactionPersistenceAsync,
+                  }
+                : {}),
               ...(transcriptBytePreflightClaim.withCompactionPersistence
                 ? {
                     transcriptByteCompactionPersistence:

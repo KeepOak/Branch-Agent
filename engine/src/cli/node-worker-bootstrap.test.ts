@@ -34,17 +34,20 @@ import {
   closeBranchStateDatabaseForTest,
   initializeNativeBranchStateDatabase,
 } from "../state/branch-state-db.js";
+import { captureEnv } from "../test-utils/env.js";
 import { ensureCliExecutionBootstrap } from "./command-execution-startup.js";
 import { resolveCliStartupPolicy } from "./command-startup-policy.js";
 import { testApi as configGuardTestApi } from "./program/config-guard.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+const pathEnv = captureEnv(["PATH", "BRANCH_PATH_BOOTSTRAPPED"]);
 afterAll(cleanupPluginLoaderFixturesForTest);
 beforeEach(() => {
   resetConfigRuntimeState();
   configGuardTestApi.resetConfigGuardStateForTests();
 });
 afterEach(() => {
+  pathEnv.restore();
   resetConfigRuntimeState();
   resetNodeHostPluginRegistry();
   resetPluginLoaderTestStateForTest();

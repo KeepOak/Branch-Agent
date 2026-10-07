@@ -1,9 +1,13 @@
 // The recommendation bar above Overview and Inbox (preview recBar + 40-places §4.6.2.0): a line icon on a
 // --brand-tint tile, the question, "Recommended", and Yes / Not now / Don't ask again.
 import { useSyncExternalStore } from "react";
+import { shownWhy } from "../../shell/shown-why";
 
 const KEY = "branch.rec.keepRunning";
-export const KEEP_RUNNING_GAP = "Needs the engine's keep-running service method (install the Gateway as a background service).";
+// TODO(desktop-lane): "Yes" installs the gateway as a background service (the engine's branch gateway install). The
+// desktop app can't use it yet: it starts its own gateway child, refuses a busy port, and its updates and rollback
+// swap engine folders and stop the gateway by PID, which an installed service pinned to one folder would not follow.
+export const KEEP_RUNNING_GAP = "The engine can install the Gateway as a background service (branch gateway install); the Branch app doesn't use it yet.";
 
 let dismissed = false;
 const listeners = new Set<() => void>();
@@ -52,7 +56,7 @@ export function RecBar() {
         <b>Keep your Trunks running when Branch is closed?</b><span className="ov-rec-good">Recommended</span>
         <small>The gateway keeps Telegram, your phone and automations working, and restarts Branch if it ever stops.</small>
       </span>
-      <button type="button" className="btn pri sm" disabled title={KEEP_RUNNING_GAP}>Yes</button>
+      <button type="button" className="btn pri sm" disabled title={shownWhy(KEEP_RUNNING_GAP)}>Yes</button>
       <button type="button" className="btn sm" onClick={() => hideRecommendation(false)}>Not now</button>
       <button type="button" className="btn ghost sm" onClick={() => hideRecommendation(true)}>Don’t ask again</button>
     </div>

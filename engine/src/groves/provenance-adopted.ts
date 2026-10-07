@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { assertAgentDeletionAllowsMutation } from "../agents/agent-lifecycle-registry.js";
 import {
   executeSqliteQuerySync,
   executeSqliteQueryTakeFirstSync,
@@ -40,7 +41,9 @@ export function persistGroveMigrationOwnershipWithInstallRecordReader(
   const agentConfigDigest = digestGroveValue(plan.agent.config);
   const ownedPaths = agentOwnedPaths(plan);
   const ownership = encodeGroveAgentOwnership(ownedPaths, "adopted");
-  const record = runBranchStateWriteTransaction(({ db }) => {
+  const record = runBranchStateWriteTransaction((database) => {
+    assertAgentDeletionAllowsMutation(database, plan.agent.finalId);
+    const { db } = database;
     if (readInstallRecord(db, plan.agent.finalId)) {
       throw new Error(
         `Agent ${JSON.stringify(plan.agent.finalId)} already has Grove ownership; inspect groves status before migrating.`,
@@ -161,7 +164,9 @@ export function releaseAdoptedGroveInstallRecordWithInstallRecordReader(
   readInstallRecord: (db: DatabaseSync, agentId: string) => PersistedGroveInstall | undefined,
   options: BranchStateDatabaseOptions = {},
 ): void {
-  runBranchStateWriteTransaction(({ db }) => {
+  runBranchStateWriteTransaction((database) => {
+    assertAgentDeletionAllowsMutation(database, agentId);
+    const { db } = database;
     const record = readInstallRecord(db, agentId);
     if (!record) {
       throw new Error(`No Grove install record exists for agent ${JSON.stringify(agentId)}.`);

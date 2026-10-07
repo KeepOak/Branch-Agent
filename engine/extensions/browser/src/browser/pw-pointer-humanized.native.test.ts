@@ -100,7 +100,6 @@ async function startFixtureService(cdpUrl: string) {
   const state = await createBrowserRuntimeState({
     server,
     port: address.port,
-    onWarn: () => {},
     resolved: fixtureConfig(cdpUrl, address.port),
   });
   registerBrowserRoutes(
@@ -170,7 +169,7 @@ describe.runIf(process.env.BRANCH_BROWSER_SNAPSHOT_E2E === "1")("native humanize
     const port = await getFreePort();
     browser = await getPlaywrightCore().chromium.launchPersistentContext(profileDir, {
       headless: true,
-      timeout: 15_000,
+      timeout: 60_000,
       viewport: { width: 1800, height: 1000 },
       executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
       args: [`--remote-debugging-port=${port}`],

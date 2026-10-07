@@ -279,11 +279,7 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
       span.setStatus({ code: SpanStatusCode.ERROR, message: redactSensitiveText(evt.error) });
     }
     const traceContext = internalOrTrustedTraceContext(evt, metadata);
-    if (trackedSpan && traceContext?.spanId) {
-      completeTrackedLifecycleSpan(traceContext, trackedSpan, evt.ts);
-      return;
-    }
-    span.end(evt.ts);
+    completeTrackedLifecycleSpan(trackedSpan ? traceContext : undefined, span, evt.ts);
   };
 
   const messageDeliveryAttrs = (evt: MessageDeliveryDiagnosticEvent): Record<string, string> => ({
@@ -297,13 +293,19 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
     messageDeliveryStartedCounter.add(1, messageDeliveryAttrs(evt));
   };
 
-  const recordMessageDeliveryCompleted = (
-    evt: Extract<DiagnosticEventPayload, { type: "message.delivery.completed" }>,
+  const recordMessageDeliveryFinished = (
+    evt: Extract<
+      DiagnosticEventPayload,
+      { type: "message.delivery.completed" | "message.delivery.error" }
+    >,
     metadata: DiagnosticEventMetadata,
   ) => {
     const attrs = {
       ...messageDeliveryAttrs(evt),
-      "branch.outcome": "completed",
+      "branch.outcome": evt.type === "message.delivery.error" ? "error" : "completed",
+      ...(evt.type === "message.delivery.error"
+        ? { "branch.errorCategory": normalizeDiagnosticValue(evt.errorCategory, "other") }
+        : {}),
     };
     messageDeliveryDurationHistogram.record(evt.durationMs, attrs);
     if (!tracesEnabled) {
@@ -313,35 +315,19 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
       "branch.message.delivery",
       {
         ...attrs,
-        "branch.delivery.result_count": evt.resultCount,
+        ...(evt.type === "message.delivery.completed"
+          ? { "branch.delivery.result_count": evt.resultCount }
+          : {}),
       },
       evt.durationMs,
       { parentContext: activeInternalOrTrustedContext(evt, metadata), endTimeMs: evt.ts },
     );
-    span.end(evt.ts);
-  };
-
-  const recordMessageDeliveryError = (
-    evt: Extract<DiagnosticEventPayload, { type: "message.delivery.error" }>,
-    metadata: DiagnosticEventMetadata,
-  ) => {
-    const attrs = {
-      ...messageDeliveryAttrs(evt),
-      "branch.outcome": "error",
-      "branch.errorCategory": normalizeDiagnosticValue(evt.errorCategory, "other"),
-    };
-    messageDeliveryDurationHistogram.record(evt.durationMs, attrs);
-    if (!tracesEnabled) {
-      return;
+    if (evt.type === "message.delivery.error") {
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: redactSensitiveText(evt.errorCategory),
+      });
     }
-    const span = spanWithDuration("branch.message.delivery", attrs, evt.durationMs, {
-      parentContext: activeInternalOrTrustedContext(evt, metadata),
-      endTimeMs: evt.ts,
-    });
-    span.setStatus({
-      code: SpanStatusCode.ERROR,
-      message: redactSensitiveText(evt.errorCategory),
-    });
     span.end(evt.ts);
   };
 
@@ -384,8 +370,7 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
     recordMessageDispatchCompleted,
     recordMessageProcessed,
     recordMessageDeliveryStarted,
-    recordMessageDeliveryCompleted,
-    recordMessageDeliveryError,
+    recordMessageDeliveryFinished,
     recordRunStarted,
   };
 }

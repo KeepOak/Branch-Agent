@@ -132,7 +132,6 @@
   --rail-w: 68px;
   --bar-h: 52px;
   --status-h: 28px;
-  --thread-w: clamp(860px, 52vw, 1180px);
 
   color-scheme: light;
 }

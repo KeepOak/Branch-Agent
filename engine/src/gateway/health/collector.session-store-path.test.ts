@@ -13,10 +13,11 @@ import { historyLane } from "../../config/sessions/session-transcript-worker-res
 import type { BranchConfig } from "../../config/types.branch.js";
 import { recordAgentDatabaseAdmissions } from "../../state/agent-database-admission.js";
 import {
+  closeBranchAgentDatabasesAsync,
   closeBranchAgentDatabasesForTest,
   resolveBranchAgentSqlitePath,
 } from "../../state/branch-agent-db.js";
-import { closeBranchStateDatabaseForTest } from "../../state/branch-state-db.js";
+import { closeStateDatabaseForTest } from "../../test-utils/database-cleanup.js";
 import { useSessionStoreTempDirs } from "../../test-utils/session-state-cleanup.js";
 import {
   buildHealthAgentSummaries,
@@ -40,10 +41,11 @@ async function summarizeStore(storePath: string, agentId: string) {
 describe("health session store paths", () => {
   const tempDirs = useSessionStoreTempDirs(afterAll, "branch-health-session-store-");
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.restoreAllMocks();
+    await closeBranchAgentDatabasesAsync();
     closeBranchAgentDatabasesForTest();
-    closeBranchStateDatabaseForTest();
+    await closeStateDatabaseForTest();
   });
 
   it("reports the SQLite database that supplied the session count", async () => {
@@ -57,7 +59,8 @@ describe("health session store paths", () => {
       { agentId, env, sessionKey: `agent:${agentId}:main`, storePath },
       { sessionId: "session-1", updatedAt: 10 },
     );
-    closeBranchAgentDatabasesForTest();
+    await closeBranchAgentDatabasesAsync(stateDir);
+    closeBranchAgentDatabasesForTest(stateDir);
 
     const summary = await summarizeStore(storePath, agentId);
 
@@ -163,7 +166,8 @@ describe("health session store paths", () => {
         },
         { sessionId: "session-1", updatedAt: 10 },
       );
-      closeBranchAgentDatabasesForTest();
+      await closeBranchAgentDatabasesAsync(stateDir);
+      closeBranchAgentDatabasesForTest(stateDir);
 
       const populated = await summarizeStore(populatedStorePath, populatedAgentId);
       const emptyAgentId = "third";

@@ -46,11 +46,11 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 /** Sapling's look: shape 0 (Circle) and round eyes (DESIGN-SPEC §1.2 rule 14, §6.3). */
-export async function loadLayers(state: SheetState | "still"): Promise<Layers> {
+export async function loadLayers(state: SheetState | "still", shape = 0, eyes = "round"): Promise<Layers> {
   const [body, light, fx] = await Promise.all([
-    loadImage(`/pebble/${state}-body-0.webp`),
-    loadImage(`/pebble/${state}-light-0.webp`),
-    loadImage(`/pebble/${state}-fx-round.webp`),
+    loadImage(`/pebble/${state}-body-${shape}.webp`),
+    loadImage(`/pebble/${state}-light-${shape}.webp`),
+    loadImage(`/pebble/${state}-fx-${eyes}.webp`),
   ]);
   return { body, light, fx };
 }

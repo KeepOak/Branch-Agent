@@ -23,6 +23,7 @@ import {
   isBranchMessageToolMirrorAssistantMessage,
   isTranscriptOnlyBranchAssistantMessage,
 } from "../shared/transcript-only-branch-assistant.js";
+import { sleep } from "../utils/sleep.js";
 import {
   buildAgentRunTerminalOutcomeFromWaitResult,
   type AgentRunTerminalOutcome,
@@ -328,9 +329,7 @@ export async function waitForAgentRunsToDrain(params: {
     ) {
       // Queued or cached waits can resolve immediately. Let completion callbacks
       // run instead of repeatedly scanning an unchanged registry in microtasks.
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, retryDelayMs);
-      });
+      await sleep(retryDelayMs);
       pendingRunIds = normalizePendingRunIds(await params.getPendingRunIds());
     }
   }

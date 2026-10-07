@@ -7,7 +7,7 @@ import { runWithGatewayIndependentRootWorkAdmission } from "../process/gateway-w
 import { runOutsideAsyncWorkScope } from "../shared/async-work-scope.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import * as writerQueue from "../shared/store-writer-queue.js";
-import type { AgentDatabaseExecutionScope } from "../state/branch-agent-execution-native.js";
+import type { AgentDatabaseExecutionScope } from "../state/branch-agent-execution-contract.js";
 import * as executionOwner from "../state/branch-agent-execution.js";
 import { SQLITE_SESSION_WRITER_QUEUES } from "../state/branch-agent-write-admission.js";
 

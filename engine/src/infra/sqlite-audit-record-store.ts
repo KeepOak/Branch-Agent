@@ -29,9 +29,6 @@ export function createSqliteAuditRecordStore<T>(
       const record = prepare({ key, value, createdAt });
       runBranchStateWriteTransaction(({ db }) => kernel(db).upsert(record), options);
     },
-    delete(key: string): void {
-      runBranchStateWriteTransaction(({ db }) => kernel(db).delete(key), options);
-    },
     compareAndSet(
       key: string,
       expectedValue: T | null,
@@ -54,9 +51,6 @@ export function createSqliteAuditRecordStore<T>(
         ({ db }) => kernel(db).registerLegacyMany(prepared),
         options,
       );
-    },
-    size(): number {
-      return kernel(openBranchStateDatabase(options).db).size();
     },
     entries() {
       return kernel(openBranchStateDatabase(options).db).entries();

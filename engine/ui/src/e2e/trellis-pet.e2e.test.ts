@@ -69,19 +69,19 @@ suite.define(() => {
 
   it("keeps a vigil-only failure present through droop and sweep before leaving", async () => {
     await configureComposerPet({ mode: "busy", outcome: "error", seed: 0 });
-    const sprite = page.locator(".lobster-pet");
+    const sprite = page.locator(".trellis-pet");
     await expect.poll(() => sprite.count()).toBe(0);
 
     await page.clock.fastForward(600_500);
     await settlePet();
-    expect(await page.locator(".lobster-pet--vigil").count()).toBe(1);
+    expect(await page.locator(".trellis-pet--vigil").count()).toBe(1);
     await page.evaluate(async () => {
       const pet = document.querySelector("branch-trellis-pet") as BrowserTrellisPet;
       pet.mode = "idle";
       await pet.updateComplete;
     });
 
-    const droop = page.locator(".lobster-pet--act-droop");
+    const droop = page.locator(".trellis-pet--act-droop");
     expect(await droop.count()).toBe(1);
     await page.clock.runFor(1_599);
     await settlePet();
@@ -89,7 +89,7 @@ suite.define(() => {
     await page.clock.runFor(1);
     await settlePet();
 
-    const sweep = page.locator(".lobster-pet--act-sweep");
+    const sweep = page.locator(".trellis-pet--act-sweep");
     expect(await sweep.count()).toBe(1);
     await page.clock.runFor(1_799);
     await settlePet();
@@ -97,14 +97,14 @@ suite.define(() => {
     await page.clock.runFor(1);
     await settlePet();
 
-    expect(await page.locator(".lobster-pet--away").count()).toBe(1);
+    expect(await page.locator(".trellis-pet--away").count()).toBe(1);
     await page.clock.runFor(350);
     await expect.poll(() => sprite.count()).toBe(0);
   });
 
   it("does not pet after Chromium cancels a sub-threshold touch hold", async () => {
     await configureComposerPet({ mode: "offline", outcome: "ok", seed: 42 });
-    const sprite = page.locator(".lobster-pet");
+    const sprite = page.locator(".trellis-pet");
     await sprite.waitFor();
 
     await sprite.dispatchEvent("pointerdown", { pointerId: 1, pointerType: "touch" });
@@ -112,7 +112,7 @@ suite.define(() => {
     await sprite.dispatchEvent("pointercancel", { pointerId: 1, pointerType: "touch" });
     await page.clock.runFor(400);
 
-    await expect.poll(() => page.locator(".lobster-pet--act-pet").count()).toBe(0);
+    await expect.poll(() => page.locator(".trellis-pet--act-pet").count()).toBe(0);
   });
 
   it("keeps resting visitors proportionate and aligned with their perch", async () => {
@@ -125,9 +125,9 @@ suite.define(() => {
           animation.currentTime = Number(animation.effect?.getTiming().delay) || 0;
         }
         const sprite = pet.querySelector(
-          ".lobster-pet__motion > .lobster-pet:not(.lobster-pet--twin)",
+          ".trellis-pet__motion > .trellis-pet:not(.trellis-pet--twin)",
         )!;
-        const svg = sprite.querySelector<SVGSVGElement>(".lobster-pet__svg")!;
+        const svg = sprite.querySelector<SVGSVGElement>(".trellis-pet__svg")!;
         const matrix = svg.getScreenCTM()!;
         const foot = new DOMPoint(60, 105).matrixTransform(matrix);
         return {
@@ -174,15 +174,15 @@ suite.define(() => {
       }
       return {
         spot: actor.getAttribute("data-spot"),
-        hops: actor.querySelectorAll(".lobster-pet__motion--hop").length,
+        hops: actor.querySelectorAll(".trellis-pet__motion--hop").length,
       };
     });
     expect(hop).toEqual({ spot: "floor", hops: 1 });
     const landings = await pet.evaluate((element) => {
       const sprite = element.querySelector<HTMLElement>(
-        ".lobster-pet__motion > .lobster-pet:not(.lobster-pet--twin)",
+        ".trellis-pet__motion > .trellis-pet:not(.trellis-pet--twin)",
       )!;
-      const body = sprite.querySelector<HTMLElement>(".lobster-pet__body")!;
+      const body = sprite.querySelector<HTMLElement>(".trellis-pet__body")!;
       const animation = body
         .getAnimations()
         .find((entry) => (entry as CSSAnimation).animationName === "trellis-pet-landing")!;
@@ -222,7 +222,7 @@ suite.define(() => {
     await page.screenshot({ path: suite.artifactDir + "/mobile.png", animations: "disabled" });
   });
 
-  it.each(["crab", "snail", "duck", "jellyfish", "stranger"] as const)(
+  it.each(["beetle", "snail", "duck", "jellyfish", "stranger"] as const)(
     "keeps %s visits in the new composer",
     async (kind) => {
       let seed = 0;
@@ -233,7 +233,7 @@ suite.define(() => {
       expect(plan.kind).toBe(kind);
       await configureComposerPet({ mode: "idle", outcome: "ok", seed });
       await page.clock.runFor(plan.atMs + 100);
-      const passer = page.locator(".new-session-page__composer .lobster-pet--passer");
+      const passer = page.locator(".new-session-page__composer .trellis-pet--passer");
       await expect.poll(() => passer.count()).toBe(1);
       const box = await passer.evaluate((element) => {
         for (const animation of element.getAnimations()) {

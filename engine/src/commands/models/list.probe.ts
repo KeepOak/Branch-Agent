@@ -68,7 +68,6 @@ import type {
 import type { GatewayLockIdentity, GatewayLockOptions } from "../../infra/gateway-lock.js";
 import { type SecretRefResolveCache, resolveSecretRefString } from "../../secrets/resolve.js";
 import { appendConfigPathSegment } from "../../shared/dot-path.js";
-import { createLazyImportLoader } from "../../shared/lazy-promise.js";
 import { disposeBranchAgentDatabaseByPath } from "../../state/branch-agent-db.js";
 import { redactStatusSecrets } from "../status-all/format.js";
 import { createAuthProbeWork } from "./list.probe.cleanup.js";
@@ -81,10 +80,6 @@ const PROBE_PROMPT = "Reply with OK. Do not use tools.";
 export function redactAuthProbeError(error: string): string {
   return redactStatusSecrets(error);
 }
-
-const embeddedRunnerModuleLoader = createLazyImportLoader(
-  () => import("../../agents/embedded-agent.js"),
-);
 
 export type AuthProbeStatus =
   | "ok"
@@ -175,6 +170,8 @@ export type AuthProbeOptions = {
   timeoutMs: number;
   concurrency: number;
   maxTokens: number;
+  /** Keep the ordinary Branch probe default; scheduled Codex checks use the Codex harness. */
+  agentHarnessRuntimeOverride?: "branch" | "codex";
 };
 
 export function mapFailoverReasonToProbeStatus(reason?: string | null): AuthProbeStatus {
@@ -703,6 +700,7 @@ async function probeTarget(params: {
   target: AuthProbeTarget;
   timeoutMs: number;
   maxTokens: number;
+  agentHarnessRuntimeOverride?: "branch" | "codex";
   abortSignal?: AbortSignal;
 }): Promise<AuthProbeResult> {
   const { cfg, agentId, agentDir, workspaceDir, storePath, target, timeoutMs, maxTokens } = params;
@@ -781,7 +779,7 @@ async function probeTarget(params: {
         throw new Error("Could not prepare isolated auth probe profile");
       }
     }
-    const { runEmbeddedAgent } = await embeddedRunnerModuleLoader.load();
+    const { runEmbeddedAgent } = await import("../../agents/embedded-agent.js");
     const probeSessionTarget = sessionTarget;
     preparedRunAdmission = prepareSystemAgentRunAdmission(
       probeConfig,
@@ -813,7 +811,7 @@ async function probeTarget(params: {
         reasoningLevel: "off",
         verboseLevel: "off",
         streamParams: { maxTokens },
-        agentHarnessRuntimeOverride: "branch",
+        agentHarnessRuntimeOverride: params.agentHarnessRuntimeOverride ?? "branch",
         disableTools: true,
         modelRun: true,
         cleanupBundleMcpOnRunEnd: true,
@@ -826,11 +824,7 @@ async function probeTarget(params: {
     );
     const terminalError = extractAgentRunTerminalError(runResult);
     if (terminalError) {
-      const described = describeFailoverError(new Error(terminalError));
-      return buildResult(
-        mapFailoverReasonToProbeStatus(described.reason),
-        redactAuthProbeError(described.message),
-      );
+      throw new Error(terminalError);
     }
     if (!agentRunHasVisibleReply(runResult)) {
       return buildResult("format", "The model did not return a visible probe response.");
@@ -889,6 +883,7 @@ async function runTargetsWithConcurrency(params: {
   timeoutMs: number;
   maxTokens: number;
   concurrency: number;
+  agentHarnessRuntimeOverride?: "branch" | "codex";
   onProgress?: (update: { completed: number; total: number; label?: string }) => void;
   abortSignal?: AbortSignal;
 }): Promise<AuthProbeResult[]> {
@@ -923,6 +918,7 @@ async function runTargetsWithConcurrency(params: {
         target,
         timeoutMs,
         maxTokens,
+        agentHarnessRuntimeOverride: params.agentHarnessRuntimeOverride,
         abortSignal: params.abortSignal,
       });
       completed += 1;
@@ -1019,6 +1015,7 @@ export async function runAuthProbes(params: {
           targets: plan.targets,
           timeoutMs: params.options.timeoutMs,
           maxTokens: params.options.maxTokens,
+          agentHarnessRuntimeOverride: params.options.agentHarnessRuntimeOverride,
           concurrency: params.options.concurrency,
           onProgress: params.onProgress,
           abortSignal,
@@ -1036,10 +1033,6 @@ export async function runAuthProbes(params: {
       results: [...plan.results, ...results],
     };
   });
-}
-
-export function formatProbeLatency(latencyMs?: number | null) {
-  return formatMs(latencyMs);
 }
 
 export function sortProbeResults(results: AuthProbeResult[]): AuthProbeResult[] {

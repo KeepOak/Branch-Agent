@@ -142,7 +142,7 @@ export function readControlUiRootAsset(
     };
     let file = await read(location);
     if (!file && root.kind === "bundled" && fileRel.startsWith("assets/")) {
-      const retained = root.retainedAssets?.resolveAsset(fileRel);
+      const retained = await root.retainedAssets?.resolveAsset(fileRel);
       if (retained) {
         location = { ...retained, rootPath: retained.rootRealPath, rejectHardlinks: true };
         file = await read(location);
@@ -235,6 +235,15 @@ function prepareResolvedRootState({
     const message = `Control UI assets are unavailable at ${root}: ${detail}`;
     log.warn(`gateway: ${message}`);
     return configured ? { kind: "invalid", path: path.resolve(root) } : { kind: "failed" };
+  }
+}
+
+const rootPreparationRequests = new WeakMap<ControlUiRootState, () => void>();
+
+/** Starts asset preparation the first time the old control UI is actually requested. */
+export function requestControlUiRootPreparation(root: ControlUiRootState | undefined): void {
+  if (root) {
+    rootPreparationRequests.get(root)?.();
   }
 }
 
@@ -354,6 +363,8 @@ export function createGatewayControlUiRootLifecycle(
     return promise;
   };
 
+  // Branch's window never loads the old control UI, so its assets are prepared on first use.
+  rootPreparationRequests.set(state, () => void start());
   return {
     state,
     start,

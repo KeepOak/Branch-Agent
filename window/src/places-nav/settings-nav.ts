@@ -14,7 +14,7 @@ const BASE: SettingsGroup[] = [
     ],
   },
   {
-    name: "Your assistant",
+    name: "Your Trunks",
     pages: [
       { id: "instructions", name: "Instructions & personality" },
       { id: "models", name: "Models" },
@@ -30,12 +30,14 @@ const BASE: SettingsGroup[] = [
       { id: "permissions", name: "Permissions" },
       { id: "computer", name: "Computer & browser" },
       { id: "secrets", name: "Saved sign-ins" },
+      { id: "agents", name: "Grafts" },
     ],
   },
   {
     name: "Care",
     pages: [
       { id: "usage", name: "Data & usage" },
+      { id: "backups", name: "Backups" },
       { id: "gateway", name: "Gateway" },
       { id: "self", name: "Branch itself" },
       { id: "seasons", name: "Seasons" },
@@ -98,6 +100,7 @@ const KEYWORDS: Record<string, string> = {
   computer: "computers browser chrome sandbox sealed box cloud phone lend screen mouse",
   secrets: "passwords bitwarden 1password sign-ins keys tokens",
   usage: "spend cost money usage limits report export import checkpoints keep delete flagged tray",
+  backups: "backup back up copy restore git github repository folder schedule daily weekly",
   gateway: "background tray restart engine always on",
   self: "self improve restart doctor check fix roll back",
   seasons: "rings gardener budding memory overnight skills learn improve",
@@ -114,7 +117,7 @@ export function pageLevel(id: string): Level {
 }
 
 /** A row a page lists for search: its exact title, its section and the level that shows it (0, 1, 2). */
-export type SearchRow = { page: string; title: string; sec?: string; lv: 0 | 1 | 2; words?: string };
+export type SearchRow = { page: string; title: string; sec?: string; group?: string; lv: 0 | 1 | 2; words?: string };
 export type SearchHit = { page: { id: string; name: string; lv: 0 | 1 | 2 }; rows: SearchRow[] };
 export type SearchGroup = { name: string; hits: SearchHit[] };
 

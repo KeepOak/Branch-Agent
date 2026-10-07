@@ -3,7 +3,7 @@ import { StringDecoder } from "node:string_decoder";
 import { formatErrorMessage } from "branch/plugin-sdk/error-runtime";
 import { logVerbose, type RuntimeEnv } from "branch/plugin-sdk/runtime-env";
 import { normalizeLowercaseStringOrEmpty } from "branch/plugin-sdk/string-coerce-runtime";
-import { resolveUserPath } from "branch/plugin-sdk/text-utility-runtime";
+import { raceWithTimeout } from "branch/plugin-sdk/time-runtime";
 import { recoverIMessageBridge } from "./bridge-recovery.js";
 import { expandIMessageUserPath } from "./cli-path.js";
 import { DEFAULT_IMESSAGE_PROBE_TIMEOUT_MS } from "./constants.js";
@@ -163,7 +163,11 @@ export class IMessageRpcClient {
     const dbPath = opts.dbPath?.trim();
     // An explicitly remote database belongs to the Messages Mac. Only local
     // database paths are relative to the Gateway user's home directory.
-    this.dbPath = dbPath ? (opts.remoteHost?.trim() ? dbPath : resolveUserPath(dbPath)) : undefined;
+    this.dbPath = dbPath
+      ? opts.remoteHost?.trim()
+        ? dbPath
+        : expandIMessageUserPath(dbPath)
+      : undefined;
     this.runtime = opts.runtime;
     this.onNotification = opts.onNotification;
     this.terminal = new Promise((resolve) => {
@@ -338,19 +342,11 @@ export class IMessageRpcClient {
     if (this.isReaped) {
       return true;
     }
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      return await Promise.race([
-        this.reaped.then(() => true),
-        new Promise<boolean>((resolve) => {
-          timer = setTimeout(() => resolve(false), timeoutMs);
-        }),
-      ]);
-    } finally {
-      if (timer) {
-        clearTimeout(timer);
-      }
-    }
+    return await raceWithTimeout(
+      this.reaped.then(() => true),
+      timeoutMs,
+      () => false,
+    );
   }
 
   private signalChild(child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals): void {

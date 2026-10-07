@@ -23,6 +23,7 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "archiveReason",
   "pinnedAt",
   "snoozedUntil",
+  "done",
   "snoozedAt",
   "lastReadAt",
   "agentStatus",
@@ -33,6 +34,8 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "sessionFile",
   "transcriptPath",
   "spawnedBy",
+  "spawnedBySenderIsOwner",
+  "spawnedBySessionId",
   "completionOwnerSessionKey",
   "spawnedWorkspaceDir",
   "spawnedCwd",
@@ -46,7 +49,9 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "pendingProjectGitUrl",
   "pendingWorktree",
   "parentSessionKey",
+  "contactAnchor",
   "parentSessionId",
+  "parentSessionLifecycleRevision",
   "createdVia",
   "createdActor",
   "inheritedGitContributorProfileIds",
@@ -57,6 +62,7 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "participants",
   "participantCount",
   "createdAt",
+  "conversationLink",
   "forkSource",
   "previousSessionId",
   "forkedFromParent",
@@ -197,6 +203,7 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "visibility",
   "publicShare",
   "profileInvolvement",
+  "movedToSessionKey",
 ] as const satisfies ReadonlyArray<
   keyof SessionEntry | "__proto__" | "constructor" | "prototype" | "sessionFile" | "transcriptPath"
 >;

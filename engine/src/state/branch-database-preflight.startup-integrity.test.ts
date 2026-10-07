@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
@@ -12,7 +13,10 @@ import {
 } from "./branch-agent-db.js";
 import { assertBranchDatabasesReady } from "./branch-database-preflight.js";
 import { snapshotPreflightSourceManifest } from "./branch-database-preflight.test-support.js";
-import { clearBranchAgentIntegrityVerification } from "./branch-quarantine-store.js";
+import {
+  clearBranchAgentIntegrityVerification,
+  readBranchAgentIntegrityVerification,
+} from "./branch-quarantine-store.js";
 import { closeBranchStateDatabaseForTest } from "./branch-state-db.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
@@ -20,6 +24,38 @@ afterEach(() => {
   vi.restoreAllMocks();
   closeBranchAgentDatabasesForTest();
   closeBranchStateDatabaseForTest();
+});
+
+it("reuses a clean closed-WAL receipt without copying the agent database", async () => {
+  const env = { BRANCH_STATE_DIR: tempDirs.make("branch-clean-startup-") };
+  const { path: agentPath } = openBranchAgentDatabase({ agentId: "main", env });
+  closeBranchAgentDatabasesForTest();
+  closeBranchStateDatabaseForTest();
+  expect(readBranchAgentIntegrityVerification(agentPath, env)?.clean_close).toBe(1);
+  expect(fs.existsSync(`${agentPath}-wal`)).toBe(false);
+  expect(fs.existsSync(`${agentPath}-shm`)).toBe(false);
+  const before = fs.readFileSync(agentPath);
+  const prepare = snapshots.prepareSqliteReadOnlyLocation;
+  vi.spyOn(snapshots, "prepareSqliteReadOnlyLocation").mockImplementation((pathname, options) => {
+    if (pathname === agentPath) {
+      throw new Error("No space for a full agent database snapshot");
+    }
+    return prepare(pathname, options);
+  });
+  const onAgentInspection = vi.fn();
+  await expect(
+    assertBranchDatabasesReady({
+      env,
+      operation: "gateway-startup",
+      config: {},
+      onAgentInspection,
+    }),
+  ).resolves.toBeUndefined();
+  expect(onAgentInspection).toHaveBeenLastCalledWith(
+    expect.objectContaining({ schemaSnapshotCount: 0 }),
+  );
+  expect(fs.readFileSync(agentPath)).toEqual(before);
+  expect(readBranchAgentIntegrityVerification(agentPath, env)?.clean_close).toBe(1);
 });
 
 it.each(["DELETE", "WAL", "closed WAL"])(
@@ -116,7 +152,12 @@ it("isolates a corrupt foreign secondary before reporting its integrity failure"
       assertBranchDatabasesReady({
         env,
         operation: "gateway-startup",
-        config: { agents: { list: [{ id: "main", default: true }, { id: "worker" }] } },
+        config: {
+          agents: {
+            entries: { main: {}, worker: {} },
+            defaults: { systemAgent: { agentId: "main" } },
+          },
+        },
       }),
     ).resolves.toBeUndefined();
     expect(readAgentDatabaseAdmissionRefusal("worker", { env })).toMatchObject({

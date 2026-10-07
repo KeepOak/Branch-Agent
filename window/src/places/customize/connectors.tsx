@@ -1,6 +1,7 @@
 // Tools › Connectors: the MCP servers in the engine's config (mcp.servers.<name>). On/off, which Trunks may use
 // it (a "<server>__*" entry in that Trunk's tools.deny) and each tool's Allowed / Never (toolFilter.exclude),
 // all through config.patch. Tools a server offers come from tools.effective for the open conversation.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { shows } from "../../places-nav/level";

@@ -9,14 +9,14 @@ import {
   stageActivePluginRegistry,
 } from "../plugins/runtime.js";
 import { createBranchTestState } from "../test-utils/branch-test-state.js";
-import { getDeterministicFreePortBlock } from "../test-utils/ports.js";
-import { createGatewayKernel } from "./server-kernel.js";
+import { acquireTestPortBlock } from "../test-utils/port-claims.js";
+import { prepareGatewayKernel } from "./server-kernel.js";
 import type { GatewayServer } from "./server-public.js";
 import type { GatewayWsClient } from "./server/ws-types.js";
+import { startClaimedGateway } from "./test-helpers.listener.js";
 
 describe("Gateway startup node capabilities", () => {
   it("reconnects affected nodes when plugins attach after their handshake", async () => {
-    const port = await getDeterministicFreePortBlock({ offsets: [0] });
     const state = await createBranchTestState({
       label: "gateway-startup-node-capabilities",
       layout: "home",
@@ -78,27 +78,45 @@ describe("Gateway startup node capabilities", () => {
           maxProtocol: PROTOCOL_VERSION,
           client: { id: "branch-macos", version: "test", platform: "darwin", mode: "node" },
           role,
+          ...(role === "operator" ? { scopes: ["operator.read"] } : {}),
           caps,
         },
         pluginNodeCapabilitySurfaces: {},
       };
-      return { client, closed };
+      return { client, closed, peer };
     };
     const affected = await connectPeer("affected", "node", ["files"]);
     const unaffected = await connectPeer("unaffected", "node", ["camera"]);
     const operator = await connectPeer("operator", "operator", ["files"]);
+    const pluginChanged = new Promise<{ event?: string; payload?: { generation?: number } }>(
+      (resolve) => {
+        operator.peer.on("message", (data) => {
+          const frame = JSON.parse(data.toString()) as {
+            event?: string;
+            payload?: { generation?: number };
+          };
+          if (frame.event === "plugins.changed") resolve(frame);
+        });
+      },
+    );
     const peers = [affected, unaffected, operator];
-    let kernel: Awaited<ReturnType<typeof createGatewayKernel>> | undefined;
+    let kernel: Awaited<ReturnType<Awaited<ReturnType<typeof prepareGatewayKernel>>["activate"]>> | undefined;
     let server: GatewayServer | undefined;
-    const createKernel = createGatewayKernel;
+    const prepareKernel = prepareGatewayKernel;
     const factory = vi
-      .spyOn(await import("./server-kernel.js"), "createGatewayKernel")
+      .spyOn(await import("./server-kernel.js"), "prepareGatewayKernel")
       .mockImplementation(async (...args) => {
-        kernel = await createKernel(...args);
-        for (const { client } of peers) {
-          kernel.clients.add(client);
-        }
-        return kernel;
+        const prepared = await prepareKernel(...args);
+        return {
+          ...prepared,
+          activate: async (...activateArgs) => {
+            kernel = await prepared.activate(...activateArgs);
+            for (const { client } of peers) {
+              kernel.clients.add(client);
+            }
+            return kernel;
+          },
+        };
       });
     const postAttach = vi
       .spyOn(await import("./server-startup-post-attach.js"), "startGatewayPostAttachRuntime")
@@ -108,17 +126,24 @@ describe("Gateway startup node capabilities", () => {
       });
     try {
       const token = "startup-node-capability-token";
-      await state.writeConfig({
-        gateway: { auth: { mode: "token", token }, controlUi: { enabled: false }, port },
-      });
-      state.applyEnv();
-      stageActivePluginRegistry(createEmptyPluginRegistry(), null, "default");
-      const { startGatewayServerCore } = await import("./server-start.js");
-      server = await startGatewayServerCore(port, {
-        auth: { mode: "token", token },
-        bind: "loopback",
-        controlUiEnabled: false,
-        sidecarStartup: "defer",
+      const claim = await acquireTestPortBlock({ offsets: [0] });
+      server = await startClaimedGateway(claim, async () => {
+        await state.writeConfig({
+          gateway: {
+            auth: { mode: "token", token },
+            controlUi: { enabled: false },
+            port: claim.port,
+          },
+        });
+        state.applyEnv();
+        stageActivePluginRegistry(createEmptyPluginRegistry(), null, "default");
+        const { startGatewayServerCore } = await import("./server-start.js");
+        return await startGatewayServerCore(claim.port, {
+          auth: { mode: "token", token },
+          bind: "loopback",
+          controlUiEnabled: false,
+          sidecarStartup: "defer",
+        });
       });
       expect(affected.client.invalidated).toBe(true);
       await expect(affected.closed).resolves.toEqual({
@@ -127,6 +152,10 @@ describe("Gateway startup node capabilities", () => {
       });
       expect(unaffected.client.socket.readyState).toBe(WebSocket.OPEN);
       expect(operator.client.socket.readyState).toBe(WebSocket.OPEN);
+      await expect(pluginChanged).resolves.toMatchObject({
+        event: "plugins.changed",
+        payload: { generation: expect.any(Number) },
+      });
     } finally {
       kernel?.clients.clear();
       try {
@@ -138,5 +167,5 @@ describe("Gateway startup node capabilities", () => {
         await state.cleanup();
       }
     }
-  });
+  }, 240_000);
 });

@@ -44,7 +44,6 @@ import {
   selectCurrentPluginMetadataCache,
 } from "../plugins/current-plugin-metadata-state.js";
 import { getPluginMetadataSnapshotCache } from "../plugins/plugin-cache.js";
-import { createLazyPromise } from "../shared/lazy-runtime.js";
 import { withArtifactPreservingStateReads } from "../state/branch-state-db-readonly.js";
 import { resolveBranchStateSqlitePath } from "../state/branch-state-db.paths.js";
 import { assertBranchStateWriteAllowedAtPath } from "../state/branch-state-ownership.js";
@@ -101,7 +100,7 @@ export async function prepareGatewayServerBootstrap(input: {
   if (startupElapsedMs > 0) {
     startupTrace.mark("process.bootstrap");
   }
-  const startupConfigSnapshotRead = await withArtifactPreservingStateReads(async () => {
+  let startupConfigSnapshotRead = await withArtifactPreservingStateReads(async () => {
     if (!resumeGatewayRestartTraceFromEnv(process.env, [["source", "env"]])) {
       const restartHandoff = readGatewayRestartHandoffSync();
       resumeGatewayRestartTraceFromHandoff(restartHandoff?.restartTrace, [
@@ -152,6 +151,9 @@ export async function prepareGatewayServerBootstrap(input: {
         signal,
         env: process.env,
         reuseStartupSchemaPreparation: true,
+        agentAdmissionConfig: captureConfigOverrideApplier()(
+          startupConfigSnapshotRead.snapshot.config,
+        ),
         onAgentInspection: (stats) =>
           startupTrace.detail("state.schema-preflight", Object.entries(stats)),
       });
@@ -172,6 +174,18 @@ export async function prepareGatewayServerBootstrap(input: {
       });
     }
   });
+  if (!opts.updateCanary) {
+    try {
+      const { migrateLegacyClaudeProfilesAtStartup } =
+        await import("../agents/auth-profiles/anthropic-manual-migration.js");
+      if (await migrateLegacyClaudeProfilesAtStartup(startupConfigSnapshotRead.snapshot.config)) {
+        startupConfigSnapshotRead = await readConfigFileSnapshotWithPluginMetadata({ observe: false });
+        log.info("Claude account profile migrated from legacy manual ID.");
+      }
+    } catch (error) {
+      log.warn(`Claude account profile migration deferred: ${formatErrorMessage(error)}`);
+    }
+  }
   const { ensureGlobalUndiciEnvProxyDispatcher } = await startupTrace.measure(
     "runtime.network-imports",
     () => import("../infra/net/undici-global-dispatcher.js"),
@@ -197,9 +211,6 @@ export async function prepareGatewayServerBootstrap(input: {
     "config.runtime-imports",
     () => import("./server-startup-config.js"),
   );
-  const loadStartupPluginsModule = createLazyPromise(() => import("./server-startup-plugins.js"), {
-    cacheRejections: true,
-  });
   const { applyGatewayAuthOverridesForStartupPreflight, loadGatewayStartupConfigSnapshot } =
     await startupConfigModulePromise;
 
@@ -472,7 +483,10 @@ export async function prepareGatewayServerBootstrap(input: {
           return await workerModule.loadGatewayWorkerEnvironmentStartupState();
         });
   const { prepareGatewayPluginBootstrap, runGatewayStartupMaintenance } =
-    await startupTrace.measure("plugins.bootstrap-imports", loadStartupPluginsModule);
+    await startupTrace.measure(
+      "plugins.bootstrap-imports",
+      () => import("./server-startup-plugins.js"),
+    );
   const pluginGatewayContext: {
     current: import("./server-methods/types.js").GatewayRequestContext | undefined;
   } = { current: undefined };
@@ -490,8 +504,13 @@ export async function prepareGatewayServerBootstrap(input: {
     );
   }
   publishSystemEventStoreConfig(cfgAtStart);
-  const pluginBootstrap = await startupTrace.measure("plugins.bootstrap", () =>
-    prepareGatewayPluginBootstrap({
+  const pluginBootstrap = await startupTrace.measure("plugins.bootstrap", async () => {
+    if (!opts.updateCanary) {
+      const { initSubagentRegistry } =
+        await import("../agents/subagents/registry/subagent-registry.js");
+      await initSubagentRegistry();
+    }
+    return prepareGatewayPluginBootstrap({
       cfgAtStart,
       activationSourceConfig: startupActivationSourceConfig,
       pluginMetadataSnapshot: startupConfigLoad.pluginMetadataSnapshot,
@@ -499,8 +518,8 @@ export async function prepareGatewayServerBootstrap(input: {
       minimalTestGateway,
       ambientEnvTriggers,
       log,
-    }),
-  );
+    });
+  });
   const {
     gatewayPluginConfigAtStart,
     defaultWorkspaceDir,
@@ -555,7 +574,6 @@ export async function prepareGatewayServerBootstrap(input: {
     minimalTestGateway,
     ambientEnvTriggers,
     startupTrace,
-    loadStartupPluginsModule,
     configSnapshot,
     startupConfigLoad,
     startupActivationSourceConfig,

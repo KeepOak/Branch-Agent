@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { assertLockdownOff } from "../config/lockdown.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import { copyAgentToolMetadata } from "./agent-tool-metadata.js";
 import type { AnyAgentTool } from "./agent-tools.types.js";
@@ -68,6 +69,7 @@ export function captureAgentToolSourceExecutionGuard(signal?: AbortSignal): () =
   const authority = getGatewayToolCallerIdentity()?.receiptAuthority;
   const assertBudgetCurrent = executionBudgetContext.getStore()?.assertCurrent;
   return () => {
+    assertLockdownOff();
     signal?.throwIfAborted();
     assertBudgetCurrent?.();
     if (authority?.() === false) {

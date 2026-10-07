@@ -2,10 +2,7 @@ import {
   defineBundledChannelEntry,
   type BranchPluginApi,
 } from "branch/plugin-sdk/channel-entry-contract";
-import { createLazyRuntimeModule } from "branch/plugin-sdk/lazy-runtime";
 import { registerReefCliMetadata } from "./cli-metadata.js";
-
-const loadReefCommandsRuntime = createLazyRuntimeModule(() => import("./commands.runtime.js"));
 
 function registerReefFullRuntime(api: BranchPluginApi): void {
   api.registerCommand({
@@ -15,7 +12,7 @@ function registerReefFullRuntime(api: BranchPluginApi): void {
     requireAuth: true,
     exposeSenderIsOwner: true,
     handler: async (params) => {
-      const { handleReefCommand } = await loadReefCommandsRuntime();
+      const { handleReefCommand } = await import("./commands.runtime.js");
       return await handleReefCommand(params);
     },
   });

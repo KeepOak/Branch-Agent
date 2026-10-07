@@ -21,6 +21,24 @@ vi.mock("branch/plugin-sdk/run-command", () => ({
   runPluginCommandWithTimeout: runPluginCommandWithTimeoutMock,
 }));
 
+vi.mock("branch/plugin-sdk/file-access-runtime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("branch/plugin-sdk/file-access-runtime")>();
+  const nativePath = await import("node:path");
+  return {
+    ...actual,
+    // The test simulates macOS while its temporary files still use the host's path syntax.
+    isPathStrictlyInside: (root: string, target: string) => {
+      const relative = nativePath.default.relative(root, target);
+      return (
+        relative !== "" &&
+        relative !== ".." &&
+        !relative.startsWith(`..${nativePath.default.sep}`) &&
+        !nativePath.default.isAbsolute(relative)
+      );
+    },
+  };
+});
+
 const { installIMessageCli } = await import("./install-imsg.js");
 
 describe("installIMessageCli", () => {

@@ -14,11 +14,12 @@ import {
 import {
   closeBranchAgentDatabaseByPath,
   closeBranchAgentDatabaseByPathAsync,
+  closeBranchAgentDatabasesAsync,
   closeBranchAgentDatabasesForTest,
   openBranchAgentDatabase,
   runBranchAgentWriteTransaction,
 } from "../../state/branch-agent-db.js";
-import { closeBranchStateDatabaseForTest } from "../../state/branch-state-db.js";
+import { closeStateDatabaseForTest } from "../../test-utils/database-cleanup.js";
 import { onSessionIdentityMutation } from "./session-accessor.js";
 import { createSessionEntryRevisionGuard } from "./session-accessor.sqlite-entry-revision.js";
 import {
@@ -44,9 +45,10 @@ import { readSessionEntryCurrentFacts } from "./session-entry-read.worker.js";
 const tempDirs = createTempDirTracker();
 const sessionKey = "agent:main:entry-revalidation";
 
-afterEach(() => {
+afterEach(async () => {
+  await closeBranchAgentDatabasesAsync();
   closeBranchAgentDatabasesForTest();
-  closeBranchStateDatabaseForTest();
+  await closeStateDatabaseForTest();
   tempDirs.cleanup();
 });
 
@@ -131,6 +133,8 @@ describe("SQLite session entry patch commit revalidation", () => {
   });
 
   it("restores the connection's commit wait after admitting a rollback-journal patch", async () => {
+    await closeBranchAgentDatabasesAsync();
+    database = openBranchAgentDatabase({ agentId: "main", env });
     expect(database.db.prepare("PRAGMA journal_mode = DELETE").get()?.journal_mode).toBe("delete");
     database.db.exec("PRAGMA busy_timeout = 37");
     const reader = new DatabaseSync(database.path);
@@ -208,6 +212,9 @@ describe("SQLite session entry patch commit revalidation", () => {
               : /closed|replaced|not open/,
         );
         expect(updates).toBe(1);
+        if (changed === "connection") {
+          await closeBranchAgentDatabaseByPathAsync(database.path);
+        }
         expect(loadExactSessionEntry(scope)?.entry.label).toBe(
           changed === "row" ? "foreign" : "original",
         );
@@ -487,8 +494,8 @@ describe("SQLite session entry patch commit revalidation", () => {
   });
 
   it("commits an unchanged persisted row after reopening during preparation", async () => {
-    const persisted = await patchEntry("ordinary", () => {
-      expect(closeBranchAgentDatabaseByPath(database.path)).toBe(true);
+    const persisted = await patchEntry("ordinary", async () => {
+      expect(await closeBranchAgentDatabaseByPathAsync(database.path)).toBe(true);
       return { label: "renamed" };
     });
     expect(persisted).toMatchObject({ label: "renamed", sessionId: "session-1" });
@@ -599,15 +606,15 @@ describe("SQLite session entry patch commit revalidation", () => {
         { sessionId: "main-session", updatedAt: 10 },
       );
       await expect(
-        patchEntry(route, () => {
+        patchEntry(route, async () => {
           setCanonicalSqliteSessionMainKey(database, "work");
           setUnrelatedParent(database.db, "agent:main:unrecorded-parent");
-          expect(closeBranchAgentDatabaseByPath(database.path)).toBe(true);
+          expect(await closeBranchAgentDatabaseByPathAsync(database.path)).toBe(true);
           return null;
         }),
       ).rejects.toThrow("branch doctor --fix");
       // Test cleanup must not depend on admitting the deliberately invalid store.
-      closeBranchAgentDatabaseByPath(database.path);
+      await closeBranchAgentDatabaseByPathAsync(database.path);
       const cleanup = new DatabaseSync(database.path);
       try {
         setUnrelatedParent(cleanup, null);
@@ -684,7 +691,7 @@ describe("SQLite session entry patch commit revalidation", () => {
         return { label: "with participants" };
       });
       expect(persisted).toMatchObject({ sessionId: "session-1", label: "with participants" });
-      expect(closeBranchAgentDatabaseByPath(database.path)).toBe(true);
+      expect(await closeBranchAgentDatabaseByPathAsync(database.path)).toBe(true);
       expect(loadExactSessionEntry(scope)?.entry).toMatchObject({
         label: "with participants",
         participantCount: 2,
