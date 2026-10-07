@@ -44,7 +44,8 @@ function holdSessionHandoffLeases(...args: Parameters<typeof startHold>): Sessio
   holds.push(hold);
   return hold;
 }
-const leaseFiles = (lane: string) => listSessionHandoffLeases(resolveSessionHandoffLeaseDir(), lane).map(({ file }) => file);
+const leaseFiles = (lane: string) =>
+  listSessionHandoffLeases(resolveSessionHandoffLeaseDir(), lane).map(({ file }) => file);
 
 beforeEach(() => {
   resetCommandQueueStateForTest();
@@ -71,7 +72,10 @@ afterEach(async () => {
 
 /** Another live process standing in for the previous engine. */
 async function liveProcess(): Promise<ChildProcess> {
-  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", windowsHide: true });
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+    stdio: "ignore",
+    windowsHide: true,
+  });
   children.push(child);
   await new Promise((resolve) => child.once("spawn", resolve));
   return child;
@@ -159,7 +163,9 @@ describe("session handoff leases", () => {
 
   it("deletes and ignores a stale lease: too old, or a reused PID that is another process now", async () => {
     const other = await liveProcess();
-    const expired = leaseFor(LEASED, other.pid!, { acquiredAt: Date.now() - SESSION_HANDOFF_LEASE_MAX_AGE_MS - 1_000 });
+    const expired = leaseFor(LEASED, other.pid!, {
+      acquiredAt: Date.now() - SESSION_HANDOFF_LEASE_MAX_AGE_MS - 1_000,
+    });
     const reused = leaseFor(OTHER, other.pid!, { startTime: 12_345 });
     refreshSessionHandoffLeases();
     await expect(enqueueCommandInLane(LEASED, async () => "ran")).resolves.toBe("ran");
@@ -178,7 +184,9 @@ describe("session handoff leases", () => {
 
   it("frees waiting work when a held lease outlives any handoff", async () => {
     const holder = await liveProcess();
-    leaseFor(LEASED, holder.pid!, { acquiredAt: Date.now() - SESSION_HANDOFF_LEASE_MAX_AGE_MS + 400 });
+    leaseFor(LEASED, holder.pid!, {
+      acquiredAt: Date.now() - SESSION_HANDOFF_LEASE_MAX_AGE_MS + 400,
+    });
     refreshSessionHandoffLeases();
     const started = Date.now();
     await expect(enqueueCommandInLane(LEASED, async () => "ran")).resolves.toBe("ran");
@@ -189,7 +197,10 @@ describe("session handoff leases", () => {
     const holder = await liveProcess();
     const file = leaseFor(LEASED, holder.pid!);
     refreshSessionHandoffLeases();
-    const parked = [enqueueCommandInLane(LEASED, async () => {}), enqueueCommandInLane(LEASED, async () => {})];
+    const parked = [
+      enqueueCommandInLane(LEASED, async () => {}),
+      enqueueCommandInLane(LEASED, async () => {}),
+    ];
     expect(getCommandLaneSnapshot(LEASED).queuedCount).toBe(2);
     expect(getTotalQueueSize()).toBe(2);
     fs.unlinkSync(file);
@@ -243,13 +254,17 @@ describe("session handoff leases", () => {
     resetSessionHandoffLeaseGateForTest(5_000);
     const holder = await liveProcess();
     // Parked 10 s into a lease whose holder never releases: the expiry frees it, the bounded wait does not reject it.
-    leaseFor(LEASED, holder.pid!, { acquiredAt: Date.now() - SESSION_HANDOFF_LEASE_MAX_AGE_MS + 600 });
+    leaseFor(LEASED, holder.pid!, {
+      acquiredAt: Date.now() - SESSION_HANDOFF_LEASE_MAX_AGE_MS + 600,
+    });
     refreshSessionHandoffLeases();
     await expect(enqueueCommandInLane(LEASED, async () => "ran")).resolves.toBe("ran");
   });
 
   it("gives the holder a deadline at 330 s and reports when its leases expire for successors", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval", "Date"] });
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval", "Date"],
+    });
     const startedAt = Date.now();
     const hold = holdSessionHandoffLeases({ lanes: [LEASED], isBusy: () => true });
     expect(hold.expiresAt).toBe(startedAt + SESSION_HANDOFF_LEASE_MAX_AGE_MS);
@@ -274,13 +289,19 @@ describe("session handoff leases", () => {
   });
 
   it("leases sessions that get work during the step-down, then refuses unheld ones once sealed", async () => {
-    const hold = holdSessionHandoffLeases({ lanes: [], leaseNewLanes: true, hasPendingWork: () => true });
+    const hold = holdSessionHandoffLeases({
+      lanes: [],
+      leaseNewLanes: true,
+      hasPendingWork: () => true,
+    });
     const finish = createDeferred();
     const late = enqueueCommandInLane(OTHER, () => finish.promise);
     expect(leaseFiles(OTHER)).toHaveLength(1);
     hold.seal();
     const third = "session:agent:main:third";
-    await expect(enqueueCommandInLane(third, async () => "ran")).rejects.toBeInstanceOf(GatewayDrainingError);
+    await expect(enqueueCommandInLane(third, async () => "ran")).rejects.toBeInstanceOf(
+      GatewayDrainingError,
+    );
     expect(leaseFiles(third)).toHaveLength(0);
     // A session the hold keeps still takes its own follow-up work.
     const followUp = enqueueCommandInLane(OTHER, async () => "follow-up");
@@ -299,40 +320,59 @@ describe("session handoff leases", () => {
     expect(leaseFiles(OTHER)).toHaveLength(0);
   });
 
-  it("keeps a lease it could not remove, and removes it on a later poll", async () => {
+  it("does not stay open for a lease it could not remove, and keeps retrying it gently until it is gone", async () => {
     let busy = true;
     const hold = holdSessionHandoffLeases({ lanes: [LEASED], isBusy: () => busy });
     const [file] = leaseFiles(LEASED);
     const unlink = fs.unlinkSync;
+    let attempts = 0;
     // Antivirus holds the file for a while: every removal fails, past the immediate retries.
+    const spy = vi.spyOn(fs, "unlinkSync").mockImplementation((target) => {
+      if (String(target) !== file) return unlink(target);
+      attempts += 1;
+      throw Object.assign(new Error("busy"), { code: "EBUSY" });
+    });
+    busy = false;
+    // The session is done here: the hold releases, and the file goes stale for successors once this engine exits.
+    await hold.released;
+    expect(fs.existsSync(file)).toBe(true);
+    // Retries back off, one quick attempt at a time, instead of blocking every tick.
+    await pause(1_000);
+    expect(attempts).toBeLessThan(12);
+    spy.mockRestore();
+    await vi.waitFor(() => expect(fs.existsSync(file)).toBe(false), {
+      timeout: 10_000,
+      interval: 100,
+    });
+  });
+
+  it("keeps retrying a lease it could not remove after releaseAll", async () => {
+    const hold = holdSessionHandoffLeases({ lanes: [LEASED], isBusy: () => true });
+    const [file] = leaseFiles(LEASED);
+    const unlink = fs.unlinkSync;
     const spy = vi.spyOn(fs, "unlinkSync").mockImplementation((target) => {
       if (String(target) === file) throw Object.assign(new Error("busy"), { code: "EBUSY" });
       unlink(target);
     });
-    let released = false;
-    void hold.released.then(() => {
-      released = true;
-    });
-    busy = false;
-    await pause(400);
+    hold.releaseAll();
     expect(fs.existsSync(file)).toBe(true);
-    expect(released).toBe(false);
     spy.mockRestore();
-    await hold.released;
-    expect(fs.existsSync(file)).toBe(false);
+    await vi.waitFor(() => expect(fs.existsSync(file)).toBe(false), {
+      timeout: 10_000,
+      interval: 100,
+    });
   });
 
   it("never waits on a successor's lease for a session it still finishes (A, then B, then C)", async () => {
-    // A predecessor of this engine still holds OTHER: written before this engine stepped down, it still counts.
-    const predecessor = await liveProcess();
-    const predecessorLease = leaseFor(OTHER, predecessor.pid!);
-    refreshSessionHandoffLeases();
-    await pause(5);
     // This engine (A) steps down with a run in flight on LEASED.
     const finish = createDeferred();
     const inFlight = enqueueCommandInLane(LEASED, () => finish.promise);
     const hold = holdSessionHandoffLeases({ lanes: [LEASED], hasPendingWork: () => true });
-    // Its successor (B) parks a turn for LEASED behind A, then steps down for C itself and leases LEASED.
+    // A predecessor of A still holds OTHER. A only learns of it now, after its own hold started, but the lease was
+    // written before: it still holds A's work there.
+    const predecessor = await liveProcess();
+    const predecessorLease = leaseFor(OTHER, predecessor.pid!, { acquiredAt: Date.now() - 1_000 });
+    // A's successor (B) parks a turn for LEASED behind A, then steps down for C itself and leases LEASED.
     const successor = await liveProcess();
     leaseFor(LEASED, successor.pid!);
     refreshSessionHandoffLeases();
@@ -344,7 +384,7 @@ describe("session handoff leases", () => {
     await expect(
       Promise.race([followUp, pause(2_000).then(() => "parked behind the successor")]),
     ).resolves.toBe("follow-up");
-    // The predecessor's lease still holds this engine's work for OTHER.
+    // The predecessor's lease still holds A's work for OTHER.
     let ranOther = false;
     const other = enqueueCommandInLane(OTHER, async () => {
       ranOther = true;
@@ -354,6 +394,51 @@ describe("session handoff leases", () => {
     fs.unlinkSync(predecessorLease);
     await other;
     hold.releaseAll();
+  });
+
+  it("reads a holder's lease that is briefly unreadable as still held", async () => {
+    const holder = await liveProcess();
+    const file = leaseFor(LEASED, holder.pid!);
+    refreshSessionHandoffLeases();
+    const read = fs.readFileSync;
+    // An indexer opens the lease file exclusively for a while.
+    const spy = vi.spyOn(fs, "readFileSync").mockImplementation(((
+      target: fs.PathOrFileDescriptor,
+      ...rest: unknown[]
+    ) => {
+      if (String(target) === file) throw Object.assign(new Error("busy"), { code: "EBUSY" });
+      return (read as (...args: unknown[]) => unknown)(target, ...rest);
+    }) as typeof fs.readFileSync);
+    let ran = false;
+    const parked = enqueueCommandInLane(LEASED, async () => {
+      ran = true;
+    });
+    await pause(400);
+    expect(ran).toBe(false);
+    spy.mockRestore();
+    fs.unlinkSync(file);
+    await parked;
+    expect(ran).toBe(true);
+  });
+
+  it("clears its own-hold record only for itself, never for a newer hold", async () => {
+    const first = holdSessionHandoffLeases({ lanes: [] });
+    await first.released;
+    first.releaseAll();
+    await pause(5);
+    const second = holdSessionHandoffLeases({ lanes: [], hasPendingWork: () => true });
+    // A stale handle released again must not wipe the newer hold's start.
+    first.releaseAll();
+    const successor = await liveProcess();
+    leaseFor(LEASED, successor.pid!);
+    refreshSessionHandoffLeases();
+    await expect(
+      Promise.race([
+        enqueueCommandInLane(LEASED, async () => "ran"),
+        pause(1_000).then(() => "parked behind the successor"),
+      ]),
+    ).resolves.toBe("ran");
+    second.releaseAll();
   });
 
   it("waits for pending work that is not tied to a session yet", async () => {
@@ -373,7 +458,9 @@ describe("session handoff leases", () => {
     const transcript = path.join(stateDir, "transcript.txt");
     fs.writeFileSync(transcript, "");
     const queueUrl = pathToFileURL(path.resolve("src/process/command-queue.ts")).href;
-    const holderUrl = pathToFileURL(path.resolve("src/process/session-handoff-lease-holder.ts")).href;
+    const holderUrl = pathToFileURL(
+      path.resolve("src/process/session-handoff-lease-holder.ts"),
+    ).href;
     const header = `import fs from "node:fs";
 import { enqueueCommandInLane } from ${JSON.stringify(queueUrl)};
 import { holdSessionHandoffLeases } from ${JSON.stringify(holderUrl)};
@@ -401,12 +488,16 @@ say("B " + JSON.stringify(hold.lanes));
 await parked; await hold.released; say("B released");
 await new Promise((resolve) => process.stdin.once("end", resolve));`;
     const start = (name: string, code: string) => {
-      const child = spawn(process.execPath, ["--import", "./scripts/tsx.mjs", "--input-type=module", "--eval", code], {
-        cwd: process.cwd(),
-        env: { ...process.env, BRANCH_STATE_DIR: stateDir, TRANSCRIPT: transcript },
-        stdio: ["pipe", "pipe", "pipe"],
-        windowsHide: true,
-      });
+      const child = spawn(
+        process.execPath,
+        ["--import", "./scripts/tsx.mjs", "--input-type=module", "--eval", code],
+        {
+          cwd: process.cwd(),
+          env: { ...process.env, BRANCH_STATE_DIR: stateDir, TRANSCRIPT: transcript },
+          stdio: ["pipe", "pipe", "pipe"],
+          windowsHide: true,
+        },
+      );
       children.push(child);
       const io = { out: "", err: "" };
       child.stdout!.on("data", (chunk: Buffer) => (io.out += chunk.toString()));
@@ -426,8 +517,13 @@ await new Promise((resolve) => process.stdin.once("end", resolve));`;
     const b = start("B", engineB);
     // B steps down while A still holds LEASED: no "already leased", and B keeps the session for its parked turn.
     await b.waitFor(`B ["${LEASED}"]`);
-    expect(new Set(listSessionHandoffLeases(resolveSessionHandoffLeaseDir(), LEASED).map(({ lease }) => lease.pid)))
-      .toEqual(new Set([a.child.pid, b.child.pid]));
+    expect(
+      new Set(
+        listSessionHandoffLeases(resolveSessionHandoffLeaseDir(), LEASED).map(
+          ({ lease }) => lease.pid,
+        ),
+      ),
+    ).toEqual(new Set([a.child.pid, b.child.pid]));
 
     // C takes over now.
     refreshSessionHandoffLeases();
@@ -457,7 +553,9 @@ await new Promise((resolve) => process.stdin.once("end", resolve));`;
     const transcript = path.join(stateDir, "transcript.txt");
     fs.writeFileSync(transcript, "");
     const queueUrl = pathToFileURL(path.resolve("src/process/command-queue.ts")).href;
-    const holderUrl = pathToFileURL(path.resolve("src/process/session-handoff-lease-holder.ts")).href;
+    const holderUrl = pathToFileURL(
+      path.resolve("src/process/session-handoff-lease-holder.ts"),
+    ).href;
     // The previous engine: a run is in flight in LEASED when it steps down; it keeps that session, finishes and
     // saves the run, then releases it and exits.
     const code = `import fs from "node:fs";
@@ -474,12 +572,16 @@ await hold.released;
 process.stdout.write("released\\n");
 // Stay alive after releasing: the successor must be freed by the release itself, not by this process dying.
 await new Promise((resolve) => process.stdin.once("end", resolve).resume());`;
-    const previous = spawn(process.execPath, ["--import", "./scripts/tsx.mjs", "--input-type=module", "--eval", code], {
-      cwd: process.cwd(),
-      env: { ...process.env, BRANCH_STATE_DIR: stateDir, TRANSCRIPT: transcript },
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-    });
+    const previous = spawn(
+      process.execPath,
+      ["--import", "./scripts/tsx.mjs", "--input-type=module", "--eval", code],
+      {
+        cwd: process.cwd(),
+        env: { ...process.env, BRANCH_STATE_DIR: stateDir, TRANSCRIPT: transcript },
+        stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true,
+      },
+    );
     children.push(previous);
     let stdout = "";
     previous.stdout!.on("data", (chunk: Buffer) => {
