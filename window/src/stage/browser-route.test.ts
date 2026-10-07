@@ -10,9 +10,18 @@ describe("addressBarUrl", () => {
   it("searches for words that aren't an address", () => {
     expect(addressBarUrl("weather lisbon")).toBe("https://www.google.com/search?q=weather%20lisbon");
   });
-  it("passes an address with a scheme through unchanged", () => {
+  it("passes an http(s) address through unchanged", () => {
     expect(addressBarUrl("https://example.com")).toBe("https://example.com");
-    expect(addressBarUrl("file:///tmp/doc.pdf")).toBe("file:///tmp/doc.pdf");
+    expect(addressBarUrl("http://example.com/a?b=1")).toBe("http://example.com/a?b=1");
+  });
+  it("refuses javascript: and file: instead of navigating", () => {
+    expect(addressBarUrl("javascript:alert(1)")).toBeNull();
+    expect(addressBarUrl("file:///etc/passwd")).toBeNull();
+  });
+  it("adds https:// for host:port and bare localhost", () => {
+    expect(addressBarUrl("example.com:8080")).toBe("https://example.com:8080");
+    expect(addressBarUrl("localhost:3000")).toBe("https://localhost:3000");
+    expect(addressBarUrl("localhost")).toBe("https://localhost");
   });
 });
 

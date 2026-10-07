@@ -6,7 +6,7 @@ import type { Level } from "../places-nav/settings-nav";
 import type { BrowserPresentation } from "../thread/browser-presentation";
 import { Menu, type MenuAnchor, type MenuItem } from "../shell/Menu";
 import { BrowserScreencastClient, type BrowserScreencastFrame } from "./browser-screencast-client";
-import { addressBarUrl, activeRoute, browserCall, isBlankTab, readTabs, recordedBrowserTabs, routeKey, routeOf, scopedBrowserRequest, type BrowserRoute, type LiveTab } from "./browser-route";
+import { BLOCKED_ADDRESS, addressBarUrl, activeRoute, browserCall, isBlankTab, readTabs, recordedBrowserTabs, routeKey, routeOf, scopedBrowserRequest, type BrowserRoute, type LiveTab } from "./browser-route";
 import { BrowserTools } from "./BrowserTools";
 import { SIcon } from "./stage-icons";
 
@@ -297,6 +297,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   const [drawer, setDrawer] = useState(false);
   const [menu, setMenu] = useState<{ at: MenuAnchor; items: MenuItem[] } | null>(null);
   const [note, setNote] = useState("");
+  const [blocked, setBlocked] = useState(false);
   const [find, setFind] = useState<string | null>(null);
   const [view, setView] = useState<{ url?: string; title?: string; phase: BrowserPhase }>({ phase: "empty" });
   const startedRef = useRef(false);
@@ -331,8 +332,15 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   const go = (raw: string) => {
     const target = raw.trim();
     if (!target || !tab) return;
+    const navigateUrl = addressBarUrl(target);
+    if (navigateUrl === null) {
+      setBlocked(true);
+      setNote("");
+      return;
+    }
     onControl?.(true);
-    void call("POST", "/navigate", { targetId: tab.targetId, body: { url: addressBarUrl(target) } }).then(() => {
+    setBlocked(false);
+    void call("POST", "/navigate", { targetId: tab.targetId, body: { url: navigateUrl } }).then(() => {
       setAddress(null);
       refresh();
     }, fail);
@@ -343,6 +351,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     void call("POST", "/act", { targetId: tab.targetId, body: { kind: "evaluate", fn: `() => history.${step}()` } }).then(refresh, fail);
   };
   const newTab = () => {
+    setBlocked(false);
     onControl?.(true);
     void call("POST", "/tabs/open", { body: { url: "about:blank" } }).then((r) => {
       const id = String((r as { targetId?: unknown } | null)?.targetId ?? "");
@@ -420,6 +429,8 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
         ) : null}
       </Blank>
     );
+  else if (blocked)
+    page = <Blank icon="lock" title={BLOCKED_ADDRESS} text="Your browser rules block this address. Pick another tab or enter an allowed address." />;
   else if (!tab || isBlankTab(tab.url)) page = <Blank title="New tab" text="Enter an address and press Enter." />;
   else page = <Screencast key={entry ? `${routeKey(route)}:${tab.targetId}` : "none"} engine={engine} gatewayUrl={gatewayUrl} entry={entry} interact={control} onState={onView} />;
   const showChrome = browser.phase === "ready" || (browser.phase === "loading" && browser.tabs.length > 0) || (!recordedRoute && browser.phase !== "error" && browser.phase !== "none");
@@ -489,7 +500,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
                   <div className="br-tabs-st" role="tablist" aria-label="Tabs">
                     {browser.tabs.map((t) => (
                       <span key={t.targetId} className={t.targetId === tab?.targetId ? "br-tab-st on" : "br-tab-st"} title={mine.has(t.targetId) ? "Your tab" : `${name}'s tab`}>
-                        <button type="button" role="tab" aria-selected={t.targetId === tab?.targetId} onClick={() => setPicked(t.targetId)}>
+                        <button type="button" role="tab" aria-selected={t.targetId === tab?.targetId} onClick={() => { setBlocked(false); setPicked(t.targetId); }}>
                           {mine.has(t.targetId) ? null : <i className="br-dot-st" />}
                           {t.title || "New tab"}
                         </button>

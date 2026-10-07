@@ -10,19 +10,40 @@ export type LiveTab = { targetId: string; title: string; url: string };
 /** Branch's own host browser and managed profile (engine DEFAULT_BROWSER_DEFAULT_PROFILE_NAME). */
 export const HOST_BROWSER_ROUTE: BrowserRoute = { target: "host", profile: "branch" };
 
-const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
-const LOOKS_LIKE_HOST = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i;
+/** A colon followed by digits is a port, not a scheme (engine/ui `normalizeBrowserUrlDraft`). */
+const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:(?![0-9])/i;
+/** Preview `BLOCK_RE_PC18`: these never go to /navigate. */
+const BLOCKED_SCHEME = /^(file|javascript|chrome|data|about:(?!blank))/i;
 
 /** Chromium's default search URL shape; the engine has no separate omnibox search setting. */
 export const DEFAULT_SEARCH_URL = "https://www.google.com/search?q=";
 
-/** Address bar: a scheme is kept, a host-like value gets https://, anything else is a web search. */
-export function addressBarUrl(raw: string): string {
+/** Title of the blank page when the address bar refuses a scheme. */
+export const BLOCKED_ADDRESS = "Blocked address";
+
+function parseHttpUrl(candidate: string): URL | null {
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Address bar: http(s) is kept, a host-like value gets https://, blocked schemes return null, anything else is a web search. */
+export function addressBarUrl(raw: string): string | null {
   const target = raw.trim();
   if (!target) return "";
-  if (HAS_SCHEME.test(target)) return target;
-  const host = target.split(/[/?#]/)[0] ?? "";
-  if (LOOKS_LIKE_HOST.test(host)) return `https://${target}`;
+  const hasExplicitScheme = HAS_SCHEME.test(target);
+  if (hasExplicitScheme && !/^https?:\/\//i.test(target)) {
+    if (/^about:blank$/i.test(target)) return target;
+    return null;
+  }
+  if (BLOCKED_SCHEME.test(target)) return null;
+  if (hasExplicitScheme) return target;
+  const parsed = parseHttpUrl(`https://${target}`);
+  const host = parsed?.hostname ?? "";
+  if (parsed && (host === "localhost" || host.includes("."))) return `https://${target}`;
   return `${DEFAULT_SEARCH_URL}${encodeURIComponent(target)}`;
 }
 

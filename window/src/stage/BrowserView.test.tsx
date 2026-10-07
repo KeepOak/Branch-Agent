@@ -315,17 +315,26 @@ describe("scoped browser viewing", () => {
     await act(async () => input.form!.requestSubmit());
     expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ path: "/navigate", body: { url: "https://www.google.com/search?q=weather%20lisbon", targetId: "tab-one" } }));
   });
-  it("navigates directly when input has a scheme", async () => {
+  it("refuses javascript: and file: with Blocked address and does not navigate", async () => {
     const request = routed(() => new Promise(() => {}));
     await render(owner(request as any));
     await flush();
     const input = container.querySelector<HTMLInputElement>(".br-addr-st")!;
     const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set;
+    const before = request.mock.calls.length;
     await act(async () => {
-      nativeInputValueSetter!.call(input, "file:///home/user/doc.pdf");
+      nativeInputValueSetter!.call(input, "javascript:alert(1)");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await act(async () => input.form!.requestSubmit());
-    expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ path: "/navigate", body: { url: "file:///home/user/doc.pdf", targetId: "tab-one" } }));
+    expect(request.mock.calls.slice(before).some((c) => c[1]?.path === "/navigate")).toBe(false);
+    expect(container.textContent).toContain("Blocked address");
+    await act(async () => {
+      nativeInputValueSetter!.call(input, "file:///etc/passwd");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => input.form!.requestSubmit());
+    expect(request.mock.calls.slice(before).some((c) => c[1]?.path === "/navigate")).toBe(false);
+    expect(container.textContent).toContain("Blocked address");
   });
 });
