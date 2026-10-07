@@ -1,4 +1,2 @@
-# P45 real two-engine handoff test (#429): desktop stops old before new, window adapts, cross-process e2e.
-desktop:scripts/restart-engine.test.mjs
-engine:test/gateway-desktop-handoff.e2e.test.ts
+# P45 real two-engine handoff test (#429): window adapts to engine handoff.
 window:src/App.engine-handoff.test.tsx
