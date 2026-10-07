@@ -62,11 +62,24 @@ it("Clicking the running button with 0 running opens the popover with the empty 
   await act(async () => new Promise((r) => setTimeout(r, 0)));
   const pop = host.querySelector("[data-testid=pop-running]");
   expect(pop).toBeTruthy();
-  expect(pop?.textContent).toContain("Running in the background");
-  expect(pop?.textContent).toContain("Nothing is running.");
-  expect(pop?.textContent).toContain("Coming up");
-  expect(pop?.textContent).toContain("Morning brief");
+  const text = pop?.textContent ?? "";
+  expect(text).toContain("Coming up");
+  expect(text).toContain("Morning brief");
+  expect(text).toContain("Nothing is running.");
+  expect(text.indexOf("Coming up")).toBeLessThan(text.indexOf("Nothing is running."));
+  expect(text).toContain("Running in the background");
+  expect(text.indexOf("Coming up")).toBeLessThan(text.indexOf("Running in the background"));
   expect(request).toHaveBeenCalledWith("cron.list", { limit: 200 });
+});
+
+it("Coming up is omitted when cron.list has no jobs.", async () => {
+  const request = vi.fn(async () => ({ jobs: [] }));
+  const host = await show(<Harness running={0} working={[]} request={request} />);
+  await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=sb-running]")!.click());
+  await act(async () => new Promise((r) => setTimeout(r, 0)));
+  const pop = host.querySelector("[data-testid=pop-running]");
+  expect(pop?.textContent).toContain("Nothing is running.");
+  expect(pop?.textContent).not.toContain("Coming up");
 });
 
 it("With 2 working conversations, the popover lists both.", async () => {
@@ -84,4 +97,5 @@ it("With 2 working conversations, the popover lists both.", async () => {
   expect(pop?.textContent).toContain("Ledger");
   expect(pop?.textContent).toContain("Working");
   expect(pop?.textContent).not.toContain("Nothing is running.");
+  expect(pop?.textContent).not.toContain("Coming up");
 });
