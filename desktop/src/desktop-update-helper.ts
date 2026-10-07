@@ -2,8 +2,10 @@
 // Waits for the desktop app to exit, swaps the staged copy in, relaunches it and waits for the new app to confirm
 // its start (it removes the journal). No confirmation in time: stop the new app by its PID, put the previous copy
 // back, remember the release as rejected and relaunch the previous app.
-// A whole-folder (runtime) swap first stops processes still running from the install folder — the device-link
-// node host keeps the bundled node.exe open after the app quits, and Windows then fails the rename with EBUSY.
+// A whole-folder (runtime) swap first stops every process whose executable is the bundled node.exe under the
+// install folder — the device-link host, leftover `mcp serve` / mcporter daemons, and their children (Playwright
+// Chrome). Windows cannot rename the folder while that node.exe is running. Node from outside the folder, and
+// this helper, are left alone.
 import { spawn, execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { readdir, rename, rm, writeFile } from "node:fs/promises";
@@ -94,19 +96,73 @@ function argsFromCommandLine(executable: string, commandLine: string | undefined
   return tokens.slice(1);
 }
 
+/** Kind only — never a path, host, or account. */
+export function processKind(proc: FolderProcess): string {
+  const name = (proc.name || basename(proc.executable)).toLowerCase().replace(/\.exe$/i, "");
+  const args = proc.args.map(arg => arg.toLowerCase());
+  if (name.includes("chrome") || name.includes("chromium") || args.some(arg => arg.includes("playwright"))) return "chrome";
+  if (args.some(arg => arg.includes("mcporter"))) return "mcporter";
+  if (args.includes("mcp") && args.includes("serve")) return "mcp serve";
+  if (args.includes("run") && (name === "node" || args.includes("node"))) return "node host";
+  if (name === "node") return "node";
+  return name || "process";
+}
+
 function describeProcess(proc: FolderProcess): string {
-  const node = /^(node|node\.exe)$/i.test(proc.name);
-  const host = node && proc.args.includes("run") ? " (node host)" : node ? " (node)" : "";
-  return `${proc.name} pid ${proc.pid}${host}`;
+  return `${processKind(proc)} pid ${proc.pid}`;
 }
 
 function describeHolders(holders: FolderProcess[]): string {
   return holders.length ? holders.map(describeProcess).join(", ") : "unknown process";
 }
 
-function isNodeChild(proc: FolderProcess): boolean {
-  const name = basename(proc.executable).toLowerCase();
-  return name === "node" || name === "node.exe" || proc.args.some(arg => arg.endsWith("branch.mjs"));
+/** True only when the process image is node/node.exe whose resolved path is under `folder`. */
+export function isInstallFolderNode(proc: FolderProcess, folder: string): boolean {
+  const base = basename(proc.executable).toLowerCase();
+  if (base !== "node" && base !== "node.exe") return false;
+  return underFolder(proc.executable, folder);
+}
+
+function listDescendants(pid: number): number[] {
+  const found: number[] = [];
+  const seen = new Set<number>([pid, process.pid]);
+  const walk = (parent: number): void => {
+    let kids: number[] = [];
+    try {
+      if (process.platform === "linux") {
+        try {
+          const text = readFileSync(`/proc/${parent}/task/${parent}/children`, "utf8").trim();
+          kids = text ? text.split(/\s+/).map(Number).filter(n => Number.isInteger(n) && n > 0) : [];
+        } catch {
+          for (const entry of readdirSync("/proc")) {
+            if (!/^\d+$/.test(entry)) continue;
+            const child = Number(entry);
+            try {
+              const stat = readFileSync(`/proc/${entry}/stat`, "utf8");
+              const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+              if (Number(fields[1]) === parent) kids.push(child);
+            } catch { /* process exited */ }
+          }
+        }
+      } else if (process.platform === "darwin") {
+        const output = execFileSync("pgrep", ["-P", String(parent)], { encoding: "utf8", windowsHide: true, timeout: 5_000, stdio: ["ignore", "pipe", "pipe"] }).trim();
+        kids = output ? output.split(/\s+/).map(Number).filter(n => Number.isInteger(n) && n > 0) : [];
+      } else if (process.platform === "win32") {
+        const output = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+          `Get-CimInstance Win32_Process -Filter "ParentProcessId=${parent}" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessId`],
+        { encoding: "utf8", windowsHide: true, timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] }).trim();
+        kids = output ? output.split(/\s+/).map(Number).filter(n => Number.isInteger(n) && n > 0) : [];
+      }
+    } catch { /* no children, or the parent is already gone */ }
+    for (const kid of kids) {
+      if (seen.has(kid)) continue;
+      seen.add(kid);
+      found.push(kid);
+      walk(kid);
+    }
+  };
+  walk(pid);
+  return found;
 }
 
 function isAppImage(proc: FolderProcess, plan: HelperPlan): boolean {
@@ -171,33 +227,39 @@ export async function listFolderProcesses(folder: string): Promise<FolderProcess
 }
 
 function stopPid(pid: number): void {
+  if (pid === process.pid) return;
   try {
     if (process.platform === "win32") execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 10_000 });
     else process.kill(pid, "SIGTERM");
   } catch { /* already gone */ }
 }
 
-/** Stops processes whose executable lives in `folder`. Returns the ones that should be restarted after the swap. */
+/** Stops install-folder node.exe processes and their children. Returns node-host processes to restart after the swap. */
 export async function stopFolderProcesses(folder: string, log: (line: string) => void, io: HelperIo = {}, keepPids: Iterable<number> = []): Promise<FolderProcess[]> {
   const keep = new Set<number>([process.pid, ...keepPids]);
   const listed = await (io.listFolderProcesses ?? listFolderProcesses)(folder);
-  const victims = listed.filter(proc => !keep.has(proc.pid));
+  const victims = listed.filter(proc => !keep.has(proc.pid) && isInstallFolderNode(proc, folder));
   const stop = io.stopProcess ?? stopPid;
   const sleep = io.sleep ?? defaultSleep;
   const restartable: FolderProcess[] = [];
+  const trees: number[] = [];
   for (const proc of victims) {
-    log(`desktop update: stopping ${describeProcess(proc)} so the install folder can be swapped`);
+    const children = io.stopProcess ? [] : listDescendants(proc.pid).filter(pid => !keep.has(pid));
+    const extra = children.length || process.platform === "win32" ? " and child processes" : "";
+    log(`desktop update: stopping ${describeProcess(proc)}${extra} so the install folder can be swapped`);
     stop(proc.pid);
-    if (isNodeChild(proc)) restartable.push(proc);
+    if (process.platform !== "win32") for (const kid of children) stop(kid);
+    trees.push(proc.pid, ...children);
+    if (processKind(proc) === "node host") restartable.push(proc);
   }
   for (const end = Date.now() + 5_000; Date.now() < end; await sleep(100)) {
-    if (victims.every(proc => !alive(proc.pid))) break;
+    if (trees.every(pid => !alive(pid))) break;
   }
-  for (const proc of victims) {
-    if (!alive(proc.pid)) continue;
+  for (const pid of trees) {
+    if (!alive(pid) || keep.has(pid) || pid === process.pid) continue;
     try {
-      if (process.platform === "win32") (io.stopProcess ?? stopPid)(proc.pid);
-      else process.kill(proc.pid, "SIGKILL");
+      if (process.platform === "win32") stop(pid);
+      else process.kill(pid, "SIGKILL");
     } catch { /* already gone */ }
   }
   return restartable;

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
@@ -12,8 +12,10 @@ const desktopUpdate = await import(pathToFileURL(join(dist, "desktop-update.js")
 const {
   BUSY_RETRY_ATTEMPTS,
   BUSY_RETRY_DELAY_MS,
+  isInstallFolderNode,
   listFolderProcesses,
   move,
+  processKind,
   restartFolderProcesses,
   runHelper,
   stopFolderProcesses,
@@ -113,7 +115,8 @@ test("a persistent EBUSY leaves the old app folder in place and names the holder
   assert.ok(journal.heldUntil > Date.now());
   const log = await readFile(join(dataDir, "desktop.log"), "utf8");
   assert.match(log, /EBUSY/);
-  assert.match(log, /node\.exe pid 4242 \(node host\)/);
+  assert.match(log, /node host pid 4242/);
+  assert.doesNotMatch(log, /[/\\](?:Users|home|AppData)[/\\]/i);
   assert.match(log, /kept staged for the next start/);
 }));
 
@@ -162,6 +165,83 @@ test("stopFolderProcesses waits for the host to exit and restartFolderProcesses 
     await eventually(async () => (await listFolderProcesses(root)).some(proc => proc.pid !== child.pid));
     for (const proc of await listFolderProcesses(root)) leftover.push(proc.pid);
     assert.match(lines.join("\n"), /restarted /);
+    assert.doesNotMatch(lines.join("\n"), /[/\\](?:Users|home|AppData)[/\\]/i);
+  } finally {
+    for (const pid of leftover) killPid(pid);
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
+});
+
+test("processKind names leftovers without paths", () => {
+  const folder = join("resources", "node", nodeName);
+  assert.equal(processKind({ pid: 1, name: "node.exe", executable: folder, args: ["branch.mjs", "mcp", "serve"] }), "mcp serve");
+  assert.equal(processKind({ pid: 2, name: "node", executable: folder, args: ["mcporter", "daemon"] }), "mcporter");
+  assert.equal(processKind({ pid: 3, name: "node.exe", executable: folder, args: ["branch.mjs", "node", "run"] }), "node host");
+  assert.equal(isInstallFolderNode({ pid: 4, name: "node.exe", executable: process.execPath, args: [] }, dirname(process.execPath)),
+    basename(process.execPath).toLowerCase() === nodeName);
+  assert.equal(isInstallFolderNode({ pid: 5, name: "node.exe", executable: process.execPath, args: [] }, join(tmpdir(), "not-the-install")), false);
+});
+
+test("a leftover install-folder mcp serve (and its child) is stopped so the swap can finish", () => fixture(async ({ root, appDir, staged, dataDir, plan, leftover }) => {
+  const oldNode = await installNode(appDir);
+  await installNode(staged);
+  const childPidFile = join(root, "mcp-child.pid");
+  const mcp = join(root, "mcp-serve.cjs");
+  await writeFile(mcp, `const { spawn } = require("node:child_process");
+const { writeFileSync } = require("node:fs");
+const child = spawn(process.env.OUTSIDE_NODE, ["-e", "setInterval(() => {}, 1000)"], { windowsHide: true, stdio: "ignore" });
+writeFileSync(process.env.CHILD_PID_FILE, String(child.pid));
+setInterval(() => {}, 1000);
+`);
+  const leftoverServe = spawn(oldNode, [mcp, "branch.mjs", "mcp", "serve"], {
+    windowsHide: true, stdio: "ignore", detached: true,
+    env: { ...process.env, OUTSIDE_NODE: process.execPath, CHILD_PID_FILE: childPidFile },
+  });
+  leftover.push(leftoverServe.pid);
+  leftoverServe.unref();
+  await eventually(() => alive(leftoverServe.pid), 5_000);
+  await eventually(async () => (await listFolderProcesses(appDir)).some(proc => proc.pid === leftoverServe.pid), 20_000);
+  await eventually(async () => { try { return (await readFile(childPidFile, "utf8")).trim().length > 0; } catch { return false; } });
+  const grandchild = Number((await readFile(childPidFile, "utf8")).trim());
+  leftover.push(grandchild);
+  assert.ok(alive(grandchild), "mcp serve spawned a child from outside the install folder");
+  assert.equal(await runHelper(plan), "applied");
+  assert.equal(await readFile(join(appDir, "Branch Agent.exe"), "utf8"), "new runtime");
+  await eventually(() => !alive(leftoverServe.pid));
+  await eventually(() => !alive(grandchild));
+  const log = await readFile(join(dataDir, "desktop.log"), "utf8");
+  assert.match(log, /stopping mcp serve pid /);
+  assert.match(log, /and child processes/);
+  assert.doesNotMatch(log, /[/\\](?:Users|home|AppData)[/\\]/i);
+  const restarted = await listFolderProcesses(appDir);
+  assert.equal(restarted.some(proc => proc.args.includes("mcp")), false, "leftover mcp serve is not restarted");
+  for (const proc of restarted) leftover.push(proc.pid);
+}));
+
+test("a node.exe outside the install folder is left alone", async () => {
+  const parent = join(tmpdir(), "Codex-session-files");
+  await mkdir(parent, { recursive: true });
+  const root = await mkdtemp(join(parent, "desktop-helper-outside-"));
+  const leftover = [];
+  try {
+    const bundled = await installNode(root);
+    const host = join(root, "host.cjs");
+    await writeFile(host, "setInterval(() => {}, 1000);\n");
+    const inside = spawn(bundled, [host, "run"], { windowsHide: true, stdio: "ignore", detached: true });
+    const outside = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { windowsHide: true, stdio: "ignore", detached: true });
+    leftover.push(inside.pid, outside.pid);
+    inside.unref();
+    outside.unref();
+    await eventually(() => alive(inside.pid) && alive(outside.pid), 5_000);
+    await eventually(async () => (await listFolderProcesses(root)).some(proc => proc.pid === inside.pid), 20_000);
+    assert.equal(isInstallFolderNode({ pid: outside.pid, name: nodeName, executable: process.execPath, args: [] }, root), false);
+    const lines = [];
+    await stopFolderProcesses(root, line => lines.push(line));
+    await eventually(() => !alive(inside.pid));
+    assert.ok(alive(outside.pid), "node from outside the install folder must not be killed");
+    assert.match(lines.join("\n"), /stopping node host pid /);
+    assert.doesNotMatch(lines.join("\n"), new RegExp(`stopping .* pid ${outside.pid}`));
+    assert.doesNotMatch(lines.join("\n"), /[/\\](?:Users|home|AppData)[/\\]/i);
   } finally {
     for (const pid of leftover) killPid(pid);
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
