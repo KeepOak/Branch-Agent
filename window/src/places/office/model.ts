@@ -33,7 +33,7 @@ export function officeToolEvent(tools: OfficeTools, event: string, payload: unkn
 }
 
 /** sessions.list projects hasActiveRun from the live run registry; contacts supplies room/guest presence. */
-export function officeRoster(agentsValue: unknown, sessionsValue: unknown, contactsValue: unknown, outsideValue?: unknown, tools: OfficeTools = new Map()): { agents: OfficeAgent[]; openKey: Map<string, string> } {
+export function officeRoster(agentsValue: unknown, sessionsValue: unknown, contactsValue: unknown, outsideValue?: unknown, tools: OfficeTools = new Map(), approvalsValue?: unknown): { agents: OfficeAgent[]; openKey: Map<string, string> } {
   const trunks = rows(obj(agentsValue).agents).filter(t => str(t.id) && t.kind !== "system").map(t => ({
     id: str(t.id), name: str(obj(t.identity).name) || str(t.name) || str(t.id),
     colour: str(obj(t.identity).colour),
@@ -41,6 +41,7 @@ export function officeRoster(agentsValue: unknown, sessionsValue: unknown, conta
   const sessions = rows(obj(sessionsValue).sessions);
   const contacts = (Array.isArray(obj(contactsValue).contacts) ? obj(contactsValue).contacts as Contact[] : []).filter(c => !c.archivedAt);
   const outside = new Map(rows(obj(outsideValue).agents).map(agent => [str(agent.contactId), agent]));
+  const approvals = Array.isArray(approvalsValue) ? approvalsValue.flatMap(value => Array.isArray(value) ? rows(value) : obj(value).request ? [obj(value)] : rows(obj(value).items ?? obj(value).approvals)) : rows(obj(approvalsValue).items ?? obj(approvalsValue).approvals);
   const keys = new Map<string, string>();
   for (const c of contacts) if (c.kind === "trunk") keys.set(str(c.face?.agentId) || c.id.replace(/^trunk:/, ""), c.threadKey);
   const agents: OfficeAgent[] = trunks.map(t => {
@@ -48,10 +49,19 @@ export function officeRoster(agentsValue: unknown, sessionsValue: unknown, conta
     const active = mine.filter(s => s.hasActiveRun === true || (Array.isArray(s.activeRunIds) && s.activeRunIds.length > 0));
     const children = active.filter(s => str(s.parentSessionKey) || str(s.spawnedBy));
     const contact = contacts.find(c => c.kind === "trunk" && (c.face?.agentId === t.id || c.id === `trunk:${t.id}`));
-    const needs = Number(contact?.needsYou);
+    const pendingApprovals = approvals.filter(a => {
+      const key = str(obj(a.request).sessionKey);
+      return key && mine.some(s => str(s.key) === key) && (!a.state || a.state === "pending");
+    });
+    const ownApproval = pendingApprovals.some(a => {
+      const key = str(obj(a.request).sessionKey);
+      return mine.some(s => str(s.key) === key && !str(s.parentSessionKey) && !str(s.spawnedBy));
+    });
+    const helperOnly = pendingApprovals.length > 0 && !ownApproval;
+    const needs = Math.max(Number(contact?.needsYou) || 0, pendingApprovals.length);
     const activity = str(obj(active[0]?.activitySummary).text) || str(active[0]?.lastMessagePreview);
     const reading = active.some(s => [...(tools.get(str(s.key))?.values() ?? [])].some(name => /^(read|read_file|grep|glob|search|web_fetch|web_search)$/i.test(name)));
-    return { id: t.id, name: t.name, kind: "trunk", state: needs ? "needs_you" : active.length ? reading ? "reading" : "working" : "resting",
+    return { id: t.id, name: t.name, kind: "trunk", state: ownApproval || contact?.needsYou && !helperOnly ? "needs_you" : active.length ? reading ? "reading" : "working" : "resting",
       activity, needsYou: needs, unread: Boolean(contact?.threadUnread || contact?.unreadTopics), colorHint: t.colour,
       subagents: children.map(s => ({ id: str(s.key), label: str(s.label) || str(s.displayName) || "Job", state: "working" as const })) };
   });

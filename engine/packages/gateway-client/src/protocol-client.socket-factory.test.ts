@@ -311,6 +311,39 @@ describe("GatewayProtocolClient socket factory recovery", () => {
 });
 
 describe("GatewayClient socket factory recovery", () => {
+  it("re-reads a moving local gateway URL on every connect", async () => {
+    const { createServer } = await import("node:net");
+    const connected: number[] = [];
+    const servers = await Promise.all(
+      [0, 1].map(
+        (index) =>
+          new Promise<import("node:net").Server>((resolve) => {
+            const server = createServer((socket) => {
+              connected.push(index);
+              socket.destroy();
+            });
+            server.listen(0, "127.0.0.1", () => resolve(server));
+          }),
+      ),
+    );
+    const port = (server: import("node:net").Server) => (server.address() as { port: number }).port;
+    let current = `ws://127.0.0.1:${port(servers[0]!)}`;
+    const client = new GatewayClient({
+      url: `ws://127.0.0.1:${port(servers[0]!)}`,
+      resolveUrl: () => current,
+      onConnectError: () => {},
+    });
+    try {
+      client.start();
+      await vi.waitFor(() => expect(connected).toContain(0), { timeout: 5_000 });
+      current = `ws://127.0.0.1:${port(servers[1]!)}`;
+      await vi.waitFor(() => expect(connected).toContain(1), { timeout: 10_000 });
+    } finally {
+      client.stop();
+      await Promise.all(servers.map((server) => new Promise((resolve) => server.close(resolve))));
+    }
+  });
+
   it("accepts uppercase WSS URLs with a TLS fingerprint", () => {
     const onConnectError = vi.fn<(error: Error) => void>();
     const beforeConnect = vi.fn(() => {

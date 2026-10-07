@@ -46,7 +46,8 @@ export function runGatewayStateOwnerHeartbeat(
   };
   const beat = () => {
     const beatStartedAt = now();
-    const remaining = data.failureMs - Number(beatStartedAt - Atomics.load(lastBeat, 0));
+    const observedBeat = Atomics.load(lastBeat, 0);
+    const remaining = data.failureMs - Number(beatStartedAt - observedBeat);
     if (remaining <= 0) {
       stop();
       return;
@@ -71,7 +72,10 @@ export function runGatewayStateOwnerHeartbeat(
           bytes.subarray(0, length).toString("utf8") !== raw
         ) {
           if (lockPath === rootPath) {
-            data.events.postMessage(`${lockPath}: owner lock was removed or replaced`, []);
+            data.events.postMessage(
+              { lost: `${lockPath}: owner lock was removed or replaced` },
+              [],
+            );
             stop();
             return;
           }
@@ -90,7 +94,10 @@ export function runGatewayStateOwnerHeartbeat(
       } catch (error) {
         if (hasErrnoCode(error, "ENOENT")) {
           if (lockPath === rootPath) {
-            data.events.postMessage(`${lockPath}: owner lock was removed or replaced`, []);
+            data.events.postMessage(
+              { lost: `${lockPath}: owner lock was removed or replaced` },
+              [],
+            );
             stop();
             return;
           }
@@ -106,8 +113,9 @@ export function runGatewayStateOwnerHeartbeat(
     }
     data.events.postMessage(failure, []);
     if (!failure && renewedAt !== undefined) {
-      // A slow syscall must not publish authority newer than the mtime supplied to it.
-      Atomics.store(lastBeat, 0, renewedAt);
+      // A slow syscall must not publish authority newer than its mtime or overwrite
+      // the main thread's later re-assertion while this worker is stopping.
+      Atomics.compareExchange(lastBeat, 0, observedBeat, renewedAt);
     }
     backoff = failure ? Math.min(backoff ? backoff * 2 : 1_000, data.intervalMs, remaining) : 0;
     timer = setTimeout(beat, backoff || data.intervalMs);

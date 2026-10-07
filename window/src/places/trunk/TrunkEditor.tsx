@@ -10,7 +10,7 @@ import { saveTrunk, type Draft } from "./api";
 import { ComputersTab } from "./ComputersTab";
 import { AccountsTab } from "./AccountsTab";
 import { canWrite, loadTrunkData, useLoad, WRITE_WHY, type TrunkData } from "./data";
-import { COLOURS, EYES, LookTab, SHAPES, useNewLooks } from "./LookTab";
+import { COLOURS, EYES, LookTab, SHAPES } from "./LookTab";
 import { readMay } from "./may";
 import { MayTab } from "./MayTab";
 import { errorText, lookOf, LOOKS } from "./model";
@@ -71,7 +71,6 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
   const [draft, setDraft] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fresh = useNewLooks();
   // The preview's editor redraws itself as it opens, so focus ends on the dialog, not on a control: nothing shows a
   // ring and the body stays at its top (the shared dialog's first focus would scroll a narrow window down to Name).
   // Escape still closes it and Tab moves to the first control.
@@ -118,7 +117,7 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
         <div className="tk-col">
           <TabRow tab={tab} setTab={setTab} />
           <div role="tabpanel" aria-label={TABS.find(([t]) => t === tab)?.[1]}>
-            {tab === "look" && <LookTab draft={draft} set={set} fresh={fresh} />}
+            {tab === "look" && <LookTab draft={draft} set={set} />}
             {tab === "may" && <MayTab engine={engine} agentId={agentId} name={initial.name} draft={draft} models={data.models} level={level} set={set} openSettings={openSettings} />}
             {tab === "computers" && <ComputersTab name={initial.name} draft={draft} computers={data.computers} set={set} openSettings={openSettings} />}
             {tab === "accounts" && <AccountsTab engine={engine} agentId={agentId} />}

@@ -51,7 +51,8 @@ export function loadRoute(): Route {
   // A window opened with "Open in its own window" (or a copied conversation link) names its conversation.
   const asked = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("conversation");
   if (asked) {
-    return { kind: "chat", key: asked };
+    try { return parseRoute(sessionStorage.getItem(KEY)) ?? { kind: "chat", key: asked }; }
+    catch { return { kind: "chat", key: asked }; }
   }
   try {
     return parseRoute(localStorage.getItem(KEY)) ?? { kind: "chat", key: null };
@@ -62,7 +63,8 @@ export function loadRoute(): Route {
 
 export function saveRoute(route: Route): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(route));
+    const dedicated = typeof location !== "undefined" && new URLSearchParams(location.search).has("conversation");
+    (dedicated ? sessionStorage : localStorage).setItem(KEY, JSON.stringify(route));
   } catch {
     // storage blocked: the window reopens on the default Trunk's conversation
   }

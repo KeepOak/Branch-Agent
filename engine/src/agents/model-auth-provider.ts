@@ -621,6 +621,7 @@ export async function resolveApiKeyForProviderCore(input: {
   const syntheticLocalAuth = await prepareSyntheticLocalProviderAuth({
     cfg,
     provider,
+    ...(params.modelBaseUrl ? { route: { api: params.modelApi, baseUrl: params.modelBaseUrl } } : {}),
     modelApi: params.modelApi,
     workspaceDir: params.workspaceDir,
     secretSentinels: params.secretSentinels,

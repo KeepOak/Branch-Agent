@@ -8,6 +8,7 @@ import { copyText, useThread } from "./context";
 import { Dialog } from "./Dialog";
 import { formatDuration, modelName } from "./format";
 import type { MessageMeta } from "./model";
+import { formatMoney } from "../format/money";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -115,10 +116,10 @@ export function LookInside({ inspect, onClose }: { inspect: Inspect; onClose: ()
   const words = u?.total ? (context ? `${u.total.toLocaleString()} of ${context.toLocaleString()} (${Math.round((u.total / context) * 100)}%)` : u.total.toLocaleString()) : "";
   const rows: [string, string][] = [
     ["Model", modelName(inspect.meta?.model)],
-    ["Words of context", words],
+    ["Context tokens", words],
     ["Tools offered", tools ? tools.join(", ") : ""],
     ["Time", formatDuration(inspect.durationMs)],
-    ["Cost", u ? `$${(u.cost ?? 0).toFixed(2)}` : ""],
+    ["Cost", u ? formatMoney(u.cost ?? 0) : ""],
     ["Steps", `${inspect.steps} in this task · model calls, tools and approvals`],
   ];
   const record = JSON.stringify({ ...inspect, contextTokens: context, tools }, null, 2);
