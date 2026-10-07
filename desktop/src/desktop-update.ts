@@ -193,8 +193,14 @@ export async function handOffDesktopUpdate(cfg: DesktopConfig, install: DesktopI
   if (journal.kind === "runtime") await copyFile(install.nodePath, node);
   const relaunchExecutable = journal.kind === "runtime" && !sealedMacInstall(install)
     ? join(install.appDir, basename(install.executable)) : install.executable;
+  // A Linux runtime swap extracts as the user, so its new chrome-sandbox cannot retain root:4755.
+  // Relaunch through the packaged helper, which requests that setup before Electron starts.
+  const linuxLauncher = journal.kind === "runtime" && process.platform === "linux"
+    && rawFs.existsSync(join(journal.staged, "branch-agent")) ? join(install.appDir, "branch-agent") : undefined;
   const plan: HelperPlan = { journal: journalFile(cfg), versionFile: versionFile(cfg), rejectedFile: rejectedFile(cfg),
-    log: join(cfg.dataDir, "desktop.log"), waitPid: process.pid, relaunch: { command: relaunchExecutable, args }, confirmTimeoutMs: CONFIRM_TIMEOUT_MS };
+    log: join(cfg.dataDir, "desktop.log"), waitPid: process.pid,
+    relaunch: { command: linuxLauncher ?? relaunchExecutable, fallback: linuxLauncher ? relaunchExecutable : undefined, args },
+    confirmTimeoutMs: CONFIRM_TIMEOUT_MS };
   const planFile = join(work, "desktop-update-plan.json");
   await replaceFile(planFile, JSON.stringify(plan));
   const env = { ...process.env, ELECTRON_RUN_AS_NODE: "1" };

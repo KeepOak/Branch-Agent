@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdtemp, mkdir, readFile, readdir, readlink, rm, symlink, writeFile, rename } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { mkdtemp, mkdir, readFile, readdir, readlink, rm, stat, symlink, utimes, writeFile, rename } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createServer as createPortProbe } from "node:net";
 import { createRequire } from "node:module";
@@ -22,6 +23,7 @@ const { defaultDataDirectory } = await import(pathToFileURL(join(process.env.BRA
 const { readToken } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
 const { GatewayReadinessTimeoutError } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
 const { bootSelectedEngineWithRollback } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "boot-selected-engine.js")));
+const exists = async file => stat(file).then(() => true, error => { if (error.code === "ENOENT") return false; throw error; });
 
 async function fixture(run, modify = () => {}) {
   const parent = join(tmpdir(), "Codex-session-files", "resume-desktop-updater-20261003");
@@ -110,6 +112,98 @@ test("readiness confirmation records version and repeated poll avoids assets", a
   assert.equal(await source.refreshComponentUpdate(cfg, request), false);
   assert.equal(requests.length, 1);
   assert.equal(await source.rollbackComponentUpdate(cfg), false);
+}));
+
+test("confirmed update retains current and previous releases but prunes older updater folders", async () => fixture(async ({ cfg, request }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const previous = join(updates, "release-0.4.2-abcdef");
+  const stale = join(updates, "release-0.4.1-123abc");
+  const desktopStage = join(updates, "desktop-0.4.3-123abc");
+  for (const folder of [previous, stale, desktopStage]) {
+    await mkdir(join(folder, "engine"), { recursive: true });
+    await writeFile(join(folder, "engine", "branch.mjs"), "old engine");
+    await writeFile(join(folder, ".release-complete"), "");
+  }
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(previous, "engine") + "\n");
+  await source.refreshComponentUpdate(cfg, request);
+  const current = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  assert.equal(await exists(stale), true, "nothing is pruned before readiness confirmation");
+  const prune = await source.confirmComponentUpdate(cfg, undefined, true);
+  assert.equal(await exists(stale), true, "confirmation does not prune before the app reports ready");
+  assert.equal(typeof prune, "function");
+  await prune();
+  assert.equal(await exists(current), true);
+  assert.equal(await exists(previous), true, "the last healthy engine remains available for rollback");
+  assert.equal(await exists(stale), false);
+  assert.equal(await exists(desktopStage), true, "desktop staging is not an engine release");
+}));
+
+test("prune retains live and incomplete releases while deleting an unrelated complete release", async () => fixture(async ({ cfg, request }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const live = join(updates, "release-0.4.0-111aaa");
+  const desktopRunning = join(updates, "release-0.4.0-444ddd");
+  const staging = join(updates, "release-0.4.0-222bbb");
+  const stale = join(updates, "release-0.4.0-333ccc");
+  for (const folder of [live, desktopRunning, staging, stale]) await mkdir(join(folder, "engine"), { recursive: true });
+  for (const folder of [live, desktopRunning, stale]) await writeFile(join(folder, ".release-complete"), "");
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), join(desktopRunning, "engine") + "\n");
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", join(live, "engine", "branch.mjs")], { stdio: "ignore", windowsHide: true });
+  try {
+    await new Promise((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject); });
+    await source.refreshComponentUpdate(cfg, request);
+    await source.confirmComponentUpdate(cfg);
+    assert.equal(await exists(live), true, "a node host using an older release stays runnable");
+    assert.equal(await exists(desktopRunning), true, "the desktop's running-engine pointer is retained");
+    assert.equal(await exists(staging), true, "an incomplete download is not pruned");
+    assert.equal(await exists(stale), false, "unrelated completed release is pruned");
+  } finally {
+    child.kill();
+    await new Promise(resolve => child.once("exit", resolve));
+  }
+}));
+
+test("prune retains an engine selected through a symlinked data directory", { skip: process.platform === "win32" }, async () => fixture(async ({ root, cfg, request }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const live = join(updates, "release-0.4.0-111aaa");
+  const stale = join(updates, "release-0.4.0-222bbb");
+  for (const folder of [live, stale]) {
+    await mkdir(join(folder, "engine"), { recursive: true });
+    await writeFile(join(folder, ".release-complete"), "");
+  }
+  const alias = join(root, "linked-data");
+  await symlink(cfg.dataDir, alias, "dir");
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), join(alias, "updates", "release-0.4.0-111aaa", "engine") + "\n");
+  await source.refreshComponentUpdate(cfg, request);
+  await source.confirmComponentUpdate(cfg);
+  assert.equal(await exists(live), true, "the running engine's real path is retained");
+  assert.equal(await exists(stale), false, "an unrelated stale release is pruned");
+}));
+
+test("confirmed update adopts only old marker-less releases with matching build hashes", async () => fixture(async ({ cfg, request }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const valid = join(updates, "release-0.4.1-build-abcdef123456-111aaa");
+  const previous = join(updates, "release-0.4.1-build-abcdef123456-444ddd");
+  const badHash = join(updates, "release-0.4.1-build-999999999999-222bbb");
+  const incomplete = join(updates, "release-0.4.1-build-abcdef123456-333ccc");
+  const commit = "abcdef123456" + "0".repeat(28);
+  for (const folder of [valid, previous, badHash, incomplete]) {
+    await mkdir(join(folder, "engine", "dist"), { recursive: true });
+    await writeFile(join(folder, "engine", "dist", "build-info.json"), JSON.stringify({ commit, buildId: `2026.9.8-${commit.slice(0, 12)}` }));
+    await utimes(folder, new Date(0), new Date(0));
+  }
+  for (const folder of [valid, previous, badHash]) {
+    await writeFile(join(folder, "engine", "branch.mjs"), "entry");
+    await writeFile(join(folder, "engine", "package.json"), "{}");
+  }
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(previous, "engine") + "\n");
+  await source.refreshComponentUpdate(cfg, request);
+  await source.confirmComponentUpdate(cfg);
+  assert.equal(await exists(valid), false, "verified legacy release is pruned");
+  assert.equal(await exists(previous), true, "rollback release remains available");
+  assert.equal(await exists(join(previous, ".release-complete")), true, "verified rollback release gains its marker");
+  assert.equal(await exists(badHash), true, "mismatched build hash is retained");
+  assert.equal(await exists(incomplete), true, "incomplete legacy folder is retained");
+  assert.equal(await exists(join(badHash, ".release-complete")), false);
 }));
 
 test("new per-user installation stages components and creates a stable local token", async () => fixture(async ({ cfg, request }) => {
