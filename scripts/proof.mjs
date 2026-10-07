@@ -13,20 +13,27 @@ const require = createRequire(new URL('../engine/package.json', import.meta.url)
 function checkNodeVersion() {
   const current = process.versions.node;
   const required = '24.19.0';
-  const [reqMajor, reqMinor] = required.split('.').map(Number);
-  const [curMajor, curMinor] = current.split('.').map(Number);
+  const [reqMajor, reqMinor, reqPatch] = required.split('.').map(Number);
+  const [curMajor, curMinor, curPatch] = current.split('.').map(Number);
   
   if (curMajor < reqMajor || (curMajor === reqMajor && curMinor < reqMinor)) {
     console.error(`\nNode version mismatch:`);
     console.error(`  Current:  v${current}`);
     console.error(`  Required: v${required} or higher`);
-    console.error(`\nInstall the correct version with:`);
+    console.error(`\nThis script requires Node.js 24.19.0 or higher to match CI.`);
+    console.error(`Install the correct version with:`);
     console.error(`  nvm install ${required}`);
     console.error(`  nvm use ${required}`);
     console.error(`Or with other Node version managers:`);
     console.error(`  n ${required}`);
     console.error(`  fnm install ${required} && fnm use ${required}`);
     process.exit(1);
+  }
+  
+  if (curMajor > reqMajor || (curMajor === reqMajor && curMinor > reqMinor) || 
+      (curMajor === reqMajor && curMinor === reqMinor && curPatch > reqPatch + 10)) {
+    console.warn(`\nWarning: Using Node v${current}, which is newer than CI (v${required}).`);
+    console.warn(`Screenshots may differ slightly from CI. Consider using the exact CI version.\n`);
   }
 }
 
