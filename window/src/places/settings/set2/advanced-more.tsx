@@ -1,6 +1,7 @@
 // Settings › Advanced, the row kit: most rows are one engine config path drawn as a switch, number, segment, pick,
 // text or list (saved at once through config.patch, empty = the engine's own default). A row the engine can't back
 // is drawn greyed with why. Plugin rows read plugins.list and save plugins.entries.<id>.enabled.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import { Btn, Ctl, Field, Num, Pick, Sec, Seg, Switch, useConfig, type Lv, type Opt, type RowEntry } from "../kit";
@@ -13,7 +14,7 @@ export type Ctx = SettingsPageProps & { config: Config; lv: Lv; agent: string; p
 
 /** One row. `k` is the config path it reads (and writes, unless `w` says where); `off` greys it with why. */
 export type Spec = {
-  t: string; s?: ReactNode; lv?: Lv; k?: ConfigPath; w?: ConfigPath;
+  t: string; s?: ReactNode; help?: string; lv?: Lv; k?: ConfigPath; w?: ConfigPath;
   kind?: "sw" | "num" | "seg" | "pick" | "text" | "list" | "btn" | "none";
   def?: unknown; opts?: Opt[]; unit?: string; ph?: string; min?: number; max?: number;
   /** Stored value → shown value, and back (MB ↔ bytes, inverted switches). */
@@ -25,7 +26,7 @@ export type Spec = {
   draw?: (c: Ctx) => ReactNode;
 };
 /** A section: its rows in order, or `whole` when one component draws it (its rows then only feed the search). */
-export type SecSpec = { title: string; hint?: ReactNode; lv: Lv; rows: Spec[]; after?: (c: Ctx) => ReactNode; whole?: (c: Ctx) => ReactNode };
+export type SecSpec = { title: string; group?: string; showHeading?: boolean; hint?: ReactNode; lv: Lv; rows: Spec[]; after?: (c: Ctx) => ReactNode; whole?: (c: Ctx) => ReactNode };
 
 export const NOSET = "The engine has no setting for this.";
 export const APP = "Set by the Branch app on this computer.";
@@ -37,7 +38,7 @@ export function Section({ spec, c }: { spec: SecSpec; c: Ctx }) {
   if (spec.lv > c.lv) return null;
   if (spec.whole) return <>{spec.whole(c)}</>;
   return (
-    <Sec title={spec.title} hint={spec.hint}>
+    <Sec title={spec.title} group={spec.group} showHeading={spec.showHeading} hint={spec.hint}>
       {shown(spec.rows, c.lv).map((r) => <Row key={r.t} r={r} c={c} />)}
       {spec.after?.(c)}
     </Sec>
@@ -46,10 +47,10 @@ export function Section({ spec, c }: { spec: SecSpec; c: Ctx }) {
 
 export function Row({ r, c }: { r: Spec; c: Ctx }) {
   if (r.draw) return <>{r.draw(c)}</>;
-  if (r.off) return <Ctl title={r.t} sub={r.s} off={r.off}>{greyControl(r)}</Ctl>;
+  if (r.off) return <Ctl title={r.t} sub={r.s} help={r.help} off={r.off}>{greyControl(r)}</Ctl>;
   if (r.plug) return <PlugRow r={r} c={c} />;
   const hold = r.hold?.(c);
-  return <Ctl title={r.t} sub={hold ?? r.s} after={r.kind === "list" ? <ListEditor r={r} c={c} /> : undefined}>{r.kind === "list" ? null : <Control r={r} c={c} disabled={Boolean(hold)} />}</Ctl>;
+  return <Ctl title={r.t} sub={hold ?? r.s} help={r.help} after={r.kind === "list" ? <ListEditor r={r} c={c} /> : undefined}>{r.kind === "list" ? null : <Control r={r} c={c} disabled={Boolean(hold)} />}</Ctl>;
 }
 
 /** The control a greyed row draws (inert), showing the engine's default where there is one. */
@@ -111,14 +112,14 @@ function PlugRow({ r, c }: { r: Spec; c: Ctx }) {
   const id = r.plug as string;
   const entry = c.plugins.find((p) => p.id === id);
   const saved = c.config.get(["plugins", "entries", id, "enabled"]);
-  if (!entry && saved === undefined) return <Ctl title={r.t} sub={r.s} off="Its plugin isn’t installed in this engine."><Switch label={r.t} checked={false} onChange={() => undefined} /></Ctl>;
+  if (!entry && saved === undefined) return <Ctl title={r.t} sub={r.s} help={r.help} off="Its plugin isn’t installed in this engine."><Switch label={r.t} checked={false} onChange={() => undefined} /></Ctl>;
   const on = typeof saved === "boolean" ? saved : entry?.enabled === true;
-  return <Ctl title={r.t} sub={r.s}><Switch label={r.t} checked={on} disabled={c.config.loading} onChange={(x) => void c.config.set(["plugins", "entries", id, "enabled"], x)} /></Ctl>;
+  return <Ctl title={r.t} sub={r.s} help={r.help}><Switch label={r.t} checked={on} disabled={c.config.loading} onChange={(x) => void c.config.set(["plugins", "entries", id, "enabled"], x)} /></Ctl>;
 }
 
 /** The search-index rows of a list of sections. */
 export function rowsOf(page: string, secs: SecSpec[]): RowEntry[] {
-  return secs.flatMap((s) => s.rows.map((r) => ({ page, title: r.t, sec: s.title, lv: Math.max(s.lv, r.lv ?? 0) as Lv })));
+  return secs.flatMap((s) => s.rows.map((r) => ({ page, title: r.t, sec: s.title, group: s.group ?? s.title, lv: Math.max(s.lv, r.lv ?? 0) as Lv })));
 }
 
 const sw = (t: string, s: string, k: ConfigPath, def: boolean, extra: Partial<Spec> = {}): Spec => ({ t, s, k, def, kind: "sw", ...extra });
@@ -135,10 +136,10 @@ export const SEEING: SecSpec = { title: "Seeing more", lv: 1, rows: [
   sw("Show tool steps", "Each reply keeps a folded list of the tools it used. The ⋯ › View row overrides it for one window.", "agents.defaults.verboseDefault", false, { read: onOff, write: (on) => (on ? "on" : "off") }),
   no("Keep progress notes", "The short notes a Trunk writes between steps stay after it finishes. The ⋯ › View row overrides it for one window."),
   sw("Keep an activity log", "Every step, kept for 30 days on this computer.", "logging.audit.enabled", true),
-  sw("Record who ran each task", "Keeps who started each run, from where, and what allowed it, for “What happened in this run”. Off until you choose: it records more about each person. Takes effect after the gateway restarts; records already kept stay readable until they are 30 days old.", "logging.audit.executionIdentity", false, { hold: auditOff }),
+  sw("Record who ran each task", "Records who started each run and what allowed it. Takes effect after the gateway restarts; records already kept stay readable until they are 30 days old.", "logging.audit.executionIdentity", false, { hold: auditOff, help: "Off until you choose: it records more about each person." }),
   { t: "Record messages", s: "Who sent what to whom and when, never the text. Takes effect after the gateway restarts.", k: "logging.audit.messages", def: "off", kind: "seg", hold: auditOff, opts: [{ id: "off", label: "Off" }, { id: "direct", label: "Direct messages" }, { id: "all", label: "All" }] },
-  { t: "Send crash reports", s: "Only the error, never your conversations. Off until you choose: it sends the error outside this computer.", kind: "sw", off: "The engine doesn’t send crash reports." },
-  sw("Share anonymous feature counts", "Counts only, never messages or names: once a day, with the update check, which chat apps and model services are on, how many plugins, and how many conversations were started. It stays off whenever DO_NOT_TRACK=1 is set on this computer. Off until you choose: it sends counts outside this computer.", "telemetry.enabled", false),
+  { t: "Send crash reports", s: "Only the error, never your conversations.", help: "Off until you choose: it sends the error outside this computer.", kind: "sw", off: "The engine doesn’t send crash reports." },
+  sw("Share anonymous feature counts", "Counts features once a day, never messages or names.", "telemetry.enabled", false, { help: "With the update check, it counts which chat apps and model services are on, how many plugins, and how many conversations were started. It stays off whenever DO_NOT_TRACK=1 is set on this computer. Off until you choose: it sends counts outside this computer." }),
   { t: "Report for a bug", s: "A zip of status, health, recent log lines, the shape of your settings and the stability record. Passwords, keys and message text are left out. It stays on this computer until you share it. Not the same as “Send crash reports”, which sends only errors.", kind: "btn", btn: "Make a report", off: "Made from a terminal: branch gateway diagnostics export." },
   sw("Keep a stability record", "A small record of stalls and crashes, without message text, kept on this computer.", "diagnostics.enabled", true, { lv: 2 }),
 ] };
@@ -194,13 +195,13 @@ export const FILES: SecSpec = { title: "Files", lv: 1, rows: [
   no("Your services as folders", "Mail, chat, Drive, Notion and more show up as folders a Trunk can list and read.", "sw", { lv: 2 }),
 ] };
 
-export const WEB_MORE: SecSpec = { title: "Web search, more", lv: 1, rows: [
+export const WEB_MORE: SecSpec = { title: "Web search, more", group: "Web search", lv: 1, rows: [
   { t: "Free search when no key is set", s: "Tried last, after every search you set up.", plug: "duckduckgo" },
   sw("Use the model’s own search when it has one", "Answers come with the sources it used.", "tools.web.search.openaiCodex.enabled", false),
   { t: "Keep results for", s: "The same search within this time isn’t paid for twice.", k: "tools.web.search.cacheTtlMinutes", kind: "num", unit: "minutes", def: 15, min: 0 },
 ] };
 
-export const SKILLS_MORE: SecSpec = { title: "Skills, more", lv: 1, rows: [
+export const SKILLS_MORE: SecSpec = { title: "Skills, more", group: "Skills", lv: 1, rows: [
   no("Start a skill by itself when it clearly fits", "Only when one skill clearly fits better than the next."),
   no("Run !`command` lines in skills", "A skill may fill itself in with a command’s output when it loads. Code blocks never run.", "sw", { lv: 2 }),
   no("Where new skills are saved", "Skills Trunks write go here. A synced folder works.", "text", { lv: 2 }),
@@ -215,7 +216,7 @@ function WhereRun({ c }: { c: Ctx }) {
   const none = "Not in this engine.";
   const opts: Opt[] = [{ id: "local", label: "This computer" }, { id: "docker", label: "Docker" }, { id: "ssh", label: "SSH" }, { id: "singularity", label: "Singularity", off: none }, { id: "modal", label: "Modal", off: none }, { id: "daytona", label: "Daytona", off: none }];
   return (
-    <Ctl title="Where commands run" sub="This computer, or a separate place: a container, another computer over SSH, or a cloud sealed box.">
+    <Ctl title="Where commands run" sub="Run commands here, over SSH, or in a sealed cloud box." help="This computer, or a separate place: a container, another computer over SSH, or a cloud sealed box.">
       <Pick label="Where commands run" value={value} options={opts} disabled={c.config.loading} onChange={pick} />
     </Ctl>
   );

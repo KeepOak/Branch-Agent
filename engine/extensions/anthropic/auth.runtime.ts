@@ -9,18 +9,51 @@ import type {
 import {
   applyAuthProfileConfig,
   type AuthProfileStore,
-  buildTokenProfileId,
   listProfilesForProvider,
+  resolveAnthropicTokenIdentity,
   type BranchConfig as ProviderAuthConfig,
   type ProviderAuthResult,
   suggestOAuthProfileIdForLegacyDefault,
   validateAnthropicSetupToken,
 } from "branch/plugin-sdk/provider-auth";
 import { upsertAuthProfileWithLockOrThrow } from "branch/plugin-sdk/provider-auth-api-key";
+import { buildOauthProviderAuthResult } from "branch/plugin-sdk/provider-auth-result";
+import { loginAnthropicOAuth } from "branch/plugin-sdk/provider-oauth-runtime";
 import * as claudeCliAuth from "./cli-auth-seam.js";
 import { buildAnthropicCliMigrationResult } from "./cli-migration.js";
 
 const PROVIDER_ID = "anthropic";
+
+export async function runAnthropicBrowserAuth(
+  ctx: ProviderAuthContext,
+  defaultModel: string,
+): Promise<ProviderAuthResult> {
+  const progress = ctx.prompter.progress("Opening Claude sign-in…");
+  try {
+    const credentials = await loginAnthropicOAuth({
+      onAuth: ({ url }) => { void ctx.openUrl(url); },
+      onPrompt: ({ message, placeholder }) => ctx.prompter.text({ message, placeholder, sensitive: true }),
+      ...(ctx.isRemote && !ctx.oauth.authorize ? { onManualCodeInput: () => ctx.prompter.text({ message: "Paste the Claude sign-in redirect URL", sensitive: true }) } : {}),
+      onProgress: (message) => progress.update(message),
+      signal: ctx.signal,
+    });
+    ctx.assertCurrent?.();
+    const identity = await resolveAnthropicTokenIdentity(credentials.access);
+    progress.stop("Claude sign-in complete");
+    return buildOauthProviderAuthResult({
+      providerId: PROVIDER_ID,
+      defaultModel,
+      access: credentials.access,
+      refresh: credentials.refresh,
+      expires: credentials.expires,
+      email: identity.email,
+      profileName: identity.email ?? identity.profileId.slice("anthropic:".length),
+    });
+  } catch (error) {
+    progress.stop("Claude sign-in did not finish");
+    throw error;
+  }
+}
 
 type ProviderAuthMethodNonInteractiveValidationContext = Parameters<
   NonNullable<ProviderAuthMethod["validateNonInteractive"]>
@@ -35,19 +68,6 @@ const ANTHROPIC_SETUP_TOKEN_NOTE_LINES = [
 
 function normalizeAnthropicSetupTokenInput(value: string): string {
   return value.replaceAll(/\s+/g, "");
-}
-
-function resolveAnthropicSetupTokenProfileId(rawProfileId?: unknown): string {
-  if (typeof rawProfileId === "string") {
-    const trimmed = rawProfileId.trim();
-    if (trimmed.length > 0) {
-      if (trimmed.startsWith(`${PROVIDER_ID}:`)) {
-        return trimmed;
-      }
-      return buildTokenProfileId({ provider: PROVIDER_ID, name: trimmed });
-    }
-  }
-  return `${PROVIDER_ID}:default`;
 }
 
 function resolveAnthropicSetupTokenExpiry(rawExpiresIn?: unknown): number | undefined {
@@ -80,7 +100,9 @@ export async function runAnthropicSetupTokenAuth(
     throw new Error(tokenError);
   }
 
-  const profileId = resolveAnthropicSetupTokenProfileId(ctx.opts?.tokenProfileId);
+  const identity = await resolveAnthropicTokenIdentity(token);
+  const profileId = typeof ctx.opts?.tokenProfileId === "string" && ctx.opts.tokenProfileId.trim()
+    ? ctx.opts.tokenProfileId.trim() : identity.profileId;
   const expires = resolveAnthropicSetupTokenExpiry(ctx.opts?.tokenExpiresIn);
 
   return {
@@ -91,6 +113,7 @@ export async function runAnthropicSetupTokenAuth(
           type: "token",
           provider: PROVIDER_ID,
           token,
+          ...(identity.email ? { email: identity.email } : {}),
           ...(expires ? { expires } : {}),
         },
       },
@@ -143,7 +166,9 @@ export async function runAnthropicSetupTokenNonInteractive(
     return null;
   }
 
-  const profileId = resolveAnthropicSetupTokenProfileId(ctx.opts.tokenProfileId);
+  const identity = await resolveAnthropicTokenIdentity(rawToken);
+  const profileId = typeof ctx.opts.tokenProfileId === "string" && ctx.opts.tokenProfileId.trim()
+    ? ctx.opts.tokenProfileId.trim() : identity.profileId;
   const expires = resolveAnthropicSetupTokenExpiry(ctx.opts.tokenExpiresIn);
   await upsertAuthProfileWithLockOrThrow({
     profileId,
@@ -151,6 +176,7 @@ export async function runAnthropicSetupTokenNonInteractive(
       type: "token",
       provider: PROVIDER_ID,
       token: rawToken,
+      ...(identity.email ? { email: identity.email } : {}),
       ...(expires ? { expires } : {}),
     },
     agentDir: ctx.agentDir,
@@ -163,6 +189,7 @@ export async function runAnthropicSetupTokenNonInteractive(
     profileId,
     provider: PROVIDER_ID,
     mode: "token",
+    ...(identity.email ? { email: identity.email } : {}),
   });
   const existingModelConfig =
     withProfile.agents?.defaults?.model && typeof withProfile.agents.defaults.model === "object"

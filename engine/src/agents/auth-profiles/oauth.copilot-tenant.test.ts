@@ -3,7 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { MAX_DATE_TIMESTAMP_MS } from "@branch/normalization-core/number-coercion";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { closeBranchAgentDatabasesForTest } from "../../state/branch-agent-db.js";
+import {
+  closeBranchAgentDatabasesAsync,
+  closeBranchAgentDatabasesForTest,
+} from "../../state/branch-agent-db.js";
 import { closeBranchStateDatabaseForTest } from "../../state/branch-state-db.js";
 import { withEnvAsync } from "../../test-utils/env.js";
 import { testing as externalAuthTesting } from "./external-auth.test-support.js";
@@ -49,6 +52,7 @@ async function withStores(run: (agentDir: string) => Promise<void>) {
       },
     );
   } finally {
+    await closeBranchAgentDatabasesAsync(root);
     closeBranchAgentDatabasesForTest();
     closeBranchStateDatabaseForTest();
     await fs.rm(root, { recursive: true, force: true });

@@ -10,6 +10,7 @@ import { Empty, Glyph, Status } from "./ui";
 import { Reports } from "./reports";
 import { Menu, type MenuAnchor, type MenuItem } from "../../shell/Menu";
 import { Icon } from "../../shell/icons";
+import { shownWhy } from "../../shell/shown-why";
 
 const STATUS: Record<string, string> = { started: "Started", succeeded: "Done", failed: "Failed", cancelled: "Stopped", timed_out: "Timed out", blocked: "Blocked", unknown: "Unknown" };
 const KINDS = [{ id: "agent_run", name: "Runs" }, { id: "tool_action", name: "Tool steps" }, { id: "message", name: "Messages" }];
@@ -35,7 +36,7 @@ export function chatApps(value: unknown): { id: string; name: string }[] {
 }
 
 export function when(ms: number, now = new Date()): string {
-  const d = new Date(ms), time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  const d = new Date(ms), time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
   const days = Math.round((new Date(now.toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86_400_000);
   return days === 0 ? time : days === 1 ? `Yesterday ${time}` : `${d.toLocaleDateString()} ${time}`;
 }
@@ -96,7 +97,7 @@ function Pick({ label, value, options, onChange, off }: { label: string; value: 
   const chosen = options.find(o => o.id === value)?.name ?? value;
   const items: MenuItem[] = [{ label: "Any", checked: !value, run: () => onChange("") }, ...options.map(o => ({ label: o.name, checked: value === o.id, run: () => onChange(o.id) }))];
   return <>
-    <button type="button" className="btn sm pp-pick" aria-haspopup="menu" aria-expanded={Boolean(at)} disabled={Boolean(off)} title={off}
+    <button type="button" className="btn sm pp-pick" aria-haspopup="menu" aria-expanded={Boolean(at)} disabled={Boolean(off)} title={shownWhy(off)}
       onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setAt({ x: r.left, y: r.bottom + 4 }); }}>{label}{chosen ? `: ${chosen}` : ""}<Icon name="down" small /></button>
     {at && <Menu at={at} label={label} items={items} onClose={() => setAt(null)} />}
   </>;

@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/process/command-queue.test.ts (atlas AGENT-LOOP-0013). Changed for Branch: preserve existing Branch rebranding and stronger lifecycle callback context assertions; retained under the Harvest rule that test assertions keep or strengthen upstream behavior.
 // Command queue tests cover bounded command execution and queue ordering.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { spawnSync } from "node:child_process";
@@ -171,9 +172,10 @@ describe("command queue", () => {
     expect(getQueueSize()).toBe(0);
   });
 
-  it("runs queued tasks in their enqueue-time async context", async () => {
+  it("runs queued tasks and their lifecycle callbacks in their enqueue-time async context", async () => {
     const context = new AsyncLocalStorage<string>();
     const blocker = createDeferred();
+    const callbacks: Array<[string, string | undefined]> = [];
     const first = context.run("first", () =>
       enqueueCommandInLane(CommandLane.Main, async () => {
         await blocker.promise;
@@ -181,13 +183,31 @@ describe("command queue", () => {
       }),
     );
     const second = context.run("second", () =>
-      enqueueCommandInLane(CommandLane.Main, async () => context.getStore()),
+      enqueueCommandInLane(CommandLane.Main, async () => context.getStore(), {
+        warnAfterMs: 0,
+        onWait: () => callbacks.push(["wait", context.getStore()]),
+        taskTimeoutMs: 60_000,
+        taskTimeoutProgressAtMs: () => {
+          callbacks.push(["progress", context.getStore()]);
+          return Date.now();
+        },
+        taskTimeoutSubscribe: () => {
+          callbacks.push(["subscribe", context.getStore()]);
+          return () => callbacks.push(["unsubscribe", context.getStore()]);
+        },
+      }),
     );
 
     blocker.resolve();
 
     await expect(first).resolves.toBe("first");
     await expect(second).resolves.toBe("second");
+    expect(callbacks).toEqual([
+      ["wait", "second"],
+      ["progress", "second"],
+      ["subscribe", "second"],
+      ["unsubscribe", "second"],
+    ]);
   });
 
   it("runs foreground work before already queued background work", async () => {
@@ -1123,5 +1143,34 @@ describe("command queue", () => {
       blocker.resolve();
       commandQueueA.resetAllLanes();
     }
+  });
+});
+
+describe("session handoff enqueue hook", () => {
+  beforeEach(() => {
+    resetCommandQueueStateForTest();
+  });
+
+  it("sees every session-lane enqueue before it runs, and can refuse one", async () => {
+    const queue = await import("./command-queue.js");
+    const seen: string[] = [];
+    const unregister = queue.registerSessionLaneHandoffEnqueue((lane) => {
+      seen.push(lane);
+      if (lane.endsWith(":refused")) throw new Error("refused by the step-down");
+    });
+    try {
+      await expect(queue.enqueueCommandInLane("session:agent:main:kept", async () => "ok")).resolves.toBe("ok");
+      await expect(
+        queue.enqueueCommandInLane("session:agent:main:refused", async () => "ran"),
+      ).rejects.toThrow("refused by the step-down");
+      await expect(queue.enqueueCommandInLane(CommandLane.Main, async () => "main")).resolves.toBe("main");
+      expect(seen).toEqual(["session:agent:main:kept", "session:agent:main:refused"]);
+      // One step-down at a time.
+      expect(() => queue.registerSessionLaneHandoffEnqueue(() => {})).toThrow(/already installed/);
+    } finally {
+      unregister();
+    }
+    const again = queue.registerSessionLaneHandoffEnqueue(() => {});
+    again();
   });
 });

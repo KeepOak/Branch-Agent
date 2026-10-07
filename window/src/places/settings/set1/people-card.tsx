@@ -7,6 +7,7 @@ import { Acts, Btn, Hint, Pill, Sec, Seg, useSaveRunner } from "../kit";
 import { ACTKINDS, OWNER_ID, devicesLine, firstName, mayOf, revokePlan, roleOf, scopesOf, type Profile } from "./people-data";
 import { Face, type People } from "./people";
 import { MineHead, YouSecs } from "./people-mine";
+import { shownWhy } from "../../../shell/shown-why";
 
 export function PersonCard({ ctx, p }: { ctx: People; p: Profile }) {
   const mine = p.id === ctx.self?.id;
@@ -76,7 +77,7 @@ function Actions({ ctx, p, out, onOut }: ActProps) {
         <SignOut ctx={ctx} p={p} out={out} onOut={onOut} />
         <Btn ghost sm disabled title="Branch can’t remove a person yet.">Remove</Btn>
       </Acts>
-      {code ? <p className="code-pp"><code>{code.c}</code><span>Works once{code.until ? `, until ${new Date(code.until).toTimeString().slice(0, 5)}` : ""}. {first} types it on their own device.</span></p> : null}
+      {code ? <p className="code-pp"><code>{code.c}</code><span>Works once{code.until ? `, until ${new Date(code.until).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true })}` : ""}. {first} types it on their own device.</span></p> : null}
       <Hint>Switching to someone and removing someone aren’t in Branch yet.</Hint>
     </>
   );
@@ -102,5 +103,5 @@ function SignOut({ ctx, p, out, onOut }: ActProps) {
     onOut();
     await ctx.reload();
   });
-  return <Btn ghost sm disabled={out || Boolean(why)} title={why} onClick={run}>Sign out everywhere</Btn>;
+  return <Btn ghost sm disabled={out || Boolean(why)} title={shownWhy(why)} onClick={run}>Sign out everywhere</Btn>;
 }

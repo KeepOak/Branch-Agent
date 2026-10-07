@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
@@ -157,12 +158,19 @@ describe("Inbox › Needs you", () => {
   it("sends dismiss, device reject and node approve with the request id", async () => {
     const { host, request } = await render();
     const row = (title: string) => [...host.querySelectorAll(".ib-row")].find(r => r.textContent?.includes(title))!;
-    await click(btn(row("Jordan Ellis"), "Don’t")[0]);
-    await click(btn(row("Phone wants to connect"), "Don’t")[0]);
+    await click(btn(row("Jordan Ellis"), "Don’t allow")[0]);
+    await click(btn(row("Phone wants to connect"), "Don’t allow")[0]);
     await click(btn(row("box wants to offer"), "Allow")[0]);
     expect(calls(request, "channels.pairing.dismiss")).toEqual([{ channel: "telegram", accountId: "default", requestId: "q1" }]);
     expect(calls(request, "device.pair.reject")).toEqual([{ requestId: "d1" }]);
     expect(calls(request, "node.pair.approve")).toEqual([{ requestId: "n1" }]);
+  });
+  it("shows the device check code beside the access request", async () => {
+    const { host } = await render();
+    const row = [...host.querySelectorAll(".ib-row")].find(r => r.textContent?.includes("Phone wants to connect"))!;
+    await click(btn(row, "Allow")[0]);
+    expect(host.querySelector(".dlg")?.textContent).toContain("Check code: D1");
+    expect(host.querySelector(".dlg")?.textContent).toContain("What it asks to do");
   });
   it("answers and skips a Trunk's question", async () => {
     const { host, request } = await render();
@@ -269,14 +277,16 @@ describe("Inbox › other tabs", () => {
     const { host } = await render();
     await click(btn(host, "Later")[0]);
     expect(host.textContent).toContain("Nothing is waiting to finish later.");
-    expect(host.querySelector<HTMLInputElement>("input[placeholder='Search messages']")).toMatchObject({ disabled: true, title: MESSAGES_GAP });
+    expect(host.querySelector<HTMLInputElement>("input[placeholder='Search messages']")).toMatchObject({ disabled: true, title: "" });
+    expect(host.textContent).not.toContain(MESSAGES_GAP); expect(visibleDevNotes(host)).toEqual([]);
   });
   it("History groups by day with run lengths; Every conversation only from Advanced; the run menu only at Technical", async () => {
     const regular = await render();
     await click(btn(regular.host, "History")[0]);
     expect(regular.host.textContent).toContain("1m 12s");
     expect(regular.host.textContent).toContain("Today");
-    expect(btn(regular.host, "Watch again")[0]).toMatchObject({ disabled: true, title: REPLAY_GAP });
+    expect(btn(regular.host, "Watch again")[0]).toMatchObject({ disabled: true, title: "" });
+    expect(REPLAY_GAP).toMatch(/^Needs the engine/); expect(visibleDevNotes(regular.host)).toEqual([]);
     expect(regular.host.textContent).not.toContain("Every conversation");
     expect(regular.host.querySelector(".ib-hrow .ib-ib")).toBeNull();
     await act(async () => root?.unmount()); root = undefined;

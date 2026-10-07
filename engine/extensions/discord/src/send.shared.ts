@@ -3,17 +3,16 @@ import type { RESTAPIPoll } from "discord-api-types/rest/v10";
 import { Routes, type APIChannel } from "discord-api-types/v10";
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import {
-  buildOutboundMediaLoadOptions,
   extensionForMime,
   normalizePollDurationHours,
   normalizePollInput,
   type PollInput,
 } from "branch/plugin-sdk/media-runtime";
+import { loadOutboundMediaFromUrl } from "branch/plugin-sdk/outbound-media";
 import { requireRuntimeConfig } from "branch/plugin-sdk/plugin-config-runtime";
 import type { ChunkMode } from "branch/plugin-sdk/reply-chunking";
 import { resolveTextChunksWithFallback } from "branch/plugin-sdk/reply-payload";
 import { normalizeStringEntries } from "branch/plugin-sdk/string-coerce-runtime";
-import { loadWebMedia } from "branch/plugin-sdk/web-media";
 import { isDiscordThreadChannelType } from "./channel-type.js";
 import { chunkDiscordTextWithMode } from "./chunk.js";
 import { createDiscordClient, resolveDiscordRest, type DiscordClientOpts } from "./client.js";
@@ -406,15 +405,12 @@ type DiscordMediaSendParams = DiscordTextSendParams &
   };
 
 async function sendDiscordMedia(params: DiscordMediaSendParams) {
-  const media = await loadWebMedia(
-    params.mediaUrl,
-    buildOutboundMediaLoadOptions({
-      maxBytes: params.maxBytes,
-      mediaAccess: params.mediaAccess,
-      mediaLocalRoots: params.mediaLocalRoots,
-      mediaReadFile: params.mediaReadFile,
-    }),
-  );
+  const media = await loadOutboundMediaFromUrl(params.mediaUrl, {
+    maxBytes: params.maxBytes,
+    mediaAccess: params.mediaAccess,
+    mediaLocalRoots: params.mediaLocalRoots,
+    mediaReadFile: params.mediaReadFile,
+  });
   const resolvedFileName =
     params.filename?.trim() ||
     media.fileName ||

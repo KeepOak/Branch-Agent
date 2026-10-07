@@ -1,5 +1,6 @@
 // The settable shortcuts (DESIGN-SPEC §4.8.8): each action's default keys, the person's own keys (kept on this
 // computer), and how a key press is read. A custom shortcut needs Ctrl or Alt, and two actions never share one.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 
 export type ActionId =
   | "palette"
@@ -45,7 +46,7 @@ export function keyActions(defaultName: string): KeyAction[] {
     { id: "focusMode", name: "Focus mode", keys: "Ctrl ." },
     { id: "talkLive", name: "Talk live", keys: "Ctrl Shift V" },
     { id: "stop", name: "Stop the current task", keys: "Ctrl Shift S" },
-    { id: "lockdown", name: "Lockdown", keys: "Ctrl Shift L", off: "Lockdown needs an engine switch it doesn't have yet." },
+    { id: "lockdown", name: "Lockdown", keys: "Ctrl Shift L" },
     { id: "inbox", name: "Open the Inbox", keys: "Ctrl I" },
     { id: "nextConversation", name: "Next conversation", keys: "Ctrl Tab" },
     { id: "archiveOpen", name: "Archive this conversation", keys: "Ctrl Shift A" },

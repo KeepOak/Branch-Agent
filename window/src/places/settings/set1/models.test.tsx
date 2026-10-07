@@ -92,6 +92,16 @@ describe("Settings › Models", () => {
     expect(patches(request)).toContainEqual({ agents: { defaults: { subagents: { maxConcurrent: 4 } } } });
   });
 
+  it("Technical shows one Per account heading with its sections together", async () => {
+    const { engine } = engineOf();
+    await render(engine, 2);
+    const sections = [...host.querySelectorAll<HTMLElement>(".sec")];
+    const first = sections.findIndex((s) => s.querySelector('[data-row="Service tier"]'));
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(sections[first + 1]?.querySelector('[data-row="OpenRouter picks"]')).not.toBeNull();
+    expect([...host.querySelectorAll(".sec > h2")].filter((h) => h.textContent === "Per account")).toHaveLength(1);
+  });
+
   it("with no account and no local model it says No model set up and offers Add an account", async () => {
     const request = vi.fn(async (method: string) => method === "config.get" ? { hash: "h", valid: true, config: {} } : method === "models.authStatus" ? { providers: [] } : { models: [] });
     await render({ request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine);

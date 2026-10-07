@@ -1757,12 +1757,7 @@ function Install-Branch {
         return $false
     }
 
-    # Use branch package for beta, branch for stable
-    $packageName = "branch"
-    if ($Tag -eq "beta" -or $Tag -match "^beta\.") {
-        $packageName = "branch"
-    }
-    $installSpec = Resolve-NpmBranchInstallSpec -PackageName $packageName -RequestedTag $Tag
+    $installSpec = Resolve-NpmBranchInstallSpec -PackageName "branch" -RequestedTag $Tag
     $npmCommand = Get-NpmCommandPath
     $npmCwd = Get-WindowsCommandSafeDirectory
     $lifecycleArgument = Get-NpmLifecycleAllowArgument -NpmCommand $npmCommand -InstallSpec $installSpec -NpmCwd $npmCwd
@@ -1979,7 +1974,6 @@ function Install-BranchFromGit {
     } else {
         Write-Host "[!] Git update disabled; skipping git pull" -ForegroundColor Yellow
     }
-    Remove-LegacySubmodule -RepoDir $RepoDir
 
     $prevPnpmChildConcurrency = $env:PNPM_CONFIG_CHILD_CONCURRENCY
     $prevPnpmNetworkConcurrency = $env:PNPM_CONFIG_NETWORK_CONCURRENCY
@@ -2145,28 +2139,6 @@ function Refresh-GatewayServiceIfLoaded {
         Write-Host "[OK] Gateway service refreshed" -ForegroundColor Green
     } catch {
         Write-Host "[!] Gateway service restart failed; continuing. Run: branch gateway restart" -ForegroundColor Yellow
-    }
-}
-
-function Get-LegacyRepoDir {
-    if (-not [string]::IsNullOrWhiteSpace($env:BRANCH_GIT_DIR)) {
-        return $env:BRANCH_GIT_DIR
-    }
-    $userHome = [Environment]::GetFolderPath("UserProfile")
-    return (Join-Path $userHome "branch")
-}
-
-function Remove-LegacySubmodule {
-    param(
-        [string]$RepoDir
-    )
-    if ([string]::IsNullOrWhiteSpace($RepoDir)) {
-        $RepoDir = Get-LegacyRepoDir
-    }
-    $legacyDir = Join-Path $RepoDir "Peekaboo"
-    if (Test-Path $legacyDir) {
-        Write-Host "[!] Removing legacy submodule checkout: $legacyDir" -ForegroundColor Yellow
-        Remove-Item -Recurse -Force $legacyDir
     }
 }
 

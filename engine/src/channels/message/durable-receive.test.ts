@@ -1,9 +1,6 @@
-// Durable receive tests cover shared ingress-queue persistence and replay behavior.
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/channels/message/durable-receive.test.ts (atlas CHAT-APPS-0092). Changed for Branch: use the shared state fixture to settle SQLite workers before Windows cleanup.
 import { describe, expect, it } from "vitest";
-import { closeBranchStateDatabaseForTest } from "../../state/branch-state-db.js";
+import { withBranchTestState } from "../../test-utils/branch-test-state.js";
 import { createDurableInboundReceiveJournalFromQueue } from "./durable-receive.js";
 import { createChannelIngressQueue } from "./ingress-queue.js";
 
@@ -12,13 +9,10 @@ type TestMetadata = { source: string };
 type TestCompletedMetadata = { delivered: boolean };
 
 async function withTempState<T>(fn: (stateDir: string) => Promise<T>): Promise<T> {
-  const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "branch-durable-receive-"));
-  try {
-    return await fn(stateDir);
-  } finally {
-    closeBranchStateDatabaseForTest();
-    await fs.rm(stateDir, { recursive: true, force: true });
-  }
+  return await withBranchTestState(
+    { layout: "state-only", prefix: "branch-durable-receive-", applyEnv: false },
+    ({ stateDir }) => fn(stateDir),
+  );
 }
 
 describe("createDurableInboundReceiveJournalFromQueue", () => {

@@ -54,10 +54,50 @@ export const BackupStatusResultSchema = closedObject({
       enabled: Type.Boolean(),
       everyMs: Type.Number(),
       nextRunAtMs: Type.Optional(Type.Number()),
+      push: Type.Optional(Type.Boolean()),
+      excludeSecrets: Type.Optional(Type.Boolean()),
+      files: Type.Optional(Type.Boolean()),
+      mediaMaxFileMb: Type.Optional(Type.Integer({ minimum: 1 })),
+      mediaMaxTotalMb: Type.Optional(Type.Integer({ minimum: 1 })),
+      /** Git schedules that push: the repository address, without any sign-in. */
+      remote: Type.Optional(Type.String()),
     }),
   ),
   locations: StorageLocationsListResultSchema.properties.locations,
 });
+/** Branch Settings › Backups: where the scheduled Git backup goes and how often it runs. */
+export const BackupScheduleSetParamsSchema = closedObject({
+  destination: Type.Union([
+    closedObject({ kind: Type.Literal("folder"), path: Type.String({ minLength: 1 }) }),
+    closedObject({ kind: Type.Literal("git"), url: Type.String({ minLength: 1 }) }),
+  ]),
+  everyMs: Type.Integer({ minimum: 60_000 }),
+  enabled: Type.Boolean(),
+  /** Media size limits in MB; omitted means the backup command's defaults (50 per file, 1024 in all). */
+  mediaMaxFileMb: Type.Optional(Type.Integer({ minimum: 1 })),
+  mediaMaxTotalMb: Type.Optional(Type.Integer({ minimum: 1 })),
+});
+export const BackupScheduleSetResultSchema = closedObject({
+  id: Type.String(),
+  repository: Type.String(),
+  push: Type.Boolean(),
+  enabled: Type.Boolean(),
+  everyMs: Type.Number(),
+});
+export const BackupScheduleClearParamsSchema = closedObject({});
+export const BackupScheduleClearResultSchema = closedObject({ removed: Type.Boolean() });
+export const BackupRunParamsSchema = closedObject({});
+export const BackupRunResultSchema = closedObject({
+  jobId: Type.String(),
+  started: Type.Boolean(),
+  reason: Type.Optional(Type.String()),
+});
+export type BackupScheduleSetParams = Static<typeof BackupScheduleSetParamsSchema>;
+export type BackupScheduleSetResult = Static<typeof BackupScheduleSetResultSchema>;
+export type BackupScheduleClearParams = Static<typeof BackupScheduleClearParamsSchema>;
+export type BackupScheduleClearResult = Static<typeof BackupScheduleClearResultSchema>;
+export type BackupRunParams = Static<typeof BackupRunParamsSchema>;
+export type BackupRunResult = Static<typeof BackupRunResultSchema>;
 export type BackupRunRecord = Static<typeof BackupRunRecordSchema>;
 export type BackupRunLocation = Static<typeof BackupRunLocationSchema>;
 export type BackupRunRetention = Static<typeof BackupRunRetentionSchema>;

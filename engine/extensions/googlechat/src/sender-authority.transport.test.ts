@@ -2,6 +2,7 @@ import type { ServerResponse } from "node:http";
 import type { ChannelMessageActionContext } from "branch/plugin-sdk/channel-contract";
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
 import { withServer } from "branch/plugin-sdk/test-env";
+import { withBranchTestState } from "branch/plugin-sdk/test-state";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ResolvedGoogleChatAccount } from "./accounts.js";
 
@@ -239,7 +240,6 @@ describe("Google Chat sender authority through real guarded HTTP", () => {
   });
 
   it("settles an accepted durable message after authority expires while reading its body", async () => {
-    const { withBranchTestState } = await import("branch/plugin-sdk/test-state");
     await withBranchTestState(
       { label: "googlechat-authority-settlement", layout: "state-only" },
       async () => {

@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/harness/compaction/summarization-completion.ts (atlas AGENT-LOOP-0100). Changed for Branch: apply the Goose structured-summary parser to completed model output.
 import {
   resolveClaudeFable5ModelIdentity,
   type Model,
@@ -18,28 +19,12 @@ import {
   InvalidSummaryOutputError,
   ok,
   SummaryOutputBudgetError,
+  SummaryProviderError,
   type Result,
 } from "../types.js";
+import { applyStructuredSummary } from "./structured-summary.js";
 import { SUMMARIZATION_SYSTEM_PROMPT } from "./summarization-prompts.js";
 import { extractSummaryText, serializeConversation } from "./utils.js";
-
-function createSummarizationOptions(
-  model: Model,
-  maxTokens: number,
-  apiKey: string | undefined,
-  headers: Record<string, string> | undefined,
-  signal: AbortSignal | undefined,
-  thinkingLevel: ThinkingLevel | undefined,
-): SimpleStreamOptions {
-  const options: SimpleStreamOptions = { maxTokens, signal, apiKey, headers };
-  const fableReasoning =
-    (model.api === "anthropic-messages" || model.api === "bedrock-converse-stream") &&
-    resolveClaudeFable5ModelIdentity(model) !== undefined;
-  if ((model.reasoning || fableReasoning) && thinkingLevel) {
-    options.reasoning = resolveAgentReasoningOption(model, thinkingLevel);
-  }
-  return options;
-}
 
 export interface SummarizationCompletionParams {
   messages: AgentMessage[];
@@ -81,14 +66,14 @@ export async function runSummarizationCompletion(
       },
     ],
   };
-  const options = createSummarizationOptions(
-    params.model,
-    params.maxTokens,
-    params.apiKey,
-    params.headers,
-    params.signal,
-    params.thinkingLevel,
-  );
+  const { model, thinkingLevel, maxTokens, signal, apiKey, headers } = params;
+  const options: SimpleStreamOptions = { maxTokens, signal, apiKey, headers };
+  const fableReasoning =
+    (model.api === "anthropic-messages" || model.api === "bedrock-converse-stream") &&
+    resolveClaudeFable5ModelIdentity(model) !== undefined;
+  if ((model.reasoning || fableReasoning) && thinkingLevel) {
+    options.reasoning = resolveAgentReasoningOption(model, thinkingLevel);
+  }
   const response = params.streamFn
     ? await consumeAgentCoreStream(params.streamFn(params.model, context, options), params.runtime)
     : await resolveAgentCoreCompleteFn(params.runtime)(params.model, context, options);
@@ -101,9 +86,9 @@ export async function runSummarizationCompletion(
   }
   if (response.stopReason === "error") {
     return err(
-      new CompactionError(
-        "summarization_failed",
+      new SummaryProviderError(
         `${params.errorLabel} failed: ${response.errorMessage || "Unknown error"}`,
+        response,
       ),
     );
   }
@@ -121,5 +106,5 @@ export async function runSummarizationCompletion(
       new InvalidSummaryOutputError(`${params.errorLabel} failed: model returned no summary text`),
     );
   }
-  return ok(summary);
+  return ok(applyStructuredSummary(summary));
 }

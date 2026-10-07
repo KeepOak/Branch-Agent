@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
@@ -146,7 +147,8 @@ describe("Automations › Scheduled", () => {
     await mount(engine(FX, ["operator.read"]).engine);
     const add = [...host.querySelectorAll(".au-sec button")].filter(b => b.textContent === "Add") as HTMLButtonElement[];
     expect(add.length).toBeGreaterThan(0);
-    for (const b of add) { expect(b.disabled).toBe(true); expect(b.title).toMatch(/^Needs the engine’s/); }
+    for (const b of add) { expect(b.disabled).toBe(true); expect(b.title).toBe(""); }
+    expect(visibleDevNotes(host)).toEqual([]);
     expect((host.querySelector("[aria-label='Morning brief on or off']") as HTMLButtonElement).disabled).toBe(true);
   });
   it("the sheet opens on Runs and reads cron.runs for that one automation", async () => {

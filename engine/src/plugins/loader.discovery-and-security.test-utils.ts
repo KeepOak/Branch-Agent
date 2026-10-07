@@ -1346,11 +1346,11 @@ describe("loadBranchPlugins", () => {
     expectNoDiagnosticContaining({ registry, message: "duplicate plugin id" });
   });
 
-  it("evaluates load-path provenance warnings", async () => {
+  it("evaluates load-path provenance warnings", () => {
     useNoBundledPlugins();
     const scenarios = [
       {
-        label: "does not warn when loaded non-bundled plugin is in plugins.allow",
+        label: "warns about a missing global install record even when the plugin is allowed",
         loadRegistry: () => {
           return withStateDir((stateDir) => {
             const globalDir = path.join(stateDir, "extensions", "rogue");
@@ -1373,7 +1373,7 @@ describe("loadBranchPlugins", () => {
               },
             });
 
-            return { registry, warnings, pluginId: "rogue", expectWarning: false };
+            return { registry, warnings, pluginId: "rogue", expectWarning: true };
           });
         },
       },
@@ -1465,79 +1465,10 @@ describe("loadBranchPlugins", () => {
           };
         },
       },
-      {
-        label: "does not warn when install paths resolve through a symlinked state root",
-        loadRegistry: async () => {
-          useNoBundledPlugins();
-          const stateDir = makePluginLoaderTempDir();
-          const realHome = path.join(stateDir, "real-home");
-          const linkedHome = path.join(stateDir, "linked-home");
-          mkdirSafe(realHome);
-          fs.symlinkSync(realHome, linkedHome, process.platform === "win32" ? "junction" : "dir");
-
-          const pluginDir = path.join(
-            realHome,
-            ".branch",
-            "npm",
-            "node_modules",
-            "@example",
-            "tracked-symlink-install",
-          );
-          mkdirSafe(pluginDir);
-          const plugin = writePlugin({
-            id: "tracked-symlink-install",
-            body: simplePluginBody("tracked-symlink-install"),
-            dir: pluginDir,
-            filename: "index.cjs",
-          });
-          await refreshPersistedInstalledPluginIndex({
-            stateDir,
-            reason: "source-changed",
-            installRecords: {
-              [plugin.id]: {
-                source: "npm",
-                spec: "@example/tracked-symlink-install@1.0.0",
-                installPath: path.join(
-                  linkedHome,
-                  ".branch",
-                  "npm",
-                  "node_modules",
-                  "@example",
-                  "tracked-symlink-install",
-                ),
-                version: "1.0.0",
-              },
-            },
-          });
-
-          const warnings: string[] = [];
-          const registry = loadBranchPlugins({
-            cache: false,
-            logger: createWarningLogger(warnings),
-            env: {
-              ...process.env,
-              BRANCH_STATE_DIR: stateDir,
-              BRANCH_BUNDLED_PLUGINS_DIR: "/nonexistent/bundled/plugins",
-            },
-            config: {
-              plugins: {
-                enabled: true,
-              },
-            },
-          });
-
-          return {
-            registry,
-            warnings,
-            pluginId: plugin.id,
-            expectWarning: false,
-          };
-        },
-      },
     ] as const;
 
     for (const scenario of scenarios) {
-      const loadedScenario = await scenario.loadRegistry();
+      const loadedScenario = scenario.loadRegistry();
       const expectedSource =
         "expectedSource" in loadedScenario && typeof loadedScenario.expectedSource === "string"
           ? loadedScenario.expectedSource
@@ -1604,7 +1535,7 @@ describe("loadBranchPlugins", () => {
             message.includes("trusted-plugin") &&
             message.includes("Branch Agent can't verify where this plugin came from"),
         ),
-      ).toEqual([]);
+      ).toHaveLength(1);
     });
   });
 

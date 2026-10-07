@@ -11,6 +11,7 @@ const PATHS = {
   plus: <path d="M12 5v14M5 12h14" />,
   panel: <><rect x="3" y="4.5" width="18" height="15" rx="2" /><path d="M15 4.5v15" /></>,
   users: <><circle cx="9" cy="8.5" r="3" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0M15.5 5.5a3 3 0 0 1 0 6M17 13.5a5.5 5.5 0 0 1 3.5 5.5" /></>,
+  personMinus: <><circle cx="9" cy="8" r="3" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0M15.5 11h6" /></>,
   doc: <><path d="M6 3.5h8l4 4V20.5H6z" /><path d="M14 3.5V8h4M9 12.5h6M9 16h6" /></>,
   spark: <path d="M12 3v5M12 16v5M3 12h5M16 12h5M6 6l3 3M15 15l3 3M6 18l3-3M15 9l3-3" />,
   retry: <path d="M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5" />,
@@ -31,6 +32,7 @@ const PATHS = {
   tree: <><circle cx="6" cy="6" r="2" /><circle cx="6" cy="18" r="2" /><circle cx="18" cy="12" r="2" /><path d="M6 8v8M8 6h3a5 5 0 0 1 5 5" /></>,
   lock: <><rect x="5" y="10.5" width="14" height="10" rx="2" /><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" /></>,
   link: <><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" /><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" /></>,
+  check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
   folder: <path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z" />,
 } satisfies Record<string, ReactNode>;
 

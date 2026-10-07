@@ -1,6 +1,13 @@
 // Drafts kept per conversation (DESIGN-SPEC §4.3.1 rule 4) and earlier messages with Up and Down
 // (§4.3.1 Parity adds, row composer-input-history; OpenClaw ui/src/pages/chat/input-history.ts).
 const DRAFT_KEY = "branch.composer.draft:";
+const draftFiles = new Map<symbol, number>();
+/** File chips are memory-only; keep an update from discarding them. */
+export function trackDraftFiles(owner: symbol, count: number): void {
+  if (count > 0) draftFiles.set(owner, count);
+  else draftFiles.delete(owner);
+}
+export function hasUnsavedDraftFiles(): boolean { return draftFiles.size > 0; }
 
 /** The browser's storage for this window, or undefined where the browser refuses it (private mode, blocked data). */
 export function safeStorage(): Storage | undefined {

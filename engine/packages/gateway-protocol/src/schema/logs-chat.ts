@@ -10,6 +10,7 @@ import {
   CHAT_INPUT_RUN_ID_MAX_CHARS,
 } from "./chat-history-constants.js";
 import { closedObject } from "./closed-object.js";
+import { OutsideAgentSchema } from "./contacts.js";
 import { HumanMentionsSchema } from "./human-mentions.js";
 import { ChatSendSessionKeyString, InputProvenanceSchema, NonEmptyString } from "./primitives.js";
 import { SessionPermissionModeSchema, SessionToolOverridesSchema } from "./sessions-row.js";
@@ -235,7 +236,11 @@ export const ChatMessageGetParamsSchema = closedObject({
   maxChars: Type.Optional(Type.Integer({ minimum: 1, maximum: 2_000_000 })),
 });
 
-/** Result envelope for single-message lookup, including the stable miss/visibility reason. */
+/**
+ * Single-message lookup result. History messages also carry this envelope as
+ * `__branch.replyToMessage`: a display preview capped at 500 chars per field
+ * and 8 KiB, or an unavailable reason. It never changes the persisted transcript.
+ */
 export const ChatMessageGetResultSchema = closedObject({
   ok: Type.Boolean(),
   message: Type.Optional(Type.Unknown()),
@@ -346,6 +351,8 @@ export const ChatSendParamsSchema = closedObject({
   expectedSessionRoutingContract: Type.Optional(NonEmptyString),
   expectedPermissionMode: Type.Optional(Type.Union([SessionPermissionModeSchema, Type.Null()])),
   expectedToolOverrides: Type.Optional(Type.Union([SessionToolOverridesSchema, Type.Null()])),
+  // An outside agent (branch mcp serve) wrote this message: the transcript names it, not the owner.
+  outsideAgent: Type.Optional(OutsideAgentSchema),
   idempotencyKey: NonEmptyString,
 });
 

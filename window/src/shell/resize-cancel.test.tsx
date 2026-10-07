@@ -71,16 +71,16 @@ describe("sidebar resize cancellation", () => {
     await pointer(separator, "pointermove", 330);
     await pointer(separator, "pointerup", 330);
     await pointer(separator, "lostpointercapture", 330);
-    expect(committed).toEqual([{ sideW: 330, rail: false, hidden: false }]);
+    expect(committed).toEqual([{ sideW: 330, rail: false }]);
     expect(live.at(-1)).toBeNull();
     expect(separator.classList.contains("on")).toBe(false);
   });
 
   it.each([
-    { width: 30, patch: { rail: false, hidden: true } },
-    { width: 80, patch: { rail: true, hidden: false } },
-    { width: 2000, patch: { sideW: 640, rail: false, hidden: false } },
-  ])("retains the existing hide, rail and width bounds at $width", async ({ width, patch }) => {
+    { width: 30, patch: { hidden: true } },
+    { width: 80, patch: { rail: true } },
+    { width: 2000, patch: { sideW: 640, rail: false } },
+  ])("applies hidden, rail and width bounds at $width", async ({ width, patch }) => {
     const { separator, committed } = await mountResizer();
     await pointer(separator, "pointerdown", 292);
     await pointer(separator, "pointerup", width);

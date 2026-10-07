@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { parse as parseSemver } from "semver";
+import { assertLockdownOff } from "../../config/lockdown.js";
 import { assertAgentRunLifecycleGenerationCurrent } from "../../infra/agent-events.js";
 import { isTruthyEnvValue } from "../../infra/env.js";
 import { formatErrorMessage, toErrorObject } from "../../infra/errors.js";
@@ -53,9 +54,7 @@ import {
   enqueueCliRun,
   isClaudeCliBackendId,
   prepareCliPromptImagePayload,
-  resolveCliNoOutputTimeoutMs,
   resolveCliRunQueueKey,
-  resolveCliRunTimeoutOverrideMs,
   resolvePromptInput,
   resolveSessionIdToSend,
   resolveSystemPromptUsage,
@@ -63,6 +62,7 @@ import {
 import { cliBackendLog, CLI_BACKEND_LOG_OUTPUT_ENV } from "./log.js";
 import { createClaudeCliModelCallDiagnostics } from "./model-call-diagnostics.js";
 import { composeCliPromptContext } from "./prompt-context.js";
+import { resolveCliNoOutputTimeoutMs, resolveCliRunTimeoutOverrideMs } from "./reliability.js";
 import type { PreparedCliRunContext } from "./types.js";
 
 function exactToolAvailabilityError(params: {
@@ -122,6 +122,8 @@ export async function executePreparedCliRun(
   cliSessionIdToUse?: string,
   options?: ExecutePreparedCliRunOptions,
 ): Promise<CliOutput> {
+  // Every CLI model run passes here (chat, side chat, /btw): Lockdown refuses before anything spends.
+  assertLockdownOff();
   // Fresh recovery retains its exact account/read authority across every await
   // and through the process/plugin execution callbacks, not just preparation.
   const context =
@@ -208,7 +210,7 @@ export async function executePreparedCliRun(
     ? params.userTurnTranscriptRecorder?.getAdmissionReceipt()?.entryId
     : undefined;
   const imagePayload = nodePlacement
-    ? { prompt, imagePaths: [] as string[], cleanupImages: async () => {} }
+    ? { prompt, imagePaths: [] as string[] }
     : await prepareCliPromptImagePayload({
         backend,
         prompt,
@@ -292,27 +294,6 @@ export async function executePreparedCliRun(
       await forkSuccessorPersistence;
     } catch (error) {
       forkSuccessorObserved = false;
-      throw error;
-    }
-  };
-  const cleanupOuterResource = async (cleanup: (() => Promise<void>) | undefined) => {
-    try {
-      await runCliCleanup(params, "cli-outer-resource", async () => {
-        await cleanup?.();
-      });
-    } catch (error) {
-      if (completedOutput?.didSendViaMessagingTool) {
-        cliBackendLog.warn(
-          `CLI outer resource cleanup failed after confirmed message delivery: ${formatErrorMessage(error)}`,
-        );
-        return;
-      }
-      if (executionError !== undefined) {
-        cliBackendLog.warn(
-          `CLI outer resource cleanup also failed after run error: ${formatErrorMessage(error)}`,
-        );
-        return;
-      }
       throw error;
     }
   };
@@ -512,6 +493,7 @@ export async function executePreparedCliRun(
             params.cliToolAvailability && nodePlacement
               ? { native: params.cliToolAvailability.native, branch: [] }
               : params.cliToolAvailability,
+          hostOwnedTools: context.hostOwnedTools,
           useResume,
           baseArgs: baseArgsWithSkills,
         });
@@ -694,10 +676,21 @@ export async function executePreparedCliRun(
     throw failure;
   } finally {
     try {
-      await cleanupOuterResource(systemPromptFile?.cleanup);
-      await cleanupOuterResource(imagePayload.cleanupImages);
+      await runCliCleanup(params, "cli-outer-resource", async () => {
+        await systemPromptFile?.cleanup();
+      });
     } catch (error) {
-      outerCleanupError = toErrorObject(error, "CLI outer resource cleanup failed");
+      if (completedOutput?.didSendViaMessagingTool) {
+        cliBackendLog.warn(
+          `CLI outer resource cleanup failed after confirmed message delivery: ${formatErrorMessage(error)}`,
+        );
+      } else if (executionError !== undefined) {
+        cliBackendLog.warn(
+          `CLI outer resource cleanup also failed after run error: ${formatErrorMessage(error)}`,
+        );
+      } else {
+        outerCleanupError = toErrorObject(error, "CLI outer resource cleanup failed");
+      }
     }
   }
   if (outerCleanupError) {

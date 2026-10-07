@@ -1,3 +1,4 @@
+// From openclaw/openclaw@9da070d4b99562e7b3f6069e825f1fb17b406544:src/agents/tools/presence-tool.test.ts (atlas INTEGRATIONS-0131). Changed for Branch: Retained current upstream isolated missing-authority coverage and all other assertions after the Branch rename.
 import { describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { createGatewayMethodRegistry } from "../../gateway/methods/registry.js";
@@ -98,14 +99,6 @@ function fixture(locationHandler?: GatewayRequestHandler) {
 }
 
 describe("presence tool source authority", () => {
-  it("rejects an admitted channel turn without operator authority before reading presence", async () => {
-    const { run, snapshot } = fixture();
-    await expect(run(undefined, () => createPresenceTool().execute("unknown", {}))).rejects.toThrow(
-      /presence.*authority|presence.*authenticated|presence.*operator/i,
-    );
-    expect(snapshot).not.toHaveBeenCalled();
-  });
-
   it.each([{ kind: "local" }, { kind: "external", channel: "discord" }] as const)(
     "allows the captured $kind owner only while its source remains current",
     async (origin) => {
@@ -160,25 +153,31 @@ describe("presence tool source authority", () => {
   );
 
   it.each([
+    { scopes: undefined, allowed: false },
     { scopes: ["operator.read"], allowed: true },
     { scopes: ["operator.write"], allowed: true },
     { scopes: ["operator.sessions.write"], allowed: false },
     { scopes: [], allowed: false },
   ])("uses the original non-owner scopes $scopes", async ({ scopes, allowed }) => {
     await withBranchTestState({ scenario: "minimal" }, async () => {
-      const profile = ensureProfileForEmail("presence-reader@example.test");
-      const authority = createAdmittedRunOperatorAuthority({
-        profileId: profile.id,
-        scopes,
-        assertCurrent: () => {},
-      });
+      const authority = scopes
+        ? createAdmittedRunOperatorAuthority({
+            profileId: ensureProfileForEmail("presence-reader@example.test").id,
+            scopes,
+            assertCurrent: () => {},
+          })
+        : undefined;
       const { run, snapshot } = fixture();
       const pending = run(authority, () => createPresenceTool().execute("reader", {}));
       if (allowed) {
         expect((await pending).details).toMatchObject({ people: [{ name: "Ada" }] });
         expect(snapshot).toHaveBeenCalledOnce();
       } else {
-        await expect(pending).rejects.toThrow(/operator\.read|presence.*authority/i);
+        await expect(pending).rejects.toThrow(
+          scopes
+            ? /operator\.read|presence.*authority/i
+            : /presence.*authority|presence.*authenticated|presence.*operator/i,
+        );
         expect(snapshot).not.toHaveBeenCalled();
       }
     });

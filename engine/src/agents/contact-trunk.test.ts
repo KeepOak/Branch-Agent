@@ -3,6 +3,7 @@ import { applyAgentConfig, pruneAgentConfig } from "../commands/agents.config.js
 import {
   retainLegacyDefaultAgentId,
   resolveSessionStoreCompatibilityAgentId,
+  tryGetLegacyDefaultAgentId,
 } from "../config/legacy.default-agent-owner.js";
 import type { BranchConfig } from "../config/types.js";
 import { validateConfigObject } from "../config/validation-core.js";
@@ -116,15 +117,23 @@ describe("contact Trunk routing", () => {
     expect(tryResolveAmbientOwnerAgentId(cfg)).toBeUndefined();
     expect(tryResolveLegacyCompatibilityAgentId(cfg)).toBeUndefined();
     expect(resolveSubagentRequesterAgentId(cfg, { requesterSessionKey: "main" })).toBeUndefined();
+    // Upstream 2026.9.8: retained ownership is Doctor migration provenance, never runtime ownership,
+    // so neither the contact nor a switched contact default takes over legacy data.
     const retained = retainLegacyDefaultAgentId(cfg, "oak");
-    expect(tryResolveLegacyDataOwnerAgentId(retained)).toBe("oak");
-    expect(resolveSessionStoreCompatibilityAgentId(retained)).toBe("oak");
+    expect(tryGetLegacyDefaultAgentId(retained)).toBe("oak");
+    expect(tryResolveLegacyDataOwnerAgentId(retained)).toBeUndefined();
+    expect(resolveSessionStoreCompatibilityAgentId(retained)).toBe("main");
     const switched = retainLegacyDefaultAgentId(
       { agents: { ...cfg.agents, defaultId: "oak" } },
       "oak",
     );
-    expect(tryResolveLegacyDataOwnerAgentId(switched)).toBe("oak");
-    expect(resolveSessionStoreCompatibilityAgentId(switched)).toBe("oak");
+    expect(tryResolveLegacyDataOwnerAgentId(switched)).toBeUndefined();
+    expect(resolveSessionStoreCompatibilityAgentId(switched)).toBe("main");
+    // Committed migration state is what routes legacy sessions.
+    const committed: BranchConfig = {
+      agents: { ...cfg.agents, defaults: { sessionStore: { agentId: "oak" } } },
+    };
+    expect(resolveSessionStoreCompatibilityAgentId(committed)).toBe("oak");
   });
   it("reassigns a removed default to a surviving Trunk", () => {
     const next = pruneAgentConfig(cfg, "fern").config;

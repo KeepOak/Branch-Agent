@@ -2,6 +2,7 @@
 // whether a model is set up. Each hook loads once per conversation and keeps up with the engine's events.
 import { useEffect, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
+import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { listReactions, readReactions, toChips, type Reaction } from "./actions";
 import type { ApprovalDecision } from "./model";
 
@@ -97,12 +98,25 @@ export function useReactions(engine?: WindowEngine, revision = 0): {
   useEffect(() => {
     if (!engine?.sessionKey) return;
     let live = true;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const backoff = new PreparationRetry();
     // Without a signed-in person (users.self is FORBIDDEN) no chip is "yours"; reacting then reports the engine's error.
-    engine.request("users.self", {}).then((u) => live && setSelf(str(rec(rec(u).user).id) || str(rec(u).id) || null), () => live && setSelf(null));
+    engine.request("users.self", {}).then((u) => live && setSelf(str(rec(rec(u).profile).id) || str(rec(rec(u).user).id) || str(rec(u).id) || null), () => live && setSelf(null));
     // A conversation the engine hasn't stored yet has no reactions ("unknown session"); it is read again as the history grows.
-    listReactions(engine)
-      .then((raw) => live && (setReactions(readReactions(raw, self)), setError(null)))
-      .catch((e: unknown) => live && setError(errorText(e)));
+    const read = () => void listReactions(engine)
+      .then((raw) => {
+        if (!live) return;
+        backoff.reset();
+        setReactions(readReactions(raw, self));
+        setError(null);
+      })
+      .catch((e: unknown) => {
+        if (!live) return;
+        const delay = isPreparationPending(e) ? backoff.nextDelay() : null;
+        setError(isPreparationPending(e) && delay === null ? preparationTimeoutLabel("") : isPreparationPending(e) ? null : errorText(e));
+        if (delay !== null) retryTimer = setTimeout(read, delay);
+      });
+    read();
     const off = engine.onEvent(({ event, payload }) => {
       const p = rec(payload);
       if (event === "session.reaction" && str(p.sessionKey) === engine.sessionKey) {
@@ -111,6 +125,7 @@ export function useReactions(engine?: WindowEngine, revision = 0): {
     });
     return () => {
       live = false;
+      if (retryTimer) clearTimeout(retryTimer);
       off();
     };
   }, [engine, self, revision]);
@@ -128,6 +143,8 @@ export type Helper = {
   error?: string;
   parent: string;
   steps?: number;
+  updatedAt?: number;
+  createdAt?: number;
 };
 
 function readHelper(row: unknown): Helper {
@@ -139,6 +156,8 @@ function readHelper(row: unknown): Helper {
     ...(str(r.model) ? { model: str(r.model) } : {}),
     ...(str(r.subject) || str(r.lastMessagePreview) ? { task: str(r.subject) || str(r.lastMessagePreview) } : {}),
     ...(str(r.lastRunError) ? { error: str(r.lastRunError) } : {}),
+    ...(typeof r.updatedAt === "number" && Number.isFinite(r.updatedAt) ? { updatedAt: r.updatedAt } : {}),
+    ...(typeof r.createdAt === "number" && Number.isFinite(r.createdAt) ? { createdAt: r.createdAt } : {}),
     parent: str(r.spawnedBy) || str(r.parentSessionKey),
   };
 }
@@ -174,5 +193,10 @@ export function useHelpers(engine?: WindowEngine): { helpers: Helper[]; error: s
       off();
     };
   }, [engine, engine?.sessionKey, tick]);
+  useEffect(() => {
+    if (!engine?.sessionKey || !helpers.some((h) => !h.status || h.status === "running" || h.status === "queued")) return;
+    const timer = setInterval(() => setTick((t) => t + 1), 10_000);
+    return () => clearInterval(timer);
+  }, [engine?.sessionKey, helpers]);
   return { helpers: loadedRoot === engine?.sessionKey ? helpers : [], error: loadedRoot === engine?.sessionKey ? error : null, refresh: () => setTick((t) => t + 1) };
 }

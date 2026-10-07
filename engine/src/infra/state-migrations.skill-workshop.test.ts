@@ -698,7 +698,7 @@ describe("Skill Workshop migration ownership", () => {
       const config: BranchConfig = {
         agents: {
           entries: {
-            main: { default: true, workspace: state.workspaceDir, agentDir },
+            main: { workspace: state.workspaceDir, agentDir },
           },
         },
       };

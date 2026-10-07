@@ -11,6 +11,7 @@ import { Layer } from "./layer";
 import "./trunk.css";
 
 export type RemoveTrunkProps = { engine: WindowEngine; agentId: string; name: string; onClose: () => void; onRemoved?: () => void };
+export const TRUNK_REMOVED_EVENT = "branch:trunk-removed";
 
 export function RemoveTrunkDialog({ engine, agentId, name, onClose, onRemoved }: RemoveTrunkProps) {
   const [busy, setBusy] = useState(false);
@@ -19,9 +20,11 @@ export function RemoveTrunkDialog({ engine, agentId, name, onClose, onRemoved }:
   const go = async () => {
     setBusy(true); setError(null);
     try {
-      const stuck = await removeTrunk(engine, agentId);
-      if (stuck) notify(`${name} is removed, but ${stuck === 1 ? "one of its files" : `${stuck} of its files`} couldn’t move to the Trash.`, { tone: "bad", keep: true });
-      else notify(`Removed. ${name}’s conversations and files are in the Trash.`);
+      const { failed, purgeFailed } = await removeTrunk(engine, agentId);
+      const problems = [...failed, ...(purgeFailed ? ["Some conversation records could not be cleared."] : [])];
+      if (problems.length) notify(`Removed ${name}, but cleanup needs attention.`, { tone: "bad", keep: true, line: problems.join("\n") });
+      else notify(`Removed ${name}. Its files moved to the Trash and its automations stopped.`);
+      window.dispatchEvent(new CustomEvent(TRUNK_REMOVED_EVENT, { detail: { agentId } }));
       onRemoved?.(); onClose();
     }
     catch (e) { setError(errorText(e)); }
@@ -33,7 +36,7 @@ export function RemoveTrunkDialog({ engine, agentId, name, onClose, onRemoved }:
   </>;
   return (
     <Layer><Dialog title={`Remove ${name}?`} onClose={onClose} footer={footer} testid="trunk-remove">
-      <p className="tk-hint tk-plain">{name}’s conversations and files move to the Trash; nothing is deleted for good. Its automations stop.</p>
+      <p className="tk-hint tk-plain">{name} and its conversations will be removed. Its files move to the Trash on this computer, and its automations stop. Branch cannot undo this removal.</p>
       {error && <p className="tk-error" role="alert">{error}</p>}
     </Dialog></Layer>
   );

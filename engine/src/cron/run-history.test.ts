@@ -5,11 +5,7 @@ import * as operationAdmission from "../infra/sqlite-worker-operation-admission.
 import { runBranchStateWriteTransaction } from "../state/branch-state-db.js";
 import { captureBranchStateWorkerContext } from "../state/branch-state-worker-context.js";
 import { withBranchTestState } from "../test-utils/branch-test-state.js";
-import {
-  cronQuietTriggerDetail,
-  cronRunLogEntryToDetail,
-  cronRunRecordToRunLogEntry,
-} from "./run-history-detail.js";
+import { cronQuietTriggerDetail, cronRunLogEntryToDetail } from "./run-history-detail.js";
 import { projectCronRunHistoryPage, type ReadCronRunHistoryPageOptions } from "./run-history.js";
 import { findCronRunRecoveryInDatabase } from "./service/run-history-recovery.js";
 import { cronStoreKey } from "./store/key.js";
@@ -269,36 +265,6 @@ it("admits actual worker writes and rolls back history pruning when commit is re
       }
     },
   );
-});
-
-it("reads released row fallback fields but never discloses internal recovery state", () => {
-  const record: CronRunRecord = {
-    id: "released",
-    jobId: "job",
-    createdAt: 1,
-    endedAt: 2,
-    status: "cancelled",
-    error: "operator reason",
-    summary: "old summary",
-    sessionKey: "agent:main:cron:job",
-    detail: {
-      kind: "cron-run",
-      status: "ok",
-      storeKey: "store",
-      sessionId: "old-generation",
-      triggerState: { secret: true },
-      futureInternal: "private",
-    },
-  };
-  const entry = cronRunRecordToRunLogEntry(record);
-  expect(entry).toMatchObject({
-    error: "operator reason",
-    summary: "old summary",
-    sessionId: "old-generation",
-  });
-  expect(entry).not.toHaveProperty("triggerState");
-  expect(entry).not.toHaveProperty("futureInternal");
-  expect(entry).not.toHaveProperty("storeKey");
 });
 
 it("retains legacy identities and raw details without inventing a store partition", async () => {

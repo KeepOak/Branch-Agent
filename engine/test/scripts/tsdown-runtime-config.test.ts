@@ -240,18 +240,23 @@ describe("tsdown config", () => {
     const executableGraphs = new Set([
       unifiedGraph,
       expectDefined(workerGraph, "deploy worker graph"),
+      requireStandaloneRuntimeGraph("worker/code-mode-node.worker"),
       requireStandaloneRuntimeGraph("worker/file-tool-planning.worker"),
       requireStandaloneRuntimeGraph("worker/image-processor.worker"),
       requireStandaloneRuntimeGraph("worker/sqlite-store.worker"),
+      requireStandaloneRuntimeGraph("worker/branch-state-read.worker"),
+      requireStandaloneRuntimeGraph("worker/worker-native-lifecycle.worker"),
       expectDefined(handoffGraph, "managed handoff graph"),
       expectDefined(activationGraph, "package activation graph"),
       requireNativeHookRelayGraph(),
+      requireStandaloneRuntimeGraph("graft/entry"),
       requireStandaloneRuntimeGraph("infra/sqlite-readonly-location.worker"),
       requireStandaloneRuntimeGraph("infra/sqlite-source-revision.worker"),
       requireStandaloneRuntimeGraph("state/branch-state-read.worker"),
       requireStandaloneRuntimeGraph("agents/harness/native-hook-relay-client.worker"),
       requireStandaloneRuntimeGraph("process/spawn-broker/worker"),
       requireStandaloneRuntimeGraph("state/branch-state-lease-heartbeat.worker"),
+      requireStandaloneRuntimeGraph("infra/gateway-state-owner-heartbeat.worker"),
       requireStandaloneRuntimeGraph("process/supervisor/service-child-relay"),
       requireStandaloneRuntimeGraph("process/supervisor/service-child-group-anchor"),
       requireStandaloneRuntimeGraph("tooling/managed-memory-launcher"),
@@ -261,8 +266,18 @@ describe("tsdown config", () => {
       const inlinePlugins = (await resolvePluginNames(config.plugins)).filter(
         (name) => name === STATE_SCHEMA_INLINE_PLUGIN_NAME,
       );
-      expect(inlinePlugins).toHaveLength(executableGraphs.has(config) ? 1 : 0);
+      expect(inlinePlugins, entryKeys(config).join(", ")).toHaveLength(
+        executableGraphs.has(config) ? 1 : 0,
+      );
     }
+  });
+
+  it("starts Graft from its own lean graph, never the full CLI's chunks", async () => {
+    const graft = requireStandaloneRuntimeGraph("graft/entry");
+    expect(entrySources(graft)).toEqual({ "graft/entry": "src/mcp/graft-entry.ts" });
+    expect(graft).not.toBe(requireUnifiedDistGraph());
+    expect(graft.dts).toBe(false);
+    expect(graft.outputOptions?.chunkFileNames).toBe("graft/[name]-[hash].mjs");
   });
 
   it("isolates relay startup from shared runtime chunks while retaining lazy fallback", async () => {
@@ -356,10 +371,24 @@ describe("tsdown config", () => {
     expect(child.define?.SEALED_RUNTIME_BUILD).toBeUndefined();
   });
 
-  it("builds the Docker healthcheck as a stable dist entry", () => {
-    const distGraph = requireUnifiedDistGraph();
-
-    expect(entrySources(distGraph)["docker-healthcheck"]).toBe("src/docker-healthcheck.ts");
+  it.each([
+    ["docker-healthcheck", "src/docker-healthcheck.ts"],
+    ["cli/gateway-lifecycle.runtime", "src/cli/gateway-cli/lifecycle.runtime.ts"],
+    [
+      "config/sessions/session-transcript-reconcile",
+      "src/config/sessions/session-transcript-reconcile.ts",
+    ],
+    ["provider-dispatcher.runtime", "src/auto-reply/reply/provider-dispatcher.runtime.ts"],
+    ["plugins/hook-runner-global", "src/plugins/hook-runner-global.ts"],
+    ["gateway/worker-environments/runtime", "src/gateway/worker-environments/runtime.ts"],
+    // Already-running v2026.9.1 Gateways lazily load this reload entry.
+    ["gateway/plugin-channel-reload-targets", "src/gateway/plugin-channel-reload-targets.ts"],
+    [
+      "telegram-ingress-worker.runtime",
+      "extensions/telegram/src/telegram-ingress-worker.runtime.ts",
+    ],
+  ])("keeps %s behind its stable root dist entry", (entry, source) => {
+    expect(entrySources(requireUnifiedDistGraph())[entry]).toBe(source);
   });
 
   it("emits the dist modules referenced by every Docker client", () => {
@@ -406,54 +435,6 @@ describe("tsdown config", () => {
     expect(hasPluginEntry("amazon-bedrock-mantle")).toBe(false);
   });
 
-  it("keeps gateway lifecycle lazy runtime behind one stable dist entry", () => {
-    const distGraph = requireUnifiedDistGraph();
-
-    expect(entrySources(distGraph)["cli/gateway-lifecycle.runtime"]).toBe(
-      "src/cli/gateway-cli/lifecycle.runtime.ts",
-    );
-  });
-
-  it("keeps lazy transcript reconciliation behind one stable dist entry", () => {
-    const distGraph = requireUnifiedDistGraph();
-
-    expect(entrySources(distGraph)["config/sessions/session-transcript-reconcile"]).toBe(
-      "src/config/sessions/session-transcript-reconcile.ts",
-    );
-  });
-
-  it("keeps reply dispatcher lazy runtime behind one root stable dist entry", () => {
-    const distGraph = requireUnifiedDistGraph();
-
-    expect(entrySources(distGraph)["provider-dispatcher.runtime"]).toBe(
-      "src/auto-reply/reply/provider-dispatcher.runtime.ts",
-    );
-  });
-
-  it("keeps gateway shutdown hook runner behind one stable dist entry", () => {
-    const distGraph = requireUnifiedDistGraph();
-
-    expect(entrySources(distGraph)["plugins/hook-runner-global"]).toBe(
-      "src/plugins/hook-runner-global.ts",
-    );
-  });
-
-  it("keeps worker environment bootstrap behind one stable dist entry", () => {
-    const distGraph = requireUnifiedDistGraph();
-
-    expect(entrySources(distGraph)["gateway/worker-environments/runtime"]).toBe(
-      "src/gateway/worker-environments/runtime.ts",
-    );
-  });
-
-  it("preserves the reload entry lazy-loaded by already-running v2026.9.1 Gateways", () => {
-    const distGraph = requireUnifiedDistGraph();
-
-    expect(entrySources(distGraph)["gateway/plugin-channel-reload-targets"]).toBe(
-      "src/gateway/plugin-channel-reload-targets.ts",
-    );
-  });
-
   it("keeps PI model discovery synthetic auth refs behind one stable runtime dist entry", () => {
     const distGraph = requireUnifiedDistGraph();
     const importSpecifiers = [
@@ -465,14 +446,6 @@ describe("tsdown config", () => {
     expect(importSpecifiers).toEqual(["../plugins/synthetic-auth.runtime.js"]);
     expect(entrySources(distGraph)["plugins/synthetic-auth.runtime"]).toBe(
       "src/plugins/synthetic-auth.runtime.ts",
-    );
-  });
-
-  it("keeps Telegram ingress worker behind one root stable dist entry", () => {
-    const distGraph = requireUnifiedDistGraph();
-
-    expect(entrySources(distGraph)["telegram-ingress-worker.runtime"]).toBe(
-      "extensions/telegram/src/telegram-ingress-worker.runtime.ts",
     );
   });
 

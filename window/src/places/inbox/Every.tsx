@@ -67,7 +67,7 @@ export function Every({ engine, data, level, open }: { engine: WindowEngine; dat
         {set ? <button type="button" className="btn ghost sm" onClick={() => setF(START)}>Clear</button> : null}
       </div>
       {busy ? <p className="ib-err" role="alert">{busy}</p> : null}
-      <div className="ib-evwrap"><table className="ib-evt"><thead><tr><th>Title</th><th>Trunk</th><th>Kind</th><th>Last activity</th><th>Room left</th><th>Archived</th><th><span className="ib-sr">More</span></th></tr></thead>
+      <div className="ib-evwrap"><table className="ib-evt"><thead><tr><th>Title</th><th>Trunk</th><th>Kind</th><th>Last activity</th><th>Context left</th><th>Archived</th><th><span className="ib-sr">More</span></th></tr></thead>
         <tbody>{list.length ? list.map(s => <tr key={s.key}>
           <td><button type="button" className="ib-title-btn" onClick={() => open(s.key)}>{s.title}</button></td><td><Face size={20} label={names(s.agentId)} /></td><td>{kindWord(s)}</td><td>{when(s.updatedAt)}</td>
           <td className="ib-mono">{s.room === undefined ? "—" : `${Math.round(s.room * 100)}%`}</td><td>{s.archived ? "Archived" : "—"}</td>

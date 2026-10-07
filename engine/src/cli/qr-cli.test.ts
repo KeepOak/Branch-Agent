@@ -1,3 +1,4 @@
+// From openclaw/openclaw@9da070d4b99562e7b3f6069e825f1fb17b406544:src/cli/qr-cli.test.ts (atlas INTEGRATIONS-0125). Changed for Branch: Retained current upstream Control UI path coverage and all pinned assertions after the Branch rename.
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encodePairingSetupCode } from "../pairing/setup-code.js";
@@ -141,6 +142,24 @@ describe("registerQrCli", () => {
     const program = createProgram();
     await program.parseAsync(["qr", ...args], { from: "user" });
   }
+
+  it.each([
+    [[], "wss://gateway.example:8444/gateway"],
+    [["--url", "wss://override.example"], "wss://override.example"],
+  ])("preserves the Control UI path in configured QR URLs with overrides %j", async (args, url) => {
+    loadConfig.mockReturnValue({
+      gateway: {
+        bind: "loopback",
+        controlUi: { basePath: "/gateway" },
+        auth: { mode: "token", token: "tok" },
+      },
+      plugins: {
+        entries: { "device-pair": { config: { publicUrl: "https://gateway.example:8444" } } },
+      },
+    });
+    await runQr(["--json", ...args]);
+    expect(parseLastLoggedQrJson().gatewayUrl).toBe(url);
+  });
 
   async function expectQrExit(args: string[]) {
     await expect(runQr(args)).rejects.toThrow("exit");
