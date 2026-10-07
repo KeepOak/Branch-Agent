@@ -37,7 +37,6 @@ async function mount(engine: WindowEngine, me: string, selected: string) {
 
 const button = (label: string) => [...document.querySelectorAll("button")].find(b => b.textContent?.trim() === label) as HTMLButtonElement | undefined;
 async function click(label: string) { const b = button(label); expect(b, label).toBeTruthy(); await act(async () => { b!.click(); }); await act(async () => { await Promise.resolve(); }); }
-const calls = (request: ReturnType<typeof vi.fn>, method: string) => request.mock.calls.filter(([m]) => m === method).map(([, p]) => p);
 
 const BASE = {
   "users.list": { profiles: [{ id: "gateway-owner", displayName: "Rowan Vale", emails: [], mergedInto: null }, { id: "p-mira", displayName: "Mira Stone", emails: ["mira@home.test"], mergedInto: null, role: "adult" }] },
