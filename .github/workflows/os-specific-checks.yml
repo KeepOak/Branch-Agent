@@ -58,6 +58,20 @@ jobs:
         with:
           node-version: '24.19.0'
           package-manager-cache: false
+      - name: Cache pnpm store
+        uses: actions/cache@5a0d8e91002c27b2e2b5224a33b841a8eb5c2d12 # v5
+        with:
+          path: ~/Library/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml', 'scripts/feature-batch-ci-window-tooling/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
+      - name: Cache Playwright browsers
+        uses: actions/cache@5a0d8e91002c27b2e2b5224a33b841a8eb5c2d12 # v5
+        with:
+          path: ~/Library/Caches/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
       - name: Verify pins, install frozen dependencies, and run explicit feature checks
         run: node scripts/feature-batch-ci.mjs all
 
@@ -76,6 +90,20 @@ jobs:
         with:
           node-version: '24.19.0'
           package-manager-cache: false
+      - name: Cache pnpm store
+        uses: actions/cache@5a0d8e91002c27b2e2b5224a33b841a8eb5c2d12 # v5
+        with:
+          path: ~/Library/pnpm/store
+          key: pnpm-cap-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml', 'scripts/feature-batch-ci-window-tooling/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-cap-${{ runner.os }}-
+      - name: Cache Playwright browsers
+        uses: actions/cache@5a0d8e91002c27b2e2b5224a33b841a8eb5c2d12 # v5
+        with:
+          path: ~/Library/Caches/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
       - name: Verify pins, install frozen dependencies, and run capability tests
         run: node scripts/feature-batch-ci.mjs capabilities
 
@@ -102,6 +130,13 @@ jobs:
         with:
           node-version: '24.19.0'
           package-manager-cache: false
+      - name: Cache pnpm store
+        uses: actions/cache@5a0d8e91002c27b2e2b5224a33b841a8eb5c2d12 # v5
+        with:
+          path: ~/Library/pnpm/store
+          key: pnpm-slice-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml', 'scripts/feature-batch-ci-window-tooling/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-slice-${{ runner.os }}-
       - name: Validate exact inventory and coverage classification
         run: node scripts/feature-slice-ci.mjs validate
       - name: Run present source slices with frozen dependencies and strict source profiles

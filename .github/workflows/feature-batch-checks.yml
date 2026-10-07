@@ -59,5 +59,25 @@ jobs:
         with:
           node-version: '24.19.0'
           package-manager-cache: false
+      - name: Cache pnpm store
+        uses: actions/cache@5a0d8e91002c27b2e2b5224a33b841a8eb5c2d12 # v5
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+            ~/AppData/Local/pnpm/store
+            ~/Library/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml', 'scripts/feature-batch-ci-window-tooling/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
+      - name: Cache Playwright browsers
+        uses: actions/cache@5a0d8e91002c27b2e2b5224a33b841a8eb5c2d12 # v5
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/Library/Caches/ms-playwright
+            ~/AppData/Local/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
       - name: Verify pins, install frozen dependencies, and run explicit feature checks
         run: node scripts/feature-batch-ci.mjs all

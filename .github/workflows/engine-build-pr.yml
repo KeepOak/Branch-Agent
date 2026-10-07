@@ -28,6 +28,16 @@ jobs:
         with:
           node-version: '24.19.0'
           package-manager-cache: false
+      - name: Cache pnpm store
+        uses: actions/cache@5a0d8e91002c27b2e2b5224a33b841a8eb5c2d12 # v5
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+            ~/AppData/Local/pnpm/store
+            ~/Library/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('engine/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
       - run: npm install --global pnpm@12.5.1
       - run: pnpm install --frozen-lockfile
         working-directory: engine
@@ -59,6 +69,14 @@ jobs:
         with:
           node-version: '24.19.0'
           package-manager-cache: false
+      - name: Cache pnpm store
+        uses: actions/cache@5a0d8e91002c27b2e2b5224a33b841a8eb5c2d12 # v5
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('engine/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
       - run: npm install --global pnpm@12.5.1
       - run: pnpm install --frozen-lockfile
         working-directory: engine
@@ -92,6 +110,14 @@ jobs:
         with:
           node-version: '24.19.0'
           package-manager-cache: false
+      - name: Cache pnpm store
+        uses: actions/cache@5a0d8e91002c27b2e2b5224a33b841a8eb5c2d12 # v5
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('engine/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
       - run: npm install --global pnpm@12.5.1
       - run: pnpm install --frozen-lockfile
         working-directory: engine

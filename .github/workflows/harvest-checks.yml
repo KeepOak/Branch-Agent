@@ -57,6 +57,14 @@ jobs:
         with:
           node-version: '24.19.0'
           package-manager-cache: false
+      - name: Cache pnpm store (harvest lane)
+        uses: actions/cache@5a0d8e91002c27b2e2b5224a33b841a8eb5c2d12 # v5
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-harvest-${{ matrix.lane }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-harvest-${{ matrix.lane }}-
+            pnpm-harvest-
       - name: Install pinned dependencies
         env:
           HARVEST_LANE: ${{ matrix.lane }}
