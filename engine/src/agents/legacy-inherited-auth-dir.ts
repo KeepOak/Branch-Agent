@@ -25,13 +25,18 @@ export function resolveLegacyInheritedAuthAgentId(
   const configured = normalizeOptionalString(config.agents?.defaults?.authInheritance?.agentId);
   // Early setup could pin the implicit `main` before creating the first named Trunk.
   // Do not redirect a real legacy owner: only recover when main is absent and empty,
-  // and the recorded default is the unambiguous persisted credential owner.
+  // and a configured owner has persisted credentials.
   if (configured === "main" && !listAgentIds(config).includes("main")) {
-    const defaultId = normalizeOptionalString(config.agents?.defaults?.systemAgent?.agentId);
-    if (defaultId && listAgentIds(config).includes(defaultId)) {
-      const mainDir = resolveAgentDir(config, "main", env);
-      const defaultDir = resolveAgentDir(config, defaultId, env);
-      if (hasProfiles(mainDir) === false && hasProfiles(defaultDir) === true) return defaultId;
+    const mainDir = resolveAgentDir(config, "main", env);
+    if (hasProfiles(mainDir) === false) {
+      // The person-facing default Trunk owns setup sign-ins. A system-agent
+      // override can point at a separate, credential-free helper instead.
+      for (const candidate of [config.agents?.defaultId, config.agents?.defaults?.systemAgent?.agentId]) {
+        const id = normalizeOptionalString(candidate);
+        if (id && listAgentIds(config).includes(id) && hasProfiles(resolveAgentDir(config, id, env)) === true) {
+          return id;
+        }
+      }
     }
   }
   return configured ?? tryResolveLegacyDataOwnerAgentId(config) ?? "main";

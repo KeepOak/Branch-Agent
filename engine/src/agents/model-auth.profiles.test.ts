@@ -362,6 +362,30 @@ describe("configured auth inheritance owner", () => {
     );
   });
 
+  it("inherits the default Trunk's accounts when the system agent is a credential-free helper", async () => {
+    await withBranchTestState(
+      { layout: "state-only", prefix: "branch-auth-default-owner-", agentEnv: "clear", env: { OPENAI_API_KEY: undefined } },
+      async (state) => {
+        const cfg: BranchConfig = {
+          agents: {
+            ownership: "explicit",
+            defaultId: "juniper",
+            defaults: { systemAgent: { agentId: "dev" }, authInheritance: { agentId: "main" } },
+            entries: { dev: {}, juniper: {}, cedar: {} },
+          },
+        };
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:juniper": keyCredential("openai", "juniper-key") }),
+          state.agentDir("juniper"),
+        );
+        const cedarDir = state.agentDir("cedar");
+        const store = ensureAuthProfileStore(cedarDir, { allowKeychainPrompt: false, config: cfg });
+        expect(Object.keys(store.profiles)).toContain("openai:juniper");
+        expect(await resolveAuth({ provider: "openai", cfg, agentDir: cedarDir })).toMatchObject({ apiKey: "juniper-key" });
+      },
+    );
+  });
+
   it("keeps a non-roster main as owner when its legacy credentials exist", async () => {
     await withBranchTestState(
       { layout: "state-only", prefix: "branch-auth-real-main-", agentEnv: "clear", env: { OPENAI_API_KEY: undefined } },
