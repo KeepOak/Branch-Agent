@@ -42,6 +42,9 @@ import { BranchLinkDialog } from "./BranchLinkDialog";
 import { Menu, type MenuAnchor, type MenuItem } from "./Menu";
 import { createTopic, newMenuItems } from "./new-menu";
 import type { TopicListItem } from "./contact-topics";
+import { TopicRail } from "./TopicRail";
+import { patchTopicSession } from "./topic-session";
+import { loadAllTopicTranscripts } from "./topic-all";
 import { useContactSegments } from "./useContactSegments";
 import { contactAlert, contactAlertTarget, notify, readMutedContacts, saveMutedContacts } from "./notify";
 import { SaveProgressOffer, useCkptOn } from "./SaveProgress";
@@ -418,6 +421,14 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const openParentKey = lists.rows.find((row) => row.key === openKey)?.parentKey;
   const topicContact = draftContact ?? activeContact ?? contactRows.find((contact) => contact.threadKey === openParentKey) ?? contactRows.find((contact) => contact.threadKey === topicReturnKey);
   const [activeTopics, setActiveTopics] = useState<Topic[]>([]);
+  const [allTopics, setAllTopics] = useState<{ contactId: string; history: import("../thread/model").Block[]; loading: boolean; error: string } | null>(null);
+  const topicAutoRail = useRef(false);
+  useEffect(() => {
+    const preferred = (() => { try { return (JSON.parse(localStorage.getItem("branch-topics-t5") || "null") as { layout?: string } | null)?.layout || "column"; } catch { return "column"; } })();
+    const wantsRail = route.kind === "chat" && Boolean(topicContact && activeTopics.length) && innerWidth > 760 && (preferred === "column" || preferred === "rail");
+    if (wantsRail && !layout.rail && !layout.hidden) { topicAutoRail.current = true; setLayout({ rail: true }); }
+    else if (!wantsRail && topicAutoRail.current) { topicAutoRail.current = false; if (layout.rail) setLayout({ rail: false }); }
+  }, [route.kind, topicContact?.id, activeTopics.length, layout.rail, layout.hidden, setLayout]);
   const segments = useContactSegments(request, ready && activeContact ? activeContact.threadKey : null);
   const [focusTopic, setFocusTopic] = useState<{ key: string; nonce: number } | null>(null);
   useEffect(() => {
@@ -803,6 +814,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     const row = lists.rows.find((candidate) => candidate.key === topic.key);
     return { topic, updatedAt: row?.updatedAt ?? topic.anchor?.at ?? 0, preview: row?.preview ?? "", projectName: projects.projects.find((project) => project.id === topic.projectId)?.name };
   });
+  const topicMainRow = topicContact ? lists.rows.find((row) => row.key === topicContact.threadKey) : null;
+  const showingAll = Boolean(allTopics && topicContact && allTopics.contactId === topicContact.id && openKey === topicContact.threadKey);
   const home = contacts.find((c) => c.isDefault) ? contactRow(contacts.find((c) => c.isDefault)!) : homeRow(lists.rows, s.mainKey, defaultName);
   const sections = buildContactSections(contacts, prefs, now);
   const pinnedSection = sections.find((section) => section.id === "pinned");
@@ -1192,6 +1205,36 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         <StageConversation
         columnRef={setConversationColumn}
         header={compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} /> : null}
+        topics={topicContact && activeTopics.length ? <TopicRail
+          contactId={topicContact.id}
+          contactName={topicContact.name}
+          contactKey={topicContact.threadKey}
+          generalPreview={topicMainRow?.preview ?? ""}
+          generalUpdatedAt={topicMainRow?.updatedAt ?? topicContact.lastActivityAt}
+          currentKey={openKey}
+          allSelected={showingAll}
+          items={topicItems}
+          onOpen={(key) => { setAllTopics(null); if (key === topicContact.threadKey) openConversation(key); else openTopic(key); }}
+          onAll={() => {
+            const contact = topicContact;
+            setAllTopics({ contactId: contact.id, history: [], loading: true, error: "" });
+            openConversation(contact.threadKey);
+            void loadAllTopicTranscripts(request, { key: contact.threadKey, title: "General", updatedAt: topicMainRow?.updatedAt ?? contact.lastActivityAt, preview: topicMainRow?.preview ?? "" }, topicItems.map(({ topic, updatedAt, preview }) => ({ key: topic.key, title: topic.title, updatedAt, preview }))).then(
+              (history) => setAllTopics((value) => value?.contactId === contact.id ? { contactId: contact.id, history, loading: false, error: "" } : value),
+              (error: unknown) => setAllTopics((value) => value?.contactId === contact.id ? { contactId: contact.id, history: [], loading: false, error: error instanceof Error ? error.message : String(error) } : value),
+            );
+          }}
+          onLayout={(next) => {
+            const wantsRail = next === "column" || next === "rail";
+            topicAutoRail.current = wantsRail;
+            setLayout({ rail: wantsRail });
+          }}
+          onPatch={async (topic, change) => {
+            await patchTopicSession(request, topic, lists.rows.find((row) => row.key === topic.key)?.sessionId, change);
+            await list.refresh();
+            setActiveTopics(await listContactTopics(topicContact.id, (method, params) => session.request(method, params)));
+          }}
+        /> : null}
         thread={<SplitFrame panes={panes} width={splitW} onWidth={setSplitW} side={
           <SplitPanes
             panes={panes}
@@ -1211,6 +1254,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         <Thread
           lockdown={lockdown.on}
           {...areaProps}
+          engine={showingAll ? undefined : session.engine}
+          sessionKey={showingAll ? null : s.sessionKey}
           findRequest={searchFind?.key === openKey ? searchFind : null}
           onFindRequestHandled={(nonce) => setSearchFind((current) => current?.nonce === nonce ? null : current)}
           earlierPages={segments.pages}
@@ -1222,8 +1267,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           advancedDiagnostics={level !== "regular"}
           onLoadEarlier={segments.loadEarlier}
           onOpenSession={openTopic}
-          onStartTopic={activeContact?.kind === "trunk" ? startFromMessage : undefined}
-          topicUpdates={topicUpdates}
+          onStartTopic={!showingAll && activeContact?.kind === "trunk" ? startFromMessage : undefined}
+          topicUpdates={showingAll ? [] : topicUpdates}
           focusTopic={focusTopic}
           onOpenActivity={() => { setPane("Activity"); setFocusHelpers((n) => n + 1); }}
           supplement={
@@ -1235,9 +1280,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           showThinking={conversationMenu.showThinking}
           liveStartedAt={s.liveStartedAt}
           room={room.thread}
-          history={mergeRoomNotices(s.history, roomNotices)}
-          live={s.live}
-          questions={questions.list}
+          history={showingAll && !allTopics?.loading ? allTopics!.history : mergeRoomNotices(s.history, roomNotices)}
+          live={showingAll ? [] : s.live}
+          questions={showingAll ? [] : questions.list}
           onStart={(text: string) => void session.send(text)}
           recoveryFailure={openRow?.runError}
           plan={progress.card && !planDismiss.dismissed ? <PlanCard card={progress.card} onRefresh={planRefresh.refresh} refreshing={planRefresh.status} onDismiss={planDismiss.dismiss} /> : null}
@@ -1249,7 +1294,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onAnswer={(id, decision) => void session.answer(id, decision)}
         />
         </SplitFrame>}
-        notice={s.error && !isPreparationPending(s.error) ? <p className="notice indent">{s.error}</p> : null}
+        notice={showingAll && allTopics?.error ? <p className="notice indent">Couldn't read all threads: {allTopics.error}</p> : showingAll && allTopics?.loading ? <p className="notice indent">Reading all threads…</p> : s.error && !isPreparationPending(s.error) ? <p className="notice indent">{s.error}</p> : null}
         stage={stage ? (
           <ComputerStage key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} mode={stage} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} initialComputer={stageComputer} initialControl={stageTakeOver} onMode={setStage} onClose={() => { setStage(null); setStageComputer(null); setStageTakeOver(false); }} onChooseComputer={() => openSettings("computer")} onPip={(computer) => { setPip(computer); setStage(null); }} />
         ) : null}
