@@ -133,16 +133,33 @@ describe("pictures in replies", () => {
     expect((host.querySelector(".picture img") as HTMLImageElement).getAttribute("src")).toBe("data:image/png;base64,iVBORw0KGgo=");
   });
 
-  it("says Picture unavailable when it doesn't load, and Try again asks for a new ticket", async () => {
-    const { engine: e, calls } = gateway();
-    const host = await mount("![Screen](/tmp/shot.png)", e);
-    const img = host.querySelector(".picture img")!;
-    await act(async () => img.dispatchEvent(new Event("error")));
-    const gone = host.querySelector('[data-testid="picture-unavailable"]')!;
-    expect(gone.textContent).toBe("IMGScreenPicture unavailableTry again");
-    await act(async () => (gone.querySelector("button") as HTMLButtonElement).click());
+  it("asks for a new ticket without a word when a picture's ticket ran out before it loaded", async () => {
+    let n = 0;
+    const { engine: e, calls } = gateway(() => ({ available: true, mediaTicket: `v1.t${++n}.s` }));
+    const host = await mount("Saved ![s](/tmp/shot.png) here.", e);
+    const first = host.querySelector("img.md-inline-picture")!;
+    expect(first.getAttribute("src")).toContain("mediaTicket=v1.t1.s");
+    // Scrolled to after five minutes: the engine refuses the old ticket and the image fails.
+    await act(async () => first.dispatchEvent(new Event("error")));
     await act(async () => {});
     expect(calls).toHaveLength(2);
+    expect(host.querySelector('[data-testid="picture-unavailable"]')).toBeNull();
+    expect(host.querySelector("img.md-inline-picture")!.getAttribute("src")).toContain("mediaTicket=v1.t2.s");
+  });
+
+  it("says Picture unavailable when it still doesn't load after one new ticket, and Try again asks again", async () => {
+    const { engine: e, calls } = gateway();
+    const host = await mount("![Screen](/tmp/shot.png)", e);
+    await act(async () => host.querySelector(".picture img")!.dispatchEvent(new Event("error")));
+    await act(async () => {});
+    expect(calls).toHaveLength(2);
+    await act(async () => host.querySelector(".picture img")!.dispatchEvent(new Event("error")));
+    const gone = host.querySelector('[data-testid="picture-unavailable"]')!;
+    expect(gone.textContent).toBe("IMGScreenPicture unavailableTry again");
+    expect(calls).toHaveLength(2);
+    await act(async () => (gone.querySelector("button") as HTMLButtonElement).click());
+    await act(async () => {});
+    expect(calls).toHaveLength(3);
     expect(host.querySelector(".picture img")).not.toBeNull();
   });
 
