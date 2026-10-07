@@ -33,5 +33,5 @@ it("preserves the native explicit no-update result", async () => {
 });
 it("shows an actual waiting version", async () => {
   await show({ updateAvailable: { latestVersion: "1.2.3" } });
-  expect(host.textContent).toContain("1.2.3 is ready to install");
+  expect(host.textContent).toContain("A Branch update is ready");
 });
