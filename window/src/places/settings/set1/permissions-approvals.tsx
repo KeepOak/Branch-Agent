@@ -14,7 +14,7 @@ const itemsOf = (v: unknown): RecordValue[] => (Array.isArray(v) ? list(v) : lis
 export function ApprovalsDialog({ engine, onClose }: { engine: WindowEngine; onClose: () => void }) {
   const tech = useLevel() >= 2;
   return (
-    <Dialog title="Approvals" wide onClose={onClose} testid="approvals" footer={<button type="button" className="btn pri" onClick={onClose}>Close</button>}>
+    <Dialog title="Approvals" wide onClose={onClose} testid="approvals">
       <p className="hint">Commands, plugins and Branch itself, newest first.</p>
       <div className="pm-apr">
         <h3>Waiting now</h3><Waiting engine={engine} tech={tech} />

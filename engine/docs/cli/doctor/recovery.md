@@ -67,6 +67,10 @@ If it must cancel before repair starts, it reverses its own stop while its nativ
 service custody remains valid. Normal post-repair restoration still requires
 current update admission.
 
+When maintenance cannot acquire state ownership, Doctor includes the underlying
+schema or filesystem error. A shared-state database from a newer Branch Agent build
+stays unchanged; rerun Doctor with a build that supports that database version.
+
 If Doctor's output pipe closes (for example, `branch doctor --fix | head -20`),
 or Doctor receives SIGINT, SIGTERM, or SIGPIPE during maintenance, it waits for
 admitted repair work and service restoration before exiting. An ordinary repair

@@ -1,7 +1,10 @@
 // What the row menu, hover buttons and keys do to a conversation (DESIGN-SPEC §4.1.6 and its Parity adds),
 // each through the engine method its row names, followed by a read-back of the list.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { Conversation, ConversationList } from "../connect/conversations";
+import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { notify } from "./notify";
+import { forgetDeletedConversationWindow } from "./own-window";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
 
@@ -18,31 +21,32 @@ export function snoozeChoices(now: number): { label: string; until: number }[] {
     { label: "In 1 hour", until: now + 3_600_000 },
     { label: "In 3 hours", until: now + 3 * 3_600_000 },
   ];
-  const evening = at(0, 18);
-  if (evening - now > 3_600_000) {
-    choices.push({ label: "This evening", until: evening });
-  }
   choices.push({ label: "Tomorrow", until: at(1, 9) });
-  if (d.getDay() !== 0) {
-    const toMonday = ((8 - d.getDay()) % 7) || 7;
-    choices.push({ label: "Next week", until: at(toMonday, 9) });
-  }
+  const toMonday = ((8 - d.getDay()) % 7) || 7;
+  choices.push({ label: "Next week", until: at(toMonday, 9) });
   return choices;
+}
+
+/** Compact time beside a Snooze choice (§2.10); its label already says Tomorrow or Next week. */
+export function snoozeTime(until: number, label: string): string {
+  const date = new Date(until);
+  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
+  return label === "Next week" ? `${date.toLocaleDateString([], { weekday: "short" })} ${time}` : time;
 }
 
 /** "18:00", "tomorrow 09:00" or "Mon 09:00" (§4.1.6 Snooze: the wake time). */
 export function wakeWords(until: number, now: number): string {
   const d = new Date(until);
-  const hm = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  const hm = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
   const today = new Date(now);
   const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
   if (until < dayStart + 86_400_000) {
     return hm;
   }
   if (until < dayStart + 2 * 86_400_000) {
-    return `tomorrow ${hm}`;
+    return `Tomorrow · ${hm}`;
   }
-  return `${d.toLocaleDateString([], { weekday: "short" })} ${hm}`;
+  return `${d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })} · ${hm}`;
 }
 
 /** Who a patch is for: key, Trunk and the transcript it expects (archive and snooze need it). */
@@ -92,12 +96,16 @@ export function conversationActions(request: Request, list: ConversationList, op
         notify(`Couldn't snooze ${nameOf(row)}: ${reason(e)}.`, { tone: "bad" });
       }
     },
+    async setDone(row: Conversation, done: boolean) {
+      await patch(row, { done }).catch((e) => notify(`Couldn't change ${nameOf(row)}: ${reason(e)}.`, { tone: "bad" }));
+    },
     async rename(row: Conversation, label: string) {
       await patch(row, { label: label.trim() || null }).catch((e) => notify(`Couldn't rename ${nameOf(row)}: ${reason(e)}.`, { tone: "bad" }));
     },
     async remove(row: Conversation) {
       try {
         await request("sessions.delete", { key: row.key, ...(row.agentId ? { agentId: row.agentId } : {}), deleteTranscript: true });
+        await forgetDeletedConversationWindow(row.key).catch((error: unknown) => console.warn("Saved conversation window could not be removed", error));
       } catch (e) {
         notify(`Couldn't delete ${nameOf(row)}: ${reason(e)}.`, { tone: "bad" });
       }
@@ -140,14 +148,18 @@ export function conversationActions(request: Request, list: ConversationList, op
     async removeMany(rows: Conversation[]) {
       const failed: string[] = [];
       for (const row of rows) {
-        await request("sessions.delete", { key: row.key, ...(row.agentId ? { agentId: row.agentId } : {}), deleteTranscript: true }).catch(() => failed.push(nameOf(row)));
+        try {
+          await request("sessions.delete", { key: row.key, ...(row.agentId ? { agentId: row.agentId } : {}), deleteTranscript: true });
+          await forgetDeletedConversationWindow(row.key).catch((error: unknown) => console.warn("Saved conversation window could not be removed", error));
+        } catch { failed.push(nameOf(row)); }
       }
       notify(failed.length ? `Couldn't delete ${failed.join(", ")}.` : `Deleted ${rows.length} conversations.`, failed.length ? { tone: "bad" } : undefined);
       await list.refresh();
     },
     /** Adopt the Trunk's canonical contact so the shell can retain its durable list row. */
     async create(agentId?: string): Promise<string | null> {
-      try {
+      const backoff = new PreparationRetry();
+      const createOnce = async (): Promise<string> => {
         const roster = (await request("agents.list", {})) as { defaultId?: unknown; mainKey?: unknown };
         const id = agentId || (typeof roster.defaultId === "string" ? roster.defaultId : "");
         if (!id) throw new Error("Create a Trunk before starting a conversation");
@@ -162,6 +174,18 @@ export function conversationActions(request: Request, list: ConversationList, op
           throw new Error("The contact conversation is saved, but the engine has not made it available. Try opening it again");
         }
         return key;
+      };
+      try {
+        while (true) {
+          try {
+            return await createOnce();
+          } catch (error) {
+            if (!isPreparationPending(error)) throw error;
+            const delay = backoff.nextDelay();
+            if (delay === null) throw new Error(preparationTimeoutLabel("This Trunk"));
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          }
+        }
       } catch (e) {
         notify(`Couldn't start a conversation: ${reason(e)}.`, { tone: "bad" });
         return null;

@@ -462,7 +462,7 @@ describe("registerTelegramNativeCommands /login", () => {
     const commands = { native: true, ownerAllowFrom: ["200"] };
     const cfg: BranchConfig = {
       commands,
-      agents: { list: [{ id: "main", default: true }] },
+      agents: { entries: { main: {} } },
     };
     let currentConfig = cfg;
     const persist = vi.fn();

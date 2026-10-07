@@ -32,7 +32,7 @@ type GatewayAgentSelectionState = {
   selectionRequired: boolean;
 };
 
-async function listExistingAgentIdsFromDisk(): Promise<string[]> {
+export async function listExistingAgentIdsFromDisk(): Promise<string[]> {
   const agentsDir = path.join(resolveStateDir(), "agents");
   try {
     return (await fs.readdir(agentsDir, { withFileTypes: true }))
@@ -45,6 +45,10 @@ async function listExistingAgentIdsFromDisk(): Promise<string[]> {
 
 export function resolveGatewayAgentSelectionState(cfg: BranchConfig): GatewayAgentSelectionState {
   const configuredIds = listAgentEntries(cfg).map((entry) => normalizeAgentId(entry.id));
+  // A fresh normal-profile install has an internal compatibility owner but no contact yet.
+  if (cfg.agents?.ownership === "explicit" && configuredIds.length === 0) {
+    return { defaultId: "main", ownership: "explicit", selectionRequired: true };
+  }
   const contactDefault = cfg.agents?.defaultId && normalizeAgentId(cfg.agents.defaultId);
   if (contactDefault && configuredIds.includes(contactDefault)) {
     return { defaultId: contactDefault, ownership: "explicit", selectionRequired: false };
@@ -86,6 +90,7 @@ export async function listGatewayAgentsBasic(cfg: BranchConfig): Promise<
   const mainKey = normalizeMainKey(cfg.session?.mainKey);
   const scope = cfg.session?.scope ?? "per-sender";
   const configuredById = new Map<string, string | undefined>();
+  const firstContactBootstrap = cfg.agents?.ownership === "explicit" && listAgentEntries(cfg).length === 0;
   const diskIds = new Set<string>();
   const agentIds = new Set<string>();
   agentIds.add(normalizeAgentId(defaultId));
@@ -103,7 +108,7 @@ export async function listGatewayAgentsBasic(cfg: BranchConfig): Promise<
 
   for (const id of await listExistingAgentIdsFromDisk()) {
     diskIds.add(id);
-    agentIds.add(id);
+    if (!firstContactBootstrap || ownerEntries.has(id)) agentIds.add(id);
   }
 
   const allowedIds = configuredById.size > 0 ? configuredById : null;
@@ -119,7 +124,7 @@ export async function listGatewayAgentsBasic(cfg: BranchConfig): Promise<
     defaultId && visibleIds.includes(defaultId)
       ? [defaultId, ...visibleIds.filter((id) => id !== defaultId)]
       : visibleIds;
-  if (mainKey && !orderedIds.includes(mainKey) && (!allowedIds || allowedIds.has(mainKey))) {
+  if (mainKey && !firstContactBootstrap && !orderedIds.includes(mainKey) && (!allowedIds || allowedIds.has(mainKey))) {
     orderedIds.push(mainKey);
   }
 
@@ -128,7 +133,9 @@ export async function listGatewayAgentsBasic(cfg: BranchConfig): Promise<
     const agent: GatewayAgentListRow = {
       id,
       kind:
-        !configuredById.has(id) && diskIds.has(id)
+        firstContactBootstrap && id === defaultId
+          ? "system"
+          : !configuredById.has(id) && diskIds.has(id)
           ? (ownerEntries.get(id)?.kind ?? "agent")
           : "agent",
       name: configuredById.get(id),

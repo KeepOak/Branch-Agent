@@ -1,6 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { statSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
+import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import {
   sameFileMutationFingerprint,
@@ -10,7 +12,9 @@ import { readSqliteIntegrityFileIdentity } from "../infra/sqlite-file-generation
 import { withSqliteReadOnlyWorkerScope } from "../infra/sqlite-readonly-worker.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { createDeferredCore } from "../shared/deferred.js";
+import { createPermitPool } from "../shared/permit-pool.js";
 import {
+  AgentDatabasePreparationSupersededError,
   createAgentDatabaseInspectionRefusal,
   failPendingAgentDatabase,
   listAgentDatabaseAdmissionRefusals,
@@ -18,7 +22,14 @@ import {
   type AgentDatabaseAdmissionRefusal,
 } from "./agent-database-admission.js";
 import { readAgentDeletionJournalStatusInWorker } from "./agent-deletion-journal.read.js";
-import { BRANCH_AGENT_SCHEMA_VERSION } from "./branch-agent-db-contract.js";
+import {
+  AGENT_DATABASE_PREFLIGHT_CONCURRENCY,
+  BRANCH_AGENT_SCHEMA_VERSION,
+} from "./branch-agent-db-contract.js";
+import {
+  createBranchAgentDatabasePathMatcher,
+  isSameBranchAgentDatabasePath,
+} from "./branch-agent-db.paths.js";
 import type { BranchDatabaseSchemaPreflight } from "./branch-database-preflight.types.js";
 import { resolveBranchStateSqlitePath } from "./branch-state-db.paths.js";
 
@@ -35,6 +46,7 @@ type PreparationInput = {
 };
 type Activation = {
   isCurrent: () => boolean;
+  openAgent: (input: PreparationInput) => Promise<void>;
   prepareAgent: (input: PreparationInput) => Promise<void>;
 };
 type SchemaSourceWitness = Array<FileMutationFingerprint | undefined>;
@@ -70,11 +82,36 @@ function matchesSchemaSourceWitness(
   );
 }
 
+function matchesInspectionPath(
+  paths: readonly string[],
+  target: string,
+  samePath = isSameBranchAgentDatabasePath,
+): boolean {
+  return paths.some((pathname) => {
+    try {
+      return samePath(pathname, target);
+    } catch {
+      // An uncertain sibling cannot classify this target; its own inspection reports the failure.
+      return false;
+    }
+  });
+}
+
+const DEFAULT_PREPARATION_ATTEMPT_MS = 120_000;
+const MAX_PREPARATION_ATTEMPT_MS = 600_000;
+
+function preparationAttemptLimitMs(env: NodeJS.ProcessEnv): number {
+  const configured = Number(env.BRANCH_AGENT_PREPARATION_ATTEMPT_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_PREPARATION_ATTEMPT_MS;
+}
+
 const log = createSubsystemLogger("state/agent-admission");
 const startupAdmission = new AsyncLocalStorage<AgentDatabaseStartupAdmission>();
 
 /** Startup owns readers until the Gateway adopts them; only the Gateway activates agents. */
 class AgentDatabaseStartupAdmission {
+  constructor(private readonly deferInspections = true) {}
+
   private readonly controller = new AbortController();
   private readonly activation = createDeferredCore<Activation | undefined>();
   private readonly work = new Set<Promise<unknown>>();
@@ -84,6 +121,7 @@ class AgentDatabaseStartupAdmission {
   private stopped = false;
   private stopping?: Promise<void>;
   private preparation: Promise<void> = Promise.resolve();
+  private readonly opening = createPermitPool(AGENT_DATABASE_PREFLIGHT_CONCURRENCY);
   private preparedSchemaHeaders?: PreparedSchemaHeaders;
 
   get signal(): AbortSignal {
@@ -139,10 +177,19 @@ class AgentDatabaseStartupAdmission {
     );
   }
 
-  scheduling(env: NodeJS.ProcessEnv) {
+  scheduling(
+    env: NodeJS.ProcessEnv,
+    runtimePaths: readonly string[],
+    runtimeAgentIds: ReadonlySet<string>,
+  ) {
+    const samePath = createBranchAgentDatabasePathMatcher();
     return {
       signal: this.signal,
-      path: (target: PendingInspection["target"]) => target.path,
+      canDefer: (target: PendingInspection["target"]) =>
+        this.deferInspections &&
+        target.agentId !== undefined &&
+        runtimeAgentIds.has(target.agentId) &&
+        matchesInspectionPath(runtimePaths, target.path, samePath),
       track: (work: Promise<unknown>) => this.track(work),
       defer: (inspections: PendingInspection[], reason: string) =>
         this.defer({ env, inspections, reason }),
@@ -183,7 +230,7 @@ class AgentDatabaseStartupAdmission {
     priorRefusals?: ReadonlyMap<string, AgentDatabaseAdmissionRefusal>,
   ): boolean {
     const refusal = target.agentId && priorRefusals?.get(target.agentId);
-    if (!refusal) {
+    if (!refusal || !matchesInspectionPath(refusal.paths, target.path)) {
       return false;
     }
     (inspection.agentRefusals ??= []).push(refusal);
@@ -248,17 +295,81 @@ class AgentDatabaseStartupAdmission {
               readSqliteIntegrityFileIdentity(witness.pathname, witness.identity);
             }
           };
-          const assertNotDeleted = async () => {
+          const assertNotDeleted = async (signal: AbortSignal) => {
             assertCurrent();
-            const deletion = await readAgentDeletionJournalStatusInWorker(
-              agentId,
-              { env },
-              this.signal,
-            );
+            const deletion = await readAgentDeletionJournalStatusInWorker(agentId, { env }, signal);
             assertCurrent();
             if (deletion !== "absent") {
               throw new Error(`Agent ${agentId} was deleted during startup inspection`);
             }
+          };
+          // Each attempt gets its own time limit, counted from when it holds the preparation lane
+          // (never while it waits behind a sibling), doubled after each expiry so a slow machine
+          // still finishes. An expired attempt releases the lane even if its work ignores the abort.
+          let attemptLimitMs = preparationAttemptLimitMs(env);
+          const attempt = () => {
+            const controller = new AbortController();
+            const signal = AbortSignal.any([this.signal, controller.signal]);
+            const assertAttemptCurrent = () => {
+              signal.throwIfAborted();
+              assertCurrent();
+            };
+            return withSqliteReadOnlyWorkerScope(
+              async () => {
+                await assertNotDeleted(signal);
+                await preparePendingAgentDatabase(
+                  refusal,
+                  { env, assertCurrent: assertAttemptCurrent },
+                  async () => {
+                    const input = {
+                      agentId,
+                      paths,
+                      env,
+                      signal,
+                      assertCurrent: assertAttemptCurrent,
+                    };
+                    const release = await this.opening.acquire({ signal });
+                    try {
+                      assertAttemptCurrent();
+                      await activation.openAgent(input);
+                    } finally {
+                      release?.();
+                    }
+                    // A failed agent must release the preparation lane before its backoff;
+                    // otherwise one degraded agent blocks every sibling indefinitely.
+                    const completion = createDeferredCore();
+                    const previous = this.preparation;
+                    this.preparation = completion.promise;
+                    try {
+                      await previous;
+                      const timer = setTimeout(() => {
+                        log.warn("agent database preparation watchdog: attempt expired; retrying", {
+                          agentId,
+                          paths,
+                          attemptLimitMs,
+                        });
+                        controller.abort(new Error(`Agent ${agentId} preparation watchdog expired`));
+                      }, attemptLimitMs);
+                      timer.unref?.();
+                      try {
+                        await racePromiseWithAbortSignal(activation.prepareAgent(input), signal);
+                        await assertNotDeleted(signal);
+                      } finally {
+                        clearTimeout(timer);
+                      }
+                    } finally {
+                      completion.resolve();
+                    }
+                  },
+                );
+              },
+              { signal, deadlineOwnedByCaller: true },
+            ).catch((error: unknown) => {
+              if (controller.signal.aborted && !this.signal.aborted) {
+                attemptLimitMs = Math.min(attemptLimitMs * 2, MAX_PREPARATION_ATTEMPT_MS);
+              }
+              throw error;
+            });
           };
           try {
             assertCurrent();
@@ -280,22 +391,32 @@ class AgentDatabaseStartupAdmission {
                 );
               }
             }
-            await withSqliteReadOnlyWorkerScope(
-              async () => {
-                await assertNotDeleted();
-                await preparePendingAgentDatabase(refusal, { env, assertCurrent }, async () => {
-                  await activation.prepareAgent({
+            let retryDelayMs = 2_000;
+            for (;;) {
+              try {
+                await attempt();
+                break;
+              } catch (error) {
+                if (this.stopped) {
+                  throw error;
+                }
+                assertCurrent();
+                if (error instanceof AgentDatabasePreparationSupersededError) {
+                  log.info("agent database startup preparation superseded; retrying", {
                     agentId,
-                    paths,
-                    env,
-                    signal: this.signal,
-                    assertCurrent,
                   });
-                  await assertNotDeleted();
+                  continue;
+                }
+                log.warn("agent database startup preparation failed; retrying", {
+                  agentId,
+                  paths,
+                  reason: formatErrorMessage(error),
+                  retryDelayMs,
                 });
-              },
-              { signal: this.signal, deadlineOwnedByCaller: true },
-            );
+                await delay(retryDelayMs, undefined, { signal: this.signal });
+                retryDelayMs = Math.min(retryDelayMs * 2, 60_000);
+              }
+            }
             log.info("agent database recovered after background inspection and preparation", {
               agentId,
               paths,
@@ -312,9 +433,7 @@ class AgentDatabaseStartupAdmission {
             }
           }
         };
-        const prepared = this.preparation.then(prepare);
-        this.preparation = prepared.catch(() => {});
-        await prepared;
+        await prepare();
       })();
       this.track(recovery);
     }
@@ -364,8 +483,11 @@ export function getAgentDatabaseStartupAdmission(): AgentDatabaseStartupAdmissio
 
 export async function withAgentDatabaseStartupAdmission<T>(
   run: (admission: AgentDatabaseStartupAdmission) => Promise<T>,
+  options: { deferInspections?: boolean } = {},
 ): Promise<T> {
-  const admission = getAgentDatabaseStartupAdmission() ?? new AgentDatabaseStartupAdmission();
+  const admission =
+    getAgentDatabaseStartupAdmission() ??
+    new AgentDatabaseStartupAdmission(options.deferInspections);
   try {
     return await startupAdmission.run(admission, () => run(admission));
   } finally {

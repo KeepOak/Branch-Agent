@@ -173,14 +173,8 @@ export function formatEventLabel(event: CanopyEvent): string {
   return t(eventLabelKeys[event.kind]);
 }
 
-export function matchesFilter(
-  card: CanopyCard,
-  options: { query: string; priority: "all" | CanopyPriority },
-): boolean {
-  if (options.priority !== "all" && card.priority !== options.priority) {
-    return false;
-  }
-  const query = options.query.trim().toLowerCase();
+export function matchesCardQuery(card: CanopyCard, search: string): boolean {
+  const query = search.trim().toLowerCase();
   if (!query) {
     return true;
   }

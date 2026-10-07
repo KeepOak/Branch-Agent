@@ -397,6 +397,8 @@ It omits these per-agent tables:
 - `auth_profile_store`
 - `session_suggestions`
 
+For generated plugin model catalogs in per-agent `cache_entries`, including retained migration copies, it removes provider and model API keys and headers while retaining model inventory and unrelated cache rows. Unusable generated-cache rows are omitted rather than exporting unknown secrets.
+
 The backup manifest records omitted tables in `excludedTables` and omitted
 machine-state prefixes in `excludedConfigStateKeyPrefixes`. Restore reports
 omitted tables and machine-state prefixes so a redacted snapshot cannot be
@@ -478,6 +480,69 @@ command job runs on the Gateway host; for a remote Gateway, create the cron
 job manually with `branch cron add`.
 
 Disabling a schedule finds the managed automation across all list pages, even after renaming it. Unrelated automations with the same name are left in place.
+
+### Settings › Backups and the files scope
+
+Branch's **Settings › Backups** page manages the Git schedule without a terminal. It
+always creates the schedule with `--all --exclude-secrets --files`, so passwords, keys
+and sign-ins never leave the computer, and it stays the same Gateway job as
+`backup enable --repository` (declaration key `branch-backup-scheduled`):
+
+- **Where backups go**: a folder on this computer (it becomes the backup repository,
+  no push), or a Git repository address. For a repository, Branch keeps a private local
+  copy beside the state directory (`<stateDir>-backup-<id>`) and pushes it to the
+  repository's `backups` branch with your Git sign-in. A history that already exists on
+  that branch is adopted. Addresses that carry a sign-in (`https://user:token@…`) are
+  refused. Example: a private Git repository you own, such as
+  `https://github.com/you/branch-backups.git`, receives the backups on its
+  `backups` branch and its other branches are left alone.
+- **How often**: off, every day or every week. Off keeps the destination, so
+  **Back up now** still works.
+- **Back up now** runs the stored schedule through cron at once (one run at a time,
+  recorded in the automation's history), and the page shows the last result: time,
+  succeeded or failed, and the commit.
+
+Gateway RPC (operator admin scope): `backup.schedule.set` (`destination`
+`{ kind: "folder", path }` or `{ kind: "git", url }`, `everyMs`, `enabled`),
+`backup.schedule.clear` and `backup.run`. `backup.status` schedules also report
+`push`, `excludeSecrets`, `files` and, for pushed schedules, the `remote` address.
+
+`branch backup git create --files` (and `backup enable --files`) adds a `files/` scope
+beside the database dumps:
+
+```text
+files/manifest.json
+files/config/branch.json          # the authored config, every secret field redacted
+files/workspaces/<agentId>/...    # each Trunk's workspace: memory markdown, instructions, Library
+files/media/...                   # pictures, sound, video and PDFs from <stateDir>/media
+```
+
+Media is copied only when a file has a media extension (images, audio, video or PDF) and
+the matching file signature, so JSON records, keys, `.env` files or text renamed to `.png`
+stay out. The regenerable `playback-transcode/` cache is skipped and links are not
+followed. Two limits keep the history small; files over either are skipped and counted,
+and the run's result says `N large files skipped`, which Settings › Backups shows under
+**Last backup**:
+
+| Option                     | Meaning                                        | Default |
+| -------------------------- | ---------------------------------------------- | ------- |
+| `--media-max-file-mb <n>`  | Largest media file backed up, in MB.           | 50      |
+| `--media-max-total-mb <n>` | Most media in one backup, in MB (path order).  | 1024    |
+
+Both require `--files` and travel with the scheduled job; Settings › Backups sets them
+under **Media** at the Advanced level (`backup.schedule.set` `mediaMaxFileMb` and
+`mediaMaxTotalMb`).
+
+The files scope never copies secrets, with or without `--exclude-secrets`: the config is
+redacted with the same rules as `config.get`; `.env*`, `.netrc`, `.npmrc`, `.pypirc`,
+`.git-credentials`, `auth-profiles.json`, `auth.json`, `credentials.json`, key and
+certificate files (`*.pem`, `*.key`, `*.p12`, `*.pfx`, SSH `id_*` keys), SQLite files,
+`.git`, `node_modules` and `credentials` folders are skipped from workspaces; the state directory (unless
+the workspace lives inside it), the config file, the credentials directory, every agent
+directory, private update captures and the backup repository itself are never copied, even
+from a workspace that contains them; symbolic links are not followed. A workspace's own
+`.gitignore` does not drop files from the backup. Scheduled runs use the Gateway's own
+`branch` command, so they work without `branch` on `PATH`.
 
 ## Recorded runs and freshness
 

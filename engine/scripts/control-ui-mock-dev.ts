@@ -91,6 +91,7 @@ const FIXTURES = [
   "plugins-dense",
   "reactions",
   "sidebar-roster",
+  "startup-pending",
   "swarm",
   "update-available",
   "update-blocked",
@@ -2123,7 +2124,7 @@ async function createChatPickerScenario(
       ? "agent:main:production-export"
       : fixture === "dashboards"
         ? "agent:main:dashboard:release-health"
-        : fixture === "update-available"
+        : fixture === "update-available" || fixture === "startup-pending"
           ? "agent:main:home-server"
           : fixture === "update-blocked"
             ? "agent:main:model-budget"
@@ -3289,6 +3290,7 @@ async function createChatPickerScenario(
       taxChildRow,
     ],
     sessionKey: fixtureSessionKey,
+    startupPendingResponses: fixture === "startup-pending" ? 4 : 0,
     workspace: "/Users/demo/Projects/branch",
     workspaceGit: true,
   };
@@ -3478,7 +3480,7 @@ async function createMockGatewayPlugin(
     name: "branch-control-ui-mock-gateway",
     transformIndexHtml(html) {
       const rosterPreferenceScript = `<script data-branch-sidebar-roster>
-        ${fixture === "sidebar-roster" ? 'localStorage.setItem("branch:control-ui:community-invite", JSON.stringify({ dismissedAtMs: Date.now() }));' : ""}
+        ${fixture === "sidebar-roster" ? 'localStorage.setItem("branch:control-ui:community-invite:v2", JSON.stringify({ dismissedAtMs: Date.now() }));' : ""}
         if (new URLSearchParams(location.search).get("sidebarAgents") === "roster") {
           const gatewayUrl = window["__BRANCH_NATIVE_CONTROL_AUTH__"].gatewayUrl;
           const key = "branch.control.settings.v1:" + gatewayUrl;

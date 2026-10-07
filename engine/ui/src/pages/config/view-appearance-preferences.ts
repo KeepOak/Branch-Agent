@@ -200,8 +200,7 @@ export function renderChatPreferencesSection(props: ConfigProps) {
   );
   const holdToRecordDefaultDescription = renderSettingsDefaultDescription(
     t("common.enabled"),
-    (props.composerHoldToRecord ?? UI_APPEARANCE_DEFAULTS.composerHoldToRecord) !==
-      UI_APPEARANCE_DEFAULTS.composerHoldToRecord,
+    props.composerHoldToRecord !== UI_APPEARANCE_DEFAULTS.composerHoldToRecord,
   );
   const showTaskProgressDefaultDescription = renderSettingsDefaultDescription(
     t("common.enabled"),
@@ -323,42 +322,28 @@ export function renderChatPreferencesSection(props: ConfigProps) {
           ],
           onChange: (value) => props.setCatalogOpenTarget(normalizeCatalogOpenTarget(value)),
         })}
-        ${
-          props.setOpenLinksExternally
-            ? renderSettingsToggleRow({
-                title: t("configView.chatPrefs.openLinksExternally"),
-                description: html`${t("configView.chatPrefs.openLinksExternallyHint")}<br />
-                  ${t("configView.chatPrefs.openLinksExternallyStorage")}`,
-                checked: props.openLinksExternally === true,
-                onChange: props.setOpenLinksExternally,
-              })
-            : nothing
-        }
+        ${renderSettingsToggleRow({
+          title: t("configView.chatPrefs.openLinksExternally"),
+          description: html`${t("configView.chatPrefs.openLinksExternallyHint")}<br />
+            ${t("configView.chatPrefs.openLinksExternallyStorage")}`,
+          checked: props.openLinksExternally,
+          onChange: props.setOpenLinksExternally,
+        })}
         ${renderSettingsMicrophoneField(props)} ${renderSettingsCameraField(props)}
-        ${
-          props.setComposerHoldToRecord
-            ? renderSettingsToggleRow({
-                title: t("chat.composer.holdToRecordSetting"),
-                description: html`${t("chat.composer.holdToRecordSettingDescription")}<br />
-                  ${holdToRecordDefaultDescription} ${t("quickSettings.personal.browserOnly")}`,
-                checked: props.composerHoldToRecord ?? UI_APPEARANCE_DEFAULTS.composerHoldToRecord,
-                onChange: props.setComposerHoldToRecord,
-              })
-            : nothing
-        }
+        ${renderSettingsToggleRow({
+          title: t("chat.composer.holdToRecordSetting"),
+          description: html`${t("chat.composer.holdToRecordSettingDescription")}<br />
+            ${holdToRecordDefaultDescription} ${t("quickSettings.personal.browserOnly")}`,
+          checked: props.composerHoldToRecord,
+          onChange: props.setComposerHoldToRecord,
+        })}
       </div>
     </section>
   `;
 }
 
-// Trellis pet toggles and the Trellis index live with the rest of the appearance
-// prefs; the toggles are browser-local, so embedded editors omit this section.
 export function renderTrellisPetSection(props: ConfigProps) {
-  if (!props.setTrellisPetVisits || !props.setTrellisPetSounds) {
-    return nothing;
-  }
-  const trellisPetVisits = props.trellisPetVisits ?? UI_APPEARANCE_DEFAULTS.trellisPetVisits;
-  const trellisPetSounds = props.trellisPetSounds ?? UI_APPEARANCE_DEFAULTS.trellisPetSounds;
+  const { trellisPetVisits, trellisPetSounds } = props;
   const activeTheme =
     BUILTIN_THEMES.find((theme) => theme.id === props.theme) ??
     props.themeCatalog?.themes.find((theme) => theme.id === props.theme);
@@ -397,7 +382,7 @@ export function renderTrellisPetSection(props: ConfigProps) {
             ${trellisVisitsDefaultDescription}
             ${t("quickSettings.personal.browserOnly")}${themeHiddenDescription}`,
           checked: trellisPetVisits,
-          onChange: (enabled) => props.setTrellisPetVisits?.(enabled),
+          onChange: props.setTrellisPetVisits,
         })}
         ${renderSettingsToggleRow({
           title: t("quickSettings.appearance.trellisSounds"),
@@ -408,7 +393,7 @@ export function renderTrellisPetSection(props: ConfigProps) {
             )}<br />
             ${trellisSoundsDefaultDescription} ${t("quickSettings.personal.browserOnly")}`,
           checked: trellisPetSounds,
-          onChange: (enabled) => props.setTrellisPetSounds?.(enabled),
+          onChange: props.setTrellisPetSounds,
           onAct: (enabled) => {
             if (enabled) {
               previewTrellisChirp();
@@ -503,9 +488,7 @@ export function renderSidebarPreferencesSection(props: ConfigProps) {
   );
   // The delete dialog's "Don't ask me again" writes this off; this row is where
   // the operator turns it back on, so it has to stay next to the session prefs.
-  const setSessionDeleteConfirm = props.setSessionDeleteConfirm;
-  const sessionDeleteConfirm =
-    props.sessionDeleteConfirm ?? UI_APPEARANCE_DEFAULTS.sessionDeleteConfirm;
+  const sessionDeleteConfirm = props.sessionDeleteConfirm;
   const deleteConfirmDefaultDescription = renderSettingsDefaultDescription(
     t("common.enabled"),
     sessionDeleteConfirm !== UI_APPEARANCE_DEFAULTS.sessionDeleteConfirm,
@@ -524,17 +507,13 @@ export function renderSidebarPreferencesSection(props: ConfigProps) {
           checked: props.sidebarLiveActivity,
           onChange: props.setSidebarLiveActivity,
         })}
-        ${
-          setSessionDeleteConfirm
-            ? renderSettingsToggleRow({
-                title: t("configView.sidebarPrefs.deleteConfirm"),
-                description: html`${t("configView.sidebarPrefs.deleteConfirmHint")}<br />
-                  ${deleteConfirmDefaultDescription} ${t("quickSettings.personal.browserOnly")}`,
-                checked: sessionDeleteConfirm,
-                onChange: setSessionDeleteConfirm,
-              })
-            : nothing
-        }
+        ${renderSettingsToggleRow({
+          title: t("configView.sidebarPrefs.deleteConfirm"),
+          description: html`${t("configView.sidebarPrefs.deleteConfirmHint")}<br />
+            ${deleteConfirmDefaultDescription} ${t("quickSettings.personal.browserOnly")}`,
+          checked: sessionDeleteConfirm,
+          onChange: props.setSessionDeleteConfirm,
+        })}
       </div>
       ${
         hiddenCatalogIds.length > 0

@@ -4,21 +4,19 @@ import { loadSessionEntry, upsertSessionEntryCore } from "../config/sessions/ses
 import { makeCronJob } from "../cron/delivery.test-helpers.js";
 import { loadCronStore, saveCronStore } from "../cron/store.js";
 import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
+import { closeStateDatabaseForTest } from "../test-utils/database-cleanup.js";
 import { withBranchTestState } from "../test-utils/branch-test-state.js";
+import { withAgentDatabaseMaintenanceLease } from "./branch-agent-db-maintenance-lease.js";
 import {
   closeBranchAgentDatabasesForTest,
   ensureBranchAgentDatabaseSchema,
   BRANCH_AGENT_SCHEMA_VERSION,
   openBranchAgentDatabase,
-  withAgentDatabaseMaintenanceLease,
 } from "./branch-agent-db.js";
 import { removeCanonicalValidationFromHistoricalAgentFixture } from "./branch-agent-db.test-support.js";
 import { restoreEmptyV21StorageForHistoricalFixture } from "./branch-agent-schema-v21.test-support.js";
 import { BRANCH_STATE_SCHEMA_VERSION } from "./branch-state-db-contract.js";
-import {
-  closeBranchStateDatabaseForTest,
-  openBranchStateDatabase,
-} from "./branch-state-db.js";
+import { openBranchStateDatabase } from "./branch-state-db.js";
 
 describe("creator namespace upgrades", () => {
   it("qualifies only proven historical seams atomically and keeps a restorable backup", async () => {
@@ -155,7 +153,7 @@ describe("creator namespace upgrades", () => {
       initial.db
         .exec(`UPDATE cron_jobs SET job_json = json_remove(job_json, '$.createdActor.source');
         PRAGMA user_version = 13; UPDATE schema_meta SET schema_version = 13;`);
-      closeBranchStateDatabaseForTest();
+      await closeStateDatabaseForTest();
       const reopened = openBranchStateDatabase({ env: state.env });
       expect(reopened.db.prepare("PRAGMA user_version").get()?.user_version).toBe(
         BRANCH_STATE_SCHEMA_VERSION,

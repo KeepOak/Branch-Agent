@@ -48,16 +48,6 @@ export type SkillUploadMetadataRow = InferResult<
   ReturnType<typeof selectSkillUploadMetadata>
 >[number];
 
-export function resolveSkillUploadDatabaseOptions(options: {
-  env?: NodeJS.ProcessEnv;
-  path?: string;
-}): BranchStateDatabaseOptions {
-  return {
-    ...(options.env ? { env: options.env } : {}),
-    ...(options.path ? { path: options.path } : {}),
-  };
-}
-
 function openSkillUploadDatabase(options: BranchStateDatabaseOptions) {
   const database = openBranchStateDatabase(options);
   return {

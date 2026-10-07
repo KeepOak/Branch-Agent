@@ -1,5 +1,6 @@
 import path from "node:path";
 import { optionalFiniteNumberSchema } from "branch/plugin-sdk/channel-actions";
+import type { MemoryCallerContext } from "branch/plugin-sdk/memory-host-search";
 import type { BranchPluginToolContext } from "branch/plugin-sdk/plugin-entry";
 import { asNonArrayRecord } from "branch/plugin-sdk/string-coerce-runtime";
 import { textResult } from "branch/plugin-sdk/tool-results";
@@ -110,6 +111,7 @@ type WikiToolMemoryContext = {
   sandboxed?: boolean;
   conversationRecall?: BranchPluginToolContext["conversationRecall"];
   signal?: AbortSignal;
+  memoryContext?: MemoryCallerContext;
 };
 
 export function createWikiStatusTool(
@@ -155,6 +157,7 @@ export function createWikiSearchTool(
         agentSessionKey: memoryContext.agentSessionKey,
         sandboxed: memoryContext.sandboxed,
         conversationRecall: memoryContext.conversationRecall,
+        memoryContext: memoryContext.memoryContext,
         query: params.query,
         maxResults: params.maxResults,
         ...(params.backend ? { searchBackend: params.backend } : {}),
@@ -255,6 +258,7 @@ export function createWikiGetTool(
         agentSessionKey: memoryContext.agentSessionKey,
         sandboxed: memoryContext.sandboxed,
         conversationRecall: memoryContext.conversationRecall,
+        memoryContext: memoryContext.memoryContext,
         lookup,
         fromLine: params.fromLine,
         lineCount: params.lineCount,

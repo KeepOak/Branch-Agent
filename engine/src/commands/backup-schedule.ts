@@ -21,7 +21,7 @@ import { executeGitCommand } from "../infra/git-exec.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { shortenHomePath } from "../utils.js";
-import { GIT_BACKUP_PUSH_CREDENTIAL_WARNING } from "./backup-git.js";
+import { GIT_BACKUP_PUSH_CREDENTIAL_WARNING, resolveMediaLimits } from "./backup-git.js";
 import { resolveRequiredBackupPath } from "./backup-shared.js";
 
 const LOCAL_GATEWAY_REQUIRED_ERROR =
@@ -40,6 +40,9 @@ export type BackupScheduleOptions = GatewayRpcOpts &
     namespace?: string;
     claimNamespace?: boolean;
     includeWorkspace?: boolean;
+    files?: boolean;
+    mediaMaxFileMb?: string;
+    mediaMaxTotalMb?: string;
   };
 
 export type BackupDisableOptions = GatewayRpcOpts & { git?: boolean; offsite?: boolean };
@@ -60,6 +63,21 @@ function resolveScheduledRedaction(options: BackupScheduleOptions): boolean {
   return options.includeSecrets !== true;
 }
 
+/** Media limits only travel with --files; validated now so the scheduled run cannot fail on them. */
+function resolveScheduledMediaLimits(options: BackupScheduleOptions) {
+  if (options.mediaMaxFileMb === undefined && options.mediaMaxTotalMb === undefined) {
+    return {};
+  }
+  if (!options.files) {
+    throw new Error("--media-max-file-mb and --media-max-total-mb require --files.");
+  }
+  const limits = resolveMediaLimits(options);
+  return {
+    ...(options.mediaMaxFileMb !== undefined ? { mediaMaxFileMb: limits.maxFileMb } : {}),
+    ...(options.mediaMaxTotalMb !== undefined ? { mediaMaxTotalMb: limits.maxTotalMb } : {}),
+  };
+}
+
 function resolveScheduleSpec(options: BackupScheduleOptions, everyMs: number): BackupScheduleSpec {
   if (options.to !== undefined) {
     if (
@@ -68,10 +86,13 @@ function resolveScheduleSpec(options: BackupScheduleOptions, everyMs: number): B
       options.excludeSecrets ||
       options.includeSecrets ||
       options.globalOnly ||
+      options.files ||
+      options.mediaMaxFileMb !== undefined ||
+      options.mediaMaxTotalMb !== undefined ||
       options.agent !== undefined
     ) {
       throw new Error(
-        "--to cannot be combined with Git backup options (--repository, --push, --exclude-secrets, --include-secrets, --global-only, --agent).",
+        "--to cannot be combined with Git backup options (--repository, --push, --exclude-secrets, --include-secrets, --files, --media-max-*, --global-only, --agent).",
       );
     }
     const location = options.to.trim();
@@ -130,6 +151,8 @@ function resolveScheduleSpec(options: BackupScheduleOptions, everyMs: number): B
         : { kind: "all" },
     push: options.push === true,
     excludeSecrets: resolveScheduledRedaction(options),
+    ...(options.files ? { files: true } : {}),
+    ...resolveScheduledMediaLimits(options),
   };
 }
 

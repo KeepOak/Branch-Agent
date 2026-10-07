@@ -5,15 +5,18 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { errorText } from "./adapter";
 import { advance, safeSignInUrl, type WizardAnswer, type WizardResult, type WizardStep } from "./account-login";
+export type { WizardStep } from "./account-login";
 
 export type WizardView = { phase: "starting" } | { phase: "step"; step: WizardStep; waiting: boolean } | { phase: "done" } | { phase: "error"; message: string };
-export type WizardStart = { method: string; params: Record<string, unknown> };
+/** `secret` answers one text step once (a pasted token): kept out of the start params and never logged. A step the
+ *  engine shows again (it rejected the value) is left for the owner, with the engine's words. */
+export type WizardStart = { method: string; params: Record<string, unknown>; secret?: { match: (step: WizardStep) => boolean; value: string } };
 
 export function useWizard(engine: WindowEngine, start: WizardStart) {
   const [view, setView] = useState<WizardView>({ phase: "starting" });
   const [value, setValue] = useState<unknown>(undefined);
   const [busy, setBusy] = useState(true);
-  const session = useRef({ id: crypto.randomUUID(), notes: [] as string[], opened: new Set<string>(), live: true, generation: 0 });
+  const session = useRef({ id: crypto.randomUUID(), notes: [] as string[], opened: new Set<string>(), answered: new Set<string>(), live: true, generation: 0 });
   const show = (step: WizardStep, waiting: boolean) => {
     const url = safeSignInUrl(step.externalUrl);
     if (url && !session.current.opened.has(url)) {
@@ -24,6 +27,12 @@ export function useWizard(engine: WindowEngine, start: WizardStart) {
   };
   const apply = (result: WizardResult) => {
     if (!session.current.live) return;
+    const secret = start.secret;
+    if (!result.done && result.step && secret && result.step.type === "text" && !session.current.answered.has(result.step.id) && secret.match(result.step)) {
+      session.current.answered.add(result.step.id);
+      next({ stepId: result.step.id, value: secret.value });
+      return;
+    }
     setBusy(false);
     if (!result.done && result.step) {
       setValue(result.step.initialValue ?? (result.step.type === "multiselect" ? [] : ""));

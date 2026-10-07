@@ -1,6 +1,7 @@
 // The model menu (DESIGN-SPEC §4.3.4 and its Parity adds): which model answers here, how long it thinks, its speed,
 // its room to plan, and what is shown here. Every choice is a sessions.patch on this conversation, read back after.
-import { useEffect, useRef, useState, type RefObject } from "react";
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+import { useRef, useState, type RefObject } from "react";
 import { str, type Rec } from "./engine";
 import { accountLine, capitalize, groupModels, thinkingChoices, type ModelChoice } from "./model";
 import { ModelAccessInfo } from "./ModelAccessInfo";
@@ -10,11 +11,14 @@ import { Popover, moveFocus } from "./Popover";
 import { Head, MenuItem, Segmented, Sep } from "./ui";
 import { Icon, type IconName } from "./icons";
 import { Logo, serviceName as brandName } from "../places/settings/set1/service";
-import { accountName, accountsOf, providersOf, type Account } from "../places/settings/set1/accounts";
+import { accountName, type Account } from "../places/settings/set1/accounts";
 import { shows, useLevel } from "../places-nav/level";
 import type { WindowEngine } from "./engine";
+import { NOT_ON_PLAN, offPlan, planOrder, runsOnCodex, useCodexPlan } from "./codex-plan";
+import { currentModelAccount, useModelAccounts } from "./useModelAccount";
 
 type Props = {
+  embedded?: boolean;
   anchor: RefObject<HTMLElement | null>;
   onClose: () => void;
   models: ModelChoice[];
@@ -32,36 +36,22 @@ type Props = {
   onRetry: () => void;
   /** Reads the current service's accounts (models.authStatus) for the Account group and the fallback line. */
   engine?: WindowEngine;
+  /** The conversation's Trunk, whose ChatGPT plan (codex.models) says which Codex models it can run. */
+  trunkId?: string;
 };
 
 const NO_PICK_ACCOUNT = "Picking one account for a single conversation isn't in the engine yet. Change the order in Accounts.";
 
-/** Every model account, in the order Branch uses them (models.authStatus). */
-function useAccounts(engine: WindowEngine | undefined): Account[] {
-  const [all, setAll] = useState<Account[]>([]);
-  useEffect(() => {
-    if (!engine) return;
-    let live = true;
-    engine.request("models.authStatus", {}).then(
-      (r) => live && setAll(accountsOf(providersOf((r as Rec | null)?.providers))),
-      () => live && setAll([]),
-    );
-    return () => {
-      live = false;
-    };
-  }, [engine]);
-  return all;
-}
 const accountsFor = (all: Account[], provider: string | undefined) => (provider ? all.filter((a) => a.p.provider === provider || a.p.authProvider === provider) : []);
 const UNAVAILABLE_LABELS: Record<AvailabilityReason, string> = {
   "missing-auth": "sign-in needed", "auth-failed": "sign-in needs attention",
   cooldown: "resting after a limit", "unsupported-runtime": "runtime unavailable",
 };
 
-/** The line under a model: its first account by name ("Claude · you@example.com"), else its service. */
-function modelLine(m: ModelChoice, all: Account[]): string {
+/** The line under a model: its selected account by name, else its service. */
+function modelLine(m: ModelChoice, all: Account[], row: Rec): string {
   if (m.local) return accountLine(m);
-  const first = accountsFor(all, m.provider)[0];
+  const first = currentModelAccount(all, m.provider, row);
   const line = first ? accountName(first) : brandName(m.provider);
   const reason = m.runtimeMetadata?.unavailableReason;
   return m.available ? line : `${line} · ${reason ? UNAVAILABLE_LABELS[reason] : "unavailable"}`;
@@ -96,7 +86,8 @@ export function ModelMenu(p: Props) {
   const shown = locked ? p.models.filter((m) => m.ref === p.currentRef) : p.models;
   const groups = groupModels(shown, query);
   const advanced = shows(useLevel(), "advanced");
-  const allAccounts = useAccounts(p.engine);
+  const allAccounts = useModelAccounts(p.engine, p.trunkId ?? "", false);
+  const plan = useCodexPlan(p.engine, p.trunkId, p.models.some(runsOnCodex));
   const accounts = accountsFor(allAccounts, p.current?.provider);
   const levels = thinkingChoices(p.current);
   const speeds = p.current?.serviceTiers.includes("ultrafast") ? [...SPEEDS, { id: "ultrafast", label: "Ultrafast" }] : SPEEDS;
@@ -104,13 +95,13 @@ export function ModelMenu(p: Props) {
     p.onClose();
     p.onOpen?.(target);
   };
-  return (
-    <Popover anchor={p.anchor} onClose={p.onClose} label="Model and how long it thinks" className="c-model">
+  const content = (
       <div
         ref={body}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
+            e.stopPropagation();
             moveFocus(body.current, e.key === "ArrowDown" ? 1 : -1);
           }
         }}
@@ -132,19 +123,21 @@ export function ModelMenu(p: Props) {
           {groups.map((g) => (
             <div key={g.service} role="group" aria-label={g.service}>
               <div className="c-grp">{g.models[0]?.local ? g.service : brandName(g.service)}</div>
-              {g.models.map((m) => (
+              {planOrder(g.models, plan).map((m) => { const off = offPlan(m, plan); return (
                 <MenuItem
                   key={m.ref}
                   testId="model-option"
                   tick
                   lead={<Logo id={m.provider} size={22} />}
                   label={<span className="c-modelname">{m.name}{m.supportsTools ? null : <span className="c-pill" title="It can chat, but it can't use tools. Pick another model for files, commands, the web or media.">Chat only</span>}</span>}
-                  sub={modelLine(m, allAccounts)}
+                  sub={modelLine(m, allAccounts, p.row)}
                   checked={m.ref === p.currentRef}
-                  disabled={locked}
+                  disabled={locked || off}
+                  reason={off ? NOT_ON_PLAN : undefined}
+                  reasonLine={off}
                   onClick={() => void p.patch({ model: m.ref, thinkingLevel: null })}
                 />
-              ))}
+              ); })}
             </div>
           ))}
         </div>
@@ -173,16 +166,16 @@ export function ModelMenu(p: Props) {
         ) : null}
         <Sep />
         <ModelSettings {...p} levels={levels} speeds={speeds} advanced={advanced} />
-        <ModelAccessInfo model={p.current} />
-        <p className="c-pp c-pp-end">
+        {!p.embedded ? <ModelAccessInfo model={p.current} /> : null}
+        {!p.embedded ? <p className="c-pp c-pp-end">
           Thinking options depend on the model.
           {accounts.length > 1 ? ` When ${accountName(accounts[0])} runs out, Branch moves to ${accountName(accounts[1])}.` : ""}
-        </p>
-        <LinkRow icon="users" label="Accounts and order…" target="settings/accounts" onOpen={p.onOpen} open={open} />
-        <LinkRow icon="sliders" label="Manage models…" target="settings/models" onOpen={p.onOpen} open={open} />
+        </p> : null}
+        {!p.embedded ? <LinkRow icon="users" label="Accounts and order…" target="settings/accounts" onOpen={p.onOpen} open={open} /> : null}
+        {!p.embedded ? <LinkRow icon="sliders" label="Manage models…" target="settings/models" onOpen={p.onOpen} open={open} /> : null}
       </div>
-    </Popover>
   );
+  return p.embedded ? content : <Popover anchor={p.anchor} onClose={p.onClose} label="Model and how long it thinks" className="c-model">{content}</Popover>;
 }
 
 function ModelSettings(p: Props & { levels: { id: string; label: string }[]; speeds: { id: string; label: string }[]; advanced: boolean }) {
@@ -214,9 +207,9 @@ function ModelSettings(p: Props & { levels: { id: string; label: string }[]; spe
       <p className="c-pp c-pp-note">{p.current?.supportsFastMode ? "Faster answers use your plan’s limits faster." : "This model has one speed."}</p>
       {p.advanced && ctx.length > 1 ? (
         <div className="c-row">
-          <span>Room to plan for</span>
+          <span>Context to plan for</span>
           <Segmented
-            label="Room to plan for"
+            label="Context to plan for"
             items={ctx}
             value={str(p.row.contextWindow) || p.current?.contextWindowDefault || ""}
             onPick={(id) => void p.patch({ contextWindow: id })}

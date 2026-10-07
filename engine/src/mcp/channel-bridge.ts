@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { resolveIntegerOption } from "@branch/normalization-core/number-coercion";
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalLowercaseString,
 } from "@branch/normalization-core/string-coerce";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { EventFrame } from "../../packages/gateway-protocol/src/index.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import type { GatewayClient } from "../gateway/client.js";
@@ -73,13 +73,19 @@ export class BranchChannelBridge {
   private started = false;
   private retryingInitialConnect = false;
   private readonly readiness = createDeferredCore();
+  private readonly eventListeners = new Set<(event: EventFrame) => void>();
 
   constructor(
     private readonly cfg: BranchConfig,
     private readonly params: {
       gatewayUrl?: string;
+      /** The desktop app's gateway can move to another loopback port in an update: re-read on every reconnect. */
+      resolveGatewayUrl?: () => string | undefined;
       gatewayToken?: string;
       gatewayPassword?: string;
+      /** Branch-to-Branch: connect to a host Branch as this Branch's paired device (its stored device token and
+       *  only the scopes the host granted), not with this Branch's own gateway auth. */
+      graftDevice?: { url: string; tlsFingerprint?: string; scopes: string[] };
       claudeChannelMode: ClaudeChannelMode;
       verbose: boolean;
     },
@@ -88,7 +94,6 @@ export class BranchChannelBridge {
     this.claudeChannelMode = params.claudeChannelMode;
   }
 
-  /** Attach the MCP server used for outbound protocol notifications. */
   setServer(server: McpServer): void {
     this.server = server;
   }
@@ -102,25 +107,55 @@ export class BranchChannelBridge {
     this.started = true;
     const [
       { resolveGatewayClientBootstrap },
-      { GatewayClient: GatewayClientCtor },
+      { GatewayClient: GatewayClientCtor, prepareGatewayClientDeviceAuth },
+      { loadOrCreateDeviceIdentity },
       { startGatewayClientWhenEventLoopReady },
-      { APPROVALS_SCOPE, READ_SCOPE, WRITE_SCOPE },
+      { ADMIN_SCOPE, APPROVALS_SCOPE, READ_SCOPE, WRITE_SCOPE },
       { GATEWAY_CLIENT_CAPS, GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES },
     ] = await Promise.all([
       import("../gateway/client-bootstrap.js"),
       import("../gateway/client.js"),
+      import("../infra/device-identity.js"),
       import("../../packages/gateway-client/src/readiness.js"),
       import("../gateway/method-scopes.js"),
       import("../../packages/gateway-protocol/src/client-info.js"),
     ]);
-    const bootstrap = await resolveGatewayClientBootstrap({
-      config: this.cfg,
-      gatewayUrl: this.params.gatewayUrl,
-      explicitAuth: {
-        token: this.params.gatewayToken,
-        password: this.params.gatewayPassword,
-      },
-      env: process.env,
+    const device = this.params.graftDevice;
+    const bootstrap: Pick<
+      Awaited<ReturnType<typeof resolveGatewayClientBootstrap>>,
+      | "url"
+      | "auth"
+      | "tlsFingerprint"
+      | "deviceAuthScope"
+      | "sshTunnel"
+      | "preauthHandshakeTimeoutMs"
+    > = device
+      ? { url: device.url, auth: {}, tlsFingerprint: device.tlsFingerprint }
+      : await resolveGatewayClientBootstrap({
+          config: this.cfg,
+          gatewayUrl: this.params.gatewayUrl,
+          explicitAuth: {
+            token: this.params.gatewayToken,
+            password: this.params.gatewayPassword,
+          },
+          env: process.env,
+        });
+    if (this.closed) {
+      this.readiness.resolve();
+      return;
+    }
+
+    // The first device-auth read creates this process's state store, which takes seconds on a fresh state dir.
+    // Done after the socket opens, it runs inside the gateway's 15 s pre-connect budget and the gateway closes the
+    // socket ("connect timeout"); prepare it first, as one-shot gateway calls do (gateway/call.ts).
+    const deviceIdentity = loadOrCreateDeviceIdentity();
+    await prepareGatewayClientDeviceAuth({
+      url: bootstrap.url,
+      token: bootstrap.auth.token,
+      password: bootstrap.auth.password,
+      tlsFingerprint: bootstrap.tlsFingerprint,
+      deviceAuthScope: bootstrap.deviceAuthScope,
+      deviceIdentity,
     });
     if (this.closed) {
       this.readiness.resolve();
@@ -129,10 +164,12 @@ export class BranchChannelBridge {
 
     this.gateway = new GatewayClientCtor({
       url: bootstrap.url,
+      deviceIdentity,
       deviceAuthScope: bootstrap.deviceAuthScope,
       ...(bootstrap.sshTunnel ? { sshTunnel: bootstrap.sshTunnel } : {}),
       token: bootstrap.auth.token,
       password: bootstrap.auth.password,
+      ...(!device && this.params.resolveGatewayUrl ? { resolveUrl: this.params.resolveGatewayUrl } : {}),
       preauthHandshakeTimeoutMs: bootstrap.preauthHandshakeTimeoutMs,
       tlsFingerprint: bootstrap.tlsFingerprint,
       clientName: GATEWAY_CLIENT_NAMES.CLI,
@@ -140,7 +177,9 @@ export class BranchChannelBridge {
       clientVersion: VERSION,
       mode: GATEWAY_CLIENT_MODES.CLI,
       caps: [GATEWAY_CLIENT_CAPS.APPROVALS],
-      scopes: [READ_SCOPE, WRITE_SCOPE, APPROVALS_SCOPE],
+      // Admin lets the Trunk tools create Trunks (agents.create), as the owner's own window can.
+      // A grafted Branch asks only for what its host granted; asking for more is a scope upgrade the host must approve.
+      scopes: device?.scopes ?? [READ_SCOPE, WRITE_SCOPE, APPROVALS_SCOPE, ADMIN_SCOPE],
       requestTimeoutMs: 180_000,
       onEvent: (event) => {
         void this.dispatchGatewayEvent(event);
@@ -171,6 +210,21 @@ export class BranchChannelBridge {
       this.readiness.reject(new Error("gateway event loop readiness timeout"));
     }
     await this.readiness.promise;
+  }
+
+  /** Call any Gateway method once the bridge is ready (the Trunk tools use this). */
+  async request<T = Record<string, unknown>>(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<T> {
+    await this.waitUntilReady();
+    return await this.requestGateway<T>(method, params);
+  }
+
+  /** Observe every Gateway event (agent run streams for run progress). Returns the unsubscribe. */
+  onGatewayEvent(listener: (event: EventFrame) => void): () => void {
+    this.eventListeners.add(listener);
+    return () => this.eventListeners.delete(listener);
   }
 
   /** Wait until the bridge has subscribed to Gateway session events. */
@@ -229,7 +283,6 @@ export class BranchChannelBridge {
       );
   }
 
-  /** Resolve one conversation by its stable session key. */
   async getConversation(sessionKey: string): Promise<ConversationDescriptor | null> {
     const normalizedSessionKey = sessionKey.trim();
     if (!normalizedSessionKey) {
@@ -244,7 +297,6 @@ export class BranchChannelBridge {
     return response.session ? toConversation(response.session) : null;
   }
 
-  /** Read recent history through the Gateway session API. */
   async readMessages(
     sessionKey: string,
     limit = 20,
@@ -287,7 +339,6 @@ export class BranchChannelBridge {
     });
   }
 
-  /** Return locally tracked approval requests that are still open. */
   listPendingApprovals(): PendingApproval[] {
     this.sweepPendingExpired();
     return [...this.pendingApprovals.values()]
@@ -295,7 +346,6 @@ export class BranchChannelBridge {
       .toSorted((a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0));
   }
 
-  /** Forward an MCP approval decision to the matching Gateway approval resolver. */
   async respondToApproval(params: {
     kind: ChannelApprovalKind;
     id: string;
@@ -532,6 +582,13 @@ export class BranchChannelBridge {
   }
 
   private async dispatchGatewayEvent(event: EventFrame): Promise<void> {
+    for (const listener of this.eventListeners) {
+      try {
+        listener(event);
+      } catch {
+        // A tool's observer must never break channel event delivery.
+      }
+    }
     try {
       await this.handleGatewayEvent(event);
     } catch (error) {
@@ -539,9 +596,7 @@ export class BranchChannelBridge {
       // failures remain observable; the spammy error detail stays behind --verbose.
       process.stderr.write(`branch mcp: gateway event ${event.event} failed\n`);
       if (this.verbose) {
-        process.stderr.write(
-          `branch mcp: gateway event ${event.event} error: ${String(error)}\n`,
-        );
+        process.stderr.write(`branch mcp: gateway event ${event.event} error: ${String(error)}\n`);
       }
     }
   }

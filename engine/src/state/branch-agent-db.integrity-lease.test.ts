@@ -24,14 +24,21 @@ import {
 } from "./branch-agent-db-registry.js";
 import * as schema from "./branch-agent-db-schema.js";
 import {
+  clearBranchAgentDatabaseOpenFailure,
   closeBranchAgentDatabaseByPath,
   closeBranchAgentDatabasesForTest,
   ensureBranchAgentDatabaseSchema,
   openBranchAgentDatabase,
+  recordBranchAgentDatabaseOpenFailure,
   resolveBranchAgentSqlitePath,
 } from "./branch-agent-db.js";
 import { cleanupRetiredAgentDatabaseLease } from "./branch-agent-execution-cleanup.js";
-import { readBranchAgentIntegrityVerification } from "./branch-quarantine-store.js";
+import {
+  clearBranchDatabaseQuarantine,
+  readBranchAgentIntegrityVerification,
+  readBranchDatabaseQuarantineFailure,
+  recordBranchDatabaseQuarantine,
+} from "./branch-quarantine-store.js";
 import {
   closeBranchStateDatabase,
   closeBranchStateDatabaseForTest,
@@ -233,7 +240,7 @@ it.each(["forced cleanup", "stale admission"])(
     const reopened = openBranchAgentDatabase({ agentId: "integrity-lease", env: owner.env });
     expect(diagnostics?.integrityGateOutcome).toBe("healthy");
     if (recovery === "stale admission") {
-      expect(diagnostics?.integrityGateReason).toBe("stale-lease");
+      expect(diagnostics?.integrityGateReason).toBe("stale-lease-full");
     }
     expect(
       reopened.db
@@ -269,39 +276,34 @@ it("does not certify a failed checkpoint or native close", () => {
   expect(owner.record()).toBeUndefined();
 });
 
-it("does not certify a last read-only release without a writer checkpoint", () => {
-  const owner = openOwner();
-  const options = { agentId: "integrity-lease", env: owner.env, path: owner.database.path };
-  const lease = claimBranchAgentDatabaseLease(options);
-  const reader = openBranchAgentDatabaseReadOnly(options);
-  expect(reader.found).toBe(true);
-  if (!reader.found) {
-    throw new Error("Expected the existing real agent database");
-  }
-  try {
-    closeBranchAgentDatabaseByPath(owner.database.path);
-    expect(owner.record()?.clean_close).toBe(0);
-  } finally {
-    reader.database.close();
-    releaseBranchAgentDatabaseLease(lease, { env: owner.env }, "read-only");
-  }
-  expect(owner.record()?.clean_close).toBe(0);
-});
-
-it("records a full check while another lease belongs to the same process", () => {
-  const env = { BRANCH_STATE_DIR: tempDirs.make("branch-integrity-peer-") };
-  const options = { agentId: "integrity-lease", env };
-  const pathname = resolveBranchAgentSqlitePath(options);
-  const lease = claimBranchAgentDatabaseLease({ ...options, path: pathname });
-  try {
+it.each(["before", "after"] as const)(
+  "keeps verification dirty when a same-process read lease is claimed %s writer admission",
+  (order) => {
+    const env = { BRANCH_STATE_DIR: tempDirs.make("branch-integrity-peer-") };
+    const options = { agentId: "integrity-lease", env };
+    const pathname = resolveBranchAgentSqlitePath(options);
+    if (order === "after") {
+      openBranchAgentDatabase(options);
+    }
+    const lease = claimBranchAgentDatabaseLease({ ...options, path: pathname });
     const database = openBranchAgentDatabase(options);
+    const reader = order === "after" ? openBranchAgentDatabaseReadOnly(options) : undefined;
+    try {
+      if (reader) {
+        expect(reader.found).toBe(true);
+      }
+      expect(readBranchAgentIntegrityVerification(database.path, env)?.clean_close).toBe(0);
+      closeBranchAgentDatabaseByPath(database.path);
+      expect(readBranchAgentIntegrityVerification(database.path, env)?.clean_close).toBe(0);
+    } finally {
+      if (reader?.found) {
+        reader.database.close();
+      }
+      releaseBranchAgentDatabaseLease(lease, { env }, "read-only");
+    }
     expect(readBranchAgentIntegrityVerification(database.path, env)?.clean_close).toBe(0);
-    closeBranchAgentDatabaseByPath(database.path);
-    expect(readBranchAgentIntegrityVerification(database.path, env)?.clean_close).toBe(0);
-  } finally {
-    releaseBranchAgentDatabaseLease(lease, { env }, "read-only");
-  }
-});
+  },
+);
 
 it.each(["closing", "unregistering", "reopening shared state before closing"])(
   "does not recreate deletion history when %s an external store after shared state is lost",
@@ -441,6 +443,56 @@ it.each(["", "-wal", "-shm", "-journal"])(
           .get(),
       ).toBeUndefined();
       closeBranchStateDatabase();
+    }
+  },
+);
+
+it.each(["quarantine", "terminal latch", "healthy"] as const)(
+  "gates fresh read-only admission on %s and permits a repaired generation",
+  (condition) => {
+    const owner = openOwner();
+    const options = { agentId: "integrity-lease", env: owner.env };
+    closeBranchAgentDatabaseByPath(owner.database.path);
+    closeBranchStateDatabase();
+    if (condition === "quarantine") {
+      // Drop process-held proof after persisting quarantine, as on restart.
+      expect(
+        recordBranchDatabaseQuarantine({
+          kind: "agent",
+          path: owner.database.path,
+          reason: "synthetic readonly quarantine",
+          env: owner.env,
+        }),
+      ).toBe(true);
+    }
+    closeBranchAgentDatabasesForTest();
+    const latchError = new Error("synthetic terminal latch");
+    latchError.name = "SqliteIntegrityError";
+    if (condition === "terminal latch") {
+      expect(recordBranchAgentDatabaseOpenFailure(owner.database.path, latchError)).toBe(true);
+      expect(
+        readBranchDatabaseQuarantineFailure("agent", owner.database.path, { env: owner.env }),
+      ).toBeUndefined();
+      expect(() => openBranchAgentDatabaseReadOnly(options)).toThrow(latchError);
+      expect(clearBranchAgentDatabaseOpenFailure(owner.database.path, { env: owner.env })).toBe(
+        true,
+      );
+    } else if (condition === "quarantine") {
+      expect(
+        readBranchDatabaseQuarantineFailure("agent", owner.database.path, { env: owner.env }),
+      ).toBeDefined();
+
+      expect(() => openBranchAgentDatabaseReadOnly(options)).toThrow(
+        expect.objectContaining({ name: "SqliteIntegrityError" }),
+      );
+
+      // Clearing the quarantine (Doctor repair) makes the same generation readable again.
+      expect(clearBranchDatabaseQuarantine(owner.database.path, { env: owner.env })).toBe(true);
+    }
+    const repaired = openBranchAgentDatabaseReadOnly(options);
+    expect(repaired.found).toBe(true);
+    if (repaired.found) {
+      repaired.database.close();
     }
   },
 );

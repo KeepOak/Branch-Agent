@@ -1,3 +1,4 @@
+import "branch/plugin-sdk/compiled-subprocess-testing";
 import type { AnyAgentTool, BranchPluginApi } from "branch/plugin-sdk/plugin-entry";
 import { createTestPluginApi } from "branch/plugin-sdk/plugin-test-api";
 import { getToolPluginMetadata } from "branch/plugin-sdk/tool-plugin";

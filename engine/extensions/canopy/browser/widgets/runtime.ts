@@ -1,14 +1,13 @@
 import type { ControlUiHost } from "branch/plugin-sdk/control-ui";
 import type { GatewayBrowserClient } from "../api/gateway.ts";
-import { formatUiError } from "../lib/format-error.ts";
 import { isActiveCanopyCard, nextCanopyCardPosition } from "../lib/canopy/card-state.ts";
+import { loadCanopy } from "../lib/canopy/loading.ts";
 import { moveCanopyCard } from "../lib/canopy/mutations.ts";
-import { normalizeCardsPayload } from "../lib/canopy/normalization.ts";
 import {
   getCanopyRuntime,
   getCanopyState,
-  isCurrentCanopyLoadGeneration,
-  nextCanopyLoadGeneration,
+  hasCurrentCanopyCards,
+  invalidateCanopyLoads,
   canopyHasActiveWrites,
 } from "../lib/canopy/runtime.ts";
 import {
@@ -54,40 +53,18 @@ export function acquireWidgetRuntime(host: ControlUiHost, listener: () => void) 
         while (pending && isCurrent() && current.connected && !canopyHasActiveWrites(state)) {
           const request = pending;
           pending = null;
-          current.loading = true;
-          // Mutations invalidate this owner generation before writing, fencing older snapshots.
-          const loadGeneration = nextCanopyLoadGeneration(owner);
-          const isCurrentLoad = () =>
-            isCurrent() && isCurrentCanopyLoadGeneration(owner, loadGeneration);
-          // A deferred request must preserve newer write failures; read failures can recover.
-          if (state.error === request.error || state.error === canopyRuntime.loadError) {
-            state.error = null;
-          }
-          delete canopyRuntime.loadError;
-          current.notify();
-          try {
-            const snapshot = normalizeCardsPayload(
-              await current.client.request("canopy.cards.list", {}),
-            );
-            if (!isCurrentLoad()) {
-              continue;
-            }
-            state.cards = snapshot.cards;
-            state.statuses = snapshot.statuses;
-            state.loaded = true;
-            state.loadAttempted = true;
-            state.mutationReadiness = "ready";
-          } catch (error) {
-            if (isCurrentLoad() && state.error === null) {
-              canopyRuntime.loadError = formatUiError(error);
-              state.error = canopyRuntime.loadError;
-            }
-          } finally {
-            if (isCurrent()) {
-              current.loading = false;
-              current.notify();
-            }
-          }
+          await loadCanopy({
+            host: owner,
+            client: current.client,
+            force: true,
+            preserveError:
+              state.error !== request.error && state.error !== canopyRuntime.loadError,
+            requestUpdate: () => {
+              if (isCurrent()) {
+                current.notify();
+              }
+            },
+          });
         }
       })();
       load = run;
@@ -108,7 +85,9 @@ export function acquireWidgetRuntime(host: ControlUiHost, listener: () => void) 
       owner: {},
       client: host,
       connected: host.connection.connected,
-      loading: false,
+      get loading() {
+        return getCanopyState(current.owner).loading;
+      },
       listeners: new Set(),
       notify() {
         for (const notify of current.listeners) {
@@ -127,6 +106,7 @@ export function acquireWidgetRuntime(host: ControlUiHost, listener: () => void) 
       },
       dispose() {
         disposed = true;
+        invalidateCanopyLoads(current.owner);
         stopHost();
         stopEvents();
         current.listeners.clear();
@@ -137,16 +117,18 @@ export function acquireWidgetRuntime(host: ControlUiHost, listener: () => void) 
         current.connected = host.connection.connected;
         load = null;
         pending = null;
+        invalidateCanopyLoads(current.owner);
         current.owner = {};
-        current.loading = false;
         if (current.connected) {
           void current.refresh();
         }
       }
       current.notify();
     });
-    const stopEvents = host.onEvent(CANOPY_CHANGED_EVENT, () => {
-      void current.refresh();
+    const stopEvents = host.onEvent(CANOPY_CHANGED_EVENT, (payload) => {
+      if (!hasCurrentCanopyCards(current.owner, payload)) {
+        void current.refresh();
+      }
     });
     runtime = current;
     runtimes.set(host, runtime);

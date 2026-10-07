@@ -1,6 +1,12 @@
 // Shared types for grouped Branch Agent Grove manifests and read-only add plans.
 import type { AgentConfig } from "../config/types.agents.js";
-import type { GROVE_SCHEMA_VERSION, ClawDiagnostic } from "./manifest-contract.js";
+import type {
+  GROVE_SCHEMA_VERSION,
+  GroveAppliedExtension,
+  ClawDiagnostic,
+  GroveExtensionFormat,
+  GroveSourceIdentity,
+} from "./manifest-contract.js";
 import type {
   GroveManifest,
   GroveBranchExtension,
@@ -11,7 +17,9 @@ import type {
 export {
   GROVE_BOOTSTRAP_FILE_NAMES,
   GROVE_SCHEMA_VERSION,
+  type GroveAppliedExtension,
   type ClawDiagnostic,
+  type GroveSourceIdentity,
 } from "./manifest-contract.js";
 
 export type {
@@ -26,17 +34,6 @@ export type {
 export const GROVE_ADD_PLAN_SCHEMA_VERSION = "branch.groveAddPlan.v1" as const;
 export const GROVE_INSPECT_RESULT_SCHEMA_VERSION = "branch.groveInspect.v1" as const;
 export const GROVE_OUTPUT_STABILITY = "experimental" as const;
-
-type GroveExtensionFormat = GroveBranchExtension["format"];
-
-export type GroveAppliedExtension = {
-  id: string;
-  format: GroveExtensionFormat;
-  detectedFormat: GroveExtensionFormat;
-  mapped: string[];
-  unavailable: string[];
-  adapterIdentity: string;
-};
 
 export type ResolvedClawPackage = ClawPackage & {
   integrity: string;
@@ -65,17 +62,6 @@ export type ClawPackagePreflight = (
   pkg: ClawPackage,
   workspace: string,
 ) => Promise<ClawPackagePreflightResult>;
-
-export type GroveSourceIdentity = {
-  kind: "package" | "development";
-  name: string;
-  version: string;
-  packageRoot: string;
-  manifestPath: string;
-  integrityKind: "artifact" | "development-snapshot";
-  integrity: string;
-  byteLength: number;
-};
 
 export type GroveWorkspaceSourceSnapshot = {
   sourcePath: string;

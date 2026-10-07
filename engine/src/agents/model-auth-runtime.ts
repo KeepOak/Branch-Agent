@@ -29,7 +29,6 @@ export type RuntimeProviderAuthLookup = {
   >;
   setupProviderFallbackRefs?: readonly string[];
   syntheticAuthProviderRefs?: readonly string[];
-  syntheticAuthProviderRefsComplete?: boolean;
 };
 
 /** Builds stable env/synthetic auth lookup data for repeated provider checks. */
@@ -61,7 +60,6 @@ export function createRuntimeProviderAuthLookup(params: {
     syntheticAuthProviderRefs: syntheticAuthProviderRefs?.complete
       ? syntheticAuthProviderRefs.refs
       : undefined,
-    syntheticAuthProviderRefsComplete: syntheticAuthProviderRefs?.complete,
   };
 }
 
@@ -270,6 +268,7 @@ type SyntheticProviderAuthResolution = {
 type SyntheticProviderAuthParams = {
   cfg: BranchConfig | undefined;
   provider: string;
+  route?: { api?: string | null; baseUrl?: unknown };
   modelApi?: string;
   secretSentinels?: boolean;
   workspaceDir?: string;

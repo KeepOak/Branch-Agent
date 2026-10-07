@@ -3,6 +3,7 @@
 // createAgentToAgentPolicy decides it: on unless enabled is false; an empty allow list permits every pair; a blank
 // entry denies; "*" matches any part of the id, case-insensitively.
 export type AgentToAgent = { enabled?: unknown; allow?: unknown };
+export type PerAgent = Record<string, { agentToAgent?: { allow?: unknown; deny?: unknown } }>;
 
 function matches(pattern: string, agentId: string): boolean {
   const raw = pattern.trim();
@@ -14,15 +15,19 @@ function matches(pattern: string, agentId: string): boolean {
 }
 
 /** Whether `from` may talk to `to` under the policy. */
-export function mayTalk(policy: AgentToAgent | undefined, from: string, to: string): boolean {
+export function mayTalk(policy: AgentToAgent | undefined, perAgent: PerAgent | undefined, from: string, to: string): boolean {
   if (from === to) return true;
   if (policy?.enabled === false) return false;
   const allow = Array.isArray(policy?.allow) ? policy.allow.filter((p): p is string => typeof p === "string") : [];
   const ok = (id: string) => allow.length === 0 || allow.some((p) => matches(p, id));
-  return ok(from) && ok(to);
+  const pair = perAgent?.[from]?.agentToAgent;
+  const deny = Array.isArray(pair?.deny) ? pair.deny.filter((p): p is string => typeof p === "string") : [];
+  const pairAllow = Array.isArray(pair?.allow) ? pair.allow.filter((p): p is string => typeof p === "string") : [];
+  return ok(from) && ok(to) && !deny.some((p) => !p.trim() || matches(p, to)) &&
+    (pairAllow.length === 0 || pairAllow.some((p) => matches(p, to)));
 }
 
 /** The Trunks, other than this one, that this one may talk to, in the list's order. */
-export function knownTrunks<T extends { id: string }>(policy: AgentToAgent | undefined, self: string, trunks: readonly T[]): T[] {
-  return trunks.filter((t) => t.id !== self && mayTalk(policy, self, t.id));
+export function knownTrunks<T extends { id: string }>(policy: AgentToAgent | undefined, perAgent: PerAgent | undefined, self: string, trunks: readonly T[]): T[] {
+  return trunks.filter((t) => t.id !== self && mayTalk(policy, perAgent, self, t.id));
 }

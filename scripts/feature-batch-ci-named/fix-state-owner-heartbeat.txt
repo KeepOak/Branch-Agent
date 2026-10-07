@@ -1,0 +1,3 @@
+engine:src/infra/gateway-state-owner.heartbeat.test.ts
+engine:src/infra/device-bootstrap.test.ts
+engine:src/state/branch-agent-db-lifecycle.ownership-loss.test.ts

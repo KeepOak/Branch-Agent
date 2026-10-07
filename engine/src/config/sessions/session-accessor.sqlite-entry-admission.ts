@@ -1,4 +1,5 @@
 import path from "node:path";
+import { measureDiagnosticsTimelineSpan } from "../../infra/diagnostics-timeline.js";
 import { readDatabasePathIdentitySync } from "../../infra/sqlite-worker-identity.js";
 import { createSqliteWorkerOperationAdmission } from "../../infra/sqlite-worker-operation-admission.js";
 import {
@@ -43,9 +44,7 @@ type WorkerSessionAdmissionClaim = {
   release(): Promise<void>;
 };
 
-export type SessionAdmissionDatabaseClaim =
-  | BranchAgentDatabaseClaim
-  | WorkerSessionAdmissionClaim;
+export type SessionAdmissionDatabaseClaim = BranchAgentDatabaseClaim | WorkerSessionAdmissionClaim;
 
 /** Admission retains the exact owner that supplied its row across asynchronous policy work. */
 export async function loadSessionEntryForAdmission(
@@ -102,108 +101,131 @@ export async function loadSessionEntryForAdmission(
   const candidates = captureSessionStoreReadCandidates(storePath);
   let claim: WorkerSessionAdmissionClaim | undefined;
   try {
-    const result = await withSessionStoreTarget(
-      { agentId, defaultAgentId: scope.defaultAgentId, storePath, env, candidates },
-      async (target, owner) => {
-        const options = { ...target.database, path: target.sourcePath, env };
-        const observed = readDatabasePathIdentitySync(options.path);
-        const assertOriginalTarget = () => {
-          const current = readDatabasePathIdentitySync(options.path);
-          if (
-            current.key !== observed.key ||
-            current.canonicalPath !== observed.canonicalPath ||
-            current.birthtime !== observed.birthtime
-          ) {
-            throw new Error("Session database changed while waiting for admission");
-          }
-        };
-        return await runBranchAgentWorkerWrite(
-          options,
-          async () => {
-            await owner.refreshBeforeDispatch(assertOriginalTarget);
-            owner.assertCurrent();
-            assertOriginalTarget();
-            // Discovery retains the file while queued; an earlier cancelled open may retire its executor.
-            const execution = captureBranchAgentDatabaseExecution(
-              options,
-              observed.key.startsWith("file:")
-                ? {
-                    expectedIdentity: {
-                      kind: "file",
-                      physicalIdentity: observed.key.slice("file:".length),
-                      nativeLocation: observed.canonicalPath,
-                      birthtime: observed.birthtime,
-                    },
-                  }
-                : { expectedCreationIdentity: observed },
-            );
-            const assertSourceCurrent = () => {
-              assertCurrent();
-              execution.assertCurrent();
-              owner.assertCurrent();
-            };
-            const source: AgentDatabaseRequestExecutionSource = {
-              assertCurrent: assertSourceCurrent,
-              onRegistryChange: owner.onRegistryChange,
-              createAdmission(binding) {
-                return () => ({
-                  nativeLocations: binding.nativeLocations,
-                  admission: createSqliteWorkerOperationAdmission((request, grant) => {
-                    binding.authorize(request);
-                    assertSourceCurrent();
-                    if (!grant()) {
-                      throw new Error("Session admission authority expired");
-                    }
-                  }, binding.attachment),
-                });
-              },
-            };
-            let transferred = false;
-            try {
-              await execution.prepare(source, preparation.signal);
-              const entry = await execution.runExisting(source, (worker) =>
-                worker.execute(
-                  {
-                    type: "session.entry.read",
-                    input: {
-                      sessionKey: resolveSqliteSessionKey(scope.sessionKey, target.logicalAgentId),
-                    },
-                  },
-                  { signal: preparation.signal },
-                ),
-              );
-              await owner.revalidateTarget();
-              assertSourceCurrent();
-              const generation = execution.captureGenerationClaim();
-              let release: Promise<void> | undefined;
-              claim = {
-                kind: "worker",
-                identity: generation.identity,
-                incarnation: generation.incarnation,
-                assertCurrent: () => generation.assertCurrent(),
-                isCurrent() {
-                  try {
-                    generation.assertCurrent();
-                    return true;
-                  } catch {
-                    return false;
-                  }
-                },
-                release: () => (release ??= execution.release()),
-              };
-              transferred = true;
-              return { entry, databaseClaim: claim };
-            } finally {
-              if (!transferred) {
-                await execution.release();
-              }
+    const result = await measureDiagnosticsTimelineSpan("reply.admission.store_target", () =>
+      withSessionStoreTarget(
+        { agentId, defaultAgentId: scope.defaultAgentId, storePath, env, candidates },
+        async (target, owner) => {
+          const options = { ...target.database, path: target.sourcePath, env };
+          const observed = readDatabasePathIdentitySync(options.path);
+          let retained = observed;
+          const assertOriginalTarget = () => {
+            const current = readDatabasePathIdentitySync(options.path);
+            if (
+              current.canonicalPath !== observed.canonicalPath ||
+              (retained.key.startsWith("file:") &&
+                (current.key !== retained.key || current.birthtime !== retained.birthtime))
+            ) {
+              throw new Error("Session database changed while waiting for admission");
             }
-          },
-          undefined,
-          preparation.signal,
-        );
-      },
-      assertCurrent,
+            // The first message can create the originally absent database while
+            // discovery waits. Once it exists, pin that physical file as usual.
+            if (current.key.startsWith("file:")) {
+              retained = current;
+            }
+          };
+          return await measureDiagnosticsTimelineSpan("reply.admission.worker_write", () =>
+            runBranchAgentWorkerWrite(
+              options,
+              async () => {
+                await measureDiagnosticsTimelineSpan("reply.admission.refresh_target", () =>
+                  owner.refreshBeforeDispatch(assertOriginalTarget),
+                );
+                owner.assertCurrent();
+                assertOriginalTarget();
+                // Discovery retains the file while queued; an earlier cancelled open may retire its executor.
+                const execution = captureBranchAgentDatabaseExecution(
+                  options,
+                  retained.key.startsWith("file:")
+                    ? {
+                        expectedIdentity: {
+                          kind: "file",
+                          physicalIdentity: retained.key.slice("file:".length),
+                          nativeLocation: retained.canonicalPath,
+                          birthtime: retained.birthtime,
+                        },
+                      }
+                    : { expectedCreationIdentity: retained },
+                );
+                const assertSourceCurrent = () => {
+                  assertCurrent();
+                  execution.assertCurrent();
+                  owner.assertCurrent();
+                };
+                const source: AgentDatabaseRequestExecutionSource = {
+                  assertCurrent: assertSourceCurrent,
+                  onRegistryChange: owner.onRegistryChange,
+                  createAdmission(binding) {
+                    return () => ({
+                      nativeLocations: binding.nativeLocations,
+                      admission: createSqliteWorkerOperationAdmission((request, grant) => {
+                        binding.authorize(request);
+                        assertSourceCurrent();
+                        if (!grant()) {
+                          throw new Error("Session admission authority expired");
+                        }
+                      }, binding.attachment),
+                    });
+                  },
+                };
+                let transferred = false;
+                try {
+                  await measureDiagnosticsTimelineSpan("reply.admission.prepare_execution", () =>
+                    execution.prepare(source, preparation.signal),
+                  );
+                  const entry = await measureDiagnosticsTimelineSpan(
+                    "reply.admission.read_entry",
+                    () =>
+                      execution.runExisting(source, (worker) =>
+                        worker.execute(
+                          {
+                            type: "session.entry.read",
+                            input: {
+                              sessionKey: resolveSqliteSessionKey(
+                                scope.sessionKey,
+                                target.logicalAgentId,
+                              ),
+                            },
+                          },
+                          { signal: preparation.signal },
+                        ),
+                      ),
+                  );
+                  await measureDiagnosticsTimelineSpan("reply.admission.revalidate_target", () =>
+                    owner.revalidateTarget(),
+                  );
+                  assertSourceCurrent();
+                  const generation = execution.captureGenerationClaim();
+                  let release: Promise<void> | undefined;
+                  claim = {
+                    kind: "worker",
+                    identity: generation.identity,
+                    incarnation: generation.incarnation,
+                    assertCurrent: () => generation.assertCurrent(),
+                    isCurrent() {
+                      try {
+                        generation.assertCurrent();
+                        return true;
+                      } catch {
+                        return false;
+                      }
+                    },
+                    release: () => (release ??= execution.release()),
+                  };
+                  transferred = true;
+                  return { entry, databaseClaim: claim };
+                } finally {
+                  if (!transferred) {
+                    await execution.release();
+                  }
+                }
+              },
+              undefined,
+              preparation.signal,
+            ),
+          );
+        },
+        assertCurrent,
+      ),
     );
     assertCurrent();
     result.databaseClaim.assertCurrent();

@@ -7,6 +7,7 @@ import type {
 import type { BranchAgentDatabaseWorkerLeaseReceipt } from "../../state/branch-agent-db-lease.js";
 import type { BranchAgentDatabaseValidation } from "../../state/branch-agent-db-validation-cache.js";
 import type {
+  SqliteArchiveReclamationPlan,
   SqliteSessionReclamationPlan,
   SqliteSessionReclamationResult,
 } from "./session-accessor.sqlite-lifecycle-types.js";
@@ -42,7 +43,7 @@ export type SqliteReclamationWorkerRequest = {
   type: "reclaim";
   operationId: number;
   commitGate: SharedArrayBuffer;
-  plan: SqliteSessionReclamationPlan;
+  plan: SqliteArchiveReclamationPlan;
   coordination: SqliteMutationWorkerCoordination;
 };
 export type SqliteReclamationWorkerCloseRequest = {

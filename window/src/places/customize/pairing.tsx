@@ -14,6 +14,10 @@ const ACCESS: { id: Access; name: string; line: string }[] = [
 ];
 type Code = { setupId: string; setupCode: string; qr: string; joinUrl: string; expiresAtMs: number | null; downgraded: boolean };
 
+// TODO(engine-lane): before the code, the artifact asks "Let your phone reach Branch?" when the Gateway only listens on
+// this computer ("The Gateway only listens on this computer now.", buttons Not now / Tailscale / My network). Choosing
+// one changes where the Gateway listens (gateway.bind / Tailscale), which the engine lane adds; draw that dialog here,
+// in this Dialog's look, ahead of the code once it can.
 export function PairDialog({ engine, close }: { engine: WindowEngine; close: () => void }) {
   const [access, setAccess] = useState<Access>("full");
   const [code, setCode] = useState<Code | null>(null);

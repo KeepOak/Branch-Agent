@@ -177,7 +177,7 @@ export function createBranchDatabaseMaintenanceScope(
         release: () => resources.delete(resource),
       });
     },
-    close() {
+    close(beforeResources) {
       if (closing) {
         return closing;
       }
@@ -186,7 +186,8 @@ export function createBranchDatabaseMaintenanceScope(
       closing = completion.promise;
       void maintenanceResources.current
         .run({ scope, active: true }, async () => {
-          while (pending.size || resources.size) {
+          let beforeSharedResources = beforeResources;
+          while (pending.size || resources.size || beforeSharedResources) {
             while (pending.size) {
               await Promise.allSettled(pending);
             }
@@ -199,6 +200,12 @@ export function createBranchDatabaseMaintenanceScope(
               "shared-references",
               "shared-handles",
             ] as const) {
+              if (phase === "shared-leases" && beforeSharedResources) {
+                // Retire scope-owned agent resources first, then drain any remaining
+                // cached handles while their shared-state lease authority is still live.
+                await beforeSharedResources();
+                beforeSharedResources = undefined;
+              }
               while ([...resources.values()].some((resource) => resource.phase === phase)) {
                 // Earlier cleanup can start tracked work using resources in this batch.
                 while (pending.size) {
@@ -522,7 +529,7 @@ export function createBranchStateDatabaseAsyncLifecycle() {
     },
     close(
       pathname: string | undefined,
-      retireNative: (identity?: DatabasePathIdentity) => boolean,
+      retireNative: (identity?: DatabasePathIdentity) => boolean | Promise<boolean>,
     ): Promise<boolean> {
       const record = pathname === undefined ? undefined : resolveForNative(pathname);
       if (pathname !== undefined && !record) {
@@ -578,7 +585,7 @@ export function createBranchStateDatabaseAsyncLifecycle() {
             );
           }
           throwSqliteLifecycleErrors(errors, "Branch Agent state resource drainage failed");
-          const retired = retireNative(record?.identity);
+          const retired = await retireNative(record?.identity);
           attempts.delete(record);
           seals.delete(current.seal);
           if (record === undefined) {

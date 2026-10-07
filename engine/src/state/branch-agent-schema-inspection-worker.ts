@@ -33,7 +33,7 @@ const inspectionResponse = z.discriminatedUnion("ok", [
     inspection: z
       .object({
         version: z.number().int().safe(),
-        integrityGateOutcome: z.enum(["cached", "healthy"]).optional(),
+        integrityGateOutcome: z.enum(["cached", "healthy", "pending"]).optional(),
         writerAppVersion: z.string().optional(),
         reason: z.string().optional(),
         failure: agentSchemaInspectionErrorSchema.optional(),
@@ -90,6 +90,7 @@ export function createAgentSchemaInspectionWorker() {
       execArgv: resolveRuntimeWorkerArgv(entry).slice(0, -1),
       serialization: "advanced",
       stdio: ["ignore", "ignore", "ignore", "ipc"],
+      windowsHide: true,
     });
     processCount += 1;
     const closed = createDeferredCore();

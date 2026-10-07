@@ -1,5 +1,6 @@
 import { inspectAgentModels } from "acpx/runtime";
 import type { AgentHarnessV2 } from "branch/plugin-sdk/agent-harness-runtime";
+import { createNativeSessionCommitFinalizer } from "branch/plugin-sdk/agent-harness-session-runtime";
 import { finiteSecondsToTimerSafeMilliseconds } from "branch/plugin-sdk/number-runtime";
 import type { BranchPluginApi, BranchPluginServiceContext } from "../runtime-api.js";
 import { resolveAcpxPluginConfig } from "./config.js";
@@ -238,14 +239,15 @@ export function createAcpAgentHarness(params: {
     async withSessionDeletion(input, run) {
       let committed = false;
       try {
-        return await run({
+        const mutation = {
           commit: () => {
             committed = true;
           },
           rollback: () => {
             committed = false;
           },
-        });
+        };
+        return await run(createNativeSessionCommitFinalizer(mutation));
       } finally {
         if (committed) {
           await retire(input, input.assertCurrent);

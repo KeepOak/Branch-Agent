@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { describe, expect, it } from "vitest";
 import { createDeferredCore } from "../shared/deferred.js";
+import { withBranchTestState } from "../test-utils/branch-test-state.js";
 import type {
   MeetingParticipationAttempt,
   MeetingParticipationOptions,
@@ -9,7 +10,6 @@ import { MeetingParticipation } from "./participation.js";
 
 describe("meeting participation concurrent capacity recovery", () => {
   it("admits both source claims when a sibling reclaimed their shared cleanup snapshot", async () => {
-    const { withBranchTestState } = await import("../test-utils/branch-test-state.js");
     const { createPluginStateKeyedStore, resetPluginStateStoreForTests } =
       await import("../plugin-state/plugin-state-store.js");
     await withBranchTestState(

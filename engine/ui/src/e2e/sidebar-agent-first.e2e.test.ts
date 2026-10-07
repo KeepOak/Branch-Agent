@@ -90,7 +90,7 @@ suite.define(() => {
               localStorage.setItem(key, JSON.stringify(prefs));
               localStorage.setItem("branch:sidebar:sessions:show-preview", "true");
               localStorage.setItem(
-                "branch:control-ui:community-invite",
+                "branch:control-ui:community-invite:v2",
                 JSON.stringify({ dismissedAtMs: Date.now() }),
               );
             },

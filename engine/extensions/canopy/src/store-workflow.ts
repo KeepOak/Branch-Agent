@@ -8,9 +8,12 @@ import type {
   CanopyNotification,
   CanopyRunAttempt,
 } from "@branch/canopy-contract";
-import { isFutureDateTimestampMs } from "branch/plugin-sdk/number-runtime";
+import {
+  isFutureDateTimestampMs,
+  resolveOptionalIntegerOption,
+} from "branch/plugin-sdk/number-runtime";
 import { safeEqualSecret } from "branch/plugin-sdk/security-runtime";
-import { normalizeOptionalString } from "branch/plugin-sdk/string-coerce-runtime";
+import { isRecord, normalizeOptionalString } from "branch/plugin-sdk/string-coerce-runtime";
 import {
   appendComment,
   assertCanMutateClaimedCard,
@@ -36,11 +39,9 @@ import type {
   CanopyClaimInput,
   CanopyClaimOptions,
   CanopyCompleteInput,
-  CanopyDecomposeChildInput,
   CanopyDecomposeInput,
   CanopyHeartbeatInput,
   CanopyMutationScope,
-  CanopyProofInput,
   CanopyReassignInput,
   CanopyReclaimInput,
   CanopySpecifyInput,
@@ -80,10 +81,7 @@ export class CanopyWorkflowStore extends CanopyPromoteStore {
     if (!ownerId) {
       throw new Error("claim ownerId is required.");
     }
-    const ttlSeconds =
-      typeof input.ttlSeconds === "number" && Number.isFinite(input.ttlSeconds)
-        ? Math.max(1, Math.trunc(input.ttlSeconds))
-        : undefined;
+    const ttlSeconds = resolveOptionalIntegerOption(input.ttlSeconds, { min: 1 });
     const token =
       normalizeBoundedString(input.token, undefined, 160, "claim token") ?? randomUUID();
     return await this.enqueueMutation(async () => {
@@ -140,7 +138,7 @@ export class CanopyWorkflowStore extends CanopyPromoteStore {
       }
       const metadata = clearDiagnostics(guarded.metadata, ["stranded_ready"]);
       const card = await this.updateCard(
-        id,
+        await this.requireCard(id),
         {
           status:
             guarded.status === "backlog" || guarded.status === "todo" || guarded.status === "ready"
@@ -212,7 +210,7 @@ export class CanopyWorkflowStore extends CanopyPromoteStore {
         assertClaimIdentity(claim, input);
       }
       return await this.updateCard(
-        id,
+        await this.requireCard(id),
         {
           status,
           metadata: { ...existing.metadata, claim: undefined },
@@ -252,10 +250,7 @@ export class CanopyWorkflowStore extends CanopyPromoteStore {
       }
     }
     const summary = normalizeBoundedString(input.summary, undefined, 2000, "summary");
-    const proofInput =
-      input.proof && typeof input.proof === "object" && !Array.isArray(input.proof)
-        ? (input.proof as CanopyProofInput)
-        : undefined;
+    const proofInput = isRecord(input.proof) ? input.proof : undefined;
     const proofId = normalizeBoundedString(input.proofId, undefined, 120, "proof id");
     if (input.proofId !== undefined && !proofId) {
       throw new Error("proofId must be a non-empty string.");
@@ -282,7 +277,7 @@ export class CanopyWorkflowStore extends CanopyPromoteStore {
         ? { ...existing.execution, status: "done" as const, updatedAt: now }
         : existing.execution;
     return await this.updateCard(
-      id,
+      await this.requireCard(id),
       {
         status: "done",
         ...(execution ? { execution } : {}),
@@ -369,7 +364,10 @@ export class CanopyWorkflowStore extends CanopyPromoteStore {
       const reason =
         normalizeBoundedString(input.reason, undefined, 2000, "block reason") ??
         "Canopy card blocked.";
-      return await this.updateCard(id, this.buildBlockedCardPatch(existing, reason, now, options));
+      return await this.updateCard(
+        await this.requireCard(id),
+        this.buildBlockedCardPatch(existing, reason, now, options),
+      );
     });
   }
 
@@ -378,7 +376,10 @@ export class CanopyWorkflowStore extends CanopyPromoteStore {
       const existing = await this.requireCard(id);
       assertCanMutateClaimedCard(existing, scope);
       const metadata = clearDiagnostics(existing.metadata, ["blocked_too_long"]);
-      return await this.updateCard(id, { status: "todo", metadata: { ...metadata, stale: null } });
+      return await this.updateCard(await this.requireCard(id), {
+        status: "todo",
+        metadata: { ...metadata, stale: null },
+      });
     });
   }
 
@@ -406,7 +407,11 @@ export class CanopyWorkflowStore extends CanopyPromoteStore {
         ...(shouldResetFailures ? { failureCount: 0 } : {}),
         comments: appendComment(baseMetadata?.comments, reason),
       };
-      return await this.updateCard(id, { agentId, status, metadata }, { enforceStatusHolds: true });
+      return await this.updateCard(
+        await this.requireCard(id),
+        { agentId, status, metadata },
+        { enforceStatusHolds: true },
+      );
     });
   }
 
@@ -429,7 +434,7 @@ export class CanopyWorkflowStore extends CanopyPromoteStore {
             : existing.status
           : normalizeStatus(input.status, existing.status);
       const reclaimed = await this.updateCard(
-        id,
+        await this.requireCard(id),
         {
           status: targetStatus,
           execution: existing.execution?.status === "running" ? null : existing.execution,
@@ -486,7 +491,7 @@ export class CanopyWorkflowStore extends CanopyPromoteStore {
       };
       const { summary: _summary, status: _status, ...cardPatch } = input;
       return await this.updateCard(
-        id,
+        await this.requireCard(id),
         {
           ...cardPatch,
           status: "todo",
@@ -516,11 +521,10 @@ export class CanopyWorkflowStore extends CanopyPromoteStore {
           }
           const parentAutomation = parent.metadata?.automation;
           const children: CanopyCard[] = [];
-          for (const rawChild of childrenInput) {
-            if (!rawChild || typeof rawChild !== "object" || Array.isArray(rawChild)) {
+          for (const child of childrenInput) {
+            if (!isRecord(child)) {
               throw new Error("children must be objects.");
             }
-            const child = rawChild as CanopyDecomposeChildInput;
             const created = await this.createDirect(
               {
                 ...child,
@@ -559,7 +563,7 @@ export class CanopyWorkflowStore extends CanopyPromoteStore {
             : await (async () => {
                 const latestParent = (await this.get(parent.id)) ?? parent;
                 return await this.updateCard(
-                  parent.id,
+                  await this.requireCard(parent.id),
                   {
                     status:
                       latestParent.status === "triage" || latestParent.status === "backlog"
@@ -581,7 +585,7 @@ export class CanopyWorkflowStore extends CanopyPromoteStore {
                 );
               })();
           const decomposedParent = await this.updateCard(
-            updatedParent.id,
+            await this.requireCard(updatedParent.id),
             {},
             {
               event: { kind: "decomposed" },
