@@ -29,7 +29,6 @@ import { freemem } from "node:os";
 import { createHash } from "node:crypto";
 import type { Tray } from "electron";
 import { MacComputerDriver, macScreenControlEnabled } from "./mac-computer-driver";
-import { createMacScreenControlReconciler, restartMacScreenControlOnBuild } from "./mac-screen-control-restart";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
 /** Scratch test copies: never grouped with, or mistaken for, the owner's app (they also start hidden). */
@@ -988,39 +987,6 @@ async function start(): Promise<void> {
   }
 }
 
-/** Reconnect Mac control on the build already serving; never inspect or confirm a staged update. */
-async function restartMacScreenControlEngine(): Promise<boolean> {
-  if (!gateway || !win || !componentsReady || engineRestartInProgress || retiring.size > 0 || !engineServing() || quitting) return false;
-  const prior = gateway;
-  const engineDir = lastGoodEngineDir;
-  if (!engineDir) return false;
-  engineRestartInProgress = true;
-  const resumeSupervision = gatewaySupervisor.expectExit(prior);
-  try {
-    await restartMacScreenControlOnBuild(engineDir, {
-      drain: () => drainStopGateway(prior),
-      waitForPort: async () => { await waitForGatewayPort(); if (quitting) throw new Error("Branch Agent is quitting"); },
-      boot: (dir, confirmUpdate) => bootEngine(dir, confirmUpdate, undefined, gatewayPort),
-      handoff: handWindowToGateway,
-    });
-    log("Mac screen control reconnected on the running engine build");
-    return true;
-  } catch (error) {
-    if (gateway === prior && engineServing()) resumeSupervision();
-    else {
-      if (gateway && engineRunning()) await stopFailedEngine(gateway);
-      recoveryDeferred = true;
-    }
-    log(`Mac screen control restart failed: ${String(error)}`);
-    return false;
-  } finally {
-    engineRestartInProgress = false;
-    if (recoveryDeferred && !quitting && !engineServing()) {
-      recoveryDeferred = false;
-      gatewaySupervisor.recover(new Error("Mac screen control restart left no engine serving"));
-    }
-  }
-}
 
 /**
  * After an in-place update the engine can serve on a moved port. If the desktop crashed then, that engine is still
