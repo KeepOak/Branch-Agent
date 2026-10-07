@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { readdir, readFile, readlink, realpath, rename, rm, stat } from "node:fs/promises";
+import { readdir, readFile, readlink, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { DesktopConfig } from "./config";
@@ -21,7 +21,7 @@ async function backfillLegacyReleaseMarker(folder: string, name: string): Promis
     for (const file of ["engine/branch.mjs", "engine/package.json", "engine/dist/build-info.json"]) {
       if (!(await stat(join(folder, file))).isFile()) return false;
     }
-    await import("node:fs/promises").then(fs => fs.writeFile(join(folder, ".release-complete"), ""));
+    await writeFile(join(folder, ".release-complete"), "");
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT" || error instanceof SyntaxError) return false;
