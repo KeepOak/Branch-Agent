@@ -28,14 +28,14 @@ async function click(text: string) {
   await act(async () => button.click());
 }
 
-it("actual native Check now and Install buttons use component bridge and never generic gateway updates", async () => {
+it("actual native Check now and Download update use component bridge and never generic gateway updates", async () => {
   const status = vi.fn(async () => state); const check = vi.fn(async () => state);
   const stage = vi.fn(async () => ({ ...state, phase: "staged", pendingVersion: "1.1" }));
   desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1", componentUpdates: { status, check, stage } };
-  await show(); await click("Check now"); await click("Install when idle");
+  await show(); await click("Check now"); await click("Download update");
   expect(status).toHaveBeenCalledTimes(1); expect(check).toHaveBeenCalledTimes(1); expect(stage).toHaveBeenCalledTimes(1);
   expect(request).not.toHaveBeenCalled();
-  expect(host.textContent).toContain("Update ready, applying when your Trunks finish");
+  expect(host.textContent).toContain("Update staged; waiting for a safe switch");
   expect(localStorage.getItem("branch-draft")).toBe("unfinished input");
 });
 
@@ -48,9 +48,9 @@ it("Updates toggle is on by default and staged updates wait for Trunks in Settin
     controls: { get: async () => ({ keepWorking: true, keepAwake: false, trayUsage: false,
       autoApplyUpdates: true, startWithWindows: false, branchOnPath: false }), set } };
   await show();
-  const toggle = host.querySelector<HTMLInputElement>('input[aria-label="Apply updates by themselves when no Trunk is working"]');
+  const toggle = host.querySelector<HTMLInputElement>('input[aria-label="Apply updates automatically"]');
   expect(toggle?.checked).toBe(true);
-  expect(host.textContent).toContain("Update ready, applying when your Trunks finish");
+  expect(host.textContent).toContain("Update staged; waiting for a safe switch");
   if (!toggle) throw new Error("missing auto-apply toggle");
   await act(async () => toggle.click());
   expect(set).toHaveBeenCalledWith("autoApplyUpdates", false);
