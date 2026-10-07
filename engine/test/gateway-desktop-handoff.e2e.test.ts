@@ -240,6 +240,7 @@ async function handOverWithRunInFlight(
   current: Scenario,
   signal: AbortSignal,
   beforeDeactivate?: (clientA: GatewayClient, a: HandoffEngine, b: HandoffEngine) => Promise<void>,
+  afterDeactivate?: (a: HandoffEngine, b: HandoffEngine) => Promise<void>,
 ) {
   const portA = current.instance.port;
   const portB = await freePortOtherThan(portA);
@@ -265,10 +266,12 @@ async function handOverWithRunInFlight(
   expect((await readStateOwner(a.env))?.pid).toBe(a.child.pid);
   await beforeDeactivate?.(clientA, a, b);
 
+  const noAdmissionStarted = performance.now();
   const deactivated = await sendDesktopRequest(a, DESKTOP_DEACTIVATE, DESKTOP_REQUEST_MS);
   expect(deactivated.ok, engineLog(a)).toBe(true);
   // A keeps exactly the session with its run in flight.
   expect(listLeasedLanes(a.env)).toEqual([{ lane: `session:${SESSION_S}`, pid: a.child.pid }]);
+  await afterDeactivate?.(a, b);
   // A released the state, but B waits for the desktop's word.
   await new Promise((resolve) => setTimeout(resolve, 1_000));
   expect(b.messages.some((message) => message.type === ENGINE_TAKING_OVER)).toBe(false);
@@ -279,13 +282,16 @@ async function handOverWithRunInFlight(
   const taking = await waitForEngineMessage(b, ENGINE_TAKING_OVER, 30_000);
   expect(taking).toMatchObject({ pid: b.child.pid, port: portB });
   await waitForReadyz(portB, 200, ENGINE_START_MS, b);
+  const noAdmissionGapMs = performance.now() - noAdmissionStarted;
+  step(`measured no-admission gap: ${Math.round(noAdmissionGapMs)}ms`);
+  expect(noAdmissionGapMs).toBeLessThan(DESKTOP_REQUEST_MS + ENGINE_START_MS);
   await waitForStateOwner(b.env, b.child.pid!, 10_000);
   // Never zero engines: A is still up, finishing its run.
   expect(a.hasExited(), engineLog(a)).toBe(false);
 
   step("B owns the state and is ready");
   const clientB = await connect(current, portB, signal);
-  return { a, b, portA, portB, clientA, clientB };
+  return { a, b, portA, portB, clientA, clientB, noAdmissionGapMs };
 }
 
 describe("in-place engine handoff between real engines", () => {
@@ -294,7 +300,8 @@ describe("in-place engine handoff between real engines", () => {
     { timeout: 420_000 },
     async ({ signal }) => {
       const current = await startScenario(signal);
-      const { a, portB, clientA, clientB } = await handOverWithRunInFlight(current, signal);
+      const { a, portB, clientA, clientB, noAdmissionGapMs } = await handOverWithRunInFlight(current, signal);
+      expect(noAdmissionGapMs).toBeGreaterThan(0);
 
       // Another session runs on B at once, while A still holds S.
       await whenAgentsReady(() =>
@@ -368,6 +375,46 @@ describe("in-place engine handoff between real engines", () => {
   );
 
   it(
+    "queues B's turn on S while A holds S and preserves reply order",
+    { timeout: 420_000 },
+    async ({ signal }) => {
+      const current = await startScenario(signal);
+      const { a, clientB } = await handOverWithRunInFlight(current, signal);
+      const pending = sendTurn(clientB, SESSION_S, "MARK_S: queued while A holds S.");
+      void pending.catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      expect(current.provider.answered).not.toContain("S");
+      expect(listLeasedLanes(a.env)).toEqual([{ lane: `session:${SESSION_S}`, pid: a.child.pid }]);
+      current.provider.release("A");
+      const successor = await withTimeout(pending, 90_000, "B admits queued turn on S");
+      await clientB.request("agent.wait", { runId: successor.runId, timeoutMs: 60_000 });
+      await waitUntil(() => listLeasedLanes(a.env).length === 0, 60_000, "A releases S");
+      const history = JSON.stringify(await clientB.request("chat.history", { sessionKey: SESSION_S }));
+      expect(history.indexOf("REPLY_A")).toBeGreaterThanOrEqual(0);
+      expect(history.indexOf("REPLY_S")).toBeGreaterThan(history.indexOf("REPLY_A"));
+    },
+  );
+
+  it(
+    "keeps A alive on drain-stop while it holds S, then stops after its reply",
+    { timeout: 420_000 },
+    async ({ signal }) => {
+      const current = await startScenario(signal);
+      const { a, portB, clientB } = await handOverWithRunInFlight(current, signal);
+      await sendDesktopRequest(a, DESKTOP_DRAIN_STOP, DESKTOP_REQUEST_MS);
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      expect(a.hasExited()).toBe(false);
+      expect(listLeasedLanes(a.env)).toEqual([{ lane: `session:${SESSION_S}`, pid: a.child.pid }]);
+      current.provider.release("A");
+      await withTimeout(a.exited, 90_000, `A exits after held turn finishes\n${engineLog(a)}`);
+      await waitUntil(async () =>
+        JSON.stringify(await clientB.request("chat.history", { sessionKey: SESSION_S })).includes("REPLY_A"),
+      90_000, "A's reply is visible from B");
+      expect(await probeReadyz(portB)).toBe(200);
+    },
+  );
+
+  it(
     "rolls back before the standby takes over: the old engine takes the state back and serves again",
     { timeout: 300_000 },
     async ({ signal }) => {
@@ -406,6 +453,7 @@ describe("in-place engine handoff between real engines", () => {
       const current = await startScenario(signal, true);
       const channel = current.channel!;
       let jobId = "";
+      let cronDueAt = 0;
       const { a, b, clientB } = await handOverWithRunInFlight(
         current,
         signal,
@@ -416,17 +464,24 @@ describe("in-place engine handoff between real engines", () => {
             "only A's channel starts before take-over",
           );
           expect(await channel.starts()).toEqual([oldEngine.child.pid]);
+          cronDueAt = Date.now() + 45_000;
           const job = await clientA.request<{ id: string }>("cron.add", {
             name: "P45 handoff once",
             agentId: "main",
             enabled: true,
-            schedule: { kind: "at", at: new Date(Date.now() + 180_000).toISOString() },
+            schedule: { kind: "at", at: new Date(cronDueAt).toISOString() },
             sessionTarget: "isolated",
             wakeMode: "now",
             payload: { kind: "agentTurn", message: "MARK_C: due during handoff." },
             delivery: { mode: "none" },
           });
           jobId = job.id;
+        },
+        async () => {
+          // The job becomes due while A is deactivated and B has not been
+          // told to take over. B must claim the overdue job exactly once.
+          expect(Date.now(), "cron was already due before A deactivated").toBeLessThan(cronDueAt);
+          await new Promise((resolve) => setTimeout(resolve, cronDueAt - Date.now() + 1_000));
         },
       );
       await waitUntil(
@@ -544,21 +599,12 @@ describe("in-place engine handoff between real engines", () => {
     },
   );
 
-  // #419 gates session writes outside the lane. This branch does not have it yet, so the assertion fails here and
-  // `it.fails` keeps CI green; once #419 is in the stack this turns red and the marker must go.
-  it.fails(
-    "makes a session RPC on a session the old engine still finishes wait for it (#419)",
+  it(
+    "makes a session RPC on a session the old engine still finishes wait for it",
     { timeout: 420_000 },
     async ({ signal }) => {
-      let clientB: GatewayClient;
-      try {
-        const current = await startScenario(signal);
-        ({ clientB } = await handOverWithRunInFlight(current, signal));
-      } catch (setupError) {
-        // A broken setup must not pass as the expected failure: returning normally turns `it.fails` red.
-        console.error("handoff setup failed before the #419 check", setupError);
-        return;
-      }
+      const current = await startScenario(signal);
+      const { clientB } = await handOverWithRunInFlight(current, signal);
       const patched = clientB.request("sessions.patch", {
         key: SESSION_S,
         label: "renamed during handoff",
@@ -572,6 +618,8 @@ describe("in-place engine handoff between real engines", () => {
         new Promise((resolve) => setTimeout(() => resolve("waiting"), 3_000)),
       ]);
       expect(outcome).toBe("waiting");
+      current.provider.release("A");
+      await withTimeout(patched, 90_000, "session patch after A releases S");
     },
   );
 });
