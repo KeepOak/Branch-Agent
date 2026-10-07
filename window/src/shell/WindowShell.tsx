@@ -58,6 +58,7 @@ import type { Roster } from "../places/trunk/model";
 import { creationProblem, readRoster } from "../places/trunk/model";
 import { COMPOSE_EVENT } from "../composer/Composer";
 import { PairDialog } from "../places/customize/pairing";
+import { docsUrl, helpUrl, communityUrl, communityDisabledReason } from "./guide-links";
 import { Palette } from "./Palette";
 import { paletteRows } from "./palette-rows";
 import { PersonMenu, usePersonName } from "./PersonMenu";
@@ -885,9 +886,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     { label: "Set up Branch", hint: "3 min", run: () => firstRun.open(0), testid: "guide-setup" },
     { label: "Take the walkthrough", hint: "2 min", run: () => (setOverlay(null), setGuide("tour")), testid: "guide-tour" },
     { kind: "sep" },
-    { label: "Docs", run: () => undefined, disabled: "The docs address isn't configured." },
-    { label: "Get help", run: () => undefined, disabled: "The help address isn't configured." },
-    { label: "Community", run: () => undefined, disabled: "The community address isn't configured." },
+    { label: "Docs", run: () => window.open(docsUrl, "_blank") },
+    { label: "Get help", run: () => window.open(helpUrl, "_blank") },
+    { label: "Community", run: communityUrl ? () => window.open(communityUrl, "_blank") : undefined, disabled: communityUrl ? undefined : communityDisabledReason },
     { label: "What Branch can do", run: () => setOverlay({ kind: "cando" }), testid: "guide-cando" },
   ];
   const [, setReminded] = useState(0); // "Remind me tomorrow" redraws the person menu's update line
