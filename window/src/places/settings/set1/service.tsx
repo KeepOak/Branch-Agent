@@ -41,8 +41,8 @@ export function Logo({ id, name, size = 28 }: { id: string; name?: string; size?
   );
 }
 
-const PLAN_NAMES: Record<string, string> = { openai: "ChatGPT", anthropic: "Claude", google: "Gemini", "github-copilot": "GitHub Copilot", openrouter: "OpenRouter" };
-const KEY_NAMES: Record<string, string> = { openai: "OpenAI", anthropic: "Anthropic", google: "Google Gemini", openrouter: "OpenRouter" };
+const PLAN_NAMES: Record<string, string> = { openai: "ChatGPT", anthropic: "Claude", google: "Gemini", "github-copilot": "GitHub Copilot", openrouter: "OpenRouter", xai: "xAI" };
+const KEY_NAMES: Record<string, string> = { openai: "OpenAI", anthropic: "Anthropic", google: "Google Gemini", openrouter: "OpenRouter", xai: "xAI" };
 
 /** The name people know a service by: the product for a plan sign-in, the company for a key. */
 export function serviceName(provider: string, engineName?: unknown, key?: boolean): string {

@@ -58,6 +58,7 @@ import type { Roster } from "../places/trunk/model";
 import { creationProblem, readRoster } from "../places/trunk/model";
 import { COMPOSE_EVENT } from "../composer/Composer";
 import { PairDialog } from "../places/customize/pairing";
+import { guideLinkItems } from "./guide-links";
 import { Palette } from "./Palette";
 import { paletteRows } from "./palette-rows";
 import { PersonMenu, usePersonName } from "./PersonMenu";
@@ -912,9 +913,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     { label: "Set up Branch", hint: "3 min", run: () => firstRun.open(0), testid: "guide-setup" },
     { label: "Take the walkthrough", hint: "2 min", run: () => (setOverlay(null), setGuide("tour")), testid: "guide-tour" },
     { kind: "sep" },
-    { label: "Docs", run: () => undefined, disabled: "The docs address isn't configured." },
-    { label: "Get help", run: () => undefined, disabled: "The help address isn't configured." },
-    { label: "Community", run: () => undefined, disabled: "The community address isn't configured." },
+    ...guideLinkItems((url) => { window.open(url, "_blank", "noopener"); }),
     { label: "What Branch can do", run: () => setOverlay({ kind: "cando" }), testid: "guide-cando" },
   ];
   const [, setReminded] = useState(0); // "Remind me tomorrow" redraws the person menu's update line
@@ -968,6 +967,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       copyMarkdown: (r) => void copyMarkdown(session.engine, r.key, rowName(r.key)),
       copyText: (text) => void copyText(text),
       copyLink: (r) => void copyText(conversationLink(r.key)),
+      copyConversation: (r) => void actions.copyConversation(r, openConversation),
       lookItem: iconColourItem(row, (change) => actions.setLook(row, change)),
     }), "Conversation", e.type === "contextmenu"); // a right-click opens it above the row, at its left edge, as the artifact does
   const changeTheme = (t: ThemeChoice) => setTheme(setThemeChoice(t));
