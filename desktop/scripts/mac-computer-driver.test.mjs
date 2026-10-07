@@ -6,6 +6,36 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { MacComputerDriver, macScreenControlEnabled } from "../dist/mac-computer-driver.js";
+import { createMacScreenControlReconciler, restartMacScreenControlOnBuild } from "../dist/mac-screen-control-restart.js";
+
+test("Mac control restart boots the serving build without confirming a pending update", async () => {
+  const events = [];
+  await restartMacScreenControlOnBuild("/running/engine", {
+    drain: async () => { events.push("drain"); },
+    waitForPort: async () => { events.push("wait"); },
+    boot: async (dir, confirmUpdate) => { events.push([dir, confirmUpdate]); },
+    handoff: () => { events.push("handoff"); },
+  });
+  assert.deepEqual(events, ["drain", "wait", ["/running/engine", false], "handoff"]);
+});
+
+test("Mac setting changes stay queued while restart is busy or fails", async () => {
+  let state = { enabled: false, granted: false };
+  const outcomes = [false, false, true, true];
+  const calls = [];
+  const poll = createMacScreenControlReconciler(() => state, async () => {
+    calls.push(state.enabled);
+    return outcomes.shift();
+  }, () => {});
+  state = { enabled: true, granted: false };
+  for (let i = 0; i < 3; i++) { poll(); await new Promise(resolve => setImmediate(resolve)); }
+  assert.deepEqual(calls, [true, true, true]);
+  poll();
+  assert.deepEqual(calls, [true, true, true]);
+  state = { enabled: false, granted: false };
+  poll(); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls, [true, true, true, false]);
+});
 
 test("Mac screen control remains off until explicitly enabled", async () => {
   const dir = await mkdtemp(join(tmpdir(), "branch-mac-screen-setting-"));

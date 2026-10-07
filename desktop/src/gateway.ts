@@ -1,6 +1,6 @@
 // Starts the Branch engine gateway as a child process (as the early copy's start.sh does) and stops it by PID.
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
-import { createWriteStream, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { createWriteStream, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { constants as osConstants, setPriority } from "node:os";
@@ -64,8 +64,12 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
   const log = createWriteStream(join(cfg.dataDir, "gateway.log"), { flags: "a" });
   const profile = prepared ?? prepareNormalProfile(join(cfg.dataDir, "home"), undefined, (message) => log.write(message + "\n"));
   if (profile.note) log.write(profile.note + "\n");
+  const endpointFile = macComputerEndpoint ? join(cfg.dataDir, `cua-endpoint-${randomBytes(16).toString("hex")}`) : undefined;
+  if (endpointFile && macComputerEndpoint) writeFileSync(endpointFile, macComputerEndpoint, { flag: "wx", mode: 0o600 });
   const env = {
     ...process.env,
+    BRANCH_CUA_DRIVER_ENDPOINT: undefined,
+    BRANCH_CUA_DRIVER_ENDPOINT_FILE: endpointFile,
     BRANCH_PROFILE: profile.legacyDevMode ? "dev" : "default",
     BRANCH_HOME: join(cfg.dataDir, "home"),
     ...(profile.legacyDevMode ? { BRANCH_STATE_DIR: undefined, BRANCH_CONFIG_PATH: undefined } : {
@@ -79,17 +83,23 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
     BRANCH_GATEWAY_TOKEN: token,
     BRANCH_GATEWAY_STANDBY: standby ? "1" : undefined,
     // Only Electron's Mac host can give the Gateway this app-owned daemon lease.
-    BRANCH_CUA_DRIVER_ENDPOINT: macComputerEndpoint,
     ...testProfile(),
   };
   const args = ["branch.mjs", "gateway", ...(profile.legacyDevMode ? ["--dev"] : []), "--port", String(port)];
-  const child = spawn(cfg.nodePath, args, {
-    cwd: engineDir,
-    env,
-    windowsHide: true,
-    detached: process.platform !== "win32",
-    stdio: ["ignore", "pipe", "pipe", "ipc"],
-  });
+  let child: ChildProcess;
+  try {
+    child = spawn(cfg.nodePath, args, {
+      cwd: engineDir,
+      env,
+      windowsHide: true,
+      detached: process.platform !== "win32",
+      stdio: ["ignore", "pipe", "pipe", "ipc"],
+    });
+  } catch (error) {
+    if (endpointFile) unlinkSync(endpointFile);
+    throw error;
+  }
+  if (endpointFile) child.once("close", () => { try { unlinkSync(endpointFile); } catch { /* already removed */ } });
   // Recorded as soon as it exists, so a launch after a desktop crash finds every engine this one started.
   recordEngine(cfg.dataDir, child, port, standby ? "standby" : "engine");
   child.stdout?.pipe(log);

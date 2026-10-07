@@ -1,6 +1,9 @@
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
 import { resizeToJpeg } from "branch/plugin-sdk/media-runtime";
 import { createSolidPngBuffer } from "branch/plugin-sdk/test-fixtures";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createCuaComputerProvider } from "./commands.js";
 import {
@@ -177,6 +180,18 @@ describe("cua-computer provider", () => {
         label,
       ).toBe(false);
     }
+  });
+
+  it("reads the Mac endpoint from a private file without an environment secret", () => {
+    const dir = mkdtempSync(join(tmpdir(), "branch-cua-endpoint-"));
+    const file = join(dir, "endpoint");
+    try {
+      writeFileSync(file, macOsEndpoint().BRANCH_CUA_DRIVER_ENDPOINT!, { mode: 0o600 });
+      const { session } = driver();
+      expect(createCuaComputerProvider({ platform: "darwin", env: { BRANCH_CUA_DRIVER_ENDPOINT_FILE: file }, driver: session }).isAvailable()).toBe(true);
+      writeFileSync(file, "not-json");
+      expect(createCuaComputerProvider({ platform: "darwin", env: { BRANCH_CUA_DRIVER_ENDPOINT_FILE: file }, driver: session }).isAvailable()).toBe(false);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
   it("lazily owns one session and closes it when node-host availability stops", async () => {
