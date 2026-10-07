@@ -25,13 +25,16 @@
 .tpL1T5 time{margin-left:auto;padding-left:6px;font-size:11.5px;color:var(--ink-3);white-space:nowrap}
 .tpL2T5{display:flex;align-items:center;gap:4px;min-width:0;color:var(--ink-3);font-size:12.5px}
 .tpL2T5>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
+.tpWhoT5{font-style:normal;color:var(--accent-ink,var(--accent));white-space:nowrap;flex:none}
 .tpBadgeT5{flex:none;min-width:18px;height:18px;padding:0 5px;box-sizing:border-box;border-radius:9px;background:var(--accent);color:#fff;font-size:11px;display:grid;place-items:center}
+.muteT5 .tpBadgeT5{background:var(--ink-3)}
 .tpStT5{flex:none;width:8px;height:8px;border-radius:50%;display:inline-block}
 .tpStT5.needs{background:#E0A13A}.tpStT5.done{background:color-mix(in srgb,var(--ok,#3a9a5b) 80%,transparent)}
 .tpStT5.working{width:9px;height:9px;border:2px solid color-mix(in srgb,var(--accent) 30%,transparent);border-top-color:var(--accent);background:none;box-sizing:border-box}
 @media (prefers-reduced-motion:no-preference){.tpStT5.working{animation:tpSpinT5 1s linear infinite}}
 @keyframes tpSpinT5{to{transform:rotate(360deg)}}
 .tpMoreT5{all:unset;position:absolute;right:6px;top:6px;width:22px;height:22px;display:grid;place-items:center;border-radius:6px;color:var(--ink-3);opacity:0;cursor:pointer;background:var(--raise)}
+.tpPinT5::before{content:"📌";font-size:10px;font-style:normal}.tpMuteT5::before{content:"🔕";font-size:10px;font-style:normal}
 .tpRowT5:hover .tpMoreT5,.tpMoreT5:focus-visible{opacity:1}
 .tpClosedHT5{all:unset;cursor:pointer;display:flex;align-items:center;gap:4px;margin:10px 8px 4px;font-size:12.5px;color:var(--ink-3)}
 .topicsT5.lay-rail,.topicsT5.lay-side{align-items:stretch;padding-top:6px}

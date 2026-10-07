@@ -10,6 +10,7 @@ const defaults: Record<Layout, number> = { column: 300, rail: 64, side: 88, tabs
 const key = "branch-topics-t5";
 const emojiKey = "branch-topic-emoji-t5";
 const titleKey = "branch-topic-title-t5";
+const muteKey = "branch-topic-mute-t5";
 function stored<T>(name: string, fallback: T): T { try { return JSON.parse(localStorage.getItem(name) || "null") ?? fallback; } catch { return fallback; } }
 const clock = (at: number) => at ? new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }) : "";
 export function shortTopicTitle(name: string): string {
@@ -33,6 +34,7 @@ export function TopicRail(p: TopicRailProps) {
   const [setting, setSetting] = useState(() => stored(key, { layout: "column" as Layout, width: 300 }));
   const [emoji, setEmoji] = useState<Record<string, string>>(() => stored(emojiKey, {}));
   const [renamed, setRenamed] = useState<Record<string, string>>(() => stored(titleKey, {}));
+  const [muted, setMuted] = useState<Record<string, boolean>>(() => stored(muteKey, {}));
   const [menu, setMenu] = useState<string | null>(null);
   const [closedOpen, setClosedOpen] = useState(false);
   const [renaming, setRenaming] = useState<Topic | null>(null);
@@ -57,6 +59,7 @@ export function TopicRail(p: TopicRailProps) {
   const changeLayout = (next: Layout) => { const value = { layout: next, width: defaults[next] }; localStorage.setItem(key, JSON.stringify(value)); setSetting(value); setMenu(null); p.onLayout?.(next); };
   const changeEmoji = (topic: Topic) => { setPicking(topic); setEmojiQuery(""); setMenu(null); };
   const chooseEmoji = (topic: Topic, chosen: string) => { const value = { ...emoji, [topic.key]: chosen }; localStorage.setItem(emojiKey, JSON.stringify(value)); setEmoji(value); setPicking(null); };
+  const toggleMute = (topic: Topic) => { const value = { ...muted, [topic.key]: !muted[topic.key] }; localStorage.setItem(muteKey, JSON.stringify(value)); setMuted(value); setMenu(null); };
   const update = async (topic: Topic, change: Record<string, unknown>): Promise<boolean> => { setBusy(true); setError(""); try { await p.onPatch(topic, change); setMenu(null); return true; } catch (e) { setError(e instanceof Error ? e.message : String(e)); return false; } finally { setBusy(false); } };
   const active = p.items.filter(({ topic }) => topic.status !== "archived").sort((a, b) => Number(Boolean(b.topic.pinnedAt)) - Number(Boolean(a.topic.pinnedAt)) || b.updatedAt - a.updatedAt);
   const closed = p.items.filter(({ topic }) => topic.status === "archived");
@@ -64,12 +67,12 @@ export function TopicRail(p: TopicRailProps) {
   const button = (id: string, label: string, icon: string, status?: Topic["status"], unread?: boolean) => { const current = id.startsWith("all-") ? Boolean(p.allSelected) : !p.allSelected && p.currentKey === id; return <button key={id} type="button" className={`tpTabT5 ${current ? "curT5" : ""}`} role={layout === "tabs" ? "tab" : undefined} aria-selected={layout === "tabs" ? current : undefined} aria-current={current} aria-label={label} onClick={() => id.startsWith("all-") ? p.onAll() : p.onOpen(id)}>{layout !== "tabs" || id !== p.contactKey ? <span className="tpEmoT5" aria-hidden="true">{icon}</span> : null}<span className="tpTabLT5">{label}</span>{status === "working" || status === "waiting" || status === "done" ? <i className={`tpStT5 ${status === "waiting" ? "needs" : status}`} aria-label={status} /> : null}{unread && !current ? <b className="tpBadgeT5" aria-label="unread">1</b> : null}</button>; };
   const row = ({ topic, preview, updatedAt }: typeof p.items[number]) => {
     const label = renamed[topic.key] || shortTopicTitle(topic.title);
-    return layout === "column" ? <div className={`tpRowT5 ${p.currentKey === topic.key ? "curT5" : ""}`} role="listitem" key={topic.key}>
+    return layout === "column" ? <div className={`tpRowT5 ${p.currentKey === topic.key ? "curT5" : ""} ${muted[topic.key] ? "muteT5" : ""}`} role="listitem" key={topic.key}>
       <button className="tpEmoBtnT5" type="button" aria-label={`Change the emoji for ${label}`} onClick={() => changeEmoji(topic)}>{topicIcons[topic.key]}</button>
-      <button className="tpGoT5" type="button" aria-current={p.currentKey === topic.key} onClick={() => p.onOpen(topic.key)}><span className="tpL1T5"><b>{label}</b>{topic.pinnedAt ? <i aria-label="pinned">📌</i> : null}<time>{clock(updatedAt)}</time></span><span className="tpL2T5"><span>{preview}</span>{topic.unread && p.currentKey !== topic.key ? <b className="tpBadgeT5" aria-label="unread">1</b> : null}</span></button>
+      <button className="tpGoT5" type="button" aria-current={p.currentKey === topic.key} onClick={() => p.onOpen(topic.key)}><span className="tpL1T5"><b>{label}</b>{topic.pinnedAt ? <i className="tpPinT5" aria-label="pinned"/> : null}{muted[topic.key] ? <i className="tpMuteT5" aria-label="muted"/> : null}<time>{clock(updatedAt)}</time></span><span className="tpL2T5"><span>{preview}</span>{topic.status === "working" || topic.status === "waiting" || topic.status === "done" ? <i className={`tpStT5 ${topic.status === "waiting" ? "needs" : topic.status}`} aria-label={topic.status}/> : null}{topic.unread && p.currentKey !== topic.key && !muted[topic.key] ? <b className="tpBadgeT5" aria-label="unread">1</b> : null}</span></button>
       <button className="tpMoreT5" type="button" aria-label={`More for ${label}`} onClick={() => setMenu(menu === topic.key ? null : topic.key)}>⋯</button>
-      {menu === topic.key ? <div className="tpMenuT5" role="menu"><strong>{label}</strong><button type="button" onClick={() => void update(topic, { pinned: !topic.pinnedAt })}>{topic.pinnedAt ? "Unpin" : "Pin to top"}</button><button type="button" onClick={() => { setRenaming(topic); setTitle(label); setMenu(null); }}>Rename…</button><button type="button" onClick={() => changeEmoji(topic)}>Change the emoji…</button><hr/><button type="button" disabled={busy} onClick={() => void update(topic, { archived: topic.status !== "archived" })}>{topic.status === "archived" ? "Reopen" : "Close"}</button></div> : null}
-    </div> : button(topic.key, label, topicIcons[topic.key] || "💬", topic.status, topic.unread);
+      {menu === topic.key ? <div className="tpMenuT5" role="menu"><strong>{label}</strong><button type="button" onClick={() => void update(topic, { pinned: !topic.pinnedAt })}>{topic.pinnedAt ? "Unpin" : "Pin to top"}</button><button type="button" onClick={() => toggleMute(topic)}>{muted[topic.key] ? "Unmute" : "Mute"}</button><button type="button" onClick={() => { setRenaming(topic); setTitle(label); setMenu(null); }}>Rename…</button><button type="button" onClick={() => changeEmoji(topic)}>Change the emoji…</button><hr/><button type="button" disabled={busy} onClick={() => void update(topic, { archived: topic.status !== "archived" })}>{topic.status === "archived" ? "Reopen" : "Close"}</button></div> : null}
+    </div> : button(topic.key, label, topicIcons[topic.key] || "💬", topic.status, topic.unread && !muted[topic.key]);
   };
   const general = layout === "column" ? <div className={`tpRowT5 ${p.currentKey === p.contactKey ? "curT5" : ""}`} role="listitem"><span className="tpAvT5"><Face size={34} label={p.contactName}/></span><button className="tpGoT5" type="button" aria-label="General" aria-current={p.currentKey === p.contactKey} onClick={() => p.onOpen(p.contactKey)}><span className="tpL1T5"><b>General</b><time>{clock(p.generalUpdatedAt)}</time></span><span className="tpL2T5"><span>{p.generalPreview ? `${p.contactName}: ${p.generalPreview}` : ""}</span></span></button></div> : button(p.contactKey, "General", "💬");
   return <nav ref={railRef} className={`topicsT5 lay-${layout}`} aria-label="Threads" style={{ "--topw": `${setting.width}px` } as CSSProperties}>

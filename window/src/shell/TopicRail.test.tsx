@@ -49,6 +49,19 @@ describe("preview thread row", () => {
     expect(JSON.parse(localStorage.getItem("branch-topics-t5")!)).toEqual({ layout: "tabs", width: 0 });
   });
 
+  it("mutes unread badges as the preview does and remembers the choice", async () => {
+    const t = await render();
+    expect(t.host.querySelector(".tpBadgeT5")).toBeTruthy();
+    await t.click("More for Lisbon trip");
+    await t.click("Mute");
+    expect(t.host.querySelector(".tpMuteT5")).toBeTruthy();
+    expect(t.host.querySelector(".tpBadgeT5")).toBeNull();
+    expect(JSON.parse(localStorage.getItem("branch-topic-mute-t5")!)[topic.key]).toBe(true);
+    await t.click("More for Lisbon trip");
+    await t.click("Unmute");
+    expect(t.host.querySelector(".tpBadgeT5")).toBeTruthy();
+  });
+
   it("persists rename and close on the actual engine session with its transcript guard", async () => {
     const request = vi.fn(async () => ({}));
     await patchTopicSession(request, topic, "transcript-1", { label: "Portugal" });
