@@ -20,11 +20,29 @@ export async function restoreSavedConversationWindows(request: (method: string, 
       if (session && typeof session === "object" && (session as { key?: unknown }).key === key) existing.push(key);
       else deferred.push(key);
     } catch (error) {
-      if (!/Unknown agent id "[^"]+"/.test(error instanceof Error ? error.message : String(error))) deferred.push(key);
+      if (!(error && typeof error === "object" && "code" in error && error.code === "INVALID_REQUEST")) deferred.push(key);
     }
   }
   await desktop.restore(existing, deferred);
   return deferred.length > 0;
+}
+
+/** Keep deferred saved windows until a successful Gateway read settles them. */
+export function retrySavedConversationWindows(request: (method: string, params: unknown) => Promise<unknown>): () => void {
+  let cancelled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let delay = 1_000;
+  const check = async () => {
+    let retry = false;
+    try { retry = await restoreSavedConversationWindows(request); }
+    catch (error) { console.warn("Saved conversation windows could not be checked", error); retry = true; }
+    if (retry && !cancelled) {
+      timer = setTimeout(() => void check(), delay);
+      delay = Math.min(delay * 2, 30_000);
+    }
+  };
+  void check();
+  return () => { cancelled = true; if (timer) clearTimeout(timer); };
 }
 
 export async function forgetDeletedConversationWindow(key: string): Promise<void> {

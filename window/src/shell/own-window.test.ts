@@ -1,8 +1,9 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { changeConversationInOwnWindow, conversationLink, forgetDeletedConversationWindow, openConversationWindow, ownWindowUnavailable, restoreSavedConversationWindows } from "./own-window";
+import { changeConversationInOwnWindow, conversationLink, forgetDeletedConversationWindow, openConversationWindow, ownWindowUnavailable, restoreSavedConversationWindows, retrySavedConversationWindows } from "./own-window";
 
 afterEach(() => {
   delete (window as { branchDesktop?: unknown }).branchDesktop;
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -54,11 +55,31 @@ it("drops a deleted Trunk pop-out without blocking other saved conversations", a
   const restore = vi.fn(async () => undefined);
   (window as { branchDesktop?: unknown }).branchDesktop = { conversationWindows: { saved: async () => ["agent:retired:main", "agent:oak:one"], restore } };
   const request = vi.fn(async (_method: string, params: unknown) => {
-    if ((params as { key: string }).key === "agent:retired:main") throw new Error('Unknown agent id "retired"');
+    if ((params as { key: string }).key === "agent:retired:main") throw Object.assign(new Error("agent was removed"), { code: "INVALID_REQUEST" });
     return { session: { key: "agent:oak:one" } };
   });
   expect(await restoreSavedConversationWindows(request)).toBe(false);
   expect(restore).toHaveBeenCalledWith(["agent:oak:one"], []);
+});
+
+it("retries a deferred restore until the read succeeds, even when a transient error mentions an unknown agent", async () => {
+  vi.useFakeTimers();
+  let savedKeys = ["agent:oak:preparing"];
+  const restore = vi.fn(async (existing: string[], deferred: string[]) => { savedKeys = [...existing, ...deferred]; });
+  (window as { branchDesktop?: unknown }).branchDesktop = { conversationWindows: { saved: async () => savedKeys, restore } };
+  const request = vi.fn()
+    .mockRejectedValueOnce(Object.assign(new Error('Unknown agent id "oak"'), { code: "UNAVAILABLE" }))
+    .mockResolvedValueOnce({ session: { key: "agent:oak:preparing" } });
+
+  const stop = retrySavedConversationWindows(request);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(restore).toHaveBeenNthCalledWith(1, [], ["agent:oak:preparing"]);
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(restore).toHaveBeenNthCalledWith(2, ["agent:oak:preparing"], []);
+  expect(request).toHaveBeenCalledTimes(2);
+  stop();
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect(request).toHaveBeenCalledTimes(2);
 });
 
 it("defers a temporarily refused pop-out and restores the others", async () => {

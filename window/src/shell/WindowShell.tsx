@@ -102,7 +102,7 @@ import { useShellRoom } from "../rooms/useShellRoom";
 import { NewGroupChatHost } from "../rooms/NewGroupChat";
 import { agentState, DONE_MS, TALK_MS, type AgentState } from "../face/agentState";
 import { conversationLink, useConversationMenu } from "./ConversationMenu";
-import { changeConversationInOwnWindow, openConversationWindow, ownWindowUnavailable, restoreSavedConversationWindows } from "./own-window";
+import { changeConversationInOwnWindow, openConversationWindow, ownWindowUnavailable, retrySavedConversationWindows } from "./own-window";
 import { TALK_EVENT, useVoiceCatalog } from "../composer/VoiceParts";
 import { DockQuestion } from "../thread/QuestionCard";
 import { CHECK_STATUS_EVENT } from "../thread/blocks";
@@ -403,20 +403,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const request = useCallback(<T,>(m: string, p?: unknown) => session.request<T>(m, p), [session]);
   useEffect(() => {
     if (!ready || dedicated) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let delay = 1_000;
-    const check = async () => {
-      let retry = false;
-      try { retry = await restoreSavedConversationWindows(request); }
-      catch (error) { console.warn("Saved conversation windows could not be checked", error); retry = true; }
-      if (retry && !cancelled) {
-        timer = setTimeout(() => void check(), delay);
-        delay = Math.min(delay * 2, 30_000);
-      }
-    };
-    void check();
-    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+    return retrySavedConversationWindows(request);
   }, [ready, dedicated, request]);
   const onGatewayEvent = useCallback((listener: (event: string, payload: unknown) => void) => session.onGatewayEvent(listener), [session]);
   const trunkName = useCallback((id: string | undefined) => trunks.list.find((t) => t.id === id)?.name || s.name || "Sapling", [trunks, s.name]);
