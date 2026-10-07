@@ -14,7 +14,7 @@ export function desktopRunTargets(workflow) {
   for (const line of workflow.split(/\r?\n/)) {
     const command = /^\s*(?:-\s*)?run:\s*(node\b.*\s--test\s+.*)$/.exec(line)?.[1];
     if (!command) continue;
-    for (const token of command.matchAll(/(?:^|\s)((?:desktop\/)?scripts\/[^\s]+\.test\.(?:ts|tsx|mjs|mts))(?=\s|$)/g)) {
+    for (const token of command.matchAll(/(?:^|\s)((?:desktop\/)?[\w./*?-]+\.test\.(?:ts|tsx|mjs|mts))(?=\s|$)/g)) {
       targets.add(token[1].startsWith('desktop/') ? token[1] : `desktop/${token[1]}`);
     }
   }

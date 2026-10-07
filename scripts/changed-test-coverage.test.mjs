@@ -12,9 +12,11 @@ test('covered and uncovered changed tests are distinguished; deleted tests are i
 });
 
 test('desktop coverage requires an executable --test argument', () => {
-  const workflow = '      # run: node --test scripts/commented.test.mjs\n      - run: node --test scripts/covered.test.mjs scripts/part-*.test.mjs\n';
+  const workflow = '      # run: node --test scripts/commented.test.mjs\n' +
+    '      - run: node --test scripts/covered.test.mjs scripts/part-*.test.mjs smoke.test.mts\n';
   const targets = desktopRunTargets(workflow);
-  assert.deepEqual([...targets], ['desktop/scripts/covered.test.mjs', 'desktop/scripts/part-*.test.mjs']);
+  assert.deepEqual([...targets], ['desktop/scripts/covered.test.mjs', 'desktop/scripts/part-*.test.mjs',
+    'desktop/smoke.test.mts']);
   assert.deepEqual(uncoveredTests(['desktop/scripts/part-one.test.mjs', 'desktop/scripts/other.test.mjs'], targets),
     ['desktop/scripts/other.test.mjs']);
 });
