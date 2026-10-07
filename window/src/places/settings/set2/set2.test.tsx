@@ -65,31 +65,20 @@ describe("Settings › Updates & about", () => {
     expect(document.body.textContent).toContain("Branch is up to date.");
     expect(document.body.textContent).not.toContain("Install when idle");
   });
-  it("Let them finish first runs update.run without stopping anything", async () => {
+  it("installs without a dialog or stopping running work", async () => {
     const { engine, request } = engineWith({ "update.status": READY, "sessions.list": RUNNING, "update.run": { ok: true, result: { status: "ok" } } });
     await show("updates", engine);
-    await click("Install when idle");
-    expect(document.body.textContent).toContain("1 task is working right now.");
-    await click("Continue");
+    await click("Install update");
+    expect(document.body.textContent).not.toContain("Install 1.1.0");
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(request.mock.calls.map(([m]) => m)).toContain("update.run");
     expect(request.mock.calls.map(([m]) => m)).not.toContain("sessions.abort");
-    expect(document.body.textContent).toContain("It installs when the running tasks finish");
-  });
-  it("Install now stops each running conversation, then runs update.run", async () => {
-    const { engine, request } = engineWith({ "update.status": READY, "sessions.list": RUNNING, "sessions.abort": { ok: true }, "update.run": { ok: true } });
-    await show("updates", engine);
-    await click("Install when idle");
-    await act(async () => button("Install nowStops them at a safe point. Afterwards you can pick each one up where it was.").click());
-    await click("Continue");
-    const methods = request.mock.calls.map(([m]) => m);
-    expect(request).toHaveBeenCalledWith("sessions.abort", { key: "agent:main:a", agentId: "main", runId: "r1" });
-    expect(methods.indexOf("sessions.abort")).toBeLessThan(methods.indexOf("update.run"));
+    expect(document.body.textContent).toContain("Installing. You can keep working.");
   });
   it("shows the engine's refusal instead of claiming it installs", async () => {
     const { engine } = engineWith({ "update.status": READY, "sessions.list": { sessions: [] }, "update.run": { ok: false, message: "Updates are managed by the package manager." } });
     await show("updates", engine);
-    await click("Install when idle");
-    await click("Continue");
+    await click("Install update");
     expect(document.body.textContent).toContain("Updates are managed by the package manager.");
   });
   it("saves the channel and the by-itself switch through config.patch", async () => {
