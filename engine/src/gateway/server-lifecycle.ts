@@ -745,6 +745,10 @@ export async function prepareGatewayLifecycle(params: {
       }
       await requestEntryLifetime.sealAndJoin();
       await shutdownRuntime.waitForPluginCacheRetirement();
+      // The predecessor has now finished its writes. Release any sealed hold so
+      // an in-process lifecycle restart can install its own enqueue hook.
+      handoffLeases?.releaseAll();
+      handoffLeases = undefined;
     };
   };
   const closeStepOwner = {
