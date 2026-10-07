@@ -79,7 +79,7 @@ import { createRuntimeConfigWriteApplication } from "../../config/runtime-write-
 import { purgeAgentSessionStoreEntries } from "../../config/sessions.js";
 import { resolveSessionTranscriptsDirForAgent } from "../../config/sessions/paths.js";
 import type { BranchConfig } from "../../config/types.branch.js";
-import { isMissingPathError } from "../../infra/errors.js";
+import { formatErrorMessage, isMissingPathError } from "../../infra/errors.js";
 import { withAgentExecApprovalsRemoved } from "../../infra/exec-approvals.js";
 import { isPathInside } from "../../infra/path-guards.js";
 import { movePathToTrash } from "../../plugin-sdk/browser-maintenance.js";
@@ -91,6 +91,7 @@ import {
 } from "../../state/agent-deletion-journal.js";
 import { resolveUserPath } from "../../utils.js";
 import { reviveAgentDatabasesAfterConfigCommit } from "../server-reload-agent-databases.js";
+import { warmAgentSessionAdmission } from "../server-session-admission-warmup.js";
 import { SessionMutationAuthorizationChangedError } from "../session-mutation-authorization-error.js";
 import { captureGatewayClientUploadCommitGuard } from "../upload-policy.js";
 import {
@@ -450,17 +451,13 @@ export const agentsHandlers: GatewayRequestHandlers = {
       await reviveAgentDatabasesAfterConfigCommit([result.agentId], (message) =>
         context.logGateway.warn(message),
       );
-      // A newly created Trunk is usually messaged immediately. Prepare the
-      // session discovery and database workers while creation is still pending,
-      // so their first native startup cannot stall reply admission.
-      const { loadSessionEntryForAdmission } =
-        await import("../../config/sessions/session-accessor.sqlite-entry.js");
-      const warmAdmission = await loadSessionEntryForAdmission({
-        agentId: result.agentId,
-        sessionKey: `agent:${result.agentId}:main`,
-        readConsistency: "latest",
+      // Creation is already committed. A failed or slow worker warm-up must not
+      // make this successful create appear retryable to the client.
+      void warmAgentSessionAdmission(result.agentId, context.getRuntimeConfig()).catch((error) => {
+        context.logGateway.warn(
+          `agent ${result.agentId} session admission warm-up failed: ${formatErrorMessage(error)}`,
+        );
       });
-      await warmAdmission.databaseClaim.release();
       respond(
         true,
         {

@@ -4,7 +4,10 @@ import { afterEach, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { replaceSessionEntrySync } from "../../config/sessions/session-accessor.sqlite-entry.js";
-import { closeBranchAgentDatabasesAsync } from "../../state/branch-agent-db.js";
+import {
+  closeBranchAgentDatabaseByPath,
+  closeBranchAgentDatabasesAsync,
+} from "../../state/branch-agent-db.js";
 import * as workerWrite from "../../state/branch-agent-write-admission.js";
 import { replyRunRegistry } from "./reply-run-registry.js";
 import { testing } from "./reply-run-registry.test-support.js";
@@ -81,3 +84,72 @@ it.each([false, true])(
     }
   },
 );
+
+it("refuses an existing session database replaced while first-message admission waits", async () => {
+  const storePath = path.join(tempDirs.make("first-message-replaced-"), "agent.sqlite");
+  const sessionKey = "agent:main:dashboard:replaced";
+  replaceSessionEntrySync(
+    { agentId: "main", storePath, sessionKey },
+    { sessionId: "original", updatedAt: Date.now() },
+  );
+  closeBranchAgentDatabaseByPath(storePath);
+  const entered = createDeferred();
+  const resume = createDeferred();
+  let didEnter = false;
+  const runWrite = workerWrite.runBranchAgentWorkerWrite;
+  vi.spyOn(workerWrite, "runBranchAgentWorkerWrite").mockImplementation(async (...args) => {
+    didEnter = true;
+    entered.resolve();
+    await resume.promise;
+    return await runWrite(...args);
+  });
+  const pending = admitReplyTurn({
+    agentId: "main",
+    storePath,
+    sessionKey,
+    sessionId: "original",
+    kind: "visible",
+    resetTriggered: false,
+  });
+  try {
+    await vi.waitFor(() => expect(didEnter).toBe(true), { timeout: 90_000 });
+    await entered.promise;
+    const previousPath = `${storePath}.previous`;
+    fs.renameSync(storePath, previousPath);
+    fs.copyFileSync(previousPath, storePath);
+    resume.resolve();
+    await expect(pending).rejects.toThrow(/database changed|Session store.*changed/i);
+    expect(replyRunRegistry.get(sessionKey)).toBeUndefined();
+  } finally {
+    resume.resolve();
+    await pending.catch(() => undefined);
+  }
+});
+
+it("gives only one of two simultaneous first messages the reply slot", async () => {
+  const storePath = path.join(tempDirs.make("first-message-concurrent-"), "agent.sqlite");
+  const sessionKey = "agent:main:dashboard:concurrent";
+  const admit = () =>
+    admitReplyTurn({
+      agentId: "main",
+      storePath,
+      sessionKey,
+      sessionId: "concurrent-session",
+      kind: "visible",
+      resetTriggered: false,
+      waitForActive: false,
+    });
+  const results = await Promise.all([admit(), admit()]);
+  try {
+    expect(results.map((result) => result.status).sort()).toEqual(["owned", "skipped"]);
+    expect(results.find((result) => result.status === "skipped")).toMatchObject({
+      reason: "active-run",
+    });
+  } finally {
+    for (const result of results) {
+      if (result.status === "owned") {
+        result.operation.complete();
+      }
+    }
+  }
+});

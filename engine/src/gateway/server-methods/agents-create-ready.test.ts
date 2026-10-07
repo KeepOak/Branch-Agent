@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vitest";
 import type { RuntimeConfigWriteApplication } from "../../config/runtime-write-application.js";
 import type { BranchConfig } from "../../config/types.branch.js";
+import { startGatewaySessionAdmissionWarmup } from "../server-session-admission-warmup.js";
 
 const mocks = vi.hoisted(() => ({
   createAgent: vi.fn(),
@@ -13,7 +14,9 @@ vi.mock("../server-reload-agent-databases.js", () => ({
   reviveAgentDatabasesAfterConfigCommit: mocks.reviveAgentDatabases,
 }));
 vi.mock("../../config/sessions/session-accessor.sqlite-entry.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../config/sessions/session-accessor.sqlite-entry.js")>()),
+  ...(await importOriginal<
+    typeof import("../../config/sessions/session-accessor.sqlite-entry.js")
+  >()),
   loadSessionEntryForAdmission: mocks.warmAdmission,
 }));
 vi.mock("../session-utils.js", async (importOriginal) => ({
@@ -73,11 +76,13 @@ it("resolves the new agent for agents.list when create returns", async () => {
   runtimeConfig = { agents: { entries: { main: {}, "new-agent": {} } } };
   claim!.settle("applied");
   await created.promise;
-  expect(mocks.warmAdmission).toHaveBeenCalledWith({
-    agentId: "new-agent",
-    sessionKey: "agent:new-agent:main",
-    readConsistency: "latest",
-  });
+  await vi.waitFor(() =>
+    expect(mocks.warmAdmission).toHaveBeenCalledWith({
+      agentId: "new-agent",
+      sessionKey: "agent:new-agent:main",
+      readConsistency: "latest",
+    }),
+  );
   expect(created.respond).toHaveBeenCalledWith(
     true,
     expect.objectContaining({ agentId: "new-agent" }),
@@ -93,4 +98,56 @@ it("resolves the new agent for agents.list when create returns", async () => {
     }),
     undefined,
   );
+});
+
+it("reports a committed create even when its background admission warm-up fails", async () => {
+  mocks.createAgent.mockImplementation(
+    async (params: { runtimeApplication: RuntimeConfigWriteApplication }) => {
+      params.runtimeApplication.claim()!.settle("applied");
+      return {
+        status: "created",
+        agentId: "warm-failure",
+        name: "Warm Failure",
+        workspace: "/workspace/warm-failure",
+      };
+    },
+  );
+  mocks.warmAdmission.mockRejectedValueOnce(new Error("cold worker failed"));
+  const warn = vi.fn();
+  const respond = vi.fn();
+  await agentsHandlers["agents.create"]!({
+    params: { name: "Warm Failure" },
+    respond,
+    context: {
+      getRuntimeConfig: () => ({ agents: { entries: { "warm-failure": {} } } }),
+      logGateway: { warn },
+    },
+    client: null,
+    req: { type: "req", id: "create-failure", method: "agents.create" },
+    isWebchatConnect: () => false,
+  } as never);
+  expect(respond).toHaveBeenCalledWith(
+    true,
+    expect.objectContaining({ agentId: "warm-failure" }),
+    undefined,
+  );
+  await vi.waitFor(() =>
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("cold worker failed")),
+  );
+});
+
+it("warms every configured Trunk after readiness without blocking startup", async () => {
+  const seen: string[] = [];
+  mocks.warmAdmission.mockImplementation(async (input: { sessionKey: string }) => {
+    seen.push(input.sessionKey);
+    return { databaseClaim: { release: async () => {} } };
+  });
+  const sidecar = startGatewaySessionAdmissionWarmup({
+    cfg: { agents: { entries: { juniper: {}, tester: {} } }, session: { mainKey: "home" } },
+    signal: new AbortController().signal,
+    warn: vi.fn(),
+  });
+  expect(seen).toEqual([]);
+  await sidecar.stop();
+  expect(seen).toEqual(["agent:juniper:home", "agent:tester:home"]);
 });
