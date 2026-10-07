@@ -36,6 +36,24 @@ const base = (extra: Handler = () => undefined): Handler => (m, p) => {
 };
 
 describe("Library › Logbook", () => {
+  it("shows a failed day list and restores past-day navigation after retry", async () => {
+    let attempts = 0;
+    const { engine, request } = engineOf(base(method => {
+      if (method !== "logbook.days") return undefined;
+      attempts++;
+      return attempts === 1 ? new Error("Past days unavailable") : { days: [{ day: "2026-10-01" }] };
+    }));
+    await mount(<LogbookTab engine={engine} />);
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe("Past days unavailable");
+    expect((host.querySelector('[aria-label="Previous day"]') as HTMLButtonElement).disabled).toBe(true);
+    await click("Retry days");
+    expect(host.textContent).not.toContain("Past days unavailable");
+    const previous = host.querySelector('[aria-label="Previous day"]') as HTMLButtonElement;
+    expect(previous.disabled).toBe(false);
+    await act(async () => { previous.click(); }); await settle(); await settle();
+    expect(request).toHaveBeenCalledWith("logbook.timeline", { day: "2026-10-01" });
+    expect(attempts).toBe(2);
+  });
   it("shows Logbook is off with Turn on… to Settings when the engine has no Logbook running", async () => {
     const open = vi.fn();
     await mount(<LogbookTab engine={engineOf(base(m => (m === "logbook.status" ? new Error("Logbook service is not running") : undefined))).engine} openSettings={open} />);

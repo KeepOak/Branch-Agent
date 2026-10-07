@@ -69,6 +69,7 @@ function On({ engine, status, reload, openSettings }: Props & { status: Status; 
       </span>
     </div>
     {op.error && <p className="lib-bad" role="alert">{op.error}</p>}
+    {days.error && <div className="lib-acts"><p className="lib-bad" role="alert">{days.error}</p><button type="button" className="btn sm" disabled={days.loading} onClick={days.reload}>Retry days</button></div>}
     <div className="lib-day">
       <button type="button" className="ib" aria-label="Previous day" disabled={at < 0 || at >= list.length - 1} onClick={() => setDay(list[at + 1])}>‹</button>
       <b>{dayWords(day)}</b>
