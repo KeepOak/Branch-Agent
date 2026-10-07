@@ -1,5 +1,9 @@
+// @vitest-environment jsdom
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
-import { freshTokenLabel, loginChoiceRef, servicesOf, tokenProfileName } from "./add-account";
+import type { WindowEngine } from "../../../connect/engine";
+import { AddAccountDialog, freshTokenLabel, loginChoiceRef, servicesOf, tokenProfileName } from "./add-account";
 import { tokenLabel } from "./accounts";
 
 describe("servicesOf", () => {
@@ -20,6 +24,62 @@ describe("servicesOf", () => {
     expect(out.some((s) => s.id === "key:anthropic")).toBe(true);
     expect(out.find((s) => s.id === "plan:openai")?.logins.map((l) => l.id)).toEqual(["openai/openai-device-code"]);
   });
+
+  it("groups duplicate services by preview section, names products, and keeps local runtimes off plans and keys", () => {
+    const out = servicesOf([
+      { provider: "minimax", loginOptions: [{ id: "minimax/oauth", kind: "oauth" }] },
+      { provider: "minimax-portal", loginOptions: [{ id: "minimax-portal/oauth", kind: "oauth" }] },
+      { provider: "google", apiKeySupported: true },
+      { provider: "google-gemini", apiKeySupported: true },
+      { provider: "microsoft-foundry", apiKeySupported: true },
+      { provider: "opencode-go", apiKeySupported: true },
+      { provider: "ollama-cloud", apiKeySupported: true },
+      { provider: "huggingface", apiKeySupported: true },
+      { provider: "litellm", apiKeySupported: true },
+      { provider: "ollama", apiKeySupported: true },
+      { provider: "lmstudio", apiKeySupported: true },
+    ], [], {
+      manualProviders: [{ id: "minimax-token", brandId: "minimax", label: "MiniMax token" }, { id: "ollama", brandId: "ollama", label: "Ollama" }],
+      prepareOptions: [{ id: "ollama", label: "Ollama" }, { id: "lmstudio", label: "LM Studio" }, { id: "litellm", label: "LiteLLM" }],
+    });
+    expect(out.filter((s) => s.kind === "plan" && s.name === "MiniMax")).toHaveLength(1);
+    expect(out.find((s) => s.name === "MiniMax")?.logins.map((l) => l.id)).toEqual(["minimax/oauth", "minimax-portal/oauth", "minimax-token"]);
+    expect(out.filter((s) => s.kind === "key" && s.name === "Google Gemini")).toHaveLength(1);
+    expect(out.filter((s) => s.kind === "local").map((s) => s.name)).toEqual(["Ollama", "LM Studio", "LiteLLM"]);
+    expect(out.filter((s) => s.kind !== "local").map((s) => s.name)).not.toContain("Ollama");
+    expect(out.filter((s) => s.kind === "key").map((s) => s.name)).toEqual(expect.arrayContaining(["Microsoft Foundry", "OpenCode Go", "Ollama Cloud", "Hugging Face"]));
+  });
+});
+
+it("keeps the catalogue hidden until detection completes, then shows the preview's section order", async () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  let finish!: (value: unknown) => void;
+  const detected = new Promise((resolve) => { finish = resolve; });
+  const engine = { request: () => detected } as unknown as WindowEngine;
+  const host = document.body.appendChild(document.createElement("div"));
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(AddAccountDialog, {
+      engine, start: {}, caps: [
+        { provider: "openai", loginOptions: [{ id: "openai/login", kind: "oauth" }] },
+        { provider: "claude-cli", loginOptions: [{ id: "claude-cli/login", kind: "oauth" }] },
+        { provider: "google", apiKeySupported: true },
+      ], providers: [], agent: {}, onClose: () => undefined,
+    })));
+    expect(host.textContent).toContain("Looking for services…");
+    expect(host.querySelectorAll(".aa-grp")).toHaveLength(0);
+    expect(host.textContent).not.toContain("3 services");
+    await act(async () => finish({ prepareOptions: [{ id: "ollama", label: "Ollama" }], authOptions: [{ id: "custom-api-key", kind: "custom", label: "Something else" }] }));
+    expect([...host.querySelectorAll(".aa-grp h3")].map((h) => h.textContent?.replace(/\d+$/, "").trim())).toEqual(["Your plan", "Coding assistants", "A key", "On this computer", "Your own"]);
+    expect(host.textContent).toContain("5 services");
+    await act(async () => host.querySelector<HTMLButtonElement>(".aa-grp .prov")!.click());
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Back")!.click());
+    expect(host.textContent).toContain("5 services");
+    expect(host.querySelectorAll(".aa-grp")).toHaveLength(5);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+  }
 });
 
 describe("a new Claude sign-in's label", () => {

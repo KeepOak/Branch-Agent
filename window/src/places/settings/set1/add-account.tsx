@@ -13,14 +13,20 @@ import { Logo, serviceName } from "./service";
 import { providersOf, tokenLabel, type Provider } from "./accounts";
 
 export type AddStart = { provider?: string };
-type Kind = "plan" | "key" | "local" | "custom";
+type Kind = "plan" | "coding" | "key" | "local" | "custom";
 /** One service tile: a provider with plan sign-ins or a key, or an engine setup option (local or your own). */
 export type Service = { id: string; brand: string; name: string; kind: Kind; signedIn: number; logins: RecordValue[]; choice?: string };
 type Step = { n: 1 } | { n: 2; svc: Service } | { n: 2; run: WizardStart; svc: Service } | { n: 3; svc: Service; before: string[] };
 
 const FRESH_WORD: Record<string, string> = { ok: "Connected", static: "Connected", expiring: "Signing in again soon", expired: "Signed out", missing: "Sign-in missing" };
-const KIND_LABEL: Record<Kind, string> = { plan: "Your plan", key: "A key", local: "On this computer", custom: "Your own" };
-const KIND_SUB: Record<Kind, string> = { plan: "your plan", key: "a key", local: "on this computer", custom: "your own" };
+const KIND_LABEL: Record<Kind, string> = { plan: "Your plan", coding: "Coding assistants", key: "A key", local: "On this computer", custom: "Your own" };
+const KIND_SUB: Record<Kind, string> = { plan: "your plan", coding: "your plan", key: "a key", local: "on this computer · nothing to paste", custom: "your own" };
+const LOCAL = new Set(["ollama", "lmstudio", "vllm", "llama-cpp", "localai", "jan", "litellm", "opencode"]);
+const CODING: Record<string, string> = { "claude-cli": "Claude Code", "openai-codex": "Codex", "codex-cli": "Codex", "google-gemini-cli": "Gemini CLI", "gemini-cli": "Gemini CLI", "github-copilot-cli": "Copilot CLI" };
+const PRODUCT: Record<string, string> = { minimax: "MiniMax", "microsoft-foundry": "Microsoft Foundry", "opencode-go": "OpenCode Go", "ollama-cloud": "Ollama Cloud", huggingface: "Hugging Face", litellm: "LiteLLM", lmstudio: "LM Studio" };
+const GROUP: Record<string, string> = { "minimax-portal": "minimax", "google-gemini": "google", "codex-cli": "openai-codex", "gemini-cli": "google-gemini-cli" };
+const groupId = (id: string) => GROUP[id] ?? id;
+const nameOf = (id: string, name: unknown, key = false) => CODING[id] ?? PRODUCT[groupId(id)] ?? serviceName(groupId(id), name, key);
 
 /** Pasted sign-in secrets the engine's setup offers (branch.setup.detect manualProviders, e.g. Anthropic's
  *  setup-token), as plan sign-ins for a service with no browser sign-in. Keys stay under "A key". Adapted from
@@ -28,13 +34,16 @@ const KIND_SUB: Record<Kind, string> = { plan: "your plan", key: "a key", local:
 function addSecretLogins(out: Service[], manual: RecordValue[], count: (id: string, key: boolean) => number): void {
   for (const o of manual.filter((x) => !/api-?key/i.test(text(x.id)))) {
     const brand = text(o.brandId ?? o.id);
+    if (LOCAL.has(brand)) continue;
+    const group = groupId(brand);
+    const kind: Kind = CODING[brand] ? "coding" : "plan";
     const login: RecordValue = { ...o, kind: "setup-secret", featured: false };
-    const plan = out.find((s) => s.kind === "plan" && s.brand === brand);
+    const plan = out.find((s) => s.kind === kind && groupId(s.brand) === group);
     if (plan) {
       if (!plan.logins.some((l) => l.kind === "setup-secret" && l.id === login.id)) plan.logins.push(login);
       continue;
     }
-    out.push({ id: `plan:${brand}`, brand, name: serviceName(brand, o.groupLabel ?? o.label), kind: "plan", signedIn: count(brand, false), logins: [login] });
+    out.push({ id: `${kind}:${group}`, brand, name: nameOf(brand, o.groupLabel ?? o.label), kind, signedIn: count(brand, false), logins: [login] });
   }
 }
 
@@ -44,14 +53,27 @@ export function servicesOf(caps: RecordValue[], providers: Provider[], detect: R
   const out: Service[] = [];
   for (const c of caps) {
     const id = text(c.provider);
+    if (LOCAL.has(id)) continue;
     const logins = list(c.loginOptions).filter((o) => o.kind === "oauth" || o.kind === "device-code");
     const name = providers.find((p) => p.provider === id)?.displayName ?? text(logins[0]?.groupLabel ?? id);
-    if (logins.length) out.push({ id: `plan:${id}`, brand: id, name: serviceName(id, name), kind: "plan", signedIn: count(id, false), logins });
-    if (c.apiKeySupported === true) out.push({ id: `key:${id}`, brand: id, name: serviceName(id, name, true), kind: "key", signedIn: count(id, true), logins: [] });
+    const kind: Kind = CODING[id] ? "coding" : "plan";
+    const group = groupId(id);
+    if (logins.length) {
+      const existing = out.find((s) => s.kind === kind && groupId(s.brand) === group);
+      if (existing) existing.logins.push(...logins.filter((login) => !existing.logins.some((item) => item.id === login.id)));
+      else out.push({ id: `${kind}:${group}`, brand: id, name: nameOf(id, name), kind, signedIn: count(id, false), logins });
+    }
+    if (c.apiKeySupported === true && !out.some((s) => s.kind === "key" && groupId(s.brand) === group)) out.push({ id: `key:${group}`, brand: id, name: nameOf(id, name, true), kind: "key", signedIn: count(id, true), logins: [] });
   }
   addSecretLogins(out, list(detect?.manualProviders), count);
-  for (const o of list(detect?.prepareOptions)) out.push({ id: `local:${text(o.id)}`, brand: text(o.brandId ?? o.id), name: visible(o.label), kind: "local", signedIn: 0, logins: [], choice: text(o.id) });
-  for (const o of list(detect?.authOptions).filter((x) => x.kind === "custom")) out.push({ id: `custom:${text(o.id)}`, brand: text(o.brandId ?? o.id), name: visible(o.label), kind: "custom", signedIn: 0, logins: [], choice: text(o.id) });
+  for (const o of list(detect?.prepareOptions)) {
+    const id = text(o.brandId ?? o.id);
+    if (!out.some((s) => s.kind === "local" && groupId(s.brand) === groupId(id))) out.push({ id: `local:${groupId(id)}`, brand: id, name: nameOf(id, o.label), kind: "local", signedIn: 0, logins: [], choice: text(o.id) });
+  }
+  for (const o of list(detect?.authOptions).filter((x) => x.kind === "custom")) {
+    const id = text(o.brandId ?? o.id);
+    if (!out.some((s) => s.kind === "custom" && groupId(s.brand) === groupId(id))) out.push({ id: `custom:${groupId(id)}`, brand: id, name: visible(o.label), kind: "custom", signedIn: 0, logins: [], choice: text(o.id) });
+  }
   return out;
 }
 
@@ -94,7 +116,8 @@ function PickService({ services, detect, engine, agent, onPick, onUsed }: PickPr
   const [tab, setTab] = useState<Kind | "all">("all");
   const [using, setUsing] = useState<RecordValue | null>(null);
   if (using) return <RunWizard engine={engine} run={{ method: "branch.setup.activate.start", params: { kind: using.kind, modelRef: using.modelRef, ...agent } }} onDone={onUsed} onBack={() => setUsing(null)} />;
-  const kinds = (["plan", "key", "local", "custom"] as Kind[]).filter((k) => services.some((s) => s.kind === k));
+  if (detect.loading) return <p className="hint">Looking for services…</p>;
+  const kinds = (["plan", "coding", "key", "local", "custom"] as Kind[]).filter((k) => services.some((s) => s.kind === k));
   const shown = services.filter((s) => (tab === "all" || s.kind === tab) && (!q.trim() || s.name.toLowerCase().includes(q.trim().toLowerCase())));
   return (
     <>
@@ -104,7 +127,6 @@ function PickService({ services, detect, engine, agent, onPick, onUsed }: PickPr
       <div className="tabs" role="tablist" aria-label="Kinds of service">
         {(["all", ...kinds] as const).map((k) => <button key={k} type="button" role="tab" className="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{k === "all" ? "All" : KIND_LABEL[k]}</button>)}
       </div>
-      {detect.loading && !services.length ? <p className="hint">Looking for services…</p> : null}
       {kinds.map((k) => <Group key={k} kind={k} services={shown.filter((s) => s.kind === k)} onPick={onPick} />)}
       {!shown.length && !detect.loading ? <Empty>No service matches.</Empty> : null}
     </>
