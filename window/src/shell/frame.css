@@ -23,8 +23,6 @@
 :root[data-scene] .frame .topbar-right { background: color-mix(in srgb, var(--bg) var(--scene-panel), transparent); }
 :root[data-scene] .frame .main {
   background: color-mix(in srgb, var(--bg) var(--scene-panel), transparent);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
 }
 /* Preview index.html:42518-42525: hold to reveal the background, release to return. */
 :root.scene-peek .frame > :is(.topbar, .side, .main, .statusbar) { opacity: 0; }
