@@ -10,7 +10,10 @@ import {
 import type { runBeforeToolCallHook as runBeforeToolCallHookType } from "../agents/agent-tools.before-tool-call.js";
 import type { BranchToolsOptions } from "../agents/branch-tools.types.js";
 import type { AnyAgentTool } from "../agents/tools/common.js";
-import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { withPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import { ensureGatewayOwnerProfile, ensureProfileForEmail } from "../state/user-profiles.js";
@@ -764,7 +767,10 @@ describe("POST /tools/invoke", () => {
       expect(res.status).toBe(403);
       expect(await res.json()).toMatchObject({
         ok: false,
-        error: { type: "tool_call_blocked", message: "Lockdown is on: Trunks cannot run or send anything." },
+        error: {
+          type: "tool_call_blocked",
+          message: "Lockdown is on: Trunks cannot run or send anything.",
+        },
       });
       expect(lastCreateBranchToolsContext).toBeUndefined();
     } finally {

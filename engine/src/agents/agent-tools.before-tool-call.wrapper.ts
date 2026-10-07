@@ -1,3 +1,4 @@
+import { isLockdownOn, LOCKDOWN_MESSAGE } from "../config/lockdown.js";
 /**
  * Wrapped before_tool_call execution boundary.
  * Owns tool preparation/finalization, adjusted-param replay state, terminal
@@ -7,7 +8,6 @@ import {
   emitTrustedDiagnosticEvent,
   emitTrustedDiagnosticEventWithPrivateData,
 } from "../infra/diagnostic-events.js";
-import { isLockdownOn, LOCKDOWN_MESSAGE } from "../config/lockdown.js";
 import { resolveDiagnosticModelContentCapturePolicy } from "../infra/diagnostic-llm-content.js";
 import {
   createChildDiagnosticTraceContext,

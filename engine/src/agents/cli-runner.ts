@@ -115,7 +115,9 @@ export async function isCliBindingFlushed(
 
 export function runCliAgent(paramsInput: RunCliAgentParams): Promise<EmbeddedAgentRunResult> {
   const refused = lockdownRefusal();
-  if (refused) return refused;
+  if (refused) {
+    return refused;
+  }
   const lifecycleGeneration =
     paramsInput.lifecycleGeneration ?? captureAgentRunLifecycleGeneration(paramsInput.runId);
   const params = {

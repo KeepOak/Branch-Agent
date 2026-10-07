@@ -8,8 +8,8 @@ import "./ai-transport-runtime-host.js";
 import { createTransportAwareStreamFnForModel } from "@branch/ai/transports";
 import { isLockdownOn } from "../config/lockdown.js";
 import type { BranchConfig } from "../config/types.branch.js";
-import { getModelLlmRuntime } from "../llm/model-runtime-binding.js";
 import { createLockdownErrorStream } from "../llm/lockdown-stream.js";
+import { getModelLlmRuntime } from "../llm/model-runtime-binding.js";
 import type { Api, Model } from "../llm/types.js";
 import {
   attachModelProviderRuntimePluginHandle,

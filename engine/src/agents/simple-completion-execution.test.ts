@@ -2,7 +2,10 @@ import { reasoningTagTextPolicy } from "@branch/ai/internal/openai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { findSourceImportBackedges } from "../../test/helpers/source-import-closure.js";
 import { LockdownError } from "../config/lockdown.js";
-import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import { bindModelCompletionOwner } from "../llm/model-runtime-binding.js";
 import type { Model } from "../llm/types.js";
 

@@ -5,9 +5,9 @@ import {
   resolveAgentLifecycleTerminalMetadata,
 } from "../../auto-reply/reply/agent-lifecycle-terminal.js";
 import { SILENT_REPLY_TOKEN } from "../../auto-reply/tokens.js";
+import { lockdownRefusal } from "../../config/lockdown.js";
 import { prepareCronRootSessionGeneration } from "../../config/sessions/session-delivery-generation.js";
 import type { BranchConfig } from "../../config/types.branch.js";
-import { lockdownRefusal } from "../../config/lockdown.js";
 import { revokeMessageActionTurnCapability } from "../../gateway/message-action-turn-capability.js";
 import {
   assertAgentRunLifecycleGenerationCurrent,
@@ -113,7 +113,9 @@ export function runEmbeddedAgent(
   internalParamsInput: RunEmbeddedAgentInternalParams,
 ): Promise<EmbeddedAgentRunResult> {
   const refused = lockdownRefusal();
-  if (refused) return refused;
+  if (refused) {
+    return refused;
+  }
   const config = resolveEmbeddedRunConfig(internalParamsInput);
   const lifecycleGeneration =
     internalParamsInput.lifecycleGeneration ??

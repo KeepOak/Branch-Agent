@@ -1,8 +1,8 @@
 // Executes normalized outbound payloads against the selected channel transport.
 import { resolveChunkMode, resolveTextChunkLimit } from "../../auto-reply/chunk.js";
 import { payloadRequiresDurablePayloadTransport } from "../../channels/message/capabilities.js";
-import { assertLockdownOff } from "../../config/lockdown.js";
 import { renderPresentationForDelivery } from "../../channels/plugins/outbound/presentation-delivery.js";
+import { assertLockdownOff } from "../../config/lockdown.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { getOrCreatePromise } from "../../shared/lazy-promise.js";
 import { diagnosticErrorCategory } from "../diagnostic-error-metadata.js";

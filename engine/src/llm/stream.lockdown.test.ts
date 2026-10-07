@@ -2,7 +2,10 @@ import { createApiRegistry, createLlmRuntime } from "@branch/ai";
 import type { AssistantMessageEventStreamContract, Model } from "@branch/llm-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LockdownError } from "../config/lockdown.js";
-import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import { bindModelLlmRuntime } from "./model-runtime-binding.js";
 import { complete, completeSimple, stream, streamSimple } from "./stream.js";
 import { createAssistantMessageEventStream } from "./utils/event-stream.js";
@@ -45,8 +48,15 @@ describe("model calls under Lockdown", () => {
     const { model, provider } = lockedRuntime();
     for (const open of [stream, streamSimple]) {
       const events = [];
-      for await (const event of open(model, { messages: [] })) events.push(event);
-      expect(events).toMatchObject([{ type: "error", error: { errorMessage: "Lockdown is on: Trunks cannot run or send anything." } }]);
+      for await (const event of open(model, { messages: [] })) {
+        events.push(event);
+      }
+      expect(events).toMatchObject([
+        {
+          type: "error",
+          error: { errorMessage: "Lockdown is on: Trunks cannot run or send anything." },
+        },
+      ]);
     }
     expect(provider).not.toHaveBeenCalled();
   });

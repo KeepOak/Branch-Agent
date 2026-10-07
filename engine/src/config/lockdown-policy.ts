@@ -15,12 +15,18 @@ const onlyKeys = (value: Params, allowed: readonly string[]) =>
  */
 export function readLockdownSwitchPatch(params: unknown): boolean | undefined {
   const value = asParams(params);
-  if (!value || !onlyKeys(value, ["raw", "baseHash"]) || typeof value.raw !== "string") return undefined;
+  if (!value || !onlyKeys(value, ["raw", "baseHash"]) || typeof value.raw !== "string") {
+    return undefined;
+  }
   try {
     const root = asParams(JSON.parse(value.raw) as unknown);
-    if (!root || Object.keys(root).length !== 1) return undefined;
+    if (!root || Object.keys(root).length !== 1) {
+      return undefined;
+    }
     const security = asParams(root.security);
-    if (!security || Object.keys(security).length !== 1) return undefined;
+    if (!security || Object.keys(security).length !== 1) {
+      return undefined;
+    }
     return typeof security.lockdown === "boolean" ? security.lockdown : undefined;
   } catch {
     return undefined;
@@ -66,10 +72,13 @@ const STOP_OR_NARROW = new Map<string, Check>([
   ["device.pair.reject", always],
   ["attach.revoke", always],
   ["channels.stop", always],
-  ["cron.update", (p) => {
-    const patch = asParams(p?.patch);
-    return Boolean(patch && onlyKeys(patch, ["enabled"]) && patch.enabled === false);
-  }],
+  [
+    "cron.update",
+    (p) => {
+      const patch = asParams(p?.patch);
+      return Boolean(patch && onlyKeys(patch, ["enabled"]) && patch.enabled === false);
+    },
+  ],
 ]);
 
 export type LockdownAdmission =
@@ -85,12 +94,20 @@ export function decideLockdownAdmission(request: {
 }): LockdownAdmission {
   if (request.method === "config.patch") {
     const next = readLockdownSwitchPatch(request.params);
-    if (next === true) return { admitted: true };
-    if (next === false) return request.isOwner() ? { admitted: true } : { admitted: false, reason: "owner-only" };
+    if (next === true) {
+      return { admitted: true };
+    }
+    if (next === false) {
+      return request.isOwner() ? { admitted: true } : { admitted: false, reason: "owner-only" };
+    }
     return { admitted: false, reason: "locked" };
   }
   if (request.scope === "operator.read") {
-    return LOCKDOWN_REFUSED_READ_METHODS.has(request.method) ? { admitted: false, reason: "locked" } : { admitted: true };
+    return LOCKDOWN_REFUSED_READ_METHODS.has(request.method)
+      ? { admitted: false, reason: "locked" }
+      : { admitted: true };
   }
-  return STOP_OR_NARROW.get(request.method)?.(asParams(request.params)) ? { admitted: true } : { admitted: false, reason: "locked" };
+  return STOP_OR_NARROW.get(request.method)?.(asParams(request.params))
+    ? { admitted: true }
+    : { admitted: false, reason: "locked" };
 }

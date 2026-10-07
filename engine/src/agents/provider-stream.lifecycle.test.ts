@@ -1,6 +1,9 @@
 import { createApiRegistry, createLlmRuntime } from "@branch/ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import { bindModelLlmRuntime } from "../llm/model-runtime-binding.js";
 import { createAssistantMessageEventStream } from "../llm/utils/event-stream.js";
 import { resolveProviderStreamFn } from "../plugins/provider-runtime.js";
@@ -140,9 +143,16 @@ describe("provider stream lifecycle registration", () => {
     setRuntimeConfigSnapshot({ security: { lockdown: true } });
     try {
       const events = [];
-      for await (const event of await streamFn!(model, {} as never, {})) events.push(event);
+      for await (const event of await streamFn!(model, {} as never, {})) {
+        events.push(event);
+      }
       expect(providerStream).not.toHaveBeenCalled();
-      expect(events).toMatchObject([{ type: "error", error: { errorMessage: "Lockdown is on: Trunks cannot run or send anything." } }]);
+      expect(events).toMatchObject([
+        {
+          type: "error",
+          error: { errorMessage: "Lockdown is on: Trunks cannot run or send anything." },
+        },
+      ]);
     } finally {
       clearRuntimeConfigSnapshot();
     }

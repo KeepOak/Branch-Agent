@@ -6,7 +6,10 @@ import {
   setupCronRegressionFixtures,
 } from "../../../test/helpers/cron/service-regression-fixtures.js";
 import { LOCKDOWN_MESSAGE } from "../../config/lockdown.js";
-import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../config/runtime-snapshot.js";
 import { saveCronStore } from "../store.js";
 import type { CronJob } from "../types.js";
 import { runMissedJobs } from "./timer.js";
@@ -22,7 +25,10 @@ function recurringJob(id: string): CronJob {
   };
 }
 
-async function stateWith(jobs: CronJob[], runIsolatedAgentJob = vi.fn().mockResolvedValue({ status: "ok", summary: "ok" })) {
+async function stateWith(
+  jobs: CronJob[],
+  runIsolatedAgentJob = vi.fn().mockResolvedValue({ status: "ok", summary: "ok" }),
+) {
   const { storePath } = fixtures.makeStorePath();
   await saveCronStore(storePath, { version: 1, jobs });
   let now = scheduledAt + 1_000;

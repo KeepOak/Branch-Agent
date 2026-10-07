@@ -20,7 +20,12 @@ import {
   type ConversationReadInvocationOrigin,
 } from "../channels/plugins/conversation-read-origin.js";
 import { getRuntimeConfig } from "../config/io.js";
-import { assertLockdownOff, isLockdownError, isLockdownOn, LOCKDOWN_MESSAGE } from "../config/lockdown.js";
+import {
+  assertLockdownOff,
+  isLockdownError,
+  isLockdownOn,
+  LOCKDOWN_MESSAGE,
+} from "../config/lockdown.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { logWarn } from "../logger.js";

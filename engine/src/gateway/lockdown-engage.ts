@@ -20,13 +20,19 @@ export function isLockdownEngaging(previous: unknown, next: unknown): boolean {
 
 function abortWindowRuns(ops: ChatAbortOps): void {
   for (const [runId, entry] of ops.chatAbortControllers) {
-    abortChatRunById(ops, { runId, sessionKey: entry.sessionKey, stopReason: LOCKDOWN_STOP_REASON });
+    abortChatRunById(ops, {
+      runId,
+      sessionKey: entry.sessionKey,
+      stopReason: LOCKDOWN_STOP_REASON,
+    });
   }
 }
 
 /** Stops every running Trunk. `ops` is the gateway's chat run state when the gateway context is up. */
 export function stopRunningWorkForLockdown(ops?: ChatAbortOps): void {
-  if (ops) abortWindowRuns(ops);
+  if (ops) {
+    abortWindowRuns(ops);
+  }
   // Channel inbound, cron, hooks and subagents run outside the window's chat registry.
   abortEmbeddedAgentRun(undefined, { mode: "all" });
   abortActiveCronTaskRuns(LOCKDOWN_STOP_REASON);
@@ -36,5 +42,7 @@ export function stopRunningWorkForLockdown(ops?: ChatAbortOps): void {
   }
   void peekAcpSessionManager()
     ?.cancelAllTurns(LOCKDOWN_STOP_REASON)
-    .catch((error: unknown) => log.warn(`ACP turns did not all stop for Lockdown: ${String(error)}`));
+    .catch((error: unknown) =>
+      log.warn(`ACP turns did not all stop for Lockdown: ${String(error)}`),
+    );
 }

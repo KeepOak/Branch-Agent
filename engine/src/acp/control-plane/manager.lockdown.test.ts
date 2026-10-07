@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { createTestAdmittedRunContext } from "../../agents/admitted-run-context.test-support.js";
 import { LockdownError } from "../../config/lockdown.js";
-import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../config/runtime-snapshot.js";
 import { withStateDirEnv } from "../../test-helpers/state-dir-env.js";
 import {
   AcpSessionManager,

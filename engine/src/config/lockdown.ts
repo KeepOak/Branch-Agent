@@ -18,9 +18,14 @@ export class LockdownError extends Error {
 
 /** True for a Lockdown refusal, including one that was flattened to its message on the way up. */
 export function isLockdownError(error: unknown): boolean {
-  if (error instanceof LockdownError) return true;
-  if (error && typeof error === "object" && (error as { code?: unknown }).code === LOCKDOWN_CODE) return true;
-  const text = typeof error === "string" ? error : error instanceof Error ? error.message : undefined;
+  if (error instanceof LockdownError) {
+    return true;
+  }
+  if (error && typeof error === "object" && (error as { code?: unknown }).code === LOCKDOWN_CODE) {
+    return true;
+  }
+  const text =
+    typeof error === "string" ? error : error instanceof Error ? error.message : undefined;
   return typeof text === "string" && text.includes(LOCKDOWN_MESSAGE);
 }
 
@@ -47,11 +52,20 @@ function fileLockdown(): boolean {
     return false;
   }
   const last = lastFileRead?.path === path ? lastFileRead : undefined;
-  if (last && last.mtimeMs === stat.mtimeMs && last.size === stat.size) return last.on;
+  if (last && last.mtimeMs === stat.mtimeMs && last.size === stat.size) {
+    return last.on;
+  }
   try {
     const parsed = parseConfigJson5(fs.readFileSync(path, "utf8"));
-    if (!parsed.ok) return last?.on ?? false;
-    lastFileRead = { path, mtimeMs: stat.mtimeMs, size: stat.size, on: lockdownFlag(parsed.parsed) };
+    if (!parsed.ok) {
+      return last?.on ?? false;
+    }
+    lastFileRead = {
+      path,
+      mtimeMs: stat.mtimeMs,
+      size: stat.size,
+      on: lockdownFlag(parsed.parsed),
+    };
     return lastFileRead.on;
   } catch {
     return last?.on ?? false;

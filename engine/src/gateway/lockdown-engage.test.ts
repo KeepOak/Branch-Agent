@@ -10,11 +10,21 @@ const mocks = vi.hoisted(() => ({
   abortChatRunById: vi.fn(() => ({ aborted: true })),
 }));
 
-vi.mock("../agents/embedded-agent-runner/runs.js", () => ({ abortEmbeddedAgentRun: mocks.abortEmbeddedAgentRun }));
-vi.mock("../cron/service/active-run-cancellation.js", () => ({ abortActiveCronTaskRuns: mocks.abortActiveCronTaskRuns }));
-vi.mock("../agents/bash-process-control.js", () => ({ cancelBackgroundExecSession: mocks.cancelBackgroundExecSession }));
-vi.mock("../agents/bash-process-registry.js", () => ({ listRunningSessions: mocks.listRunningSessions }));
-vi.mock("../acp/control-plane/manager.js", () => ({ peekAcpSessionManager: mocks.peekAcpSessionManager }));
+vi.mock("../agents/embedded-agent-runner/runs.js", () => ({
+  abortEmbeddedAgentRun: mocks.abortEmbeddedAgentRun,
+}));
+vi.mock("../cron/service/active-run-cancellation.js", () => ({
+  abortActiveCronTaskRuns: mocks.abortActiveCronTaskRuns,
+}));
+vi.mock("../agents/bash-process-control.js", () => ({
+  cancelBackgroundExecSession: mocks.cancelBackgroundExecSession,
+}));
+vi.mock("../agents/bash-process-registry.js", () => ({
+  listRunningSessions: mocks.listRunningSessions,
+}));
+vi.mock("../acp/control-plane/manager.js", () => ({
+  peekAcpSessionManager: mocks.peekAcpSessionManager,
+}));
 vi.mock("./chat-abort.js", () => ({ abortChatRunById: mocks.abortChatRunById }));
 
 const { isLockdownEngaging, stopRunningWorkForLockdown } = await import("./lockdown-engage.js");
@@ -27,7 +37,9 @@ describe("stopping running work when Lockdown turns on", () => {
 
   it("fires only on the off-to-on commit", () => {
     expect(isLockdownEngaging({}, { security: { lockdown: true } })).toBe(true);
-    expect(isLockdownEngaging({ security: { lockdown: true } }, { security: { lockdown: true } })).toBe(false);
+    expect(
+      isLockdownEngaging({ security: { lockdown: true } }, { security: { lockdown: true } }),
+    ).toBe(false);
     expect(isLockdownEngaging({ security: { lockdown: true } }, {})).toBe(false);
   });
 
@@ -45,7 +57,9 @@ describe("stopping running work when Lockdown turns on", () => {
       ["run-a", { sessionKey: "agent:main:a" }],
       ["run-b", { sessionKey: "agent:main:b" }],
     ]);
-    const ops = { chatAbortControllers } as unknown as Parameters<typeof stopRunningWorkForLockdown>[0];
+    const ops = { chatAbortControllers } as unknown as Parameters<
+      typeof stopRunningWorkForLockdown
+    >[0];
     stopRunningWorkForLockdown(ops);
     expect(mocks.abortChatRunById.mock.calls.map(([, params]) => params)).toEqual([
       { runId: "run-a", sessionKey: "agent:main:a", stopReason: "Lockdown is on" },

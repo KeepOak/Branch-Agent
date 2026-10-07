@@ -11,12 +11,12 @@ import { getActiveSecretsRuntimeSnapshotRevisionState } from "../secrets/runtime
 import { runOutsideAsyncWorkScope } from "../shared/async-work-scope.js";
 import { resetSkillSnapshotConfigFingerprintCache } from "../skills/runtime/snapshot-config-fingerprint.js";
 import { invalidateConfigGetResponseCache } from "./config-get-response.js";
-import { isLockdownEngaging, stopRunningWorkForLockdown } from "./lockdown-engage.js";
 import {
   startGatewayConfigReloader,
   type GatewayConfigReloadTransactionOwnership,
   type GatewayReloadPlan,
 } from "./config-reload.js";
+import { isLockdownEngaging, stopRunningWorkForLockdown } from "./lockdown-engage.js";
 import { publishOperatorRoleConfigChange } from "./operator-role-policy.js";
 import {
   assertReloadPublicationCurrent,

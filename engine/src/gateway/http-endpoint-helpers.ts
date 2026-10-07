@@ -71,7 +71,11 @@ export async function handleGatewayPostJsonEndpoint(
       return undefined;
     }
   }
-  if (opts.requiredOperatorMethod && isLockdownOn() && !isReadOnlyMethod(opts.requiredOperatorMethod)) {
+  if (
+    opts.requiredOperatorMethod &&
+    isLockdownOn() &&
+    !isReadOnlyMethod(opts.requiredOperatorMethod)
+  ) {
     // Lockdown: /v1/chat/completions, /v1/responses and /v1/embeddings all spend; refuse before the body is read.
     sendJson(res, 503, { error: { message: LOCKDOWN_MESSAGE, type: "lockdown" } });
     return undefined;

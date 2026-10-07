@@ -18,17 +18,30 @@ describe("run and send entry points under Lockdown from the config file", () => 
     testing.resetFileCache();
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "lockdown-entry-"));
     process.env.BRANCH_CONFIG_PATH = path.join(dir, "branch.json");
-    fs.writeFileSync(process.env.BRANCH_CONFIG_PATH, JSON.stringify({ security: { lockdown: true } }));
+    fs.writeFileSync(
+      process.env.BRANCH_CONFIG_PATH,
+      JSON.stringify({ security: { lockdown: true } }),
+    );
   });
   afterEach(() => {
-    if (previous === undefined) delete process.env.BRANCH_CONFIG_PATH;
-    else process.env.BRANCH_CONFIG_PATH = previous;
+    if (previous === undefined) {
+      delete process.env.BRANCH_CONFIG_PATH;
+    } else {
+      process.env.BRANCH_CONFIG_PATH = previous;
+    }
     testing.resetFileCache();
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
   // The params are never read: a refusal must come first, as a rejected promise rather than a synchronous throw.
-  const unread = new Proxy({}, { get: () => { throw new Error("params were read"); } });
+  const unread = new Proxy(
+    {},
+    {
+      get: () => {
+        throw new Error("params were read");
+      },
+    },
+  );
 
   it("refuses an embedded run (chat, channel inbound, cron, hooks, subagents)", async () => {
     const run = runEmbeddedAgent(unread as never);
@@ -40,6 +53,8 @@ describe("run and send entry points under Lockdown from the config file", () => 
   });
 
   it("refuses outbound delivery", async () => {
-    await expect(deliverOutboundPayloadsCore(unread as never)).rejects.toBeInstanceOf(LockdownError);
+    await expect(deliverOutboundPayloadsCore(unread as never)).rejects.toBeInstanceOf(
+      LockdownError,
+    );
   });
 });

@@ -116,7 +116,10 @@ describe("Gateway config selection before migration admission", () => {
     const stateDir = path.join(root, "state");
     fs.mkdirSync(stateDir);
     const configPath = path.join(stateDir, "branch.json");
-    fs.writeFileSync(configPath, JSON.stringify({ gateway: { mode: "local" }, plugins: { enabled: false } }));
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({ gateway: { mode: "local" }, plugins: { enabled: false } }),
+    );
     const result = await runIsolatedModuleScript(
       {
         PATH: process.env.PATH,
