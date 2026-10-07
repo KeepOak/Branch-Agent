@@ -13,7 +13,7 @@ import type { startGatewayServer } from "../../gateway/server.js";
 import type { GatewayInstallationReplacement } from "../../gateway/stale-install.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import type { GatewayBootLifecycleCompletion } from "../../infra/gateway-boot-lifecycle.js";
-import { acquireGatewayLock } from "../../infra/gateway-lock.js";
+import { acquireGatewayLock, readActiveGatewayLockIdentity } from "../../infra/gateway-lock.js";
 import { consumeGatewaySuspendHandoff } from "../../infra/gateway-suspend-coordinator.js";
 import type { GatewayRestartIntent } from "../../infra/restart-intent.js";
 import { isGatewayHandoffFatalError } from "../../gateway/server-handoff-error.js";
@@ -159,6 +159,7 @@ export async function runGatewayLoop(params: {
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGUSR2", onRestartSignal);
     process.removeListener("message", onDesktopStop);
+    process.removeListener("disconnect", onDesktopDisconnect);
     processLifetime?.port1.close();
     processLifetime?.port2.close();
   };
@@ -1256,24 +1257,49 @@ export async function runGatewayLoop(params: {
       incoming.type === "branch-desktop:drain-stop" ||
       (incoming.type === "branch-desktop:stop-if-idle" && snapshot.idle);
     if (stopRequested && desktopDeactivation && server) {
-      void server.waitForDeactivatedRuns().then(
-        ({ deadlineElapsed, expiresAt }) => {
-          if (deadlineElapsed && desktopDeactivation) {
-            void stopPredecessorAtLeaseDeadline(expiresAt);
-            return;
-          }
-          if (desktopDeactivation) onSigterm();
-        },
-        (error: unknown) => {
-          gatewayLog.error(`desktop handoff run drain failed: ${String(error)}`);
-          // A failed handoff cannot cancel a stop already requested by the
-          // desktop. The ordinary stop path owns abort and recovery.
-          onSigterm();
-        },
-      );
+      stopAfterDeactivatedRuns(server);
     } else if (stopRequested) {
       onSigterm();
     }
+  };
+  /** A deactivated engine stops once its leased runs are done, and hard-exits before its leases expire. */
+  const stopAfterDeactivatedRuns = (activeServer: NonNullable<typeof server>) => {
+    void activeServer.waitForDeactivatedRuns().then(
+      ({ deadlineElapsed, expiresAt }) => {
+        if (deadlineElapsed && desktopDeactivation) {
+          void stopPredecessorAtLeaseDeadline(expiresAt);
+          return;
+        }
+        if (desktopDeactivation) onSigterm();
+      },
+      (error: unknown) => {
+        gatewayLog.error(`desktop handoff run drain failed: ${String(error)}`);
+        // A failed handoff cannot cancel a stop already requested by the
+        // desktop. The ordinary stop path owns abort and recovery.
+        onSigterm();
+      },
+    );
+  };
+  // The desktop went away (it crashed or was killed) while this engine was deactivated. Left alone, it would stay
+  // fenced on the configured port for good. When no successor took the state, take it back and serve again;
+  // otherwise finish the leased runs and stop, exactly as drain-stop does.
+  const onDesktopDisconnect = () => {
+    if (!desktopDeactivation || shuttingDown) return;
+    gatewayLog.warn("desktop disconnected during a handoff; recovering the deactivated engine");
+    void recoverAfterDesktopDisconnect();
+  };
+  const recoverAfterDesktopDisconnect = async () => {
+    await desktopDeactivation?.catch(() => {});
+    const successor = await readActiveGatewayLockIdentity({ env: process.env }).catch(() => null);
+    if (successor === undefined) {
+      try {
+        if (await rollbackDesktopDeactivation("desktop disconnected")) return;
+      } catch (error) {
+        gatewayLog.error(`desktop handoff rollback failed after disconnect: ${String(error)}`);
+      }
+    }
+    if (server && desktopDeactivation) stopAfterDeactivatedRuns(server);
+    else if (!shuttingDown) onSigterm();
   };
   const onSigint = () => {
     observeSignal("SIGINT");
@@ -1385,7 +1411,10 @@ export async function runGatewayLoop(params: {
   };
 
   process.on("SIGTERM", onSigterm);
-  if (process.send) process.on("message", onDesktopStop);
+  if (process.send) {
+    process.on("message", onDesktopStop);
+    process.on("disconnect", onDesktopDisconnect);
+  }
   process.on("SIGINT", onSigint);
   // SIGUSR1 belongs to Node's on-demand inspector; never register a listener for it.
   process.on("SIGUSR2", onRestartSignal);
