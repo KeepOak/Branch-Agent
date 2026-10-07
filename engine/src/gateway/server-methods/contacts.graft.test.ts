@@ -14,6 +14,9 @@ import {
 } from "../contacts/outside-agents.js";
 
 const removed = vi.hoisted(() => ({ calls: [] as string[], fail: "" }));
+const replyStep = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock("../../agents/tools/agent-step.js", () => ({ runAgentStep: replyStep }));
+vi.mock("../call.js", () => ({ callGateway: vi.fn() }));
 vi.mock("./devices.js", () => ({
   deviceHandlers: {
     "device.pair.remove": async ({
@@ -59,7 +62,7 @@ async function call(method: string, params: Record<string, unknown>, client: unk
   await contactHandlers[method]!({
     params,
     client,
-    context: { broadcast: () => undefined, getRuntimeConfig: () => ({}) },
+    context: { broadcast: () => undefined, getRuntimeConfig: () => ({}), logGateway: { warn: () => undefined } },
     respond: (ok: boolean, payload?: unknown, error?: { message?: string }) => {
       reply = { ok, payload, error };
     },
@@ -101,6 +104,18 @@ describe("Branch-to-Branch graft on the host", () => {
       "branch-b",
       "branch-b--scout",
     ]);
+  });
+
+  it("routes a local Trunk's work to the joined device and accepts only its reply", async () => {
+    await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    await call("contacts.outside.hello", { agent: { ...scout, trunkId: "scout" } }, device("dev-b"));
+    const sent = await call("graft.work.send", { target: "a2a:branch-b--scout", text: "Ping", sourceSessionKey: "agent:juniper:main", idempotencyKey: "send-1" }, owner);
+    expect(sent.ok).toBe(true);
+    expect((await call("graft.work.poll", {}, device("dev-c"))).ok).toBe(false);
+    expect((await call("graft.work.poll", {}, device("dev-b"))).payload.job).toMatchObject({ id: sent.payload.id, trunkId: "scout", text: "Ping" });
+    expect((await call("graft.work.complete", { id: sent.payload.id, reply: "forged" }, device("dev-c"))).ok).toBe(false);
+    expect((await call("graft.work.complete", { id: sent.payload.id, reply: "PONG" }, device("dev-b"))).ok).toBe(true);
+    expect(replyStep).toHaveBeenCalledWith(expect.objectContaining({ agentId: "juniper", sessionKey: "agent:juniper:main", message: "PONG" }));
   });
 
   it("refuses another device or the owner's tools taking a grafted Branch's rows", async () => {

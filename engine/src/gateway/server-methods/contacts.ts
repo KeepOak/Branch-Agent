@@ -27,6 +27,7 @@ import {
   isOutsideAgentOnline,
   listOutsideAgents,
   outsideAgentPeers,
+  outsideAgentMayMessage,
   outsideAgentMayDriveWindow,
   outsideAgentRefusal,
   readOutsideAgentSettings,
@@ -34,6 +35,7 @@ import {
   updateOutsideAgentSettings,
 } from "../contacts/outside-agents.js";
 import { projectContacts } from "../contacts/project.js";
+import { claimGraftWork, completeGraftWork, enqueueGraftWork, getGraftWork } from "../contacts/graft-work.js";
 import { hasOperatorBoundary, resolveOperatorRolePolicy } from "../operator-role-policy.js";
 import { createSessionListEntryFilter } from "../session-sharing.js";
 import { readSessionTitleFieldsFromTranscriptAsync } from "../session-transcript-title-reader.js";
@@ -161,6 +163,71 @@ async function removeGraftDevice(
 }
 
 export const contactHandlers: GatewayRequestHandlers = {
+  "graft.work.send": async ({ params, respond, client, context }) => {
+    const p = params && typeof params === "object" ? params as Record<string, unknown> : {};
+    const target = typeof p.target === "string" ? p.target.replace(/^a2a:/, "") : "";
+    const text = typeof p.text === "string" ? p.text.trim() : "";
+    const sourceSessionKey = typeof p.sourceSessionKey === "string" ? p.sourceSessionKey : "";
+    const idempotencyKey = typeof p.idempotencyKey === "string" ? p.idempotencyKey : undefined;
+    const sourceAgentId = parseAgentSessionKey(sourceSessionKey)?.agentId;
+    if (!target || !text || !sourceAgentId || graftDeviceId(client)) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "A local Trunk, grafted target and message are required."));
+      return;
+    }
+    const records = listOutsideAgents();
+    const trunk = records.find((row) => row.id === target && row.kind === "trunk");
+    const branch = records.find((row) => row.id === trunk?.via && row.kind === "branch");
+    if (!trunk?.trunkId || !trunk.deviceId || !branch || branch.deviceId !== trunk.deviceId ||
+        outsideAgentRefusal(trunk) || outsideAgentRefusal(branch)) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "That Trunk is not linked to this Branch."));
+      return;
+    }
+    if (!outsideAgentMayMessage(context.getRuntimeConfig(), sourceAgentId, target)) {
+      respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, "Agent-to-agent messaging denied by agentToAgent policy."));
+      return;
+    }
+    const job = enqueueGraftWork({ deviceId: trunk.deviceId, trunkId: trunk.trunkId, text, sourceSessionKey, sourceAgentId, idempotencyKey });
+    respond(true, { id: job.id, status: "accepted" });
+  },
+  "graft.work.poll": async ({ respond, client }) => {
+    const deviceId = graftDeviceId(client);
+    if (!deviceId || !listOutsideAgents().some((row) => row.kind === "branch" && row.deviceId === deviceId && !outsideAgentRefusal(row))) {
+      respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, "A joined Branch must poll using its paired device."));
+      return;
+    }
+    const job = claimGraftWork(deviceId);
+    respond(true, { job: job ? { id: job.id, trunkId: job.trunkId, text: job.text, sourceAgentId: job.sourceAgentId } : null });
+  },
+  "graft.work.complete": async ({ params, respond, client, context }) => {
+    const p = params && typeof params === "object" ? params as Record<string, unknown> : {};
+    const deviceId = graftDeviceId(client);
+    const id = typeof p.id === "string" ? p.id : "";
+    const reply = typeof p.reply === "string" ? p.reply : undefined;
+    const error = typeof p.error === "string" ? p.error : undefined;
+    if (!deviceId || !id || (!reply && !error)) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "A paired work result is required."));
+      return;
+    }
+    const before = getGraftWork(id);
+    const job = completeGraftWork(id, deviceId, { reply, error });
+    if (!job) {
+      respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, "Work does not belong to this paired Branch."));
+      return;
+    }
+    respond(true, { status: "recorded" });
+    if (before?.completedAt) return;
+    const { runAgentStep } = await import("../../agents/tools/agent-step.js");
+    const { callGateway } = await import("../call.js");
+    void runAgentStep({
+      agentId: job.sourceAgentId,
+      sessionKey: job.sourceSessionKey,
+      sourceTool: "sessions_send",
+      message: error ? `The joined Trunk could not complete the request: ${error}` : reply!,
+      extraSystemPrompt: "A Trunk on a joined Branch returned the result of your earlier sessions_send request. This result is delivered once; do not resend your request unless the user asks.",
+      timeoutMs: 60_000,
+      callGateway: (request) => callGateway(request),
+    }).catch((failure: unknown) => context.logGateway.warn(`graft work reply delivery failed: ${String(failure)}`));
+  },
   "a2a.peers.list": async ({ context, respond }) => {
     const configured = listA2aPeers(context.getRuntimeConfig());
     const records = new Map(listOutsideAgents().map((row) => [row.id, row]));

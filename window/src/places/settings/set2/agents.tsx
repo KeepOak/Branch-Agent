@@ -7,6 +7,7 @@ import { useState } from "react";
 import { BranchLinkDialog } from "../../../shell/BranchLinkDialog";
 import { Btn, Ctl, Empty, Page, Sec, Switch, useConfig, type RowEntry } from "../kit";
 import { RoomAvatar, a2aBadge } from "../../../rooms/RoomMessage";
+import { trunkAppearance } from "../../../face/appearance";
 import { DesktopCtl } from "../desktop-ctl";
 import { CodeRow, rec, str, useCall, useLive, when } from "./common";
 import "./agents.css";
@@ -18,6 +19,7 @@ export type OutsideAgentRow = {
   lastSeenAt: number; online: boolean; revoked: boolean; mayDriveWindow: boolean;
   /** "branch": another Branch grafted in as a device; "trunk": one of its Trunks (via = that Branch's id). */
   kind?: "branch" | "trunk"; via?: string;
+  avatar?: string;
 };
 
 export function readAgents(result: unknown): { enabled: boolean; agents: OutsideAgentRow[] } {
@@ -27,6 +29,7 @@ export function readAgents(result: unknown): { enabled: boolean; agents: Outside
     activity: str(a.activity) || undefined, activityAt: typeof a.activityAt === "number" ? a.activityAt : undefined,
     lastSeenAt: typeof a.lastSeenAt === "number" ? a.lastSeenAt : 0, online: a.online === true, revoked: a.revoked === true, mayDriveWindow: a.mayDriveWindow === true,
     ...(a.kind === "branch" || a.kind === "trunk" ? { kind: a.kind as "branch" | "trunk" } : {}), ...(str(a.via) ? { via: str(a.via) } : {}),
+    ...(str(a.avatar).startsWith("branch:") ? { avatar: str(a.avatar) } : {}),
   }));
   return { enabled: r.enabled !== false, agents: agents.toSorted((x, y) => Number(y.online) - Number(x.online) || y.lastSeenAt - x.lastSeenAt) };
 }
@@ -115,7 +118,7 @@ function AgentRow({ agent, trunks, props, reload, sessions, nested = [] }: { age
         <ul className="ca-trunks" aria-label={`${agent.name}'s Trunks`}>
           {nested.map((t) => (
             <li key={t.id} className="ca-trunk" data-testid="grafted-trunk" data-agent={t.id}>
-              <RoomAvatar id={t.id} name={t.name} size={20} online={t.online && !agent.revoked} />
+              <RoomAvatar id={t.id} name={t.name} size={20} src={trunkAppearance(t.avatar, t.name)?.still} online={t.online && !agent.revoked} />
               <span className="ca-name">{t.name}</span>
               <span className="hint">{agent.revoked || t.revoked ? "Disconnected" : t.online ? "Online now" : t.lastSeenAt ? `Last seen ${when(t.lastSeenAt)}` : "Not seen yet"}</span>
             </li>

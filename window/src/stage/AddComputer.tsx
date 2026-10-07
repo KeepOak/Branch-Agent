@@ -71,7 +71,12 @@ function PairBody({ pairing }: { pairing: Pairing }) {
       <code className="code-st">branch node run --pair {pairing.code}</code>
       {pairing.qr && <img src={pairing.qr} alt="QR code to pair this computer" width={180} height={180} />}
       {pairing.done ? (
-        <p className="hint-st ok-st"><SIcon name="check" small /> That computer is paired. It shows in your computers.</p>
+        <>
+          <p className="hint-st ok-st"><SIcon name="check" small /> That computer is paired. It shows in your computers.</p>
+          <p className="p0-st">To keep lending this computer after logout or a restart, run this on that computer:</p>
+          <code className="code-st">branch node install</code>
+          <p className="hint-st">This installs a service or login item using the saved pairing. You can check it later with branch node status.</p>
+        </>
       ) : (
         <p className="hint-st"><SIcon name="spin" small className="spin-st" /> Waiting for that computer. This updates by itself.</p>
       )}
