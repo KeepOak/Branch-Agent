@@ -1,0 +1,2 @@
+engine:src/hooks/bundled/command-logger/handler.behaviour.test.ts
+engine:src/hooks/bundled/compaction-notifier/handler.behaviour.test.ts
