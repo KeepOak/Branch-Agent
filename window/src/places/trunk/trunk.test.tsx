@@ -136,6 +136,9 @@ describe("Customize › Trunks", () => {
     expect(document.body.textContent).toContain("That name is kept for Branch. Choose another Trunk name.");
     expect(document.body.textContent).not.toContain('"branch" is reserved');
     expect(creationProblem(new Error('"branch" is reserved'))).toBe("That name is kept for Branch. Choose another Trunk name.");
+    expect(creationProblem(new Error("Agent Oak preserved database changed during restoration"))).toBe(
+      "Couldn’t create your Trunk. Try again.",
+    );
   });
   it("keeps already-created and invalid-bindings failures distinct from name refusals", () => {
     expect(creationProblem(new Error('agent "cedar" already exists'))).toBe("That Trunk name is already taken. Choose another name.");
