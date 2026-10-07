@@ -14,10 +14,12 @@ import { errorText, paged, rec, rows, str, type Row } from "./data";
 import { Every } from "./Every";
 import { G } from "./glyphs";
 import { Inspect } from "./Inspect";
+import { ReplayDialog } from "./ReplayDialog";
 
 export const REPLAY_GAP = "Needs the engine's run replay method.";
 export const VERIFY_GAP = "Integrity verification is unavailable from this connection.";
 export const RECEIPTS_GAP = "Signed receipt chains are unavailable from this connection.";
+export const REPLAY_EMPTY = "Nothing has run yet.";
 
 export type HistoryData = { sessions: Session[]; runs: Run[]; profiles: Row[]; self: string; agents: { defaultId: string; list: Agent[] }; errors: string[] };
 
@@ -96,7 +98,7 @@ function Recap({ s }: { s: Session }) {
   return <><span className="ib-recap">{s.recap}</span>{s.recapState === "stale" ? <span className="ib-recap-n">New activity since this recap</span> : null}</>;
 }
 
-function HRow({ item, data, level, child, inspect, open }: { item: Item; data: HistoryData; level: Level; child?: boolean; inspect: (item: Item, at: MenuAnchor) => void; open: (key: string) => void }) {
+function HRow({ item, data, level, child, inspect, open, replay }: { item: Item; data: HistoryData; level: Level; child?: boolean; inspect: (item: Item, at: MenuAnchor) => void; open: (key: string) => void; replay: (item: Item) => void }) {
   const { s, run, at, who } = item, trunk = agentName(data.agents.list, s.agentId);
   const length = s.working ? (run?.startedAt !== undefined ? `${Math.max(1, Math.round((Date.now() - run.startedAt) / 6e4))} min so far` : "working") : run && runMs(run) !== undefined ? runLength(runMs(run)!) : "";
   const cost = s.cost !== undefined ? money(s.cost) : "";
@@ -106,17 +108,17 @@ function HRow({ item, data, level, child, inspect, open }: { item: Item; data: H
     <span className="ib-grow"><b><button type="button" className="ib-title-btn" onClick={() => open(s.key)}>{s.title}</button>{s.automation ? <span className="ib-tag">Automation</span> : null}{s.archived ? <span className="ib-tag">Archived</span> : null}</b>
       <small>{[trunk, who !== data.self ? personName(data, who).split(" ")[0] : "", s.working ? "working now" : clock(at)].filter(Boolean).join(" · ")}</small><Recap s={s} /></span>
     <span className="ib-meta">{length}{length && cost ? " · " : ""}{cost ? <span title="Conversation so far">{cost}</span> : null}</span>
-    <button type="button" className="btn ghost sm" disabled title={shownWhy(REPLAY_GAP)}>Watch again</button>
+    <button type="button" className="btn ghost sm" onClick={() => replay(item)}>Watch again</button>
     {shows(level, "technical") && runId ? <button type="button" className="ib-ib" aria-haspopup="menu" aria-label={`More for ${s.title}`} title={`More for ${s.title}`} onClick={e => { const r = e.currentTarget.getBoundingClientRect(); inspect({ ...item, run: run ?? { runId, agentId: s.agentId, sessionKey: s.key, status: "" } }, { x: r.right - 220, y: r.bottom + 4 }); }}><Icon name="more" /></button> : null}
   </div>;
 }
 
-function Days({ list, data, level, folds, toggle, inspect, open }: { list: Item[]; data: HistoryData; level: Level; folds: string[]; toggle: (k: string) => void; inspect: (item: Item, at: MenuAnchor) => void; open: (key: string) => void }) {
+function Days({ list, data, level, folds, toggle, inspect, open, replay }: { list: Item[]; data: HistoryData; level: Level; folds: string[]; toggle: (k: string) => void; inspect: (item: Item, at: MenuAnchor) => void; open: (key: string) => void; replay: (item: Item) => void }) {
   const groups: [string, Item[]][] = [];
   for (const i of list) { const d = dayWord(i.at); const g = groups.find(x => x[0] === d); if (g) g[1].push(i); else groups.push([d, [i]]); }
   return <>{groups.map(([day, rs]) => {
     const autos = rs.filter(i => i.s.automation), rest = rs.filter(i => !i.s.automation), k = `a:${day}`, isOpen = folds.includes(k);
-    const row = (i: Item, child?: boolean) => <HRow key={i.s.key} item={i} data={data} level={level} child={child} inspect={inspect} open={open} />;
+    const row = (i: Item, child?: boolean) => <HRow key={i.s.key} item={i} data={data} level={level} child={child} inspect={inspect} open={open} replay={replay} />;
     return <div key={day}><h3 className="ib-day">{day}</h3><div className="ib-list ib-flat">{rest.map(i => row(i))}
       {autos.length > 1 ? <><div className="ib-row ib-fold"><span className="ib-tile"><G name="clock" /></span><span className="ib-grow"><b>{plural(autos.length, "automation run")}</b></span><button type="button" className="ib-ib" aria-expanded={isOpen} aria-label={isOpen ? "Fold" : "Show them"} title={isOpen ? "Fold" : "Show them"} onClick={() => toggle(k)}><Icon name={isOpen ? "down" : "chev"} /></button></div>{isOpen ? autos.map(i => row(i, true)) : null}</> : autos.map(i => row(i))}
     </div></div>;
@@ -136,6 +138,7 @@ export function History({ engine, data, level, people: initialPeople, open, chil
   const [menu, setMenu] = useState<{ kind: "win" | "who"; at: MenuAnchor } | null>(null);
   const [inspectAt, setInspectAt] = useState<{ item: Item; at: MenuAnchor } | null>(null);
   const [inspecting, setInspecting] = useState<Item | null>(null);
+  const [replaying, setReplaying] = useState<Item | null>(null);
   const now = new Date(), all = items(data), span = WINDOWS[win][1];
   const inWindow = all.filter(i => (span === Infinity || now.getTime() - i.at.getTime() <= span) && (!who.length || who.includes(i.who)));
   const needle = q.trim().toLowerCase();
@@ -147,14 +150,14 @@ export function History({ engine, data, level, people: initialPeople, open, chil
   const whoItems: MenuItem[] = [{ label: "Everyone", run: () => { setWho([]); setShown(10); } }, ...persons.map(w => ({ label: `${who.includes(w) ? "✓ " : ""}${personName(data, w)}`, run: () => toggleWho(w) })), { label: `${who.includes("unmatched") ? "✓ " : ""}People we couldn’t match`, run: () => toggleWho("unmatched") }];
   return <>
     <section className="ib-tile-box"><b>Watch a task again</b><p>Step through what a task did, see the path it took, and keep it as a page or a workflow that repeats it.</p>
-      <div className="ib-acts"><button type="button" className="btn sm" disabled title={shownWhy(REPLAY_GAP)}><G name="play" size={14} />{list[0] ? `Watch “${list[0].s.title}”` : "Watch a task"}</button></div></section>
+      <div className="ib-acts"><button type="button" className="btn sm" disabled={!list[0]} title={list[0] ? undefined : REPLAY_EMPTY} onClick={() => list[0] && setReplaying(list[0])}><G name="play" size={14} />{list[0] ? `Watch “${list[0].s.title}”` : "Watch a task"}</button></div></section>
     <Pulse list={inWindow} win={win} now={now} />
     <div className="ib-nl"><input className="ib-inp" value={q} placeholder="Search what ran" aria-label="Search history" onChange={e => { setQ(e.target.value); setShown(10); }} />
       <button type="button" className="ib-rec" disabled title={shownWhy(VERIFY_GAP)} style={{ color: "var(--ink-3)" }}><G name="shield" size={15} /><span>Unverified</span><u>Verify</u></button></div>
     <div className="ib-filt"><button type="button" className="btn sm" aria-haspopup="menu" onClick={e => setMenu({ kind: "win", at: anchor(e) })}>{WINDOWS[win][0]}<Icon name="down" small /></button>
       {persons.length > 1 || who.length ? <button type="button" className="btn sm" aria-haspopup="menu" onClick={e => setMenu({ kind: "who", at: anchor(e) })}>{label}<Icon name="down" small /></button> : null}
       {who.length ? <button type="button" className="btn ghost sm" onClick={() => setWho([])}>Clear</button> : null}</div>
-    {list.length ? <Days list={list.slice(0, shown)} data={data} level={level} folds={folds} toggle={k => setFolds(folds.includes(k) ? folds.filter(x => x !== k) : [...folds, k])} inspect={(item, at) => setInspectAt({ item, at })} open={open} />
+    {list.length ? <Days list={list.slice(0, shown)} data={data} level={level} folds={folds} toggle={k => setFolds(folds.includes(k) ? folds.filter(x => x !== k) : [...folds, k])} inspect={(item, at) => setInspectAt({ item, at })} open={open} replay={setReplaying} />
       : <p className="ib-empty">{all.length ? "Nothing matches." : "Nothing has run yet."}</p>}
     {list.length ? <div className="ib-show"><small>Showing {Math.min(shown, list.length)} of {list.length}</small>{list.length > shown ? <button type="button" className="btn ghost sm" onClick={() => setShown(shown + 10)}>Show more</button> : null}</div> : null}
     <section className="ib-sec"><div className="ib-sec-h"><h2>Recorded activity</h2></div><div className="ib-list"><div className="ib-row"><span className="ib-tile"><G name="shield" /></span><span className="ib-grow"><b>Activity records are not verified receipts</b><small>Integrity has not been checked. Signed receipt chains are unavailable from this connection.</small></span><span className="ib-acts"><button type="button" className="btn sm" disabled title={RECEIPTS_GAP}>See the chain</button></span></div></div></section>
@@ -164,5 +167,6 @@ export function History({ engine, data, level, people: initialPeople, open, chil
     <PickMenu at={menu?.kind === "who" ? menu.at : null} label="Person" close={() => setMenu(null)} items={whoItems} />
     <PickMenu at={inspectAt?.at ?? null} label="Run" close={() => setInspectAt(null)} items={inspectAt ? [{ label: "Look inside this run", run: () => setInspecting(inspectAt.item) }] : []} />
     {inspecting ? <Inspect engine={engine} title={inspecting.s.title} at={inspecting.at} runId={inspecting.run?.runId ?? ""} close={() => setInspecting(null)} /> : null}
+    {replaying ? <ReplayDialog engine={engine} sessionKey={replaying.s.key} title={replaying.s.title} onClose={() => setReplaying(null)} /> : null}
   </>;
 }
