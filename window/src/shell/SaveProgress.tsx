@@ -21,7 +21,7 @@ export function useCkptOn(engine: WindowEngine): boolean {
   return look[CKPT_PREF] !== false;
 }
 
-export type Almost = { key: string; name: string; account: string; window: string; used: number };
+export type Almost = { key: string; name: string; account: string; window: string; used: number; example?: boolean };
 
 /** The measured window with the least left, if it has `atMost`% or less left (5 = the 95% offer), or null. */
 export function almostOut(limits: Limits | null, atMost = 5): Almost | null {
@@ -32,18 +32,6 @@ export function almostOut(limits: Limits | null, atMost = 5): Almost | null {
     }
   }
   return best;
-}
-
-/** Whether a connection reports a measured window, so Data & usage › "Show me" has a prompt to show (greyed otherwise). */
-let canShow = false;
-const showSubs = new Set<() => void>();
-function setCanShow(next: boolean) {
-  if (next === canShow) return;
-  canShow = next;
-  showSubs.forEach((fn) => fn());
-}
-export function useCkptCanShow(): boolean {
-  return useSyncExternalStore((fn) => { showSubs.add(fn); return () => { showSubs.delete(fn); }; }, () => canShow, () => canShow);
 }
 
 function asked(): string[] {
@@ -67,8 +55,7 @@ export function SaveProgressOffer({ engine, limits, on, runningKeys }: { engine:
     if (on && near && !asked().includes(near.key)) { markAsked(near.key); setShown(near); }
   }, [on, near?.key]);
   useEffect(() => {
-    setCanShow(almostOut(limits, 100) !== null);
-    const show = () => { const n = almostOut(limits, 100); if (n) setShown(n); };
+    const show = () => setShown(almostOut(limits, 100) ?? { key: "example", name: "a connection", account: "", window: "5-hour", used: 95, example: true });
     window.addEventListener(CKPT_SHOW, show);
     return () => window.removeEventListener(CKPT_SHOW, show);
   }, [limits]);
@@ -94,9 +81,9 @@ export function SaveProgressOffer({ engine, limits, on, runningKeys }: { engine:
       </svg>
       <div className="grow">
         <b>Almost out on {shown.name}{shown.account ? ` (${shown.account})` : ""}. Ask running tasks to save their progress?</b>
-        <small>{shown.used}% of {/^this /i.test(shown.window) ? shown.window.toLowerCase() : `the ${shown.window.toLowerCase()} window`} is used. Measured. Nothing is paused.</small>
+        <small>{shown.example ? "Example: " : ""}{shown.used}% of {/^this /i.test(shown.window) ? shown.window.toLowerCase() : `the ${shown.window.toLowerCase()} window`} is used. {shown.example ? "No measured limit is available." : "Measured."} Nothing is paused.</small>
       </div>
-      <button className="btn pri sm" type="button" onClick={() => void save()}>Save progress</button>
+      <button className="btn pri sm" type="button" disabled={shown.example} title={shown.example ? "This is an example; no measured limit is near 95%." : undefined} onClick={() => void save()}>Save progress</button>
       <button className="btn ghost sm" type="button" onClick={() => setShown(null)}>Not now</button>
     </div>
   );

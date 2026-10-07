@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { UsagePage, daysFrom, gbFrom, matches, parseQuery, resetWords, tidyNote } from "./usage";
+import { SaveProgressOffer } from "../../../shell/SaveProgress";
 
 type Answers = Record<string, unknown | ((params: Record<string, unknown>) => unknown)>;
 function engineWith(answers: Answers) {
@@ -62,6 +63,14 @@ const BASE: Answers = { "sessions.usage": USAGE, "usage.status": STATUS, "agents
 const CFG = (config: Record<string, unknown> = {}): Answers => ({ "config.get": { hash: "h", valid: true, config }, "config.patch": { ok: true, hash: "h2", config } });
 
 describe("Settings › Data & usage", () => {
+  it("Show me previews the save-progress offer without a measured limit", async () => {
+    const { engine } = engineWith(BASE);
+    await act(async () => root.render(<><UsagePage page="usage" title="Data & usage" level="regular" engine={engine} /><SaveProgressOffer engine={engine} limits={null} on runningKeys={[]} /></>));
+    await flush();
+    expect(button("Show me").disabled).toBe(false);
+    await click("Show me");
+    expect(document.querySelector('[role="alertdialog"][aria-label="Save progress?"]')?.textContent).toContain("Example");
+  });
   it("draws the spend card from sessions.usage across every Trunk, in local days", async () => {
     const { engine, request } = engineWith(BASE);
     await show(engine);
