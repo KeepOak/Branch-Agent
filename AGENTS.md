@@ -42,7 +42,9 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 11. **Commits and PRs:** Conventional Commits, files staged by name (never `git add -A`), no tool or AI attribution lines, no force-push to `main`. PR body: what, why, exact test commands and pass counts.
 
-12. **Merging:** `main` requires the `merge-gate` check. Use auto-merge with a merge commit: `gh pr merge <number> --auto --merge`. Don't force-push to `main`, and don't re-enable auto-merge on a pull request a reviewer paused.
+12. **Merging:** Merge with a merge commit (never squash or rebase), pinned to the reviewed head SHA so a new push blocks the merge. Two approved ways:
+    - `gh pr merge <number> --auto --merge --match-head-commit <reviewed-sha>`
+    - REST API: `PUT /repos/KeepOak/Branch-Agent/pulls/<number>/merge` with `{"merge_method": "merge", "sha": "<reviewed-sha>"}`
 
 13. **CI has a hard 15-minute cap.** Every check job sets `timeout-minutes: 15` or less; the merge-gate job allows up to 35 because it waits for the others. A change that makes CI slower than the cap gets split, sharded or cut, never given a longer timeout.
 
@@ -57,12 +59,12 @@ node scripts/install-worktree.mjs both     # or: engine | window
 cd desktop && npm ci                        # only when you change desktop/
 ```
 
-### Run the app locally
+### Run the app locally (web window)
 ```bash
 # Terminal 1: start the engine gateway
 cd engine
-pnpm branch onboard  # first time only
-pnpm branch gateway --port 19011
+pnpm install  # first time only
+node scripts/run-node.mjs gateway --port 19011
 
 # Terminal 2: start the window dev server
 cd window
@@ -92,7 +94,9 @@ cd desktop && node --test scripts/file.test.mjs
 
 ## Coordinating work
 
-Open PRs and their current CI status can be queried with `gh pr list --json number,title,headRefName,statusCheckRollup` or viewed at <https://github.com/KeepOak/Branch-Agent/pulls>.
+Open PRs and their current CI status: `gh pr list --json number,title,headRefName,statusCheckRollup` or <https://github.com/KeepOak/Branch-Agent/pulls>.
+
+**Priority order:** (1) seamless updates, (2) preview parity (the real app matching the Branch App Preview 1:1), (3) logic everywhere.
 
 1. **Roles.** GOD is the coordinator. Branch PR Closer holds delegated merge authority: it may merge when the merge gate is green AND there is a MERGE review verdict on the PR's current head commit. Builder agents work on assigned tasks. Reviewer agents only review.
 
@@ -100,7 +104,11 @@ Open PRs and their current CI status can be queried with `gh pr list --json numb
 
 3. **Review before merge.** Every head gets an adversarial read-only review: a MERGE or FIX verdict, `file:line` evidence, and CI log lines proving the changed tests actually ran on macOS, Ubuntu and Windows. A green check alone is not proof. A new push needs a new review.
 
-4. **Merging.** Branch PR Closer may merge a PR when both conditions hold: (1) the merge-gate check is green on the current head, and (2) a review gave a MERGE verdict for that exact commit SHA. Use: `gh pr merge <number> --squash --match-head-commit <reviewed-sha>`. Never merge without both conditions.
+4. **Merging.** Branch PR Closer may merge a PR when both conditions hold: (1) the merge-gate check is green on the current head, and (2) a review gave a MERGE verdict for that exact commit SHA. Always merge with a merge commit, pinned to the reviewed SHA:
+   - `gh pr merge <number> --auto --merge --match-head-commit <reviewed-sha>`
+   - Or via REST API: `PUT /repos/KeepOak/Branch-Agent/pulls/<number>/merge` with `{"merge_method": "merge", "sha": "<reviewed-sha>"}`
+
+5. **Seamless handoff gate.** The `seamlessHandoff` flag stays off until #429 (real two-engine handoff test) is merged. After #429 lands, turn it on in its own one-line PR and test it live mid-conversation.
 
 ## Working with AI agents
 

@@ -40,12 +40,11 @@ Conventions and common failure modes for this repository. Bugbot should check th
 - **Right:** Run `pnpm lint` in engine or window, and the appropriate typecheck (`pnpm -C window typecheck` or `node scripts/strict-typecheck.mjs`) before pushing.
 
 ### Merge commands
-- **Wrong:** `gh pr merge` without `--squash` and `--match-head-commit`.
-- **Right:** Always use `gh pr merge <number> --squash --match-head-commit <sha>` to ensure the reviewed commit is what lands.
-
-### Auto-merge usage
-- **Wrong:** Using `gh pr merge` with `--auto` flag in automated scripts (races with CI).
-- **Right:** For human workflow use `gh pr merge <number> --auto --merge`. For automated merging after review, use `--squash --match-head-commit <reviewed-sha>` without `--auto`.
+- **Wrong:** Merging without pinning to the reviewed head SHA, or using squash/rebase.
+- **Right:** Always merge with a merge commit, pinned to the reviewed SHA:
+  - `gh pr merge <number> --auto --merge --match-head-commit <reviewed-sha>`
+  - Or REST API: `PUT /repos/KeepOak/Branch-Agent/pulls/<number>/merge` with `{"merge_method": "merge", "sha": "<reviewed-sha>"}`
+- **Why:** A new push after review must block the merge until re-reviewed. Merge commits preserve the full history.
 
 ## Code style
 

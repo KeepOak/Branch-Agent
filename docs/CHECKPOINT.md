@@ -1,6 +1,6 @@
 # Checkpoint
 
-This repository is actively maintained. For current PR status, merge-gate state, and open work, query live GitHub state:
+This repository is actively maintained. For current state, query live GitHub data:
 
 ```bash
 # List all open PRs with their CI status
@@ -11,9 +11,10 @@ gh pr view <number> --json statusCheckRollup
 
 # List recent merges
 gh pr list --state merged --limit 10
-```
 
-**Current main:** `ad9424c70` (merge of #447, 2026-10-07)
+# Current main head
+git ls-remote https://github.com/KeepOak/Branch-Agent main
+```
 
 ## Coordination
 
@@ -23,13 +24,17 @@ gh pr list --state merged --limit 10
 
 See [`AGENTS.md`](../AGENTS.md) for the full workflow.
 
-## Priority work
+## Durable priorities
 
-Query open PRs for current priorities. As of 2026-10-07:
+**Priority order:** (1) seamless updates, (2) preview parity (the real app matching the Branch App Preview 1:1 in look and logic), (3) logic everywhere.
 
-- **P1 (seamless updates):** #380 (post-update notice with Undo) and #429 (real two-engine handoff test) are the remaining pieces.
-- **P2 (preview parity):** Various window parity PRs matching the Branch App Preview 1:1.
-- Review and merge as directed by the coordinator.
+### Seamless handoff gate
+
+The `seamlessHandoff` flag stays off until #429 (real two-engine handoff test) is merged. After #429 lands, turn it on in its own one-line PR and test it live mid-conversation.
+
+### Pending follow-ups
+
+Tracked in #449.
 
 ## CI infrastructure notes
 
