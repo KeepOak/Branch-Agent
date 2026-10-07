@@ -68,12 +68,20 @@ function Gone({ name, src, why, onRetry }: { name: string; src: string; why: "ou
 function LocalPicture({ src, name, inline }: { src: string; name: string; inline: boolean }) {
   const [tick, setTick] = useState(0);
   const [failed, setFailed] = useState(false);
+  const [askedAgain, setAskedAgain] = useState(false);
   const picture = usePicture(src, tick);
-  const retry = () => { setFailed(false); setTick((t) => t + 1); };
+  const retry = () => { setFailed(false); setAskedAgain(false); setTick((t) => t + 1); };
+  // A lazy picture loads when it scrolls into view, which can be after its 5-minute ticket ran out: the first failure
+  // asks for a new ticket without a word, and only a second one says Picture unavailable.
+  const broken = () => {
+    if (askedAgain) { setFailed(true); return; }
+    setAskedAgain(true);
+    setTick((t) => t + 1);
+  };
   if (!picture) return <span className={inline ? "md-inline-picture loading" : "md-picture-loading"} role="img" aria-label={`Loading ${name}`} data-testid="picture-loading" />;
   if ("error" in picture || failed) return <Gone name={name} src={src} why={"error" in picture ? picture.error : "unavailable"} onRetry={retry} />;
-  if (inline) return <img className="md-inline-picture" src={picture.src} alt={name} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} />;
-  return <Attachments items={[{ kind: "image", name, src: picture.src, kept: true }]} onError={() => setFailed(true)} />;
+  if (inline) return <img className="md-inline-picture" src={picture.src} alt={name} loading="lazy" referrerPolicy="no-referrer" onError={broken} />;
+  return <Attachments items={[{ kind: "image", name, src: picture.src, kept: true }]} onError={broken} />;
 }
 
 export function MdImage({ src, alt, inline = false }: { src: string; alt: string; inline?: boolean }) {
