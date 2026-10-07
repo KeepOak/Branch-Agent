@@ -1,4 +1,4 @@
-import { constants, copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const MARKER = ".normal-profile-migrated.json";
@@ -10,7 +10,11 @@ function mergeMissing(source: string, destination: string, created: string[], af
     const to = join(destination, entry.name);
     if (entry.name === "branch.json" && source.endsWith(".branch-dev")) continue;
     if (entry.isFile() && /-(?:wal|shm)$/.test(entry.name) && existing.has(entry.name.replace(/-(?:wal|shm)$/, ""))) continue;
-    if (entry.isSymbolicLink() || (!entry.isFile() && !entry.isDirectory())) {
+    // Links (on Windows also junctions, such as plugin-skills entries pointing into an engine release that may be gone)
+    // are never followed or copied: they point outside the profile, the engine recreates its own, and the original
+    // stays in the migrated archive. Following one is how a dangling junction killed the app (fs.cpSync, Node 24).
+    if (entry.isSymbolicLink()) continue;
+    if (!entry.isFile() && !entry.isDirectory()) {
       throw new Error("Profile migration cannot copy a non-regular entry");
     }
     if (entry.isDirectory()) {
@@ -36,8 +40,6 @@ export function prepareNormalProfile(home: string, afterCopy?: () => void): { le
   const marker = join(normal, MARKER);
   const config = join(normal, "branch.json");
   const created: string[] = [];
-  let backup: string | undefined;
-  let backupCreated = false;
   let archive: string | undefined;
   try {
     if (!existsSync(normal)) {
@@ -49,12 +51,11 @@ export function prepareNormalProfile(home: string, afterCopy?: () => void): { le
     if (!existsSync(marker) && existsSync(dev)) {
       if (!lstatSync(dev).isDirectory()) throw new Error("Legacy profile root is not a directory");
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-      backup = join(home, `.migration-backup-${stamp}`);
       archive = join(home, `.branch-dev.migrated-${stamp}`);
-      if (existsSync(backup) || existsSync(archive)) throw new Error("Profile migration destination already exists");
-      mkdirSync(backup);
-      backupCreated = true;
-      cpSync(dev, join(backup, ".branch-dev"), { recursive: true, errorOnExist: true, force: false });
+      if (existsSync(archive)) throw new Error("Profile migration destination already exists");
+      // No byte copy of the legacy profile first: the original is kept whole as the archive (a rename, nothing in it
+      // is ever changed), and copying it synchronously in the app's main process took minutes for an owner's 1 GB
+      // workspace and crashed the app on a dangling junction before the engine could start.
       // The desktop's --dev flag selected this workspace, but its config and live
       // databases already lived under .branch. Preserve any separate dev-profile
       // files without replacing the normal profile's newer files.
@@ -69,14 +70,13 @@ export function prepareNormalProfile(home: string, afterCopy?: () => void): { le
       created.push(config);
     }
     if (!existsSync(marker)) {
-      writeFileSync(marker, JSON.stringify({ archive, backup }) + "\n", { flag: "wx" });
+      writeFileSync(marker, JSON.stringify({ archive }) + "\n", { flag: "wx" });
       created.push(marker);
     }
     return { legacyDevMode: false };
   } catch {
     if (archive && existsSync(archive) && !existsSync(dev)) renameSync(archive, dev);
     for (const pathname of created.reverse()) rmSync(pathname, { recursive: true, force: true });
-    if (backupCreated && backup) rmSync(backup, { recursive: true, force: true });
     return { legacyDevMode: true, note: "Profile migration failed; retaining the previous gateway layout." };
   }
 }

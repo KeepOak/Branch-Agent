@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { lstat, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -36,7 +37,7 @@ test("fresh desktop install starts without dev profile or C3-PO", async () => ho
   assert.equal(await readFile(join(home, ".branch-dev", "workspace", "IDENTITY.md"), "utf8"), "intentional dev profile");
 }));
 
-test("owner-shaped dev workspace migrates once with backup and normal files preserved", async () => homeFixture(async (_root, home) => {
+test("owner-shaped dev workspace migrates once with the original archived and normal files preserved", async () => homeFixture(async (_root, home) => {
   await mkdir(join(home, ".branch", "state"), { recursive: true });
   await mkdir(join(home, ".branch-dev", "workspace"), { recursive: true });
   await mkdir(join(home, ".branch-dev", "state"), { recursive: true });
@@ -52,13 +53,32 @@ test("owner-shaped dev workspace migrates once with backup and normal files pres
   assert.equal(await readFile(join(home, ".branch", "state", "legacy.txt"), "utf8"), "legacy state");
   assert.equal(await readFile(join(home, ".branch", "plugin-skills", "notes.txt"), "utf8"), "skill");
   const names = await readdir(home);
-  const backup = names.find((name) => name.startsWith(".migration-backup-"));
   const archive = names.find((name) => name.startsWith(".branch-dev.migrated-"));
-  assert.ok(backup && archive);
-  assert.equal(await readFile(join(home, backup, ".branch-dev", "workspace", "IDENTITY.md"), "utf8"), "old workspace");
+  assert.ok(archive);
+  // The original legacy profile is kept whole; no second byte copy is made.
+  assert.equal(await readFile(join(home, archive, "workspace", "IDENTITY.md"), "utf8"), "old workspace");
+  assert.equal(names.some((name) => name.startsWith(".migration-backup-")), false);
   assert.ok(JSON.parse(await readFile(join(home, ".branch", ".normal-profile-migrated.json"), "utf8")));
   assert.equal(prepareNormalProfile(home).legacyDevMode, false);
   assert.deepEqual(await readdir(home), names);
+}));
+
+test("a dangling link or junction in the legacy profile never stops the migration or the app", async () => homeFixture(async (root, home) => {
+  // As the owner's profile: plugin-skills/browser-automation was a junction into an engine release since removed.
+  const gone = join(root, "updates", "release-gone", "engine", "skills", "browser-automation");
+  await mkdir(join(home, ".branch"), { recursive: true });
+  await mkdir(join(home, ".branch-dev", "plugin-skills"), { recursive: true });
+  await mkdir(join(home, ".branch-dev", "workspace"), { recursive: true });
+  await writeFile(join(home, ".branch", "branch.json"), "{}\n");
+  await writeFile(join(home, ".branch-dev", "workspace", "IDENTITY.md"), "kept");
+  await mkdir(gone, { recursive: true });
+  await symlink(gone, join(home, ".branch-dev", "plugin-skills", "browser-automation"), process.platform === "win32" ? "junction" : "dir");
+  await rm(join(root, "updates"), { recursive: true });
+  assert.equal(prepareNormalProfile(home).legacyDevMode, false);
+  assert.equal(await readFile(join(home, ".branch", "workspace", "IDENTITY.md"), "utf8"), "kept");
+  assert.equal(existsSync(join(home, ".branch", "plugin-skills", "browser-automation")), false, "a dangling link was copied");
+  const archive = (await readdir(home)).find((name) => name.startsWith(".branch-dev.migrated-"));
+  assert.ok((await lstat(join(home, archive, "plugin-skills", "browser-automation"))).isSymbolicLink(), "the archive lost the original link");
 }));
 
 test("mid-migration failure rolls back original files byte-identically", async () => homeFixture(async (_root, home) => {
