@@ -436,7 +436,7 @@ test("a standby that fails after the old engine stepped down gives control back 
   await pause(1500);
   assert.equal((await starts()).length, 2, "recovery started another engine although the old one serves");
 }, false, false, false, true, false, handoffOn()));
-test("an old engine restarting in place after rollback gets longer than ten seconds to become ready", () => fixture(async ({ root, runtime, starts, restart }) => {
+test("an old engine restarting in place after rollback keeps its readiness budget beyond the retire deadline", () => fixture(async ({ root, runtime, starts, restart }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
   const old = (await starts())[0];
   await writeFile(join(root, "standby-exits-after-release"), "1");
@@ -445,7 +445,7 @@ test("an old engine restarting in place after rollback gets longer than ten seco
   await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"), 30_000);
   assert.equal(alive(old), true, "the restarting old engine was killed before it became ready");
   assert.equal((await starts()).length, 2, "cold recovery replaced an engine that reclaimed the state");
-}, false, false, false, true, false, handoffOn({ STANDBY_READY_TIMEOUT_MS: 15_000 })));
+}, false, false, false, true, false, handoffOn({ STANDBY_READY_TIMEOUT_MS: 15_000, RETIRE_KILL_AFTER_MS: 4_000 })));
 test("a handoff whose standby port was taken gives control back without rejecting the release", () => fixture(async ({ root, runtime, starts, restart }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
   const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
@@ -472,7 +472,7 @@ test("a handoff whose standby port was taken gives control back without rejectin
   assert.equal(existsSync(join(root, "component-update-rejected.json")), false, "a healthy release was rejected for a port clash");
   assert.match(await readFile(join(root, "desktop.log"), "utf8"), /was taken before the standby could bind it/);
 }, false, false, false, true, false, handoffOn()));
-test("a handoff-only readiness timeout does not count toward rejecting a healthy staged release", () => fixture(async ({ root, runtime, starts, restart }) => {
+test("a handoff-only readiness timeout keeps the release eligible and the next attempt uses the guarded swap", () => fixture(async ({ root, runtime, starts, restart, offerStaged }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
   await stageFixtureUpdate(root);
   await writeFile(join(root, "release-ready"), "ready");
@@ -483,6 +483,17 @@ test("a handoff-only readiness timeout does not count toward rejecting a healthy
   await unlink(join(root, "hold-standby"));
   await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"), 30_000);
   assert.equal(existsSync(join(root, "component-update-timeouts.json")), false);
+  assert.equal(existsSync(join(root, "component-update-rejected.json")), false);
+  const beforeRetry = (await starts()).length;
+  await stageFixtureUpdate(root);
+  await writeFile(join(root, "release-ready"), "ready");
+  offerStaged();
+  restart();
+  await eventually(() => swapped(root), 30_000);
+  const launched = await starts();
+  assert.equal(launched.length, beforeRetry + 1, "the next attempt warmed another standby instead of using the guarded swap");
+  assert.equal(JSON.parse(await readFile(join(root, `launch-${launched.at(-1)}.json`), "utf8")).standby, false);
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /the standby failed 2 time\(s\); using the guarded stop\/start swap/);
   assert.equal(existsSync(join(root, "component-update-rejected.json")), false);
 }, false, false, false, true, false, handoffOn({ STANDBY_READY_TIMEOUT_MS: 1000 })));
 test("an old engine that cannot step down is drained instead and the update still completes", () => fixture(async ({ root, starts, restart }) => {

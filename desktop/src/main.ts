@@ -457,7 +457,10 @@ async function takeControlBack(label: string, prior: ChildProcess, selected: Pre
   const failedEngine = resolveEngineDir(cfg);
   try {
     if (portClash) log(`update ${label}: standby port ${selected.port} was taken before the standby could bind it; the release stays eligible`);
-    else if (error instanceof GatewayReadinessTimeoutError) log(`update ${label}: handoff readiness budget expired; the release remains eligible for the guarded swap`);
+    else if (error instanceof GatewayReadinessTimeoutError) {
+      standbyFailures.set(label, STANDBY_ATTEMPTS);
+      log(`update ${label}: handoff readiness budget expired; the next attempt uses the guarded swap`);
+    }
     else await rejectFailedComponentUpdate(cfg, failedEngine);
   } catch (recordError) { log(`update ${label}: failure could not be recorded: ${String(recordError)}`); }
   await rollbackComponentUpdate(cfg).catch(rollbackError => log(`update ${label}: component rollback: ${String(rollbackError)}`));
@@ -467,12 +470,13 @@ async function takeControlBack(label: string, prior: ChildProcess, selected: Pre
   if (lastGoodEngineDir) writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${lastGoodEngineDir}\n`);
   if (prior.pid !== undefined) writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prior.pid));
   const back = await rollbackGateway(prior, ROLLBACK_TIMEOUT_MS);
+  // Rollback has reclaimed the state. The old engine must keep its full readiness budget without the retire timer.
+  if (back === "ok") stopRetiring(prior);
   if (back !== "ok" || !await priorServes(prior, STANDBY_READY_TIMEOUT_MS)) {
     notServing(prior);
     resumeSupervision();
     throw new Error(`the update failed and the old engine could not take control back (${back}): ${message}`);
   }
-  stopRetiring(prior);
   resumeSupervision();
   log(`update ${label}: the old engine took control back on port ${gatewayPort}`);
 }
