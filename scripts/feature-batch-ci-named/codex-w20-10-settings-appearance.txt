@@ -1,0 +1,2 @@
+window:src/places/settings/appearance-store-lifecycle.test.tsx
+window:src/places/settings/general-prefs-race.test.tsx
