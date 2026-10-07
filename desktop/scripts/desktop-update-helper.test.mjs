@@ -98,7 +98,7 @@ test("EBUSY retries are bounded and then throw, without sleeping forever", async
     busyAttempts: 3,
     rename: async () => { attempts += 1; throw busy; },
     sleep: async (ms) => { sleeps.push(ms); },
-    listFolderProcesses: async () => [{ pid: 4242, name: "node.exe", executable: "node.exe", args: ["branch.mjs", "node", "run"] }],
+    listFolderProcesses: async () => [{ pid: 9004242, name: "node.exe", executable: "node.exe", args: ["branch.mjs", "node", "run"] }],
   }), { code: "EBUSY" });
   assert.equal(attempts, 4, "the first try plus 3 retries, then fail");
   assert.deepEqual(sleeps, [250, 250, 250]);
@@ -111,7 +111,7 @@ test("a persistent EBUSY leaves the old app folder in place and names the holder
     busyAttempts: 3,
     rename: async () => { attempts += 1; throw busy; },
     sleep: async () => {},
-    listFolderProcesses: async () => [{ pid: 4242, name: "node.exe", executable: join(appDir, "resources", "node", nodeName), args: ["branch.mjs", "node", "run"] }],
+    listFolderProcesses: async () => [{ pid: 9004242, name: "node.exe", executable: join(appDir, "resources", "node", nodeName), args: ["branch.mjs", "node", "run"] }],
   }), "kept");
   assert.equal(attempts, 4);
   assert.equal(await readFile(join(appDir, "Branch Agent.exe"), "utf8"), "old runtime");
@@ -121,7 +121,7 @@ test("a persistent EBUSY leaves the old app folder in place and names the holder
   assert.ok(journal.heldUntil > Date.now());
   const log = await readFile(join(dataDir, "desktop.log"), "utf8");
   assert.match(log, /EBUSY/);
-  assert.match(log, /node host pid 4242/);
+  assert.match(log, /node host pid 9004242/);
   assert.doesNotMatch(log, /[/\\](?:Users|home|AppData)[/\\]/i);
   assert.match(log, /kept staged for the next scheduled check/);
 }));
@@ -278,18 +278,18 @@ test("a session-0 install-folder node locker is stopped; an outside node in the 
   const restartable = await stopFolderProcesses(folder, line => lines.push(line), {
     sleep: async () => {},
     listLockers: async () => [
-      { pid: 501, name: "node.exe", executable: bundled, args: ["mcporter"], sessionId: 0 },
-      { pid: 502, name: "node.exe", executable: bundled, args: ["branch.mjs", "node", "run"], sessionId: 1 },
-      { pid: 503, name: "node.exe", executable: join("C:", "Program Files", "nodejs", nodeName), args: [], sessionId: 0 },
+      { pid: 900501, name: "node.exe", executable: bundled, args: ["mcporter"], sessionId: 0 },
+      { pid: 900502, name: "node.exe", executable: bundled, args: ["branch.mjs", "node", "run"], sessionId: 1 },
+      { pid: 900503, name: "node.exe", executable: join("C:", "Program Files", "nodejs", nodeName), args: [], sessionId: 0 },
     ],
     stopProcess: (pid) => { stopped.push(pid); },
   });
-  assert.deepEqual(stopped.sort((a, b) => a - b), [501, 502]);
-  assert.ok(restartable.some(proc => proc.pid === 502));
-  assert.equal(restartable.some(proc => proc.pid === 501), false, "mcporter leftovers are not restarted");
+  assert.deepEqual(stopped.sort((a, b) => a - b), [900501, 900502]);
+  assert.ok(restartable.some(proc => proc.pid === 900502));
+  assert.equal(restartable.some(proc => proc.pid === 900501), false, "mcporter leftovers are not restarted");
   assert.match(lines.join("\n"), /session 0/);
   assert.match(lines.join("\n"), /session 1/);
-  assert.doesNotMatch(lines.join("\n"), /pid 503/);
+  assert.doesNotMatch(lines.join("\n"), /pid 900503/);
   assert.doesNotMatch(lines.join("\n"), /[/\\](?:Users|home|AppData)[/\\]/i);
 });
 
@@ -300,7 +300,7 @@ test("an unstoppable session-0 locker leaves the update staged without retrying 
   assert.equal(await runHelper(plan, {
     sleep: async () => {},
     listLockers: async () => [
-      { pid: 88, name: "node.exe", executable: bundled, args: [], sessionId: 0 },
+      { pid: 900088, name: "node.exe", executable: bundled, args: [], sessionId: 0 },
     ],
     stopProcess: () => { throw denied; },
     rename: async () => { renames += 1; },
@@ -312,7 +312,7 @@ test("an unstoppable session-0 locker leaves the update staged without retrying 
   assert.ok(journal.heldUntil > Date.now());
   const log = await readFile(join(dataDir, "desktop.log"), "utf8");
   assert.match(log, /could not stop locker/);
-  assert.match(log, /pid 88/);
+  assert.match(log, /pid 900088/);
   assert.match(log, /session 0/);
   assert.match(log, /image resources[/\\]node[/\\]node(?:\.exe)?/);
   assert.match(log, /kept staged for the next scheduled check/);
@@ -320,9 +320,9 @@ test("an unstoppable session-0 locker leaves the update staged without retrying 
   await assert.rejects(
     stopFolderProcesses(appDir, () => {}, {
       sleep: async () => {},
-      listLockers: async () => [{ pid: 88, name: "node.exe", executable: bundled, args: [], sessionId: 0 }],
+      listLockers: async () => [{ pid: 900088, name: "node.exe", executable: bundled, args: [], sessionId: 0 }],
       stopProcess: () => { throw denied; },
     }),
-    error => error instanceof UnstoppableLockersError && error.lockers[0]?.pid === 88,
+    error => error instanceof UnstoppableLockersError && error.lockers[0]?.pid === 900088,
   );
 }));

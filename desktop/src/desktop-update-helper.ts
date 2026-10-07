@@ -384,12 +384,26 @@ export async function stopFolderProcesses(folder: string, log: (line: string) =>
       blocked.push(proc);
     }
   }
-  for (const end = Date.now() + 5_000; Date.now() < end; await sleep(100)) {
-    if (trees.every(pid => !alive(pid))) break;
-  }
-  for (const proc of victims) {
-    if (blocked.includes(proc) || keep.has(proc.pid) || proc.pid === process.pid) continue;
-    if (alive(proc.pid)) blocked.push(proc);
+  if (!io.stopProcess) {
+    for (const end = Date.now() + 5_000; Date.now() < end; await sleep(100)) {
+      if (trees.every(pid => !alive(pid))) break;
+    }
+    for (const pid of trees) {
+      if (!alive(pid) || keep.has(pid) || pid === process.pid) continue;
+      try {
+        if (process.platform === "win32") stop(pid);
+        else process.kill(pid, "SIGKILL");
+      } catch (error) {
+        if (isAccessDenied(error)) {
+          const proc = victims.find(victim => victim.pid === pid);
+          if (proc && !blocked.includes(proc)) blocked.push(proc);
+        }
+      }
+    }
+    for (const proc of victims) {
+      if (blocked.includes(proc) || keep.has(proc.pid) || proc.pid === process.pid) continue;
+      if (alive(proc.pid)) blocked.push(proc);
+    }
   }
   if (blocked.length) throw new UnstoppableLockersError(blocked, folder);
   return restartable;
