@@ -20,6 +20,10 @@ Conventions and common failure modes for this repository. Bugbot should check th
 - **Wrong:** Tests using hardcoded ports `19031` or `19032`, or reading from the user's app data folder.
 - **Right:** Tests use their own free loopback ports and temporary data folders.
 
+### Leftover processes
+- **Wrong:** Leaving MCP servers, mcporter, node, browsers, or other child processes running after a test, self-test, or proof script.
+- **Right:** Stop every started process and its children before finishing. Leftovers lock the app install folder and block updates.
+
 ### Windows process spawning
 - **Wrong:** Spawning processes on Windows without `windowsHide: true`.
 - **Right:** Every child process spawn includes `windowsHide: true` on the options object (or `CREATE_NO_WINDOW` for native launches).
@@ -75,3 +79,4 @@ Every merge to `main` that touches `engine/`, `window/`, or `desktop/` triggers 
 - [ ] No placeholder implementations or skipped tests.
 - [ ] Visual changes include screenshots.
 - [ ] Tests prove the fix (failing on old head, passing on new).
+- [ ] FIX any PR that edits `merge-gate-trusted.yml` or the scripts it runs unless the PR body explains why.
