@@ -1,29 +1,47 @@
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import { createPluginRuntimeMock } from "branch/plugin-sdk/channel-test-helpers";
 import type { PluginStateKeyedStore } from "branch/plugin-sdk/plugin-state-runtime";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { telegramPlugin } from "./channel.js";
 import { peekContactTopicMirror, resetContactTopicMirrorsForTest } from "./contact-topic-mirror.js";
 import {
   resolveTelegramConversationRoute,
   resolveTelegramTargetSession,
 } from "./conversation-route.js";
-import { useTelegramHttpFixture } from "./send.telegram-http.test-support.js";
 import { setTelegramRuntime } from "./runtime.js";
 import { clearTelegramRuntimeForTest } from "./runtime.test-support.js";
 
+const getMe = vi.fn();
+const createForumTopicTelegram = vi.fn();
+
+vi.mock("./send-context.js", () => ({
+  withTelegramApiContext: async (
+    _options: unknown,
+    fn: (ctx: { api: { getMe: typeof getMe } }) => unknown,
+  ) => fn({ api: { getMe } }),
+}));
+
+vi.mock("./send.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./send.js")>();
+  return { ...actual, createForumTopicTelegram: (...args: unknown[]) => createForumTopicTelegram(...args) };
+});
+
 describe("Telegram contact topic mirror", () => {
-  const fixture = useTelegramHttpFixture();
   let cfg: BranchConfig;
   const stored = new Map<string, { sessionKey: string }>();
 
   beforeEach(() => {
     cfg = {
-      ...fixture.cfg,
+      channels: { telegram: { botToken: "123456:telegram-contact-topic" } },
       agents: { ownership: "explicit", defaultId: "elm", entries: { elm: {} } },
     };
     resetContactTopicMirrorsForTest();
     stored.clear();
+    getMe.mockReset();
+    createForumTopicTelegram.mockReset();
+    createForumTopicTelegram.mockResolvedValue({
+      chatId: "42001", topicId: 42, name: "Plan the trip",
+    });
     setTelegramRuntime(createPluginRuntimeMock({
       state: {
         openKeyedStore: <T>() => ({
@@ -40,11 +58,9 @@ describe("Telegram contact topic mirror", () => {
   });
 
   async function createMirror(topicsEnabled: boolean) {
-    fixture.responseFor = (method) => method === "getMe"
-      ? { id: 700, is_bot: true, first_name: "Elm", username: "elm_bot", has_topics_enabled: topicsEnabled }
-      : method === "createForumTopic"
-        ? { message_thread_id: 42, name: "Plan the trip", icon_color: 7322096 }
-        : undefined;
+    getMe.mockResolvedValue({
+      id: 700, is_bot: true, first_name: "Elm", username: "elm_bot", has_topics_enabled: topicsEnabled,
+    });
     return telegramPlugin.actions!.handleAction!({
       channel: "telegram", action: "topic-create", cfg,
       accountId: "default", conversationReadOrigin: "direct-operator",
@@ -55,8 +71,12 @@ describe("Telegram contact topic mirror", () => {
 
   it("creates one private topic and routes its next message to the window conversation", async () => {
     await createMirror(true);
-    expect(fixture.requests.map(({ method }) => method)).toEqual(["getMe", "createForumTopic"]);
-    expect(fixture.requests[1]?.fields).toMatchObject({ chat_id: "42001", name: "Plan the trip" });
+    expect(getMe).toHaveBeenCalledOnce();
+    expect(createForumTopicTelegram).toHaveBeenCalledWith(
+      "42001",
+      "Plan the trip",
+      expect.objectContaining({ token: "123456:telegram-contact-topic" }),
+    );
     const { route, contactTopicMirror } = await resolveTelegramConversationRoute({
       cfg, accountId: "default", chatId: 42001, isGroup: false,
       senderId: "42001", threadSpec: { scope: "dm", id: 42 },
@@ -75,7 +95,8 @@ describe("Telegram contact topic mirror", () => {
 
   it("does not create or bind a topic when private-chat topics are off", async () => {
     await createMirror(false);
-    expect(fixture.requests.map(({ method }) => method)).toEqual(["getMe"]);
+    expect(getMe).toHaveBeenCalledOnce();
+    expect(createForumTopicTelegram).not.toHaveBeenCalled();
     expect(peekContactTopicMirror({ accountId: "default", chatId: 42001, threadId: 42 }))
       .toBeUndefined();
   });
