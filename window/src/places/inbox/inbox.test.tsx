@@ -285,7 +285,7 @@ describe("Inbox › other tabs", () => {
     await click(btn(regular.host, "History")[0]);
     expect(regular.host.textContent).toContain("1m 12s");
     expect(regular.host.textContent).toContain("Today");
-    expect(btn(regular.host, "Watch again")[0]).toMatchObject({ disabled: true, title: "" });
+    expect(btn(regular.host, "Watch again")[0]).toMatchObject({ disabled: false, title: "" });
     expect(REPLAY_GAP).toMatch(/^Needs the engine/); expect(visibleDevNotes(regular.host)).toEqual([]);
     expect(regular.host.textContent).not.toContain("Every conversation");
     expect(regular.host.querySelector(".ib-hrow .ib-ib")).toBeNull();
