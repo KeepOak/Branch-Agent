@@ -48,6 +48,12 @@ export type GatewayServer = {
   getTailscaleIngressEndpoint: () => GatewayTailscaleIngressEndpoint | undefined;
   /** Fences WebSocket ingress and joins received work and connection cleanup before disposal. */
   close: (opts?: GatewayCloseOptions) => Promise<void>;
+  /** Checkpoint work and surrender state authority without closing the listener. */
+  deactivate: () => Promise<void>;
+  /** Reopens the reversible handoff admission fence when the successor fails. */
+  rollbackDeactivation: () => Promise<void>;
+  /** Joins retained sessions, or reports that their lease drain deadline elapsed. */
+  waitForDeactivatedRuns: () => Promise<{ deadlineElapsed: boolean; expiresAt?: number }>;
   /**
    * Resolves when this generation finishes mandatory sidecar startup and rejects on failure.
    * Closing never forces settlement. Direct callers may safely ignore this pre-handled promise.
@@ -121,6 +127,8 @@ export type GatewayServerOptions = {
    * reparsing branch.json during server startup.
    */
   startupConfigSnapshotRead?: import("../config/io.js").ReadConfigFileSnapshotWithPluginMetadataResult;
+  /** Internal Control UI asset preparation retained for the serving listener. */
+  preparedControlUiRootLifecycle?: import("./server-control-ui-root.js").GatewayControlUiRootLifecycle;
   /** Restart request override; direct servers fail closed on restart-required reloads. */
   hotReloadRecovery?: GatewayRestartEmitter;
 };

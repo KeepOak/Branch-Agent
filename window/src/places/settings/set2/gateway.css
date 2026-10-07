@@ -15,7 +15,7 @@
 .set-col .gw-remote { display: grid; gap: 8px; padding-top: 8px; }
 .set-col .gw-remote .acts { margin-top: 4px; }
 .set-col .gw-fld { display: grid; gap: 6px; font-size: 13px; margin: 0; }
-.set-col .gw-fld > span:first-child { font: 500 10.5px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.set-col .gw-fld > span:first-child { font: 600 12px/1.3 var(--sans); color: var(--ink-3); }
 .set-col .gw-tl { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 .set-col .gw-tl li { display: grid; grid-template-columns: 20px 1fr; gap: 8px; font-size: 13px; }
 .set-col .gw-tl li svg { margin-top: 2px; }

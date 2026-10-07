@@ -60,7 +60,7 @@ describe("Settings › Grafts", () => {
     const grafted = {
       enabled: true,
       agents: [
-        { id: "branch-b--scout", name: "Scout", kind: "trunk", via: "branch-b", where: "Branch B", lastSeenAt: NOW, online: true, revoked: false, mayDriveWindow: false },
+        { id: "branch-b--scout", name: "Scout", kind: "trunk", via: "branch-b", avatar: "branch:ember", where: "Branch B", lastSeenAt: NOW, online: true, revoked: false, mayDriveWindow: false },
         { id: "branch-b", name: "Branch B", kind: "branch", where: "STUDIO", lastSeenAt: NOW, online: true, revoked: false, mayDriveWindow: false },
         { id: "branch-b--main", name: "main", kind: "trunk", via: "branch-b", where: "Branch B", lastSeenAt: NOW, online: true, revoked: false, mayDriveWindow: false },
         LIST.agents[0],
@@ -75,6 +75,7 @@ describe("Settings › Grafts", () => {
     expect(branch.querySelector('[data-testid="branch-badge"]')?.textContent).toBe("Branch");
     expect(rows[1]!.querySelector('[data-testid="branch-badge"]')).toBeNull();
     expect([...branch.querySelectorAll('[data-testid="grafted-trunk"]')].map((t) => t.getAttribute("data-agent"))).toEqual(["branch-b--scout", "branch-b--main"]);
+    expect(branch.querySelector('[data-agent="branch-b--scout"] img')?.getAttribute("src")).toBe("/assets/agents/ember/still.webp");
     const buttons = [...branch.querySelectorAll("button")].filter((b) => b.textContent === "Disconnect");
     expect(buttons).toHaveLength(1);
     await act(async () => buttons[0]!.click());

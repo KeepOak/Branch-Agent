@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/copilot/src/attempt.test.ts (atlas AGENT-LOOP-0023). Changed for Branch: apply scripts/rebrand-map.json and assert the existing Branch system-prompt identity.
 // Copilot tests cover attempt plugin behavior.
 import fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -1702,7 +1703,7 @@ describe("runCopilotAttempt", () => {
       expect(content).toContain(
         `${rendered}\n\n## Conversation Context\nOnly answer in the current group thread.`,
       );
-      expect(content).toContain("You are a personal agent running inside Branch.");
+      expect(content).toContain("You are a personal agent running inside Branch Agent.");
       expect(content).toContain("## Skill Workshop");
       expect(content).toContain("## Delegation");
       expect(content).toContain("spawn `sessions_spawn` with `visible=true`");

@@ -23,7 +23,7 @@ export function AppearanceMore(p: MoreProps) {
       <CharactersSec {...p} />
       <PicturesSec />
       {level >= 2 ? (
-        <Sec title="Window, technical">
+        <Sec title="Window, technical" showHeading={false} group="Window">
           <Ctl title="Window frame" sub="Branch’s own title bar or the system one." off={DESKTOP}><Val>Branch’s own</Val><Btn sm>Choose</Btn></Ctl>
         </Sec>
       ) : null}
@@ -39,16 +39,16 @@ function CharactersSec({ engine, look, trunk }: MoreProps) {
   const first = trunk.agents.find((a) => a.id === trunk.defaultId) ?? trunk.agents[0];
   const still = first ? trunkAppearance(String(record(first.identity).avatar ?? "") || undefined, trunk.nameOf(first))?.still : undefined;
   return (
-    <Sec title="Characters">
+    <Sec title="Characters" group="The Trunk beside the conversation">
       <Ctl title="How faces are drawn" sub="Every Trunk on one stage; each kind keeps its own settings."><Seg value="Videos" options={KINDS} label="How faces are drawn" onChange={() => undefined} /></Ctl>
       <div className="r618-stage ap-k">
         {still ? <img className="stage-av-k" src={still} alt="" width={64} height={64} /> : <span className="stage-av-k" aria-hidden="true">{first ? trunk.nameOf(first).slice(0, 1) : ""}</span>}
         <small>The animated 3D videos. Still at rest; they act on events.</small>
       </div>
       <TrunkCards engine={engine} look={look} trunk={trunk} />
-      <Ctl title="Bring in a character" sub="Live2D, VRM, MikuMikuDance or Spine. Checked before it joins your characters and kept for offline use." off="The engine can’t check and keep a character file yet."><Btn sm>Choose a .zip</Btn></Ctl>
+      <Ctl title="Bring in a character" sub="Live2D, VRM, MikuMikuDance or Spine." help="Live2D, VRM, MikuMikuDance or Spine. Checked before it joins your characters and kept for offline use." off="The engine can’t check and keep a character file yet."><Btn sm>Choose a .zip</Btn></Ctl>
       {rowsOf("Characters").map((r) => <SpecRow key={r.key} r={r} look={look} />)}
-      <Ctl title="Pose by hand" sub="Pose a 3D character and make your own moves with a joystick or keyframes." off="Needs a 3D character, and the window draws faces as videos."><Btn sm>Open the poser</Btn></Ctl>
+      <Ctl title="Pose by hand" sub="Pose a 3D character with a joystick or keyframes." help="Pose a 3D character and make your own moves with a joystick or keyframes." off="Needs a 3D character, and the window draws faces as videos."><Btn sm>Open the poser</Btn></Ctl>
       <Ctl title="Describe a pet" sub="An image model draws its sprite sheet." off="The engine can’t draw a pet’s sprite sheet yet."><input className="inp" placeholder="A small fox with a leaf scarf" aria-label="Describe a pet" /><Btn sm>Draw it</Btn></Ctl>
     </Sec>
   );
@@ -92,7 +92,7 @@ function TrunkCards({ engine, look, trunk }: Omit<MoreProps, "openSettings">) {
 const ART = [["cloud", "A cloud computer at work"], ["call", "A phone call in progress"], ["meeting", "Joining a meeting"], ["learn", "Learning an app"], ["timeline", "A timeline replaying"]];
 function PicturesSec() {
   return (
-    <Sec title="Pictures around Branch" hint="Shown where a feature starts or has nothing to show yet. They move gently, and hold still when motion is reduced.">
+    <Sec title="Pictures around Branch" hint="Shown where a feature starts or has nothing to show yet." help="Shown where a feature starts or has nothing to show yet. They move gently, and hold still when motion is reduced.">
       <div className="arts17e ap-k" data-row="Pictures around Branch">
         {ART.map(([id, label]) => <figure key={id} className="art-c17e"><img src={`/assets/art17/feature/${id}.webp`} alt="" width={88} height={88} /><figcaption>{label}</figcaption></figure>)}
       </div>
@@ -109,7 +109,7 @@ function ListSec({ engine, look, openSettings }: MoreProps) {
   const where = "set in Models › Sub-tasks and side jobs";
   const smallLine = small === undefined ? "Chosen by Branch (Automatic, from Models › Sub-tasks and side jobs)" : small === "" ? `None (${where})` : `${visible(small)} (${where})`;
   return (
-    <Sec title="The list">
+    <Sec title="The list" group="Status bar and list">
       <Ctl title="Ask before deleting a conversation" sub="Removing a kept working copy always asks." keep="everywhere">
         <Switch checked={ask} label="Ask before deleting a conversation" onChange={(on) => void save(() => look.store.set("askDelete", on))} />
       </Ctl>

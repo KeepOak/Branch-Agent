@@ -8,6 +8,7 @@ import { Dialog } from "../../../shell/Dialog";
 import { errorText, record, text, visible } from "../adapter";
 import { advance, safeSignInUrl, type WizardResult, type WizardStep } from "../account-login";
 import { Footer, WizardBody } from "../AccountLogin";
+import { Empty } from "../kit";
 import type { WizardView } from "../use-wizard";
 import { ChatLogo as Logo } from "./chatapps-logo";
 import { PILL_WORDS, type App, type CatalogueApp } from "./chatapps-data";
@@ -69,7 +70,7 @@ export function ConnectDialog({ engine, app, onClose }: { engine: WindowEngine; 
   const close = () => { w.cancel(); onClose(done); };
   return (
     <Dialog title={app ? `Connect ${app.name}` : "Connect a chat app"} onClose={close} testid="chatapps-connect"
-      footer={<Footer view={w.view} value={w.value} busy={w.busy} onAnswer={w.answer} onCancel={close} onClose={close} />}>
+      footer={<Footer view={w.view} value={w.value} busy={w.busy} onAnswer={w.answer} onCancel={close} />}>
       {app ? <div className="ca-head"><Logo id={app.id} name={app.name} size={40} /><span className="grow"><b>{app.name}</b>{app.detail ? <small>{app.detail}</small> : null}</span></div> : null}
       <WizardBody wizard={w} doneText={app ? `${app.name} is set up.` : "The chat app is set up."} />
       {whatsapp ? <WhatsAppLink engine={engine} /> : null}
@@ -125,7 +126,7 @@ export function AllAppsDialog({ apps, onOpen, onConnect, onClose }: { apps: (Cat
           </button>
         ))}
       </div>
-      {!shown.length ? <p className="empty">No chat app matches.</p> : null}
+      {!shown.length ? <Empty>No chat app matches.</Empty> : null}
     </Dialog>
   );
 }

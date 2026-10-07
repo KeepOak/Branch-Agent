@@ -6,7 +6,7 @@
 import { record } from "../adapter";
 import { CommandDefaults, RulesFor, RulesList } from "./permissions-commands";
 import { WHY, type Cfg, type Dead, type Row, type Section } from "./permissions-rows";
-import { ApprovalsRow, Connectors, Lockdown, Pinned, WhoMay, WorkStyle } from "./permissions-top";
+import { ApprovalsRow, Connectors, Lockdown, Pinned, WhoMay } from "./permissions-top";
 
 const off = (t: string, sub: string | undefined, c: Dead, why = WHY.key, lv?: 0 | 1 | 2): Row => ({ k: "off", t, sub, c, why, lv });
 const offSw = (t: string, sub: string, on: boolean, why = WHY.key): Row => off(t, sub, { sw: on }, why);
@@ -45,40 +45,40 @@ export const LOCKS: Section = { title: "Locks and records", lv: 0, rows: [
   { k: "el", t: "Approvals", lv: 1, el: (x) => <ApprovalsRow x={x} /> },
   off("Older file-transfer permissions", "Older yeses for copying files to and from your computers stay paused until you review them. Blocks, size limits and link settings keep working meanwhile.", { btn: "Review" }, "The engine can’t list them here yet; move them by command.", 2),
   { k: "code", t: "Move them by command", lv: 2, code: "branch file-transfer approvals migrate --dry-run" },
-], tail: () => <Lockdown /> };
+], tail: (x) => <Lockdown engine={x.engine} /> };
 
 export const PINNED: Section = { title: "Pinned settings", lv: 0, hint: "A pinned setting is fixed. Someone else who uses this computer sees it pinned and can’t change it any way.", rows: [
   { k: "el", t: "Pin a setting", el: () => <Pinned /> },
 ] };
 
-export const RULES: Section = { title: "Rules for each tool and folder", lv: 1, rows: [
+export const RULES: Section = { title: "Rules for each tool and folder", group: "Rules and checks", lv: 1, rows: [
   { k: "el", t: "Rules for", el: (x) => <RulesFor x={x} /> },
   { k: "el", t: "Add a rule", words: "allow command pattern allowlist", el: (x) => <RulesList x={x} /> },
   offSw("Practice runs", "A Trunk can show what it would do without doing it.", true),
   { k: "num", t: "Standing permissions end after", sub: "How long a new Always allow for an automation lasts. Empty means until revoked.", path: "tools.exec.grantExpiryDays", unit: "days", ph: "Until revoked", min: 1, max: 3650 },
 ] };
 
-export const COMMANDS: Section = { title: "Commands, by default", lv: 1, rows: [
+export const COMMANDS: Section = { title: "Commands, by default", group: "Rules and checks", showHeading: false, lv: 1, rows: [
   { k: "el", t: "Commands may run", words: "ask before a command when nobody can be asked skill programs allowed commands", el: (x) => <CommandDefaults x={x} /> },
 ] };
 
-export const MORE_WITHOUT: Section = { title: "Without asking, more", lv: 1, hint: "Branch still tells you each time and counts down before a recording. Allowing the capture question once turns the matching switch on.", rows: [
+export const MORE_WITHOUT: Section = { title: "Without asking, more", group: "Without asking, Trunks may…", showHeading: false, lv: 1, hint: "Branch still tells you each time and counts down before a recording. Allowing the capture question once turns the matching switch on.", rows: [
   offSw("Capture the screen", "Screenshots and recordings of this computer’s screen. Off means the next capture asks you first.", false),
   offSw("Use the camera", "Photos and clips from this computer’s camera. Off means the next capture asks you first.", false),
   offSw("Share location", "Where this computer is. Off means the next capture asks you first.", false),
 ] };
 
-export const CHECKS: Section = { title: "Checks before anything runs", lv: 1, rows: [
+export const CHECKS: Section = { title: "Checks before anything runs", group: "Rules and checks", showHeading: false, lv: 1, rows: [
   offSw("Scan commands for hidden characters", "Invisible and look-alike characters that hide what a command does.", true),
   offSw("Scan for personal details", "Card numbers, ID numbers and addresses are held back from outside services. Off until you choose: it can hold back details a task needs.", false),
   offSw("Authenticator code for sensitive tools", "A six-digit code before sending money or deleting a lot. Off until you choose: you set it up with an authenticator app first.", false),
 ] };
 
-export const ISOLATION: Section = { title: "Isolation", lv: 1, rows: [
+export const ISOLATION: Section = { title: "Isolation", group: "Sandbox", lv: 1, rows: [
   { k: "seg", t: "Sandbox", lv: 2, path: "agents.defaults.sandbox.mode", def: "off", opts: [{ id: "off", label: "Off" }, { id: "non-main", label: "All but each Trunk’s main conversation" }, { id: "all", label: "Every conversation" }], subOf: (v) => SB_SUB[v] ?? "" },
   { k: "pick", t: "One sandbox per", lv: 2, path: "agents.defaults.sandbox.scope", def: "agent", opts: [{ id: "agent", label: "Trunk" }, { id: "session", label: "Conversation" }, { id: "shared", label: "Shared by all" }], subOf: (v) => (v === "shared" ? "Shared ignores per-Trunk settings." : "") },
   { k: "pick", t: "Runs in", lv: 2, sub: "Plugins can add more (OpenShell, Cuttings).", path: "agents.defaults.sandbox.backend", def: "docker", opts: [{ id: "docker", label: "Docker" }, { id: "podman", label: "Podman" }, { id: "ssh", label: "SSH" }, { id: "openshell", label: "OpenShell" }, { id: "crabbox", label: "Cuttings" }] },
-  off("System sandbox for commands", "Every command runs contained on this PC.", { seg: ["Off", "When needed", "Always"], v: "Always" }, WHY.desk, 2),
+  off("System sandbox for commands", "Every command runs contained here.", { seg: ["Off", "When needed", "Always"], v: "Always" }, WHY.desk, 2),
   { k: "sw", t: "Let a conversation run commands outside the sealed box", sub: "Commands may leave the sealed box only for the people and chats on the list. No one is on it at first. Turning it off turns it off in every conversation.", path: "tools.elevated.enabled", def: true },
   { k: "el", t: "Who may", when: (c) => c.get("tools.elevated.enabled") !== false, el: (x) => <WhoMay x={x} /> },
   off("Add sign-ins from outside the sandbox", "The sandbox never holds a password; Branch adds it on the way out. Off until you choose: a Trunk’s web requests then pass through Branch.", { sw: false }, WHY.key, 2),
@@ -88,11 +88,11 @@ export const ISOLATION: Section = { title: "Isolation", lv: 1, rows: [
   { k: "code", t: "Extra commands computers may run", lv: 2, sub: "Commands beyond each computer’s and phone’s usual set, such as taking a photo, recording the screen or sending a text. Change it in the settings file; a blocked command always wins.", code: (c) => list(c.get("gateway.nodes.commands.allow")).join(", ") || "None" },
   { k: "pick", t: "Commands run on", lv: 2, sub: "Auto uses the sandbox when one is running, otherwise the Gateway’s computer.", path: "tools.exec.host", def: "auto", opts: [{ id: "auto", label: "Auto" }, { id: "sandbox", label: "The sandbox" }, { id: "gateway", label: "The Gateway" }, { id: "node", label: "A computer" }] },
   { k: "code", t: "Safe programs", lv: 2, sub: "Run on plain input without a rule; a program counts only with a profile.", code: (c) => (list(c.get("tools.exec.safeBins")).length ? list(c.get("tools.exec.safeBins")) : SAFE_BINS).join(" ") },
-  off("The Linux sandbox on this PC", "No Windows programs, no Windows drives, and an ordinary user, never the administrator.", { btn: "Check it" }, WHY.desk, 2),
-  off("Refuse commands when the sandbox can’t start", "Off: commands run on this PC under your rules while the sandbox is missing. Off until you choose: commands would stop until the sandbox works.", { sw: false }, WHY.key, 2),
+  off("The Linux sandbox here", "No Windows programs or drives; never an administrator.", { btn: "Check it" }, WHY.desk, 2),
+  off("Refuse commands when the sandbox can’t start", "Stops commands until the sandbox works.", { sw: false }, WHY.key, 2),
 ] };
 
-export const TOOLS_TECH: Section = { title: "Tools, technical", lv: 2, rows: [
+export const TOOLS_TECH: Section = { title: "Tools, technical", group: "Sandbox", showHeading: false, lv: 2, rows: [
   { k: "seg", t: "Code mode", sub: "A model can write a short script that calls several tools at once. Auto uses it only for models made for it.", path: "tools.codeMode", def: "auto", opts: [{ id: "auto", label: "Auto" }, { id: "on", label: "On" }, { id: "off", label: "Off" }], read: codeModeOf, save: codeModeSet },
   { k: "pick", t: "How tools are found", path: "tools.toolSearch.mode", def: "tools", opts: [{ id: "tools", label: "By search" }, { id: "directory", label: "From a directory" }], read: (c) => (record(c.get("tools.toolSearch")).mode === "directory" ? "directory" : "tools"), save: (c, v) => toolSearchSet(c, "mode", v) },
   { k: "num", t: "Search results", path: "tools.toolSearch.searchDefaultLimit", def: 8, min: 1, max: 50, when: (c) => record(c.get("tools.toolSearch")).mode !== "directory", save: (c, n) => toolSearchSet(c, "searchDefaultLimit", n) },
@@ -103,7 +103,7 @@ export const TOOLS_TECH: Section = { title: "Tools, technical", lv: 2, rows: [
   off("Every tools setting", "The settings file, at its tools section.", { btn: "Open" }, WHY.desk),
 ] };
 
-export const TEST: Section = { title: "Test and explain", lv: 1, rows: [
+export const TEST: Section = { title: "Test and explain", group: "Rules and checks", showHeading: false, lv: 1, rows: [
   off("Test a rule", "Type a command, a file or a site and see which rule decides, before any Trunk tries it.", { btn: "Test" }, WHY.test),
   off("What Trunks may reach, in sentences", "Every site and network rule written out as plain sentences.", { btn: "Read it" }),
   off("Why is this set?", "Each setting that differs from the default: who set it, when, and why. Put any back.", { btn: "See" }),
@@ -114,13 +114,13 @@ export const TEST: Section = { title: "Test and explain", lv: 1, rows: [
   { k: "code", t: "Deep check from the terminal", lv: 2, code: "branch security audit --deep" },
 ] };
 
-export const SECURITY_TECH: Section = { title: "Security, technical", lv: 2, rows: [
+export const SECURITY_TECH: Section = { title: "Security, technical", group: "Sandbox", showHeading: false, lv: 2, rows: [
   off("Hidden findings", "Security check findings you chose to hide, each with your reason. Put any back.", { btn: "See" }),
   offSw("Check installs with my own program", "Runs your command on every skill or plugin before it installs; its no stops the install. Off until you choose: it needs a program of your own.", false),
   off("Every security setting", "The settings file, at its security and approvals sections.", { btn: "Open" }, WHY.desk),
 ] };
 
-export const GUARDS_ON: Section = { title: "Guards that are always on", lv: 2, rows: [
+export const GUARDS_ON: Section = { title: "Guards that are always on", group: "Rules and checks", showHeading: false, lv: 2, rows: [
   off("Outside content is only information", "Always on: web pages, emails and files are treated as information, never as instructions.", { btn: "Show an example" }, WHY.guard),
   off("Tasks started from chat apps", "Always on: your own chat-app tasks follow their conversation’s mode; anyone else starts on Ask first, and only the approval button or /approve counts as a yes, never a typed yes.", { btn: "See the four" }, WHY.guard),
   off("Loops and empty answers", "Always on: an empty answer counts as a failure. A task going in circles is stopped when “Stop a Trunk that repeats itself” is on.", { btn: "Last week" }, WHY.guard),
@@ -128,7 +128,7 @@ export const GUARDS_ON: Section = { title: "Guards that are always on", lv: 2, r
   off("Check scripts before they run", "Looks for forbidden calls, hidden decoders and disguised commands in any script a Trunk writes.", { btn: "Check an example" }, WHY.guard),
 ] };
 
-export const TOOLS_LOOPS: Section = { title: "Tools and loops", lv: 1, rows: [
+export const TOOLS_LOOPS: Section = { title: "Tools and loops", group: "Rules and checks", showHeading: false, lv: 1, rows: [
   { k: "seg", t: "Tools every Trunk starts with", sub: "Minimal is only status and updates; Coding adds files, commands, the web and memory; Messaging adds chat apps and conversations; Full adds the optional tools plugins offer. Each Trunk’s toolsets (Customize › Tools › Toolsets) still decide per Trunk.", path: "tools.profile", def: "full", opts: [{ id: "minimal", label: "Minimal" }, { id: "coding", label: "Coding" }, { id: "messaging", label: "Messaging" }, { id: "full", label: "Full" }] },
   off("When tools are loaded", "“When needed” keeps a tool one step away until a task calls for it. This used to be a three-way switch on every feature.", { seg: ["Never", "When needed", "Always"], v: "When needed" }),
   { k: "sw", t: "Stop a Trunk that repeats itself", sub: "Warns at 10 repeated steps, stops the step at 20 and the task at 30. Off until you choose.", path: "tools.loopDetection.enabled", def: false, save: (c, on) => c.set("tools.loopDetection.enabled", on ? true : null) },
@@ -154,22 +154,17 @@ export const TERMINAL: Section = { title: "Your terminal", lv: 1, rows: [
 
 const FOLDER = { seg: ["Blocked", "Read only", "Read and write"] };
 const SB_FOLDERS = "The sandbox reaches only its project folder; other folders can’t be chosen here yet.";
-export const FOLDERS: Section = { title: "Folders the sandbox may reach", lv: 1, hint: "Commands in the sandbox see only these folders.", rows: [
+export const FOLDERS: Section = { title: "Folders the sandbox may reach", group: "Sandbox", showHeading: false, lv: 1, hint: "Commands in the sandbox see only these folders.", rows: [
   off("Documents", undefined, FOLDER, SB_FOLDERS), off("Downloads", undefined, FOLDER, SB_FOLDERS), off("Desktop", undefined, FOLDER, SB_FOLDERS),
   off("Add a folder", undefined, { btn: "Add a folder" }, SB_FOLDERS),
 ] };
 
-export const POLICY: Section = { title: "Company policy", lv: 2, rows: [
+export const POLICY: Section = { title: "Company policy", group: "Pinned settings", showHeading: false, lv: 2, rows: [
   offSw("Check Branch against a policy file", "Reports where Branch differs from your organisation’s policy file (policy.jsonc). It changes nothing by itself. Off until you choose: it is for organisations with a written policy.", false, WHY.policy),
   offSw("Let it repair project folders", "Off until you choose: it changes files in your projects.", false, WHY.policy),
 ] };
 
-export const WORK_STYLE: Section = { title: "Work style", lv: 0, rows: [
-  { k: "el", t: "How careful", el: (x) => <WorkStyle x={x} agents={x.agents} reload={x.reloadAgents} /> },
-  off("New Trunks start on Ask first", "A Trunk brought back from a backup comes back paused and look-only until you give back what it had.", { none: true }, "New Trunks follow “Mode everywhere”."),
-] };
-
-export const MORE_APPROVALS: Section = { title: "Approvals, more", lv: 1, rows: [
+export const MORE_APPROVALS: Section = { title: "Approvals, more", group: "Approvals", lv: 1, rows: [
   offSw("Change files inside the project folder", "In Auto: edits inside the project run without asking. Outside it, and Branch’s own files, still ask.", false),
   offSw("Use connectors’ tools", "In Auto: tools from your connectors run without asking.", false),
   offSw("Switch to another mode", "In Auto: a Trunk can move from Plan first to doing it.", false),
@@ -189,7 +184,7 @@ export const MORE_APPROVALS: Section = { title: "Approvals, more", lv: 1, rows: 
 ] };
 
 const g = (t: string, sub: string): Row => off(t, sub, { none: true }, WHY.guard);
-export const MORE_GUARDS: Section = { title: "Guards, more", lv: 1, rows: [
+export const MORE_GUARDS: Section = { title: "Guards, more", group: "Guards", lv: 1, rows: [
   g("Dangerous commands are spotted", "Commands are read the way the shell reads them, wrappers and pipes included, and checked against known harmful ones."),
   g("A few commands always ask", "Deleting a whole folder tree, force-pushing, formatting a disk and piping a password to sudo ask in every mode."),
   g("Branch can’t break itself", "Commands that would change Branch’s own program or settings, or its instructions, always ask."),
@@ -229,7 +224,7 @@ export const MORE_GUARDS: Section = { title: "Guards, more", lv: 1, rows: [
   off("Check installed packages", "Every package Branch and your skills installed, against known flaws.", { btn: "Check now" }),
 ] };
 
-export const MONEY: Section = { title: "Money", lv: 1, rows: [
+export const MONEY: Section = { title: "Money", group: "Locks", lv: 1, rows: [
   off("Most per payment", "Payments and trades above this are refused; raise it here, not in a chat.", { num: "None allowed", unit: "USD" }, WHY.money),
   off("Most a day", undefined, { num: "None allowed", unit: "USD" }, WHY.money),
   offSw("Ask before paying someone new", "A new recipient always asks, with the exact amount.", true, WHY.money),
@@ -237,7 +232,7 @@ export const MONEY: Section = { title: "Money", lv: 1, rows: [
 ] };
 
 const NET = "The engine has no network rules for the sandbox yet.";
-export const NETWORK: Section = { title: "Network and sandbox, technical", lv: 2, rows: [
+export const NETWORK: Section = { title: "Network and sandbox, technical", group: "Sandbox", showHeading: false, lv: 2, rows: [
   off("Ready-made network rules", "Each adds the addresses that service needs, and says where the list came from.", { seg: ["GitHub", "Gmail", "Outlook", "Jira", "npm", "PyPI", "Hugging Face"], v: "" }, NET),
   { ...off("Sites sandboxed commands may reach", "One per line. Everything else is refused.", { text: "registry.npmjs.org" }, NET), stack: true } as Row,
   offSw("Ask about a new site", "Instead of refusing, a new site asks once.", true, NET),
@@ -276,9 +271,9 @@ export const NETWORK: Section = { title: "Network and sandbox, technical", lv: 2
   off("A computer per project", "A project of its own gets a computer where Trunks run freely; pushes and signing go through you.", { btn: "Set up" }),
 ] };
 
-export const CONNECTORS: Section = { title: "What each connector may do", lv: 1, rows: [
+export const CONNECTORS: Section = { title: "What each connector may do", group: "Rules and checks", showHeading: false, lv: 1, rows: [
   { k: "el", t: "What each connector may do", words: "connector mcp read write", el: (x) => <Connectors x={x} /> },
 ] };
 
 /** Every section after "Without asking, Trunks may…", in the preview's order. */
-export const LOWER: Section[] = [LOCKS, PINNED, RULES, COMMANDS, MORE_WITHOUT, CHECKS, ISOLATION, TOOLS_TECH, TEST, SECURITY_TECH, GUARDS_ON, TOOLS_LOOPS, PRIVACY, TERMINAL, FOLDERS, POLICY, WORK_STYLE, MORE_APPROVALS, MORE_GUARDS, MONEY, NETWORK, CONNECTORS];
+export const LOWER: Section[] = [LOCKS, PINNED, RULES, COMMANDS, MORE_WITHOUT, CHECKS, ISOLATION, TOOLS_TECH, TEST, SECURITY_TECH, GUARDS_ON, TOOLS_LOOPS, PRIVACY, TERMINAL, FOLDERS, POLICY, MORE_APPROVALS, MORE_GUARDS, MONEY, NETWORK, CONNECTORS];

@@ -2,18 +2,18 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { shownWhy } from "../../shell/shown-why";
+import { useLockdown } from "../../shell/use-lockdown";
+import { notify } from "../../shell/notify";
 import { PlaceFrame, type PlaceProps } from "../../places-nav/PlaceFrame";
 import { Face } from "../../face/Face";
 import { isEngineMode, modeName } from "../../composer/mode";
 import { OverviewData, agentName, agents, number, people, personFrom, record, records, runMs, runs, sessions, sharedConnections, text, type Agent, type Resource, type Run, type Session } from "./engine";
 import { money, runLength, whenWord } from "./format";
 import { PersonRow, type PersonLine } from "./People";
-import { RecBar } from "./RecBar";
 import { FinishSetup } from "./Setup";
 import "./overview.css";
 
 export const PAUSE_ALL_GAP = "Needs the engine's pause-all method.";
-export const LOCKDOWN_GAP = "Needs the engine's Lockdown method.";
 export const MILESTONES_GAP = "Needs the engine's milestones method.";
 
 function ResourceStatus({ resource, label, retry }: { resource: Resource; label: string; retry: () => void }) {
@@ -86,6 +86,8 @@ function recentActivity(rows: Session[], list: Run[]): { row: Session; length: s
 }
 
 export function OverviewPlace({ engine, facts, openConversation, openPlace, openSettings }: PlaceProps) {
+  const lockdown = useLockdown(engine, true);
+  const toggleLockdown = () => void lockdown.toggle().catch((error: unknown) => notify(`Couldn't change Lockdown: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
   const data = useMemo(() => new OverviewData(engine), [engine]);
   useEffect(() => { data.start(); return () => data.stop(); }, [data]);
   const { tiles } = useSyncExternalStore(data.subscribe, data.getSnapshot);
@@ -98,7 +100,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
   if (shared.length) lines.push({ ...personFrom("shared", "Shared owner", "", shared), shared: true });
   const status = (key: keyof typeof tiles, label: string) => <ResourceStatus resource={tiles[key]} label={label} retry={() => void data.refresh([key])} />;
   const recent = recentActivity(rows, runList);
-  return <PlaceFrame title="Overview" lede="What’s happening across your Trunks, at a glance." wide="overview" top={<FinishSetup engine={engine} openSettings={openSettings} />} before={<><RecBar /><button type="button" className="btn sm" onClick={() => openPlace("office")}>Grove</button></>}>
+  return <PlaceFrame title="Overview" lede="What’s happening across your Trunks, at a glance." wide="overview" top={<FinishSetup engine={engine} openSettings={openSettings} />} before={<button type="button" className="btn sm" onClick={() => openPlace("office")}>Grove</button>}>
     <div className="ov-grid">
       <Tile title="Now" action={<button type="button" className="ov-link" onClick={() => openPlace("canopy")}>Open Canopy</button>}>
         {status("sessions", "running conversations")}
@@ -115,8 +117,8 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
         <div className="ov-acts"><button type="button" className="btn sm" onClick={() => { openPlace("inbox"); setTimeout(() => window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "inbox", tab: "History" } })), 0); }}>All history</button></div>
       </Tile>
       <Tile title="Controls">
-        <p>Mode: <b>{mode || "As each Trunk is set"}</b> · <button type="button" className="ov-link ov-inline" disabled={!openSettings} onClick={() => openSettings?.("permissions")}>change</button></p>
-        <div className="ov-acts"><button type="button" className="btn bad sm" disabled title={shownWhy(LOCKDOWN_GAP)}>Lockdown</button><button type="button" className="btn sm" disabled title={shownWhy(PAUSE_ALL_GAP)}>Pause all Trunks</button></div>
+        <p>Mode: <b>{lockdown.on ? "Lockdown" : mode || "As each Trunk is set"}</b> · <button type="button" className="ov-link ov-inline" disabled={!openSettings || lockdown.on} onClick={() => openSettings?.("permissions")}>change</button></p>
+        <div className="ov-acts"><button type="button" className={lockdown.on ? "btn sm" : "btn bad sm"} disabled={!lockdown.loaded || !lockdown.supported} title={lockdown.supported ? undefined : "This engine has no Lockdown switch yet."} onClick={toggleLockdown}>{lockdown.on ? "Turn Lockdown off" : "Lockdown"}</button><button type="button" className="btn sm" disabled title={shownWhy(PAUSE_ALL_GAP)}>Pause all Trunks</button></div>
       </Tile>
       <Tile title="Who is using Branch">
         {status("people", "people")}{status("presence", "live presence")}

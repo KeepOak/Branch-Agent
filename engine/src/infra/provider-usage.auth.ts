@@ -37,6 +37,7 @@ export type ProviderAuth = {
   rateLimitTier?: string;
   /** Account email captured on the resolved credential, when known. */
   email?: string;
+  authError?: string;
 };
 
 type AuthStore = ReturnType<typeof ensureAuthProfileStore>;
@@ -317,6 +318,7 @@ async function resolveOAuthToken(params: {
           ? { authFlow: credential.authFlow }
           : {}),
         accountId: cred.type === "oauth" ? cred.accountId : undefined,
+        authProfileId: profileId,
         // Plan metadata is captured at external CLI sync time; runtime usage
         // fetches must not re-read CLI keychains, so the stored profile is the
         // only prompt-free source for plan labels.
@@ -530,4 +532,42 @@ export async function resolveProviderAuths(params: {
   }
 
   return auths;
+}
+
+/** Resolve every ordered subscription profile without bypassing provider-owned auth policy. */
+export async function resolveProviderAuthsAll(
+  params: Parameters<typeof resolveProviderAuths>[0],
+): Promise<ProviderAuth[]> {
+  if (params.auth) {
+    return params.auth;
+  }
+  const first = await resolveProviderAuths(params);
+  const state: UsageAuthState = {
+    signal: params.signal,
+    cfg: params.config ?? getRuntimeConfig(),
+    env: params.env ?? process.env,
+    agentDir: params.agentDir,
+    allowAuthProfileStore: true,
+    getStore: params.getStore,
+    store: params.store,
+  };
+  const result: ProviderAuth[] = [];
+  for (const provider of params.providers) {
+    const primary = first.find((auth) => auth.provider === provider);
+    const profiles: ProviderAuth[] = [];
+    const store = resolveUsageAuthStore(state);
+    const ids = dedupeProfileIds(resolveAuthProfileOrder({ cfg: state.cfg, store, provider }));
+    for (const id of ids) {
+      const cred = store.profiles[id];
+      if (!cred || (cred.type !== "oauth" && cred.type !== "token") || id === "anthropic:claude-cli") continue;
+      if (provider === "openai" && cred.type === "oauth" && (cred.authFlow === "chatgpt-token-sharing" || cred.authFlow === "chatgpt-identity")) continue;
+      const auth = await resolveOAuthToken({ state, provider, excludeProfileIds: ids.filter((other) => other !== id) });
+      profiles.push(auth ?? { provider, token: "", authProfileId: id, ...(cred.email ? { email: cred.email } : {}), authError: "Auth failed" });
+    }
+    if (primary && !profiles.some((auth) => auth.token === primary.token)) {
+      result.push(primary);
+    }
+    result.push(...profiles);
+  }
+  return result;
 }
