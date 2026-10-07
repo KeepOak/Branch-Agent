@@ -247,6 +247,31 @@ describe("Gateway startup phases", () => {
     });
   });
 
+  it("does not reopen admission when failed handoff restoration exceeds the deadline", async () => {
+    await withPhaseState("gateway-phase-restore-deadline", async (port) => {
+      const server = await startGatewayServerCore(port, options("gateway-phase-restore-deadline-token"));
+      try {
+        await server.startupSettled;
+        vi.spyOn(cronAuthority, "drainCronReceiptAuthority").mockRejectedValueOnce(
+          new Error("receipt drain failed"),
+        );
+        vi.spyOn(cronAuthority, "resumeCronReceiptAuthorityHostAfterFailedHandoff")
+          .mockImplementationOnce(() => new Promise(() => {}));
+        vi.useFakeTimers();
+        const deactivation = server.deactivate();
+        const rejection = expect(deactivation).rejects.toThrow(
+          "Gateway handoff deactivation exceeded 18 seconds",
+        );
+        await vi.advanceTimersByTimeAsync(18_000);
+        await rejection;
+        expect(isGatewayWorkAdmissionClosed()).toBe(true);
+      } finally {
+        vi.useRealTimers();
+        await server.close({ reason: "restoration deadline test cleanup" });
+      }
+    });
+  });
+
   it("keeps admission fenced when handoff restoration fails", async () => {
     await withPhaseState("gateway-phase-restore-fails", async (port) => {
       const server = await startGatewayServerCore(port, options("gateway-phase-restore-fails-token"));

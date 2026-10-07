@@ -78,6 +78,27 @@ import { createSessionViewerPresenceDeclarations } from "./session-viewer-presen
 type GatewayRuntimePreparation = Awaited<ReturnType<typeof prepareGatewayKernelState>>;
 type GatewayLogger = ReturnType<typeof createSubsystemLogger>;
 
+async function beforeHandoffDeadline<T>(work: Promise<T>, deadline: number): Promise<T> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) {
+    throw new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds");
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds")),
+          remaining,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function prepareGatewayLifecycle(params: {
   runtime: GatewayRuntimePreparation;
   sdkResourceHost: LegacyPluginSdkResourceHost;
@@ -510,26 +531,6 @@ export async function prepareGatewayLifecycle(params: {
   };
   const deactivate = (deadline = Date.now() + 18_000) =>
     (deactivation ??= (async () => {
-      const beforeDeadline = async <T>(work: Promise<T>): Promise<T> => {
-        const remaining = deadline - Date.now();
-        if (remaining <= 0) {
-          throw new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds");
-        }
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        try {
-          return await Promise.race([
-            work,
-            new Promise<never>((_, reject) => {
-              timer = setTimeout(
-                () => reject(new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds")),
-                remaining,
-              );
-            }),
-          ]);
-        } finally {
-          clearTimeout(timer);
-        }
-      };
       // Close new roots, while admitted runs retain their dispatch context and
       // may start required follow-up work through their existing root custody.
       handoffAdmission = tryBeginGatewaySuspendAdmission(() => {});
@@ -549,25 +550,29 @@ export async function prepareGatewayLifecycle(params: {
         leaseNewLanes: true,
       });
       beginCronReceiptAuthorityClose();
-      const stoppedChannels = await beforeDeadline(
+      const stoppedChannels = await beforeHandoffDeadline(
         Promise.allSettled(
           listLoadedChannelPluginsForRegistry(pluginRuntime.registry).map((plugin) =>
             stopChannel(plugin.id),
           ),
         ),
+        deadline,
       );
       const failedChannel = stoppedChannels.find(
         (result): result is PromiseRejectedResult => result.status === "rejected",
       );
       if (failedChannel) throw failedChannel.reason;
       const cron = runtimeState.cronState.cron;
-      await beforeDeadline(cron.stopAndDrainForHandoff
-        ? cron.stopAndDrainForHandoff()
-        : cron.stopAndDrain
-          ? cron.stopAndDrain()
-          : Promise.resolve(cron.stop()));
-      await beforeDeadline(shutdownRuntime.stopCronMaintenance());
-      await beforeDeadline(drainCronReceiptAuthority());
+      await beforeHandoffDeadline(
+        cron.stopAndDrainForHandoff
+          ? cron.stopAndDrainForHandoff()
+          : cron.stopAndDrain
+            ? cron.stopAndDrain()
+            : Promise.resolve(cron.stop()),
+        deadline,
+      );
+      await beforeHandoffDeadline(shutdownRuntime.stopCronMaintenance(), deadline);
+      await beforeHandoffDeadline(drainCronReceiptAuthority(), deadline);
       handoffLeases.seal();
       if (!handoffAdmission.commit()) {
         throw new Error("Gateway handoff admission was invalidated before state release");
@@ -589,9 +594,10 @@ export async function prepareGatewayLifecycle(params: {
       try {
         // This engine still owns state on a failed handoff. Restore every
         // producer before reopening admission to new work.
-        await restoreHandoffProducers();
+        await beforeHandoffDeadline(restoreHandoffProducers(), deadline);
         restored = true;
       } catch (restoreError) {
+        if (restoreError instanceof GatewayHandoffFatalError) throw restoreError;
         throw new GatewayHandoffFatalError("Gateway handoff restoration failed", {
           cause: new AggregateError([error, restoreError]),
         });

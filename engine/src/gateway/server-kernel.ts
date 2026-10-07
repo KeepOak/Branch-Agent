@@ -187,16 +187,15 @@ export async function prepareGatewayKernel(
         deactivate: () =>
           (deactivation ??= (async () => {
             const deadline = Date.now() + 18_000;
-            await sdkResourceHost.run(() => kernel.deactivate(deadline));
-            try {
+            const beforeDeadline = async <T>(work: Promise<T>): Promise<T> => {
               const remaining = deadline - Date.now();
               if (remaining <= 0) {
                 throw new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds");
               }
               let timer: ReturnType<typeof setTimeout> | undefined;
               try {
-                await Promise.race([
-                  stateLease?.release?.(),
+                return await Promise.race([
+                  work,
                   new Promise<never>((_, reject) => {
                     timer = setTimeout(
                       () => reject(new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds")),
@@ -207,6 +206,10 @@ export async function prepareGatewayKernel(
               } finally {
                 clearTimeout(timer);
               }
+            };
+            await beforeDeadline(sdkResourceHost.run(() => kernel.deactivate(deadline)));
+            try {
+              await beforeDeadline(Promise.resolve(stateLease?.release?.()));
             } catch (error) {
               if (error instanceof GatewayHandoffFatalError) throw error;
               // The lease release may fail before ownership transfers. In that
@@ -215,8 +218,9 @@ export async function prepareGatewayKernel(
                 stateLease?.assertDatabaseAccess(
                   (await import("../state/branch-state-db.paths.js")).resolveBranchStateSqlitePath(),
                 );
-                await sdkResourceHost.run(() => kernel.restoreFailedStateRelease());
+                await beforeDeadline(sdkResourceHost.run(() => kernel.restoreFailedStateRelease()));
               } catch (restoreError) {
+                if (restoreError instanceof GatewayHandoffFatalError) throw restoreError;
                 throw new GatewayHandoffFatalError(
                   "Gateway handoff lost state ownership or could not restore serving",
                   { cause: new AggregateError([error, restoreError]) },
