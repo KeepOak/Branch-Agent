@@ -22,7 +22,6 @@ jobs:
     timeout-minutes: 3
     outputs:
       docs_only: ${{ steps.filter.outputs.docs_only }}
-      has_tests: ${{ steps.filter.outputs.has_tests }}
     steps:
       - name: Check out the PR merge commit and its base
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -44,20 +43,12 @@ jobs:
             docs_only=true
           fi
           echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
-          
-          # Check if any test files changed
-          has_tests=false
-          if echo "$changed_files" | grep -qE '\.test\.(mjs|ts|tsx)$'; then
-            has_tests=true
-          fi
-          echo "has_tests=$has_tests" >> "$GITHUB_OUTPUT"
 
   # Fast test coverage check - runs in parallel
   changed-test-coverage:
     needs: filter
-    if: needs.filter.outputs.has_tests == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
       - name: Check out the PR merge commit and its base
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -139,8 +130,8 @@ jobs:
           # Filter must always succeed
           test "$FILTER_RESULT" = "success"
           
-          # Coverage must succeed or be skipped (when no tests changed)
-          test "$COVERAGE_RESULT" = "success" || test "$COVERAGE_RESULT" = "skipped"
+          # Coverage must succeed
+          test "$COVERAGE_RESULT" = "success"
           
           # Wait must succeed
           test "$WAIT_RESULT" = "success"
