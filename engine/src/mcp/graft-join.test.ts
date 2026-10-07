@@ -106,8 +106,10 @@ describe("branch graft join", () => {
       name: "Scout",
       kind: "trunk",
       via: "branch-studio-laptop",
+      trunkId: "scout",
       where: "Studio Laptop",
     });
+    expect(graftTrunkIdentity(branch, { id: "scout", name: "Scout", avatar: "branch:ember" }).avatar).toBe("branch:ember");
     expect(graftTrunkIdentity(branch, { id: "main" }).name).toBe("main");
     expect(graftBranchIdentity("Branch B").id).toBe("branch-b");
     expect(graftBranchIdentity("Branch").id).toBe("branch");
