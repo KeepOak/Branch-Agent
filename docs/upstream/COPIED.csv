@@ -1,4 +1,7 @@
 branch_path,atlas_id,project,commit,upstream_path,date
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
 engine/extensions/admin-http-rpc/index.test.ts,INTEGRATIONS-0152,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/admin-http-rpc/index.test.ts (verified existing renamed file),2026-10-06
 engine/extensions/admin-http-rpc/src/handler.test.ts,INTEGRATIONS-0152,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/admin-http-rpc/src/handler.test.ts (verified existing renamed file),2026-10-06
 engine/extensions/agentsapi/agentsapi-attempt.harvest.test.ts,AGENT-LOOP-0024,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/agentsapi/agentsapi-attempt.test.ts (changed: Branch rename),2026-10-06
@@ -42,8 +45,6 @@ engine/extensions/slack/src/progress-blocks.test.ts,CHAT-APPS-0156,openclaw/open
 engine/extensions/tavily/index.ts,RESEARCH-0003,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/tavily/index.ts,2026-10-06
 engine/extensions/tavily/skills/tavily/SKILL.md,RESEARCH-0003,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/tavily/skills/tavily/SKILL.md,2026-10-06
 engine/extensions/tavily/src/tavily-client.ts,RESEARCH-0003,openclaw/openclaw,c83f02659ff9e181f81d12959970261fcaaa1d07,extensions/tavily/src/tavily-client.ts,2026-10-06
-engine/extensions/tavily/src/tavily-client.ts,RESEARCH-0003,mastra-ai/mastra,486d3b7f35edfeaeab47b1230b56880e672cc421,integrations/tavily/src/crawl.ts (adapted to guarded Tavily transport),2026-10-06
-engine/extensions/tavily/src/tavily-client.ts,RESEARCH-0003,mastra-ai/mastra,486d3b7f35edfeaeab47b1230b56880e672cc421,integrations/tavily/src/map.ts (adapted to guarded Tavily transport),2026-10-06
 engine/extensions/tavily/src/tavily-crawl-tool.test.ts,RESEARCH-0003,mastra-ai/mastra,486d3b7f35edfeaeab47b1230b56880e672cc421,integrations/tavily/src/__tests__/crawl.test.ts,2026-10-06
 engine/extensions/tavily/src/tavily-crawl-tool.ts,RESEARCH-0003,mastra-ai/mastra,486d3b7f35edfeaeab47b1230b56880e672cc421,integrations/tavily/src/crawl.ts,2026-10-06
 engine/extensions/tavily/src/tavily-map-tool.test.ts,RESEARCH-0003,mastra-ai/mastra,486d3b7f35edfeaeab47b1230b56880e672cc421,integrations/tavily/src/__tests__/map.test.ts,2026-10-06
@@ -64,6 +65,8 @@ engine/extensions/typesafe/src/schema.test.ts,INTEGRATIONS-0171,openclaw/opencla
 engine/extensions/typesafe/src/transport.test.ts,INTEGRATIONS-0171,openclaw/openclaw,79354e397d15c03fe1f10cb02d8fcaf60347e565,extensions/typesafe/src/transport.test.ts (verified existing renamed file),2026-10-06
 engine/extensions/whatsapp/src/agent-tools-call.test.ts,VOICE-0114,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/whatsapp/src/agent-tools-call.test.ts (changed: platform-specific setup command),2026-10-06
 engine/package.json,AGENT-LOOP-0103,cline/cline,0809928ab28783c0d2b41c1e56edaf0951dadcab,bun.lock (changed: pinned ai 7.0.79),2026-10-06
+engine/packages/agent-core/src/agent-loop.harvest.test.ts,AGENT-LOOP-0001,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,packages/agent-core/src/agent-loop.test.ts (changed: DECISIONS.md item 127 rename map and Branch main executionStarted steering gate assertions),2026-10-06
+engine/packages/agent-core/src/agent-loop.ts,AGENT-LOOP-0001,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,packages/agent-core/src/agent-loop.ts (changed: restore pinned preflight steering safety checkpoints),2026-10-06
 engine/packages/agent-core/src/harness/compaction/compaction.test.ts,AGENT-LOOP-0099,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,packages/agent-core/src/harness/compaction/compaction.test.ts (changed: existing Branch adapters and stronger safeguards),2026-10-06
 engine/packages/agent-core/src/harness/compaction/compaction.ts,AGENT-LOOP-0099,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,packages/agent-core/src/harness/compaction/compaction.ts (changed: existing Branch adapters and stronger safeguards),2026-10-06
 engine/packages/agent-core/src/harness/compaction/compaction.upstream-main.test.ts,AGENT-LOOP-0099,openclaw/openclaw,c656ee5227cdfc8930c6eff095937e53e0516886,packages/agent-core/src/harness/compaction/compaction.test.ts,2026-10-06
@@ -82,6 +85,8 @@ engine/packages/ai/src/aisdk/runtime.ts,AGENT-LOOP-0026,mastra-ai/mastra,486d3b7
 engine/packages/ai/src/aisdk/stream-reducer.ts,AGENT-LOOP-0026,mastra-ai/mastra,486d3b7f35edfeaeab47b1230b56880e672cc421,packages/core/src/llm/model/model.loop.ts (adapted to Branch native contracts),2026-10-06
 engine/packages/ai/src/index.ts,AGENT-LOOP-0026,KeepOak/Branch-Agent,4cc6c1a80189bdee26011cad5f46ff515ffd0e86,engine/packages/ai/src/index.ts (changed: SDK dependencies and runtime binding),2026-10-06
 engine/packages/ai/src/providers/request-compression.harvest.test.ts,AGENT-LOOP-0030,openai/codex,cc31e374fc15cd616fca19c07d55f9fa7e6d7e31,codex-rs/core/tests/suite/request_compression.rs (converted to Vitest against Branch Responses providers),2026-10-06
+engine/src/agents/agent-command.live-model-switch.harvest.test.ts,AGENT-LOOP-0001,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/agents/agent-command.live-model-switch.test.ts (changed: rename map and native scope/cache/plugin metadata fixtures with canonical scratch session),2026-10-06
+engine/src/agents/agent-command.live-model-switch.test.ts,AGENT-LOOP-0001,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/agents/agent-command.live-model-switch.test.ts (changed: native scope/cache/plugin metadata fixtures with canonical scratch session and unchanged assertions),2026-10-06
 engine/src/agents/compaction-overflow-retry.test.ts,AGENT-LOOP-0104,OpenHands/software-agent-sdk,0a9abc87641ad7ffe02e2dadf5e2cb3976b35217,openhands-sdk/openhands/sdk/context/condenser/llm_summarizing_condenser.py (Branch behaviour tests; source live integration not claimed),2026-10-06
 engine/src/agents/compaction-overflow-retry.ts,AGENT-LOOP-0104,OpenHands/software-agent-sdk,0a9abc87641ad7ffe02e2dadf5e2cb3976b35217,openhands-sdk/openhands/sdk/context/condenser/llm_summarizing_condenser.py,2026-10-06
 engine/src/agents/compaction.identifier-preservation.test.ts,AGENT-LOOP-0099,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/agents/compaction.identifier-preservation.test.ts (changed: existing Branch adapters and stronger safeguards),2026-10-06
@@ -95,6 +100,7 @@ engine/src/agents/embedded-agent-runner/compact.hooks.test.ts,AGENT-LOOP-0099,op
 engine/src/agents/embedded-agent-runner/compact.hooks.upstream-main.test.ts,AGENT-LOOP-0099,openclaw/openclaw,c656ee5227cdfc8930c6eff095937e53e0516886,src/agents/embedded-agent-runner/compact.hooks.test.ts,2026-10-06
 engine/src/agents/embedded-agent-runner/compact.ts,AGENT-LOOP-0099,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/agents/embedded-agent-runner/compact.ts (changed: existing Branch adapters and stronger safeguards),2026-10-06
 engine/src/agents/embedded-agent-runner/compaction-successor.ts,AGENT-LOOP-0099,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/agents/embedded-agent-runner/compaction-successor.ts (changed: existing Branch adapters and stronger safeguards),2026-10-06
+engine/src/agents/embedded-agent-runner/lanes.harvest.test.ts,AGENT-LOOP-0001,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/agents/embedded-agent-runner/lanes.test.ts (changed: DECISIONS.md item 127 rename map),2026-10-06
 engine/src/agents/embedded-agent-runner/run.overflow-context-recovery.test.ts,AGENT-LOOP-0103,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/agents/embedded-agent-runner/run.overflow-context-recovery.test.ts (changed: raw provider classification),2026-10-06
 engine/src/agents/embedded-agent-runner/run/attempt-stream.ts,AGENT-LOOP-0098,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/agents/embedded-agent-runner/run/attempt-stream.ts (changed: model transition instructions),2026-10-06
 engine/src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.ts,AGENT-LOOP-0097,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.ts (changed: synchronize historical argument mirrors),2026-10-06

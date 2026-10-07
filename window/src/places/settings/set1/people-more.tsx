@@ -12,10 +12,10 @@ import { ago, type Roles } from "./people-data";
 
 const NO_KEY = "Branch has no setting for this yet.";
 
-/** On when every role hides other people's conversations (gateway.roles.definitions.*.sessions.others = "none"). */
+/** On when every role hides other people's conversations (gateway.roles.definitions.*.sessions.others = "none").
+ *  No roles (a fresh install) is on: no role grants access. Unset others is off: the engine treats that as not "none". */
 export function separate(roles: Roles): boolean {
-  const defs = Object.values(roles.defs);
-  return defs.length > 0 && defs.every((d) => record(d.sessions).others === "none");
+  return Object.values(roles.defs).every((d) => record(d.sessions).others === "none");
 }
 
 /** Opens the People place at a tab (WindowShell's branch:navigate-place). */
