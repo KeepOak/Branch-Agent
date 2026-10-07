@@ -6,7 +6,8 @@ This is a source snapshot under active development. A feature being present in s
 
 ## Requirements
 
-- Node.js matching CI and the engine requirement: `24.19.0` (range `>=24.19.0 <25 || >=26.1.0`). Pin files: `.nvmrc`, `.node-version`.
+- Node.js matching the engine requirement: `>=24.16.0 <25 || >=26.1.0`.
+- CI and agent VMs pin Node `24.19.0` (`.nvmrc`, `.node-version`, `actions/setup-node`). That pin is not the engine range.
 - pnpm `12.5.1` (the engine pins its exact package-manager integrity).
 - Git; npm for the desktop package.
 - A configured model provider for assistant replies.

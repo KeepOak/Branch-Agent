@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import {
   REQUIRED_NODE,
@@ -9,6 +12,21 @@ import {
   parseProofArgs,
 } from './proof.mjs';
 
+const installScript = resolve(dirname(fileURLToPath(import.meta.url)), 'cloud-agent-install.sh');
+
+function nodeNeedsInstall(version) {
+  const result = spawnSync(
+    'bash',
+    [
+      '-c',
+      `source ${JSON.stringify(installScript)}; if node_needs_install ${JSON.stringify(version)}; then echo 0; else echo 1; fi`,
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout.trim().split('\n').at(-1) === '0';
+}
+
 test('proof Node check accepts CI version and newer 24.x patches', () => {
   assert.equal(REQUIRED_NODE, '24.19.0');
   assert.equal(nodeMeetsMinimum('24.19.0'), true);
@@ -18,6 +36,16 @@ test('proof Node check accepts CI version and newer 24.x patches', () => {
   assert.equal(nodeMeetsMinimum('22.14.0'), false);
   assert.equal(nodeMeetsMinimum('24.18.0'), false);
   assert.equal(nodeMeetsMinimum('25.0.0'), false);
+  assert.equal(nodeNeedsInstall(''), true);
+  assert.equal(nodeNeedsInstall('22.14.0'), true);
+  assert.equal(nodeNeedsInstall('24.15.0'), true);
+  assert.equal(nodeNeedsInstall('24.16.0'), false);
+  assert.equal(nodeNeedsInstall('24.19.0'), false);
+  assert.equal(nodeNeedsInstall('26.1.0'), false);
+  assert.equal(nodeNeedsInstall('26.2.0'), false);
+  const dry = spawnSync('bash', [installScript, '--check-node'], { encoding: 'utf8', windowsHide: true });
+  assert.equal(dry.status, 0, dry.stderr);
+  assert.match(dry.stdout, /^(ok|needs-install) /);
 });
 
 test('proof Node mismatch prints the install command for the CI version', () => {
