@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile, chmod } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import test from "node:test";
@@ -40,13 +40,22 @@ test("Linux package includes an executable sandbox-checking launcher", async () 
     await assert.rejects(run(launcher, [], { env }),
       error => error.code === 1 && /one-time sandbox setup/.test(error.stderr));
 
+    await rm(join(root, "chrome-sandbox"));
+    await symlink(join(root, "Branch Agent.bin"), join(root, "chrome-sandbox"));
+    await assert.rejects(run(launcher, [], { env }),
+      error => error.code === 1 && /chrome-sandbox is missing/.test(error.stderr));
+    await rm(join(root, "chrome-sandbox"));
+    await writeFile(join(root, "chrome-sandbox"), "tampered");
+    await writeFile(join(tools, "pkexec"), "#!/bin/sh\nexec \"$@\"\n");
+    await chmod(join(tools, "pkexec"), 0o755);
+    await assert.rejects(run(launcher, [], { env: { ...env, DISPLAY: ":99" } }),
+      error => error.code === 1 && /Unexpected chrome-sandbox contents/.test(error.stderr));
+
     await writeFile(join(tools, "stat"), "#!/bin/sh\nprintf '0:4755\\n'\n");
     await chmod(join(tools, "stat"), 0o755);
     const result = await run(launcher, ["ready"], { env });
     assert.equal(result.stdout.trim(), "started:ready");
     await writeFile(join(tools, "unshare"), "#!/bin/sh\nexit 0\n");
-    await rm(join(root, "chrome-sandbox"));
-    await writeFile(join(root, "chrome-sandbox"), "fixture");
     const userNamespace = await run(launcher, ["userns"], { env });
     assert.equal(userNamespace.stdout.trim(), "started:userns");
   } finally { await rm(root, { recursive: true, force: true }); }
