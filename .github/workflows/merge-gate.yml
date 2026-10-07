@@ -5,6 +5,7 @@ name: Merge gate
 # commit and fails if any of them failed. `main` requires only this check.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
@@ -34,6 +35,12 @@ jobs:
         run: node --test scripts/changed-test-coverage.test.mjs
       - name: Require every changed test to run in CI
         run: node scripts/changed-test-coverage.mjs
+      - name: Test UI screenshot proof check
+        run: node --test scripts/check-ui-proof.test.mjs
+      - name: Require screenshots for window UI changes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/check-ui-proof.mjs
 
   merge-gate:
     needs: changed-test-coverage
