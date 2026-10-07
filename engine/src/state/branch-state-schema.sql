@@ -1278,7 +1278,8 @@ CREATE TABLE IF NOT EXISTS agent_database_leases (
   path TEXT NOT NULL,
   owner_pid INTEGER NOT NULL,
   owner_start_time INTEGER,
-  opened_at INTEGER NOT NULL
+  opened_at INTEGER NOT NULL,
+  provenance TEXT
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS plugin_state_entries (
@@ -1589,7 +1590,7 @@ CREATE INDEX IF NOT EXISTS idx_delivery_queue_pending
   ON delivery_queue_entries(queue_name, status, enqueued_at, id);
 
 CREATE INDEX IF NOT EXISTS idx_delivery_queue_failed
-  ON delivery_queue_entries(queue_name, status, failed_at, id);
+  ON delivery_queue_entries(status, queue_name, failed_at, id);
 
 CREATE INDEX IF NOT EXISTS idx_delivery_queue_session
   ON delivery_queue_entries(queue_name, status, session_key, enqueued_at, id)
@@ -1788,6 +1789,10 @@ CREATE TABLE IF NOT EXISTS meeting_transcript_utterances (
     REFERENCES meeting_transcript_sessions(session_id, started_at)
     ON DELETE CASCADE
 ) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_meeting_transcript_utterances_id
+  ON meeting_transcript_utterances(session_id, session_started_at, utterance_id)
+  WHERE utterance_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS meeting_transcript_summaries (
   session_id TEXT NOT NULL,
@@ -2742,3 +2747,36 @@ CREATE TABLE IF NOT EXISTS secret_store_entries (
 ) STRICT;
 CREATE INDEX IF NOT EXISTS secret_store_entries_live_idx
   ON secret_store_entries (scope_kind, scope_id, name) WHERE deleted_at_ms IS NULL;
+
+CREATE TABLE IF NOT EXISTS rooms (
+  room_id TEXT NOT NULL PRIMARY KEY,
+  name TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  lead TEXT,
+  rule TEXT NOT NULL CHECK (rule IN ('lead', 'everyone', 'mentions')),
+  trunks_talk INTEGER NOT NULL CHECK (trunks_talk IN (0, 1)),
+  memory_scope TEXT NOT NULL CHECK (memory_scope = 'room'),
+  pinned_at INTEGER,
+  archived_at INTEGER
+) STRICT;
+CREATE TABLE IF NOT EXISTS room_members (
+  room_id TEXT NOT NULL REFERENCES rooms(room_id),
+  kind TEXT NOT NULL CHECK (kind IN ('trunk', 'person', 'a2a')),
+  id TEXT NOT NULL,
+  member_order INTEGER NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('lead', 'member')),
+  enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+  PRIMARY KEY (room_id, kind, id)
+) STRICT;
+CREATE TABLE IF NOT EXISTS room_events (
+  room_id TEXT NOT NULL REFERENCES rooms(room_id),
+  seq INTEGER NOT NULL,
+  event_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  actor_id TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (room_id, seq),
+  UNIQUE (room_id, event_id)
+) STRICT;
+CREATE INDEX IF NOT EXISTS idx_room_events_cursor ON room_events(room_id, seq);

@@ -4,6 +4,7 @@ import {
   normalizeLowercaseStringOrEmpty as normalizeProviderId,
   normalizeOptionalString,
 } from "@branch/normalization-core/string-coerce";
+import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
 import { splitTrailingAuthProfile } from "../agents/model-ref-profile.js";
 import type { AuthProfileConfig } from "../config/types.auth.js";
 import type { BranchConfig } from "../config/types.branch.js";
@@ -213,4 +214,27 @@ export function protectActiveAuthProfileConfig(params: {
   }
 
   return { config, repairs, warnings };
+}
+
+export function stripImportedConfigAuthProfileCredentials(
+  cfg: BranchConfig,
+  store: AuthProfileStore,
+): boolean {
+  const profiles = ensureConfigAuthProfiles(cfg);
+  let changed = false;
+  for (const [profileId, credential] of Object.entries(store.profiles)) {
+    const current = profiles[profileId];
+    if (!current) {
+      continue;
+    }
+    const metadata: AuthProfileConfig = {
+      provider: current.provider || credential.provider,
+      mode: credential.type,
+      ...(current.email ? { email: current.email } : {}),
+      ...(current.displayName ? { displayName: current.displayName } : {}),
+    };
+    profiles[profileId] = metadata;
+    changed = true;
+  }
+  return changed;
 }

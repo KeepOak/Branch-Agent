@@ -1,4 +1,5 @@
 import { isRecord } from "@branch/normalization-core/record-coerce";
+import { normalizeUniqueTrimmedStringList } from "@branch/normalization-core/string-normalization";
 import { truncateUtf16Safe } from "@branch/normalization-core/utf16-slice";
 import type {
   WebPushDetailLevel,
@@ -62,14 +63,9 @@ function normalizeAgentIds(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
   }
-  return [
-    ...new Set(
-      value
-        .filter((entry): entry is string => typeof entry === "string")
-        .map((entry) => entry.trim())
-        .filter((entry) => entry.length > 0 && entry.length <= 128),
-    ),
-  ].slice(0, 128);
+  return normalizeUniqueTrimmedStringList(value)
+    .filter((entry) => entry.length <= 128)
+    .slice(0, 128);
 }
 
 function normalizeQuietHours(value: unknown) {

@@ -5,13 +5,13 @@ import {
   resolveAmbientOwnerAgentId,
 } from "../../../agents/agent-scope-config.js";
 import { materializeLegacyDefaultAgentRoles } from "../../../config/legacy.default-agent-roles.js";
-import type { BranchConfig } from "../../../config/types.branch.js";
+import type { BranchConfigWithLegacyRoster } from "../../../config/legacy.roster.js";
 import { resolveCronJobEffectiveAgentId } from "../../../cron/agent-id.js";
 import { resolveHeartbeatAgents } from "../../../infra/heartbeat-runner.js";
 import { resolveAgentRoute } from "../../../routing/resolve-route.js";
 import { resolveTalkSessionAgentId } from "../../../talk/agent-target.js";
 
-function materializeDefaultAgentRoles(cfg: BranchConfig) {
+function materializeDefaultAgentRoles(cfg: BranchConfigWithLegacyRoster) {
   const result = materializeLegacyDefaultAgentRoles(cfg, resolveDefaultAgentId(cfg));
   return { config: result.config, changes: result.insertedPaths.map((path) => path.join(".")) };
 }
@@ -25,7 +25,7 @@ type SurfaceSnapshot = {
   cli: string;
 };
 
-function snapshotSurfaces(cfg: BranchConfig): SurfaceSnapshot {
+function snapshotSurfaces(cfg: BranchConfigWithLegacyRoster): SurfaceSnapshot {
   const channel = resolveAgentRoute({
     cfg,
     channel: "telegram",
@@ -52,7 +52,11 @@ function snapshotSurfaces(cfg: BranchConfig): SurfaceSnapshot {
   };
 }
 
-const fixtures: Array<{ name: string; config: BranchConfig; materializes: boolean }> = [
+const fixtures: Array<{
+  name: string;
+  config: BranchConfigWithLegacyRoster;
+  materializes: boolean;
+}> = [
   {
     name: "multi-agent default with an unbound channel",
     config: {
@@ -98,7 +102,7 @@ describe("default agent role materialization", () => {
   );
 
   it("adds only uncovered channel-wide bindings and preserves narrower routes", () => {
-    const config: BranchConfig = {
+    const config: BranchConfigWithLegacyRoster = {
       agents: { entries: { ops: { default: true }, research: {} } },
       channels: {
         telegram: { enabled: true },
@@ -126,13 +130,13 @@ describe("default agent role materialization", () => {
   });
 
   it("keeps all-agent and per-agent heartbeat enrollment unchanged", () => {
-    const allAgents: BranchConfig = {
+    const allAgents: BranchConfigWithLegacyRoster = {
       agents: {
         defaults: { heartbeat: { every: "1h" } },
         entries: { ops: { default: true }, research: {} },
       },
     };
-    const perAgent: BranchConfig = {
+    const perAgent: BranchConfigWithLegacyRoster = {
       agents: {
         entries: {
           ops: { default: true },
@@ -153,7 +157,7 @@ describe("default agent role materialization", () => {
   });
 
   it("materializes absent Talk config but preserves malformed Talk input", () => {
-    const base: BranchConfig = {
+    const base: BranchConfigWithLegacyRoster = {
       agents: { entries: { ops: { default: true }, research: {} } },
     };
     expect(materializeDefaultAgentRoles(base).config.talk).toEqual({ agentId: "ops" });
@@ -162,7 +166,7 @@ describe("default agent role materialization", () => {
   });
 
   it("uses the Talk owner for unscoped aliases and explicit agent keys when present", () => {
-    const config: BranchConfig = {
+    const config: BranchConfigWithLegacyRoster = {
       agents: { entries: { ops: { default: true }, research: {} } },
       talk: { agentId: "research" },
     };
@@ -172,7 +176,7 @@ describe("default agent role materialization", () => {
   });
 
   it("routes bare Talk sessions through the persisted fixed-store owner", () => {
-    const config: BranchConfig = {
+    const config: BranchConfigWithLegacyRoster = {
       talk: { agentId: "research" },
       session: { store: "/tmp/owned-shared.sqlite" },
       agents: {
@@ -189,7 +193,7 @@ describe("default agent role materialization", () => {
     const base = {
       agents: { entries: { ops: { default: true }, research: {} } },
       channels: { telegram: { enabled: true } },
-    } satisfies BranchConfig;
+    } satisfies BranchConfigWithLegacyRoster;
     const malformedBindings = { ...base, bindings: { bad: true } as never };
     expect(materializeDefaultAgentRoles(malformedBindings).config.bindings).toEqual({ bad: true });
     const malformedDefaults = {

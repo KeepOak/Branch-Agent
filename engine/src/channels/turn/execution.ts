@@ -1,3 +1,4 @@
+import { resolveSessionLane } from "../../agents/embedded-agent-runner/lanes.js";
 import {
   withDispatchProcessedOutcomeSink,
   type DispatchProcessedNote,
@@ -8,6 +9,7 @@ import {
   runWithDiagnosticTraceContext,
 } from "../../infra/diagnostic-trace-context.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { waitForSessionHandoffLease } from "../../process/session-handoff-lease-gate.js";
 import { isRecentOutboundMessageIdentity } from "../message/outbound-echo.js";
 import { recordChannelBotPairLoopAndCheckSuppression } from "./bot-loop-protection.js";
 import {
@@ -117,20 +119,16 @@ function maybeWarnZeroCountVisibleDispatch<TDispatchResult>(
   });
 }
 
-function resolveBotLoopProtectionDrop<TDispatchResult>(
+function dropPreparedChannelTurn<TDispatchResult>(
   params: PreparedChannelTurn<TDispatchResult>,
-): ChannelTurnResult<TDispatchResult> | undefined {
-  if (!params.botLoopProtection) {
-    return undefined;
-  }
-  const botLoopResult = recordChannelBotPairLoopAndCheckSuppression(params.botLoopProtection);
-  if (!botLoopResult.suppressed) {
-    return undefined;
-  }
-  const admission: ChannelTurnAdmission = { kind: "drop", reason: "bot-loop-protection" };
+  reason: "bot-loop-protection" | "outbound-echo",
+  messageId = params.messageId,
+): ChannelTurnResult<TDispatchResult> {
+  const admission: ChannelTurnAdmission = { kind: "drop", reason };
   emit(params, {
     stage: "authorize",
     event: "drop",
+    messageId,
     admission: admission.kind,
     reason: admission.reason,
   });
@@ -140,6 +138,15 @@ function resolveBotLoopProtectionDrop<TDispatchResult>(
     ctxPayload: params.ctxPayload,
     routeSessionKey: params.routeSessionKey,
   };
+}
+
+function resolveBotLoopProtectionDrop<TDispatchResult>(
+  params: PreparedChannelTurn<TDispatchResult>,
+): ChannelTurnResult<TDispatchResult> | undefined {
+  return params.botLoopProtection &&
+    recordChannelBotPairLoopAndCheckSuppression(params.botLoopProtection).suppressed
+    ? dropPreparedChannelTurn(params, "bot-loop-protection")
+    : undefined;
 }
 
 function resolveOutboundEchoDrop<TDispatchResult>(
@@ -178,20 +185,7 @@ function resolveOutboundEchoDrop<TDispatchResult>(
   if (!matchedMessageId && !matchesSource) {
     return undefined;
   }
-  const admission: ChannelTurnAdmission = { kind: "drop", reason: "outbound-echo" };
-  emit(params, {
-    stage: "authorize",
-    event: "drop",
-    messageId: params.messageId ?? matchedMessageId,
-    admission: admission.kind,
-    reason: admission.reason,
-  });
-  return {
-    admission,
-    dispatched: false,
-    ctxPayload: params.ctxPayload,
-    routeSessionKey: params.routeSessionKey,
-  };
+  return dropPreparedChannelTurn(params, "outbound-echo", params.messageId ?? matchedMessageId);
 }
 
 export async function runPreparedChannelTurnCore<
@@ -231,6 +225,9 @@ async function runPreparedChannelTurnCoreInTrace<
   // path before the next group turn can replay stale context.
   try {
     const recordSessionKey = resolveRecordSessionKey(params);
+    // Recording writes the session's entry, last route and transcript context ahead of the lane. While the previous
+    // engine still finishes this session (in-place update), wait for it, as the turn itself would in the lane.
+    if (recordSessionKey) await waitForSessionHandoffLease(resolveSessionLane(recordSessionKey));
     if (params.ctxPayload.SessionTranscriptContext) {
       const { mergeSessionTranscriptContext } =
         await import("../inbound-event/session-transcript-context.runtime.js");

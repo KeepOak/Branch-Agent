@@ -25,6 +25,11 @@ export function getAcpSessionManager(): AcpSessionManager {
   return ACP_SESSION_MANAGER_SINGLETON;
 }
 
+/** The manager if this process made one; never creates it. */
+export function peekAcpSessionManager(): AcpSessionManager | null {
+  return ACP_SESSION_MANAGER_SINGLETON;
+}
+
 /**
  * Drains the process-wide manager and retires it, so a same-process Gateway
  * restart builds a fresh manager instead of inheriting a stopped one.

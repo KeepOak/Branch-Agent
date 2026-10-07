@@ -3,6 +3,7 @@ import { waitUntilAbort } from "branch/plugin-sdk/channel-outbound";
 import { channelReadyPatch, channelStoppedPatch } from "branch/plugin-sdk/gateway-runtime";
 import type { PluginRuntime } from "branch/plugin-sdk/runtime-store";
 import { registerPluginHttpRoute } from "branch/plugin-sdk/webhook-ingress";
+import { refreshA2aPeerCards } from "./card-cache.js";
 import { createA2aHttpHandler } from "./http.js";
 import { dispatchA2aInbound } from "./inbound.js";
 import { getA2aChannelRuntime } from "./runtime.js";
@@ -35,6 +36,7 @@ export async function startA2aGatewayAccount(
   // SAFETY: Gateway injects its full runtime despite the narrowed public contract.
   const channelRuntime = (ctx.channelRuntime ?? runtime.channel) as PluginRuntime["channel"];
   const store = new A2aTaskStore();
+  await refreshA2aPeerCards(ctx.cfg);
   const unregisterRoutes: Array<() => void> = [];
   try {
     const handler = createA2aHttpHandler({

@@ -4,14 +4,16 @@ import { safeStatSync } from "@openclaw/fs-safe/path";
 import type { SessionStoreTarget } from "../config/sessions/targets.js";
 import { resolveTargetSqliteOptions } from "../infra/session-sqlite-migration-readers.js";
 import { invalidateBranchAgentDatabaseIntegrityBeforeMutation } from "../state/branch-agent-db-lease.js";
+import { withAgentDatabaseMaintenanceLease } from "../state/branch-agent-db-maintenance-lease.js";
 import {
   assertBranchAgentDatabaseForMaintenance,
+  migrateBranchAgentDatabaseForMaintenance,
+} from "../state/branch-agent-db-maintenance.js";
+import {
   clearBranchAgentDatabaseOpenFailure,
   ensureBranchAgentDatabasePermissions,
   isBranchAgentDatabaseOpen,
-  migrateBranchAgentDatabaseForMaintenance,
   resolveBranchAgentSqlitePath,
-  withAgentDatabaseMaintenanceLease,
 } from "../state/branch-agent-db.js";
 import type { DoctorSessionSqliteCompactReport } from "./doctor-session-sqlite-types.js";
 import { compactDoctorSqliteFile } from "./doctor-sqlite-compact.js";

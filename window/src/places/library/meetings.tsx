@@ -1,6 +1,7 @@
 // Library › Meetings (preview 42-placesbp libMeetListPQ18 / libMeetReaderPQ18) on transcripts.list / get / export:
 // search, Filters [A], In progress and day groups, pages; the reader with Notes, Transcript, Save, and
 // Where it came from [A].
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type FormEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { shows, type Level } from "../../places-nav/level";

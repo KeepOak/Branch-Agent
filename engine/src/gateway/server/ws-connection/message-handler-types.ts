@@ -37,7 +37,11 @@ export type WsOriginCheckMetrics = {
   hostHeaderFallbackAccepted: number;
 };
 
-type WsSendResult = { kind: "sent" | "unavailable" } | { kind: "serialization"; error: unknown };
+type WsSendResult =
+  // In-process bootstrap responses have no encoded frame.
+  | { kind: "sent"; bytes?: number }
+  | { kind: "unavailable" }
+  | { kind: "serialization"; error: unknown };
 
 export type GatewayWsMessageHandlerParams = {
   socket: GatewayConnectionTransport;
@@ -68,6 +72,8 @@ export type GatewayWsMessageHandlerParams = {
   browserRateLimiter?: AuthRateLimiter;
   nodeReapprovalCoordinator?: NodeReapprovalCoordinator;
   isStartupPending?: () => boolean;
+  /** Operator connects are admitted once this is false, which can be before startup finishes. */
+  isOperatorAdmissionPending?: () => boolean;
   isPendingWorkerNodeSetup?: (setupId: string, deviceId: string) => boolean;
   admitsNodeSetupCompletion?: (setup: CloudWorkerSetupMutationAdmission) => boolean;
   gatewayMethods: string[];
@@ -120,6 +126,7 @@ export type GatewayConnectPhaseContext = {
   sendFrame: (obj: unknown) => Promise<void>;
   /** Retire pre-auth ingress limits once hello-ok is accepted by the transport. */
   onHelloDelivered: () => void;
+  onPairingWait: () => void;
   isWebchatConnect: (params: ConnectParams | null | undefined) => boolean;
   runDetachedConnectWork: (run: () => Promise<void>, onError: (error: unknown) => void) => void;
   pendingNodePairingCleanup: {

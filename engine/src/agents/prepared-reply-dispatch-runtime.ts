@@ -1,7 +1,12 @@
+import { setTimeout as delay } from "node:timers/promises";
 import type { BranchConfig } from "../config/types.branch.js";
 import { createAbortError, racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { resolvePublishedModelCatalogOwner } from "./prepared-model-catalog-owner.js";
-import { PreparedModelRuntimeOwnerNotPublishedError } from "./prepared-model-runtime.errors.js";
+import { assertPreparedModelRuntimeAdmissionCanWait } from "./prepared-model-runtime-admission.js";
+import {
+  PreparedModelRuntimeOwnerNotPublishedError,
+  PreparedModelRuntimePublicationSupersededError,
+} from "./prepared-model-runtime.errors.js";
 import type {
   PreparedModelRuntimeOwner,
   PreparedReplyDispatchRuntime,
@@ -57,7 +62,7 @@ function buildReplyDispatchPublication(
 
 type PreparedReplyDispatchPublicationHost = Readonly<{
   isGatewayLifecycleActive: () => boolean;
-  getPendingOwnerPublication: (agentId: string) => Promise<unknown> | undefined;
+  getConfiguredOwner: (agentId: string) => PreparedModelRuntimeOwner | undefined;
   getPendingReplacement: () => Promise<void> | undefined;
 }>;
 
@@ -118,6 +123,12 @@ export class PreparedReplyDispatchPublicationOwner {
     agentId: string;
     abortSignal?: AbortSignal;
   }): Promise<PreparedReplyDispatchRuntime | undefined> => {
+    let supersededSince: number | undefined;
+    const waitForSuccessor = async (error: PreparedModelRuntimePublicationSupersededError) => {
+      supersededSince ??= Date.now();
+      if (Date.now() - supersededSince >= 120_000) throw error;
+      await racePromiseWithAbortSignal(delay(250), abortSignal);
+    };
     for (;;) {
       if (abortSignal?.aborted) {
         throw createAbortError("Prepared reply dispatch admission aborted", {
@@ -129,16 +140,33 @@ export class PreparedReplyDispatchPublicationOwner {
       }
       const replacement = this.host.getPendingReplacement();
       if (replacement) {
-        await racePromiseWithAbortSignal(replacement, abortSignal);
+        assertPreparedModelRuntimeAdmissionCanWait();
+        try {
+          await racePromiseWithAbortSignal(replacement, abortSignal);
+        } catch (error) {
+          if (!(error instanceof PreparedModelRuntimePublicationSupersededError)) throw error;
+          await waitForSuccessor(error);
+        }
         continue;
       }
-      const pendingOwner = this.host.getPendingOwnerPublication(agentId);
-      if (pendingOwner) {
-        await racePromiseWithAbortSignal(pendingOwner, abortSignal);
+      const pendingOwner = this.host.getConfiguredOwner(agentId);
+      if (pendingOwner?.pending) {
+        assertPreparedModelRuntimeAdmissionCanWait(pendingOwner);
+        try {
+          await racePromiseWithAbortSignal(pendingOwner.pending, abortSignal);
+        } catch (error) {
+          if (!(error instanceof PreparedModelRuntimePublicationSupersededError)) throw error;
+          await waitForSuccessor(error);
+        }
         continue;
       }
       const runtime = this.#publication.find((candidate) => candidate.agentId === agentId);
       if (!runtime) {
+        if (supersededSince && Date.now() - supersededSince < 120_000) {
+          // A retired publication can settle before its replacement is queued.
+          await racePromiseWithAbortSignal(delay(250), abortSignal);
+          continue;
+        }
         throw new PreparedModelRuntimeOwnerNotPublishedError(
           `prepared reply dispatch runtime owner was not published for ${agentId}`,
         );

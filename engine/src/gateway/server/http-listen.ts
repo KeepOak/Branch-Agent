@@ -1,6 +1,7 @@
 // Gateway HTTP server listen helper with retry and lock-aware errors.
 import type { Server as HttpServer } from "node:http";
 import { GatewayLockError } from "../../infra/gateway-lock.js";
+import { releaseStandbyPortPlaceholder } from "../../infra/standby-port-placeholder.js";
 import { sleep } from "../../utils.js";
 
 const EADDRINUSE_MAX_RETRIES = 20;
@@ -34,6 +35,8 @@ export async function listenGatewayHttpServer(params: {
     endpointScheme = "ws",
   } = params;
   const maxRetries = retryEaddrinuse ? EADDRINUSE_MAX_RETRIES : 0;
+  // A standby that took over held this port with a placeholder until now: free it just before binding.
+  await releaseStandbyPortPlaceholder(port);
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -48,7 +51,13 @@ export async function listenGatewayHttpServer(params: {
         };
         httpServer.once("error", onError);
         httpServer.once("listening", onListening);
-        httpServer.listen(port, bindHost);
+        try {
+          httpServer.listen(port, bindHost);
+        } catch (error) {
+          httpServer.off("error", onError);
+          httpServer.off("listening", onListening);
+          throw error;
+        }
       });
       return;
     } catch (err) {

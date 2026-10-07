@@ -13,15 +13,19 @@ import * as tempRoot from "../infra/tmp-branch-dir.js";
 import { resolveManagedUpdateLeaseDatabasePath } from "../infra/update-managed-service-handoff-lease.js";
 import { createUpdateRun } from "../infra/update-run-ledger.js";
 import { finishUpdateRun } from "../infra/update-run-write.js";
-import { closeBranchStateDatabaseForTest } from "../state/branch-state-db-cache.js";
+import {
+  closeBranchStateDatabaseAsync,
+  closeBranchStateDatabaseForTest,
+} from "../state/branch-state-db-cache.js";
 import { resolveDoctorUpdateAdmission } from "./doctor-maintenance-admission.js";
 import { useDoctorMaintenanceRuntimeDirectory } from "./doctor-maintenance.test-support.js";
 
 export function setupDoctorAdmissionFixture() {
   const directories = createTempDirTracker();
   useDoctorMaintenanceRuntimeDirectory(() => directories.make("doctor-admission-custody-"));
-  afterEach(() => {
+  afterEach(async () => {
     try {
+      await closeBranchStateDatabaseAsync();
       closeBranchStateDatabaseForTest();
       directories.cleanup();
     } finally {
@@ -167,7 +171,10 @@ export function setupDoctorAdmissionFixture() {
           guardedWorkers++;
         }
       }
-      expect(guardedWorkers).toBeGreaterThan(0);
+      // A warm admitted source can serve current rows without launching an inspection child.
+      if (!keepWriter) {
+        expect(guardedWorkers).toBeGreaterThan(0);
+      }
       binding.assertPath(resolveManagedUpdateLeaseDatabasePath());
     };
     const admitted = resolveDoctorUpdateAdmission(env);

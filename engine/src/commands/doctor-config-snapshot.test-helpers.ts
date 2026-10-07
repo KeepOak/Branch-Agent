@@ -1,9 +1,4 @@
-import type {
-  ConfigFileSnapshot,
-  ConfigValidationIssue,
-  LegacyConfigIssue,
-  BranchConfig,
-} from "../config/types.js";
+import type { ConfigValidationIssue, LegacyConfigIssue } from "../config/types.js";
 
 export function createDoctorConfigSnapshot(
   params: {
@@ -13,8 +8,8 @@ export function createDoctorConfigSnapshot(
     issues?: ConfigValidationIssue[];
     legacyIssues?: LegacyConfigIssue[];
   } = {},
-): ConfigFileSnapshot {
-  const config = (params.config ?? {}) as BranchConfig;
+) {
+  const config = params.config ?? {};
   return {
     path: "/tmp/branch.json",
     includedPaths: [],

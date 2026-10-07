@@ -1,7 +1,9 @@
 // Customize › Specialists (preview 40-places.js, 94-g4p.js fleet15/pat15): defined specialists with Edit, the
 // fleet line (agents.list, node.list and the shell's running count), and how Trunks work together. The engine
 // has no specialist definitions or teamwork setting yet, so those parts are drawn greyed with the reason.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { Face } from "../../face/Face";
+import { shownWhy } from "../../shell/shown-why";
 import { EmptyLine, type PlaceProps } from "../../places-nav/PlaceFrame";
 import { shows, type Level } from "../../places-nav/level";
 import { trunkName, useResource, type Trunk } from "../library/data";
@@ -28,17 +30,17 @@ export function SpecialistsTab({ engine, level, trunks, facts, openAgents }: { e
   return <div className="cz-page" data-testid="specialists">
     <p className="cz-lede">Helpers a Trunk calls in for one job, then lets go.</p>
     <EmptyLine icon={<Glyph name="sparkle" size={22} />}>No specialists yet.</EmptyLine>
-    <p className="cz-hint cz-center" title={NO_DEFINITIONS}>{NO_DEFINITIONS} Helper conversations a Trunk starts stay in its conversation list.</p>
+    <p className="cz-hint cz-center" title={shownWhy(NO_DEFINITIONS)}>Helper conversations a Trunk starts stay in its conversation list.</p>
     <Fleet engine={engine} trunks={trunks} running={facts.running} />
-    <section className="cz-block"><h2 className="cz-h2">How Trunks work together</h2><p className="cz-hint">The pattern a room or a big task uses. Branch picks one; you can choose.</p>
-      <div className="cz-pats" role="radiogroup" aria-label="How Trunks work together">{PATTERNS.map(p => <button key={p.id} type="button" role="radio" aria-checked={false} className="cz-pat" disabled title={NO_PATTERN}>
+    <section className="cz-block"><h2 className="cz-h2">How Trunks work together</h2><p className="cz-hint">The pattern a group or a big job uses. Branch picks one; you can choose.</p>
+      <div className="cz-pats" role="radiogroup" aria-label="How Trunks work together">{PATTERNS.map(p => <button key={p.id} type="button" role="radio" aria-checked={false} className="cz-pat" disabled title={shownWhy(NO_PATTERN)}>
         <svg viewBox="0 0 52 52" width="52" height="52" aria-hidden="true">{p.lines.map((l, i) => <line key={i} x1={l[0]} y1={l[1]} x2={l[2]} y2={l[3]} />)}{p.dots.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="3.5" className={i === 0 ? "lead" : undefined} />)}</svg>
         <b>{p.title}</b><small>{p.line}</small></button>)}</div></section>
     {shows(level, "advanced") && <section className="cz-block"><h2 className="cz-h2">Other coding agents</h2>
       <div className="cz-prow"><span className="cz-tile"><Glyph name="terminal" size={16} /></span><span className="grow"><b>Hand coding to another agent</b><small>A Trunk can pass a coding job to another coding agent on this computer, then check the result.</small></span><button type="button" className="btn sm" onClick={openAgents}>See how</button></div></section>}
     {shows(level, "advanced") && <section className="cz-block"><h2 className="cz-h2">Built in</h2><p className="cz-hint">Helpers every Trunk can call. Off: Trunks won't offer that one.</p>
       {BUILT_IN.map(([name, line]) => <div key={name} className="cz-prow"><span className="cz-tile"><Glyph name="sparkle" size={16} /></span><span className="grow"><b>{name}</b><small>{line} · comes with Branch, can't be edited</small></span>
-        <button type="button" role="switch" aria-checked={true} aria-label={`Offer ${name}`} className="switch" disabled title="Needs the engine's built-in helper switches." /></div>)}</section>}
+        <button type="button" role="switch" aria-checked={true} aria-label={`Offer ${name}`} className="switch" disabled title={shownWhy("Needs the engine's built-in helper switches.")} /></div>)}</section>}
     <section className="cz-block"><h2 className="cz-h2">Let specialists argue it out</h2>
       <div className="cz-prow"><span className="cz-tile"><Glyph name="people" size={16} /></span><span className="grow"><b>Two or three specialists take sides on a question</b><small>Each answers the others in turn, then you get both sides and where they agree.</small></span><Grey reason="Needs the engine's debate method.">Start</Grey></div></section>
   </div>;

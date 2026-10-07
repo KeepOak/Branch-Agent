@@ -440,9 +440,6 @@
       "branch/plugin-sdk/memory-host-markdown": [
         "../packages/plugin-sdk/dist/src/plugin-sdk/memory-host-markdown.d.ts"
       ],
-      "branch/plugin-sdk/memory-host-search": [
-        "../packages/plugin-sdk/dist/src/plugin-sdk/memory-host-search.d.ts"
-      ],
       "branch/plugin-sdk/message-tool-delivery-hints": [
         "../packages/plugin-sdk/dist/src/plugin-sdk/message-tool-delivery-hints.d.ts"
       ],
@@ -569,6 +566,9 @@
       "@branch/memory-core/api.js": [
         "../.artifacts/extension-package-boundary/plugins/memory-core/api.d.ts"
       ],
+      "@branch/memory-core/session-search-visibility-api.js": [
+        "../.artifacts/extension-package-boundary/plugins/memory-core/session-search-visibility-api.d.ts"
+      ],
       "@branch/matrix/test-api.js": [
         "../.artifacts/extension-package-boundary/plugins/matrix/test-api.d.ts"
       ],
@@ -619,6 +619,12 @@
       ],
       "@branch/ai/internal/shared": [
         "../packages/plugin-sdk/dist/packages/ai/src/internal/shared.d.ts"
+      ],
+      "@branch/gateway-protocol": [
+        "../packages/plugin-sdk/dist/packages/gateway-protocol/src/index.d.ts"
+      ],
+      "@branch/gateway-protocol/*": [
+        "../packages/plugin-sdk/dist/packages/gateway-protocol/src/*.d.ts"
       ],
       "@branch/llm-core": [
         "../packages/plugin-sdk/dist/packages/llm-core/src/index.d.ts"
@@ -760,6 +766,15 @@
       ],
       "@branch/retry": [
         "../packages/plugin-sdk/dist/packages/retry/src/index.d.ts"
+      ],
+      "@branch/worker-runtime": [
+        "../packages/plugin-sdk/dist/packages/worker-runtime/src/index.d.ts"
+      ],
+      "@branch/worker-runtime/worker": [
+        "../packages/plugin-sdk/dist/packages/worker-runtime/src/worker.d.ts"
+      ],
+      "@branch/worker-runtime/lifecycle": [
+        "../packages/plugin-sdk/dist/packages/worker-runtime/src/lifecycle.d.ts"
       ],
       "@branch/canopy-contract": [
         "../packages/canopy-contract/src/index.ts"
@@ -954,6 +969,12 @@
       ],
       "branch/plugin-sdk/agent-harness-completion": [
         "../packages/plugin-sdk/dist/src/plugin-sdk/agent-harness-completion.d.ts"
+      ],
+      "branch/plugin-sdk/compiled-subprocess-testing": [
+        "../packages/plugin-sdk/dist/src/plugin-sdk/compiled-subprocess-testing.d.ts"
+      ],
+      "branch/plugin-sdk/memory-host-search": [
+        "../packages/plugin-sdk/dist/src/plugin-sdk/memory-host-search.d.ts"
       ]
     }
   }

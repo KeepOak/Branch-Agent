@@ -51,7 +51,7 @@ it.each([true, false])(
     await upsertAuthProfileWithLock({ profileId: "openai:default", credential: working, agentDir });
     const config: BranchConfig = {
       agents: {
-        entries: { main: { default: true } },
+        entries: { main: {} },
         defaults: { model: "openai/test-model@openai:default" },
       },
     };

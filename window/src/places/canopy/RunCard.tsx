@@ -1,5 +1,7 @@
 // One run on Canopy › Now (§4.6.7 run card): face, Trunk, task, step · time · computer · model, meter, and its actions.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { Icon } from "../../shell/icons";
+import { shownWhy } from "../../shell/shown-why";
 import { useState } from "react";
 import { Dialog } from "../../shell/Dialog";
 import { rec, resolveApproval, str } from "../automations/runtime";
@@ -99,7 +101,7 @@ function RunActs({ r, ctx, steer }: { r: Run; ctx: Ctx; steer: () => void }) {
 function WaitActs({ r, ctx }: { r: Run; ctx: Ctx }) {
   const item = r.ask ?? {}, off = !ctx.approve || ctx.busy, name = trunkName(ctx.d, r.agentId);
   return <>
-    <button className="btn ghost sm" type="button" disabled={off} onClick={() => void ctx.act(() => resolveApproval(ctx.engine, item, "deny"), `Said no. ${name} won’t do it.`)}>Don’t</button>
+    <button className="btn ghost sm" type="button" disabled={off} onClick={() => void ctx.act(() => resolveApproval(ctx.engine, item, "deny"), `Said no. ${name} won’t do it.`)}>Don’t allow</button>
     {r.sessionKey ? <button className="btn sm" type="button" onClick={() => ctx.openConversation(str(r.sessionKey))}>Open</button> : null}
     <button className="btn pri sm" type="button" disabled={off} onClick={() => void ctx.act(() => resolveApproval(ctx.engine, item, "allow-once"), `Allowed. ${name} carries on.`)}>Allow</button>
   </>;
@@ -109,7 +111,7 @@ function WorkActs({ r, ctx, steer }: { r: Run; ctx: Ctx; steer: () => void }) {
   const name = trunkName(ctx.d, r.agentId), canPause = r.goal?.status === "active", [asking, setAsking] = useState(false);
   return <>
     <button className="btn sm" type="button" disabled={!ctx.write || !r.sessionKey} onClick={steer}><Glyph name="chat" />Steer</button>
-    <button className="btn ghost sm" type="button" disabled={!canPause || !ctx.write || ctx.busy} title={canPause ? undefined : "Needs the engine's per-run pause method."}
+    <button className="btn ghost sm" type="button" disabled={!canPause || !ctx.write || ctx.busy} title={canPause ? undefined : shownWhy("Needs the engine's per-run pause method.")}
       onClick={() => setAsking(true)}>Pause</button>
     {asking ? <PauseDialog r={r} ctx={ctx} name={name} close={() => setAsking(false)} /> : null}
     <button className="btn ghost sm cn-stop" type="button" disabled={!ctx.write || ctx.busy} onClick={() => void ctx.act(() => ctx.engine.request("sessions.abort", { key: r.sessionKey }), "Stopped. What it did so far is kept.")}>Stop</button>
@@ -152,7 +154,7 @@ function NextActs({ r, ctx }: { r: Run; ctx: Ctx }) {
 
 /** The engine can't skip a schedule's single run, nor pass over a Ready card while it stays Ready (the preview's Skip). */
 function SkipButton({ r }: { r: Run }) {
-  return <button className="btn ghost sm" type="button" disabled title={r.kind === "card" ? "Needs the engine's skip method for Ready cards." : "Needs the engine's skip-next-run method."}>Skip</button>;
+  return <button className="btn ghost sm" type="button" disabled title={shownWhy(r.kind === "card" ? "Needs the engine's skip method for Ready cards." : "Needs the engine's skip-next-run method.")}>Skip</button>;
 }
 
 function StuckActs({ r, ctx }: { r: Run; ctx: Ctx }) {

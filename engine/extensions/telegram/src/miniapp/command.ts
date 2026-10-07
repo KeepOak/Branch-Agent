@@ -10,8 +10,8 @@ export function registerTelegramMiniAppCommand(
   launchTickets: TelegramMiniAppLaunchTickets,
 ): void {
   api.registerCommand({
-    name: "dashboard",
-    description: "Open the Branch Agent dashboard",
+    name: "controlui",
+    description: "Open the Branch Agent Control UI",
     channels: ["telegram"],
     requireAuth: true,
     exposeSenderIsOwner: true,
@@ -23,7 +23,12 @@ export function registerTelegramMiniAppCommand(
       const accountId = normalizeAccountId(ctx.accountId ?? DEFAULT_ACCOUNT_ID);
       const userId = resolveTelegramDirectUserId(ctx);
       if (!(await isTelegramMiniAppOwner({ cfg, accountId, userId }))) {
-        return { text: "Restricted to the bot owner." };
+        return {
+          text:
+            "Restricted to the bot owner. Ask your Branch Agent administrator to add your numeric " +
+            `Telegram user ID${userId ? ` (${userId})` : ""} to this bot account's allowFrom or ` +
+            "commands.ownerAllowFrom, then retry /controlui. Wildcards and usernames do not grant Control UI access.",
+        };
       }
       let pageUrl: URL;
       try {
@@ -36,12 +41,12 @@ export function registerTelegramMiniAppCommand(
         launchTicket: launchTickets.issue({ accountId, userId }),
       }).toString();
       return {
-        text: "Open Branch Agent dashboard.",
+        text: "Open Branch Agent Control UI.",
         presentation: {
           blocks: [
             {
               type: "buttons",
-              buttons: [{ label: "Open dashboard", webApp: { url: pageUrl.toString() } }],
+              buttons: [{ label: "Open Control UI", webApp: { url: pageUrl.toString() } }],
             },
           ],
         },

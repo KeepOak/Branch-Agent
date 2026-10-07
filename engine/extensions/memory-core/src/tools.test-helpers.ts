@@ -10,7 +10,7 @@ export function asBranchConfig(config: Partial<BranchConfig>): BranchConfig {
 }
 
 function createDefaultMemoryToolConfig(): BranchConfig {
-  return asBranchConfig({ agents: { list: [{ id: "main", default: true }] } });
+  return asBranchConfig({ agents: { entries: { main: {} } } });
 }
 
 export function createMemorySearchToolOrThrow(params?: {

@@ -10,6 +10,7 @@ export type ThreadRoom = {
   ownAgentId?: string;
   trunkName: (agentId: string) => string;
   whereRuns: (peer: string) => string | null;
+  isOnline?: (peer: string) => boolean;
 };
 
 type Other = Extract<Sender, { kind: "person" | "agent" }>;

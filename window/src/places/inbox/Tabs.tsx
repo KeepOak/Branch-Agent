@@ -1,5 +1,6 @@
 // Inbox › Finished (§4.6.2.2), Later (§4.6.2.4) and the Messages section under every tab (preview 93-g3p).
 import { useState } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { Icon } from "../../shell/icons";
 import { Face } from "../../face/Face";
@@ -7,6 +8,7 @@ import { agentName, type Agent, type Session } from "../overview/engine";
 import { InboxRow } from "./Rows";
 
 export const DEFERRED_GAP = "Needs the engine's deferred-work queue (callbacks, steps you do by hand, work handed over to later).";
+// TODO(engine-lane): Messages (Important / Everything else / All) needs the engine's message triage method.
 export const MESSAGES_GAP = "Needs the engine's message triage method.";
 
 /** Conversations whose work has finished, newest first. */
@@ -32,7 +34,7 @@ export function Finished({ list, agents, loading, open }: { list: Session[]; age
 export function Later() {
   return <>
     <p className="ib-hint ib-lead">Work that finishes later: by a reply it waits for, a step only you can do, or a job handed over to another time.</p>
-    <EmptyLine icon={<Icon name="clock" />}><span title={DEFERRED_GAP}>Nothing is waiting to finish later.</span></EmptyLine>
+    <EmptyLine icon={<Icon name="clock" />}><span title={shownWhy(DEFERRED_GAP)}>Nothing is waiting to finish later.</span></EmptyLine>
   </>;
 }
 
@@ -40,9 +42,9 @@ export function Messages() {
   return <section className="ib-sec ib-messages" aria-label="Messages">
     <div className="ib-sec-h"><h2>Messages</h2></div>
     <div className="ib-seg" role="group" aria-label="Show">
-      {["Important", "Everything else", "All"].map((name, i) => <button key={name} type="button" aria-pressed={i === 0} disabled title={MESSAGES_GAP}>{name}</button>)}
+      {["Important", "Everything else", "All"].map((name, i) => <button key={name} type="button" aria-pressed={i === 0} disabled title={shownWhy(MESSAGES_GAP)}>{name}</button>)}
     </div>
-    <label className="ib-search"><Icon name="search" small /><input disabled placeholder="Search messages" aria-label="Search messages" title={MESSAGES_GAP} /></label>
-    <p className="ib-hint ib-after">{MESSAGES_GAP}</p>
+    <label className="ib-search"><Icon name="search" small /><input disabled placeholder="Search messages" aria-label="Search messages" title={shownWhy(MESSAGES_GAP)} /></label>
+    {shownWhy(MESSAGES_GAP) && <p className="ib-hint ib-after">{shownWhy(MESSAGES_GAP)}</p>}
   </section>;
 }

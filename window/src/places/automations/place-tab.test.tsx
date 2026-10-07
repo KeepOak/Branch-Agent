@@ -24,4 +24,24 @@ describe("branch:place-tab", () => {
     await act(async () => { window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "inbox", tab: "Triggers" } })); });
     expect(host.querySelector("[role=tab][aria-selected=true]")?.textContent).toBe("Board");
   });
+  it("moves between all five tabs with arrows, Home and End using one tab stop", async () => {
+    const engine = { request: vi.fn(async () => ({})) as unknown as WindowEngine["request"], onEvent: () => () => {}, sessionKey: null, scopes: ["operator.admin"] } as WindowEngine;
+    const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    await act(async () => { root!.render(<AutomationsPlace engine={engine} facts={{ running: 0, waiting: 0 }} openConversation={() => {}} openPlace={() => {}} level="regular" />); });
+    const tabs = [...host.querySelectorAll<HTMLButtonElement>('[role="tablist"][aria-label="Automations"] [role="tab"]')];
+    expect(tabs.map(tab => tab.tabIndex)).toEqual([0, -1, -1, -1, -1]);
+    const key = async (tab: HTMLButtonElement, name: string) => act(async () => { tab.dispatchEvent(new KeyboardEvent("keydown", { key: name, bubbles: true })); });
+    tabs[0].focus();
+    await key(tabs[0], "ArrowLeft");
+    expect(document.activeElement).toBe(tabs[4]);
+    expect(tabs[4].getAttribute("aria-selected")).toBe("true");
+    await key(tabs[4], "Home");
+    await key(tabs[0], "ArrowRight");
+    expect(document.activeElement).toBe(tabs[1]);
+    await key(tabs[1], "End");
+    expect(document.activeElement).toBe(tabs[4]);
+    expect(tabs.map(tab => tab.tabIndex)).toEqual([-1, -1, -1, -1, 0]);
+    await act(async () => { tabs[4].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", ctrlKey: true, bubbles: true })); });
+    expect(document.activeElement).toBe(tabs[4]);
+  });
 });

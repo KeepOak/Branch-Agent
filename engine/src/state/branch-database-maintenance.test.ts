@@ -2,10 +2,8 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { ensureMemoryIndexSchema } from "../../packages/memory-host-sdk/src/host/memory-schema.js";
 import { assertSqliteSchemaContains } from "../infra/sqlite-schema-contract.js";
-import {
-  assertBranchAgentDatabaseForMaintenance,
-  BRANCH_AGENT_SCHEMA_VERSION,
-} from "./branch-agent-db.js";
+import { assertBranchAgentDatabaseForMaintenance } from "./branch-agent-db-maintenance.js";
+import { BRANCH_AGENT_SCHEMA_VERSION } from "./branch-agent-db.js";
 import { BRANCH_AGENT_SCHEMA_SQL } from "./branch-agent-schema.js";
 import {
   GROVE_LAZY_ADDITIVE_STATE_COLUMN_DEFINITIONS,

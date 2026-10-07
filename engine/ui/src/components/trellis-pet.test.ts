@@ -31,13 +31,13 @@ async function advancePetFrame(element: TrellisPetElement): Promise<void> {
 }
 
 function poke(element: TrellisPetElement): void {
-  const sprite = element.querySelector(".lobster-pet");
+  const sprite = element.querySelector(".trellis-pet");
   sprite?.dispatchEvent(new MouseEvent("pointerdown", { button: 0 }));
   sprite?.dispatchEvent(new MouseEvent("pointerup", { button: 0 }));
 }
 
 function spriteClasses(element: TrellisPetElement): string {
-  return element.querySelector(".lobster-pet")?.className ?? "";
+  return element.querySelector(".trellis-pet")?.className ?? "";
 }
 
 async function advanceUntilAct(element: TrellisPetElement, maxMs: number): Promise<string | null> {
@@ -217,13 +217,13 @@ describe("trellis pet element", () => {
     element.performAct("shed");
     await vi.advanceTimersByTimeAsync(2600);
     await element.updateComplete;
-    expect(element.querySelector(".lobster-pet--shell")).not.toBeNull();
+    expect(element.querySelector(".trellis-pet--shell")).not.toBeNull();
     const lead = element.parentElement!.querySelector(".agent-chat__composer-lead")!;
     lead.getBoundingClientRect().width = 720;
     window.dispatchEvent(new Event("resize"));
     await advancePetFrame(element);
     await element.updateComplete;
-    expect(element.querySelector(".lobster-pet--shell")).toBeNull();
+    expect(element.querySelector(".trellis-pet--shell")).toBeNull();
   });
 
   it("starts hidden and arrives on its seeded visit schedule", async () => {
@@ -236,7 +236,7 @@ describe("trellis pet element", () => {
     await element.updateComplete;
     expect(spritePresent(element)).toBe(false);
     await arrive(element);
-    expect(element.querySelector(".lobster-pet__svg")).not.toBeNull();
+    expect(element.querySelector(".trellis-pet__svg")).not.toBeNull();
     expect(spriteClasses(element)).toContain("trellis-pet--idle");
     expect(["top", "floor"]).toContain(element.getAttribute("data-spot"));
   });
@@ -317,15 +317,15 @@ describe("trellis pet element", () => {
     expect(
       await advanceUntil(
         shedding,
-        () => shedding.querySelector(".lobster-pet--shell") !== null,
+        () => shedding.querySelector(".trellis-pet--shell") !== null,
         30_000,
       ),
     ).toBe(true);
 
     const twins = createPet(21);
     await arrive(twins);
-    expect(twins.querySelectorAll(".lobster-pet:not(.lobster-pet--shell)")).toHaveLength(2);
-    expect(twins.querySelector(".lobster-pet--twin")?.getAttribute("title")).toMatch(/ Jr\.$/);
+    expect(twins.querySelectorAll(".trellis-pet:not(.trellis-pet--shell)")).toHaveLength(2);
+    expect(twins.querySelector(".trellis-pet--twin")?.getAttribute("title")).toMatch(/ Jr\.$/);
   });
 
   it("records arrivals in the trellisIndex", async () => {
@@ -351,13 +351,13 @@ describe("trellis pet element", () => {
     const clientX = 1200;
     const clientY = 850;
     element
-      .querySelector(".lobster-pet")
+      .querySelector(".trellis-pet")
       ?.dispatchEvent(
         new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX, clientY }),
       );
     await element.updateComplete;
 
-    const dropdown = element.querySelector(".lobster-pet-dismiss-menu");
+    const dropdown = element.querySelector(".trellis-pet-dismiss-menu");
     expect(dropdown?.getAttribute("placement")).toBe("top-start");
     const trigger = element.querySelector<HTMLElement>('[slot="trigger"]');
     expect(trigger?.style.left).toBe(`${clientX}px`);
@@ -369,7 +369,7 @@ describe("trellis pet element", () => {
     const element = createPet(42);
     await arrive(element);
 
-    const sprite = element.querySelector(".lobster-pet");
+    const sprite = element.querySelector(".trellis-pet");
     sprite?.dispatchEvent(new MouseEvent("pointerdown", { button: 2 }));
     const shoo = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
     sprite?.dispatchEvent(shoo);
@@ -379,7 +379,7 @@ describe("trellis pet element", () => {
     expect(spritePresent(element)).toBe(true);
     expect(spriteClasses(element)).not.toContain("trellis-pet--act-startle");
     expect(
-      [...element.querySelectorAll(".lobster-pet-dismiss-menu wa-dropdown-item")].map((item) =>
+      [...element.querySelectorAll(".trellis-pet-dismiss-menu wa-dropdown-item")].map((item) =>
         item.textContent?.trim(),
       ),
     ).toEqual(["Dismiss", "Dismiss and don't show again"]);
@@ -405,7 +405,7 @@ describe("trellis pet element", () => {
     await arrive(element);
 
     element
-      .querySelector(".lobster-pet")
+      .querySelector(".trellis-pet")
       ?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     await element.updateComplete;
     element.querySelector<HTMLElement>('wa-dropdown-item[value="dismiss-permanently"]')?.click();
@@ -502,7 +502,7 @@ describe("trellis pet element", () => {
     await arrive(element);
 
     element
-      .querySelector(".lobster-pet:not(.lobster-pet--shell)")
+      .querySelector(".trellis-pet:not(.trellis-pet--shell)")
       ?.dispatchEvent(new Event("contextmenu", { cancelable: true }));
     await element.updateComplete;
     element.querySelector<HTMLElement>('wa-dropdown-item[value="dismiss"]')?.click();
@@ -519,7 +519,7 @@ describe("trellis pet element", () => {
     const element = createPet(42, "offline");
     await element.updateComplete;
 
-    const sprite = element.querySelector(".lobster-pet");
+    const sprite = element.querySelector(".trellis-pet");
     sprite?.dispatchEvent(new Event("pointerdown"));
     await vi.advanceTimersByTimeAsync(300);
     sprite?.dispatchEvent(new Event("pointercancel"));
@@ -637,12 +637,12 @@ describe("trellis pet element", () => {
     await vi.advanceTimersByTimeAsync(200);
     document.dispatchEvent(new MouseEvent("pointermove", { clientX: 400 }));
     await element.updateComplete;
-    expect(element.querySelector(".lobster-pet")?.getAttribute("style")).toContain("--lob-face:1");
+    expect(element.querySelector(".trellis-pet")?.getAttribute("style")).toContain("--lob-face:1");
 
     await vi.advanceTimersByTimeAsync(200);
     document.dispatchEvent(new MouseEvent("pointermove", { clientX: -400 }));
     await element.updateComplete;
-    expect(element.querySelector(".lobster-pet")?.getAttribute("style")).toContain("--lob-face:-1");
+    expect(element.querySelector(".trellis-pet")?.getAttribute("style")).toContain("--lob-face:-1");
   });
 
   it("travels light on first sighting and on same-version reloads", async () => {
@@ -828,7 +828,7 @@ describe("trellis pet element", () => {
     const element = createPet(42);
     await arrive(element);
 
-    expect(element.querySelector(".lobster-pet__svg")).not.toBeNull();
+    expect(element.querySelector(".trellis-pet__svg")).not.toBeNull();
     // Tab switches re-enter through the visibilitychange resume path, which
     // must stay inert under reduced motion too. Mode flips must not startle.
     document.dispatchEvent(new Event("visibilitychange"));
@@ -955,7 +955,7 @@ describe("rare trellis loads", () => {
 
     expect(spriteClasses(element)).toContain("trellis-pet--elder");
     expect(element.querySelector(".lob-barnacles")).not.toBeNull();
-    expect(element.querySelector(".lobster-pet")?.getAttribute("title")).toBe(
+    expect(element.querySelector(".trellis-pet")?.getAttribute("title")).toBe(
       "Methuselah · old as the tides",
     );
   });
@@ -977,12 +977,12 @@ describe("rare trellis loads", () => {
 
     // The seeded look is repainted as the remembered gold visitor.
     expect(spriteClasses(element)).toContain("trellis-pet--palette-gold");
-    expect(element.querySelector(".lobster-pet")?.getAttribute("title")).toBe(
+    expect(element.querySelector(".trellis-pet")?.getAttribute("title")).toBe(
       "Goldenrod · an old friend",
     );
     // This seed also floats in under a balloon...
     expect(spriteClasses(element)).toContain("trellis-pet--enter-balloon");
-    expect(element.querySelector(".lobster-pet__balloon")).not.toBeNull();
+    expect(element.querySelector(".trellis-pet__balloon")).not.toBeNull();
     // ...and old friends greet even before the familiarity tier does.
     const waved = await advanceUntil(
       element,
@@ -1006,8 +1006,8 @@ describe("rare trellis loads", () => {
 
     expect(spriteClasses(element)).toContain("trellis-pet--shiny");
     expect(spriteClasses(element)).toContain(`trellis-pet--palette-${shinyLook.palette.id}`);
-    expect(element.querySelectorAll(".lobster-pet__sparkle").length).toBeGreaterThan(0);
-    expect(element.querySelector(".lobster-pet")?.getAttribute("title")).toContain("✦");
+    expect(element.querySelectorAll(".trellis-pet__sparkle").length).toBeGreaterThan(0);
+    expect(element.querySelector(".trellis-pet")?.getAttribute("title")).toContain("✦");
     expect(getTrellisIndexEntries().get(shinyLook.palette.id)?.shinySeenAt).not.toBeNull();
   });
 
@@ -1020,25 +1020,25 @@ describe("rare trellis loads", () => {
     // Seed 104 is a shy load: no pet ever, but the tide does not care.
     const washedUp = await advanceUntil(
       element,
-      () => element.querySelector(".lobster-bottle") !== null,
+      () => element.querySelector(".trellis-bottle") !== null,
       300_000,
     );
     expect(washedUp).toBe(true);
     expect(spritePresent(element)).toBe(false);
-    expect(element.querySelector(".lobster-bottle")?.getAttribute("title")).toBe(
+    expect(element.querySelector(".trellis-bottle")?.getAttribute("title")).toBe(
       "a message in a bottle",
     );
 
-    element.querySelector(".lobster-bottle")?.dispatchEvent(new Event("pointerdown"));
+    element.querySelector(".trellis-bottle")?.dispatchEvent(new Event("pointerdown"));
     await element.updateComplete;
-    const opened = element.querySelector(".lobster-bottle");
+    const opened = element.querySelector(".trellis-bottle");
     expect(opened?.className).toContain("trellis-bottle--open");
     expect(opened?.getAttribute("title")).toBe("a shell is just armor you outgrew");
 
     // Read fortunes drift back out with the tide.
     const ebbed = await advanceUntil(
       element,
-      () => element.querySelector(".lobster-bottle") === null,
+      () => element.querySelector(".trellis-bottle") === null,
       150_000,
     );
     expect(ebbed).toBe(true);
@@ -1052,17 +1052,17 @@ describe("rare trellis loads", () => {
 
     const appeared = await advanceUntil(
       element,
-      () => element.querySelector(".lobster-pet--snail") !== null,
+      () => element.querySelector(".trellis-pet--snail") !== null,
       500_000,
     );
     expect(appeared).toBe(true);
     // A regular passer's 11s crossing would be long over; the snail abides.
     await vi.advanceTimersByTimeAsync(60_000);
     await element.updateComplete;
-    expect(element.querySelector(".lobster-pet--snail")).not.toBeNull();
+    expect(element.querySelector(".trellis-pet--snail")).not.toBeNull();
     const gone = await advanceUntil(
       element,
-      () => element.querySelector(".lobster-pet--snail") === null,
+      () => element.querySelector(".trellis-pet--snail") === null,
       40_000,
     );
     expect(gone).toBe(true);

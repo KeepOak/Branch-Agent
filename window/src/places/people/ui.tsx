@@ -1,5 +1,6 @@
 // People place building blocks drawn as the preview draws them (patches 40-places / 42-placesbp, §4.6.5).
 import type { KeyboardEvent, ReactNode } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { Icon } from "../../shell/icons";
 import { initials, personColour, type Activity } from "./data";
@@ -66,21 +67,21 @@ export function Seg<T extends string>({ label, value, options, onChange, off }: 
     e.preventDefault();
     onChange(options[(Math.max(0, i) + step + options.length) % options.length].id);
   };
-  return <span className="pp-seg" role="group" aria-label={label} onKeyDown={key} title={off}>
-    {options.map(o => <button key={o.id} type="button" aria-pressed={o.id === value} disabled={!!off || !onChange} title={off} onClick={() => onChange?.(o.id)}>{o.name}</button>)}
+  return <span className="pp-seg" role="group" aria-label={label} onKeyDown={key} title={shownWhy(off)}>
+    {options.map(o => <button key={o.id} type="button" aria-pressed={o.id === value} disabled={!!off || !onChange} title={shownWhy(off)} onClick={() => onChange?.(o.id)}>{o.name}</button>)}
   </span>;
 }
 
 /** A switch; `off` greys it with its reason. */
 export function Sw({ label, on, onChange, off }: { label: string; on: boolean; onChange?: (v: boolean) => void; off?: string }) {
-  return <button type="button" role="switch" className="pp-sw" aria-checked={on} aria-label={label} disabled={!!off || !onChange} title={off} onClick={() => onChange?.(!on)} />;
+  return <button type="button" role="switch" className="pp-sw" aria-checked={on} aria-label={label} disabled={!!off || !onChange} title={shownWhy(off)} onClick={() => onChange?.(!on)} />;
 }
 
 /** A settings-style row: title, sub-line, control on the right; a greyed row carries its reason. */
 export function Ctl({ title, line, children, off }: { title: string; line: ReactNode; children?: ReactNode; off?: string }) {
   return <div className="pp-ctl" data-off={off ? "" : undefined}>
     <b>{title}</b>{children && <span className="right">{children}</span>}
-    <small>{line}{off && <span className="pp-why"> {off}</span>}</small>
+    <small>{line}{shownWhy(off) && <span className="pp-why"> {shownWhy(off)}</span>}</small>
   </div>;
 }
 

@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { AgentState } from "./agentState";
 import { SHEET } from "./painter";
 import { FacePlayer } from "./player";
 import "./face.css";
-import { useTrunkAppearance } from "./appearance";
+import { useTrunkAppearance, useTrunkPebbleLook, useTrunkEmojiFace, type PebbleLook } from "./appearance";
 import { CharacterFace } from "./CharacterFace";
 import { useLookPrefs, type LookPrefs } from "./look-prefs";
 
@@ -17,14 +17,15 @@ type Props = {
   priority?: number;
   /** Plays the pebble's hover and pat reactions (§6.2 "Reactions"). */
   reactive?: boolean;
+  pebbleLook?: PebbleLook;
 };
 
 /** At 24 px and smaller the face is the flat pebble: the colour in its shape with two white eyes (§6.3). */
-function FlatPebble({ size, label, state }: { size: number; label?: string; state: AgentState }) {
+function FlatPebble({ size, label, state, look }: { size: number; label?: string; state: AgentState; look?: PebbleLook }) {
   return (
     <span
       className={state === "sleep" ? "flat-pebble asleep" : "flat-pebble"}
-      style={{ width: size, height: size }}
+      style={{ width: size, height: size, background: look?.colour, borderRadius: ["50%", "58% 42% 54% 46% / 52% 56% 44% 48%", "46% 54% 42% 58% / 60% 44% 56% 40%", "62% 38% 50% 50% / 45% 55% 45% 55%", "42% 58% 58% 42% / 50% 42% 58% 50%"][Math.max(0, ["Circle", "Stone", "Leaf", "Acorn", "Shield"].indexOf(look?.shape || "Circle"))] } as CSSProperties}
       role="img"
       aria-label={label}
       data-face-state={state}
@@ -66,9 +67,11 @@ function useVisibility(player: FacePlayer | null, el: HTMLElement | null): void 
 /** One Trunk face: the classic pebble's still at rest, its state's sheet when something happens. */
 export function Face(props: Props) {
   const appearance = useTrunkAppearance(props.label);
+  const pebbleLook = useTrunkPebbleLook(props.label);
+  const emoji = useTrunkEmojiFace(props.label);
   const look = useLookPrefs();
   const shown = { ...props, state: shownState(props.state ?? "idle", look), reactive: Boolean(props.reactive) && look.reactsToTouch };
-  return appearance ? <CharacterFace {...shown} appearance={appearance} /> : <ClassicFace {...shown} />;
+  return appearance ? <CharacterFace {...shown} appearance={appearance} /> : emoji ? <span className="emoji-pebble" role="img" aria-label={props.label} style={{ width: props.size, height: props.size, background: pebbleLook?.colour, fontSize: Math.round(props.size * 0.56) }}>{emoji}</span> : <ClassicFace {...shown} pebbleLook={props.pebbleLook ?? pebbleLook} />;
 }
 
 /** The state a face plays under Appearance › Characters: "Acts out what it is doing" off keeps it still (asleep stays
@@ -79,7 +82,7 @@ export function shownState(state: AgentState, look: Pick<LookPrefs, "actsOut" | 
   return state;
 }
 
-function ClassicFace({ size, label, state = "idle", priority = 0, reactive = false }: Props) {
+function ClassicFace({ size, label, state = "idle", priority = 0, reactive = false, pebbleLook }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const box = useRef<HTMLSpanElement>(null);
   const [player, setPlayer] = useState<FacePlayer | null>(null);
@@ -89,13 +92,13 @@ function ClassicFace({ size, label, state = "idle", priority = 0, reactive = fal
     if (!canvas.current) {
       return;
     }
-    const p = new FacePlayer(canvas.current);
+    const p = new FacePlayer(canvas.current, { colour: pebbleLook?.colour, shape: ["Circle", "Stone", "Leaf", "Acorn", "Shield"].indexOf(pebbleLook?.shape || "Circle"), eyes: (pebbleLook?.eyes || "Round").toLowerCase() });
     p.onPlaying = setPlaying;
     p.onError = () => setBroken(true);
     p.showStill().catch(() => setBroken(true));
     setPlayer(p);
     return () => p.dispose();
-  }, []);
+  }, [pebbleLook?.colour, pebbleLook?.shape, pebbleLook?.eyes]);
   useEffect(() => {
     if (player) {
       player.priority = priority;
@@ -105,7 +108,7 @@ function ClassicFace({ size, label, state = "idle", priority = 0, reactive = fal
   useThemeRepaint(player);
   useVisibility(player, box.current);
   if (size <= 24) {
-    return <FlatPebble size={size} label={label} state={state} />;
+    return <FlatPebble size={size} label={label} state={state} look={pebbleLook} />;
   }
   const frame = Math.round(size / SHEET.share);
   const ratio = Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)));
