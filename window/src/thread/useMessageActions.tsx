@@ -47,7 +47,8 @@ export function useMessageActions(ctx: ThreadContextValue, opts: Options): { act
 
   const retry = (userEntryId: string) => {
     if (!engine) return;
-    askAgain(engine, userEntryId).then(reload, fail);
+    // With the window's own send the new turn shows live; reading history again mid-turn would draw it twice.
+    askAgain(engine, userEntryId).then(engine.send ? undefined : reload, fail);
   };
   const react = (entryId: string | undefined, emoji: string, remove = false) => {
     if (!engine || !entryId) return;
@@ -101,7 +102,7 @@ export function useMessageActions(ctx: ThreadContextValue, opts: Options): { act
   const close = () => setDialog(null);
   let node: ReactNode = null;
   if (dialog?.kind === "edit" && engine) {
-    node = <EditDialog text={dialog.text} onClose={close} onSend={async (words) => { await editAndSend(engine, dialog.entryId, words); reload(); }} />;
+    node = <EditDialog text={dialog.text} onClose={close} onSend={async (words) => { await editAndSend(engine, dialog.entryId, words); if (!engine.send) reload(); }} />;
   } else if (dialog?.kind === "branch" && engine) {
     node = (
       <BranchDialog

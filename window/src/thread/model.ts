@@ -25,6 +25,8 @@ export type MessageMeta = {
   /** The transcript entry id (`__branch.id`): what rewind, fork and reactions address. */
   entryId?: string;
   runId?: string;
+  /** Your message's own run (its idempotency key, "<runId>:user"): what this window sent it as. */
+  runKey?: string;
   timestamp?: number;
   model?: string;
   provider?: string;
@@ -74,6 +76,9 @@ export function readFileChanges(args: unknown): FileChange[] {
 
 export type Block =
   | { kind: "user"; key: string; text: string; meta?: MessageMeta; attachments?: Attachment[] }
+  /** Words you sent while the turn worked, which it took at its next step (`__branch.steerTargetRunId`). Part of
+   *  that turn, not a turn of its own. */
+  | { kind: "steer"; key: string; text: string; meta?: MessageMeta }
   | { kind: "text"; key: string; text: string; streaming: boolean; meta?: MessageMeta; attachments?: Attachment[] }
   | { kind: "thinking"; key: string; text: string; live: boolean }
   | { kind: "preamble"; key: string; text: string }

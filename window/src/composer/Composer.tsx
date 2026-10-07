@@ -39,7 +39,7 @@ type Props = {
   name: string;
   working: boolean;
   disabled: boolean;
-  onSend: (text: string, extras?: SendExtras) => void | Promise<boolean>;
+  onSend: (text: string, extras?: SendExtras, idempotencyKey?: string) => void | Promise<boolean>;
   onStop: () => void;
   engine?: WindowEngine;
   sessionKey?: string | null;
@@ -152,7 +152,7 @@ export function Composer(props: Props) {
     [onSend, draft.files, draft.people, props.replyTo],
   );
   const line = useWaitingLine(engine?.sessionKey ?? null, working, Boolean(props.offline), (item, steer) => {
-    onSend(item.text, buildExtras(item.text, item.files, [], steer ? "steer" : undefined));
+    onSend(item.text, buildExtras(item.text, item.files, [], steer ? "steer" : undefined), item.id);
     if (steer) toast(`Steered ${trunkName}. It picks this up at its next step.`);
   });
   const bg = useBackground(engine, conv.trunkId, props.mainKey);

@@ -5,7 +5,7 @@ import { agentState } from "../face/agentState";
 import { PRIORITY } from "../face/cap";
 import { resolveApproval } from "./actions";
 import { ApprovalCard, ApprovalGroup } from "./ApprovalCard";
-import { DoneLine, ErrorBlock, Notice, Reply, StepsFold, Thinking, Typing, UserMessage } from "./blocks";
+import { DoneLine, ErrorBlock, Notice, Reply, SteeredNote, StepsFold, Thinking, Typing, UserMessage } from "./blocks";
 import { ThreadContext, type ThreadContextValue } from "./context";
 import { ReactionChips } from "./dialogs";
 import { DoneCheer } from "./DoneCheer";
@@ -34,7 +34,7 @@ import { RoomLine } from "../rooms/RoomLine";
 import { fromName, otherSender, type ThreadRoom } from "../rooms/thread-room";
 import "./prefs.css";
 import { QueuedMessages, useOwnWaitingLine } from "./QueuedMessages";
-import type { QueuedMessage } from "../connect/session";
+import type { QueuedMessage, SteeredNote as Steered } from "../connect/session";
 import { dayStamp, formatDuration, fullTime, messageTime, modelName, stepLabel } from "./format";
 import { TopicCard, TopicOrigin, topicPosition, type TopicUpdate } from "./TopicCard";
 import { suggestionsFor } from "./suggestions";
@@ -49,6 +49,8 @@ type Props = {
   pendingUser: string | null;
   /** Messages accepted but waiting for a turn (connect/session.ts queued). */
   queued?: QueuedMessage[];
+  /** What you told the running turn (steered), shown as notes under it until the turn ends. */
+  steered?: Steered[];
   running: boolean;
   /** When the live run started (engine time); the "Working" clock counts from it. */
   liveStartedAt?: number | null;
@@ -95,14 +97,25 @@ const RESTART_NOT_RESUMED = "Interrupted by a restart. Continue?";
 const NEAR_END_PX = 80;
 const LATEST_PX = 450;
 
-function useFollow(signature: string) {
+/** `sent` lists what you just sent (your message over the turn, a steer, the newest waiting one). When one of them
+ *  becomes something new, the thread jumps to the latest message even if you had scrolled up (owner decision 7,
+ *  2026-10-06); everyone else's blocks keep your place. */
+function useFollow(signature: string, sent: readonly (string | null | undefined)[]) {
   const scroller = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const [distance, setDistance] = useState(0);
   const atEnd = useRef(true);
+  const lastSent = useRef(sent);
+  const sentKey = sent.join("\u0000");
+  useEffect(() => {
+    const before = lastSent.current;
+    lastSent.current = sent;
+    if (sent.some((value, i) => value && value !== before[i])) atEnd.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sentKey]);
   useEffect(() => {
     if (atEnd.current) end.current?.scrollIntoView({ block: "end" });
-  }, [signature]);
+  }, [signature, sentKey]);
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
@@ -175,7 +188,7 @@ export function Thread(props: Props) {
   const liveText = live.reduce((n, b) => n + (b.kind === "text" || b.kind === "thinking" ? b.text.length : 1), 0);
   const waitingCount = (props.queued?.length ?? 0) + ownLine.length;
   const signature = `${history.length}:${live.length}:${liveText}:${pendingUser ? 1 : 0}:${running ? 1 : 0}:${extras.length}:${waitingCount}`;
-  const follow = useFollow(signature);
+  const follow = useFollow(signature, [pendingUser, props.steered?.at(-1)?.runId, ownLine.at(-1)?.id]);
   const [finding, setFinding] = useState(false);
   const [findRequest, setFindRequest] = useState({ query: "", nonce: 0 });
   const threadRef = useRef<HTMLDivElement>(null);
@@ -297,8 +310,10 @@ export function Thread(props: Props) {
               <UserMessage block={{ kind: "user", key: "pending", text: pendingUser }} />
             )
           ) : null}
+          <QueuedMessages queued={props.queued ?? []} own={ownLine} room={props.room} part="delivered" />
           {running ? <LiveRun view={view} offset={history.length} /> : null}
-          <QueuedMessages queued={props.queued ?? []} own={ownLine} room={props.room} />
+          {running ? (props.steered ?? []).map((note) => <SteeredNote key={note.runId} name={name} text={note.text} />) : null}
+          <QueuedMessages queued={props.queued ?? []} own={ownLine} room={props.room} part="waiting" sessionKey={props.sessionKey ?? engine?.sessionKey ?? undefined} />
           {(anchors.get(-1) ?? []).map((r) => <QuestionLine key={r.id} record={r} />)}
           {extras.filter((a) => !grouped.has(a.id)).map((a) => <ApprovalCard key={a.id} approval={a} details={details.get(a.id)} name={name} onAnswer={answer} />)}
           {grouped.size === 2 ? <ApprovalGroup approvals={waitingTwo} details={details} name={name} onAnswer={answer} /> : null}
@@ -460,6 +475,8 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
       return view.dismissed.has(block.key) ? null : <ErrorBlock block={block} onDismiss={() => view.setDismissed((s) => new Set(s).add(block.key))} />;
     case "notice":
       return <Notice block={block} />;
+    case "steer":
+      return <SteeredNote name={view.name} text={block.text} />;
     default:
       return null;
   }
