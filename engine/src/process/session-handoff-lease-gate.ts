@@ -20,7 +20,10 @@ import {
   sweepSessionHandoffLeaseLeftovers,
 } from "./session-handoff-lease-files.js";
 
-export { SESSION_HANDOFF_LEASE_MAX_WAIT_MS } from "./session-handoff-lease-files.js";
+export {
+  SESSION_HANDOFF_LEASE_MAX_WAIT_MS,
+  SESSION_HANDOFF_LEASE_REQUEST_WAIT_MS,
+} from "./session-handoff-lease-files.js";
 const RESCAN_MS = 1_000;
 const POLL_MS = 100;
 
@@ -154,6 +157,20 @@ function pollSessionHandoffLeases(): void {
     clearInterval(gate.timer);
     gate.timer = undefined;
   }
+}
+
+/** The session lanes a predecessor holds now, from a scan at most a second old. */
+export function listLeasedSessionLanes(): string[] {
+  if (Date.now() - gate.scannedAt >= RESCAN_MS) refreshSessionHandoffLeases(gate.env);
+  return [...gate.lanes.keys()];
+}
+
+/** Whether a predecessor still holds `lane` (from a scan at most a second old); an expired lane is free. */
+export function isSessionLaneHeldByPredecessor(lane: string): boolean {
+  if (!lane.startsWith(SESSION_LANE_PREFIX)) return false;
+  if (Date.now() - gate.scannedAt >= RESCAN_MS) refreshSessionHandoffLeases(gate.env);
+  const held = gate.lanes.get(lane);
+  return held !== undefined && !(Date.now() >= laneExpiresAt(held) && settleLane(lane, held));
 }
 
 /** Turns parked behind a lease, per lane: they count as queued work for this engine's activity inventory. */
