@@ -13,7 +13,7 @@ import type { WizardView } from "../use-wizard";
 import { ChatLogo as Logo } from "./chatapps-logo";
 import { PILL_WORDS, type App, type CatalogueApp } from "./chatapps-data";
 
-type Session = { id: string; notes: string[]; opened: Set<string>; live: boolean; done: boolean };
+type Session = { id: string; notes: string[]; opened: Set<string>; live: boolean; done: boolean; advancing: boolean };
 
 /** One channel-setup session, in the same shape as useWizard so WizardBody and Footer draw it. */
 export function useChannelWizard(engine: WindowEngine, channel: string | null) {
@@ -21,8 +21,9 @@ export function useChannelWizard(engine: WindowEngine, channel: string | null) {
   const [value, setValue] = useState<unknown>(undefined);
   const [busy, setBusy] = useState(true);
   const [channels, setChannels] = useState<string[]>([]);
-  const s = useRef<Session>({ id: "", notes: [], opened: new Set(), live: true, done: false });
+  const s = useRef<Session>({ id: "", notes: [], opened: new Set(), live: true, done: false, advancing: false });
   const show = (step: WizardStep, waiting: boolean) => {
+    if (!s.current.live) return;
     const url = safeSignInUrl(step.externalUrl);
     if (url && !s.current.opened.has(url)) { s.current.opened.add(url); window.open(url, "_blank", "noopener"); }
     setView({ phase: "step", step, waiting });
@@ -36,7 +37,12 @@ export function useChannelWizard(engine: WindowEngine, channel: string | null) {
     setView(r.status === "done" || (r.done && !r.error && r.status !== "cancelled" && r.status !== "error") ? { phase: "done" } : { phase: "error", message: [r.error || (r.status === "cancelled" ? "Setup was cancelled." : "Setup did not finish."), ...s.current.notes].join("\n\n") });
   };
   const fail = (e: unknown) => { if (s.current.live) { setBusy(false); setView({ phase: "error", message: errorText(e) }); } };
-  const next = (answer?: { stepId: string; value?: unknown }) => { setBusy(true); advance(engine.request.bind(engine), s.current.id, answer, (st) => show(st, true), s.current.notes).then(apply, fail); };
+  const next = (answer?: { stepId: string; value?: unknown }) => {
+    if (!s.current.live || s.current.done || s.current.advancing) return;
+    s.current.advancing = true;
+    setBusy(true);
+    advance(engine.request.bind(engine), s.current.id, answer, (st) => show(st, true), s.current.notes).then(apply, fail).finally(() => { s.current.advancing = false; });
+  };
   /** The first step comes back with wizard.start: notes and engine-run steps move on as advance() does. */
   const first = (r: WizardResult) => {
     const st = r.step;
