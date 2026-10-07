@@ -1853,7 +1853,6 @@ describe("processGatewayAllowlist", () => {
     });
     expect(commitExecAuthorizationMock).not.toHaveBeenCalled();
   });
-<<<<<<< HEAD
 
   describe("cron standing grants", () => {
     const CRON_STORE_KEY = "/tmp/branch-exec-host-cron-store";
@@ -2064,7 +2063,5 @@ describe("processGatewayAllowlist", () => {
       expect(commitExecAuthorizationMock.mock.calls[0]?.[0].allowAlwaysDecision).toBeUndefined();
     });
   });
-=======
->>>>>>> features/mac-pool-09-20261003
 });
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
