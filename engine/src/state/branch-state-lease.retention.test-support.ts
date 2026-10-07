@@ -40,6 +40,10 @@ async function captureCompletedLease(options: LeaseOptions) {
     await callerScope.run(caller, () =>
       withBranchStateLease(options, async (lease) => {
         retained.lease = lease;
+        if (options.heartbeat === "worker") {
+          assert.ok(lease.assertOwnedAsync);
+          await lease.assertOwnedAsync();
+        }
         // The child keeps the real lease-owner scope, but its caller generation has advanced.
         retained.timer = callerScope.run({ label: "next gateway generation" }, () =>
           setInterval(() => undefined, 60_000),
@@ -80,6 +84,12 @@ await withBranchTestState({ label: "lease-retention" }, async (state) => {
       assert.ok(retained.timer);
       assert.throws(() => retained.lease?.assertOwned(), { code: "BRANCH_STATE_LEASE_LOST" });
       assert.throws(() => retained.lease?.renew?.(), { code: "BRANCH_STATE_LEASE_LOST" });
+      if (scenario === "completed-worker") {
+        assert.ok(retained.lease.assertOwnedAsync);
+        await assert.rejects(retained.lease.assertOwnedAsync(), {
+          code: "BRANCH_STATE_LEASE_LOST",
+        });
+      }
       await withBranchStateLease(options, async (next) => next.assertOwned());
     } finally {
       clearInterval(retained.timer);

@@ -24,6 +24,8 @@ const SessionsPatchMutationProperties = {
   color: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   /** User-defined organization bucket ("category", not chat-group); null clears it. */
   category: Type.Optional(Type.Union([SessionLabelString, Type.Null()])),
+  /** The registered project this conversation belongs to; null clears it. */
+  projectId: Type.Optional(Type.Union([NonEmptyString, Type.Null()])),
   boardFace: Type.Optional(Type.Union([Type.Literal("chat"), Type.Literal("dashboard")])),
   /** Shared dashboard default; null restores the built-in split view. */
   boardPresentation: Type.Optional(
@@ -46,6 +48,7 @@ const SessionsPatchMutationProperties = {
         "Epoch ms wake time that hides the session from active lists until then; null wakes it.",
     }),
   ),
+  done: Type.Optional(Type.Union([Type.Boolean(), Type.Null()])),
   unread: Type.Optional(
     Type.Boolean({ description: "Set true to mark unread; false records the session as read." }),
   ),

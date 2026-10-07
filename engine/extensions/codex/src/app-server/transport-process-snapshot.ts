@@ -208,6 +208,7 @@ async function readProcessOutput(
         : command.args,
       {
         encoding: "utf8",
+        windowsHide: true,
         maxBuffer: PROCESS_INSPECTION_MAX_BYTES,
         // Runtime helpers must not load ambient preloads or project configuration.
         cwd: procfs ? "/" : undefined,

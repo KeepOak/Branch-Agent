@@ -118,7 +118,7 @@ describe("scripts/check-deprecated-api-usage", () => {
         "extensions/probe/src/a.ts":
           'export { x } from "branch/plugin-sdk/inbound-reply-dispatch";\ndeliverOutboundPayloads();',
         "packages/a.ts":
-          'import { x } from "branch/plugin-sdk/command-auth";\ndeliverOutboundPayloads();',
+          'import { x } from "branch/plugin-sdk/agent-media-payload";\ndeliverOutboundPayloads();',
         "src/infra/outbound/deliver.ts": "deliverOutboundPayloads();",
         "src/a.test.ts": "deliverOutboundPayloads();",
       },
@@ -137,7 +137,7 @@ describe("scripts/check-deprecated-api-usage", () => {
         "Deprecated API usage guard failed:",
         "- plugin-sdk-compat-subpaths: src/a.ts:1: branch/plugin-sdk/inbound-reply-dispatch (use focused non-deprecated plugin SDK subpaths)",
         "- plugin-sdk-compat-subpaths: src/a.ts:2: @branch/plugin-sdk/inbound-reply-dispatch (use focused non-deprecated plugin SDK subpaths)",
-        "- plugin-sdk-compat-subpaths: packages/a.ts:1: branch/plugin-sdk/command-auth (use focused non-deprecated plugin SDK subpaths)",
+        "- plugin-sdk-compat-subpaths: packages/a.ts:1: branch/plugin-sdk/agent-media-payload (use focused non-deprecated plugin SDK subpaths)",
         "- extension-plugin-sdk-compat-subpaths: extensions/probe/src/a.ts:1: branch/plugin-sdk/inbound-reply-dispatch (extensions must use focused non-deprecated plugin SDK subpaths)",
         "- facade-internal-imports: src/a.ts:1: branch/plugin-sdk/inbound-reply-dispatch (use branch/plugin-sdk/channel-inbound)",
         "- facade-internal-imports: src/a.ts:2: @branch/plugin-sdk/inbound-reply-dispatch (use branch/plugin-sdk/channel-inbound)",

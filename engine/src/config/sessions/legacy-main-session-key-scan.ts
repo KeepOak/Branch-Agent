@@ -42,6 +42,14 @@ function canonicalKeyFor(key: string, legacyAgentId: string, ownerAgentId: strin
   return prefix ? `agent:${ownerAgentId}:${key.slice(prefix.length)}` : null;
 }
 
+function isContactMigrationSource(key: string, entryJson: string, legacyAgentId: string): boolean {
+  const entry = JSON.parse(entryJson) as { movedToSessionKey?: string; archiveReason?: string };
+  return (
+    Boolean(entry.movedToSessionKey) ||
+    (legacyAgentKeyPrefix(key, legacyAgentId) !== null && entry.archiveReason === "empty")
+  );
+}
+
 export function storeHasLegacyAgentSessionKey(params: {
   legacyAgentId: string;
   store: PhysicalStore;
@@ -51,8 +59,14 @@ export function storeHasLegacyAgentSessionKey(params: {
     (database) =>
       executeSqliteQuerySync(
         database.db,
-        getSessionKysely(database.db).selectFrom("session_nodes").select("session_key"),
-      ).rows.some((row) => legacyAgentKeyPrefix(row.session_key, params.legacyAgentId) !== null),
+        getSessionKysely(database.db)
+          .selectFrom("session_nodes")
+          .select(["session_key", "entry_json"]),
+      ).rows.some(
+        (row) =>
+          legacyAgentKeyPrefix(row.session_key, params.legacyAgentId) !== null &&
+          !isContactMigrationSource(row.session_key, row.entry_json, params.legacyAgentId),
+      ),
     { agentId: params.store.databaseAgentId, env: params.env, path: params.store.path },
   );
   // A missing database, schema, or table proves absence exactly as the armed claim
@@ -94,19 +108,26 @@ export function readClaimsFromStores(params: {
       (database) =>
         executeSqliteQuerySync(
           database.db,
-          getSessionKysely(database.db).selectFrom("session_nodes").select("session_key"),
+          getSessionKysely(database.db)
+            .selectFrom("session_nodes")
+            .select(["session_key", "entry_json"]),
         ).rows,
     );
     if (keys) {
       candidates.set(
         store,
-        keys.map(({ session_key: key }) => {
-          const canonicalKey = canonicalKeyFor(key, params.legacyAgentId, params.ownerAgentId);
-          if (canonicalKey) {
-            targets.add(canonicalKey);
-          }
-          return { key, canonicalKey: canonicalKey ?? key };
-        }),
+        keys
+          .filter(
+            ({ session_key, entry_json }) =>
+              !isContactMigrationSource(session_key, entry_json, params.legacyAgentId),
+          )
+          .map(({ session_key: key }) => {
+            const canonicalKey = canonicalKeyFor(key, params.legacyAgentId, params.ownerAgentId);
+            if (canonicalKey) {
+              targets.add(canonicalKey);
+            }
+            return { key, canonicalKey: canonicalKey ?? key };
+          }),
       );
     }
   }

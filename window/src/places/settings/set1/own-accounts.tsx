@@ -20,7 +20,7 @@ export function OwnAccounts({ engine }: { engine: WindowEngine }) {
     await own.reload();
   });
   return (
-    <Sec personal title="Your own accounts" hint="Accounts only you use. New conversations you start prefer the one you pick; the household’s order still applies when it runs out. This isn’t a billing promise.">
+    <Sec personal title="Your own accounts" hint="Accounts only you use." help="Accounts only you use. New conversations you start prefer the one you pick; the household’s order still applies when it runs out. This isn’t a billing promise.">
       {own.error ? <p className="hint">{visible(own.error)}</p> : null}
       {mine.length ? (
         <Plist>
@@ -53,7 +53,7 @@ function PickOwn({ engine, accounts, onClose }: { engine: WindowEngine; accounts
             <span className="grow"><b>{serviceName(text(a.provider), undefined, a.authType === "api_key")} · {visible(a.label)}</b><small>{a.authType === "api_key" ? "A key" : "A signed-in account"}</small></span>
           </button>
         ))}
-        {!accounts.length ? <p className="empty">Every account is already yours.</p> : null}
+        {!accounts.length ? <Empty>Every account is already yours.</Empty> : null}
       </div>
     </Dialog>
   );

@@ -6,6 +6,7 @@ import { listAgentEntriesWithSource, readAgentRosterProperty } from "../agents/a
 import { resolveConfiguredProviderFallback } from "../agents/configured-provider-fallback.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
 import { splitTrailingAuthProfile } from "../agents/model-ref-profile.js";
+import type { BranchConfigWithLegacyRoster } from "./legacy.roster.js";
 import { resolveAgentModelPrimaryValue } from "./model-input.js";
 import { getConfigResolutionFacts } from "./resolution-facts.js";
 import type { AgentModelConfig } from "./types.agents-shared.js";
@@ -117,7 +118,10 @@ function canPinLegacyPrimary(previous: BranchConfig, primary: string): boolean {
   );
 }
 
-function deferSeparation(cfg: BranchConfig): { config: BranchConfig; changes: string[] } {
+function deferSeparation(cfg: BranchConfigWithLegacyRoster): {
+  config: BranchConfigWithLegacyRoster;
+  changes: string[];
+} {
   if (!hasUtilityModelSeparationMigrationMarker(cfg)) {
     return { config: cfg, changes: [] };
   }
@@ -128,16 +132,16 @@ function deferSeparation(cfg: BranchConfig): { config: BranchConfig; changes: st
 
 /** Preserve the previous config's implicit primary before separating utility selection. */
 export function materializeUtilityModelSeparation(
-  cfg: BranchConfig,
+  cfg: BranchConfigWithLegacyRoster,
   previousConfig: unknown = cfg,
-): { config: BranchConfig; changes: string[] } {
+): { config: BranchConfigWithLegacyRoster; changes: string[] } {
   if (!canMaterialize(cfg)) {
     return { config: cfg, changes: [] };
   }
   let config = cfg;
   const changes: string[] = [];
   if (isRecord(previousConfig) && !hasUtilityModelSeparationMigrationMarker(previousConfig)) {
-    const previous: BranchConfig = previousConfig;
+    const previous: BranchConfigWithLegacyRoster = previousConfig;
     if (!canMaterialize(previous)) {
       return { config: cfg, changes: [] };
     }

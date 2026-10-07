@@ -41,7 +41,12 @@ import {
   resolveSkillTelemetrySource,
   resolveSkillTelemetrySourceValue,
 } from "../skills/loading/source.js";
+import { resolveSkillFileHost } from "../skills/skill-file-host.js";
 import type { SkillSnapshot, SkillTelemetrySource } from "../skills/types.js";
+import {
+  isWorkspaceSkillReadPath,
+  resolveSkillReadPath,
+} from "../skills/workspace-skill-read-path.js";
 import { isPlainObject, truncateUtf16Safe } from "../utils.js";
 import { buildAdjustedParamsKey } from "./agent-tools.before-tool-call.state.js";
 import type {
@@ -339,7 +344,7 @@ function resolveRelativeToolPath(candidate: string, ctx?: HookContext): string |
   if (!trimmed) {
     return undefined;
   }
-  if (trimmed.startsWith("node://")) {
+  if (trimmed.startsWith("node://") || isWorkspaceSkillReadPath(trimmed)) {
     return trimmed;
   }
   if (trimmed === "~") {
@@ -371,6 +376,12 @@ function findSkillInstructionMatch(
     }
     const filePath = typeof entry.filePath === "string" ? entry.filePath.trim() : "";
     const baseDir = typeof entry.baseDir === "string" ? entry.baseDir.trim() : "";
+    if (filePath && resolveSkillReadPath(entry) === candidate) {
+      return true;
+    }
+    if (resolveSkillFileHost(entry) === "workspace") {
+      return false;
+    }
     return (
       (filePath &&
         (filePath.startsWith("node://")
@@ -499,23 +510,29 @@ export function emitToolBlockedSecurityEvent(params: {
           controlId: "talk-client-voice-confirmation",
           family: "approval",
         } as const)
-      : params.deniedReason === "tool-loop"
+      : params.deniedReason === "lockdown"
         ? ({
-            policyId: "tool-loop-detection",
-            controlId: "tool-loop-detection",
+            policyId: "lockdown",
+            controlId: "lockdown",
             family: "authorization",
           } as const)
-        : params.deniedReason === "plugin-approval"
+        : params.deniedReason === "tool-loop"
           ? ({
-              policyId: "plugin-tool-approval",
-              controlId: "plugin-tool-approval",
-              family: "approval",
+              policyId: "tool-loop-detection",
+              controlId: "tool-loop-detection",
+              family: "authorization",
             } as const)
-          : ({
-              policyId: "plugin-before-tool-call",
-              controlId: "before-tool-call",
-              family: "approval",
-            } as const);
+          : params.deniedReason === "plugin-approval"
+            ? ({
+                policyId: "plugin-tool-approval",
+                controlId: "plugin-tool-approval",
+                family: "approval",
+              } as const)
+            : ({
+                policyId: "plugin-before-tool-call",
+                controlId: "before-tool-call",
+                family: "approval",
+              } as const);
   emitTrustedSecurityEvent({
     category: "tool",
     action: "tool.execution.blocked",

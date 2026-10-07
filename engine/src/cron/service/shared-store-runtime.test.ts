@@ -8,6 +8,7 @@ import {
   resolveRuntimeWorkerArgv,
   resolveRuntimeWorkerUrl,
 } from "../../infra/runtime-worker-url.js";
+import { closeBranchStateDatabaseAsync } from "../../state/branch-state-db-cache.js";
 import {
   openBranchStateDatabase,
   runBranchStateWriteTransaction,
@@ -243,6 +244,7 @@ describe("scheduler-disabled shared-store mutations", () => {
       }),
     );
 
+    await closeBranchStateDatabaseAsync();
     await runSchedulerChild(
       cases.map(({ canary, storePath }) => ({ jobId: canary.id, storePath })),
     );

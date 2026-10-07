@@ -438,7 +438,7 @@ defineDiscordVoiceTests(
         { voice: { realtime: { consultPolicy: "auto" } } },
         {
           agents: {
-            list: [{ id: "agent-1", identity: { name: "Sprig" } }],
+            entries: { "agent-1": { identity: { name: "Sprig" } } },
           },
         },
         "bot-user",
@@ -777,7 +777,7 @@ defineDiscordVoiceTests(
         { voice: { realtime: { consultPolicy: "auto", requireWakeName: true } } },
         {
           agents: {
-            list: [{ id: "agent-1", identity: { name: "Sprig" } }],
+            entries: { "agent-1": { identity: { name: "Sprig" } } },
           },
         },
       );

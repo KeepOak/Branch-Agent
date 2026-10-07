@@ -1,11 +1,16 @@
 // Resolve Branch Package Candidate tests cover resolve branch package candidate script behavior.
 import { execFile, spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { existsSync, readFileSync } from "node:fs";
 import { access, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { IncomingMessage, type ClientRequest } from "node:http";
+import { request as httpsRequest, type RequestOptions } from "node:https";
+import { Socket } from "node:net";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { toErrorObject as toLintErrorObject } from "@branch/normalization-core/error-coercion";
+import { MAX_TIMER_TIMEOUT_MS } from "@branch/normalization-core/number-coercion";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanPackedBranchTarballs } from "../../scripts/lib/packed-branch-tarballs.mts";
 import {
@@ -30,8 +35,18 @@ import {
 } from "../helpers/fixture-receipts.js";
 import { isProcessAlive } from "../helpers/process-wait.js";
 import { startProcessWatchdogFixture } from "../helpers/process-watchdog.js";
-import { withinTest } from "../helpers/promise.js";
+import { createDeferred, withinTest } from "../helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../helpers/temp-dir.js";
+
+vi.mock("node:https", () => ({ request: vi.fn() }));
+
+beforeEach(() => {
+  vi.mocked(httpsRequest)
+    .mockReset()
+    .mockImplementation(() => {
+      throw new Error("unexpected package download request");
+    });
+});
 
 const autoTempDirs = useAutoCleanupTempDirTracker((cleanup) => {
   // onTestFinished runs in reverse registration order, after process cleanup registered below.
@@ -86,8 +101,50 @@ function lookupAddresses(addresses: LookupAddress[]) {
   return async () => addresses;
 }
 
-function unexpectedFetch(): never {
-  throw new Error("downloadUrl should reject before fetching");
+function packageResponse(
+  bytes: Uint8Array | null = new Uint8Array(),
+  statusCode = 200,
+  headers: IncomingMessage["headers"] = {},
+) {
+  const response = new IncomingMessage(new Socket());
+  response.statusCode = statusCode;
+  response.headers = headers;
+  if (bytes !== null) {
+    response.push(bytes);
+    response.complete = true;
+    response.push(null);
+  }
+  return response;
+}
+
+function mockPackageRequests(
+  respond: (url: URL, options: RequestOptions) => IncomingMessage | undefined,
+) {
+  vi.mocked(httpsRequest).mockImplementation(((
+    url: URL,
+    options: RequestOptions,
+    callback: (response: IncomingMessage) => void,
+  ) => {
+    const request = new EventEmitter() as ClientRequest;
+    request.end = () => {
+      const response = respond(url, options);
+      const abort = () => {
+        const error = Object.assign(new Error("The operation was aborted"), {
+          name: "AbortError",
+          code: "ABORT_ERR",
+        });
+        request.emit("error", error);
+        response?.destroy(error);
+      };
+      options.signal?.addEventListener("abort", abort, { once: true });
+      response?.once("close", () => options.signal?.removeEventListener("abort", abort));
+      if (response) {
+        callback(response);
+      }
+      return request;
+    };
+    return request;
+  }) as typeof httpsRequest);
 }
 
 async function missing(file: string): Promise<boolean> {
@@ -892,167 +949,135 @@ printf '[{"filename":"branch-%s.tgz"}]\\n' "$version"
     );
   });
 
-  it("rejects unsafe package_url downloads before fetching private targets", async () => {
-    const dir = autoTempDirs.make("branch-package-download-");
-    const target = path.join(dir, "branch.tgz");
-
-    await expect(
-      downloadUrl("http://packages.example/branch.tgz", target, {
-        fetchImpl: unexpectedFetch,
-        lookupHost: lookupAddresses([{ address: "93.184.216.34", family: 4 }]),
-      }),
-    ).rejects.toThrow("package_url must use https");
-    await expect(
-      downloadUrl("https://user@packages.example/branch.tgz", target, {
-        fetchImpl: unexpectedFetch,
-        lookupHost: lookupAddresses([{ address: "93.184.216.34", family: 4 }]),
-      }),
-    ).rejects.toThrow("package_url must not include credentials");
-    await expect(
-      downloadUrl("https://localhost/branch.tgz", target, {
-        fetchImpl: unexpectedFetch,
-        lookupHost: lookupAddresses([{ address: "127.0.0.1", family: 4 }]),
-      }),
-    ).rejects.toThrow(/private\/internal\/special-use/iu);
-    await expect(
-      downloadUrl("https://packages.example/branch.tgz", target, {
-        fetchImpl: unexpectedFetch,
-        lookupHost: lookupAddresses([{ address: "10.0.0.8", family: 4 }]),
-      }),
-    ).rejects.toThrow(/resolves to private\/internal\/special-use/iu);
-    await expect(
-      downloadUrl("https://packages.example/branch.tgz", target, {
-        fetchImpl: unexpectedFetch,
-        lookupHost: lookupAddresses([{ address: "64:ff9b::a9fe:a9fe", family: 6 }]),
-      }),
-    ).rejects.toThrow(/resolves to private\/internal\/special-use/iu);
+  it("rejects unsafe package_url downloads before requesting private targets", async () => {
+    const target = path.join(autoTempDirs.make("branch-package-download-"), "branch.tgz");
+    for (const [url, address, family, error] of [
+      ["http://packages.example/branch.tgz", "93.184.216.34", 4, "package_url must use https"],
+      [
+        "https://user@packages.example/branch.tgz",
+        "93.184.216.34",
+        4,
+        "package_url must not include credentials",
+      ],
+      ["https://localhost/branch.tgz", "127.0.0.1", 4, /private\/internal\/special-use/iu],
+      [
+        "https://packages.example/branch.tgz",
+        "10.0.0.8",
+        4,
+        /resolves to private\/internal\/special-use/iu,
+      ],
+      [
+        "https://packages.example/branch.tgz",
+        "64:ff9b::a9fe:a9fe",
+        6,
+        /resolves to private\/internal\/special-use/iu,
+      ],
+    ] as const) {
+      await expect(
+        downloadUrl(url, target, {
+          lookupHost: lookupAddresses([{ address, family }]),
+        }),
+      ).rejects.toThrow(error);
+    }
+    expect(httpsRequest).not.toHaveBeenCalled();
   });
 
   it("allows private package_url downloads only through an explicit trusted source policy", async () => {
-    const dir = autoTempDirs.make("branch-package-download-");
-    const target = path.join(dir, "branch.tgz");
-    const trustedSource = trustedPackageSource;
-    const requestedUrls: string[] = [];
-
-    await downloadUrl("https://packages.internal:8443/artifactory/branch/branch.tgz", target, {
-      fetchImpl: async (url: URL) => {
-        requestedUrls.push(url.toString());
-        return new Response(new Uint8Array([4, 5, 6]), {
-          headers: { "content-length": "3" },
-          status: 200,
-        });
-      },
+    const target = path.join(autoTempDirs.make("branch-package-download-"), "branch.tgz");
+    const url = "https://packages.internal:8443/artifactory/branch/branch.tgz";
+    const pinnedLookup = createDeferred<unknown>();
+    mockPackageRequests((requestedUrl, options) => {
+      expect(requestedUrl.toString()).toBe(url);
+      options.lookup!(requestedUrl.hostname, { all: true }, (error, addresses) => {
+        if (error) {
+          pinnedLookup.reject(error);
+        } else {
+          pinnedLookup.resolve(addresses);
+        }
+      });
+      return packageResponse(new Uint8Array([4, 5, 6]), 200, { "content-length": "3" });
+    });
+    const options = {
       lookupHost: lookupAddresses([{ address: "203.0.113.8", family: 4 }]),
       maxBytes: 3,
-      trustedSource,
-    });
-
-    expect(requestedUrls).toEqual([
-      "https://packages.internal:8443/artifactory/branch/branch.tgz",
-    ]);
+      trustedSource: trustedPackageSource,
+    };
+    await downloadUrl(url, target, options);
+    await expect(pinnedLookup.promise).resolves.toEqual([{ address: "203.0.113.8", family: 4 }]);
     await expect(readFile(target)).resolves.toEqual(Buffer.from([4, 5, 6]));
-
     await expect(
-      downloadUrl("https://evil.internal:8443/artifactory/branch/branch.tgz", target, {
-        fetchImpl: unexpectedFetch,
-        lookupHost: lookupAddresses([{ address: "10.0.0.9", family: 4 }]),
-        trustedSource,
-      }),
+      downloadUrl("https://evil.internal:8443/artifactory/branch/branch.tgz", target, options),
     ).rejects.toThrow("is not allowed by trusted package source enterprise-artifactory");
     await expect(
-      downloadUrl("https://packages.internal:8443/other/branch.tgz", target, {
-        fetchImpl: unexpectedFetch,
-        lookupHost: lookupAddresses([{ address: "203.0.113.8", family: 4 }]),
-        trustedSource,
-      }),
+      downloadUrl("https://packages.internal:8443/other/branch.tgz", target, options),
     ).rejects.toThrow("path is not allowed by trusted package source enterprise-artifactory");
+    expect(httpsRequest).toHaveBeenCalledTimes(1);
   });
 
   it("matches trusted package_url path prefixes on path segment boundaries", async () => {
-    const dir = autoTempDirs.make("branch-package-download-");
-    const target = path.join(dir, "branch.tgz");
-    const trustedSource = {
-      ...trustedPackageSource,
-      pathPrefixes: ["/artifactory/branch"],
-    };
-    const requestedUrls: string[] = [];
-
-    await downloadUrl("https://packages.internal:8443/artifactory/branch/pkg.tgz", target, {
-      fetchImpl: async (url: URL) => {
-        requestedUrls.push(url.toString());
-        return new Response(new Uint8Array([1, 2, 3]), {
-          headers: { "content-length": "3" },
-          status: 200,
-        });
-      },
+    const target = path.join(autoTempDirs.make("branch-package-download-"), "branch.tgz");
+    mockPackageRequests(() => packageResponse(new Uint8Array([1, 2, 3])));
+    const options = {
       lookupHost: lookupAddresses([{ address: "203.0.113.8", family: 4 }]),
       maxBytes: 3,
-      trustedSource,
-    });
-
-    expect(requestedUrls).toEqual(["https://packages.internal:8443/artifactory/branch/pkg.tgz"]);
+      trustedSource: { ...trustedPackageSource, pathPrefixes: ["/artifactory/branch"] },
+    };
+    await downloadUrl(
+      "https://packages.internal:8443/artifactory/branch/pkg.tgz",
+      target,
+      options,
+    );
     await expect(
-      downloadUrl("https://packages.internal:8443/artifactory/branch-malicious/pkg.tgz", target, {
-        fetchImpl: unexpectedFetch,
-        lookupHost: lookupAddresses([{ address: "203.0.113.8", family: 4 }]),
-        trustedSource,
-      }),
+      downloadUrl(
+        "https://packages.internal:8443/artifactory/branch-malicious/pkg.tgz",
+        target,
+        options,
+      ),
     ).rejects.toThrow("path is not allowed by trusted package source enterprise-artifactory");
+    expect(httpsRequest).toHaveBeenCalledTimes(1);
   });
 
   it("keeps trusted package_url redirects inside the named source policy", async () => {
-    const dir = autoTempDirs.make("branch-package-download-");
-    const target = path.join(dir, "branch.tgz");
-    const trustedSource = trustedPackageSource;
-
+    const target = path.join(autoTempDirs.make("branch-package-download-"), "branch.tgz");
+    mockPackageRequests(() =>
+      packageResponse(undefined, 302, {
+        location: "https://metadata.internal:8443/artifactory/branch/pwn.tgz",
+      }),
+    );
     await expect(
       downloadUrl("https://packages.internal:8443/artifactory/branch/branch.tgz", target, {
-        fetchImpl: async () =>
-          new Response(null, {
-            headers: { location: "https://metadata.internal:8443/artifactory/branch/pwn.tgz" },
-            status: 302,
-          }),
         lookupHost: lookupAddresses([{ address: "10.0.0.8", family: 4 }]),
-        trustedSource,
+        trustedSource: trustedPackageSource,
       }),
     ).rejects.toThrow("is not allowed by trusted package source enterprise-artifactory");
+    expect(httpsRequest).toHaveBeenCalledTimes(1);
   });
 
   it("does not forward trusted package auth headers to redirect hosts", async () => {
-    const dir = autoTempDirs.make("branch-package-download-");
-    const target = path.join(dir, "branch.tgz");
+    const target = path.join(autoTempDirs.make("branch-package-download-"), "branch.tgz");
     const previousToken = process.env.BRANCH_TRUSTED_PACKAGE_TOKEN;
     process.env.BRANCH_TRUSTED_PACKAGE_TOKEN = "token-123";
-    const trustedSource = {
-      ...trustedPackageSource,
-      auth: { type: "bearer" },
-      redirectHosts: ["packages.internal", "mirror.internal"],
-    };
-    const requestHeaders: Array<Record<string, string> | undefined> = [];
-
+    const requestHeaders: Array<RequestOptions["headers"]> = [];
+    mockPackageRequests((_url, options) => {
+      requestHeaders.push(options.headers);
+      return requestHeaders.length === 1
+        ? packageResponse(undefined, 302, {
+            location: "https://mirror.internal:8443/artifactory/branch/branch.tgz",
+          })
+        : packageResponse(new Uint8Array([4, 5, 6]), 200, { "content-length": "3" });
+    });
     try {
       await downloadUrl(
         "https://packages.internal:8443/artifactory/branch/branch.tgz",
         target,
         {
-          fetchImpl: async (_url: URL, init?: RequestInit) => {
-            requestHeaders.push(init?.headers as Record<string, string> | undefined);
-            if (requestHeaders.length === 1) {
-              return new Response(null, {
-                headers: {
-                  location: "https://mirror.internal:8443/artifactory/branch/branch.tgz",
-                },
-                status: 302,
-              });
-            }
-            return new Response(new Uint8Array([4, 5, 6]), {
-              headers: { "content-length": "3" },
-              status: 200,
-            });
-          },
           lookupHost: lookupAddresses([{ address: "10.0.0.8", family: 4 }]),
           maxBytes: 3,
-          trustedSource,
+          trustedSource: {
+            ...trustedPackageSource,
+            auth: { type: "bearer" },
+            redirectHosts: ["packages.internal", "mirror.internal"],
+          },
         },
       );
     } finally {
@@ -1062,304 +1087,178 @@ printf '[{"filename":"branch-%s.tgz"}]\\n' "$version"
         process.env.BRANCH_TRUSTED_PACKAGE_TOKEN = previousToken;
       }
     }
-
     expect(requestHeaders).toEqual([{ authorization: "Bearer token-123" }, undefined]);
     await expect(readFile(target)).resolves.toEqual(Buffer.from([4, 5, 6]));
   });
 
   it("validates redirects for package_url downloads", async () => {
-    const dir = autoTempDirs.make("branch-package-download-");
-    const target = path.join(dir, "branch.tgz");
-    const requestedUrls: string[] = [];
-
+    const target = path.join(autoTempDirs.make("branch-package-download-"), "branch.tgz");
+    mockPackageRequests(() =>
+      packageResponse(undefined, 302, {
+        location: "https://169.254.169.254/latest/meta-data",
+      }),
+    );
     await expect(
       downloadUrl("https://packages.example/branch.tgz", target, {
-        fetchImpl: async (url: URL) => {
-          requestedUrls.push(url.toString());
-          return new Response(null, {
-            headers: { location: "https://169.254.169.254/latest/meta-data" },
-            status: 302,
-          });
-        },
         lookupHost: lookupAddresses([{ address: "93.184.216.34", family: 4 }]),
       }),
     ).rejects.toThrow(/private\/internal\/special-use/iu);
-    expect(requestedUrls).toEqual(["https://packages.example/branch.tgz"]);
+    expect(httpsRequest).toHaveBeenCalledTimes(1);
   });
 
-  it("cancels redirect response bodies before following the next hop", async () => {
-    const dir = autoTempDirs.make("branch-package-download-");
-    const target = path.join(dir, "branch.tgz");
-    const bodyCancelled: string[] = [];
-
+  it("destroys redirect response bodies before following the next hop", async () => {
+    const target = path.join(autoTempDirs.make("branch-package-download-"), "branch.tgz");
+    const responses: IncomingMessage[] = [];
+    mockPackageRequests(() => {
+      expect(responses.every((response) => response.destroyed)).toBe(true);
+      const response = packageResponse(null, 302, {
+        location: "https://packages.example/redirected.tgz",
+      });
+      responses.push(response);
+      return response;
+    });
     await expect(
       downloadUrl("https://packages.example/branch.tgz", target, {
-        fetchImpl: async (url: URL) => {
-          let cancelled = false;
-          const body = new ReadableStream({
-            start(controller) {
-              const timer = setInterval(() => {
-                if (cancelled) {
-                  clearInterval(timer);
-                  return;
-                }
-                try {
-                  controller.enqueue(new Uint8Array([0]));
-                } catch {
-                  // Controller may already be closed after cancel.
-                  clearInterval(timer);
-                }
-              }, 100);
-            },
-            cancel() {
-              cancelled = true;
-              bodyCancelled.push(url.toString());
-            },
-          });
-          return new Response(body, {
-            headers: { location: "https://packages.example/redirected.tgz" },
-            status: 302,
-          });
-        },
         lookupHost: lookupAddresses([{ address: "93.184.216.34", family: 4 }]),
-        timeoutMs: 5000,
       }),
-    ).rejects.toThrow();
-    // The redirect body must have been cancelled, not left open
-    expect(bodyCancelled.length).toBeGreaterThan(0);
+    ).rejects.toThrow("package_url exceeded 5 redirects");
+    expect(responses).toHaveLength(6);
+    expect(responses.every((response) => response.destroyed)).toBe(true);
   });
 
-  it("cancels response body on HTTP error before closing dispatcher", async () => {
-    const dir = autoTempDirs.make("branch-package-download-");
-    const target = path.join(dir, "branch.tgz");
-    let bodyCancelled = false;
-
+  it.each([
+    ["HTTP error", 500, {}, /failed to download package_url: HTTP 500/u],
+    [
+      "declared oversize",
+      200,
+      { "content-length": String(1024 * 1024 * 100) },
+      /exceeds maximum download size/u,
+    ],
+    [
+      "unsafe decimal content-length",
+      200,
+      { "content-length": "9007199254740993" },
+      /exceeds maximum download size/u,
+    ],
+  ])("destroys %s response bodies without reading", async (_name, status, headers, error) => {
+    const target = path.join(autoTempDirs.make("branch-package-download-"), "branch.tgz");
+    const response = packageResponse(null, status, headers);
+    const read = vi.spyOn(response, Symbol.asyncIterator);
+    mockPackageRequests(() => response);
     await expect(
       downloadUrl("https://packages.example/branch.tgz", target, {
-        fetchImpl: async () => {
-          const body = new ReadableStream({
-            start(controller) {
-              const timer = setInterval(() => {
-                try {
-                  controller.enqueue(new Uint8Array([0]));
-                } catch {
-                  clearInterval(timer);
-                }
-              }, 100);
-            },
-            cancel() {
-              bodyCancelled = true;
-            },
-          });
-          return new Response(body, { status: 500 });
-        },
-        lookupHost: lookupAddresses([{ address: "93.184.216.34", family: 4 }]),
-        timeoutMs: 5000,
-      }),
-    ).rejects.toThrow(/failed to download package_url: HTTP 500/u);
-    expect(bodyCancelled).toBe(true);
-  });
-
-  it("cancels response body on declared oversize before closing dispatcher", async () => {
-    const dir = autoTempDirs.make("branch-package-download-");
-    const target = path.join(dir, "branch.tgz");
-    let bodyCancelled = false;
-
-    await expect(
-      downloadUrl("https://packages.example/branch.tgz", target, {
-        fetchImpl: async () => {
-          const body = new ReadableStream({
-            start(controller) {
-              const timer = setInterval(() => {
-                try {
-                  controller.enqueue(new Uint8Array([0]));
-                } catch {
-                  clearInterval(timer);
-                }
-              }, 100);
-            },
-            cancel() {
-              bodyCancelled = true;
-            },
-          });
-          return new Response(body, {
-            headers: { "content-length": String(1024 * 1024 * 100) },
-            status: 200,
-          });
-        },
         lookupHost: lookupAddresses([{ address: "93.184.216.34", family: 4 }]),
         maxBytes: 1024,
-        timeoutMs: 5000,
       }),
-    ).rejects.toThrow(/exceeds maximum download size/u);
-    expect(bodyCancelled).toBe(true);
-  });
-
-  it("rejects unsafe decimal package_url content-length values before reading", async () => {
-    const dir = autoTempDirs.make("branch-package-download-");
-    const target = path.join(dir, "branch.tgz");
-    let readStarted = false;
-    let bodyCancelled = false;
-
-    await expect(
-      downloadUrl("https://packages.example/branch.tgz", target, {
-        fetchImpl: async () =>
-          ({
-            body: {
-              cancel() {
-                bodyCancelled = true;
-                return Promise.resolve();
-              },
-              getReader() {
-                return {
-                  cancel() {
-                    bodyCancelled = true;
-                    return Promise.resolve();
-                  },
-                  read() {
-                    readStarted = true;
-                    return new Promise(() => {});
-                  },
-                  releaseLock() {},
-                };
-              },
-            },
-            headers: new Headers({ "content-length": "9007199254740993" }),
-            status: 200,
-          }) as Response,
-        lookupHost: lookupAddresses([{ address: "93.184.216.34", family: 4 }]),
-        maxBytes: 1024,
-        timeoutMs: 25,
-      }),
-    ).rejects.toThrow(/exceeds maximum download size/u);
-    expect(readStarted).toBe(false);
-    expect(bodyCancelled).toBe(true);
+    ).rejects.toThrow(error);
+    expect(read).not.toHaveBeenCalled();
+    expect(response.destroyed).toBe(true);
     await expect(missing(target)).resolves.toBe(true);
     await expect(missing(`${target}.tmp`)).resolves.toBe(true);
   });
 
   it("bounds package_url downloads and writes completed files atomically", async () => {
-    const dir = autoTempDirs.make("branch-package-download-");
-    const target = path.join(dir, "branch.tgz");
-
-    await expect(
-      downloadUrl("https://packages.example/branch.tgz", target, {
-        fetchImpl: async () =>
-          new Response(new Uint8Array([1, 2, 3, 4]), {
-            headers: { "content-length": "4" },
-            status: 200,
-          }),
-        lookupHost: lookupAddresses([{ address: "93.184.216.34", family: 4 }]),
-        maxBytes: 3,
+    const target = path.join(autoTempDirs.make("branch-package-download-"), "branch.tgz");
+    mockPackageRequests(() =>
+      packageResponse(new Uint8Array([1, 2, 3, 4]), 200, {
+        "content-length": "4",
       }),
+    );
+    const options = {
+      lookupHost: lookupAddresses([{ address: "93.184.216.34", family: 4 }]),
+      maxBytes: 3,
+    };
+    await expect(
+      downloadUrl("https://packages.example/branch.tgz", target, options),
     ).rejects.toThrow("package_url exceeds maximum download size");
     await expect(missing(target)).resolves.toBe(true);
     await expect(missing(`${target}.tmp`)).resolves.toBe(true);
-
-    await downloadUrl("https://packages.example/branch.tgz", target, {
-      fetchImpl: async () =>
-        new Response(new Uint8Array([1, 2, 3]), {
-          headers: { "content-length": "3" },
-          status: 200,
-        }),
-      lookupHost: lookupAddresses([{ address: "93.184.216.34", family: 4 }]),
-      maxBytes: 3,
-    });
+    mockPackageRequests(() =>
+      packageResponse(new Uint8Array([1, 2, 3]), 200, {
+        "content-length": "3",
+      }),
+    );
+    await downloadUrl("https://packages.example/branch.tgz", target, options);
     await expect(readFile(target)).resolves.toEqual(Buffer.from([1, 2, 3]));
     await expect(missing(`${target}.tmp`)).resolves.toBe(true);
   });
 
   it("clamps oversized package_url download timers before scheduling", async () => {
-    const dir = autoTempDirs.make("branch-package-download-");
-    const target = path.join(dir, "branch.tgz");
-
-    await downloadUrl("https://packages.example/branch.tgz", target, {
-      fetchImpl: async () =>
-        new Response(
-          new ReadableStream({
-            start(controller) {
-              setTimeout(() => {
-                controller.enqueue(new Uint8Array([1, 2, 3]));
-                controller.close();
-              }, 25);
-            },
-          }),
-          {
-            headers: { "content-length": "3" },
-            status: 200,
-          },
-        ),
-      lookupHost: lookupAddresses([{ address: "93.184.216.34", family: 4 }]),
-      maxBytes: 3,
-      timeoutMs: Number.MAX_SAFE_INTEGER,
-    });
-
-    await expect(readFile(target)).resolves.toEqual(Buffer.from([1, 2, 3]));
-    await expect(missing(`${target}.tmp`)).resolves.toBe(true);
+    const target = path.join(autoTempDirs.make("branch-package-download-"), "branch.tgz");
+    const scheduled = vi.spyOn(globalThis, "setTimeout");
+    mockPackageRequests(() => packageResponse(new Uint8Array([1, 2, 3])));
+    try {
+      await downloadUrl("https://packages.example/branch.tgz", target, {
+        lookupHost: lookupAddresses([{ address: "93.184.216.34", family: 4 }]),
+        maxBytes: 3,
+        timeoutMs: Number.MAX_SAFE_INTEGER,
+      });
+      expect(scheduled).toHaveBeenCalledWith(expect.any(Function), MAX_TIMER_TIMEOUT_MS);
+      await expect(readFile(target)).resolves.toEqual(Buffer.from([1, 2, 3]));
+      await expect(missing(`${target}.tmp`)).resolves.toBe(true);
+    } finally {
+      scheduled.mockRestore();
+    }
   });
 
-  it("times out stalled package_url response bodies", async () => {
-    const dir = autoTempDirs.make("branch-package-download-timeout-");
-    const target = path.join(dir, "branch.tgz");
-    let bodyCancelled = false;
-    const startedAt = Date.now();
-
-    await expect(
-      downloadUrl("https://packages.example/branch.tgz", target, {
-        fetchImpl: async () =>
-          new Response(
-            new ReadableStream({
-              pull() {
-                return new Promise(() => {});
-              },
-              cancel() {
-                bodyCancelled = true;
-              },
-            }),
-            { status: 200 },
-          ),
-        lookupHost: lookupAddresses([{ address: "93.184.216.34", family: 4 }]),
-        timeoutMs: 25,
-      }),
-    ).rejects.toThrow(
-      "package_url download timed out after 25ms: https://packages.example/branch.tgz",
+  it.each(["headers", "body"])("times out stalled package_url response %s", async (phase) => {
+    const target = path.join(
+      autoTempDirs.make("branch-package-download-timeout-"),
+      "branch.tgz",
     );
-
-    expect(Date.now() - startedAt).toBeLessThan(1_000);
-    expect(bodyCancelled).toBe(true);
-    await expect(missing(target)).resolves.toBe(true);
-    await expect(missing(`${target}.tmp`)).resolves.toBe(true);
+    const response = packageResponse(null);
+    const started = createDeferred();
+    const iterate = response[Symbol.asyncIterator].bind(response);
+    vi.spyOn(response, Symbol.asyncIterator).mockImplementation(() => {
+      started.resolve();
+      return iterate();
+    });
+    mockPackageRequests(() => {
+      if (phase === "headers") {
+        started.resolve();
+        return undefined;
+      }
+      return response;
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const pending = expect(
+        downloadUrl("https://packages.example/branch.tgz", target, {
+          lookupHost: lookupAddresses([{ address: "93.184.216.34", family: 4 }]),
+          timeoutMs: 25,
+        }),
+      ).rejects.toThrow(
+        "package_url download timed out after 25ms: https://packages.example/branch.tgz",
+      );
+      await started.promise;
+      await vi.advanceTimersByTimeAsync(25);
+      await pending;
+      if (phase === "body") {
+        expect(response.destroyed).toBe(true);
+      }
+      expect(vi.getTimerCount()).toBe(0);
+      await expect(missing(target)).resolves.toBe(true);
+      await expect(missing(`${target}.tmp`)).resolves.toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("streams non-decimal package_url content-length values through the download cap", async () => {
-    const dir = autoTempDirs.make("branch-package-download-");
-    const target = path.join(dir, "branch.tgz");
-    let readStarted = false;
-    let bodyCancelled = false;
-
+    const target = path.join(autoTempDirs.make("branch-package-download-"), "branch.tgz");
+    const response = packageResponse(new Uint8Array([1, 2, 3, 4]), 200, {
+      "content-length": "1e3",
+    });
+    const read = vi.spyOn(response, Symbol.asyncIterator);
+    mockPackageRequests(() => response);
     await expect(
       downloadUrl("https://packages.example/branch.tgz", target, {
-        fetchImpl: async () => {
-          const body = new ReadableStream({
-            pull(controller) {
-              readStarted = true;
-              controller.enqueue(new Uint8Array([1, 2, 3, 4]));
-            },
-            cancel() {
-              bodyCancelled = true;
-            },
-          });
-          return new Response(body, {
-            headers: { "content-length": "1e3" },
-            status: 200,
-          });
-        },
         lookupHost: lookupAddresses([{ address: "93.184.216.34", family: 4 }]),
         maxBytes: 3,
       }),
     ).rejects.toThrow("package_url exceeds maximum download size");
-    expect(readStarted).toBe(true);
-    expect(bodyCancelled).toBe(true);
+    expect(read).toHaveBeenCalled();
+    expect(response.destroyed).toBe(true);
     await expect(missing(target)).resolves.toBe(true);
     await expect(missing(`${target}.tmp`)).resolves.toBe(true);
   });

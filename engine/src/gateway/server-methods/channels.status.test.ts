@@ -4,6 +4,7 @@
 
 import { expectDefined } from "@branch/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { reefPlugin } from "../../../extensions/reef/src/channel.js";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import type {
   ChannelAccountSnapshot,
@@ -116,6 +117,45 @@ describe("channelsHandlers channels.status", () => {
       outboundAt: null,
     });
     mocks.listChannelPlugins.mockReturnValue([createChannelPlugin()]);
+  });
+
+  it("publishes Reef retry attention through channels.status", async () => {
+    const status = await vi.importActual<typeof import("../../channels/plugins/status.js")>(
+      "../../channels/plugins/status.js",
+    );
+    mocks.buildChannelAccountSnapshotFromAccount.mockImplementation(
+      status.buildChannelAccountSnapshotFromAccount,
+    );
+    mocks.listChannelPlugins.mockReturnValue([reefPlugin]);
+    mocks.getRuntimeConfig.mockReturnValue({ channels: { reef: { handle: "clawd" } } });
+    const options = createOptions({ channel: "reef", probe: false });
+    options.context.getRuntimeSnapshot = () => ({
+      channels: {},
+      channelAccounts: {
+        reef: {
+          default: {
+            accountId: "default",
+            running: false,
+            reconnectAttempts: 7,
+            restartPending: true,
+            needsAttention: true,
+            retryingSince: 1_700_000_000_000,
+            lifecycle: "recovering",
+          },
+        },
+      },
+    });
+
+    const payload = await runChannelsStatus(options.params, { context: options.context });
+
+    expect(firstChannelAccount(payload, "reef")).toMatchObject({
+      accountId: "default",
+      reconnectAttempts: 7,
+      restartPending: true,
+      needsAttention: true,
+      retryingSince: 1_700_000_000_000,
+      lifecycle: "recovering",
+    });
   });
 
   it("keeps filtered account diagnostics without inspecting unrelated channels", async () => {

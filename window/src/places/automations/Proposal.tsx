@@ -1,7 +1,9 @@
 // The proposal card (§4.6.3.1, preview 41-placesap p35-prop): Regular shows It does, Repeats, At, Who does it
 // and Sends to; Advanced adds name, note, how it runs, Every…, model, time zone, limits and switches; Technical
 // adds routing, the spread and an editable cron line. Every field maps to a cron.add / cron.update field.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { ReactNode } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import { Segmented, Switch } from "../../shell/Popover";
 import { shows, type Level } from "../../places-nav/level";
 import { Glyph } from "./glyphs";
@@ -21,7 +23,7 @@ export function Field({ label, children, hint }: { label: string; children: Reac
   return <label className="au-field"><span className="au-flabel">{label}</span>{children}{hint ? <small className="au-hint">{hint}</small> : null}</label>;
 }
 export function SwitchRow({ title, sub, on, change, disabled }: { title: string; sub?: string; on: boolean; change: (v: boolean) => void; disabled?: string }) {
-  return <div className="au-swrow" title={disabled}><span><b>{title}</b>{sub ? <small>{sub}</small> : null}</span>{disabled ? <button type="button" role="switch" aria-checked={on} aria-label={title} className="switch" disabled /> : <Switch label={title} on={on} onChange={change} />}</div>;
+  return <div className="au-swrow" title={shownWhy(disabled)}><span><b>{title}</b>{sub ? <small>{sub}</small> : null}</span>{disabled ? <button type="button" role="switch" aria-checked={on} aria-label={title} className="switch" disabled /> : <Switch label={title} on={on} onChange={change} />}</div>;
 }
 
 function RepeatsField({ form, set, level }: { form: ScheduleForm; set: (f: Partial<ScheduleForm>) => void; level: Level }) {
@@ -60,7 +62,7 @@ function SendsToField({ draft, change, level, trunk }: { draft: Draft; change: P
     <Field label="Sends to"><select className="inp" aria-label="Sends to" value={draft.sendsTo} onChange={e => change({ sendsTo: e.target.value as SendsTo })}>
       {draft.mode === "edit" && <option value="keep">Where it sends now</option>}
       <option value="conversation">{trunk}’s conversation</option>
-      <option value="" disabled title={CHATS_REASON}>Chats in your chat apps · {CHATS_REASON}</option>
+      <option value="" disabled title={shownWhy(CHATS_REASON)}>Chats in your chat apps</option>
       {adv && <option value="nowhere">Nowhere: keep it in History</option>}
       {adv && <option value="webhook">Another app (web address)</option>}
     </select></Field>
@@ -90,7 +92,7 @@ function AdvancedRun({ draft, change, level, models, trunk }: { draft: Draft; ch
   if (!shows(level, "advanced") || draft.how === "note" || draft.payloadKind !== "agentTurn") return null;
   const tech = shows(level, "technical");
   return <>
-    <Field label="Model" hint="A lighter model costs less for routine jobs."><input className="inp" aria-label="Model" list="au-models" placeholder={`Same as ${trunk}`} value={draft.model} onChange={e => change({ model: e.target.value })} /><datalist id="au-models">{models.map(m => <option key={m} value={m} />)}</datalist></Field>
+    <Field label="Model" hint="A lighter model costs less for recurring jobs."><input className="inp" aria-label="Model" list="au-models" placeholder={`Same as ${trunk}`} value={draft.model} onChange={e => change({ model: e.target.value })} /><datalist id="au-models">{models.map(m => <option key={m} value={m} />)}</datalist></Field>
     {tech && <SwitchRow title="Always use the default Trunk" sub="Ignores the Trunk picked above." on={draft.clearAgent} change={clearAgent => change({ clearAgent })} />}
     {tech && <Field label="Conversation key" hint="Routes the result and the wake-up to one conversation."><input className="inp au-mono" aria-label="Conversation key" value={draft.sessionKey} onChange={e => change({ sessionKey: e.target.value })} /></Field>}
     {tech && <SwitchRow title="Start with a light briefing" sub="Leaves out the project’s files at the start of each run." on={draft.lightContext} change={lightContext => change({ lightContext })} />}
@@ -108,8 +110,8 @@ function Spread({ form, set }: { form: ScheduleForm; set: (f: Partial<ScheduleFo
 
 function Footer({ draft, busy, canWrite, onCancel, onConfirm }: Pick<Props, "draft" | "busy" | "canWrite" | "onCancel" | "onConfirm">) {
   const why = canWrite ? undefined : "Needs an owner";
-  if (draft.mode === "edit") return <div className="au-actions"><button type="button" className="btn ghost sm" onClick={onCancel}>Cancel</button><button type="button" className="btn pri sm" title={why} disabled={busy || !canWrite} onClick={() => onConfirm(false)}>{busy ? "Saving…" : "Save changes"}</button></div>;
-  return <div className="au-actions"><button type="button" className="btn ghost sm" onClick={onCancel}>Cancel</button><button type="button" className="btn sm" title={why} disabled={busy || !canWrite} onClick={() => onConfirm(true)}>Confirm and run now</button><button type="button" className="btn pri sm" title={why} disabled={busy || !canWrite} onClick={() => onConfirm(false)}>{busy ? "Saving…" : "Confirm the schedule"}</button></div>;
+  if (draft.mode === "edit") return <div className="au-actions"><button type="button" className="btn ghost sm" onClick={onCancel}>Cancel</button><button type="button" className="btn pri sm" title={shownWhy(why)} disabled={busy || !canWrite} onClick={() => onConfirm(false)}>{busy ? "Saving…" : "Save changes"}</button></div>;
+  return <div className="au-actions"><button type="button" className="btn ghost sm" onClick={onCancel}>Cancel</button><button type="button" className="btn sm" title={shownWhy(why)} disabled={busy || !canWrite} onClick={() => onConfirm(true)}>Confirm and run now</button><button type="button" className="btn pri sm" title={shownWhy(why)} disabled={busy || !canWrite} onClick={() => onConfirm(false)}>{busy ? "Saving…" : "Confirm the schedule"}</button></div>;
 }
 
 export function Proposal(props: Props) {
@@ -129,7 +131,7 @@ export function Proposal(props: Props) {
     {tech && <Spread form={draft.form} set={set} />}
     {adv && draft.mode !== "edit" && <SwitchRow title="Start it switched on" on={draft.enabled} change={enabled => change({ enabled })} />}
     {adv && draft.form.repeat === "once" && <SwitchRow title="Remove it after it runs" sub="For one-off reminders that tidy themselves away." on={draft.deleteAfterRun} change={deleteAfterRun => change({ deleteAfterRun })} />}
-    <p className="au-sum"><b>{formWords(draft.form)}</b>{first ? ` · first run ${when(first)}` : ""}</p>
+    <p className="au-sum"><b>{formWords(draft.form)}</b>{first ? ` · starts ${when(first)}` : ""}</p>
     {adv && draft.form.repeat !== "once" && draft.form.repeat !== "every" && (tech ? <Field label="Cron line"><input className="inp au-mono" aria-label="Cron line" placeholder="0 7 * * *" value={draft.form.repeat === "custom" ? draft.form.expr : cronLine(draft.form)} onChange={e => set({ repeat: "custom", expr: e.target.value })} /></Field> : <p className="au-mono au-cron" aria-label="Cron line">{cronLine(draft.form)}</p>)}
     {error && <p className="au-error" role="alert">{error}</p>}
     <Footer {...props} />

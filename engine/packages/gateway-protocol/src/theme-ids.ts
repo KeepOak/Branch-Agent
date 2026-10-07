@@ -1,4 +1,5 @@
 /** Lightweight theme identifiers used while browser preferences boot. */
+import { LEGACY_THEME_CATALOG } from "./legacy-theme-catalog.ts";
 export const BUILTIN_THEME_IDS = [
   "grove",
   "knot",
@@ -11,6 +12,8 @@ export const BUILTIN_THEME_IDS = [
   "manuscript",
   "rose",
   "miami",
+  "paper",
+  ...LEGACY_THEME_CATALOG.map((theme) => theme.id),
 ] as const;
 
 export type BuiltinThemeId = (typeof BUILTIN_THEME_IDS)[number];

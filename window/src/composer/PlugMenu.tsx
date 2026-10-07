@@ -10,6 +10,7 @@ import {
   readSkills, readWebSearchBase, setWebSearch, toggle, type Connector, type SkillRow, type ToolOverrides,
 } from "./tools";
 import { Switch } from "./ui";
+import { shownWhy } from "../shell/shown-why";
 
 type Props = {
   anchor: RefObject<HTMLElement | null>;
@@ -56,6 +57,8 @@ export function PlugMenu(p: Props) {
   const { catalog, error, load } = useCatalog(p.engine);
   const [query, setQuery] = useState("");
   const [failed, setFailed] = useState<string | null>(null);
+  const [library, setLibrary] = useState(false);
+  const [libChanged, setLibChanged] = useState(false);
   const overrides = readOverrides(p.row);
   const reason = p.isAdmin ? undefined : "This needs admin access on this computer.";
   const write = async (next: ToolOverrides) => {
@@ -78,7 +81,9 @@ export function PlugMenu(p: Props) {
         {error ? <p className="c-pp bad">{error} <button type="button" className="c-link" onClick={() => void load()}>Try again</button></p> : null}
         {failed ? <p className="c-pp bad">{failed}</p> : null}
         {!catalog && !error ? <p className="c-pp">Loading tools…</p> : null}
-        {catalog ? <PlugSections catalog={catalog} overrides={overrides} query={query} write={write} reason={reason} isAdmin={p.isAdmin} /> : null}
+        {catalog && library ? <LibraryView skills={catalog.skills} overrides={overrides} changed={libChanged} isAdmin={p.isAdmin} reason={reason}
+          onBack={() => setLibrary(false)} write={async (next) => { const problem = await write(next); if (problem === null) setLibChanged(true); return problem; }} /> : null}
+        {catalog && !library ? <PlugSections catalog={catalog} overrides={overrides} query={query} write={write} reason={reason} isAdmin={p.isAdmin} onLibrary={() => setLibrary(true)} /> : null}
       </div>
       {changed > 0 ? (
         <div className="c-plug-changed">
@@ -87,7 +92,7 @@ export function PlugMenu(p: Props) {
             type="button"
             className="btn sm"
             disabled={!p.isAdmin}
-            title={reason}
+            title={shownWhy(reason)}
             onClick={async () => {
               if ((await write({})) === null) p.onToast?.(`Tools here match ${p.trunkName}'s again.`);
             }}
@@ -101,7 +106,8 @@ export function PlugMenu(p: Props) {
   );
 }
 
-function PlugSections({ catalog, overrides, query, write, reason, isAdmin }: {
+function PlugSections({ catalog, overrides, query, write, reason, isAdmin, onLibrary }: {
+  onLibrary: () => void;
   catalog: Catalog;
   overrides: ToolOverrides;
   query: string;
@@ -137,6 +143,13 @@ function PlugSections({ catalog, overrides, query, write, reason, isAdmin }: {
       ) : null}
       {skills.length > 0 ? (
         <Section title="Skills" on={skills.filter((s) => !s.problem && isOn(s.baseEnabled, overrides.skills?.[s.key])).length}>
+          {!query ? (
+            <button type="button" className="c-tool c-libadd" onClick={onLibrary}>
+              <span className="c-tile"><Icon name="doc" size={15} /></span>
+              <span className="c-tool-t"><b>Add from your library…</b></span>
+              <Icon name="chevRight" size={15} />
+            </button>
+          ) : null}
           {skills.map((s) => (
             <ToolRow key={s.key} icon="puzzle" name={s.name} line={s.line} here={overrides.skills?.[s.key] !== undefined}>
               {s.problem ? (
@@ -169,12 +182,13 @@ function Section({ title, on, children }: { title: string; on: number; children:
 }
 
 function ToolRow({ icon, name, line, here, children }: { icon: "globe" | "puzzle" | "plug"; name: string; line: string; here?: boolean; children: React.ReactNode }) {
+  const shortLine = line.length > 60 ? `${line.slice(0, 59)}…` : line;
   return (
     <div className="c-tool" data-testid="tool-row">
       <span className="c-tile"><Icon name={icon} size={15} /></span>
       <span className="c-tool-t">
         <b>{name}{here ? <span className="c-pill">Here only</span> : null}</b>
-        <small>{line}</small>
+        <small title={line}>{shortLine}</small>
       </span>
       {children}
     </div>
@@ -239,7 +253,7 @@ function AddRow({ onOpen, onClose }: { onOpen?: (t: OpenTarget) => void; onClose
   const kinds: Array<[string, "plug" | "puzzle" | "term" | "sliders"]> = [
     ["Connector", "plug"],
     ["Skill", "puzzle"],
-    ["CLI", "term"],
+    ["Command-line tool", "term"],
     ["Plugin", "sliders"],
   ];
   return (
@@ -256,6 +270,42 @@ function AddRow({ onOpen, onClose }: { onOpen?: (t: OpenTarget) => void; onClose
         <span>Manage tools</span>
         <Icon name="chevRight" size={15} />
       </button>
+    </div>
+  );
+}
+
+/** The library split: skills on in this conversation, and the ones that could be added (skills with a problem are left out). */
+export function libraryLists(skills: SkillRow[], overrides: ToolOverrides): { chosen: SkillRow[]; rest: SkillRow[] } {
+  const usable = skills.filter((s) => !s.problem);
+  const on = (s: SkillRow) => isOn(s.baseEnabled, overrides.skills?.[s.key]);
+  return { chosen: usable.filter(on), rest: usable.filter((s) => !on(s)) };
+}
+
+/** Skills for this conversation (the preview's libPK18): the skills chosen here and the rest of your library, each
+ *  added or removed for this conversation only (toolOverrides.skills, as the switches above write). */
+function LibraryView({ skills, overrides, changed, isAdmin, reason, onBack, write }: {
+  skills: SkillRow[]; overrides: ToolOverrides; changed: boolean; isAdmin: boolean; reason?: string; onBack: () => void;
+  write: (next: ToolOverrides) => Promise<string | null>;
+}) {
+  const set = (s: SkillRow, value: boolean) => void write(toggle(overrides, "skills", s.key, value, s.baseEnabled));
+  const { chosen, rest } = libraryLists(skills, overrides);
+  const row = (s: SkillRow, button: React.ReactNode) => (
+    <div key={s.key} className="c-librow">
+      <span className="c-tool-t"><b>{s.name}</b><small>{s.line}</small></span>
+      {button}
+    </div>
+  );
+  return (
+    <div className="c-lib">
+      <button type="button" className="c-tool c-libback" onClick={onBack}>
+        <Icon name="back" size={15} />
+        <span className="c-tool-t"><b>Skills for this conversation</b></span>
+      </button>
+      <div className="c-ph"><span>Chosen here</span></div>
+      {chosen.length ? chosen.map((s) => row(s, <button type="button" className="btn ghost sm" disabled={!isAdmin} title={shownWhy(reason)} onClick={() => set(s, false)}>Remove</button>)) : <p className="c-pp">No library skills chosen here.</p>}
+      <div className="c-ph"><span>Add from your libraries</span></div>
+      {rest.length ? rest.map((s) => row(s, <button type="button" className="btn sm" disabled={!isAdmin} title={shownWhy(reason)} onClick={() => set(s, true)}>Add</button>)) : <p className="c-pp">Every library skill is chosen here.</p>}
+      <p className="c-pp c-libhint">{changed ? "Skill changes apply from the next step. A step already running keeps its version." : "New conversations start with your default skills. This one keeps the ones chosen here."}</p>
     </div>
   );
 }

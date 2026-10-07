@@ -2,9 +2,10 @@
 import type { BaseProbeResult } from "branch/plugin-sdk/channel-contract";
 import type { MessageReceipt } from "branch/plugin-sdk/channel-outbound";
 import type { MediaKind } from "branch/plugin-sdk/media-runtime";
+import type { Static } from "typebox";
 import type { z } from "zod";
 import type { LineAccountConfigSchema, LineConfigSchema } from "./config-schema.js";
-import type { LineRichCard } from "./rich-message-schema.js";
+import type { lineChannelDataSchema } from "./rich-message-schema.js";
 
 export type LineTokenSource = "config" | "env" | "file" | "none";
 export type LineCredentialStatus = "available" | "configured_unavailable" | "missing";
@@ -109,20 +110,9 @@ export type LineTemplateMessagePayload =
       altText?: string;
     };
 
-export type LineChannelData = {
+export type LineChannelData = Static<typeof lineChannelDataSchema>["line"] & {
   quickReplies?: string[];
   quickReplyItems?: LineQuickReplyItem[];
-  mediaKind?: LineOutboundMediaKind;
-  previewImageUrl?: string;
-  durationMs?: number;
-  trackingId?: string;
-  location?: {
-    title: string;
-    address: string;
-    latitude: number;
-    longitude: number;
-  };
-  card?: LineRichCard;
   flexMessage?: LineFlexMessagePayload;
   templateMessage?: LineTemplateMessagePayload;
 };

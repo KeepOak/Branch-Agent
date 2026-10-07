@@ -210,6 +210,7 @@ export async function admitGatewayConnect(context: GatewayConnectPhaseContext) {
     requestOrigin,
     close,
     isStartupPending,
+    isOperatorAdmissionPending,
     logGateway,
     logWsControl,
     originCheckMetrics,
@@ -226,9 +227,10 @@ export async function admitGatewayConnect(context: GatewayConnectPhaseContext) {
   } = context;
 
   const isNodeClient = isStartupNodeConnect(connectParams);
-  const startupPending = isStartupPending?.() === true;
+  const startupPending = (isOperatorAdmissionPending ?? isStartupPending)?.() === true;
   // Node enrollment is an awaited startup dependency: authenticated node admission
   // must complete while ordinary methods and other clients remain startup-gated.
+  // Operators may be admitted earlier (after bind); unready methods answer retryable UNAVAILABLE.
   if (startupPending && !isNodeClient) {
     await rejectGatewayStartupConnect(context);
     return undefined;

@@ -6,8 +6,10 @@ import { createDeferredCore } from "../shared/deferred.js";
 import type { StoreWriterQueue } from "../shared/store-writer-queue.js";
 import { withMockedPlatform } from "../test-utils/vitest-spies.js";
 import type { BranchAgentDatabaseOptions } from "./branch-agent-db-contract.js";
-import type { AgentDatabaseRequestExecutionSource } from "./branch-agent-execution-contract.js";
-import type { AgentDatabaseExecutionScope } from "./branch-agent-execution-native.js";
+import type {
+  AgentDatabaseExecutionScope,
+  AgentDatabaseRequestExecutionSource,
+} from "./branch-agent-execution-contract.js";
 import { openBranchAgentSqliteWorkerStore } from "./branch-agent-worker-store.js";
 
 const boundary = vi.hoisted(() => ({

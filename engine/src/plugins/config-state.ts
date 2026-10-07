@@ -1,29 +1,24 @@
 import { isRecord } from "@branch/normalization-core/record-coerce";
 /** Normalizes plugin config and resolves effective enablement, slots, and activation sources. */
-import { normalizeOptionalLowercaseString } from "@branch/normalization-core/string-coerce";
 import type { BranchConfig } from "../config/types.branch.js";
 import { freezeJsonSnapshot } from "../shared/immutable-data.js";
 import {
   resolveMemorySlotDecisionShared,
-  resolvePluginActivationDecisionShared,
-  toPluginActivationState,
+  resolvePluginActivationStateShared,
   type PluginActivationConfigSourceLike,
   type PluginActivationStateLike,
 } from "./config-activation-shared.js";
 import {
   normalizePluginsConfigWithResolverCore,
-  resolveChannelConfigEnablement,
   type NormalizedPluginsConfig as SharedNormalizedPluginsConfig,
 } from "./config-normalization-shared.js";
 import type { PluginOrigin } from "./plugin-origin.types.js";
+import { normalizePluginPolicyId } from "./plugin-policy-id.js";
 import { defaultSlotIdForKey } from "./slots.js";
 
 export type PluginActivationState = PluginActivationStateLike;
 
-export type PluginActivationConfigSource = {
-  plugins: NormalizedPluginsConfig;
-  rootConfig?: BranchConfig;
-} & PluginActivationConfigSourceLike<BranchConfig>;
+export type PluginActivationConfigSource = PluginActivationConfigSourceLike;
 
 export type NormalizedPluginsConfig = SharedNormalizedPluginsConfig;
 
@@ -41,7 +36,7 @@ const RETIRED_PLUGIN_IDS = new Set([
 
 /** Normalizes user/config plugin ids into the canonical lowercase key form. */
 export function normalizePluginId(id: string): string {
-  const normalized = normalizeOptionalLowercaseString(id) ?? "";
+  const normalized = normalizePluginPolicyId(id);
   return BUILT_IN_PLUGIN_ALIAS_LOOKUP.get(normalized) ?? normalized;
 }
 
@@ -106,8 +101,8 @@ export function resolveSelectedContextEnginePluginIdFromConfig(
     !plugins.enabled ||
     !pluginId ||
     pluginId === defaultSlotIdForKey("contextEngine") ||
-    plugins.deny.includes(pluginId) ||
-    plugins.entries[pluginId]?.enabled === false
+    plugins.deny.includes(normalizePluginPolicyId(pluginId)) ||
+    plugins.entries[normalizePluginPolicyId(pluginId)]?.enabled === false
   ) {
     return undefined;
   }
@@ -224,13 +219,10 @@ export function resolveEffectivePluginActivationState(params: {
   autoEnabledReason?: string;
   channelIds?: readonly string[];
 }): PluginActivationState {
-  return toPluginActivationState(
-    resolvePluginActivationDecisionShared({
-      ...params,
-      allowBundledChannelExplicitBypassesAllowlist: true,
-      resolveChannelConfigEnablement,
-    }),
-  );
+  return resolvePluginActivationStateShared({
+    ...params,
+    allowBundledChannelExplicitBypassesAllowlist: true,
+  });
 }
 
 function toEnableStateResult(state: PluginActivationState): { enabled: boolean; reason?: string } {

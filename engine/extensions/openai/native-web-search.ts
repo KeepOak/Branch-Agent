@@ -38,7 +38,6 @@ export function createOpenAINativeWebSearchWrapper(
   baseStreamFn: StreamFn | undefined,
   params: {
     config?: BranchConfig;
-    agentId?: string;
     nativeWebSearchAllowedByToolPolicy?: boolean;
   },
 ): StreamFn {

@@ -1,7 +1,7 @@
 import type { BranchConfig } from "../../config/types.branch.js";
 
 export const VALID_CONFIG: BranchConfig = {
-  agents: { entries: { main: { default: true } } },
+  agents: { entries: { main: {} } },
   tools: { sessions: { visibility: "all" }, agentToAgent: { enabled: false } },
 };
 

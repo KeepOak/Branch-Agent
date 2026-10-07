@@ -29,7 +29,7 @@ import { runSetupMemoryImportStep } from "./setup.memory-import.js";
 const config: BranchConfig = {
   agents: {
     defaults: { workspace: "/tmp/branch-memory-step" },
-    list: [{ id: "main", default: true }],
+    entries: { main: {} },
   },
 };
 

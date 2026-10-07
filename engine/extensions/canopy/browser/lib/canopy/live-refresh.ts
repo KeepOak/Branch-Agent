@@ -1,7 +1,12 @@
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import { normalizeCanopyChange } from "./change-payload.ts";
 import { refreshCanopy, shouldDeferCanopyLiveRefresh } from "./loading.ts";
-import { getCanopyRuntime, getCanopyState, type CanopyHost } from "./runtime.ts";
+import {
+  getCanopyRuntime,
+  getCanopyState,
+  hasCurrentCanopyCards,
+  type CanopyHost,
+} from "./runtime.ts";
 
 const CANOPY_LIVE_REFRESH_RETRY_MS = 1000;
 
@@ -51,7 +56,6 @@ async function runPendingRefresh(host: CanopyHost): Promise<void> {
       runtime.liveRefreshPending = false;
       const targetEpoch = runtime.liveChangeEpoch;
       const targetRevision = runtime.liveHighestSeenRevision ?? 0;
-      const targetInvalidation = runtime.liveInvalidationRevision ?? 0;
       const refreshed = await (entry.refresh?.() ??
         refreshCanopy({
           host,
@@ -71,7 +75,6 @@ async function runPendingRefresh(host: CanopyHost): Promise<void> {
         runtime.liveAppliedRevision = Math.max(runtime.liveAppliedRevision ?? 0, targetRevision);
       }
       runtime.liveRefreshPending =
-        (runtime.liveInvalidationRevision ?? 0) !== targetInvalidation ||
         runtime.liveChangeEpoch !== targetEpoch ||
         (runtime.liveHighestSeenRevision ?? 0) > (runtime.liveAppliedRevision ?? 0);
     }
@@ -120,20 +123,15 @@ export function configureCanopyLiveRefresh(params: {
   return requiresCanonicalReload;
 }
 
-/** Observer bursts share the canonical read queue and its single coalescing timer. */
-export function invalidateCanopyLiveRefresh(host: CanopyHost): void {
-  const runtime = getCanopyRuntime(host);
-  runtime.liveInvalidationRevision = (runtime.liveInvalidationRevision ?? 0) + 1;
-  runtime.liveRefreshPending = true;
-  scheduleRetry(host, runtime.liveRefreshGeneration ?? 0);
-}
-
 export function handleCanopyChanged(host: CanopyHost, payload: unknown): boolean {
   const change = normalizeCanopyChange(payload);
   if (!change) {
     return false;
   }
   const runtime = getCanopyRuntime(host);
+  if (!runtime.liveRefreshEntry?.refresh && hasCurrentCanopyCards(host, payload)) {
+    return false;
+  }
   if (runtime.liveChangeEpoch !== change.epoch) {
     runtime.liveChangeEpoch = change.epoch;
     runtime.liveHighestSeenRevision = change.revision;

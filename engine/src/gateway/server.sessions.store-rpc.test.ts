@@ -589,7 +589,7 @@ test("sessions.list configuredAgentsOnly keeps configured-agent children and hid
   const rootStateDir = expectDefined(process.env.BRANCH_STATE_DIR, "BRANCH_STATE_DIR");
   const stateDir = path.join(rootStateDir, "configured-list-regression");
   await withEnvAsync({ BRANCH_STATE_DIR: stateDir }, async () => {
-    testState.agentsConfig = { ownership: "explicit", list: [{ id: "ops" }] };
+    testState.agentsConfig = { ownership: "explicit", entries: { ops: {} } };
     testState.agentConfig = { sessionStore: { agentId: "ops" } };
     const configPath = expectDefined(process.env.BRANCH_CONFIG_PATH, "BRANCH_CONFIG_PATH");
     const configJson = '{"acp":{"defaultAgent":"claude","allowedAgents":["gemini"]}}';

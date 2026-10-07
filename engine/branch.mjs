@@ -1,32 +1,63 @@
 #!/usr/bin/env node
 
+import childProcess from "node:child_process";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { access } from "node:fs/promises";
 import module from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  maintainBranchCompileCache,
-  resolveBranchCompileCacheDirectory,
-} from "./node-compile-cache.mjs";
-import { isNodeHostLauncherChild, runNodeHostLauncher } from "./node-host-launcher.mjs";
-import {
+
+// The launcher runs before engine and plugin imports. Cover third-party and
+// legacy direct child_process calls that bypass src/process/spawn-utils.ts.
+// This affects Node children only; native children must hide their own spawns.
+if (process.platform === "win32") {
+  const optionIndex = (args) => Array.isArray(args[1]) || (args[1] == null && args.length > 2) ? 2 : 1;
+  for (const name of ["spawn", "spawnSync", "execFile", "execFileSync", "fork", "exec", "execSync"]) {
+    const original = childProcess[name];
+    childProcess[name] = function (...args) {
+      const index = name === "exec" || name === "execSync" ? 1 : optionIndex(args);
+      const options = args[index];
+      if (typeof options === "function") {
+        args.splice(index, 0, { windowsHide: true });
+      } else if (options == null) {
+        args[index] = { windowsHide: true };
+      } else {
+        args[index] = { ...options, windowsHide: options.windowsHide ?? true };
+      }
+      return Reflect.apply(original, this, args);
+    };
+  }
+  module.syncBuiltinESMExports();
+}
+const [compileCache, hostLauncher, runtimeRecovery, nodeVersion] = await Promise.all([
+  import("./node-compile-cache.mjs"),
+  import("./node-host-launcher.mjs"),
+  import("./node-runtime-recovery.mjs"),
+  import("./node-version.mjs"),
+]);
+const { maintainBranchCompileCache, resolveBranchCompileCacheDirectory } = compileCache;
+const { isNodeHostLauncherChild, runNodeHostLauncher } = hostLauncher;
+const {
   consumeLauncherRootOptionToken,
   isForegroundGmailRunInvocation,
   isNativeHookRelayInvocation,
   recoverNodeRuntime,
   runRespawnedChild,
-} from "./node-runtime-recovery.mjs";
-import {
+} = runtimeRecovery;
+const {
   canRunBranchNodeDiagnostics,
   classifyUnsupportedNodeCommand,
   formatUnsupportedNodeDiagnosticWarning,
-} from "./node-version.mjs";
+} = nodeVersion;
 
 const isSourceCheckoutLauncher = () =>
   existsSync(new URL("./.git", import.meta.url)) ||
   existsSync(new URL("./src/entry.ts", import.meta.url));
+
+// The launcher executes the built dist entry even from a source checkout. Node
+// invalidates bytecode when its source changes, so the same cache is safe here.
+const usesBuiltEntry = () => existsSync(new URL("./dist/entry.js", import.meta.url));
 
 const { detectCurrentSqliteCapabilities, nodeRuntimeFailure, nodeRuntimeNote } =
   await import("./node-sqlite.mjs");
@@ -115,7 +146,7 @@ const resolveCompileCacheRespawnLauncher = () => {
 };
 
 const respawnWithoutCompileCacheIfNeeded = () => {
-  if (!isSourceCheckoutLauncher()) {
+  if (!isSourceCheckoutLauncher() || usesBuiltEntry()) {
     return false;
   }
   if (process.env[COMPILE_CACHE_DISABLED_RESPAWNED_ENV] === "1") {
@@ -138,7 +169,7 @@ const respawnWithoutCompileCacheIfNeeded = () => {
 };
 
 const respawnWithPackagedCompileCacheIfNeeded = () => {
-  if (isSourceCheckoutLauncher() || isNodeCompileCacheDisabled()) {
+  if ((isSourceCheckoutLauncher() && !usesBuiltEntry()) || isNodeCompileCacheDisabled()) {
     return false;
   }
   if (process.env.BRANCH_PACKAGED_COMPILE_CACHE_RESPAWNED === "1") {
@@ -149,6 +180,9 @@ const respawnWithPackagedCompileCacheIfNeeded = () => {
     return false;
   }
   const desiredDirectory = resolvePackagedCompileCacheDirectory();
+  if (!desiredDirectory) {
+    return false;
+  }
   const desired = path.resolve(desiredDirectory);
   if (
     path.resolve(currentDirectory) === desired ||
@@ -263,6 +297,22 @@ const buildMissingEntryErrorMessage = async () => {
   lines.push("For releases, use `npm install -g branch@latest`.");
   return lines.join("\n");
 };
+
+/** `branch graft` and `branch mcp serve` start Graft's MCP server without the full CLI when the gateway is known
+ *  (dist/graft/entry.js, src/mcp/graft-fast.ts). Resolves false to run the full CLI. */
+async function tryGraftFastStart(argv) {
+  const args = argv.slice(2);
+  const graft = args[0] === "graft" || (args[0] === "mcp" && args[1] === "serve");
+  if (!graft || args.includes("--help") || args.includes("-h")) {
+    return false;
+  }
+  const entry = new URL("./dist/graft/entry.js", import.meta.url);
+  if (!existsSync(entry)) {
+    return false;
+  }
+  const { runGraftFast } = await import(entry.href);
+  return await runGraftFast(argv);
+}
 
 const isBareRootHelpInvocation = (argv) =>
   argv.length === 3 && (argv[2] === "--help" || argv[2] === "-h");
@@ -706,20 +756,22 @@ if (isBrowserNativeHostInvocation) {
     !waitingForCompileCacheRespawn &&
     module.enableCompileCache &&
     !isNodeCompileCacheDisabled() &&
-    !isSourceCheckoutLauncher()
+    (!isSourceCheckoutLauncher() || usesBuiltEntry())
   ) {
     try {
       const directory = resolvePackagedCompileCacheDirectory();
-      const baseDirectory = path.resolve(directory);
-      const result = module.enableCompileCache(directory);
-      void maintainBranchCompileCache(directory);
-      const enabled = module.constants?.compileCacheStatus?.ENABLED;
-      if (enabled !== undefined && result?.status === enabled) {
-        // Bootstrap adapter for src/infra/node-compile-cache-env.ts: preserve the first
-        // successful input without importing runtime code before cache activation.
-        const key = Symbol.for("branch.nodeCompileCacheBase");
-        const owner = (globalThis[key] ??= {});
-        owner.baseDirectory ??= baseDirectory;
+      if (directory) {
+        const baseDirectory = path.resolve(directory);
+        const result = module.enableCompileCache(directory);
+        void maintainBranchCompileCache(directory);
+        const enabled = module.constants?.compileCacheStatus?.ENABLED;
+        if (enabled !== undefined && result?.status === enabled) {
+          // Bootstrap adapter for src/infra/node-compile-cache-env.ts: preserve the first
+          // successful input without importing runtime code before cache activation.
+          const key = Symbol.for("branch.nodeCompileCacheBase");
+          const owner = (globalThis[key] ??= {});
+          owner.baseDirectory ??= baseDirectory;
+        }
       }
     } catch {
       // Ignore errors
@@ -734,8 +786,16 @@ if (isBrowserNativeHostInvocation) {
     } else if (!isHelpFastPathDisabled() && tryOutputPrecomputedCommandHelp()) {
       // OK
     } else {
+      // Electron's authenticated Mac driver lease is for this Gateway alone.
+      // Remove it before any engine or plugin can spawn a Trunk shell.
+      if (process.argv.includes("gateway") && process.env.BRANCH_CUA_DRIVER_ENDPOINT) {
+        globalThis[Symbol.for("branch.macComputerEndpoint")] = process.env.BRANCH_CUA_DRIVER_ENDPOINT;
+        delete process.env.BRANCH_CUA_DRIVER_ENDPOINT;
+      }
       await installProcessWarningFilter();
-      if (await tryImport("./dist/entry.js")) {
+      if (await tryGraftFastStart(process.argv)) {
+        // OK: Graft is serving MCP; the full CLI is not loaded.
+      } else if (await tryImport("./dist/entry.js")) {
         // OK
       } else if (await tryImport("./dist/entry.mjs")) {
         // OK

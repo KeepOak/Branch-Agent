@@ -8,6 +8,18 @@ import type { InboundLastRouteUpdate, RecordInboundSession } from "./session.typ
 const loadInboundSessionRuntime = createLazyRuntimeModule(
   () => import("../config/sessions/inbound.runtime.js"),
 );
+const loadSessionHandoffLeaseGate = createLazyRuntimeModule(
+  () => import("../process/session-handoff-lease-gate.js"),
+);
+
+/**
+ * While the previous engine still finishes `sessionKey` (in-place update), its writes come first: wait for its
+ * handoff lease before writing the session ahead of its lane, as the turn itself waits in the lane.
+ */
+async function waitForPreviousEngine(sessionKey: string): Promise<void> {
+  const { waitForSessionHandoffLease } = await loadSessionHandoffLeaseGate();
+  await waitForSessionHandoffLease(`session:${sessionKey}`);
+}
 
 function shouldSkipPinnedMainDmRouteUpdate(
   pin: InboundLastRouteUpdate["mainDmOwnerPin"] | undefined,
@@ -30,24 +42,25 @@ export async function recordInboundSession(
   // Session keys may contain opaque peer ids; preserve case-sensitive payloads while normalizing shape.
   const { storePath, sessionKey, ctx, groupResolution, createIfMissing } = params;
   const canonicalSessionKey = normalizeSessionKeyPreservingOpaquePeerIds(sessionKey);
+  await waitForPreviousEngine(canonicalSessionKey);
   const runtime = await loadInboundSessionRuntime();
-  const metaTask = runtime
-    .recordInboundSessionMeta({
-      storePath,
-      sessionKey: canonicalSessionKey,
-      ctx,
-      groupResolution,
-      createIfMissing,
-    })
-    .catch(async (err: unknown) => {
-      try {
-        await Promise.resolve(params.onRecordError(err));
-      } catch {
-        // Error reporting must not reject the detached metadata task.
-      }
-    });
+  const write = runtime.recordInboundSessionMeta({
+    storePath,
+    sessionKey: canonicalSessionKey,
+    ctx,
+    groupResolution,
+    createIfMissing,
+  });
+  const metaTask = write.catch(async (err: unknown) => {
+    try {
+      await Promise.resolve(params.onRecordError(err));
+    } catch {
+      // Error reporting must not reject the tracked metadata task.
+    }
+  });
   params.trackSessionMetaTask?.(metaTask);
-  void metaTask;
+  // Dispatch needs the writer settled, but best-effort reporting stays with its tracker.
+  await write.catch(() => undefined);
 
   const update = params.updateLastRoute;
   if (!update) {
@@ -57,6 +70,7 @@ export async function recordInboundSession(
     return;
   }
   const targetSessionKey = normalizeSessionKeyPreservingOpaquePeerIds(update.sessionKey);
+  if (targetSessionKey !== canonicalSessionKey) await waitForPreviousEngine(targetSessionKey);
   await runtime.updateSessionLastRoute({
     storePath,
     sessionKey: targetSessionKey,

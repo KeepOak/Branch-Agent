@@ -166,7 +166,7 @@ class BranchSessionProgressWidget extends BranchLightDomElement {
       !snapshot.error &&
       context.gateway.snapshot.phase === "connected"
     ) {
-      void sessions.refreshList({ ...query, force: true });
+      void sessions.refreshList(query);
     }
   }
 

@@ -125,7 +125,7 @@ describe("transcript turn logical ownership", () => {
             entries: { ops: {}, research: {} },
           },
           session: { store: storePath },
-        },
+        } satisfies BranchConfig,
         "ops",
       );
       const scope = {

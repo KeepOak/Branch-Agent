@@ -23,7 +23,7 @@ import {
   runWithGatewayIndependentRootWorkAdmission,
 } from "../process/gateway-work-admission.js";
 import { startSessionUpstreamMonitor } from "../sessions/session-upstream-monitor.js";
-import { runInDetachedAsyncContext } from "../shared/async-work-scope.js";
+import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
 import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
 import { resolveSkillWorkshopConfig } from "../skills/workshop/config.js";
 import { captureBranchStateWorkerContext } from "../state/branch-state-worker-context.js";
@@ -247,12 +247,9 @@ function startPendingOutboundDeliveryRecovery(params: {
           undefined,
           recoveryContext,
         );
-        const { listLegacyDeliveryQueueArtifacts } =
-          await import("../infra/delivery-queue-legacy-files.js");
-        const legacyFiles = listLegacyDeliveryQueueArtifacts(recoveryContext.stateDir);
-        if (remaining > 0 || legacyFiles.length > 0) {
+        if (remaining > 0) {
           logRecovery.warn(
-            `${remaining} legacy outbound deliveries and ${legacyFiles.length} legacy queue files need repair. Stop the Gateway and run branch doctor --fix.`,
+            `${remaining} legacy outbound deliveries need repair. Stop the Gateway and run branch doctor --fix.`,
           );
         }
         await recoverPendingDeliveries(

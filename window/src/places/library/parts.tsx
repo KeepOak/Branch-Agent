@@ -1,6 +1,7 @@
 // Library building blocks drawn after the preview's place parts (42-placesbp / 93-g3p / 94-g4p): section heads,
 // rows in a card, icon tiles, greyed controls with their one-line reason, and the line icons the shell set lacks.
 import type { ReactNode } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import { Icon, type IconName } from "../../shell/icons";
 
 const LIB_PATHS = {
@@ -42,12 +43,12 @@ export function IcoTile({ icon }: { icon: LibIconName }) {
 
 /** A control whose engine method does not exist: drawn greyed, the reason in its title. */
 export function Grey({ label, reason, ghost, className, full }: { label: ReactNode; reason: string; ghost?: boolean; className?: string; full?: boolean }) {
-  return <button type="button" className={`btn${full ? "" : " sm"}${ghost ? " ghost" : ""}${className ? " " + className : ""}`} disabled title={reason} data-reason={reason}>{label}</button>;
+  return <button type="button" className={`btn${full ? "" : " sm"}${ghost ? " ghost" : ""}${className ? " " + className : ""}`} disabled title={shownWhy(reason)} data-reason={reason}>{label}</button>;
 }
 
 /** A switch with no engine setting behind it: greyed, with the reason. */
 export function GreySwitch({ label, reason }: { label: string; reason: string }) {
-  return <button type="button" role="switch" aria-checked={false} aria-label={label} className="switch" disabled title={reason} data-reason={reason} />;
+  return <button type="button" role="switch" aria-checked={false} aria-label={label} className="switch" disabled title={shownWhy(reason)} data-reason={reason} />;
 }
 
 /** A place section: the small mono heading, an optional hint, then its body. */
