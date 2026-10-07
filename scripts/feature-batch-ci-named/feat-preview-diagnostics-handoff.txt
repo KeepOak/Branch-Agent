@@ -1,0 +1,4 @@
+window:src/places/settings/set2/VersionInfo.test.tsx
+window:src/stage/BrowserView.test.tsx
+window:src/thread/Thread.helpers.test.tsx
+window:src/thread/hover-toolbar-redesign.test.tsx

@@ -18,6 +18,7 @@ async function mount(isReply: boolean) {
   const run = vi.fn();
   const actions: HoverActions = {
     copy: { run, disabled: null },
+    copyRequestId: { run, disabled: null },
     retry: { run, disabled: null },
     edit: { run, disabled: null },
     reply: { run, disabled: null },
@@ -47,8 +48,16 @@ describe("P54 message toolbar", () => {
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More"]')?.click());
     expect([...document.body.querySelectorAll(".pop-head")].map((x) => x.textContent)).toEqual(["Reply tools", "Inspect", "Context", "Feedback", "Share"]);
     const labels = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].map((x) => x.textContent);
-    expect(labels).toEqual(["Try again", "Branch from here", "Ask another model", "Every step behind this reply", "Read aloud", "Leave out of context", "Good reply", "Bad reply", "Flag", "As a picture", "To a coding app", "Delete"]);
+    expect(labels).toEqual(["Try again", "Branch from here", "Ask another model", "Every step behind this reply", "Read aloud", "Leave out of context", "Good reply", "Bad reply", "Flag", "Copy request ID", "As a picture", "To a coding app", "Delete"]);
     await act(async () => document.body.querySelector<HTMLButtonElement>('[role="menuitem"]')?.click());
+    expect(run).toHaveBeenCalledOnce();
+  });
+
+  it.each([true, false])("copies the request ID from any message menu (reply=%s)", async (isReply) => {
+    const { host, run } = await mount(isReply);
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More"]')?.click());
+    const copy = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((button) => button.textContent === "Copy request ID");
+    await act(async () => copy?.click());
     expect(run).toHaveBeenCalledOnce();
   });
 

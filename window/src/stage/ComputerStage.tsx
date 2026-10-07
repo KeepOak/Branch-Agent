@@ -236,13 +236,13 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
           {pill.text}
         </span>
         <span className="tb-grow" />
-        {controlling ? (
+        {controlling ? (browser ? null :
           <button type="button" className="btn pri sm" onClick={() => setControl(false)}>
-            Hand back to {name}
+            I'm done
           </button>
         ) : (
           <>
-            {connected ? (
+            {connected && (!browser || !running) ? (
               <button type="button" className="btn pri sm" onClick={() => setControl(true)}>
                 Take over
               </button>

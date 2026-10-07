@@ -70,6 +70,8 @@ export function useMessageActions(ctx: ThreadContextValue, opts: Options): { act
     const userText = block.kind === "user" ? block.text : "";
     return {
       copy: { run: () => void copyText(block.text, toast), disabled: null },
+      copyRequestId: { run: () => void copyText(block.meta?.runId ?? block.meta?.runKey ?? entryId ?? "", toast),
+        disabled: block.meta?.runId || block.meta?.runKey || entryId ? null : "This message has no request ID yet." },
       ...(isReply ? { retry: act(() => asked?.meta?.entryId && retry(asked.meta.entryId), busy ?? (asked ? null : "There is no message of yours before this reply to ask again.")) } : {}),
       ...(!isReply ? { edit: act(() => entryId && setDialog({ kind: "edit", entryId, text: userText }), busy ?? (entryId ? null : NO_ENGINE)) } : {}),
       reply: { run: () => entryId && opts.onReply?.({ entryId, name: isReply ? name : "you", text: block.text }), disabled: opts.onReply && entryId ? null : NO_REPLY },

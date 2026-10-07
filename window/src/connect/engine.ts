@@ -4,6 +4,8 @@ import type { MediaPicture } from "./session";
 export type WindowEngine = {
   /** Actual connection address, used to distinguish the owned desktop gateway from Connect elsewhere. */
   gatewayUrl?: string;
+  serverVersion?: string;
+  serverBuildId?: string;
   request<T = unknown>(method: string, params?: unknown): Promise<T>;
   onEvent(listener: (e: { event: string; payload?: unknown }) => void): () => void;
   sessionKey: string | null;

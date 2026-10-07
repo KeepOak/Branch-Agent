@@ -296,6 +296,8 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   const [drawer, setDrawer] = useState(false);
   const [menu, setMenu] = useState<{ at: MenuAnchor; items: MenuItem[] } | null>(null);
   const [note, setNote] = useState("");
+  const [handoff, setHandoff] = useState(false);
+  const [handoffBusy, setHandoffBusy] = useState(false);
   const [find, setFind] = useState<string | null>(null);
   const [view, setView] = useState<{ url?: string; title?: string; phase: BrowserPhase }>({ phase: "empty" });
   const recordedNewest = entries.at(-1)?.tab.targetId;
@@ -372,6 +374,27 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     );
   };
   const working = running && !control;
+  const takeOverForSignIn = async () => {
+    if (!engine.sessionKey || handoffBusy) return;
+    setHandoffBusy(true);
+    try {
+      await engine.request("sessions.abort", { key: engine.sessionKey });
+      setHandoff(true);
+      onControl?.(true);
+    } catch (error) {
+      setNote(error instanceof Error ? error.message : String(error));
+    } finally { setHandoffBusy(false); }
+  };
+  const finishSignIn = async () => {
+    onControl?.(false);
+    if (!handoff) return;
+    setHandoff(false);
+    if (!engine.sessionKey) return;
+    try {
+      if (engine.send) await engine.send("I've finished the sign-in or verification in the browser. Please continue.");
+      else await engine.request("chat.send", { sessionKey: engine.sessionKey, message: "I've finished the sign-in or verification in the browser. Please continue.", idempotencyKey: crypto.randomUUID() });
+    } catch (error) { setNote(error instanceof Error ? error.message : String(error)); }
+  };
   let page: ReactNode;
   if (browser.phase === "none") page = <Blank title="Nothing open" text={`${name} hasn't opened a page in this conversation.`} />;
   else if (browser.phase === "loading" && !browser.tabs.length) page = <Blank title="Connecting to the browser…" text="Reading this conversation's tabs." />;
@@ -427,11 +450,18 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
         <div className="bn-br" role="note">
           <i className="dot-br" />
           <span className="grow">
-            <b>{name} is using this page.</b> Your clicks and typing wait while it acts.
+            <b>{name} is using this page.</b> Need sign-in, 2FA or a CAPTCHA? Take over and finish it here. Don't send passwords or codes in chat.
           </span>
-          <button type="button" className="btn pri sm" onClick={() => onControl?.(true)}>
+          <button type="button" className="btn pri sm" disabled={handoffBusy} onClick={() => void takeOverForSignIn()}>
             Take over
           </button>
+        </div>
+      ) : null}
+      {control && view.phase === "connected" ? (
+        <div className="bn-br" role="note" data-testid="browser-handoff">
+          <i className="dot-br" />
+          <span className="grow"><b>You're driving.</b> Finish sign-in or verification in this browser. Password boxes are hidden from screenshots.</span>
+          <button type="button" className="btn pri sm" onClick={() => void finishSignIn()}>I'm done</button>
         </div>
       ) : null}
       {find !== null ? (

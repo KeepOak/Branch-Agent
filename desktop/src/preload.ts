@@ -7,6 +7,7 @@ import { contextBridge, ipcRenderer } from "electron";
 interface DesktopInfo {
   gatewayUrl: string;
   gatewayToken: string;
+  desktopVersion: string;
 }
 
 // Null on any page other than the served window (for example the "Starting" page).
@@ -14,7 +15,7 @@ const info = ipcRenderer.sendSync("branch-desktop:info") as DesktopInfo | null;
 if (info) {
   let gatewayUrl = info.gatewayUrl;
   contextBridge.exposeInMainWorld("branchDesktop", {
-    gatewayUrl: info.gatewayUrl, getGatewayUrl: () => gatewayUrl, gatewayToken: info.gatewayToken,
+    gatewayUrl: info.gatewayUrl, getGatewayUrl: () => gatewayUrl, gatewayToken: info.gatewayToken, desktopVersion: info.desktopVersion,
     openConversation: (key: string) => ipcRenderer.invoke("branch-desktop:open-conversation", key),
     conversationWindows: {
       list: (): Promise<string[]> => ipcRenderer.invoke("branch-desktop:conversation-windows"),

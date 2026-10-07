@@ -14,6 +14,7 @@ import { componentDesktop } from "../../../connect/desktop-component-updates";
 import { DesktopUpdatesPage } from "./desktop-updates";
 import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import { KeeperMark } from "../../../brand/KeeperMark";
+import { VersionInfo, type VersionDetails } from "./VersionInfo";
 import "./updates.css";
 
 const UPDATE_EVENTS = ["update"];
@@ -68,7 +69,8 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
       {status.data ? <Waiting {...props} data={data} version={version} /> : null}
       {status.data ? <Updating {...props} data={data} /> : null}
       <Devices lv={lvOf(props.level)} />
-      <About />
+      <About details={{ version, track: str(data.status.effectiveChannel), engineBuild: props.engine.serverBuildId || props.engine.serverVersion || "",
+        desktopBuild: "", os: str(rec(sys.data).osLabel) || os }} />
       <RemoveBranch />
       <Reports />
       <BeforeInstall />
@@ -307,10 +309,11 @@ function Devices({ lv }: { lv: number }) {
   );
 }
 
-export function About() {
+export function About({ details }: { details?: VersionDetails }) {
   return (
     <Sec title="About">
       <KeeperMark />
+      {details ? <VersionInfo details={details} /> : null}
       <Ctl title="Open-source licences" sub="The software Branch is built on, with each licence." off="The list comes with the Branch app on your computer."><Btn sm disabled>Show</Btn></Ctl>
     </Sec>
   );

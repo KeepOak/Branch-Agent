@@ -798,7 +798,8 @@ async function start(): Promise<void> {
     const owner = BrowserWindow.fromWebContents(e.sender);
     const served = Boolean(owner && branchWindows().includes(owner) && e.senderFrame === e.sender.mainFrame && e.sender.getURL().startsWith(windowUrl()));
     if (served) windowPort = gatewayPort;
-    e.returnValue = served ? { gatewayUrl: gatewayUrl(), gatewayToken: token } : null;
+    const desktopVersion = (() => { try { return readFileSync(join(cfg.dataDir, "desktop-update-version.txt"), "utf8").trim() || app.getVersion(); } catch { return app.getVersion(); } })();
+    e.returnValue = served ? { gatewayUrl: gatewayUrl(), gatewayToken: token, desktopVersion } : null;
   });
   ipcMain.handle("branch-desktop:open-conversation", (e, key: unknown) => {
     const owner = BrowserWindow.fromWebContents(e.sender);

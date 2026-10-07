@@ -36,7 +36,7 @@ const owner = (request: WindowEngine["request"], key = "agent:scout:one"): Windo
   onEvent: () => () => {},
   scopes: ["operator.admin"],
 });
-const render = async (engine: WindowEngine, viewBlocks = blocks, control = false) => {
+const render = async (engine: WindowEngine, viewBlocks = blocks, control = false, onControl?: (value: boolean) => void, running = false) => {
   if (!root) {
     container = document.createElement("div");
     document.body.append(container);
@@ -50,6 +50,8 @@ const render = async (engine: WindowEngine, viewBlocks = blocks, control = false
         blocks={viewBlocks}
         name="Scout"
         control={control}
+        onControl={onControl}
+        running={running}
         onState={onState}
       />,
     ),
@@ -80,6 +82,25 @@ afterEach(async () => {
   document.body.innerHTML = "";
 });
 describe("scoped browser viewing", () => {
+  it("shows a private sign-in handoff and returns control when I'm done", async () => {
+    const onControl = vi.fn();
+    vi.stubGlobal("createImageBitmap", vi.fn(async () => ({ width: 100, height: 100, close: vi.fn() })));
+    const request = routed(() => ({ wsPath: "/stream/one", targetId: "tab-one" }));
+    const send = vi.fn(async () => undefined);
+    const engine = { ...owner(request as any), send };
+    await render(engine, blocks, false, onControl, true);
+    await flush();
+    await act(async () => casts.created[0].options.onReady({ targetId: "tab-one", url: "https://example.test", title: "Sign in" }));
+    await act(async () => casts.created[0].options.onFrame({ blob: new Blob(), cssWidth: 100, cssHeight: 100, url: "https://example.test" }));
+    await act(async () => container.querySelector<HTMLButtonElement>(".bn-br button")?.click());
+    expect(request).toHaveBeenCalledWith("sessions.abort", { key: "agent:scout:one" });
+    expect(onControl).toHaveBeenCalledWith(true);
+    await render(engine, blocks, true, onControl, false);
+    expect(container.querySelector('[data-testid="browser-handoff"]')?.textContent).toContain("Password boxes are hidden");
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="browser-handoff"] button')?.click());
+    expect(onControl).toHaveBeenCalledWith(false);
+    expect(send).toHaveBeenCalledWith("I've finished the sign-in or verification in the browser. Please continue.");
+  });
   it("makes no request without a complete recorded browser tab", async () => {
     const request = vi.fn();
     await render(owner(request), []);

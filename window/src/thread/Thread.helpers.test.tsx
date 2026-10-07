@@ -58,6 +58,20 @@ describe("actual thread compact helper entry", () => {
 });
 
 describe("message context control", () => {
+  it("copies the run request ID from a message menu", async () => {
+    const fixture = backend();
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => root!.render(<Thread name="Owner" history={[{ kind: "text", key: "reply", text: "Done", streaming: false,
+      meta: { entryId: "entry-1", runId: "request-42" } }]} live={[]} pendingUser={null} running={false} engine={fixture.engine} onAnswer={() => {}} />));
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="More"]')?.click());
+    const item = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((button) => button.textContent === "Copy request ID");
+    await act(async () => item?.click());
+    expect(writeText).toHaveBeenCalledWith("request-42");
+  });
   it("puts a message back immediately and offers an undo", async () => {
     const fixture = backend();
     const reload = vi.fn();

@@ -6,6 +6,7 @@ import { useDesktopControls } from "../../../connect/desktop-controls";
 import { componentDesktop, DESKTOP_CHECKS_HOURLY, MANUAL_UPDATE_UNSUPPORTED, useDesktopComponentStatus, type ComponentUpdateStatus } from "../../../connect/desktop-component-updates";
 import { rec, str, useLive, type RecordValue } from "./common";
 import { useBranchVersion, versionParts } from "../../../connect/branch-version";
+import { VersionInfo } from "./VersionInfo";
 
 const OS: Record<string, string> = { win32: "Windows", darwin: "macOS", linux: "Linux" };
 
@@ -15,6 +16,9 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
   const bridge = desktop?.componentUpdates;
   const data = useDesktopComponentStatus(engine.gatewayUrl);
   const auto = useDesktopControls();
+  const sys = useLive<RecordValue>(engine, "system.info", {}, []);
+  const update = useLive<RecordValue>(engine, "update.status", {}, []);
+  const desktopVersion = str((window as unknown as { branchDesktop?: { desktopVersion?: string } }).branchDesktop?.desktopVersion);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const run = async (method: "check" | "stage") => {
@@ -44,6 +48,11 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
       {data.status?.phase === "available" ? <Ctl title="Install Branch update"><Btn disabled={busy} onClick={() => void run("stage")}>Install when idle</Btn></Ctl> : null}
       <Hint>Branch checks when it starts and every 10 minutes. A downloaded update applies after your Trunks finish.</Hint>
     </Sec>
+    <Sec title="About">
+      <VersionInfo details={{ version: current ?? "", track: str(rec(update.data).effectiveChannel),
+        engineBuild: engine.serverBuildId || engine.serverVersion || "",
+        desktopBuild: desktopVersion, os: str(rec(sys.data).osLabel) || OS[str(rec(sys.data).platform)] || "" }} />
+    </Sec>
   </Page>;
 }
 
@@ -53,6 +62,8 @@ function HourlyUpdates({ title, engine, reason }: Pick<SettingsPageProps, "title
   const version = useBranchVersion(engine.gatewayUrl);
   const sys = useLive<RecordValue>(engine, "system.info", {}, []);
   const os = OS[str(rec(sys.data).platform)] ?? str(rec(sys.data).osLabel);
+  const update = useLive<RecordValue>(engine, "update.status", {}, []);
+  const desktopVersion = str((window as unknown as { branchDesktop?: { desktopVersion?: string } }).branchDesktop?.desktopVersion);
   const lede = version ? `Branch ${versionParts(version).short}${os ? ` on ${os}` : ""}.` : "Updates for Branch on this computer.";
   return <Page title={title} lede={lede}>
     <div className="s2-keeper"><KeeperMark size={64} /></div>
@@ -62,6 +73,10 @@ function HourlyUpdates({ title, engine, reason }: Pick<SettingsPageProps, "title
     <Sec title="Updating">
       <Ctl title="Check for updates" off={reason ? undefined : MANUAL_UPDATE_UNSUPPORTED}><Btn sm disabled>Check now</Btn></Ctl>
       <Hint>A downloaded update takes effect when Branch restarts.</Hint>
+    </Sec>
+    <Sec title="About">
+      <VersionInfo details={{ version, track: str(rec(update.data).effectiveChannel), engineBuild: engine.serverBuildId || engine.serverVersion || "",
+        desktopBuild: desktopVersion, os: str(rec(sys.data).osLabel) || os }} />
     </Sec>
   </Page>;
 }

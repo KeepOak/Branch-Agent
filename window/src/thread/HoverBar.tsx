@@ -13,6 +13,7 @@ export type Act = { run: () => void; disabled: string | null };
 
 export type HoverActions = {
   copy: Act;
+  copyRequestId: Act;
   retry?: Act;
   edit?: Act;
   reply: Act;
@@ -130,6 +131,7 @@ function MoreMenu({ actions, isReply, onClose, anchor }: { actions: HoverActions
       ) : null}
       <hr className="msep" />
       <div className="pop-head">Share</div>
+      {item("Copy request ID", actions.copyRequestId)}
       {item("As a picture", null, NO_PICTURE)}
       {item("To a coding app", null, NO_CODING_APP)}
       <hr className="msep" />
