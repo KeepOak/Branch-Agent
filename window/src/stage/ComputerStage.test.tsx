@@ -141,6 +141,7 @@ describe("conversation computer lifecycle", () => {
     await flush();
     expect(request.mock.calls.map((c: unknown[]) => c[0])).not.toContain("desktop.observe");
     expect(container.textContent).toContain("It can't see a screen");
+    expect(container.textContent).not.toContain("watching");
     expect(viewer.connect).not.toHaveBeenCalled();
   });
   it("releases a late observe response after closing without opening its socket", async () => {
