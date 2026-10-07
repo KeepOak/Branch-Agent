@@ -4,6 +4,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { isRecord } from "@branch/normalization-core/record-coerce";
 import {
   assertStateDatabaseAccessAllowed,
+  getStateDatabaseSchemaLease,
   GatewayStateOwnerContentionError,
 } from "../infra/gateway-state-owner.js";
 import { isGatewayExternallySupervised } from "../infra/gateway-supervision.js";
@@ -18,19 +19,28 @@ import {
   BranchStateOwnershipMetadataError,
 } from "../infra/sqlite-lifecycle-errors.js";
 import {
+  prepareSqliteReadOnlyLocationSyncInProcess,
+  readSourceJournalMode,
+  readSourceSidecars,
+} from "../infra/sqlite-readonly-location.js";
+import {
   prepareSqliteReadOnlyLocation,
   prepareSqliteReadOnlyLocationSync,
 } from "../infra/sqlite-snapshot-source.js";
+import { withSqliteSourceReadDatabase } from "../infra/sqlite-source-handle.js";
+import { runSqliteDeferredTransactionSync } from "../infra/sqlite-transaction.js";
 import {
   StateSchemaMutationConflictError,
   withStateDatabaseSchemaMaintenance,
 } from "../infra/state-database-maintenance.js";
+import { getBranchDatabaseMaintenanceScope } from "./branch-state-db-async-lifecycle.js";
 import {
   BRANCH_SQLITE_BUSY_TIMEOUT_MS,
   type BranchStateSchemaReadAdmission,
 } from "./branch-state-db-contract.js";
 import { tableExists } from "./branch-state-db-schema-helpers.js";
 import { normalizeBranchStateSchemaReadError } from "./branch-state-db-schema-migration-required.js";
+import { inspectBranchStateOwnershipWithWorker } from "./branch-state-ownership-worker.js";
 
 export const STATE_SUPERVISION_KEY = "gateway.supervision";
 const MAX_OWNERSHIP_TIMESTAMP_MS = 8_640_000_000_000_000;
@@ -166,6 +176,35 @@ export function inspectBranchStateOwnershipAtPath(
   }
 }
 
+/** Runs only in an isolated child: closing a source must not release a live writer's locks. */
+export function inspectBranchStateOwnershipInProcess(
+  databasePath: string,
+): BranchExternalStateOwnership | null {
+  const sidecars = readSourceSidecars(databasePath);
+  if (
+    readSourceJournalMode(databasePath) === "wal" &&
+    sidecars.wal &&
+    sidecars.shm &&
+    !sidecars.journal
+  ) {
+    return withSqliteSourceReadDatabase(databasePath, "source", (database) => {
+      database.exec(
+        `PRAGMA busy_timeout = ${BRANCH_SQLITE_BUSY_TIMEOUT_MS}; PRAGMA query_only = ON; PRAGMA trusted_schema = OFF;`,
+      );
+      return runSqliteDeferredTransactionSync(database, () =>
+        inspectBranchStateOwnershipFromDatabase(database, databasePath),
+      );
+    });
+  }
+  // Incomplete and recovery-required families retain private artifact-preserving inspection.
+  const prepared = prepareSqliteReadOnlyLocationSyncInProcess(databasePath);
+  try {
+    return inspectOwnershipThroughConnection(prepared.location, databasePath);
+  } finally {
+    prepared.cleanup();
+  }
+}
+
 function assertOwnershipAllowsWrite(
   status: BranchExternalStateOwnership | null,
   databasePath: string,
@@ -197,6 +236,26 @@ export async function assertBranchStateWriteAllowedAtPath(options: {
     return;
   }
   const env = options.env ?? process.env;
+  // Offline admission belongs to this process. Its live scope/lease cannot be
+  // borrowed by a native reader child; retain the private-copy path instead.
+  if (
+    !options.openStateSchemaReadAdmission &&
+    !getBranchDatabaseMaintenanceScope() &&
+    !getStateDatabaseSchemaLease(databasePath)
+  ) {
+    const ownershipJson = await inspectBranchStateOwnershipWithWorker(
+      databasePath,
+      options.signal,
+    );
+    options.signal?.throwIfAborted();
+    assertStateDatabaseAccessAllowed(databasePath);
+    assertOwnershipAllowsWrite(
+      ownershipJson === "null" ? null : parseExternalOwnership(ownershipJson, databasePath),
+      databasePath,
+      env,
+    );
+    return;
+  }
   const prepared = await prepareSqliteReadOnlyLocation(databasePath, {
     preserveSourceArtifacts: true,
     signal: options.signal,

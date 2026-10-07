@@ -1,5 +1,7 @@
 // The model and thinking chip (DESIGN-SPEC §4.3.4): projections of models.list and the session row.
 import { list, rec, str, type Rec } from "./engine";
+import { readModelRuntimeMetadata, type ModelRuntimeMetadata } from "./model-capabilities";
+import { displayModelName } from "./model-display";
 
 export type Level = { id: string; label: string };
 
@@ -19,6 +21,8 @@ export type ModelChoice = {
   contextWindowDefault: string;
   /** Account-scoped service tiers; "ultrafast" means the account offers Ultrafast. */
   serviceTiers: string[];
+  /** Read-only public capabilities for each advertised runtime; never merged across routes. */
+  runtimeMetadata?: ModelRuntimeMetadata;
 };
 
 function levels(v: unknown): Level[] {
@@ -36,7 +40,7 @@ export function readModel(r: Rec): ModelChoice | null {
   return {
     ref: `${provider}/${id}`,
     id,
-    name: str(r.name) || id,
+    name: displayModelName(str(r.name) || id),
     provider,
     local: r.local === true,
     available: r.available !== false,
@@ -47,6 +51,7 @@ export function readModel(r: Rec): ModelChoice | null {
     contextWindows: levels(r.contextWindows),
     contextWindowDefault: str(r.contextWindowDefault),
     serviceTiers: Array.isArray(r.serviceTiers) ? r.serviceTiers.map(str) : [],
+    runtimeMetadata: readModelRuntimeMetadata(r),
   };
 }
 
@@ -59,9 +64,10 @@ export function readModels(result: unknown): ModelChoice[] {
 }
 
 /** The model this conversation uses: the session row's, else the engine's default for new conversations. */
-export function currentModelRef(row: Rec, defaults: Rec): string {
-  const provider = str(row.modelProvider) || str(defaults.modelProvider);
-  const model = str(row.model) || str(defaults.model);
+export function currentModelRef(row: Rec, defaults: Rec, trunkModel?: string): string {
+  const override = str(row.modelOverride);
+  const provider = str(row.providerOverride) || str(row.modelProvider) || str(defaults.modelProvider);
+  const model = override || trunkModel || str(row.model) || str(defaults.model);
   if (!model) {
     return "";
   }

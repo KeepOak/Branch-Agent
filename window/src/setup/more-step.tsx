@@ -1,6 +1,7 @@
 // Setup › Two more things (DESIGN-SPEC §4.8.1.10 and its parity adds): email, bringing another assistant's memory
 // along (migrations.memory.plan / apply), showing their conversations (the session catalogue plugins' switch),
 // a backup, and a first routine (cron.add). Each tile reads or writes the engine; nothing finishes on a timer.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { addParams, draftFromIdea } from "../places/automations/draft";
@@ -9,6 +10,7 @@ import { saveConfig, type ConfigSnapshot } from "../places/settings/adapter";
 import { MoveInDialog } from "../places/settings/set2/usage";
 import { Icon, type IconName } from "../shell/icons";
 import { ToolLogo } from "./tool-logos";
+import { shownWhy } from "../shell/shown-why";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -117,7 +119,7 @@ function BringTile({ engine, agentId, trunkName }: { engine: WindowEngine; agent
   };
   const line = error ? error : !found ? "Looking for other assistants on this computer…" : done !== null ? `Brought in ${done} from ${names(found)}. ${trunkName} reads it from now on.` : found.length ? `Branch found memory from ${names(found)}. Bring it into ${trunkName}?` : "Branch found no other assistant's memory on this computer.";
   return (
-    <Tile icon="download" title="Bring your other assistant along" pill={done !== null ? "Brought in" : undefined} line={line} className="bringPF18">
+    <Tile icon="chat" title="Bring your other assistant along" pill={done !== null ? "Brought in" : undefined} line={line} className="bringPF18">
       {found?.length && done === null && !skipped ? (
         <>
           <ul className="bring-lPF18">
@@ -184,7 +186,7 @@ function RoutineTile({ engine, agentId, trunkName }: { engine: WindowEngine; age
             Added to Automations: <b>{added}</b> · weekdays at 9:00 AM · {trunkName}. Change it any time in Automations › Scheduled.
           </>
         ) : (
-          "One thing you do every week that a Trunk could do. It becomes your first routine."
+          "One thing you do every week that a Trunk could do. It becomes your first automation."
         )
       }
     >
@@ -192,7 +194,7 @@ function RoutineTile({ engine, agentId, trunkName }: { engine: WindowEngine; age
         <form className="formR418" onSubmit={(e) => (e.preventDefault(), void add())}>
           <input className="inp" aria-label="A boring task" placeholder="Sort the receipts in Downloads" value={text} onChange={(e) => setText(e.target.value)} />
           <button type="submit" className="btn sm" data-testid="setup-routine" disabled={busy || !text.trim()}>
-            Make it a routine
+            Make it an automation
           </button>
         </form>
       )}
@@ -203,7 +205,7 @@ function RoutineTile({ engine, agentId, trunkName }: { engine: WindowEngine; age
 
 export function MoreBody({ engine, agentId, trunkName }: { engine: WindowEngine; agentId: string | null; trunkName: string }) {
   const off = (label: string, reason: string, logo: ReactNode) => (
-    <button type="button" className="btn sm" disabled title={reason}>
+    <button type="button" className="btn sm" disabled title={shownWhy(reason)}>
       {logo}
       {label}
     </button>
@@ -217,7 +219,7 @@ export function MoreBody({ engine, agentId, trunkName }: { engine: WindowEngine;
         </div>
       </Tile>
       {agentId ? <BringTile engine={engine} agentId={agentId} trunkName={trunkName} /> : null}
-      <Tile icon="box" title="Bring back your Branch" line="Moving from another computer? Restore Trunks, memory and automations from a backup.">
+      <Tile icon="clock" title="Bring back your Branch" line="Moving from another computer? Restore Trunks, memory and automations from a backup.">
         <div className="acts">{off("Choose a backup…", "Restoring a backup from the window isn't in the engine yet.", <Icon name="folder" small />)}</div>
       </Tile>
       {agentId ? <RoutineTile engine={engine} agentId={agentId} trunkName={trunkName} /> : null}

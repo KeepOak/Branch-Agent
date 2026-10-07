@@ -5,7 +5,6 @@
 .set-col .plist-pp { display: grid; gap: 2px; align-content: start; min-width: 0; }
 .set-col .plist-pp .empty { padding: 24px 0; margin: 0; }
 .set-col .invite-pp { justify-self: start; margin-top: 10px; }
-.set-col .why-pp { font-size: 12px; color: var(--ink-3); }
 
 .set-col .phead-pp { display: flex; align-items: center; gap: 12px; padding: 6px 6px 12px; margin-bottom: 6px; border-bottom: 1px solid var(--hair17); }
 .set-col .phead-pp .grow { flex: 1; min-width: 0; }
@@ -18,7 +17,7 @@
 .set-col .face-pp img { width: 100%; height: 100%; object-fit: cover; }
 
 .set-col .pgrp-pp { display: grid; gap: 2px; }
-.set-col .grp-pp { margin: 14px 0 6px; font: 500 10.5px/1.2 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.set-col .grp-pp { margin: 14px 0 6px; font: 600 12px/1.3 var(--sans); color: var(--ink-3); }
 .set-col .pitem-pp { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px; border: 1px solid transparent; border-radius: 12px; background: transparent; text-align: left; color: var(--ink); }
 .set-col .pitem-pp:hover { background: var(--fill); }
 .set-col .pitem-pp[aria-current="true"] { border-color: var(--line-2); background: var(--raise); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); }
@@ -69,4 +68,18 @@
 @media (max-width: 860px) {
   .set-col .t10-pp { grid-template-columns: minmax(0, 1fr); }
   .set-col .pcard-pp { position: static; }
+}
+/* a stacked row, as the preview draws it: the pin beside its title, then the sub-line, then the control */
+.set-col [data-page-title="People"] .ctl.stack-k { grid-template-columns: auto minmax(0, 1fr); }
+.set-col [data-page-title="People"] .ctl.stack-k > .pin-k { justify-self: start; }
+.set-col [data-page-title="People"] .ctl.stack-k > :not(b, .pin-k) { grid-column: 1 / -1; }
+.set-col [data-page-title="People"] .ctl.stack-k > small:not(.why-k) { order: 1; }
+.set-col [data-page-title="People"] .ctl.stack-k > .right { order: 2; }
+.set-col [data-page-title="People"] .ctl.stack-k > .why-k { order: 3; }
+.set-col [data-page-title="People"] .ctl.stack-k > .right > input.inp { height: 38px; padding: 8px 10px; }
+/* the preview's role pills carry no dot */
+.set-col .phead-pp .pill > i, .set-col .pdh-pp .pill > i { display: none; }
+@media (max-width: 640px) {
+  .set-col [data-page-title="People"] .ctl:has(> .right > select.inp) { grid-template-columns: minmax(0, 1fr); }
+  .set-col [data-page-title="People"] .ctl:has(> .right > select.inp) > .right { grid-row: auto; grid-column: 1; justify-content: flex-start; margin-top: 6px; }
 }

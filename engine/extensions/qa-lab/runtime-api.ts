@@ -1,19 +1,27 @@
+export type { Command } from "commander";
+export type { BranchConfig } from "branch/plugin-sdk/config-contracts";
+export { callGatewayFromCli } from "branch/plugin-sdk/gateway-runtime";
+export { definePluginEntry } from "branch/plugin-sdk/plugin-entry";
+export type { PluginRuntime } from "branch/plugin-sdk/runtime-store";
+export { defaultQaRuntimeModelForMode } from "./src/model-selection.runtime.js";
 export {
   buildQaTarget,
-  callGatewayFromCli,
-  type Command,
   createQaBusThread,
-  defaultQaRuntimeModelForMode,
-  definePluginEntry,
   deleteQaBusMessage,
   editQaBusMessage,
   getQaBusState,
   injectQaBusInboundMessage,
   normalizeQaTarget,
-  type BranchConfig,
   parseQaTarget,
-  type PluginRuntime,
   pollQaBus,
+  qaChannelPlugin,
+  reactToQaBusMessage,
+  readQaBusMessage,
+  searchQaBusMessages,
+  sendQaBusMessage,
+  setQaChannelRuntime,
+} from "branch/plugin-sdk/qa-channel";
+export {
   type QaBusAttachment,
   type QaBusConversation,
   type QaBusCreateThreadInput,
@@ -32,13 +40,7 @@ export {
   type QaBusStateSnapshot,
   type QaBusThread,
   type QaBusWaitForInput,
-  qaChannelPlugin,
-  reactToQaBusMessage,
-  readQaBusMessage,
-  searchQaBusMessages,
-  sendQaBusMessage,
-  setQaChannelRuntime,
-} from "./src/runtime-api.js";
+} from "branch/plugin-sdk/qa-channel-protocol";
 export { createQaLiveLaneGateway } from "./src/live-transports/shared/live-gateway.runtime.js";
 export { runLiveTransportQaSuiteCommand } from "./src/live-transports/shared/live-transport-suite.runtime.js";
 export {

@@ -101,7 +101,8 @@ export type HookBlockedReason =
   | "plugin-before-tool-call"
   | "plugin-approval"
   | "plugin-approval-unavailable"
-  | "tool-loop";
+  | "tool-loop"
+  | "lockdown";
 
 type HookBlockedOutcome = {
   blocked: true;

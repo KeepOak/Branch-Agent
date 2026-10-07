@@ -37,8 +37,7 @@ vi.mock("../../agents/agent-scope.js", async () => {
   return {
     listAgentIds: mocks.listAgentIds,
     resolveDefaultAgentId: (cfg: BranchConfig) => {
-      const agents = cfg.agents?.list ?? [];
-      return normalizeAgentId(agents.find((agent) => agent?.default)?.id ?? agents[0]?.id);
+      return normalizeAgentId(Object.keys(cfg.agents?.entries ?? {})[0]);
     },
   };
 });
@@ -127,7 +126,7 @@ describe("resolveSessionKeyForRequest", () => {
 
     const result = resolveSessionKeyForRequest({
       cfg: {
-        agents: { list: [{ id: "mybot", default: true }] },
+        agents: { entries: { mybot: {} } },
       } satisfies BranchConfig,
       to: "+15551234567",
     });
@@ -145,7 +144,7 @@ describe("resolveSessionKeyForRequest", () => {
 
     const result = resolveSessionKeyForRequest({
       cfg: {
-        agents: { list: [{ id: "mybot", default: true }] },
+        agents: { entries: { mybot: {} } },
         session: { mainKey: "work" },
       } satisfies BranchConfig,
       sessionKey: "main",
@@ -168,7 +167,7 @@ describe("resolveSessionKeyForRequest", () => {
 
     const result = resolveSessionKeyForRequest({
       cfg: {
-        agents: { list: [{ id: "mybot", default: true }] },
+        agents: { entries: { mybot: {} } },
       } satisfies BranchConfig,
       to: "+15551234567",
     });
@@ -188,7 +187,7 @@ describe("resolveSessionKeyForRequest", () => {
 
     const result = resolveSessionKeyForRequest({
       cfg: {
-        agents: { list: [{ id: "mybot", default: true }] },
+        agents: { entries: { mybot: {} } },
         session: { store: SHARED_STORE_PATH },
       } satisfies BranchConfig,
       to: "+15551234567",
@@ -214,7 +213,7 @@ describe("resolveSessionKeyForRequest", () => {
 
     const result = resolveSessionKeyForRequest({
       cfg: {
-        agents: { list: [{ id: "mybot", default: true }] },
+        agents: { entries: { mybot: {} } },
       } satisfies BranchConfig,
       to: "+15551234567",
     });

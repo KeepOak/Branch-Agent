@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { logError } from "branch/plugin-sdk/logging-core";
+import { asOptionalRecord } from "branch/plugin-sdk/string-coerce-runtime";
 import { resolveRequestClientIp } from "branch/plugin-sdk/webhook-ingress";
 import {
   readJsonBodyWithLimit,
@@ -184,13 +185,7 @@ export function createDiscordActivityHttpHandler(deps: DiscordActivityHttpDeps):
       );
       return true;
     }
-    const body =
-      bodyResult.ok &&
-      bodyResult.value &&
-      typeof bodyResult.value === "object" &&
-      !Array.isArray(bodyResult.value)
-        ? (bodyResult.value as Record<string, unknown>)
-        : null;
+    const body = bodyResult.ok ? asOptionalRecord(bodyResult.value) : undefined;
     const code = typeof body?.code === "string" ? body.code.trim() : "";
     if (!code) {
       return respondJson(res, 401, { error: "invalid authorization code" });

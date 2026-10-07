@@ -151,17 +151,18 @@ const small = (d: string) => (
   <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>
 );
 
-/** The Plan card (§4.2.2): "Plan", "<n> of <m> done", the steps as boxes, the progress note; Refresh and Dismiss
- *  while it is going, a Done pill and its time once every step is done. */
+/** A plan shows actual step counts; a note-only card is a progress update without a completion fraction.
+ *  Refresh/Dismiss remain available until every step of a nonempty plan is done. */
 export function PlanCard({ card, onRefresh, onDismiss, refreshing }: { card: ProgressCard; onRefresh?: () => void; onDismiss?: () => void; refreshing?: RefreshState }) {
   const steps = card.steps || [];
+  const title = steps.length ? "Plan" : "Progress update";
   const done = steps.filter((s) => s.status === "completed").length;
   const finished = steps.length > 0 && done === steps.length;
   return (
-    <section className="card plan-card indent" aria-label="Plan" data-testid="plan-card">
+    <section className="card plan-card indent" aria-label={title} data-testid="plan-card">
       <header className="plan-h">
-        <b>Plan</b>
-        <span className="plan-n">{done} of {steps.length} done</span>
+        <b>{title}</b>
+        {steps.length ? <span className="plan-n">{done} of {steps.length} done</span> : null}
         {finished ? (
           <>
             <span className="pill ok plan-end"><i />Done</span>
@@ -175,14 +176,14 @@ export function PlanCard({ card, onRefresh, onDismiss, refreshing }: { card: Pro
           </>
         )}
       </header>
-      <ul className="plan">
+      {steps.length ? <ul className="plan">
         {steps.map((s, i) => (
           <li key={i} className={s.status === "completed" ? "done" : s.status === "in_progress" ? "now" : ""} data-state={s.status}>
             <span className="box">{s.status === "completed" ? CHECK : null}</span>
             <span>{s.step}</span>
           </li>
         ))}
-      </ul>
+      </ul> : null}
       {card.markdown ? (
         <p className="plan-note">
           <span>Progress note</span>

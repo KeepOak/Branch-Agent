@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { paneKeyFor, shortcutFor } from "./use-shortcuts";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { describe, expect, it, vi } from "vitest";
+import { paneKeyFor, shortcutFor, useShortcuts } from "./use-shortcuts";
 
 const key = (k: string, mods: Partial<{ ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }> = {}) => ({
   key: k,
@@ -20,6 +22,7 @@ describe("shortcutFor", () => {
     expect(shortcutFor(key("i", { ctrlKey: true }), false)).toBe("inbox");
     expect(shortcutFor(key("g", { ctrlKey: true }), false)).toBe("focusSearch");
     expect(shortcutFor(key("A", { ctrlKey: true, shiftKey: true }), false)).toBe("archiveOpen");
+    expect(shortcutFor(key("L", { ctrlKey: true, shiftKey: true }), false)).toBe("lockdown");
     expect(shortcutFor(key("S", { ctrlKey: true, shiftKey: true }), false)).toBe("stop");
     expect(shortcutFor(key("?", { shiftKey: true }), false)).toBe("shortcuts");
     expect(shortcutFor(key("Escape"), false)).toBe("escape");
@@ -29,6 +32,10 @@ describe("shortcutFor", () => {
     expect(shortcutFor(key("k", { ctrlKey: true }), true)).toBeNull();
     expect(shortcutFor(key("k"), false)).toBeNull();
     expect(shortcutFor(key("k", { ctrlKey: true, altKey: true }), false)).toBeNull();
+  });
+  it("routes Ctrl+P to Past search instead of browser Print", () => {
+    expect(shortcutFor(key("p", { ctrlKey: true }), false)).toBe("focusPastSearch");
+    expect(shortcutFor(key("p", { metaKey: true }), true)).toBe("focusPastSearch");
   });
 });
 
@@ -44,8 +51,8 @@ describe("settable keys (§4.8.8)", () => {
     expect(checkCombo("Ctrl N", "palette", actions, keys)).toEqual({ ok: false, reason: "Ctrl N already does “New conversation”." });
     expect(checkCombo("Ctrl Alt P", "palette", actions, keys)).toEqual({ ok: true });
   });
-  it("leaves keys for actions the window can't run unbound", () => {
-    expect(shortcutFor({ ...key("L", { ctrlKey: true, shiftKey: true }), code: "KeyL" }, false)).toBeNull();
+  it("binds Ctrl+Shift+L now that the engine has a Lockdown switch", () => {
+    expect(shortcutFor({ ...key("L", { ctrlKey: true, shiftKey: true }), code: "KeyL" }, false)).toBe("lockdown");
     expect(shortcutFor({ ...key("K", { ctrlKey: true, shiftKey: true }), code: "KeyK" }, false)).toBe("sidePanel");
   });
 });
@@ -100,5 +107,43 @@ describe("side panel keys and Talk live (§4.8.8 parity adds)", () => {
     expect(paneKeyFor(k("D"), false)).toBe("Computer");
     expect(paneKeyFor(k("E"), false)).toBeNull(); // Review: no such tab here yet
     expect(shortcutFor(k("V", false), false)).toBe("talkLive");
+  });
+});
+
+describe("modal shortcut scope (§3.6)", () => {
+  it("leaves global shortcuts and pane keys to the top-most dialog, then restores them on close", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const palette = vi.fn();
+    const escape = vi.fn(() => true);
+    const noop = () => {};
+    function Harness() {
+      useShortcuts({ palette, escape, newConversation: noop, settings: noop, sidePanel: noop, quickAsk: noop,
+        focusMode: noop, toggleList: noop, inbox: noop, focusSearch: noop, focusPastSearch: noop,
+        archiveOpen: noop, lockdown: noop, talkBeside: noop, talkLive: noop, stop: noop, nextConversation: noop,
+        shortcuts: noop });
+      return null;
+    }
+    await act(async () => root.render(createElement(Harness)));
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    document.body.append(dialog);
+    try {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", code: "KeyK", ctrlKey: true, bubbles: true }));
+      expect(palette).not.toHaveBeenCalled();
+      expect(paneKeyFor({ ...key("`", { ctrlKey: true }), code: "Backquote" }, false)).toBeNull();
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      expect(escape).toHaveBeenCalledOnce();
+      dialog.remove();
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", code: "KeyK", ctrlKey: true, bubbles: true }));
+      expect(palette).toHaveBeenCalledOnce();
+      expect(paneKeyFor({ ...key("`", { ctrlKey: true }), code: "Backquote" }, false)).toBe("Terminal");
+    } finally {
+      dialog.remove();
+      await act(async () => root.unmount());
+      host.remove();
+    }
   });
 });

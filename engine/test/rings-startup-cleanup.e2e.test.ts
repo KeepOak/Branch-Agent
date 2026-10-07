@@ -81,7 +81,11 @@ async function connect(instance: BranchTestInstance): Promise<GatewaySessionClie
 describe("Gateway rings session restart cleanup", () => {
   it("removes stale child sessions after a real restart even when rings and cron are disabled", async () => {
     const config = {
-      agents: { list: [{ id: "main", default: true }, { id: "worker" }] },
+      agents: {
+        ownership: "explicit",
+        defaults: { systemAgent: { agentId: "main" } },
+        entries: { main: {}, worker: {} },
+      },
       plugins: {
         enabled: true,
         allow: ["memory-core"],

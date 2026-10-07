@@ -1,0 +1,66 @@
+{
+  "id": "google-search",
+  "categories": ["web"],
+  "activation": {
+    "onStartup": false
+  },
+  "setup": {
+    "providers": [
+      {
+        "id": "google-search",
+        "envVars": ["GOOGLE_SEARCH_API_KEY"]
+      }
+    ]
+  },
+  "uiHints": {
+    "webSearch.apiKey": {
+      "label": "Google Custom Search API Key",
+      "help": "Fallback: GOOGLE_SEARCH_API_KEY environment variable.",
+      "sensitive": true
+    },
+    "webSearch.searchEngineId": {
+      "label": "Google Search Engine ID",
+      "help": "Programmable Search Engine ID (fallback: GOOGLE_CSE_ID)."
+    }
+  },
+  "contracts": {
+    "webSearchProviders": ["google-search"]
+  },
+  "configContracts": {
+    "secretInputs": {
+      "paths": [
+        {
+          "path": "webSearch.apiKey",
+          "expected": "string",
+          "ownerKind": "capability"
+        }
+      ]
+    }
+  },
+  "configGroups": [
+    {
+      "id": "web-search",
+      "title": "Web search",
+      "order": 10,
+      "properties": ["webSearch"]
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "webSearch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiKey": {
+            "type": ["string", "object"]
+          },
+          "searchEngineId": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

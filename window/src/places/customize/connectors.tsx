@@ -1,6 +1,7 @@
 // Tools › Connectors: the MCP servers in the engine's config (mcp.servers.<name>). On/off, which Trunks may use
 // it (a "<server>__*" entry in that Trunk's tools.deny) and each tool's Allowed / Never (toolFilter.exclude),
 // all through config.patch. Tools a server offers come from tools.effective for the open conversation.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { shows } from "../../places-nav/level";
@@ -32,6 +33,21 @@ export function readServers(live: Rec, file: Rec): Server[] {
     };
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
+/** Brand marks for well-known connectors (the preview's LOGO table); any other server keeps its line-icon tile. */
+const BRANDS: [RegExp, string, string][] = [
+  [/^github/i, "#181717", '<path d="M12 4a8 8 0 0 0-2.5 15.6c.4 0 .5-.2.5-.4v-1.5c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.2 1.9.9 2.3.7.1-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-3.9 0-.9.3-1.6.8-2.1-.1-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8a7.6 7.6 0 0 1 4 0c1.5-1 2.2-.8 2.2-.8.4 1.1.2 1.9.1 2.1.5.6.8 1.3.8 2.1 0 3.1-1.9 3.7-3.6 3.9.3.3.5.8.5 1.5v2.2c0 .2.1.5.6.4A8 8 0 0 0 12 4z" fill="#fff"/>'],
+  [/^outlook/i, "#0F6CBD", "O"],
+  [/^(google-?)?drive|^gdrive/i, "#1FA463", '<path d="M9 4.5h6l6 10.2-3 4.8H6l-3-4.8z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/>'],
+  [/^brave/i, "#FB542B", "B"],
+];
+function Mark({ server, size }: { server: Server; size: number }) {
+  const brand = BRANDS.find(([re]) => re.test(server.name));
+  if (!brand) return <span className={size > 32 ? "cz-tile big" : "cz-tile"}><Glyph name={server.local ? "terminal" : "globe"} size={size > 32 ? undefined : 16} /></span>;
+  const [, bg, inner] = brand, glyph = Math.round(size * 0.66);
+  return <span className="logo cz-brand" style={{ width: size, height: size, background: bg }} aria-hidden="true">
+    {inner.startsWith("<") ? <svg viewBox="0 0 24 24" width={glyph} height={glyph} dangerouslySetInnerHTML={{ __html: inner }} /> : <b style={{ font: `700 ${Math.round(size * 0.38)}px var(--sans)`, color: "#fff" }}>{inner}</b>}
+  </span>;
+}
 const wildcard = (server: string) => `${server}__*`;
 function mayUse(ctx: ToolsCtx, server: string, agentId: string) {
   const file = ctx.config.data?.file ?? {};
@@ -54,7 +70,7 @@ export function Connectors({ ctx }: { ctx: ToolsCtx }) {
       <Status {...config} />
       {config.data && !servers.length && <EmptyLine icon={<Glyph name="puzzle" size={22} />}>No connectors yet.</EmptyLine>}
       {servers.map(s => <button key={s.name} type="button" className="t9-item" aria-current={s.name === server?.name} onClick={() => setChosen(s.name)}>
-        <span className="cz-tile"><Glyph name={s.local ? "terminal" : "globe"} size={16} /></span>
+        <Mark server={s} size={32} />
         <span className="grow"><b>{s.name}</b><small>{s.line}</small></span>
         <Dot on={s.enabled && (!ctx.whose || mayUse(ctx, s.name, ctx.whose))} />
       </button>)}
@@ -73,7 +89,7 @@ function ConnectorDetail({ ctx, server }: { ctx: ToolsCtx; server: Server }) {
   const setServer = (fields: Rec) => void config.patch({ mcp: { servers: { [server.name]: fields } } });
   const scoped = whose ? trunks.find(t => t.id === whose) : undefined;
   return <div className="t9-detail" data-testid="connector-detail">
-    <div className="t9-dh"><span className="cz-tile big"><Glyph name={server.local ? "terminal" : "globe"} /></span>
+    <div className="t9-dh"><Mark server={server} size={40} />
       <span className="grow"><b>{server.name}</b><small>{server.line}</small></span>
       <Switch label={`${server.name} on or off`} on={server.enabled} onChange={on => setServer({ enabled: on })} />
     </div>

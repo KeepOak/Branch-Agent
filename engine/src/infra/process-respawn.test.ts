@@ -339,7 +339,7 @@ describe("respawnGatewayProcessForUpdate", () => {
     expect(spawnMock).not.toHaveBeenCalled();
   });
 
-  it("allows detached respawn on unmanaged Windows during updates", () => {
+  it("respawns hidden, not detached, on unmanaged Windows during updates", () => {
     clearSupervisorHints();
     mockProcessPlatform("win32");
     process.execArgv = [];
@@ -358,7 +358,7 @@ describe("respawnGatewayProcessForUpdate", () => {
       process.execPath,
       ["C:\\branch\\node_modules\\branch\\branch.mjs", "gateway", "run"],
       {
-        detached: true,
+        windowsHide: true,
         env: process.env,
         stdio: "inherit",
       },

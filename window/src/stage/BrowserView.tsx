@@ -1,3 +1,4 @@
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
 import type { Block } from "../thread/model";
@@ -260,13 +261,30 @@ type Props = {
   control?: boolean;
   onControl?: (control: boolean) => void;
   level?: Level;
-  /** The docked conversation, beside the page. */
-  dock?: ReactNode;
   onState: (phase: BrowserPhase, title?: string) => void;
 };
 
 /** The conversation's browser: its tabs, the address bar, the live page, the Tools drawer and the page menu. */
-export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running = false, control = false, onControl, level = "regular", dock = null, onState }: Props) {
+/** The browser in the small window over the conversation (the preview's pip7 with kind "browser"): the newest tab the
+ *  Trunk used, live and look-only; a line when nothing is open. */
+export function BrowserMini({ engine, gatewayUrl, blocks }: { engine: WindowEngine; gatewayUrl: string; blocks: Block[] }) {
+  const entries = useMemo(() => recordedBrowserTabs(blocks), [blocks]);
+  const route = useMemo(() => routeOf(entries), [routeKey(routeOf(entries))]); // eslint-disable-line react-hooks/exhaustive-deps
+  const browser = useBrowser(engine, route, 0);
+  const [phase, setPhase] = useState<BrowserPhase>("empty");
+  const newest = entries.at(-1)?.tab.targetId;
+  const tab = browser.tabs.find((t) => t.targetId === newest) ?? browser.tabs[0];
+  const entry: BrowserPresentation | null = route && tab ? { tab: { ...route, targetId: tab.targetId } as BrowserPresentation["tab"], revision: "0", url: tab.url, title: tab.title } : null;
+  const onState = useCallback((v: { phase: BrowserPhase }) => setPhase(v.phase), []);
+  return (
+    <>
+      {entry ? <Screencast engine={engine} gatewayUrl={gatewayUrl} entry={entry} interact={false} onState={onState} /> : null}
+      {!entry || phase !== "connected" ? <span className="cell-note-st">{!route ? "Nothing open" : browser.phase === "stopped" ? "The browser isn’t running" : "Connecting…"}</span> : null}
+    </>
+  );
+}
+
+export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running = false, control = false, onControl, level = "regular", onState }: Props) {
   const entries = useMemo(() => recordedBrowserTabs(blocks), [blocks]);
   const route = useMemo(() => routeOf(entries), [routeKey(routeOf(entries))]); // eslint-disable-line react-hooks/exhaustive-deps
   const steps = blocks.filter((b) => b.kind === "step").length;
@@ -426,7 +444,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
         </form>
       ) : null}
       {note ? <p className="stage-error-st note-br" role="status">{note}</p> : null}
-      <div className={dock ? "st7-body" : "st7-body nodock"}>
+      <div className="st7-body">
         <div className="br-left-st">
           <div className="st7-wrap">
             <div className={control ? "st7-screen br-screen-st ctl-st" : "st7-screen br-screen-st"}>
@@ -480,7 +498,6 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
             <BrowserTools engine={engine} route={route} targetId={tab.targetId} name={name} level={level} host={hostOf(url)} tabs={browser.tabs} onPick={setPicked} onCloseTab={closeTab} onClose={() => setDrawer(false)} />
           ) : null}
         </div>
-        {dock}
       </div>
       {menu ? <Menu at={menu.at} items={menu.items} label="This page" onClose={() => setMenu(null)} /> : null}
     </div>

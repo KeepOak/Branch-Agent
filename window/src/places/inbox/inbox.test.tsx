@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import type { Level } from "../../places-nav/level";
 import { loadNeeds, markRead, refreshesInbox } from "./data";
 import { openInboxWith } from "./handoff";
-import { REPLAY_GAP } from "./History";
+import { REPLAY_GAP, VERIFY_GAP, RECEIPTS_GAP } from "./History";
 import { InboxPlace, useNeedsCount } from "./index";
 import { FULL_ACCESS_GAP } from "./NeedsYou";
 import { MESSAGES_GAP } from "./Tabs";
@@ -46,8 +47,22 @@ let root: Root | undefined;
 afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; });
 
 const engineWith = (request: WindowEngine["request"], scopes = ["operator.admin"]): WindowEngine => ({ request, onEvent: () => () => {}, sessionKey: null, scopes });
-async function render({ level = "regular" as Level, scopes = ["operator.admin"], fx = FX } = {}) {
-  const request = vi.fn(async (method: string) => { const v = fx[method]; if (v && typeof v === "object" && "__error" in v) throw new Error(String((v as { __error: string }).__error)); return v ?? {}; });
+function withoutUnrequestedRecaps(value: unknown): unknown {
+  if (!value || typeof value !== "object" || !("sessions" in value) || !Array.isArray(value.sessions)) return value;
+  return { ...value, sessions: value.sessions.map(row => {
+    if (!row || typeof row !== "object" || !("activitySummary" in row)) return row;
+    const { activitySummary, ...rest } = row;
+    void activitySummary;
+    return rest;
+  }) };
+}
+async function render({ level = "regular" as Level, scopes = ["operator.admin"], fx = FX, strictRecapProjection = false } = {}) {
+  const request = vi.fn(async (method: string, params?: unknown) => {
+    const requested = params !== null && typeof params === "object" && "includeActivitySummary" in params && params.includeActivitySummary === true;
+    const v = strictRecapProjection && method === "sessions.list" && !requested ? withoutUnrequestedRecaps(fx[method]) : fx[method];
+    if (v && typeof v === "object" && "__error" in v) throw new Error(String((v as { __error: string }).__error));
+    return v ?? {};
+  });
   const openConversation = vi.fn(), openPlace = vi.fn(), openSettings = vi.fn();
   const host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
   await act(async () => root!.render(<InboxPlace engine={engineWith(request as WindowEngine["request"], scopes)} facts={{ running: 0, waiting: 0 }} level={level} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} />));
@@ -84,6 +99,23 @@ describe("Inbox data", () => {
 });
 
 describe("Inbox › Needs you", () => {
+  it("lists a Trunk waiting for an answer under Recent notices, and opens its conversation", async () => {
+    const { host, openConversation, openSettings } = await render();
+    const bell = host.querySelector<HTMLButtonElement>('button[aria-label="Recent notices"]');
+    await click(bell!);
+    const pop = document.querySelector('[data-testid="inbox-notices"]');
+    expect(pop?.textContent).toContain("Rowan is waiting for your answer.");
+    await click(btn(document, "Rowan is waiting for your answer.")[0]);
+    expect(openConversation).toHaveBeenCalledWith("agent:main:a");
+    await click(bell!);
+    await click(btn(document, "Notification settings")[0]);
+    expect(openSettings).toHaveBeenCalledWith("notifications");
+  });
+  it("says so when there are no notices", async () => {
+    const { host } = await render({ fx: { ...FX, "question.list": { questions: [] } } });
+    await click(host.querySelector<HTMLButtonElement>('button[aria-label="Recent notices"]')!);
+    expect(document.querySelector('[data-testid="inbox-notices"]')?.textContent).toContain("No notices right now.");
+  });
   it("counts approvals, requests and questions in the chip, and Allow all only the approvals", async () => {
     const { host } = await render();
     expect(host.querySelector(".ib-n")?.textContent).toBe("6");
@@ -126,12 +158,19 @@ describe("Inbox › Needs you", () => {
   it("sends dismiss, device reject and node approve with the request id", async () => {
     const { host, request } = await render();
     const row = (title: string) => [...host.querySelectorAll(".ib-row")].find(r => r.textContent?.includes(title))!;
-    await click(btn(row("Jordan Ellis"), "Don’t")[0]);
-    await click(btn(row("Phone wants to connect"), "Don’t")[0]);
+    await click(btn(row("Jordan Ellis"), "Don’t allow")[0]);
+    await click(btn(row("Phone wants to connect"), "Don’t allow")[0]);
     await click(btn(row("box wants to offer"), "Allow")[0]);
     expect(calls(request, "channels.pairing.dismiss")).toEqual([{ channel: "telegram", accountId: "default", requestId: "q1" }]);
     expect(calls(request, "device.pair.reject")).toEqual([{ requestId: "d1" }]);
     expect(calls(request, "node.pair.approve")).toEqual([{ requestId: "n1" }]);
+  });
+  it("shows the device check code beside the access request", async () => {
+    const { host } = await render();
+    const row = [...host.querySelectorAll(".ib-row")].find(r => r.textContent?.includes("Phone wants to connect"))!;
+    await click(btn(row, "Allow")[0]);
+    expect(host.querySelector(".dlg")?.textContent).toContain("Check code: D1");
+    expect(host.querySelector(".dlg")?.textContent).toContain("What it asks to do");
   });
   it("answers and skips a Trunk's question", async () => {
     const { host, request } = await render();
@@ -198,6 +237,25 @@ describe("useNeedsCount", () => {
 });
 
 describe("Inbox › other tabs", () => {
+  it("requests stored History recaps through the real list option without generating them", async () => {
+    const { host, request } = await render({ strictRecapProjection: true });
+    await click(btn(host, "History")[0]);
+    expect(request).toHaveBeenCalledWith("sessions.list", expect.objectContaining({ includeActivitySummary: true }));
+    expect(host.textContent).toContain("All tidy.");
+    expect(calls(request, "sessions.activitySummary.ensure")).toHaveLength(0);
+  });
+  it("does not claim verified integrity or signed receipts from ordinary recorded activity", async () => {
+    const { host, request } = await render();
+    await click(btn(host, "History")[0]);
+    expect(host.textContent).not.toMatch(/Record intact|Every tool call leaves a signed receipt|nothing can be cut or rewritten quietly/i);
+    expect(host.textContent).toContain("Recorded activity");
+    const verification = host.querySelector<HTMLButtonElement>(".ib-rec");
+    expect(verification).toMatchObject({ disabled: true, title: VERIFY_GAP });
+    expect(verification?.textContent).toContain("Unverified");
+    expect(btn(host, "See the chain")[0]).toMatchObject({ disabled: true, title: RECEIPTS_GAP });
+    expect(calls(request, "audit.run.inspect")).toHaveLength(0);
+    expect(calls(request, "sessions.activitySummary.ensure")).toHaveLength(0);
+  });
   it("lists finished conversations with their recap and an unread dot", async () => {
     const { host } = await render();
     await click(btn(host, "Finished")[0]);
@@ -219,14 +277,16 @@ describe("Inbox › other tabs", () => {
     const { host } = await render();
     await click(btn(host, "Later")[0]);
     expect(host.textContent).toContain("Nothing is waiting to finish later.");
-    expect(host.querySelector<HTMLInputElement>("input[placeholder='Search messages']")).toMatchObject({ disabled: true, title: MESSAGES_GAP });
+    expect(host.querySelector<HTMLInputElement>("input[placeholder='Search messages']")).toMatchObject({ disabled: true, title: "" });
+    expect(host.textContent).not.toContain(MESSAGES_GAP); expect(visibleDevNotes(host)).toEqual([]);
   });
   it("History groups by day with run lengths; Every conversation only from Advanced; the run menu only at Technical", async () => {
     const regular = await render();
     await click(btn(regular.host, "History")[0]);
     expect(regular.host.textContent).toContain("1m 12s");
     expect(regular.host.textContent).toContain("Today");
-    expect(btn(regular.host, "Watch again")[0]).toMatchObject({ disabled: true, title: REPLAY_GAP });
+    expect(btn(regular.host, "Watch again")[0]).toMatchObject({ disabled: true, title: "" });
+    expect(REPLAY_GAP).toMatch(/^Needs the engine/); expect(visibleDevNotes(regular.host)).toEqual([]);
     expect(regular.host.textContent).not.toContain("Every conversation");
     expect(regular.host.querySelector(".ib-hrow .ib-ib")).toBeNull();
     await act(async () => root?.unmount()); root = undefined;

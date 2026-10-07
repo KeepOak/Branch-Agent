@@ -1,9 +1,9 @@
 /* Automations (§4.6.3), geometry from preview 40-places / 41-placesap (prop17d, prow, health15, idea15, sec).
    Every rule is scoped to .auto-place or its dialogs (.au-*), so Canopy and Inbox keep activity.css as it is. */
 .auto-place { display: block; }
-.auto-place .au-tabs, .dlg .au-tabs { display: flex; min-height: 34px; flex: none; gap: 4px; margin: 18px 0 8px; overflow-x: auto; scrollbar-width: none; }
+.auto-place .au-tabs, .dlg .au-tabs { display: flex; min-height: 34px; flex: none; gap: 4px; margin: 18px 0 8px; padding-bottom: 2px; overflow-x: auto; scrollbar-width: none; }
 .au-tabs button[role="tab"] { height: 32px; padding: 0 14px; border-radius: 999px; font-size: 13px; color: var(--ink-2); border: 1px solid transparent; background: transparent; flex: none; cursor: pointer; }
-.au-tabs button[role="tab"]:hover { background: var(--wash17); }
+.au-tabs button[role="tab"]:hover { background: var(--wash17); color: var(--ink); }
 .au-tabs button[role="tab"][aria-selected="true"] { background: var(--fill-2); color: var(--ink); font-weight: 600; }
 .auto-place .au-hint, .au-hint { margin: 4px 0 8px; font-size: 12.5px; color: var(--ink-3); line-height: 1.45; }
 .au-field .au-hint { margin: 0; }

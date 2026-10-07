@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
@@ -68,6 +69,31 @@ describe("memory file handling", () => {
 });
 
 describe("Library › Memory", () => {
+  it("exports the selected Trunk's memory as a Markdown download with each file heading", async () => {
+    const make = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:memory");
+    const drop = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    let filename = "";
+    const download = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { filename = this.download; });
+    const { engine, request } = engineOf(base((method) => method === "memory.export" ? {
+      agentId: "b",
+      files: [{ path: "MEMORY.md", content: "# Rowan\n" }, { path: "memory/2026-10-01.md", content: "Daily note\n" }],
+    } : undefined));
+    await mount(engine);
+    await click("Every Trunk");
+    await click("Rowan");
+    await click("Export everything");
+    expect(request).toHaveBeenCalledWith("memory.export", { agentId: "b" });
+    expect(make).toHaveBeenCalledTimes(1);
+    const blob = make.mock.calls[0][0];
+    if (!(blob instanceof Blob)) throw new Error("Expected a Markdown Blob download");
+    const text = await blob.text();
+    expect(text).toContain("## MEMORY.md\n\n# Rowan");
+    expect(text).toContain("## memory/2026-10-01.md\n\nDaily note");
+    expect(download).toHaveBeenCalledTimes(1);
+    expect(filename).toMatch(/^b-memory-\d{4}-\d{2}-\d{2}\.md$/);
+    expect(drop).toHaveBeenCalledWith("blob:memory");
+    make.mockRestore(); drop.mockRestore(); download.mockRestore();
+  });
   it("draws the characters card from MEMORY.md and the configured limit, with the memory count on the tab", async () => {
     const { engine, request } = engineOf(base());
     await mount(engine);
@@ -118,8 +144,9 @@ describe("Library › Memory", () => {
     await mount(engine);
     expect(host.querySelector('[data-testid="rings-row"]')!.textContent).toContain("2 kept for good today · 7 waiting to be sorted");
     expect(button("Undo last night")!.disabled).toBe(true);
-    expect(button("Undo last night")!.title).toMatch(/^Needs /);
-    expect(button("Tidy up")!.disabled).toBe(true);
+    expect(button("Undo last night")!.title).toBe("");
+    expect(button("Tidy up")!.disabled).toBe(true); expect(button("Tidy up")!.title).toBe("");
+    expect(visibleDevNotes(host)).toEqual([]);
     await click("Read the diary");
     expect(request).toHaveBeenCalledWith("doctor.memory.dreamDiary", {});
     expect(host.querySelector('[data-testid="rings-diary"]')!.textContent).toContain("Night one notes");
@@ -170,7 +197,12 @@ describe("Library › Memory", () => {
   it("greys the head controls with their reasons and shows an empty line when nothing is remembered", async () => {
     const { engine } = engineOf(base((m, p) => m === "agents.files.get" ? { file: { name: String(p.name), missing: true } } : undefined));
     await mount(engine);
-    for (const label of ["Canvas", "Translate a document…", "Make pictures…"]) { expect(button(label)!.disabled).toBe(true); expect(button(label)!.title).toMatch(/^Needs /); }
+    for (const label of ["Clearing", "Translate a document…", "Make pictures…"]) expect(button(label)!.disabled).toBe(true);
+    expect(button("Clearing")!.title).toBe("");
+    for (const label of ["Translate a document…", "Make pictures…"]) expect(button(label)!.title).toBe("");
+    expect(visibleDevNotes(host)).toEqual([]);
+    expect(host.textContent).not.toContain("Canvas");
+    expect(button("Clearing")!.title).not.toMatch(/canvases/);
     expect(host.textContent).toContain("Nothing remembered yet.");
     expect(host.textContent).toContain("Nothing written about you yet.");
   });

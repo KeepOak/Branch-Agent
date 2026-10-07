@@ -39,10 +39,10 @@ export function Asking({ engine, apps, pairing, error, reload, filter, setFilter
       {error ? <Hint>{visible(error)}</Hint> : shown.length ? (
         <div className="rows">{shown.map((r) => <RequestRow key={r.requestId} r={r} onApprove={() => setApprove(r)} onDismiss={() => setDismiss(r)} />)}</div>
       ) : <Hint>{all.length ? "No one matches these filters." : "No one is waiting."}</Hint>}
-      <Ctl title="Approve by code" sub="Approves the person who was sent that code." off="Branch can’t approve by code from here yet; approve the request above.">
-        <span className="code-ca" role="group" aria-label="Approve by code">{[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <Fragment key={i}>{i === 4 ? <i className="dash-ca">-</i> : null}<input className="inp" maxLength={1} disabled aria-label={`Character ${i + 1}`} /></Fragment>)}</span>
+      <Ctl title="Allow by code" sub="Allows the person who was sent that code." off="Use the request above until Branch can accept codes here.">
+        <span className="code-ca" role="group" aria-label="Allow by code">{[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <Fragment key={i}>{i === 4 ? <i className="dash-ca">-</i> : null}<input className="inp" maxLength={1} disabled aria-label={`Character ${i + 1}`} /></Fragment>)}</span>
       </Ctl>
-      {pairing ? <Hint>Requests expire after {Math.round(pairing.limits.ttlMs / 60000)} minutes. Each account holds up to {pairing.limits.pendingPerAccount} waiting.</Hint> : null}
+      {pairing?.limits ? <Hint>Requests expire after {Math.round(pairing.limits.ttlMs / 60000)} minutes. Each account holds up to {pairing.limits.pendingPerAccount} waiting.</Hint> : null}
       {approve ? <ApproveDialog engine={engine} r={approve} trunk={trunkFor(approve.channel)} ownerSet={pairing?.commandOwnerConfigured !== false} onClose={() => { setApprove(null); void reload(); }} /> : null}
       {dismiss ? <DismissDialog engine={engine} r={dismiss} onClose={() => { setDismiss(null); void reload(); }} /> : null}
     </Sec>
@@ -58,8 +58,8 @@ function RequestRow({ r, onApprove, onDismiss }: { r: PairRequest; onApprove: ()
         <b>{visible(r.senderLabel)}</b><small>{reqLine(r)}</small>
         <details className="det-ca"><summary>Details</summary><dl className="kv-ca"><dt>ID</dt><dd>{visible(r.senderId)}</dd>{meta.map(([k, v]) => <Fragment key={k}><dt>{visible(k)}</dt><dd>{visible(v)}</dd></Fragment>)}</dl></details>
       </span>
-      <Btn pri sm onClick={onApprove}>Approve</Btn>
-      <Btn ghost sm onClick={onDismiss}>Dismiss</Btn>
+      <Btn ghost sm onClick={onDismiss}>Don't allow</Btn>
+      <Btn pri sm onClick={onApprove}>Allow</Btn>
     </div>
   );
 }
@@ -74,10 +74,10 @@ function ApproveDialog({ engine, r, trunk, ownerSet, onClose }: { engine: Window
     if (ok) onClose();
   };
   return (
-    <Dialog title={`Let ${visible(r.senderLabel)} message ${trunk}?`} onClose={onClose} testid="chatapps-approve" footer={<><button type="button" className="btn ghost" onClick={onClose}>Cancel</button><button type="button" className="btn pri" onClick={() => void go()}>Approve</button></>}>
+    <Dialog title={`Let ${visible(r.senderLabel)} message ${trunk}?`} onClose={onClose} testid="chatapps-approve" footer={<><button type="button" className="btn ghost" onClick={onClose}>Cancel</button><button type="button" className="btn pri" onClick={() => void go()}>Allow</button></>}>
       <p className="mono-ca">{[visible(r.senderId), visible(r.channelLabel), visible(r.accountLabel ?? r.accountId)].join(" · ")}</p>
       <div className="info-ca">They can message in direct chats. Groups are separate.</div>
-      {r.notifySupported ? <label className="row-ca"><input type="checkbox" checked={tell} onChange={(e) => setTell(e.target.checked)} /><span>Tell them they’re approved</span></label> : null}
+      {r.notifySupported ? <label className="row-ca"><input type="checkbox" checked={tell} onChange={(e) => setTell(e.target.checked)} /><span>Tell them they’re allowed</span></label> : null}
       {level >= 1 && !ownerSet ? <label className="row-ca"><input type="checkbox" checked={owner} onChange={(e) => setOwner(e.target.checked)} /><span>Also make them the owner here<small className="hint">The owner can run owner-only commands and answer approvals from {visible(r.channelLabel)}. Offered only while no owner is set.</small></span></label> : null}
     </Dialog>
   );
@@ -87,7 +87,7 @@ function DismissDialog({ engine, r, onClose }: { engine: WindowEngine; r: PairRe
   const save = useSaveRunner();
   const go = async () => { if (await save(() => engine.request("channels.pairing.dismiss", { channel: r.channel, accountId: r.accountId, requestId: r.requestId }))) onClose(); };
   return (
-    <Dialog title="Dismiss this request?" onClose={onClose} testid="chatapps-dismiss" footer={<><button type="button" className="btn ghost" onClick={onClose}>Cancel</button><button type="button" className="btn bad" onClick={() => void go()}>Dismiss</button></>}>
+    <Dialog title="Don't allow this request?" onClose={onClose} testid="chatapps-dismiss" footer={<><button type="button" className="btn ghost" onClick={onClose}>Cancel</button><button type="button" className="btn bad" onClick={() => void go()}>Don't allow</button></>}>
       <p className="dlg-p-ca">They aren’t blocked and can ask again.</p>
     </Dialog>
   );

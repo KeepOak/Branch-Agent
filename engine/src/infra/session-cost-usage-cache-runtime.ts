@@ -1,11 +1,10 @@
 import type { BranchConfig } from "../config/types.branch.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { normalizeAgentId } from "../routing/session-key.js";
 import { getAsyncWorkSignal, trackAsyncWork } from "../shared/async-work-scope.js";
+import { resolveBranchAgentSqlitePath } from "../state/branch-agent-db.js";
 import { formatErrorMessage } from "./errors.js";
-import {
-  refreshCostUsageCacheForAgent,
-  resolveUsageCostCacheDatabasePath,
-} from "./session-cost-usage-aggregation.js";
+import { refreshCostUsageCacheForAgent } from "./session-cost-usage-aggregation.js";
 import type { SessionCostUsageRollupRow } from "./session-cost-usage-cache.kernel.js";
 import { isSessionCostUsageRefreshRunning } from "./session-cost-usage-cache.sqlite.js";
 import { resolveUsageCostPricingFingerprint } from "./session-cost-usage-pricing-context.js";
@@ -241,7 +240,9 @@ function requestCostUsageCacheRefresh(params: UsageCostRefreshRequest): void {
   if (scopeSignal?.aborted) {
     return;
   }
-  const databasePath = resolveUsageCostCacheDatabasePath(params.agentId);
+  const databasePath = resolveBranchAgentSqlitePath({
+    agentId: normalizeAgentId(params.agentId),
+  });
   const refreshes = usageCostRefreshes.get(scopeSignal) ?? new Map<string, UsageCostRefreshState>();
   const existing = refreshes.get(databasePath);
   if (existing) {

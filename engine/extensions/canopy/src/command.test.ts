@@ -76,22 +76,27 @@ async function createAmbiguousPrefix(store: CanopyStore): Promise<string> {
 }
 
 describe("handleCanopyCommand", () => {
-  it("uses the configured default agent workspace for unscoped local commands", () => {
+  it("requires an explicit agent workspace for multi-agent local commands", () => {
+    const config = {
+      tools: { fs: { workspaceOnly: true } },
+      agents: {
+        entries: {
+          first: {
+            workspace: "/first",
+            tools: { fs: { workspaceOnly: false } },
+          },
+          chosen: { workspace: "/chosen" },
+        },
+      },
+    };
+
+    expect(() => resolveCommandCanopyWorkspaceAccess({ config })).toThrow(
+      "Multiple agents are configured",
+    );
     expect(
       resolveCommandCanopyWorkspaceAccess({
-        config: {
-          tools: { fs: { workspaceOnly: true } },
-          agents: {
-            list: [
-              {
-                id: "first",
-                workspace: "/first",
-                tools: { fs: { workspaceOnly: false } },
-              },
-              { id: "chosen", default: true, workspace: "/chosen" },
-            ],
-          },
-        },
+        config,
+        agentId: "chosen",
       }),
     ).toEqual({ unrestricted: false, roots: ["/chosen"], writable: true });
   });
@@ -100,7 +105,7 @@ describe("handleCanopyCommand", () => {
     const config = {
       agents: {
         defaults: { sandbox: { mode: "all" as const, workspaceAccess: "ro" as const } },
-        list: [{ id: "main", default: true, workspace: "/workspace" }],
+        entries: { main: { workspace: "/workspace" } },
       },
     };
 
@@ -117,14 +122,15 @@ describe("handleCanopyCommand", () => {
     ).toEqual({ unrestricted: false, roots: ["/workspace"], writable: false });
   });
 
-  it("attests the default agent for an unassigned slash-command card", async () => {
+  it("attests the card's assigned agent independently of the slash-command caller", async () => {
     const store = createCanopySqliteTestStore();
     await store.create({
-      title: "Unassigned slash card",
+      title: "Assigned slash card",
       status: "ready",
+      agentId: "main",
       workspaceAccess: { unrestricted: false, roots: ["/workspace"], writable: true },
     });
-    const run = vi.fn().mockResolvedValue({ runId: "run-default-agent" });
+    const run = vi.fn().mockResolvedValue({ runId: "run-assigned-agent" });
     const prepareWorkspaceAuthority = vi.fn().mockResolvedValue({
       sandboxed: true,
       workspaceAccess: "rw" as const,
@@ -160,10 +166,10 @@ describe("handleCanopyCommand", () => {
       config: {
         agents: {
           defaults: { sandbox: { mode: "all", workspaceAccess: "rw" } },
-          list: [
-            { id: "main", default: true, workspace: "/workspace" },
-            { id: "secondary", workspace: "/workspace" },
-          ],
+          entries: {
+            main: { workspace: "/workspace" },
+            secondary: { workspace: "/workspace" },
+          },
         },
       },
       agentId: "secondary",
@@ -465,16 +471,17 @@ describe("handleCanopyCommand", () => {
     await store.create({
       title: "Denied checkout",
       status: "ready",
+      agentId: "main",
       workspace: { kind: "worktree", path: "/repo-denied" },
     });
 
     const restrictedConfig = {
       tools: { fs: { workspaceOnly: true } },
       agents: {
-        list: [
-          { id: "main", default: true, workspace: "/workspace" },
-          { id: "restricted", workspace: "/workspace" },
-        ],
+        entries: {
+          main: { workspace: "/workspace" },
+          restricted: { workspace: "/workspace" },
+        },
       },
     };
     vi.mocked(api.runtime.sandbox.resolveWorkspaceAuthority).mockReturnValue({
@@ -549,7 +556,7 @@ describe("handleCanopyCommand", () => {
       args: "dispatch",
       context: {
         gatewayClientScopes: ["operator.admin"],
-        config: { agents: { list: [{ id: "admin", default: true, workspace: "/repo-allowed" }] } },
+        config: { agents: { entries: { admin: { workspace: "/repo-allowed" } } } },
         agentId: "admin",
       },
     });

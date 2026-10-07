@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { GatewayRequestHandlerOptions } from "branch/plugin-sdk/gateway-runtime";
-import type { BranchPluginApi, BranchPluginService } from "branch/plugin-sdk/plugin-entry";
+import type { BranchPluginApi } from "branch/plugin-sdk/plugin-entry";
+import { createTestPluginServiceScheduler } from "branch/plugin-sdk/plugin-test-api";
 import { resolveRuntimeWorkerUrl } from "branch/plugin-sdk/process-runtime";
 import { afterEach, expect, it, vi } from "vitest";
 import plugin from "../index.js";
@@ -21,9 +22,10 @@ it("serves timeline and status through their bounded store operations", async ()
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-07-03T12:00:00"));
   const stateDir = realpathSync(mkdtempSync(path.join(tmpdir(), "logbook-card-reads-")));
-  const services: BranchPluginService[] = [];
+  const services: Parameters<BranchPluginApi["registerService"]>[0][] = [];
   const methods = new Map<string, Parameters<BranchPluginApi["registerGatewayMethod"]>[1]>();
   const context = {
+    scheduler: createTestPluginServiceScheduler(),
     stateDir,
     config: {},
     logger: { info() {}, warn() {}, error() {}, debug() {} },
@@ -52,7 +54,8 @@ it("serves timeline and status through their bounded store operations", async ()
     runtime: {},
     session: { controls: { registerControlUiDescriptor() {} } },
     registerNodeInvokePolicy() {},
-    registerService: (service: BranchPluginService) => services.push(service),
+    registerService: (service: Parameters<BranchPluginApi["registerService"]>[0]) =>
+      services.push(service),
     registerGatewayMethod: (
       method: string,
       handler: Parameters<BranchPluginApi["registerGatewayMethod"]>[1],
@@ -86,7 +89,9 @@ it("serves timeline and status through their bounded store operations", async ()
     expect(cardCount).toHaveBeenCalledExactlyOnceWith(day);
     expect(cardPayloads).not.toHaveBeenCalled();
   } finally {
+    context.scheduler.beginClose();
     await service.stop?.(context);
+    await context.scheduler.stop();
     rmSync(stateDir, { recursive: true, force: true });
   }
 });

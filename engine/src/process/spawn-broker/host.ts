@@ -9,11 +9,13 @@ import { fileURLToPath } from "node:url";
 import { serialize } from "node:v8";
 import { toErrorObject } from "@branch/normalization-core/error-coercion";
 import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
+import { hiddenWindowsOptions } from "../windows-hidden-options.js";
 import {
   resolveRuntimeWorkerArgv,
   resolveRuntimeWorkerUrl,
 } from "../../infra/runtime-worker-url.js";
 import { createDeferredCore } from "../../shared/deferred.js";
+import type { SpawnInitiation } from "../spawn-initiation.js";
 import { GRACEFUL_CANCEL_TIMEOUT_MS } from "../supervisor/cancellation-policy.js";
 import { BrokerChild } from "./child.js";
 import { terminateBrokerProcessGroup, terminateLostBrokerChild } from "./cleanup.js";
@@ -61,6 +63,8 @@ function createNativeResourceDirectory(): string {
 
 type Request = {
   child: BrokerChild;
+  initiateSpawn?: SpawnInitiation;
+  nativeInitiated?: ReturnType<typeof createDeferredCore<void>>;
   pid?: number;
   detached: boolean;
   result?: ReturnType<typeof createDeferredCore<BrokerExecaResult>>;
@@ -92,7 +96,7 @@ export function brokerSpawnOptions(options: SpawnOptions): BrokerSpawnOptions | 
     argv0: options.argv0,
     detached: options.detached,
     shell: options.shell,
-    windowsHide: options.windowsHide,
+    windowsHide: hiddenWindowsOptions(options).windowsHide,
     windowsVerbatimArguments: options.windowsVerbatimArguments,
     serialization: options.serialization,
     uid: options.uid,
@@ -247,17 +251,25 @@ export class SpawnBrokerHost {
     }
   }
 
-  spawn(command: string, args: string[], options: SpawnOptions): BrokerChild {
+  spawn(
+    command: string,
+    args: string[],
+    options: SpawnOptions,
+    initiateSpawn?: SpawnInitiation,
+  ): BrokerChild {
     const prepared = brokerSpawnOptions(options);
     if (!prepared) {
       throw new Error("Unsupported spawn broker stdio or process options");
     }
-    return this.admit({
-      type: "spawn",
-      id: ++this.sequence,
-      argv: [command, ...args],
-      options: prepared,
-    }).child;
+    return this.admit(
+      {
+        type: initiateSpawn ? "prepare-spawn" : "spawn",
+        id: ++this.sequence,
+        argv: [command, ...args],
+        options: prepared,
+      },
+      initiateSpawn,
+    ).child;
   }
 
   spawnExeca(argv: string[], options: BrokerExecaOptions) {
@@ -274,17 +286,21 @@ export class SpawnBrokerHost {
     };
   }
 
-  private admit(message: Extract<BrokerRequest, { type: "spawn" | "spawn-execa" }>): Request {
-    const child = new BrokerChild(message.id, message.argv, (value, handle) =>
-      this.transmit(value, handle),
+  private admit(
+    message: Extract<BrokerRequest, { type: "spawn" | "prepare-spawn" | "spawn-execa" }>,
+    initiateSpawn?: SpawnInitiation,
+  ): Request {
+    const child = new BrokerChild(message.id, message.argv, (value, handle, initiate) =>
+      this.transmit(value, handle, initiate),
     );
     const result =
       message.type === "spawn-execa" ? createDeferredCore<BrokerExecaResult>() : undefined;
     if (result) {
       void result.promise.catch(() => {});
     }
-    const request = {
+    const request: Request = {
       child,
+      initiateSpawn,
       result,
       childClosed: false,
       resultSettled: !result,
@@ -312,15 +328,20 @@ export class SpawnBrokerHost {
       this.retire(message.id, request);
     });
     void this.transmit(message).catch((error: unknown) => {
-      this.requests.delete(message.id);
-      this.refreshNativeReference();
+      if (!request.nativeInitiated) {
+        if (message.type === "prepare-spawn") {
+          child.markNotStarted();
+        }
+        this.requests.delete(message.id);
+        this.refreshNativeReference();
+      }
       fail(new SpawnBrokerError("Spawn broker request delivery failed", { cause: error }));
     });
     return request;
   }
 
   private retire(id: number, request: Request): void {
-    if (request.childClosed && request.resultSettled) {
+    if (request.childClosed && request.resultSettled && !request.nativeInitiated) {
       this.requests.delete(id);
       this.refreshNativeReference();
     }
@@ -340,11 +361,12 @@ export class SpawnBrokerHost {
   private transmit(
     message: BrokerRequest | Exclude<BrokerResourceRequest, { type: "resource-attach" }>,
     handle?: SendHandle,
+    initiateSpawn?: SpawnInitiation,
   ): Promise<void> {
     if (!this.available || !this.sendMessage) {
       return Promise.reject(new SpawnBrokerError("Spawn broker is unavailable"));
     }
-    return this.sendMessage(message, handle);
+    return this.sendMessage(message, handle, initiateSpawn);
   }
 
   private start(): void {
@@ -361,11 +383,16 @@ export class SpawnBrokerHost {
     if (serialize(bootstrap).byteLength > MAX_BOOTSTRAP_BYTES) {
       throw new SpawnBrokerError("Spawn broker bootstrap exceeds its IPC bound");
     }
-    const child = spawn(process.execPath, resolveRuntimeWorkerArgv(this.workerUrl), {
+    const brokerLaunchOptions: SpawnOptions = hiddenWindowsOptions({
       stdio: ["inherit", "ignore", "ignore", "ipc"],
       detached: true,
       serialization: "advanced",
     });
+    const child: ChildProcess = spawn(
+      process.execPath,
+      resolveRuntimeWorkerArgv(this.workerUrl),
+      brokerLaunchOptions,
+    );
     this.process = child;
     this.brokerClosed = new Promise<void>((resolve) => {
       child.once("close", () => resolve());
@@ -510,11 +537,48 @@ export class SpawnBrokerHost {
         }
         if (message.type === "pipe") {
           void this.transmit({ type: "pipe-received", id: message.id, fd: message.fd }).catch(fail);
+        } else if (message.type === "prepared") {
+          void this.transmit({ type: "launch", id: message.id, allowed: false }).catch(
+            abortTransport,
+          );
         }
         return;
       }
-      if (message.type === "owned") {
+      if (message.type === "owned" || message.type === "error") {
+        request.nativeInitiated?.resolve();
+        request.nativeInitiated = undefined;
+      }
+      if (message.type === "prepared") {
+        const initiate = request.initiateSpawn;
+        request.initiateSpawn = undefined;
+        const brokerClosed = this.brokerClosed;
+        const nativeInitiated = initiate
+          ? (request.nativeInitiated ??= createDeferredCore())
+          : undefined;
+        // Local proxy failure is not native settlement; only this peer's receipt or exit is proof.
+        const settlement =
+          brokerClosed && nativeInitiated
+            ? Promise.race([nativeInitiated.promise, brokerClosed])
+            : Promise.reject(new Error("Spawn broker retirement is unavailable"));
+        void settlement.catch(() => {});
+        void this.transmit(
+          { type: "launch", id: message.id, allowed: true },
+          undefined,
+          (launch) => {
+            if (!initiate || !nativeInitiated || request.childClosed) {
+              throw new SpawnBrokerError("Spawn broker launch grant is unavailable");
+            }
+            return initiate(launch, settlement);
+          },
+        ).catch(() => {
+          void this.transmit({ type: "launch", id: message.id, allowed: false }).catch(fail);
+        });
+      } else if (message.type === "owned") {
         request.pid = message.pid;
+        if (request.childClosed) {
+          this.retainCleanup(terminateLostBrokerChild(message.pid, request.detached));
+          this.retire(message.id, request);
+        }
       } else if (message.type === "pipe") {
         try {
           if (message.closed && message.fd === 0) {

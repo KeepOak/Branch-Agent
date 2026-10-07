@@ -1,16 +1,16 @@
 import type { EmbeddedForegroundPromptContext } from "../../agents/embedded-agent-runner/run/params.js";
-import { runOutsidePreparedModelRuntimePluginGenerationScope } from "../../agents/prepared-model-runtime-generation-scope.js";
 import { getCanonicalSkillWorkspace } from "../../agents/skill-workshop-workspace-context.js";
 import type { TranscriptEntryAnchor } from "../../config/sessions/transcript-entry-anchor.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { runOutsidePluginRuntimeGenerationScope } from "../../plugins/runtime/generation-scope.js";
 import { isIncognitoSessionKey } from "../../routing/session-key.js";
+import { runInDetachedAsyncContext } from "../../shared/detached-async-context.js";
 import type { RunSkillUsage } from "../runtime/run-usage.js";
 import { resolveSkillWorkshopConfig } from "./config.js";
 import {
   countSkillModelIterations,
+  hasExplicitDurableTeaching,
   selectCurrentSkillTurnMessages,
 } from "./experience-review-prompt.js";
 
@@ -150,9 +150,7 @@ export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSched
     };
     // This timer outlives the foreground turn that armed it. Create its async
     // resource outside the parent scope so review work admits on the current generation.
-    const timer = runOutsidePreparedModelRuntimePluginGenerationScope(() =>
-      runOutsidePluginRuntimeGenerationScope(() => setTimer(timerCallback, delayMs)),
-    );
+    const timer = runInDetachedAsyncContext(() => setTimer(timerCallback, delayMs));
     pending.timer = timer;
     timer.unref?.();
   };
@@ -219,7 +217,10 @@ export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSched
           : Number.isSafeInteger(reportedModelIterations) && reportedModelIterations >= 0
             ? reportedModelIterations
             : 0;
-      if (modelIterations < EXPERIENCE_REVIEW_MIN_MODEL_ITERATIONS) {
+      if (
+        modelIterations < EXPERIENCE_REVIEW_MIN_MODEL_ITERATIONS &&
+        !hasExplicitDurableTeaching(turnMessages)
+      ) {
         log.debug(
           `experience review skipped: reason=below-depth-bar iterations=${modelIterations} session=${sessionKey}`,
         );

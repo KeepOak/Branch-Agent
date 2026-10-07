@@ -1,11 +1,12 @@
 // Settings › Chat apps at Advanced and Technical (§4.7.10): the preview's sections as tables. Each row names the
 // engine config key it saves (messages.*, commands.*, channels.defaults.*, agents.defaults.* reply streaming,
 // approvals.exec.*), its choices as the engine's values and the source default; rows with no engine key are greyed.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { Opt, Row, Section } from "./chatapps-kit";
 import { NO_KEY } from "./chatapps-kit";
 
-const CMD_WHO: Opt[] = [["Everyone allowed", 0], ["Owners only", 1], ["In direct messages only", 2], ["Nobody", 3]];
-const CMD_OFF = "Branch can’t limit one command yet; use “Who may use commands”.";
+export const CMD_WHO = ["Everyone allowed", "Owners only", "In direct messages only", "Nobody"];
+export const CMD_OFF = "Branch can’t limit one command yet; use “Who may use commands”.";
 const sw = (t: string, path: string, def: boolean, sub?: string, lv?: 0 | 1 | 2): Row => ({ t, sub, path, kind: "sw", def, lv });
 const offSw = (t: string, def: boolean, sub?: string, off = NO_KEY): Row => ({ t, sub, kind: "sw", def, off });
 const offSeg = (t: string, labels: string[], sub?: string, off = NO_KEY): Row => ({ t, sub, kind: "seg", opts: labels.map((l, i) => [l, i]), def: 0, off });
@@ -15,7 +16,7 @@ const CONFIG_CMD = "Commands that change how Branch is set up. Owners only. Off 
 
 export const ADVANCED: Section[] = [
   { title: "Commands in chat apps", lv: 1, hint: "Who may use which commands, in each chat app.", rows: [
-    ...["/new and /stop", "/model", "/config", "/approve"].map((t): Row => ({ t, kind: "pick", opts: CMD_WHO, def: t === "/config" ? 1 : 0, off: CMD_OFF })),
+    { t: "Who may use each command", kind: "custom", id: "cmdRows" },
     { t: "Slack app file", sub: "Every Branch command becomes a Slack command.", kind: "custom", id: "slackFile" },
   ] },
   { title: "What the Trunk sees", lv: 1, rows: [
@@ -86,7 +87,7 @@ export const ADVANCED: Section[] = [
 ];
 
 export const TECH_A: Section[] = [
-  { title: "Chat apps, technical", lv: 2, rows: [
+  { title: "Chat apps, technical", group: "Chat apps", lv: 2, rows: [
     { t: "Call it stalled after", sub: "No update from the app for this long. Telegram: 120 seconds; other apps: 30 minutes.", kind: "num", unit: "seconds", def: 120, off: "The engine decides this on its own; Branch can’t change it yet." },
     { t: "Watchdog log", sub: "One line each time it checks or reconnects.", kind: "custom", id: "watchLog" },
     { t: "Smallest part", sub: "How replies are cut into parts.", path: "agents.defaults.blockStreamingChunk.minChars", kind: "num", unit: "characters", def: 800 },
@@ -105,7 +106,7 @@ export const TECH_A: Section[] = [
   { title: "Messages, every setting", lv: 2, hint: "Every message setting the engine has, by its key. The rows above set the common ones.", rows: [{ t: "Message keys", kind: "custom", id: "msgKeys" }] },
 ];
 
-export const DEPTH: Section = { title: "Each app, in depth", lv: 1, hint: "What only one app can do. Each applies once that app is connected.", rows: [{ t: "Apps", kind: "custom", id: "depth" }] };
+export const DEPTH: Section = { title: "Each app, in depth", group: "Each app", lv: 1, hint: "What only one app can do. Each applies once that app is connected.", rows: [{ t: "Apps", kind: "custom", id: "depth" }] };
 
 const EVERY_CHAT = "Branch has no setting for this yet.";
 export const LATER: Section[] = [

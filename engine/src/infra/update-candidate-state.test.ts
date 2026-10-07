@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import type { BranchConfig } from "../config/types.branch.js";
 import { runCommandBuffered } from "../process/exec.js";
 import { getFileLockProcessStartTime } from "../shared/pid-alive.js";
-import { withAgentDatabaseMaintenanceLease } from "../state/branch-agent-db.js";
+import { withAgentDatabaseMaintenanceLease } from "../state/branch-agent-db-maintenance-lease.js";
 import { closeBranchStateDatabaseByPath } from "../state/branch-state-db-cache.js";
 import {
   closeBranchStateDatabaseForTest,
@@ -78,7 +78,9 @@ it.each(["DELETE", "WAL"])(
     insert.run("main", path.relative(source, canonical));
     const now = Date.now();
     registry
-      .prepare("INSERT INTO agent_database_leases VALUES (?, ?, ?, ?, ?, ?)")
+      .prepare(
+        "INSERT INTO agent_database_leases (lease_id, agent_id, path, owner_pid, owner_start_time, opened_at) VALUES (?, ?, ?, ?, ?, ?)",
+      )
       .run(
         "live-main",
         "main",

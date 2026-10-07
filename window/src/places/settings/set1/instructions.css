@@ -1,7 +1,7 @@
 /* Settings › Instructions & personality and its file editor: the preview's .chip6 owners, .if-name file tags, the
    file rows (base mock pass 8), the editor (.ifed18e, 50-settings) and Just about you (51-set1p). Theme tokens only. */
 .set-col .if-whose { display: grid; gap: 6px; margin-top: 6px; }
-.set-col .if-lbl { font: 500 10.5px/1.2 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.set-col .if-lbl { font: 600 12px/1.3 var(--sans); color: var(--ink-3); }
 .set-col .if-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .set-col .if-chips .chip6 { height: 28px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--raise); font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
 .set-col .if-chips .chip6[aria-pressed="true"] { background: var(--btn); border-color: var(--btn); color: var(--on-btn); }

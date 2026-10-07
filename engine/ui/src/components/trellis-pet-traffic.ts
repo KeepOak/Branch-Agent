@@ -90,7 +90,7 @@ export class TrellisLedgeTraffic implements ReactiveController {
     const passer = this.passer;
     const options = this.hooks.passerOptions();
     const regular =
-      passer && ["stranger", "crab", "snail", "duck", "jellyfish"].includes(passer.kind);
+      passer && ["stranger", "beetle", "snail", "duck", "jellyfish"].includes(passer.kind);
     if (
       passer &&
       (passer.kind !== "stranger" ||

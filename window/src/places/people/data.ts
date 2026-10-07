@@ -72,7 +72,7 @@ export function ago(ms: number | undefined, now = Date.now()): string {
 export const secondsAgo = (seconds: number | undefined) => seconds === undefined ? "" : ago(Date.now() - seconds * 1000);
 
 /** One conversation row (schema/sessions-row.ts), only the fields this place reads. */
-export type Row = { key: string; sessionId: string; agentId: string; title: string; preview: string; working: boolean; status: string; updatedAt?: number; ownerId: string; ownerLabel: string; ownerType: string; visibility: string; sharingRole: string; kind: string; chatType: string; model: string; participants: string[]; swarm: Rec | null; childSessions: string[]; subagentRole: string };
+export type Row = { key: string; sessionId: string; agentId: string; title: string; preview: string; working: boolean; status: string; updatedAt?: number; ownerId: string; ownerLabel: string; ownerType: string; visibility: string; sharingRole: string; kind: string; chatType: string; model: string; participants: string[]; swarm: Rec | null; childSessions: string[]; subagentRole: string; helper: boolean };
 export function rows(value: unknown): Row[] {
   return recs(rec(value).sessions).filter(r => str(r.key)).map(r => {
     const owner = rec(rec(r.owner).actor);
@@ -85,6 +85,7 @@ export function rows(value: unknown): Row[] {
       visibility: str(r.visibility), sharingRole: str(r.sharingRole), kind: str(r.kind), chatType: str(r.chatType),
       model: str(r.model), participants: recs(r.participants).map(p => str(p.label)).filter(Boolean),
       swarm: r.swarm ? rec(r.swarm) : null, childSessions: strs(r.childSessions), subagentRole: str(r.subagentRole),
+      helper: Boolean(str(r.spawnedBy) || str(r.parentSessionKey)),
     };
   });
 }

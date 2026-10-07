@@ -1,18 +1,9 @@
-import { MeetingPlatformAdapter } from "branch/plugin-sdk/meeting-runtime";
+import type { MeetingPlatformAdapter } from "branch/plugin-sdk/meeting-runtime";
 
-export function teamsMeetingStatusCallSource(): string {
-  return MeetingPlatformAdapter.createStatusCallSource({
-    platform: {
-      audioOutputElementIdPrefix: "branch-teams-audio-output-",
-      displayName: "Teams",
-      globals: {
-        audioOutputs: "__branchTeamsAudioOutputs",
-        captions: "__branchTeamsCaptions",
-        meeting: "__branchTeamsMeeting",
-      },
-      manualActionReasonPrefix: "teams",
-    },
-    captionEnableSource: `if (!captionsFinalized && canMutateSession && inCall && !captionsEnabledNow) {
+export const teamsMeetingStatusCall: Parameters<
+  typeof MeetingPlatformAdapter.createPageScripts
+>[0]["statusCall"] = {
+  captionEnableSource: `if (!captionsFinalized && canMutateSession && inCall && !captionsEnabledNow) {
       let captionButton = first(selectors.captions);
       if (!captionButton) {
         first(selectors.moreActions)?.click?.();
@@ -38,5 +29,4 @@ export function teamsMeetingStatusCallSource(): string {
         }
       }
     }`,
-  });
-}
+};

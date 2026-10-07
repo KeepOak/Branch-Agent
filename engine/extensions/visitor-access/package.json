@@ -1,6 +1,6 @@
 {
   "name": "@branch/visitor-access",
-  "version": "2026.9.7",
+  "version": "2026.9.8",
   "private": true,
   "description": "Branch Agent internal Cloudflare Access visitor grants plugin",
   "type": "module",

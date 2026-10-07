@@ -152,7 +152,7 @@ export const LOBSTER_PET_ENTRANCE_MS: Record<TrellisPetEntrance, number> = {
 
 const LOBSTER_PASSER_CROSS_MS: Partial<Record<TrellisPasserKind, number>> = {
   stranger: 11_000,
-  crab: 11_000,
+  beetle: 11_000,
   snail: 90_000,
   duck: 14_000,
   jellyfish: 16_000,
@@ -207,7 +207,7 @@ export function planTrellisPasser(
   const rng = mulberry32((seed ^ 0xcab) >>> 0);
   const roll = rng() * 1000;
   const weights: Array<readonly [TrellisPasserKind, number]> = [
-    ["crab", 15],
+    ["beetle", 15],
     ["snail", 12],
     ["duck", 12],
     ["jellyfish", 11],
@@ -328,7 +328,7 @@ export const LOBSTER_BOTTLE_FORTUNES = [
   "barnacles are only patient passengers",
   "no current lasts forever",
   "bury your treasure in version control",
-  "the crab was a trellis all along",
+  "the acorn was an oak all along",
   "small groves, firm grip",
   "rest is also progress",
   "what washes away was never pinned",

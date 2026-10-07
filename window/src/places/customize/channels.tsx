@@ -9,7 +9,8 @@ import { Dialog } from "../../shell/Dialog";
 import { Icon } from "../../shell/icons";
 import { useOperation, useResource } from "../library/data";
 import { Status } from "../library/ui";
-import { list, Logo, Pill, rec, Seg, str } from "./common";
+import { list, Pill, rec, Seg, str } from "./common";
+import { ChatLogo } from "../settings/set1/chatapps-logo";
 import { ConsentDialog, usePluginAction } from "./catalog";
 import { Glyph } from "./glyphs";
 import { PairDialog } from "./pairing";
@@ -66,7 +67,7 @@ export function ChannelsTab({ engine, openSettings }: { engine: WindowEngine; op
     <Status {...status} />
     {status.data != null && !shown.length && <EmptyLine icon={<Icon name="search" />}>{q ? "No chat app by that name." : "No chat apps yet."}</EmptyLine>}
     <div className="cz-chgrid">{shown.map(a => { const st = stateOf(a); return <button key={a.id} type="button" className={st.dot === "on" ? "cz-ch on" : "cz-ch"} onClick={() => setOpen(a.id)}>
-      <Logo name={a.name} /><span className="grow"><b>{a.name}</b><small>{st.line}</small></span>{st.dot && <span className={"cz-dot cz-ch-dot " + st.dot} aria-hidden="true" />}</button>; })}</div>
+      <ChatLogo id={a.id} name={a.name} size={32} /><span className="grow"><b>{a.name}</b><small>{st.line}</small></span>{st.dot && <span className={"cz-dot cz-ch-dot " + st.dot} aria-hidden="true" />}</button>; })}</div>
     <div className="cz-tile-card cz-phone"><span className="cz-tile"><Glyph name="phone" size={16} /></span><span className="grow"><b>Your phone</b><small>Answer approvals and talk to Trunks from the Branch app.</small></span><button type="button" className="btn pri sm" onClick={() => setPairing(true)}>Pair a phone</button></div>
     {app && <ChannelDialog engine={engine} app={app} close={() => setOpen(null)} reload={reload} openSettings={openSettings} />}
     {pairing && <PairDialog engine={engine} close={() => setPairing(false)} />}
@@ -79,7 +80,7 @@ function ChannelDialog({ engine, app, close, reload, openSettings }: { engine: W
   const configured = app.accounts.some(a => a.configured);
   const sub = app.group === "popular" ? "Popular" : app.group === "work" ? "Work chat · webhook" : "More apps";
   return <Dialog wide title={`${configured ? "Manage" : "Set up"} ${app.name}`} onClose={close} testid="channel" footer={<button type="button" className="btn" onClick={close}>Done</button>}>
-    <div className="cz-prov-h"><Logo name={app.name} size={40} /><span className="grow"><b>{app.name}</b><small>{sub}</small></span></div>
+    <div className="cz-prov-h"><ChatLogo id={app.id} name={app.name} size={40} /><span className="grow"><b>{app.name}</b><small>{sub}</small></span></div>
     {(op.error || plugin.error) && <p role="alert" className="cz-error">{op.error || plugin.error}</p>}
     {!app.installed ? <div className="cz-line"><span>{app.name} isn’t installed.</span>{app.install ? <button type="button" className="btn pri sm" disabled={!!plugin.busy} onClick={() => void plugin.run("install", "plugins.install", { ...app.install, enable: true }, reload)}>Install</button> : <span className="cz-hint">It can’t be installed from here.</span>}</div>
       : !app.enabled && app.pluginId ? <div className="cz-line"><span>{app.name} is switched off.</span><button type="button" className="btn pri sm" disabled={!!plugin.busy} onClick={() => void plugin.run("on", "plugins.setEnabled", { pluginId: app.pluginId, enabled: true }, reload)}>Switch it on</button></div>

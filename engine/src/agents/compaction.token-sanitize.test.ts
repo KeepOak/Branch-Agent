@@ -28,8 +28,17 @@ describe("compaction token accounting sanitization", () => {
         role: "custom",
         customType: "branch.runtime-context",
         content: "internal",
+        details: { source: "branch-runtime-context", runtimeContextCarrier: true },
         timestamp: 2,
       } as AgentMessage,
+      {
+        role: "custom",
+        customType: "branch.runtime-context",
+        content: "private context opted out of provider replay",
+        details: { source: "branch-runtime-context", runtimeContextCarrier: false },
+        display: false,
+        timestamp: 2,
+      },
       makeUserMessage("next", 3),
     ];
 

@@ -20,7 +20,7 @@ vi.mock("branch/plugin-sdk/memory-core-host-engine-sessions", async (importOrigi
     await importOriginal<typeof import("branch/plugin-sdk/memory-core-host-engine-sessions")>();
   return {
     ...actual,
-    loadArchivedSessions: vi.fn(() => []),
+    loadArchivedSessionsAsync: vi.fn(async () => []),
   };
 });
 

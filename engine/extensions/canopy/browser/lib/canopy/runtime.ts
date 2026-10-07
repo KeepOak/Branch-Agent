@@ -1,4 +1,6 @@
+import type { CanopyChange } from "@branch/canopy-contract";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
+import { normalizeCanopyChange } from "./change-payload.ts";
 import { CANOPY_STATUSES, type CanopyUiState } from "./types.ts";
 
 export type CanopyHost = object;
@@ -17,6 +19,7 @@ type CanopyLiveRefreshEntry = {
 
 type CanopyRuntime = {
   state?: CanopyUiState;
+  cardsRevision?: CanopyChange | null;
   loadPromise?: Promise<boolean>;
   loadToken?: CanopyLoadToken;
   loadError?: string;
@@ -26,7 +29,6 @@ type CanopyRuntime = {
   liveHighestSeenRevision?: number;
   liveAppliedRevision?: number;
   liveRefreshPending?: boolean;
-  liveInvalidationRevision?: number;
   liveRefreshPromise?: Promise<void>;
   liveRefreshRetryTimer?: ReturnType<typeof setTimeout>;
   liveRefreshEntry?: CanopyLiveRefreshEntry;
@@ -57,6 +59,7 @@ export function invalidateCanopyLoads(host: CanopyHost) {
       }
     }
   }
+  delete runtime.cardsRevision;
   nextCanopyLoadGeneration(host);
   delete runtime.loadPromise;
   delete runtime.loadToken;
@@ -76,7 +79,6 @@ export function stopCanopyLiveRefresh(host: CanopyHost): void {
   delete runtime.liveHighestSeenRevision;
   delete runtime.liveAppliedRevision;
   delete runtime.liveRefreshPending;
-  delete runtime.liveInvalidationRevision;
   if (loadInFlight) {
     invalidateCanopyLoads(host);
   }
@@ -97,6 +99,7 @@ export function resetCanopyConnectionState(host: CanopyHost) {
     state.loaded = false;
     state.loadAttempted = false;
   }
+  delete runtime.cardsRevision;
   nextCanopyLoadGeneration(host);
   delete runtime.loadPromise;
   delete runtime.loadToken;
@@ -180,4 +183,12 @@ export function canopyMutationsReady(state: CanopyUiState): boolean {
 
 export function canopyHasActiveWrites(state: CanopyUiState): boolean {
   return Boolean(state.bulkSaving || state.draftSaving || state.busyCardIds.size);
+}
+
+export function hasCurrentCanopyCards(host: CanopyHost, payload: unknown): boolean {
+  const change = normalizeCanopyChange(payload);
+  const held = getCanopyRuntime(host).cardsRevision;
+  return Boolean(
+    change && held && change.epoch === held.epoch && change.cardsRevision === held.revision,
+  );
 }

@@ -7,8 +7,11 @@ import { withTestDir } from "../test-helpers/temp-dir.js";
 import { PACKAGE_DIST_INVENTORY_RELATIVE_PATH } from "./package-dist-inventory.js";
 import { runGlobalPackageUpdateSteps } from "./package-update-steps.js";
 import {
+  createNpmUpdateOptions,
   createNpmTarget,
   createRootRunner,
+  packageUpdateStepResult,
+  stagedNpmPrefix,
   writePackageRoot,
 } from "./package-update-steps.test-support.js";
 import { resolveNpmGlobalPrefixLayoutFromPrefix } from "./update-npm-prefix.js";
@@ -176,22 +179,14 @@ describe("package update recovery safety", () => {
             await fs.writeFile(path.join(packDir, "candidate.tgz"), "fixture package");
             return { name, command: argv.join(" "), cwd: packDir, durationMs: 0, exitCode: 0 };
           }
-          const prefixIndex = argv.indexOf("--prefix");
-          const stagePrefix = argv[prefixIndex + 1];
-          if (prefixIndex < 0 || !stagePrefix) {
-            throw new Error("missing stage prefix");
-          }
+          const stagePrefix = stagedNpmPrefix(argv);
           const stageLayout = resolveNpmGlobalPrefixLayoutFromPrefix(stagePrefix);
           const stageRoot = path.join(stageLayout.globalRoot, "branch");
           await writeIdentity(stageRoot, after);
           return { name, command: argv.join(" "), cwd: stagePrefix, durationMs: 0, exitCode: 0 };
         });
         const result = await runGlobalPackageUpdateSteps({
-          installTarget: createNpmTarget(globalRoot),
-          packageName: "branch",
-          installSpec: spec,
-          timeoutMs: 1000,
-          runCommand: createRootRunner(globalRoot),
+          ...createNpmUpdateOptions(globalRoot, spec),
           runStep,
           validateCandidate,
           beforeActivate,
@@ -241,12 +236,8 @@ describe("package update recovery safety", () => {
           return { name, command: argv.join(" "), cwd: globalRoot, durationMs: 0, exitCode: 0 };
         });
         const result = await runGlobalPackageUpdateSteps({
-          installTarget: createNpmTarget(globalRoot),
-          installSpec: "branch@2.0.0",
-          packageName: "branch",
-          runCommand: createRootRunner(globalRoot),
+          ...createNpmUpdateOptions(globalRoot),
           runStep,
-          timeoutMs: 1000,
           ...(hook === "validation"
             ? { validateCandidate }
             : hook === "activation"
@@ -280,17 +271,11 @@ describe("package update recovery safety", () => {
       await fs.writeFile(launcher, "old launcher\n");
 
       const result = await runGlobalPackageUpdateSteps({
-        installTarget: createNpmTarget(globalRoot),
-        installSpec: "branch@1.0.0",
-        packageName: "branch",
+        ...createNpmUpdateOptions(globalRoot, "branch@1.0.0"),
         packageRoot,
         requirePackageReplacement: true,
-        runCommand: createRootRunner(globalRoot),
         runStep: async ({ name, argv }) => {
-          const stagePrefix = argv[argv.indexOf("--prefix") + 1];
-          if (!stagePrefix) {
-            throw new Error("missing stage prefix");
-          }
+          const stagePrefix = stagedNpmPrefix(argv);
           const stageLayout = resolveNpmGlobalPrefixLayoutFromPrefix(stagePrefix);
           const stageRoot = path.join(stageLayout.globalRoot, "branch");
           await writePackageRoot(stageRoot, "1.0.0");
@@ -322,7 +307,6 @@ describe("package update recovery safety", () => {
             exitCode: 1,
           };
         },
-        timeoutMs: 1000,
       });
 
       expect(result.reason).toBeUndefined();
@@ -350,13 +334,9 @@ describe("package update recovery safety", () => {
       const runStep = vi.fn();
       try {
         const result = await runGlobalPackageUpdateSteps({
-          installTarget: createNpmTarget(globalRoot),
-          installSpec: "branch@2.0.0",
-          packageName: "branch",
+          ...createNpmUpdateOptions(globalRoot),
           packageRoot,
-          runCommand: createRootRunner(globalRoot),
           runStep,
-          timeoutMs: 1000,
         });
         expect(result.failedStep?.name).toBe("package-stage");
         expect(result.recovery).toEqual({ serviceRestartSafe: true, version: "1.0.0" });
@@ -385,16 +365,10 @@ describe("package update recovery safety", () => {
         const packageRoot = path.join(globalRoot, "branch");
         await writePackageRoot(packageRoot, "1.0.0");
         const params = {
-          installTarget: createNpmTarget(globalRoot),
-          installSpec: "branch@2.0.0",
-          packageName: "branch",
+          ...createNpmUpdateOptions(globalRoot),
           packageRoot,
-          runCommand: createRootRunner(globalRoot),
           runStep: async ({ name, argv }: { name: string; argv: string[] }) => {
-            const prefix = argv[argv.indexOf("--prefix") + 1];
-            if (!prefix) {
-              throw new Error("missing staged prefix");
-            }
+            const prefix = stagedNpmPrefix(argv);
             const stageLayout = resolveNpmGlobalPrefixLayoutFromPrefix(prefix);
             const installRoot = path.join(stageLayout.globalRoot, "branch");
             await writePackageRoot(installRoot, "2.0.0");
@@ -406,18 +380,17 @@ describe("package update recovery safety", () => {
             if (failure === "install throw") {
               throw new Error("install interrupted");
             }
-            return {
-              name,
-              command: argv.join(" "),
-              cwd: globalRoot,
-              durationMs: 0,
-              exitCode: failure === "install exit" ? 1 : 0,
-            };
+            return packageUpdateStepResult(
+              { name, argv, cwd: globalRoot },
+              {
+                durationMs: 0,
+                exitCode: failure === "install exit" ? 1 : 0,
+              },
+            );
           },
           postVerifyStep: async () => {
             throw new Error("doctor interrupted after replacement");
           },
-          timeoutMs: 1000,
         };
         const result = await runGlobalPackageUpdateSteps(params);
 
@@ -479,17 +452,10 @@ describe("package update recovery safety", () => {
         let result: Awaited<ReturnType<typeof runGlobalPackageUpdateSteps>>;
         try {
           result = await runGlobalPackageUpdateSteps({
-            installTarget: createNpmTarget(globalRoot),
-            installSpec: "branch@2.0.0",
-            packageName: "branch",
+            ...createNpmUpdateOptions(globalRoot),
             packageRoot,
-            runCommand: createRootRunner(globalRoot),
-            timeoutMs: 1000,
             runStep: async ({ name, argv }) => {
-              const prefix = argv[argv.indexOf("--prefix") + 1];
-              if (!prefix) {
-                throw new Error("missing stage prefix");
-              }
+              const prefix = stagedNpmPrefix(argv);
               const stageLayout = resolveNpmGlobalPrefixLayoutFromPrefix(prefix);
               const staged = path.join(stageLayout.globalRoot, "branch");
               await writePackageRoot(staged, "2.0.0");
@@ -538,16 +504,10 @@ describe("package update recovery safety", () => {
         );
 
         const result = await runGlobalPackageUpdateSteps({
-          installTarget: createNpmTarget(globalRoot),
-          installSpec: "branch@2.0.0",
-          packageName: "branch",
+          ...createNpmUpdateOptions(globalRoot),
           packageRoot,
-          runCommand: createRootRunner(globalRoot),
           runStep: async ({ name, argv }) => {
-            const stagePrefix = argv[argv.indexOf("--prefix") + 1];
-            if (!stagePrefix) {
-              throw new Error("missing stage prefix");
-            }
+            const stagePrefix = stagedNpmPrefix(argv);
             const stageLayout = resolveNpmGlobalPrefixLayoutFromPrefix(stagePrefix);
             await writePackageRoot(path.join(stageLayout.globalRoot, "branch"), "2.0.0");
             const stagedBinDir = stageLayout.binDir;
@@ -557,13 +517,12 @@ describe("package update recovery safety", () => {
                 fs.writeFile(path.join(stagedBinDir, shimName), `new ${shimName}\n`, "utf8"),
               ),
             );
-            return {
-              name,
-              command: argv.join(" "),
-              cwd: stagePrefix,
-              durationMs: 0,
-              exitCode: 0,
-            };
+            return packageUpdateStepResult(
+              { name, argv, cwd: stagePrefix },
+              {
+                durationMs: 0,
+              },
+            );
           },
           postVerifyStep: async (candidateRoot) => {
             expect(candidateRoot).toBe(packageRoot);
@@ -591,7 +550,6 @@ describe("package update recovery safety", () => {
               stderrTail: outcome === "blocking" ? "doctor rejected candidate" : null,
             };
           },
-          timeoutMs: 1000,
         });
 
         const expectedVersion = outcome === "success" ? "2.0.0" : "1.0.0";
@@ -665,16 +623,10 @@ describe("package update recovery safety", () => {
       let result: Awaited<ReturnType<typeof runGlobalPackageUpdateSteps>>;
       try {
         result = await runGlobalPackageUpdateSteps({
-          installTarget: createNpmTarget(globalRoot),
-          installSpec: "branch@2.0.0",
-          packageName: "branch",
+          ...createNpmUpdateOptions(globalRoot),
           packageRoot,
-          runCommand: createRootRunner(globalRoot),
           runStep: async ({ name, argv }) => {
-            const stagePrefix = argv[argv.indexOf("--prefix") + 1];
-            if (!stagePrefix) {
-              throw new Error("missing stage prefix");
-            }
+            const stagePrefix = stagedNpmPrefix(argv);
             const stageLayout = resolveNpmGlobalPrefixLayoutFromPrefix(stagePrefix);
             await writePackageRoot(path.join(stageLayout.globalRoot, "branch"), "2.0.0");
             const stagedBinDir = stageLayout.binDir;
@@ -685,13 +637,12 @@ describe("package update recovery safety", () => {
               "new branch.cmd\n",
               "utf8",
             );
-            return {
-              name,
-              command: argv.join(" "),
-              cwd: stagePrefix,
-              durationMs: 0,
-              exitCode: 0,
-            };
+            return packageUpdateStepResult(
+              { name, argv, cwd: stagePrefix },
+              {
+                durationMs: 0,
+              },
+            );
           },
           postVerifyStep: async (candidateRoot) => ({
             name: "branch doctor",
@@ -701,7 +652,6 @@ describe("package update recovery safety", () => {
             exitCode: 1,
             stderrTail: "doctor rejected candidate",
           }),
-          timeoutMs: 1000,
         });
       } finally {
         copySpy.mockRestore();

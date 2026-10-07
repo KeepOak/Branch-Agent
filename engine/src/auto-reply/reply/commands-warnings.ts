@@ -4,7 +4,6 @@ import { readRetainedWarnings, type RetainedWarning } from "../../logging/retain
 import { getPluginRegistryForContext } from "../../plugins/runtime/gateway-request-scope.js";
 import { commandReply, defineAuthorizedTextCommand } from "./command-gates.js";
 import {
-  buildPrivateCommandApprovalRequest,
   deliverPrivateCommandReply,
   resolvePrivateCommandRouteTargets,
 } from "./commands-private-route.js";
@@ -49,13 +48,8 @@ function warningsText(): string {
 async function privateWarningsReply(params: HandleCommandsParams, text: string) {
   const targets = await resolvePrivateCommandRouteTargets({
     commandParams: params,
-    request: buildPrivateCommandApprovalRequest({
-      commandParams: params,
-      id: "warnings-private-route",
-      command: "/warnings",
-      agentId: params.agentId,
-      createdAtMs: Date.now(),
-    }),
+    id: "warnings-private-route",
+    command: "/warnings",
   });
   const outcome = await deliverPrivateCommandReply({
     commandParams: params,

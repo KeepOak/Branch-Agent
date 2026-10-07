@@ -30,6 +30,39 @@ export function countSkillModelIterations(messages: readonly unknown[]): number 
   );
 }
 
+/** A brief explicit teaching turn is useful evidence even without ten model iterations.
+ * This only requests review; the reviewer still distinguishes reusable procedures
+ * from private facts, one-time requests, quoted instructions and unsuccessful work.
+ */
+export function hasExplicitDurableTeaching(messages: readonly unknown[]): boolean {
+  const user = selectCurrentSkillTurnMessages(messages)[0];
+  if (!isRecord(user) || user.role !== "user") {
+    return false;
+  }
+  const content = user.content;
+  const text =
+    typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content
+            .flatMap((part) =>
+              isRecord(part) && part.type === "text" && typeof part.text === "string"
+                ? [part.text]
+                : [],
+            )
+            .join("\n")
+        : "";
+  // Do not treat documentation/code examples or quoted dialogue as direct teaching.
+  const unquoted = text
+    .replace(/```[\s\S]*?(?:```|$)/gu, "")
+    .split("\n")
+    .filter((line) => !/^\s*>/u.test(line))
+    .join("\n");
+  return /\b(?:from now on|going forward|next time|for future (?:tasks|reviews|requests|changes)|remember (?:this|to)|always|never)\b/iu.test(
+    unquoted,
+  );
+}
+
 function renderExistingSkillsSection(
   existingSkills: ExperienceReviewPromptCandidate["existingSkills"],
 ): string[] {
@@ -113,7 +146,7 @@ export function buildSkillExperienceReviewPrompt(
           SKILL_WORKSHOP_MAINTENANCE_PROMPT,
         ]
       : [
-          "Only skill_workshop executes in this draft-only review. Choose the smallest useful change: inspect pending proposals and revise the best match; otherwise, if an existing Workshop-generated skill governs the procedure, read and patch it, preferring one actually used. Read or prepare_patch only a Workshop-generated skill identified in the inventory, used-skill receipt, or tool results; do not guess a skill name from the tool name. Create a class-level skill only when none covers the procedure. Follow the tool's read and prepare_patch contracts; use a full-body update only for restructuring. Keep reusable scripts, templates and references in support_files linked from the procedure.",
+          "Only skill_workshop executes in this draft-only review. Choose the smallest useful change: list pending proposals with action=list and status=pending, then inspect or revise the best match with its id as proposal_id; otherwise, if an existing Workshop-generated skill governs the procedure, read and patch it, preferring one actually used. Read or prepare_patch only a Workshop-generated skill identified in the inventory, used-skill receipt, or tool results; do not guess a skill name from the tool name. Create a class-level skill only when none covers the procedure. Follow the tool's read and prepare_patch contracts; use a full-body update only for restructuring. Keep reusable scripts, templates and references in support_files linked from the procedure.",
           "Finish with at most one create, patch, update or revise, after any needed preparation calls; otherwise answer NO_REPLY. The mutation stages a pending proposal, not a direct publication.",
         ]),
     ...(candidate.turnAborted === true

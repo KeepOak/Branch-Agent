@@ -8,6 +8,7 @@ import { useConfig, useScope, type Opt } from "../kit";
 import type { ConfigPath } from "../config-store";
 import { providersOf, type Provider } from "./accounts";
 import { serviceName } from "./service";
+import { displayModelName } from "../../../composer/model-display";
 
 export type Model = { ref: string; id: string; provider: string; name: string; local: boolean; available: boolean; images: boolean; thinking: Opt[]; thinkingDefault?: string };
 
@@ -16,7 +17,7 @@ export function modelsOf(data: RecordValue | undefined): Model[] {
     ref: `${text(m.provider)}/${text(m.id)}`,
     id: text(m.id),
     provider: text(m.provider),
-    name: visible(m.name ?? m.id),
+    name: displayModelName(visible(m.name ?? m.id)),
     local: m.local === true,
     available: m.available !== false,
     images: Array.isArray(m.input) && m.input.includes("image"),
@@ -56,7 +57,10 @@ function serviceNameOf(p: Provider): string {
 /** Models settings: the engine data, the config, and the path for a row a Trunk can own. */
 export function useModels(engine: WindowEngine) {
   const scope = useScope();
-  const agent = scope ? { agentId: scope } : {};
+  // Accounts belong to a Trunk's auth store. With more than one Trunk the engine refuses a sign-in or status call
+  // that names none ("Multiple agents are configured…"), so the household view uses the default Trunk's store.
+  const owner = scope || engine.agentId;
+  const agent = owner ? { agentId: owner } : {};
   const catalog = useResource<RecordValue>(engine, "models.list", { includeDetails: true, ...agent });
   const auth = useResource<RecordValue>(engine, "models.authStatus", agent);
   const cfg = useConfig(engine);

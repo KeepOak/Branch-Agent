@@ -33,6 +33,11 @@ function isSourceCheckoutInstallRoot(installRoot: string): boolean {
   );
 }
 
+function isBuiltDistEntry(entryFile: string): boolean {
+  return path.basename(path.dirname(entryFile)) === "dist" &&
+    /^entry\.(?:m?js)$/u.test(path.basename(entryFile));
+}
+
 function isNodeCompileCacheDisabled(env: NodeJS.ProcessEnv | undefined): boolean {
   return env?.NODE_DISABLE_COMPILE_CACHE !== undefined;
 }
@@ -44,10 +49,12 @@ function isNodeCompileCacheRequested(env: NodeJS.ProcessEnv | undefined): boolea
 function shouldEnableBranchCompileCache(params: {
   env?: NodeJS.ProcessEnv;
   installRoot: string;
+  entryFile?: string;
 }): boolean {
   return (
     !isNodeCompileCacheDisabled(params.env ?? process.env) &&
-    !isSourceCheckoutInstallRoot(params.installRoot)
+    (!isSourceCheckoutInstallRoot(params.installRoot) ||
+      (params.entryFile !== undefined && isBuiltDistEntry(params.entryFile)))
   );
 }
 
@@ -78,7 +85,7 @@ function buildBranchCompileCacheRespawnPlan(params: {
   if (isForegroundGmailRunArgv(argv) || shouldKeepNativeHookRelayInProcess(argv, platform)) {
     return undefined;
   }
-  if (!isSourceCheckoutInstallRoot(params.installRoot)) {
+  if (!isSourceCheckoutInstallRoot(params.installRoot) || isBuiltDistEntry(params.currentFile)) {
     return undefined;
   }
   if (env[COMPILE_CACHE_DISABLED_RESPAWNED_ENV] === "1") {
@@ -161,13 +168,16 @@ function runBranchCompileCacheRespawnPlan(
 export function enableBranchCompileCache(params: {
   env?: NodeJS.ProcessEnv;
   installRoot: string;
+  entryFile?: string;
 }): void {
   if (!shouldEnableBranchCompileCache(params)) {
     return;
   }
   try {
     const directory = resolveBranchCompileCacheDirectory(params);
-    enableOwnedNodeCompileCache(directory);
+    if (directory) {
+      enableOwnedNodeCompileCache(directory);
+    }
   } catch {
     // Best-effort only; never block startup.
   }

@@ -3,9 +3,13 @@ import { afterEach, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import * as nodeSqlite from "../infra/node-sqlite.js";
 import { SQLITE_IDLE_HANDLE_TTL_MS } from "../infra/sqlite-handle-lifecycle.js";
+import { createBranchDatabaseMaintenanceScope } from "./branch-state-db-async-lifecycle.js";
 import {
   borrowBranchStateDatabaseForAsyncRead,
   branchStateDatabaseCache as cache,
+  retainBranchStateDatabase,
+  retainBranchStateDatabaseForIdle,
+  retainBranchStateDatabaseForIndependentRead,
 } from "./branch-state-db-cache.js";
 import { openBranchStateDatabase, runWithBranchStateBusyTimeout } from "./branch-state-db.js";
 
@@ -54,19 +58,62 @@ it.each(["path", "supplied", "busy-timeout"] as const)(
   },
 );
 
-it("pins shared-state readers through idle expiry and starts idleness at release", () => {
+it.each([
+  { pin: "reader", ending: "release" },
+  { pin: "retention", ending: "release" },
+  { pin: "retention", ending: "explicit close" },
+  { pin: "writer", ending: "release" },
+  { pin: "writer", ending: "scope close" },
+] as const)("keeps idle custody through $pin until $ending", async ({ pin, ending }) => {
   const pathname = path.join(tempDirs.make("shared-idle-pin-"), "state.sqlite");
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-  const database = openBranchStateDatabase({ path: pathname });
-  const borrow = borrowBranchStateDatabaseForAsyncRead(pathname);
-  expect(borrow).toBeDefined();
-  vi.advanceTimersByTime(SQLITE_IDLE_HANDLE_TTL_MS + 100);
-  expect(database.db.isOpen).toBe(true);
-  borrow?.release();
-  vi.advanceTimersByTime(SQLITE_IDLE_HANDLE_TTL_MS - 1);
-  expect(database.db.isOpen).toBe(true);
-  vi.advanceTimersByTime(1);
-  expect(database.db.isOpen).toBe(false);
+  const scope = createBranchDatabaseMaintenanceScope();
+  const open = () => openBranchStateDatabase({ path: pathname });
+  const database = pin === "writer" ? scope.run(open) : open();
+  const writer =
+    pin === "writer" ? scope.run(() => retainBranchStateDatabase(database)) : undefined;
+  const borrow = pin === "reader" ? borrowBranchStateDatabaseForAsyncRead(pathname)! : undefined;
+  const release = writer
+    ? () => writer.release()
+    : pin === "reader"
+      ? () => borrow!.release()
+      : retainBranchStateDatabaseForIdle(database);
+  try {
+    if (ending === "explicit close") {
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+      cache.closeBranchStateDatabaseByPath(pathname);
+      expect(database.db.isOpen).toBe(false);
+    } else {
+      await database.walMaintenance.stop();
+      if (writer) {
+        const reader = retainBranchStateDatabaseForIndependentRead(pathname)!;
+        try {
+          reader.observe();
+        } finally {
+          reader.release();
+        }
+      }
+      vi.advanceTimersByTime(SQLITE_IDLE_HANDLE_TTL_MS + 100);
+      expect(database.db.isOpen).toBe(true);
+    }
+    expect(vi.getTimerCount()).toBe(0);
+    if (ending === "scope close") {
+      await scope.close();
+    } else {
+      release();
+    }
+    if (ending !== "explicit close") {
+      vi.advanceTimersByTime(SQLITE_IDLE_HANDLE_TTL_MS - 1);
+      expect(database.db.isOpen).toBe(true);
+      vi.advanceTimersByTime(1);
+      expect(database.db.isOpen).toBe(false);
+    }
+    release();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    release();
+    await scope.close();
+  }
 });
 
 it("defers idle close while a native transaction is active", () => {

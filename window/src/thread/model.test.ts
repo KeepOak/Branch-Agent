@@ -6,6 +6,14 @@ let seq = 0;
 const ev = (stream: string, data: Record<string, unknown>): RunEvent => ({ runId: "r1", seq: ++seq, stream, ts: 0, data });
 
 describe("projectRun", () => {
+  it("keeps recorded tool times without substituting the browser clock", () => {
+    const start = { ...ev("tool", { phase: "start", name: "read", toolCallId: "timed", args: { path: "file" } }), ts: 15_000 };
+    const done = { ...ev("tool", { phase: "result", name: "read", toolCallId: "timed", result: { content: [] } }), ts: 22_000 };
+    expect(projectRun([start], new Map())[0]).toMatchObject({ at: 15_000 });
+    expect(projectRun([start, done], new Map())[0]).toMatchObject({ at: 22_000 });
+    expect(projectRun([{ ...start, ts: 0 }], new Map())[0]).not.toHaveProperty("at");
+    expect(projectRun([start, { ...done, ts: NaN }], new Map())[0]).toMatchObject({ at: 15_000 });
+  });
   it("shows the startup phase until the first words, then thinking, then text", () => {
     seq = 0;
     const start = [ev("lifecycle", { phase: "start" }), ev("run_status", { phase: "starting_model" })];

@@ -1,17 +1,9 @@
 /* Overview (§4.6.1), measured from the preview's .ov / .tile / .recbar rules. The recommendation bar sits above the
-   place's h1 (the frame draws the h1 first, so the column is reordered here). */
-.place:has(> .ov-rec) { display:flex; flex-direction:column; }
-.place > .ov-rec { order:-1; margin:0 0 16px; }
-.ov-rec { display:flex; align-items:center; gap:10px; padding:9px 10px 9px 12px; border:1px solid var(--line); border-radius:14px; background:var(--raise); font-size:13px; flex-wrap:wrap; }
-.ov-rec-tile { flex:none; display:grid; place-items:center; width:30px; height:30px; border-radius:9px; background:var(--brand-tint); color:var(--ink-2); }
-.ov-rec-t { flex:1; min-width:220px; }
-.ov-rec-t b { font-weight:600; }
-.ov-rec-t small { display:block; color:var(--ink-3); font-size:12px; line-height:1.5; }
-.ov-rec-good { color:var(--ok); font-weight:600; margin-left:4px; }
+   place's h1 (PlaceFrame's `before`). */
 
 .ov-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),1fr)); gap:12px; margin-top:18px; }
-.ov-tile { min-width:0; padding:16px; background:var(--raise); border:1px solid var(--hair17); border-radius:var(--r3-17); display:flex; flex-direction:column; gap:8px; font-size:13px; }
-.ov-tile > p { margin:0; font-size:13px; line-height:1.5; }
+.ov-tile { min-width:0; padding:16px; background:var(--raise); border:1px solid var(--hair17); border-radius:var(--r3-17); display:grid; gap:8px; align-content:start; font-size:14px; }
+.ov-tile > p { margin:0; font-size:13px; color:var(--ink-2); }
 .ov-tile b { font-weight:600; }
 .ov-tile-h { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
 .ov-tile-h h2 { margin:0; font-size:13px; font-weight:600; color:var(--ink-3); }
@@ -19,10 +11,10 @@
 .ov-link:hover { color:var(--ink); text-decoration:underline; }
 .ov-link.ov-inline { font-size:13px; color:var(--ink); text-decoration:underline; text-underline-offset:2px; }
 .ov-link:disabled { cursor:default; text-decoration:none; color:var(--ink-3); }
-.ov-hint { margin:0; color:var(--ink-3); font-size:13px; line-height:1.5; }
+.ov-hint, .ov-tile > p.ov-hint { margin:0; color:var(--ink-3); font-size:13px; line-height:1.5; }
 .ov-error { color:var(--bad); display:flex; flex-direction:column; align-items:flex-start; gap:8px; }
 .ov-error p { margin:0; overflow-wrap:anywhere; }
-.ov-acts { display:flex; flex-wrap:wrap; gap:8px; padding-top:4px; }
+.ov-acts { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .ov-pill { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--ok); padding:5px 9px; background:var(--ok-tint); border-radius:var(--r-pill); }
 .ov-pill i { width:6px; height:6px; border-radius:50%; background:currentColor; }
 
@@ -48,7 +40,7 @@
 .ov-track u { display:block; height:100%; background:var(--ink-2); border-radius:4px; }
 .ov-v { font:12px var(--mono); text-align:right; color:var(--ink-2); font-variant-numeric:tabular-nums; }
 
-.ov-recent { display:flex; align-items:center; gap:8px; font:inherit; font-size:13px; color:inherit; border:0; background:none; padding:2px 0; text-align:left; cursor:pointer; border-radius:8px; }
+.ov-recent { display:flex; align-items:center; gap:8px; font:inherit; font-size:13px; color:inherit; border:0; background:none; padding:0; text-align:left; cursor:pointer; border-radius:0; }
 .ov-recent:hover { background:var(--wash17); }
 .ov-recent-t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ov-mono { font:12px var(--mono); color:var(--ink-3); flex:none; }
@@ -56,7 +48,7 @@
 .ov-preslist { display:grid; gap:4px; }
 .ov-pres { display:flex; align-items:center; gap:10px; font-size:13px; padding:3px 4px; margin:0 -4px; border-radius:8px; cursor:default; }
 .ov-pres:hover, .ov-pres:focus-visible { background:var(--wash17); outline:none; }
-.ov-me { width:26px; height:26px; font-size:11px; }
+.ov-me, .ov-pres .ov-me { width:26px; height:26px; font-size:11px; line-height:1.5; }
 .ov-presn { flex:1; display:inline-flex; align-items:center; gap:6px; min-width:0; }
 .ov-pdot { width:6px; height:6px; border-radius:50%; background:var(--line-2); flex:none; }
 .ov-pdot.active { background:var(--ok); }
@@ -78,7 +70,6 @@
 
 @media (max-width:640px) {
   .ov-pcard { width:auto; }
-  .ov-rec .ov-rec-t { min-width:0; flex-basis:calc(100% - 44px); }
 }
 
 /* Finish setting up (preview 96 .r618-setup): across the top of the place area, above the column */
@@ -93,3 +84,4 @@
 .ov-pick { display:grid; gap:2px; text-align:left; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:none; font:inherit; color:inherit; cursor:pointer; }
 .ov-pick:hover, .ov-pick[aria-pressed="true"] { background:var(--fill); }
 .ov-pick small { color:var(--ink-3); }
+.ov-badges { display:flex; gap:8px; flex-wrap:wrap; min-height:28px; } /* the artifact's badge strip; empty until the engine reports milestones */

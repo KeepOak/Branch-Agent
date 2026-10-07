@@ -1,6 +1,7 @@
 // The Trunk family's data: agents.list rows, the agent's config entry and the looks with real art.
 // Contracts: engine/packages/gateway-protocol/src/schema/agents-models-skills.ts (AgentSummary, agents.update),
 // engine/src/config/zod-schema.agents.ts (agents.entries, default, ownership) and zod-schema.agent-runtime.ts (tools).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { CHARACTERS, EXTRA, trunkAppearance } from "../../face/appearance";
 
 export type Rec = Record<string, unknown>;
@@ -14,6 +15,9 @@ export type TrunkRow = {
   theme: string;
   emoji: string;
   avatar: string;
+  colour: string;
+  shape: string;
+  eyes: string;
   model: string;
   workspace: string;
   createdVia: string;
@@ -30,6 +34,9 @@ function readRow(a: Rec): TrunkRow {
     theme: str(identity.theme),
     emoji: str(identity.emoji),
     avatar: str(identity.avatar),
+    colour: str(identity.colour),
+    shape: str(identity.shape),
+    eyes: str(identity.eyes),
     model: str(rec(a.model).primary),
     workspace: str(a.workspace),
     createdVia: str(a.createdVia),
@@ -57,6 +64,7 @@ const LOOK_ORDER = ["ember", "tock", "kite", "morel", "pebble", "wisp", "lumen",
 export type Look = { id: string; name: string; still: string | null; later: boolean };
 export const LOOKS: Look[] = [
   { id: "classic", name: "Classic pebble", still: null, later: false },
+  { id: "branch", name: "Branch", still: "/assets/branch-wave.webp", later: false },
   ...LOOK_ORDER.filter((id) => CHARACTERS.includes(id) || EXTRA.includes(id)).map((id) => ({
     id,
     name: LOOK_NAMES[id] ?? id,
@@ -68,6 +76,7 @@ export const EMOJI = ["🦊", "🦉", "🐢", "🍄", "🌿", "🐝", "🦔", "�
 
 /** The look a Trunk wears now: the character its avatar names (or the window's default for it), else the pebble. */
 export function lookOf(avatar: string, name: string): string {
+  if (avatar === "branch:branch") return "branch";
   const still = trunkAppearance(avatar || undefined, name)?.still ?? "";
   const id = /\/agents\/([^/]+)\/still\.webp$/.exec(still)?.[1];
   return id && LOOKS.some((l) => l.id === id) ? id : "classic";
@@ -109,3 +118,13 @@ export async function patchConfig(engine: { request<T>(m: string, p?: unknown): 
 }
 
 export const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+/** Creation errors are for people naming a Trunk, not engine IDs. */
+export const creationProblem = (error: unknown) => {
+  const message = errorText(error);
+  if (/was created .*but its job instructions were not saved/i.test(message)) return message;
+  if (/already exists/i.test(message)) return "That Trunk name is already taken. Choose another name.";
+  if (/was created|saved but is not active/i.test(message)) return "Your Trunk was made but isn’t ready yet. Refresh Trunks before trying again.";
+  if (/is reserved/i.test(message)) return "That name is kept for Branch. Choose another Trunk name.";
+  if (/no valid id characters/i.test(message)) return "Use a name with at least one letter or number.";
+  return "Couldn’t create your Trunk. Try again.";
+};

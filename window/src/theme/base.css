@@ -67,3 +67,15 @@ kbd {
   animation: none !important;
   transition: none !important;
 }
+
+/* A service's logo tile (the preview's .logo): the brand mark on its colour, 28% corners. */
+.logo {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  overflow: hidden;
+  border-radius: 28%;
+}
+.logo svg {
+  display: block;
+}

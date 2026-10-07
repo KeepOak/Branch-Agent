@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
@@ -63,7 +64,7 @@ describe("People › Live now", () => {
     expect(strip.querySelector('[aria-label="Active"]')).toBeTruthy();
     expect(host.querySelectorAll(".pp-run")).toHaveLength(2);
     expect(host.textContent).toContain("Reconcile the card statement"); expect(host.textContent).toContain("shared");
-    const ask = button("Ask to join")!; expect(ask.disabled).toBe(true); expect(ask.title).toContain("ask-to-join");
+    const ask = button("Ask to join")!; expect(ask.disabled).toBe(true); expect(ask.title).toBe(""); expect(visibleDevNotes(host)).toEqual([]);
     await click("Open"); expect(opened).toHaveBeenCalledWith("agent:main:b");
     expect(host.querySelector('[role="tab"][aria-selected="true"]')!.textContent).toBe("Live now2");
   });
@@ -78,6 +79,14 @@ describe("People › Live now", () => {
     expect(dialog.textContent).toContain("Opened the statement"); expect(dialog.textContent).toContain("Read-only.");
   });
 
+  it("draws one card per run and leaves helpers inside their parent run", async () => {
+    const helper = { key: "agent:books:h", agentId: "books", label: "Read the receipts", spawnedBy: "agent:books:a", hasActiveRun: true };
+    const withHelper = (p: Record<string, unknown>) => { const v = sessions(p); return p.includeOwnerSessionCounts ? v : { sessions: [...v.sessions, helper] }; };
+    const { engine } = fakeEngine({ ...BASE, "sessions.list": withHelper });
+    await mount(engine);
+    expect(host.querySelectorAll(".pp-run")).toHaveLength(2);
+    expect(host.textContent).not.toContain("Read the receipts");
+  });
   it("says nothing is running when the engine has no active runs, and shows the banner", async () => {
     const { engine } = fakeEngine({ ...BASE, "system-presence": [], "sessions.list": { sessions: [] } });
     await mount(engine);
@@ -98,9 +107,10 @@ describe("People › People", () => {
     expect(host.querySelector(".pp-item[aria-current='true']")!.textContent).toContain("Mira Stone");
     const card = host.querySelector(".pp-detail")!;
     expect(card.textContent).toContain("Online · active"); expect(card.textContent).toContain("Mira's laptop");
-    expect(card.textContent).toContain("books"); expect(card.textContent).toContain("Needs the engine's PIN store.");
+    expect(card.textContent).toContain("books"); expect(card.textContent).not.toContain("PIN"); expect(visibleDevNotes(card)).toEqual([]);
     const ticks = [...card.querySelectorAll<HTMLInputElement>(".pp-may input")]; expect(ticks).toHaveLength(7); expect(ticks.every(t => t.disabled)).toBe(true);
-    expect(button("Switch to Mira")!.disabled).toBe(true); expect(button("Remove")!.title).toContain("remove-a-person");
+    expect(button("Switch to Mira")!.disabled).toBe(true); expect(button("Remove")!.disabled).toBe(true); expect(button("Remove")!.title).toBe("");
+    expect(visibleDevNotes(host)).toEqual([]);
   });
 
   it("sets a role the engine defines through users.setRole", async () => {
@@ -113,15 +123,16 @@ describe("People › People", () => {
   it("greys the role when the engine defines no roles", async () => {
     const { engine } = fakeEngine(table({ "config.get": { hash: "h", config: {} } }));
     await mount(engine); await click("People2");
-    expect(button("No role")!.disabled).toBe(true); expect(button("No role")!.title).toContain("roles set up");
+    expect(button("No role")!.disabled).toBe(true); expect(button("No role")!.title).toBe(""); expect(visibleDevNotes(host)).toEqual([]);
   });
 
   it("makes a limited one-time code and says how long it works", async () => {
-    const { engine, request } = fakeEngine(table({ "device.pair.setupCode": { setupCode: "CODE-123", gatewayUrl: "wss://home.test", auth: "token", urlSource: "x", expiresAtMs: Date.now() + 10 * 60_000 } }));
+    const { engine, request } = fakeEngine(table({ "device.pair.setupCode": { setupCode: "CODE-123", qrDataUrl: "data:image/png;base64,AA==", gatewayUrl: "wss://home.test", auth: "token", urlSource: "x", expiresAtMs: Date.now() + 10 * 60_000 } }));
     await mount(engine); await click("People2"); await click("Make a one-time code");
     const dialog = document.querySelector('[role="dialog"]')!;
     await act(async () => { (dialog.querySelector(".dlg-f .btn.pri") as HTMLButtonElement).click(); });
-    expect(request).toHaveBeenCalledWith("device.pair.setupCode", { bootstrapProfile: "limited" });
+    expect(request).toHaveBeenCalledWith("device.pair.setupCode", { bootstrapProfile: "limited", includeQr: true });
+    expect(dialog.querySelector("img")?.getAttribute("alt")).toBe("One-time code as a QR code");
     expect(dialog.textContent).toContain("CODE-123"); expect(dialog.textContent).toContain("Works once, for 10 minutes.");
   });
 
@@ -143,7 +154,9 @@ describe("People › People", () => {
   it("offers Make a one-time code from the invite dialog and greys the other ways in", async () => {
     const { engine } = fakeEngine(table());
     await mount(engine); await click("People2"); await click("Invite someone");
-    expect(button("Add them")!.disabled).toBe(true);
+    expect(button("Add them")!.disabled).toBe(true); expect(button("Add them")!.title).toBe("");
+    expect(document.querySelector<HTMLFieldSetElement>('[role="dialog"] fieldset')!.disabled).toBe(true);
+    expect(visibleDevNotes(document.querySelector('[role="dialog"]')!)).toEqual([]);
     await click("From your keepoak.com team"); expect(button("Invite")!.disabled).toBe(true);
     await click("On their own device"); expect(document.querySelector('[role="dialog"]')!.textContent).toContain("Make a one-time code");
   });
@@ -152,10 +165,10 @@ describe("People › People", () => {
 describe("People › Groups", () => {
   it("never shows conversation groups as permission groups: empty line and a greyed New group", async () => {
     const { engine, request } = fakeEngine({ ...BASE, "sessions.list": { sessions: [{ key: "agent:main:x", group: "Work", label: "In a folder" }] } });
-    await mount(engine); await click("Groups");
+    await mount(engine); await click("Access groups");
     expect(host.textContent).toContain("Being in a group can only take things away.");
     expect(host.textContent).toContain("No groups yet."); expect(host.textContent).not.toContain("Work");
-    expect(button("New group")!.disabled).toBe(true); expect(button("New group")!.title).toContain("permission groups");
+    expect(button("New group")!.disabled).toBe(true); expect(button("New group")!.title).toBe(""); expect(visibleDevNotes(host)).toEqual([]);
     expect(request.mock.calls.length).toBeGreaterThan(0);
   });
 });
@@ -215,7 +228,7 @@ describe("People › Teams of specialists", () => {
       { key: "agent:main:old", agentId: "main", label: "Finished team", swarm: { otherActiveGroups: 0, groups: [{ groupId: "g0", createdAt: 1, queued: 0, running: 0, done: 2, failed: 0 }] } },
     ] };
     const { engine } = fakeEngine({ ...BASE, "sessions.list": list });
-    await mount(engine); await click("Teams of specialists");
+    await mount(engine); await click("Teams");
     const card = host.querySelector(".pp-team")!;
     expect(host.querySelectorAll(".pp-team")).toHaveLength(1);
     expect(card.textContent).toContain("Working · round 1"); expect(card.textContent).toContain("A team of 2 Trunks. Asked by Mira; Sapling holds it now.");
@@ -224,7 +237,7 @@ describe("People › Teams of specialists", () => {
   });
   it("says no team task is running", async () => {
     const { engine } = fakeEngine({ ...BASE, "sessions.list": { sessions: [] } });
-    await mount(engine); await click("Teams of specialists");
+    await mount(engine); await click("Teams");
     expect(host.textContent).toContain("No team task is running.");
   });
 });
@@ -244,10 +257,12 @@ describe("People › Activity", () => {
     expect(host.textContent).toContain("Records are kept 30 days.");
     await click("Load more"); expect(request).toHaveBeenCalledWith("audit.activity.list", { limit: 100, cursor: "c2" });
     expect(host.textContent).toContain("Sapling · Run · Failed");
-    const kind = host.querySelector('select[aria-label="Kind"]') as HTMLSelectElement;
-    const chat = host.querySelector('input[aria-label="Chat app"]') as HTMLInputElement; expect(chat.disabled).toBe(true);
-    await act(async () => { kind.value = "tool_action"; kind.dispatchEvent(new Event("change", { bubbles: true })); });
+    const pick = (label: string) => [...host.querySelectorAll<HTMLButtonElement>(".pp-pick")].find(x => x.textContent?.startsWith(label))!;
+    expect(pick("Chat app").disabled).toBe(true);
+    await act(async () => { pick("Kind").click(); });
+    await act(async () => { [...document.querySelectorAll<HTMLButtonElement>(".mi")].find(x => x.textContent?.includes("Tool steps"))!.click(); });
     expect(request).toHaveBeenCalledWith("audit.activity.list", { limit: 100, kind: "tool_action" });
+    expect(pick("Kind").textContent).toBe("Kind: Tool steps");
     expect(button("Clear")).toBeTruthy();
   });
 
@@ -317,10 +332,13 @@ describe("People › Signing in", () => {
   it("greys the sign-in rows the engine can't back, and approves or turns down waiting devices", async () => {
     const { engine, request } = fakeEngine(table());
     await mount(engine); await click("Signing in");
-    expect(button("When needed")!.disabled).toBe(true); expect(button("Passkey")!.title).toContain("sign-in methods");
+    expect(button("When needed")!.disabled).toBe(true); expect(button("Passkey")!.disabled).toBe(true); expect(button("Passkey")!.title).toBe("");
+    expect(host.querySelectorAll(".pp-ctl[data-off]").length).toBeGreaterThan(0); expect(visibleDevNotes(host)).toEqual([]);
     expect(host.textContent).toContain("Waiting for approval (1)"); expect(host.textContent).toContain("Wants: read, write");
-    await click("Approve"); expect(request).toHaveBeenCalledWith("device.pair.approve", { requestId: "q1" });
-    await click("Don’t"); await click("Don’t allow"); expect(request).toHaveBeenCalledWith("device.pair.reject", { requestId: "q1" });
+    await click("Allow"); expect(request).toHaveBeenCalledWith("device.pair.approve", { requestId: "q1" });
+    await click("Don’t allow");
+    await act(async () => { [...host.querySelectorAll<HTMLButtonElement>(".dlg button")].find((b) => b.textContent?.trim() === "Don’t allow")!.click(); });
+    expect(request).toHaveBeenCalledWith("device.pair.reject", { requestId: "q1" });
     expect(host.textContent).toContain("Work laptop"); expect(host.textContent).not.toContain("Approve a computer I can reach over SSH");
   });
 

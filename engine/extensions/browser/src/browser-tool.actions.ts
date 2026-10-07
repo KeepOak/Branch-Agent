@@ -71,6 +71,7 @@ function withLocalActTimeout(
   }
   switch (request.kind) {
     case "click":
+    case "humanClick":
     case "type":
     case "hover":
     case "scrollIntoView":
@@ -422,7 +423,6 @@ export async function executeEmulateAction(
   return jsonResult({ ok: true, targetId, applied });
 }
 
-/** Execute explicit Browser download operations through the local or node-host path. */
 export async function executeDownloadAction(
   params: Parameters<typeof executeConsoleAction>[0] & {
     action: "download" | "waitfordownload";

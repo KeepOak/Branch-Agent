@@ -15,15 +15,15 @@ import {
   releaseBranchAgentDatabaseLease,
   runWithAgentDatabaseMaintenanceAuthority,
 } from "./branch-agent-db-lease.js";
+import { withAgentDatabaseMaintenanceLease } from "./branch-agent-db-maintenance-lease.js";
+import { migrateBranchAgentDatabaseForMaintenance } from "./branch-agent-db-maintenance.js";
 import { getBranchAgentDatabaseValidation } from "./branch-agent-db-validation-cache.js";
 import {
   closeBranchAgentDatabasesAsync,
   closeBranchAgentDatabasesForTest,
-  migrateBranchAgentDatabaseForMaintenance,
   getBranchAgentDatabaseIfOpen,
   BRANCH_AGENT_SCHEMA_VERSION,
   openBranchAgentDatabase,
-  withAgentDatabaseMaintenanceLease,
 } from "./branch-agent-db.js";
 import {
   closeBranchStateDatabaseForTest,

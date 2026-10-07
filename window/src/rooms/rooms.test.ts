@@ -6,7 +6,7 @@ import { describeMembers, isRoom, readParticipants, withSenders } from "./member
 import { roomMenuItems, ROOM_REASONS } from "./room-menu";
 import { roomRulesItems, ruleToast } from "./room-rules";
 import { isMine, readSender } from "./sender";
-import { readPeerHosts } from "./useRoom";
+import { readPeerHosts, readPeerList } from "./useRoom";
 
 // Message shapes follow the engine's own tests: chat-display-projection.forwarded.test.ts (forwarded and cron
 // deliveries), chat-display-projection.test.ts (profile / observation sender identities) and
@@ -115,10 +115,10 @@ describe("room menu and rules", () => {
 
   it("draws the preview's room rows; Add a Trunk is greyed with the engine reason", () => {
     const items = roomMenuItems({ ruleWords: "mentions only", canLeave: true, run });
-    expect(items.map((i) => ("label" in i ? i.label : i.kind))).toEqual(["Add a Trunk to this room", "Rename room", "Room rules", "sep", "Leave and archive", "sep", "Delete…"]);
+    expect(items.map((i) => ("label" in i ? i.label : i.kind))).toEqual(["Add a Trunk to this group", "Rename group", "Group rules", "sep", "Leave and archive", "sep", "Delete…"]);
     expect(items[0]).toMatchObject({ disabled: ROOM_REASONS.addTrunk });
     expect(items[2]).toMatchObject({ hint: "mentions only" });
-    expect(roomMenuItems({ ruleWords: null, canLeave: false, run }).map((i) => ("label" in i ? i.label : i.kind))).toEqual(["Add a Trunk to this room", "Rename room", "Room rules", "sep"]);
+    expect(roomMenuItems({ ruleWords: null, canLeave: false, run }).map((i) => ("label" in i ? i.label : i.kind))).toEqual(["Add a Trunk to this group", "Rename group", "Group rules", "sep"]);
   });
 
   it("sets who answers through the engine only in a chat-app group", () => {
@@ -139,5 +139,12 @@ describe("room menu and rules", () => {
 
   it("reads where each A2A peer runs from its address, never its tokens", () => {
     expect(readPeerHosts({ channels: { a2a: { peers: { researcher: { token: "t", url: "https://agents.example.net:8443/a2a" }, nourl: { token: "t" } } } } })).toEqual({ researcher: "agents.example.net:8443" });
+  });
+});
+
+describe("outside agents from a2a.peers.list", () => {
+  it("reads where each agent runs and which are online", () => {
+    expect(readPeerList({ peers: [{ name: "claude-code", where: "LEGION", online: true }, { name: "hermes", where: null, online: false }, { where: "x" }] })).toEqual({ hosts: { "claude-code": "LEGION" }, online: ["claude-code"] });
+    expect(readPeerList(undefined)).toEqual({ hosts: {}, online: [] });
   });
 });

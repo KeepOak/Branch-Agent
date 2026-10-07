@@ -16,7 +16,7 @@ describe("multi-agent agentDir validation", () => {
 
     const result = validateConfigObject({
       agents: {
-        entries: { alpha: { agentDir, default: true } },
+        entries: { alpha: { agentDir } },
       },
       bindings: [{ agentId: "alpha", match: { channel: "forum" } }],
     });
@@ -86,8 +86,9 @@ describe("multi-agent agentDir validation", () => {
     await withTempHomeConfig(
       {
         agents: {
+          ownership: "explicit",
           entries: {
-            a: { agentDir: "~/.branch/agents/shared/agent", default: true },
+            a: { agentDir: "~/.branch/agents/shared/agent" },
             b: { agentDir: "~/.branch/agents/shared/agent" },
           },
         },

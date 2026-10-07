@@ -1,7 +1,9 @@
 /* §4.7.0 the Settings frame's additions: "Settings for", search rows, the save state, the settings-file box,
    the level kept in view on narrow windows and the search box as an icon at phone width (preview 50-settings, 51-set1p). */
 .set-scope { display: grid; gap: 6px; margin: 8px 0 2px; padding: 0 4px; }
-.set-scope > span:first-child { font: 600 11px/1.2 var(--sans); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
+.set-scope > span:first-child { font: 600 11px/1.2 var(--sans); color: var(--ink-3); }
+/* the preview's nav is a block, so the search box's 4 px bottom margin folds into this 8 px top margin */
+.settings .set-search + .set-scope { margin-top: 4px; }
 .set-scope-r { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .set-scope-r select { flex: 1; min-width: 0; }
 .set-nav .set-row { display: flex; align-items: center; gap: 8px; height: auto; min-height: 30px; padding: 5px 10px 5px 22px; font-size: 12.5px; font-weight: 400; color: var(--ink-2); }
@@ -9,7 +11,7 @@
 .set-nav .set-row .grow > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .set-nav .set-row small { font-size: 11.5px; color: var(--ink-3); }
 .set-nav .set-item:has(.set-lvtag) { display: flex; align-items: center; }
-.set-lvtag { flex: none; margin-left: 8px; padding: 3px 5px; border-radius: 6px; background: var(--wash17); font: 500 10px/1 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3); }
+.set-lvtag { flex: none; margin-left: 8px; padding: 3px 5px; border-radius: 6px; background: var(--wash17); font: 500 10px/1 var(--sans); color: var(--ink-3); }
 .set-row .set-lvtag { margin-left: auto; }
 .set-save { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; padding: 0 8px; font-size: 12px; color: var(--ink-3); }
 .set-save[hidden] { display: none; }
@@ -27,6 +29,8 @@
   .set-save { margin: 0; white-space: nowrap; }
   /* "How much to show" stays visible at the end of the nav row (§4.7.0 rule 5) */
   .settings .set-nav .set-level { position: sticky; right: -8px; z-index: 2; margin-left: auto; padding: 0 0 0 8px; background: var(--bg); box-shadow: -12px 0 12px -6px var(--bg); }
+  .settings .set-nav .set-level { width: auto; font-size: 12.5px; color: var(--ink-2); }
+  .settings .set-nav .set-level .seg { width: 228px; }
 }
 @media (max-width: 480px) {
   /* the search box folds to its icon until it's used */
@@ -40,12 +44,23 @@
 }
 /* the level block is as wide as its own line, as the preview's (its grid shrinks to the line under it) */
 @media (min-width: 1001px) {
-  .settings .set-nav > .set-level { align-self: flex-start; max-width: 100%; }
+  .settings .set-nav > .set-level { display: grid; gap: 6px; justify-content: space-between; align-items: center; font-size: 12.5px; color: var(--ink-2); }
 }
+.settings .set-back { gap: 8px; }
+.settings .set-search { border: 1px solid transparent; }
+.settings .set-nav .set-item { display: flex; align-items: center; gap: 10px; }
+.settings .set-level .seg { gap: 0; border: 1px solid transparent; }
+.settings .set-level .seg button { min-width: 0; padding: 0 1px; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: clip; }
 
-/* Section links share the page's plain link style and wrap in the tab-row layout. */
-.set-onpage { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin: 16px 0 0; }
-.set-onpage > span { font: 500 10.5px/1.2 var(--mono); text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3); }
-.set-onpage .link-k { max-width: 100%; text-align: left; overflow-wrap: anywhere; }
 .set-col .sec { scroll-margin-block-start: 8px; }
 .set-col .sec > h2:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 5px; border-radius: 3px; }
+
+/* Final-pass headings and right-side values share the same treatment on every settings page. */
+.settings .set-scope > span:first-child,
+.settings .set-col :is(.s2-grp, .grp-pp, .if-lbl, .gw-fld > span:first-child),
+.settings .set-col .dlg :is(h3, .fld > span:first-child) {
+  font: 600 12px/1.3 var(--sans);
+  letter-spacing: normal;
+  text-transform: none;
+}
+.settings .set-col :is(.val-k, .prow > :last-child, .ctl > .right) { font-variant-numeric: tabular-nums; }
