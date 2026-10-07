@@ -1,6 +1,8 @@
 import { once } from "node:events";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { MessageChannel, receiveMessageOnPort, type Worker } from "node:worker_threads";
 import { isRecord } from "@branch/normalization-core/record-coerce";
 import { afterEach, expect, it, vi } from "vitest";
@@ -29,14 +31,14 @@ afterEach(() => {
   vi.resetModules();
 });
 
-function observeHeartbeatWorkers(fault?: "EIO" | SharedArrayBuffer) {
+function observeHeartbeatWorkers(fault?: "EIO" | "close" | SharedArrayBuffer) {
   const workers: Worker[] = [];
   const ready: Promise<unknown>[] = [];
   const beats: BigInt64Array<SharedArrayBuffer>[] = [];
   const createWorker = workerCpu.createCpuTrackedWorker;
   vi.spyOn(workerCpu, "createCpuTrackedWorker").mockImplementation((url, options) => {
     const data: unknown = options?.workerData;
-    if (!isRecord(data) || !(data.lastBeat instanceof SharedArrayBuffer)) {
+    if (!isRecord(data) || !isRecord(data.locks) || !(data.lastBeat instanceof SharedArrayBuffer)) {
       throw new Error("Expected shared heartbeat observation");
     }
     beats.push(new BigInt64Array(data.lastBeat));
@@ -59,6 +61,15 @@ function observeHeartbeatWorkers(fault?: "EIO" | SharedArrayBuffer) {
                     return touch(...args);
                   };
                 }
+              } else if (workerData.reportClose) {
+                const close = fs.closeSync;
+                fs.closeSync = (fd) => {
+                  const inode = fs.fstatSync(fd, { bigint: true }).ino;
+                  if (inode === fs.statSync(workerData.reportClose, { bigint: true }).ino) {
+                    parentPort.postMessage({ closedInode: inode.toString() });
+                  }
+                  return close(fd);
+                };
               } else {
                 fs.futimesSync = () => { throw Object.assign(new Error("synthetic EIO"), { code: "EIO" }); };
               }
@@ -70,7 +81,9 @@ function observeHeartbeatWorkers(fault?: "EIO" | SharedArrayBuffer) {
       entry,
       fault instanceof SharedArrayBuffer
         ? { ...options, workerData: { ...data, pause: fault, intervalMs: 1 } }
-        : options,
+        : fault === "close"
+          ? { ...options, workerData: { ...data, reportClose: Object.keys(data.locks)[0] } }
+          : options,
     );
     workers.push(worker);
     ready.push(once(worker, "message"));
@@ -78,6 +91,49 @@ function observeHeartbeatWorkers(fault?: "EIO" | SharedArrayBuffer) {
   });
   return { workers, ready, beats };
 }
+
+it("lets a process with an active owner heartbeat exit naturally", () => {
+  const rootPath = path.join(tempDirs.make("branch-owner-process-exit-"), "root.lock");
+  const moduleUrl = pathToFileURL(path.resolve("src/infra/gateway-state-owner-heartbeat.ts"));
+  const script = `
+    import fs from "node:fs";
+    import { startGatewayStateOwnerHeartbeat } from ${JSON.stringify(moduleUrl.href)};
+    fs.writeFileSync(${JSON.stringify(rootPath)}, "root-owner");
+    startGatewayStateOwnerHeartbeat([{ lockPath: ${JSON.stringify(rootPath)}, verifyStillHeld: () => true }], () => {});
+  `;
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "tsx", "--input-type=module", "--eval", script],
+    { cwd: process.cwd(), encoding: "utf8", timeout: 10_000, windowsHide: true },
+  );
+  expect(result.error).toBeUndefined();
+  expect(result.status, result.stderr).toBe(0);
+});
+
+it("lets the worker close its lock descriptor before exiting on stop", async () => {
+  const rootPath = path.join(tempDirs.make("branch-owner-worker-stop-"), "root.lock");
+  fs.writeFileSync(rootPath, "root-owner");
+  const { workers, ready } = observeHeartbeatWorkers("close");
+  const { startGatewayStateOwnerHeartbeat } = await import("./gateway-state-owner-heartbeat.js");
+  const heartbeat = startGatewayStateOwnerHeartbeat(
+    [{ lockPath: rootPath, verifyStillHeld: () => true }],
+    () => {},
+  );
+  const worker = workers[0]!;
+  try {
+    await Promise.all(ready);
+    const closed = once(worker, "message");
+    const exited = once(worker, "exit");
+    heartbeat.stop();
+    expect((await closed)[0]).toEqual({
+      closedInode: fs.statSync(rootPath, { bigint: true }).ino.toString(),
+    });
+    await exited;
+  } finally {
+    heartbeat.stop();
+    await worker.terminate();
+  }
+});
 
 async function startRuntime(locks: Record<string, string>) {
   vi.useFakeTimers();
@@ -282,7 +338,7 @@ it.each(["stalled", "worker exit"] as const)(
       expect(fs.readFileSync(gateway.lockPath, "utf8")).toBe(raw);
       expect(fs.statSync(gateway.lockPath).mtimeMs).toBeGreaterThanOrEqual(before);
       expect(workers).toHaveLength(2);
-      expect(shutdown).toEqual(["stop", "terminate"]);
+      expect(shutdown).toEqual(["stop"]);
       const [, renewed] = beats;
       expect(Number(process.hrtime.bigint() / 1_000_000n - Atomics.load(renewed!, 0))).toBeLessThan(
         10_000,

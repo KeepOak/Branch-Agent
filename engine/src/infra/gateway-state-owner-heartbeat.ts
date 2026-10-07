@@ -19,6 +19,7 @@ import { createCpuTrackedWorker } from "./worker-cpu.js";
 
 const monotonic = process.hrtime.bigint.bind(process.hrtime);
 const DEFAULT_FAILURE_MS = 60_000;
+const WORKER_STOP_GRACE_MS = 1_000;
 const log = createSubsystemLogger("gateway/state");
 
 type LockIdentity = { raw: string; dev: bigint; ino: bigint };
@@ -105,7 +106,6 @@ export function startGatewayStateOwnerHeartbeat(
         execArgv: resolveRuntimeWorkerThreadExecArgv(url),
       });
       started.unref();
-      port1.unref();
       started.on("error", (error) => {
         if (started === worker) failure = coerceErrorMessage(error);
       });
@@ -116,8 +116,15 @@ export function startGatewayStateOwnerHeartbeat(
         recordEvent(message);
         if (replaced) inspect();
       });
+      port1.unref();
     };
     startWorker();
+    const stopWorker = (stopping: Worker) => {
+      stopping.postMessage("stop", []);
+      const force = setTimeout(() => void stopping.terminate(), WORKER_STOP_GRACE_MS);
+      force.unref();
+      stopping.once("exit", () => clearTimeout(force));
+    };
     /**
      * The renewal deadline passed without a renewal error: the whole process stalled (a frozen VM, a suspended
      * process, a blocked disk), or the worker died. That alone is no loss. On one host a live owner's lock is
@@ -136,8 +143,7 @@ export function startGatewayStateOwnerHeartbeat(
       Atomics.store(lastBeat, 0, monotonic() / 1_000_000n);
       const stalled = worker;
       events.close();
-      stalled.postMessage("stop", []);
-      void stalled.terminate();
+      stopWorker(stalled);
       startWorker();
       log.warn(
         `state ownership heartbeat was ${Math.round(overdueMs / 1000)}s late (the process stalled); ` +
@@ -215,11 +221,11 @@ export function startGatewayStateOwnerHeartbeat(
         worker.postMessage([lockPath, raw], []);
       },
       stop() {
+        if (stopped) return;
         stopped = true;
         clearTimeout(timer);
         events.close();
-        worker.postMessage("stop", []);
-        void worker.terminate();
+        stopWorker(worker);
       },
     };
   });
