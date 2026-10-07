@@ -472,6 +472,12 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         return;
       }
     }
+    if (dedicated && next.kind === "chat" && next.key && (routeRef.current.kind !== "chat" || next.key !== routeRef.current.key)) {
+      const bridge = (window as unknown as { branchDesktop?: { retargetConversationWindow?: (key: string) => Promise<void> } }).branchDesktop;
+      if (bridge?.retargetConversationWindow) {
+        void bridge.retargetConversationWindow(next.key).catch((error: unknown) => notify(`Couldn't change this window: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
+      }
+    }
     if (JSON.stringify(routeRef.current) !== JSON.stringify(next)) {
       const index = Number(history.state?.branchIndex) || 0;
       history.pushState({ branchRoute: next, branchIndex: index + 1 }, "");

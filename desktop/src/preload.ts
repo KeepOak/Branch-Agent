@@ -26,6 +26,7 @@ if (info) {
     },
     openInMain: (route: unknown) => ipcRenderer.invoke("branch-desktop:open-main-route", route),
     closeConversationWindow: () => ipcRenderer.invoke("branch-desktop:close-conversation-window"),
+    retargetConversationWindow: (key: string) => ipcRenderer.invoke("branch-desktop:retarget-conversation-window", key),
     onOpenMainRoute: (listener: (route: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, route: unknown) => listener(route);
       ipcRenderer.on("branch-desktop:open-main-route", handler);
