@@ -1,0 +1,3 @@
+# Desktop helper tests are not a named engine/window lane. They run on every
+# desktop-checks OS job, including Windows, from desktop-checks.yml:
+# desktop/scripts/desktop-update-helper.test.mjs
