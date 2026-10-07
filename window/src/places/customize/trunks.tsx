@@ -17,7 +17,7 @@ import { RequestGeneration } from "../library/data";
 import { createReadyTrunk, defaultBlock, makeDefault, setTrunkHidden } from "../trunk/api";
 import { NewTrunkPreview, type TrunkChoice } from "../trunk/NewTrunkPreview";
 import { canWrite, WRITE_WHY } from "../trunk/data";
-import { errorText, readRoster, type Roster, type TrunkRow } from "../trunk/model";
+import { creationProblem, errorText, readRoster, type Roster, type TrunkRow } from "../trunk/model";
 import { RemoveTrunkDialog } from "../trunk/RemoveTrunk";
 import { TrunkDefaults } from "../trunk/TrunkDefaults";
 import { TrunkEditor } from "../trunk/TrunkEditor";
@@ -83,7 +83,7 @@ export function TrunksTab(props: Props) {
       if (props.startConversation) props.startConversation(id);
       else { notify(`${name} is made.`); setOpen({ kind: "profile", id }); }
     }
-    catch (e) { if (current()) { setError(errorText(e)); trunks.reload(); } }
+    catch (e) { if (current()) { setError(creationProblem(e)); trunks.reload(); } }
     finally { if (current()) { pending.current = false; setBusy(false); } }
   };
   const showMenu = (e: ReactMouseEvent, row: TrunkRow) => {

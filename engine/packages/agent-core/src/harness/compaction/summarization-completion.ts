@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/harness/compaction/summarization-completion.ts (atlas AGENT-LOOP-0100). Changed for Branch: apply the Goose structured-summary parser to completed model output.
 import {
   resolveClaudeFable5ModelIdentity,
   type Model,
@@ -21,6 +22,7 @@ import {
   SummaryProviderError,
   type Result,
 } from "../types.js";
+import { applyStructuredSummary } from "./structured-summary.js";
 import { SUMMARIZATION_SYSTEM_PROMPT } from "./summarization-prompts.js";
 import { extractSummaryText, serializeConversation } from "./utils.js";
 
@@ -104,5 +106,5 @@ export async function runSummarizationCompletion(
       new InvalidSummaryOutputError(`${params.errorLabel} failed: model returned no summary text`),
     );
   }
-  return ok(summary);
+  return ok(applyStructuredSummary(summary));
 }

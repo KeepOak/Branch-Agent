@@ -72,7 +72,8 @@ function PebbleFields({ draft, set }: { draft: Draft; set: (d: Partial<Draft>) =
   );
 }
 
-export function LookTab({ draft, set, fresh }: { draft: Draft; set: (d: Partial<Draft>) => void; fresh: Set<string> }) {
+export function LookTab({ draft, set }: { draft: Draft; set: (d: Partial<Draft>) => void }) {
+  const fresh = useNewLooks();
   return (
     <div className="tk-look-tab">
       <section>

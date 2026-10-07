@@ -23,6 +23,11 @@ export interface DesktopConfig {
   gatewayPort: number;
   /** Port of the tiny static server that serves the window on 127.0.0.1. */
   windowPort: number;
+  /**
+   * P45's seamless handoff (the old engine steps down and finishes its runs while the standby takes over). Off by
+   * default until the engine side passes its real-engine test; off, an update drains the old engine first.
+   */
+  seamlessHandoff?: boolean;
 }
 
 function isFile(file: string): boolean {

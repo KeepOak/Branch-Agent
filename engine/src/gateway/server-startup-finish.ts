@@ -41,7 +41,9 @@ import { DEFAULT_TERMINAL_DETACH_SECONDS } from "./terminal/session-limits.js";
 type GatewayLogger = ReturnType<typeof createSubsystemLogger>;
 const [POST_READY_MAINTENANCE_DELAY_MS, RETAINED_PLUGIN_CLEANUP_DELAY_MS] = [250, 30_000];
 
-type GatewayStartedRuntime = GatewayKernelRuntime & GatewayHttpTransport;
+type GatewayStartedRuntime = GatewayKernelRuntime & GatewayHttpTransport & {
+  activateCronAuthority: () => void;
+};
 
 export async function finishGatewayStartup(params: {
   kernelRuntime: GatewayStartedRuntime;
@@ -142,6 +144,7 @@ export async function finishGatewayStartup(params: {
     gatewayInstanceRuntime,
     getPluginMetadataSnapshot,
     getPluginNodeCapabilities,
+    activateCronAuthority,
   } = runtime;
   const startupPluginRuntimeClaim = kernel.pluginRuntimeGeneration.currentClaim();
   const operatorAdmission = { open: false };
@@ -353,6 +356,7 @@ export async function finishGatewayStartup(params: {
             }
           },
           getCronService: kernel.getCronService,
+          activateCronAuthority,
           onChannelsStarted: () => {
             releaseStartupAccountStarts();
           },
@@ -386,6 +390,24 @@ export async function finishGatewayStartup(params: {
           onSidecarsReady: () => {
             kernel.markSidecarsReady();
             databasePreparationReady.resolve();
+            if (!opts.updateCanary && !minimalTestGateway && !lifecycle.closePreludeStarted) {
+              void import("./server-session-admission-warmup.js")
+                .then(({ startGatewaySessionAdmissionWarmup }) => {
+                  if (lifecycle.closePreludeStarted) {
+                    return;
+                  }
+                  registerGatewayLifetimeSidecars(
+                    startGatewaySessionAdmissionWarmup({
+                      cfg: getRuntimeConfig(),
+                      signal: runtime.connectionWork.signal,
+                      warn: (message) => log.warn(message),
+                    }),
+                  );
+                })
+                .catch((error) =>
+                  log.warn(`session admission warm-up could not start: ${String(error)}`),
+                );
+            }
             activateScheduledServicesWhenReady();
           },
           getReadiness,

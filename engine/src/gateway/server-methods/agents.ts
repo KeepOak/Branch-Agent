@@ -26,12 +26,12 @@ import {
   retireAgentDeleteRuntime,
   type AgentDeleteDatabasePlan,
 } from "../../agents/agent-delete-databases.js";
-import { retryAgentDeleteTrashMove } from "../../agents/agent-delete-trash-retry.js";
 import {
   formatSharedAuthStoreOwnerDeleteError,
   isInheritedAuthStoreOwner,
   isSharedAuthStoreOwner,
 } from "../../agents/agent-delete-safety.js";
+import { retryAgentDeleteTrashMove } from "../../agents/agent-delete-trash-retry.js";
 import {
   normalizeAgentDirRegistryPath,
   resolveRegisteredAgentIdForDir,
@@ -80,7 +80,7 @@ import { createRuntimeConfigWriteApplication } from "../../config/runtime-write-
 import { purgeAgentSessionStoreEntries } from "../../config/sessions.js";
 import { resolveSessionTranscriptsDirForAgent } from "../../config/sessions/paths.js";
 import type { BranchConfig } from "../../config/types.branch.js";
-import { isMissingPathError } from "../../infra/errors.js";
+import { formatErrorMessage, isMissingPathError } from "../../infra/errors.js";
 import { withAgentExecApprovalsRemoved } from "../../infra/exec-approvals.js";
 import { isPathInside } from "../../infra/path-guards.js";
 import { movePathToTrash } from "../../plugin-sdk/browser-maintenance.js";
@@ -92,6 +92,7 @@ import {
 } from "../../state/agent-deletion-journal.js";
 import { resolveUserPath } from "../../utils.js";
 import { reviveAgentDatabasesAfterConfigCommit } from "../server-reload-agent-databases.js";
+import { warmAgentSessionAdmission } from "../server-session-admission-warmup.js";
 import { SessionMutationAuthorizationChangedError } from "../session-mutation-authorization-error.js";
 import { captureGatewayClientUploadCommitGuard } from "../upload-policy.js";
 import {
@@ -451,6 +452,13 @@ export const agentsHandlers: GatewayRequestHandlers = {
       await reviveAgentDatabasesAfterConfigCommit([result.agentId], (message) =>
         context.logGateway.warn(message),
       );
+      // Creation is already committed. A failed or slow worker warm-up must not
+      // make this successful create appear retryable to the client.
+      void warmAgentSessionAdmission(result.agentId, context.getRuntimeConfig()).catch((error) => {
+        context.logGateway.warn(
+          `agent ${result.agentId} session admission warm-up failed: ${formatErrorMessage(error)}`,
+        );
+      });
       respond(
         true,
         {
@@ -908,10 +916,7 @@ export const agentsHandlers: GatewayRequestHandlers = {
               (pathname) =>
                 unclaimedBySurvivor(pathname) &&
                 (!agentDirTrashEligible ||
-                  !isPathInside(
-                    agentDirRegistryPath,
-                    normalizeAgentDirRegistryPath(pathname),
-                  )),
+                  !isPathInside(agentDirRegistryPath, normalizeAgentDirRegistryPath(pathname))),
             );
             const eligibleSourcePaths = new Set(
               [

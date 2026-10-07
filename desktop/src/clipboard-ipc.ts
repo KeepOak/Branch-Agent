@@ -6,9 +6,9 @@ interface Ipc { handle(channel: string, listener: (event: InvokeEvent, ...args: 
 interface Clipboard { writeText(text: string): void }
 
 /** Copy is available only to the desktop's own served window, not arbitrary loaded pages or frames. */
-export function registerClipboardIpc(ipc: Ipc, owner: () => Sender | undefined, servedUrl: string, clipboard: Clipboard): void {
+export function registerClipboardIpc(ipc: Ipc, owner: (event: InvokeEvent) => Sender | undefined, servedUrl: string, clipboard: Clipboard): void {
   ipc.handle("branch-desktop:clipboard:write-text", async (event, value: unknown) => {
-    if (!isOwnedComponentWindow(event, owner(), servedUrl)) throw new Error("Clipboard requires the owned served window");
+    if (!isOwnedComponentWindow(event, owner(event), servedUrl)) throw new Error("Clipboard requires the owned served window");
     if (typeof value !== "string") throw new Error("Clipboard text must be a string");
     clipboard.writeText(value);
   });

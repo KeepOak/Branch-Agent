@@ -13,7 +13,7 @@ import { CHIEF_OF_STAFF_INSTRUCTIONS, makeChiefOfStaff } from "./chief-of-staff"
 import { createJob, JOBS } from "../customize/jobs-data";
 import { removeTrunk, setTrunkHidden, updateParams } from "./api";
 import { readMay } from "./may";
-import { LOOKS, lookOf, readConfig, readRoster } from "./model";
+import { LOOKS, creationProblem, lookOf, readConfig, readRoster } from "./model";
 import { readFacts, scheduleText } from "./profile-data";
 
 vi.mock("../../face/Face", () => ({ Face: ({ label, size }: { label?: string; size: number }) => <span role="img" aria-label={label} data-face-size={size} /> }));
@@ -155,6 +155,27 @@ describe("Trunk editor", () => {
 describe("Customize › Trunks", () => {
   const tab = (request: ReturnType<typeof vi.fn>, extra: Record<string, unknown> = {}) => (
     <TrunksTab engine={engine(request)} level="regular" openConversation={() => {}} trunks={{ data: ROSTER as never, loading: false, error: null, reload: () => {} }} {...extra} />);
+  it("explains a reserved Branch name plainly in both Trunk creation paths", async () => {
+    const request = fake({ "agents.create": { ok: false, error: { message: '"branch" is reserved' } } });
+    await mount(tab(request));
+    await click(byText("A new Trunk"));
+    await type(document.querySelector<HTMLInputElement>('[data-testid="new-trunk-preview"] input')!, "Branch");
+    await click(byText("Make Trunk"));
+    expect(request).toHaveBeenCalledWith("agents.create", expect.objectContaining({ name: "Branch" }));
+    expect(document.body.textContent).toContain("That name is kept for Branch. Choose another Trunk name.");
+    expect(document.body.textContent).not.toContain('"branch" is reserved');
+    expect(creationProblem(new Error('"branch" is reserved'))).toBe("That name is kept for Branch. Choose another Trunk name.");
+    expect(creationProblem(new Error("Agent Oak preserved database changed during restoration"))).toBe(
+      "Couldn’t create your Trunk. Try again.",
+    );
+  });
+  it("keeps already-created and invalid-bindings failures distinct from name refusals", () => {
+    expect(creationProblem(new Error('agent "cedar" already exists'))).toBe("That Trunk name is already taken. Choose another name.");
+    expect(creationProblem(new Error("The Trunk was created (cedar), but the gateway has not made it available yet."))).toContain("was made but isn’t ready yet");
+    expect(creationProblem(new Error("agent config was saved but is not active (pending)"))).toContain("was made but isn’t ready yet");
+    expect(creationProblem(new Error("invalid-bindings: missing target"))).not.toContain("Use a name");
+    expect(creationProblem(new Error("has no valid id characters"))).toBe("Use a name with at least one letter or number.");
+  });
   it("opens directional Who it knows controls for a Trunk", async () => {
     const request = fake();
     await mount(tab(request));
@@ -245,6 +266,15 @@ describe("Customize › Trunks", () => {
 });
 
 describe("job creation across gateway replacement", () => {
+  it("explains a reserved Trunk name in Use this job without leaking the engine refusal", async () => {
+    const request = fake({ "agents.create": { ok: false, error: { message: '"branch" is reserved' } } });
+    await mount(<Jobs engine={engine(request)} reload={() => {}} />);
+    await click(document.querySelector('[aria-label="Use this job: Inbox Manager"]'));
+    await type(document.querySelector<HTMLInputElement>('[data-testid="new-trunk-preview"] input')!, "Branch");
+    await click(byText("Make Trunk"));
+    expect(document.body.textContent).toContain("That name is kept for Branch. Choose another Trunk name.");
+    expect(document.body.textContent).not.toContain('"branch" is reserved');
+  });
   it("enables creation on the new engine and cannot let the retired request clear its busy state", async () => {
     let finishOld!: (value: unknown) => void, finishNew!: (value: unknown) => void;
     const oldRequest = vi.fn(() => new Promise((resolve) => { finishOld = resolve; }));

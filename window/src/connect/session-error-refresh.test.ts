@@ -12,6 +12,7 @@ const fake = vi.hoisted(() => ({
   transcript: [] as Record<string, unknown>[],
   historyReads: 0,
   historyFailures: 0,
+  historyFailureText: "Agent builder-oak has not completed startup inspection and preparation; run branch doctor --fix",
 }));
 
 vi.mock("./gateway", () => ({
@@ -25,7 +26,7 @@ vi.mock("./gateway", () => ({
       switch (method) {
         case "chat.history":
           fake.historyReads += 1;
-          if (fake.historyFailures-- > 0) throw new Error("Agent builder-oak has not completed startup inspection and preparation; run branch doctor --fix");
+          if (fake.historyFailures-- > 0) throw new Error(fake.historyFailureText);
           return { messages: fake.transcript.map((m) => ({ ...m })) };
         case "chat.send":
           fake.transcript.push({ role: "user", content: String(params?.message ?? ""), timestamp: 1 });
@@ -79,6 +80,7 @@ afterEach(() => {
   fake.transcript = [];
   fake.historyReads = 0;
   fake.historyFailures = 0;
+  fake.historyFailureText = "Agent builder-oak has not completed startup inspection and preparation; run branch doctor --fix";
 });
 
 describe("a failing turn's error receipt reaches the thread after it is persisted", () => {
@@ -90,6 +92,20 @@ describe("a failing turn's error receipt reaches the thread after it is persiste
     await vi.waitFor(() => expect(session.getSnapshot().error).toContain("startup inspection"));
     await vi.waitFor(() => expect(session.getSnapshot().error).toBeNull(), { timeout: 5_000 });
     expect(fake.historyReads).toBeGreaterThanOrEqual(2);
+    session.stop();
+  });
+
+  it("shows a disabled plugin error without calling it startup preparation", async () => {
+    fake.transcript = [{ role: "user", content: "Earlier message", timestamp: 1 }];
+    fake.historyFailures = 1;
+    fake.historyFailureText = "PluginInstanceUnavailableError: Plugin openai was reloaded or disabled; use its current tools.";
+    const session = new SaplingSession("ws://fake", undefined);
+    session.start();
+    fake.options?.onStatus({ phase: "connected", hello } as unknown as GatewayStatus);
+    await vi.waitFor(() => expect(session.getSnapshot().error).toContain("PluginInstanceUnavailableError"));
+    expect(session.getSnapshot().error).toContain("reloaded or disabled");
+    expect(session.getSnapshot().error).not.toContain("starting up");
+    expect(fake.historyReads).toBe(1);
     session.stop();
   });
 

@@ -33,7 +33,7 @@ const CODE: SecSpec = { t: "Code", lv: 1, rows: [
 ] };
 
 const sw = (r: string) => (t: string, sub?: string) => off("sw", r)(t, { sub });
-const CODE_MORE: SecSpec = { t: "Code, more", lv: 1, rows: [
+const CODE_MORE: SecSpec = { t: "Code, more", group: "Code", showHeading: false, lv: 1, rows: [
   off("pick", NO_CODE)("How it writes edits", { sub: "Picked for each model unless you choose. Slightly-off edits still find their place.", opts: [{ v: "auto", l: "Picked for each model" }] }),
   off("pick", NO_CODE)("Model that writes the edits", { sub: "In “Plan, then edit”, a second model turns the plan into edits.", opts: [{ v: "same", l: "The same model" }] }),
   sw(NO_CODE)("Run the tests after each edit", "Failures go back to the Trunk to fix."),
@@ -149,7 +149,7 @@ const APPS: SecSpec = { t: "Coding apps", lv: 1, rows: [
 
 export const CODE_SECS: SecSpec[] = [CODE, CODE_MORE, KNOWS, GIT, CHECKS, BIG, SUGGEST, APPS];
 
-export const CODE_TECH: SecSpec = { t: "Code, technical", lv: 2, rows: [
+export const CODE_TECH: SecSpec = { t: "Code, technical", group: "Code", showHeading: false, lv: 2, rows: [
   off("code", NO_CODE)("Files Branch never reads", { sub: "Like .gitignore.", code: ".branchignore" }),
   sw(NO_CODE)("Read a file before editing it", "Refuses an edit to a file it hasn’t read in this task. Off until you choose: it stops edits that would otherwise go through."),
   sw(NO_CODE)("Keep large tool outputs", "Saved to a file instead of cut off."),
@@ -198,7 +198,7 @@ function CopiesDialog({ c, title, mode, res, onClose }: { c: Ctx; title: string;
   const rows = list(rec(res.data).worktrees).filter((w) => !w.removedAt || w.snapshotRef);
   const act = (method: string, params: unknown, note: (r: RecordValue) => string) => void call.run(async () => { const r = rec(await c.engine.request(method, params)); void res.reload(); return r; }, note);
   return (
-    <Dialog title={title} wide onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title={title} wide onClose={onClose}>
       <Acts>
         <input className="inp" aria-label="Repository folder" placeholder="Repository folder" value={repo} onChange={(e) => setRepo(e.target.value)} />
         <Btn pri sm disabled={!repo.trim() || call.busy} onClick={() => act("worktrees.create", { repoRoot: repo.trim() }, () => "Made a new copy.")}>New copy</Btn>
@@ -252,4 +252,3 @@ export function Confirm({ title, body, yes, danger, onYes, onClose }: { title: s
     </Dialog>
   );
 }
-

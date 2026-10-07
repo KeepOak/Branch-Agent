@@ -10,6 +10,7 @@ describe("isPreparationPending", () => {
   });
 
   it("leaves real failures as errors", () => {
+    expect(isPreparationPending(new Error("PluginInstanceUnavailableError: Plugin openai was reloaded or disabled; use its current tools."))).toBe(false);
     expect(isPreparationPending(new Error("unknown method: models.lists"))).toBe(false);
     expect(isPreparationPending(new Error("model not found"))).toBe(false);
     expect(isPreparationPending(null)).toBe(false);
