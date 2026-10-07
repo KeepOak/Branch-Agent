@@ -9,7 +9,6 @@ import {
   syncCanopyAgentEnded,
   syncCanopySubagentEnded,
 } from "./src/lifecycle-sync.js";
-import { SESSIONS_BOARD_VIEWER_IDLE_MS } from "./src/sessions-board-classification.js";
 import { createCanopySessionsBoardService } from "./src/sessions-board.js";
 import { resolveCanopySqliteWorkerModuleUrl } from "./src/sqlite-store-paths.js";
 import { registerCanopyStoreLifecycle } from "./src/store-lifecycle.js";
@@ -45,20 +44,11 @@ export default definePluginEntry({
       gateway: api.runtime.gateway,
     });
     resourceServices.push(sessionsBoard);
-    const refreshSessionsBoards = () => {
-      // Sessions boards nobody reads stay quiet: no session-facts or utility-model work.
-      void sessionsBoard
-        .sweep({ viewedWithinMs: SESSIONS_BOARD_VIEWER_IDLE_MS })
-        .catch((error: unknown) => {
-          api.logger.warn(`canopy sessions sweep failed: ${String(error)}`);
-        });
-    };
     const lifecycleSync = createCanopyLifecycleService({
       store,
       worktrees: api.runtime.worktrees,
       readSessions: async (options) =>
         await readCanopyLifecycleSessions(api.runtime.gateway, options),
-      onSweep: refreshSessionsBoards,
     });
     resourceServices.push(lifecycleSync);
     api.session.controls.registerControlUiDescriptor({
@@ -104,7 +94,6 @@ export default definePluginEntry({
           event,
           onMatched: automationNudge.nudge,
         });
-        refreshSessionsBoards();
       }),
     );
     api.on("agent_end", (event, context) =>
@@ -115,7 +104,6 @@ export default definePluginEntry({
           context,
           onMatched: automationNudge.nudge,
         });
-        refreshSessionsBoards();
       }),
     );
     api.registerCli(

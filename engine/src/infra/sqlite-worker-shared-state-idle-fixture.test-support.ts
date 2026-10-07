@@ -2,6 +2,8 @@ import { openBranchStateDatabase } from "../state/branch-state-db.js";
 import { createSqliteWorkerBackend as createCanonicalBackend } from "../state/branch-state.worker.js";
 import { getSqliteWorkerStateContext } from "./sqlite-worker-state-context.js";
 
+export { openExistingSqliteWorkerBackend } from "../state/branch-state.worker.js";
+
 /** Exercise canonical actor retirement with real native reader and transaction faults. */
 export function createSqliteWorkerBackend(input: undefined, context: { databasePath: string }) {
   const backend = createCanonicalBackend(input, context);

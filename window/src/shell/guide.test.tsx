@@ -33,13 +33,37 @@ describe("walkthrough (§4.8.2)", () => {
     expect(closed).toHaveBeenCalled();
     expect(tourCards("Sapling").some((c) => /example data|design notes|surface switcher/i.test(c.text))).toBe(false);
   });
+
+  it("opens what each card shows, as the preview does, and ends on its own last card", async () => {
+    const cards = tourCards("Sapling");
+    const seen: { type: string; detail: unknown }[] = [];
+    const listen = (e: Event) => seen.push({ type: e.type, detail: (e as CustomEvent).detail });
+    addEventListener("branch:navigate-settings", listen);
+    addEventListener("branch:navigate-place", listen);
+    const host = await show(<Walkthrough defaultName="Sapling" onClose={() => {}} />);
+    const layer = host.querySelector('[data-testid="walkthrough"]') as HTMLElement;
+    for (let i = 1; i < cards.length; i++) await act(async () => layer.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+    removeEventListener("branch:navigate-settings", listen);
+    removeEventListener("branch:navigate-place", listen);
+    expect(seen).toEqual([
+      { type: "branch:navigate-settings", detail: { page: "local" } },
+      { type: "branch:navigate-place", detail: { place: "customize", tab: "Chat apps" } },
+      { type: "branch:navigate-settings", detail: { page: "appearance" } },
+      { type: "branch:navigate-place", detail: { place: "people" } },
+      { type: "branch:navigate-place", detail: { place: "automations", tab: "board" } },
+      { type: "branch:navigate-place", detail: { place: "library", tab: "memory" } },
+    ]);
+    expect(host.querySelector(".tour-card b")?.textContent).toBe("That’s Branch");
+    expect(host.querySelector(".tour-card p")?.textContent).toBe("That’s the walkthrough. Take it again any time from the Guide.");
+    expect(host.querySelector('[data-testid="tour-end"]')?.textContent).toBe("Close");
+  });
 });
 
 describe("What's new (§4.8.3)", () => {
   it("rows open their place; a waiting version lists the engine's notes and installs", async () => {
     const go = { setup: vi.fn(), shortcuts: vi.fn(), palette: vi.fn(), settings: vi.fn() };
     const install = vi.fn();
-    const host = await show(<WhatsNew version="1.0" update={{ current: "1.0", latest: "1.1", notes: ["Faster start"], installing: false, waiting: null }} installed={installedRows(go)} onOpenUpdates={() => {}} onInstall={install} onClose={() => {}} />);
+    const host = await show(<WhatsNew version="1.0" update={{ current: "1.0", latest: "1.1", notes: ["Faster start"], installing: false, waiting: null }} desktopInstall installed={installedRows(go)} onOpenUpdates={() => {}} onInstall={install} onClose={() => {}} />);
     const row = [...host.ownerDocument.querySelectorAll<HTMLButtonElement>(".new-row13")].find((b) => b.textContent?.includes("Setup and the walkthrough"));
     await act(async () => row?.click());
     expect(go.setup).toHaveBeenCalled();
@@ -48,5 +72,13 @@ describe("What's new (§4.8.3)", () => {
     expect(host.ownerDocument.body.textContent).toContain("Faster start");
     await act(async () => host.ownerDocument.querySelector<HTMLButtonElement>('[data-testid="wn-install"]')?.click());
     expect(install).toHaveBeenCalled();
+  });
+  it("remote and browser What's new has no install action", async () => {
+    const install = vi.fn();
+    const go = { setup: vi.fn(), shortcuts: vi.fn(), palette: vi.fn(), settings: vi.fn() };
+    const host = await show(<WhatsNew version="1.0" update={{ current: "1.0", latest: "1.1", notes: [], installing: false, waiting: null }} computerName="Desk" startOnReady installed={installedRows(go)} onOpenUpdates={() => {}} onInstall={install} onClose={() => {}} />);
+    expect(host.ownerDocument.body.textContent).toContain("Ready to install on Desk: open Branch there to install it.");
+    expect(host.ownerDocument.querySelector('[data-testid="wn-install"]')).toBeNull();
+    expect(install).not.toHaveBeenCalled();
   });
 });

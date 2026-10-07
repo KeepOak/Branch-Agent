@@ -1,5 +1,6 @@
 // Library (DESIGN-SPEC §4.6.4; preview 40-places, 42-placesbp, 93-g3p, 94-g4p, 96-appopsp): the head with Canvas,
 // "Translate a document…" and "Make pictures…", then Memory, Documents, Meetings, Made for you and Logbook.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import type { PlaceProps } from "../../places-nav/PlaceFrame";
 import { optStr, rec, trunksOf, useResource } from "./data";
@@ -14,7 +15,7 @@ import { Status } from "./ui";
 import "./library.css";
 
 export const HEAD_REASONS = {
-  canvas: "Needs an engine method that lists canvases: canvas.document.view opens one only by its id.",
+  canvas: "Needs an engine method that lists Clearings: canvas.document.view opens one only by its id.",
   translate: "Needs the engine’s document translation method.",
   pictures: "Needs the engine’s picture-making method.",
 };
@@ -62,14 +63,14 @@ export function LibraryPlace({ engine, level, openSettings, openConversation }: 
   const facts = memory.files?.reduce((n, f) => n + f.facts.length, 0);
   return <div className="place-scroll" data-testid="place"><div className="place lib">
     <h1>Library</h1>
-    <Grey label="Canvas" reason={HEAD_REASONS.canvas} className="lib-canvas" />
+    <Grey label="Clearing" reason={HEAD_REASONS.canvas} className="lib-canvas" />
     <p className="lede">What your Trunks remember, the documents they read, your meetings, and everything they made.</p>
     <div className="lib-head-acts"><Grey label="Translate a document…" reason={HEAD_REASONS.translate} /><Grey label="Make pictures…" reason={HEAD_REASONS.pictures} /></div>
     <div className="lib-body">
       <LibraryTabs value={tab} onChange={setTab} counts={{ memory: facts }} />
       <Status {...trunks} />
       {list && (tab === "memory" ? <MemoryTab engine={engine} level={level} trunks={list} files={memory.files} reloadFiles={memory.reload} defaultId={defaultId} openSettings={openSettings} />
-        : tab === "documents" ? <DocumentsTab engine={engine} level={level} trunks={list} />
+        : tab === "documents" ? <DocumentsTab engine={engine} level={level} trunks={list} defaultId={rec(trunks.data).selectionRequired === true ? undefined : optStr(rec(trunks.data).defaultId)} mainKey={optStr(rec(trunks.data).mainKey)} />
         : tab === "made" ? <MadeTab engine={engine} trunks={list} openConversation={openConversation} />
         : tab === "meetings" ? <MeetingsTab engine={engine} level={level} trunks={list} openSettings={openSettings} />
         : <LogbookTab engine={engine} openSettings={openSettings} />)}

@@ -1,5 +1,5 @@
 /* Computer & browser, below "Which Trunk uses which" (53-set3p, 92-computerp, 92-browserp, 92-codingp). */
-.set-col .s2cm-tag { display: inline-block; margin-right: 4px; padding: 3px 5px; border-radius: 6px; background: var(--wash17, var(--fill)); font: 500 10px/1 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3); vertical-align: 1px; }
+.set-col .s2cm-tag { display: inline-block; margin-right: 4px; padding: 3px 5px; border-radius: 6px; background: var(--wash17, var(--fill)); font: 500 10px/1 var(--sans); color: var(--ink-3); vertical-align: 1px; }
 .set-col .ctl .s2cm-x { grid-column: 1 / -1; display: grid; gap: 6px; margin-top: 6px; min-width: 0; }
 .set-col .s2cm-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .set-col .s2cm-list small { color: var(--ink-3); font-size: 12.5px; }
@@ -10,7 +10,7 @@
 .set-col .s2cm-x .acts .inp { flex: 1 1 180px; min-width: 0; height: 32px; }
 .set-col .s2cm-stat { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-2); }
 .set-col .s2cm-stat small { color: var(--ink-3); }
-.set-col .s2cm-code { width: 120px; }
+.set-col .s2cm-code { width: 120px; font-family: var(--mono); letter-spacing: 0.06em; text-transform: uppercase; }
 .set-col .s2cm-offer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 10px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 14px; background: var(--raise); box-sizing: border-box; min-width: 0; }
 .set-col .s2cm-offer .grow { flex: 1; display: grid; gap: 2px; min-width: 0; }
 .set-col .s2cm-offer small { font-size: 12px; line-height: 1.45; color: var(--ink-3); }
@@ -32,4 +32,18 @@
 @media (max-width: 640px) {
   .set-col .ctl .inp.wide-k { min-width: 0; width: 100%; }
   .set-col .s2cm-pres { white-space: normal; }
+}
+.set-col .s2-comp.s2cm-offc { opacity: 0.75; }
+.set-col .s2cm-kbd { display: inline-flex; gap: 3px; align-items: center; }
+.set-col .s2cm-kbd kbd { font: 500 11px var(--mono); padding: 2px 6px; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 6px; background: var(--raise); color: var(--ink-2); }
+.set-col .s2cm-perm { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; font-size: 12.5px; color: var(--ink-2); }
+.set-col .s2cm-perm label { display: inline-flex; align-items: center; gap: 4px; }
+.set-col .s2cm-site { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+.set-col .s2cm-site .inp { flex: 1 1 200px; min-width: 0; }
+.set-col .s2cm-num { width: 110px; height: 34px; }
+.set-col .s2-comp.s2cm-offc > .btn { white-space: nowrap; }
+@media (max-width: 560px) {
+  .set-col .s2-comp.s2cm-offc { flex-wrap: wrap; }
+  .set-col .s2-comp.s2cm-offc > .grow { flex: 1 1 calc(100% - 96px); }
+  .set-col .s2-comp.s2cm-offc > .btn { margin-left: 46px; }
 }

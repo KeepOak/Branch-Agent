@@ -1,0 +1,27 @@
+/* Settings › Gateway: label colours, the list and field blocks under a row, and Another computer (50-settings, PT18, PF18). */
+.set-col .gw-swatches { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.set-col .gw-swatches button { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; cursor: pointer; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 15%, transparent); }
+.set-col .gw-swatches button:disabled { cursor: default; }
+.set-col .gw-swatches button[aria-checked="true"] { outline: 2px solid var(--ink); outline-offset: 2px; }
+.set-col .gw-sw-teal { background: #2F8C86; } .set-col .gw-sw-amber { background: #C08A2A; } .set-col .gw-sw-purple { background: #8A5AA8; }
+.set-col .gw-sw-coral { background: #D8612A; } .set-col .gw-sw-pink { background: #C2477A; } .set-col .gw-sw-blue { background: #4F6FA8; }
+.set-col .gw-sw-green { background: #5E8C4A; } .set-col .gw-sw-red { background: #C0453A; } .set-col .gw-sw-grey { background: var(--ink-3); }
+.set-col .ctl .gw-x { grid-column: 1 / -1; display: grid; gap: 6px; margin-top: 6px; min-width: 0; }
+.set-col .gw-x .acts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 0; }
+.set-col .gw-x .acts .inp { flex: 1 1 180px; min-width: 0; }
+.set-col .gw-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.set-col .gw-list .chip6 { display: inline-flex; align-items: center; gap: 4px; }
+.set-col .hint.gw-tight { margin: 0; }
+.set-col .gw-remote { display: grid; gap: 8px; padding-top: 8px; }
+.set-col .gw-remote .acts { margin-top: 4px; }
+.set-col .gw-fld { display: grid; gap: 6px; font-size: 13px; margin: 0; }
+.set-col .gw-fld > span:first-child { font: 600 12px/1.3 var(--sans); color: var(--ink-3); }
+.set-col .gw-tl { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.set-col .gw-tl li { display: grid; grid-template-columns: 20px 1fr; gap: 8px; font-size: 13px; }
+.set-col .gw-tl li svg { margin-top: 2px; }
+.set-col .gw-tl li.ok svg { color: var(--ok); }
+.set-col .gw-tl li small { display: block; color: var(--ink-3); font: 12px/1.45 var(--mono); }
+.set-col [data-sec="Exposure"] > .s2-h3, .set-col [data-sec="Connection"] > .s2-h3 { margin: 16px 0 6px; }
+/* Limits is a plain list in the preview, not a card. */
+.set-col .sec[data-sec="Limits"] > .ctl.ctl.ctl { background: none; box-shadow: none; border-radius: 0; padding: 13px 0; border-bottom: 1px solid var(--line); }
+.set-col .sec[data-sec="How it’s reached"] > .status + .acts { margin: 10px 0 4px; }

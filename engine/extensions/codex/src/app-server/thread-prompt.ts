@@ -18,6 +18,7 @@ import {
   type CodexDynamicToolSpec,
 } from "./protocol.js";
 import { isCodexResponsesOAuthRun } from "./responses-oauth.js";
+import { buildWindowsShellGuidance, type PowerShellProbe } from "./windows-shell-guidance.js";
 
 export type CodexThreadPromptContext = Pick<
   EmbeddedRunAttemptParams,
@@ -38,7 +39,7 @@ export type CodexThreadPromptContext = Pick<
 
 export function buildDeveloperInstructions(
   params: CodexThreadPromptContext,
-  options: { dynamicTools?: readonly CodexDynamicToolSpec[] } = {},
+  options: { dynamicTools?: readonly CodexDynamicToolSpec[]; windowsShellProbe?: PowerShellProbe } = {},
 ): string {
   const deferredToolNames = new Set<string>();
   let screenToolName: string | undefined;
@@ -159,6 +160,7 @@ export function buildDeveloperInstructions(
       controlToolsAvailable: params.disableTools !== true && hasControlTools,
     }),
     nativeCommandGuidance,
+    params.disableTools !== true ? buildWindowsShellGuidance(options.windowsShellProbe) : undefined,
     params.gitCoauthorPrompt,
     params.extraSystemPrompt,
   ];

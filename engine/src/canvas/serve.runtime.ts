@@ -1,4 +1,4 @@
-/** Gateway runtime for core-owned Canvas document HTTP responses. */
+/** Gateway runtime for core-owned Clearing document HTTP responses. */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { detectMime } from "@branch/media-core/mime";
@@ -41,7 +41,7 @@ async function resolveDocumentSandbox(
   }
 }
 
-/** Serves one managed Canvas document request. */
+/** Serves one managed Clearing document request. */
 export async function handleCanvasDocumentHttpRequest(
   req: IncomingMessage,
   res: ServerResponse,

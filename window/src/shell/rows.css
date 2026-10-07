@@ -43,6 +43,11 @@
 .side .row:focus-within .rc {
   visibility: hidden;
 }
+@media (hover: none) {
+  .side .row .rc {
+    visibility: hidden;
+  }
+}
 .side .row[style*="--clr"] {
   box-shadow: inset 3px 0 0 var(--clr);
 }
@@ -156,7 +161,6 @@
   font-size: 12.5px;
 }
 .frame.rail .side .chv,
-.frame.rail .side .rc,
 .frame.rail .side .kids-box {
   display: none;
 }

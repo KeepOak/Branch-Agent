@@ -1,6 +1,6 @@
 {
   "name": "@branch/apple-fm-provider",
-  "version": "2026.9.7",
+  "version": "2026.9.8",
   "private": true,
   "description": "Branch Agent on-device Apple Foundation Models provider",
   "type": "module",
@@ -15,7 +15,7 @@
       "./index.ts"
     ],
     "build": {
-      "branchVersion": "2026.9.7",
+      "branchVersion": "2026.9.8",
       "staticAssets": [
         {
           "source": "./assets/AppleFoundationModels.swift",

@@ -7,17 +7,18 @@ import { list, record, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Menu, type MenuAnchor, type MenuItem } from "../../../shell/Menu";
 import { Icon } from "../../../shell/icons";
-import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Status, Switch, useConfig, useSaveRunner, useScope } from "../kit";
+import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Status, Switch, useConfig, useLevel, useSaveRunner, useScope } from "../kit";
 import { Logo, serviceName } from "./service";
 import { AddAccountDialog, type AddStart } from "./add-account";
 import { CodingApps } from "./coding-apps";
 import { OwnAccounts } from "./own-accounts";
 import { GitHubSettings } from "../GitHubSettings";
 import { AccountsMore } from "./accounts-more";
+import { BulkBar, SelectBox, SelectLink } from "./accounts-select";
 import "./set1.css";
 
-export type Profile = { profileId: string; type: string; status: string; displayName?: string; email?: string; logoutSupported?: boolean; source?: string; reasonCode?: string; externallyManaged?: boolean; expiry?: { label?: string } };
-export type Provider = { provider: string; authProvider?: string; displayName: string; status: string; profiles: Profile[]; profileOrder?: string[]; profileOrderLocked?: string; usage?: { plan?: string } };
+export type Profile = { profileId: string; type: string; status: string; displayName?: string; email?: string; lastUsedAt?: number; logoutSupported?: boolean; source?: string; reasonCode?: string; externallyManaged?: boolean; expiry?: { label?: string } };
+export type Provider = { provider: string; authProvider?: string; displayName: string; status: string; profiles: Profile[]; profileOrder?: string[]; lastGoodProfileId?: string; profileOrderLocked?: string; usage?: { plan?: string; accountEmail?: string; windows?: Array<{ label?: string; usedPercent?: number }> } };
 /** models.authStatus providers, each with its accounts as a list even when the engine leaves them out. */
 export function providersOf(value: unknown): Provider[] {
   return list(value).map((p) => ({ ...p, profiles: list(p.profiles) }) as unknown as Provider);
@@ -37,14 +38,26 @@ export function accountsOf(providers: Provider[]): Account[] {
   });
 }
 
-export function accountName({ p, a, n }: Pick<Account, "p" | "a" | "n">): string {
-  const svc = serviceName(p.provider, p.displayName, a.type === "api_key");
-  return `${svc} · ${a.displayName ?? a.email ?? (a.type === "api_key" ? `Key ${n}` : `Account ${n}`)}`;
+/** A pasted subscription token (Claude's `claude setup-token`): engine profile type "token". */
+const isToken = (a: Pick<Profile, "type">) => a.type === "token";
+
+/** A token account's own name, the label in its id ("anthropic:claude-2" is "claude-2"), as a ChatGPT account shows
+ *  its email. Setup's generated "setup-<id>" and the engine's "default" are not names. */
+export function tokenLabel(a: Pick<Profile, "profileId" | "type">): string | undefined {
+  if (!isToken(a)) return undefined;
+  const name = a.profileId.slice(a.profileId.indexOf(":") + 1);
+  return name && name !== "default" && !name.startsWith("setup-") && !/^id-[a-f0-9]{12}$/.test(name) ? name : undefined;
 }
 
-const STATUS_WORDS: Record<string, string> = { ok: "", expiring: "Signing in again soon", expired: "Signed out · sign in again", missing: "Sign-in missing", static: "" };
+export function accountName({ p, a, n }: Pick<Account, "p" | "a" | "n">): string {
+  const svc = serviceName(p.provider, p.displayName, a.type === "api_key");
+  const fallback = a.type === "api_key" ? `Key ${n}` : `Account ${n}`;
+  return `${svc} · ${p.provider === "anthropic" ? a.email ?? a.displayName ?? tokenLabel(a) ?? fallback : a.displayName ?? a.email ?? tokenLabel(a) ?? fallback}`;
+}
+
+export const STATUS_WORDS: Record<string, string> = { ok: "", expiring: "Signing in again soon", expired: "Signed out · sign in again", missing: "Sign-in missing", static: "" };
 function accountSub(acc: Account): string {
-  const plan = acc.p.usage?.plan ? visible(acc.p.usage.plan) : acc.a.type === "api_key" ? "Key" : "";
+  const plan = acc.p.usage?.plan ? visible(acc.p.usage.plan) : acc.a.type === "api_key" ? "Key" : isToken(acc.a) ? "Subscription" : "";
   const email = acc.a.email && acc.a.displayName && acc.a.email !== acc.a.displayName ? visible(acc.a.email) : "";
   const state = STATUS_WORDS[acc.a.status] ?? visible(acc.a.status);
   return [plan, email, state, acc.ordered && acc.first ? "" : acc.ordered ? "next in line" : ""].filter(Boolean).join(" · ");
@@ -60,14 +73,20 @@ export function movedUp(acc: Account, all: Account[]): string[] {
 
 export function AccountsPage(props: SettingsPageProps) {
   const scope = useScope();
-  const agent = scope ? { agentId: scope } : {};
+  // As in Models: with several Trunks the engine needs an owner, so the household view uses the default Trunk.
+  const owner = scope || props.engine.agentId;
+  const agent = owner ? { agentId: owner } : {};
   const status = useResource<RecordValue>(props.engine, "models.authStatus", agent);
-  const [add, setAdd] = useState<AddStart | null>(null);
+  const [add, setAdd] = useState<AddStart | null>(() => {
+    if (sessionStorage.getItem("branch.openAddAccount") !== "1") return null;
+    sessionStorage.removeItem("branch.openAddAccount");
+    return {};
+  });
   const providers = providersOf(status.data?.providers);
   const caps = list(status.data?.providerCapabilities);
   const all = accountsOf(providers);
   return (
-    <Page title={props.title} lede="Your model accounts, the order Branch uses them in, which Trunks use each, and your keepoak.com account.">
+    <Page title={props.title} lede="Manage model accounts and the order Branch uses them." help="Your model accounts, the order Branch uses them in, which Trunks use each, and your keepoak.com account.">
       <AccountsStatus loading={status.loading} error={status.error} count={all.length} unavailable={record(status.data?.unavailable).message} />
       <OrderSection {...props} all={all} reload={status.reload} onAdd={setAdd} agent={agent} />
       <CodingApps engine={props.engine} />
@@ -92,18 +111,23 @@ function AccountsStatus({ loading, error, count, unavailable }: { loading: boole
 type OrderProps = SettingsPageProps & { all: Account[]; reload: () => Promise<void>; onAdd: (s: AddStart) => void; agent: { agentId?: string } };
 function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
   const save = useSaveRunner();
+  const lv = useLevel();
   const [menu, setMenu] = useState<{ at: MenuAnchor; acc: Account } | null>(null);
+  const [picked, setPicked] = useState<string[] | null>(null);
   const setOrder = (acc: Account, ids: string[]) => save(async () => {
     await engine.request("models.authOrderSet", { provider: acc.p.authProvider ?? acc.p.provider, profileIds: ids, ...agent });
     await reload();
   });
-  const brands = [...new Map(all.map((x) => [x.p.provider, x.p])).values()].slice(0, 2);
+  const brands = [...new Map(all.map((x) => [x.p.provider, x.p])).values()];
+  const selecting = lv >= 1 && picked !== null;
+  const right = lv >= 1 && all.length ? <SelectLink on={selecting} onToggle={() => setPicked(selecting ? null : [])} /> : undefined;
   return (
-    <Sec title="Order Branch uses them in">
+    <Sec title="Order Branch uses them in" right={right}>
+      {selecting ? <BulkBar engine={engine} all={all} picked={picked ?? []} agent={agent} reload={reload} done={() => setPicked(null)} /> : null}
       {all.length ? (
         <Plist>
           {all.map((acc) => (
-            <Prow key={`${acc.p.provider}/${acc.a.profileId}`} icon={<Logo id={acc.p.provider} size={32} />} title={accountName(acc)} sub={accountSub(acc)}>
+            <Prow key={`${acc.p.provider}/${acc.a.profileId}`} icon={<>{selecting ? <SelectBox acc={acc} name={accountName(acc)} picked={picked ?? []} onPick={setPicked} /> : null}<Logo id={acc.p.provider} size={32} /></>} title={accountName(acc)} sub={accountSub(acc)}>
               {acc.ordered && acc.first ? <Pill tone="ok">used next</Pill> : null}
               {acc.a.status === "expired" || acc.a.status === "missing" ? <Pill tone="warn">Sign in again</Pill> : null}
               <button type="button" className="icon-btn" aria-label="Move up" title={acc.first ? `First for ${serviceName(acc.p.provider, acc.p.displayName)} already` : acc.p.profileOrderLocked ? "The order is set in the settings file" : "Move up"} disabled={acc.first || Boolean(acc.p.profileOrderLocked)} onClick={() => void setOrder(acc, movedUp(acc, all))}>{UP}</button>
@@ -112,9 +136,11 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
           ))}
         </Plist>
       ) : <Empty>No account yet. Add one, and Branch uses it for every Trunk.</Empty>}
+      {all.some((x) => !x.first) ? <Hint>When one account runs low, Branch moves to the next.</Hint> : null}
       <Acts>
         <Btn pri onClick={() => onAdd({})}><Icon name="plus" small />Add an account</Btn>
-        {brands.map((p) => <Btn key={p.provider} onClick={() => onAdd({ provider: p.provider })}>Another {serviceName(p.provider, p.displayName)} account</Btn>)}
+        <Btn onClick={() => onAdd({ provider: "anthropic" })}>Add a Claude account</Btn>
+        {brands.filter((p) => p.provider !== "anthropic").map((p) => <Btn key={p.provider} onClick={() => onAdd({ provider: p.provider })}>Another {serviceName(p.provider, p.displayName)} account</Btn>)}
       </Acts>
       {menu ? <AccountMenu engine={engine} acc={menu.acc} all={all} at={menu.at} agent={agent} reload={reload} setOrder={setOrder} onClose={() => setMenu(null)} /> : null}
     </Sec>
@@ -148,7 +174,7 @@ function WhenOneRunsOut({ engine }: { engine: SettingsPageProps["engine"] }) {
   const on = Boolean(localRef) && fallbacks.includes(localRef);
   return (
     <Sec title="When one runs out">
-      <Ctl title="Move to the next account in the list" sub="Only between accounts you own and pay for, within each provider’s terms. No account’s allowance is shared with another person.">
+      <Ctl title="Move to the next account in the list" sub="Only switches between accounts you own and pay for." help="Only between accounts you own and pay for, within each provider’s terms. No account’s allowance is shared with another person.">
         <span title="Branch always moves on when an account runs out."><Switch checked label="Move to the next account in the list" disabled onChange={() => undefined} /></span>
       </Ctl>
       <Ctl title="Fall back to this computer" sub={local ? `When every account is out, keep going on ${visible(local.name ?? local.id)} instead of stopping.` : "Needs a model on this computer first."}>
@@ -158,18 +184,21 @@ function WhenOneRunsOut({ engine }: { engine: SettingsPageProps["engine"] }) {
   );
 }
 
+const KO_LINES = [
+  "Your KeepOak computer joins the computer switcher, with its agents.",
+  "Your theme, saved colours and season follow you between computers and keepoak.com.",
+  "Your team workspace: members, shared Trunks and what they’re running.",
+  "Conversations, memory and keys stay on each computer. Nothing else is shared.",
+];
 function KeepOak() {
   return (
     <Sec personal title="keepoak.com">
-      <div className="keepoak-k">
-        <Logo id="keepoak" size={32} />
+      <div className="ko-card-acc">
+        <span className="ko-acc" aria-hidden="true" />
         <span className="grow"><b>Your keepoak.com account</b><small>Have a KeepOak computer or a team on keepoak.com? Connect it once.</small></span>
       </div>
-      <ul className="ticks-k">
-        <li>Your KeepOak computer joins the computer switcher, with its agents.</li>
-        <li>Your theme, saved colours and season follow you between computers and keepoak.com.</li>
-        <li>Your team workspace: members, shared Trunks and what they’re running.</li>
-        <li>Conversations, memory and keys stay on each computer. Nothing else is shared.</li>
+      <ul className="ticks-acc">
+        {KO_LINES.map((line) => <li key={line}><Icon name="check" small />{line}</li>)}
       </ul>
       <Acts><Btn pri disabled title="keepoak.com has no sign-in Branch can use yet.">Connect your keepoak.com account</Btn><Hint>keepoak.com has no sign-in Branch can use yet.</Hint></Acts>
     </Sec>

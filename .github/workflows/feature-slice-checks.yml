@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'engine/**'
+      - 'window/**'
       - 'scripts/feature-slice-ci*.mjs'
       - 'scripts/feature-batch-ci-runtime.mjs'
       - '.github/workflows/feature-slice-checks.yml'
@@ -11,9 +12,12 @@ on:
     branches: [main]
     paths:
       - 'engine/**'
+      - 'window/**'
       - 'scripts/feature-slice-ci*.mjs'
       - 'scripts/feature-batch-ci-runtime.mjs'
       - '.github/workflows/feature-slice-checks.yml'
+  schedule:
+    - cron: '23 7 * * *'
   workflow_dispatch:
 
 permissions:
@@ -21,18 +25,20 @@ permissions:
 
 concurrency:
   group: feature-slices-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   feature-slices:
     name: Exact feature slices on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        # PRs run Linux and Windows. macOS runs on main after merge, nightly, and on PRs that touch
+        # OS-specific code (os-specific-checks.yml). macOS runners have the lowest concurrency limit.
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["windows-latest", "ubuntu-latest"]' || '["windows-latest", "macos-latest", "ubuntu-latest"]') }}
     env:
       CI: 'true'
       NODE_OPTIONS: '--max-old-space-size=1024'

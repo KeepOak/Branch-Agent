@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { AutomationsPlace } from "../places/automations";
 import { CanopyPlace } from "../places/canopy";
 import { CustomizePlace } from "../places/customize";
@@ -10,6 +11,8 @@ import { TrunkHost } from "./TrunkHost";
 import type { PlaceProps } from "./PlaceFrame";
 import type { PlaceId } from "./routes";
 
+const OfficePlace = lazy(() => import("../places/office").then(m => ({ default: m.OfficePlace })));
+
 const MOUNTS: Record<PlaceId, (p: PlaceProps) => React.ReactNode> = {
   overview: OverviewPlace,
   canopy: CanopyPlace,
@@ -18,6 +21,7 @@ const MOUNTS: Record<PlaceId, (p: PlaceProps) => React.ReactNode> = {
   library: LibraryPlace,
   people: PeoplePlace,
   customize: CustomizePlace,
+  office: OfficePlace,
 };
 
 /** Routes to a place's mount point (window/src/places/<place>/index.tsx). */
@@ -26,7 +30,7 @@ export function PlaceView({ place, ...props }: Omit<PlaceProps, "level"> & { pla
   const level = useLevel();
   return (
     <>
-      <Mount {...props} level={level} />
+      <Suspense fallback={<p role="status">Opening the office…</p>}><Mount {...props} level={level} /></Suspense>
       <TrunkHost engine={props.engine} level={level} openSettings={props.openSettings} openPlace={props.openPlace} />
     </>
   );

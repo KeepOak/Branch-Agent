@@ -1,5 +1,7 @@
 // People › People (§4.6.5.2): the list of everyone (grouped by how they reach Branch) and the selected person's card.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import { Icon } from "../../shell/icons";
 import type { WindowEngine } from "../../connect/engine";
 import { shows, type Level } from "../../places-nav/level";
@@ -18,7 +20,8 @@ export const REMOVE_OFF = "Needs the engine's remove-a-person method.";
 const HOW = { this: "On this computer", device: "On their own device" } as const;
 type How = keyof typeof HOW;
 
-export const roleWord = (p: Profile) => p.id === OWNER_ID ? "Owner" : p.role || "No role";
+/** The role as the preview words it: "Owner", "Adult", "Child" (engine role ids are lower-case keys). */
+export const roleWord = (p: Profile) => p.id === OWNER_ID ? "Owner" : p.role ? p.role.charAt(0).toUpperCase() + p.role.slice(1) : "No role";
 /** Connected from another device puts someone under "On their own device"; anyone else, connected here or not
  *  connected now, is under the preview's "On this computer". */
 const howOf = (p: Profile, conns: Presence[]): How => p.id !== OWNER_ID && reachOf(presenceOf(conns, p.id)) === "device" ? "device" : "this";
@@ -66,8 +69,8 @@ function Detail({ engine, person, me, people, conns, config, level, reload, open
         {shows(level, "technical") && <small className="pp-id"><code>{person.id}</code><button type="button" className="btn ghost sm" onClick={() => { void copyText(person.id).then(ok => setCopied(ok ? "Copied." : "Couldn’t copy.")); }}>Copy</button>{copied && <span role="status" className="pp-mut">{copied}</span>}</small>}
       </span><span className={owner ? "pill ok" : "pill idle"}>{roleWord(person)}</span></div>
     <Section title="May">
-      <div className="pp-may" title={owner ? undefined : MAY_OFF}>{MAY.map(m => <label key={m} className={owner ? "pp-chk" : "pp-chk no"}><input type="checkbox" checked={owner} disabled aria-label={m} readOnly /> {m}</label>)}</div>
-      {!owner && <p className="pp-hint" style={{ marginTop: 8 }}>{MAY_OFF}</p>}
+      <div className="pp-may" title={owner ? undefined : shownWhy(MAY_OFF)}>{MAY.map(m => <label key={m} className={owner ? "pp-chk" : "pp-chk no"}><input type="checkbox" checked={owner} disabled aria-label={m} readOnly /> {m}</label>)}</div>
+      {!owner && shownWhy(MAY_OFF) && <p className="pp-hint" style={{ marginTop: 8 }}>{shownWhy(MAY_OFF)}</p>}
     </Section>
     <Facts person={person} theirs={theirs} config={config} />
     {owner ? <p className="pp-hint">You’re the owner. Only you change how Branch is set up.</p> : null}
@@ -81,7 +84,7 @@ function Facts({ person, theirs, config }: { person: Profile; theirs: Presence[]
   const agents = person.id === OWNER_ID || def?.agents === "*" ? "Every Trunk" : def ? strs(def.agents).join(", ") || "None" : "";
   return <dl className="kv">
     {agents && <><dt>Trunks</dt><dd>{agents}</dd></>}
-    <dt>PIN</dt><dd className="pp-why">{PIN_OFF}</dd>
+    {shownWhy(PIN_OFF) && <><dt>PIN</dt><dd className="pp-why">{shownWhy(PIN_OFF)}</dd></>}
     <dt>Signed in on</dt><dd>{theirs.length ? theirs.map(deviceName).join(", ") : "Nothing right now"}</dd>
     {person.emails.length > 0 && <><dt>Emails</dt><dd title="Email addresses connected to this person.">{person.emails.join(", ")}</dd></>}
   </dl>;
@@ -117,11 +120,11 @@ function Actions({ engine, person, me, people, config, level, reload }: ActionPr
   const [open, setOpen] = useState<"code" | "link" | "merge" | null>(null);
   const first = firstName(nameOf(person));
   return <div className="pp-acts" style={{ marginTop: 14 }}>
-    <button type="button" className="btn sm" disabled title={SWITCH_OFF}>Switch to {first}</button>
+    <button type="button" className="btn sm" disabled title={shownWhy(SWITCH_OFF)}>Switch to {first}</button>
     <RoleSeg engine={engine} person={person} roles={roleNames(config)} reload={reload} />
     <button type="button" className="btn ghost sm" onClick={() => setOpen("code")}>Make a one-time code</button>
-    <button type="button" className="btn ghost sm" disabled title={SIGN_OUT_OFF}>Sign out everywhere</button>
-    <button type="button" className="btn ghost sm" disabled title={REMOVE_OFF}>Remove</button>
+    <button type="button" className="btn ghost sm" disabled title={shownWhy(SIGN_OUT_OFF)}>Sign out everywhere</button>
+    <button type="button" className="btn ghost sm" disabled title={shownWhy(REMOVE_OFF)}>Remove</button>
     {shows(level, "advanced") && <><button type="button" className="btn ghost sm" onClick={() => setOpen("link")}>Link an email…</button><button type="button" className="btn ghost sm" onClick={() => setOpen("merge")}>Merge into…</button></>}
     {open === "code" && <CodeDialog engine={engine} title={`A one-time code for ${first}`} onClose={() => setOpen(null)} />}
     {open === "link" && <LinkEmailDialog engine={engine} person={person} onClose={() => setOpen(null)} onDone={reload} />}

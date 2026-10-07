@@ -15,7 +15,8 @@ import type { BranchConfig } from "../config/types.branch.js";
 import { loadCronJobsStore, resolveCronJobsStorePath, saveCronJobsStore } from "../cron/store.js";
 import { executeSqliteQueryTakeFirstSync, getNodeSqliteKysely } from "../infra/kysely-sync.js";
 import { spawnTerminalPty } from "../process/terminal-pty.js";
-import { closeBranchAgentDatabasesForTest } from "../state/branch-agent-db.js";
+import { closeBranchAgentDatabasesAsync } from "../state/branch-agent-db.js";
+import { closeBranchStateDatabaseAsync } from "../state/branch-state-db-cache.js";
 import type { DB } from "../state/branch-state-db.generated.js";
 import { openBranchStateDatabase } from "../state/branch-state-db.js";
 import {
@@ -28,8 +29,9 @@ import { ensureProfileForEmail } from "../state/user-profiles.js";
 import { withBranchTestState } from "../test-utils/branch-test-state.js";
 import { getFreePort } from "../test-utils/ports.js";
 
-function runDoctor(env: NodeJS.ProcessEnv) {
-  closeBranchAgentDatabasesForTest();
+async function runDoctor(env: NodeJS.ProcessEnv) {
+  await closeBranchAgentDatabasesAsync();
+  await closeBranchStateDatabaseAsync();
   const result = spawnSync(
     process.execPath,
     ["branch.mjs", "doctor", "--fix", "--non-interactive", "--no-workspace-suggestions"],
@@ -45,7 +47,8 @@ function runDoctor(env: NodeJS.ProcessEnv) {
 }
 
 async function runInteractiveDoctor(env: NodeJS.ProcessEnv, expectImport: boolean) {
-  closeBranchAgentDatabasesForTest();
+  await closeBranchAgentDatabasesAsync();
+  await closeBranchStateDatabaseAsync();
   const ptyEnv: Record<string, string> = {};
   for (const [key, value] of Object.entries({
     ...env,
@@ -234,7 +237,7 @@ describe("doctor auth-profile consumers", () => {
                 modelPolicy: { allow: ["anthropic/*"] },
                 models: { "anthropic/test-model@claude-cli:work": { alias: "work-model" } },
               },
-              entries: { main: { default: true } },
+              entries: { main: {} },
             },
             auth: {
               profiles: {

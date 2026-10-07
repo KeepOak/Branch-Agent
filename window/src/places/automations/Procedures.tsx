@@ -2,7 +2,9 @@
 // saved-prompt store, so those parts are greyed with their reason (the flow editor opens from a saved
 // procedure, so it has nothing to open). [T] Commands, technical edits config `commands` (engine
 // src/config/zod-schema.session.ts CommandsSchema) through config.patch.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { Segmented } from "../../shell/Popover";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
@@ -39,9 +41,9 @@ function CommandsTechnical({ engine, canWrite }: { engine: WindowEngine; canWrit
   const owners = Array.isArray(c.ownerAllowFrom) ? c.ownerAllowFrom.map(String) : [];
   const off = canWrite ? undefined : "Needs an owner";
   const flag = (field: string, title: string, sub: string, dflt: boolean) => <SwitchRow key={field} title={title} sub={sub} on={typeof c[field] === "boolean" ? (c[field] as boolean) : dflt} change={v => set(field, v)} disabled={off} />;
-  return <Section title="Commands, technical" aside={<button type="button" className="au-link" disabled={!canWrite} title={off} onClick={() => void run(async () => { const r = rec(await engine.request("config.openFile", {})); if (r.ok !== true) throw new Error(str(r.error) || "The settings file couldn’t be opened."); return r; }, "Opened the settings file on the Gateway’s computer.")}>Edit as text</button>}>
+  return <Section title="Commands, technical" aside={<button type="button" className="au-link" disabled={!canWrite} title={shownWhy(off)} onClick={() => void run(async () => { const r = rec(await engine.request("config.openFile", {})); if (r.ok !== true) throw new Error(str(r.error) || "The settings file couldn’t be opened."); return r; }, "Opened the settings file on the Gateway’s computer.")}>Edit as text</button>}>
     {state.error && <p className="au-error" role="alert">{state.error}</p>}
-    <div className={canWrite && !busy ? "" : "au-off"} title={off}>
+    <div className={canWrite && !busy ? "" : "au-off"} title={shownWhy(off)}>
       <NativeRow title="Commands in chat apps’ menus" value={toNative(c.native)} change={v => set("native", fromNative(v))} />
       <NativeRow title="Skills as commands in chat apps’ menus" value={toNative(c.nativeSkills)} change={v => set("nativeSkills", fromNative(v))} />
     </div>
@@ -56,7 +58,7 @@ function CommandsTechnical({ engine, canWrite }: { engine: WindowEngine; canWrit
     <div className="au-checks">
       <h3 className="au-sub">Command owners</h3>
       <p className="au-hint">People allowed owner-only commands.{owners.length ? "" : " None yet."}</p>
-      {owners.map(o => <div className="au-check" key={o}><span className="au-grow au-mono">{o}</span><button type="button" className="ib" aria-label={`Take out ${o}`} disabled={!canWrite || busy} title={off} onClick={() => set("ownerAllowFrom", owners.filter(x => x !== o))}><Glyph name="x" /></button></div>)}
+      {owners.map(o => <div className="au-check" key={o}><span className="au-grow au-mono">{o}</span><button type="button" className="ib" aria-label={`Take out ${o}`} disabled={!canWrite || busy} title={shownWhy(off)} onClick={() => set("ownerAllowFrom", owners.filter(x => x !== o))}><Glyph name="x" /></button></div>)}
       <form className="au-describe" onSubmit={e => { e.preventDefault(); if (owner.trim()) { set("ownerAllowFrom", [...owners, owner.trim()]); setOwner(""); } }}>
         <input className="inp" aria-label="Add a command owner" placeholder="A chat ID or phone number" value={owner} disabled={!canWrite} onChange={e => setOwner(e.target.value)} />
         <button type="submit" className="btn sm" disabled={!canWrite || busy || !owner.trim()}>Add</button>
@@ -68,8 +70,8 @@ function CommandsTechnical({ engine, canWrite }: { engine: WindowEngine; canWrit
 export function ProceduresTab({ engine, level }: { engine: WindowEngine; level: Level }) {
   const canWrite = engine.scopes.includes("operator.admin");
   return <div className="au-tab">
-    <p className="au-hint">Saved step-by-step routines, including ones a Trunk learned by watching you.</p>
-    <div className="au-actions"><button type="button" className="btn" disabled title={PROCEDURE_NEEDS.store}><Glyph name="teach" size={14} />Show a Trunk how, once</button></div>
+    <p className="au-hint">Saved steps a Trunk can run again.</p>
+    <div className="au-actions"><button type="button" className="btn" disabled title={shownWhy(PROCEDURE_NEEDS.store)}><Glyph name="teach" size={14} />Show a Trunk how, once</button></div>
     <EmptyLine icon={<Glyph name="flow" size={22} />}>No procedures yet. Show a Trunk how once, and it saves the steps to run again.</EmptyLine>
     <Section title="Your saved prompts" hint="Things you ask for often. Each has its own command that works in the window, on the phone, in the terminal and in chat apps.">
       <ToolRow icon="star" title="New prompt" sub="A prompt with blanks to fill in, and its own command." button="New prompt" reason={PROCEDURE_NEEDS.prompts} />

@@ -40,7 +40,7 @@
 .dlg .row-ca > span { display: grid; gap: 2px; }
 .dlg .dlg-p-ca { margin: 0; font-size: 13.5px; color: var(--ink-2); }
 .dlg .fld-ca { display: grid; justify-items: start; gap: 8px; }
-.dlg .fld-ca > span:first-child { font: 500 10.5px/1.2 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.dlg .fld-ca > span:first-child { font: 600 12px/1.3 var(--sans); color: var(--ink-3); }
 .dlg .fld-ca .link-k { justify-self: center; }
 .set-col .list-ca { margin: 2px 0 6px; }
 .set-col .list-ca .prow, .dlg .list-ca .prow { padding: 10px 4px; }
@@ -52,9 +52,17 @@
 .dlg .box-ca { display: grid; gap: 4px; margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--fill); }
 .dlg .box-ca .ctl { border-bottom: 1px solid var(--hair17); }
 .dlg .box-ca .ctl:last-of-type { border-bottom: 0; }
+.dlg .ctl:has(> .right > .sseg-radio) { display: grid; grid-template-columns: minmax(0, 1fr); }
+.dlg .ctl > .right:has(> .sseg-radio) { grid-column: 1; grid-row: auto; margin-top: 8px; }
+.dlg .sseg.sseg-radio { display: grid; gap: 6px; width: 100%; padding: 0; background: transparent; white-space: normal; }
+.dlg .sseg.sseg-radio button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; height: auto; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r2-17); background: var(--raise); color: var(--ink); text-align: left; cursor: pointer; white-space: normal; }
+.dlg .sseg.sseg-radio button[aria-checked="true"] { border-color: var(--accent); background: var(--accent-tint); }
+.dlg .sseg.sseg-radio .sseg-radio-check { width: 16px; flex: none; color: var(--accent); }
+.dlg .sseg.sseg-radio button small { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+.dlg .sseg.sseg-radio button:disabled { opacity: .45; cursor: default; }
 .dlg .box-h-ca { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .dlg .box-h-ca small { font-size: 12.5px; color: var(--ink-2); }
-.dlg .mg-ca h3 { margin: 18px 0 4px; font: 500 10.5px var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
+.dlg .mg-ca h3 { margin: 18px 0 4px; font: 600 12px var(--sans); color: var(--ink-3); }
 .dlg .grp-ca { flex-wrap: wrap; }
 .dlg .grp-ca select.inp { height: 30px; max-width: 160px; }
 .dlg .mini-ca { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); }
@@ -84,3 +92,17 @@
   .dlg .kvrow-ca { grid-template-columns: minmax(0, 1fr); }
 }
 .dlg .ready-ca .status { background: var(--ok-tint); border-color: transparent; }
+/* Code readouts, as the preview's code chips; "Messages, every setting" titles are the keys in mono. */
+.set-col .sec[data-sec="Chat apps, technical"] code.val-k,
+.set-col .sec[data-sec="Chat commands and rules"] code.val-k { background: var(--wash17, var(--fill)); border-radius: 6px; padding: 3px 7px; max-width: min(420px, 52vw); overflow-wrap: anywhere; user-select: all; }
+.set-col .sec[data-sec="Messages, every setting"] > .ctl > b { font: 500 12px var(--mono); }
+.set-col .sec[data-sec="Messages, every setting"] .val-k { color: var(--ink-3); }
+.set-col .sec[data-sec="Commands in chat apps"] .prow b code { font: 500 12px var(--mono); }
+.set-col .sec .ctl > b > small.when-ca { display: inline; font-size: 12.5px; line-height: 18.125px; font-weight: 500; color: var(--ink-3); }
+.set-col .ctl > b:has(> .when-ca) { gap: 4px; }
+
+/* The setup steps at the top of Manage (the preview's .chw-steps12) */
+.chw-steps12 { display: flex; gap: 4px; flex-wrap: wrap; margin: 14px 0 12px; }
+.chw-steps12 span { display: flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 999px; background: var(--fill); font-size: 12.5px; color: var(--ink-3); }
+.chw-steps12 em { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: 600 11px var(--mono); font-style: normal; background: var(--fill-2); }
+.chw-steps12 .done em { background: var(--ok-tint); color: var(--ok); }

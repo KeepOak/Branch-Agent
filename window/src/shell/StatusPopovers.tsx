@@ -1,14 +1,16 @@
 // The status bar's popovers (DESIGN-SPEC §4.9.3–§4.9.8): Gateway, What each connection has left, Room left,
-// Running in the background and the version menu. Each reads the engine; controls the engine has no method for are
-// drawn greyed with the reason (WINDOW-BUILD-BRIEF "Hands off").
-import { useEffect, useState, type ReactNode } from "react";
+// Running in the background and the version menu. Each reads live engine facts.
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { Conversation } from "../connect/conversations";
 import type { Level } from "../places-nav/settings-nav";
 import { Icon, type IconName } from "./icons";
 import { Popover, type Above } from "./Popover";
-import { comingUp, limitsSummary, readMonthSpend, readRoom, readRounds, sizeWords, uptimeWords, monthParams, type Limits, type Room, type Round, type UpdateInfo } from "./status-data";
+import { ageWords, comingUp, monthParams, readLimits, readMonthSpend, readRoom, readRounds, sizeWords, uptimeWords, type Limits, type Room, type Round, type UpdateInfo } from "./status-data";
 import type { GatewayFacts } from "./use-status";
 import "./status.css";
+import { shownWhy } from "./shown-why";
+import { branchVersionDetail, branchVersionLabel } from "../connect/branch-version";
+import { installOnComputer } from "../connect/desktop-component-updates";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
 type Base = { above: Above; onClose: () => void };
@@ -39,7 +41,7 @@ function useRead<T>(request: Request, method: string | null, params: unknown, re
 
 function Item({ icon, label, hint, onClick, off, testid }: { icon: IconName; label: string; hint?: ReactNode; onClick?: () => void; off?: string; testid?: string }) {
   return (
-    <button type="button" className="mi" role="menuitem" data-testid={testid} disabled={Boolean(off)} title={off} onClick={onClick}>
+    <button type="button" className="mi" role="menuitem" data-testid={testid} disabled={Boolean(off)} title={shownWhy(off)} onClick={onClick}>
       <Icon name={icon} small />
       <span className="mi-label">{label}</span>
       {hint ? <span className="mi-hint">{hint}</span> : null}
@@ -49,7 +51,7 @@ function Item({ icon, label, hint, onClick, off, testid }: { icon: IconName; lab
 
 /** A control the engine can't back yet: greyed, with its reason under it (§5.1 "Disabled, with the reason"). */
 function OffLine({ reason }: { reason: string }) {
-  return <p className="sp-off">{reason}</p>;
+  return shownWhy(reason) ? <p className="sp-off">{shownWhy(reason)}</p> : null;
 }
 
 const MODES = ["Off", "When needed", "On"] as const;
@@ -57,12 +59,12 @@ const MODES = ["Off", "When needed", "On"] as const;
 /** §4.9.3 Gateway: state line, Keep Branch running, What it has been doing, Restart the engine, Gateway settings…. */
 export function GatewayPopover({ facts, level, onRestart, onSettings, ...base }: Base & { facts: GatewayFacts; level: Level; onRestart: () => void; onSettings: () => void }) {
   const up = facts.uptimeMs === null ? null : uptimeWords(facts.uptimeMs + (Date.now() - facts.connectedAt));
-  const line = facts.health?.ok ? `On.${up ? ` Up ${up}.` : ""}` : facts.error ? `Can't reach the gateway: ${facts.error}` : "Checking the gateway…";
+  const line = facts.health?.ok ? `On${up ? ` · up ${up}` : ""}` : facts.error ? `Offline · ${facts.error}` : "Checking…";
   return (
     <Popover at={{ x: 0, y: 0 }} label="Gateway" testid="pop-gateway" className="sp" {...base}>
-      <div className="pt">Gateway</div>
-      <p className="pp">{line}</p>
-      <div className="row-in">
+      <div className="pt sp-title"><span>Gateway</span><small>{line}</small></div>
+      <p className="pp">Keeps chat apps, your phone and automations working.</p>
+      <div className="sp-mode">
         <span>Keep Branch running</span>
         <span className="seg sp-seg" role="radiogroup" aria-label="Keep Branch running" aria-disabled="true" style={{ gridTemplateColumns: "repeat(3, 1fr)", ["--i" as string]: facts.health?.ok ? 2 : 0, ["--n" as string]: 3 }}>
           {MODES.map((m) => (
@@ -73,18 +75,8 @@ export function GatewayPopover({ facts, level, onRestart, onSettings, ...base }:
         </span>
       </div>
       <OffLine reason="The desktop app starts and stops the gateway; this window can't change it yet." />
-      <hr className="msep" />
-      <div className="ph">What it has been doing</div>
-      <div className="row-in sp-ev">
-        <span>Health check</span>
-        <small>{facts.health?.durationMs != null ? `Answered in ${facts.health.durationMs} ms` : facts.health ? "Answered" : "Not answered yet"}</small>
-      </div>
-      {level === "technical" && facts.uptimeMs !== null ? (
-        <div className="row-in sp-ev">
-          <span>Up</span>
-          <small>{up}</small>
-        </div>
-      ) : null}
+      <p className="sp-health">{facts.health?.ok ? `Healthy · ${facts.health.durationMs != null ? `answered in ${facts.health.durationMs} ms` : "answered"}` : "Gateway has not answered yet"}</p>
+      {level === "technical" && facts.health ? <p className="sp-note">Checked {ageWords(facts.health.checkedAt, Date.now())}</p> : null}
       <hr className="msep" />
       <Item icon="retry" label="Restart the engine" testid="gw-restart" onClick={onRestart} off={facts.health ? undefined : "Connect to the engine first."} />
       <Item icon="gear" label="Gateway settings…" testid="gw-settings" onClick={onSettings} />
@@ -92,59 +84,49 @@ export function GatewayPopover({ facts, level, onRestart, onSettings, ...base }:
   );
 }
 
-function LimitBars({ row }: { row: Limits["rows"][number] }) {
-  return (
-    <>
-      {row.windows.map((w, i) => (
-        <div className="lim-w" key={i}>
-          <span>{w.name}</span>
-          <span className="lim-bar">
-            <i style={{ width: `${w.left}%`, ...(w.low ? { background: "var(--warn)" } : {}) }} />
-          </span>
-          <span>
-            {w.left}% left{w.reset ? ` · ${w.reset}` : ""}
-          </span>
-        </div>
-      ))}
-    </>
-  );
-}
-
-/** §4.9.4 What each connection has left: one row per connection and account, then This month and Open Usage. */
+/** Every account keeps its own 5-hour and week windows; no totals are added across accounts. */
 export function UsagePopover({ limits, request, onOpenUsage, ...base }: Base & { limits: Limits | null; request: Request; onOpenUsage: () => void }) {
   const spend = useRead(request, "usage.cost", monthParams(), readMonthSpend);
-  const rows = limits?.rows ?? [];
+  const [checked, setChecked] = useState<Limits | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [checkError, setCheckError] = useState<string | null>(null);
+  useEffect(() => setChecked(null), [limits]);
+  const data = checked ?? limits;
+  const rows = data?.rows ?? [];
+  const groups = Array.from(new Set(rows.map((row) => row.name)));
+  const check = useCallback((refreshAuth = true) => {
+    setChecking(true);
+    setCheckError(null);
+    (refreshAuth ? request("models.authStatus", { refresh: true }) : Promise.resolve())
+      .then(() => request("usage.status", { refresh: true }))
+      .then((result) => { setChecked(readLimits(result)); window.dispatchEvent(new Event("branch:usage-checked")); },
+        (error: unknown) => setCheckError(error instanceof Error ? error.message : String(error)))
+      .finally(() => setChecking(false));
+  }, [request]);
+  useEffect(() => { check(false); }, [check]);
   return (
-    <Popover at={{ x: 0, y: 0 }} label="What each connection has left" testid="pop-usage" className="sp sp-wide" {...base}>
+    <Popover at={{ x: 0, y: 0 }} label="Every account" testid="pop-usage" className="sp sp-wide" {...base}>
       <div className="lims">
-        <div className="ph">What each connection has left</div>
-        {rows.map((row) => (
-          <div className="lim" key={row.id}>
-            <span className="lim-logo" aria-hidden="true">{row.name.slice(0, 1).toUpperCase()}</span>
-            <div>
-              <div className="lim-h">
-                <b>{row.name}</b>
-                {row.account ? <span className="muted">{row.account}</span> : null}
-                <span className={row.pill === "Measured" ? "pill ok" : "pill idle"}>{row.pill}</span>
-              </div>
-              <LimitBars row={row} />
-              <small>{row.line}</small>
-            </div>
-          </div>
-        ))}
+        <div className="pt">Every account</div>
+        {groups.map((group) => <div key={group}>
+          <div className="ph sp-provider">{group}</div>
+          {rows.filter((row) => row.name === group).map((row) => {
+            const fiveHour = row.windows.find((window) => /5-hour/i.test(window.name)) ?? row.windows[0];
+            const week = row.windows.find((window) => /week/i.test(window.name));
+            return <div className="sp-account" key={row.id}>
+              <div className="sp-account-head"><span className="sp-email">{row.email || row.account || row.name}</span><span>{row.plan}</span>{row.inUse ? <span className="pill ok">used next</span> : null}<strong>{fiveHour ? `${fiveHour.left}% left` : "Not shared"}</strong></div>
+              {fiveHour ? <><span className="sp-account-track"><i style={{ width: `${fiveHour.left}%` }} /></span><small>5-hour {fiveHour.reset || "reset time unavailable"}{week ? ` · week ${week.left}% left` : ""}</small></> : <small>{row.line}</small>}
+            </div>;
+          })}
+        </div>)}
         {!limits ? <p className="sp-note">Asking each connection…</p> : null}
-        {limits && !rows.length ? <p className="sp-note">{limits.refreshing ? "Asking each connection…" : "No connection reports a limit yet."}</p> : null}
-        {rows.length ? <p className="sp-note">{limitsSummary(rows)}</p> : null}
+        {data && !rows.length ? <p className="sp-note">{data.refreshing ? "Asking each connection…" : "No account reports a limit yet."}</p> : null}
+        {data ? <p className="sp-note">Checked {ageWords(data.updatedAt, Date.now())}</p> : null}
+        {checkError ? <p className="sp-note">Couldn’t check accounts right now. Branch will try again.</p> : null}
         <div className="lim-foot">
-          {spend.data ? (
-            <span>
-              This month: <b>{spend.data}</b>
-            </span>
-          ) : null}
-          <span className="sb-spacer" />
-          <button className="btn sm" type="button" data-testid="open-usage" onClick={onOpenUsage}>
-            Open Usage
-          </button>
+          {spend.data ? <span>This month: <b>{spend.data}</b></span> : null}
+          <Item icon="retry" label={checking ? "Checking…" : "Check every account now"} testid="usage-check" onClick={() => check()} off={checking ? "Checking accounts now." : undefined} />
+          <Item icon="gear" label="Accounts and usage…" testid="open-usage" onClick={onOpenUsage} />
         </div>
       </div>
     </Popover>
@@ -186,20 +168,20 @@ function Rounds({ rounds, cachedShare }: { rounds: Round[]; cachedShare: number 
   return (
     <div className="rounds15">
       <div className="r-h15">
-        <b>Round by round</b>
-        <small>{cachedShare}% reused from the cache</small>
+        <b>Reused from cache</b>
+        <small>{cachedShare}%</small>
       </div>
-      <div className="r-bars15" role="img" aria-label="Words used in each round so far">
+      <div className="r-bars15" role="img" aria-label="Tokens used in each round so far">
         {rounds.map((r, i) => (
-          <i key={i} style={{ height: `${(r.words / top) * 100}%` }} title={`Round ${i + 1}: ${sizeWords(r.words)} words`}>
+          <i key={i} style={{ height: `${(r.words / top) * 100}%` }} title={`Round ${i + 1}: ${sizeWords(r.words)} tokens`}>
             <u style={{ height: `${r.words ? Math.min(100, (r.cached / r.words) * 100) : 0}%` }} />
           </i>
         ))}
       </div>
       <small className="r-k15">
         <span className="k-a15" />
-        new <span className="k-b15" />
-        from the cache
+        New <span className="k-b15" />
+        Cached
       </small>
     </div>
   );
@@ -215,25 +197,33 @@ export function RoomPopover({ request, row, level, onTidy, ...base }: RoomProps)
   const room = readRoom(row.totalTokens, row.contextTokens, usage.data);
   const used = room ? 100 - room.free : 0;
   return (
-    <Popover at={{ x: 0, y: 0 }} label="Room left in this conversation" testid="pop-room" className="sp" {...base}>
-      <div className="pt">Room left in this conversation</div>
-      <p className="pp">{room ? `${room.free}% of ${sizeWords(room.size)} words of context is free.` : "The engine hasn't measured this conversation yet."}</p>
+    <Popover at={{ x: 0, y: 0 }} label="Context" testid="pop-room" className="sp" {...base}>
+      <div className="pt sp-title"><span>Context</span><small>{room ? `${room.free}% left` : "Not measured"}</small></div>
+      <p className="pp">{room ? `${sizeWords(row.totalTokens)} of ${sizeWords(room.size)} tokens used in this conversation` : "The engine hasn't measured this conversation yet."}</p>
       {room && room.parts.length ? <Bars room={room} open={level !== "regular"} /> : null}
+      {series.data && series.data.rounds.length ? <Rounds {...series.data} /> : null}
       <hr className="msep" />
       <Item icon="spark" label={used >= 90 ? "Tidy up this conversation · recommended" : "Tidy up this conversation"} testid="room-tidy" onClick={() => onTidy(false)} />
       {level !== "regular" ? <Item icon="book" label="Keep only the last 400 lines…" testid="room-keep400" onClick={() => onTidy(true)} /> : null}
-      {series.data && series.data.rounds.length ? <Rounds {...series.data} /> : null}
     </Popover>
   );
 }
 
-type RunningProps = Base & { request: Request; working: { key: string; title: string; line: string }[]; onOpen: (key: string) => void; onAutomations: () => void };
+type RunningProps = Base & { request: Request; working: { key: string; title: string; line: string; runIds?: string[] }[]; onOpen: (key: string) => void; onAutomations: () => void; onBackground: () => void; onPauseAll: () => void };
 
-/** §4.9.6 Running in the background: Coming up, what runs now, and the two items. */
-export function RunningPopover({ request, working, onOpen, onAutomations, ...base }: RunningProps) {
+/** Running now is exactly the live run rows; scheduled jobs are separate. */
+export function RunningPopover({ request, working, onOpen, onAutomations, onBackground, onPauseAll, ...base }: RunningProps) {
   const jobs = useRead(request, "cron.list", { limit: 200 }, (r) => comingUp(Array.isArray(rec(r).jobs) ? (rec(r).jobs as unknown[]) : []));
   return (
-    <Popover at={{ x: 0, y: 0 }} label="Running in the background" testid="pop-running" className="sp" {...base}>
+    <Popover at={{ x: 0, y: 0 }} label="Running now" testid="pop-running" className="sp" {...base}>
+      <div className="pt sp-title"><span>Running now</span><small>{working.length}</small></div>
+      {working.length ? null : <p className="sp-note">Nothing is running.</p>}
+      {working.map((w) => (
+        <button type="button" className="mi" key={w.key} onClick={() => onOpen(w.key)}>
+          <span className="sp-spin"><Icon name="spin" small /></span>
+          <span className="mi-text"><span>{w.title}</span><small className="mi-s">{w.line}</small></span>
+        </button>
+      ))}
       {jobs.data && jobs.data.length ? (
         <>
           <div className="ph">Coming up</div>
@@ -244,41 +234,28 @@ export function RunningPopover({ request, working, onOpen, onAutomations, ...bas
               <span className="mi-hint">{j.when}</span>
             </div>
           ))}
-          <Item icon="clock" label="Open Automations…" onClick={onAutomations} />
-          <hr className="msep" />
         </>
       ) : null}
-      <div className="ph">Running in the background</div>
-      {working.length ? null : <p className="sp-note">Nothing is running.</p>}
-      {working.map((w) => (
-        <button type="button" className="mi" key={w.key} onClick={() => onOpen(w.key)}>
-          <span className="sp-spin">
-            <Icon name="spin" small />
-          </span>
-          <span className="mi-text">
-            <span>{w.title}</span>
-            <small className="mi-s">{w.line}</small>
-          </span>
-        </button>
-      ))}
       <hr className="msep" />
-      <Item icon="plus" label="Start something in the background" hint={<kbd>/bg</kbd>} off="Starting work in the background needs the engine's /bg command, which it doesn't have yet." />
-      <Item icon="pause" label="Pause all Trunks" off="Pausing every Trunk needs an engine method it doesn't have yet." />
+      <Item icon="plus" label="Start something in the background" hint={<kbd>/bg</kbd>} onClick={onBackground} />
+      <Item icon="clock" label="Open Automations…" onClick={onAutomations} />
+      <Item icon="pause" label="Pause all Trunks" onClick={onPauseAll} off={working.length ? undefined : "No Trunk is running."} />
     </Popover>
   );
 }
 
-type VersionProps = Base & { update: UpdateInfo | null; version: string; onWhatsNew: () => void; onInstall: () => void; onRemind: () => void };
+type VersionProps = Base & { update: UpdateInfo | null; version: string; desktopPending?: string | null; autoApply?: boolean; desktopInstall?: boolean; computerName?: string; onWhatsNew: () => void; onInstall: () => void; onRemind: () => void };
 
-/** §4.9.8 Version and update menu: what's ready, What's new, Install when nothing is running, Remind me tomorrow. */
-export function VersionPopover({ update, version, onWhatsNew, onInstall, onRemind, ...base }: VersionProps) {
+/** §4.9.8 Version and update menu: what's ready, What's new, Install when idle, Remind me tomorrow. */
+export function VersionPopover({ update, version, desktopPending, autoApply, desktopInstall, computerName = "", onWhatsNew, onInstall, onRemind, ...base }: VersionProps) {
   const latest = update?.latest && update.latest !== version ? update.latest : null;
   return (
     <Popover at={{ x: 0, y: 0 }} label="Version and updates" testid="pop-version" className="sp" {...base}>
+      {desktopPending && autoApply ? <><div className="pt">Update ready, applying when your Trunks finish</div><p className="pp">{branchVersionLabel(desktopPending)}</p></> : null}
       {latest ? (
         <>
-          <div className="pt">Branch {latest} is ready</div>
-          <p className="pp">{update?.waiting ?? "Installs when nothing is running and keeps a safety copy first."}</p>
+          <div className="pt sp-title"><span>{branchVersionLabel(latest)} is ready</span><small>You have {branchVersionDetail(version)}</small></div>
+          <p className="pp">{desktopInstall ? update?.waiting ?? "Installs by itself when nothing is running." : installOnComputer(computerName)}</p>
           {update?.notes.length ? (
             <ul className="steps-list sp-notes">
               {update.notes.map((n, i) => (
@@ -286,14 +263,15 @@ export function VersionPopover({ update, version, onWhatsNew, onInstall, onRemin
               ))}
             </ul>
           ) : null}
+          <hr className="msep" />
+          {desktopInstall ? <Item icon="down" label="Install when idle" testid="ver-install" onClick={onInstall} off={update?.installing ? update.waiting ?? "Installing now." : undefined} /> : null}
           <Item icon="book" label="What’s new" testid="ver-whatsnew" onClick={onWhatsNew} />
-          <Item icon="check" label="Install when nothing is running" testid="ver-install" onClick={onInstall} off={update?.installing ? "Installing now." : undefined} />
           <Item icon="clock" label="Remind me tomorrow" testid="ver-remind" onClick={onRemind} />
         </>
       ) : (
         <>
-          <div className="pt">Branch is up to date.</div>
-          <p className="pp">Branch {version}</p>
+          <div className="pt">{update?.statusMessage ?? "Branch is up to date."}</div>
+          <p className="pp">Branch {branchVersionDetail(version)}</p>
           <Item icon="book" label="What’s new" testid="ver-whatsnew" onClick={onWhatsNew} />
         </>
       )}

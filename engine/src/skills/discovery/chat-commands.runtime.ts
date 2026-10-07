@@ -6,5 +6,7 @@ export {
   listSkillCommandsForAgents,
   listSkillCommandsForWorkspace,
   prepareSkillCommandsForWorkspace,
+  prepareSkillBundleInvocationForWorkspace,
 } from "./chat-commands.js";
 export { resolveEffectiveAgentSkillFilter } from "./agent-filter.js";
+export { recordSkillBundleInvocationUsage } from "../runtime/skill-bundle-invocation.js";

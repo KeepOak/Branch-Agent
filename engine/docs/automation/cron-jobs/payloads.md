@@ -13,6 +13,35 @@ What a job runs and where it runs: the four payload kinds, their flags, and the 
 
 ## Payloads
 
+### Quiet change monitors
+
+A condition-trigger script can return `observe` instead of deciding `fire` itself:
+
+```javascript
+const result = await tools.your_probe({});
+return { observe: result, message: "The monitored result changed." };
+```
+
+Replace `your_probe` with an available tool permitted by the job's tool policy.
+Choose stable, relevant fields for the observation: a changing timestamp will
+correctly count as a change on every poll.
+
+The first observation establishes a silent baseline. Later identical observations
+skip the agent turn; changed observations allow the normal payload to run. Return
+`notifyOnFirst: true` to run the payload on the first observation too. JSON object
+key order is ignored; array order and string content are significant.
+
+The existing trigger-state ledger persists the fingerprint across restarts. Probe
+failures do not replace that fingerprint. Only the fingerprint is stored, not the
+observation. Optional script `state` is retained as `trigger.state.data` alongside
+the fingerprint; omit it to retain previous data, or return `null` to clear it.
+Do not return both `observe` and `fire`. Existing `{ fire, state, message }` trigger
+scripts are unchanged. This is a condition trigger, not a script-payload result.
+
+Condition scripts use the existing headless runtime and tool policy; they do not
+need a model call to compare observations. Result delivery and scheduled run
+deduplication remain owned by the normal automation pipeline.
+
 Every job carries exactly one payload kind, chosen by flag:
 
 | Payload       | Flag                                           | Runs                                                       |
@@ -259,9 +288,10 @@ judgment and move the repeatable parts into code:
 - When a run fails, make it fail instead of posting the error yourself: throw from
   trigger or script payload JavaScript, or exit non-zero from a command payload. A
   script that returns an error field still succeeds. The scheduler owns failure
-  accounting:
-  [failure notifications](/automation/cron-jobs/delivery#failure-notifications)
-  already wait for consecutive failed runs, so a one-off outage stays quiet.
+  accounting: only the
+  [failure alert](/automation/cron-jobs/delivery#failure-notifications) waits for
+  consecutive failed runs; the run's own output still follows the job's delivery
+  setting.
 
 ## Execution styles
 

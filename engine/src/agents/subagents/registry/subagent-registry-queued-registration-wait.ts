@@ -1,11 +1,16 @@
 import { getGatewayRestartDrainSignal } from "../../../process/gateway-work-admission.js";
 import { getAsyncWorkSignal } from "../../../shared/async-work-scope.js";
-import { registerBranchStateDatabaseLifecycleListener } from "../../../state/branch-state-db-cache.js";
-import { onSubagentRegistryPersisted } from "./subagent-registry-state.js";
+import {
+  registerBranchStateDatabaseAsyncResource,
+  registerBranchStateDatabaseLifecycleListener,
+} from "../../../state/branch-state-db-cache.js";
+import type { BranchStateWorkerContext } from "../../../state/branch-state-worker-context.types.js";
+import { subscribeSubagentRunChanges } from "./subagent-registry-publication.js";
 
 /** Borrow cancellation's committed-state wake and the enclosing lifecycle's abort signals. */
 export async function waitForQueuedSubagentClaim(params: {
   assertCurrent: () => void;
+  admission: BranchStateWorkerContext["admission"];
   pending: () => boolean;
 }): Promise<void> {
   const stops: Array<() => void> = [];
@@ -37,7 +42,17 @@ export async function waitForQueuedSubagentClaim(params: {
           );
         }
       };
-      stops.push(onSubagentRegistryPersisted(check));
+      stops.push(
+        registerBranchStateDatabaseAsyncResource({
+          close: async (identity) => {
+            if (!settled && (!identity || identity.key === params.admission.identity.key)) {
+              settled = true;
+              reject(new Error("Queued registration registry was retired during claim wait"));
+            }
+          },
+        }),
+      );
+      stops.push(subscribeSubagentRunChanges("persistence", check));
       // Database subscriptions may synchronously report existing handles. Cleanup
       // runs after subscription setup so that immediate settlement cannot leak one.
       stops.push(registerBranchStateDatabaseLifecycleListener(check));

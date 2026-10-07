@@ -1,6 +1,6 @@
 {
   "name": "@branch/policy",
-  "version": "2026.9.7",
+  "version": "2026.9.8",
   "private": true,
   "description": "Branch Agent policy doctor checks for workspace conformance",
   "type": "module",
@@ -12,7 +12,7 @@
     "branch": "workspace:*"
   },
   "peerDependencies": {
-    "branch": ">=2026.9.7"
+    "branch": ">=2026.9.8"
   },
   "peerDependenciesMeta": {
     "branch": {

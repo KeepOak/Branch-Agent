@@ -6,7 +6,7 @@ function modelConfig(primary: string, models?: Record<string, object>): BranchCo
   return {
     agents: {
       defaults: { model: { primary }, ...(models ? { models } : {}) },
-      list: [{ id: "main", default: true }],
+      entries: { main: {} },
     },
   } as BranchConfig;
 }

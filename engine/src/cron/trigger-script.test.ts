@@ -69,6 +69,42 @@ function createCronTriggerEvaluator(deps: EvaluatorDeps) {
 }
 
 describe("cron trigger script evaluator", () => {
+  it("suppresses unchanged observations through the real headless runtime", async () => {
+    const { evaluate } = createEvaluator(runCodeModeScriptHeadless);
+    const common = {
+      jobId: "observed-change",
+      script: 'return { observe: { release: "v1" }, message: "Release changed" }',
+      state: undefined,
+    };
+    const baseline = await evaluate(common);
+    expect(baseline).toMatchObject({ kind: "evaluated", fire: false });
+    if (baseline.kind !== "evaluated") {
+      throw new Error("monitor baseline failed");
+    }
+    const unchanged = await evaluate({
+      ...common,
+      state: JSON.parse(JSON.stringify(baseline.state)),
+    });
+    expect(unchanged).toMatchObject({ kind: "evaluated", fire: false });
+    const changed = await evaluate({
+      ...common,
+      state: baseline.state,
+      script: 'return { observe: { release: "v2" }, message: "Release changed" }',
+    });
+    expect(changed).toMatchObject({ kind: "evaluated", fire: true, message: "Release changed" });
+    expect(
+      await evaluate({
+        ...common,
+        state: baseline.state,
+        script: 'throw new Error("probe failed")',
+      }),
+    ).toMatchObject({ kind: "error" });
+    expect(await evaluate({ ...common, state: baseline.state })).toMatchObject({
+      kind: "evaluated",
+      fire: false,
+    });
+  });
+
   it("cancels the real headless worker and bridge when its evaluation catalog closes", async () => {
     const entered = createDeferred();
     const release = createDeferred();
@@ -208,13 +244,27 @@ describe("cron trigger script evaluator", () => {
           },
         },
       };
-      const evaluate = createCronScriptRuntime({ config }).evaluateTrigger;
+      const runtime = createCronScriptRuntime({ config });
+      if (host === "auto") {
+        // A cold test transform of the exec graph alone can pass the 30 s trigger wall clock on a
+        // loaded runner. Load it once under the payload budget so the assertion times only the trigger.
+        await runtime.executePayload({
+          jobId: "job-canonical-pinned-exec-warm",
+          script: 'await exec({ command: "echo branch-warm" }); return {};',
+          state: null,
+          toolsAllow: ["exec", "process"],
+          scheduledToolPolicy: { version: 1, mode: "trusted" },
+          execTarget: { version: 1, host: "gateway" },
+          timeoutSeconds: 300,
+        });
+      }
+      const evaluate = runtime.evaluateTrigger;
 
       await expect(
         evaluate({
           jobId: "job-canonical-pinned-exec",
           script:
-            'await exec({ command: "printf branch-canonical-ok", host: "node", node: "remote" }); return { fire: false };',
+            'await exec({ command: "echo branch-canonical-ok", host: "node", node: "remote" }); return { fire: false };',
           state: null,
           toolsAllow: ["exec", "process"],
           scheduledToolPolicy: { version: 1, mode: "trusted" },

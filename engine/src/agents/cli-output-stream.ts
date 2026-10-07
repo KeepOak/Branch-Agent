@@ -169,14 +169,10 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
     }
   };
 
-  const beginTaggedReasoningMessage = () => {
+  const beginClaudeMessage = (messageId?: string) => {
     finishTaggedReasoningMessage();
     taggedReasoningRouter = createLeadingTaggedReasoningRouter();
     currentTaggedReasoningText = "";
-  };
-
-  const beginClaudeMessage = (messageId?: string) => {
-    beginTaggedReasoningMessage();
     pendingMessageSeparator = true;
     previousMessageHadToolUse = currentMessageHadToolUse;
     currentMessageHadToolUse = false;
@@ -222,8 +218,11 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
   };
 
   const handleCustomJsonlLine = (line: string, rawLine: string): boolean => {
-    if (parseErrorText) {
-      return true;
+    if (claudeStreamJson) {
+      const records = decodeCliRecords(line);
+      if (records.length > 0 && records.every(isClaudeSubagentRecord)) {
+        return false;
+      }
     }
     const lifecycle = cliOutputLifecycle.parseCliBackendLifecycleLine({
       line,
@@ -285,6 +284,10 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
     const attributedParentToolUseId = readClaudeAttributedSubagentProgressId(parsed);
     if (attributedParentToolUseId) {
       params.onAttributedSubagentProgress?.(attributedParentToolUseId);
+    }
+    // Child activity is attributed above; its result and usage are not parent output.
+    if (claudeStreamJson && isClaudeSubagentRecord(parsed)) {
+      return;
     }
     if (
       claudeStreamJson &&
@@ -431,9 +434,7 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
       output = {
         ...result,
         text,
-        ...((textParts.length > 1 ||
-          output?.textParts ||
-          parsed.branch_interim_result === true) &&
+        ...((textParts.length > 1 || output?.textParts || parsed.branch_interim_result === true) &&
         !(stoppedTurn && !nextText)
           ? { textParts }
           : {}),

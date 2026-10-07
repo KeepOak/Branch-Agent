@@ -1,6 +1,7 @@
 // Tests runtime queue settings with mocked provider fallback state.
 import { describe, expect, it, vi } from "vitest";
 import type { BranchConfig } from "../../../config/types.branch.js";
+import { resolveQueueSettings } from "./settings-runtime.js";
 
 const getLoadedChannelPluginMock = vi.hoisted(() => vi.fn());
 
@@ -17,7 +18,6 @@ describe("resolveQueueSettings runtime defaults", () => {
         },
       },
     });
-    const { resolveQueueSettings } = await import("./settings-runtime.js");
 
     expect(resolveQueueSettings({ cfg: {} as BranchConfig, channel: "demo" })).toEqual({
       mode: "steer",
@@ -30,7 +30,6 @@ describe("resolveQueueSettings runtime defaults", () => {
 
   it("falls back without loading bundled channel plugins", async () => {
     getLoadedChannelPluginMock.mockReturnValueOnce(undefined);
-    const { resolveQueueSettings } = await import("./settings-runtime.js");
 
     expect(resolveQueueSettings({ cfg: {} as BranchConfig, channel: "telegram" })).toEqual({
       mode: "steer",

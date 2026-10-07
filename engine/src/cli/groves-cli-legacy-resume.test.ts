@@ -108,10 +108,12 @@ describe("groves add legacy v1 resume", () => {
         .prepare("UPDATE grove_installs SET schema_version = ? WHERE agent_id = ?")
         .run("branch.groveInstallRecord.v1", "demo-agent");
       await mkdir(workspace);
-      let config = { agents: { list: [legacyPlan.agent.config] } };
+      const { id, ...entry } = legacyPlan.agent.config;
+      let config = { agents: { entries: { [id]: entry } } };
       mocks.loadConfig.mockImplementation(() => config);
       mocks.applyGroveAddPlan.mockImplementationOnce(async (boundedPlan) => {
-        config = { agents: { list: [boundedPlan.agent.config] } };
+        const { id: boundedId, ...boundedEntry } = boundedPlan.agent.config;
+        config = { agents: { entries: { [boundedId]: boundedEntry } } };
         return {
           schemaVersion: "branch.groveAddResult.v1",
           stability: "experimental",

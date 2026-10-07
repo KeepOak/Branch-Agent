@@ -2,7 +2,9 @@
 // trashR318): Work with documents, Write a new document, List / Map, the documents in every Trunk's project folder
 // (agents.workspace.*), Managing what it reads [A], Test what it finds [A] (memory.search), Places it reads from [A],
 // Recently deleted.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState, type FormEvent } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { shows, type Level } from "../../places-nav/level";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
@@ -10,15 +12,15 @@ import { entriesOf, errorText, num, rec, trunkName, type FileEntry, type Trunk }
 import { hitsOf } from "./memory";
 import { EmptyIcon, Grey, IcoTile, LibIcon, mapLimited, Row, Section, TypeBadge, when, type LibIconName } from "./parts";
 import { FileDialog } from "./reader";
+import { useCreateDocument } from "./create-document";
 
 export const DOC_REASONS = {
   sheet: "Needs the engine’s spreadsheet question method.",
   compare: "Needs the engine’s compare-and-exact-edit method for documents.",
-  write: "Needs an engine method that writes a new document into a Trunk’s project folder.",
   map: "Needs an engine method that returns the documents’ topics and the links between them.",
   trash: "Needs the engine’s recently-deleted list for documents, with restore and delete for good.",
   kb: "Needs the engine’s knowledge-base management methods.",
-  folder: "Needs the engine’s guided folder tour.",
+  folder: "Needs the engine’s guided folder walkthrough.",
   sources: "Needs the engine’s synced outside sources.",
   pages: "Needs the engine’s kept-answers pages.",
   connect: "Needs the engine’s connector for this source.",
@@ -50,11 +52,11 @@ async function listFolder(engine: WindowEngine, trunks: Trunk[], folder: Folder 
   return { docs, errors, more };
 }
 
-function useDocuments(engine: WindowEngine, trunks: Trunk[], folder: Folder | null) {
+function useDocuments(engine: WindowEngine, trunks: Trunk[], folder: Folder | null, revision: number) {
   const where = `${folder?.agentId ?? ""}|${folder?.path ?? ""}`;
   const ids = trunks.map(t => t.id).join(",");
-  const [page, setPage] = useState<{ where: string; offsets: Record<string, number> }>({ where, offsets: {} });
-  const offsetsKey = JSON.stringify(page.where === where ? page.offsets : {});
+  const [page, setPage] = useState<{ where: string; revision: number; offsets: Record<string, number> }>({ where, revision, offsets: {} });
+  const offsetsKey = JSON.stringify(page.where === where && page.revision === revision ? page.offsets : {});
   const [state, setState] = useState<{ where: string; list: Listing | null; error: string | null }>({ where, list: null, error: null });
   useEffect(() => {
     let current = true;
@@ -64,31 +66,26 @@ function useDocuments(engine: WindowEngine, trunks: Trunk[], folder: Folder | nu
       next => { if (current) setState(s => ({ where, error: null, list: appending && s.where === where && s.list ? { ...next, docs: [...s.list.docs, ...next.docs] } : next })); },
       e => { if (current) setState({ where, list: null, error: errorText(e) }); });
     return () => { current = false; };
-  }, [engine, ids, where, offsetsKey]); // trunks and folder are read through ids and where
+  }, [engine, ids, where, offsetsKey, revision]); // trunks and folder are read through ids and where
   const mine = state.where === where ? state : { list: null, error: null };
-  const loadMore = () => setPage({ where, offsets: Object.fromEntries((mine.list?.more ?? []).map(m => [m.agentId, m.offset])) });
+  const loadMore = () => setPage({ where, revision, offsets: Object.fromEntries((mine.list?.more ?? []).map(m => [m.agentId, m.offset])) });
   return { list: mine.list, error: mine.error, loadMore };
 }
 
-export function DocumentsTab({ engine, level, trunks }: { engine: WindowEngine; level: Level; trunks: Trunk[] }) {
+export function DocumentsTab({ engine, level, trunks, defaultId, mainKey }: { engine: WindowEngine; level: Level; trunks: Trunk[]; defaultId?: string; mainKey?: string }) {
   const [folder, setFolder] = useState<Folder | null>(null);
   const [open, setOpen] = useState<Doc | null>(null);
-  const docs = useDocuments(engine, trunks, folder);
+  const [revision, setRevision] = useState(0);
+  const docs = useDocuments(engine, trunks, folder, revision);
+  const creation = useCreateDocument({ engine, trunks, defaultId, mainKey, location: `${folder?.agentId ?? ""}|${folder?.path ?? ""}`, onCreated: (document, trunk) => {
+    setFolder({ agentId: document.agentId, trunk, path: document.file.path.slice(0, document.file.path.lastIndexOf("/")) });
+    setRevision(value => value + 1);
+  } });
   const files = docs.list?.docs.filter(d => d.kind !== "directory") ?? [];
   return <div className="lib-docs">
-    <Section title="Work with documents">
-      <div className="lib-tools">
-        <ToolTile icon="sheet" title="Ask a spreadsheet" line="Questions in plain words or SQL, answered with a table and a chart. Read only." reason={DOC_REASONS.sheet} />
-        <ToolTile icon="diff" title="Compare or edit exactly" line="What changed between two versions, and edits that leave every other byte as it was." reason={DOC_REASONS.compare} />
-      </div>
-    </Section>
-    <div className="lib-docacts">
-      <Grey full label={<><LibIcon name="file" />Write a new document</>} reason={DOC_REASONS.write} />
-      <div className="lib-seg" role="radiogroup" aria-label="Documents view">
-        <button type="button" role="radio" aria-checked="true"><LibIcon name="list" size={13} />List</button>
-        <button type="button" role="radio" aria-checked="false" disabled title={DOC_REASONS.map} data-reason={DOC_REASONS.map}><LibIcon name="map" size={13} />Map</button>
-      </div>
-    </div>
+    <DocumentTools trunks={trunks} creation={creation} />
+    {creation.error && <p className="lib-bad" role="alert">{creation.error}</p>}
+    {creation.note && <p className="lib-hint" role="status">{creation.note}</p>}
     {folder && <button type="button" className="link lib-up" onClick={() => setFolder(null)}>‹ Documents</button>}
     {folder && <p className="lib-hint">{folder.trunk} · {folder.path}</p>}
     {docs.error && <p className="lib-bad" role="alert">{docs.error}</p>}
@@ -105,19 +102,39 @@ export function DocumentsTab({ engine, level, trunks }: { engine: WindowEngine; 
     {shows(level, "advanced") && <Managing />}
     {shows(level, "advanced") && <TestWhatItFinds engine={engine} trunks={trunks} files={files} />}
     {shows(level, "advanced") && <PlacesItReads />}
-    <Section title="Recently deleted" testid="recently-deleted"><p className="lib-hint">{DOC_REASONS.trash}</p></Section>
+    <Section title="Recently deleted" testid="recently-deleted">{shownWhy(DOC_REASONS.trash) && <p className="lib-hint">{shownWhy(DOC_REASONS.trash)}</p>}<div className="lib-acts"><Grey label="Restore" reason={DOC_REASONS.trash} /><Grey ghost label="Delete for good" reason={DOC_REASONS.trash} /></div></Section>
     {open && <FileDialog engine={engine} agentId={open.agentId} path={open.path} onClose={() => setOpen(null)} />}
   </div>;
 }
 
+function DocumentTools({ trunks, creation }: { trunks: Trunk[]; creation: ReturnType<typeof useCreateDocument> }) {
+  return <>
+    <Section title="Work with documents"><div className="lib-tools">
+      <ToolTile icon="sheet" title="Ask a spreadsheet" line="Questions in plain words or SQL, answered with a table and a chart. Read only." reason={DOC_REASONS.sheet} />
+      <ToolTile icon="diff" title="Compare or edit exactly" line="What changed between two versions, and edits that leave every other byte as it was." reason={DOC_REASONS.compare} />
+    </div></Section>
+    <div className="lib-docacts">
+      <button type="button" className="btn" disabled={creation.busy || !!creation.reason} title={shownWhy(creation.reason)} onClick={() => void creation.create()}><LibIcon name="file" />Write a new document</button>
+      <select className="inp" aria-label="Trunk for new document" value={creation.selected} onChange={event => creation.choose(event.target.value)}>
+        {!trunks.some(t => t.id === creation.selected) && <option value="">Choose a Trunk…</option>}
+        {trunks.map(t => <option key={t.id} value={t.id}>{trunkName(t)}</option>)}
+      </select>
+      <div className="lib-seg" role="radiogroup" aria-label="Documents view">
+        <button type="button" role="radio" aria-checked="true"><LibIcon name="list" size={13} />List</button>
+        <button type="button" role="radio" aria-checked="false" disabled title={shownWhy(DOC_REASONS.map)} data-reason={DOC_REASONS.map}><LibIcon name="map" size={13} />Map</button>
+      </div>
+    </div>
+  </>;
+}
+
 function ToolTile({ icon, title, line, reason }: { icon: LibIconName; title: string; line: string; reason: string }) {
-  return <button type="button" className="lib-tool" disabled title={reason} data-reason={reason}><IcoTile icon={icon} /><span className="lib-grow"><b>{title}</b><small>{line}</small></span></button>;
+  return <button type="button" className="lib-tool" disabled title={shownWhy(reason)} data-reason={reason}><IcoTile icon={icon} /><span className="lib-grow"><b>{title}</b><small>{line}</small></span></button>;
 }
 
 function Managing() {
   const rows: [LibIconName, string, string, string, string][] = [
     ["folder", "Knowledge bases", "Folders it reads, kept as quotable passages. Rename, merge, split and choose how long they stay.", "Manage", DOC_REASONS.kb],
-    ["box", "Understand a folder", "A map of a folder, then a short guided tour of what’s in it.", "Try a folder", DOC_REASONS.folder],
+    ["box", "Understand a folder", "A map of a folder, then a short guided walkthrough.", "Try a folder", DOC_REASONS.folder],
     ["repeat", "Bring things in from other services", "Keeps a copy of chosen items from Drive, Notion or a notes vault, in sync.", "See sources", DOC_REASONS.sources],
     ["book", "Kept answers and long articles", "An answer you like becomes a page you can reopen; a long article is written section by section.", "See pages", DOC_REASONS.pages],
   ];
@@ -166,7 +183,7 @@ function PlacesItReads() {
   ];
   return <Section title="Places it reads from" testid="places-it-reads"><div className="lib-plain">
     <Row icon="globe" title="A web page or video" line="Reads the page, or a video’s captions, safely." />
-    <div className="lib-form lib-form-row"><input className="inp" disabled placeholder="https://… or a video link" aria-label="A web page or video link" title={DOC_REASONS.connect} /><Grey label="Add" reason={DOC_REASONS.connect} /></div>
+    <div className="lib-form lib-form-row"><input className="inp" disabled placeholder="https://… or a video link" aria-label="A web page or video link" title={shownWhy(DOC_REASONS.connect)} /><Grey label="Add" reason={DOC_REASONS.connect} /></div>
     {rows.map(([icon, title, line]) => <Row key={title} icon={icon} title={title} line={line}><Grey ghost label="Connect" reason={DOC_REASONS.connect} /></Row>)}
   </div></Section>;
 }

@@ -1,0 +1,164 @@
+// @vitest-environment jsdom
+import { act, useMemo } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type { WindowEngine } from "./engine";
+import { UpdatesPage } from "../places/settings/set2/updates";
+import { componentDesktop, stageWindowUpdate } from "./desktop-component-updates";
+import { StatusPopover, type StatusContext } from "../shell/StatusLayer";
+import { useUpdate } from "../shell/use-status";
+import type { SaplingSession } from "./session";
+import { VersionPopover } from "../shell/StatusPopovers";
+
+let host: HTMLDivElement; let root: Root;
+const state = { phase: "available", currentVersion: "1.0", latestVersion: "1.1", pendingVersion: null, checkedAt: 123, error: null };
+const request = vi.fn(async () => ({}));
+const engine: WindowEngine = { gatewayUrl: "ws://127.0.0.1:1", request: request as WindowEngine["request"], onEvent: () => () => {}, scopes: [], sessionKey: null };
+const desktopWindow = window as unknown as { branchDesktop?: unknown };
+beforeEach(() => {
+  (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  request.mockClear(); localStorage.setItem("branch-draft", "unfinished input");
+});
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); delete desktopWindow.branchDesktop; vi.restoreAllMocks(); });
+async function show() { await act(async () => root.render(<UpdatesPage page="updates" title="Updates & about" level="regular" engine={engine} />)); }
+async function click(text: string) {
+  const button = [...host.querySelectorAll("button")].find(row => row.textContent === text);
+  if (!button) throw new Error(`missing button ${text}`);
+  await act(async () => button.click());
+}
+
+it("actual native Check now and Install buttons use component bridge and never generic gateway updates", async () => {
+  const status = vi.fn(async () => state); const check = vi.fn(async () => state);
+  const stage = vi.fn(async () => ({ ...state, phase: "staged", pendingVersion: "1.1" }));
+  desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1", componentUpdates: { status, check, stage } };
+  await show(); await click("Check now"); await click("Install when idle");
+  expect(status).toHaveBeenCalledTimes(1); expect(check).toHaveBeenCalledTimes(1); expect(stage).toHaveBeenCalledTimes(1);
+  expect(request).not.toHaveBeenCalled();
+  expect(host.textContent).toContain("Update ready, applying when your Trunks finish");
+  expect(localStorage.getItem("branch-draft")).toBe("unfinished input");
+});
+
+it("Updates toggle is on by default and staged updates wait for Trunks in Settings and version popover", async () => {
+  const staged = { ...state, phase: "staged", pendingVersion: "1.1" };
+  const set = vi.fn(async (_name: string, on: boolean) => ({ keepWorking: true, keepAwake: false, trayUsage: false,
+    autoApplyUpdates: on, startWithWindows: false, branchOnPath: false }));
+  desktopWindow.branchDesktop = { gatewayUrl: engine.gatewayUrl,
+    componentUpdates: { status: async () => staged, check: async () => staged, stage: async () => staged },
+    controls: { get: async () => ({ keepWorking: true, keepAwake: false, trayUsage: false,
+      autoApplyUpdates: true, startWithWindows: false, branchOnPath: false }), set } };
+  await show();
+  const toggle = host.querySelector<HTMLInputElement>('input[aria-label="Apply updates by themselves when no Trunk is working"]');
+  expect(toggle?.checked).toBe(true);
+  expect(host.textContent).toContain("Update ready, applying when your Trunks finish");
+  if (!toggle) throw new Error("missing auto-apply toggle");
+  await act(async () => toggle.click());
+  expect(set).toHaveBeenCalledWith("autoApplyUpdates", false);
+  expect(host.textContent).toContain("A Branch update is ready; restart to finish");
+  expect(host.textContent).not.toContain("1.1 is ready");
+  await act(async () => root.unmount()); root = createRoot(host);
+  const session = { engine, gatewayUrl: engine.gatewayUrl, request } as unknown as SaplingSession;
+  const ctx = { session, update: null, version: "1.0", onWhatsNew: vi.fn(), onReminded: vi.fn() } as unknown as StatusContext;
+  await act(async () => root.render(<StatusPopover item="version" above={{ left: 10, right: 200, top: 700, align: "right" }} onClose={() => {}} ctx={ctx} />));
+  expect(host.textContent).toContain("Update ready, applying when your Trunks finish");
+});
+
+it("legacy native bootstrap says it checks every ten minutes, greys Check now, and never falls back to update.run or update.status", async () => {
+  desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1" };
+  const updateCalls = () => request.mock.calls.filter((call: unknown[]) => String(call[0]).startsWith("update."));
+  await show(); expect(host.textContent).toContain("Branch checks for updates every 10 minutes and lets you know when one is ready to apply.");
+  expect(host.textContent).not.toContain("aren’t available");
+  const check = [...host.querySelectorAll("button")].find(row => row.textContent === "Check now");
+  expect(check?.disabled).toBe(true); expect(host.textContent).toContain("Update the Branch app to check by hand.");
+  expect(updateCalls()).toEqual([]);
+  await expect(stageWindowUpdate(engine)).rejects.toThrow("Update the Branch app to check by hand.");
+  expect(updateCalls()).toEqual([]);
+});
+
+it("browser install keeps existing engine behavior", async () => {
+  await stageWindowUpdate(engine); expect(request).toHaveBeenCalledWith("update.run", {});
+});
+
+it("native stage error is truthful and preserves drafts without gateway fallback", async () => {
+  desktopWindow.branchDesktop = { gatewayUrl: engine.gatewayUrl, componentUpdates: { status: async () => state, check: async () => state,
+    stage: async () => ({ ...state, phase: "error", error: "Release download failed (404)" }) } };
+  await expect(stageWindowUpdate(engine)).rejects.toThrow("Release download failed (404)");
+  expect(request).not.toHaveBeenCalled(); expect(localStorage.getItem("branch-draft")).toBe("unfinished input");
+});
+
+it("Connect elsewhere uses the remote engine updater and cannot stage local desktop components", async () => {
+  const stage = vi.fn(async () => state);
+  desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1", componentUpdates: { status: async () => state, check: async () => state, stage } };
+  const remote = { ...engine, gatewayUrl: "wss://remote.example.test" } as WindowEngine;
+  await stageWindowUpdate(remote);
+  expect(stage).not.toHaveBeenCalled(); expect(request).toHaveBeenCalledWith("update.run", {});
+});
+
+it("unknown native connection cannot use local IPC or fall back to the generic updater", async () => {
+  const stage = vi.fn(async () => state);
+  desktopWindow.branchDesktop = { gatewayUrl: engine.gatewayUrl, componentUpdates: { status: async () => state, check: async () => state, stage } };
+  await expect(stageWindowUpdate({ request: engine.request })).rejects.toThrow("connected to a different computer’s engine");
+  expect(stage).not.toHaveBeenCalled(); expect(request).not.toHaveBeenCalled();
+});
+
+it("actual Version popover install uses the same native stage bridge", async () => {
+  const stage = vi.fn(async () => ({ ...state, phase: "staged", pendingVersion: "1.1" }));
+  desktopWindow.branchDesktop = { gatewayUrl: engine.gatewayUrl, componentUpdates: { status: async () => state, check: async () => state, stage } };
+  const session = { engine, gatewayUrl: engine.gatewayUrl, request } as unknown as SaplingSession;
+  const ctx = { session, update: { current: "1.0", latest: "1.1", notes: [], installing: false, waiting: null }, version: "1.0", onWhatsNew: vi.fn(), onReminded: vi.fn() } as unknown as StatusContext;
+  await act(async () => root.render(<StatusPopover item="version" above={{ left: 10, right: 200, top: 700, align: "left" }} onClose={() => {}} ctx={ctx} />));
+  const button = document.querySelector<HTMLButtonElement>('[data-testid="ver-install"]');
+  if (!button) throw new Error("missing actual Version install control");
+  await act(async () => button.click());
+  expect(stage).toHaveBeenCalledTimes(1); expect(request).not.toHaveBeenCalled();
+});
+
+it("remote and browser release notices show where to install, without an Install button", async () => {
+  const update = { current: "1.0", latest: "1.1", notes: [], installing: false, waiting: null };
+  desktopWindow.branchDesktop = { gatewayUrl: engine.gatewayUrl, componentUpdates: { status: async () => state, check: async () => state, stage: async () => state } };
+  for (const gatewayUrl of ["wss://remote.example.test", engine.gatewayUrl]) {
+    if (gatewayUrl === engine.gatewayUrl) delete desktopWindow.branchDesktop;
+    const session = { engine, gatewayUrl, request } as unknown as SaplingSession;
+    const ctx = { session, update, version: "1.0", computerName: "Desk", onWhatsNew: vi.fn(), onReminded: vi.fn() } as unknown as StatusContext;
+    await act(async () => root.render(<StatusPopover item="version" above={{ left: 10, right: 200, top: 700, align: "left" }} onClose={() => {}} ctx={ctx} />));
+    expect(host.textContent).toContain("Ready to install on Desk: open Branch there to install it.");
+    expect(host.querySelector('[data-testid="ver-install"]')).toBeNull();
+  }
+  expect(request).not.toHaveBeenCalledWith("update.run", {});
+});
+
+function UpdateProbe({ gatewayUrl }: { gatewayUrl: string }) {
+  const session = useMemo(() => ({ gatewayUrl, request, getSnapshot: () => ({ status: { phase: "connected", hello: { snapshot: {} } } }), onGatewayEvent: () => () => {} }) as unknown as SaplingSession, [gatewayUrl]);
+  const update = useUpdate(session, true, "1.0");
+  return <VersionPopover update={update} version="1.0" above={{ left: 10, right: 200, top: 700, align: "left" }} onClose={() => {}} onWhatsNew={() => {}} onInstall={() => {}} onRemind={() => {}} />;
+}
+
+it("native shell status uses component status and legacy shell reports unsupported truthfully", async () => {
+  const status = vi.fn(async () => state);
+  desktopWindow.branchDesktop = { gatewayUrl: engine.gatewayUrl, componentUpdates: { status, check: async () => state, stage: async () => state } };
+  await act(async () => root.render(<UpdateProbe gatewayUrl="ws://127.0.0.1:1/" />));
+  expect(status).toHaveBeenCalledTimes(1); expect(request).not.toHaveBeenCalled();
+  expect(document.body.textContent).toContain("Branch 1.1 is ready");
+  await act(async () => root.unmount()); root = createRoot(host);
+  desktopWindow.branchDesktop = { gatewayUrl: engine.gatewayUrl };
+  await act(async () => root.render(<UpdateProbe gatewayUrl="ws://127.0.0.1:1" />));
+  expect(document.body.textContent).toContain("Update the Branch app to check by hand.");
+  expect(document.body.textContent).not.toContain("Branch is up to date."); expect(request).not.toHaveBeenCalled();
+});
+
+it("actual Settings Check now for Connect elsewhere keeps the remote gateway dispatch", async () => {
+  const status = vi.fn(async () => state); const check = vi.fn(async () => state);
+  desktopWindow.branchDesktop = { gatewayUrl: engine.gatewayUrl, componentUpdates: { status, check, stage: async () => state } };
+  const remote = { ...engine, gatewayUrl: "wss://remote.example.test" };
+  await act(async () => root.render(<UpdatesPage page="updates" title="Updates" level="regular" engine={remote} />));
+  await click("Check now");
+  expect(status).not.toHaveBeenCalled(); expect(check).not.toHaveBeenCalled();
+  expect(request).toHaveBeenCalledWith("update.status", { refreshCheckout: true });
+});
+
+it("keeps native update controls scoped to the live handoff target", () => {
+  const native = { gatewayUrl: "ws://127.0.0.1:1", getGatewayUrl: () => "ws://127.0.0.1:2", componentUpdates: { status: async () => state, check: async () => state, stage: async () => state } };
+  desktopWindow.branchDesktop = native;
+  expect(componentDesktop("ws://127.0.0.1:2")).toBe(native);
+  expect(componentDesktop("ws://127.0.0.1:1")).toBeUndefined();
+});

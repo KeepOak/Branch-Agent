@@ -1,5 +1,5 @@
 import type {
-  BranchPluginService,
+  BranchPluginApi,
   PluginRuntimeLifecycleRegistration,
 } from "branch/plugin-sdk/plugin-entry";
 import { createTestPluginApi } from "branch/plugin-sdk/plugin-test-api";
@@ -110,7 +110,7 @@ describe("OpenShell plugin registration lifecycle", () => {
 
   it("does not register runtime hooks or services in discovery mode", () => {
     const original = readBackend();
-    const services: BranchPluginService[] = [];
+    const services: Parameters<BranchPluginApi["registerService"]>[0][] = [];
     const lifecycles: PluginRuntimeLifecycleRegistration[] = [];
     plugin.register(
       createTestPluginApi({

@@ -74,6 +74,7 @@ function scopeProviderUsageCredentialKey(
 function mapProviderUsage(usage: Awaited<ReturnType<typeof loadProviderUsageSummary>>) {
   const usageByProvider = new Map<string, ProviderUsageStatus>();
   for (const snap of usage.providers) {
+    if (usageByProvider.has(snap.provider) && !snap.inUse) continue;
     usageByProvider.set(snap.provider, {
       windows: snap.windows,
       ...(snap.summary ? { summary: snap.summary } : {}),
@@ -95,17 +96,17 @@ function retainLastGoodOnTimeout(
   const lastGoodByProvider = new Map(
     lastGood.providers
       .filter((provider) => provider.error === undefined)
-      .map((provider) => [provider.provider, provider]),
+      .map((provider) => [`${provider.provider}:${provider.authProfileId ?? provider.accountEmail ?? ""}`, provider]),
   );
   const retainedLastGood = summary.providers.some(
-    (provider) => provider.error === "Timeout" && lastGoodByProvider.has(provider.provider),
+    (provider) => provider.error === "Timeout" && lastGoodByProvider.has(`${provider.provider}:${provider.authProfileId ?? provider.accountEmail ?? ""}`),
   );
   return {
     ...summary,
     updatedAt: retainedLastGood ? lastGood.updatedAt : summary.updatedAt,
     providers: summary.providers.map((provider) =>
       provider.error === "Timeout"
-        ? (lastGoodByProvider.get(provider.provider) ?? provider)
+        ? (lastGoodByProvider.get(`${provider.provider}:${provider.authProfileId ?? provider.accountEmail ?? ""}`) ?? provider)
         : provider,
     ),
   };
@@ -137,6 +138,7 @@ function scheduleProviderUsageRefresh(
       authStore: params.authStore,
       config: params.configRef,
       timeoutMs: PROVIDER_USAGE_TIMEOUT_MS,
+      includeClaudeCode: true,
     })
       .then((freshUsage) => {
         const usage = retainLastGoodOnTimeout(freshUsage, params.lastGood);
@@ -246,9 +248,14 @@ export function readProviderUsageStaleWhileRevalidate(
 export async function loadUsageStatusStaleWhileRevalidate(options: {
   config: BranchConfig;
   coldRead?: "refresh-marker";
+  forceRefresh?: boolean;
   now?: number;
 }): Promise<UsageSummary> {
   const snapshot = getProviderUsageRuntimeSnapshot({ config: options.config });
+  if (snapshot.providerIds.length === 0) {
+    usageCacheByAgentId.delete(snapshot.agentId);
+    return { updatedAt: options.now ?? Date.now(), providers: [] };
+  }
   const params: ProviderUsageCacheParams = {
     agentId: snapshot.agentId,
     agentDir: snapshot.agentDir,
@@ -257,17 +264,20 @@ export async function loadUsageStatusStaleWhileRevalidate(options: {
     credentialKey: snapshot.credentialKey,
     providerIds: snapshot.providerIds,
     coldRead: options.coldRead,
+    forceRefresh: options.forceRefresh,
     now: options.now ?? Date.now(),
   };
-  if (params.providerIds.length === 0) {
-    usageCacheByAgentId.delete(params.agentId);
-    return { updatedAt: params.now, providers: [] };
-  }
   const { matching, needsRefresh, refreshParams } = resolveProviderUsageCacheRead(params);
+  if (params.forceRefresh && matching && params.now - matching.refreshedAt < 30_000) {
+    return matching.summary;
+  }
   if (matching && !needsRefresh) {
     return matching.summary;
   }
   const refresh = scheduleProviderUsageRefresh(refreshParams);
+  if (params.forceRefresh) {
+    return await refresh;
+  }
   if (matching) {
     void refresh.catch(() => {});
     return matching.summary;

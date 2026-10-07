@@ -3,6 +3,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { parseFacts } from "../library/memory-data";
 import { loadTrunkData, type TrunkData } from "./data";
 import { entryOf, rec, str, strs } from "./model";
+import { scheduleWords } from "../automations/model";
 
 export type Automation = { id: string; name: string; when: string; enabled: boolean };
 /** `facts`: the bullets in its MEMORY.md (agents.files.get), as Library › Memory counts them; null when unread. */
@@ -12,19 +13,9 @@ export type ProfileData = TrunkData & { automations: Automation[] | null; week: 
 const DAY = 86_400_000;
 /** sessions.list is paged; a full page could hide more, so the count shows only when the page wasn't full. */
 const WEEK_LIMIT = 500;
-const pad = (n: number) => String(n).padStart(2, "0");
-
-/** A cron schedule in words: "Every day at 08:00", "Every 30 min", "Once on …", else the expression. */
+/** A schedule in the same words the Automations list uses: "Every day at 9:00 AM", "Every 30 minutes", "Once · …". */
 export function scheduleText(schedule: unknown): string {
-  const s = rec(schedule), kind = str(s.kind);
-  if (kind === "every" && typeof s.everyMs === "number") {
-    const min = Math.round(s.everyMs / 60000);
-    return min % 60 ? `Every ${min} min` : `Every ${min / 60 === 1 ? "hour" : `${min / 60} hours`}`;
-  }
-  if (kind === "at") return `Once on ${new Date(str(s.at) || Number(s.atMs)).toLocaleString()}`;
-  const daily = /^(\d{1,2}) (\d{1,2}) \* \* \*$/.exec(str(s.expr));
-  if (daily) return `Every day at ${pad(+daily[2])}:${pad(+daily[1])}`;
-  return str(s.expr) || "On a schedule";
+  return scheduleWords(rec(schedule));
 }
 
 export function readAutomations(result: unknown, agentId: string): Automation[] {

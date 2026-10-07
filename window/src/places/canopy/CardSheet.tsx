@@ -1,6 +1,8 @@
 // A card's detail sheet (§4.6.7 "Card detail tabs"): Overview · Activity · Conversation · Details [T], read live
 // from the card the engine returns (canopy.cards.list) and changed with canopy.cards.* methods.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState, type ReactNode } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import { shows } from "../../places-nav/level";
 import { Dialog } from "../../shell/Dialog";
 import type { MenuAnchor } from "../../shell/Menu";
@@ -18,14 +20,14 @@ export function CardSheet({ ctx, id, close, edit }: { ctx: Ctx; id: string; clos
   const c = ctx.d.cards.find(x => str(x.id) === id);
   // The dialog focuses its first field; the sheet opens on its tabs instead, scrolled to the top.
   useEffect(() => { const t = document.querySelector<HTMLElement>("[data-testid=cn-sheet] [role=tab][aria-selected=true]"); t?.focus({ preventScroll: true }); t?.closest(".dlg-b")?.scrollTo?.({ top: 0 }); }, [id]);
-  if (!c) return <Dialog title="Card" onClose={close} footer={<button className="btn" type="button" onClick={close}>Close</button>}><p className="dlg-p">This card is gone. It may have been deleted elsewhere.</p></Dialog>;
+  if (!c) return <Dialog title="Card" onClose={close}><p className="dlg-p">This card is gone. It may have been deleted elsewhere.</p></Dialog>;
   const leave = () => desc !== null && desc !== str(c.notes) ? setAsking(true) : close();
   if (asking) return <Dialog title="Discard changes?" onClose={() => setAsking(false)} footer={<><button className="btn ghost" type="button" onClick={() => setAsking(false)}>Keep editing</button><button className="btn pri" type="button" onClick={close}>Discard</button></>}><p className="dlg-p">Your changes will be lost.</p></Dialog>;
   const agent = str(c.agentId), why = c.status === "blocked" ? whyOf(c, ctx.d.cards) : null;
   const tabs = ["Overview", "Activity", "Conversation", ...(tech ? ["Details"] : [])];
   return (
     <Dialog title={str(c.title)} wide onClose={leave} testid="cn-sheet"
-      footer={<><button className="btn ghost" type="button" disabled={!ctx.write} onClick={() => edit(c)}>Edit card</button><button className="btn" type="button" onClick={leave}>Close</button></>}>
+      footer={<><button className="btn ghost" type="button" disabled={!ctx.write} onClick={() => edit(c)}>Edit card</button></>}>
       <div className="cn-who">{agent ? <TrunkFace name={trunkName(ctx.d, agent)} size={34} /> : <Nobody size={34} />}
         <span className="cn-grow"><b>{agent ? trunkName(ctx.d, agent) : "No Trunk yet"}</b><small>{statusName(str(c.status))} · {convState(c, ctx.d.sessions, ctx.now)[0]}</small></span>
         {why ? <Pill tone={BLOCK[why.why][0]} tip={why.detail || undefined}>{BLOCK[why.why][1]}</Pill> : null}{isArchived(c) ? <Pill tone="idle">Archived</Pill> : null}</div>
@@ -82,7 +84,7 @@ function WaitsFor({ ctx, c }: { ctx: Ctx; c: Row }) {
   return <Sec title="Waits for">
     {deps.length ? <div className="cn-rows">{deps.map(d => { const x = ctx.d.cards.find(y => str(y.id) === d);
       return <div className="cn-prow" key={d}><span className="cn-grow"><b>{x ? str(x.title) : "A card that’s gone"}</b></span>{x ? <Pill tone={x.status === "done" ? "ok" : "idle"}>{statusName(str(x.status))}</Pill> : <Pill tone="warn">Missing</Pill>}
-        <button className="btn ghost sm" type="button" disabled title="Needs the engine's unlink method for card dependencies.">Take it out</button></div>; })}</div> : <p className="cn-hint cn-flush">It doesn’t wait for any card.</p>}
+        <button className="btn ghost sm" type="button" disabled title={shownWhy("Needs the engine's unlink method for card dependencies.")}>Take it out</button></div>; })}</div> : <p className="cn-hint cn-flush">It doesn’t wait for any card.</p>}
     <button className="btn sm cn-left" type="button" aria-haspopup="menu" disabled={!ctx.write} onClick={e => setAt(anchorOf(e.currentTarget))}>Add a card it waits for</button>
     {n ? <p className="cn-hint cn-flush">{n} blocked: {n === 1 ? "1 card waits" : `${n} cards wait`} for this one.</p> : null}
     {at ? <ChoiceMenu at={at} label="Waits for" head="Waits for" radio onClose={() => setAt(null)} options={cand.map(x => ({ id: str(x.id), checked: false, label: <>{str(x.title)}<span className="cn-mi-r">{statusName(str(x.status))}</span></> }))}

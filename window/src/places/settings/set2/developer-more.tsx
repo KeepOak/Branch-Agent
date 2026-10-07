@@ -3,11 +3,13 @@
 // summary from status/system.info, where each setting comes from out of config.get, diagnostics.stability warnings,
 // profiles from diagnostics.*, diagnostics.lanes, node.invoke) and the settings file editor (config.get raw + hash,
 // saved with config.apply against that hash; the engine validates and keeps hidden values hidden).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
-import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Sec, Seg, Switch, Tabs, Val, useConfig } from "../kit";
+import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Pill, Sec, Seg, Switch, Tabs, Val, useAsk, useConfig } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
+import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import { CallLine, CopyBtn, Kv, bytes, rec, str, useCall, useLive, when, type RecordValue } from "./common";
 import "./developer.css";
 
@@ -18,14 +20,23 @@ export type Config = ReturnType<typeof useConfig>;
 export type Ctx = SettingsPageProps & { config: Config; sys: RecordValue; port: number; base: string };
 const HIDDEN = "__BRANCH_REDACTED__";
 
-/** A greyed row: [title, sub, why, control]. Control: "sw", "on", "btn:Label", "seg:A|B", "val:Text", "code:text". */
+/** A greyed row: [title, sub, why, control]. Control: "sw", "on", "in", "btn:Label", "btns:A|B", "seg:A|B", "val:Text",
+ *  "pill:Text", "chips:A|B", "code:text", "codecopy:text", "add:Shown|Placeholder|Label". */
 export type OffRow = [string, string, string, string?];
 function offCtl(kind: string | undefined, title: string): ReactNode {
   if (!kind) return null;
+  if (kind === "in") return <input className="inp" aria-label={title} />;
   if (kind === "sw" || kind === "on") return <Switch label={title} checked={kind === "on"} onChange={() => undefined} />;
   const at = kind.indexOf(":");
   const [k, rest] = [kind.slice(0, at), kind.slice(at + 1)];
+  const parts = rest.split("|");
   if (k === "btn") return <Btn sm>{rest}</Btn>;
+  if (k === "btns") return <>{parts.map((l, i) => <Btn key={l} sm ghost={i > 0}>{l}</Btn>)}</>;
+  if (k === "in") return <input className="inp" aria-label={title} />;
+  if (k === "pill") return <Pill>{rest}</Pill>;
+  if (k === "chips") return <span className="s2developer-chips">{parts.map((l) => <span key={l} className="chip6">{l}</span>)}</span>;
+  if (k === "codecopy") return <><code className="s2-code">{rest}</code><Btn sm ghost>Copy</Btn></>;
+  if (k === "add") return <><Val>{parts[0]}</Val><input className="inp" placeholder={parts[1]} aria-label={parts[2]} /><Btn sm>Add</Btn></>;
   if (k === "seg") return <Seg label={title} value={rest.split("|")[0]} onChange={() => undefined} options={rest.split("|").map((l) => ({ id: l, label: l }))} />;
   if (k === "code") return <code className="s2-code">{rest}</code>;
   return <Val>{rest}</Val>;
@@ -75,9 +86,9 @@ function parseJson(text: string): { ok: true; value: unknown } | { ok: false; er
 /* ───────────── Runs and traces ───────────── */
 
 const TRACE_OFF: OffRow[] = [
-  ["Programs that see every model call", "Each sees the request, the answer and its words, for logging or accounting.", ne("model-call hooks"), "btn:Add"],
+  ["Programs that see every model call", "Each sees the request, the answer and its words, for logging or accounting.", ne("model-call hooks"), "add:None|A script path|Script path"],
   ["Send logs to", "In batches. Off until you choose: logs leave this computer.", ne("log shipping"), "seg:Off|A web address|Redis"],
-  ["Record requests to the local address", "Who called the local address and when.", ne("request log"), "seg:Off|Who and when|Requests|Requests and answers"],
+  ["Record requests to the local address", "Written to logs\\http-audit.log.", ne("request log"), "seg:Off|Who and when|Requests|Requests and answers"],
   ["Keep a copy of every prompt", "For audits. Off until you choose: it keeps every word sent.", ne("prompt archive"), "seg:Off|A folder|Cloud storage"],
   ["Record the browser as video", "A clip per run, in the run’s files. Off until you choose: video takes disk space.", ne("browser recording"), "sw"],
   ["Stamp files Trunks make", "Writes who made it, from what, and whether it was checked into the file itself. Off until you choose: it changes the files.", ne("file stamping"), "sw"],
@@ -91,7 +102,7 @@ export function RunsTraces(ctx: Ctx) {
   const otel = rec(ctx.config.get("diagnostics.otel"));
   return (
     <Sec title="Runs and traces">
-      <Ctl title="Trace explorer" sub="Every run as steps: what each took, what the model saw, and the files it made."><Btn sm onClick={() => setDlg("trace")}>Open</Btn></Ctl>
+      <Ctl title="Trace explorer" sub="See each run’s steps, model input and files." help="Every run as steps: what each took, what the model saw, and the files it made."><Btn sm onClick={() => setDlg("trace")}>Open</Btn></Ctl>
       <Ctl title="Where traces go" sub={otel.enabled === true ? `OpenTelemetry on${str(otel.endpoint) ? `: ${str(otel.endpoint)}` : ""}.` : "No destinations on. OpenTelemetry, Langfuse, LangSmith, Datadog, Sentry and more."}><Btn sm onClick={() => setDlg("dests")}>Choose</Btn></Ctl>
       <Greyed rows={TRACE_OFF} />
       <Ctl title="What was sent" sub="The local copy of every count Branch shares."><Btn sm onClick={() => setDlg("sent")}>Show</Btn></Ctl>
@@ -140,7 +151,7 @@ function TraceDialog({ engine, onClose }: { engine: SettingsPageProps["engine"];
   const shownRuns = filter === "err" ? runs.filter((r) => r.status !== "succeeded" && r.status !== "started") : runs;
   const run = shownRuns.find((r) => r.runId === pick) ?? shownRuns[0];
   return (
-    <Dialog title="Runs and traces" wide onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title="Runs and traces" wide onClose={onClose}>
       <div className="s2developer-dlg">
         <Seg label="Runs and traces" value="runs" onChange={() => undefined} options={[{ id: "runs", label: "Runs" }, { id: "overview", label: "Overview", off: ne("run overview") }, { id: "versions", label: "Instructions over time", off: ne("instruction history") }]} />
         {audit.error ? <p className="hint s2-err" role="alert">{audit.error}</p> : null}
@@ -225,7 +236,7 @@ function DestsDialog({ engine, config, base, onClose }: Ctx & { onClose: () => v
   const prom = config.get("plugins.entries.diagnostics-prometheus.enabled") === true || promPlugin.entry?.state === "enabled";
   const setOtel = (v: boolean) => { void config.set(`${OT}.enabled`, v); if (v) void config.set("plugins.entries.diagnostics-otel.enabled", true); };
   return (
-    <Dialog title="Where traces go" wide onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title="Where traces go" wide onClose={onClose}>
       <div className="s2developer-dlg">
         <Hint>Every run, model call and tool step goes as one stream to each destination you turn on. Off until you choose: it sends data outside Branch.</Hint>
         <div className="s2developer-dests">
@@ -244,7 +255,7 @@ function DestsDialog({ engine, config, base, onClose }: Ctx & { onClose: () => v
         <Ctl title="Counters at /metrics" sub={`Conversations, words, cost, tool use and queue sizes for Prometheus at ${base}/api/diagnostics/prometheus. Off until you choose: anything on this computer can read them.${promPlugin.missing ? " Needs its plugin: branch plugins install @branch/diagnostics-prometheus" : ""}`}>
           <Switch label="Counters at /metrics" checked={prom} disabled={config.loading} onChange={(v) => void config.set("plugins.entries.diagnostics-prometheus.enabled", v)} />
         </Ctl>
-        <Ctl title="A viewer on this computer" sub="Starts a local collector with Jaeger; grafana.yml starts Tempo, Prometheus and Grafana." off={ne("local collector files")} />
+        <Ctl title="A viewer on this computer" sub="Starts a local trace collector for Jaeger and Grafana." help="Starts a local collector with Jaeger; grafana.yml starts Tempo, Prometheus and Grafana." off={ne("local collector files")} />
         <Hint>{on ? `Traces go to ${str(otel.endpoint) || "the OpenTelemetry address"}.` : "Nothing is sent."}</Hint>
       </div>
     </Dialog>
@@ -254,7 +265,7 @@ function DestsDialog({ engine, config, base, onClose }: Ctx & { onClose: () => v
 function SentDialog({ config, onClose }: { config: Config; onClose: () => void }) {
   const on = config.get("telemetry.enabled") === true;
   return (
-    <Dialog title="What was sent" onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title="What was sent" onClose={onClose}>
       <div className="s2developer-dlg">
         <Hint>Every count Branch shares is written here first, on this computer.</Hint>
         <pre className="s2developer-pre">{on ? "Feature counts go with the daily update check: the chat apps and services that are on, how many plugins, and how many recent conversations." : "Nothing has been sent. “Share anonymous feature counts” is off."}</pre>
@@ -269,36 +280,52 @@ function SentDialog({ config, onClose }: { config: Config; onClose: () => void }
 const MORE_OFF: OffRow[] = [
   ["Tell the Trunk about recent errors", "So it can work around them instead of trying the same thing.", ne("error hints for Trunks"), "sw"],
   ["Tell me when one repeats", "When the same error keeps coming back, it shows in Inbox.", ne("repeated-error alerts"), "sw"],
-  ["Look into a problem", "Sapling looks into it in your conversation.", "Ask Sapling in a conversation.", "btn:Look into it"],
   ["How the last start went", "Each start phase and its time, and how Branch is doing at rest.", ne("start-up timeline"), "btn:Show"],
   ["Show frame rate", "A small meter in the corner of this window while you look for slow screens.", APP, "sw"],
   ["Database shell", "A SQL prompt on the conversation store. Stop the Gateway first for anything that writes.", "The branch command has no database shell yet."],
   ["Developer tools", "Network, console and the window’s state.", APP, "btn:Open"],
   ["Repair the branch command", "For when typing branch in a terminal stopped working.", "The Branch app’s installer repairs it.", "btn:Repair"],
 ];
-rowsOf("Troubleshooting, more", ["A summary for a bug report", "Where each setting comes from", "Warnings since the start", ...titles(MORE_OFF)]);
+rowsOf("Troubleshooting, more", ["A summary for a bug report", "Where each setting comes from", "Warnings since the start", ...titles(MORE_OFF.slice(0, 2)), "Look into a problem", ...titles(MORE_OFF.slice(2))]);
+
+/** Look into a problem: starts a conversation with the default Trunk about what went wrong. */
+function LookInto() {
+  const ask = useAsk();
+  const [text, setText] = useState("");
+  const t = "Look into a problem";
+  const go = () => { if (ask && text.trim()) { ask(`Something went wrong in Branch: ${text.trim()}. Please look into it.`); setText(""); } };
+  return (
+    <Ctl title={t} sub="Sapling looks into it in your conversation." off={ask ? undefined : "Needs a model set up first."}>
+      <input className="inp" aria-label="What went wrong" placeholder="Replies stopped after lunch" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") go(); }} />
+      <Btn sm onClick={go}>Look into it</Btn>
+    </Ctl>
+  );
+}
 
 /** The bug-report summary: version, machine, gateway and the settings file path, no keys. */
-async function summary(engine: SettingsPageProps["engine"]): Promise<string> {
-  const [status, sys, cfg] = await Promise.all([engine.request<RecordValue>("status", {}), engine.request<RecordValue>("system.info", {}), engine.request<RecordValue>("config.get", {})]);
-  const s = rec(status); const i = rec(sys); const c = rec(cfg); const g = rec(rec(c.config).gateway);
-  return [`Branch ${str(s.runtimeVersion)}`.trim(), `${str(i.osLabel) || str(i.platform)} ${str(i.arch)} · Node ${str(i.nodeVersion)}`.trim(),
+async function summary(engine: SettingsPageProps["engine"], version: string): Promise<string> {
+  const [sys, cfg] = await Promise.all([engine.request<RecordValue>("system.info", {}), engine.request<RecordValue>("config.get", {})]);
+  const i = rec(sys); const c = rec(cfg); const g = rec(rec(c.config).gateway);
+  return [version ? `Branch ${versionParts(version).detail}` : "Branch version unavailable", `${str(i.osLabel) || str(i.platform)} ${str(i.arch)} · Node ${str(i.nodeVersion)}`.trim(),
     `Gateway ${str(g.bind) || "loopback"}:${str(g.port) || DEFAULT_PORT} · sign-in ${str(rec(g.auth).mode) || "token"} · process ${str(i.pid)}`,
     `Model ${shown(rec(rec(rec(c.config).agents).defaults).model)}`, `Settings file ${str(c.path)}${c.valid === false ? " (has problems)" : ""}`].join("\n");
 }
 
 export function TroubleMore(ctx: Ctx) {
+  const version = useBranchVersion(ctx.engine.gatewayUrl);
   const [dlg, setDlg] = useState<Dlg>("");
   const copy = useCall();
   const warn = useLive<RecordValue>(ctx.engine, "diagnostics.stability", { limit: 1000 }, []);
   const count = warningsOf(list(rec(warn.data).events)).length;
-  const go = () => void copy.run(async () => { await navigator.clipboard.writeText(await summary(ctx.engine)); return true; }, () => "Copied.");
+  const go = () => void copy.run(async () => { await navigator.clipboard.writeText(await summary(ctx.engine, version)); return true; }, () => "Copied.");
   return (
-    <Sec title="Troubleshooting, more">
+    <Sec title="Troubleshooting, more" group="Troubleshooting">
       <Ctl title="A summary for a bug report" sub={copy.error ?? copy.note ?? "Version, model, gateway, paths and settings file, on one paste."}><Btn sm disabled={copy.busy} onClick={go}>Copy</Btn></Ctl>
       <Ctl title="Where each setting comes from" sub="Every setting with its value and the layer it came from."><Btn sm onClick={() => setDlg("cfgsrc")}>Show</Btn></Ctl>
       <Ctl title="Warnings since the start" sub={warn.error ?? (warn.data ? `${count} kept, each with its kind and error id.` : "Each with its kind and error id.")}><Btn sm onClick={() => setDlg("warnings")}>See them</Btn></Ctl>
-      <Greyed rows={MORE_OFF} />
+      <Greyed rows={MORE_OFF.slice(0, 2)} />
+      <LookInto />
+      <Greyed rows={MORE_OFF.slice(2)} />
       {dlg === "cfgsrc" ? <SourceDialog engine={ctx.engine} onClose={() => setDlg("")} /> : null}
       {dlg === "warnings" ? <WarningsDialog events={list(rec(warn.data).events)} error={warn.error} onReload={() => void warn.reload()} onClose={() => setDlg("")} /> : null}
     </Sec>
@@ -313,7 +340,7 @@ function SourceDialog({ engine, onClose }: { engine: SettingsPageProps["engine"]
   const authored = new Set(leaves(c.resolved ?? c.sourceConfig).map(([p]) => p.join(".")));
   const rows = leaves(c.config).map(([p, v]) => [p.join("."), shown(v), authored.has(p.join(".")) ? "Your settings file" : "Default"] as const).filter(([p]) => !q || p.toLowerCase().includes(q.toLowerCase()));
   return (
-    <Dialog title="Where each setting comes from" wide onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title="Where each setting comes from" wide onClose={onClose}>
       <div className="s2developer-dlg">
         <Seg label="Which" value="settings" onChange={() => undefined} options={[{ id: "settings", label: "Settings" }, { id: "more", label: "Skills, hooks and connectors", off: ne("layer list for skills, hooks and connectors") }]} />
         <Hint>Later layers win: the default, then the settings file. Keys and passwords show as dots.</Hint>
@@ -323,7 +350,7 @@ function SourceDialog({ engine, onClose }: { engine: SettingsPageProps["engine"]
           <table className="s2developer-tbl"><thead><tr><th>Setting</th><th>Value</th><th>From</th></tr></thead>
             <tbody>{rows.map(([p, v, from]) => <tr key={p}><th><code>{p}</code></th><td>{v}</td><td>{from}</td></tr>)}</tbody></table>
         </div>
-        <Ctl title="The settings file is managed elsewhere" sub="Branch reads it but never writes it, for files kept by Nix or your organisation. Changes made here last until a restart." off={ne("read-only settings mode")}><Switch label="The settings file is managed elsewhere" checked={false} onChange={() => undefined} /></Ctl>
+        <Ctl title="The settings file is managed elsewhere" sub="Branch reads these files but never writes them." help="Branch reads it but never writes it, for files kept by Nix or your organisation. Changes made here last until a restart." off={ne("read-only settings mode")}><Switch label="The settings file is managed elsewhere" checked={false} onChange={() => undefined} /></Ctl>
       </div>
     </Dialog>
   );
@@ -338,7 +365,7 @@ export function warningsOf(events: RecordValue[]): RecordValue[] {
 function WarningsDialog({ events, error, onReload, onClose }: { events: RecordValue[]; error?: string; onReload: () => void; onClose: () => void }) {
   const warns = warningsOf(events).reverse();
   return (
-    <Dialog title="Warnings since the start" wide onClose={onClose} footer={<><Btn ghost onClick={onReload}>Check again</Btn><Btn onClick={onClose}>Close</Btn></>}>
+    <Dialog title="Warnings since the start" wide onClose={onClose} footer={<><Btn ghost onClick={onReload}>Check again</Btn></>}>
       <div className="s2developer-dlg">
         <Hint>Kept here instead of scrolling away. Each id matches its line in the log.</Hint>
         {error ? <p className="hint s2-err" role="alert">{error}</p> : !warns.length ? <Empty>No warnings since the start.</Empty> : null}
@@ -364,28 +391,30 @@ const TROUBLE_OFF: OffRow[] = [
   ["Copy for support", "Plain text with keys left out.", "", ""],
   ["Ports", "Which programs hold the gateway and tunnel ports.", APP, "btn:Check ports"],
   ["App process", "", APP], ["Program file", "", APP],
-  ["Engine folder", "Used to find Node and fill PATH when starting the gateway.", APP],
-  ["Conversation store", "The Branch service tile’s “Process” on Advanced is the gateway’s; these are the window’s own.", APP],
+  ["Engine folder", "Used to find Node and fill PATH when starting the gateway.", APP, "btns:Change|Reset"],
+  ["Conversation store", "The Branch service tile’s “Process” on Advanced is the gateway’s; these are the window’s own.", APP, "btn:Change"],
 ];
 rowsOf("Troubleshooting", [...titles(TROUBLE_OFF), "Processor profile", "Memory profile", "Full memory snapshot", "System busyness", "Try a computer command"]);
-const APP_BTNS = ["Restart the app", "Run setup again", "Open the conversation store", "Show Branch in Explorer", "Send a test notification", "Send a test check-in", "Send a test voice message", "Show the pairing panel"];
+const APP_BTNS = ["Open the conversation store", "Show Branch in Explorer", "Send a test notification", "Send a test check-in", "Send a test voice message", "Show the pairing panel"];
 
 export function Troubleshooting(ctx: Ctx) {
   const { engine } = ctx;
+  const version = useBranchVersion(engine.gatewayUrl);
   const [dlg, setDlg] = useState<Dlg>("");
   const support = useCall(); const open = useCall(); const cpu = useCall(); const heap = useCall(); const snap = useCall();
-  const copySupport = () => void support.run(async () => { await navigator.clipboard.writeText(await summary(engine)); return true; }, () => "Copied.");
+  const copySupport = () => void support.run(async () => { await navigator.clipboard.writeText(await summary(engine, version)); return true; }, () => "Copied.");
   const openFile = () => void open.run(() => engine.request<RecordValue>("config.openFile", {}), (r) => { if (rec(r).ok === false) throw new Error(str(rec(r).error)); return `Opened ${str(rec(r).path)}.`; });
   return (
-    <Sec title="Troubleshooting">
+    <Sec title="Troubleshooting" showHeading={false}>
       <Greyed rows={TROUBLE_OFF.slice(0, 1)} />
       <Ctl title="Copy for support" sub={support.error ?? support.note ?? "Plain text with keys left out."}><Btn sm disabled={support.busy} onClick={copySupport}>Copy…</Btn></Ctl>
       <Greyed rows={TROUBLE_OFF.slice(2)} />
-      <Acts><Btn sm ghost onClick={openFile} disabled={open.busy}>Open the settings file</Btn>{APP_BTNS.slice(0, 4).map((b) => <Btn key={b} sm ghost disabled title={APP}>{b}</Btn>)}</Acts>
+      <div className="acts s2developer-acts"><Btn sm disabled title={APP}>Restart the app</Btn><Btn sm disabled title={APP}>Run setup again</Btn></div>
+      <div className="acts s2developer-acts"><Btn sm ghost onClick={openFile} disabled={open.busy}>Open the settings file</Btn>{APP_BTNS.slice(0, 2).map((b) => <Btn key={b} sm ghost disabled title={APP}>{b}</Btn>)}</div>
       <CallLine call={open} />
-      <Acts>{APP_BTNS.slice(4).map((b) => <Btn key={b} sm ghost disabled title={APP}>{b}</Btn>)}</Acts>
+      <div className="acts s2developer-acts">{APP_BTNS.slice(2).map((b) => <Btn key={b} sm ghost disabled title={APP}>{b}</Btn>)}</div>
       <Ctl title="Processor profile" sub={cpu.error ?? cpu.note ?? "Owner and Admins only. Saves a file on this computer."}>
-        <Btn sm disabled={cpu.busy} onClick={() => void cpu.run(() => engine.request("diagnostics.cpuProfile", {}), (r) => { download("branch.cpuprofile", r); return "Saved branch.cpuprofile."; })}>{cpu.busy ? "Recording…" : "Record"}</Btn>
+        <Btn sm disabled={cpu.busy} onClick={() => void cpu.run(() => engine.request("diagnostics.cpuProfile", {}), (r) => { download("branch.cpuprofile", r); return "Saved branch.cpuprofile."; })}>{cpu.busy ? "Recording…" : "Record 5 s"}</Btn>
       </Ctl>
       <Ctl title="Memory profile" sub={heap.error ?? heap.note}>
         <Btn sm disabled={heap.busy} onClick={() => void heap.run(() => engine.request("diagnostics.heapProfile", {}), (r) => { download("branch.heapprofile", r); return "Saved branch.heapprofile."; })}>{heap.busy ? "Recording…" : "Record"}</Btn>
@@ -407,7 +436,7 @@ function LanesDialog({ engine, onClose }: { engine: SettingsPageProps["engine"];
   const d = rec(lanes.data);
   const rows = Object.entries(d).filter(([k]) => k !== "ts");
   return (
-    <Dialog title="System busyness" wide onClose={onClose} footer={<><Btn ghost onClick={() => void lanes.reload()}>Check again</Btn><Btn onClick={onClose}>Close</Btn></>}>
+    <Dialog title="System busyness" wide onClose={onClose} footer={<><Btn ghost onClick={() => void lanes.reload()}>Check again</Btn></>}>
       {lanes.error ? <p className="hint s2-err" role="alert">{lanes.error}</p> : null}
       {d.ts ? <Hint>As of {when(d.ts)}.</Hint> : null}
       {rows.map(([k, v]) => <div key={k}><h3 className="s2-h3">{k}</h3><pre className="s2developer-pre">{JSON.stringify(v, null, 2)}</pre></div>)}
@@ -428,7 +457,7 @@ function NodeDialog({ engine, onClose }: { engine: SettingsPageProps["engine"]; 
   const parsed = parseJson(details);
   const run = () => { if (!node || !parsed.ok) return; void call.run(() => engine.request("node.invoke", { nodeId: str(node.nodeId), command: command || cmds[0], params: parsed.value, idempotencyKey: crypto.randomUUID() }), (r) => JSON.stringify(r, null, 2)); };
   return (
-    <Dialog title="Try a computer command" onClose={onClose} footer={<><Btn ghost onClick={onClose}>Close</Btn><Btn pri disabled={!node || !(command || cmds[0]) || !parsed.ok || call.busy} onClick={run}>Run</Btn></>}>
+    <Dialog title="Try a computer command" onClose={onClose} footer={<><Btn pri disabled={!node || !(command || cmds[0]) || !parsed.ok || call.busy} onClick={run}>Run</Btn></>}>
       {nodes.error ? <p className="hint s2-err" role="alert">{nodes.error}</p> : nodes.data && !all.length ? <Empty>No computer or phone is connected.</Empty> : null}
       <div className="s2-field"><label htmlFor="s2dev-node">Computer</label>
         <select id="s2dev-node" className="inp" value={str(node?.nodeId)} onChange={(e) => setNode(e.target.value)}>{all.map((n) => <option key={str(n.nodeId)} value={str(n.nodeId)}>{str(n.displayName) || str(n.nodeId)}</option>)}</select></div>
@@ -461,7 +490,7 @@ export function EditorDialog({ engine, config, onClose }: { engine: SettingsPage
   const open = useCall();
   const openFile = () => void open.run(() => engine.request<RecordValue>("config.openFile", {}), (r) => { if (rec(r).ok === false) throw new Error(str(rec(r).error)); return `Opened ${str(rec(r).path)}.`; });
   return (
-    <Dialog title="Settings file" wide onClose={onClose} footer={<><Btn ghost disabled={open.busy} onClick={openFile}>Open the file</Btn><Btn onClick={onClose}>Close</Btn></>}>
+    <Dialog title="Settings file" wide onClose={onClose} footer={<><Btn ghost disabled={open.busy} onClick={openFile}>Open the file</Btn></>}>
       <div className="s2developer-ed">
         <div className="s2developer-edtop"><span>{str(f.path)}</span><Seg label="View" value={view} onChange={setView} options={[{ id: "form", label: "Form" }, { id: "text", label: "Text" }]} /></div>
         <CallLine call={open} />
@@ -549,7 +578,7 @@ export function CallDialog({ engine, onClose }: { engine: SettingsPageProps["eng
   const parsed = parseJson(values);
   const go = () => { if (parsed.ok) void call.run(() => engine.request(method.trim(), parsed.value), (r) => JSON.stringify(r, null, 2)); };
   return (
-    <Dialog title="Call the gateway" onClose={onClose} footer={<><Btn ghost onClick={onClose}>Close</Btn><Btn pri disabled={!method.trim() || !parsed.ok || call.busy} onClick={go}>Call</Btn></>}>
+    <Dialog title="Call the gateway" onClose={onClose} footer={<><Btn pri disabled={!method.trim() || !parsed.ok || call.busy} onClick={go}>Call</Btn></>}>
       <div className="s2-field"><label htmlFor="s2dev-act">Action</label>
         <input id="s2dev-act" className="inp" list="s2dev-acts" value={method} placeholder="Pick an action" onChange={(e) => setMethod(e.target.value)} />
         <datalist id="s2dev-acts">{ACTIONS.map((a) => <option key={a} value={a} />)}</datalist></div>
@@ -577,7 +606,7 @@ export function EventsDialog({ engine, onClose }: { engine: SettingsPageProps["e
   const counts = new Map<string, number>(); inTab.forEach((e) => counts.set(kindOf(e.event), (counts.get(kindOf(e.event)) ?? 0) + 1));
   const rows = inTab.filter((e) => !kind || kindOf(e.event) === kind);
   return (
-    <Dialog title="Event stream" wide onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title="Event stream" wide onClose={onClose}>
       <Tabs label="Event stream" value={tab} onChange={(v) => { setTab(v); setKind(""); }} tabs={[{ id: "trunks", label: "Events" }, { id: "gateway", label: "Gateway" }]} />
       <Acts>{[...counts].map(([k, n]) => <button key={k} type="button" className="chip6" aria-pressed={kind === k} onClick={() => setKind(kind === k ? "" : k)}>{`${k} · ${n}`}</button>)}<Btn sm ghost onClick={() => setEvs([])}>Clear</Btn></Acts>
       {!rows.length ? <Empty>Nothing yet. Events show here as they happen while this is open.</Empty> : null}
@@ -606,7 +635,7 @@ export function PlaygroundDialog({ engine, onClose }: { engine: SettingsPageProp
   const params = list(tool?.parameters);
   const run = () => { if (tool) void call.run(() => engine.request("tools.invoke", { name: str(tool.id), args: Object.fromEntries(Object.entries(args).filter(([, v]) => v !== "").map(([k, v]) => [k, parseJson(v).ok ? (parseJson(v) as { value: unknown }).value : v])), confirm: true, idempotencyKey: crypto.randomUUID() }), (r) => JSON.stringify(r, null, 2)); };
   return (
-    <Dialog title="Tool playground" onClose={onClose} footer={<><Btn onClick={onClose}>Close</Btn><Btn pri disabled={!tool || call.busy} onClick={run}>{tool ? `Run ${str(tool.id)}` : "Run"}</Btn></>}>
+    <Dialog title="Tool playground" onClose={onClose} footer={<><Btn pri disabled={!tool || call.busy} onClick={run}>{tool ? `Run ${str(tool.id)}` : "Run"}</Btn></>}>
       <p>Run one tool by hand, under the same approval rules a task has.</p>
       {cat.error ? <p className="hint s2-err" role="alert">{cat.error}</p> : null}
       <div className="s2-field"><label htmlFor="s2dev-tool">Tool</label>

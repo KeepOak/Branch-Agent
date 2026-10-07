@@ -16,9 +16,10 @@ import {
   type HookContext,
 } from "../agents/agent-tools.before-tool-call.js";
 import {
-  createBranchCodingTools,
+  createBranchCodingToolsInternal,
   resolveToolLoopDetectionConfig,
 } from "../agents/agent-tools.js";
+import { hasAnyAuthProfileStoreSourceAsync } from "../agents/auth-profiles/source-check.js";
 import { createHeadlessDeadlineScope } from "../agents/code-mode-headless.js";
 import type {
   CodeModeNamespaceDescriptor,
@@ -178,7 +179,8 @@ async function prepareTriggerRuntime(
   params: Parameters<PrepareTriggerRuntime>[0],
   loadPluginRegistry: LoadTriggerPluginRegistry = loadAgentRuntimePluginRegistryHandle,
 ): Promise<PreparedTriggerRuntime> {
-  params.signal?.throwIfAborted();
+  const { signal: preparationSignal } = params;
+  preparationSignal?.throwIfAborted();
   const agentId = resolveTriggerAgentId(params.runtimeConfig, params.agentId);
   const selectedAgentConfig = resolveAgentConfig(params.runtimeConfig, agentId);
   const agentConfigOverride = params.agentId?.trim() ? selectedAgentConfig : undefined;
@@ -200,8 +202,9 @@ async function prepareTriggerRuntime(
     ensureBootstrapFiles: !agentDefaults.skipBootstrap,
     skipOptionalBootstrapFiles: agentDefaults.skipOptionalBootstrapFiles,
     provisioning: workspaceProvisioning,
+    guard: { assertHost: () => preparationSignal?.throwIfAborted() },
   });
-  params.signal?.throwIfAborted();
+  preparationSignal?.throwIfAborted();
   const workspaceDir = workspace.dir;
   const pluginRegistry = loadPluginRegistry({
     config,
@@ -222,13 +225,16 @@ async function prepareTriggerRuntime(
       sessionKey,
       workspaceDir,
     });
-    params.signal?.throwIfAborted();
+    preparationSignal?.throwIfAborted();
     const effectiveWorkspace =
       sandbox?.enabled && sandbox.workspaceAccess !== "rw" ? sandbox.workspaceDir : workspaceDir;
     const toolPlan = resolveEmbeddedAttemptToolConstructionPlan({
       toolsEnabled: true,
       toolsAllow: params.toolsAllow,
     });
+    const authProfileStoreSource =
+      toolPlan.constructTools && (await hasAnyAuthProfileStoreSourceAsync(agentDir));
+    preparationSignal?.throwIfAborted();
     const scheduledToolPolicy = resolveScheduledToolPolicyContext({
       toolsAllow: params.toolsAllow,
       scheduledToolPolicy: params.scheduledToolPolicy,
@@ -266,7 +272,7 @@ async function prepareTriggerRuntime(
       messageActionTurnCapability,
     ) => {
       const allTools = toolPlan.constructTools
-        ? createBranchCodingTools({
+        ? createBranchCodingToolsInternal({
             agentId,
             runId: admitted.operationalRunInstance.runId,
             operationalRunInstance: admitted.operationalRunInstance,
@@ -278,6 +284,7 @@ async function prepareTriggerRuntime(
             trigger: "cron",
             jobId: params.jobId,
             agentDir,
+            authProfileStoreSource,
             cwd: effectiveWorkspace,
             workspaceDir: effectiveWorkspace,
             spawnWorkspaceDir: workspaceDir,
@@ -657,7 +664,9 @@ export function createCronScriptRuntime(deps: CronTriggerEvaluatorDeps) {
           maxToolCalls: HEADLESS_TRIGGER_TOOL_BUDGET,
           label: "cron trigger evaluation",
         });
-        return outcome.kind === "completed" ? parseTriggerResult(outcome.result) : outcome;
+        return outcome.kind === "completed"
+          ? parseTriggerResult(outcome.result, params.state)
+          : outcome;
       } finally {
         activeTriggerEvaluations -= 1;
       }

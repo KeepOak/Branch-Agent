@@ -1,8 +1,4 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { resolveSessionModelRef } from "../agents/session-model-ref.js";
-import type { InternalSessionEntry as SessionEntry } from "../config/sessions.js";
-import { createAgentPatchedSessionModelFallback } from "../config/sessions/session-model-fallback.js";
-import type { BranchConfig } from "../config/types.branch.js";
 
 const agentSessionModelPatch = new AsyncLocalStorage<
   { kind: "agent" } | { kind: "session-status"; applied: boolean }
@@ -35,19 +31,4 @@ export function recordSessionStatusModelPatchOutcome(applied: boolean): void {
   if (origin?.kind === "session-status") {
     origin.applied ||= applied;
   }
-}
-
-export function snapshotAgentModelFallback(
-  cfg: BranchConfig,
-  entry: SessionEntry,
-  agentId: string,
-  now: number,
-): NonNullable<SessionEntry["modelFallback"]> {
-  const prior = resolveSessionModelRef(cfg, entry, agentId);
-  return createAgentPatchedSessionModelFallback({
-    model: prior.model,
-    provider: prior.provider,
-    entry,
-    ts: now,
-  });
 }

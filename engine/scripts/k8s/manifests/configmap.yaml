@@ -22,13 +22,12 @@ data:
         "defaults": {
           "workspace": "~/.branch/workspace"
         },
-        "list": [
-          {
-            "id": "default",
+        "entries": {
+          "default": {
             "name": "Branch Agent Assistant",
             "workspace": "~/.branch/workspace"
           }
-        ]
+        }
       },
       "cron": { "enabled": false }
     }

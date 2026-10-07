@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
@@ -47,8 +48,9 @@ describe("Customize › Specialists", () => {
     expect(host.querySelector('[data-testid="fleet"]')?.textContent).toBe("2 Trunks on 1 computer2 working now");
     const patterns = [...host.querySelectorAll('[aria-label="How Trunks work together"] [role="radio"]')] as HTMLButtonElement[];
     expect(patterns).toHaveLength(6);
-    expect(patterns.every(p => p.disabled && p.title.startsWith("Needs the engine"))).toBe(true);
-    expect(button("Start")!.disabled).toBe(true);
+    expect(patterns.every(p => p.disabled && p.title === "")).toBe(true);
+    expect(button("Start")!.disabled).toBe(true); expect(button("Start")!.title).toBe("");
+    expect(visibleDevNotes(host)).toEqual([]);
   });
   it("shows Built in and Other coding agents only from Advanced", async () => {
     await open("Specialists");
@@ -61,11 +63,11 @@ describe("Customize › Specialists", () => {
   });
 });
 
-describe("Customize › Channels", () => {
+describe("Customize › Chat apps", () => {
   it("lists chat apps from the channel plugins and channels.status, without starting a probe", async () => {
-    const request = await open("Channels");
+    const request = await open("Chat apps");
     expect(request).toHaveBeenCalledWith("channels.status", { probe: false });
-    const cards = [...host.querySelectorAll(".cz-ch")].map(c => c.querySelector("b")?.textContent);
+    const cards = [...host.querySelectorAll(".cz-ch")].map(c => c.querySelector(".grow > b")?.textContent);
     expect(cards).toEqual(["Telegram", "Discord", "Slack", "IRC"]);
     expect(host.textContent).toContain("Configured · not running");
     expect(host.textContent).toContain("Connected · reaches Branch");
@@ -74,7 +76,7 @@ describe("Customize › Channels", () => {
     expect(host.textContent).toContain("No chat apps yet.");
   });
   it("starts, pauses and signs out an account, and switches an app's plugin on", async () => {
-    const request = await open("Channels");
+    const request = await open("Chat apps");
     await click([...host.querySelectorAll(".cz-ch")].find(c => c.textContent?.includes("Telegram")));
     expect(host.querySelector('[data-testid="channel"]')?.getAttribute("aria-label")).toBe("Manage Telegram");
     await click(button("Start"));
@@ -91,7 +93,7 @@ describe("Customize › Channels", () => {
     expect(request).toHaveBeenCalledWith("plugins.setEnabled", { pluginId: "slack", enabled: true });
   });
   it("makes a pairing code from the phone tile", async () => {
-    const request = await open("Channels", { "device.pair.setupCode": { setupId: "s1", setupCode: "ABCD-EFGH", qrDataUrl: "data:image/png;base64,AA==", gatewayUrl: "ws://x", auth: "token", urlSource: "lan" } });
+    const request = await open("Chat apps", { "device.pair.setupCode": { setupId: "s1", setupCode: "ABCD-EFGH", qrDataUrl: "data:image/png;base64,AA==", gatewayUrl: "ws://x", auth: "token", urlSource: "lan" } });
     await click(button("Pair a phone"));
     await click(button("Make the code"));
     expect(request).toHaveBeenCalledWith("device.pair.setupCode", { includeQr: true });
@@ -114,15 +116,15 @@ describe("Customize › Everywhere", () => {
     expect(button("Connect", tile("keepoak.com"))!.disabled).toBe(true);
     expect(button("Get the snippet")!.disabled).toBe(true);
   });
-  it("pairs from a phone tile and opens Channels", async () => {
+  it("pairs from a phone tile and opens Chat apps", async () => {
     const request = await open("Everywhere", { "device.pair.setupCode": { setupId: "s1", setupCode: "WXYZ-1234", gatewayUrl: "ws://x", auth: "token", urlSource: "lan" } });
     await click(button("Pair", host.querySelector('[data-surface="Android"]')!));
     await click(host.querySelectorAll('input[name="pair-access"]')[1]);
     await click(button("Make the code"));
     expect(request).toHaveBeenCalledWith("device.pair.setupCode", { includeQr: true, bootstrapProfile: "limited" });
     await click(button("Done"));
-    await click(button("Channels", host.querySelector('[data-surface="Chat apps"]')!));
-    expect(host.querySelector('[aria-label="Customize"] [aria-selected="true"]')?.textContent).toBe("Channels");
+    await click(button("Chat apps", host.querySelector('[data-surface="Chat apps"]')!));
+    expect(host.querySelector('[aria-label="Customize"] [aria-selected="true"]')?.textContent).toBe("Chat apps");
   });
 });
 

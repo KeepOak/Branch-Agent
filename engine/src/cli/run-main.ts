@@ -6,12 +6,13 @@ import { truncateUtf16Safe } from "@branch/normalization-core/utf16-slice";
 import type { Command as CommanderCommand, Option as CommanderOption } from "commander";
 import { sanitizeTerminalText } from "../../packages/terminal-core/src/safe-text.js";
 import type { DoctorDatabasePreflight } from "../commands/doctor-database-preflight.js";
+import type { StartupConfigPreflightOptions } from "../commands/startup-config-preflight.js";
 import {
   createInvalidConfigError,
   formatInvalidConfigDetails,
 } from "../config/io.invalid-config.js";
 import { resolveGatewayPort, resolveStateDir } from "../config/paths.js";
-import type { ConfigFileSnapshot, BranchConfig } from "../config/types.branch.js";
+import type { BranchConfig } from "../config/types.branch.js";
 import { isLoopbackHost, isSecureWebSocketUrl } from "../gateway/net.js";
 import { normalizeWebSocketProtocol } from "../gateway/websocket-protocol.js";
 import { FLAG_TERMINATOR, isValueToken } from "../infra/cli-root-options.js";
@@ -134,7 +135,7 @@ async function tryRunGatewayRunFastPath(
     throw err;
   });
   const beforeRun = async (opts: { force?: boolean; reset?: boolean }) => {
-    let beforeStatePreparation: ((snapshot?: ConfigFileSnapshot) => Promise<boolean>) | undefined;
+    let beforeStatePreparation: StartupConfigPreflightOptions["beforeStatePreparation"];
     const shouldBootstrap = await startupTrace.measure("gateway-run-pre-bootstrap", async () => {
       const { prepareGatewayRunBootstrap, recheckGatewayRunBootstrap } =
         await import("./gateway-cli/pre-bootstrap.js");
@@ -151,6 +152,14 @@ async function tryRunGatewayRunFastPath(
     });
     if (!shouldBootstrap) {
       return;
+    }
+    if (process.env.BRANCH_GATEWAY_STANDBY === "1") {
+      // Loads code while another engine still owns state; every state step below runs after release.
+      const { waitInGatewayStandby } = await import("./gateway-cli/standby.js");
+      await startupTrace.measure("gateway-run-standby", () => waitInGatewayStandby(process.env));
+      // The process is now the owner, not a standby. Subsequent gateway or
+      // launcher decisions must see its live role.
+      delete process.env.BRANCH_GATEWAY_STANDBY;
     }
     await startupTrace.measure("gateway-run-bootstrap", async () => {
       await ensureCliExecutionBootstrap({

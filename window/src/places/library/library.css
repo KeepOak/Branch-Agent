@@ -3,7 +3,7 @@
 .lib .lib-canvas { display: flex; margin: 0; }
 .lib-head-acts { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 10px; }
 .lib-tabs { margin: 18px 0 8px; }
-.lib-tabs .lib-n { margin-left: 4px; font: 600 11px var(--mono); color: var(--ink); }
+.lib-tabs .lib-n { margin-left: 4px; font: 600 11px var(--mono); opacity: .6; }
 .lib-body { display: block; }
 .lib-grow { flex: 1; min-width: 0; display: grid; }
 .lib-grow > b { font-weight: 600; font-size: 14px; line-height: 21px; overflow-wrap: anywhere; }
@@ -41,7 +41,7 @@ button.lib-row:hover { background: var(--wash17); }
 /* sections */
 .lib-sec { margin: 28px 0 0; }
 .lib-sec-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 0 8px; }
-.lib-sec-h h2 { margin: 0; font: 500 10.5px/12.6px var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
+.lib-sec-h h2 { margin: 0; font: 500 10.5px/12.6px var(--sans); color: var(--ink-3); }
 .lib-sec-h small { font: 11px var(--mono); color: var(--ink-3); }
 .lib-sec-hint { margin: 0 0 8px; }
 .lib-form { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
@@ -56,8 +56,13 @@ button.lib-row:hover { background: var(--wash17); }
 .lib-field { flex: 1; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border-radius: 12px; border: 1px solid transparent; background: var(--wash17); color: var(--ink-3); }
 .lib-field:focus-within { border-color: var(--line-2); background: var(--raise); }
 .lib-field input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13.5px; outline: none; }
-.lib-search > .lib-hint { margin-bottom: 8px; }
-.lib-search .lib-rows { margin-top: 8px; }
+.lib-search { margin: 12px 0 4px; }
+.lib-search-row { margin-bottom: 14px; }
+.lib-search > .lib-hint { margin-bottom: 0; }
+.lib-search .lib-rows { margin-top: 4px; }
+/* the preview's .chip6 */
+.lib-chip { flex: none; height: 28px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--raise); font: inherit; font-size: 12.5px; color: var(--ink-2); cursor: pointer; white-space: nowrap; }
+.lib-chip:hover { color: var(--ink); }
 .lib-res-head { display: flex; align-items: center; justify-content: space-between; margin: 8px 2px 0; color: var(--ink-3); }
 
 /* dialogs */
@@ -167,3 +172,5 @@ button.lib-row:hover { background: var(--wash17); }
 .lib .empty-line b { color: var(--ink); font-weight: 600; }
 .lib .empty-line .btn, .lib .empty-line .link { margin-top: 8px; }
 .lib-more { margin-top: 8px; }
+/* Made for you opens straight on Dashboards, 8px under the tabs (preview .lib-dashPQ18) */
+.lib-made > .lib-sec:first-child { margin-top: 8px; }

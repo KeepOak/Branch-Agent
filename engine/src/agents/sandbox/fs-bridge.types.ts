@@ -18,6 +18,8 @@ export type SandboxFsStat = {
   type: "file" | "directory" | "other";
   size: number;
   mtimeMs: number;
+  /** Guarded canonical runtime path, available with followSymlinks metadata. */
+  canonicalPath?: string;
 };
 
 /** Filesystem operations exposed across the sandbox boundary. */
@@ -30,6 +32,15 @@ export type SandboxFsBridge = {
    */
   readonly pathMappings?: readonly { readonly hostRoot: string; readonly containerRoot: string }[];
   resolvePath(params: { filePath: string; cwd?: string }): SandboxResolvedPath;
+  /**
+   * Resolves a host-backed file into the caller-facing path policy namespace.
+   * Implementations must bind matching expectedPolicyPath inputs to final I/O.
+   */
+  resolveReadPolicyPath?(params: {
+    filePath: string;
+    cwd?: string;
+    signal?: AbortSignal;
+  }): string | Promise<string>;
   /**
    * Resolves the canonical mutation destination before caller authorization.
    *
@@ -70,6 +81,8 @@ export type SandboxFsBridge = {
     cwd?: string;
     signal?: AbortSignal;
     maxBytes?: number;
+    /** Policy path authorized by the caller before this read. */
+    expectedPolicyPath?: string;
   }): Promise<Buffer>;
   /**
    * Returns the canonical runtime path pinned by the successful read itself.
@@ -131,6 +144,10 @@ export type SandboxFsBridge = {
   stat(params: {
     filePath: string;
     cwd?: string;
+    /** Policy path authorized by the caller before this read. */
+    expectedPolicyPath?: string;
     signal?: AbortSignal;
+    /** Read metadata from the guarded canonical target instead of the final link itself. */
+    followSymlinks?: boolean;
   }): Promise<SandboxFsStat | null>;
 };

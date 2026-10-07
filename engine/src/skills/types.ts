@@ -55,6 +55,8 @@ export type SkillTelemetrySource = "bundled" | "unknown" | "workspace";
 export type SkillUsagePath = {
   /** Path visible to the tool runtime when it reads SKILL.md. */
   readPath: string;
+  /** Host-bound prompt reference before runtime materialization. */
+  sourceReadPath?: string;
   /** Canonical source SKILL.md path used as the lifecycle identity. */
   skillFile: string;
   skillName: string;
@@ -65,6 +67,15 @@ export type ExplicitSkillSelection = {
   name: string;
   path: string;
 };
+
+export type SkillBundle = Readonly<{
+  name: string;
+  slug: string;
+  sourceFilePath: string;
+  skills: readonly string[];
+  description: string;
+  instruction: string;
+}>;
 
 export type SkillCommandSpec = {
   name: string;
@@ -86,6 +97,8 @@ export type SkillCommandSpec = {
   promptTemplate?: string;
   /** Source markdown path for bundle-backed commands. */
   sourceFilePath?: string;
+  /** Metadata only; member permission and instruction bytes are acquired per invocation. */
+  skillBundle?: SkillBundle;
 };
 
 export type SkillsInstallPreferences = {
@@ -125,7 +138,7 @@ export type SkillEligibilityContext = {
   };
 };
 
-export const WORKSPACE_SKILLS_PROMPT_FORMAT_VERSION = 6;
+export const WORKSPACE_SKILLS_PROMPT_FORMAT_VERSION = 8;
 
 export type SkillSnapshot = {
   librarySelections?: import("../../packages/gateway-protocol/src/schema/skill-library.js").SkillLibrarySelection[];

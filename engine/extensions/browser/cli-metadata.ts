@@ -25,7 +25,6 @@ export function registerBrowserCliMetadata(api: BranchPluginApi) {
   );
 }
 
-/** Plugin entry that contributes Browser CLI commands. */
 export default definePluginEntry({
   id: "browser",
   name: "Browser",

@@ -4,13 +4,14 @@ import { useState, type ReactNode } from "react";
 import { brandOf, Logo } from "../places/settings/set1/service";
 import { Icon, type IconName } from "../shell/icons";
 import type { Candidate, Detected, TestResult, Where } from "./setup-model";
+import { shownWhy } from "../shell/shown-why";
 
 export function WelcomeBody({ promise, onPromise }: { promise: boolean; onPromise: (v: boolean) => void }) {
   return (
     <div className="ob-trust">
       <b>How Branch stays safe</b>
       <ul className="may6">
-        {["It asks before it sends, deletes, spends or installs anything.", "Your conversations and keys stay on your computers.", "You can take over, stop it, or roll back any change."].map((line) => (
+        {["You choose how much Branch asks before it acts.", "Your conversations and keys stay on your computers.", "You can take over, stop it, or roll back any change."].map((line) => (
           <li key={line}>
             <span className="i">
               <Icon name="check" size={13} />
@@ -38,7 +39,7 @@ export function ChoiceCards<T extends string | number>({ items, value, onPick }:
   return (
     <div className="provs">
       {items.map((c) => (
-        <button key={String(c.id)} type="button" className="prov" aria-pressed={c.id === value} aria-disabled={c.off ? true : undefined} title={c.off} data-testid={`setup-pick-${String(c.id)}`} onClick={() => !c.off && onPick(c.id)}>
+        <button key={String(c.id)} type="button" className="prov" aria-pressed={c.id === value} aria-disabled={c.off ? true : undefined} title={shownWhy(c.off)} data-testid={`setup-pick-${String(c.id)}`} onClick={() => !c.off && onPick(c.id)}>
           <span className="ico-tile">
             <Icon name={c.icon} small />
           </span>
@@ -98,8 +99,10 @@ type ModelsProps = {
 };
 
 /** The service a found connection belongs to: its kind when the logos know it, else its model's provider. */
+/** A model on this computer shows its model family's logo (Qwen), as the preview does; an account shows its service's. */
 function logoId(c: Candidate): string {
-  const provider = c.modelRef.split("/")[0] ?? "";
+  const [provider = "", model = ""] = c.modelRef.split("/");
+  if (c.kind === "existing-model") return model.toLowerCase().match(/^[a-z]+/)?.[0] ?? provider;
   return brandOf(c.kind) !== c.kind.toLowerCase() ? c.kind : provider || c.kind;
 }
 

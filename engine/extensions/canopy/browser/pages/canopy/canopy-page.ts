@@ -23,8 +23,9 @@ import {
   type CanopyUiState,
   CANOPY_CHANGED_EVENT,
 } from "../../lib/canopy/index.ts";
-import { invalidateCanopyLiveRefresh } from "../../lib/canopy/live-refresh.ts";
+import { invalidateCanopyLoads } from "../../lib/canopy/runtime.ts";
 import { createCanopySessionResolver } from "../../lib/canopy/session-resolution.ts";
+import type { CanopyBoardMetadata } from "../../lib/canopy/types.ts";
 import { matchesAgentScope } from "./agent-filter.ts";
 import { matchesBoardFilter, CANOPY_ALL_BOARDS_FILTER } from "./board-filter.ts";
 import { createSessionsBoardController } from "./sessions-board-controller.ts";
@@ -64,7 +65,10 @@ function reconcileCardOverlays(state: CanopyUiState, visible: (card: CanopyCard)
   }
 }
 
-export function createCanopyPage(canopy: CanopyCapability): ControlUiView {
+export function createCanopyPage(
+  canopy: CanopyCapability,
+  registerBoardNavigation: (board: CanopyBoardMetadata) => void,
+): ControlUiView {
   return (container, initialContext) => {
     const host = initialContext.host;
     let context = initialContext;
@@ -177,6 +181,7 @@ export function createCanopyPage(canopy: CanopyCapability): ControlUiView {
         reconcileCardOverlays(state, (card) => matchesBoardFilter(card, boardId));
       }
       if (
+        context.presented &&
         boardId !== CANOPY_ALL_BOARDS_FILTER &&
         canopy.boardsReady &&
         !state.boards.some((board) => board.id === boardId)
@@ -393,11 +398,7 @@ export function createCanopyPage(canopy: CanopyCapability): ControlUiView {
                 refreshDiagnostics: host.connection.canWrite,
               });
             },
-            onBoardFilterChange: (boardFilter) =>
-              host.navigation.openPage(canopyPageTarget(boardFilter), {
-                replace: true,
-                preserveSearch: true,
-              }),
+            onBoardFilterChange: onBoardChange,
             onNewBoard,
             onRequestUpdate: requestUpdate,
           })}
@@ -417,9 +418,17 @@ export function createCanopyPage(canopy: CanopyCapability): ControlUiView {
                     boardDraft = null;
                     requestUpdate();
                   },
-                  onSaved: (savedId) => {
+                  onSaved: (board) => {
+                    if (disposed) {
+                      return;
+                    }
                     const creating = boardDraft?.create;
                     boardDraft = null;
+                    if (creating) {
+                      invalidateCanopyLoads(canopy);
+                      registerBoardNavigation(board);
+                      host.ui.pinNavigation(`board-${board.id}`);
+                    }
                     void refreshCanopy({
                       host: canopy,
                       client,
@@ -430,7 +439,7 @@ export function createCanopyPage(canopy: CanopyCapability): ControlUiView {
                         return;
                       }
                       if (creating) {
-                        onBoardChange(savedId);
+                        onBoardChange(board.id);
                       } else if (selectedBoard?.kind === "sessions") {
                         void sessionsBoard.read();
                       }
@@ -474,20 +483,6 @@ export function createCanopyPage(canopy: CanopyCapability): ControlUiView {
         requestUpdate();
       }
     });
-    const unsubscribeObserver = host.onEvent("session.observer", (payload) => {
-      if (disposed || !connected || !context.presented || !isRecord(payload)) {
-        return;
-      }
-      if (
-        sessionsBoard.snapshot?.sessions.some(
-          (session) =>
-            session.key === payload.sessionKey &&
-            (!host.agents.scopeId || session.agentId === host.agents.scopeId),
-        )
-      ) {
-        invalidateCanopyLiveRefresh(canopy);
-      }
-    });
     document.addEventListener("visibilitychange", onVisibilityChange);
     update();
     return {
@@ -502,7 +497,6 @@ export function createCanopyPage(canopy: CanopyCapability): ControlUiView {
         unsubscribeState();
         unsubscribeEvents();
         unsubscribeCron();
-        unsubscribeObserver();
         sessionsBoard.dispose();
         sessionResolver.dispose();
         document.removeEventListener("visibilitychange", onVisibilityChange);

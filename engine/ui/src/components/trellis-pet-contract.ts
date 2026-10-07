@@ -16,7 +16,7 @@ export type TrellisPetPaletteId = (typeof LOBSTER_PALETTE_WEIGHTS)[number][0]["i
 // is, at best, trellis-adjacent. None of them count for the Trellis index.
 export type TrellisPasserKind =
   | "stranger"
-  | "crab"
+  | "beetle"
   | "snail"
   | "duck"
   | "jellyfish"
