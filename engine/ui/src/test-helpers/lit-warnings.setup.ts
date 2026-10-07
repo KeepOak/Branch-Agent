@@ -31,8 +31,12 @@ if (typeof Element !== "undefined" && !("getElementById" in Element.prototype)) 
 }
 
 // JSDOM has no Web Animations API. Web Awesome uses this probe to skip
-// animations when none are active.
-if (typeof Element !== "undefined" && !("getAnimations" in Element.prototype)) {
+// animations when none are active. Some jsdom builds expose a non-function
+// `getAnimations` on the prototype, so test for a callable.
+if (
+  typeof Element !== "undefined" &&
+  typeof Element.prototype.getAnimations !== "function"
+) {
   Object.defineProperty(Element.prototype, "getAnimations", {
     configurable: true,
     value: () => [],
