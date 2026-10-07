@@ -10,6 +10,7 @@ import {
 import { fetchWithSsrFGuard } from "../../infra/net/fetch-guard.js";
 import * as activationCheck from "../../plugin-sdk/facade-activation-check.runtime.js";
 import * as facadeRuntime from "../../plugin-sdk/facade-runtime.js";
+import { captureEnv } from "../../test-utils/env.js";
 
 vi.mock("../../config/plugin-auto-enable.js", () => ({
   applyPluginAutoEnable: ({ config }: { config?: unknown }) => ({
@@ -18,9 +19,9 @@ vi.mock("../../config/plugin-auto-enable.js", () => ({
   }),
 }));
 
-const originalBundledPluginsDir = process.env.BRANCH_BUNDLED_PLUGINS_DIR;
+const originalBundledEnv = captureEnv(["BRANCH_BUNDLED_PLUGINS_DIR"]);
 const TEST_UNDICI_RUNTIME_DEPS_KEY = "__BRANCH_TEST_UNDICI_RUNTIME_DEPS__";
-const originalStateDir = process.env.BRANCH_STATE_DIR;
+const originalStateEnv = captureEnv(["BRANCH_STATE_DIR"]);
 const originalGlobalFetch = globalThis.fetch;
 const tempDirs: string[] = [];
 
@@ -80,16 +81,8 @@ afterEach(() => {
   facadeRuntime.resetFacadeRuntimeStateForTest();
   vi.restoreAllMocks();
   Reflect.deleteProperty(globalThis as object, TEST_UNDICI_RUNTIME_DEPS_KEY);
-  if (originalBundledPluginsDir === undefined) {
-    delete process.env.BRANCH_BUNDLED_PLUGINS_DIR;
-  } else {
-    process.env.BRANCH_BUNDLED_PLUGINS_DIR = originalBundledPluginsDir;
-  }
-  if (originalStateDir === undefined) {
-    delete process.env.BRANCH_STATE_DIR;
-  } else {
-    process.env.BRANCH_STATE_DIR = originalStateDir;
-  }
+  originalBundledEnv.restore();
+  originalStateEnv.restore();
   if (originalGlobalFetch) {
     (globalThis as Record<string, unknown>).fetch = originalGlobalFetch;
   } else {

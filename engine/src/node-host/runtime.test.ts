@@ -1,10 +1,14 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/node-host/runtime.test.ts (atlas INTEGRATIONS-0126). Changed for Branch: Retained Branch runtime manifest assertions for duplex commands and disabled native agent runs instead of the older helper-call assertion.
 import fs from "node:fs";
 import path from "node:path";
 import { expectDefined } from "@branch/normalization-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import type { SkillBinTrustEntry } from "../infra/exec-approvals.js";
-import { NODE_DEVICE_APPS_COMMAND } from "../infra/node-commands.js";
+import {
+  NODE_AGENT_CLI_CLAUDE_RUN_COMMAND,
+  NODE_DEVICE_APPS_COMMAND,
+} from "../infra/node-commands.js";
 import { NODE_DESKTOP_STREAM_COMMAND } from "../shared/node-desktop-stream.js";
 import { withEnvAsync } from "../test-utils/env.js";
 import type { SkillBinsProvider } from "./invoke.js";
@@ -12,7 +16,6 @@ import {
   createNodeHostClient,
   frame,
   holdInvoke,
-  listRegisteredNodeHostCapsAndCommands,
   mocks,
   prepareNodeHostRuntime,
   startRuntime,
@@ -516,15 +519,13 @@ describe("node-host invoke input dispatch", () => {
 
 describe("node-host duplex capability selection", () => {
   it("advertises duplex plugin commands without enabling native agent runs", async () => {
-    await prepareNodeHostRuntime({
+    const prepared = await prepareNodeHostRuntime({
       config: { nodeHost: { skills: { enabled: false } } },
       env: { PATH: "/usr/bin" },
-      enableDuplexPluginCommands: true,
     });
 
-    expect(listRegisteredNodeHostCapsAndCommands).toHaveBeenLastCalledWith(expect.anything(), {
-      includeDuplex: true,
-    });
+    expect(prepared.manifest.commands).toContain("test.duplex");
+    expect(prepared.manifest.commands).not.toContain(NODE_AGENT_CLI_CLAUDE_RUN_COMMAND);
   });
 });
 

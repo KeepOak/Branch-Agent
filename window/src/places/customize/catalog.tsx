@@ -1,6 +1,7 @@
 // The plugin catalogue (plugins.catalog.browse / categories) as the preview's "Add a connector" and "Plugins"
 // dialogs (93-g3p.js, 42-placesbp.js czp-dlg). Installs go through plugins.install; when the engine asks for a
 // capability review first, the person confirms and the install is sent again with acknowledgeCapabilities.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
@@ -9,6 +10,8 @@ import { Icon } from "../../shell/icons";
 import { errorText, RequestGeneration, useResource } from "../library/data";
 import { Status } from "../library/ui";
 import { Grey, list, Logo, rec, str, type Rec } from "./common";
+import { shownWhy } from "../../shell/shown-why";
+import { shownWhy } from "../../shell/shown-why";
 
 type Item = { id: string; name: string; summary: string; author: string; categories: string[]; action: string; enabled: boolean; installed: boolean; install: Rec | null };
 export function readItems(result: unknown): Item[] {
@@ -76,7 +79,7 @@ export function CatalogDialog({ mode, engine, close, ownServer, done }: { mode: 
   const install = (i: Item) => { if (i.install) void action.run(i.id, "plugins.install", { ...i.install, enable: true }, () => { browse.reload(); done(); }); };
   const tabs = mode === "connector" ? [{ id: "all", name: "All" }, ...cats] : [...INTENTS, ...cats];
   return <Dialog wide title={mode === "connector" ? "Add a connector" : "Plugins"} onClose={close} testid="catalog"
-    footer={mode === "connector" ? <><button type="button" className="btn ghost" onClick={close}>Cancel</button><button type="button" className="btn" onClick={ownServer}>Add your own server</button></> : <button type="button" className="btn" onClick={close}>Close</button>}>
+    footer={mode === "connector" ? <><button type="button" className="btn ghost" onClick={close}>Cancel</button><button type="button" className="btn" onClick={ownServer}>Add your own server</button></> : null}>
     <p className="dlg-p">{mode === "connector" ? "Connectors in curated groups, or add your own server." : "A plugin adds everything in it at once, and you can switch parts off afterwards."}</p>
     <div className="cz-top"><label className="cz-search"><Icon name="search" small /><input type="search" aria-label={mode === "connector" ? "Search connectors" : "Search plugins"} placeholder={mode === "connector" ? "Search connectors" : "Search plugins"} value={query} onChange={e => setQuery(e.target.value)} /></label>
       {mode === "connector" && <><Grey reason="Needs the engine's public registry search.">Public registry</Grey><Grey reason="Needs the engine's import from other apps.">Bring in from other apps</Grey></>}</div>
@@ -105,6 +108,6 @@ function CatalogCard({ item, busy, blocked, install }: { item: Item; busy: boole
     <div className="cz-prov-h"><Logo name={item.name} /><span className="grow"><b>{item.name}</b>{item.author && <small>@{item.author}</small>}</span></div>
     <small>{item.summary}</small>
     {state ? <span className="cz-state">{state}</span>
-      : <button type="button" className="btn sm" disabled={blocked || !!reason} title={reason} onClick={install}>{busy ? "Installing" : "Install"}</button>}
+      : <button type="button" className="btn sm" disabled={blocked || !!reason} title={shownWhy(reason)} onClick={install}>{busy ? "Installing" : "Install"}</button>}
   </div>;
 }

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -8,6 +8,7 @@ import { smokeProductionEngine } from "./production-engine-smoke.mjs";
 import { assertTrackedSourceClean } from "./release-source-freeze.mjs";
 import { assertHoistedDeployment, extractProductionArchive, productionDeployArguments, productionDeployEnvironment } from "./release-production-layout.mjs";
 import { makeComponentRelease } from "./make-component-release.mjs";
+import { installLinuxLauncher } from "./linux-launcher.mjs";
 import { fileDigest, writeReleaseInventory, validateReleaseIdentity } from "./release-inventory.mjs";
 import { engineRoot, windowRoot, toolingRoot, repoRoot, gitHead, run, preparePnpm,
   scratchRoot, verifiedExceptionFlags, publishWindowDependencies } from "../../scripts/feature-batch-ci-runtime.mjs";
@@ -57,8 +58,21 @@ async function deployEngine(pnpm, scratch, identity) {
   const flags = await verifiedExceptionFlags("engine");
   await run(pnpm, productionDeployArguments(deployment, flags), engineRoot, productionDeployEnvironment(process.env));
   await assertHoistedDeployment(deployment);
+  if (identity.platform === "darwin") {
+    const binary = join(deployment, "cua-driver");
+    await run("bash", [join(engineRoot, "scripts/stage-cua-driver-macos.sh"), binary]);
+    const signingP12 = process.env.BRANCH_MACOS_SIGNING_P12_FILE;
+    const signingPassword = process.env.BRANCH_MACOS_SIGNING_PASSWORD_FILE;
+    const rcodesign = process.env.BRANCH_MACOS_RCODESIGN;
+    assert(signingP12 && signingPassword && rcodesign, "macOS computer driver requires the release signing identity");
+    await run(rcodesign, ["sign", "--p12-file", signingP12, "--p12-password-file", signingPassword, binary]);
+  }
   assert.equal(JSON.parse(await readFile(join(deployment, "dist/build-info.json"), "utf8")).commit, identity.commit);
   assert(!(await readdir(deployment)).includes("src"), "Production deployment must not be an unbuilt source checkout");
+  // The Codex harness ships in every release: its plugin build and its runtime packages.
+  for (const file of ["dist/extensions/codex/branch.plugin.json", "node_modules/@openai/codex/package.json", "node_modules/smol-toml/package.json"]) {
+    assert((await stat(join(deployment, file))).isFile(), `Production deployment is missing ${file}`);
+  }
   return deployment;
 }
 
@@ -77,15 +91,45 @@ async function packageDesktop(scratch, output, identity) {
   const { packager } = require("@electron/packager");
   const folders = await packager({ dir: appDirectory, name: "Branch Agent", platform: identity.platform, arch: identity.arch,
     electronVersion: identity.electronVersion, asar: true, out: join(scratch, "desktop-packaged"), prune: false,
-    appVersion: packageJson.version, ...(identity.platform === "win32" ? { icon: join(desktopRoot, "assets/branch.ico") } : {}) });
+    appVersion: packageJson.version, ...({ win32: { icon: join(desktopRoot, "assets/branch.ico") },
+      darwin: { icon: join(desktopRoot, "assets/branch.icns") }, linux: { icon: join(desktopRoot, "assets/brand/linux/branch-512.png") } }[identity.platform] ?? {}) });
   assert.equal(folders.length, 1, "Expected one native desktop package");
   const app = folders[0];
+  if (identity.platform === "linux") await installLinuxLauncher(app);
   const resources = identity.platform === "darwin" ? join(app, "Branch Agent.app/Contents/Resources") : join(app, "resources");
-  const node = await bundleNode(resources, undefined, identity);
-  const filename = `branch-desktop-${identity.version}-${identity.platform}-${identity.arch}.${identity.platform === "win32" ? "zip" : "tar.gz"}`;
-  const tar = process.platform === "win32" ? join(process.env.SystemRoot, "System32/tar.exe") : "tar";
-  await run(tar, identity.platform === "win32" ? ["-a", "-cf", join(output, filename), "-C", app, "."] : ["-czf", join(output, filename), "-C", app, "."]);
-  return { node, electron, electronVersion: identity.electronVersion, nodePath: join(resources, "node", identity.platform === "win32" ? "node.exe" : "node") };
+  let node = await bundleNode(resources, undefined, identity);
+  // Outside app.asar so a fresh package can prove its executable already has the Keeper icon.
+  await writeFile(join(resources, "keeper-icon-revision"), "keeper-v1\n");
+  // The desktop update component: app.asar alone, plus the whole app (the bootstrap package) for Electron changes.
+  const asar = join(scratch, "desktop-asar"); await mkdir(asar);
+  await copyFile(join(resources, "app.asar"), join(asar, "app.asar"));
+  const desktop = { app: asar, electronVersion: identity.electronVersion };
+  if (identity.platform === "darwin") {
+    const signingP12 = process.env.BRANCH_MACOS_SIGNING_P12_FILE;
+    const signingPassword = process.env.BRANCH_MACOS_SIGNING_PASSWORD_FILE;
+    const rcodesign = process.env.BRANCH_MACOS_RCODESIGN;
+    assert(signingP12 && signingPassword && rcodesign, "macOS releases require a stable code-signing identity");
+    // A receipt inside the sealed bundle cannot be rewritten after nested-code signing.
+    // The release proof records the final shipped Node hash instead.
+    await rm(join(resources, "node/node-runtime.json"));
+    // Packager signs before the bundled Node and icon revision are added. Sign the finished bundle,
+    // including its nested code, before hashing the Node binary or archiving the app.
+    await run(rcodesign, ["sign", "--p12-file", signingP12, "--p12-password-file", signingPassword, join(app, "Branch Agent.app")]);
+    node = { ...node, sha256: (await fileDigest(join(resources, "node/node"))).sha256 };
+  }
+  desktop.runtime = app;
+  return { node, electron, electronVersion: identity.electronVersion, desktop,
+    nodePath: join(resources, "node", identity.platform === "win32" ? "node.exe" : "node") };
+}
+
+/** CI starts the native build before the shared renderer exists; packaging waits for its ready file. */
+async function waitForSharedWindow() {
+  const ready = process.env.BRANCH_RELEASE_WINDOW_READY;
+  if (!ready) return;
+  for (const end = Date.now() + 12 * 60_000; ; await new Promise(next => setTimeout(next, 2000))) {
+    try { if ((await stat(ready)).isFile()) return; } catch (error) { if (error.code !== "ENOENT") throw error; }
+    assert(Date.now() < end, "The shared renderer never arrived");
+  }
 }
 
 export async function buildRelease(mode, output, windowDirectory) {
@@ -103,8 +147,10 @@ export async function buildRelease(mode, output, windowDirectory) {
     // The named feature suites already gate every pull request and main push (feature-batch-checks.yml).
     await prepareEngine(pnpm);
     const engine = await deployEngine(pnpm, scratch, identity);
-    const manifest = await makeComponentRelease({ ...identity, sourceCommit: identity.commit, tag: `v${identity.version}`, engine, window: windowDirectory, output });
-    const { nodePath, ...runtime } = await packageDesktop(scratch, output, identity);
+    // Packaged first, so the manifest's desktop component is the same app.asar as the bootstrap package.
+    const { nodePath, desktop, ...runtime } = await packageDesktop(scratch, output, identity);
+    await waitForSharedWindow();
+    const manifest = await makeComponentRelease({ ...identity, sourceCommit: identity.commit, tag: `v${identity.version}`, engine, window: windowDirectory, desktop, output });
     const source = await readFile(join(engineRoot, "packages/gateway-protocol/src/version.ts"), "utf8");
     const protocol = { min: Number(source.match(/MIN_CLIENT_PROTOCOL_VERSION = (\d+)/)?.[1]), max: Number(source.match(/PROTOCOL_VERSION = (\d+)/)?.[1]) };
     assert(Number.isInteger(protocol.min) && Number.isInteger(protocol.max), "Missing source gateway protocol levels");

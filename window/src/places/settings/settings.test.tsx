@@ -38,7 +38,7 @@ describe("Settings engine contracts", () => {
   it("filters credential values from status rendering", () => { expect(safeEntries({ token: "hidden", apiKey: "hidden", secret: "hidden", password: "hidden", status: "connected" })).toEqual([["status", "connected"]]); });
   it("keeps numeric usage counts while hiding token strings", () => { expect(safeEntries({ totalTokens: 120, accessTokens: "hidden", refreshToken: "hidden", outputTokens: 40 })).toEqual([["totalTokens", 120], ["outputTokens", 40]]); });
   it("renames engine feature labels while preserving outside service names", () => {
-    expect(visible("OpenClaw Workboard Dreaming Crabbox Peekaboo ClawHub")).toBe("Branch Agent Canopy Rings Cuttings Knothole Seedbank");
+    expect(visible("OpenClaw Workboard Dreaming Crabbox Peekaboo ClawHub")).toBe("Branch Canopy Rings Cuttings Knothole Seedbank");
     expect(visible("OpenAI Anthropic Google Amazon Bitwarden GitHub Telegram OpenShell")).toBe("OpenAI Anthropic Google Amazon Bitwarden GitHub Telegram OpenShell");
   });
   it("never reports a refused file save or config patch as successful", async () => {
@@ -85,7 +85,7 @@ describe("Settings repeated and interrupted flows", () => {
   it("routes all21 Settings ids and reports engine failures without success data", async () => {
     const request = vi.fn().mockRejectedValue(new Error("Engine offline"));
     const connection = engine(request);
-    const ids = ["general", "people", "appearance", "notifications", "instructions", "models", "local", "accounts", "voice", "chatapps", "permissions", "computer", "secrets", "usage", "gateway", "self", "seasons", "updates", "achievements", "advanced", "developer"];
+    const ids = ["general", "people", "appearance", "notifications", "instructions", "models", "local", "accounts", "voice", "chatapps", "permissions", "computer", "secrets", "usage", "backups", "gateway", "self", "seasons", "updates", "achievements", "advanced", "developer"];
     for (const page of ids) { await act(async () => root.render(<SettingsPage page={page} title={page} level="regular" engine={connection} />)); expect(host.querySelector("h1")?.textContent).toBe(page); expect(host.querySelector(".bs-success")).toBeNull(); }
   });
 });

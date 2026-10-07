@@ -67,7 +67,7 @@ async function configureRealComposerPet(currentPage: Page, seed: number) {
  *  the viewport. */
 async function measureDismissMenu(currentPage: Page) {
   return await currentPage.evaluate(() => {
-    const dropdown = document.querySelector("wa-dropdown.lobster-pet-dismiss-menu");
+    const dropdown = document.querySelector("wa-dropdown.trellis-pet-dismiss-menu");
     if (!dropdown?.shadowRoot) {
       throw new Error("dismiss menu dropdown not found");
     }
@@ -157,7 +157,7 @@ async function useOversizedDismissLabels(currentPage: Page) {
       "Permanently suppress every future trellis visit notice across all workspaces",
     ];
     document
-      .querySelectorAll("wa-dropdown.lobster-pet-dismiss-menu wa-dropdown-item")
+      .querySelectorAll("wa-dropdown.trellis-pet-dismiss-menu wa-dropdown-item")
       .forEach((item, index) => {
         item.textContent = labels[index] ?? item.textContent;
       });
@@ -168,7 +168,7 @@ suite.define(() => {
   it("keeps the composer critter clickable and its dismissal menu inside the viewport", () =>
     withDismissMenuPage({}, async (page) => {
       await configureRealComposerPet(page, 42);
-      const sprite = page.locator(".lobster-pet");
+      const sprite = page.locator(".trellis-pet");
       await sprite.waitFor();
       await sprite.click({ button: "right" });
       await page.getByText("Dismiss and don't show again", { exact: true }).waitFor();
@@ -190,11 +190,11 @@ suite.define(() => {
   it("keeps both items fully visible under long labels and an enlarged type scale", () =>
     withDismissMenuPage({}, async (page) => {
       await configureRealComposerPet(page, 42);
-      const sprite = page.locator(".lobster-pet");
+      const sprite = page.locator(".trellis-pet");
       await sprite.waitFor();
 
       await sprite.click({ button: "right" });
-      await page.locator("wa-dropdown.lobster-pet-dismiss-menu").waitFor();
+      await page.locator("wa-dropdown.trellis-pet-dismiss-menu").waitFor();
       await page.getByText("Dismiss and don't show again", { exact: true }).waitFor();
       const baseline = await measureDismissMenu(page);
 
@@ -227,11 +227,11 @@ suite.define(() => {
   it("keeps the popup within the viewport at a compact composer height", async () => {
     await withDismissMenuPage({ viewport: { width: 1280, height: 420 } }, async (shortPage) => {
       await configureRealComposerPet(shortPage, 42);
-      const sprite = shortPage.locator(".lobster-pet");
+      const sprite = shortPage.locator(".trellis-pet");
       await sprite.waitFor();
 
       await sprite.click({ button: "right" });
-      await shortPage.locator("wa-dropdown.lobster-pet-dismiss-menu").waitFor();
+      await shortPage.locator("wa-dropdown.trellis-pet-dismiss-menu").waitFor();
       await shortPage.getByText("Dismiss and don't show again", { exact: true }).waitFor();
 
       const measurement = await measureDismissMenu(shortPage);
@@ -251,7 +251,7 @@ suite.define(() => {
         await configureRealComposerPet(page, 42);
         // Exercise the popup's raw pointer-coordinate boundary without moving
         // the composer outside its scroll container and invalidating its lanes.
-        const sprite = page.locator(".lobster-pet");
+        const sprite = page.locator(".trellis-pet");
         await sprite.waitFor();
         const point = await sprite.evaluate(
           (element, direction) => ({
@@ -261,7 +261,7 @@ suite.define(() => {
           edge,
         );
         await sprite.dispatchEvent("contextmenu", point);
-        await page.locator("wa-dropdown.lobster-pet-dismiss-menu").waitFor();
+        await page.locator("wa-dropdown.trellis-pet-dismiss-menu").waitFor();
 
         const measurement = await measureDismissMenu(page);
 
@@ -275,11 +275,11 @@ suite.define(() => {
       { viewport: { width: 1280, height: 900 }, colorScheme: "dark" },
       async (darkPage) => {
         await configureRealComposerPet(darkPage, 42);
-        const sprite = darkPage.locator(".lobster-pet");
+        const sprite = darkPage.locator(".trellis-pet");
         await sprite.waitFor();
 
         await sprite.click({ button: "right" });
-        await darkPage.locator("wa-dropdown.lobster-pet-dismiss-menu").waitFor();
+        await darkPage.locator("wa-dropdown.trellis-pet-dismiss-menu").waitFor();
         await darkPage.getByText("Dismiss and don't show again", { exact: true }).waitFor();
 
         const measurement = await measureDismissMenu(darkPage);

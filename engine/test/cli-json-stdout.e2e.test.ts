@@ -1,3 +1,4 @@
+import "../src/test-utils/prepare-compiled-subprocesses.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { withTempHome } from "branch/plugin-sdk/test-env";
@@ -150,7 +151,10 @@ describe("cli json stdout contract", () => {
             message: "--timeout must be a positive integer (seconds)",
           },
         });
-        expect(result.stderr).toContain("--timeout must be a positive integer (seconds)");
+        expect(result.stderr).toContain("[branch] The CLI command failed.");
+        expect(result.stderr).toContain(
+          "[branch] Reason: --timeout must be a positive integer (seconds)",
+        );
       },
       { prefix: "branch-update-empty-timeout-e2e-" },
     );
@@ -429,7 +433,8 @@ describe("cli json stdout contract", () => {
             error: { type: "cli_error", message: conflict.message },
           });
           expect(result.stdout).not.toContain("[branch]");
-          expect(result.stderr).toContain(conflict.message);
+          expect(result.stderr).toContain("[branch] The CLI command failed.");
+          expect(result.stderr).not.toContain(conflict.message);
         }
       },
       { prefix: "branch-qr-json-failure-e2e-" },
@@ -500,7 +505,8 @@ describe("cli json stdout contract", () => {
             message: 'Sandbox explain agent "alpha" does not match session agent "beta".',
           },
         });
-        expect(result.stderr).toContain(
+        expect(result.stderr).toContain("[branch] The CLI command failed.");
+        expect(result.stderr).not.toContain(
           'Sandbox explain agent "alpha" does not match session agent "beta".',
         );
       },
@@ -531,7 +537,8 @@ describe("cli json stdout contract", () => {
             message: "Docs search failed: offline fixture",
           },
         });
-        expect(result.stderr).toContain("Docs search failed: offline fixture");
+        expect(result.stderr).toContain("[branch] The CLI command failed.");
+        expect(result.stderr).not.toContain("Docs search failed: offline fixture");
       },
       { prefix: "branch-docs-json-failure-e2e-" },
     );

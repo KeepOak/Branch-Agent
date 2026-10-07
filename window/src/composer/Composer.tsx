@@ -2,6 +2,7 @@
 // the dock row above it and the menus, all wired to the engine through the shared handle (connect/engine.ts).
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
 import { PASTED_TEXT_CHIP_CHARS } from "./attachments";
+import { isPreparationPending, preparationLabel } from "../connect/preparation-status";
 import { DockRow, type Goal } from "./DockRow";
 import { isAdmin, num, rec, str, type SendExtras, type WindowEngine } from "./engine";
 import { Icon, StopMark } from "./icons";
@@ -9,7 +10,8 @@ import { replaceToken } from "./mention";
 import { isEngineMode, modeName, nextMode, type EngineMode } from "./mode";
 import { chipLabel, currentModelRef, currentThinking } from "./model";
 import { ModelMenu } from "./ModelMenu";
-import { Logo } from "../places/settings/set1/service";
+import { Popover } from "./Popover";
+import { serviceName } from "../places/settings/set1/service";
 import { ModeMenu } from "./ModeMenu";
 import { NO_ROUTE, type OpenTarget } from "./nav";
 import { PhotoDialog, PictureDialog } from "./PhotoDialog";
@@ -21,6 +23,8 @@ import { useBackground } from "./useBackground";
 import { hasNoModel, useConversation } from "./useConversation";
 import { safeStorage, saveDraft } from "./drafts";
 import { useConversationPrefs } from "../thread/prefs";
+import { shortReason } from "../thread/format";
+import { currentModelAccount, shortAccountEmail, useModelAccounts } from "./useModelAccount";
 import { vimKey, type VimMode } from "./vim";
 import { useDraft } from "./useDraft";
 import { useDrawer, type Pick } from "./useDrawer";
@@ -35,7 +39,7 @@ type Props = {
   name: string;
   working: boolean;
   disabled: boolean;
-  onSend: (text: string, extras?: SendExtras) => void;
+  onSend: (text: string, extras?: SendExtras, idempotencyKey?: string) => void | Promise<boolean>;
   onStop: () => void;
   engine?: WindowEngine;
   sessionKey?: string | null;
@@ -43,18 +47,28 @@ type Props = {
   onToast?: (text: string) => void;
   onOpen?: (target: OpenTarget) => void;
   onOpenConversation?: (key: string) => void;
+  lastUserEntryId?: string;
   replyTo?: Reply | null;
   onClearReply?: () => void;
   offline?: boolean;
+  /** The computer hosting this Branch connection. */
+  connectionTarget?: string;
   /** Drawn just above the message box, under the dock row: the waiting question (§4.2.2 "Question above the message box"). */
   above?: ReactNode;
   /** The plan's progress for the dock row's "1 of 4" chip. */
   plan?: { done: number; total: number; steps: { step: string; status: string }[] } | null;
   /** In a room: "Message the room · @ to call a Trunk" (rooms/, §4.3.1); else "Message <Trunk>". */
   placeholder?: string;
+  /** An unsaved topic; its first send is handled by the shell. */
+  draftAgentId?: string;
+  draftTemporary?: boolean;
+  onNewTopic?: (agentId: string, options?: Record<string, unknown>) => void;
+  mainKey?: string;
+  lockdown?: boolean;
+  onToggleLockdown?: () => void;
 };
 
-type Menu = "plus" | "plug" | "model" | "mode" | null;
+type Menu = "plus" | "plug" | "tune" | null;
 
 export const VOICE_OFF = "Off until you choose: it uses the microphone. Turn it on in Settings › Voice.";
 
@@ -85,9 +99,11 @@ function useComposeEvent(open: string | null, setText: (t: string) => void, box:
 /** The composer (DESIGN-SPEC §4.3.1): the message box and Send, which becomes Stop while the Trunk works. */
 export function Composer(props: Props) {
   const { name, working, disabled, onSend, onStop, engine, onToast, onOpen } = props;
-  const conv = useConversation(engine);
-  const draft = useDraft(engine?.sessionKey ?? null, engine?.attachmentPolicy);
+  const conv = useConversation(engine, props.draftAgentId);
+  const draft = useDraft(props.draftAgentId ? null : engine?.sessionKey ?? null, engine?.attachmentPolicy);
   const [menu, setMenu] = useState<Menu>(null);
+  const [nextAsJob, setNextAsJob] = useState(false);
+  useEffect(() => setNextAsJob(false), [engine?.sessionKey]);
   const [photo, setPhoto] = useState(false);
   const [picture, setPicture] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -99,7 +115,7 @@ export function Composer(props: Props) {
   const box = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
-  const anchors = { plus: useRef<HTMLButtonElement>(null), plug: useRef<HTMLButtonElement>(null), model: useRef<HTMLButtonElement>(null), mode: useRef<HTMLButtonElement>(null) };
+  const anchors = { plus: useRef<HTMLButtonElement>(null), plug: useRef<HTMLButtonElement>(null), tune: useRef<HTMLButtonElement>(null) };
 
   const voice = useVoiceCatalog(engine);
   const typed = useRef(draft.text);
@@ -117,8 +133,11 @@ export function Composer(props: Props) {
     return () => window.removeEventListener(TALK_EVENT, start);
   }, [voice.live]);
   const row = conv.row;
-  const currentRef = currentModelRef(row, conv.defaults);
+  const currentRef = currentModelRef(row, conv.defaults, conv.trunk?.model);
   const current = conv.models.find((m) => m.ref === currentRef || m.id === currentRef);
+  const modelAccounts = useModelAccounts(engine, conv.trunkId, working);
+  const modelAccount = currentModelAccount(modelAccounts, current?.provider ?? currentRef.split("/")[0] ?? "", row);
+  const accountEmail = shortAccountEmail(modelAccount);
   const thinking = currentThinking(row, conv.defaults);
   // No model set up: the engine names a default model but none is connected (models.list has none usable), or none at all.
   const noModel = hasNoModel(conv, currentRef);
@@ -127,6 +146,7 @@ export function Composer(props: Props) {
   const asSet = isEngineMode(conv.trunk?.defaultMode) ? (conv.trunk?.defaultMode as EngineMode) : null;
   const queueMode = str(row.effectiveQueueMode);
   const trunkName = conv.trunk?.name || name;
+  const conversationProblem = conv.error ?? (isPreparationPending(conv.modelsError) || conv.modelsError?.includes("is still starting up.") ? conv.modelsError : null);
   const toast = useCallback((text: string) => onToast?.(text), [onToast]);
 
   const deliver = useCallback(
@@ -134,10 +154,10 @@ export function Composer(props: Props) {
     [onSend, draft.files, draft.people, props.replyTo],
   );
   const line = useWaitingLine(engine?.sessionKey ?? null, working, Boolean(props.offline), (item, steer) => {
-    onSend(item.text, buildExtras(item.text, item.files, [], steer ? "steer" : undefined));
+    onSend(item.text, buildExtras(item.text, item.files, [], steer ? "steer" : undefined), item.id);
     if (steer) toast(`Steered ${trunkName}. It picks this up at its next step.`);
   });
-  const bg = useBackground(engine, conv.trunkId);
+  const bg = useBackground(engine, conv.trunkId, props.mainKey);
   const levels = current?.levels ?? [];
   const drawer = useDrawer(engine, conv.trunks, levels, useMemo(() => ({ think: thinking }), [thinking]));
   const view = draft.text === dismissed ? null : drawer.view(draft.text, caret);
@@ -149,10 +169,12 @@ export function Composer(props: Props) {
     return err;
   };
   const pickMode = async (next: EngineMode | null) => {
+    if (props.lockdown) return;
     setMenu(null);
     if ((await patch({ permissionMode: next })) === null) toast(`${next ? modeName(next) : `As set · ${modeName(asSet)}`} in this conversation.`);
   };
   const runBackground = async (text: string) => {
+    if (props.lockdown) { setProblem("Lockdown is on: Trunks cannot run or send anything."); return; }
     if (!text.trim()) {
       toast("Type what to do first, then run it in the background.");
       return;
@@ -168,16 +190,37 @@ export function Composer(props: Props) {
   const submit = (alt: boolean) => {
     const plan = planSend(draft.text, draft.files.length > 0, working, queueMode, alt);
     if (plan.kind === "nothing") return;
+    if (props.lockdown && plan.kind !== "stop") {
+      setProblem(draft.text.trim().startsWith("!") ? "Lockdown is on: commands can't run." : "Lockdown is on: Trunks cannot run or send anything.");
+      return;
+    }
+    if (noModel && plan.kind !== "command" && !draft.text.trim().startsWith("/")) return;
+    if (nextAsJob && draft.files.length) {
+      setProblem("A job starts with words. Send attachments in this conversation instead.");
+      return;
+    }
+    if (nextAsJob && plan.kind === "send") {
+      setNextAsJob(false);
+      void runBackground(draft.text.trim());
+      return;
+    }
     if (plan.kind === "stop") {
       onStop();
       draft.clear();
       return;
     }
+    if (isPreparationPending(conversationProblem) && plan.kind !== "background") return;
     if (plan.kind === "background") {
       void runBackground(plan.text);
       return;
     }
     if (noModel && plan.kind !== "command") return;
+    if (props.draftAgentId) {
+      void Promise.resolve(deliver(draft.text.trim(), draft.files, draft.people)).then((created) => {
+        if (created) draft.clear();
+      });
+      return;
+    }
     if (plan.kind === "wait") {
       line.add(draft.text.trim(), draft.files);
     } else {
@@ -273,11 +316,12 @@ export function Composer(props: Props) {
       submit(prefs.sendWith === "ctrl" ? false : mod);
     } else if (e.key === "Tab" && e.shiftKey) {
       e.preventDefault();
+      if (props.lockdown) return;
       const next = nextMode(mode ?? asSet, admin);
       if (next) void pickMode(next);
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
       e.preventDefault();
-      setMenu("model");
+      setMenu("tune");
     } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
       history.onArrow(e);
     }
@@ -338,22 +382,31 @@ export function Composer(props: Props) {
     }
   };
 
-  /** A new temporary conversation with this Trunk (sessions.create incognito), opened in its place. */
+  /** A temporary topic is still only created with its first message. */
   const startTemporary = async () => {
-    if (!engine || !props.onOpenConversation) return;
-    try {
-      const made = rec(await engine.request("sessions.create", { incognito: true, ...(conv.trunkId ? { agentId: conv.trunkId } : {}) }));
-      if (str(made.key)) props.onOpenConversation(str(made.key));
-    } catch (e) {
-      setProblem(e instanceof Error ? e.message : String(e));
-    }
+    if (conv.trunkId) props.onNewTopic?.(conv.trunkId, { incognito: true });
   };
 
   const hasDraft = draft.text.trim().length > 0 || draft.files.length > 0;
   const stopMode = working && !hasDraft;
-  const ready = hasDraft && !disabled && draft.preparing === 0 && (!noModel || draft.text.trim().startsWith("/"));
-  const cost = num(row.estimatedCostUsd);
-  const temporary = row.incognito === true;
+  // Sessions and history arrive before the engine finishes starting; sending waits for this Trunk.
+  const ready = hasDraft && !disabled && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem) && (!noModel || draft.text.trim().startsWith("/"));
+  // The session row's estimatedCostUsd is the latest run, not the conversation total.
+  const [usageCost, setUsageCost] = useState<{ key: string; value: number } | null>(null);
+  useEffect(() => {
+    const key = engine?.sessionKey;
+    if (!engine || !key) return;
+    let live = true;
+    const read = () => void engine.request("sessions.usage", { key, range: "all" }).then((result) => {
+      const value = num(rec(rec(result).totals).totalCost);
+      if (live && value !== undefined) setUsageCost({ key, value });
+    }).catch(() => undefined);
+    read();
+    const timer = working ? setInterval(read, 10_000) : null;
+    return () => { live = false; if (timer) clearInterval(timer); };
+  }, [engine, engine?.sessionKey, working, row.updatedAt]);
+  const cost = usageCost && usageCost.key === engine?.sessionKey ? usageCost.value : undefined;
+  const temporary = props.draftTemporary === true || row.incognito === true;
 
   return (
     <div
@@ -369,8 +422,9 @@ export function Composer(props: Props) {
     >
       {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}
       {noModel ? <NoModelLine onOpen={onOpen} /> : null}
-      {problem ? <p className="c-note bad" role="alert">{problem}</p> : null}
-      {line.error ? <p className="c-note bad" role="alert">{line.error}</p> : null}
+      {conversationProblem ? <p className={isPreparationPending(conversationProblem) ? "c-note" : "c-note bad"} role={isPreparationPending(conversationProblem) ? "status" : "alert"}>{isPreparationPending(conversationProblem) ? preparationLabel(trunkName) : shortReason(conversationProblem)}</p> : null}
+      {problem ? <p className="c-note bad" role="alert">{isPreparationPending(problem) ? preparationLabel(trunkName) : shortReason(problem)}</p> : null}
+      {line.error ? <p className="c-note bad" role="alert">{isPreparationPending(line.error) ? preparationLabel(trunkName) : shortReason(line.error)}</p> : null}
       {draft.note ? <p className="c-note">{draft.note}</p> : null}
       {drawer.peopleError && view?.kind === "mention" ? <p className="c-note bad">{drawer.peopleError}</p> : null}
       {props.replyTo ? (
@@ -473,28 +527,15 @@ export function Composer(props: Props) {
         <span className="c-flags">
           {temporary ? <span className="c-flag">Temporary</span> : null}
           {vimOn ? <span className="c-flag" data-testid="vim-normal">Normal</span> : null}
-          {cost !== undefined && cost > 0 && current && !current.local ? (
-            <span className="c-cost" title={`What this conversation has cost so far on ${current.name}. Details in Settings › Data & usage.`}>
-              ${cost < 1 ? cost.toFixed(2) : Math.round(cost)} so far
-            </span>
-          ) : null}
         </span>
-        {engine && !noModel ? (
-          <button ref={anchors.model} type="button" className="c-chipb" data-testid="model-chip" aria-expanded={menu === "model"} title="Model and how long it thinks" onClick={() => setMenu(menu === "model" ? null : "model")}>
-            <Logo id={current?.provider ?? currentRef.split("/")[0] ?? ""} size={18} />
-            <span className="c-chipw">{chipLabel(current?.name ?? currentRef.split("/").pop() ?? "", thinking)}</span>
-            {str(row.activeModel) && str(row.activeModel) !== str(row.model) ? (
-              <span title={`${current?.name ?? str(row.model)} isn't answering, so ${str(row.activeModel)} is standing in.`}><Icon name="retry" size={13} /></span>
-            ) : null}
-            {row.fastMode === true || row.fastMode === "ultrafast" ? <Icon name="bolt" size={13} /> : null}
-            <Icon name="chev" size={14} />
-          </button>
-        ) : null}
         {engine ? (
-          <button ref={anchors.mode} type="button" className={`c-chipb${(mode ?? asSet) === "full" ? " bad" : ""}`} data-testid="mode-chip" aria-expanded={menu === "mode"} title="How much it may do in this conversation (Shift+Tab)" onClick={() => setMenu(menu === "mode" ? null : "mode")}>
-            <Icon name={(mode ?? asSet) === "full" ? "unlock" : (mode ?? asSet) === "read-only" ? "eye" : (mode ?? asSet) === "workspace" ? "spark" : "shield"} size={15} />
-            <span className="c-chipw">{modeName(mode ?? asSet) || "As set"}</span>
-            <Icon name="chev" size={14} />
+          <button ref={anchors.tune} type="button" className={`c-btn c-tune-button${props.lockdown ? " lockdown" : (mode ?? asSet) === "full" ? " full" : ""}`} data-testid="tune-button" aria-haspopup="dialog" aria-expanded={menu === "tune"}
+            aria-label={`Model, access and usage: ${chipLabel(current?.name ?? currentRef.split("/").pop() ?? "", thinking)} · ${props.lockdown ? "Lockdown" : modeName(mode ?? asSet) || "As set"}${cost !== undefined ? ` · $${cost.toFixed(2)} so far` : ""}`}
+            title={`${current?.name ?? currentRef} · ${props.lockdown ? "Lockdown" : modeName(mode ?? asSet) || "As set"}${accountEmail ? ` · ${accountEmail}` : ""}`}
+            onClick={() => setMenu(menu === "tune" ? null : "tune")}>
+            <Icon name={props.lockdown ? "lock" : "sliders"} />
+            {props.lockdown ? <span>Lockdown</span> : (mode ?? asSet) === "full" ? <Icon name="lock" size={10} /> : null}
+            {str(row.activeModel) && str(row.activeModel) !== str(row.model) ? <i className="c-tune-attention" aria-hidden="true" /> : null}
           </button>
         ) : null}
         {dict.on ? null : (
@@ -522,8 +563,10 @@ export function Composer(props: Props) {
           type="file"
           hidden
           onChange={(e) => {
-            const listing = folderContext([...(e.target.files ?? [])].map((f) => f.webkitRelativePath || f.name));
+            const files = [...(e.target.files ?? [])];
+            const listing = folderContext(files.map((f) => f.webkitRelativePath || f.name));
             if (listing) draft.addPastedText(listing);
+            void draft.addFiles(files, "file");
             e.target.value = "";
           }}
         />
@@ -535,6 +578,7 @@ export function Composer(props: Props) {
             trunks={conv.trunks}
             trunkId={conv.trunkId}
             onAttach={() => fileInput.current?.click()}
+            onFolder={() => folderInput.current?.click()}
             onPhoto={() => setPhoto(true)}
             onPicture={noModel ? undefined : () => setPicture(true)}
             onInsert={(t) => {
@@ -544,23 +588,29 @@ export function Composer(props: Props) {
               setDismissed(null);
               requestAnimationFrame(() => box.current?.focus());
             }}
-            onBackground={() => void runBackground(draft.text)}
+            onBackground={() => {
+              if (draft.text.trim()) void runBackground(draft.text);
+              else { draft.setText("/bg "); box.current?.focus(); }
+            }}
             onOpen={onOpen}
             temporary={temporary}
-            onTemporary={engine && props.onOpenConversation ? () => void startTemporary() : undefined}
+            onTemporary={props.onNewTopic ? () => void startTemporary() : undefined}
+            onWhoAnswers={props.draftAgentId ? (agentId) => props.onNewTopic?.(agentId) : undefined}
             onVoiceNote={typeof MediaRecorder !== "undefined" && navigator.mediaDevices ? () => void note.start() : undefined}
           />
         ) : null}
         {menu === "plug" && engine ? (
           <PlugMenu anchor={anchors.plug} onClose={() => setMenu(null)} engine={engine} row={row} trunkName={trunkName} isAdmin={admin} patch={patch} onToast={onToast} onOpen={onOpen} />
         ) : null}
-        {menu === "model" ? (
-          <ModelMenu
-            anchor={anchors.model}
+        {menu === "tune" ? (
+          <Popover anchor={anchors.tune} onClose={() => setMenu(null)} label="Model, access and usage" className="c-tune c-model c-mode" align="right">
+            <section className="c-tune-section"><h3>Model</h3>
+          <ModelMenu embedded
+            anchor={anchors.tune}
             onClose={() => setMenu(null)}
             models={conv.models}
             loading={conv.modelsLoading}
-            error={conv.modelsError}
+            error={isPreparationPending(conv.modelsError) ? preparationLabel(trunkName) : conv.modelsError}
             current={current}
             currentRef={current?.ref ?? currentRef}
             row={row}
@@ -580,7 +630,36 @@ export function Composer(props: Props) {
             onOpen={onOpen}
             onRetry={() => void conv.readModelList()}
             engine={engine}
+            trunkId={conv.trunkId}
           />
+            <div className="c-tune-line"><span>Runs on {current?.local ? "this computer" : current ? serviceName(current.provider) : "no model"}{modelAccount ? ` · ${modelAccount.a.displayName || modelAccount.a.profileId}` : ""}{modelAccount?.a.email ? <small>{modelAccount.a.email}</small> : null}</span>
+              <button type="button" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => { setMenu(null); onOpen?.("settings/accounts"); }}>Change</button></div>
+            <div className="c-tune-line"><button type="button" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => { setMenu(null); onOpen?.("settings/models"); }}>Manage models…</button>
+              <button type="button" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => { setMenu(null); onOpen?.("settings/accounts"); }}>Accounts and order…</button></div>
+            </section>
+            <section className="c-tune-section"><h3>Access</h3>
+              <ModeMenu embedded anchor={anchors.tune} onClose={() => setMenu(null)} mode={mode} asSet={asSet} canSelectFull={admin} lockdown={props.lockdown} onToggleLockdown={props.onToggleLockdown} onPick={(m) => void pickMode(m)} onOpen={onOpen} row={row} onElevated={(level) => void patch({ elevatedLevel: level })} />
+            </section>
+            <section className="c-tune-section"><h3>Thread</h3>
+              <div className="c-tune-line"><span>Start as a job<small>Your next message gets its own card and progress.</small></span><button type="button" aria-pressed={nextAsJob} onClick={() => setNextAsJob((v) => !v)}>{nextAsJob ? "On" : "Off"}</button></div>
+              <div className="c-tune-line"><span>Branch from here<small>A copy of this conversation to try another way.</small></span><button type="button" disabled={!engine?.sessionKey || !props.lastUserEntryId} title={!props.lastUserEntryId ? "Send a message before branching this conversation." : undefined} onClick={async () => {
+                if (!engine?.sessionKey || !props.lastUserEntryId) return;
+                try {
+                  const made = await engine.request<{ sessionKey?: string }>("sessions.fork", { sessionKey: engine.sessionKey, entryId: props.lastUserEntryId });
+                  if (!made.sessionKey) throw new Error("The engine did not create the copy.");
+                  setMenu(null);
+                  props.onOpenConversation?.(made.sessionKey);
+                } catch (error) { setProblem(error instanceof Error ? error.message : String(error)); }
+              }}>Branch</button></div>
+            </section>
+            <section className="c-tune-section"><h3>Status</h3>
+              {bg.jobs.filter((job) => job.running).length ? <div className="c-tune-line"><span>{bg.jobs.filter((job) => job.running).length} in the background</span><button type="button" onClick={() => { setMenu(null); props.onOpenConversation?.(bg.jobs.find((job) => job.running)?.key ?? ""); }}>Open</button></div> : null}
+              <div className="c-tune-line"><span>{working ? "Working" : props.offline ? "Offline" : "Ready"}<small>{props.offline ? "The engine is not connected" : `Connected to ${props.connectionTarget || "this computer"}’s Branch`}</small></span></div>
+            </section>
+            <section className="c-tune-section"><h3>Usage</h3>
+              <div className="c-tune-line"><span>{cost !== undefined ? `$${cost.toFixed(2)} in this conversation` : "No usage recorded for this conversation"}{accountEmail ? <small>{accountEmail}</small> : null}</span><button type="button" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => { setMenu(null); onOpen?.("settings/usage"); }}>Details</button></div>
+            </section>
+          </Popover>
         ) : null}
         {searching ? (
           <HistorySearch
@@ -596,7 +675,6 @@ export function Composer(props: Props) {
             }}
           />
         ) : null}
-        {menu === "mode" ? <ModeMenu anchor={anchors.mode} onClose={() => setMenu(null)} mode={mode} asSet={asSet} canSelectFull={admin} onPick={(m) => void pickMode(m)} onOpen={onOpen} row={row} onElevated={(level) => void patch({ elevatedLevel: level })} /> : null}
       </form>
       {picture ? <PictureDialog onClose={() => setPicture(false)} onMake={(words) => deliver(`Make a picture: ${words}`, [], [])} /> : null}
       {photo ? <PhotoDialog onClose={() => setPhoto(false)} onUse={(f) => void draft.addFiles([f], "file")} onUpload={() => fileInput.current?.click()} /> : null}
@@ -625,9 +703,8 @@ function ToolButton({ refEl, icon, label, tip, open, onClick, disabled, testId }
 function NoModelLine({ onOpen }: { onOpen?: (target: OpenTarget) => void }) {
   return (
     <p className="c-nomodel" data-testid="no-model">
-      Please{" "}
-      <button type="button" className="c-link" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => onOpen?.("settings/models")}>connect a model</button>, or{" "}
-      <button type="button" className="c-link" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => onOpen?.("local-model-setup")}>click here</button> to set up a local model.
+      Trunks can’t answer until a model is connected.{" "}
+      <button type="button" className="c-link" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => onOpen?.("settings/accounts/add")}>Add an account</button>
     </p>
   );
 }

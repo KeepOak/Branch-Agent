@@ -13,9 +13,10 @@ import {
 } from "../../sessions/user-turn-transcript.js";
 import type { UserTurnOriginalInputCommit } from "../../sessions/user-turn-transcript.types.js";
 import { extractTextFromChatContent } from "../../shared/chat-content.js";
+import { outsideAgentSender } from "../contacts/outside-agents.js";
 import type { MentionInbox } from "../mention-inbox.types.js";
+import { hasGatewayAdminScope } from "../operator-scopes.js";
 import { formatForLog } from "../ws-log.js";
-import { hasGatewayAdminScope } from "./chat-origin-routing.js";
 import { buildRestartSafeChatTranscriptState } from "./chat-restart-recovery.js";
 import type { AdmittedChatSend } from "./chat-send-admission.js";
 import {
@@ -24,6 +25,7 @@ import {
 } from "./chat-send-reply-context.js";
 import type { NormalizedChatSendRequest } from "./chat-send-request.js";
 import type { PreparedChatSendSession } from "./chat-send-session.js";
+import type { createChatSendGoalCommitGuard } from "./chat-send-work-admission.js";
 import { gatewayClientSenderFields } from "./gateway-client-identity.js";
 import type { GatewayClient } from "./shared-types.js";
 
@@ -49,14 +51,16 @@ export function createGatewayChatUserTurnController(params: {
   startedAt: number;
   warn: (message: string) => void;
   mentionInbox?: MentionInbox;
-  assertGoalCurrent?: () => void;
+  goalCommitGuard?: ReturnType<typeof createChatSendGoalCommitGuard>;
   assertOriginalInputCommit?: () => void;
 }): GatewayChatUserTurnController {
   const { admission, request, session } = params;
   const sender =
     request.goalOperation?.action === "resume"
       ? undefined
-      : gatewayClientSenderFields(params.client).sender;
+      : request.p.outsideAgent
+        ? outsideAgentSender(request.p.outsideAgent)
+        : gatewayClientSenderFields(params.client).sender;
   const senderProfileId = params.client?.authenticatedUserProfile?.profileId;
   const selectedMentions = request.mentions;
   const mentionInbox = params.mentionInbox;
@@ -77,7 +81,11 @@ export function createGatewayChatUserTurnController(params: {
     ...(request.p.replyToId ? { replyToId: request.p.replyToId } : {}),
     ...(sender ? { sender } : {}),
     ...(sourceClients.length ? { transport: { clients: sourceClients } } : {}),
-    ...(hasGatewayAdminScope(params.client) ? { senderIsOwner: true } : {}),
+    // An outside agent speaks through the owner's connection but is not the owner: its words never count as
+    // owner-authored (trusted memory, owner replies).
+    ...(hasGatewayAdminScope(params.client) && !request.p.outsideAgent
+      ? { senderIsOwner: true }
+      : {}),
     ...(request.systemInputProvenance ? { provenance: request.systemInputProvenance } : {}),
   };
   const replyContextFieldsPromise = request.p.replyToId
@@ -106,6 +114,9 @@ export function createGatewayChatUserTurnController(params: {
       }))
     : Promise.resolve(baseInput);
   let contextFreeCommand = false;
+  let mentionCommit: Promise<void> | undefined;
+  const onPersistenceError = (error: unknown) =>
+    params.warn(`gateway user transcript persistence failed: ${formatForLog(error)}`);
   const recorder: UserTurnTranscriptRecorder = createUserTurnTranscriptRecorder({
     ...(sender?.id && !request.goalOperation
       ? {
@@ -130,7 +141,7 @@ export function createGatewayChatUserTurnController(params: {
             kind: "goal",
             operation: request.goalOperation,
             runId: session.clientRunId,
-            assertCurrent: params.assertGoalCurrent,
+            ...params.goalCommitGuard,
           },
         }
       : {}),
@@ -180,8 +191,7 @@ export function createGatewayChatUserTurnController(params: {
       }
       return next;
     },
-    onPersistenceError: (error) =>
-      params.warn(`gateway user transcript persistence failed: ${formatForLog(error)}`),
+    onPersistenceError,
     ...(selectedMentions && senderProfileId && mentionInbox
       ? {
           onOriginalInputCommitted: ({ message, anchor }: UserTurnOriginalInputCommit) => {
@@ -211,7 +221,7 @@ export function createGatewayChatUserTurnController(params: {
               );
               return;
             }
-            mentionInbox.recordCommittedInput({
+            mentionCommit = mentionInbox.recordCommittedInputAsync({
               sourceId,
               committedSource: {
                 generation: anchor.generation,
@@ -226,6 +236,7 @@ export function createGatewayChatUserTurnController(params: {
               recipientProfileIds: retained.map((mention) => mention.profileId),
               excerpt: redactSensitiveText(text),
             });
+            void mentionCommit.catch(onPersistenceError);
           },
         }
       : {}),
@@ -234,7 +245,7 @@ export function createGatewayChatUserTurnController(params: {
     if (options?.contextFreeCommand === true && !recorder.hasPersisted()) {
       contextFreeCommand = true;
     }
-    return await measureDiagnosticsTimelineSpan(
+    const persisted = await measureDiagnosticsTimelineSpan(
       "gateway.chat_send.persist_user_transcript",
       () => recorder.persistFallback(),
       {
@@ -243,6 +254,8 @@ export function createGatewayChatUserTurnController(params: {
         attributes: admission.chatSendTraceAttributes,
       },
     );
+    await mentionCommit;
+    return persisted;
   };
   return {
     baseInput,

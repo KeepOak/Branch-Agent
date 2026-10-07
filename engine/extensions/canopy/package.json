@@ -1,6 +1,6 @@
 {
   "name": "@branch/canopy",
-  "version": "2026.9.7",
+  "version": "2026.9.8",
   "private": true,
   "description": "Branch Agent dashboard canopy plugin",
   "type": "module",
@@ -18,7 +18,7 @@
     "branch": "workspace:*"
   },
   "peerDependencies": {
-    "branch": ">=2026.9.7"
+    "branch": ">=2026.9.8"
   },
   "peerDependenciesMeta": {
     "branch": {
@@ -31,8 +31,8 @@
     ],
     "controlUi": "./browser/index.ts",
     "assetScripts": {
-      "build": "node --import ../../scripts/tsx.mjs ../../scripts/build-plugin-control-ui.mts",
-      "copy": "node --import ../../scripts/tsx.mjs ../../scripts/build-plugin-control-ui.mts --copy",
+      "build": "cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/canopy",
+      "copy": "cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/canopy --copy",
       "buildOutputs": [
         "branch.plugin.json"
       ]

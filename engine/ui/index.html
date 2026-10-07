@@ -77,7 +77,10 @@
             rose: ["rose", "rose-light"],
             miami: ["miami", "miami-light"],
           };
-          var pair = FAMILIES[theme];
+          var pair = FAMILIES[theme] ||
+            (/^[a-z0-9][a-z0-9-]*$/.test(theme) && theme !== "grove"
+              ? [theme, theme + "-light"]
+              : null);
           var resolved = pair
             ? pair[mode === "light" ? 1 : 0]
             : mode === "light"

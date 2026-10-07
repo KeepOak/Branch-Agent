@@ -1,4 +1,5 @@
 import { realpathSync } from "node:fs";
+import { createTestPluginServiceScheduler } from "branch/plugin-sdk/plugin-test-api";
 import { resolveRuntimeWorkerUrl } from "branch/plugin-sdk/process-runtime";
 import { useAutoCleanupTempDirTracker } from "branch/plugin-sdk/test-env";
 import { afterEach, describe, expect, it } from "vitest";
@@ -52,6 +53,7 @@ async function makeService(params: {
       logger: quietLogger as never,
       dataDir,
       workerModuleUrl,
+      scheduler: createTestPluginServiceScheduler(),
     },
   );
   services.push(service);

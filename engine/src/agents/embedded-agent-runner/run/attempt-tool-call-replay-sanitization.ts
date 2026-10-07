@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.ts (atlas AGENT-LOOP-0097). Changed for Branch: synchronize historical provider argument mirrors before replay.
 import { replaceCompactionReplayOwnerContent } from "@branch/ai/transports";
 import { asOptionalObjectRecord } from "@branch/normalization-core/record-coerce";
 import { hasNonEmptyString } from "@branch/normalization-core/string-coerce";
@@ -13,6 +14,7 @@ import {
   validateAnthropicTurns,
   validateGeminiTurns,
 } from "../../embedded-agent-helpers/turns.js";
+import { synchronizeHistoricalToolCallArgs } from "../../historical-tool-call-args.js";
 import type { AgentMessage, StreamFn } from "../../runtime/index.js";
 import {
   sanitizeToolUseResultPairing,
@@ -27,7 +29,7 @@ import {
   type ToolCallIdMode,
 } from "../../tool-call-id.js";
 import { createCompletedToolCallPredicate } from "../../tool-call-shared.js";
-import type { TranscriptPolicy } from "../../transcript-policy.js";
+import type { TranscriptPolicy } from "../../transcript-policy.types.js";
 import { isRunnerToolCallBlock } from "./attempt-tool-call-block-type.js";
 import { resolveToolCallName } from "./attempt-tool-call-name-resolution.js";
 
@@ -383,7 +385,7 @@ export function wrapStreamFnSanitizeMalformedToolCalls(
       },
     });
     const sanitized = sanitizeReplayToolCallInputs(
-      messages,
+      synchronizeHistoricalToolCallArgs(messages),
       allowedToolNames,
       allowProviderOwnedThinkingReplay,
     );

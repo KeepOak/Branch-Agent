@@ -143,7 +143,6 @@ Tool profiles do not narrow session-tool reach, and sandboxing only clamps the s
   agents: {
     entries: {
       personal: {
-        default: true,
         workspace: "~/.branch/workspace-personal",
         sandbox: { mode: "off" },
       },
@@ -159,7 +158,6 @@ Tool profiles do not narrow session-tool reach, and sandboxing only clamps the s
   agents: {
     entries: {
       family: {
-        default: true,
         workspace: "~/.branch/workspace-family",
         sandbox: { mode: "all", scope: "agent", workspaceAccess: "ro" },
         tools: {
@@ -183,7 +181,6 @@ Tool profiles do not narrow session-tool reach, and sandboxing only clamps the s
   agents: {
     entries: {
       public: {
-        default: true,
         workspace: "~/.branch/workspace-public",
         sandbox: { mode: "all", scope: "agent", workspaceAccess: "none" },
         tools: {

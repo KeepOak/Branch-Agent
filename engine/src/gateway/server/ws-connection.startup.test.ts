@@ -547,6 +547,63 @@ describe("attachGatewayWsConnectionHandler startup readiness", () => {
     },
   );
 
+  it("admits an operator connect once operator admission opens, before startup finishes", async () => {
+    const response = createDeferred<{
+      type?: unknown;
+      id?: unknown;
+      ok?: unknown;
+      error?: { code?: unknown; details?: unknown };
+    }>();
+    const socket = createGatewayWsTestSocket({
+      onSend: (data) => {
+        const frame = JSON.parse(data) as { type?: unknown; id?: unknown };
+        if (frame.type === "res" && frame.id === "connect-early") {
+          response.resolve(frame);
+        }
+      },
+    });
+    attachTrackedGatewayWs({
+      attach: attachGatewayWsConnectionHandler,
+      socket,
+      options: {
+        getResolvedAuth: () => ({ mode: "none", allowTailscale: false }),
+        isStartupPending: () => true,
+        isOperatorAdmissionPending: () => false,
+        buildRequestContext: () => createGatewayWsTestRequestContext() as never,
+      },
+    });
+    socket.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "req",
+          id: "connect-early",
+          method: "connect",
+          params: {
+            minProtocol: PROTOCOL_VERSION,
+            maxProtocol: PROTOCOL_VERSION,
+            client: {
+              id: GATEWAY_CLIENT_NAMES.CLI,
+              version: "dev",
+              platform: "test",
+              mode: GATEWAY_CLIENT_MODES.CLI,
+            },
+            role: "operator",
+            scopes: ["operator.read"],
+            caps: [],
+          },
+        }),
+      ),
+    );
+    const frame = await response.promise;
+    expect(frame.error?.details).not.toEqual({ reason: GATEWAY_STARTUP_UNAVAILABLE_REASON });
+    expect(socket.close).not.toHaveBeenCalledWith(
+      GATEWAY_STARTUP_CLOSE_CODE,
+      GATEWAY_STARTUP_CLOSE_REASON,
+    );
+    socket.emit("close", 1000, Buffer.from("done"));
+  });
+
   it("admits the exact cloud-worker setup node through restart startup", async () => {
     await withStartupTestState(
       { label: "gateway-startup-cloud-worker", layout: "state-only" },

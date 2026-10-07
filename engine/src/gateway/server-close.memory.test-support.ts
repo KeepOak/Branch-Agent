@@ -2,6 +2,11 @@
 import assert from "node:assert/strict";
 import { vi } from "vitest";
 import type { BranchConfig } from "../config/types.branch.js";
+import { createPluginStateKeyedStore } from "../plugin-state/plugin-state-store.js";
+import type {
+  OpenKeyedStoreOptions,
+  PluginStateKeyedStore,
+} from "../plugin-state/plugin-state-store.types.js";
 import { createPluginRecord } from "../plugins/loader-records.js";
 import { getPluginInstance } from "../plugins/plugin-instance-scope.js";
 import type { MemoryPluginRuntime } from "../plugins/registry-contribution-types.js";
@@ -10,14 +15,23 @@ import type { PluginRuntime } from "../plugins/runtime/types.js";
 import { resolveRelativeBundledPluginPublicModuleId } from "../test-utils/bundled-plugin-public-surface.js";
 
 export async function createGatewayMemoryCloseRegistryFactory(config: BranchConfig) {
-  const { memoryRuntime } = await vi.importActual<{ memoryRuntime: MemoryPluginRuntime }>(
+  const { memoryRuntime, configureMemoryCoreRingsState } = await vi.importActual<{
+    memoryRuntime: MemoryPluginRuntime;
+    configureMemoryCoreRingsState: (
+      open: <T>(options: OpenKeyedStoreOptions) => PluginStateKeyedStore<T>,
+    ) => void;
+  }>(
     resolveRelativeBundledPluginPublicModuleId({
       fromModuleUrl: import.meta.url,
       pluginId: "memory-core",
       artifactBasename: "runtime-api.js",
     }),
   );
-  const registry = (close: () => Promise<void>) => {
+  const env = { ...process.env };
+  configureMemoryCoreRingsState(<T>(options: OpenKeyedStoreOptions) =>
+    createPluginStateKeyedStore<T>("memory-core", { ...options, env }),
+  );
+  const registry = (close: () => Promise<void>, beforeEmbedBatch?: () => Promise<void>) => {
     const builder = createPluginRegistry({
       logger: { info() {}, warn() {}, error() {}, debug() {} },
       runtime: {} as PluginRuntime,
@@ -51,7 +65,10 @@ export async function createGatewayMemoryCloseRegistryFactory(config: BranchConf
           id: "fixture-embedding",
           model: "synthetic-embedding",
           embed: async () => [1, 0, 0],
-          embedBatch: async () => [[1, 0, 0]],
+          embedBatch: async (inputs) => {
+            await beforeEmbedBatch?.();
+            return inputs.map(() => [1, 0, 0]);
+          },
           close,
         },
       }),

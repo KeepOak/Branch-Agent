@@ -19,6 +19,8 @@ export type MainRestartRecoveryState = {
     runId: string;
     attempt: number;
     lifecycleGeneration: string;
+    /** Process that can still admit this reserved turn. */
+    ownerPid?: number;
   };
   foregroundClaims?: {
     lifecycleGeneration: string;

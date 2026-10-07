@@ -16,6 +16,7 @@ import { isWebchatClient } from "../../utils/message-channel.js";
 import type { AuthRateLimiter } from "../auth-rate-limit.js";
 import type { ResolvedGatewayAuth } from "../auth.js";
 import { resolvePreauthHandshakeTimeoutMs } from "../handshake-timeouts.js";
+import { getHeader } from "../http-header-value.js";
 import type { GatewayIngressAttribution } from "../ingress-attribution.js";
 import type { GatewayMethodRegistry } from "../methods/registry.js";
 import { isLoopbackAddress } from "../net.js";
@@ -73,6 +74,8 @@ export type GatewayConnectionOptions = {
   nodeReapprovalCoordinator?: NodeReapprovalCoordinator;
   preauthHandshakeTimeoutMs?: number;
   isStartupPending?: () => boolean;
+  /** Operator connects are admitted once this is false, which can be before startup finishes. */
+  isOperatorAdmissionPending?: () => boolean;
   isPendingWorkerNodeSetup?: (setupId: string, deviceId: string) => boolean;
   admitsNodeSetupCompletion?: (setup: CloudWorkerSetupMutationAdmission) => boolean;
   gatewayMethods: string[];
@@ -99,6 +102,7 @@ type GatewayConnectionLifecycle = Pick<
   | "connectionWork"
   | "connId"
   | "isStartupPending"
+  | "isOperatorAdmissionPending"
   | "send"
   | "close"
   | "isClosed"
@@ -156,6 +160,7 @@ export function attachGatewayConnection(params: AttachGatewayConnectionParams) {
     browserRateLimiter,
     nodeReapprovalCoordinator,
     isStartupPending,
+    isOperatorAdmissionPending,
     isPendingWorkerNodeSetup,
     admitsNodeSetupCompletion,
     gatewayMethods,
@@ -177,12 +182,10 @@ export function attachGatewayConnection(params: AttachGatewayConnectionParams) {
   const [openedAt, connId] = [Date.now(), randomUUID()];
   const connectionController = new AbortController();
   const { remoteAddr, remotePort, localAddr, localPort, endpoint } = params.addresses;
-  const headerValue = (value: string | string[] | undefined) =>
-    Array.isArray(value) ? value[0] : value;
-  const requestHost = headerValue(upgradeReq.headers.host);
-  const requestOrigin = headerValue(upgradeReq.headers.origin);
-  const requestUserAgent = headerValue(upgradeReq.headers["user-agent"]);
-  const forwardedFor = headerValue(upgradeReq.headers["x-forwarded-for"]);
+  const requestHost = getHeader(upgradeReq, "host");
+  const requestOrigin = getHeader(upgradeReq, "origin");
+  const requestUserAgent = getHeader(upgradeReq, "user-agent");
+  const forwardedFor = getHeader(upgradeReq, "x-forwarded-for");
   const openedDuringStartup = isStartupPending?.() === true;
 
   logWs("in", "open", { connId, remoteAddr, remotePort, localAddr, localPort, endpoint });
@@ -326,7 +329,10 @@ export function attachGatewayConnection(params: AttachGatewayConnectionParams) {
       } else {
         socket.send(encoded, { binary: false });
       }
-      return { kind: "sent" } as const;
+      return {
+        kind: "sent",
+        bytes: typeof encoded === "string" ? Buffer.byteLength(encoded) : encoded.byteLength,
+      } as const;
     } catch {
       socket.terminate();
       retireConnection();
@@ -592,6 +598,7 @@ export function attachGatewayConnection(params: AttachGatewayConnectionParams) {
     connectionWork,
     connId,
     isStartupPending,
+    isOperatorAdmissionPending,
     send,
     close,
     isClosed: () => closed,

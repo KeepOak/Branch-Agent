@@ -5,51 +5,43 @@ import { assertSqliteFlipStartupRefusal } from "./sqlite-sessions-transcripts-fl
 function startupRefusal(command: string) {
   return {
     message: `gateway refused startup: legacy migration required (code=78 signal=null)
-Legacy session store requires migration: /qa/state/sessions/sessions.json. Run "${command}" against the same state/config before starting Branch.`,
+Legacy session store requires migration: /qa/state/agents/main/sessions/sessions.json. Run "${command}" against the same state/config before starting Branch.`,
     preservedSourceFiles: [
       "agents/main/sessions/sessions.json",
       "agents/main/sessions/archive-fixture/cold-archive.jsonl",
-      "sessions/sessions.json",
+      "agents/main/sessions/sqlite-legacy-main.jsonl",
     ],
   };
 }
 
 describe("SQLite flip proof startup refusal assertions", () => {
   it.each([
-    { label: "unprofiled", profile: undefined, command: "branch doctor --fix" },
-    {
-      label: "profile-qualified",
-      profile: "qa-sqlite-proof",
-      command: "branch --profile qa-sqlite-proof doctor --fix",
-    },
-  ])("accepts $label guidance with preserved legacy sources", ({ profile, command }) => {
+    [undefined, "branch doctor --fix", undefined],
+    ["qa-sqlite-proof", "branch --profile qa-sqlite-proof doctor --fix", undefined],
+    ["qa-sqlite-proof", "branch doctor --fix", "guidance"],
+    ["qa-sqlite-proof", "branch --profile unrelated doctor --fix", "guidance"],
+    [undefined, "branch doctor --fix", "source"],
+  ] as const)("validates profile %s guidance %s with failure %s", (profile, command, failure) => {
     withEnv({ BRANCH_PROFILE: profile, BRANCH_CONTAINER_HINT: undefined }, () => {
-      expect(() => assertSqliteFlipStartupRefusal(startupRefusal(command))).not.toThrow();
-    });
-  });
-
-  it.each(["branch doctor --fix", "branch --profile unrelated doctor --fix"])(
-    "rejects guidance outside the active profile: %s",
-    (command) => {
-      withEnv({ BRANCH_PROFILE: "qa-sqlite-proof", BRANCH_CONTAINER_HINT: undefined }, () => {
-        const refusal = startupRefusal(command);
-        expect(() => assertSqliteFlipStartupRefusal(refusal)).toThrow(
-          expect.objectContaining({
-            actual: refusal.message,
-            expected: 'Run "branch --profile qa-sqlite-proof doctor --fix"',
-          }),
+      const refusal = startupRefusal(command);
+      if (failure === "source") {
+        refusal.preservedSourceFiles.pop();
+      }
+      const assertion = expect(() => assertSqliteFlipStartupRefusal(refusal));
+      if (failure) {
+        assertion.toThrow(
+          expect.objectContaining(
+            failure === "guidance"
+              ? {
+                  actual: refusal.message,
+                  expected: 'Run "branch --profile qa-sqlite-proof doctor --fix"',
+                }
+              : { actual: refusal.preservedSourceFiles },
+          ),
         );
-      });
-    },
-  );
-
-  it("rejects valid guidance when a legacy source was not preserved", () => {
-    withEnv({ BRANCH_PROFILE: undefined, BRANCH_CONTAINER_HINT: undefined }, () => {
-      const refusal = startupRefusal("branch doctor --fix");
-      refusal.preservedSourceFiles.pop();
-      expect(() => assertSqliteFlipStartupRefusal(refusal)).toThrow(
-        expect.objectContaining({ actual: refusal.preservedSourceFiles }),
-      );
+      } else {
+        assertion.not.toThrow();
+      }
     });
   });
 });

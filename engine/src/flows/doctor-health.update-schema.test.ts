@@ -1,21 +1,36 @@
 // Install fixture mocks before importing the real maintenance owners.
 import "./doctor-health.test-support.js";
 import fs from "node:fs";
+import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createUpdateRun, finishUpdateRun } from "../infra/update-run-ledger.js";
+import * as originalCapture from "../commands/doctor-original-capture.js";
+import { preflightUpdateDoctorCli } from "../commands/doctor-update-schema-guard.js";
+import * as sqliteSnapshot from "../infra/sqlite-snapshot-source.js";
+import { buildUpdateRehearsalPathEnv } from "../infra/update-rehearsal-paths.js";
+import {
+  createUpdateRun,
+  finishUpdateRun,
+  recordUpdateRunStep,
+} from "../infra/update-run-ledger.js";
+import { buildUpdateDoctorEnv } from "../infra/update-runner-doctor.js";
 import { finalizeActiveDebugProxyCaptures } from "../proxy-capture/runtime-cleanup.js";
 import { initializeDebugProxyCaptureAsync } from "../proxy-capture/runtime.js";
+import { withAgentDatabaseMaintenanceLease } from "../state/branch-agent-db-maintenance-lease.js";
+import { migrateBranchAgentDatabaseForMaintenance } from "../state/branch-agent-db-maintenance.js";
+import { registerBranchAgentDatabase } from "../state/branch-agent-db-registry.js";
 import {
-  closeBranchAgentDatabasesForTest,
+  closeBranchAgentDatabasesAsync,
   openBranchAgentDatabase,
   BRANCH_AGENT_SCHEMA_VERSION,
 } from "../state/branch-agent-db.js";
+import { BRANCH_AGENT_SCHEMA_SQL } from "../state/branch-agent-schema.js";
+import { withoutSessionEntrySnapshotsSchema } from "../state/branch-agent-session-snapshots-schema.js";
+import { getBranchDatabaseMaintenanceScope } from "../state/branch-state-db-async-lifecycle.js";
 import { BRANCH_STATE_SCHEMA_VERSION } from "../state/branch-state-db-contract.js";
 import { tableExists } from "../state/branch-state-db-schema-helpers.js";
 import {
   closeBranchStateDatabaseAsync,
-  closeBranchStateDatabaseForTest,
   openBranchStateDatabase,
   repairBranchStateDatabaseSchema,
 } from "../state/branch-state-db.js";
@@ -80,8 +95,8 @@ describe("Doctor schema bumps under an updating parent", () => {
         const shared = openBranchStateDatabase({ env: state.env }).path;
         const agent = openBranchAgentDatabase({ agentId: "main", env: state.env }).path;
         createUpdateRun({ trigger: "cli", before: { version: updaterVersion } });
-        closeBranchAgentDatabasesForTest();
-        closeBranchStateDatabaseForTest();
+        await closeBranchAgentDatabasesAsync();
+        await closeBranchStateDatabaseAsync();
         const target = kind === "state" ? shared : agent;
         const supported =
           kind === "state" ? BRANCH_STATE_SCHEMA_VERSION : BRANCH_AGENT_SCHEMA_VERSION;
@@ -156,7 +171,7 @@ describe("Doctor schema bumps under an updating parent", () => {
         if (ledger === "finished") {
           finishUpdateRun(run.runId, { status: "succeeded" });
         }
-        closeBranchStateDatabaseForTest();
+        await closeBranchStateDatabaseAsync();
         if (ledger === "missing") {
           const db = new DatabaseSync(shared);
           try {
@@ -212,7 +227,7 @@ describe("Doctor schema bumps under an updating parent", () => {
     await withBranchTestState({ scenario: "minimal" }, async (state) => {
       const shared = openBranchStateDatabase({ env: state.env }).path;
       createUpdateRun({ trigger: "cli", before: { version: "2026.9.2" } });
-      closeBranchStateDatabaseForTest();
+      await closeBranchStateDatabaseAsync();
       setSchemaVersion(shared, BRANCH_STATE_SCHEMA_VERSION - 1);
       const database = new DatabaseSync(shared);
       database.exec("DROP TABLE config_machine_state");
@@ -247,4 +262,162 @@ describe("Doctor schema bumps under an updating parent", () => {
       );
     });
   });
+
+  it.each([
+    "owned",
+    "flag-only",
+    "foreign-agent",
+    "early foreign-agent",
+    "changed namespace",
+  ] as const)(
+    "admits the real outer rehearsal only under current maintenance: %s",
+    async (mode) => {
+      await withBranchTestState({ scenario: "minimal" }, async (state) => {
+        const shared = openBranchStateDatabase({ env: state.env }).path;
+        let agent = openBranchAgentDatabase({ agentId: "main", env: state.env }).path;
+        const run = createUpdateRun({ trigger: "cli", before: { version: "2026.9.2" } });
+        recordUpdateRunStep(run.runId, {
+          step: "branch doctor",
+          status: mode === "early foreign-agent" ? "in_progress" : "completed",
+        });
+        if (mode !== "early foreign-agent") {
+          recordUpdateRunStep(run.runId, {
+            step: "post-update verification",
+            status: "in_progress",
+          });
+        }
+        await closeBranchAgentDatabasesAsync();
+        await closeBranchStateDatabaseAsync();
+        // Real v23 storage, not a v24 image with only its metadata downgraded.
+        fs.unlinkSync(agent);
+        const seed = new DatabaseSync(agent);
+        try {
+          seed.exec(withoutSessionEntrySnapshotsSchema(BRANCH_AGENT_SCHEMA_SQL));
+          seed.exec(`PRAGMA user_version = 23;
+            INSERT INTO schema_meta(meta_key, role, schema_version, agent_id, app_version, created_at, updated_at)
+            VALUES ('primary', 'agent', 23, 'main', '2026.9.4', 1, 1)`);
+          seed.exec(
+            "INSERT INTO cache_entries(scope,key,value_json,expires_at,updated_at) VALUES('test','retained','{\"keep\":true}',NULL,1)",
+          );
+        } finally {
+          seed.close();
+        }
+        if (mode === "foreign-agent" || mode === "early foreign-agent") {
+          const foreign = state.path("foreign-agent");
+          fs.mkdirSync(foreign);
+          const moved = path.join(foreign, "branch-agent.sqlite");
+          fs.renameSync(agent, moved);
+          agent = moved;
+          await state.writeConfig({
+            plugins: { enabled: false },
+            agents: { ownership: "explicit", entries: { main: { agentDir: foreign } } },
+          });
+          if (mode === "early foreign-agent") {
+            registerBranchAgentDatabase({
+              agentId: "main",
+              path: agent,
+              env: state.env,
+              schemaVersion: 23,
+            });
+          }
+          await closeBranchStateDatabaseAsync();
+        }
+        const root = fs.realpathSync(state.stateDir);
+        for (const [key, value] of Object.entries({
+          ...buildUpdateDoctorEnv({
+            allowGatewayServiceRepair: false,
+            allowGatewayActivation: false,
+            serviceRepairPolicy: "external",
+          }),
+          ...buildUpdateRehearsalPathEnv(root),
+        })) {
+          vi.stubEnv(key, value);
+        }
+        vi.stubEnv("BRANCH_UPDATE_IN_PROGRESS", "1");
+        vi.stubEnv("BRANCH_UPDATE_RUN_ID", undefined);
+        vi.stubEnv("BRANCH_COMPATIBILITY_HOST_VERSION", undefined);
+        if (mode === "flag-only") {
+          vi.stubEnv("TMPDIR", path.dirname(root));
+        }
+        const before = [agent, state.configPath].map((filename) => fs.readFileSync(filename));
+        const snapshot = sqliteSnapshot.prepareSqliteReadOnlyLocation;
+        const observe = vi
+          .spyOn(sqliteSnapshot, "prepareSqliteReadOnlyLocation")
+          .mockImplementation(async (...args) => {
+            const prepared = await snapshot(...args);
+            if (mode === "changed namespace" && getBranchDatabaseMaintenanceScope()) {
+              vi.stubEnv("TMPDIR", path.dirname(root));
+            }
+            return prepared;
+          });
+        const runtime = { log: vi.fn(), error: vi.fn(), exit: vi.fn() };
+        // Observe the actual capture owner without replacing its implementation.
+        const capture = vi.spyOn(originalCapture, "preserveDoctorOriginalState");
+        mocks.runContributions.mockImplementation(async () => {
+          const scope = getBranchDatabaseMaintenanceScope();
+          expect(scope?.ownsSchemaMaintenance).toBe(true);
+          if (!scope) {
+            throw new Error("Expected real Doctor maintenance");
+          }
+          scope.assertOwnerCurrent();
+          scope.assertDatabaseAccess(shared);
+          await withAgentDatabaseMaintenanceLease({ env: process.env }, (lease) =>
+            migrateBranchAgentDatabaseForMaintenance({ agentId: "main", pathname: agent }, lease),
+          );
+        });
+        try {
+          if (mode === "flag-only") {
+            await expect(preflightUpdateDoctorCli({})).rejects.toMatchObject({
+              code: "update-schema-bump-unfenced",
+            });
+          } else {
+            // The actual CLI preflight must not cache state-only facts as a full fleet.
+            const preflight = await preflightUpdateDoctorCli({});
+            expect(preflight).toBeUndefined();
+            const doctor = runDoctorHealthFlow(
+              runtime,
+              { repair: true, nonInteractive: true },
+              undefined,
+              preflight,
+            );
+            if (mode === "owned") {
+              await doctor;
+              expect(
+                mocks.runContributions,
+                runtime.log.mock.calls.flat().join("\n"),
+              ).toHaveBeenCalledOnce();
+            } else {
+              await expect(doctor).rejects.toThrow(
+                mode === "changed namespace" ? /namespace changed/ : /schema|coverage|rehearsal/i,
+              );
+            }
+          }
+          if (mode !== "owned") {
+            expect(capture).not.toHaveBeenCalled();
+            expect(mocks.runContributions).not.toHaveBeenCalled();
+          }
+          expect(fs.readFileSync(state.configPath)).toEqual(before[1]);
+          if (mode === "owned") {
+            const migrated = new DatabaseSync(agent, { readOnly: true });
+            try {
+              expect(migrated.prepare("PRAGMA user_version").get()?.user_version).toBe(
+                BRANCH_AGENT_SCHEMA_VERSION,
+              );
+              expect(
+                migrated.prepare("SELECT value_json FROM cache_entries WHERE key='retained'").get(),
+              ).toEqual({ value_json: '{"keep":true}' });
+            } finally {
+              migrated.close();
+            }
+          } else {
+            expect(fs.readFileSync(agent)).toEqual(before[0]);
+          }
+        } finally {
+          observe.mockRestore();
+          capture.mockRestore();
+          await closeBranchStateDatabaseAsync();
+        }
+      });
+    },
+  );
 });

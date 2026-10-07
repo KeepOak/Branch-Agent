@@ -119,6 +119,14 @@ describe("operator config startup corpus", () => {
       BRANCH_DISABLE_BUNDLED_PLUGINS: "0",
       BRANCH_BUNDLED_PLUGINS_DIR: bundledPluginsDir,
     };
+    for (const key of [
+      "BRANCH_STATE_DIR",
+      "DISCORD_BOT_TOKEN",
+      "BRANCH_DISABLE_BUNDLED_PLUGINS",
+      "BRANCH_BUNDLED_PLUGINS_DIR",
+    ] as const) {
+      vi.stubEnv(key, env[key]);
+    }
     const snapshot = await createConfigIO({
       configPath,
       env,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BranchConfig } from "../config/config.js";
+import { createCanonicalAgentConfigFixture } from "../test-utils/config-roster.js";
 import { collectCrossAgentSessionAccessFindings } from "./audit-extra.summary.js";
 import { collectSecurityAuditFindings } from "./audit.test-support.js";
 
@@ -14,6 +15,17 @@ const sessionTools = [
 ];
 
 describe("security audit cross-agent session access", () => {
+  it("reads directional deny lists when reporting reachable agents", () => {
+    const isolated: BranchConfig = { agents: { entries: {
+      home: { agentToAgent: { deny: ["work"] } },
+      work: { agentToAgent: { deny: ["home"] } },
+    } } };
+    expect(collectCrossAgentSessionAccessFindings(isolated)).toEqual([]);
+    isolated.agents!.entries!.work!.agentToAgent = undefined;
+    const finding = collectCrossAgentSessionAccessFindings(isolated)[0];
+    expect(finding?.detail).toContain("work: unsandboxed sessions");
+    expect(finding?.detail).toContain("home: per-agent agent-to-agent permission denies other agents");
+  });
   it.each<{ name: string; cfg: BranchConfig }>([
     { name: "one implicit agent", cfg: {} },
     { name: "one explicit agent", cfg: { agents: { entries: { home: {} } } } },
@@ -50,7 +62,12 @@ describe("security audit cross-agent session access", () => {
 
   it.each([
     { name: "default entries roster", cfg: { agents } },
-    { name: "list roster", cfg: { agents: { list: [{ id: "home" }, { id: "work" }] } } },
+    {
+      name: "migrated list roster",
+      cfg: createCanonicalAgentConfigFixture({
+        agents: { list: [{ id: "home" }, { id: "work" }] },
+      }).config,
+    },
     {
       name: "explicit all visibility and empty allow list",
       cfg: {

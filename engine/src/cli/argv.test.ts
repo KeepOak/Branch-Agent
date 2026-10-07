@@ -443,10 +443,7 @@ describe("argv helpers", () => {
 
   it("parses verbose flags", () => {
     expect(getVerboseFlag(["node", "branch", "status", "--verbose"])).toBe(true);
-    expect(getVerboseFlag(["node", "branch", "status", "--debug"])).toBe(false);
-    expect(getVerboseFlag(["node", "branch", "status", "--debug"], { includeDebug: true })).toBe(
-      true,
-    );
+    expect(getVerboseFlag(["node", "branch", "status", "--debug"])).toBe(true);
   });
 
   it.each([

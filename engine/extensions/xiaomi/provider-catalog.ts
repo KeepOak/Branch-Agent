@@ -1,4 +1,3 @@
-// Xiaomi provider module implements model/runtime integration.
 import { buildManifestModelProviderConfig } from "branch/plugin-sdk/provider-catalog-shared";
 import type { ModelProviderConfig } from "branch/plugin-sdk/provider-model-shared";
 import manifest from "./branch.plugin.json" with { type: "json" };

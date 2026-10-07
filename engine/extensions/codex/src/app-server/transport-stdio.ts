@@ -8,6 +8,7 @@ import { embeddedAgentLog } from "branch/plugin-sdk/agent-harness-registration";
 import {
   materializeWindowsSpawnProgram,
   resolveWindowsSpawnProgram,
+  withHiddenWindowsConsole,
   type WindowsSpawnInvocation,
 } from "branch/plugin-sdk/windows-spawn";
 import type { CodexAppServerStartOptions } from "./config.js";
@@ -119,6 +120,7 @@ export async function createStdioTransport(
   const isHostedGateway = baseEnv.BRANCH_GATEWAY_HOST_LIFELINE?.trim() === "stdin";
   const env = resolveCodexAppServerSpawnEnv(options, baseEnv);
   const invocation = resolveCodexAppServerSpawnInvocation(options, env);
+  const launch = withHiddenWindowsConsole(invocation);
   const nativeCommand =
     options.commandSource === "resolved-managed"
       ? resolveManagedCodexNativeCommand(options.command, { pathExists: () => true })
@@ -147,16 +149,18 @@ export async function createStdioTransport(
   });
   let child: ChildProcessWithoutNullStreams & Pick<CodexAppServerTransport, "startupFailure">;
   try {
-    child = spawn(invocation.command, invocation.argv, {
+    child = spawn(launch.command, launch.argv, {
       // Preserve the shipped Supervisor endpoint contract: relative commands and
       // config discovery may depend on the endpoint's process working directory.
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
       env,
       // Child environment overrides cannot change the Gateway's containment boundary.
       detached: process.platform !== "win32" && !isHostedGateway,
-      shell: invocation.shell,
+      shell: launch.shell,
       stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: invocation.windowsHide,
+      // Hide the launcher; it gives Codex and its PowerShell/git children one
+      // inherited hidden console while these JSON-RPC pipes stay independent.
+      windowsHide: launch.windowsHide ?? (process.platform === "win32"),
     });
   } catch (error) {
     throw recordCodexAppServerSpawnFailure(error, invocation.command, launchKey);

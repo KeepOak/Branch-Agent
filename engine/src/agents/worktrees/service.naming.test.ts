@@ -59,7 +59,7 @@ describe("ManagedWorktreeService allocation and orphan preservation", () => {
     });
 
     expect(fallback.name).toMatch(
-      /^[a-z]+-(?:barnacle|grove|crab|crayfish|krill|langoustine|trellis|prawn|shrimp|shell)$/,
+      /^[a-z]+-(?:acorn|grove|birch|cedar|fern|maple|trellis|willow|sapling|pinecone)$/,
     );
     expect(second.name).toBe("release-planning-2");
   });

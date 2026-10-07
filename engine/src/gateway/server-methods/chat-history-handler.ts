@@ -4,6 +4,7 @@ import {
   errorShape,
   validateChatHistoryParams,
 } from "../../../packages/gateway-protocol/src/index.js";
+import { readAcpSessionMetaForEntries } from "../../acp/runtime/session-meta-readonly.js";
 import { resolveAgentConfig } from "../../agents/agent-scope.js";
 import { findModelCatalogEntry } from "../../agents/model-catalog.js";
 import { resolveConfiguredThinkingDefault } from "../../agents/model-thinking-default.js";
@@ -13,6 +14,7 @@ import {
 } from "../../agents/subagents/registry/subagent-registry-state.js";
 import { readSessionHistoryPageInWorker } from "../../config/sessions/session-history-worker-runtime.js";
 import { readSessionPendingInputReceiptsInWorker } from "../../config/sessions/session-pending-input-receipts.js";
+import { listSessionSegmentsReadOnly } from "../../config/sessions/session-segments.js";
 import {
   measureDiagnosticsTimelineSpan,
   measureDiagnosticsTimelineSpanSync,
@@ -22,7 +24,7 @@ import { scopeLegacySessionKeyToAgent } from "../../routing/session-key.js";
 import { resolveInFlightRunSnapshot } from "../chat-abort.js";
 import { resolveEffectiveChatHistoryMaxChars } from "../chat-display-projection.js";
 import { isQueuedChatTurnForSession } from "../chat-queued-turns.js";
-import { resolveClaudeCliBindingSessionId } from "../cli-session-history.js";
+import { resolveClaudeCliBindingSessionId } from "../cli-session-history.claude.js";
 import { projectOperatorModelRead } from "../operator-model-presentation.js";
 import { SerializedJsonArray } from "../serialized-json.js";
 import { getMaxChatHistoryMessagesBytes } from "../server-constants.js";
@@ -35,7 +37,6 @@ import { prepareProjectedSessionPresentation } from "../session-row-presentation
 import { resolveGatewayModelThinkingProfile } from "../session-utils-model.js";
 import { buildGatewaySessionRow } from "../session-utils-row.js";
 import { getSessionDefaults, resolveSessionModelRef } from "../session-utils.js";
-import { prepareSessionWorkspaceIcon } from "../workspace-icon-http.js";
 import {
   boundInFlightRunSnapshotForChatHistory,
   reportOmittedChatHistory,
@@ -99,8 +100,8 @@ export async function handleChatHistoryRequest({
     selectorError = "offset and messageId cannot be used together";
   } else if (cursor !== undefined && (offset !== undefined || messageId !== undefined)) {
     selectorError = "cursor cannot be used with offset or messageId";
-  } else if (wireSessionId !== undefined && messageId === undefined) {
-    selectorError = "sessionId requires messageId";
+  } else if (wireSessionId !== undefined && cursor !== undefined) {
+    selectorError = "sessionId cannot be used with cursor";
   }
   if (selectorError) {
     respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, selectorError));
@@ -129,6 +130,22 @@ export async function handleChatHistoryRequest({
   try {
     const { selectedSession, entry, queries, readCurrentSharing, rowProjection } = selection;
     const { cfg, agentId: sessionAgentId, storePath, canonicalKey } = selectedSession;
+    if (wireSessionId && !retainedTranscript) {
+      const segments = listSessionSegmentsReadOnly({
+        agentId: sessionAgentId,
+        sessionKey: canonicalKey,
+        alternateSessionKey: sessionKey,
+        storePath,
+      });
+      if (!segments.some((segment) => segment.sessionId === wireSessionId)) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, "sessionId does not belong to sessionKey"),
+        );
+        return;
+      }
+    }
     const readTranscriptOwner = async () => {
       if (!requestedSessionId) {
         return true;
@@ -142,13 +159,16 @@ export async function handleChatHistoryRequest({
         },
         signal,
       );
-      return Boolean(
-        transcript &&
-        scopeLegacySessionKeyToAgent({
-          sessionKey: transcript.sessionKey,
-          agentId: sessionAgentId,
-        }) === scopeLegacySessionKeyToAgent({ sessionKey: canonicalKey, agentId: sessionAgentId }),
-      );
+      if (!transcript) {
+        return false;
+      }
+      const storedKey = transcript.sessionKey;
+      // Literal stored owners must not acquire the scope of a legacy alias.
+      const ownerKey =
+        storedKey === "global" || storedKey === "unknown"
+          ? storedKey
+          : scopeLegacySessionKeyToAgent({ sessionKey: storedKey, agentId: sessionAgentId });
+      return ownerKey === canonicalKey;
     };
     if (!(await readTranscriptOwner())) {
       if (retainedTranscript) {
@@ -165,15 +185,6 @@ export async function handleChatHistoryRequest({
         );
       }
       return;
-    }
-    if (method === "chat.startup") {
-      void prepareSessionWorkspaceIcon({ sessionKey, agentId: sessionAgentId }).catch(
-        (error: unknown) => {
-          context.logGateway.debug(
-            `chat.startup continuing without a workspace icon: ${formatErrorMessage(error)}`,
-          );
-        },
-      );
     }
     const readStartupProjection = () =>
       measureDiagnosticsTimelineSpan(
@@ -331,6 +342,12 @@ export async function handleChatHistoryRequest({
       agentId: sessionAgentId,
       storePath,
     };
+    const [unsavedAcpMeta] = entry
+      ? []
+      : await readAcpSessionMetaForEntries({
+          cfg,
+          entries: [{ agentId: sessionAgentId, sessionKey: canonicalKey, entry: undefined }],
+        });
     const publishDelta = await withReadySessionRows(rowProjection, queries, (read) => {
       const currentSharing = readCurrentSharing(read);
       if (!currentSharing) {
@@ -345,6 +362,7 @@ export async function handleChatHistoryRequest({
             : buildGatewaySessionRow({
                 ...selectedSession,
                 key: canonicalKey,
+                preparedAcpMeta: unsavedAcpMeta ?? null,
                 modelCatalog: sessionModelCatalog,
                 rowContext: rowProjection.state.rowContext,
               })),
@@ -610,7 +628,6 @@ export async function handleChatHistoryRequest({
 
 export const chatHistoryHandlers: GatewayRequestHandlers = {
   "chat.history": (opts) => handleChatHistoryRequest({ ...opts, method: "chat.history" }),
-  "chat.startup": (opts) =>
-    handleChatStartupRequest(opts, handleChatHistoryRequest, respondChatHistoryUnavailable),
+  "chat.startup": (opts) => handleChatStartupRequest(opts, handleChatHistoryRequest),
   "chat.metadata": handleChatMetadataRequest,
 };

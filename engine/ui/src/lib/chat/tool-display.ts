@@ -1,6 +1,7 @@
 import { isHttpUrl } from "@branch/net-policy/url-protocol";
 import { normalizeLowercaseStringOrEmpty } from "@branch/normalization-core/string-coerce";
 import SHARED_TOOL_DISPLAY_JSON from "../../../../apps/shared/OpenClawKit/Sources/OpenClawKit/Resources/tool-display.json" with { type: "json" };
+import { unwrapToolCallForDisplay } from "../../../../src/agents/tool-display-call.js";
 import {
   defaultTitle,
   normalizeToolDisplayName,
@@ -39,14 +40,15 @@ export function resolveToolDisplay(params: {
   args?: unknown;
   detailMode?: ToolDetailMode;
 }): ToolDisplay {
-  const name = normalizeToolDisplayName(params.name);
+  const call = unwrapToolCallForDisplay({ name: params.name, args: params.args });
+  const name = normalizeToolDisplayName(call.name);
   const key = normalizeLowercaseStringOrEmpty(name);
   const spec = TOOL_MAP[key];
   const icon = resolveToolDisplayIcon(name);
   const label = spec?.label ?? spec?.title ?? defaultTitle(name);
   let { detail } = resolveToolVerbAndDetailForArgs({
     toolKey: key,
-    args: params.args,
+    args: call.args,
     spec,
     fallbackDetailKeys: FALLBACK.detailKeys,
     detailMode: "first",
@@ -83,27 +85,22 @@ function sanitizeCanvasEntryUrl(
   rawEntryUrl: string,
   allowExternalEmbedUrls = false,
 ): string | undefined {
-  try {
-    const entry = new URL(rawEntryUrl, "http://localhost");
-    if (entry.origin !== "http://localhost") {
-      if (!allowExternalEmbedUrls || !isHttpUrl(entry)) {
-        return undefined;
-      }
-      return entry.toString();
-    }
-    if (!isCanvasHttpPath(entry.pathname)) {
-      return undefined;
-    }
-    return `${entry.pathname}${entry.search}${entry.hash}`;
-  } catch {
+  const entry = URL.parse(rawEntryUrl, "http://localhost");
+  if (!entry) {
     return undefined;
   }
+  if (entry.origin !== "http://localhost") {
+    return allowExternalEmbedUrls && isHttpUrl(entry) ? entry.toString() : undefined;
+  }
+  return isCanvasHttpPath(entry.pathname)
+    ? `${entry.pathname}${entry.search}${entry.hash}`
+    : undefined;
 }
 
 /**
- * True when the preview entry URL points at a hosted Canvas document rather
+ * True when the preview entry URL points at a hosted Clearing document rather
  * than an externally allowed embed URL. Prompt authority (widget sendPrompt)
- * is granted only to internal Canvas documents.
+ * is granted only to internal Clearing documents.
  */
 export function isInternalCanvasEntryUrl(entryUrl: string | undefined): boolean {
   const rawEntryUrl = entryUrl?.trim();

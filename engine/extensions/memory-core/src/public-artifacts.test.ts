@@ -64,7 +64,7 @@ describe("memory-core public artifacts", () => {
 
     const cfg: BranchConfig = {
       agents: {
-        list: [{ id: "main", default: true, workspace: workspaceDir }],
+        entries: { main: { workspace: workspaceDir } },
       },
     };
 
@@ -120,7 +120,7 @@ describe("memory-core public artifacts", () => {
 
     const cfg: BranchConfig = {
       agents: {
-        list: [{ id: "main", default: true, workspace: workspaceDir }],
+        entries: { main: { workspace: workspaceDir } },
       },
     };
 

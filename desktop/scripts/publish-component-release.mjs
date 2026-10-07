@@ -82,7 +82,7 @@ export async function publishRelease(directory, commit, version, request = gh, d
   await writeFile(join(directory, "SHA256SUMS"), checksums);
   const names = [...Object.keys(proof.inventory), "SHA256SUMS"].sort();
   const notes = join(directory, "release-notes.txt");
-  await writeFile(notes, `Branch Agent built from ${commit}.\n\nNative Windows x64, macOS arm64 and Linux x64 packages; verified engine and renderer update components. Existing data and credentials are retained. Desktop launcher changes require installing the new desktop package.\n`);
+  await writeFile(notes, `Branch Agent built from ${commit}.\n\nNative Windows x64, macOS arm64 and Linux x64 packages; verified engine, renderer and desktop app update components. Existing data and credentials are retained. Installed desktop apps take the new desktop app on their next start.\n`);
   await request(["release", "create", tag, ...names.map(name => join(directory, name)), "--repo", repository,
     "--target", commit, "--verify-tag", "--draft", "--title", `Branch Agent ${version}`, "--notes-file", notes]);
   const downloaded = await mkdtemp(join(process.env.RUNNER_TEMP ?? tmpdir(), "branch-release-readback-"));

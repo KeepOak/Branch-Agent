@@ -1,4 +1,5 @@
 import { finiteSecondsToTimerSafeMilliseconds } from "@branch/normalization-core/number-coercion";
+import { resolveCurrentBranchCliInvocation } from "../infra/branch-cli-invocation.js";
 import { beginLifecycleWriteCustody } from "../infra/lifecycle-write-custody.js";
 import { hasCommandProcessCleanupError, type SpawnResult } from "../process/exec-result.js";
 import { withCommandProcessScope } from "../process/exec-spawn.js";
@@ -90,6 +91,34 @@ function buildDiagnostics(params: {
   };
 }
 
+type CommandPayload = Extract<CronJob["payload"], { kind: "command" }>;
+
+/**
+ * Branch: a scheduled backup names `branch`, which need not be on PATH (the desktop app only adds it
+ * when asked). Run the Gateway's own CLI instead, so the schedule works everywhere and always uses
+ * the same engine version that wrote the job.
+ */
+export function resolveCronCommandSpawn(
+  job: CronJob,
+  payload: CommandPayload,
+): { argv: string[]; cwd?: string; env?: Record<string, string> } {
+  const base = {
+    argv: payload.argv,
+    ...(payload.cwd ? { cwd: payload.cwd } : {}),
+    ...(payload.env ? { env: payload.env } : {}),
+  };
+  if (!isScheduledBackupCommand(job) || payload.argv[0] !== "branch") {
+    return base;
+  }
+  const invocation = resolveCurrentBranchCliInvocation(payload.argv.slice(1));
+  const env = { ...invocation.env, ...payload.env };
+  return {
+    argv: [invocation.command, ...invocation.args],
+    cwd: payload.cwd ?? invocation.cwd,
+    ...(Object.keys(env).length > 0 ? { env } : {}),
+  };
+}
+
 /** Executes a cron command payload without starting an agent/model run. */
 export async function runCronCommandJob(params: {
   job: CronJob;
@@ -125,12 +154,13 @@ export async function runCronCommandJob(params: {
     let result: SpawnResult;
     let cleanupFailure: Error | undefined;
     try {
+      const spawn = resolveCronCommandSpawn(params.job, payload);
       result = await withCommandProcessScope(async () => {
-        produced.result = await runCommandWithTimeout(payload.argv, {
+        produced.result = await runCommandWithTimeout(spawn.argv, {
           timeoutMs: secondsToMs(payload.timeoutSeconds) ?? DEFAULT_COMMAND_TIMEOUT_MS,
-          ...(payload.cwd ? { cwd: payload.cwd } : {}),
+          ...(spawn.cwd ? { cwd: spawn.cwd } : {}),
           ...(payload.input !== undefined ? { input: payload.input } : {}),
-          ...(payload.env ? { env: payload.env } : {}),
+          ...(spawn.env ? { env: spawn.env } : {}),
           ...(noOutputTimeoutMs !== undefined ? { noOutputTimeoutMs } : {}),
           ...(payload.outputMaxBytes !== undefined
             ? { maxOutputBytes: payload.outputMaxBytes }

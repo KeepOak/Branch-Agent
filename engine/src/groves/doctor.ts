@@ -6,6 +6,7 @@ import type { BranchConfig } from "../config/types.branch.js";
 import { resolveDefaultCronStaggerMs } from "../cron/stagger.js";
 import type { CronJob } from "../cron/types.js";
 import type { HealthFinding } from "../flows/health-checks.js";
+import { tableExists } from "../state/branch-state-db-schema-helpers.js";
 import {
   openExistingBranchStateDatabaseReadOnly,
   openBranchStateDatabase,
@@ -107,7 +108,7 @@ function collectInstallFindings(
           record.agentState === "missing"
             ? `Grove-owned agent ${JSON.stringify(agentId)} is missing from config.`
             : `Grove-owned agent ${JSON.stringify(agentId)} changed after installation.`,
-        path: `agents.list.${agentId}`,
+        path: `agents.entries.${agentId}`,
         target: agentId,
         requirement: "Grove-owned agent config should match its recorded install digest",
         fixHint: "Inspect the agent change before removing or replacing Grove-owned state.",
@@ -244,14 +245,6 @@ function collectInstallFindings(
   return findings;
 }
 
-function tableExists(db: DatabaseSync, name: string): boolean {
-  return Boolean(
-    db /* sqlite-allow-raw: read-only Grove doctor table-existence probe with bound table name. */
-      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
-      .get(name),
-  );
-}
-
 function orphanedAgentIds(options: BranchStateDatabaseOptions): string[] {
   const { db } = openBranchStateDatabase(options);
   const installed = new Set<string>();
@@ -314,14 +307,14 @@ export async function collectGroveStateHealthFindings(
   }
   let database: BranchStateDatabase | undefined;
   try {
-    database = await openExistingBranchStateDatabaseReadOnly(options);
+    database = await openExistingBranchStateDatabaseReadOnly({
+      ...options,
+      requireCanonicalSchema: true,
+    });
     if (!database) {
       return [];
     }
     const orphanedRefs = orphanedAgentIds({ ...options, database, readOnly: true });
-    if (!tableExists(database.db, "grove_installs")) {
-      return orphanedRefs.map(orphanedReferenceFinding);
-    }
     let sourceMcpServers = options.sourceMcpServers ?? {};
     if (hasGroveMcpServerRefs(database.db) && !options.sourceMcpServers) {
       const listed = await (options.listMcpServers ?? listConfiguredMcpServers)();

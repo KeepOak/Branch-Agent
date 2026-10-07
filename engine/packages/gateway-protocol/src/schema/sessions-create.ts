@@ -48,6 +48,10 @@ export const SessionsCreateParamsSchema = closedObject({
   visibility: Type.Optional(SessionVisibilitySchema),
   catalogId: Type.Optional(NonEmptyString),
   parentSessionKey: Type.Optional(NonEmptyString),
+  contactAnchor: Type.Optional(closedObject({
+    threadKey: NonEmptyString,
+    afterMessageId: Type.Optional(NonEmptyString),
+  })),
   spawnDepth: Type.Optional(
     Type.Integer({
       minimum: 1,

@@ -74,7 +74,7 @@ const mocks = vi.hoisted(() => ({
   isImplicitLocalGatewayTarget: vi.fn(() => Promise.resolve(true)),
   resolvePluginSetupProviderCore: vi.fn(),
   resolvePluginSetupRegistry: vi.fn(),
-  readSecretStoreValue: vi.fn(() => ({
+  readSecretStoreValue: vi.fn(async () => ({
     ok: false as const,
     error: { code: "SECRET_STORE_NOT_FOUND", message: "missing" },
   })),
@@ -403,6 +403,7 @@ describe("modelsAuthLoginCommand", () => {
   let runProviderAuth: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    vi.stubEnv("BRANCH_PROFILE", "");
     vi.clearAllMocks();
     restoreStdin = withInteractiveStdin();
     currentConfig = {};
@@ -501,12 +502,14 @@ describe("modelsAuthLoginCommand", () => {
   afterEach(() => {
     restoreStdin?.();
     restoreStdin = null;
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   function useCoderAgentConfig() {
     currentConfig = {
       agents: {
-        list: [{ id: "main" }, { id: "coder", workspace: "/tmp/branch/workspaces/coder" }],
+        entries: { main: {}, coder: { workspace: "/tmp/branch/workspaces/coder" } },
       },
     };
     const originalConfig = currentConfig;
@@ -1671,17 +1674,19 @@ describe("modelsAuthLoginCommand", () => {
   });
 
   it("writes pasted Anthropic setup-tokens and logs the preference note", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ account: { uuid: "fake-account", email: "owner@example.test" } }), { status: 200 })));
     const runtime = createRuntime();
     mocks.clackPassword.mockResolvedValue(`sk-ant-oat01-${"a".repeat(80)}`);
 
     await modelsAuthPasteTokenCommand({ provider: "anthropic" }, runtime);
 
     expect(mocks.upsertAuthProfileWithLock).toHaveBeenCalledWith({
-      profileId: "anthropic:manual",
+      profileId: "anthropic:owner@example.test",
       credential: {
         type: "token",
         provider: "anthropic",
         token: `sk-ant-oat01-${"a".repeat(80)}`,
+        email: "owner@example.test",
       },
       agentDir: "/tmp/branch/agents/main",
     });
@@ -1694,6 +1699,13 @@ describe("modelsAuthLoginCommand", () => {
     expect(runtime.log).toHaveBeenCalledWith(
       "Anthropic staff told us this Branch Agent path is allowed again.",
     );
+  });
+
+  it("honors an explicit Anthropic profile id before email identity", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ account: { email: "owner@example.test" } }), { status: 200 })));
+    mocks.clackPassword.mockResolvedValue(`sk-ant-oat01-${"a".repeat(80)}`);
+    await modelsAuthPasteTokenCommand({ provider: "anthropic", profileId: "anthropic:work" }, createRuntime());
+    expect(mocks.upsertAuthProfileWithLock).toHaveBeenCalledWith(expect.objectContaining({ profileId: "anthropic:work" }));
   });
 
   it("writes pasted tokens to the requested agent store", async () => {
@@ -1877,7 +1889,7 @@ describe("modelsAuthLoginCommand", () => {
 
   it("rejects an unknown agent before prompting for pasted tokens", async () => {
     const runtime = createRuntime();
-    currentConfig = { agents: { list: [{ id: "main" }] } };
+    currentConfig = { agents: { entries: { main: {} } } };
 
     await expect(
       modelsAuthPasteTokenCommand({ provider: "openai", agent: "missing" }, runtime),

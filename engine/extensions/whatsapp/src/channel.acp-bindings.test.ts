@@ -17,9 +17,8 @@ function createCfg(
 ): BranchConfig {
   return {
     agents: {
-      list: [
-        {
-          id: "sandboxed-agent",
+      entries: {
+        "sandboxed-agent": {
           runtime: {
             type: "acp",
             acp: {
@@ -30,7 +29,7 @@ function createCfg(
             },
           },
         },
-      ],
+      },
     },
     bindings: [
       {

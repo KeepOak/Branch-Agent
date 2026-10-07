@@ -2,7 +2,7 @@
 // one of the seven places, or a Settings page. The last route is kept on this computer and reopened at launch.
 import type { IconName } from "../shell/icons";
 
-export type PlaceId = "overview" | "canopy" | "inbox" | "automations" | "library" | "people" | "customize";
+export type PlaceId = "overview" | "canopy" | "inbox" | "automations" | "library" | "people" | "customize" | "office";
 
 export type Route =
   | { kind: "chat"; key: string | null }
@@ -23,7 +23,7 @@ export const PLACES: { id: PlaceId; name: string; icon: IconName }[] = [
 const KEY = "branch.route";
 
 export function isPlace(id: string): id is PlaceId {
-  return PLACES.some((p) => p.id === id);
+  return id === "office" || PLACES.some((p) => p.id === id);
 }
 
 export function parseRoute(raw: string | null): Route | null {
@@ -51,7 +51,8 @@ export function loadRoute(): Route {
   // A window opened with "Open in its own window" (or a copied conversation link) names its conversation.
   const asked = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("conversation");
   if (asked) {
-    return { kind: "chat", key: asked };
+    try { return parseRoute(sessionStorage.getItem(KEY)) ?? { kind: "chat", key: asked }; }
+    catch { return { kind: "chat", key: asked }; }
   }
   try {
     return parseRoute(localStorage.getItem(KEY)) ?? { kind: "chat", key: null };
@@ -62,7 +63,8 @@ export function loadRoute(): Route {
 
 export function saveRoute(route: Route): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(route));
+    const dedicated = typeof location !== "undefined" && new URLSearchParams(location.search).has("conversation");
+    (dedicated ? sessionStorage : localStorage).setItem(KEY, JSON.stringify(route));
   } catch {
     // storage blocked: the window reopens on the default Trunk's conversation
   }

@@ -88,6 +88,7 @@ export async function maintainRetainedUpdateRuntimes(params: {
   temporaryDirectories?: readonly string[];
   repair: boolean;
   assertCurrent: () => void;
+  assertResourcesSettled?: () => void;
 }): Promise<string[]> {
   const messages: string[] = [];
   const packages = params.packageRoots.map(resolveRealpathOrAbsolute);
@@ -146,9 +147,10 @@ export async function maintainRetainedUpdateRuntimes(params: {
           }
           if (census.pids.length) {
             throw new Error(
-              `other Branch Agent processes are still running (PIDs: ${census.pids.join(", ")})`,
+              `other Branch Agent processes are still running (PIDs: ${census.pids.join(", ")}); let these holders finish, then rerun branch doctor --fix`,
             );
           }
+          params.assertResourcesSettled?.();
           params.assertCurrent();
           let failure: string | undefined;
           await removeTemporaryArtifacts(directory, "Updater runtime", (error) => {

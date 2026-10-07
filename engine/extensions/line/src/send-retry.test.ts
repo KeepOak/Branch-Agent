@@ -1,8 +1,9 @@
 // Line tests cover push retry and retry-key deduplication behavior.
 import { HTTPFetchError } from "@line/bot-sdk";
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveLineNonDispatchRetryable, runLinePushWithRetries } from "./send-retry.js";
+import * as sendModule from "./send.js";
 
 const {
   requireRuntimeConfigMock,
@@ -41,8 +42,6 @@ vi.mock("branch/plugin-sdk/runtime-env", async () => {
   return { ...actual, logVerbose: logVerboseMock };
 });
 
-let sendModule: typeof import("./send.js");
-
 const LINE_TEST_CFG = {
   channels: { line: { accounts: { default: {} } } },
 } satisfies BranchConfig;
@@ -68,10 +67,6 @@ function retryKeysOf(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>): (string
 
 describe("LINE push retries", () => {
   const fetchMock = vi.fn<typeof fetch>();
-
-  beforeAll(async () => {
-    sendModule = await import("./send.js");
-  });
 
   afterAll(() => {
     vi.doUnmock("branch/plugin-sdk/plugin-config-runtime");

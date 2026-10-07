@@ -1,6 +1,6 @@
 import { getRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import type { BranchConfig } from "../../config/types.branch.js";
-import { coerceSecretRef } from "../../config/types.secrets.js";
+import { parseSecretRef } from "../../config/types.secrets.js";
 
 // Raw skill secret refs must not be replaced by redacted runtime snapshots.
 function hasConfiguredSkillApiKeyRef(config?: BranchConfig): boolean {
@@ -12,7 +12,7 @@ function hasConfiguredSkillApiKeyRef(config?: BranchConfig): boolean {
     if (!skillConfig || typeof skillConfig !== "object") {
       continue;
     }
-    if (coerceSecretRef(skillConfig.apiKey) !== null) {
+    if (parseSecretRef(skillConfig.apiKey) !== null) {
       return true;
     }
   }

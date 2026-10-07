@@ -1,5 +1,5 @@
 /* Computer & browser, below "Which Trunk uses which" (53-set3p, 92-computerp, 92-browserp, 92-codingp). */
-.set-col .s2cm-tag { display: inline-block; margin-right: 4px; padding: 3px 5px; border-radius: 6px; background: var(--wash17, var(--fill)); font: 500 10px/1 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3); vertical-align: 1px; }
+.set-col .s2cm-tag { display: inline-block; margin-right: 4px; padding: 3px 5px; border-radius: 6px; background: var(--wash17, var(--fill)); font: 500 10px/1 var(--sans); color: var(--ink-3); vertical-align: 1px; }
 .set-col .ctl .s2cm-x { grid-column: 1 / -1; display: grid; gap: 6px; margin-top: 6px; min-width: 0; }
 .set-col .s2cm-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .set-col .s2cm-list small { color: var(--ink-3); font-size: 12.5px; }

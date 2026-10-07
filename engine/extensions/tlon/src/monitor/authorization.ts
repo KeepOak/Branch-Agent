@@ -1,4 +1,3 @@
-// Tlon plugin module implements authorization behavior.
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import type { TlonSettingsStore } from "../settings.js";
 

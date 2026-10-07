@@ -530,6 +530,34 @@ describe("device bootstrap tokens", () => {
     }
   });
 
+  it("prunes without waiting for another writer when nothing has elapsed yet", async () => {
+    const baseDir = await createTempDir();
+    const recordedAtMs = Date.now();
+    const issued = await issueDevicePairSetupBootstrapToken({
+      baseDir,
+      profile: NODE_PAIRING_SETUP_BOOTSTRAP_PROFILE,
+    });
+    await verifyBootstrapToken(baseDir, issued.token);
+    await consumeBootstrapToken(baseDir, issued.token, { completedAtMs: recordedAtMs });
+    // Another writer holds the shared state's write lock (a long cron or plugin-state write, say).
+    const { db } = openBranchStateDatabase({
+      env: { ...process.env, BRANCH_STATE_DIR: baseDir },
+    });
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const startedAt = Date.now();
+      await expect(
+        pruneExpiredDevicePairSetupCompletions({ baseDir, nowMs: recordedAtMs + 1_000 }),
+      ).resolves.toBe(0);
+      expect(Date.now() - startedAt).toBeLessThan(2_000);
+    } finally {
+      db.exec("ROLLBACK");
+    }
+    await expect(
+      readDevicePairSetupCompletion({ baseDir, setupId: issued.setupId }),
+    ).resolves.not.toBeNull();
+  });
+
   // Databases written before this table shipped stay at the same schema
   // version, so the feature owner has to create it on first use rather than
   // the state schema refusing to open.
