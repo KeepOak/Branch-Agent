@@ -118,6 +118,24 @@ function HelperCard({ h, asks, facts, onStop, onAnswer }: { h: Helper; asks: App
   );
 }
 
+/**
+ * The task the Activity tab is about, never earlier tasks' steps: the run going now (its blocks follow the history's
+ * last turn end, or your last message), or else the last task, the newest turn that had steps. A plain reply after
+ * it is not a task, so it doesn't empty the list.
+ */
+export function currentTask(blocks: readonly Block[], running: boolean): Block[] {
+  const kinds = blocks.map((b) => b.kind);
+  if (running) return blocks.slice(Math.max(kinds.lastIndexOf("user"), kinds.lastIndexOf("done"), kinds.lastIndexOf("error")) + 1);
+  for (let end = blocks.length; end > 0; ) {
+    const start = kinds.lastIndexOf("user", end - 1);
+    const turn = blocks.slice(start + 1, end);
+    if (turn.some((b) => b.kind === "step")) return turn;
+    if (start < 0) break;
+    end = start;
+  }
+  return [];
+}
+
 /** Activity: what it's doing now, the Canopy card it works on, its recent steps and its helpers. */
 export function ActivityTab({ engine, name, blocks, running, focusHelpers = 0, onError }: { engine: WindowEngine; name: string; blocks: Block[]; running: boolean; level: Level; focusHelpers?: number; onError: (m: string) => void }) {
   const helperSection = useRef<HTMLElement>(null);
@@ -131,7 +149,7 @@ export function ActivityTab({ engine, name, blocks, running, focusHelpers = 0, o
   const helperWaiting = approvals.filter((a) => !a.decision && helpers.some((h) => h.key === a.sessionKey)).length;
   const state = activityState(running, mine + helperWaiting);
   const asOf = activityRecordedAt(blocks);
-  const steps = blocks.filter((b): b is Extract<Block, { kind: "step" }> => b.kind === "step");
+  const steps = currentTask(blocks, running).filter((b): b is Extract<Block, { kind: "step" }> => b.kind === "step");
   const shown = steps.slice(-8);
   const first = steps.length - shown.length;
   const direct = helpers.filter((h) => h.parent === engine.sessionKey);

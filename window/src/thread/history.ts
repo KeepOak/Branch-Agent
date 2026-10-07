@@ -4,6 +4,8 @@ import { readBrowserPresentation } from "./browser-presentation";
 import {
   describeToolCall,
   isDeniedResultText,
+  wrapperFailed,
+  isCodeModeCall,
   keepOutput,
   toolInput,
   resultText,
@@ -30,6 +32,8 @@ type Message = Record<string, unknown>;
 type Builder = {
   blocks: Block[];
   steps: Map<string, { at: number; command: string; ts: number }>;
+  /** Code Mode wrappers (an `exec` whose code called real tools): their nested calls are the steps, not them. */
+  wrappers: Set<string>;
   runId: string | null;
   runStart: number;
   runFinished: boolean;
@@ -169,7 +173,7 @@ function onAssistantPart(b: Builder, part: unknown, key: string, m: Message): vo
   } else if (p.type === "toolCall") {
     const id = str(p.id) || key;
     const title = describeToolCall(str(p.name), p.arguments);
-    b.blocks.push({ kind: "step", key: id, outputKey: `${b.runId ?? key}:${id}`, tool: str(p.name), title, detail: "", status: "ok", input: toolInput(p.arguments), changes: readFileChanges(p.arguments), ...recordedAt(m.timestamp) });
+    b.blocks.push({ kind: "step", key: id, outputKey: `${b.runId ?? key}:${id}`, tool: str(p.name), title, detail: "", status: "ok", input: toolInput(p.arguments), changes: readFileChanges(p.arguments), ...recordedAt(m.timestamp), ...(isCodeModeCall(str(p.name), p.arguments) ? { codeMode: true } : {}) });
     b.steps.set(id, { at: b.blocks.length - 1, command: str(rec(p.arguments).command), ts: num(m.timestamp) });
   } else if (typeof part === "string" && part.trim()) {
     b.blocks.push({ kind: "text", key, text: part, streaming: false, meta: readMeta(m) });
@@ -213,12 +217,18 @@ function approvalState(status: string): Approval["state"] {
 
 function onToolResult(b: Builder, m: Message, records: readonly ApprovalRecord[], sessionKey: string): void {
   const step = b.steps.get(str(m.toolCallId));
-  if (!step) {
-    return;
-  }
-  const text = resultText(m);
-  const status: StepStatus = isDeniedResultText(text) ? "denied" : m.isError ? "failed" : "ok";
+  if (!step) return;
   const block = b.blocks[step.at] as Extract<Block, { kind: "step" }>;
+  const text = resultText(m);
+  // A Code Mode run that failed says so in its own result (status "failed", no isError).
+  const codeFailed = block.codeMode === true && wrapperFailed(m.isError, text, m.details);
+  if (b.wrappers.has(str(m.toolCallId))) {
+    // A wrapper's own result is the code's JSON; its nested calls already carry what ran and how it ended, unless
+    // the code itself failed, which shows as the wrapper's step.
+    if (!codeFailed) return;
+    b.wrappers.delete(str(m.toolCallId));
+  }
+  const status: StepStatus = isDeniedResultText(text) ? "denied" : m.isError || codeFailed ? "failed" : "ok";
   b.blocks[step.at] = { ...block, status, detail: text.slice(0, 400), output: b.wholeOutput ? text : keepOutput(block.outputKey ?? block.key, text), browser: status === "ok" ? readBrowserPresentation(m, block.tool, block.key) : undefined, ...recordedAt(m.timestamp) };
   const deniedId = /gateway id=([0-9a-f-]{8,})/i.exec(text)?.[1];
   const found = findApproval(records, sessionKey, step, num(m.timestamp));
@@ -234,6 +244,33 @@ function onToolResult(b: Builder, m: Message, records: readonly ApprovalRecord[]
       b.steps.set(key, { ...value, at: value.at + 1 });
     }
   }
+}
+
+/**
+ * A tool a Code Mode `exec` called from its code (`branch.nested-tool.v1`: the nested call and its result). It is
+ * the step the person reads (the real command, its approval, "Not allowed" when refused); the wrapper around it
+ * (`{title, code}` and a JSON result that always says "completed") is dropped, so a refused command no longer reads
+ * "Ran a command · Done", and the live view and the finished turn count the same steps.
+ */
+function onNestedTool(b: Builder, m: Message, records: readonly ApprovalRecord[], sessionKey: string): void {
+  const parts = Array.isArray(m.content) ? m.content.map(rec) : [];
+  for (const part of parts) {
+    if (part.type === "toolCall" && str(part.id)) {
+      const id = str(part.id);
+      if (str(part.parentToolCallId)) b.wrappers.add(str(part.parentToolCallId));
+      if (b.steps.has(id)) continue;
+      const at = num(part.timestamp) || writtenAt(m);
+      b.blocks.push({ kind: "step", key: id, outputKey: `${b.runId ?? id}:${id}`, tool: str(part.name), title: describeToolCall(str(part.name), part.arguments), detail: "", status: "ok", input: toolInput(part.arguments), changes: readFileChanges(part.arguments), ...recordedAt(at) });
+      b.steps.set(id, { at: b.blocks.length - 1, command: str(rec(part.arguments).command), ts: at });
+    } else if (part.type === "toolResult" || part.role === "toolResult") {
+      onToolResult(b, part, records, sessionKey);
+    }
+  }
+}
+
+/** Removes the Code Mode wrappers whose nested calls became the steps. */
+function dropWrappers(b: Builder): Block[] {
+  return b.wrappers.size ? b.blocks.filter((block) => block.kind !== "step" || !b.wrappers.has(block.key)) : b.blocks;
 }
 
 /** A `custom` transcript entry the engine marks for display: a failed run, or a note. */
@@ -293,7 +330,7 @@ export function historyToBlocks(
   inFlightRunId: string | null,
   options: { wholeOutput?: boolean } = {},
 ): Block[] {
-  const b: Builder = { blocks: [], steps: new Map(), runId: null, runStart: 0, runFinished: false, runStopped: false, lastTs: 0, wholeOutput: options.wholeOutput === true };
+  const b: Builder = { blocks: [], steps: new Map(), wrappers: new Set(), runId: null, runStart: 0, runFinished: false, runStopped: false, lastTs: 0, wholeOutput: options.wholeOutput === true };
   for (const [index, raw] of messages.entries()) {
     const m = rec(raw);
     const runId = str(rec(m.__branch).runId) || null;
@@ -304,17 +341,18 @@ export function historyToBlocks(
       onAssistant(b, m, index);
     } else if (m.role === "toolResult") {
       onToolResult(b, m, records, sessionKey);
+    } else if (m.role === "custom" && str(m.customType) === "branch.nested-tool.v1") {
+      onNestedTool(b, m, records, sessionKey);
     } else if (m.role === "custom") {
       onCustom(b, m, index);
       b.runFinished ||= str(m.customType) === "run-failed-before-reply";
     }
-    // Only a turn's own messages move its end; notes the engine writes between turns (compaction, context) don't.
     // Only a turn's own messages move its end; notes the engine writes between turns (compaction and reset markers,
     // context) can be stamped "now" and would zero every later "Done in".
-    if ((m.role !== "custom" && m.role !== "system") || str(m.customType) === "run-failed-before-reply") b.lastTs = Math.max(b.lastTs, writtenAt(m));
+    if ((m.role !== "custom" && m.role !== "system") || ["run-failed-before-reply", "branch.nested-tool.v1"].includes(str(m.customType))) b.lastTs = Math.max(b.lastTs, writtenAt(m));
   }
   closeRun(b, inFlightRunId);
-  return b.blocks;
+  return dropWrappers(b);
 }
 
 /**

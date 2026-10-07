@@ -84,7 +84,8 @@ export type Block =
   | { kind: "preamble"; key: string; text: string }
   | { kind: "plan"; key: string; steps: { step: string; status: "pending" | "in_progress" | "completed" }[] }
   | { kind: "usage"; key: string; input: number; output: number; total: number }
-  | { kind: "step"; key: string; outputKey?: string; tool: string; title: string; detail: string; status: StepStatus; input?: string; output?: string; changes?: FileChange[]; browser?: BrowserPresentation; at?: number }
+  /** `codeMode`: an `exec` running code (Code Mode); its result's own status says whether the code failed. */
+  | { kind: "step"; key: string; outputKey?: string; tool: string; title: string; detail: string; status: StepStatus; input?: string; output?: string; changes?: FileChange[]; browser?: BrowserPresentation; at?: number; codeMode?: boolean }
   | { kind: "approval"; key: string; approval: Approval }
   /** The end of a turn. `stopped`: you (or the engine) stopped it; the thread says so instead of "Done in". */
   | { kind: "done"; key: string; runId: string; durationMs?: number; stopped?: boolean }
@@ -124,6 +125,42 @@ export function toolInput(args: unknown): string | undefined {
   return JSON.stringify(a, null, 2);
 }
 
+/** The statuses a Code Mode run reports when its code failed; any other (completed, yielded, waiting, …) is not. */
+const FAILED_STATUSES = new Set(["failed", "error", "timed_out", "cancelled"]);
+
+/** Whether a Code Mode wrapper's own run failed (an error result, or code that didn't complete), as opposed to what
+ *  its nested calls did: then the wrapper stays a step, so the failure shows. */
+export function wrapperFailed(isError: unknown, text: string, details?: unknown): boolean {
+  if (isError === true) return true;
+  const status = codeModeStatus(text, details);
+  return status !== null && FAILED_STATUSES.has(status);
+}
+
+/**
+ * The status a Code Mode run reports. A guest failure is not an error result: it is a normal result whose payload
+ * (`details`, and the text) says `"status":"failed"` (engine code-mode-execution.ts, tool-search-runtime.ts). When
+ * the code read web content the text is wrapped in external-content markers, so the JSON is found inside it.
+ */
+export function codeModeStatus(text: string, details?: unknown): string | null {
+  const fromDetails = record(details).status;
+  if (typeof fromDetails === "string") return fromDetails;
+  try {
+    const status = record(JSON.parse(text)).status;
+    if (typeof status === "string") return status;
+  } catch {
+    // Wrapped text: read the first JSON object's leading status below.
+  }
+  const start = text.indexOf("{");
+  return start < 0 ? null : /^\{\s*"status"\s*:\s*"([a-z_]+)"/.exec(text.slice(start))?.[1] ?? null;
+}
+
+/** Code Mode's own tool (engine agents/code-mode-control-tools.ts CODE_MODE_EXEC_TOOL_NAME). */
+const CODE_MODE_TOOL = "exec";
+
+/** A Code Mode call: Code Mode's `exec` given code to run rather than a command. Another tool with a `code` argument
+ *  (a plugin's run_python, a sandbox) is not one: its result's status means whatever that tool says. */
+export const isCodeModeCall = (name: string, args: unknown): boolean => name === CODE_MODE_TOOL && typeof record(args).code === "string";
+
 /** Reads whether a tool result means "the person said no". */
 export function isDeniedResultText(text: string): boolean {
   return /^Exec denied \(/.test(text.trim());
@@ -148,7 +185,8 @@ export function readApproval(payload: Record<string, unknown>): Approval | null 
   };
 }
 
-type Builder = { blocks: Block[]; steps: Map<string, number>; items: Map<string, number>; text: number | null; thinking: number | null; plan: number | null };
+/** `wrappers`: Code Mode `exec` calls whose code called real tools (their events name it `parentToolCallId`). */
+type Builder = { blocks: Block[]; steps: Map<string, number>; items: Map<string, number>; wrappers: Set<string>; text: number | null; thinking: number | null; plan: number | null };
 
 function addText(b: Builder, runId: string, seq: number, delta: string): void {
   if (b.text === null) {
@@ -175,7 +213,7 @@ function addThinking(b: Builder, event: RunEvent): void {
 function startStep(b: Builder, id: string, name: string, args: unknown, at: number, runId: string): void {
   b.text = null;
   b.thinking = null;
-  b.blocks.push({ kind: "step", key: id, outputKey: `${runId}:${id}`, tool: name, title: describeToolCall(name, args), detail: "", status: "running", input: toolInput(args), changes: readFileChanges(args), ...recordedAt(at) });
+  b.blocks.push({ kind: "step", key: id, outputKey: `${runId}:${id}`, tool: name, title: describeToolCall(name, args), detail: "", status: "running", input: toolInput(args), changes: readFileChanges(args), ...recordedAt(at), ...(isCodeModeCall(name, args) ? { codeMode: true } : {}) });
   b.steps.set(id, b.blocks.length - 1);
 }
 
@@ -186,12 +224,13 @@ function onTool(b: Builder, event: RunEvent): void {
   if (name === "tool_call" || name === "tool_search" || name === "tool_describe") {
     return; // Tool Search controls; the nested real tool gets its own step line.
   }
+  if (str(d.parentToolCallId)) b.wrappers.add(str(d.parentToolCallId));
   if (d.phase === "start") {
     if (!b.steps.has(id)) startStep(b, id, name, d.args, event.ts, event.runId);
     else {
       const at = b.steps.get(id)!;
       const step = b.blocks[at] as Extract<Block, { kind: "step" }>;
-      b.blocks[at] = { ...step, tool: name || step.tool, title: describeToolCall(name, d.args) || step.title, input: toolInput(d.args), changes: readFileChanges(d.args) };
+      b.blocks[at] = { ...step, tool: name || step.tool, title: describeToolCall(name, d.args) || step.title, input: toolInput(d.args), changes: readFileChanges(d.args), ...(isCodeModeCall(name || step.tool, d.args) ? { codeMode: true } : {}) };
     }
     return;
   }
@@ -209,8 +248,10 @@ function onTool(b: Builder, event: RunEvent): void {
     return;
   }
   const text = str(record(d.result).output) || resultText(d.result);
+  const codeFailed = step.codeMode === true && wrapperFailed(d.isError, text, record(d.result).details);
+  if (b.wrappers.has(id) && codeFailed) b.wrappers.delete(id);
   const exitCode = record(d.result).exitCode;
-  const status: StepStatus = isDeniedResultText(text) ? "denied" : d.isError || (typeof exitCode === "number" && exitCode !== 0) ? "failed" : "ok";
+  const status: StepStatus = isDeniedResultText(text) ? "denied" : d.isError || codeFailed || (typeof exitCode === "number" && exitCode !== 0) ? "failed" : "ok";
   b.blocks[at] = { ...step, status, detail: typeof exitCode === "number" ? `Exit ${exitCode}` : text.slice(0, 400), output: text ? keepOutput(step.outputKey ?? id, text) : step.output, browser: status === "ok" ? readBrowserPresentation(d.result, step.tool, id) : undefined, ...recordedAt(event.ts) };
 }
 
@@ -345,7 +386,7 @@ function settle(blocks: Block[]): Block[] {
  * `approvals` holds the cards from `exec.approval.requested`, keyed by approval id.
  */
 export function projectRun(events: readonly RunEvent[], approvals: ReadonlyMap<string, Approval>): Block[] {
-  const b: Builder = { blocks: [], steps: new Map(), items: new Map(), text: null, thinking: null, plan: null };
+  const b: Builder = { blocks: [], steps: new Map(), items: new Map(), wrappers: new Set(), text: null, thinking: null, plan: null };
   let ended = false;
   for (const event of events) {
     if (event.stream === "assistant") {
@@ -374,9 +415,12 @@ export function projectRun(events: readonly RunEvent[], approvals: ReadonlyMap<s
       ended ||= event.data.phase === "end" || event.data.phase === "error";
     }
   }
+  // A wrapper's nested calls are the steps (the real command, its approval); the wrapper itself would be a second
+  // row for the same command, and the finished turn (history.ts) doesn't have it either.
+  const blocks = b.wrappers.size ? b.blocks.filter((block) => block.kind !== "step" || !b.wrappers.has(block.key)) : b.blocks;
   if (ended) {
-    return settle(b.blocks);
+    return settle(blocks);
   }
   const status = lastStatus(events);
-  return status ? [...b.blocks, status] : b.blocks;
+  return status ? [...blocks, status] : blocks;
 }
