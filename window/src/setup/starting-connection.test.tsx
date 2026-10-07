@@ -26,6 +26,7 @@ it("local startup hides its address until delayed Details is opened", async () =
 it("remote startup uses the saved computer name without its address", async () => {
   const url = "wss://desk.tailnet.ts.net:443";
   saveTargetName(url, "Office PC");
+  saveTargetName("wss://other.example.test", "Other PC");
   await act(async () => root.render(<Connecting url={url} status="connecting" />));
   expect(host.textContent).toContain("Connecting to Office PC…");
   expect(host.textContent).not.toContain("desk.tailnet.ts.net");

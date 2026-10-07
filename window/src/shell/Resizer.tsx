@@ -12,8 +12,8 @@ function ResizeHandle({ width, dragging, ...events }: HandleProps) {
       className={dragging ? "resizer on" : "resizer"}
       role="separator"
       aria-orientation="vertical"
-      aria-label="Drag to resize · below 200 pixels becomes the face rail · double-click to reset"
-      title="Drag to resize · below 200 pixels becomes the face rail · double-click to reset"
+      aria-label="Drag to resize · below 200 pixels becomes the face rail · drag to the edge to hide · double-click to reset"
+      title="Drag to resize · below 200 pixels becomes the face rail · drag to the edge to hide · double-click to reset"
       data-testid="side-resizer"
       style={{ left: `calc(${width}px - 4px)`, cursor: "col-resize" }}
       {...events}
@@ -23,7 +23,7 @@ function ResizeHandle({ width, dragging, ...events }: HandleProps) {
   );
 }
 
-/** Drag resizes or makes the rail; double-click restores the usual width. */
+/** Drag resizes, makes the rail or hides the list; double-click restores the usual width. */
 export function SideResizer({ layout, onLayout, onLive }: Props) {
   const [dragging, setDragging] = useState(false);
   const activeDrag = useRef(false);

@@ -14,7 +14,7 @@ const BASE: SettingsGroup[] = [
     ],
   },
   {
-    name: "Your assistant",
+    name: "Your Trunks",
     pages: [
       { id: "instructions", name: "Instructions & personality" },
       { id: "models", name: "Models" },
@@ -117,7 +117,7 @@ export function pageLevel(id: string): Level {
 }
 
 /** A row a page lists for search: its exact title, its section and the level that shows it (0, 1, 2). */
-export type SearchRow = { page: string; title: string; sec?: string; lv: 0 | 1 | 2; words?: string };
+export type SearchRow = { page: string; title: string; sec?: string; group?: string; lv: 0 | 1 | 2; words?: string };
 export type SearchHit = { page: { id: string; name: string; lv: 0 | 1 | 2 }; rows: SearchRow[] };
 export type SearchGroup = { name: string; hits: SearchHit[] };
 

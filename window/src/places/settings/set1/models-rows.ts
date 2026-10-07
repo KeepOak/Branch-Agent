@@ -1,7 +1,7 @@
 // Settings › Models rows for the settings search (§4.7.0): exact titles, their section and level.
 import type { RowEntry } from "../kit";
 
-const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "models", title, sec, lv }));
+const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "models", title, sec, group: sec.startsWith("Per connection") ? "Per account" : sec.replace(/, (more|technical|in depth)$/, ""), lv }));
 
 export const MODELS_ROWS: RowEntry[] = [
   ...rows("Connections", 0, ["Find models on this computer"]),

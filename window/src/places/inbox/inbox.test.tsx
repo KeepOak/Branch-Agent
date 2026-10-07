@@ -158,12 +158,19 @@ describe("Inbox › Needs you", () => {
   it("sends dismiss, device reject and node approve with the request id", async () => {
     const { host, request } = await render();
     const row = (title: string) => [...host.querySelectorAll(".ib-row")].find(r => r.textContent?.includes(title))!;
-    await click(btn(row("Jordan Ellis"), "Don’t")[0]);
-    await click(btn(row("Phone wants to connect"), "Don’t")[0]);
+    await click(btn(row("Jordan Ellis"), "Don’t allow")[0]);
+    await click(btn(row("Phone wants to connect"), "Don’t allow")[0]);
     await click(btn(row("box wants to offer"), "Allow")[0]);
     expect(calls(request, "channels.pairing.dismiss")).toEqual([{ channel: "telegram", accountId: "default", requestId: "q1" }]);
     expect(calls(request, "device.pair.reject")).toEqual([{ requestId: "d1" }]);
     expect(calls(request, "node.pair.approve")).toEqual([{ requestId: "n1" }]);
+  });
+  it("shows the device check code beside the access request", async () => {
+    const { host } = await render();
+    const row = [...host.querySelectorAll(".ib-row")].find(r => r.textContent?.includes("Phone wants to connect"))!;
+    await click(btn(row, "Allow")[0]);
+    expect(host.querySelector(".dlg")?.textContent).toContain("Check code: D1");
+    expect(host.querySelector(".dlg")?.textContent).toContain("What it asks to do");
   });
   it("answers and skips a Trunk's question", async () => {
     const { host, request } = await render();

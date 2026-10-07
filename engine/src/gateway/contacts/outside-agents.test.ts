@@ -84,6 +84,19 @@ describe("outside agents over branch mcp serve", () => {
     expect(outsideAgentPeers([record], [{ name: "claude-code", where: "studio:443" }])).toEqual([]);
   });
 
+  it("groups a joined computer's Trunks under one Recent contact and preserves their characters", () => {
+    const env = scratchEnv();
+    const branch = recordOutsideAgent({ id: "branch-nas", name: "NAS-linux", kind: "branch" }, 1_000, env);
+    const tester = recordOutsideAgent({ id: "branch-nas--tester", name: "Tester", kind: "trunk", via: branch.id, avatar: "branch:ember" }, 1_000, env);
+    const peers = outsideAgentPeers([branch, tester], []);
+    expect(peers.find((row) => row.name === tester.id)).toMatchObject({ kind: "trunk", via: branch.id, avatar: "branch:ember" });
+    const { contacts } = projectContacts({ agents: [{ id: "main", name: "Sapling" }], defaultAgentId: "main", sessions: [], outsidePeers: peers });
+    expect(contacts.filter((row) => row.kind === "outside").map((row) => row.name)).toEqual(["NAS-linux"]);
+    expect(contacts.find((row) => row.id === "a2a:branch-nas")?.face?.trunks).toEqual([{ name: "Tester", avatar: "branch:ember" }]);
+    expect(validateContactsOutsideHelloParams({ agent: { id: tester.id, name: tester.name, kind: "trunk", via: branch.id, avatar: "branch:ember" } })).toBe(true);
+    expect(recordOutsideAgent({ id: tester.id, name: tester.name, kind: "trunk", via: branch.id }, 2_000, env)).toMatchObject({ avatar: "branch:ember" });
+  });
+
   it("records the agent, not the owner, as the sender of its messages", () => {
     const metadata = buildPersistedUserTurnMetadata(
       {
