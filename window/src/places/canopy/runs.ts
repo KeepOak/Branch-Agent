@@ -47,8 +47,16 @@ export function inWords(ms: number, now: number): string {
   return same ? `Today at ${hm}` : `${at.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })} at ${hm}`;
 }
 
+/** System-owned job prefixes: heartbeat monitors, imported heartbeat tasks, and skill-collection reviews. */
+const SYSTEM_JOB_PREFIXES = ["heartbeat:", "heartbeat-task:", "skill-collection-review:"];
+
+function isSystemJob(job: Row): boolean {
+  const key = str(job.declarationKey);
+  return SYSTEM_JOB_PREFIXES.some(prefix => key.startsWith(prefix));
+}
+
 function nextRuns(d: CanopyData, now: number): Run[] {
-  const sched: Run[] = d.jobs.filter(j => j.enabled === true && Number(rec(j.state).nextRunAtMs) > 0 && !rec(j.state).runningAtMs).map(j => {
+  const sched: Run[] = d.jobs.filter(j => j.enabled === true && Number(rec(j.state).nextRunAtMs) > 0 && !rec(j.state).runningAtMs && !isSystemJob(j)).map(j => {
     const at = Number(rec(j.state).nextRunAtMs);
     return { key: "s:" + str(j.id), kind: "sched", col: "next", job: j, agentId: str(j.agentId) || d.defaultTrunk, who: "", task: str(j.displayName) || str(j.name) || "Automation", step: str(j.description), when: inWords(at, now), at, comp: "this", model: "" };
   });
