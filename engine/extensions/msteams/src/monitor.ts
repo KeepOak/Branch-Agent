@@ -480,7 +480,7 @@ export async function monitorMSTeamsProvider(
           connectionName,
           userIdCount: userIds.length,
           hasExpiry: Boolean(ctx.token.expiration),
-        });
+        }); // credential-logging-allowed: expiry flag only, not the token value
       })().catch((err: unknown) => {
         log.error("msteams sso token persistence failed", {
           error: formatUnknownError(err),

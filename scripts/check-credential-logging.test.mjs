@@ -150,6 +150,22 @@ getLogger().warn({ bot_token: value });
   }
 });
 
+test("no hit on sessionKey object or session=${sessionKey} template", () => {
+  const dir = createTestRepo();
+  try {
+    writeTracked(
+      dir,
+      "app.ts",
+      `log.info({ sessionKey });
+console.log(\`session=\${sessionKey}\`);
+`,
+    );
+    assert.strictEqual(scan(dir).length, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("no hit on sessionId", () => {
   const dir = createTestRepo();
   try {
@@ -185,6 +201,24 @@ test("no hit on token used as a message word", () => {
   try {
     writeTracked(dir, "app.js", 'console.log("token already present:", tokenFile);\n');
     assert.strictEqual(scan(dir).length, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("opt-out only silences the annotated call", () => {
+  const dir = createTestRepo();
+  try {
+    writeTracked(
+      dir,
+      "app.ts",
+      `log.info({ token: expiresIn }); // credential-logging-allowed: expiry only
+log.info({ token: value });
+`,
+    );
+    const violations = scan(dir);
+    assert.strictEqual(violations.length, 1);
+    assert.ok(violations[0].content.includes("token: value"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

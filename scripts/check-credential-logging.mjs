@@ -15,8 +15,6 @@ const CREDENTIAL_IDENTIFIERS = [
   "id_token",
   "sessionToken",
   "session_token",
-  "sessionKey",
-  "session_key",
   "sessionSecret",
   "session_secret",
   "apiKey",

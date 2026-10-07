@@ -435,8 +435,9 @@ const main = async (argv = process.argv.slice(2)) => {
 
   const keychain = readClaudeCliKeychain();
   if (keychain) {
+    const keychainTokenChars = keychain.accessToken.length;
     console.log(
-      `Claude Code CLI keychain: accessToken=${opts.reveal ? keychain.accessToken : mask(keychain.accessToken)} scopes=${keychain.scopes?.join(",") ?? "(unknown)"}`,
+      `Claude Code CLI keychain: accessToken=*** (${keychainTokenChars} chars) scopes=${keychain.scopes?.join(",") ?? "(unknown)"}`,
     );
     const oauth = await fetchAnthropicOAuthUsage(keychain.accessToken);
     console.log(
@@ -452,8 +453,9 @@ const main = async (argv = process.argv.slice(2)) => {
     console.log("Auth profiles: no Anthropic token profiles found");
   } else {
     for (const entry of anthropic) {
+      const profileTokenChars = entry.token.length;
       console.log(
-        `Auth profiles: ${entry.profileId} token=${opts.reveal ? entry.token : mask(entry.token)}`,
+        `Auth profiles: ${entry.profileId} token=*** (${profileTokenChars} chars)`,
       );
       const oauth = await fetchAnthropicOAuthUsage(entry.token);
       console.log(
