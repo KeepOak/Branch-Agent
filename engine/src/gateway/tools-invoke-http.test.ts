@@ -10,6 +10,10 @@ import {
 import type { runBeforeToolCallHook as runBeforeToolCallHookType } from "../agents/agent-tools.before-tool-call.js";
 import type { BranchToolsOptions } from "../agents/branch-tools.types.js";
 import type { AnyAgentTool } from "../agents/tools/common.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { withPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import { ensureGatewayOwnerProfile, ensureProfileForEmail } from "../state/user-profiles.js";
@@ -60,24 +64,6 @@ vi.mock("../config/config.js", () => ({
 
 vi.mock("../config/io.js", () => ({
   getRuntimeConfig: () => cfg,
-}));
-
-vi.mock("../config/sessions.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../config/sessions.js")>()),
-  resolveMainSessionKey: (params?: {
-    session?: { scope?: string; mainKey?: string };
-    agents?: { list?: Array<{ id?: string; default?: boolean }> };
-  }) => {
-    if (params?.session?.scope === "global") {
-      return "global";
-    }
-    const agents = params?.agents?.list ?? [];
-    const rawDefault = agents.find((agent) => agent?.default)?.id ?? agents[0]?.id ?? "main";
-    const agentId = rawDefault.trim().toLowerCase() || "main";
-    const mainKeyRaw = (params?.session?.mainKey ?? "main").trim().toLowerCase();
-    const mainKey = mainKeyRaw || "main";
-    return `agent:${agentId}:${mainKey}`;
-  },
 }));
 
 vi.mock("../config/sessions/session-accessor.js", async (importOriginal) => {
@@ -317,15 +303,13 @@ const allowAgentsListForMain = () => {
   cfg = {
     ...cfg,
     agents: {
-      list: [
-        {
-          id: "main",
-          default: true,
+      entries: {
+        main: {
           tools: {
             allow: ["agents_list"],
           },
         },
-      ],
+      },
     },
   };
 };
@@ -468,7 +452,7 @@ const setMainAllowedTools = (params: {
   cfg = {
     ...cfg,
     agents: {
-      list: [{ id: "main", default: true, tools: { allow: params.allow } }],
+      entries: { main: { tools: { allow: params.allow } } },
     },
     ...(params.gatewayAllow || params.gatewayDeny
       ? {
@@ -504,7 +488,7 @@ describe("POST /tools/invoke", () => {
     await withBranchTestState({ label: "tools-invoke-operator-role" }, async () => {
       const profile = ensureProfileForEmail("operator@example.test");
       cfg = {
-        agents: { list: [{ id: "main", default: true, tools: { allow: ["sessions_spawn"] } }] },
+        agents: { entries: { main: { tools: { allow: ["sessions_spawn"] } } } },
         gateway: {
           tools: { allow: ["sessions_spawn"] },
           roles: {
@@ -568,7 +552,7 @@ describe("POST /tools/invoke", () => {
         await upsertSessionEntryCore({ agentId: "main", sessionKey }, entry);
         sessionEntries.set(sessionKey, entry);
         cfg = {
-          agents: { list: [{ id: "main", default: true, tools: { allow: [toolName] } }] },
+          agents: { entries: { main: { tools: { allow: [toolName] } } } },
           gateway: {
             tools: { allow: [toolName] },
             roles: {
@@ -619,7 +603,7 @@ describe("POST /tools/invoke", () => {
       await upsertSessionEntryCore({ agentId: "main", sessionKey: foreignKey }, entry);
       sessionEntries.set(foreignKey, entry);
       cfg = {
-        agents: { list: [{ id: "main", default: true, tools: { allow: ["sessions_send"] } }] },
+        agents: { entries: { main: { tools: { allow: ["sessions_send"] } } } },
         gateway: {
           tools: { allow: ["sessions_send"] },
           roles: {
@@ -675,7 +659,7 @@ describe("POST /tools/invoke", () => {
       await upsertSessionEntryCore({ agentId: "main", sessionKey }, entry);
       sessionEntries.set(sessionKey, entry);
       cfg = {
-        agents: { list: [{ id: "main", default: true, tools: { allow: ["agents_list"] } }] },
+        agents: { entries: { main: { tools: { allow: ["agents_list"] } } } },
         gateway: {
           roles: {
             default: "guest",
@@ -774,6 +758,26 @@ describe("POST /tools/invoke", () => {
     expect(hookCtx.loopDetection).toEqual({ warnAt: 3 });
   });
 
+  it("refuses the tool API while Lockdown is on, before any tool is built", async () => {
+    allowAgentsListForMain();
+    lastCreateBranchToolsContext = undefined;
+    setRuntimeConfigSnapshot({ security: { lockdown: true } });
+    try {
+      const res = await invokeAgentsListAuthed({ sessionKey: "main" });
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({
+        ok: false,
+        error: {
+          type: "tool_call_blocked",
+          message: "Lockdown is on: Trunks cannot run or send anything.",
+        },
+      });
+      expect(lastCreateBranchToolsContext).toBeUndefined();
+    } finally {
+      clearRuntimeConfigSnapshot();
+    }
+  });
+
   it("keeps plugin tools enabled for non-core tool invokes", async () => {
     setMainAllowedTools({ allow: ["tools_invoke_test"] });
 
@@ -790,7 +794,7 @@ describe("POST /tools/invoke", () => {
   it("allows the requested plugin tool through Gateway profile filtering", async () => {
     cfg = {
       ...cfg,
-      agents: { list: [{ id: "main", default: true }] },
+      agents: { entries: { main: {} } },
       tools: { profile: "minimal" },
     };
 
@@ -808,7 +812,7 @@ describe("POST /tools/invoke", () => {
   it("uses tools.alsoAllow for optional plugin discovery without loading every plugin tool", async () => {
     cfg = {
       ...cfg,
-      agents: { list: [{ id: "main", default: true }] },
+      agents: { entries: { main: {} } },
       tools: { alsoAllow: ["plugin_doctor"] },
     };
 
@@ -865,7 +869,7 @@ describe("POST /tools/invoke", () => {
   it("supports tools.alsoAllow in profile and implicit modes", async () => {
     cfg = {
       ...cfg,
-      agents: { list: [{ id: "main", default: true }] },
+      agents: { entries: { main: {} } },
       tools: { profile: "minimal", alsoAllow: ["agents_list"] },
     };
 
@@ -890,15 +894,13 @@ describe("POST /tools/invoke", () => {
     cfg = {
       ...cfg,
       agents: {
-        list: [
-          {
-            id: "main",
-            default: true,
+        entries: {
+          main: {
             tools: {
               deny: ["agents_list"],
             },
           },
-        ],
+        },
       },
     };
     const denyRes = await invokeAgentsListAuthed({ sessionKey: "main" });
@@ -918,13 +920,7 @@ describe("POST /tools/invoke", () => {
     cfg = {
       ...cfg,
       agents: {
-        list: [
-          {
-            id: "main",
-            default: true,
-            tools: { allow: ["sessions_spawn"] },
-          },
-        ],
+        entries: { main: { tools: { allow: ["sessions_spawn"] } } },
       },
     };
 
@@ -944,7 +940,7 @@ describe("POST /tools/invoke", () => {
     cfg = {
       ...cfg,
       agents: {
-        list: [{ id: "main", default: true, tools: { allow: ["sessions_spawn"] } }],
+        entries: { main: { tools: { allow: ["sessions_spawn"] } } },
       },
       gateway: { tools: { allow: ["sessions_spawn"] } },
     };
@@ -971,13 +967,7 @@ describe("POST /tools/invoke", () => {
     cfg = {
       ...cfg,
       agents: {
-        list: [
-          {
-            id: "main",
-            default: true,
-            tools: { allow: ["sessions_spawn", "cron", "gateway", "nodes"] },
-          },
-        ],
+        entries: { main: { tools: { allow: ["sessions_spawn", "cron", "gateway", "nodes"] } } },
       },
       gateway: { tools: { allow: ["sessions_spawn", "cron", "gateway", "nodes"] } },
     };
@@ -1093,21 +1083,20 @@ describe("POST /tools/invoke", () => {
     cfg = {
       ...cfg,
       agents: {
-        list: [
-          {
-            id: "main",
+        ownership: "explicit",
+        defaults: { systemAgent: { agentId: "ops" } },
+        entries: {
+          main: {
             tools: {
               deny: ["agents_list"],
             },
           },
-          {
-            id: "ops",
-            default: true,
+          ops: {
             tools: {
               allow: ["agents_list"],
             },
           },
-        ],
+        },
       },
       session: { mainKey: "primary" },
     };
@@ -1565,10 +1554,10 @@ describe("tools.invoke Gateway RPC", () => {
   it("rejects mismatched session and agent scope", async () => {
     cfg = {
       agents: {
-        list: [
-          { id: "main", default: true, tools: { allow: ["agents_list"] } },
-          { id: "other", tools: { allow: ["agents_list"] } },
-        ],
+        entries: {
+          main: { tools: { allow: ["agents_list"] } },
+          other: { tools: { allow: ["agents_list"] } },
+        },
       },
     };
 

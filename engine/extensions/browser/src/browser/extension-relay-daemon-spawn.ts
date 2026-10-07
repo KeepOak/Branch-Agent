@@ -58,7 +58,8 @@ export async function ensureExtensionRelayDaemonProcess(params: {
   const spawnProcess =
     params.spawnProcess ??
     ((command: string, args: string[]): void => {
-      const child = spawn(command, args, { detached: true, stdio: "ignore" });
+      // The relay outlives the Gateway, so it has no console to share: hide its own.
+      const child = spawn(command, args, { detached: true, stdio: "ignore", windowsHide: true });
       child.unref();
     });
   spawnProcess(params.execPath ?? process.execPath, [

@@ -1,7 +1,6 @@
 import { runBranchStateWriteTransaction } from "../state/branch-state-db.js";
 import {
   readChannelPairingState,
-  sqliteOptionsForEnv,
   writeChannelPairingStateToDatabase,
 } from "./pairing-store-sqlite.js";
 import type { PairingChannel } from "./pairing-store.types.js";
@@ -22,6 +21,6 @@ export function writeChannelPairingStateSnapshot(
 ): void {
   runBranchStateWriteTransaction(
     (database) => writeChannelPairingStateToDatabase(database, channel, state),
-    sqliteOptionsForEnv(env),
+    { env },
   );
 }

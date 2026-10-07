@@ -295,7 +295,6 @@ describe("ensureOnboardingPluginInstalled", () => {
             source === "clawhub"
               ? { clawhubSpec: "clawhub:demo-plugin@1.0.0" }
               : { npmSpec: "@demo/plugin@1.0.0" },
-          preferRemoteInstall: true,
         },
         prompter: {
           progress: () => ({ update, stop }),
@@ -443,7 +442,6 @@ describe("ensureOnboardingPluginInstalled", () => {
                 : source === "clawhub"
                   ? { clawhubSpec }
                   : { npmSpec },
-            preferRemoteInstall: source !== "local",
           },
           prompter: {
             confirm,
@@ -576,7 +574,6 @@ describe("ensureOnboardingPluginInstalled", () => {
                   pluginId: "demo-plugin",
                   label: "Demo plugin",
                   install,
-                  preferRemoteInstall: true,
                 },
               });
             }
@@ -928,7 +925,7 @@ describe("ensureOnboardingPluginInstalled", () => {
   it("installs and records Seedbank provider plugins with source facts", async () => {
     const cfg = installPolicyConfig();
     installPluginFromClawHub.mockImplementation(async (params) => {
-      params.logger?.info?.("Downloading demo-plugin from ClawHub…");
+      params.logger?.info?.("Downloading demo-plugin from Seedbank…");
       return {
         ok: true,
         pluginId: "demo-plugin",
@@ -967,7 +964,7 @@ describe("ensureOnboardingPluginInstalled", () => {
     expect(clawHubCall.expectedPluginId).toBe("demo-plugin");
     expect(clawHubCall.mode).toBe("install");
     expect(clawHubCall.timeoutMs).toBe(300_000);
-    expect(update).toHaveBeenCalledWith("Downloading demo-plugin from ClawHub…");
+    expect(update).toHaveBeenCalledWith("Downloading demo-plugin from Seedbank…");
     expect(stop).toHaveBeenCalledWith("Installed Demo Provider plugin");
     expect(result.installed).toBe(true);
     expect(result.status).toBe("installed");

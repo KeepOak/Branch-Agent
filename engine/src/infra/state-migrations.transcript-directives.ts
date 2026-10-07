@@ -4,20 +4,18 @@ import { isRecord } from "@branch/normalization-core/record-coerce";
 import { updateSqliteTranscriptEventJsonInTransaction } from "../config/sessions/session-accessor.sqlite-transcript-store.js";
 import { transcriptEventJsonSql } from "../config/sessions/transcript-payload.js";
 import { BRANCH_AGENT_SCHEMA_VERSION } from "../state/branch-agent-db-contract.js";
+import type { BranchAgentDatabase } from "../state/branch-agent-db-contract.js";
 import {
   BranchAgentDatabaseLeaseActiveError,
   assertAgentDatabaseMaintenanceAuthority,
   assertNoBranchAgentDatabaseLeases,
 } from "../state/branch-agent-db-lease.js";
+import { withAgentDatabaseMaintenanceLease } from "../state/branch-agent-db-maintenance-lease.js";
 import {
   assertBranchAgentDatabaseForMaintenance,
   migrateBranchAgentDatabaseForMaintenance,
 } from "../state/branch-agent-db-maintenance.js";
 import type { DB as BranchAgentKyselyDatabase } from "../state/branch-agent-db.generated.js";
-import {
-  type BranchAgentDatabase,
-  withAgentDatabaseMaintenanceLease,
-} from "../state/branch-agent-db.js";
 import { BRANCH_SQLITE_BUSY_TIMEOUT_MS } from "../state/branch-state-db.js";
 import type { BranchStateLeaseContext } from "../state/branch-state-lease.js";
 import {
@@ -120,28 +118,23 @@ function writeMigrationCursor(
 ): void {
   const now = Date.now();
   const db = getNodeSqliteKysely<TranscriptDirectiveMigrationDatabase>(database);
+  const row = {
+    agent_id: agentId,
+    app_version: JSON.stringify(cursor),
+    role: "agent",
+    schema_version: 1,
+    updated_at: now,
+  };
   executeSqliteQuerySync(
     database,
     db
       .insertInto("schema_meta")
       .values({
-        agent_id: agentId,
-        app_version: JSON.stringify(cursor),
+        ...row,
         created_at: now,
         meta_key: MIGRATION_META_KEY,
-        role: "agent",
-        schema_version: 1,
-        updated_at: now,
       })
-      .onConflict((conflict) =>
-        conflict.column("meta_key").doUpdateSet({
-          agent_id: agentId,
-          app_version: JSON.stringify(cursor),
-          role: "agent",
-          schema_version: 1,
-          updated_at: now,
-        }),
-      ),
+      .onConflict((conflict) => conflict.column("meta_key").doUpdateSet(row)),
   );
 }
 

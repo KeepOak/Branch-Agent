@@ -256,10 +256,6 @@ export function createSessionsBoardController(host: BoardDockHost, notify: () =>
       }
     },
     read,
-    refresh: () =>
-      write(async (id) => {
-        await host.request("canopy.sessionsBoard.refresh", { boardId: id });
-      }),
     move: (sessionKey: string, columnId: string) =>
       write(async (id) => {
         await host.request("canopy.sessionsBoard.move", { boardId: id, sessionKey, columnId });

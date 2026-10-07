@@ -12,8 +12,8 @@ function ResizeHandle({ width, dragging, ...events }: HandleProps) {
       className={dragging ? "resizer on" : "resizer"}
       role="separator"
       aria-orientation="vertical"
-      aria-label="Drag to resize · drag to the edge to hide · double-click to reset"
-      title="Drag to resize · drag to the edge to hide · double-click to reset"
+      aria-label="Drag to resize · below 200 pixels becomes the face rail · drag to the edge to hide · double-click to reset"
+      title="Drag to resize · below 200 pixels becomes the face rail · drag to the edge to hide · double-click to reset"
       data-testid="side-resizer"
       style={{ left: `calc(${width}px - 4px)`, cursor: "col-resize" }}
       {...events}
@@ -23,13 +23,13 @@ function ResizeHandle({ width, dragging, ...events }: HandleProps) {
   );
 }
 
-/** Drag resizes, hides or makes the rail; double-click restores the usual width. */
+/** Drag resizes, makes the rail or hides the list; double-click restores the usual width. */
 export function SideResizer({ layout, onLayout, onLive }: Props) {
   const [dragging, setDragging] = useState(false);
   const activeDrag = useRef(false);
   const startX = useRef(0);
   const startW = useRef(0);
-  const width = layout.hidden ? 0 : layout.rail ? 68 : layout.sideW;
+  const width = layout.rail ? 68 : layout.sideW;
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -51,11 +51,11 @@ export function SideResizer({ layout, onLayout, onLive }: Props) {
     onPointerUp={(e) => {
       if (!activeDrag.current) return;
       cancel();
-      onLayout({ rail: false, hidden: false, ...dragResult(widthAt(e)) });
+      onLayout(dragResult(widthAt(e)));
     }}
     onPointerCancel={cancel} onLostPointerCapture={cancel}
     onDoubleClick={() => {
-      onLayout({ sideW: SIDE_DEFAULT, rail: false, hidden: false });
+      onLayout({ sideW: SIDE_DEFAULT, rail: false });
       notify("Back to the usual size.");
     }} />;
 }

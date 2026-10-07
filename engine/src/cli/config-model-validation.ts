@@ -24,7 +24,8 @@ import {
   type EnvSubstitutionWarning,
   resolveConfigEnvVars,
 } from "../config/env-substitution.js";
-import { migratePersistedImplicitMainRoster } from "../config/legacy.roster.js";
+import { applyImplicitAgentRosterDefaults } from "../config/implicit-agent-roster.js";
+import type { BranchConfigWithLegacyRoster } from "../config/legacy.roster.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { formatConcreteConfigPath } from "../shared/dot-path.js";
@@ -482,12 +483,13 @@ function materializeValidationRoster(config: BranchConfig): BranchConfig {
   // empty or malformed rosters must remain visible to schema repair.
   return hasAgentRosterProperty(config)
     ? config
-    : (migratePersistedImplicitMainRoster(config).config as BranchConfig);
+    : (applyImplicitAgentRosterDefaults(config) as BranchConfig);
 }
 
+/** Checks authored mutations before admission, preserving legacy roster alias paths. */
 export async function checkTouchedTextModelRefs(params: {
-  config: BranchConfig;
-  previousConfig?: BranchConfig;
+  config: BranchConfigWithLegacyRoster;
+  previousConfig?: BranchConfigWithLegacyRoster;
   touchedPaths: readonly (readonly string[])[];
   env?: NodeJS.ProcessEnv;
   previousEnv?: NodeJS.ProcessEnv;

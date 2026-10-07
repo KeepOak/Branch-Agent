@@ -1,9 +1,11 @@
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { Popover } from "../shell/Popover";
 import type { MenuAnchor } from "../shell/Menu";
 import type { Computer, Placement } from "./computers";
 import { SIcon } from "./stage-icons";
+import { shownWhy } from "../shell/shown-why";
 
 /** Where a picked row sends the conversation: the host, a paired device, a cloud profile or any free device. */
 export type MoveTarget = { kind: "gateway" } | { kind: "device"; deviceId: string } | { kind: "profile"; profileId: string } | { kind: "free" };
@@ -42,7 +44,7 @@ function Busy({ busy }: { busy: NonNullable<Computer["busy"]> }) {
 
 function Row({ c, checked, role, disabled, onPick }: { c: Computer; checked: boolean; role: "menuitemradio" | "menuitemcheckbox"; disabled?: string; onPick?: () => void }) {
   return (
-    <button type="button" className="mi pick-st" role={role} aria-checked={checked} disabled={Boolean(disabled) || !onPick} title={disabled} onClick={onPick}>
+    <button type="button" className="mi pick-st" role={role} aria-checked={checked} disabled={Boolean(disabled) || !onPick} title={shownWhy(disabled)} onClick={onPick}>
       <span className="mi-tick">{checked ? <SIcon name="check" small /> : null}</span>
       <span className="mi-text">
         <span>{c.name}</span>

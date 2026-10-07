@@ -825,6 +825,21 @@ describe("channel-health-monitor", () => {
     monitor.stop();
   });
 
+  it("keeps recovering by default beyond the old hourly restart ceiling", async () => {
+    const manager = createSnapshotManager({
+      discord: { default: managedStoppedAccount("keeps crashing") },
+    });
+    const monitor = startDefaultMonitor(manager, {
+      checkIntervalMs: 1_000,
+      cooldownCycles: 0,
+    });
+    for (let check = 0; check < 12; check += 1) {
+      await clock.advanceBy(1_000);
+    }
+    expect(manager.startChannel.mock.calls.length).toBeGreaterThan(10);
+    monitor.stop();
+  });
+
   it("counts failed restart attempts toward cooldown and hourly caps", async () => {
     const manager = createSnapshotManager(
       {

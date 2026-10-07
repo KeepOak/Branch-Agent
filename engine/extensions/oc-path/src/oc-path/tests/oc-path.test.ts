@@ -73,9 +73,9 @@ describe("parseOcPath", () => {
   });
 
   it("normalizes deep JSON paths into dotted subsegments", () => {
-    expect(parseOcPath("oc://branch.json/agents/list/8/tools/exec/security")).toEqual({
+    expect(parseOcPath("oc://branch.json/agents/entries/main/tools/exec/security")).toEqual({
       file: "branch.json",
-      section: "agents.list.8.tools",
+      section: "agents.entries.main.tools",
       item: "exec",
       field: "security",
     });

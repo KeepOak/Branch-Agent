@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "../../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
@@ -37,6 +38,15 @@ const CONFIG = { "config.get": { hash: "h", valid: true, config: {} }, "config.p
 const PAIRED = { pending: [], paired: [{ deviceId: "dev-1", publicKey: "k", displayName: "Desk", platform: "linux", roles: ["node"], scopes: ["node.invoke"], approvedAtMs: 1, createdAtMs: 1, connected: true, tokens: [{ role: "node", scopes: [], createdAtMs: Date.now() }] }] };
 
 describe("Settings › Computer & browser, below Which Trunk uses which", () => {
+  it("shows Gateway screen control off until it is enabled in engine config", async () => {
+    const { engine, request } = engineWith(CONFIG);
+    await show(engine, "regular");
+    const screen = row("See the screen and use the mouse")!.querySelector<HTMLInputElement>("input[role=switch]")!;
+    expect(screen.checked).toBe(false);
+    await click(screen);
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "cua-computer": { enabled: true } } } });
+  });
+
   it("places the sections by level: Technical-only sections stay out of Advanced", async () => {
     const { engine } = engineWith(CONFIG);
     await show(engine, "regular");
@@ -49,12 +59,14 @@ describe("Settings › Computer & browser, below Which Trunk uses which", () => 
     expect(sec("Lent computer, technical")).not.toBeNull();
   });
 
-  it("shows a greyed row's reason instead of a working control", async () => {
+  it("greys a row the engine can't back yet, without its developer note", async () => {
     const { engine } = engineWith(CONFIG);
     await show(engine, "regular");
     const r = row("Ask before a site it hasn’t visited");
-    expect(r?.getAttribute("aria-disabled")).toBe("true");
-    expect(r?.textContent).toContain("Needs the engine");
+    expect(r?.getAttribute("aria-disabled")).toBe("true"); expect(r?.classList.contains("off-k")).toBe(true);
+    expect(r?.querySelector(".right")?.hasAttribute("inert")).toBe(true); expect(r?.querySelector<HTMLInputElement>("input[role=switch]")?.disabled).toBe(true);
+    expect(r?.textContent).toContain("You say yes once per site."); expect(r?.querySelector(".why-k")).toBeNull();
+    expect(visibleDevNotes(document.body)).toEqual([]);
   });
 
   it("lists paired devices and replaces or revokes an access key", async () => {
@@ -134,7 +146,7 @@ describe("Settings › Computer & browser, below Which Trunk uses which", () => 
       expect(waiting?.textContent).toContain("Studio laptop wants to connect");
       expect(waiting?.textContent).toContain("Garage box wants to connect");
       expect(waiting?.textContent).toContain("Run commands");
-      expect(waiting?.textContent).toContain("0.19.4");
+      expect(waiting?.textContent).not.toContain("0.19.4");
       const allow = row("Studio laptop")!.querySelector("button.pri, button:last-of-type") as HTMLButtonElement;
       expect(allow.disabled).toBe(true);
       await act(async () => { vi.advanceTimersByTime(1600); });
@@ -161,11 +173,11 @@ describe("Settings › Computer & browser, below Which Trunk uses which", () => 
     const which = sec("Which Trunk uses which");
     expect(which?.querySelector(".hint")?.textContent).toBe("A Trunk can use several computers side by side.");
     expect([...which!.querySelectorAll(".prow b")].map((b) => b.textContent)).toEqual(["Scout", "Sapling"]);
-    const { engine, request } = engineWith({ ...CONFIG, "agents.list": agents, "config.get": { hash: "h", valid: true, config: { agents: { list: [{ id: "scout" }] } } }, "node.list": { nodes: [{ nodeId: "n1", displayName: "Desk", connected: true }] } });
+    const { engine, request } = engineWith({ ...CONFIG, "agents.list": agents, "config.get": { hash: "h", valid: true, config: { agents: { entries: { scout: {} } } } }, "node.list": { nodes: [{ nodeId: "n1", displayName: "Desk", connected: true }] } });
     await show(engine, "regular");
     const chip = [...sec("Which Trunk uses which")!.querySelectorAll<HTMLButtonElement>("[aria-label='Computers Scout uses'] button")].find((b) => b.textContent === "Desk")!;
     await click(chip);
-    expect(patches(request)).toContainEqual({ agents: { list: [{ id: "scout", tools: { exec: { node: "n1" } } }] } });
+    expect(patches(request)).toContainEqual({ agents: { entries: { scout: { tools: { exec: { node: "n1" } } } } } });
   });
 
   it("saves Most spares at once with Save and adds an extra folder from its dialog", async () => {

@@ -97,9 +97,14 @@ export const CORE_CLI_COMMAND_DESCRIPTORS = [
   },
   {
     name: "mcp",
-    description: "Manage Branch Agent mcp.servers config and channel bridge",
+    description: "Manage Branch Agent mcp.servers config and Graft (mcp serve)",
     hasSubcommands: true,
     parentDefaultHelp: true,
+  },
+  {
+    name: "graft",
+    description: "Graft: work with Branch (Trunks, group chats, the window and channels over MCP stdio)",
+    hasSubcommands: false,
   },
   {
     name: "transcripts",

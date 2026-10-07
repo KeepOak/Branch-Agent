@@ -1,7 +1,9 @@
 // The sections under the schedule list (§4.6.3.1, preview p30-sched / 94-g4p): Ideas, Standing orders and loops,
 // [A] Running on its own, more, Reminders and [A] How they're doing. A part with no engine store is drawn
 // greyed with its reason; nothing here shows sample rows.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import { Glyph, type GlyphName } from "./glyphs";
 import { jobName } from "./model";
 import { str, type Row } from "./runtime";
@@ -31,7 +33,7 @@ export function ToolRow({ icon, title, sub, button, reason, run, busy }: { icon:
   return <div className="au-tool">
     <span className="au-tile"><Glyph name={icon} /></span>
     <span className="au-grow"><b>{title}</b><small>{sub}</small></span>
-    <button type="button" className="btn sm" disabled={Boolean(reason) || !run || busy} title={reason} onClick={run}>{button}</button>
+    <button type="button" className="btn sm" disabled={Boolean(reason) || !run || busy} title={shownWhy(reason)} onClick={run}>{button}</button>
   </div>;
 }
 

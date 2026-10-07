@@ -1,17 +1,15 @@
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
-import type {
-  BranchPluginApi,
-  BranchPluginService,
-  BranchPluginServiceContext,
-  WorkerProvider,
-} from "branch/plugin-sdk/plugin-entry";
+import type { BranchPluginApi, WorkerProvider } from "branch/plugin-sdk/plugin-entry";
 import {
   createPluginStateSyncKeyedStoreForTests,
   resetPluginStateStoreForTests,
 } from "branch/plugin-sdk/plugin-state-test-runtime";
-import { createTestPluginApi } from "branch/plugin-sdk/plugin-test-api";
+import {
+  createTestPluginApi,
+  createTestPluginServiceScheduler,
+} from "branch/plugin-sdk/plugin-test-api";
 import * as processRuntime from "branch/plugin-sdk/process-runtime";
 import type { SpawnResult } from "branch/plugin-sdk/process-runtime";
 import { closeBranchStateDatabaseAsync } from "branch/plugin-sdk/sqlite-runtime-testing";
@@ -63,7 +61,7 @@ function inspectResult(leaseId: string): SpawnResult {
 
 function registerCrabboxGeneration() {
   const providers: WorkerProvider[] = [];
-  const services: BranchPluginService[] = [];
+  const services: Parameters<BranchPluginApi["registerService"]>[0][] = [];
   plugin.register(
     createTestPluginApi({
       runtime: { state: crabboxState } as BranchPluginApi["runtime"],
@@ -76,8 +74,14 @@ function registerCrabboxGeneration() {
   return { provider: providers[0]!, services };
 }
 
-function stopGeneration(services: BranchPluginService[]): void | Promise<void> {
-  return services[0]?.stop?.({} as BranchPluginServiceContext);
+async function stopGeneration(services: Parameters<BranchPluginApi["registerService"]>[0][]) {
+  const scheduler = createTestPluginServiceScheduler();
+  scheduler.beginClose();
+  try {
+    await services[0]?.stop?.({ config: {}, stateDir: ".", logger: console, scheduler });
+  } finally {
+    await scheduler.stop();
+  }
 }
 
 describe("Cuttings plugin generation lifecycle", () => {

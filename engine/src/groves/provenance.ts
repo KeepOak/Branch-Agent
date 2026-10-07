@@ -1,14 +1,17 @@
 // Persists the root ownership record for one Grove-created agent and workspace.
 
-import type { DatabaseSync } from "node:sqlite";
 import { stableStringify } from "@branch/normalization-core";
+import {
+  assertAgentDeletionAllowsMutation,
+  type AgentDeletionOperation,
+} from "../agents/agent-lifecycle-registry.js";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../infra/kysely-sync.js";
-import { coerceRequiredSqliteNumber as sqliteNumber } from "../infra/sqlite-number.js";
 import type { DB } from "../state/branch-state-db.generated.js";
 import {
   openBranchStateDatabase,
   runBranchStateWriteTransaction,
   type BranchStateDatabaseOptions,
+  type BranchStateDatabase,
 } from "../state/branch-state-db.js";
 import { digestGroveValue } from "./digest.js";
 import {
@@ -21,27 +24,25 @@ import {
   type PackageRefRow,
   type PersistedClawPackageRef,
 } from "./package-extension-provenance.js";
+import { updateClawPackageRefStatusInDatabase } from "./package-status.kernel.js";
 import {
   persistGroveMigrationOwnershipWithInstallRecordReader,
   releaseAdoptedGroveInstallRecordWithInstallRecordReader,
 } from "./provenance-adopted.js";
+import { encodeGroveAgentOwnership, type GroveAgentOrigin } from "./provenance-agent-origin.js";
 import {
-  decodeGroveAgentOwnership,
-  encodeGroveAgentOwnership,
-  type GroveAgentOrigin,
-} from "./provenance-agent-origin.js";
-import {
-  groveBootstrapProvenanceFromRow,
-  selectGroveBootstrapProvenanceColumns,
-} from "./provenance-bootstrap.js";
-import { legacySafeColumnProjection } from "./provenance-legacy-columns.js";
+  readGroveInstallRecordFromDatabase,
+  readGroveInstallRecordsInDatabase,
+  readClawPackageRefsInDatabase,
+  type ClawPackageRefQuery,
+} from "./provenance-read.kernel.js";
 import {
   cacheGroveInstallSchemaVersion,
   deleteCachedGroveInstallSchemaVersion,
 } from "./provenance-runtime-read.js";
 import * as installRecordSchema from "./provenance-schema-version.js";
 import type { GroveInstallStatus, PersistedGroveInstall } from "./provenance-types.js";
-import type { GroveAddPlan, ClawPackage, ResolvedClawPackage } from "./types.js";
+import type { GroveAddPlan, ResolvedClawPackage } from "./types.js";
 import type { PersistedGroveWorkspaceFile } from "./workspace.js";
 export {
   GROVE_PACKAGE_REF_SCHEMA_VERSION,
@@ -53,59 +54,6 @@ type GroveProvenanceDatabase = Pick<
   DB,
   "grove_installs" | "grove_package_refs" | "grove_workspace_files"
 >;
-
-type GroveInstallRow = {
-  schema_version: string;
-  source_kind: "package" | "development";
-  grove_name: string;
-  grove_version: string;
-  package_root: string;
-  manifest_path: string;
-  integrity_kind: "artifact" | "development-snapshot";
-  integrity: string;
-  source_byte_length: number | bigint;
-  manifest_schema_version: number | bigint;
-  plan_integrity: string;
-  agent_id: string;
-  workspace: string;
-  agent_config_digest: string;
-  agent_owned_paths_json: string;
-  bootstrap_source_path: string | null;
-  bootstrap_content_digest: string | null;
-  status: GroveInstallStatus;
-  added_at_ms: number | bigint;
-  updated_at_ms: number | bigint;
-};
-
-function rowToRecord(row: GroveInstallRow): PersistedGroveInstall {
-  const ownership = decodeGroveAgentOwnership(row.agent_owned_paths_json, row.schema_version);
-  return {
-    schemaVersion: installRecordSchema.parseGroveInstallRecordSchemaVersion(row.schema_version),
-    grove: {
-      kind: row.source_kind,
-      name: row.grove_name,
-      version: row.grove_version,
-      packageRoot: row.package_root,
-      manifestPath: row.manifest_path,
-      integrityKind: row.integrity_kind,
-      integrity: row.integrity,
-      byteLength: sqliteNumber(row.source_byte_length),
-    },
-    manifestSchemaVersion: sqliteNumber(
-      row.manifest_schema_version,
-    ) as GroveAddPlan["manifestSchemaVersion"],
-    planIntegrity: row.plan_integrity,
-    agentId: row.agent_id,
-    workspace: row.workspace,
-    agentConfigDigest: row.agent_config_digest,
-    agentOrigin: ownership.origin,
-    agentOwnedPaths: ownership.paths,
-    ...groveBootstrapProvenanceFromRow(row),
-    status: row.status,
-    addedAtMs: sqliteNumber(row.added_at_ms),
-    updatedAtMs: sqliteNumber(row.updated_at_ms),
-  };
-}
 
 function agentOwnedPaths(plan: GroveAddPlan): string[] {
   return plan.actions.filter((action) => action.kind === "agent").map((action) => action.target);
@@ -143,29 +91,6 @@ export function groveInstallRecordMatchesPlan(
   );
 }
 
-function selectGroveInstallRow(db: DatabaseSync, agentId: string): GroveInstallRow | undefined {
-  const bootstrapColumns = selectGroveBootstrapProvenanceColumns(db);
-  return db /* sqlite-allow-raw: this Grove prototype state-table read is scoped to one owned row. */
-    .prepare(
-      `SELECT agent_id, schema_version, source_kind, grove_name, grove_version,
-              package_root, manifest_path, integrity_kind, integrity, source_byte_length,
-              manifest_schema_version, plan_integrity, workspace, agent_config_digest,
-              agent_owned_paths_json, ${bootstrapColumns},
-              status, added_at_ms, updated_at_ms
-         FROM grove_installs
-        WHERE agent_id = ?`,
-    )
-    .get(agentId) as GroveInstallRow | undefined;
-}
-
-export function readGroveInstallRecordFromDatabase(
-  db: DatabaseSync,
-  agentId: string,
-): PersistedGroveInstall | undefined {
-  const row = selectGroveInstallRow(db, agentId);
-  return row ? rowToRecord(row) : undefined;
-}
-
 export function persistGroveMigrationOwnership(
   plan: GroveAddPlan,
   workspaceFiles: PersistedGroveWorkspaceFile[],
@@ -196,8 +121,7 @@ export function readGroveInstallRecord(
   agentId: string,
   options: BranchStateDatabaseOptions = {},
 ): PersistedGroveInstall | undefined {
-  const row = selectGroveInstallRow(openBranchStateDatabase(options).db, agentId);
-  return row ? rowToRecord(row) : undefined;
+  return readGroveInstallRecordFromDatabase(openBranchStateDatabase(options).db, agentId);
 }
 
 export function persistGroveInstallRecord(
@@ -217,18 +141,19 @@ export function persistGroveInstallRecord(
   const ownedPaths = agentOwnedPaths(plan);
   const ownership = encodeGroveAgentOwnership(ownedPaths, options.agentOrigin ?? "created");
   const bootstrap = bootstrapProvenance(plan);
-  const persistedRecord = runBranchStateWriteTransaction(({ db }) => {
-    const existing = selectGroveInstallRow(db, plan.agent.finalId);
-    if (existing) {
-      const record = rowToRecord(existing);
+  const persistedRecord = runBranchStateWriteTransaction((database) => {
+    assertAgentDeletionAllowsMutation(database, plan.agent.finalId);
+    const { db } = database;
+    const record = readGroveInstallRecordFromDatabase(db, plan.agent.finalId);
+    if (record) {
       const expectedPlan = options.expectedExistingPlan ?? plan;
-      if (existing.status !== "complete" && groveInstallRecordMatchesPlan(record, expectedPlan)) {
+      if (record.status !== "complete" && groveInstallRecordMatchesPlan(record, expectedPlan)) {
         if (record.schemaVersion !== installRecordSchema.GROVE_INSTALL_RECORD_SCHEMA_VERSION) {
           if (options.deferLegacyPlanUpgrade) {
             return record;
           }
-          return installRecordSchema.upgradeGroveInstallSchema(
-            db,
+          return upgradeGroveInstallSchema(
+            database,
             plan.agent.finalId,
             record,
             options.expectedExistingRecord,
@@ -304,9 +229,12 @@ export function updateGroveInstallRecordStatus(
   options: BranchStateDatabaseOptions & {
     nowMs?: number;
     expectedStatuses?: GroveInstallStatus[];
+    deletionOperation?: AgentDeletionOperation;
   } = {},
 ): void {
-  runBranchStateWriteTransaction(({ db }) => {
+  runBranchStateWriteTransaction((database) => {
+    assertAgentDeletionAllowsMutation(database, agentId, options.deletionOperation);
+    const { db } = database;
     const expectedStatuses = options.expectedStatuses ?? [];
     let query = getNodeSqliteKysely<GroveProvenanceDatabase>(db)
       .updateTable("grove_installs")
@@ -320,6 +248,7 @@ export function updateGroveInstallRecordStatus(
         `Grove install record for agent ${JSON.stringify(agentId)} did not match the expected phase.`,
       );
     }
+    options.deletionOperation?.handoffToRetry(database);
   }, options);
 }
 
@@ -327,7 +256,9 @@ export function deleteGroveInstallRecord(
   agentId: string,
   options: BranchStateDatabaseOptions & { expectedStatuses?: GroveInstallStatus[] } = {},
 ): void {
-  runBranchStateWriteTransaction(({ db }) => {
+  runBranchStateWriteTransaction((database) => {
+    assertAgentDeletionAllowsMutation(database, agentId);
+    const { db } = database;
     const expectedStatuses = options.expectedStatuses ?? [];
     let query = getNodeSqliteKysely<GroveProvenanceDatabase>(db)
       .deleteFrom("grove_installs")
@@ -347,22 +278,7 @@ export function deleteGroveInstallRecord(
 export function readGroveInstallRecords(
   options: BranchStateDatabaseOptions = {},
 ): PersistedGroveInstall[] {
-  const database = openBranchStateDatabase(options);
-  const bootstrapColumns = selectGroveBootstrapProvenanceColumns(database.db);
-  const rows =
-    database.db /* sqlite-allow-raw: read-only Grove install inventory ordered by stable agent id. */
-      .prepare(
-        `SELECT schema_version, source_kind, grove_name, grove_version, package_root,
-              manifest_path, integrity_kind, integrity, source_byte_length,
-              manifest_schema_version, plan_integrity, agent_id, workspace,
-              agent_config_digest, agent_owned_paths_json, ${bootstrapColumns},
-              status, added_at_ms,
-              updated_at_ms
-         FROM grove_installs
-        ORDER BY agent_id`,
-      )
-      .all() as GroveInstallRow[];
-  return rows.map(rowToRecord);
+  return readGroveInstallRecordsInDatabase(openBranchStateDatabase(options).db);
 }
 
 export function updateGroveInstallRecord(
@@ -374,21 +290,23 @@ export function updateGroveInstallRecord(
     agentConfigDigest?: string;
   } = {},
 ): PersistedGroveInstall {
-  const current = readGroveInstallRecord(plan.agent.finalId, options);
-  if (!current) {
-    throw new Error(
-      `No Grove install record exists for agent ${JSON.stringify(plan.agent.finalId)}.`,
-    );
-  }
   const updatedAtMs = options.nowMs ?? Date.now();
   const status = options.status ?? "complete";
   const agentConfigDigest = options.agentConfigDigest ?? digestGroveValue(plan.agent.config);
   const ownedAgentPaths = plan.actions
     .filter((action) => action.kind === "agent")
     .map((action) => action.target);
-  const bootstrap = bootstrapProvenance(plan) ?? current.bootstrap;
-  const ownership = encodeGroveAgentOwnership(ownedAgentPaths, current.agentOrigin);
-  runBranchStateWriteTransaction(({ db }) => {
+  const record = runBranchStateWriteTransaction((database) => {
+    assertAgentDeletionAllowsMutation(database, plan.agent.finalId);
+    const { db } = database;
+    const current = readGroveInstallRecordFromDatabase(db, plan.agent.finalId);
+    if (!current) {
+      throw new Error(
+        `No Grove install record exists for agent ${JSON.stringify(plan.agent.finalId)}.`,
+      );
+    }
+    const bootstrap = bootstrapProvenance(plan) ?? current.bootstrap;
+    const ownership = encodeGroveAgentOwnership(ownedAgentPaths, current.agentOrigin);
     const result = executeSqliteQuerySync(
       db,
       getNodeSqliteKysely<GroveProvenanceDatabase>(db)
@@ -422,22 +340,22 @@ export function updateGroveInstallRecord(
         `Grove install record changed for agent ${JSON.stringify(plan.agent.finalId)}.`,
       );
     }
+    return {
+      schemaVersion: ownership.schemaVersion,
+      grove: plan.grove,
+      manifestSchemaVersion: plan.manifestSchemaVersion,
+      planIntegrity: plan.planIntegrity,
+      agentId: plan.agent.finalId,
+      workspace: plan.agent.workspace,
+      agentConfigDigest,
+      agentOrigin: current.agentOrigin,
+      agentOwnedPaths: ownedAgentPaths,
+      ...(bootstrap ? { bootstrap } : {}),
+      status,
+      addedAtMs: current.addedAtMs,
+      updatedAtMs,
+    };
   }, options);
-  const record = {
-    schemaVersion: ownership.schemaVersion,
-    grove: plan.grove,
-    manifestSchemaVersion: plan.manifestSchemaVersion,
-    planIntegrity: plan.planIntegrity,
-    agentId: plan.agent.finalId,
-    workspace: plan.agent.workspace,
-    agentConfigDigest,
-    agentOrigin: current.agentOrigin,
-    agentOwnedPaths: ownedAgentPaths,
-    ...(bootstrap ? { bootstrap } : {}),
-    status,
-    addedAtMs: current.addedAtMs,
-    updatedAtMs,
-  };
   cacheGroveInstallSchemaVersion(
     plan.agent.finalId,
     record.schemaVersion,
@@ -566,80 +484,54 @@ export function updateClawPackageRefStatus(
   status: ClawPackageRefStatus,
   options: BranchStateDatabaseOptions & { nowMs?: number } = {},
 ): PersistedClawPackageRef {
-  const nowMs = options.nowMs ?? Date.now();
-  runBranchStateWriteTransaction(({ db }) => {
-    executeSqliteQuerySync(
-      db,
-      getNodeSqliteKysely<GroveProvenanceDatabase>(db)
-        .updateTable("grove_package_refs")
-        .set({ package_status: status, updated_at_ms: nowMs })
-        .where("agent_id", "=", ref.agentId)
-        .where("package_kind", "=", ref.kind)
-        .where("package_source", "=", ref.source)
-        .where("package_ref", "=", ref.ref)
-        .where("package_version", "=", ref.version)
-        .where("package_integrity", "=", ref.integrity),
-    );
-  }, options);
-  return { ...ref, status, updatedAtMs: nowMs };
+  return runBranchStateWriteTransaction(
+    ({ db }) => updateClawPackageRefStatusInDatabase(db, ref, status, options.nowMs ?? Date.now()),
+    options,
+  );
 }
 
 export function readClawPackageRefs(
-  options: BranchStateDatabaseOptions & {
-    agentId?: string;
-    kind?: ClawPackage["kind"];
-    source?: ClawPackage["source"];
-    ref?: string;
-    version?: string;
-    integrity?: string;
-    status?: ClawPackageRefStatus;
-  } = {},
+  options: BranchStateDatabaseOptions & ClawPackageRefQuery = {},
 ): PersistedClawPackageRef[] {
-  const database = openBranchStateDatabase(options);
-  if (
-    options.readOnly &&
-    !database.db /* sqlite-allow-raw: read-only Grove package-ref table-existence probe. */
-      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'grove_package_refs'")
-      .get()
-  ) {
-    return [];
+  return readClawPackageRefsInDatabase(openBranchStateDatabase(options).db, options);
+}
+
+function upgradeGroveInstallSchema<
+  TRecord extends {
+    schemaVersion: installRecordSchema.GroveInstallRecordSchemaVersion;
+    planIntegrity: string;
+    agentConfigDigest: string;
+  },
+>(
+  database: BranchStateDatabase,
+  agentId: string,
+  record: TRecord,
+  expectedRecord: TRecord | undefined,
+  replacement?: Pick<TRecord, "planIntegrity" | "agentConfigDigest">,
+): Omit<TRecord, "schemaVersion"> & {
+  schemaVersion: typeof installRecordSchema.GROVE_INSTALL_RECORD_SCHEMA_VERSION;
+} {
+  assertAgentDeletionAllowsMutation(database, agentId);
+  if (!expectedRecord || stableStringify(record) !== stableStringify(expectedRecord)) {
+    throw new Error(
+      `Legacy Grove install record for agent ${JSON.stringify(agentId)} is not an exact resumable attempt.`,
+    );
   }
-  const conditions: string[] = [];
-  const params: Record<string, string> = {};
-  for (const [column, value] of [
-    ["agent_id", options.agentId],
-    ["package_kind", options.kind],
-    ["package_source", options.source],
-    ["package_ref", options.ref],
-    ["package_version", options.version],
-    ["package_integrity", options.integrity],
-    ["package_status", options.status],
-  ] as const) {
-    if (value !== undefined) {
-      conditions.push(`${column} = @${column}`);
-      params[column] = value;
-    }
-  }
-  const where = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
-  const extensionColumns = legacySafeColumnProjection(database.db, "grove_package_refs", [
-    "extension_id",
-    "extension_format",
-    "extension_detected_format",
-    "extension_mapped_json",
-    "extension_unavailable_json",
-    "extension_adapter_identity",
-  ]);
-  const rows =
-    database.db /* sqlite-allow-raw: read-only Grove package reference lookup with closed column filters. */
-      .prepare(
-        `SELECT schema_version, agent_id, grove_name, package_kind, package_source,
-              package_ref, package_version, package_integrity, package_status, relationship, origin,
-              independent_owner, ${extensionColumns},
-              installed_at_ms,
-              updated_at_ms
-         FROM grove_package_refs${where}
-        ORDER BY agent_id, package_kind, package_ref`,
-      )
-      .all(params) as PackageRefRow[];
-  return rows.map(rowToPackageRef);
+  database.db /* sqlite-allow-raw: exact legacy retry atomically replaces the consent-bound plan identity. */
+    .prepare(
+      `UPDATE grove_installs
+          SET schema_version = ?, plan_integrity = ?, agent_config_digest = ?
+        WHERE agent_id = ?`,
+    )
+    .run(
+      installRecordSchema.GROVE_INSTALL_RECORD_SCHEMA_VERSION,
+      replacement?.planIntegrity ?? record.planIntegrity,
+      replacement?.agentConfigDigest ?? record.agentConfigDigest,
+      agentId,
+    );
+  return {
+    ...record,
+    ...replacement,
+    schemaVersion: installRecordSchema.GROVE_INSTALL_RECORD_SCHEMA_VERSION,
+  };
 }

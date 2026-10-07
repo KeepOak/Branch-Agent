@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { isMainThread, MessageChannel } from "node:worker_threads";
 import { onInternalDiagnosticEvent } from "../infra/diagnostic-events.js";
+import { requireNodeSqlite } from "../infra/node-sqlite.js";
 import { createSqliteWorkerOperationAdmission } from "../infra/sqlite-worker-operation-admission.js";
 import { setLoggerOverride } from "../logging/logger.js";
 import { drainGlobalSingletonLifecycleState } from "../shared/global-singleton.js";
@@ -11,9 +12,15 @@ import {
   openBranchAgentDatabase,
 } from "./branch-agent-db.js";
 import type { AgentDatabaseRequestExecutionSource } from "./branch-agent-execution-contract.js";
-import { createAgentDatabaseNativeGeneration } from "./branch-agent-execution-native.js";
-import { startBranchDatabaseIntegrityVerifier } from "./branch-database-verify.js";
-import { readBranchAgentIntegrityVerification } from "./branch-quarantine-store.js";
+import { captureBranchAgentDatabaseExecution } from "./branch-agent-execution.js";
+import {
+  requestBranchAgentDatabaseIntegrityCheck,
+  startBranchDatabaseIntegrityVerifier,
+} from "./branch-database-verify.js";
+import {
+  readBranchAgentIntegrityVerification,
+  readBranchDatabaseQuarantineFailure,
+} from "./branch-quarantine-store.js";
 import { captureBranchStateWorkerContext } from "./branch-state-worker-context.js";
 
 assert.equal(isMainThread, true, "Broker admission must run on the real host thread");
@@ -36,25 +43,18 @@ await withBranchTestState(
         if (
           event.type === "log.record" &&
           event.attributes?.subsystem === "state/database-verify" &&
-          event.message === "database integrity verification passed" &&
+          (event.message === "database integrity verification passed" ||
+            event.message === "database integrity verification failed") &&
           event.attributes?.path === agent.path
         ) {
-          port2.postMessage(null);
+          port2.postMessage(event.message);
         }
       },
       { include: ["log.record"] },
     );
     const verifier = startBranchDatabaseIntegrityVerifier({ env });
     const context = captureBranchStateWorkerContext({ env });
-    const generation = createAgentDatabaseNativeGeneration(
-      agent.agentId,
-      agent.path,
-      context,
-      context.admission.assertCurrent,
-      context.admission.assertCurrent,
-      undefined,
-      () => {},
-    );
+    const execution = captureBranchAgentDatabaseExecution({ agentId: agent.agentId, env });
     const source: AgentDatabaseRequestExecutionSource = {
       assertCurrent: context.admission.assertCurrent,
       createAdmission(binding) {
@@ -69,7 +69,7 @@ await withBranchTestState(
       },
     };
     try {
-      await generation.run(source, (scope) =>
+      await execution.runExisting(source, (scope) =>
         scope.execute({ type: "database.prepareWrite", input: undefined }),
       );
       await verified;
@@ -80,9 +80,35 @@ await withBranchTestState(
           clean_close: 0,
         },
       );
+      const database = new (requireNodeSqlite().DatabaseSync)(agent.path);
+      try {
+        database.exec(`
+          CREATE TABLE deferred_parent (id INTEGER PRIMARY KEY);
+          CREATE TABLE deferred_child (parent_id INTEGER REFERENCES deferred_parent(id));
+          PRAGMA foreign_keys = OFF;
+          INSERT INTO deferred_child VALUES (123);
+        `);
+      } finally {
+        database.close();
+      }
+      const failed = once(port1, "message");
+      requestBranchAgentDatabaseIntegrityCheck({ env, path: agent.path, check: "full" });
+      assert.deepEqual(await failed, ["database integrity verification failed"]);
+      assert.equal(
+        readBranchDatabaseQuarantineFailure("agent", agent.path, { env })?.name,
+        "SqliteIntegrityError",
+      );
+      await assert.rejects(
+        execution.runExisting(source, (scope) =>
+          scope.execute({ type: "database.prepareWrite", input: undefined }),
+        ),
+      );
+      assert.throws(() => openBranchAgentDatabase({ agentId: "worker-1", env }), {
+        name: "SqliteIntegrityError",
+      });
     } finally {
       await verifier.stop();
-      await generation.close();
+      await execution.release();
       await drainGlobalSingletonLifecycleState();
       unsubscribe();
       port1.close();

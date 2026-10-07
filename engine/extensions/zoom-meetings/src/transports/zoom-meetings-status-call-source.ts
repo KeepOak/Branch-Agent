@@ -1,18 +1,9 @@
-import { MeetingPlatformAdapter } from "branch/plugin-sdk/meeting-runtime";
+import type { MeetingPlatformAdapter } from "branch/plugin-sdk/meeting-runtime";
 
-export function zoomMeetingStatusCallSource(): string {
-  return MeetingPlatformAdapter.createStatusCallSource({
-    platform: {
-      audioOutputElementIdPrefix: "branch-zoom-audio-output-",
-      displayName: "Zoom",
-      globals: {
-        audioOutputs: "__branchZoomAudioOutputs",
-        captions: "__branchZoomCaptions",
-        meeting: "__branchZoomMeeting",
-      },
-      manualActionReasonPrefix: "zoom",
-    },
-    captionEnableSource: `if (!captionsFinalized && canMutateSession && inCall && !captionsEnabledNow) {
+export const zoomMeetingStatusCall: Parameters<
+  typeof MeetingPlatformAdapter.createPageScripts
+>[0]["statusCall"] = {
+  captionEnableSource: `if (!captionsFinalized && canMutateSession && inCall && !captionsEnabledNow) {
       let captionButton = first(selectors.captions);
       if (!captionButton) {
         (first(selectors.moreActions) || findTextButton(/^more$/i))?.click?.();
@@ -49,6 +40,5 @@ export function zoomMeetingStatusCallSource(): string {
         }
       }
     }`,
-    extraResultSource: "meetingEnded,",
-  });
-}
+  extraResultSource: "meetingEnded,",
+};

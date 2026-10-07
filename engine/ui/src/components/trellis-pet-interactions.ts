@@ -132,7 +132,7 @@ export class TrellisPetInteractions implements ReactiveController {
       return;
     }
     this.lastGazeAt = now;
-    const sprite = this.host.querySelector(".lobster-pet:not(.lobster-pet--shell)");
+    const sprite = this.host.querySelector(".trellis-pet:not(.trellis-pet--shell)");
     if (!sprite) {
       return;
     }

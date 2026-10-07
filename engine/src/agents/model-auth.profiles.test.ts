@@ -4,6 +4,7 @@ import type { Model } from "branch/plugin-sdk/llm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import type { ModelProviderConfig, BranchConfig } from "../config/types.js";
+import { prepareAuthInheritanceOwnerForWrite } from "../config/io.auth-inheritance-owner.js";
 import type { SecretRef } from "../config/types.secrets.js";
 import { writeConfigMachineState } from "../state/config-machine-state-write.js";
 import { resolveBranchStateSqlitePath } from "../state/branch-state-db.paths.js";
@@ -23,10 +24,12 @@ import {
   writePersistedAuthProfileStoreRaw,
 } from "./auth-profiles/sqlite.js";
 import { ensureAuthProfileStore } from "./auth-profiles/store-runtime.js";
+import { resolvePersistedAuthProfileOwnerAgentDir } from "./auth-profiles/store.js";
 import type { AuthProfileCredential, OAuthCredential } from "./auth-profiles/types.js";
 import { upsertAuthProfileWithLockOrThrow } from "./auth-profiles/upsert-with-lock.js";
 import { resolveInlineProviderApiKeyUsageId } from "./auth-profiles/usage.js";
 import { resolveLegacyInheritedAuthDir } from "./legacy-inherited-auth-dir.js";
+import { isInheritedAuthStoreOwner } from "./agent-delete-safety.js";
 import {
   createRuntimeProviderAuthLookup,
   getApiKeyForModelCore as resolveModelAuth,
@@ -224,7 +227,7 @@ function cooldownStore(
 }
 
 function configuredAgent(agentDir: string) {
-  return { list: [{ id: "configured", default: true, agentDir }] };
+  return { entries: { configured: { agentDir } } };
 }
 
 function buildDemoLocalStore(keys: string[]) {
@@ -332,6 +335,194 @@ describe("shared auth profile read-through", () => {
 
         expect(resolved.apiKey).toBe(localKey ?? baseKey);
         expect(resolved.source).toBe(`profile:${profileId}`);
+      },
+    );
+  });
+});
+
+describe("configured auth inheritance owner", () => {
+  it("lets a second Trunk use signed-in accounts when setup left a stale empty main owner", async () => {
+    await withBranchTestState(
+      { layout: "state-only", prefix: "branch-auth-stale-main-", agentEnv: "clear", env: { OPENAI_API_KEY: undefined } },
+      async (state) => {
+        const cfg: BranchConfig = {
+          agents: {
+            ownership: "explicit",
+            defaults: { systemAgent: { agentId: "juniper" }, authInheritance: { agentId: "main" } },
+            entries: { juniper: {}, tester: {} },
+          },
+        };
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:juniper": keyCredential("openai", "juniper-key") }),
+          state.agentDir("juniper"),
+        );
+        const testerDir = state.agentDir("tester");
+        const store = ensureAuthProfileStore(testerDir, { allowKeychainPrompt: false, config: cfg });
+        expect(Object.keys(store.profiles)).toContain("openai:juniper");
+        expect(await resolveAuth({ provider: "openai", cfg, agentDir: testerDir })).toMatchObject({ apiKey: "juniper-key" });
+      },
+    );
+  });
+
+  it("inherits the default Trunk's accounts when the system agent is a credential-free helper", async () => {
+    await withBranchTestState(
+      { layout: "state-only", prefix: "branch-auth-default-owner-", agentEnv: "clear", env: { OPENAI_API_KEY: undefined } },
+      async (state) => {
+        const cfg: BranchConfig = {
+          agents: {
+            ownership: "explicit",
+            defaultId: "juniper",
+            defaults: { systemAgent: { agentId: "dev" }, authInheritance: { agentId: "main" } },
+            entries: { dev: {}, juniper: {}, cedar: {} },
+          },
+        };
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:juniper": keyCredential("openai", "juniper-key") }),
+          state.agentDir("juniper"),
+        );
+        const cedarDir = state.agentDir("cedar");
+        const store = ensureAuthProfileStore(cedarDir, { allowKeychainPrompt: false, config: cfg });
+        expect(Object.keys(store.profiles)).toContain("openai:juniper");
+        expect(await resolveAuth({ provider: "openai", cfg, agentDir: cedarDir })).toMatchObject({ apiKey: "juniper-key" });
+      },
+    );
+  });
+
+  it("follows Make default when recovering an empty main inheritance owner", async () => {
+    await withBranchTestState(
+      { layout: "state-only", prefix: "branch-auth-default-switch-", agentEnv: "clear", env: { OPENAI_API_KEY: undefined } },
+      async (state) => {
+        const cfg: BranchConfig = {
+          agents: {
+            ownership: "explicit",
+            defaultId: "juniper",
+            defaults: { systemAgent: { agentId: "dev" }, authInheritance: { agentId: "main" } },
+            entries: { dev: {}, juniper: {}, willow: {}, cedar: {} },
+          },
+        };
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:juniper": keyCredential("openai", "juniper-key") }),
+          state.agentDir("juniper"),
+        );
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:willow": keyCredential("openai", "willow-key") }),
+          state.agentDir("willow"),
+        );
+        const cedarDir = state.agentDir("cedar");
+        expect(await resolveAuth({ provider: "openai", cfg, agentDir: cedarDir })).toMatchObject({ apiKey: "juniper-key" });
+        const afterMakeDefault: BranchConfig = { ...cfg, agents: { ...cfg.agents, defaultId: "willow" } };
+        expect(await resolveAuth({ provider: "openai", cfg: afterMakeDefault, agentDir: cedarDir })).toMatchObject({ apiKey: "willow-key" });
+      },
+    );
+  });
+
+  it("pins recovered sign-ins when Make default selects a Trunk without its own accounts", async () => {
+    await withBranchTestState(
+      { layout: "state-only", prefix: "branch-auth-default-empty-switch-", agentEnv: "clear", env: { OPENAI_API_KEY: undefined } },
+      async (state) => {
+        const cfg: BranchConfig = {
+          agents: {
+            ownership: "explicit",
+            defaultId: "juniper",
+            defaults: { systemAgent: { agentId: "dev" }, authInheritance: { agentId: "main" } },
+            entries: { dev: {}, juniper: {}, cedar: {}, tester: {} },
+          },
+        };
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:juniper": keyCredential("openai", "juniper-key") }),
+          state.agentDir("juniper"),
+        );
+        const switched: BranchConfig = { ...cfg, agents: { ...cfg.agents, defaultId: "cedar" } };
+        const prepared = prepareAuthInheritanceOwnerForWrite({
+          currentConfig: cfg, targetConfig: switched, writesOwnershipTopology: false,
+        });
+        expect(prepared.insertedPaths).toEqual([["agents", "defaults", "authInheritance", "agentId"]]);
+        expect(prepared.config.agents?.defaults?.authInheritance?.agentId).toBe("juniper");
+        expect(await resolveAuth({ provider: "openai", cfg: prepared.config, agentDir: state.agentDir("tester") })).toMatchObject({ apiKey: "juniper-key" });
+        expect(isInheritedAuthStoreOwner(prepared.config, "juniper")).toBe(true);
+      },
+    );
+  });
+
+  it("keeps a non-roster main as owner when its legacy credentials exist", async () => {
+    await withBranchTestState(
+      { layout: "state-only", prefix: "branch-auth-real-main-", agentEnv: "clear", env: { OPENAI_API_KEY: undefined } },
+      async (state) => {
+        const cfg: BranchConfig = {
+          agents: {
+            ownership: "explicit",
+            defaults: { systemAgent: { agentId: "juniper" }, authInheritance: { agentId: "main" } },
+            entries: { juniper: {}, tester: {} },
+          },
+        };
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:main": keyCredential("openai", "main-key") }),
+          state.agentDir("main"),
+        );
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:juniper": keyCredential("openai", "juniper-key") }),
+          state.agentDir("juniper"),
+        );
+        const store = ensureAuthProfileStore(state.agentDir("tester"), { allowKeychainPrompt: false, config: cfg });
+        expect(Object.keys(store.profiles)).toContain("openai:main");
+        expect(Object.keys(store.profiles)).not.toContain("openai:juniper");
+      },
+    );
+  });
+
+  it("lets every agent use the accounts of agents.defaults.authInheritance.agentId", async () => {
+    await withBranchTestState(
+      {
+        layout: "state-only",
+        prefix: "branch-auth-inheritance-owner-",
+        agentEnv: "clear",
+        env: { OPENAI_API_KEY: undefined },
+      },
+      async (state) => {
+        const cfg: BranchConfig = {
+          agents: { defaults: { authInheritance: { agentId: "owner" } } },
+        };
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:owner": keyCredential("openai", "owner-key") }),
+          state.agentDir("owner"),
+        );
+        const agentDir = state.agentDir("new-agent");
+
+        const store = ensureAuthProfileStore(agentDir, { allowKeychainPrompt: false, config: cfg });
+        expect(Object.keys(store.profiles)).toContain("openai:owner");
+        const resolved = await resolveAuth({ provider: "openai", cfg, agentDir });
+        expect(resolved.apiKey).toBe("owner-key");
+        expect(resolved.source).toBe("profile:openai:owner");
+      },
+    );
+  });
+
+  it("names the inheritance owner as the persisted owner of an inherited OAuth account", async () => {
+    await withBranchTestState(
+      { layout: "state-only", prefix: "branch-auth-inheritance-oauth-", agentEnv: "clear" },
+      async (state) => {
+        const cfg: BranchConfig = {
+          agents: { defaults: { authInheritance: { agentId: "owner" } } },
+        };
+        const ownerDir = state.agentDir("owner");
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:owner": { type: "oauth", provider: "openai", ...oauthFixture } }),
+          ownerDir,
+        );
+        const agentDir = state.agentDir("new-agent");
+        const owner = resolvePersistedAuthProfileOwnerAgentDir({
+          agentDir,
+          profileId: "openai:owner",
+          config: cfg,
+        });
+        expect(owner && path.resolve(owner)).toBe(path.resolve(ownerDir));
+        expect(
+          resolvePersistedAuthProfileOwnerAgentDir({
+            agentDir: ownerDir,
+            profileId: "openai:owner",
+            config: cfg,
+          }),
+        ).toBe(ownerDir);
       },
     );
   });

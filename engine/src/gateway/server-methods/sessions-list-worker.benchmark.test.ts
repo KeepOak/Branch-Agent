@@ -22,7 +22,7 @@ it.runIf(process.env.BRANCH_DB_WORKER_BENCH === "1")(
     await withBranchTestState({ scenario: "minimal" }, async () => {
       const rows = 5_000;
       const viewers = 50;
-      const cfg = { agents: { list: [{ id: "main", default: true }] } };
+      const cfg = { agents: { entries: { main: {} } } };
       setRuntimeConfigSnapshot(cfg);
       runBranchAgentWriteTransaction(
         () => {

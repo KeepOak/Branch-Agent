@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { agentOf, errorText, list, rec, str, type Rec, type WindowEngine } from "./engine";
 import { readModels, type ModelChoice } from "./model";
+import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 
-export type Trunk = { id: string; name: string; defaultMode: string; theme: string };
+export type Trunk = { id: string; name: string; defaultMode: string; theme: string; model: string };
 
 export type Conversation = {
   loaded: boolean;
@@ -35,6 +36,7 @@ const EMPTY: Conversation = {
 
 /** No model set up: the engine names no default model, or none it names is connected (models.list has none usable). */
 export function hasNoModel(conv: Conversation, currentRef: string): boolean {
+  if (conv.error || conv.modelsError) return false;
   return conv.loaded && (!currentRef || (conv.modelsLoaded && !conv.models.some((m) => m.available)));
 }
 
@@ -45,6 +47,7 @@ function readTrunks(result: unknown): { trunks: Trunk[]; defaultId: string } {
     name: str(rec(a.identity).name) || str(a.name) || str(a.id),
     defaultMode: str(a.defaultPermissionMode),
     theme: str(rec(a.identity).theme),
+    model: str(rec(a.model).primary),
   }));
   return { trunks, defaultId: str(r.defaultId) };
 }
@@ -55,29 +58,31 @@ function touches(payload: unknown, key: string): boolean {
   return keys.length === 0 || keys.includes(key);
 }
 
-export function useConversation(engine: WindowEngine | undefined) {
+export function useConversation(engine: WindowEngine | undefined, draftAgentId?: string) {
   const [state, setState] = useState<Conversation>(EMPTY);
+  const [retryGeneration, setRetryGeneration] = useState(0);
   const key = engine?.sessionKey ?? null;
   const live = useRef(key);
+  const preparationBackoff = useRef(new PreparationRetry());
   live.current = key;
 
   const readRow = useCallback(async () => {
     if (!engine || !key) return;
     const [described, listed] = await Promise.all([
-      engine.request("sessions.describe", { key }),
+      draftAgentId ? Promise.resolve({ session: null }) : engine.request("sessions.describe", { key }),
       engine.request("sessions.list", { limit: 1 }),
     ]);
     if (live.current === key) {
       setState((s) => ({ ...s, loaded: true, row: rec(rec(described).session), defaults: rec(rec(listed).defaults), error: null }));
     }
-  }, [engine, key]);
+  }, [engine, key, draftAgentId]);
 
   const readModelList = useCallback(async () => {
     if (!engine || !key) return;
-    setState((s) => ({ ...s, modelsLoading: true, modelsError: null }));
+    setState((s) => ({ ...s, modelsLoading: true }));
     try {
       const result = await engine.request("models.list", { sessionKey: key, includeDetails: true });
-      if (live.current === key) setState((s) => ({ ...s, models: readModels(result), modelsLoaded: true, modelsLoading: false }));
+      if (live.current === key) setState((s) => ({ ...s, models: readModels(result), modelsLoaded: true, modelsLoading: false, modelsError: null }));
     } catch (error) {
       if (live.current === key) setState((s) => ({ ...s, modelsLoading: false, modelsError: errorText(error) }));
     }
@@ -92,13 +97,30 @@ export function useConversation(engine: WindowEngine | undefined) {
       await Promise.all([readRow(), readModelList()]);
     } catch (error) {
       if (live.current === key) setState((s) => ({ ...s, loaded: true, error: errorText(error) }));
+    } finally {
+      if (live.current === key) setRetryGeneration((n) => n + 1);
     }
   }, [engine, key, readRow, readModelList]);
 
   useEffect(() => {
     setState(EMPTY);
+    preparationBackoff.current.reset();
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!isPreparationPending(state.error) && !isPreparationPending(state.modelsError)) {
+      if (!state.error && !state.modelsError) preparationBackoff.current.reset();
+      return;
+    }
+    const delay = preparationBackoff.current.nextDelay();
+    if (delay === null) {
+      setState((s) => ({ ...s, error: preparationTimeoutLabel(s.trunks.find((t) => t.id === (draftAgentId ?? engine?.agentId))?.name ?? ""), modelsError: null }));
+      return;
+    }
+    const retry = setTimeout(() => void load(), delay);
+    return () => clearTimeout(retry);
+  }, [load, state.error, state.modelsError, retryGeneration, draftAgentId, engine?.agentId]);
 
   useEffect(() => {
     if (!engine || !key) return;
@@ -116,6 +138,15 @@ export function useConversation(engine: WindowEngine | undefined) {
       try {
         await engine.request("sessions.patch", { key, ...fields });
         await readRow();
+        if (live.current === key) {
+          // The patch is authoritative even when sessions.describe momentarily reflects an
+          // older worker snapshot. Keep the controls in sync with the accepted selection.
+          setState((s) => ({ ...s, row: { ...s.row, ...fields,
+            ...(typeof fields.model === "string" && fields.model.includes("/")
+              ? { providerOverride: fields.model.split("/")[0], modelOverride: fields.model.slice(fields.model.indexOf("/") + 1) }
+              : {}),
+          } }));
+        }
         return null;
       } catch (error) {
         return errorText(error);
@@ -124,7 +155,7 @@ export function useConversation(engine: WindowEngine | undefined) {
     [engine, key, readRow],
   );
 
-  const trunkId = engine?.agentId ?? agentOf(key) ?? state.defaultTrunkId;
+  const trunkId = draftAgentId ?? engine?.agentId ?? agentOf(key) ?? state.defaultTrunkId;
   const trunk = state.trunks.find((t) => t.id === trunkId);
   return { ...state, key, trunk, trunkId, patch, reload: load, readModelList };
 }
