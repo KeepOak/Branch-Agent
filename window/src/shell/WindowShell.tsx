@@ -333,7 +333,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const update = useUpdate(session, ready, branchVersion);
   const projects = useProjects(session, ready);
   const [newProject, setNewProject] = useState(false);
-  const firstRun = useFirstRun(session, ready, () => document.querySelector(".scrim, .pop, [data-testid=setup]") !== null);
+  const [route, setRoute] = useState<Route>(loadRoute);
+  const firstRun = useFirstRun(session, ready, () => document.querySelector(".scrim, .pop, [data-testid=setup]") !== null, trunks.loaded ? trunks.list.length : null, route.kind === "settings");
   const contactRows = contactRowsFor(gatewayContacts, contactsLoaded, trunks.list, lists.rows, s.mainKey, firstRun.isFirstRun,
     firstRun.isFirstRun && firstRun.requiresContact ? trunks.bootstrapDefault : undefined);
   const now = useNow(s.doneAt);
@@ -343,7 +344,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const [liveW, setLiveW] = useState<number | null>(null);
   const isNarrow = useNarrow();
   const [slideOpen, setSlideOpen] = useState(false);
-  const [route, setRoute] = useState<Route>(loadRoute);
   const [searchFind, setSearchFind] = useState<{ key: string; query: string; nonce: number } | null>(null);
   const searchFindNonce = useRef(0);
   const routeRef = useRef(route);
@@ -1134,7 +1134,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]" ? "this computer" : machine?.name || host;
       })(),
       onOpen: (target: string) => {
-        if (target.startsWith("settings/")) {
+        if (target === "settings/accounts/add") {
+          sessionStorage.setItem("branch.openAddAccount", "1");
+          openSettings("accounts");
+        } else if (target.startsWith("settings/")) {
           openSettings(target.slice("settings/".length));
         } else if (target === "customize/tools") {
           openPlace("customize");
@@ -1668,7 +1671,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onClose={() => setGuide(null)}
         />
       ) : null}
-      {!dedicated && (firstRun.step !== null || !trunks.list.length) && ready && trunks.loaded ? (
+      {!dedicated && firstRun.step !== null && ready && trunks.loaded ? (
         <SetupFlow
           engine={session.engine}
           version={branchVersion}
@@ -1690,15 +1693,15 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             }
           }}
           onLocalModel={() => {
-            firstRun.close();
+            firstRun.leaveForLocalModel();
             openSettings("local");
           }}
         />
       ) : null}
       {route.kind === "chat" ? conversationMenu.node : null}
       {groupDrop ? <GroupDropPopover key={`${groupDrop.kind}:${groupDrop.source}:${groupDrop.target ?? groupDrop.roomId ?? ""}`} drop={groupDrop} contacts={contacts} rooms={groupRooms.rooms} defaultTrunk={trunks.defaultId ?? ""} session={session} onClose={() => setGroupDrop(null)} onPick={setGroupDrop} onOpen={(key) => { void groupRooms.reload(); openConversation(key); }} /> : null}
-      <BannerView onOpen={openConversation} setupOpen={(firstRun.step !== null || !trunks.list.length) && ready && trunks.loaded} />
-      <Toasts setupOpen={(firstRun.step !== null || !trunks.list.length) && ready && trunks.loaded} />
+      <BannerView onOpen={openConversation} setupOpen={firstRun.step !== null && ready && trunks.loaded} />
+      <Toasts setupOpen={firstRun.step !== null && ready && trunks.loaded} />
     </div>
     </TrunkEmojiFaces.Provider>
     </TrunkPebbleLooks.Provider>
