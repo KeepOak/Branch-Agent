@@ -1681,7 +1681,7 @@ describe("gateway run option collisions", () => {
         expect(ensureDevGatewayConfig).toHaveBeenCalledWith({ reset: true });
       } else {
         const options = gatewayStartOptions();
-        expect(options.bind).toBe("loopback");
+        expect(options.bind).toBeUndefined();
         expect(options.startupConfigSnapshotRead?.snapshot?.valid).toBe(false);
       }
     },
@@ -1764,7 +1764,18 @@ describe("gateway run option collisions", () => {
 
     await runGatewayCli(["gateway", "run", "--allow-unconfigured"]);
 
-    expect(gatewayStartOptions().bind).toBe("loopback");
+    expect(gatewayStartOptions().bind).toBeUndefined();
+  });
+
+  it("does not pin a persisted bind across in-process gateway starts", async () => {
+    const config = { gateway: { bind: "loopback", mode: "local" } };
+    configState.cfg = config;
+    configState.snapshot = configSnapshot(config);
+
+    await runGatewayCli(["gateway", "run", "--allow-unconfigured"]);
+
+    expect(startGatewayServer).toHaveBeenCalledOnce();
+    expect(callArg(startGatewayServer, 0, 1)).not.toHaveProperty("bind");
   });
 
   it("reads gateway password from --password-file", async () => {

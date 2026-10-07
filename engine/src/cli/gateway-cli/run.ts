@@ -1010,7 +1010,9 @@ async function runGatewayCommandOnce(
         const startupConfigSnapshotReadForThisStart = startupConfigSnapshotReadForNextStart;
         startupConfigSnapshotReadForNextStart = undefined;
         const started = await startGatewayServer(port, {
-          bind,
+          // A persisted bind may change between in-process starts. Only a CLI
+          // override should pin it across iterations of this run loop.
+          ...(toOptionString(opts.bind) ? { bind } : {}),
           ...(opts.updateCanary ? { updateCanary: true } : {}),
           ...(activeBootId ? { bootId: activeBootId } : {}),
           auth: authOverride,
