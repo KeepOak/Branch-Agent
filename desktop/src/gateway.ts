@@ -57,7 +57,7 @@ function testProfile(): Record<string, string> {
 }
 
 /** `port` defaults to the configured one; an update's standby passes its own spare port without changing the config. */
-export function startGateway(cfg: DesktopConfig, engineDir: string, token: string, standby = false, port = cfg.gatewayPort): ChildProcess {
+export function startGateway(cfg: DesktopConfig, engineDir: string, token: string, standby = false, port = cfg.gatewayPort, macComputerEndpoint?: string): ChildProcess {
   // The profile check can refuse a standby; it runs before the log is opened so a refusal leaks nothing.
   const prepared = standby ? readPreparedNormalProfile(join(cfg.dataDir, "home")) : undefined;
   const log = createWriteStream(join(cfg.dataDir, "gateway.log"), { flags: "a" });
@@ -77,6 +77,8 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
     BRANCH_GATEWAY_PORT: String(port),
     BRANCH_GATEWAY_TOKEN: token,
     BRANCH_GATEWAY_STANDBY: standby ? "1" : undefined,
+    // Only Electron's Mac host can give the Gateway this app-owned daemon lease.
+    BRANCH_CUA_DRIVER_ENDPOINT: macComputerEndpoint,
     ...testProfile(),
   };
   const args = ["branch.mjs", "gateway", ...(profile.legacyDevMode ? ["--dev"] : []), "--port", String(port)];

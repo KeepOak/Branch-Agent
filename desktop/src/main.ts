@@ -26,6 +26,7 @@ import { clearEngineRecords, retireRecordedEngines } from "./engine-records";
 import { freemem } from "node:os";
 import { createHash } from "node:crypto";
 import type { Tray } from "electron";
+import { MacComputerDriver, macScreenControlEnabled } from "./mac-computer-driver";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
 /** Scratch test copies: never grouped with, or mistaken for, the owner's app (they also start hidden). */
@@ -115,6 +116,8 @@ function handWindowToGateway(always = false): void {
   windowPort = gatewayPort;
   sendToBranchWindows("branch-desktop:engine-handoff", gatewayUrl());
 }
+const macComputerDriver = process.platform === "darwin" ? new MacComputerDriver(log) : undefined;
+const screenControlEnabled = () => macScreenControlEnabled(join(cfg.dataDir, "home", ".branch", "branch.json"));
 let server: Server | undefined;
 let win: BrowserWindow | undefined;
 const conversationWindows = new Map<string, BrowserWindow>();
@@ -331,6 +334,9 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
  * A failed standby is already stopped and nothing else is: the current engine keeps serving.
  */
 async function prepareUpdateStandby(label: string, explicit: boolean): Promise<void> {
+  // A warmed child cannot be given a fresh Electron-owned driver lease on promotion.
+  // Preserve computer control by using the guarded stop/start path for this case.
+  if (macComputerDriver && screenControlEnabled()) return;
   if (freemem() < CANDIDATE_MIN_FREE_BYTES || !standbyProfileReady()) return;
   const failures = standbyFailures.get(label) ?? 0;
   // Automatic updates never wait for a click that may not be offered: one failed standby is enough to fall back.
@@ -663,6 +669,22 @@ async function start(): Promise<void> {
   stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, onStaged: () => {
     offerStagedUpdate().catch(error => log(`Component update status: ${String(error)}`));
   } });
+  if (macComputerDriver) {
+    let enabled = screenControlEnabled();
+    let granted = enabled && macComputerDriver.permissionsGranted(resolveEngineDir(cfg));
+    const timer = setInterval(() => {
+      if (engineRestartInProgress) return;
+      const nextEnabled = screenControlEnabled();
+      const nextGranted = nextEnabled && macComputerDriver.permissionsGranted(resolveEngineDir(cfg));
+      if (nextEnabled !== enabled || nextGranted && !granted) {
+        enabled = nextEnabled;
+        granted = nextGranted;
+        void restartEngine();
+      } else { enabled = nextEnabled; granted = nextGranted; }
+    }, 3_000);
+    timer.unref();
+    app.once("will-quit", () => clearInterval(timer));
+  }
 }
 
 /**
@@ -686,7 +708,12 @@ async function waitForGatewayPort(): Promise<void> {
 /** Starts the gateway, waits until it is ready, and watches its build for a newer one. */
 async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = true, prepared?: PreparedGateway, port = prepared?.port ?? gatewayPort): Promise<void> {
   const started = Date.now();
-  const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port);
+  if (macComputerDriver && !screenControlEnabled()) await macComputerDriver.stop();
+  const macComputerEndpoint = await (!prepared && screenControlEnabled() ? macComputerDriver?.start(engineDir) : undefined)?.catch(error => {
+    log(`Mac computer driver unavailable: ${String(error)}`);
+    return undefined;
+  });
+  const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port, macComputerEndpoint);
   if (prepared?.child.pid !== undefined) writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prepared.child.pid));
   if (prepared) {
     setEnginePriority(prepared.child, false);
@@ -820,6 +847,7 @@ function shutdown(): void {
   standby = undefined;
   if (gateway) stopGateway(gateway);
   clearEngineRecords(cfg.dataDir);
+  void macComputerDriver?.stop();
   server?.close();
   // The next launch starts on the configured port; never leave a moved, dead port for the branch command to dial.
   writeGatewayPortFile(cfg.gatewayPort);

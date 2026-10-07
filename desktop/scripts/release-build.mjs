@@ -57,6 +57,15 @@ async function deployEngine(pnpm, scratch, identity) {
   const flags = await verifiedExceptionFlags("engine");
   await run(pnpm, productionDeployArguments(deployment, flags), engineRoot, productionDeployEnvironment(process.env));
   await assertHoistedDeployment(deployment);
+  if (identity.platform === "darwin") {
+    const binary = join(deployment, "cua-driver");
+    await run("bash", [join(engineRoot, "scripts/stage-cua-driver-macos.sh"), binary]);
+    const signingP12 = process.env.BRANCH_MACOS_SIGNING_P12_FILE;
+    const signingPassword = process.env.BRANCH_MACOS_SIGNING_PASSWORD_FILE;
+    const rcodesign = process.env.BRANCH_MACOS_RCODESIGN;
+    assert(signingP12 && signingPassword && rcodesign, "macOS computer driver requires the release signing identity");
+    await run(rcodesign, ["sign", "--p12-file", signingP12, "--p12-password-file", signingPassword, binary]);
+  }
   assert.equal(JSON.parse(await readFile(join(deployment, "dist/build-info.json"), "utf8")).commit, identity.commit);
   assert(!(await readdir(deployment)).includes("src"), "Production deployment must not be an unbuilt source checkout");
   // The Codex harness ships in every release: its plugin build and its runtime packages.
