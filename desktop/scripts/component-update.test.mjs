@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, readFile, readdir, readlink, rm, stat, symlink, writeFile, rename } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, readlink, rm, stat, symlink, utimes, writeFile, rename } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createServer as createPortProbe } from "node:net";
 import { createRequire } from "node:module";
@@ -157,6 +157,33 @@ test("prune retains live and incomplete releases while deleting an unrelated com
     child.kill();
     await new Promise(resolve => child.once("exit", resolve));
   }
+}));
+
+test("confirmed update adopts only old marker-less releases with matching build hashes", async () => fixture(async ({ cfg, request }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const valid = join(updates, "release-0.4.1-build-abcdef123456-111aaa");
+  const previous = join(updates, "release-0.4.1-build-abcdef123456-444ddd");
+  const badHash = join(updates, "release-0.4.1-build-999999999999-222bbb");
+  const incomplete = join(updates, "release-0.4.1-build-abcdef123456-333ccc");
+  const commit = "abcdef123456" + "0".repeat(28);
+  for (const folder of [valid, previous, badHash, incomplete]) {
+    await mkdir(join(folder, "engine", "dist"), { recursive: true });
+    await writeFile(join(folder, "engine", "dist", "build-info.json"), JSON.stringify({ commit, buildId: `2026.9.8-${commit.slice(0, 12)}` }));
+    await utimes(folder, new Date(0), new Date(0));
+  }
+  for (const folder of [valid, previous, badHash]) {
+    await writeFile(join(folder, "engine", "branch.mjs"), "entry");
+    await writeFile(join(folder, "engine", "package.json"), "{}");
+  }
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(previous, "engine") + "\n");
+  await source.refreshComponentUpdate(cfg, request);
+  await source.confirmComponentUpdate(cfg);
+  assert.equal(await exists(valid), false, "verified legacy release is pruned");
+  assert.equal(await exists(previous), true, "rollback release remains available");
+  assert.equal(await exists(join(previous, ".release-complete")), true, "verified rollback release gains its marker");
+  assert.equal(await exists(badHash), true, "mismatched build hash is retained");
+  assert.equal(await exists(incomplete), true, "incomplete legacy folder is retained");
+  assert.equal(await exists(join(badHash, ".release-complete")), false);
 }));
 
 test("new per-user installation stages components and creates a stable local token", async () => fixture(async ({ cfg, request }) => {

@@ -1025,15 +1025,12 @@ export async function launchBranchChrome(
     );
   }
 
-  const launchResolved =
-    !resolved.noSandbox && isAppArmorUserNamespaceRestricted()
-      ? { ...resolved, noSandbox: true }
-      : resolved;
-  if (launchResolved !== resolved) {
-    log.warn(
-      `AppArmor blocks unprivileged user namespaces for managed browser profile "${profile.name}". Launching with --no-sandbox; allow user namespaces for the browser or set browser.noSandbox: true to acknowledge this fallback.`,
+  if (!resolved.noSandbox && isAppArmorUserNamespaceRestricted()) {
+    throw new Error(
+      `Managed browser profile "${profile.name}" cannot start with Chromium's sandbox: AppArmor blocks unprivileged user namespaces. Allow user namespaces for this browser, or explicitly set browser.noSandbox: true in Settings to run it without a sandbox.`,
     );
   }
+  const launchResolved = resolved;
 
   fs.mkdirSync(userDataDir, { recursive: true });
   await ensureOutputDirectory(DEFAULT_DOWNLOAD_DIR);

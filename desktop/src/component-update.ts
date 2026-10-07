@@ -94,6 +94,31 @@ export async function rollbackComponentUpdate(cfg: DesktopConfig): Promise<boole
 
 const runProcessList = promisify(execFile);
 
+/** Adopt only old, fully published release layouts whose build identity matches the folder. */
+async function backfillLegacyReleaseMarker(folder: string, name: string): Promise<boolean> {
+  const match = /^release-(.+-build-([a-f0-9]{12}))-[A-Za-z0-9]{6}$/.exec(name);
+  if (!match) return false;
+  const folderInfo = await stat(folder);
+  // A fresh download uses the same name while extraction is in progress.
+  if (Date.now() - folderInfo.mtimeMs < 24 * 60 * 60 * 1000) return false;
+  try {
+    const manifest = JSON.parse(await readFile(join(folder, "engine", "dist", "build-info.json"), "utf8")) as { commit?: unknown; buildId?: unknown };
+    if (typeof manifest.commit !== "string" || !/^[a-f0-9]{40}$/.test(manifest.commit)
+      || manifest.commit.slice(0, 12) !== match[2]
+      || typeof manifest.buildId !== "string" || !manifest.buildId.includes(manifest.commit.slice(0, 12))) return false;
+    for (const file of ["engine/branch.mjs", "engine/package.json", "engine/dist/build-info.json"]) {
+      if (!(await stat(join(folder, file))).isFile()) return false;
+    }
+    // Existing folders predate the marker. The manifest's source hash and complete
+    // engine layout distinguish them from incomplete downloads before adoption.
+    await writeFile(join(folder, ".release-complete"), "");
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT" || error instanceof SyntaxError) return false;
+    throw error;
+  }
+}
+
 /** If inspection fails, keep releases: deleting an active engine is worse than retaining an old one. */
 async function runningProcessCommands(): Promise<string> {
   if (process.platform === "linux") {
@@ -136,7 +161,10 @@ async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previ
       || /(?:^|[-.])(staging|pending)(?:[-.]|$)/i.test(entry.name)) continue;
     const folder = resolve(updates, entry.name);
     // A download has the same release-* name until staging completes; never select it for pruning.
-    if (!existsSync(join(folder, ".release-complete"))) continue;
+    if (!existsSync(join(folder, ".release-complete"))) {
+      try { if (!await backfillLegacyReleaseMarker(folder, entry.name)) continue; }
+      catch (error) { reportFailure?.(new Error(`Could not verify ${entry.name}: ${String(error)}`)); continue; }
+    }
     if (retained.has(folder) || commands.toLowerCase().includes(`${folder}${process.platform === "win32" ? "\\" : "/"}`.toLowerCase())) continue;
     const trash = join(updates, `.trash-${entry.name}-${process.pid}-${Math.random().toString(36).slice(2)}`);
     try {

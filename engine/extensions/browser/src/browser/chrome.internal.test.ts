@@ -1487,7 +1487,7 @@ describe("chrome.ts internal", () => {
       }
     });
 
-    it("falls back when AppArmor blocks browser user namespaces", async () => {
+    it("requires owner choice when AppArmor blocks browser user namespaces", async () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, "platform", { value: "linux" });
       const readFileSync = fs.readFileSync.bind(fs);
@@ -1513,17 +1513,23 @@ describe("chrome.ts internal", () => {
           realExistsSync(candidate) || Boolean(mockedExistsSync?.(candidate)),
         );
         vi.mocked(fs.statSync).mockRestore();
+        await expect(launchBranchChrome(
+          makeResolved({ noSandbox: false }),
+          makeProfile(55561, { executablePath }),
+        )).rejects.toThrow("Allow user namespaces for this browser, or explicitly set browser.noSandbox: true in Settings");
+        expect(unshareCalled).toBe(true);
+        expect(spawnMock).not.toHaveBeenCalled();
+        execFileSyncMock.mockReturnValue("");
         const proc = makeFakeProc();
         spawnMock.mockReturnValue(proc);
         await withMockChromeCdpServer({
-          wsPath: "/devtools/browser/APPARMOR_FALLBACK",
+          wsPath: "/devtools/browser/APPARMOR_SANDBOXED",
           run: async (baseUrl) => {
             const running = await launchBranchChrome(
               makeResolved({ noSandbox: false }),
               makeProfile(Number(new URL(baseUrl).port), { executablePath }),
             );
-            expect(requireSpawnCall()[1]).toContain("--no-sandbox");
-            expect(unshareCalled).toBe(true);
+            expect(requireSpawnCall()[1]).not.toContain("--no-sandbox");
             running.proc.kill?.("SIGTERM");
           },
         });
