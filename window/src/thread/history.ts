@@ -83,9 +83,11 @@ export function readMeta(m: Message): MessageMeta {
   const sender = readSender(m);
   const usage = rec(m.usage);
   const cost = rec(usage.cost);
+  const key = str(m.idempotencyKey) || str(branch.idempotencyKey);
   return {
     ...(str(branch.id) ? { entryId: str(branch.id) } : {}),
     ...(str(branch.runId) ? { runId: str(branch.runId) } : {}),
+    ...(key.endsWith(":user") ? { runKey: key.slice(0, -":user".length) } : {}),
     ...(num(m.timestamp) ? { timestamp: num(m.timestamp) } : {}),
     ...(str(m.model) ? { model: str(m.model) } : {}),
     ...(str(m.provider) ? { provider: str(m.provider) } : {}),
@@ -247,6 +249,11 @@ function isRestartResume(m: Message): boolean {
 }
 
 function onUser(b: Builder, m: Message, index: number, inFlightRunId: string | null): void {
+  if (str(rec(m.__branch).steerTargetRunId)) {
+    // Steered into the turn that was running: it stays that turn's, so its Done line and steps stay whole.
+    b.blocks.push({ kind: "steer", key: `h:${index}`, text: messageText(m.content), meta: readMeta(m) });
+    return;
+  }
   closeRun(b, inFlightRunId);
   b.runStart = num(m.timestamp);
   if (isRestartResume(m)) {

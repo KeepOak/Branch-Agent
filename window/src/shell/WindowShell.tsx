@@ -1162,6 +1162,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           plan={progress.card && !planDismiss.dismissed ? <PlanCard card={progress.card} onRefresh={planRefresh.refresh} refreshing={planRefresh.status} onDismiss={planDismiss.dismiss} /> : null}
           pendingUser={s.pendingUser}
           queued={s.queued}
+          steered={s.steered}
           running={Boolean(s.liveRunId)}
           onAnswer={(id, decision) => void session.answer(id, decision)}
         />
@@ -1192,7 +1193,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
                 projectName={projects.projects.find((x) => x.id === openRow?.projectId)?.name ?? null} onStartTopic={(options) => startNew(openRow?.agentId, options)} />
             ) : null
           }
-          onSend={(text: string, extras?: SendExtras) => void session.send(text, extras)}
+          onSend={(text: string, extras?: SendExtras, idempotencyKey?: string) => void session.send(text, extras, idempotencyKey)}
           onStop={() => void session.stopRun()}
         />}
         />

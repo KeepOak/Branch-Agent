@@ -11,6 +11,10 @@ export type WindowEngine = {
   /** A picture on the Trunk's computer, read through the engine's assistant-media route (`assistant.media.get`) for
    *  the open conversation: an address carrying a short media ticket, never the gateway credential. */
   mediaPicture?: (source: string) => Promise<MediaPicture>;
+  /** Sends in the open conversation the way the composer does, so your message shows over its turn at once. */
+  send?: (text: string) => Promise<void>;
+  /** After "go back to just before" a message: drops it and everything after it from the thread at once. */
+  rewound?: (entryId: string) => void;
   scopes: string[];
   attachmentPolicy?: { maxBytes?: number; maxImageBytes?: number };
 };
