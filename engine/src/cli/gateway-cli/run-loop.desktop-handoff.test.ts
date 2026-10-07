@@ -99,7 +99,14 @@ describe("desktop engine handoff", () => {
         waitForDeactivatedRuns: () => new Promise(() => {}),
       }));
       const { runtime, exited } = createRuntimeWithExitSignal();
-      await within(runLoopWithStart({ start, runtime }), "run-loop import", 120_000);
+      let requestRestart: (() => void) | undefined;
+      await within(runLoopWithStart({
+        start,
+        runtime,
+        onRequestReady: (request) => {
+          requestRestart = () => request("restart", "SIGUSR2", "direct guard probe");
+        },
+      }), "run-loop import", 120_000);
       try {
         await within(waitForStart(started), "run-loop start", 120_000);
         const onMessage = process.listeners("message").find(
@@ -108,6 +115,8 @@ describe("desktop engine handoff", () => {
         onMessage?.({ type: "branch-desktop:deactivate", id: 1 } as never);
         await waitForLoopCondition(() => deactivate.mock.calls.length > 0, "deactivation did not start");
         await Promise.resolve();
+        expect(requestRestart).toBeDefined();
+        requestRestart?.();
         captureSignal("SIGUSR2")();
         replacementHandler.accept?.({
           running: { version: "1", buildId: null },
@@ -120,7 +129,13 @@ describe("desktop engine handoff", () => {
         expect(close).not.toHaveBeenCalled();
         expect(start).toHaveBeenCalledTimes(1);
         expect(gatewayLog.warn).toHaveBeenCalledWith(
-          "installation replacement ignored while desktop handoff is deactivated",
+          "restart ignored while desktop handoff is deactivated (direct guard probe)",
+        );
+        expect(gatewayLog.warn).toHaveBeenCalledWith(
+          "SIGUSR2 restart ignored while desktop handoff is deactivated",
+        );
+        expect(gatewayLog.warn).toHaveBeenCalledWith(
+          "installation replacement deferred while desktop handoff is deactivated",
         );
       } finally {
         captureSignal("SIGTERM")();
@@ -198,6 +213,40 @@ describe("desktop engine handoff", () => {
           else Reflect.deleteProperty(process, "send");
           processExit.mockRestore();
         }
+      }
+    });
+  });
+
+  it("exits for supervisor recovery when rollback cannot restore the owner", async () => {
+    await withIsolatedSignals(async () => {
+      const sendDescriptor = Object.getOwnPropertyDescriptor(process, "send");
+      const previousMessageListeners = new Set(process.listeners("message"));
+      if (!process.send) {
+        Object.defineProperty(process, "send", { configurable: true, value: vi.fn() });
+      }
+      const close = createCloseMock();
+      const { start, started } = createSignaledStart(close);
+      const originalStart = start.getMockImplementation();
+      start.mockImplementation(async (...args) => ({
+        ...(await originalStart!(...args)),
+        deactivate: async () => {},
+        rollbackDeactivation: async () => { throw new Error("rollback failed"); },
+        waitForDeactivatedRuns: () => new Promise(() => {}),
+      }));
+      const { runtime, exited } = createRuntimeWithExitSignal();
+      await within(runLoopWithStart({ start, runtime }), "run-loop import", 120_000);
+      try {
+        await within(waitForStart(started), "run-loop start", 120_000);
+        const onMessage = process.listeners("message").find(
+          (listener) => !previousMessageListeners.has(listener),
+        );
+        onMessage?.({ type: "branch-desktop:deactivate", id: 1 } as never);
+        onMessage?.({ type: "branch-desktop:rollback", id: 2 } as never);
+        await expect(within(exited, "failed rollback exit")).resolves.toBe(1);
+        expect(close).toHaveBeenCalled();
+      } finally {
+        if (sendDescriptor) Object.defineProperty(process, "send", sendDescriptor);
+        else Reflect.deleteProperty(process, "send");
       }
     });
   });

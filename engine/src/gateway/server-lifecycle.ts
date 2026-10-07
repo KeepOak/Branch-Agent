@@ -508,8 +508,28 @@ export async function prepareGatewayLifecycle(params: {
     startCronMaintenance(runtime.scheduler);
     await startChannels();
   };
-  const deactivate = () =>
+  const deactivate = (deadline = Date.now() + 18_000) =>
     (deactivation ??= (async () => {
+      const beforeDeadline = async <T>(work: Promise<T>): Promise<T> => {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) {
+          throw new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds");
+        }
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          return await Promise.race([
+            work,
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(
+                () => reject(new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds")),
+                remaining,
+              );
+            }),
+          ]);
+        } finally {
+          clearTimeout(timer);
+        }
+      };
       // Close new roots, while admitted runs retain their dispatch context and
       // may start required follow-up work through their existing root custody.
       handoffAdmission = tryBeginGatewaySuspendAdmission(() => {});
@@ -529,22 +549,35 @@ export async function prepareGatewayLifecycle(params: {
         leaseNewLanes: true,
       });
       beginCronReceiptAuthorityClose();
-      for (const plugin of listLoadedChannelPluginsForRegistry(pluginRuntime.registry)) {
-        await stopChannel(plugin.id);
-      }
+      const stoppedChannels = await beforeDeadline(
+        Promise.allSettled(
+          listLoadedChannelPluginsForRegistry(pluginRuntime.registry).map((plugin) =>
+            stopChannel(plugin.id),
+          ),
+        ),
+      );
+      const failedChannel = stoppedChannels.find(
+        (result): result is PromiseRejectedResult => result.status === "rejected",
+      );
+      if (failedChannel) throw failedChannel.reason;
       const cron = runtimeState.cronState.cron;
-      await (cron.stopAndDrainForHandoff
+      await beforeDeadline(cron.stopAndDrainForHandoff
         ? cron.stopAndDrainForHandoff()
         : cron.stopAndDrain
           ? cron.stopAndDrain()
-          : cron.stop());
-      await shutdownRuntime.stopCronMaintenance();
-      await drainCronReceiptAuthority();
+          : Promise.resolve(cron.stop()));
+      await beforeDeadline(shutdownRuntime.stopCronMaintenance());
+      await beforeDeadline(drainCronReceiptAuthority());
       handoffLeases.seal();
       if (!handoffAdmission.commit()) {
         throw new Error("Gateway handoff admission was invalidated before state release");
       }
     })().catch(async (error: unknown) => {
+      if (error instanceof GatewayHandoffFatalError) {
+        // Timed-out work may still settle. Keep admission and leases fenced;
+        // the run loop must stop this owner instead of racing a rollback.
+        throw error;
+      }
       handoffLeases?.releaseAll();
       if (isGatewayRestartDraining()) {
         handoffAdmission = null;

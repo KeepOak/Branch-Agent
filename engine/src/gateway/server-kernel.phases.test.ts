@@ -19,6 +19,7 @@ import { resolveBranchStateSqlitePath } from "../state/branch-state-db.paths.js"
 import { createBranchTestState } from "../test-utils/branch-test-state.js";
 import { getFreePort } from "../test-utils/ports.js";
 import { prepareGatewayKernel } from "./server-kernel.js";
+import * as lazyCron from "./server-cron-lazy.js";
 import { GatewayHandoffFatalError } from "./server-handoff-error.js";
 import * as runShutdown from "./server-run-shutdown.js";
 import * as stateRuntime from "./server-runtime-state-prepare.js";
@@ -180,6 +181,13 @@ describe("Gateway startup phases", () => {
 
   it("restores service admission and permits retry after a failed handoff", async () => {
     await withPhaseState("gateway-phase-deactivate-retry", async (port) => {
+      process.env.BRANCH_SKIP_CRON = "0";
+      let cronState: ReturnType<typeof lazyCron.createLazyGatewayCronState> | undefined;
+      const createCron = lazyCron.createLazyGatewayCronState;
+      vi.spyOn(lazyCron, "createLazyGatewayCronState").mockImplementation((params) => {
+        cronState = createCron(params);
+        return cronState;
+      });
       const server = await startGatewayServerCore(
         port,
         options("gateway-phase-deactivate-retry-token"),
@@ -190,9 +198,51 @@ describe("Gateway startup phases", () => {
         );
         await expect(server.deactivate()).rejects.toThrow("receipt drain failed");
         expect(isGatewayWorkAdmissionClosed()).toBe(false);
+        const job = await cronState!.cron.add({
+          name: "after failed handoff",
+          enabled: true,
+          schedule: { kind: "at", at: new Date(Date.now() + 60_000).toISOString() },
+          payload: { kind: "command", argv: [process.execPath, "-e", "process.exit(0)"] },
+          sessionTarget: "isolated",
+          wakeMode: "next-heartbeat",
+          delivery: { mode: "none" },
+          deleteAfterRun: false,
+        });
+        await expect(cronState!.cron.run(job.id, "force")).resolves.toMatchObject({
+          ok: true,
+          ran: true,
+        });
         await expect(server.deactivate()).resolves.toBeUndefined();
       } finally {
         await server.close({ reason: "failed handoff retry test cleanup" });
+      }
+    });
+  });
+
+  it("fails a stuck receipt drain within the whole deactivation deadline", async () => {
+    await withPhaseState("gateway-phase-deactivate-deadline", async (port) => {
+      const release = vi.fn(async () => {});
+      const server = await startGatewayServerCore(port, {
+        ...options("gateway-phase-deactivate-deadline-token"),
+        gatewayStateOwner: { assertDatabaseAccess: () => {}, release },
+      });
+      try {
+        await server.startupSettled;
+        vi.spyOn(cronAuthority, "drainCronReceiptAuthority").mockImplementationOnce(
+          () => new Promise(() => {}),
+        );
+        vi.useFakeTimers();
+        const deactivation = server.deactivate();
+        const rejection = expect(deactivation).rejects.toThrow(
+          "Gateway handoff deactivation exceeded 18 seconds",
+        );
+        await vi.advanceTimersByTimeAsync(18_000);
+        await rejection;
+        expect(release).not.toHaveBeenCalled();
+        expect(isGatewayWorkAdmissionClosed()).toBe(true);
+      } finally {
+        vi.useRealTimers();
+        await server.close({ reason: "deactivation deadline test cleanup" });
       }
     });
   });

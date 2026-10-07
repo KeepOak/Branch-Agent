@@ -76,6 +76,8 @@ export async function runGatewayLoop(params: {
   beginBoot?: (startedAtMs: number) => void | Promise<void>;
   completeBoot?: (completion: GatewayBootLifecycleCompletion) => void;
   onRestartStartupFailure?: GatewayRestartStartupFailureHandler;
+  /** Internal lifecycle probe for tests of requests that bypass signal prefilters. */
+  onRequestReady?: (request: (action: GatewayRunSignalAction, signal: GatewayRunSignalRequest["signal"], reason?: string) => void) => void;
 }) {
   // macOS/BSD process inspection reports process.title instead of the original
   // argv. Give the long-running Gateway a verifiable identity for lock readers.
@@ -1075,6 +1077,7 @@ export async function runGatewayLoop(params: {
     }
     runAcceptedRequest(acceptedRequest);
   };
+  params.onRequestReady?.(request);
 
   const onSigterm = () => {
     if (desktopDeactivation) {
@@ -1125,7 +1128,13 @@ export async function runGatewayLoop(params: {
     });
     if (!reacquired) return false;
     lock = reacquired;
-    await server?.rollbackDeactivation();
+    try {
+      await server?.rollbackDeactivation();
+    } catch (error) {
+      fatalHandoffFailure = true;
+      request("stop", "SIGTERM");
+      throw error;
+    }
     desktopDeactivation = undefined;
     request("restart", "SIGUSR2", reason);
     return true;
@@ -1171,6 +1180,9 @@ export async function runGatewayLoop(params: {
           request("stop", "SIGTERM");
         } else {
           desktopDeactivation = undefined;
+          if (installationReplacement) {
+            request("restart", "SIGUSR2", installationReplacement.reason);
+          }
         }
         throw error;
       });
@@ -1193,7 +1205,12 @@ export async function runGatewayLoop(params: {
         },
         (error: unknown) => {
           gatewayLog.error(`desktop handoff deactivation failed: ${String(error)}`);
-          process.send?.({ type: "branch-desktop:deactivate-result", id: incoming.id, ok: false });
+          process.send?.({
+            type: "branch-desktop:deactivate-result",
+            id: incoming.id,
+            ok: false,
+            error: String(error),
+          });
         },
       );
       return;
@@ -1378,7 +1395,8 @@ export async function runGatewayLoop(params: {
     supervised: Boolean(supervisorMode),
     accept: (fact) => {
       if (desktopDeactivation) {
-        gatewayLog.warn("installation replacement ignored while desktop handoff is deactivated");
+        installationReplacement = fact;
+        gatewayLog.warn("installation replacement deferred while desktop handoff is deactivated");
         return;
       }
       installationReplacement = fact;

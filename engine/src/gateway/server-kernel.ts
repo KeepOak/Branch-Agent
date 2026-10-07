@@ -186,10 +186,29 @@ export async function prepareGatewayKernel(
         ...kernel,
         deactivate: () =>
           (deactivation ??= (async () => {
-            await sdkResourceHost.run(() => kernel.deactivate());
+            const deadline = Date.now() + 18_000;
+            await sdkResourceHost.run(() => kernel.deactivate(deadline));
             try {
-              await stateLease?.release?.();
+              const remaining = deadline - Date.now();
+              if (remaining <= 0) {
+                throw new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds");
+              }
+              let timer: ReturnType<typeof setTimeout> | undefined;
+              try {
+                await Promise.race([
+                  stateLease?.release?.(),
+                  new Promise<never>((_, reject) => {
+                    timer = setTimeout(
+                      () => reject(new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds")),
+                      remaining,
+                    );
+                  }),
+                ]);
+              } finally {
+                clearTimeout(timer);
+              }
             } catch (error) {
+              if (error instanceof GatewayHandoffFatalError) throw error;
               // The lease release may fail before ownership transfers. In that
               // case this kernel is still the only engine and must take work again.
               try {
