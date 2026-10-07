@@ -34,6 +34,26 @@ export function withoutFact(content: string, fact: Pick<Fact, "start" | "end">):
   return [...lines.slice(0, fact.start), ...lines.slice(fact.end)].join("\n");
 }
 
+/** True when a search hit names the Trunk's MEMORY.md (not a daily note or session file). */
+export function isMemoryMd(path: string): boolean {
+  return /(^|[\\/])MEMORY\.md$/i.test(path);
+}
+
+/** The MEMORY.md fact a search hit refers to, or null when it cannot be placed. */
+export function factForHit(facts: Fact[], hit: { path: string; snippet: string; startLine?: number }): Fact | null {
+  const snippet = hit.snippet.trim().replace(/^[-*+#>\s]+/, "");
+  if (isMemoryMd(hit.path) && typeof hit.startLine === "number") {
+    for (const idx of [hit.startLine - 1, hit.startLine]) {
+      const found = facts.find((f) => idx >= f.start && idx < f.end);
+      if (found) return found;
+    }
+  }
+  if (!snippet) return null;
+  const matches = facts.filter((f) => f.text.includes(snippet) || snippet.includes(f.text));
+  if (matches.length === 1) return matches[0]!;
+  return isMemoryMd(hit.path) ? matches[0] ?? null : null;
+}
+
 /** Every scoped Trunk's MEMORY.md, read together; one Trunk's failure stays on that Trunk. */
 export function useMemoryFiles(engine: WindowEngine, trunks: Trunk[] | null) {
   const [files, setFiles] = useState<MemoryFile[] | null>(null);

@@ -1,36 +1,66 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
-import type { Block } from "../../thread/model";
+import { errorText as libError, fileOf } from "../../places/library/data";
+import { factForHit, parseFacts, withoutFact, type Fact } from "../../places/library/memory-data";
 import { notify } from "../../shell/notify";
+import type { Block } from "../../thread/model";
 import { SIcon } from "../stage-icons";
 import { useShells } from "./use-shells";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const FORGOTTEN = "Forgotten. It won’t use this again.";
+const NO_HASH = "The engine did not give this file’s revision, so it can’t be changed safely.";
+const NO_FACT = "This isn’t a MEMORY.md fact, so it can’t be forgotten from here.";
 
-type MemoryRow = { path: string; snippet: string; startLine?: number; endLine?: number };
+type MemoryRow = { path: string; snippet: string; startLine?: number };
+
+function hitsOf(result: unknown): MemoryRow[] {
+  return (Array.isArray(rec(result).results) ? (rec(result).results as unknown[]) : []).map(rec).map((x) => ({
+    path: str(x.path),
+    snippet: str(x.snippet),
+    startLine: typeof x.startLine === "number" ? x.startLine : undefined,
+  }));
+}
+
+function applied<T>(result: T): T {
+  if (result !== null && typeof result === "object" && "ok" in result && (result as { ok?: unknown }).ok === false) {
+    const response = result as { error?: unknown; message?: unknown };
+    throw new Error(libError(response.error ?? response.message ?? "The engine did not apply this change."));
+  }
+  return result;
+}
 
 /** Memory: what it remembers that fits this conversation (memory.search with the latest thing you asked). */
 export function MemoryTab({ engine, blocks, name }: { engine: WindowEngine; blocks: Block[]; name: string }) {
   const asked = [...blocks].reverse().find((b): b is Extract<Block, { kind: "user" }> => b.kind === "user")?.text.trim().slice(0, 300) ?? "";
-  const [state, setState] = useState<{ owner: WindowEngine; key: string; rows?: MemoryRow[]; error?: string }>({ owner: engine, key: "" });
+  const [state, setState] = useState<{ owner: WindowEngine; key: string; rows?: MemoryRow[]; facts?: Fact[]; error?: string }>({ owner: engine, key: "" });
   const [forgetting, setForgetting] = useState(false);
   const [forgotRows, setForgotRows] = useState<Set<number>>(new Set());
+  const [writeError, setWriteError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const key = `${engine.sessionKey}|${asked}|${revision}`;
-  
+
   const loadMemory = useCallback(() => {
     if (!asked) return;
     let live = true;
     engine.request("memory.search", { query: asked, maxResults: 8, ...(engine.agentId ? { agentId: engine.agentId } : {}) }).then(
-      (r) => live && setState({ owner: engine, key, rows: (Array.isArray(rec(r).results) ? (rec(r).results as unknown[]) : []).map(rec).map((x) => ({ 
-        path: str(x.path), 
-        snippet: str(x.snippet), 
-        startLine: typeof x.startLine === "number" ? x.startLine : undefined,
-        endLine: typeof x.endLine === "number" ? x.endLine : undefined
-      })) }),
+      async (r) => {
+        if (!live) return;
+        const rows = hitsOf(r);
+        setState({ owner: engine, key, rows });
+        if (!engine.agentId) return;
+        try {
+          const file = fileOf(await engine.request("agents.files.get", { agentId: engine.agentId, name: "MEMORY.md" }));
+          if (!live) return;
+          const facts = file && !file.missing ? parseFacts(file.content ?? "", engine.agentId, "") : [];
+          setState((cur) => (cur.owner === engine && cur.key === key ? { ...cur, facts } : cur));
+        } catch {
+          /* mapping fails closed: Forget stays disabled until a fact can be placed */
+        }
+      },
       (e: unknown) => live && setState({ owner: engine, key, error: errorText(e) }),
     );
     return () => {
@@ -39,65 +69,62 @@ export function MemoryTab({ engine, blocks, name }: { engine: WindowEngine; bloc
   }, [engine, asked, key]);
 
   useEffect(() => {
+    setForgotRows(new Set());
+    setWriteError(null);
     return loadMemory();
   }, [loadMemory]);
 
   const forget = useCallback(async (row: MemoryRow, index: number) => {
-    if (!engine.agentId || row.path !== "MEMORY.md" || typeof row.startLine !== "number" || typeof row.endLine !== "number") {
-      return;
-    }
-    
+    const agentId = engine.agentId;
+    if (!agentId) return;
     setForgetting(true);
+    setWriteError(null);
     try {
-      const fileResult = await engine.request<unknown>("agents.files.get", { agentId: engine.agentId, name: "MEMORY.md" });
-      const fileObj = rec(rec(fileResult).file);
-      const content = str(fileObj.content);
-      const hash = str(fileObj.hash);
-      
-      if (!content || !hash) {
-        notify("The engine did not give this file's revision, so it can't be changed safely.", { tone: "bad" });
+      const file = fileOf(await engine.request("agents.files.get", { agentId, name: "MEMORY.md" }));
+      const content = file && !file.missing ? file.content ?? "" : "";
+      const hash = file?.hash;
+      if (!file || file.missing || !hash) {
+        setWriteError(NO_HASH);
+        notify(NO_HASH, { tone: "bad" });
         return;
       }
-
-      const lines = content.split("\n");
-      const newContent = [...lines.slice(0, row.startLine), ...lines.slice(row.endLine)].join("\n");
-
-      await engine.request("agents.files.set", {
-        agentId: engine.agentId,
+      const fact = factForHit(parseFacts(content, agentId, ""), row);
+      if (!fact) {
+        setWriteError(NO_FACT);
+        return;
+      }
+      const written = applied(await engine.request("agents.files.set", {
+        agentId,
         name: "MEMORY.md",
-        content: newContent,
-        expectedHash: hash
-      });
-
-      setForgotRows(prev => new Set([...prev, index]));
-      
-      notify("Forgotten. It won't use this again.", { 
-        action: { 
-          label: "Undo", 
+        content: withoutFact(content, fact),
+        expectedHash: hash,
+      }));
+      setForgotRows((prev) => new Set([...prev, index]));
+      const nextHash = fileOf(written)?.hash;
+      notify(FORGOTTEN, {
+        action: {
+          label: "Undo",
           run: () => {
-            void engine.request("agents.files.set", {
-              agentId: engine.agentId,
+            void applied(engine.request("agents.files.set", {
+              agentId,
               name: "MEMORY.md",
               content,
-              expectedHash: undefined
-            }).then(() => {
-              setForgotRows(prev => {
+              ...(nextHash ? { expectedHash: nextHash } : {}),
+            })).then(() => {
+              setForgotRows((prev) => {
                 const next = new Set(prev);
                 next.delete(index);
                 return next;
               });
-              setRevision(r => r + 1);
-            });
-          }
-        }
+              setRevision((n) => n + 1);
+            }, (error: unknown) => notify(errorText(error), { tone: "bad" }));
+          },
+        },
       });
     } catch (error) {
       const err = errorText(error);
-      if (err.includes("hash") || err.includes("conflict") || err.includes("changed")) {
-        notify(err, { tone: "bad" });
-      } else {
-        notify(err, { tone: "bad" });
-      }
+      setWriteError(err);
+      notify(err, { tone: "bad" });
     } finally {
       setForgetting(false);
     }
@@ -109,14 +136,15 @@ export function MemoryTab({ engine, blocks, name }: { engine: WindowEngine; bloc
   if (!cur.rows) return <p className="pane-empty">Looking through what {name} remembers…</p>;
   const visibleRows = cur.rows.filter((_, i) => !forgotRows.has(i));
   if (!visibleRows.length) return <p className="pane-empty">{name} doesn't remember anything that fits this conversation.</p>;
-  
+  const facts = cur.facts ?? [];
+
   return (
     <>
+      {writeError ? <p className="err-st" role="alert">{writeError}</p> : null}
       {cur.rows.map((m, i) => {
         if (forgotRows.has(i)) return null;
-        const canForget = m.path === "MEMORY.md" && typeof m.startLine === "number" && typeof m.endLine === "number";
-        const disableReason = !canForget ? "This memory isn't from MEMORY.md, so it can't be forgotten from here." : undefined;
-        
+        const fact = factForHit(facts, m);
+        const disableReason = fact ? undefined : NO_FACT;
         return (
           <div key={`${m.path}:${m.startLine}:${i}`} className="memrow-pn">
             <span>{m.snippet.trim()}</span>
@@ -124,11 +152,11 @@ export function MemoryTab({ engine, blocks, name }: { engine: WindowEngine; bloc
               {m.path}
               {m.startLine ? ` · line ${m.startLine}` : ""}
             </small>
-            <button 
-              type="button" 
-              className="btn ghost sm" 
-              disabled={forgetting || !canForget} 
-              title={disableReason} 
+            <button
+              type="button"
+              className="btn ghost sm"
+              disabled={forgetting || !fact}
+              title={disableReason}
               aria-label={`Forget: ${m.snippet.trim().slice(0, 60)}`}
               onClick={() => void forget(m, i)}
             >

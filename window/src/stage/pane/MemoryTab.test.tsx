@@ -24,7 +24,7 @@ it("retries a failed memory search with the same conversation query and agent", 
   await act(async () => container.querySelector<HTMLButtonElement>("button")!.click());
   expect(container.textContent).toContain("Actual project memory");
   expect(container.querySelector('[role="alert"]')).toBeNull();
-  expect(request).toHaveBeenLastCalledWith("memory.search", { query: "Remember my project", maxResults: 8, agentId: "scout" });
+  expect(request).toHaveBeenCalledWith("memory.search", { query: "Remember my project", maxResults: 8, agentId: "scout" });
 });
 
 it("hides memory from the previous engine while the replacement engine is loading", async () => {
