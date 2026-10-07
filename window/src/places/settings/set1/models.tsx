@@ -62,10 +62,11 @@ function ConnectionsTab({ engine, m, onAdd }: ConnProps) {
   if (m.auth.loading) return <Status tone="idle" title="Reading your connections…" />;
   if (m.auth.error) return <Status tone="bad" title="Branch couldn’t read your connections">{visible(m.auth.error)}</Status>;
   const groups = m.providers.filter((p) => p.profiles.length);
+  const empty = !groups.length && !m.models.some((x) => x.local);
   return (
     <>
       <Hint>You can sign in to the same service more than once. When one account runs low, Branch moves to the next. The order is in Settings › Accounts.</Hint>
-      {!groups.length && !m.models.some((x) => x.local) ? <Status tone="warn" title="No model set up" action={<Btn sm pri onClick={() => onAdd({})}>Add an account</Btn>}>Conversations need a model. Sign in to a service, add a key, or set one up on this computer.</Status> : null}
+      {empty ? <Status tone="warn" title="No model set up" action={<Btn sm pri onClick={() => onAdd({})}>Add an account</Btn>}>Conversations need a model. Sign in to a service, add a key, or set one up on this computer.</Status> : null}
       <div className="acct-gs">
         {groups.map((p) => {
           const rows = all.filter((a) => a.p === p);
@@ -91,7 +92,7 @@ function ConnectionsTab({ engine, m, onAdd }: ConnProps) {
           </div>
         ))}
       </div>
-      <div className="acts"><Btn pri onClick={() => onAdd({})}><Icon name="plus" small />Add an account</Btn></div>
+      {!empty ? <div className="acts"><Btn pri onClick={() => onAdd({})}><Icon name="plus" small />Add an account</Btn></div> : null}
       <div className="ctl find-k" data-row="Find models on this computer"><b>Find models on this computer</b><span className="right"><Btn sm onClick={() => onAdd({})}>Look</Btn></span></div>
       {menu ? <AccountMenu engine={engine} acc={menu.acc} all={all} at={menu.at} agent={m.agent} reload={m.auth.reload} setOrder={setOrder} onClose={() => setMenu(null)} /> : null}
     </>
