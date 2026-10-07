@@ -669,6 +669,30 @@ export function confirmDevicePairSetupCompletionDeliveryInTransaction(params: {
 }
 
 /** Prune retained setup outcomes when the Gateway maintenance owner ticks. */
+/**
+ * Whether any setup completion has passed its retention. A plain read, so the minute-by-minute prune takes the
+ * shared-state write lock (and pays for a commit) only when there is something to delete.
+ */
+export function hasExpiredDevicePairSetupCompletionRecords(
+  db: BranchStateDatabase["db"],
+  nowMs: number,
+): boolean {
+  if (!tableExists(db, "device_pair_setup_completions")) {
+    return false;
+  }
+  const kysely = getNodeSqliteKysely<BranchStateKyselyDatabase>(db);
+  return (
+    executeSqliteQueryTakeFirstSync(
+      db,
+      kysely
+        .selectFrom("device_pair_setup_completions")
+        .select("setup_id")
+        .where("retain_until_ms", "<=", nowMs)
+        .limit(1),
+    ) !== undefined
+  );
+}
+
 export function pruneExpiredDevicePairSetupCompletionRecords(nowMs: number): number {
   const databaseOptions = resolveDevicePairingStateDbOptions();
   const database = openBranchStateDatabase(databaseOptions);

@@ -45,6 +45,24 @@ beforeEach(() => vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] }))
 afterEach(() => vi.useRealTimers());
 
 describe("the joined Branch's link to its host", () => {
+  it("polls work over the outbound link and returns the joined Trunk's reply", async () => {
+    const job = { id: "job-1", trunkId: "tester", text: "Ping", sourceAgentId: "juniper" };
+    let offered = false;
+    const fake = fakeClient((method) => {
+      if (method === "graft.work.poll") return { job: offered ? null : job };
+      if (method === "graft.work.complete") offered = true;
+      return {};
+    });
+    const handleWork = vi.fn(async () => ({ reply: "PONG" }));
+    const runner = new GraftLinkRunner({ link, trunks: async () => [], createClient: fake.create, forget: vi.fn(), log: () => undefined, handleWork });
+    runner.start();
+    fake.get().handlers.onHello();
+    await flush();
+    await flush();
+    expect(handleWork).toHaveBeenCalledWith(job);
+    expect(fake.get().calls).toContainEqual(["graft.work.complete", { id: "job-1", reply: "PONG" }]);
+    runner.stop();
+  });
   it("says hello as the Branch and its Trunks on connect and every minute while connected", async () => {
     const fake = fakeClient();
     const runner = new GraftLinkRunner({

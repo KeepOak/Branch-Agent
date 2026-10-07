@@ -14,18 +14,19 @@
 .set-col .s2usage-limh { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
 .set-col .s2usage-limh b { font-weight: 600; }
 .set-col .s2usage-limh .s2usage-muted { color: var(--ink-3); font-size: 12px; }
-.set-col .s2usage-limw { display: grid; grid-template-columns: 118px 1fr auto; gap: 10px; align-items: center; font-size: 12px; color: var(--ink-2); margin-top: 5px; }
+.set-col .s2usage-limw { display: grid; grid-template-columns: 118px 1fr minmax(110px, auto); gap: 10px; align-items: center; font-size: 12px; color: var(--ink-2); margin-top: 5px; }
+.set-col .s2usage-limw > span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
 .set-col .s2usage-limbar { height: 6px; border-radius: 3px; background: var(--fill-2, var(--fill)); overflow: hidden; }
 .set-col .s2usage-limbar i { display: block; height: 100%; background: var(--ink-2); border-radius: 3px; }
 .set-col .s2usage-lim small { display: block; font-size: 11.5px; color: var(--ink-3); margin-top: 4px; }
 .set-col .s2usage-lim small.s2-err { color: var(--bad); }
 
 .set-col .s2usage-bars { display: grid; gap: 8px; margin: 10px 0 8px; }
-.set-col .s2usage-brow { display: grid; grid-template-columns: 90px 1fr 64px; gap: 10px; align-items: center; font-size: 13px; }
+.set-col .s2usage-brow { display: grid; grid-template-columns: 90px 1fr 82px; gap: 10px; align-items: center; font-size: 13px; }
 .set-col .s2usage-brow > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .set-col .s2usage-track { height: 8px; border-radius: 4px; background: var(--fill); overflow: hidden; }
 .set-col .s2usage-track u { display: block; height: 100%; background: var(--ink-2); border-radius: 4px; }
-.set-col .s2usage-v { font: 12px var(--mono); text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.set-col .s2usage-v { font-size: 12px; text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 
 .set-col .s2usage-txt { width: min(240px, 46vw); }
 .set-col [data-sec="Conversations, every setting"] > .ctl > b { font: 12px var(--mono); }
@@ -106,5 +107,5 @@
   .dlg .s2usage-r { grid-template-columns: 100px 1fr 52px; }
   .dlg .s2usage-two { grid-template-columns: 1fr; }
 }
-.set-col [data-sec="What each connection has left"] > p.hint, .set-col [data-sec="Test the model you use"] > p.hint { margin: 0 0 6px; }
+.set-col [data-sec="Account allowances"] > p.hint, .set-col [data-sec="Test the model you use"] > p.hint { margin: 0 0 6px; }
 .set-col [data-sec="Keeping things, more"] .num-k .inp { width: 72px; height: 32px; }

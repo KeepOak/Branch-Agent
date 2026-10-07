@@ -12,8 +12,29 @@ interface DesktopInfo {
 // Null on any page other than the served window (for example the "Starting" page).
 const info = ipcRenderer.sendSync("branch-desktop:info") as DesktopInfo | null;
 if (info) {
+  let gatewayUrl = info.gatewayUrl;
   contextBridge.exposeInMainWorld("branchDesktop", {
-    gatewayUrl: info.gatewayUrl, gatewayToken: info.gatewayToken,
+    gatewayUrl: info.gatewayUrl, getGatewayUrl: () => gatewayUrl, gatewayToken: info.gatewayToken,
+    openConversation: (key: string) => ipcRenderer.invoke("branch-desktop:open-conversation", key),
+    conversationWindows: {
+      list: (): Promise<string[]> => ipcRenderer.invoke("branch-desktop:conversation-windows"),
+      saved: (): Promise<string[]> => ipcRenderer.invoke("branch-desktop:saved-conversation-windows"),
+      restore: (keys: string[], deferred: string[] = []): Promise<void> => ipcRenderer.invoke("branch-desktop:restore-conversation-windows", keys, deferred),
+      forget: (key: string): Promise<void> => ipcRenderer.invoke("branch-desktop:forget-conversation-window", key),
+      onChanged: (listener: (keys: string[]) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, keys: string[]) => listener(keys);
+        ipcRenderer.on("branch-desktop:conversation-windows", handler);
+        return () => ipcRenderer.removeListener("branch-desktop:conversation-windows", handler);
+      },
+    },
+    openInMain: (route: unknown) => ipcRenderer.invoke("branch-desktop:open-main-route", route),
+    closeConversationWindow: () => ipcRenderer.invoke("branch-desktop:close-conversation-window"),
+    retargetConversationWindow: (key: string) => ipcRenderer.invoke("branch-desktop:retarget-conversation-window", key),
+    onOpenMainRoute: (listener: (route: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, route: unknown) => listener(route);
+      ipcRenderer.on("branch-desktop:open-main-route", handler);
+      return () => ipcRenderer.removeListener("branch-desktop:open-main-route", handler);
+    },
     clipboard: { writeText: (text: string) => ipcRenderer.invoke("branch-desktop:clipboard:write-text", text) },
     componentUpdates: {
       status: () => ipcRenderer.invoke("branch-desktop:component-update:status"),
@@ -50,6 +71,19 @@ if (info) {
     restoreAfterSwap();
   });
   ipcRenderer.on("branch-desktop:engine-update", (_e, state: UpdateState) => showUpdateBar(state));
+  ipcRenderer.on("branch-desktop:update-applied", (_e, notice: { version: string; canUndo: boolean; expiresAt: number }) => showUpdateNotice(notice));
+  ipcRenderer.on("branch-desktop:update-undo-failed", (_e, message: string) => showToast(`Undo couldn't finish: ${message}`));
+  ipcRenderer.on("branch-desktop:update-undone", () => document.getElementById("branch-desktop-update-notice")?.remove());
+  ipcRenderer.on("branch-desktop:engine-handoff", (_e, nextUrl: string) => {
+    try {
+      const target = new URL(nextUrl);
+      if (target.protocol !== "ws:" || target.hostname !== "127.0.0.1") return;
+      gatewayUrl = target.href;
+      window.dispatchEvent(new CustomEvent("branch:engine-handoff", { detail: { gatewayUrl } }));
+    } catch { /* a malformed target cannot redirect the desktop window */ }
+  });
+  ipcRenderer.on("branch-desktop:gateway-recovery-failed", (_e, message: string) => showRecoveryError(message));
+  ipcRenderer.on("branch-desktop:engine-update-failed", (_e, message: string) => showUpdateFailure(message));
   ipcRenderer.on("branch-desktop:prepare-swap", (_e, id: number) => {
     saveBeforeSwap();
     ipcRenderer.send("branch-desktop:swap-ready", id);
@@ -102,12 +136,14 @@ function elementPath(el: Element): string {
 function showToast(message: string): void {
   const show = () => {
     document.getElementById("branch-desktop-update")?.remove();
+    const notice = document.getElementById("branch-desktop-update-notice");
     const toast = document.createElement("div");
     toast.setAttribute("role", "status");
     toast.dataset.testid = "desktop-updated-toast";
     toast.textContent = message;
     toast.style.cssText = [
-      "position:fixed", "left:50%", "bottom:16px", "transform:translateX(-50%)", "z-index:2147483647",
+      "position:fixed", "left:50%", `bottom:${notice ? 24 + notice.getBoundingClientRect().height : 16}px`,
+      "transform:translateX(-50%)", "z-index:2147483647",
       "padding:7px 14px", "border-radius:10px", "background:#1e293b", "color:#f1f5f9",
       "font:13px/1.3 system-ui,-apple-system,'Segoe UI',sans-serif", "box-shadow:0 6px 24px rgba(15,23,42,.28)",
       "opacity:1", "transition:opacity .6s ease",
@@ -119,8 +155,89 @@ function showToast(message: string): void {
   if (document.body) show(); else window.addEventListener("DOMContentLoaded", show, { once: true });
 }
 
+/** A confirmed update stays visible across a window reload until dismissed or expired. */
+function showUpdateNotice({ version, canUndo, expiresAt }: { version: string; canUndo: boolean; expiresAt: number }): void {
+  if (!version || expiresAt <= Date.now()) return;
+  const show = () => {
+    const existing = document.getElementById("branch-desktop-update-notice");
+    if (existing?.dataset.testid === "desktop-update-notice" && existing.dataset.version === version) return;
+    existing?.remove();
+    const notice = document.createElement("div");
+    notice.id = "branch-desktop-update-notice";
+    notice.dataset.testid = "desktop-update-notice";
+    notice.dataset.version = version;
+    notice.setAttribute("role", "status");
+    notice.style.cssText = "position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:2147483647;display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;background:#1e293b;color:#f1f5f9;font:13px/1.3 system-ui,-apple-system,'Segoe UI',sans-serif;box-shadow:0 6px 24px rgba(15,23,42,.28)";
+    const label = document.createElement("span");
+    label.textContent = `Branch updated to ${version} while you worked.`;
+    notice.appendChild(label);
+    const actions: [string, () => void][] = [["What's new", () => window.dispatchEvent(new Event("branch:whats-new"))]];
+    if (canUndo) actions.push(["Undo", () => ipcRenderer.send("branch-desktop:undo-update")]);
+    for (const [text, action] of actions) {
+      const button = document.createElement("button");
+      button.type = "button"; button.textContent = text;
+      button.style.cssText = "border:0;border-radius:7px;padding:5px 10px;background:#f1f5f9;color:#0f172a;font:inherit;font-weight:600;cursor:pointer";
+      button.addEventListener("click", action);
+      notice.appendChild(button);
+    }
+    const dismiss = document.createElement("button");
+    dismiss.type = "button"; dismiss.textContent = "Dismiss";
+    dismiss.setAttribute("aria-label", "Dismiss update notice");
+    dismiss.style.cssText = "border:0;background:transparent;color:inherit;font:inherit;cursor:pointer";
+    dismiss.addEventListener("click", () => { notice.remove(); ipcRenderer.send("branch-desktop:dismiss-update-notice"); });
+    notice.appendChild(dismiss);
+    document.body.appendChild(notice);
+    setTimeout(() => notice.remove(), Math.max(0, expiresAt - Date.now()));
+  };
+  if (document.body) show(); else window.addEventListener("DOMContentLoaded", show, { once: true });
+}
+
+/** Says why an update did not finish, above the update bar, then fades; the engine keeps or regains a working version. */
+function showUpdateFailure(message: string): void {
+  const show = () => {
+    document.getElementById("branch-desktop-update-failed")?.remove();
+    const note = document.createElement("div");
+    note.id = "branch-desktop-update-failed";
+    note.setAttribute("role", "alert");
+    note.dataset.testid = "desktop-update-failed";
+    note.textContent = `The update didn't finish: ${message}`;
+    note.style.cssText = [
+      "position:fixed", "left:50%", "bottom:64px", "transform:translateX(-50%)", "z-index:2147483647",
+      "max-width:min(560px,calc(100vw - 32px))", "padding:8px 14px", "border-radius:10px",
+      "background:#7f1d1d", "color:#fff", "font:13px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif",
+      "box-shadow:0 6px 24px rgba(15,23,42,.28)",
+    ].join(";");
+    document.body.appendChild(note);
+    setTimeout(() => note.remove(), 12_000);
+  };
+  if (document.body) show(); else window.addEventListener("DOMContentLoaded", show, { once: true });
+}
+
+/** A persistent alert: the engine is down and the owner may need to use Update or restart the app. */
+function showRecoveryError(message: string): void {
+  const show = () => {
+    let alert = document.getElementById("branch-desktop-recovery-error");
+    if (!alert) {
+      alert = document.createElement("div");
+      alert.id = "branch-desktop-recovery-error";
+      alert.setAttribute("role", "alert");
+      alert.dataset.testid = "desktop-recovery-error";
+      alert.style.cssText = [
+        "position:fixed", "left:50%", "bottom:16px", "transform:translateX(-50%)", "z-index:2147483647",
+        "max-width:min(560px,calc(100vw - 32px))", "padding:12px 16px", "border-radius:10px",
+        "background:#7f1d1d", "color:#fff", "font:13px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif",
+        "box-shadow:0 6px 24px rgba(15,23,42,.28)",
+      ].join(";");
+      document.body.appendChild(alert);
+    }
+    alert.textContent = message;
+  };
+  if (document.body) show(); else window.addEventListener("DOMContentLoaded", show, { once: true });
+}
+
 /** A small bar at the bottom of the window while an update waits or applies. The app and window stay open throughout. */
 function showUpdateBar(state: UpdateState): void {
+  if (state === "updated") document.getElementById("branch-desktop-recovery-error")?.remove();
   if (state === "kept") {
     // The new engine did not start; Branch keeps running the version it had.
     window.dispatchEvent(new Event("branch:engine-ready"));
