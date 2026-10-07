@@ -24,7 +24,7 @@ async function eventually(predicate, ms = 20_000) {
 const exists = file => readFile(file).then(() => true, () => false);
 
 /** A release with engine, window and desktop components served over real loopback HTTP; an installed app beside it. */
-async function fixture(run, { runtime = false, iconRuntime = false } = {}) {
+async function fixture(run, { runtime = false, iconRuntime = false, macBundle = false } = {}) {
   const parent = join(tmpdir(), "Codex-session-files"); await mkdir(parent, { recursive: true });
   const root = await mkdtemp(join(parent, "desktop-update-"));
   const engine = join(root, "engine"), window = join(root, "window"), asar = join(root, "new-asar"), app = join(root, "new-app");
@@ -37,7 +37,17 @@ async function fixture(run, { runtime = false, iconRuntime = false } = {}) {
   await writeFile(join(app, "Branch Agent.exe"), "new runtime"); await writeFile(join(app, "resources/app.asar"), "new desktop asar");
   await writeFile(join(cfg.windowDir, "index.html"), "old window"); await writeFile(join(dataDir, "engine-current.txt"), cfg.engineDir + "\n");
   await writeFile(join(installed, "Branch Agent.exe"), "old runtime"); await writeFile(join(installed, "resources/app.asar"), "old desktop asar");
-  const desktop = { app: asar, electronVersion: runtime ? "45.0.0" : ELECTRON, ...(runtime || iconRuntime ? { runtime: app } : {}) };
+  if (macBundle || process.platform === "darwin" && (runtime || iconRuntime)) {
+    for (const bundle of [join(app, "Branch Agent.app"), join(installed, "Branch Agent.app")]) {
+      await mkdir(join(bundle, "Contents/MacOS"), { recursive: true });
+      await mkdir(join(bundle, "Contents/Resources"), { recursive: true });
+    }
+    await writeFile(join(app, "Branch Agent.app/Contents/MacOS/Branch Agent"), "new runtime");
+    await writeFile(join(app, "Branch Agent.app/Contents/Resources/app.asar"), "new desktop asar");
+    await writeFile(join(installed, "Branch Agent.app/Contents/MacOS/Branch Agent"), "old runtime");
+    await writeFile(join(installed, "Branch Agent.app/Contents/Resources/app.asar"), "old desktop asar");
+  }
+  const desktop = { app: asar, electronVersion: runtime ? "45.0.0" : ELECTRON, ...(runtime || iconRuntime || macBundle ? { runtime: app } : {}) };
   const release = await makeComponentRelease({ version: "0.4.5", tag: "v0.4.5", engine, window, desktop, output: join(root, "release") });
   const server = createServer((request, response) => {
     const name = request.url.slice(1);
@@ -49,7 +59,9 @@ async function fixture(run, { runtime = false, iconRuntime = false } = {}) {
     const response = await fetch(`http://127.0.0.1:${server.address().port}/${new URL(url).pathname.split("/").at(-1)}`, options);
     return new Response(response.body, { status: response.status, headers: response.headers });
   };
-  const install = { appDir: installed, resourcesDir: join(installed, "resources"), executable: join(installed, "Branch Agent.exe"),
+  const installedApp = macBundle ? join(installed, "Branch Agent.app") : installed;
+  const install = { appDir: installedApp, resourcesDir: join(installedApp, macBundle ? "Contents/Resources" : "resources"),
+    executable: join(installedApp, macBundle ? "Contents/MacOS/Branch Agent" : "Branch Agent.exe"),
     electronVersion: ELECTRON, nodePath: process.execPath };
   try { await run({ root, cfg, release, request, install }); }
   finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
@@ -94,6 +106,15 @@ test("desktop app.asar stages with the engine and window while the running app s
   assert.equal(await readFile(join(install.resourcesDir, "app.asar"), "utf8"), "old desktop asar");
   assert.equal(await updater.refreshComponentUpdate(cfg, request, { desktop: install }), false, "an unfinished publication stages nothing more");
 }));
+
+test("macOS stages the sealed whole app even when Electron is unchanged", { skip: process.platform !== "darwin" }, () => fixture(async ({ cfg, request, install, release }) => {
+  assert.equal(await desktopUpdate.stageDesktopUpdate(cfg, release, request, install), true);
+  const journal = await desktopUpdate.readDesktopJournal(cfg);
+  assert.equal(journal.kind, "runtime");
+  assert.equal(journal.target, install.appDir);
+  assert.equal(await readFile(join(journal.staged, "Contents/Resources/app.asar.staged"), "utf8"), "new desktop asar");
+  assert.equal(await readFile(join(install.resourcesDir, "app.asar"), "utf8"), "old desktop asar");
+}, { macBundle: true }));
 
 test("a held update stages no desktop component", () => fixture(async ({ cfg, request, install }) => {
   await writeFile(join(cfg.dataDir, "component-update-pending.json"), JSON.stringify({ version: "hold", phase: "held" }));

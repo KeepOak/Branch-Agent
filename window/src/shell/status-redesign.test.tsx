@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { StatusBar, type StatusItem } from "./StatusBar";
 import { GatewayPopover, RunningPopover, UsagePopover, VersionPopover } from "./StatusPopovers";
 import { machineMenuItems } from "./MachineMenu";
+import { saveTargetName } from "../setup/pre-connect-state";
 import { readLimits, ringReading } from "./status-data";
 import { pauseAll, prepareBackground } from "./StatusLayer";
 import { loadDraft, safeStorage } from "../composer/drafts";
@@ -40,7 +41,7 @@ it("status glyphs open all six popovers from live facts", async () => {
   expect(host.querySelector("[data-testid=sb-room]")?.getAttribute("aria-label")).toBe("Context left · 86%");
   expect(host.querySelector("[data-testid=sb-running]")?.getAttribute("aria-label")).toBe("3 running");
   expect(host.querySelector("[data-testid=sb-version]")?.getAttribute("title")).toBe("Branch 0.19.5 · 0.20.0 ready");
-  expect(host.querySelector("[data-testid=sb-usage]")?.getAttribute("aria-label")).toContain("you@example.com · 77% left");
+  expect(host.querySelector("[data-testid=sb-usage]")?.getAttribute("aria-label")).toContain("ChatGPT · Account 1 · 77% left");
 });
 
 it("usage ring folds after five seconds and still opens on one click", async () => {
@@ -62,29 +63,40 @@ it("usage ring folds after five seconds and still opens on one click", async () 
   } finally { vi.useRealTimers(); }
 });
 
-it("computer popover lists the live computer and routes its three footer actions", () => {
+it("computer popover lists saved computers but not linked teammates", () => {
   const openSettings = vi.fn();
+  const onLinkBranch = vi.fn(), onSwitch = vi.fn();
   const elsewhere = vi.fn();
   window.addEventListener("branch:connect-elsewhere", elsewhere, { once: true });
-  const rows = machineMenuItems({ machineName: "Studio Mac", online: true, level: "regular", roundTripMs: 4, openSettings });
+  localStorage.clear();
+  saveTargetName("wss://other.example.test", "Other computer");
+  const rows = machineMenuItems({ machineName: "Studio Mac", currentUrl: "ws://127.0.0.1:19031", homeUrl: "ws://127.0.0.1:19031", online: true, level: "regular", roundTripMs: 4, openSettings, onLinkBranch, onSwitch });
   expect(rows.find((row) => "label" in row && row.label === "Studio Mac")).toMatchObject({ sub: "Online · here", checked: true });
+  expect(rows.find((row) => "label" in row && row.label === "Other computer")).toMatchObject({ sub: "Saved computer" });
+  expect(rows.find((row) => "label" in row && row.label === "teammate.example.test")).toBeUndefined();
   expect(rows.some((row) => "label" in row && row.label === "Workspace")).toBe(false);
   for (const row of rows) if ("run" in row && row.run) row.run();
   expect(openSettings).toHaveBeenCalledWith("computer");
   expect(openSettings).toHaveBeenCalledWith("gateway");
   expect(elsewhere).toHaveBeenCalledOnce();
+  expect(onLinkBranch).toHaveBeenCalledOnce();
+  expect(onSwitch).toHaveBeenCalledWith("wss://other.example.test");
 });
 
-it("Every account groups gateway readings and checks again through usage.status", async () => {
-  const request = vi.fn(async () => ({ updatedAt: Date.now(), providers: [{ provider: "anthropic", displayName: "Claude", accountEmail: "new@example.com", plan: "Pro", windows: [{ label: "5h", usedPercent: 9 }] }] }));
+it("Every account groups refreshed readings and checks again through usage.status", async () => {
+  const request = vi.fn(async (method: string) => method === "usage.status" ? { updatedAt: Date.now(), providers: [
+    { provider: "openai-codex", displayName: "ChatGPT", accountEmail: "you@example.com", plan: "Plus", windows: [{ label: "5h", usedPercent: 23 }, { label: "Week", usedPercent: 41 }] },
+    { provider: "anthropic", displayName: "Claude", accountEmail: "new@example.com", plan: "Pro", windows: [{ label: "5h", usedPercent: 9 }] },
+  ] } : {});
   const open = vi.fn();
   const host = await show(<UsagePopover above={above} onClose={() => {}} limits={seeded} request={request as never} onOpenUsage={open} />);
+  expect(request).toHaveBeenCalledWith("usage.status", { refresh: true });
   expect(host.textContent).toContain("you@example.com");
   expect(host.textContent).toContain("77% left");
   expect(host.textContent).toContain("week 59% left");
   await click(host, "usage-check");
   expect(request).toHaveBeenCalledWith("models.authStatus", { refresh: true });
-  expect(request).toHaveBeenCalledWith("usage.status", {});
+  expect(request.mock.calls.filter(([method]) => method === "usage.status")).toHaveLength(2);
   expect(host.textContent).toContain("new@example.com");
   await click(host, "open-usage");
   expect(open).toHaveBeenCalledOnce();

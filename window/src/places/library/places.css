@@ -34,7 +34,7 @@
 .kp-empty{display:grid;justify-items:center;gap:8px;padding:36px 0}.kp-empty p{margin:0;max-width:52ch}
 .kp-empty-icon{display:grid;place-items:center;width:44px;height:44px;border-radius:var(--r2-17,12px);background:var(--wash17);color:var(--ink-3)}.kp-empty-icon svg{width:22px;height:22px}
 .kp-grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.kp-tile{padding:16px;border:1px solid var(--hair17);background:var(--raise);border-radius:16px;display:grid;align-content:start;gap:8px}.kp-tile-heading{display:flex;align-items:center;gap:10px}.kp-tile p{margin:0;color:var(--ink-3);font-size:13px}.kp-tile button{justify-self:start}
-.kp-section-title{margin:28px 0 8px!important;font:500 10.5px/1.2 var(--mono)!important;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+.kp-section-title{margin:28px 0 8px;font:500 10.5px/1.2 var(--sans);letter-spacing:normal;text-transform:none;color:var(--ink-3)}
 .kp-banner{display:flex;gap:12px;align-items:center;border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:18px 0 0;background:var(--raise)}.kp-banner .kp-grow{flex:1;display:grid;gap:2px}.kp-banner small{color:var(--ink-3);font-size:12.5px}
 .kp-person-avatar{width:32px;height:32px;display:grid;place-items:center;flex:none;border-radius:50%;background:var(--ink);color:var(--bg);font-size:12px;font-weight:600}
 .kp-presence{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}.kp-presence .kp-presence-chip{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:var(--raise);border:1px solid var(--line);font-size:12px}.kp-presence small{color:var(--ink-3)}
