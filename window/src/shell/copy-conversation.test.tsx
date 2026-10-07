@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ConversationList, type Conversation } from "../connect/conversations";
+import { ConversationList, LIST_PARAMS, type Conversation } from "../connect/conversations";
 import type { Contact } from "./contacts-model";
 import { conversationActions } from "./conversation-actions";
 import { rowMenuItems } from "./row-menu";
@@ -44,9 +44,33 @@ describe("copy conversation", () => {
     if (!forkItem || forkItem.kind !== undefined) throw new Error("Fork item is missing");
     await forkItem.run();
 
-    expect(request).toHaveBeenNthCalledWith(1, "sessions.create", { parentSessionKey: key, fork: true, agentId: "research" });
-    expect(request).toHaveBeenNthCalledWith(2, "sessions.patch", { key: "agent:research:xyz", label: "Research (copy)" });
+    expect(request).toHaveBeenCalledWith("sessions.create", { parentSessionKey: key, fork: true, agentId: "research" });
+    expect(request).toHaveBeenCalledWith("sessions.list", LIST_PARAMS);
+    expect(request).toHaveBeenCalledWith("sessions.patch", { key: "agent:research:xyz", label: "Research (copy)" });
     expect(refresh).toHaveBeenCalledOnce();
+    expect(open).toHaveBeenCalledWith("agent:research:xyz");
+  });
+
+  it("uses a unique (copy N) label when the default copy name is already taken", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.create") return { key: "agent:research:xyz" };
+      if (method === "sessions.list") {
+        return {
+          sessions: [
+            { key, displayName: "Research" },
+            { key: "agent:research:copy-1", displayName: "Research (copy)" },
+          ],
+        };
+      }
+      return {};
+    }) as Parameters<typeof conversationActions>[0];
+    const refresh = vi.fn(async () => {});
+    const open = vi.fn();
+    const actions = actionsOf(request, refresh);
+
+    await actions.copyConversation(row(false), open);
+
+    expect(request).toHaveBeenCalledWith("sessions.patch", { key: "agent:research:xyz", label: "Research (copy 2)" });
     expect(open).toHaveBeenCalledWith("agent:research:xyz");
   });
 
