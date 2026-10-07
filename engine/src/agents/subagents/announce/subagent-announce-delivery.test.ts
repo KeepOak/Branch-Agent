@@ -635,7 +635,7 @@ describe("deliverSubagentAnnouncement active requester steering", () => {
       agentId: "research",
       clone: false,
       sessionKey: "agent:research:work",
-      storePath: sharedStore,
+      storePath: path.resolve(sharedStore),
     });
   });
 

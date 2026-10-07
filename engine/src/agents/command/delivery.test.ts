@@ -1,4 +1,5 @@
 // Covers agent-command reply normalization and outbound delivery status.
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReplyPayload } from "../../auto-reply/reply-payload.js";
 import type { createReplyMediaPathNormalizer } from "../../auto-reply/reply/reply-media-paths.runtime.js";
@@ -428,7 +429,7 @@ describe("deliverAgentCommandResult payload normalization", () => {
     const normalizerOptions = latestNormalizerOptions();
     expect(normalizerOptions.sessionKey).toBe("agent:tester:slack:direct:alice");
     expect(normalizerOptions.agentId).toBe("tester");
-    expect(normalizerOptions.workspaceDir).toBe("/tmp/agent-workspace");
+    expect(normalizerOptions.workspaceDir).toBe(path.resolve("/tmp/agent-workspace"));
     expect(normalizerOptions.messageProvider).toBe("slack");
 
     const normalizedInput = normalizerFn.mock.calls[0]?.[0];
