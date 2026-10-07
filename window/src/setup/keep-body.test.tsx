@@ -9,11 +9,13 @@ import { IN_BROWSER } from "../connect/desktop-controls";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
 let host: HTMLDivElement;
-beforeEach(() => { host = document.body.appendChild(document.createElement("div")); root = createRoot(host); });
+const platform = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
+beforeEach(() => { Object.defineProperty(Navigator.prototype, "platform", { configurable: true, get: () => "Win32" }); host = document.body.appendChild(document.createElement("div")); root = createRoot(host); });
 afterEach(async () => {
   await act(async () => root.unmount());
   document.body.innerHTML = "";
   delete (window as { branchDesktop?: unknown }).branchDesktop;
+  if (platform) Object.defineProperty(Navigator.prototype, "platform", platform);
 });
 const sw = (label: string) => host.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${label}"]`)!;
 

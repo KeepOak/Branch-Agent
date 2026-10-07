@@ -36,7 +36,7 @@ export function chatApps(value: unknown): { id: string; name: string }[] {
 }
 
 export function when(ms: number, now = new Date()): string {
-  const d = new Date(ms), time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  const d = new Date(ms), time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
   const days = Math.round((new Date(now.toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86_400_000);
   return days === 0 ? time : days === 1 ? `Yesterday ${time}` : `${d.toLocaleDateString()} ${time}`;
 }

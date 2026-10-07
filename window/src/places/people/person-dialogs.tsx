@@ -30,7 +30,7 @@ type Setup = { setupCode: string; qrDataUrl?: string; gatewayUrl: string; expire
 function useSetupCode(engine: WindowEngine) {
   const op = useOperation(engine);
   const [setup, setSetup] = useState<Setup | null>(null);
-  const make = () => void op.run<unknown>("device.pair.setupCode", { bootstrapProfile: "limited" }, result => {
+  const make = () => void op.run<unknown>("device.pair.setupCode", { bootstrapProfile: "limited", includeQr: true }, result => {
     const r = rec(result);
     setSetup({ setupCode: str(r.setupCode), qrDataUrl: str(r.qrDataUrl) || undefined, gatewayUrl: str(r.gatewayUrl), expiresAtMs: num(r.expiresAtMs) });
   });
@@ -51,7 +51,7 @@ function CodeBody({ setup }: { setup: Setup }) {
 
 export function CodeDialog({ engine, title, onClose }: { engine: WindowEngine; title: string; onClose: () => void }) {
   const code = useSetupCode(engine);
-  return <Dialog title={title} onClose={onClose} footer={<><button type="button" className="btn ghost" onClick={onClose}>Close</button>{!code.setup && <button type="button" className="btn pri" disabled={code.busy} onClick={code.make}>{code.busy ? "Making…" : "Make a one-time code"}</button>}</>}>
+  return <Dialog title={title} onClose={onClose} footer={<>{!code.setup && <button type="button" className="btn pri" disabled={code.busy} onClick={code.make}>{code.busy ? "Making…" : "Make a one-time code"}</button>}</>}>
     <div className="ppl-dlg" style={{ display: "grid", gap: 12 }}>
       {code.setup ? <CodeBody setup={code.setup} /> : <p style={{ margin: 0 }}>A code their own phone or computer uses once to reach this Branch. It never gives them the owner’s rights.</p>}
       {code.error && <p role="alert" className="pp-error">{code.error}</p>}

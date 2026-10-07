@@ -2269,6 +2269,7 @@
     "@silvia-odwyer/photon-node": "0.3.4",
     "@trycua/cua-driver": "0.28.2",
     "acorn": "8.18.0",
+    "ai": "7.0.79",
     "chalk": "6.0.0",
     "chrome-devtools-mcp": "1.10.1",
     "clawpdf": "0.3.2",

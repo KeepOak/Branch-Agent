@@ -294,6 +294,7 @@ const DEFAULT_RELOAD_POLICIES: ReloadPolicy[] = [
       "worktreeMaxCount",
       "worktreeAcceleration",
       "security.audit.suppressions",
+      "security.lockdown",
       "security.installPolicy",
       "diagnostics.cacheTrace.enabled",
       "acp",

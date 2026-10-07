@@ -7,7 +7,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { afterEach, describe, expect, it } from "vitest";
 import type { EventFrame } from "../../packages/gateway-protocol/src/index.js";
 import { gateEveryTool } from "./channel-server-runtime.js";
-import { resolveDesktopGateway } from "./desktop-gateway.js";
+import { liveDesktopGatewayUrl, resolveDesktopGateway } from "./desktop-gateway.js";
 import { displayName, outsideAgentFromClient, OutsidePresence } from "./outside-presence.js";
 import { describeRunEvent, registerTrunkMcpTools, type TrunkGateway } from "./trunk-tools.js";
 
@@ -389,6 +389,7 @@ describe("branch mcp serve identity and gateway", () => {
       expect(resolveDesktopGateway({}, {}, dir)).toEqual({
         url: "ws://127.0.0.1:19031",
         token: "secret-value",
+        dataDir: dir,
       });
       expect(resolveDesktopGateway({}, { BRANCH_GATEWAY_PORT: "19555" }, dir)?.url).toBe(
         "ws://127.0.0.1:19555",
@@ -398,6 +399,18 @@ describe("branch mcp serve identity and gateway", () => {
       expect(resolveDesktopGateway({ url: "wss://remote.example" }, {}, dir)).toBeUndefined();
       expect(resolveDesktopGateway({}, { BRANCH_GATEWAY_TOKEN: "env" }, dir)).toBeUndefined();
       expect(resolveDesktopGateway({}, {}, path.join(dir, "missing"))).toBeUndefined();
+      // After an in-place update the desktop records the engine's live port; outside agents follow it.
+      fs.writeFileSync(path.join(dir, "gateway-port"), "40123\r\n");
+      expect(resolveDesktopGateway({}, {}, dir)?.url).toBe("ws://127.0.0.1:40123");
+      expect(resolveDesktopGateway({}, { BRANCH_GATEWAY_PORT: "19555" }, dir)?.url).toBe(
+        "ws://127.0.0.1:19555",
+      );
+      // Reconnects re-read the live port from the file; a launch-time env port never pins them.
+      expect(liveDesktopGatewayUrl(dir)).toBe("ws://127.0.0.1:40123");
+      for (const invalid of ["", "abc", "0", "70000", "12 34"]) {
+        fs.writeFileSync(path.join(dir, "gateway-port"), invalid);
+        expect(resolveDesktopGateway({}, {}, dir)?.url).toBe("ws://127.0.0.1:19031");
+      }
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

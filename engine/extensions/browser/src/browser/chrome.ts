@@ -99,6 +99,7 @@ const TCP_LISTEN_STATE_HEX = "0A";
 type ChromeLaunchStderrSignals = {
   singletonInUse: boolean;
   missingDisplay: boolean;
+  noUsableSandbox: boolean;
 };
 
 function createChromeLaunchStderrDiagnostics() {
@@ -106,6 +107,7 @@ function createChromeLaunchStderrDiagnostics() {
   const signals: ChromeLaunchStderrSignals = {
     singletonInUse: false,
     missingDisplay: false,
+    noUsableSandbox: false,
   };
   let markerScanTail = "";
 
@@ -117,6 +119,7 @@ function createChromeLaunchStderrDiagnostics() {
         const scanText = `${markerScanTail}${chunkText}`;
         signals.singletonInUse ||= CHROME_SINGLETON_IN_USE_PATTERN.test(scanText);
         signals.missingDisplay ||= CHROME_MISSING_DISPLAY_PATTERN.test(scanText);
+        signals.noUsableSandbox ||= /No usable sandbox!/i.test(scanText);
         markerScanTail = scanText.slice(-CHROME_STDERR_MARKER_SCAN_TAIL_CHARS);
       }
     },
@@ -130,6 +133,7 @@ function createChromeLaunchStderrDiagnostics() {
       tail.clear();
       signals.singletonInUse = false;
       signals.missingDisplay = false;
+      signals.noUsableSandbox = false;
       markerScanTail = "";
     },
   };
@@ -655,7 +659,11 @@ function chromeLaunchHints(params: {
 }): string {
   const hints: string[] = [];
   if (process.platform === "linux" && !params.resolved.noSandbox) {
-    hints.push("If running in a container or as root, try setting browser.noSandbox: true.");
+    if (params.stderrSignals?.noUsableSandbox) {
+      hints.push("Chromium has no usable sandbox. On Ubuntu, check AppArmor's unprivileged user namespace restriction; to run without Chromium's sandbox, set browser.noSandbox: true.");
+    } else {
+      hints.push("If running in a container or as root, try setting browser.noSandbox: true.");
+    }
   }
   const headlessMode = resolveManagedBrowserHeadlessMode(
     params.resolved,
@@ -991,6 +999,8 @@ export async function launchBranchChrome(
     );
   }
 
+  const launchResolved = resolved;
+
   fs.mkdirSync(userDataDir, { recursive: true });
   await ensureOutputDirectory(DEFAULT_DOWNLOAD_DIR);
 
@@ -1015,7 +1025,7 @@ export async function launchBranchChrome(
   const spawnOnce = async (onStderr?: (chunk: Buffer | string) => void) => {
     signal?.throwIfAborted();
     const args = buildBranchChromeLaunchArgs({
-      resolved,
+      resolved: launchResolved,
       profile,
       userDataDir,
       ...headlessOptions,
@@ -1098,12 +1108,17 @@ export async function launchBranchChrome(
   // If the profile doesn't exist yet, bootstrap it once so Chrome creates defaults.
   // Then decorate (if needed) before the "real" run.
   if (needsBootstrap) {
-    const { pid: bootstrapPid, proc: bootstrap, releaseAbort } = await spawnOnce();
+    const bootstrapStderr = createChromeLaunchStderrDiagnostics();
+    const onBootstrapStderr = (chunk: Buffer | string) => bootstrapStderr.append(chunk);
+    const { pid: bootstrapPid, proc: bootstrap, releaseAbort } = await spawnOnce(onBootstrapStderr);
     let bootstrapError: Error | undefined;
     try {
       const deadline = Date.now() + CHROME_BOOTSTRAP_PREFS_TIMEOUT_MS;
       while (Date.now() < deadline) {
         signal?.throwIfAborted();
+        if (bootstrapStderr.signals().noUsableSandbox) {
+          throw new Error("Chromium has no usable sandbox. On Ubuntu, check AppArmor's unprivileged user namespace restriction; to run without Chromium's sandbox, set browser.noSandbox: true.");
+        }
         if (fs.existsSync(localStatePath) && fs.existsSync(preferencesPath)) {
           break;
         }
@@ -1118,6 +1133,8 @@ export async function launchBranchChrome(
       exited = await signalChromeProcess(bootstrap, "SIGKILL", CHROME_BOOTSTRAP_EXIT_TIMEOUT_MS);
     }
     releaseAbort();
+    bootstrap.stderr?.off("data", onBootstrapStderr);
+    bootstrapStderr.clear();
     if (!exited) {
       throw new ManagedChromeCleanupError(
         `Managed Chrome bootstrap ${bootstrapPid} survived cleanup.`,
@@ -1179,6 +1196,9 @@ export async function launchBranchChrome(
       // waitForCdpReadyAfterLaunch() budget; launch only owns process discovery.
       while (Date.now() < readyDeadline) {
         signal?.throwIfAborted();
+        if (stderrDiagnostics.signals().noUsableSandbox) {
+          break;
+        }
         if (
           await isChromeReachable(
             profile.cdpUrl,
@@ -1195,6 +1215,9 @@ export async function launchBranchChrome(
 
       if (!launchHttpReachable) {
         signal?.throwIfAborted();
+        if (stderrDiagnostics.signals().noUsableSandbox) {
+          throw new Error(`Chromium has no usable sandbox for profile "${profile.name}". On Ubuntu, check AppArmor's unprivileged user namespace restriction; to run without Chromium's sandbox, set browser.noSandbox: true.`);
+        }
         let finalDiagnostic: ChromeCdpDiagnostic | null = null;
         let diagnosticErrorText: string | null = null;
         try {
@@ -1248,7 +1271,7 @@ export async function launchBranchChrome(
           const launchHints = chromeLaunchHints({
             stderrOutput,
             stderrSignals,
-            resolved,
+            resolved: launchResolved,
             profile,
             launchOptions: headlessOptions,
           });

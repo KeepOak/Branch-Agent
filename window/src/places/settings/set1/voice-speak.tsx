@@ -18,8 +18,8 @@ export function SpeakingMore(props: Shared) {
   const pick = (id: string) => void save(async () => { await engine.request("tts.setProvider", { provider: id }); await Promise.all([tts.reload(), voices.reload()]); });
   const ready = providers.filter((p) => p.configured).map((p) => p.label);
   return (
-    <Sec title="Speaking back, more">
-      <Ctl title="Speaking engine" sub="Voices on this computer are free and private. A service needs its key and gets the text it reads out.">
+    <Sec title="Speaking back, more" showHeading={false} group="Speaking back">
+      <Ctl title="Speaking engine" sub="Voices on this computer are free and private." help="Voices on this computer are free and private. A service needs its key and gets the text it reads out.">
         <Pick label="Speaking engine" value={current} options={providers.map((p) => ({ id: p.id, label: p.label }))} disabled={!voices.data} onChange={pick} />
       </Ctl>
       <PreviewRow {...props} />
@@ -72,10 +72,10 @@ function NamedVoices({ tts }: Shared) {
   const personas = list(tts.data?.personas);
   if (!personas.length) return <Greyed why="Branch can’t add a named voice from here yet." rows={[{ t: "Named voices", sub: "A name for a voice that keeps sounding the same, whichever engine speaks.", c: { btn: "Manage" } }]} />;
   return (
-    <Ctl title="Named voices" sub="A name for a voice that keeps sounding the same, whichever engine speaks.">
+    <Ctl title="Named voices" sub="Save one voice name across speech engines." help="A name for a voice that keeps sounding the same, whichever engine speaks.">
       <Btn sm onClick={() => setOpen(true)}>See {personas.length}</Btn>
       {open ? (
-        <Dialog title="Named voices" onClose={() => setOpen(false)} footer={<button type="button" className="btn pri" onClick={() => setOpen(false)}>Close</button>}>
+        <Dialog title="Named voices" onClose={() => setOpen(false)}>
           <div className="rows">
             {personas.map((p) => <div key={text(p.id)} className="prow"><span className="grow"><b>{visible(p.label ?? p.id)}</b><small>{[p.description, p.provider].filter(Boolean).map(visible).join(" · ")}</small></span></div>)}
           </div>
@@ -87,7 +87,7 @@ function NamedVoices({ tts }: Shared) {
 
 export function TrunksMayUse() {
   return (
-    <Sec title="What Trunks may use">
+    <Sec title="What Trunks may use" group="Voice engine">
       <Greyed why={APP} rows={[
         { t: "Trunks may listen through the microphone", sub: "A Trunk can record and turn speech into text on this computer when a task needs it. Setup turns it on; it stays off if setup is skipped.", c: { sw: true } },
         { t: "Trunks may speak on this computer’s speakers", sub: "A Trunk can say something out loud here, such as a reminder, in the chosen voice. Setup turns it on; it stays off if setup is skipped.", c: { sw: true } },
@@ -103,8 +103,8 @@ export function ListeningServices({ cfg, catalog, openSettings }: Shared) {
   const value = text(cfg.get(STREAM) ?? tr.activeProvider ?? "");
   const cli = text(cfg.get("tts.providers.tts-local-cli.command") ?? "");
   return (
-    <Sec title="Listening, services">
-      <Ctl title="Listening engine" sub="What turns your voice into words. A service needs its key and hears the recording.">
+    <Sec title="Listening, services" showHeading={false} group="Listening">
+      <Ctl title="Listening engine" sub="What turns your voice into words." help="What turns your voice into words. A service needs its key and hears the recording.">
         <Pick label="Listening engine" value={value} options={providers.map((p) => ({ id: p.id, label: p.label }))} disabled={cfg.loading || !providers.length} onChange={(id) => void cfg.set(STREAM, id)} />
       </Ctl>
       <Ctl stack title="A program of yours as an engine" sub="{{Text}} and {{OutputPath}} are filled in for you.">
@@ -150,5 +150,5 @@ const TURN: GreyRow[] = [
 ];
 
 export function SpokenTurn() {
-  return <Sec title="A spoken turn"><Greyed why={NO_KEY} rows={TURN} /></Sec>;
+  return <Sec title="A spoken turn" showHeading={false} group="Voice engine"><Greyed why={NO_KEY} rows={TURN} /></Sec>;
 }
