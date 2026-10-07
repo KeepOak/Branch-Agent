@@ -110,7 +110,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
   };
   if (holdStartup) await writeFile(join(root, "hold-startup"), "wait");
   await prepare?.(root);
-  let onStaged, onWithdrawal, swapGuard, pendingVersion, engineWatchTick, stopWatching;
+  let onStaged, onWithdrawal, swapGuard, pendingVersion, engineWatchTick, stopWatching, stopEngineWatch, stopWindowWatch, stopAutoApply, windowServer;
   // Auto-apply's clock: a test moves it past the 60 s idle hold instead of waiting for it.
   const clock = { skew: 0 };
   Module._load = function(name, ...args) {
@@ -125,16 +125,24 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
         return result;
       } };
     }
-    if (manualEngineWatch && name === "./updates") {
+    if (name === "./updates") {
       const source = originalLoad.call(this, name, ...args);
       return { ...source, watchEngineBuild: (signature, onChange) => {
-        let last = signature();
-        const tick = () => {
-          const next = signature();
-          if (next && next !== last) { last = next; onChange(); }
-        };
-        engineWatchTick = tick;
-        return () => { if (engineWatchTick === tick) engineWatchTick = undefined; };
+        if (manualEngineWatch) {
+          let last = signature();
+          const tick = () => {
+            const next = signature();
+            if (next && next !== last) { last = next; onChange(); }
+          };
+          engineWatchTick = tick;
+          stopEngineWatch = () => { if (engineWatchTick === tick) engineWatchTick = undefined; };
+          return stopEngineWatch;
+        }
+        stopEngineWatch = source.watchEngineBuild(signature, onChange);
+        return stopEngineWatch;
+      }, watchWindowBuild: (dir, onChange) => {
+        stopWindowWatch = source.watchWindowBuild(dir, onChange);
+        return stopWindowWatch;
       } };
     }
     if (fastSupervisor && name === "./gateway-supervisor") {
@@ -147,7 +155,16 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
       const source = originalLoad.call(this, name, ...args);
       return { ...source, createAutoApplyUpdate: options => {
         pendingVersion = options.pendingVersion;
-        return source.createAutoApplyUpdate({ ...options, now: () => Date.now() + clock.skew });
+        const created = source.createAutoApplyUpdate({ ...options, now: () => Date.now() + clock.skew });
+        stopAutoApply = () => created.stop();
+        return created;
+      } };
+    }
+    if (name === "./static-server") {
+      const source = originalLoad.call(this, name, ...args);
+      return { ...source, serveWindow: async (...args) => {
+        windowServer = await source.serveWindow(...args);
+        return windowServer;
       } };
     }
     if (name === "./component-update") {
@@ -216,6 +233,12 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     runtime.app.emit("will-quit");
     await eventually(async () => (await starts()).every(pid => !alive(pid)));
     stopWatching?.();
+    stopEngineWatch?.();
+    stopWindowWatch?.();
+    stopAutoApply?.();
+    windowServer?.closeAllConnections?.();
+    await new Promise(resolve => windowServer ? windowServer.close(() => resolve()) : resolve());
+    for (const pid of await starts()) try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
     Module._load = originalLoad; globalThis.fetch = originalFetch;
     previous === undefined ? delete process.env.BRANCH_DESKTOP_DATA : process.env.BRANCH_DESKTOP_DATA = previous;
     previousCandidateMin === undefined ? delete process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB : process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB = previousCandidateMin;
