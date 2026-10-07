@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
 import { lstat, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to strict-compiled sources");
-const { prepareNormalProfile } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "profile-migration.js")));
+const { prepareNormalProfile, renameWithRetry } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "profile-migration.js")));
 const { startGateway } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
 
 async function homeFixture(run) {
@@ -63,6 +65,23 @@ test("owner-shaped dev workspace migrates once with the original archived and no
   assert.deepEqual(await readdir(home), names);
 }));
 
+test("gateway log records migration start, counts, and failure details", async () => homeFixture(async (root, home) => {
+  await writeFile(join(root, "branch.mjs"), "");
+  await mkdir(join(home, ".branch-dev", "workspace"), { recursive: true });
+  await writeFile(join(home, ".branch-dev", "workspace", "IDENTITY.md"), "owner");
+  const child = startGateway({ dataDir: root, nodePath: process.execPath, gatewayPort: 19631 }, root, "fixture-token");
+  await once(child, "exit");
+  const log = await readFile(join(root, "gateway.log"), "utf8");
+  assert.match(log, /Profile migration start/);
+  assert.match(log, /Profile migration done: 1 copied, 0 links skipped, \d+ ms/);
+  await rm(join(home, ".branch"), { recursive: true });
+  await writeFile(join(home, ".branch"), "not a directory");
+  const failed = startGateway({ dataDir: root, nodePath: process.execPath, gatewayPort: 19631 }, root, "fixture-token");
+  await once(failed, "exit");
+  const failureLog = await readFile(join(root, "gateway.log"), "utf8");
+  assert.ok(failureLog.includes(`Profile migration failed (code=UNKNOWN path=${join(home, ".branch")} message=Normal profile root is not a directory)`));
+}));
+
 test("a dangling link or junction in the legacy profile never stops the migration or the app", async () => homeFixture(async (root, home) => {
   // As the owner's profile: plugin-skills/browser-automation was a junction into an engine release since removed.
   const gone = join(root, "updates", "release-gone", "engine", "skills", "browser-automation");
@@ -81,20 +100,81 @@ test("a dangling link or junction in the legacy profile never stops the migratio
   assert.ok((await lstat(join(home, archive, "plugin-skills", "browser-automation"))).isSymbolicLink(), "the archive lost the original link");
 }));
 
-test("mid-migration failure rolls back original files byte-identically", async () => homeFixture(async (_root, home) => {
+test("mid-migration failure retains the archive and resumes only missing files", async () => homeFixture(async (_root, home) => {
   await mkdir(join(home, ".branch"), { recursive: true });
   await mkdir(join(home, ".branch-dev", "workspace"), { recursive: true });
   await writeFile(join(home, ".branch", "branch.json"), "{\"owner\":true}\n");
   await writeFile(join(home, ".branch-dev", "workspace", "IDENTITY.md"), "original\u0000bytes");
   const beforeConfig = await readFile(join(home, ".branch", "branch.json"));
-  const beforeWorkspace = await readFile(join(home, ".branch-dev", "workspace", "IDENTITY.md"));
-  const result = prepareNormalProfile(home, () => { throw new Error("injected failure"); });
-  assert.equal(result.legacyDevMode, true);
+  const logs = [];
+  let copied = 0;
+  const failure = Object.assign(new Error("injected failure"), { code: "EACCES", path: join(home, ".branch", "workspace", "IDENTITY.md") });
+  const result = prepareNormalProfile(home, () => { copied++; throw failure; }, (message) => logs.push(message));
+  assert.equal(result.legacyDevMode, false);
+  assert.match(result.note, /code=EACCES/);
+  assert.ok(result.note.includes(`path=${failure.path}`));
+  assert.match(result.note, /message=injected failure/);
+  assert.deepEqual(logs, ["Profile migration start"]);
   assert.deepEqual(await readFile(join(home, ".branch", "branch.json")), beforeConfig);
-  assert.deepEqual(await readFile(join(home, ".branch-dev", "workspace", "IDENTITY.md")), beforeWorkspace);
-  assert.equal((await readdir(join(home, ".branch"))).includes("workspace"), false);
+  assert.equal(await readFile(join(home, ".branch", "workspace", "IDENTITY.md"), "utf8"), "original\u0000bytes");
+  assert.equal((await readdir(home)).includes(".branch-dev"), false);
+  const archive = (await readdir(home)).find((name) => name.startsWith(".branch-dev.migrated-"));
+  assert.equal(await readFile(join(home, archive, "workspace", "IDENTITY.md"), "utf8"), "original\u0000bytes");
   assert.equal((await readdir(join(home, ".branch"))).includes(".normal-profile-migrated.json"), false);
-  assert.equal((await readdir(home)).some((name) => name.startsWith(".migration-backup-")), false);
+  assert.equal(prepareNormalProfile(home, () => { copied++; }, (message) => logs.push(message)).legacyDevMode, false);
+  assert.equal(copied, 1, "the copied file was copied again");
+  assert.deepEqual(logs.slice(1, 2), ["Profile migration start"]);
+  assert.match(logs[2], /^Profile migration done: 0 copied, 0 links skipped, \d+ ms$/);
+  assert.equal(JSON.parse(await readFile(join(home, ".branch", ".normal-profile-migrated.json"), "utf8")).archive, join(home, archive));
+}));
+
+test("a fresh profile remains launchable when merge pauses after archiving", async () => homeFixture(async (_root, home) => {
+  await mkdir(join(home, ".branch-dev", "workspace"), { recursive: true });
+  await writeFile(join(home, ".branch-dev", "workspace", "IDENTITY.md"), "legacy");
+  const result = prepareNormalProfile(home, () => { throw new Error("paused merge"); });
+  assert.equal(result.legacyDevMode, false);
+  const config = JSON.parse(await readFile(join(home, ".branch", "branch.json"), "utf8"));
+  assert.equal(config.agents.defaults.workspace, join(home, ".branch", "workspace"));
+  assert.equal(prepareNormalProfile(home).legacyDevMode, false);
+  assert.equal(await readFile(join(home, ".branch", "workspace", "IDENTITY.md"), "utf8"), "legacy");
+}));
+
+test("transient rename locks retry and permanent locks stop after bounded attempts", async () => homeFixture(async (_root, home) => {
+  let attempts = 0;
+  const locked = Object.assign(new Error("locked"), { code: "EPERM" });
+  renameWithRetry("old", "new", () => { if (++attempts < 3) throw locked; });
+  assert.equal(attempts, 3);
+  attempts = 0;
+  assert.throws(() => renameWithRetry("old", "new", () => { attempts++; throw locked; }), /locked/);
+  assert.equal(attempts, 4);
+  attempts = 0;
+  const invalid = Object.assign(new Error("invalid"), { code: "EINVAL" });
+  assert.throws(() => renameWithRetry("old", "new", () => { attempts++; throw invalid; }), /invalid/);
+  assert.equal(attempts, 1);
+}));
+
+test("sockets and FIFOs are ignored while regular profile files migrate", async () => homeFixture(async (_root, home) => {
+  const workspace = join(home, ".branch-dev", "workspace");
+  await mkdir(workspace, { recursive: true });
+  await writeFile(join(workspace, "IDENTITY.md"), "kept");
+  if (process.platform !== "win32") {
+    const fifo = join(workspace, "service.fifo");
+    const result = spawnSync("mkfifo", [fifo], { windowsHide: true });
+    assert.equal(result.status, 0, result.stderr?.toString());
+    const socket = createServer();
+    socket.listen(join(workspace, "service.sock"));
+    await once(socket, "listening");
+    try {
+      assert.equal(prepareNormalProfile(home).legacyDevMode, false);
+    } finally {
+      await new Promise((resolve) => socket.close(resolve));
+    }
+  } else {
+    assert.equal(prepareNormalProfile(home).legacyDevMode, false);
+  }
+  assert.equal(await readFile(join(home, ".branch", "workspace", "IDENTITY.md"), "utf8"), "kept");
+  assert.equal((await readdir(join(home, ".branch", "workspace"))).includes("service.fifo"), false);
+  assert.equal((await readdir(join(home, ".branch", "workspace"))).includes("service.sock"), false);
 }));
 
 test("keeps a normal SQLite database separate from legacy sidecars", async () => homeFixture(async (_root, home) => {
