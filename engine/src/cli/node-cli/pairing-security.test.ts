@@ -97,17 +97,17 @@ describe("branch node run pairing input", () => {
     expect(daemonMocks.runNodeHost).toHaveBeenCalled();
   });
 
-  it("rejects --pair-file with unsafe permissions on POSIX", async function () {
-    if (os.platform() === "win32") {
-      this.skip();
-    }
-    const filePath = writeCodeFile(0o644, pairCode());
-    await run(["run", "--pair-file", filePath]);
-    expect(daemonMocks.defaultRuntime.error).toHaveBeenCalledWith(
-      expect.stringContaining("unsafe permissions"),
-    );
-    expect(daemonMocks.runNodeHost).not.toHaveBeenCalled();
-  });
+  it.skipIf(os.platform() === "win32")(
+    "rejects --pair-file with unsafe permissions on POSIX",
+    async () => {
+      const filePath = writeCodeFile(0o644, pairCode());
+      await run(["run", "--pair-file", filePath]);
+      expect(daemonMocks.defaultRuntime.error).toHaveBeenCalledWith(
+        expect.stringContaining("unsafe permissions"),
+      );
+      expect(daemonMocks.runNodeHost).not.toHaveBeenCalled();
+    },
+  );
 
   it("accepts --pair-if-needed-file without a deprecation warning", async () => {
     const filePath = writeCodeFile(0o600, pairCode());

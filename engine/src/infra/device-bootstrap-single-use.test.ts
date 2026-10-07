@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NODE_PAIRING_SETUP_BOOTSTRAP_PROFILE } from "../shared/device-bootstrap-profile.js";
+import {
+  closeBranchStateDatabaseAsync,
+  closeBranchStateDatabaseForTest,
+} from "../state/branch-state-db.js";
 import { createTrackedTempDirs } from "../test-utils/tracked-temp-dirs.js";
 import {
   consumeDeviceBootstrapTokenWithSetupCompletion,
@@ -12,6 +16,8 @@ const createTempDir = () => tempDirs.make("bootstrap-single-use-test-");
 
 afterEach(async () => {
   vi.useRealTimers();
+  await closeBranchStateDatabaseAsync();
+  closeBranchStateDatabaseForTest();
   await tempDirs.cleanup();
 });
 

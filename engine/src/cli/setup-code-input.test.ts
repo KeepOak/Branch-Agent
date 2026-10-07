@@ -49,45 +49,45 @@ describe("readSetupCodeFromFile", () => {
     expect(readSetupCodeFromFile(filePath)).toBe("test-code-with-whitespace");
   });
 
-  it("rejects file with group-readable permissions on POSIX", function () {
-    if (os.platform() === "win32") {
-      this.skip();
-    }
-    const filePath = writeCodeFile(0o640);
-    expect(() => readSetupCodeFromFile(filePath)).toThrow(/unsafe permissions/);
-  });
+  it.skipIf(os.platform() === "win32")(
+    "rejects file with group-readable permissions on POSIX",
+    () => {
+      const filePath = writeCodeFile(0o640);
+      expect(() => readSetupCodeFromFile(filePath)).toThrow(/unsafe permissions/);
+    },
+  );
 
-  it("rejects file with world-readable permissions on POSIX", function () {
-    if (os.platform() === "win32") {
-      this.skip();
-    }
-    const filePath = writeCodeFile(0o604);
-    expect(() => readSetupCodeFromFile(filePath)).toThrow(/unsafe permissions/);
-  });
+  it.skipIf(os.platform() === "win32")(
+    "rejects file with world-readable permissions on POSIX",
+    () => {
+      const filePath = writeCodeFile(0o604);
+      expect(() => readSetupCodeFromFile(filePath)).toThrow(/unsafe permissions/);
+    },
+  );
 
-  it("rejects file with group-writable permissions on POSIX", function () {
-    if (os.platform() === "win32") {
-      this.skip();
-    }
-    const filePath = writeCodeFile(0o620);
-    expect(() => readSetupCodeFromFile(filePath)).toThrow(/unsafe permissions/);
-  });
+  it.skipIf(os.platform() === "win32")(
+    "rejects file with group-writable permissions on POSIX",
+    () => {
+      const filePath = writeCodeFile(0o620);
+      expect(() => readSetupCodeFromFile(filePath)).toThrow(/unsafe permissions/);
+    },
+  );
 
-  it("rejects file with world-writable permissions on POSIX", function () {
-    if (os.platform() === "win32") {
-      this.skip();
-    }
-    const filePath = writeCodeFile(0o602);
-    expect(() => readSetupCodeFromFile(filePath)).toThrow(/unsafe permissions/);
-  });
+  it.skipIf(os.platform() === "win32")(
+    "rejects file with world-writable permissions on POSIX",
+    () => {
+      const filePath = writeCodeFile(0o602);
+      expect(() => readSetupCodeFromFile(filePath)).toThrow(/unsafe permissions/);
+    },
+  );
 
-  it("accepts file with mode 0400 (read-only) on POSIX", function () {
-    if (os.platform() === "win32") {
-      this.skip();
-    }
-    const filePath = writeCodeFile(0o400, "code");
-    expect(readSetupCodeFromFile(filePath)).toBe("code");
-  });
+  it.skipIf(os.platform() === "win32")(
+    "accepts file with mode 0400 (read-only) on POSIX",
+    () => {
+      const filePath = writeCodeFile(0o400, "code");
+      expect(readSetupCodeFromFile(filePath)).toBe("code");
+    },
+  );
 
   it("throws when file does not exist", () => {
     expect(() => readSetupCodeFromFile("/nonexistent/path/code.txt")).toThrow(
