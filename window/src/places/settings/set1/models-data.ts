@@ -8,6 +8,7 @@ import { useConfig, useScope, type Opt } from "../kit";
 import type { ConfigPath } from "../config-store";
 import { providersOf, type Provider } from "./accounts";
 import { serviceName } from "./service";
+import { displayModelName } from "../../../composer/model-display";
 
 export type Model = { ref: string; id: string; provider: string; name: string; local: boolean; available: boolean; images: boolean; thinking: Opt[]; thinkingDefault?: string };
 
@@ -16,7 +17,7 @@ export function modelsOf(data: RecordValue | undefined): Model[] {
     ref: `${text(m.provider)}/${text(m.id)}`,
     id: text(m.id),
     provider: text(m.provider),
-    name: visible(m.name ?? m.id),
+    name: displayModelName(visible(m.name ?? m.id)),
     local: m.local === true,
     available: m.available !== false,
     images: Array.isArray(m.input) && m.input.includes("image"),

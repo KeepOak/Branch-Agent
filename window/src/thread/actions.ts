@@ -23,8 +23,13 @@ export async function rewindTo(engine: WindowEngine, entryId: string): Promise<s
   return str(result.editorText);
 }
 
-/** Sends words in the open conversation (`chat.send`), the way the composer does. */
+/** Sends words in the open conversation (`chat.send`), the way the composer does: through the window's own send
+ *  when there is one, so your message sits over the new reply instead of after it. */
 export async function sendText(engine: WindowEngine, message: string): Promise<string> {
+  if (engine.send) {
+    await engine.send(message);
+    return "";
+  }
   const result = rec(await engine.request("chat.send", { ...target(engine), message, idempotencyKey: crypto.randomUUID() }));
   return str(result.runId);
 }
@@ -35,12 +40,14 @@ export async function askAgain(engine: WindowEngine, userEntryId: string): Promi
   if (!words.trim()) {
     throw new Error("The engine did not give back the words to send again.");
   }
+  engine.rewound?.(userEntryId);
   await sendText(engine, words);
 }
 
 /** "Edit and send again": go back to just before your message, then send the edited words. */
 export async function editAndSend(engine: WindowEngine, userEntryId: string, words: string): Promise<void> {
   await rewindTo(engine, userEntryId);
+  engine.rewound?.(userEntryId);
   await sendText(engine, words);
 }
 
@@ -80,7 +87,7 @@ export function toChips(list: unknown, selfId: string | null): Reaction[] {
       emoji: str(rec(r).emoji),
       count: Number(rec(r).count) || ids.length,
       mine: selfId !== null && ids.some((i) => str(i.id) === selfId),
-      names: ids.map((i) => str(i.label) || str(i.id)),
+      names: ids.map((i) => selfId && str(i.id) === selfId ? "You" : str(i.label) || str(i.id)),
     };
   });
 }

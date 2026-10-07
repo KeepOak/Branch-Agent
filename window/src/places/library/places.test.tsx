@@ -101,7 +101,7 @@ describe("preview topology and supported followup operations", () => {
   it("matches the canonical Customize tabs and uses actual Trunk faces and job cards", async () => {
     const request = vi.fn(() => Promise.resolve({ defaultId: "main", mainKey: "main", agents: [{ id: "main", name: "Sapling", identity: { theme: "General help" } }] }));
     await mount(<CustomizePlace engine={engine(request)} facts={{ running: 0, waiting: 0 }} openConversation={() => {}} openPlace={() => {}} level="regular" />);
-    expect([...host.querySelectorAll('[aria-label="Customize"] [role="tab"]')].map(t => t.textContent)).toEqual(["Trunks", "Tools", "Specialists", "Channels", "Everywhere"]);
+    expect([...host.querySelectorAll('[aria-label="Customize"] [role="tab"]')].map(t => t.textContent)).toEqual(["Trunks", "Tools", "Specialists", "Chat apps", "Everywhere"]);
     expect(host.querySelector('[aria-label="Sapling"]')?.getAttribute("data-face-size")).toBe("36");
     expect(host.querySelectorAll('[aria-label^="Use this job:"]')).toHaveLength(6);
   });

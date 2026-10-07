@@ -5,10 +5,15 @@ import type { EventFrame, HelloOk } from "@branch/gateway-client/browser";
 import { BranchGateway, type GatewayStatus } from "./gateway";
 import type { SendExtras, WindowEngine } from "./engine";
 import { RunStreams, readRunEvent } from "./stream-order";
+import { storedOperatorToken } from "./device-token-store";
 import { withOwner } from "./agent-owner";
 import { projectRun, type Approval, type Block } from "../thread/model";
-import { historyToBlocks, readApprovalRecords } from "../thread/history";
+import { historyToBlocks, markStopped, readApprovalRecords } from "../thread/history";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "./preparation-status";
+import { addNotSent, healNotSent } from "../composer/queue";
+import { droppedFiles, engineKeyOf, heldRuns, UnconfirmedSends } from "./unconfirmed";
+import { failedAck, isRetryable, refusedOrUnsent, requestWithRetry } from "./send-errors";
+import { safeStorage } from "../composer/drafts";
 
 export type SessionSnapshot = {
   status: GatewayStatus;
@@ -30,7 +35,16 @@ export type SessionSnapshot = {
   doneAt: number | null;
   lastActivityAt: number | null;
   error: string | null;
+  /** How the last run in this conversation ended, so the done cheer speaks for that run only (§4.2.5). */
+  ended: RunEnd | null;
+  /** What you told the Trunk while it worked (sent with queueMode "steer"), until the turn ends (§4.2.2 Steered note). */
+  steered: SteeredNote[];
 };
+
+/** `absorbed`: the engine took your message into another turn ("ok"); that turn's own end is what counts. */
+export type RunEnd = { runId: string; outcome: "done" | "stopped" | "failed" | "absorbed"; at: number };
+/** `target` is the turn it was told to; the note goes when that turn ends and the history has it in place. */
+export type SteeredNote = { runId: string; text: string; target: string };
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -38,7 +52,8 @@ const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const runStart = (v: Record<string, unknown>): number | null =>
   typeof v.startedAt === "number" && Number.isFinite(v.startedAt) && v.startedAt > 0 ? v.startedAt : null;
 
-export type QueuedMessage = { key: string; block: Extract<Block, { kind: "user" }>; state: "queued" | "delivered" };
+/** `runId`: the run the engine admitted it as (pendingInputs `runId`, the sender's idempotency key). */
+export type QueuedMessage = { key: string; block: Extract<Block, { kind: "user" }>; state: "queued" | "delivered"; runId?: string };
 
 /** The engine's waiting inputs as user blocks, merged with what was shown: gone from the engine means a turn picked
  *  it up ("delivered"); a full history read (`settled`) drops the delivered ones, since the history now has them. */
@@ -47,18 +62,21 @@ export function mergeQueued(
   pendingInputs: unknown,
   sessionKey: string,
   settled: boolean,
+  /** Runs this window already shows in its own place (your message above the turn, a steered note). The engine
+   *  lists their input as waiting while it admits them; drawing it again made a grey copy under the dots. */
+  ownRuns: ReadonlySet<string> = new Set(),
 ): QueuedMessage[] {
   const items = (Array.isArray(rec(pendingInputs).items) ? (rec(pendingInputs).items as unknown[]) : [])
     .map(rec)
-    .filter((item) => item.state === "queued" && item.message && str(item.id));
+    .filter((item) => item.state === "queued" && item.message && str(item.id) && !ownRuns.has(str(item.runId)));
   const blocks = historyToBlocks(items.map((item) => item.message), [], sessionKey, null);
   const waiting: QueuedMessage[] = [];
   items.forEach((item, at) => {
     const block = blocks.filter((b) => b.kind === "user")[at] as Extract<Block, { kind: "user" }> | undefined;
-    if (block) waiting.push({ key: `queued:${str(item.id)}`, block: { ...block, key: `queued:${str(item.id)}` }, state: "queued" });
+    if (block) waiting.push({ key: `queued:${str(item.id)}`, block: { ...block, key: `queued:${str(item.id)}` }, state: "queued", ...(str(item.runId) ? { runId: str(item.runId) } : {}) });
   });
   const now = new Set(waiting.map((q) => q.key));
-  const delivered = settled ? [] : shown.filter((q) => !now.has(q.key)).map((q) => ({ ...q, state: "delivered" as const }));
+  const delivered = settled ? [] : shown.filter((q) => !now.has(q.key) && !(q.runId && ownRuns.has(q.runId))).map((q) => ({ ...q, state: "delivered" as const }));
   return [...delivered, ...waiting];
 }
 
@@ -71,7 +89,7 @@ export function roomIdOf(sessionKey: string): string {
 }
 
 export class SaplingSession {
-  readonly gatewayUrl: string;
+  gatewayUrl: string;
   private readonly eventListeners = new Set<GatewayEventListener>();
   private wanted: string | null;
   private snapshot: SessionSnapshot;
@@ -79,18 +97,56 @@ export class SaplingSession {
   private readonly runs = new RunStreams();
   private readonly approvals = new Map<string, Approval>();
   private readonly finished = new Set<string>();
+  /** Runs that were stopped (Stop, or the engine's "aborted"): their turn says "Stopped", never "Done". */
+  private readonly stoppedRuns = new Set<string>();
+  /** Messages this window sent, by run id (= the idempotency key, engine chat-send-session.ts): their text, and
+   *  whether the thread draws them itself (your message over its turn, or a steered note). */
+  private readonly ownSends = new Map<string, { text: string; shown: boolean; attachments: number }>();
+  /** Messages sent but not confirmed (connect/unconfirmed.ts). */
+  private readonly unconfirmed = new UnconfirmedSends({
+    request: (method, params) => this.gateway.request(method, params),
+    engine: () => (this.snapshot.status.phase === "connected" ? this.engineKey : null),
+    view: {
+      before: (sessionKey, item) => this.showResend(sessionKey, item.id, item.text, item.sentWith?.queueMode, item.sentWith?.attachments ?? 0),
+      after: (sessionKey) => {
+        if (sessionKey === this.snapshot.sessionKey) this.refreshSettled();
+      },
+    },
+    notice: (text) => this.set({ error: text }),
+  });
+  /** The engine this window is connected to (unconfirmed.ts engineKeyOf), from its last hello. */
+  private engineKey: string | null = null;
+  /** The engine's session id for the conversation last read, so a send knows whether its conversation existed. */
+  private readSession: { sessionKey: string; id: string } | null = null;
+  /** Turns that failed while their history couldn't be read: whether the engine kept your message is decided by the
+   *  next read of that same conversation. */
+  private readonly unchecked = new Map<string, { sessionKey: string; text: string; attachments: number; failure: string }>();
+  /** Whether any event of the live run has arrived (until one has, the engine's ack may still name its run). */
+  private liveSeen = false;
   /** Codex emits many updates per item. Keep raw events off React's render path between frames. */
   private liveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   /** Only the newest `chat.history` read may land; an older one resolving later would bring back stale history. */
   private historyReads = 0;
+  /** The last history read's failure, while its notice may still show. */
+  private readError: string | null = null;
+  /** The newest `chat.history` read, so a finishing run can wait for the one that really lands. */
+  private currentRead: Promise<void> | null = null;
   private preparationRetry: ReturnType<typeof setTimeout> | null = null;
   private readonly preparationBackoff = new PreparationRetry();
   private stopped = false;
-  private readonly gateway: BranchGateway;
+  private gateway: BranchGateway;
+  private retiringGateway: BranchGateway | null = null;
+  private retiringRunId: string | null = null;
+  private sharedToken: string | undefined;
+  /** The credential the engine's HTTP routes accept from this window: the shared token, else the paired device's. */
+  get httpToken(): string | null {
+    return this.sharedToken || storedOperatorToken(this.gatewayUrl);
+  }
 
   /** `initialKey` reopens the conversation the window last showed (§3.3 "Reopen where you were"). */
   constructor(url: string, sharedToken: string | undefined, initialKey: string | null = null) {
     this.gatewayUrl = url;
+    this.sharedToken = sharedToken;
     this.wanted = initialKey;
     this.snapshot = {
       status: { phase: "connecting" },
@@ -106,13 +162,21 @@ export class SaplingSession {
       doneAt: null,
       lastActivityAt: null,
       error: null,
+      steered: [],
+      ended: null,
     };
-    this.gateway = new BranchGateway({
+    this.gateway = this.createGateway(url, sharedToken);
+  }
+
+  private createGateway(url: string, sharedToken: string | undefined): BranchGateway {
+    let gateway: BranchGateway;
+    gateway = new BranchGateway({
       url,
       sharedToken,
-      onStatus: (status) => this.onStatus(status),
+      onStatus: (status) => { if (this.gateway === gateway) this.onStatus(status); },
       onEvent: (event) => this.onEvent(event),
     });
+    return gateway;
   }
 
   start(): void {
@@ -123,15 +187,33 @@ export class SaplingSession {
   stop(): void {
     if (this.liveRefreshTimer) clearTimeout(this.liveRefreshTimer);
     this.stopped = true;
+    this.unconfirmed.stop();
     if (this.preparationRetry) clearTimeout(this.preparationRetry);
     this.preparationRetry = null;
     this.preparationBackoff.reset();
     this.gateway.stop();
+    this.retiringGateway?.stop();
+    this.retiringGateway = null;
+    this.retiringRunId = null;
   }
 
   /** The desktop swapped the engine in place: reconnect at once. */
   reconnectNow(): void {
     this.gateway.reconnectNow();
+  }
+
+  /** Move new requests to a ready successor without unmounting the composer or losing O's live events. */
+  handoff(url: string, sharedToken = this.sharedToken): void {
+    if (url === this.gatewayUrl) { this.reconnectNow(); return; }
+    this.retiringGateway?.stop();
+    this.retiringRunId = this.snapshot.liveRunId;
+    this.retiringGateway = this.retiringRunId || this.snapshot.pendingUser !== null ? this.gateway : null;
+    if (!this.retiringGateway) this.gateway.stop();
+    this.gatewayUrl = url;
+    this.sharedToken = sharedToken;
+    this.gateway = this.createGateway(url, sharedToken);
+    this.engineCache = null;
+    this.gateway.start();
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -180,7 +262,8 @@ export class SaplingSession {
     if (this.liveRefreshTimer) clearTimeout(this.liveRefreshTimer);
     this.liveRefreshTimer = null;
     this.approvals.clear();
-    this.set({ sessionKey: key, history: [], live: [], pendingUser: null, queued: [], liveRunId: null, liveStartedAt: null, doneAt: null, lastActivityAt: null, error: null });
+    this.ownSends.clear();
+    this.set({ sessionKey: key, history: [], live: [], pendingUser: null, queued: [], liveRunId: null, liveStartedAt: null, doneAt: null, lastActivityAt: null, error: null, steered: [], ended: null });
     try {
       await this.backfillApprovals();
       await this.loadHistory();
@@ -213,16 +296,27 @@ export class SaplingSession {
 
   private onStatus(status: GatewayStatus): void {
     if (status.phase !== "connected") {
+      // The engine no longer knows this device: its pairing there is gone, and so are its records for it. (A request
+      // for more scopes keeps the pairing.)
+      if (status.phase === "pairing" && status.reason === "not-paired") this.unconfirmed.unpaired(this.gatewayUrl);
       this.set({ status });
       return;
     }
+    this.engineKey = engineKeyOf(this.gatewayUrl, status.hello);
     const mainKey = readMainSessionKey(status.hello);
     const sessionKey = this.wanted ?? mainKey;
     // Every hello is a fresh engine (a restart, or an update swapped in under this window): the runs this
     // window mirrored are gone with the old one. Clear them; chat.history's inFlightRun says what still runs.
-    this.runs.clear();
-    this.approvals.clear();
-    this.set({ sessionKey, mainKey, live: [], liveRunId: null, liveStartedAt: null, pendingUser: null });
+    if (!this.retiringGateway) {
+      this.runs.clear();
+      this.approvals.clear();
+      // A fresh engine: what this window drew itself is gone with the live view, so the engine's own copies show.
+      this.ownSends.clear();
+      this.liveSeen = false;
+      this.set({ sessionKey, mainKey, live: [], liveRunId: null, liveStartedAt: null, pendingUser: null, steered: [] });
+    } else {
+      this.set({ sessionKey, mainKey });
+    }
     void this.bootstrap(status, sessionKey);
   }
 
@@ -240,6 +334,7 @@ export class SaplingSession {
       await this.backfillApprovals();
       await this.loadHistory();
       this.set({ status, error: null });
+      if (this.engineKey) this.unconfirmed.connected(this.engineKey);
     } catch (error) {
       this.set({ status, error: error instanceof Error ? error.message : String(error) });
     }
@@ -256,35 +351,95 @@ export class SaplingSession {
     }
   }
 
-  private async loadHistory(): Promise<void> {
+  private loadHistory(): Promise<void> {
+    const read = this.readHistory().catch((error: unknown) => {
+      // Remembered so the next read that works can take back exactly this notice, and nothing else.
+      this.readError = error instanceof Error ? error.message : String(error);
+      throw error;
+    });
+    this.currentRead = read;
+    return read;
+  }
+
+  private async readHistory(): Promise<void> {
     const sessionKey = this.snapshot.sessionKey;
     if (!sessionKey) {
       return;
     }
     const read = ++this.historyReads;
+    // The approval ledger only dresses the steps; when it fails (right after a rewind it answered "approval not
+    // found") the history still shows, without a raw notice that never clears.
     const [history, ledger] = await Promise.all([
       this.gateway.request("chat.history", { sessionKey }),
-      this.gateway.request("approval.history", { limit: 100, kind: "exec" }),
+      this.gateway.request("approval.history", { limit: 100, kind: "exec" }).catch(() => null),
     ]);
     if (sessionKey !== this.snapshot.sessionKey || read !== this.historyReads) {
       return; // another conversation was opened, or a newer read started, while this one loaded
     }
     const h = rec(history);
+    this.readSession = { sessionKey, id: str(h.sessionId) };
     const inFlight = rec(h.inFlightRun);
     const inFlightId = str(inFlight.runId);
     // A run this window already saw end is history now, even if the engine still lists it while it tidies up.
     const inFlightRunId = inFlightId && !this.finished.has(inFlightId) ? inFlightId : null;
     const messages = Array.isArray(h.messages) ? h.messages : [];
-    const blocks = historyToBlocks(messages, readApprovalRecords(ledger), sessionKey, inFlightRunId);
+    const staleNotice = this.readError;
+    this.readError = null;
+    const blocks = markStopped(historyToBlocks(messages, readApprovalRecords(ledger), sessionKey, inFlightRunId), this.stoppedRuns);
     const info = rec(h.sessionInfo);
     this.set({
       history: blocks,
-      queued: mergeQueued(this.snapshot.queued, h.pendingInputs, sessionKey, true),
+      // The notice a failed read left goes once a read works; any other notice (a refused steer, an approval) stays.
+      ...(staleNotice && this.snapshot.error === staleNotice ? { error: null } : {}),
+      queued: mergeQueued(this.snapshot.queued, h.pendingInputs, sessionKey, true, this.shownRuns()),
       lastActivityAt: typeof info.lastActivityAt === "number" ? info.lastActivityAt : null,
       ...(inFlightRunId ? { liveRunId: inFlightRunId, liveStartedAt: runStart(inFlight) } : {}),
     });
     if (inFlightRunId) {
       this.adoptInFlight(inFlightRunId, str(inFlight.text), inFlight);
+    }
+    this.settleRead(sessionKey, blocks, h.pendingInputs, inFlightId);
+  }
+
+  /**
+   * What a read of `sessionKey` settles, for that conversation only: a failed turn whose message the engine did or
+   * didn't keep, and any "Not sent" card whose message the engine turns out to hold after all (it goes).
+   */
+  private settleRead(sessionKey: string, history: readonly Block[], pendingInputs: unknown, inFlightId: string): void {
+    const kept = heldRuns(history, pendingInputs, inFlightId);
+    const held = (runId: string) => kept.has(runId);
+    for (const [runId, end] of [...this.unchecked]) {
+      if (end.sessionKey !== sessionKey) continue;
+      this.unchecked.delete(runId);
+      if (!held(runId) && !keptInHistory(history, runId, end.text)) this.notSent(sessionKey, runId, end.text, end.failure, end.attachments);
+    }
+    try {
+      healNotSent(safeStorage(), sessionKey, [...kept]);
+    } catch {
+      // The line can't be read here; the card stays until it can.
+    }
+  }
+
+  /** A message sent again in the open conversation is drawn like a fresh send: over its own turn, or while another
+   *  turn runs as the engine's waiting copy (a steer as a steered note on that turn). Returns how to take it back. */
+  private showResend(sessionKey: string, id: string, text: string, queueMode: string | undefined, attachments: number): () => void {
+    if (sessionKey !== this.snapshot.sessionKey) return () => undefined;
+    const busy = this.snapshot.liveRunId !== null && !this.finished.has(this.snapshot.liveRunId);
+    const steer = busy && queueMode === "steer";
+    this.ownSends.set(id, { text, shown: !busy || steer, attachments });
+    if (steer) this.set({ steered: [...this.snapshot.steered, { runId: id, text, target: this.snapshot.liveRunId ?? "" }] });
+    return () => {
+      this.ownSends.delete(id);
+      if (steer) this.set({ steered: this.snapshot.steered.filter((note) => note.runId !== id) });
+    };
+  }
+
+  /** The connection kept for a run the previous engine still finishes goes once that run is over. */
+  private releaseRetiring(runId: string): void {
+    if (this.retiringGateway && (!this.retiringRunId || this.retiringRunId === runId)) {
+      this.retiringGateway.stop();
+      this.retiringGateway = null;
+      this.retiringRunId = null;
     }
   }
 
@@ -319,13 +474,25 @@ export class SaplingSession {
       const state = str(payload.state);
       if (["final", "error", "aborted"].includes(state) && this.isOurs(payload)) {
         const runId = str(payload.runId);
+        const abort = state === "aborted" ? readAbort({ ...payload, aborted: true }) : null;
+        if (abort === "stopped" && runId) this.stoppedRuns.add(runId);
         if (this.finished.has(runId)) {
           this.refreshSettled();
+        } else if (abort === "superseded") {
+          void this.finishRun(runId, "", true);
         } else {
-          void this.finishRun(runId);
+          const failure = typeof abort === "object" && abort ? abort.failure : str(payload.errorMessage) || (state === "aborted" ? "Stopped before it started." : "It stopped before it started.");
+          void this.finishRun(runId, state === "final" ? "" : failure);
         }
       }
     } else if ((event.event === "session.message" || event.event === "sessions.changed") && str(payload.sessionKey) === this.snapshot.sessionKey) {
+      // A turn can end with only this (a dispatch that failed before its run reported): end the live run with it,
+      // so your message is kept as Not sent instead of the thread waiting on "Thinking it over".
+      const phase = str(payload.phase);
+      const runId = str(payload.runId);
+      if ((phase === "error" || phase === "end") && runId && runId === this.snapshot.liveRunId && !this.finished.has(runId)) {
+        void this.finishRun(runId, phase === "error" ? str(payload.error) || str(payload.errorMessage) || "It stopped before it started." : "");
+      }
       this.refreshSettled();
     } else if (event.event === "rooms.event" && roomIdOf(this.snapshot.sessionKey ?? "") === str(payload.roomId) && str(payload.roomId)) {
       // A post in this group chat by a Trunk or an outside agent (rooms.send): the room's lead thread shows it.
@@ -349,15 +516,34 @@ export class SaplingSession {
       return;
     }
     if (this.runs.accept(event) === "stale") return;
+    // Only a run with no live run before it becomes the live one; your send's turn is matched by its run id (the
+    // idempotency key) alone, so another client's or a scheduled run can never take over your message.
     if (!this.snapshot.liveRunId) {
-      this.set({ liveRunId: event.runId, liveStartedAt: runStart(event.data) ?? (event.ts || Date.now()), doneAt: null });
+      const own = this.ownSends.get(event.runId);
+      if (own) {
+        // A message you sent while the turn before ran: its own turn starts now, so it is drawn over that turn and
+        // its waiting copy goes.
+        own.shown = true;
+      }
+      this.set({
+        liveRunId: event.runId,
+        liveStartedAt: runStart(event.data) ?? (event.ts || Date.now()),
+        doneAt: null,
+        ...(own ? { pendingUser: own.text, queued: this.snapshot.queued.filter((q) => q.runId !== event.runId) } : {}),
+      });
     }
+    if (event.runId === this.snapshot.liveRunId) this.liveSeen = true;
     if (event.runId === this.snapshot.liveRunId) {
       if (event.stream === "lifecycle" && (event.data.phase === "end" || event.data.phase === "error")) this.refreshLive();
       else this.scheduleLiveRefresh();
     }
     if (event.stream === "lifecycle" && (event.data.phase === "end" || event.data.phase === "error")) {
-      void this.finishRun(event.runId);
+      // The engine marks an aborted run's end (`aborted`, status "cancelled") even when no "aborted" chat event came;
+      // its stopReason says whether you stopped it or it timed out, was cut by a restart, or was superseded.
+      const abort = readAbort(event.data);
+      if (abort === "stopped") this.stoppedRuns.add(event.runId);
+      const failure = typeof abort === "object" && abort ? abort.failure : event.data.phase === "error" ? str(event.data.error) || "It stopped before it started." : "";
+      void this.finishRun(event.runId, failure, abort === "superseded");
     }
   }
 
@@ -394,7 +580,7 @@ export class SaplingSession {
     if (this.liveRefreshTimer) clearTimeout(this.liveRefreshTimer);
     this.liveRefreshTimer = null;
     const runId = this.snapshot.liveRunId;
-    this.set({ live: runId ? projectRun(this.runs.events(runId), this.approvals) : [] });
+    this.set({ live: runId ? withWaitingApprovals(projectRun(this.runs.events(runId), this.approvals), this.approvals, runId) : [] });
   }
 
   private scheduleLiveRefresh(): void {
@@ -423,48 +609,182 @@ export class SaplingSession {
     if (!sessionKey) return;
     const history = await this.gateway.request("chat.history", { sessionKey, limit: 1 }).catch(() => null);
     if (!history || sessionKey !== this.snapshot.sessionKey) return;
-    this.set({ queued: mergeQueued(this.snapshot.queued, rec(history).pendingInputs, sessionKey, false) });
+    this.set({ queued: mergeQueued(this.snapshot.queued, rec(history).pendingInputs, sessionKey, false, this.shownRuns()) });
   }
 
-  /** The run ended: the engine's history becomes the record, replacing the live view in one step. */
-  private async finishRun(runId: string): Promise<void> {
+  /** The run ended: the engine's history becomes the record, replacing the live view in one step. `failure` is why
+   *  it ended early; when the engine never kept your message, the thread keeps it as "Not sent" with that reason. */
+  private async finishRun(runId: string, failure = "", absorbed = false): Promise<void> {
     if (!runId || this.finished.has(runId)) {
       return;
     }
     this.finished.add(runId);
+    let read = false;
     try {
       await this.loadHistory();
+      // An event during the read (session.message, the chat terminal) can start a newer read and make this one
+      // stand down: wait for the newest so the turn's own history is in before the live view goes.
+      read = await this.settledRead();
+    } catch {
+      // The live view still goes; whether the message was kept waits for a read that works.
     } finally {
+      this.releaseRetiring(runId);
       this.runs.drop(runId);
       const wasLive = this.snapshot.liveRunId === runId;
+      const outcome: RunEnd["outcome"] = this.stoppedRuns.has(runId) ? "stopped" : failure ? "failed" : absorbed ? "absorbed" : "done";
+      const own = this.ownSends.get(runId);
+      if (wasLive && own?.shown && failure) {
+        // Only a history that was read now can say the message wasn't kept; otherwise the next read settles it.
+        const sessionKey = this.snapshot.sessionKey ?? "";
+        if (!read) this.unchecked.set(runId, { sessionKey, text: own.text, attachments: own.attachments, failure });
+        else if (!keptInHistory(this.snapshot.history, runId, own.text)) this.notSent(sessionKey, runId, own.text, failure, own.attachments);
+      }
+      this.ownSends.delete(runId);
+      for (const note of this.snapshot.steered) if (note.target === runId) this.ownSends.delete(note.runId);
+      if (wasLive) this.liveSeen = false;
       this.set({
-        ...(wasLive ? { liveRunId: null, liveStartedAt: null, live: [], pendingUser: null, doneAt: Date.now() } : {}),
+        // Only a run that finished plays "Done" (header, agent window, cheer); a stopped or failed one, or one whose
+        // input another turn took in, does not.
+        ...(wasLive ? { liveRunId: null, liveStartedAt: null, live: [], pendingUser: null, doneAt: outcome === "done" ? Date.now() : null, ended: { runId, outcome, at: Date.now() } } : {}),
+        // Your send, taken into another turn that is still running: that turn's history has your message, so your
+        // own bubble goes now instead of drawing it twice. Only when the bubble is that send's: someone else's run,
+        // or a queued send of yours (not drawn) taken in, leaves the bubble alone.
+        ...(!wasLive && absorbed && own?.shown && this.snapshot.pendingUser === own.text ? { pendingUser: null, ended: { runId, outcome, at: Date.now() } } : {}),
+        steered: this.snapshot.steered.filter((note) => note.runId !== runId && note.target !== runId),
       });
     }
   }
 
-  async send(text: string, extras?: SendExtras): Promise<void> {
+  /** Resolves once no newer `chat.history` read is still landing: true when the newest one worked. */
+  private async settledRead(): Promise<boolean> {
+    let ok = true;
+    for (let read = this.currentRead; read; read = this.currentRead === read ? null : this.currentRead) {
+      ok = await read.then(() => true, () => false);
+    }
+    return ok;
+  }
+
+  /** The runs the thread draws itself, so the engine's waiting copy of them is not drawn again. */
+  private shownRuns(): Set<string> {
+    return new Set([...this.ownSends].filter(([, send]) => send.shown).map(([runId]) => runId));
+  }
+
+  /**
+   * Sends your words. The run id is the idempotency key (engine chat-send-session.ts), so the turn shows as working
+   * the moment you press Send, not when the engine acknowledges it (that can take many seconds). A message sent while
+   * a turn is already going never replaces that turn: a steer shows as a steered note, anything else waits its turn.
+   */
+  async send(text: string, extras?: SendExtras, idempotencyKey?: string): Promise<void> {
     const sessionKey = this.snapshot.sessionKey;
     if (!sessionKey) {
       return;
     }
+    const roomId = roomIdOf(sessionKey);
+    if (roomId) {
+      await this.sendToRoom(roomId, text, extras);
+      return;
+    }
+    // Every send is a new message to the engine: a "Not sent" card is one the engine refused (it remembers that
+    // refusal under the id for minutes) or didn't keep, so Try again must not reuse its id.
+    const rest = extras ?? {};
+    const runId = idempotencyKey ?? crypto.randomUUID();
+    const attachments = rest.attachments?.length ?? 0;
+    const busy = this.snapshot.liveRunId !== null && !this.finished.has(this.snapshot.liveRunId);
+    const steer = busy && rest.queueMode === "steer";
+    const sentTo = this.sentTo(sessionKey);
+    this.ownSends.set(runId, { text, shown: !busy || steer, attachments });
+    if (!busy) {
+      this.runs.clear();
+      this.liveSeen = false;
+      this.set({ pendingUser: text, liveRunId: runId, liveStartedAt: Date.now(), live: [], doneAt: null, error: null });
+    } else if (steer) {
+      this.set({ steered: [...this.snapshot.steered, { runId, text, target: this.snapshot.liveRunId ?? "" }] });
+    }
+    const dispatchGateway = this.gateway;
+    try {
+      const result = rec(await requestWithRetry(() => dispatchGateway.request("chat.send", { ...rest, sessionKey, message: text, idempotencyKey: runId })));
+      const acked = str(result.runId) || runId;
+      if (dispatchGateway === this.retiringGateway) this.retiringRunId = acked;
+      if (acked !== runId && this.snapshot.liveRunId === runId && !this.liveSeen) {
+        this.ownSends.set(acked, this.ownSends.get(runId)!);
+        this.ownSends.delete(runId);
+        this.set({ liveRunId: acked });
+      }
+      // "ok" means the engine already had this input (a retry it deduplicated, or a steer the turn took in): no run
+      // of its own will report, so the history is the record now.
+      const status = str(result.status);
+      // Any other answer ("error", "failed", …) means no run will report.
+      const failure = failedAck(result);
+      if (status === "ok" && this.snapshot.liveRunId === acked && !this.liveSeen) void this.finishRun(acked, "", true);
+      else if (failure && this.snapshot.liveRunId === acked) void this.finishRun(acked, failure);
+      else if (this.snapshot.liveRunId === acked) this.refreshLive();
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.ownSends.delete(runId);
+      if (this.snapshot.liveRunId === runId) {
+        this.liveSeen = false;
+        this.set({ pendingUser: null, liveRunId: null, liveStartedAt: null, live: [] });
+      } else {
+        this.set({ steered: this.snapshot.steered.filter((note) => note.runId !== runId) });
+      }
+      // The engine said no, or the message never left: Not sent. Lost on the way (a steer too), or still refused as
+      // busy after asking again (a handoff lease): the engine may hold it or take it soon, so it is "Not confirmed
+      // yet" until a read of its conversation settles it. A run that kept the previous engine's connection open won't
+      // report now, so that connection goes.
+      if (refusedOrUnsent(error) && !isRetryable(error)) this.notSent(sessionKey, runId, text, reason, attachments);
+      else {
+        if (dispatchGateway === this.retiringGateway) this.releaseRetiring(runId);
+        if (sentTo) this.unconfirmed.lost(sessionKey, runId, text, rest, sentTo);
+        else this.notSent(sessionKey, runId, text, reason, attachments);
+      }
+    }
+  }
+
+  private async sendToRoom(roomId: string, text: string, extras?: SendExtras): Promise<void> {
     this.set({ pendingUser: text, doneAt: null, error: null });
     try {
-      const roomId = roomIdOf(sessionKey);
-      if (roomId && extras?.attachments?.length) throw new Error("Attachments are not supported in group chats yet.");
-      const result = rec(await (roomId
-        ? this.gateway.request("rooms.send", { roomId, message: text })
-        : this.gateway.request("chat.send", { ...extras, sessionKey, message: text, idempotencyKey: crypto.randomUUID() })));
-      const runId = str(result.runId);
-      if (runId && !this.finished.has(runId)) {
-        this.set({ liveRunId: runId, liveStartedAt: this.snapshot.liveRunId === runId ? this.snapshot.liveStartedAt : Date.now() });
-        this.refreshLive();
-      } else if (roomId) {
-        this.set({ pendingUser: null });
-        await this.loadHistory();
-      }
+      if (extras?.attachments?.length) throw new Error("Attachments are not supported in group chats yet.");
+      await this.gateway.request("rooms.send", { roomId, message: text });
+      this.set({ pendingUser: null });
+      await this.loadHistory();
     } catch (error) {
       this.set({ pendingUser: null, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  /**
+   * Try again and Edit went back to just before your message (`sessions.rewind`): the thread drops it and what came
+   * after at once. A history read right after the rewind can still return the old turn, so none started before
+   * this may land.
+   */
+  rewound(entryId: string): void {
+    const at = this.snapshot.history.findIndex((b) => b.kind === "user" && b.meta?.entryId === entryId);
+    if (at < 0) return;
+    this.historyReads += 1;
+    this.set({ history: this.snapshot.history.slice(0, at) });
+  }
+
+  /** Where a send goes, for its record if the connection goes before the engine answers: this engine, now, after the
+   *  newest entry its conversation showed, which existed if a read gave it a session id. Null before any hello. */
+  private sentTo(sessionKey: string): { engine: string; at: number; anchor?: string; existed: boolean } | null {
+    if (!this.engineKey) return null;
+    // Only a message from you or a steer: a stored row in its place, never a projected one (a partial reply, a note)
+    // the engine may draw at the newest position of every read.
+    const anchor = [...this.snapshot.history].reverse().find((b) => (b.kind === "user" || b.kind === "steer") && b.meta?.runKey && b.meta.entryId);
+    const entryId = anchor && (anchor.kind === "user" || anchor.kind === "steer") ? anchor.meta?.entryId : undefined;
+    const existed = this.readSession?.sessionKey === sessionKey && Boolean(this.readSession.id);
+    return { engine: this.engineKey, at: Date.now(), ...(entryId ? { anchor: entryId } : {}), existed };
+  }
+
+  /** Your message whose turn ended before the engine kept it (§4.2.2 "Not sent"): it goes to this conversation's
+   *  waiting line as "failed", the one record the thread (Try again, Discard) and Inbox read (composer/queue.ts). */
+  private notSent(sessionKey: string, runId: string, text: string, error: string, attachments = 0): void {
+    if (!sessionKey) return;
+    try {
+      // Attachments aren't kept with it (the line holds words); the reason says so, so Try again isn't silently less.
+      addNotSent(safeStorage(), sessionKey, { id: runId, text, error: `${error}${droppedFiles(attachments)}` });
+    } catch (stored) {
+      this.set({ error: `${text.slice(0, 40)}… wasn't sent (${error}), and this computer couldn't keep it: ${stored instanceof Error ? stored.message : String(stored)}` });
     }
   }
 
@@ -480,7 +800,16 @@ export class SaplingSession {
   async stopRun(): Promise<void> {
     const { sessionKey, liveRunId } = this.snapshot;
     if (sessionKey && liveRunId) {
-      await this.gateway.request("chat.abort", { sessionKey, runId: liveRunId }).catch(() => undefined);
+      // Only an abort the engine confirms makes the turn "Stopped": Stop pressed as the run finished leaves it done.
+      const result = rec(await this.gateway.request("chat.abort", { sessionKey, runId: liveRunId }).catch(() => null));
+      const runIds = Array.isArray(result.runIds) ? result.runIds : [];
+      if (result.aborted !== true && !runIds.includes(liveRunId)) return;
+      this.stoppedRuns.add(liveRunId);
+      const { ended } = this.snapshot;
+      if (ended?.runId === liveRunId && ended.outcome !== "stopped") {
+        // The run's end beat the confirmation here: say Stopped after all.
+        this.set({ history: markStopped(this.snapshot.history, this.stoppedRuns), ended: { ...ended, outcome: "stopped" }, doneAt: null });
+      }
     }
   }
 }
@@ -495,6 +824,9 @@ function buildEngine(session: SaplingSession, sessionKey: string | null, hello: 
     onEvent: (listener) => session.onGatewayEvent((event, payload) => listener({ event, payload })),
     sessionKey,
     ...(agentId ? { agentId } : {}),
+    mediaPicture: (source) => (sessionKey ? loadMediaPicture(session.gatewayUrl, source, sessionKey, agentId, session.httpToken) : Promise.resolve({ error: "unavailable" as const })),
+    send: (text) => session.send(text),
+    rewound: (entryId) => session.rewound(entryId),
     scopes: hello ? [...hello.auth.scopes] : [],
     ...(attachments ? { attachmentPolicy: { maxBytes: attachments.maxBytes, maxImageBytes: attachments.maxImageBytes } } : {}),
   };
@@ -524,4 +856,89 @@ function readAgentName(result: unknown): string {
     return "";
   }
   return str(rec(agent.identity).name) || str(agent.name) || str(agent.id);
+}
+
+/** A picture on the Trunk's computer, ready to show, or why it can't. */
+export type MediaPicture = { src: string } | { error: "outside" | "unavailable" };
+
+/** The engine's assistant-media route for a gateway address (engine gateway/control-ui.ts, `assistant.media.get`). */
+function assistantMediaBase(gatewayUrl: string): string | null {
+  try {
+    const base = new URL(gatewayUrl);
+    base.protocol = base.protocol === "wss:" ? "https:" : "http:";
+    return `${base.origin}/__branch__/assistant-media`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reads a picture on the Trunk's computer through the engine's assistant-media route. The window asks for its
+ * availability (`meta=1`) with the gateway credential in an Authorization header (the route answers CORS for this
+ * window), and gets back a media ticket: signed, five minutes, bound to that one file and conversation. The picture
+ * then loads with the ticket alone. The credential never goes in a URL, so it can't leak through "Open in your
+ * browser", a saved or copied picture address, or logs.
+ */
+export async function loadMediaPicture(
+  gatewayUrl: string,
+  source: string,
+  sessionKey: string,
+  agentId: string | undefined,
+  token: string | null,
+  fetcher: typeof fetch = fetch,
+): Promise<MediaPicture> {
+  const base = assistantMediaBase(gatewayUrl);
+  if (!base) return { error: "unavailable" };
+  const where = { source, sessionKey, ...(agentId ? { agentId } : {}) };
+  try {
+    const res = await fetcher(`${base}?${new URLSearchParams({ meta: "1", ...where })}`, {
+      headers: { Accept: "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+    });
+    if (!res.ok) return { error: "unavailable" };
+    const meta = rec(await res.json());
+    if (meta.available !== true) return { error: str(meta.code) === "outside-allowed-folders" ? "outside" : "unavailable" };
+    const ticket = str(meta.mediaTicket);
+    return { src: `${base}?${new URLSearchParams({ ...where, ...(ticket ? { mediaTicket: ticket } : {}) })}` };
+  } catch {
+    return { error: "unavailable" };
+  }
+}
+
+/** Whether the history holds your message of this run: the engine keys it "<runId>:user" (readMeta `runKey`); a
+ *  history without keys counts it kept when its last message from you has the same words. */
+export function keptInHistory(history: readonly Block[], runId: string, text: string): boolean {
+  const mine = history.filter((b): b is Extract<Block, { kind: "user" }> => b.kind === "user");
+  if (mine.some((b) => b.meta?.runKey === runId)) return true;
+  const last = mine.at(-1);
+  return Boolean(last && !last.meta?.runKey && last.text.trim() === text.trim());
+}
+
+export { refusedOrUnsent, requestWithRetry } from "./send-errors";
+export { heldRuns } from "./unconfirmed";
+
+/** An approval the engine raised for the live run (`exec.approval.requested`) can arrive before the run's own
+ *  "waiting-approval" event (one with no run named counts as the live run's). Until that comes, the card joins the
+ *  live run at its end, so the header, the agent window and the thread all say "Waiting for you" while the card is up. */
+export function withWaitingApprovals(live: Block[], approvals: ReadonlyMap<string, Approval>, runId: string): Block[] {
+  const shown = new Set(live.filter((b) => b.kind === "approval").map((b) => (b as Extract<Block, { kind: "approval" }>).approval.id));
+  const waiting = [...approvals.values()].filter((a) => a.state === "pending" && (a.runId === runId || !a.runId) && !shown.has(a.id));
+  return waiting.length ? [...live, ...waiting.map((approval): Block => ({ kind: "approval", key: `approval:${approval.id}`, approval }))] : live;
+}
+
+/**
+ * How an aborted run ended (`aborted: true` or status "cancelled" on its end, or the chat "aborted" event): you
+ * stopped it, or it was superseded by a newer turn, or it failed (timed out, cut by a restart, or its provider was
+ * signed out: the engine aborts that provider's runs with stopReason "auth-revoked"). A plain Stop may carry
+ * no stopReason at all, so only the reasons that are not a stop are named; null when the run wasn't aborted.
+ */
+export function readAbort(data: Record<string, unknown>): "stopped" | "superseded" | { failure: string } | null {
+  if (data.aborted !== true && data.status !== "cancelled") return null;
+  const reason = str(data.stopReason);
+  if (reason === "timeout") return { failure: "It ran out of time." };
+  if (reason === "restart") return { failure: "Interrupted by a restart." };
+  if (reason === "auth-revoked") return { failure: "Its provider was signed out." };
+  if (reason === "superseded") return "superseded";
+  return "stopped";
 }

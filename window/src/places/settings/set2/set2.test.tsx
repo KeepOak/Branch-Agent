@@ -65,31 +65,20 @@ describe("Settings › Updates & about", () => {
     expect(document.body.textContent).toContain("Branch is up to date.");
     expect(document.body.textContent).not.toContain("Install when idle");
   });
-  it("Let them finish first runs update.run without stopping anything", async () => {
+  it("installs without a dialog or stopping running work", async () => {
     const { engine, request } = engineWith({ "update.status": READY, "sessions.list": RUNNING, "update.run": { ok: true, result: { status: "ok" } } });
     await show("updates", engine);
-    await click("Install when idle");
-    expect(document.body.textContent).toContain("1 task is working right now.");
-    await click("Continue");
+    await click("Install update");
+    expect(document.body.textContent).not.toContain("Install 1.1.0");
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(request.mock.calls.map(([m]) => m)).toContain("update.run");
     expect(request.mock.calls.map(([m]) => m)).not.toContain("sessions.abort");
-    expect(document.body.textContent).toContain("It installs when the running tasks finish");
-  });
-  it("Install now stops each running conversation, then runs update.run", async () => {
-    const { engine, request } = engineWith({ "update.status": READY, "sessions.list": RUNNING, "sessions.abort": { ok: true }, "update.run": { ok: true } });
-    await show("updates", engine);
-    await click("Install when idle");
-    await act(async () => button("Install nowStops them at a safe point. Afterwards you can pick each one up where it was.").click());
-    await click("Continue");
-    const methods = request.mock.calls.map(([m]) => m);
-    expect(request).toHaveBeenCalledWith("sessions.abort", { key: "agent:main:a", agentId: "main", runId: "r1" });
-    expect(methods.indexOf("sessions.abort")).toBeLessThan(methods.indexOf("update.run"));
+    expect(document.body.textContent).toContain("Installing. You can keep working.");
   });
   it("shows the engine's refusal instead of claiming it installs", async () => {
     const { engine } = engineWith({ "update.status": READY, "sessions.list": { sessions: [] }, "update.run": { ok: false, message: "Updates are managed by the package manager." } });
     await show("updates", engine);
-    await click("Install when idle");
-    await click("Continue");
+    await click("Install update");
     expect(document.body.textContent).toContain("Updates are managed by the package manager.");
   });
   it("saves the channel and the by-itself switch through config.patch", async () => {
@@ -130,11 +119,11 @@ describe("Settings › Computer & browser", () => {
     try {
       const { engine, request } = engineWith(PAIRS);
       await show("computer", engine);
-      const allow = () => [...document.querySelectorAll("button")].filter((b) => b.textContent === "Allow");
-      expect(allow()[0].disabled).toBe(true);
+      const allow = () => document.querySelector<HTMLButtonElement>('[data-row="Desk Mac"].s2-req button.pri')!;
+      expect(allow().disabled).toBe(true);
       await act(async () => { vi.advanceTimersByTime(1600); });
-      expect(allow()[0].disabled).toBe(false);
-      await act(async () => allow()[1].click());
+      expect(allow().disabled).toBe(false);
+      await act(async () => allow().click());
       await flush();
       expect(request).toHaveBeenCalledWith("node.pair.approve", { requestId: "n1" });
     } finally { vi.useRealTimers(); }
@@ -142,7 +131,7 @@ describe("Settings › Computer & browser", () => {
   it("Don't allow asks first, then rejects", async () => {
     const { engine, request } = engineWith(PAIRS);
     await show("computer", engine);
-    await act(async () => [...document.querySelectorAll("button")].find((b) => b.textContent === "Don’t allow")!.click());
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-row="Studio laptop"].s2-req button')!.click());
     expect(document.body.textContent).toContain("Studio laptop has to ask again before it can connect.");
     expect(request).not.toHaveBeenCalledWith("device.pair.reject", expect.anything());
     await click("Turn it down");
@@ -231,6 +220,25 @@ describe("Settings › Seasons", () => {
 
 describe("Settings › Gateway", () => {
   const H = { ok: true, ts: Date.now(), durationMs: 3, channels: { telegram: { connected: true } }, channelLabels: { telegram: "Telegram" } };
+  it("keeps the close-window control below Gateway mode and saves through the desktop setting", async () => {
+    let state = { keepWorking: true, keepAwake: false, trayUsage: false, autoApplyUpdates: false, startWithWindows: false, branchOnPath: false };
+    const set = vi.fn(async (name: keyof typeof state, on: boolean) => (state = { ...state, [name]: on }));
+    (window as { branchDesktop?: unknown }).branchDesktop = { controls: { get: async () => state, set } };
+    try {
+      const { engine } = engineWith({ health: H });
+      await show("gateway", engine);
+      const mode = document.querySelector('[data-row="Gateway"]');
+      const row = document.querySelector('[data-row="Keep working when the window closes"]');
+      expect(mode?.nextElementSibling).toBe(row);
+      const control = row?.querySelector<HTMLInputElement>('input[role="switch"]');
+      expect(control?.checked).toBe(true);
+      await act(async () => control?.click());
+      expect(set).toHaveBeenCalledWith("keepWorking", false);
+      expect(control?.checked).toBe(false);
+    } finally {
+      delete (window as { branchDesktop?: unknown }).branchDesktop;
+    }
+  });
   it("says the gateway is on from health and system.info, and restarts it on gateway.restart.request", async () => {
     const { engine, request } = engineWith({ health: H, "system.info": { uptimeMs: 3 * 86_400_000 }, "gateway.restart.request": { ok: true, status: "scheduled" } });
     await show("gateway", engine);
@@ -269,13 +277,10 @@ describe("Settings › Branch itself", () => {
     await click("Run now");
     expect(request).toHaveBeenCalledWith("sessions.storage.run", {});
   });
-  it("saves Updating itself on the engine's update settings", async () => {
-    const { engine, request } = engineWith({ health: { ok: true }, "config.get": { hash: "h", valid: true, config: {} }, "config.patch": { ok: true, hash: "h2", config: {} } });
+  it("keeps the Install updates setting in Updates & about only", async () => {
+    const { engine } = engineWith({ health: { ok: true }, "config.get": { hash: "h", valid: true, config: {} } });
     await show("self", engine);
-    await act(async () => (document.querySelector('[aria-label="Updating itself"] button:last-child') as HTMLButtonElement).click());
-    await flush();
-    const patches = request.mock.calls.filter(([m]) => m === "config.patch").map(([, p]) => JSON.parse(String((p as { raw: string }).raw)));
-    expect(patches).toEqual([{ update: { auto: { enabled: false } } }, { update: { checkOnStart: false } }]);
+    expect(document.querySelector('[aria-label="Updating itself"]')).toBeNull();
   });
 });
 

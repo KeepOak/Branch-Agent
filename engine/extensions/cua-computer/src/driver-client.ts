@@ -87,7 +87,7 @@ class DirectCuaDriverSession {
   private started = false;
   private disposed = false;
 
-  constructor(private readonly sdk: CuaDriverSdk) {
+  constructor(private readonly sdk: CuaDriverSdk, private readonly platform: NodeJS.Platform) {
     const unrestricted = sdk.SessionPermissionMode.Unrestricted;
     // This is a Branch-owned ceiling, not plugin configuration or tool input.
     // The model cannot select a session or widen this authorization after start.
@@ -240,13 +240,35 @@ class DirectCuaDriverSession {
     );
   }
   async typeText(text: string, signal?: AbortSignal) {
-    return await this.invoke(signal, () =>
-      this.session.typeText({ text, target: this.desktopTarget }, asyncOptions(signal)),
-    );
+    return await this.invoke(signal, async () => {
+      if (this.platform !== "win32") {
+        return await this.session.typeText({ text, target: this.desktopTarget }, asyncOptions(signal));
+      }
+      // SendInput can outrun the focused Windows app when a whole phrase is
+      // delivered at once. Await each Unicode code point so shifted letters,
+      // punctuation and surrogate pairs retain their intended order.
+      let result: CuaToolResult | undefined;
+      for (const character of text) {
+        result = await this.session.typeText(
+          { text: character, target: this.desktopTarget },
+          asyncOptions(signal),
+        );
+        if (result.isError) return result;
+      }
+      // A confirmation for the final code point does not verify the full text.
+      return result?.action && [...text].length > 1
+        ? { ...result, action: { ...result.action, effect: 2 as import("@trycua/cua-driver").ActionEffect } }
+        : result!;
+    });
   }
   async pressKey(input: { key: string; modifiers: string[] }, signal?: AbortSignal) {
     return await this.invoke(signal, () =>
-      this.session.pressKey({ ...input, target: this.desktopTarget }, asyncOptions(signal)),
+      this.platform === "win32" && input.modifiers.includes("meta")
+        ? this.session.hotkey(
+            { keys: [...input.modifiers, input.key], target: this.desktopTarget },
+            asyncOptions(signal),
+          )
+        : this.session.pressKey({ ...input, target: this.desktopTarget }, asyncOptions(signal)),
     );
   }
 
@@ -318,7 +340,7 @@ class LazyCuaDriverSession implements CuaDriverSession {
   private hasLoadFailure = false;
   private disposed = false;
 
-  constructor(private readonly loadSdk: () => Promise<CuaDriverSdk>) {}
+  constructor(private readonly loadSdk: () => Promise<CuaDriverSdk>, private readonly platform: NodeJS.Platform) {}
 
   private resolveRuntime(): DirectCuaDriverSession | undefined {
     if (this.disposed || this.hasLoadFailure || this.loadPromise) {
@@ -329,7 +351,7 @@ class LazyCuaDriverSession implements CuaDriverSession {
     }
     const loadPromise = this.loadSdk()
       .then((sdk) => {
-        this.runtime = new DirectCuaDriverSession(sdk);
+        this.runtime = new DirectCuaDriverSession(sdk, this.platform);
         return this.runtime;
       })
       .catch((error: unknown) => {
@@ -412,7 +434,7 @@ class LazyCuaDriverSession implements CuaDriverSession {
 }
 
 export function createCuaDriver(
-  options: { loadSdk?: () => Promise<CuaDriverSdk> } = {},
+  options: { loadSdk?: () => Promise<CuaDriverSdk>; platform?: NodeJS.Platform } = {},
 ): CuaDriverSession {
-  return new LazyCuaDriverSession(options.loadSdk ?? loadCuaDriverSdk);
+  return new LazyCuaDriverSession(options.loadSdk ?? loadCuaDriverSdk, options.platform ?? process.platform);
 }

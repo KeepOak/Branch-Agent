@@ -8,7 +8,7 @@ describe("finish by talking", () => {
   it("asks the artifact's look question first, numbered as the wizard's step", () => {
     const q = talkQuestion(3, 0, state)!;
     expect(q.title).toBe("Setup · 4 of 11 · Make it yours");
-    expect(q.options.map((o) => o.label)).toEqual(["Match Windows", "Light", "Dark"]);
+    expect(q.options.map((o) => o.label)).toEqual(["Match this computer", "Light", "Dark"]);
     expect(doneLine(q, q.options[2])).toBe("Done: Branch looks dark.");
   });
   it("offers only Trunks not picked yet, and asks again until That's enough", () => {
@@ -19,11 +19,11 @@ describe("finish by talking", () => {
     expect(asksAgain(q, q.options[3])).toBe(false);
   });
   it("offers chat apps that aren't connected yet, and the phone", () => {
-    expect(talkQuestion(5, 0, state)!.options.map((o) => o.value)).toEqual(["app:discord", "phone", "none"]);
+    expect(talkQuestion(6, 0, state)!.options.map((o) => o.value)).toEqual(["app:discord", "phone", "none"]);
   });
   it("skips steps already done and ends at the health check", () => {
     expect(nextTalkStep(3, () => false)).toBe(4);
-    expect(nextTalkStep(4, (s) => s === 5)).toBe(7);
+    expect(nextTalkStep(4, (s) => s === 6)).toBe(7);
     expect(nextTalkStep(9, () => false)).toBe(10);
   });
 });
@@ -33,7 +33,7 @@ describe("typed answers", () => {
   it("reads a letter or the option's words", () => {
     expect(matchAnswer("b", opts)?.value).toBe("light");
     expect(matchAnswer("make it dark please", opts)?.value).toBe("dark");
-    expect(matchAnswer("just match windows", opts)?.value).toBe("system");
+    expect(matchAnswer("just match this computer", opts)?.value).toBe("system");
   });
   it("says so when it can't tell", () => {
     expect(matchAnswer("purple", opts)).toBeNull();
