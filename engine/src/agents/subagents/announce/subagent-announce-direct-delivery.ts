@@ -70,6 +70,7 @@ import {
 } from "./subagent-announce-dispatch.js";
 import { resolveExactSubagentCompletionEvent } from "./subagent-announce-handoff.js";
 import {
+  UNKNOWN_ANNOUNCE_ORIGIN_WARNING,
   resolveCompletionDeliveryOrigins,
   type DeliveryContext,
 } from "./subagent-announce-origin.js";
@@ -158,6 +159,12 @@ export async function sendSubagentAnnounceDirectly(
       !parentOnly && !params.requesterIsSubagent
         ? resolveExternalBestEffortDeliveryTarget(effectiveDirectOrigin ?? {})
         : { deliver: false };
+    const liveOriginChannel = normalizeMessageChannel(
+      params.requesterSessionOrigin?.channel ?? params.directOrigin?.channel,
+    );
+    if (!parentOnly && !params.requesterIsSubagent && !deliveryTarget.deliver && !liveOriginChannel) {
+      defaultRuntime.error?.(UNKNOWN_ANNOUNCE_ORIGIN_WARNING);
+    }
     const normalizedSessionOnlyOriginChannel = !params.requesterIsSubagent
       ? normalizeMessageChannel(sessionOnlyOrigin?.channel)
       : undefined;

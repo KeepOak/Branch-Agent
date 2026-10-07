@@ -15,6 +15,7 @@ import {
   INTERNAL_MESSAGE_CHANNEL,
   isDeliverableMessageChannel,
   isGatewayMessageChannel,
+  isInternalMessageChannel,
   normalizeMessageChannel,
 } from "../../utils/message-channel.js";
 import { resolveOutboundChannelPlugin } from "./channel-resolution.js";
@@ -72,7 +73,9 @@ function resolveAgentDeliveryPlan(params: {
     ? normalizeMessageChannel(params.turnSourceChannel)
     : undefined;
   const turnSourceChannel =
-    normalizedTurnSource && isDeliverableMessageChannel(normalizedTurnSource)
+    normalizedTurnSource &&
+    (isDeliverableMessageChannel(normalizedTurnSource) ||
+      isInternalMessageChannel(normalizedTurnSource))
       ? normalizedTurnSource
       : undefined;
   const turnSourceTo = normalizeOptionalString(params.turnSourceTo);
@@ -84,7 +87,7 @@ function resolveAgentDeliveryPlan(params: {
 
   const baseDelivery = resolveSessionDeliveryTarget({
     entry: params.sessionEntry,
-    requestedChannel: requestedChannel === INTERNAL_MESSAGE_CHANNEL ? "last" : requestedChannel,
+    requestedChannel,
     explicitTo,
     explicitThreadId: params.explicitThreadId,
     turnSourceChannel,

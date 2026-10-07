@@ -1191,5 +1191,69 @@ describe("deliverAgentCommandResult payload normalization", () => {
       reason: "unknown_channel",
     });
   });
+
+  it("does not send an in-app helper reply to a stored telegram route", async () => {
+    deliverOutboundPayloadsMock.mockResolvedValue([{ channel: "telegram", messageId: "msg-1" }]);
+    const delivered = await deliverAgentCommandResultForTest({
+      workspace: true,
+      omitReplyTarget: true,
+      opts: {
+        bestEffortDeliver: true,
+        sessionKey: "agent:tester:main",
+        messageChannel: "webchat",
+      },
+      outboundSession: { key: "agent:tester:main", agentId: "tester" },
+      sessionEntry: {
+        sessionId: "session-1",
+        updatedAt: 1,
+        delivery: normalizeSessionDeliveryState({
+          context: { channel: "telegram", to: "peer-1", accountId: "bot-1" },
+        }),
+      },
+      payloads: [{ text: "helper finished" }],
+    });
+
+    expect(deliverOutboundPayloadsMock).not.toHaveBeenCalled();
+    expect(delivered.deliverySucceeded).toBe(false);
+    expectDeliveryStatusFields(delivered, {
+      requested: true,
+      attempted: false,
+      status: "failed",
+      succeeded: false,
+      reason: "channel_resolved_to_internal",
+    });
+  });
+
+  it("still delivers a telegram-originated command reply on telegram", async () => {
+    deliverOutboundPayloadsMock.mockResolvedValue([{ channel: "telegram", messageId: "msg-1" }]);
+    const delivered = await deliverAgentCommandResultForTest({
+      workspace: true,
+      omitReplyTarget: true,
+      opts: {
+        bestEffortDeliver: true,
+        sessionKey: "agent:tester:main",
+        messageChannel: "telegram",
+        to: "peer-1",
+        accountId: "bot-1",
+      },
+      outboundSession: { key: "agent:tester:main", agentId: "tester" },
+      sessionEntry: {
+        sessionId: "session-1",
+        updatedAt: 1,
+        delivery: normalizeSessionDeliveryState({
+          context: { channel: "telegram", to: "peer-1", accountId: "bot-1" },
+        }),
+      },
+      payloads: [{ text: "helper finished" }],
+    });
+
+    expect(deliverOutboundPayloadsMock).toHaveBeenCalledOnce();
+    expect(latestOutboundDeliveryArgs()).toMatchObject({
+      channel: "telegram",
+      to: "telegram:peer-1",
+      accountId: "bot-1",
+    });
+    expect(delivered.deliverySucceeded).toBe(true);
+  });
 });
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

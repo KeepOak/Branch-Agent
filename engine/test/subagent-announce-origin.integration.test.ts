@@ -5,6 +5,7 @@ import {
   resolveGeneratedMediaSessionDeliveryRoute,
   resolveSubagentCompletionOrigin,
 } from "../src/agents/subagents/announce/subagent-announce-origin.js";
+import { resolveExternalBestEffortDeliveryTarget } from "../src/infra/outbound/best-effort-delivery.js";
 import type { ChannelPlugin } from "../src/channels/plugins/types.plugin.js";
 import type { SessionEntry } from "../src/config/sessions.js";
 import {
@@ -127,6 +128,26 @@ describe("resolveAnnounceOrigin threaded route targets", () => {
       },
       requester: { channel: "topicchat", to: "topicchat:room-a" },
       expected: { channel: "topicchat", to: "topicchat:room-a" },
+    },
+    {
+      name: "does not inherit a stored telegram route for an in-app requester",
+      stored: {
+        lastChannel: "telegram",
+        lastTo: "peer-1",
+        lastAccountId: "bot-1",
+      },
+      requester: { channel: "webchat", to: "agent:main:main" },
+      expected: { channel: "webchat", to: "agent:main:main" },
+    },
+    {
+      name: "fails closed when the requester origin is unknown",
+      stored: {
+        lastChannel: "telegram",
+        lastTo: "peer-1",
+        lastAccountId: "bot-1",
+      },
+      requester: undefined,
+      expected: undefined,
     },
   ])("$name", ({ stored, requester, expected }) => {
     expect(
@@ -542,4 +563,55 @@ describe("completion delivery route fallback", () => {
       });
     },
   );
+});
+
+describe("helper reply origin does not cross surfaces", () => {
+  const storedTelegram = normalizeLegacySessionEntryDelivery({
+    lastChannel: "telegram",
+    lastTo: "peer-1",
+    lastAccountId: "bot-1",
+  } as unknown as SessionEntry);
+
+  function helperDeliveryTarget(requesterOrigin?: { channel?: string; to?: string; accountId?: string }) {
+    const directOrigin = resolveAnnounceOrigin(storedTelegram, requesterOrigin);
+    const { effectiveDirectOrigin } = resolveCompletionDeliveryOrigins({
+      expectsCompletionMessage: true,
+      completionDirectOrigin: directOrigin,
+      directOrigin,
+      requesterSessionOrigin: requesterOrigin,
+    });
+    return resolveExternalBestEffortDeliveryTarget(effectiveDirectOrigin ?? {});
+  }
+
+  it("keeps an in-app helper reply off every outbound channel", () => {
+    expect(
+      helperDeliveryTarget({ channel: "webchat", to: "agent:main:main" }),
+    ).toEqual({ deliver: false });
+  });
+
+  it("still delivers a telegram-originated helper reply on telegram", () => {
+    expect(
+      helperDeliveryTarget({ channel: "telegram", to: "peer-1", accountId: "bot-1" }),
+    ).toEqual({
+      deliver: true,
+      channel: "telegram",
+      to: "peer-1",
+      accountId: "bot-1",
+    });
+  });
+
+  it("does not let an external completion origin override an in-app requester", () => {
+    expect(
+      resolveCompletionDeliveryOrigins({
+        expectsCompletionMessage: true,
+        completionDirectOrigin: {
+          channel: "telegram",
+          to: "peer-1",
+          accountId: "bot-1",
+        },
+        directOrigin: { channel: "webchat", to: "agent:main:main" },
+        requesterSessionOrigin: { channel: "webchat", to: "agent:main:main" },
+      }).effectiveDirectOrigin,
+    ).toEqual({ channel: "webchat", to: "agent:main:main" });
+  });
 });

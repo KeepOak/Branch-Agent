@@ -504,6 +504,73 @@ describe("subagent announce seam flow", () => {
     expect(agentCall.params?.to).toBe("-1001234567890");
   });
 
+  it("does not send an in-app helper completion to a stored telegram route", async () => {
+    loadSessionStoreMock.mockImplementation(() => ({
+      "agent:main:main": {
+        sessionId: "session-main",
+        updatedAt: Date.now(),
+        delivery: normalizeSessionDeliveryState({
+          context: {
+            channel: "telegram",
+            to: "peer-1",
+            accountId: "bot-1",
+          },
+        }),
+      },
+    }));
+
+    const didAnnounce = await runAnnounceFlow({
+      startedAt: 10,
+      endedAt: 20,
+      childSessionKey: "agent:main:subagent:screen",
+      childRunId: "run-webchat-helper",
+      requesterOrigin: { channel: "webchat", to: "agent:main:main" },
+      task: "screenshot helper",
+      roundOneReply: "helper done",
+      expectsCompletionMessage: true,
+    });
+
+    expect(didAnnounce).toBe("delivered");
+    expect(agentSpy).toHaveBeenCalledTimes(1);
+    const agentCall = requireAgentCall();
+    expect(agentCall.params?.deliver).toBe(false);
+    expect(agentCall.params?.channel).not.toBe("telegram");
+    expect(agentCall.params?.to).not.toBe("peer-1");
+  });
+
+  it("does not send a helper completion anywhere external when origin is unknown", async () => {
+    loadSessionStoreMock.mockImplementation(() => ({
+      "agent:main:main": {
+        sessionId: "session-main",
+        updatedAt: Date.now(),
+        delivery: normalizeSessionDeliveryState({
+          context: {
+            channel: "telegram",
+            to: "peer-1",
+            accountId: "bot-1",
+          },
+        }),
+      },
+    }));
+
+    const didAnnounce = await runAnnounceFlow({
+      startedAt: 10,
+      endedAt: 20,
+      childSessionKey: "agent:main:subagent:browser",
+      childRunId: "run-unknown-origin-helper",
+      task: "browser helper",
+      roundOneReply: "helper done",
+      expectsCompletionMessage: true,
+    });
+
+    expect(didAnnounce).toBe("delivered");
+    expect(agentSpy).toHaveBeenCalledTimes(1);
+    const agentCall = requireAgentCall();
+    expect(agentCall.params?.deliver).toBe(false);
+    expect(agentCall.params?.channel).not.toBe("telegram");
+    expect(agentCall.params?.to).not.toBe("peer-1");
+  });
+
   it("does not treat ambiguous direct completion failures as announced", async () => {
     let deliveryResult:
       | {

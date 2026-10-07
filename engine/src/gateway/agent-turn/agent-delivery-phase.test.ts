@@ -136,4 +136,40 @@ describe("resolveAgentDeliveryPhase", () => {
       },
     );
   });
+
+  it("does not upgrade an in-app turn source to a configured external channel", async () => {
+    mocks.resolveAgentDeliveryPlanWithSessionRoute.mockResolvedValue({
+      baseDelivery: { channel: "telegram", lastChannel: "telegram", lastTo: "peer-1" },
+      resolvedChannel: "webchat",
+    });
+    mocks.resolveMessageChannelSelection.mockResolvedValue({
+      channel: "telegram",
+      plugin: {},
+    });
+    const respond = vi.fn();
+    const info = vi.fn();
+
+    const result = await resolveAgentDeliveryPhase({
+      request: {
+        message: "helper follow-up",
+        deliver: true,
+        idempotencyKey: "webchat-origin",
+      },
+      cfg: {},
+      agentId: "main",
+      replyTo: "",
+      to: "agent:main:main",
+      recipientChannel: "webchat",
+      bestEffortDeliver: true,
+      runId: "webchat-origin",
+      client: null,
+      context: { chatAbortControllers: new Map(), logGateway: { info } } as never,
+      respond,
+      isWebchatConnect: () => true,
+    });
+
+    expect(mocks.resolveMessageChannelSelection).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ resolvedChannel: "webchat", deliver: true });
+    expect(respond).not.toHaveBeenCalled();
+  });
 });

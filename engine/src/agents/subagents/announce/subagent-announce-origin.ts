@@ -114,20 +114,28 @@ function mergeAnnounceDeliveryContext(
   return mergeDeliveryContext(normalizedPrimary, normalizedFallback);
 }
 
+/** Logged when a helper/sub-run has no originating channel; never include payload or route content. */
+export const UNKNOWN_ANNOUNCE_ORIGIN_WARNING =
+  "helper reply origin is unknown; skipping external delivery";
+
+function isInternalOriginChannel(channel?: string): boolean {
+  return Boolean(channel && isInternalMessageChannel(channel));
+}
+
 export function resolveAnnounceOrigin(
   entry?: Pick<SessionEntry, "delivery">,
   requesterOrigin?: DeliveryContext,
 ): DeliveryContext | undefined {
   const normalizedRequester = normalizeDeliveryContext(requesterOrigin);
   const normalizedEntry = deliveryContextFromSession(entry);
-  if (normalizedRequester?.channel && isInternalMessageChannel(normalizedRequester.channel)) {
-    return mergeDeliveryContext(
-      {
-        accountId: normalizedRequester.accountId,
-        threadId: normalizedRequester.threadId,
-      },
-      normalizedEntry,
-    );
+  if (isInternalOriginChannel(normalizedRequester?.channel)) {
+    // In-app / webchat origins stay on that surface. Session lastChannel is a
+    // previous external route, not the origin of this turn.
+    return normalizedRequester;
+  }
+  if (!normalizedRequester?.channel) {
+    // Fail closed: an unknown origin must not inherit the last outbound channel.
+    return normalizedRequester;
   }
   return mergeAnnounceDeliveryContext(normalizedRequester, normalizedEntry);
 }
@@ -244,6 +252,27 @@ function stripNonDeliverableChannel(context?: DeliveryContext): DeliveryContext 
   return normalizeDeliveryContext(rest);
 }
 
+function pinCompletionOriginToLiveOrigin(params: {
+  completionDirectOrigin?: DeliveryContext;
+  liveOrigin?: DeliveryContext;
+}): DeliveryContext | undefined {
+  const completion = normalizeDeliveryContext(params.completionDirectOrigin);
+  const liveOrigin = normalizeDeliveryContext(params.liveOrigin);
+  if (isInternalOriginChannel(liveOrigin?.channel)) {
+    if (!completion?.channel || isInternalOriginChannel(completion.channel)) {
+      return mergeAnnounceDeliveryContext(completion, liveOrigin);
+    }
+    return liveOrigin;
+  }
+  if (!liveOrigin?.channel) {
+    if (!completion?.channel || isInternalOriginChannel(completion.channel)) {
+      return completion;
+    }
+    return undefined;
+  }
+  return mergeAnnounceDeliveryContext(stripNonDeliverableChannel(completion), liveOrigin);
+}
+
 /** Resolve normalized session and external completion origins once for every delivery path. */
 export function resolveCompletionDeliveryOrigins(params: {
   expectsCompletionMessage: boolean;
@@ -253,18 +282,20 @@ export function resolveCompletionDeliveryOrigins(params: {
 }) {
   const directOrigin = normalizeDeliveryContext(params.directOrigin);
   const requesterSessionOrigin = normalizeDeliveryContext(params.requesterSessionOrigin);
-  const completionFallbackOrigin = mergeAnnounceDeliveryContext(
-    directOrigin,
-    requesterSessionOrigin,
-  );
+  const liveOrigin = requesterSessionOrigin ?? directOrigin;
+  const completionFallbackOrigin = isInternalOriginChannel(liveOrigin?.channel)
+    ? liveOrigin
+    : !liveOrigin?.channel
+      ? undefined
+      : mergeAnnounceDeliveryContext(directOrigin, requesterSessionOrigin);
   return {
     directOrigin,
     requesterSessionOrigin,
     effectiveDirectOrigin: params.expectsCompletionMessage
-      ? mergeAnnounceDeliveryContext(
-          stripNonDeliverableChannel(params.completionDirectOrigin),
-          completionFallbackOrigin,
-        )
+      ? pinCompletionOriginToLiveOrigin({
+          completionDirectOrigin: params.completionDirectOrigin,
+          liveOrigin: completionFallbackOrigin ?? liveOrigin,
+        })
       : directOrigin,
   };
 }

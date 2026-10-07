@@ -404,7 +404,12 @@ export async function deliverAgentCommandResult(
     params.assertDeliveryCurrent?.();
     let deliveryChannel = deliveryPlan.resolvedChannel;
     let preparedPlugin = deliveryPlan.plugin;
-    if (deliver && isInternalMessageChannel(deliveryChannel) && !explicitChannelHint) {
+    if (
+      deliver &&
+      isInternalMessageChannel(deliveryChannel) &&
+      !explicitChannelHint &&
+      !isInternalMessageChannel(turnSourceChannel)
+    ) {
       try {
         const selection = await resolveMessageChannelSelection({ cfg });
         params.assertDeliveryCurrent?.();

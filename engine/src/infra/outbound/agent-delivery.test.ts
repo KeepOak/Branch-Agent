@@ -105,6 +105,7 @@ vi.mock("../../utils/message-channel.js", () => ({
     ].includes(channel),
   isGatewayMessageChannel: (channel: string) =>
     ["directchat", "workspace", "telegram", "whatsapp", "webchat"].includes(channel),
+  isInternalMessageChannel: (channel: string) => channel === "webchat",
   normalizeMessageChannel: (value: string) => value.trim().toLowerCase(),
 }));
 
@@ -236,6 +237,24 @@ describe("agent delivery helpers", () => {
       },
       expected: {
         resolvedChannel: "directchat",
+        resolvedTo: undefined,
+      },
+    },
+    {
+      params: {
+        sessionEntry: {
+          sessionId: "s6",
+          updatedAt: 6,
+          deliveryContext: { channel: "telegram", to: "peer-1", accountId: "bot-1" },
+        },
+        requestedChannel: "last",
+        turnSourceChannel: "webchat",
+        turnSourceTo: "agent:main:main",
+        accountId: undefined,
+        wantsDelivery: true,
+      },
+      expected: {
+        resolvedChannel: "webchat",
         resolvedTo: undefined,
       },
     },
