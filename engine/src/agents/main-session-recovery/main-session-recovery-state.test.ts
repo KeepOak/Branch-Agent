@@ -18,6 +18,7 @@ function recoveryState(
     cycleId: "cycle-1",
     revision: 1,
     chargedAttempts: 0,
+    interruptedAt: 100,
     ...overrides,
   };
 }
@@ -973,3 +974,30 @@ describe("main session recovery state", () => {
     });
   });
 });
+
+it("timestamps a legacy interrupted cycle once when startup observes it", () => {
+  const entry = interruptedEntry({ mainRestartRecovery: undefined });
+  const before = Date.now();
+  observe(entry, "generation-1");
+  const interruptedAt = entry.mainRestartRecovery?.interruptedAt;
+  expect(interruptedAt).toBeGreaterThanOrEqual(before);
+  expect(interruptedAt).toBeLessThanOrEqual(Date.now());
+  observe(entry, "generation-1");
+  expect(entry.mainRestartRecovery?.interruptedAt).toBe(interruptedAt);
+});
+
+it.each(["bad timestamp", Number.NaN, Number.POSITIVE_INFINITY])(
+  "replaces a corrupt persisted interruption timestamp %s on observation",
+  (interruptedAt) => {
+    const entry = interruptedEntry({
+      mainRestartRecovery: recoveryState({ interruptedAt: interruptedAt as number }),
+    });
+    const before = Date.now();
+    observe(entry, "generation-1");
+    const normalized = entry.mainRestartRecovery?.interruptedAt;
+    expect(normalized).toBeGreaterThanOrEqual(before);
+    expect(normalized).toBeLessThanOrEqual(Date.now());
+    observe(entry, "generation-1");
+    expect(entry.mainRestartRecovery?.interruptedAt).toBe(normalized);
+  },
+);

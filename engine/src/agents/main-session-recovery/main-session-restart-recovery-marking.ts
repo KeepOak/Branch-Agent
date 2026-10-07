@@ -20,6 +20,7 @@ import {
 } from "../../infra/agent-events.js";
 import { hasLiveAgentRunContext, listAgentRunsForSession } from "../../infra/agent-run-registry.js";
 import { captureGatewaySessionWorkAdmissions } from "../../sessions/session-lifecycle-admission.js";
+import { resolveAgentTimeoutMs } from "../timeout.js";
 import { createCurrentProcessOwnerLookup } from "./main-session-recovery-live-owners.js";
 import {
   isMainRestartRecoveryAggregateTerminalOnly,
@@ -58,6 +59,7 @@ async function markRecoveryStore(params: {
         runs?: RestartRecoveryRun[];
       }
     | { action: "retire_terminal" }
+    | { action: "retire_stale" }
     | { action: "restore_yielded"; isCurrent: () => boolean }
     | undefined;
 }) {
@@ -100,6 +102,18 @@ async function markRecoveryStore(params: {
             lifecycleGeneration: getAgentEventLifecycleGeneration(),
             sessionKey,
           });
+          replacements.push({ sessionKey, entry });
+          counts.skipped++;
+          continue;
+        }
+        if (plan.action === "retire_stale") {
+          transitionMainSessionRecovery(entry, { kind: "clear" });
+          entry.status = "failed";
+          entry.abortedLastRun = false;
+          entry.lastRunError =
+            "Restart-interrupted turn is outside the auto-continue freshness window";
+          entry.endedAt = Date.now();
+          entry.updatedAt = entry.endedAt;
           replacements.push({ sessionKey, entry });
           counts.skipped++;
           continue;
@@ -371,6 +385,16 @@ async function markOrphanedMainSessionStore(
         return undefined;
       }
       orphanChecks.push(hasLiveOwner);
+      const startedAt = asFiniteNumber(entry.startedAt);
+      if (
+        entry.status === "running" &&
+        !entry.pendingFinalDelivery &&
+        startedAt !== undefined &&
+        Date.now() - startedAt >
+          Math.max(60 * 60_000, 2 * resolveAgentTimeoutMs({ cfg: params.cfg }))
+      ) {
+        return { action: "retire_stale" };
+      }
       return isMainRestartRecoveryAggregateTerminalOnly(entry)
         ? { action: "retire_terminal" }
         : { action: "mark", resetRuntime: entry.status !== "running" };

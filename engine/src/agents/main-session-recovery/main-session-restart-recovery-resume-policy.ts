@@ -3,6 +3,7 @@ import {
   asOptionalRecord,
 } from "@branch/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
+import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../../auto-reply/tokens.js";
 import type { InternalSessionEntry as SessionEntry } from "../../config/sessions/types.js";
 import { isMainSessionRestartRecoveryInputProvenance } from "../../sessions/input-provenance.js";
 import { CODE_MODE_EXEC_TOOL_NAME, CODE_MODE_WAIT_TOOL_NAME } from "../code-mode-control-tools.js";
@@ -374,6 +375,31 @@ export function resolveMainSessionResumePolicy(
     beforeAgentReplyState === "handled-unrecoverable"
   ) {
     return { action: "resume", forceRestartSafeTools: true };
+  }
+  const tail = messages
+    .toReversed()
+    .find(
+      (message) =>
+        isMeaningfulTranscriptMessage(message) &&
+        !isIntermediateAssistantTranscriptMessage(message),
+    );
+  const tailRecord = asOptionalObjectRecord(tail);
+  const tailContent = tailRecord?.content;
+  const silentText =
+    typeof tailContent === "string"
+      ? tailContent
+      : Array.isArray(tailContent) &&
+          tailContent.length === 1 &&
+          asOptionalObjectRecord(tailContent[0])?.type === "text"
+        ? asOptionalObjectRecord(tailContent[0])?.text
+        : undefined;
+  if (
+    getMessageRole(tail) === "assistant" &&
+    (tailRecord?.stopReason === undefined || tailRecord.stopReason === "stop") &&
+    typeof silentText === "string" &&
+    isSilentReplyText(silentText, SILENT_REPLY_TOKEN)
+  ) {
+    return { action: "complete", reason: "handled-silent" };
   }
   // A fresh continuation must be able to inspect an interrupted side effect.
   // Full access keeps ordinary tools; explicit replay-safe reconstruction and

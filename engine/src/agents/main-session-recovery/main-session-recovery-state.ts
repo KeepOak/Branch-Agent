@@ -49,11 +49,17 @@ function updateRecoveryState(
   return (entry.mainRestartRecovery = { ...state, revision: state.revision + 1, ...patch });
 }
 
-function createCycle(cycleId: string): MainRestartRecoveryState {
+function createCycle(
+  cycleId: string,
+  interruptedAt?: number,
+  turnStartedAt?: number,
+): MainRestartRecoveryState {
   return {
     cycleId,
     revision: 1,
     chargedAttempts: 0,
+    ...(interruptedAt === undefined ? {} : { interruptedAt }),
+    ...(turnStartedAt === undefined ? {} : { turnStartedAt }),
   };
 }
 
@@ -358,7 +364,7 @@ export function transitionMainSessionRecovery(
     case "mark_interrupted": {
       const state = entry.mainRestartRecovery;
       if (!state) {
-        entry.mainRestartRecovery = createCycle(command.cycleId);
+        entry.mainRestartRecovery = createCycle(command.cycleId, command.now, entry.startedAt);
       } else if (state.foregroundClaims || state.reservation) {
         // Restart owns continuation now. Process-bound foreground and reservation
         // leases cannot authorize the old lifecycle after this durable handoff.
@@ -401,9 +407,14 @@ export function transitionMainSessionRecovery(
         !entry.mainRestartRecovery
       ) {
         // Acquire recovery identity before scanning interrupted rows.
-        entry.mainRestartRecovery = createCycle(command.cycleId);
+        entry.mainRestartRecovery = createCycle(command.cycleId, Date.now());
       }
       let state = entry.mainRestartRecovery;
+      if (state && entry.abortedLastRun === true) {
+        if (typeof state.interruptedAt !== "number" || !Number.isFinite(state.interruptedAt)) {
+          state = updateRecoveryState(entry, state, { interruptedAt: Date.now() });
+        }
+      }
       if (
         state?.foregroundClaims &&
         state.foregroundClaims.lifecycleGeneration !== command.lifecycleGeneration

@@ -42,6 +42,7 @@ import {
   reconcileInvalidHarnessCompletion,
 } from "./main-session-restart-recovery-checkpoint.js";
 import { tombstoneMainRestartRecoveryWithNotice } from "./main-session-restart-recovery-failure.js";
+import { isFreshRestartInterruption } from "./main-session-restart-recovery-freshness.js";
 import { readMainSessionRecoveryCheckpoint } from "./main-session-restart-recovery-replay-safety.js";
 import {
   hasReplaySafeCodeModeCheckpointInCurrentTurn,
@@ -539,6 +540,45 @@ export async function recoverStore(params: {
     }
     if (stopped()) {
       return result;
+    }
+    const recoveryNow = Date.now();
+    if (
+      !entry.pendingFinalDelivery &&
+      !isFreshRestartInterruption({
+        timestamp: entry.mainRestartRecovery?.interruptedAt,
+        now: recoveryNow,
+        cfg: params.cfg,
+      })
+    ) {
+      const endedAt = Date.now();
+      await updateSessionEntry(
+        target,
+        (current) =>
+          current.sessionId === entry.sessionId &&
+          current.mainRestartRecovery?.cycleId === entry.mainRestartRecovery?.cycleId &&
+          current.mainRestartRecovery?.revision === entry.mainRestartRecovery?.revision &&
+          !current.mainRestartRecovery?.reservation &&
+          !current.mainRestartRecovery?.foregroundClaims &&
+          current.abortedLastRun === true
+            ? {
+                ...buildRestartRecoveryClaimCleanupPatch({
+                  entry: current,
+                  recordTerminalSource: false,
+                }),
+                abortedLastRun: false,
+                lifecycleRunId: undefined,
+                mainRestartRecovery: undefined,
+                restartRecoveryRuns: undefined,
+                status: "failed" as const,
+                lastRunError: "Restart-interrupted turn is outside the auto-continue freshness window",
+                endedAt,
+                updatedAt: endedAt,
+              }
+            : null,
+        { skipMaintenance: true, takeCacheOwnership: true },
+      );
+      result.skipped++;
+      continue;
     }
     const resumeResult = await resumeMainSession({
       ...target,

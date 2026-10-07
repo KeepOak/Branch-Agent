@@ -49,6 +49,169 @@ import { discoverRestartRecoveryStoreTargets } from "./main-session-restart-reco
 
 const sessionDirs = useSessionStoreTempDirs(afterAll, "branch-restart-owner-");
 
+it("does not revive an ancient in-flight turn merely because its session update is recent", async () => {
+  await withBranchTestState({ label: "recovery-stale-active-turn" }, async (state) => {
+    const sessionKey = "agent:main:main";
+    const sessionId = "old-turn";
+    await replaceSessionEntry(
+      { sessionKey },
+      {
+        sessionId,
+        status: "running",
+        startedAt: Date.now() - 97 * 60 * 60_000,
+        updatedAt: Date.now() - 60_000,
+      },
+    );
+    const result = await markStartupOrphanedMainSessionsForRecovery({ stateDir: state.stateDir });
+    expect(result).toEqual({ marked: 0, skipped: 1 });
+    expect(loadSessionEntry({ sessionKey })).toMatchObject({
+      sessionId,
+      status: "failed",
+      abortedLastRun: false,
+    });
+  });
+});
+
+it("recovers a fresh exact turn even when its session update timestamp is old", async () => {
+  await withBranchTestState({ label: "recovery-fresh-active-turn" }, async (state) => {
+    const sessionKey = "agent:main:main";
+    const startedAt = Date.now() - 10 * 60_000;
+    await replaceSessionEntry(
+      { sessionKey },
+      {
+        sessionId: "fresh-turn",
+        status: "running",
+        startedAt,
+        updatedAt: Date.now() - 2 * 60 * 60_000,
+      },
+    );
+    const result = await markStartupOrphanedMainSessionsForRecovery({ stateDir: state.stateDir });
+    expect(result).toEqual({ marked: 1, skipped: 0 });
+    const interruptedAt = loadSessionEntry({ sessionKey })?.mainRestartRecovery?.interruptedAt;
+    expect(interruptedAt).toBeGreaterThanOrEqual(Date.now() - 5_000);
+    expect(interruptedAt).toBeLessThanOrEqual(Date.now());
+    expect(loadSessionEntry({ sessionKey })).toMatchObject({
+      status: "running",
+      abortedLastRun: true,
+      mainRestartRecovery: { interruptedAt, turnStartedAt: startedAt },
+    });
+  });
+});
+
+it("preserves an existing interruption mark on a repeat startup scan", async () => {
+  await withBranchTestState({ label: "recovery-repeat-mark" }, async (state) => {
+    const sessionKey = "agent:main:main";
+    const interruptedAt = Date.now() - 2 * 60_000;
+    await replaceSessionEntry(
+      { sessionKey },
+      {
+        sessionId: "already-marked",
+        status: "running",
+        abortedLastRun: true,
+        updatedAt: Date.now(),
+        mainRestartRecovery: {
+          cycleId: "shutdown-timeout-cycle",
+          revision: 1,
+          chargedAttempts: 0,
+          interruptedAt,
+        },
+      },
+    );
+    expect(await markStartupOrphanedMainSessionsForRecovery({ stateDir: state.stateDir })).toEqual({
+      marked: 0,
+      skipped: 0,
+    });
+    expect(loadSessionEntry({ sessionKey })?.mainRestartRecovery).toMatchObject({
+      cycleId: "shutdown-timeout-cycle",
+      interruptedAt,
+    });
+    expect(loadSessionEntry({ sessionKey })?.abortedLastRun).toBe(true);
+  });
+});
+
+it("keeps a two-hour in-flight turn eligible under the default 48-hour agent timeout", async () => {
+  await withBranchTestState({ label: "recovery-long-active-turn" }, async (state) => {
+    const sessionKey = "agent:main:main";
+    const startedAt = Date.now() - 2 * 60 * 60_000;
+    await replaceSessionEntry(
+      { sessionKey },
+      {
+        sessionId: "long-running-turn",
+        status: "running",
+        startedAt,
+        updatedAt: Date.now(),
+      },
+    );
+    expect(await markStartupOrphanedMainSessionsForRecovery({ stateDir: state.stateDir })).toEqual({
+      marked: 1,
+      skipped: 0,
+    });
+    expect(loadSessionEntry({ sessionKey })?.mainRestartRecovery?.turnStartedAt).toBe(startedAt);
+  });
+});
+
+it("marks only the turn still in flight after another session already finished", async () => {
+  await withBranchTestState({ label: "recovery-only-in-flight" }, async (state) => {
+    const startedAt = Date.now() - 60_000;
+    await replaceSessionEntry(
+      { sessionKey: "agent:main:finished" },
+      {
+        sessionId: "finished",
+        status: "done",
+        startedAt,
+        endedAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+    );
+    await replaceSessionEntry(
+      { sessionKey: "agent:main:in-flight" },
+      {
+        sessionId: "in-flight",
+        status: "running",
+        startedAt,
+        updatedAt: Date.now(),
+      },
+    );
+    expect(await markStartupOrphanedMainSessionsForRecovery({ stateDir: state.stateDir })).toEqual({
+      marked: 1,
+      skipped: 0,
+    });
+    expect(loadSessionEntry({ sessionKey: "agent:main:finished" })?.abortedLastRun).not.toBe(true);
+    expect(loadSessionEntry({ sessionKey: "agent:main:in-flight" })?.abortedLastRun).toBe(true);
+  });
+});
+
+it("recovers an absolute turn start across a process timezone change", async () => {
+  await withBranchTestState({ label: "recovery-timezone" }, async (state) => {
+    const sessionKey = "agent:main:main";
+    const priorTz = process.env.TZ;
+    try {
+      process.env.TZ = "Etc/GMT+7";
+      const startedAt = Date.now() - 60_000;
+      await replaceSessionEntry(
+        { sessionKey },
+        {
+          sessionId: "timezone-turn",
+          status: "running",
+          startedAt,
+          updatedAt: startedAt,
+        },
+      );
+      process.env.TZ = "UTC";
+      expect(
+        await markStartupOrphanedMainSessionsForRecovery({ stateDir: state.stateDir }),
+      ).toEqual({ marked: 1, skipped: 0 });
+      expect(loadSessionEntry({ sessionKey })?.mainRestartRecovery?.turnStartedAt).toBe(startedAt);
+    } finally {
+      if (priorTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = priorTz;
+      }
+    }
+  });
+});
+
 it("keeps healthy stores recoverable when an earlier startup mark fails", async () => {
   await withBranchTestState({ label: "recovery-mark-failure" }, async (state) => {
     const cfg: BranchConfig = {
@@ -63,18 +226,19 @@ it("keeps healthy stores recoverable when an earlier startup mark fails", async 
       talk: { agentId: "main" },
     };
     await state.writeConfig(cfg);
+    const startedAt = Date.now() - 10_000;
     for (const agentId of ["main", "worker"]) {
       const sessionKey = `agent:${agentId}:main`;
       const sessionId = `${agentId}-session`;
-      await replaceSessionEntry({ agentId, sessionKey }, { sessionId, updatedAt: 1 });
+      await replaceSessionEntry({ agentId, sessionKey }, { sessionId, updatedAt: startedAt });
       await persistGatewaySessionLifecycleEvent({
         agentId,
         sessionKey,
         event: {
-          ts: 1,
+          ts: startedAt,
           sessionId,
           runId: `${agentId}-run`,
-          data: { phase: "start", startedAt: 1 },
+          data: { phase: "start", startedAt },
         },
       });
       expect(loadSessionEntry({ agentId, sessionKey })).toMatchObject({
@@ -191,10 +355,11 @@ it("recovers an orphan after its owner releases retained run metadata", async ()
     const sessionId = "retained-session";
     const runId = "retained-run";
     const lifecycleGeneration = getAgentEventLifecycleGeneration();
-    await replaceSessionEntry({ sessionKey }, { sessionId, updatedAt: 1 });
+    const startedAt = Date.now() - 10_000;
+    await replaceSessionEntry({ sessionKey }, { sessionId, updatedAt: startedAt });
     await persistGatewaySessionLifecycleEvent({
       sessionKey,
-      event: { ts: 1, sessionId, runId, data: { phase: "start", startedAt: 1 } },
+      event: { ts: startedAt, sessionId, runId, data: { phase: "start", startedAt } },
     });
     const context = { sessionKey, sessionId, lifecycleGeneration };
     registerAgentRunContext(runId, context);

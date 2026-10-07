@@ -12,6 +12,7 @@ import {
 } from "../../../test/helpers/sqlite-parent-observer.js";
 import { createExecutionIdentityAdmissionToken } from "../../audit/execution-identity-admission.js";
 import { resolveReplyRunDeliveryContext } from "../../auto-reply/reply/agent-runner-core.js";
+import { SILENT_REPLY_TOKEN } from "../../auto-reply/tokens.js";
 import { markInboundContextLabel } from "../../auto-reply/reply/inbound-context-marker.js";
 import type { ChannelOutboundAdapter } from "../../channels/plugins/types.public.js";
 import type { CliDeps } from "../../cli/outbound-send-deps.js";
@@ -4481,6 +4482,24 @@ describe("main-session-restart-recovery", () => {
       abortedLastRun: false,
       lastRunId: "control-ui-run",
       restartRecoveryTerminalRunIds: ["control-ui-run"],
+    });
+  });
+
+  it("settles a machinery turn ending in NO_REPLY without a handled-silent marker", async () => {
+    tmpDir = transcriptFixture.prepareRoot();
+    const { sessionsDir, storePath, sessionKey } = await makeControlUiRecoveryFixture();
+    await writeTranscript(sessionsDir, "main-session", [
+      { role: "user", content: "quiet", idempotencyKey: "control-ui-run:user" },
+      makeAssistantTextMessage(SILENT_REPLY_TOKEN, { stopReason: "stop" }),
+    ]);
+
+    await expectRecovery({ started: 0, settled: 1, failed: 0, skipped: 0 });
+
+    expect(callGateway).not.toHaveBeenCalled();
+    expect(loadSessionEntry({ sessionKey, storePath })).toMatchObject({
+      status: "done",
+      abortedLastRun: false,
+      lastRunId: "control-ui-run",
     });
   });
 

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { SILENT_REPLY_TOKEN } from "../../auto-reply/tokens.js";
 import { resolveMainSessionResumePolicy } from "./main-session-restart-recovery-resume-policy.js";
 
 vi.mock("../code-mode-control-tools.js", () => ({
@@ -79,6 +80,33 @@ function codeModeWait(runId = "code-run") {
 }
 
 describe("resolveMainSessionResumePolicy former terminal states", () => {
+  it.each([
+    { content: SILENT_REPLY_TOKEN, stopReason: "stop" },
+    { content: [{ type: "text", text: SILENT_REPLY_TOKEN }], stopReason: "stop" },
+    { content: SILENT_REPLY_TOKEN, stopReason: undefined },
+  ])("settles a machinery-turn silent assistant tail without handled state: %j", ({ content, stopReason }) => {
+    expect(
+      resolvePolicy({
+        messages: [
+          { role: "user", content: "check quietly", idempotencyKey: "source-turn" },
+          { role: "assistant", stopReason, content },
+        ],
+      }),
+    ).toEqual({ action: "complete", reason: "handled-silent" });
+  });
+
+  it("does not borrow an earlier silent tail for a later user turn", () => {
+    expect(
+      resolvePolicy({
+        messages: [
+          { role: "user", content: "check quietly" },
+          { role: "assistant", stopReason: "stop", content: SILENT_REPLY_TOKEN },
+          { role: "user", content: "now answer me" },
+        ],
+      }).action,
+    ).toBe("resume");
+  });
+
   it.each([
     { deliveryReceiptState: "terminal-pending" as const },
     { beforeAgentReplyState: "pending" as const },

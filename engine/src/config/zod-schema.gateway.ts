@@ -128,6 +128,8 @@ export const GatewayConfigSchema = z
   .strictObject({
     /** Single multiplexed port for Gateway WS + HTTP (default: 18789). */
     port: z.number().int().min(1).max(65_535).optional(),
+    /** Hermes auto-continue freshness in seconds (default: 3600; nonpositive disables). */
+    autoContinueFreshnessSeconds: z.number().finite().optional(),
     /**
      * Explicit gateway mode. When set to "remote", local gateway start is disabled.
      * When set to "local", the CLI may start the gateway locally.
