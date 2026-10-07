@@ -44,6 +44,34 @@ const roomResponse = call('rooms.create', { name: 'Planning circle', members: [
 ] });
 const roomId = roomResponse.room?.roomId ?? roomResponse.result?.room?.roomId;
 if (!roomId) throw new Error('rooms.create did not return a group');
+
+// Seed Canopy cards across statuses for Automations › Board (Q-025).
+const cards = [
+  { title: 'Sort incoming feedback', status: 'triage', agentId: agents[0] },
+  { title: 'Review Q3 metrics', status: 'triage', agentId: agents[1] },
+  { title: 'Plan user testing', status: 'backlog', agentId: agents[0] },
+  { title: 'Update onboarding flow', status: 'todo', agentId: agents[1] },
+  { title: 'Fix login redirect', status: 'scheduled', agentId: agents[2] },
+  { title: 'Build dashboard widgets', status: 'ready', agentId: agents[0] },
+  { title: 'Refactor auth module', status: 'running', agentId: agents[1] },
+  { title: 'Deploy staging fixes', status: 'running', agentId: agents[2] },
+  { title: 'Verify API tests', status: 'review', agentId: agents[0] },
+  { title: 'Update docs site', status: 'review', agentId: agents[1] },
+  { title: 'Release notes draft', status: 'done', agentId: agents[2] },
+  { title: 'Archive old branches', status: 'done', agentId: agents[0] },
+  { title: 'Fix CI timeout', status: 'blocked', agentId: agents[1] },
+  { title: 'Resolve merge conflicts', status: 'blocked', agentId: agents[2] },
+];
+let seededCards = 0;
+try {
+  for (const card of cards) {
+    call('canopy.cards.create', { title: card.title, status: card.status, agentId: card.agentId });
+    seededCards += 1;
+  }
+} catch (error) {
+  console.warn(`Canopy cards: seeded ${seededCards} of ${cards.length} (${error instanceof Error ? error.message : error}).`);
+}
+
 // The tour only inspects UI state. Do not install fake credentials: the gateway
 // validates provider keys on write, which can make a real provider request.
 const config = call('config.get');
@@ -53,4 +81,4 @@ call('config.patch', {
   raw: JSON.stringify({ wizard: { lastRunAt: new Date().toISOString(), lastRunCommand: 'window', lastRunMode: 'local' } }),
 });
 writeFileSync(resolve(process.env.VISUAL_OUT ?? 'visual-tour-output', 'fixture.json'), JSON.stringify({ researchKey }));
-console.log(`Seeded ${agents.length} Trunks, ${notes.length} conversations, and one group without provider credentials.`);
+console.log(`Seeded ${agents.length} Trunks, ${notes.length} conversations, ${seededCards} cards, and one group without provider credentials.`);
