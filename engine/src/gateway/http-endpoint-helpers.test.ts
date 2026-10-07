@@ -4,6 +4,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import type { ResolvedGatewayAuth } from "./auth.js";
 import { handleGatewayPostJsonEndpoint } from "./http-endpoint-helpers.js";
 
@@ -26,10 +30,13 @@ vi.mock("./http-common.js", () => {
 vi.mock("./method-scopes.js", () => {
   return {
     authorizeOperatorScopesForMethod: vi.fn(),
+    resolveLeastPrivilegeOperatorScopesForMethod: vi.fn((method: string) =>
+      method === "users.list" ? ["operator.read"] : ["operator.write"],
+    ),
   };
 });
 
-const { readJsonBodyOrError, sendMethodNotAllowed, sendMissingScopeForbidden } =
+const { readJsonBodyOrError, sendJson, sendMethodNotAllowed, sendMissingScopeForbidden } =
   await import("./http-common.js");
 const { authorizeGatewayHttpRequestOrReply, resolveTrustedHttpOperatorScopes } =
   await import("./http-utils.js");
@@ -190,6 +197,34 @@ describe("handleGatewayPostJsonEndpoint", () => {
     ]);
     expect(mockedSendMissingScopeForbidden).toHaveBeenCalledWith(res, "operator.write");
     expect(vi.mocked(readJsonBodyOrError)).not.toHaveBeenCalled();
+  });
+
+  it("refuses spending endpoints (chat completions, responses, embeddings) while Lockdown is on", async () => {
+    vi.mocked(authorizeGatewayHttpRequestOrReply).mockResolvedValue(authorizedRequest());
+    vi.mocked(resolveTrustedHttpOperatorScopes).mockReturnValue([
+      "operator.write",
+      "operator.read",
+    ]);
+    vi.mocked(authorizeOperatorScopesForMethod).mockReturnValue({ allowed: true });
+    vi.mocked(readJsonBodyOrError).mockClear().mockResolvedValue({});
+    vi.mocked(sendJson).mockClear();
+    setRuntimeConfigSnapshot({ security: { lockdown: true } });
+    try {
+      const res = response();
+      await expect(
+        handleEndpoint({ response: res, endpoint: { requiredOperatorMethod: "chat.send" } }),
+      ).resolves.toBeUndefined();
+      expect(vi.mocked(sendJson)).toHaveBeenCalledWith(res, 503, {
+        error: { message: "Lockdown is on: Trunks cannot run or send anything.", type: "lockdown" },
+      });
+      expect(vi.mocked(readJsonBodyOrError)).not.toHaveBeenCalled();
+      // A read-scoped endpoint (profiles) stays available.
+      await expect(
+        handleEndpoint({ endpoint: { requiredOperatorMethod: "users.list" } }),
+      ).resolves.toMatchObject({ body: {} });
+    } finally {
+      clearRuntimeConfigSnapshot();
+    }
   });
 
   it("uses a custom operator scope resolver when provided", async () => {

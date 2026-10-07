@@ -39,6 +39,8 @@ export const GatewayRemoteConfigSchema = z
 
 export const SecuritySchema = z
   .strictObject({
+    /** Global, fail-closed pause of agent execution and outbound actions. */
+    lockdown: z.boolean().optional(),
     audit: z
       .strictObject({
         suppressions: z

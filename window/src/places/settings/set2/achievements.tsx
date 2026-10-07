@@ -12,7 +12,7 @@ import "./achievements.css";
 
 const NO_LEDGER = "Branch doesn’t count most achievements yet.";
 
-export const ROWS: RowEntry[] = [{ page: "achievements", title: "Keep achievements quiet", sec: "Settings", lv: 0 }];
+export const ROWS: RowEntry[] = [{ page: "achievements", title: "Keep achievements quiet", sec: "Settings", group: "Settings", lv: 0 }];
 
 export const TIERS = ["Bronze", "Silver", "Gold", "Diamond", "Godly", "SSS+"] as const;
 export type Tier = (typeof TIERS)[number];
@@ -34,11 +34,11 @@ export const BADGES: Badge[] = [
     ["A soul of its own", "Edit SOUL.md."],
     ["House rules", "Edit AGENTS.md."],
     ["Connected", "Connect your first model."],
-    ["Signed in with ChatGPT", "Use your ChatGPT plan with Branch."],
+    ["Signed in with ChatGPT", "Use your ChatGPT account with Branch."],
     ["Keeps itself fresh", "Let Branch update by itself."],
     ["Stays up late", "Keep Branch running in the background."],
     ["Found the palette", "Open Find anything with Ctrl K."],
-    ["Tour guide", "Finish the guided tour."],
+    ["Walkthrough guide", "Finish the guided walkthrough."],
     ["Asked first", "Use \"Check with me\"."],
     ["Temporary", "Have a temporary conversation."],
     ["Picture this", "Attach a picture to a message."],
@@ -52,7 +52,7 @@ export const BADGES: Badge[] = [
     ["Paired", "Pair a second computer."],
     ["In your pocket", "Pair your phone."],
     ["Borrowed browser", "Let a Trunk use another computer's browser."],
-    ["Room for two", "Have a conversation with two Trunks."],
+    ["Group of two", "Have a conversation with two Trunks."],
     ["@ you", "Mention a Trunk with @."],
     ["Handoff", "One Trunk hands work to another."],
     ["Renamed", "Give a computer a friendly name."],
@@ -271,7 +271,7 @@ export function AchievementsPage(props: SettingsPageProps) {
       <BadgeGrid got={got} />
       <PetsSec engine={props.engine} openSettings={props.openSettings} />
       <Sec title="Settings">
-        <Ctl title="Keep achievements quiet" sub="No pop-ups. They still unlock. Bronze and Silver pop small for a few seconds; Gold and up get the big one with confetti." off={NO_LEDGER}>
+        <Ctl title="Keep achievements quiet" sub="No pop-ups." help="No pop-ups. They still unlock. Bronze and Silver pop small for a few seconds; Gold and up get the big one with confetti." off={NO_LEDGER}>
           <Switch label="Keep achievements quiet" checked={false} onChange={() => undefined} />
         </Ctl>
         <Hint>Hints: Bronze and Silver get a pet hint at most once an hour; Gold and up get none.</Hint>

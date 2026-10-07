@@ -72,7 +72,7 @@ function HooksDialog({ engine, canWrite, onClose }: { engine: WindowEngine; canW
   const state = usePlaceData(engine, loadHooks), { busy, run } = useAct(state.refresh);
   const [onlyReady, setOnlyReady] = useState(false);
   const hooks = state.data ?? [], ready = hooks.filter(h => hookPill(h) === "Ready").length;
-  return <Dialog wide title="Hooks" onClose={onClose} footer={<><button type="button" className="btn sm" disabled title={shownWhy(TRIGGER_NEEDS.packs)}>Add a hook pack…</button><button type="button" className="btn pri sm" onClick={onClose}>Close</button></>}>
+  return <Dialog wide title="Hooks" onClose={onClose} footer={<><button type="button" className="btn sm" disabled title={shownWhy(TRIGGER_NEEDS.packs)}>Add a hook pack…</button></>}>
     <p className="au-hint">Small programs that run when something happens in Branch: a command, a message, a conversation starting or being shortened, the Gateway starting. They run with full access to the Gateway’s computer.</p>
     {state.error && <p className="au-error" role="alert">{state.error}</p>}
     {hooks.length > 0 && <SwitchRow title={`${ready} of ${hooks.length} ready`} sub="Only ready ones" on={onlyReady} change={setOnlyReady} />}

@@ -13,6 +13,7 @@ import { sessionCreatorProfileId } from "../../config/sessions/session-entry-pro
 import type { BranchConfig } from "../../config/types.branch.js";
 import { loadSessionLogs, loadSessionUsageTimeSeries } from "../../infra/session-cost-usage.js";
 import { forecastCoveredUsage } from "../../infra/usage-burn-forecast.js";
+import { readModelUpgradeState } from "../../infra/model-upgrade-state.js";
 import { analyzeUsageRows } from "../../infra/usage-cost-insights.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
 import { getAsyncWorkSignal } from "../../shared/async-work-scope.js";
@@ -163,7 +164,11 @@ function projectUsageCreator(
 }
 
 export const usageHandlers: GatewayRequestHandlers = {
-  "usage.status": async ({ respond, context, client }) => {
+  "usage.status": async ({ respond, context, client, params }) => {
+    if (params?.refresh !== undefined && typeof params.refresh !== "boolean") {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "refresh must be a boolean"));
+      return;
+    }
     // Only clients with bounded retry machinery may receive an incomplete cold result.
     // In-process dispatch reuses the originating request's client, capabilities
     // included, so a plugin proxying this method inside a capable UI request
@@ -178,8 +183,10 @@ export const usageHandlers: GatewayRequestHandlers = {
     const summary = await loadUsageStatusStaleWhileRevalidate({
       config: context.getRuntimeConfig(),
       coldRead,
+      forceRefresh: params?.refresh === true,
     });
-    respond(true, summary, undefined);
+    const upgrade = await readModelUpgradeState();
+    respond(true, { ...summary, ...(upgrade.notice ? { modelUpgradeNotice: upgrade.notice } : {}) }, undefined);
   },
   "usage.cost": async ({ respond, params, context, client }) => {
     const budgetLimitUsd = params?.budgetLimitUsd;

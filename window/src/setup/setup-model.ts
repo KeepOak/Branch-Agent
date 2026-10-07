@@ -12,11 +12,11 @@ export const STEPS = [
   "Models",
   "Make it yours",
   "Your first Trunks",
-  "Reach it anywhere",
   "Tools",
+  "Reach it anywhere",
   "Keep it running",
   "People",
-  "Two more things",
+  "A few extras",
   "Health check",
 ] as const;
 export const LAST = STEPS.length - 1;
@@ -49,7 +49,7 @@ export function freshChoices(look: Look): SetupChoices {
   return { promise: false, where: "this", look, modelsOff: [], jobs: [1, 2], people: null };
 }
 
-export type Candidate = { key: string; kind: string; modelRef: string; label: string; detail: string; recommended: boolean; signedOut: boolean };
+export type Candidate = { key: string; kind: string; modelRef: string; label: string; detail: string; recommended: boolean; signedOut: boolean; confirmed: boolean };
 export type AuthOption = { id: string; label: string; hint: string; brand?: string };
 export type Detected = { candidates: Candidate[]; configuredModel: string | null; setupComplete: boolean; unavailable: { label: string; reason: string }[]; authOptions: AuthOption[]; secretLogins: AuthOption[] };
 
@@ -65,6 +65,7 @@ export function readDetected(result: unknown): Detected {
       detail: str(c.detail),
       recommended: c.recommended === true,
       signedOut: c.credentials === false,
+      confirmed: c.credentials === true,
     })),
     configuredModel: str(r.configuredModel) || null,
     setupComplete: r.setupComplete === true,
@@ -80,9 +81,17 @@ export function readDetected(result: unknown): Detected {
   };
 }
 
-/** The connection "Say hello to test it" uses: the first switched-on one that isn't signed out. */
+/** Choose confirmed cloud access, then a local server, then an unverified switched-on route. */
 export function firstOn(detected: Detected, off: string[]): Candidate | null {
-  return detected.candidates.find((c) => !off.includes(c.key) && !c.signedOut) ?? null;
+  const on = detected.candidates.filter((c) => !off.includes(c.key) && !c.signedOut);
+  // Confirmed cloud access works across Trunks. Installed CLIs do not confirm
+  // sign-in, so try a discovered local server before those unverified routes.
+  return on.find((c) => c.confirmed && c.kind !== "existing-model" && !isLocalModel(c.modelRef))
+    ?? on.find((c) => isLocalModel(c.modelRef)) ?? on[0] ?? null;
+}
+
+export function isLocalModel(ref: string): boolean {
+  return /^(?:llama-cpp|ollama|lmstudio|vllm|localai|jan)\//i.test(ref);
 }
 
 export type TestResult = { ok: true; seconds: string; modelRef: string; madeDefault?: boolean } | { ok: false; error: string };
@@ -128,6 +137,8 @@ export type Check = { name: string; state: "checking" | "ok" | "bad"; line: stri
 export type Known = {
   /** The safety promise was ticked before (wizard.securityAcknowledgedAt). */
   promise: boolean;
+  /** Where was confirmed by completing an earlier setup, not merely by connecting this window. */
+  where: boolean;
   /** The default model already set up (agents.defaults.model, or what detect says is configured). */
   model: string | null;
   /** The starting jobs that already exist as Trunks. */
@@ -145,6 +156,7 @@ export function knownSetup(config: unknown, detected: Detected | null, trunkName
   const auto = rec(rec(c.update).auto).enabled;
   return {
     promise: Boolean(str(wizard.securityAcknowledgedAt)),
+    where: setupDone(config),
     model,
     jobs: JOBS.flatMap((j, i) => (trunkNames.includes(j.name) ? [i] : [])),
     autoUpdate: typeof auto === "boolean" ? auto : null,
@@ -154,10 +166,11 @@ export function knownSetup(config: unknown, detected: Detected | null, trunkName
 /** The steps an already set-up Branch has done: Welcome (promise), Where (this window is connected), Models (a
  *  default model), Your first Trunks (a job Trunk exists), Reach (a chat app is connected). */
 export function doneSteps(known: Known, chatConnected: boolean): Set<number> {
-  const done = new Set<number>([1]);
+  const done = new Set<number>();
   if (known.promise) done.add(0);
+  if (known.where) done.add(1);
   if (known.model) done.add(2);
   if (known.jobs.length) done.add(4);
-  if (chatConnected) done.add(5);
+  if (chatConnected) done.add(6);
   return done;
 }

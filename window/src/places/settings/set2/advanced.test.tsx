@@ -75,6 +75,19 @@ describe("Settings › Advanced", () => {
     expect(patches(request)).toEqual([{ telemetry: { enabled: true } }, { agents: { defaults: { reasoningDefault: "on" } } }, { cron: { skipMissedJobs: true } }]);
   });
 
+  it("keeps early-feature rationale in page help, not row descriptions", async () => {
+    const { engine } = engineWith(CONFIG);
+    await show(engine, "advanced");
+    expect(row("Skip tools on plain chat").textContent).toContain("The decision model skips tools for plain chat.");
+    expect(row("Skip tools on plain chat").textContent).not.toContain("Off until you choose");
+    expect(row("Skip tools on plain chat").textContent).not.toContain("How it works");
+    expect(row("Code mode").textContent).not.toContain("How it works");
+    await act(async () => window.dispatchEvent(new Event("branch-settings-help")));
+    const help = document.querySelector(".kit-help-pop") as HTMLElement;
+    expect(help.textContent).toContain("Off until you choose: it’s an early feature");
+    expect(help.textContent).toContain("A per-model choice lives in Settings › Models");
+  });
+
   it("numbers convert units and empty means the engine's default", async () => {
     const { engine, request } = engineWith(CONFIG);
     await show(engine);

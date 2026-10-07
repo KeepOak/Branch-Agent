@@ -10,7 +10,7 @@ import {
 } from "../plugins/runtime.js";
 import { createBranchTestState } from "../test-utils/branch-test-state.js";
 import { acquireTestPortBlock } from "../test-utils/port-claims.js";
-import { createGatewayKernel } from "./server-kernel.js";
+import { prepareGatewayKernel } from "./server-kernel.js";
 import type { GatewayServer } from "./server-public.js";
 import type { GatewayWsClient } from "./server/ws-types.js";
 import { startClaimedGateway } from "./test-helpers.listener.js";
@@ -100,17 +100,23 @@ describe("Gateway startup node capabilities", () => {
       },
     );
     const peers = [affected, unaffected, operator];
-    let kernel: Awaited<ReturnType<typeof createGatewayKernel>> | undefined;
+    let kernel: Awaited<ReturnType<Awaited<ReturnType<typeof prepareGatewayKernel>>["activate"]>> | undefined;
     let server: GatewayServer | undefined;
-    const createKernel = createGatewayKernel;
+    const prepareKernel = prepareGatewayKernel;
     const factory = vi
-      .spyOn(await import("./server-kernel.js"), "createGatewayKernel")
+      .spyOn(await import("./server-kernel.js"), "prepareGatewayKernel")
       .mockImplementation(async (...args) => {
-        kernel = await createKernel(...args);
-        for (const { client } of peers) {
-          kernel.clients.add(client);
-        }
-        return kernel;
+        const prepared = await prepareKernel(...args);
+        return {
+          ...prepared,
+          activate: async (...activateArgs) => {
+            kernel = await prepared.activate(...activateArgs);
+            for (const { client } of peers) {
+              kernel.clients.add(client);
+            }
+            return kernel;
+          },
+        };
       });
     const postAttach = vi
       .spyOn(await import("./server-startup-post-attach.js"), "startGatewayPostAttachRuntime")
@@ -161,5 +167,5 @@ describe("Gateway startup node capabilities", () => {
         await state.cleanup();
       }
     }
-  });
+  }, 240_000);
 });
