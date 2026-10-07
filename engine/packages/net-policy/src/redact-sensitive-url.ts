@@ -59,6 +59,10 @@ function redactSensitiveUrlPath(value: string): string {
   return value.replace(TELEGRAM_BOT_TOKEN_PATH_RE, "/bot***");
 }
 
+function splitCamelCaseQueryName(name: string): string {
+  return name.replace(/([a-z\d])([A-Z])/gu, "$1_$2");
+}
+
 function normalizeUrlQueryParamName(name: string): {
   value: string;
   unresolvedEncoding: boolean;
@@ -73,14 +77,17 @@ function normalizeUrlQueryParamName(name: string): {
     }
     if (decoded === current) {
       return {
-        value: normalizeLowercaseStringOrEmpty(current).replaceAll("-", "_"),
+        value: normalizeLowercaseStringOrEmpty(splitCamelCaseQueryName(current)).replaceAll(
+          "-",
+          "_",
+        ),
         unresolvedEncoding: false,
       };
     }
     current = decoded;
   }
   return {
-    value: normalizeLowercaseStringOrEmpty(current).replaceAll("-", "_"),
+    value: normalizeLowercaseStringOrEmpty(splitCamelCaseQueryName(current)).replaceAll("-", "_"),
     unresolvedEncoding: current.includes("%"),
   };
 }

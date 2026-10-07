@@ -596,7 +596,7 @@ function buildLogger(): TsLogger<LogObj> {
           if (settings.rolling) {
             pruneOldRollingLogs(logDir);
           }
-          scheduleLogScrubOnce(logDir);
+          scheduleLogScrubOnce(logDir, activeFile);
         }
         const time = formatTimestamp(logObj.date ?? new Date(), { style: "long" });
         const { fields, messageParts } = prepareFileLogRecord(logObj as TsLogRecord);
@@ -749,16 +749,18 @@ function pruneOldRollingLogs(dir: string): void {
 
 let logScrubScheduled = false;
 
-function scheduleLogScrubOnce(dir: string): void {
+function scheduleLogScrubOnce(dir: string, activeFile: string): void {
   if (logScrubScheduled) {
     return;
   }
   logScrubScheduled = true;
-  // Scrub existing logs asynchronously after a short delay to avoid blocking startup
+  // Scrub rotated/retired logs only. Never rewrite the file the transport is appending to.
   void Promise.resolve().then(async () => {
     try {
-      const { scrubLogDirectory } = await import("./log-file-scrub.js");
-      await scrubLogDirectory(dir);
+      const { resolveLogScrubDirectories, scrubLogDirectory } = await import("./log-file-scrub.js");
+      for (const logDir of resolveLogScrubDirectories(dir)) {
+        await scrubLogDirectory(logDir, { skipFiles: [activeFile] });
+      }
     } catch {
       // Silent: scrubbing is best-effort retroactive cleanup
     }

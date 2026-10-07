@@ -1168,4 +1168,35 @@ describe("redactSensitiveLines", () => {
     expect(joined).not.toContain("ABCDEF1234567890");
   });
 });
+
+describe("session pairing and setup-code redaction", () => {
+  it("masks deviceToken, pairingToken, sessionToken, and oc-pair setup URLs", () => {
+    expectTextRedactions([
+      [
+        `{"deviceToken":"device-token-1234567890abcdef","pairingToken":"pairing-token-1234567890abcdef","sessionToken":"session-token-1234567890abcdef"}`,
+        undefined,
+        [
+          "device-token-1234567890abcdef",
+          "pairing-token-1234567890abcdef",
+          "session-token-1234567890abcdef",
+        ],
+      ],
+      [
+        'branch node run --pair "oc-pair://AbC_setupCodeExample123"',
+        'branch node run --pair "oc-pair://***"',
+        ["AbC_setupCodeExample123"],
+        ["oc-pair://"],
+      ],
+    ]);
+  });
+
+  it("keeps benign sibling fields", () => {
+    expectTextRedactions([
+      [
+        `{"tokenCount":42,"sessionName":"office-standup","deviceName":"laptop","pairingStatus":"ready"}`,
+        `{"tokenCount":42,"sessionName":"office-standup","deviceName":"laptop","pairingStatus":"ready"}`,
+      ],
+    ]);
+  });
+});
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

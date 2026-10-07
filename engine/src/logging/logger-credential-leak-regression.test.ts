@@ -222,6 +222,19 @@ describe("credential leakage regression tests", () => {
     expect(content).not.toContain(pairingToken);
   });
 
+  it("MUST NOT log oc-pair setup codes", async () => {
+    const logPath = logPathTracker.nextPath();
+    setLoggerOverride({ level: "info", file: logPath });
+
+    const setupCode = "AbC_setupCodeExample123";
+    getLogger().info(`pair with oc-pair://${setupCode}`);
+
+    const content = await readLogFile(logPath);
+
+    expect(content).not.toContain(setupCode);
+    expect(content).toContain("oc-pair://");
+  });
+
   it("MUST redact tokens even in long messages", async () => {
     const logPath = logPathTracker.nextPath();
     setLoggerOverride({ level: "info", file: logPath });
