@@ -2,7 +2,7 @@
 // and whether a new version waits. Each refreshes on the engine's own events, never on a made-up timer result.
 import { useEffect, useState } from "react";
 import type { SaplingSession } from "../connect/session";
-import { readLimits, readUpdate, type Limits, type UpdateInfo } from "./status-data";
+import { readLimits, type Limits, type UpdateInfo } from "./status-data";
 import { componentDesktop, MANUAL_UPDATE_UNSUPPORTED, useDesktopComponentStatus } from "../connect/desktop-component-updates";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
@@ -61,31 +61,11 @@ export function useLimits(session: SaplingSession, ready: boolean): Limits | nul
   return limits;
 }
 
-/** update.status on connect and on the engine's update events; hello's updateAvailable until it answers. */
+/** Branch component updates come from the desktop; the engine's release is not the app's version. */
 export function useUpdate(session: SaplingSession, ready: boolean, version: string): UpdateInfo | null {
-  const [info, setInfo] = useState<UpdateInfo | null>(null);
   const desktop = componentDesktop(session.gatewayUrl);
   const native = useDesktopComponentStatus(session.gatewayUrl);
-  const isDesktop = Boolean(desktop);
-  useEffect(() => {
-    if (!ready || isDesktop) {
-      return;
-    }
-    const status = session.getSnapshot().status;
-    const snapshot = status.phase === "connected" ? rec(rec(status.hello).snapshot) : {};
-    setInfo(readUpdate({ updateAvailable: snapshot.updateAvailable ?? null }, version));
-    const load = () =>
-      session.request("update.status", {}).then(
-        (r) => setInfo(readUpdate(r, version)),
-        (error: unknown) => console.warn("update.status failed", error),
-      );
-    void load();
-    return session.onGatewayEvent((event) => {
-      if (event === "update.available" || event === "update.run.changed") {
-        void load();
-      }
-    });
-  }, [session, ready, version, isDesktop]);
+  if (!ready) return null;
   if (desktop) {
     const status = native.status;
     const available = status?.phase === "available" || status?.phase === "staged";
@@ -94,5 +74,6 @@ export function useUpdate(session: SaplingSession, ready: boolean, version: stri
       statusMessage: !desktop.componentUpdates ? desktop.unavailableReason ?? MANUAL_UPDATE_UNSUPPORTED : native.error ??
         (status?.phase === "current" ? undefined : "Check for updates in Updates & about.") };
   }
-  return info;
+  return { current: version, latest: null, notes: [], installing: false,
+    statusMessage: "Check for Branch updates in the desktop app." };
 }
