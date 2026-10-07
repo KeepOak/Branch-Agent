@@ -84,8 +84,6 @@ export function splitCommandParts(value: AcpxAgentCommand): string[] {
   return parts;
 }
 
-const BRANCH_BRIDGE_EXECUTABLE = "branch";
-const BRANCH_BRIDGE_SUBCOMMAND = "acp";
 function basename(value: string): string {
   return value.split(/[\\/]/).pop() ?? value;
 }
@@ -150,18 +148,15 @@ function isAcpCommand(
 }
 
 export function isBranchBridgeCommand(command: AcpxAgentCommand | undefined): boolean {
-  if (!command) {
-    return false;
-  }
-  const parts = unwrapEnvCommand(splitCommandParts(command));
-  if (basename(parts[0] ?? "") === BRANCH_BRIDGE_EXECUTABLE) {
-    return parts[1] === BRANCH_BRIDGE_SUBCOMMAND;
-  }
-  if (basename(parts[0] ?? "") !== "node") {
-    return false;
-  }
-  const scriptName = basename(parts[1] ?? "");
-  return /^branch(?:\.[cm]?js)?$/i.test(scriptName) && parts[2] === BRANCH_BRIDGE_SUBCOMMAND;
+  const [executable = "", ...args] = command ? unwrapEnvCommand(splitCommandParts(command)) : [];
+  const runtime =
+    basename(executable) !== "branch" &&
+    (executable === process.execPath || /^(?:node|bun)(?:\.exe)?$/i.test(basename(executable)));
+  const scriptName = basename(runtime ? (args[0] ?? "") : executable);
+  return (
+    (runtime ? /^branch(?:\.[cm]?js)?$/i.test(scriptName) : scriptName === "branch") &&
+    args[runtime ? 1 : 0] === "acp"
+  );
 }
 
 export function isCodexAcpCommand(command: AcpxAgentCommand | undefined): boolean {

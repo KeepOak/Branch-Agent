@@ -1,3 +1,4 @@
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { SettingsPageProps } from "./index";
@@ -13,8 +14,8 @@ const INTRO: Record<string, string> = {
   general: "How Branch starts and behaves on this computer.", people: "Everyone who uses Branch: on this computer, on their own devices, and your keepoak.com team. The same list as People > People in the People place.", appearance: "How Branch looks on this computer. Changes show as you pick.",
   notifications: "When Branch may interrupt you.", instructions: "Plain files every Trunk reads before it works. They work the same as in other agents, so a file written for one of them works here.", models: "Which models answer, and where they run.",
   local: "Models that run here, free and private. Branch looks at this computer first and only offers what fits.", accounts: "Your model accounts, the order Branch uses them in, which Trunks use each, and your keepoak.com account.", voice: "Talking to Branch. Voice stays on this computer unless a voice service is connected.", chatapps: "Where you can message your Trunks, and how each chat app behaves.",
-  permissions: "What Trunks may do without asking you first.", computer: "The computers your Trunks may use, and the browser they work in. Which Branch you talk to is the switcher at the top of the list.", secrets: "Sign-ins Branch may fill for you. It never sees or stores the passwords.", usage: "What each connection has left, what Branch spent, what it keeps.",
-  gateway: "A small helper that keeps Branch running in the background, starts it again if it stops, and carries interrupted work on.", self: "What Branch may change about itself, how it stays running, and every change it made, each one reversible.", seasons: "How Branch gets better by itself: tidying memory overnight, keeping skills in shape and learning what a Trunk couldn't do. Every change is shown and can be undone.", updates: "Branch Agent on this computer.",
+  permissions: "What Trunks may do without asking you first.", computer: "The computers your Trunks may use, and the browser they work in. Which Branch you talk to is the switcher at the top of the list.", secrets: "Sign-ins Branch may fill for you. It never sees or stores the passwords.", usage: "What each account has left, what Branch spent, what it keeps.",
+  gateway: "Keeps Branch running and carries interrupted work on.", self: "What Branch may change about itself, with every change reversible.", seasons: "How Branch improves memory, skills and Trunk abilities.", updates: "Branch on this computer.",
   achievements: "Private to you, never nagging.", advanced: "What's running under the hood, for when something needs a look.", developer: "For people building on Branch.",
 };
 function Frame({ title, page, children }: SettingsPageProps & { children: ReactNode }) { return <div className="branch-settings"><header><h1>{title}</h1><p className="bs-lede">{INTRO[page]}</p></header>{children}</div>; }
@@ -133,7 +134,7 @@ export function BaselineSettingsPage(props: SettingsPageProps) {
   const section = (method: string, title: string, params?: unknown) => <EngineSection engine={props.engine} method={method} title={title} params={params} />;
   let content: ReactNode;
   switch (props.page) {
-    case "general": content = <><ConfigForm {...props} /><Gap>Start with Windows, tray behavior, message-box shortcuts and task display preferences need desktop or shared window adapters. They are not exposed by this connection.</Gap></>; break;
+    case "general": content = <><ConfigForm {...props} /><Gap>Message-box shortcuts and task display preferences need shared window adapters. They are not exposed by this connection.</Gap></>; break;
     case "people": content = section("users.list", "People in this Branch"); break;
     case "appearance": content = <Appearance />; break;
     case "notifications": content = <><Gap>This engine connection does not expose desktop notification preferences. Sounds, notification routing and quiet hours cannot be changed here yet.</Gap>{section("status", "Current engine status")}</>; break;

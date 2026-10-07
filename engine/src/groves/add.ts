@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { coerceErrorMessage } from "@branch/normalization-core";
 import { findOverlappingWorkspaceAgentIds } from "../agents/agent-delete-safety.js";
 import { listAgentEntries, toAgentEntriesRecord } from "../agents/agent-scope.js";
+import { applyAgentConfig } from "../commands/agents.config.js";
 import { transformConfigFileWithRetry } from "../config/config.js";
 import type { AgentConfig } from "../config/types.agents.js";
 import type { BranchConfig } from "../config/types.branch.js";
@@ -405,7 +406,7 @@ export async function applyGroveAddPlan(
     await commit((config) => {
       const existingAgents = listAgentEntries(config);
       const agentsToPreserve: AgentConfig[] =
-        existingAgents.length > 0 ? existingAgents : [{ id: DEFAULT_AGENT_ID, default: true }];
+        existingAgents.length > 0 ? existingAgents : [{ id: DEFAULT_AGENT_ID }];
       const configWithPreservedAgents: BranchConfig = {
         ...config,
         agents: {
@@ -447,14 +448,19 @@ export async function applyGroveAddPlan(
           "Workspace " + JSON.stringify(workspace) + " is already assigned to an agent.",
         );
       }
-      const nextConfig: BranchConfig = {
-        ...config,
+      const nextConfig = applyAgentConfig(configWithPreservedAgents, {
+        agentId: normalizedAgentId,
+      });
+      return {
+        ...nextConfig,
         agents: {
-          ...config.agents,
-          entries: toAgentEntriesRecord([...agentsToPreserve, plan.agent.config]),
+          ...nextConfig.agents,
+          entries: {
+            ...nextConfig.agents?.entries,
+            ...toAgentEntriesRecord([plan.agent.config]),
+          },
         },
       };
-      return nextConfig;
     });
     // The transform runs before persistence can still fail; record the fact only after commit.
     // Moving this into the callback retains the workspace and reports a write that never landed.

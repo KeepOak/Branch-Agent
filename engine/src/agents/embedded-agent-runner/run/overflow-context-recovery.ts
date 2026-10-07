@@ -1,3 +1,5 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/embedded-agent-runner/run/overflow-context-recovery.ts (atlas AGENT-LOOP-0103). Changed for Branch: classify raw Cline provider signals before flattening; retain existing transcript and side-effect fences.
+
 import { isContextOverflow } from "@branch/ai/internal/runtime";
 import { isProviderRefusalAssistantError } from "@branch/llm-core/diagnostics";
 import { asPositiveFiniteNumber } from "@branch/normalization-core/number-coercion";
@@ -12,6 +14,10 @@ import {
   isLikelyContextOverflowError,
   isProviderRequestSizeCeilingError,
 } from "../../embedded-agent-helpers.js";
+import {
+  allowsContextOverflowTextFallback,
+  classifyProviderError,
+} from "../../failover/provider-error-classification.js";
 import type { FailoverClassification } from "../../failover/signal.js";
 import { withSessionManagerWrite } from "../../sessions/session-manager-write-admission.js";
 import { classifyCompactionReason } from "../compact-reasons.js";
@@ -21,9 +27,10 @@ import {
   getProviderPromptState,
   markLastProviderPromptContextRejected,
 } from "../provider-prompt-state.js";
-import { getEmbeddedSessionPromptState } from "../session-prompt-state.js";
+import { retainEmbeddedSessionPromptState } from "../session-prompt-state.js";
 import {
   resolveLiveToolResultMaxChars,
+  restoreCacheTtlToolResultProjections,
   sessionLikelyHasOversizedToolResults,
   truncateOversizedToolResultsInSessionManager,
 } from "../tool-result-truncation.js";
@@ -89,7 +96,13 @@ export async function recoverEmbeddedRunOverflow(
       ? (() => {
           if (input.promptError) {
             const errorText = formatErrorMessage(input.promptError);
-            if (isLikelyContextOverflowError(errorText)) {
+            const providerClass = classifyProviderError(input.promptError);
+            if (
+              providerClass === "context_window_exceeded" ||
+              (providerClass !== "auth" &&
+                allowsContextOverflowTextFallback(input.promptError) &&
+                isLikelyContextOverflowError(errorText))
+            ) {
               return { text: errorText, source: "promptError" as const };
             }
             // A non-overflow prompt failure must not inherit a stale assistant
@@ -154,7 +167,7 @@ export async function recoverEmbeddedRunOverflow(
   const requiresTranscriptContinuation =
     preflightRecovery?.source === "mid-turn" || !isCurrentAttemptReplaySafe(input.attempt);
   const truncateToolResults = async () => {
-    const { sessionManager, assertActive } = input.prepareRecoverySession(contextTokenBudget);
+    const { sessionManager, assertActive } = await input.prepareRecoverySession(contextTokenBudget);
     if (!sessionManager) {
       return {
         truncated: false,
@@ -165,6 +178,9 @@ export async function recoverEmbeddedRunOverflow(
     return await withSessionManagerWrite(sessionManager, async () => {
       const target = sessionManager.getSessionTarget();
       assertActive();
+      using promptState = retainEmbeddedSessionPromptState(input.getActiveSession().id);
+      const projectionState = promptState.state.toolResults;
+      restoreCacheTtlToolResultProjections(projectionState, sessionManager.getBranch());
       const result = await truncateOversizedToolResultsInSessionManager({
         sessionManager,
         contextWindowTokens: contextTokenBudget,
@@ -172,7 +188,7 @@ export async function recoverEmbeddedRunOverflow(
           contextWindowTokens: contextTokenBudget,
         }),
         protectTrailingToolResults: preflightRecovery?.route === "compact_then_truncate",
-        projectionState: getEmbeddedSessionPromptState(input.getActiveSession().id).toolResults,
+        projectionState,
         ...target,
       });
       assertActive();
@@ -289,7 +305,7 @@ export async function recoverEmbeddedRunOverflow(
         );
       }
       if (input.contextEngine.maintain) {
-        const transcript = input.prepareRecoverySession(contextTokenBudget);
+        const transcript = await input.prepareRecoverySession(contextTokenBudget);
         await runContextEngineMaintenance({
           ...transcript,
           contextEngine: input.contextEngine,
@@ -314,7 +330,7 @@ export async function recoverEmbeddedRunOverflow(
     if (preflightRecovery && isNoRealConversationCompactionNoop(compactResult)) {
       input.state.lastCompactionTokensAfter = undefined;
       input.state.lastContextBudgetStatus = undefined;
-      const transcript = input.prepareRecoverySession(contextTokenBudget);
+      const transcript = await input.prepareRecoverySession(contextTokenBudget);
       await resetNoRealConversationTokenSnapshot({
         sessionTarget: transcript.sessionManager?.getSessionTarget(),
         sessionPersistence: runParams.sessionPersistence,

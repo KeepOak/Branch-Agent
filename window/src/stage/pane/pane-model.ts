@@ -2,6 +2,8 @@
 // live run). Nothing here is invented: a value the engine didn't record is left out.
 import type { Block } from "../../thread/model";
 import { recordedAt } from "../../thread/model";
+import { stepLabel } from "../../thread/format";
+import { formatMoney } from "../../format/money";
 
 /** Last observation in transcript/event order; never the renderer's mount time. */
 export function activityRecordedAt(blocks: readonly Block[]): number | undefined {
@@ -59,7 +61,7 @@ export function timelineItems(blocks: Block[], name: string): TimelineItem[] {
       out.push({
         key: b.key,
         kind: /spawn|subagent|sessions_spawn/i.test(b.tool) ? "help" : "tool",
-        title: b.title,
+        title: b.title || stepLabel(b),
         line: [name, firstLine(b.detail)].filter(Boolean).join(" · "),
         tech: b.tool,
         had: firstLine(b.detail, 240) || undefined,
@@ -102,7 +104,7 @@ export function duration(ms: number): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
-export const money = (n: number) => `$${n < 0.01 && n > 0 ? n.toFixed(3) : n.toFixed(2)}`;
+export const money = formatMoney;
 
 export function summaryLine(s: Summary, running: boolean): string {
   return [`${s.steps} step${s.steps === 1 ? "" : "s"}`, s.ms !== undefined ? `${duration(s.ms)}${running ? " so far" : ""}` : "", s.cost !== undefined ? money(s.cost) : ""].filter(Boolean).join(" · ");

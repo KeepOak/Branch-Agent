@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { lstat, realpath } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
 import { listAgentEntries, resolveAgentWorkspaceDir } from "../agents/agent-scope-config.js";
@@ -9,7 +8,7 @@ import { isAvatarDataUrl } from "../shared/avatar-policy.js";
 import { tableExists } from "../state/branch-state-db-schema-helpers.js";
 import { openExistingBranchStateDatabaseReadOnly } from "../state/branch-state-db.js";
 import type { BranchStateDatabaseOptions } from "../state/branch-state-db.js";
-import { digestGroveValue } from "./digest.js";
+import { digestGroveBytes, digestGroveValue } from "./digest.js";
 import { buildGroveAddPlan } from "./lifecycle.js";
 import { GroveMigrationError } from "./migrate-errors.js";
 import {
@@ -33,12 +32,9 @@ import {
   validateAgentConfigKeys,
 } from "./migrate-validation.js";
 import { readSelectedWorkspaceFiles } from "./migrate-workspace-files.js";
+import { readGroveInstallRecordFromDatabase } from "./provenance-read.kernel.js";
 import { readGroveSecondaryReferenceTables } from "./provenance-secondary-references.js";
-import {
-  persistGroveMigrationOwnership,
-  readGroveInstallRecordFromDatabase,
-  readGroveInstallRecords,
-} from "./provenance.js";
+import { persistGroveMigrationOwnership, readGroveInstallRecords } from "./provenance.js";
 import { readGroveManifestFile } from "./reader.js";
 import { isPortableGroveAvatar } from "./schema-portability.js";
 import type { GroveManifest, GroveBranchProfile } from "./types.js";
@@ -102,10 +98,6 @@ type BuiltMigration = {
   ownershipFiles: PersistedGroveWorkspaceFile[];
 };
 
-function sha256(value: Uint8Array): string {
-  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
-}
-
 async function readOwnership(options: BranchStateDatabaseOptions, agentId: string) {
   const database = await openExistingBranchStateDatabaseReadOnly(options);
   if (!database) {
@@ -156,7 +148,7 @@ function sanitizeAgentPreview(agent: GroveManifest["agent"]): GroveManifest["age
     ...agent,
     identity: {
       ...agent.identity,
-      avatar: `image data URL (${Buffer.byteLength(avatar, "utf8")} bytes; ${sha256(Buffer.from(avatar))})`,
+      avatar: `image data URL (${Buffer.byteLength(avatar, "utf8")} bytes; ${digestGroveBytes(Buffer.from(avatar))})`,
     },
   };
 }
@@ -169,9 +161,29 @@ function buildPlanIntegrity(
     schemaVersion: GROVE_MIGRATION_PLAN_SCHEMA_VERSION,
     addPlan,
     packageFiles: [...packageFiles.entries()]
-      .map(([path, content]) => ({ path, digest: sha256(content), byteLength: content.byteLength }))
+      .map(([path, content]) => ({
+        path,
+        digest: digestGroveBytes(content),
+        byteLength: content.byteLength,
+      }))
       .toSorted((left, right) => left.path.localeCompare(right.path)),
     retained: MIGRATION_RETAINED_PATHS,
+  });
+}
+
+function adoptMigrationActions(plan: BuiltMigration["addPlan"]): void {
+  plan.actions = plan.actions.map((action) => {
+    if (action.kind !== "workspaceFile" && action.kind !== "agent" && action.kind !== "workspace") {
+      return action;
+    }
+    return {
+      ...action,
+      action: "reuse",
+      details: {
+        ...action.details,
+        expectedState: action.kind === "workspaceFile" ? "present-matching" : "present",
+      },
+    };
   });
 }
 
@@ -366,22 +378,7 @@ export async function buildGroveMigrationPlan(params: {
         );
       }
     }
-    addPlan.actions = addPlan.actions.map((action) => ({
-      ...action,
-      action:
-        action.kind === "workspaceFile" || action.kind === "agent" || action.kind === "workspace"
-          ? "reuse"
-          : action.action,
-      ...(action.kind === "agent"
-        ? { details: { ...action.details, expectedState: "present" } }
-        : {}),
-      ...(action.kind === "workspace"
-        ? { details: { ...action.details, expectedState: "present" } }
-        : {}),
-      ...(action.kind === "workspaceFile"
-        ? { details: { ...action.details, expectedState: "present-matching" } }
-        : {}),
-    }));
+    adoptMigrationActions(addPlan);
     const planIntegrity = buildPlanIntegrity(addPlan, projected.packageFiles);
     addPlan.planIntegrity = planIntegrity;
     const plan: GroveMigrationPlan = {
@@ -399,7 +396,7 @@ export async function buildGroveMigrationPlan(params: {
         .map(([path, content]) => ({
           path,
           byteLength: content.byteLength,
-          digest: sha256(content),
+          digest: digestGroveBytes(content),
         }))
         .toSorted((left, right) => left.path.localeCompare(right.path)),
       workspaceFiles: selectedFiles.map(({ name, content, digest }) => ({
@@ -547,22 +544,7 @@ export async function applyGroveMigrationPlan(params: {
         );
       }
     }
-    finalPlan.actions = finalPlan.actions.map((action) => ({
-      ...action,
-      action:
-        action.kind === "workspaceFile" || action.kind === "agent" || action.kind === "workspace"
-          ? "reuse"
-          : action.action,
-      ...(action.kind === "agent"
-        ? { details: { ...action.details, expectedState: "present" } }
-        : {}),
-      ...(action.kind === "workspace"
-        ? { details: { ...action.details, expectedState: "present" } }
-        : {}),
-      ...(action.kind === "workspaceFile"
-        ? { details: { ...action.details, expectedState: "present-matching" } }
-        : {}),
-    }));
+    adoptMigrationActions(finalPlan);
     const finalIntegrity = buildPlanIntegrity(finalPlan, params.migration.packageFiles);
     if (finalIntegrity !== params.migration.plan.planIntegrity) {
       throw new GroveMigrationError(

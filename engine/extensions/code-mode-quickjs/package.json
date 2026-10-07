@@ -1,6 +1,6 @@
 {
   "name": "@branch/code-mode-quickjs",
-  "version": "2026.9.7",
+  "version": "2026.9.8",
   "private": true,
   "description": "QuickJS executor for Branch Agent Code Mode",
   "type": "module",

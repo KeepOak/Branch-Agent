@@ -16,6 +16,7 @@ import {
   type GatewayConfigReloadTransactionOwnership,
   type GatewayReloadPlan,
 } from "./config-reload.js";
+import { isLockdownEngaging, stopRunningWorkForLockdown } from "./lockdown-engage.js";
 import { publishOperatorRoleConfigChange } from "./operator-role-policy.js";
 import {
   assertReloadPublicationCurrent,
@@ -25,7 +26,6 @@ import {
   type AcceptedRestartTarget,
   type AcceptedRestartTargetOwnership,
   type CurrentRuntimeSecretsPreparation,
-  type GatewayGmailRestartAbortController,
   type GatewayRestartRequestOptions,
   type GatewayRestartTransactionResult,
   type ManagedGatewayConfigReloaderHandle,
@@ -120,12 +120,12 @@ export function startManagedGatewayConfigReloader(
       throw error;
     }
   };
-  let activeGmailRestartAbortController: GatewayGmailRestartAbortController | null = null;
+  let activeGmailRestartAbortController: AbortController | null = null;
   const abortActiveGmailRestart = () => {
     activeGmailRestartAbortController?.abort();
     activeGmailRestartAbortController = null;
   };
-  const createGmailRestartAbortController = (): GatewayGmailRestartAbortController => {
+  const createGmailRestartAbortController = (): AbortController => {
     abortActiveGmailRestart();
     const abortController = new AbortController();
     if (lifecycle.signal.aborted) {
@@ -338,6 +338,21 @@ export function startManagedGatewayConfigReloader(
       );
     },
     onRuntimeConfigCommitted: (plan, nextCommittedRuntimeConfig) => {
+      if (isLockdownEngaging(committedRuntimeConfig, nextCommittedRuntimeConfig)) {
+        const context = params.resolveGatewayContext?.();
+        stopRunningWorkForLockdown(
+          context
+            ? {
+                chatAbortControllers: context.chatAbortControllers,
+                chatRunState: context.chatRunState,
+                removeChatRun: context.removeChatRun,
+                agentRunSeq: context.agentRunSeq,
+                broadcast: context.broadcast,
+                nodeSendToSession: context.nodeSendToSession,
+              }
+            : undefined,
+        );
+      }
       const sessionStoresChanged =
         committedRuntimeConfig.session?.store !== nextCommittedRuntimeConfig.session?.store ||
         plan.changedPaths.some((path) => path === "env" || path.startsWith("env."));
@@ -347,7 +362,7 @@ export function startManagedGatewayConfigReloader(
       if (sessionStoresChanged) {
         publishSystemEventStoreConfig(nextCommittedRuntimeConfig);
       }
-      params.resolveGatewayContext?.()?.mentionInbox?.invalidate();
+      void params.resolveGatewayContext?.()?.mentionInbox?.invalidateAsync();
     },
     ...(params.prepareConfigCandidate
       ? { prepareConfigCandidate: params.prepareConfigCandidate }

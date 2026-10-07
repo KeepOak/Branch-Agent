@@ -60,7 +60,7 @@ describe("doctor incident-scale Codex binding repair", () => {
     vi.stubEnv("BRANCH_STATE_DIR", incidentStateDir);
     const env = process.env;
     const config: BranchConfig = {
-      agents: { entries: { main: { default: true } } },
+      agents: { entries: { main: {} } },
       plugins: { entries: { codex: { enabled: true } } },
     };
 

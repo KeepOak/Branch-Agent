@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 // Creates isolated Branch Agent test HOME/state directories and shell snippets.
-import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -267,23 +266,6 @@ function renderExports(env: Record<string, string>) {
     .join("\n");
 }
 
-function renderAuthProfileSecretKeyExport() {
-  return [
-    'BRANCH_AUTH_PROFILE_SECRET_KEY_FILE="$BRANCH_TEST_STATE_HOME/.branch-test-auth-profile-secret-key"',
-    'if [ -s "$BRANCH_AUTH_PROFILE_SECRET_KEY_FILE" ]; then',
-    '  BRANCH_AUTH_PROFILE_SECRET_KEY="$(cat "$BRANCH_AUTH_PROFILE_SECRET_KEY_FILE")"',
-    "else",
-    '  BRANCH_AUTH_PROFILE_SECRET_KEY="$(od -An -N 32 -tx1 /dev/urandom | tr -d " \\n")"',
-    '  ( umask 077; printf "%s\\n" "$BRANCH_AUTH_PROFILE_SECRET_KEY" > "$BRANCH_AUTH_PROFILE_SECRET_KEY_FILE" )',
-    "fi",
-    'if [ -z "$BRANCH_AUTH_PROFILE_SECRET_KEY" ]; then',
-    '  echo "failed to generate BRANCH_AUTH_PROFILE_SECRET_KEY" >&2',
-    "  return 1 2>/dev/null || exit 1",
-    "fi",
-    "export BRANCH_AUTH_PROFILE_SECRET_KEY",
-  ];
-}
-
 function renderConfigWrite(configPathExpression: string, config: unknown) {
   if (config === undefined) {
     return "";
@@ -311,7 +293,6 @@ async function createState(options: TestStateOptions = {}) {
     BRANCH_HOME: home,
     BRANCH_STATE_DIR: stateDir,
     BRANCH_CONFIG_PATH: configPath,
-    BRANCH_AUTH_PROFILE_SECRET_KEY: randomBytes(32).toString("hex"),
     ...scenarioEnv(scenario),
   };
   await fs.mkdir(stateDir, { recursive: true });
@@ -351,7 +332,6 @@ function renderShellSnippet(options: TestStateOptions = {}) {
     'export BRANCH_HOME="$BRANCH_TEST_STATE_HOME"',
     'export BRANCH_STATE_DIR="$BRANCH_TEST_STATE_HOME/.branch"',
     'export BRANCH_CONFIG_PATH="$BRANCH_STATE_DIR/branch.json"',
-    ...renderAuthProfileSecretKeyExport(),
     'export BRANCH_TEST_WORKSPACE_DIR="$BRANCH_TEST_STATE_HOME/workspace"',
     'mkdir -p "$BRANCH_STATE_DIR" "$BRANCH_TEST_WORKSPACE_DIR"',
   ];
@@ -407,7 +387,6 @@ function renderShellFunction() {
   export BRANCH_HOME="$BRANCH_TEST_STATE_HOME"
   export BRANCH_STATE_DIR="$BRANCH_TEST_STATE_HOME/.branch"
   export BRANCH_CONFIG_PATH="$BRANCH_STATE_DIR/branch.json"
-  ${renderAuthProfileSecretKeyExport().join("\n  ")}
   export BRANCH_TEST_WORKSPACE_DIR="$BRANCH_TEST_STATE_HOME/workspace"
   unset BRANCH_AGENT_DIR
   unset BRANCH_SERVICE_REPAIR_POLICY

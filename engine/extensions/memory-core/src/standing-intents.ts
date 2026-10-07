@@ -38,9 +38,8 @@ async function executeStandingIntent<Key extends keyof StandingIntentOperations>
   params: { agentId: string; assertCurrent?: () => void },
   command: { type: Key; input: StandingIntentOperations[Key]["input"] },
 ): Promise<StandingIntentOperations[Key]["output"]> {
-  const assertCaller = params.assertCurrent;
-  const assertCurrent = () => assertCaller?.();
-  assertCurrent();
+  const assertCurrent = params.assertCurrent;
+  assertCurrent?.();
   const env = { ...process.env, BRANCH_STATE_DIR: resolveStateDir() };
   const options = {
     agentId: params.agentId,
@@ -54,7 +53,7 @@ async function executeStandingIntent<Key extends keyof StandingIntentOperations>
       withBranchAgentDatabaseAsync(
         options,
         async ({ db }) => {
-          assertCurrent();
+          assertCurrent?.();
           const worker = await openBranchAgentSqliteWorkerStore<StandingIntentOperations>(
             options,
             db,
@@ -68,7 +67,7 @@ async function executeStandingIntent<Key extends keyof StandingIntentOperations>
               (scope) => scope.execute(command),
               () => {
                 assertAdmission();
-                assertCurrent();
+                assertCurrent?.();
               },
             );
           } finally {

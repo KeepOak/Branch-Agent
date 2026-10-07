@@ -1,4 +1,5 @@
 import type { ThemeId } from "./theme-ids.ts";
+import { LEGACY_THEME_CATALOG } from "./legacy-theme-catalog.ts";
 export {
   BUILTIN_THEME_IDS,
   THEME_LOCAL_ID_MAX_LENGTH,
@@ -178,6 +179,16 @@ export const BUILTIN_THEMES: readonly ThemeDescriptor[] = (
       description:
         "Hot magenta and cyan on violet-black or pale lavender, with Space Grotesk. Bright neon energy and a synthwave character.",
     },
+    {
+      id: "paper",
+      name: "Paper",
+      description: "Quiet ink on paper, with an inverse reading-room side for Moonlight.",
+    },
+    ...LEGACY_THEME_CATALOG.map((theme) => ({
+      id: theme.id,
+      name: theme.name,
+      description: `Classic ${theme.group} theme, restored from Branch Agent.`,
+    })),
   ] satisfies Array<Pick<ThemeDescriptor, "id" | "name" | "description">>
 ).map<ThemeDescriptor>((theme) => ({
   id: theme.id,

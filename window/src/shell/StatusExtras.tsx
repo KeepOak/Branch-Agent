@@ -1,5 +1,5 @@
 // The status bar's other items (DESIGN-SPEC §4.9): paused Trunks (agents.list paused), a live phone call or meeting
-// (voicecall.status), the pet when Appearance puts it in the status bar, and the graphics and memory readout
+// (voicecall.status), and the graphics and memory readout
 // (system.info; Appearance › What's shown turns it on). Each shows only when the engine says it applies.
 import { useEffect, useState, type MouseEvent } from "react";
 import type { SaplingSession } from "../connect/session";
@@ -7,7 +7,6 @@ import { readLevel } from "../places-nav/SettingsFrame";
 import { Icon } from "./icons";
 import type { MenuItem } from "./Menu";
 import { notify } from "./notify";
-import { PETS, PIXEL, PixelPet } from "../places/settings/set1/appearance-pet";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -114,8 +113,6 @@ type Props = {
   paused: { id: string; name: string }[];
   allPaused: boolean;
   gfx: boolean;
-  /** The pet from Appearance (look keys pet, petWhere, petName); it shows here when it walks in the status bar. */
-  pet: { where: string; id: string; name: string } | null;
   onMenu: (e: MouseEvent<HTMLElement>, id: string, items: MenuItem[], label: string) => void;
   onSettings: (page: string) => void;
 };
@@ -165,22 +162,4 @@ export function StatusGfx(p: Props) {
       <span>{tight ? <b className="warn-hw">{words}</b> : words}</span>
     </button>
   );
-}
-
-/** The pet, before the version, when Appearance has it walk in the status bar (§6.5): a still that hops once when patted. */
-export function StatusPet({ pet }: { pet: Props["pet"] }) {
-  const [hop, setHop] = useState(0);
-  if (!pet || pet.where !== "status" || pet.id === "none") return null;
-  return (
-    <button type="button" className={hop ? "sb pet hop" : "sb pet"} aria-label={`Pat ${pet.name}`} title={pet.name} data-testid="sb-pet" onClick={() => setHop((n) => n + 1)} onAnimationEnd={() => setHop(0)}>
-      <PetStill id={pet.id} />
-    </button>
-  );
-}
-
-/** The pet's still: a painted picture, or a pixel pet drawn from its map. */
-function PetStill({ id }: { id: string }) {
-  const still = PETS.find((x) => x.id === id)?.still;
-  if (still) return <img src={still} alt="" width={22} height={22} draggable={false} />;
-  return PIXEL[id] ? <span className="pet-px"><PixelPet p={PIXEL[id]} /></span> : null;
 }

@@ -12,6 +12,7 @@ import {
 } from "branch/plugin-sdk/core";
 import { createChannelDirectoryAdapter } from "branch/plugin-sdk/directory-runtime";
 import { channelReadyPatch } from "branch/plugin-sdk/gateway-runtime";
+import { buildComputedAccountStatusSnapshot } from "branch/plugin-sdk/status-helpers";
 import { runReefChannelLifecycle } from "./channel-lifecycle.js";
 import {
   ReefChannelConfigSchema,
@@ -98,7 +99,7 @@ function matchesReefToolTarget(target: string, toolContext?: ChannelThreadingToo
   return normalizedCurrent !== undefined && normalizeReefTarget(target) === normalizedCurrent;
 }
 
-export const reefPlugin: ChannelPlugin<ReefAccount> = {
+export const reefPlugin: ChannelPlugin<ReefAccount, unknown, unknown, 2> = {
   id: "reef",
   meta: {
     id: "reef",
@@ -228,19 +229,19 @@ export const reefPlugin: ChannelPlugin<ReefAccount> = {
   },
   status: {
     defaultRuntime: { accountId: "default", enabled: true, configured: false },
-    buildAccountSnapshot: ({ account, runtime }) => ({
-      accountId: "default",
-      enabled: account.enabled,
-      configured: account.configured,
-      running: runtime?.running ?? false,
-      connected: runtime?.connected ?? false,
-      lifecycle: runtime?.lifecycle,
-      lastConnectedAt: runtime?.lastConnectedAt ?? null,
-      lastError: runtime?.lastError ?? null,
-      extra: { handle: account.config.handle },
-    }),
+    buildAccountSnapshot: ({ account, runtime }) =>
+      buildComputedAccountStatusSnapshot(
+        {
+          accountId: "default",
+          enabled: account.enabled,
+          configured: account.configured,
+          runtime,
+        },
+        { extra: { handle: account.config.handle } },
+      ),
   },
   gateway: {
+    apiVersion: 2,
     startAccount: async (ctx) => {
       if (!ctx.account.configured) {
         throw new Error("Reef requires handle, email, and guard config");
@@ -425,7 +426,7 @@ export const reefPlugin: ChannelPlugin<ReefAccount> = {
         {
           onError: (error, receiptId) =>
             ctx.log?.error?.(`reef rejection notice failed for ${receiptId}: ${String(error)}`),
-          signal: ctx.abortSignal,
+          scheduler: ctx.scheduler,
         },
       );
       const reconcile = async (signal: AbortSignal) => {
@@ -488,7 +489,7 @@ export const reefPlugin: ChannelPlugin<ReefAccount> = {
       );
       try {
         await runReefChannelLifecycle({
-          parentSignal: ctx.abortSignal,
+          scheduler: ctx.scheduler,
           startInbox: (signal) => inbox.start(signal),
           reconcile: async (signal) => {
             // The overdue sweep must run even while the relay is unreachable:
@@ -522,6 +523,7 @@ export const reefPlugin: ChannelPlugin<ReefAccount> = {
           onReady: activate,
         });
       } finally {
+        await ctx.scheduler.stop();
         authority.release();
         ctx.setStatus({ accountId: "default", running: false, connected: false });
       }

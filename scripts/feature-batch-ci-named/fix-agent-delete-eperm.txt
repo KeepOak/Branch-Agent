@@ -1,0 +1,3 @@
+engine:src/agents/agent-delete-trash-retry.test.ts
+engine:src/gateway/server.agent-delete-eperm.windows.test.ts
+engine:src/infra/agent-database-readers.test.ts

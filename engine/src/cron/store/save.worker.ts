@@ -1,8 +1,11 @@
 import { deferSqlitePostCommitPublication } from "../../infra/sqlite-post-commit.js";
+import { requestSqliteWorkerOperationAdmission } from "../../infra/sqlite-worker-operation-admission.js";
 import { getSqliteWorkerStateContext } from "../../infra/sqlite-worker-state-context.js";
 import type { BranchStateDatabase } from "../../state/branch-state-db-contract.js";
 import { runBranchStateWriteTransaction } from "../../state/branch-state-db.js";
 import type { CronStoreFile } from "../types.js";
+import { readCronJobNamesInDatabase } from "./job-name.kernel.js";
+import { retainCronReceiptAuthorityPublication } from "./receipt-authority-publication.js";
 import { readCronStoreFingerprints } from "./row-codec.js";
 import { serializeCronSaveError } from "./save-error.js";
 import type { CronStoreSaveWorkerOperations } from "./save-worker.types.js";
@@ -20,6 +23,7 @@ export function executeCronStoreSaveCommand(command: SaveCommand, database: Bran
   try {
     const result = runBranchStateWriteTransaction(
       ({ db }) => {
+        requestSqliteWorkerOperationAdmission({ stage: "transaction", facts: undefined });
         let value: CronStoreFile | undefined;
         if (command.type === "cron.saveChanges") {
           value = saveCronStoreChangesInDatabase(
@@ -40,7 +44,12 @@ export function executeCronStoreSaveCommand(command: SaveCommand, database: Bran
         deferSqlitePostCommitPublication(db, () => {
           committed = true;
         });
-        return { value, ...readCronStoreFingerprints(db, command.input.storeKey) };
+        retainCronReceiptAuthorityPublication(db);
+        return {
+          value,
+          names: readCronJobNamesInDatabase(db, undefined, command.input.storeKey),
+          ...readCronStoreFingerprints(db, command.input.storeKey),
+        };
       },
       { database, env: getSqliteWorkerStateContext().environment },
       command.type === "cron.saveChanges" ? { operationLabel: "cron.config-mutation" } : undefined,

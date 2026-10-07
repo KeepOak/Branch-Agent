@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { SIcon } from "../stage-icons";
 
@@ -26,13 +26,19 @@ function Folder({ engine, entry, depth, onOpen }: { engine: WindowEngine; entry:
   const [open, setOpen] = useState(false);
   const [kids, setKids] = useState<BrowseEntry[] | null>(null);
   const [error, setError] = useState("");
-  const toggle = () => {
-    setOpen((v) => !v);
-    if (!kids) list(engine, { path: entry.path }).then((l) => setKids(l.entries), (e: unknown) => setError(errorText(e)));
-  };
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    setKids(null); setError("");
+    list(engine, { path: entry.path }).then(
+      (l) => { if (live) setKids(l.entries); },
+      (e: unknown) => { if (live) setError(errorText(e)); },
+    );
+    return () => { live = false; };
+  }, [engine, entry.path, open]);
   return (
     <>
-      <button type="button" className="ft-row-pn" role="treeitem" aria-level={depth + 1} aria-expanded={open} style={{ "--lv": depth } as React.CSSProperties} onClick={toggle}>
+      <button type="button" className="ft-row-pn" role="treeitem" aria-level={depth + 1} aria-expanded={open} style={{ "--lv": depth } as React.CSSProperties} onClick={() => setOpen((v) => !v)}>
         <SIcon name="chev" small className="ft-chev-pn" />
         <SIcon name="folder" small />
         <span className="grow">{entry.name}</span>
@@ -40,11 +46,13 @@ function Folder({ engine, entry, depth, onOpen }: { engine: WindowEngine; entry:
       </button>
       {open ? (
         error ? (
-          <p className="err-st">{error}</p>
+          <p className="err-st" role="alert">{error}</p>
         ) : !kids ? (
-          <p className="hint-st" style={{ paddingLeft: 8 + (depth + 1) * 21 }}>Reading…</p>
+          <p className="hint-st" role="status" style={{ paddingLeft: 8 + (depth + 1) * 21 }}>Reading…</p>
+        ) : kids.length ? (
+          <div role="group" aria-label={entry.name}>{kids.map((k) => <Entry key={k.path} engine={engine} entry={k} depth={depth + 1} onOpen={onOpen} />)}</div>
         ) : (
-          kids.map((k) => <Entry key={k.path} engine={engine} entry={k} depth={depth + 1} onOpen={onOpen} />)
+          <p className="hint-st" style={{ paddingLeft: 8 + (depth + 1) * 21 }}>This folder is empty.</p>
         )
       ) : null}
     </>
@@ -65,30 +73,40 @@ function Entry({ engine, entry, depth, onOpen }: { engine: WindowEngine; entry: 
 
 /** One file: its text, editable and saved back with sessions.files.set (only if nobody changed it meanwhile). */
 function FileView({ engine, path, onClose }: { engine: WindowEngine; path: string; onClose: () => void }) {
-  const [file, setFile] = useState<FileEntry | null>(null);
+  const [loadedFile, setFile] = useState<FileEntry | null>(null);
+  const owner = useRef({ engine, path, sessionKey: engine.sessionKey, live: false });
+  const file = owner.current.engine === engine && owner.current.path === path && owner.current.sessionKey === engine.sessionKey ? loadedFile : null;
   const [draft, setDraft] = useState<string | null>(null);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   const [state, setState] = useState<{ error?: string; saved?: boolean; busy?: boolean }>({});
   useEffect(() => {
-    let live = true;
+    const current = { engine, path, sessionKey: engine.sessionKey, live: true };
+    owner.current = current;
+    setFile(null); setDraft(null); setState({});
     engine.request<{ file: FileEntry }>("sessions.files.get", { sessionKey: engine.sessionKey, path }).then(
-      (r) => live && setFile(r.file),
-      (e: unknown) => live && setState({ error: errorText(e) }),
+      (r) => current.live && setFile(r.file),
+      (e: unknown) => current.live && setState({ error: errorText(e) }),
     );
     return () => {
-      live = false;
+      current.live = false;
     };
-  }, [engine, path]);
+  }, [engine, engine.sessionKey, path]);
   const text = file && file.contentEncoding !== "base64" && file.previewKind !== "image" && file.previewKind !== "unsupported" ? file.content ?? null : null;
   const save = () => {
     if (draft === null || !file?.hash) return;
+    const current = owner.current;
+    if (!current.live || current.engine !== engine || current.path !== path || current.sessionKey !== engine.sessionKey) return;
+    const sent = draft;
     setState({ busy: true });
     engine.request<{ file: FileEntry }>("sessions.files.set", { sessionKey: engine.sessionKey, path, content: draft, expectedHash: file.hash }).then(
       (r) => {
+        if (!current.live) return;
         setFile(r.file);
-        setDraft(null);
-        setState({ saved: true });
+        setDraft((current) => current === sent ? null : current);
+        setState({ saved: draftRef.current === sent });
       },
-      (e: unknown) => setState({ error: errorText(e) }),
+      (e: unknown) => { if (current.live) setState({ error: errorText(e) }); },
     );
   };
   return (

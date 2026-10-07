@@ -1,6 +1,6 @@
 {
   "name": "@branch/whatsapp",
-  "version": "2026.9.7",
+  "version": "2026.9.8",
   "description": "Branch Agent WhatsApp channel plugin for WhatsApp Web chats.",
   "repository": {
     "type": "git",
@@ -17,7 +17,7 @@
     "branch": "workspace:*"
   },
   "peerDependencies": {
-    "branch": ">=2026.9.7"
+    "branch": ">=2026.9.8"
   },
   "peerDependenciesMeta": {
     "branch": {
@@ -30,7 +30,7 @@
     ],
     "setupEntry": "./setup-entry.ts",
     "setupFeatures": {
-      "configPromotion": true,
+      "configPromotion": "preserve-root",
       "legacySessionSurfaces": true
     },
     "channel": {
@@ -69,11 +69,11 @@
       "minHostVersion": ">=2026.4.25"
     },
     "compat": {
-      "pluginApi": ">=2026.9.7"
+      "pluginApi": ">=2026.9.8"
     },
     "build": {
       "bundledDist": false,
-      "branchVersion": "2026.9.7"
+      "branchVersion": "2026.9.8"
     },
     "release": {
       "publishToClawHub": true,

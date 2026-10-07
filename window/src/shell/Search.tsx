@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Conversation } from "../connect/conversations";
+import { agentIdOf } from "../connect/session";
 import { Pebble } from "../face/Pebble";
 import { Icon } from "./icons";
 import { rowTime } from "./list-model";
@@ -23,11 +24,11 @@ const EMPTY: SearchResults = { chats: [], messages: [], past: [], files: [] };
 export function useSearch(request: Request, rows: Conversation[], trunkName: (id: string | undefined) => string) {
   const [query, setQuery] = useState("");
   const [chip, setChip] = useState<SearchChip>("all");
-  const [remote, setRemote] = useState<Pick<SearchResults, "messages" | "files">>({ messages: [], files: [] });
+  const [remote, setRemote] = useState<Pick<SearchResults, "messages" | "files"> & { query: string }>({ query: "", messages: [], files: [] });
   useEffect(() => {
     const q = query.trim();
     if (!q) {
-      setRemote({ messages: [], files: [] });
+      setRemote({ query: "", messages: [], files: [] });
       return;
     }
     let current = true;
@@ -35,12 +36,12 @@ export function useSearch(request: Request, rows: Conversation[], trunkName: (id
       const scope = { includeGlobal: true, includeUnknown: true, configuredAgentsOnly: true, archived: "all" };
       // Each source shows as soon as it answers; memory search can be slow while its index is repaired.
       request("sessions.search", { query: q, limit: 25, scope }).then(
-        (r) => current && setRemote((x) => ({ ...x, messages: readMessageHits(r) })),
-        () => current && setRemote((x) => ({ ...x, messages: [] })),
+        (r) => current && setRemote((x) => ({ query: q, messages: readMessageHits(r), files: x.query === q ? x.files : [] })),
+        () => current && setRemote((x) => ({ query: q, messages: [], files: x.query === q ? x.files : [] })),
       );
       request("memory.search", { query: q }).then(
-        (r) => current && setRemote((x) => ({ ...x, files: readFileHits(r) })),
-        () => current && setRemote((x) => ({ ...x, files: [] })),
+        (r) => current && setRemote((x) => ({ query: q, messages: x.query === q ? x.messages : [], files: readFileHits(r) })),
+        () => current && setRemote((x) => ({ query: q, messages: x.query === q ? x.messages : [], files: [] })),
       );
     }, 180);
     return () => {
@@ -49,10 +50,10 @@ export function useSearch(request: Request, rows: Conversation[], trunkName: (id
     };
   }, [query, request]);
   const local = query.trim() ? matchConversations(rows, query, trunkName) : { chats: [], past: [] };
-  const results: SearchResults = query.trim() ? { ...local, ...remote } : EMPTY;
+  const results: SearchResults = query.trim() ? { ...local, messages: remote.query === query.trim() ? remote.messages : [], files: remote.query === query.trim() ? remote.files : [] } : EMPTY;
   const change = (next: string) => {
-    if (!query && next) {
-      setChip("all"); // typing into an empty field resets the filter (§4.1.2 States)
+    if (!next) {
+      setChip("all"); // clearing the field restores the normal list (§4.1.2)
     }
     setQuery(next);
   };
@@ -120,6 +121,7 @@ type ResultsProps = {
   rowName: (key: string) => string;
   onChip: (c: SearchChip) => void;
   onOpen: (key: string) => void;
+  onOpenMessage: (key: string, query: string) => void;
   onLibrary: () => void;
 };
 
@@ -160,15 +162,15 @@ export function SearchResultsView(p: ResultsProps) {
       {show("messages") ? <div className="lh">Messages</div> : null}
       {show("messages")
         ? results.messages.map((m) => (
-            <button key={m.messageId || `${m.key}:${m.at}`} type="button" className="sr" data-testid="search-result" data-key={m.key} onClick={() => p.onOpen(m.key)}>
-              <Pebble size={34} label={p.trunkName(undefined)} />
+            <button key={m.messageId || `${m.key}:${m.at}`} type="button" className="sr" data-testid="search-result" data-key={m.key} onClick={() => p.onOpenMessage(m.key, query)}>
+              <Pebble size={34} label={p.trunkName(agentIdOf(m.key))} />
               <span className="sr-body">
                 <b className="sr-title">
                   <span>{p.rowName(m.key)}</span>
                   <time>{rowTime(m.at, p.now)}</time>
                 </b>
                 <span className="sr-snip">
-                  <span className="sr-from">{m.role === "user" ? "You:" : `${p.trunkName(undefined)}:`} </span>
+                  <span className="sr-from">{m.role === "user" ? "You:" : `${p.trunkName(agentIdOf(m.key))}:`} </span>
                   <Marked text={cutAround(m.snippet, query)} q={query} />
                 </span>
               </span>

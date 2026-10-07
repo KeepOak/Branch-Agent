@@ -11,6 +11,8 @@ import { createMessageReceiptFromOutboundResults } from "branch/plugin-sdk/chann
 import { createPluginRuntimeMock } from "branch/plugin-sdk/channel-test-helpers";
 // Slack helper module supports monitor helpers behavior.
 import type { PluginRuntime } from "branch/plugin-sdk/core";
+import type { PluginServiceSchedulerV1 } from "branch/plugin-sdk/plugin-entry";
+import { createTestPluginServiceScheduler } from "branch/plugin-sdk/plugin-test-api";
 import type { RuntimeEnv } from "branch/plugin-sdk/runtime-env";
 import {
   closeBranchAgentDatabasesAsync,
@@ -25,6 +27,7 @@ import type { sendMessageSlack } from "./send.js";
 type SlackHandler = (args: unknown) => Promise<void>;
 type SlackMiddleware = (args: { next: () => Promise<void> } & Record<string, unknown>) => unknown;
 type SlackProviderMonitor = (params: {
+  scheduler: PluginServiceSchedulerV1;
   botToken: string;
   appToken: string;
   abortSignal: AbortSignal;
@@ -305,6 +308,7 @@ export function startSlackMonitor(
 ) {
   const controller = new AbortController();
   const run = monitorSlackProvider({
+    scheduler: createTestPluginServiceScheduler(),
     botToken: opts?.botToken ?? "bot-token",
     appToken: opts?.appToken ?? "app-token",
     abortSignal: controller.signal,

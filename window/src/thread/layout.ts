@@ -1,43 +1,81 @@
 // How the thread lays its blocks out: consecutive steps share one Steps fold, and each Trunk turn's first
-// reply carries the gutter face (DESIGN-SPEC §4.2.2 gutter rule).
+// item carries the gutter face, as the approved design draws it: the Steps fold when the turn starts with steps,
+// else the first reply.
 import type { Block } from "./model";
 
 type Step = Extract<Block, { kind: "step" }>;
 
 export type Item =
-  | { type: "block"; block: Block; index: number; firstReply: boolean }
-  | { type: "steps"; key: string; steps: Step[] };
+  | { type: "block"; block: Block; index: number; firstReply: boolean; face: boolean }
+  | { type: "steps"; key: string; steps: Step[]; face: boolean; run?: RunLine };
+
+/** What a finished turn's Steps fold names: the reply's first line and how long the run took (the design's
+ *  "Sorted 214 files · 5 steps · 1m 12s"). */
+export type RunLine = { title: string; durationMs?: number };
 
 /** Groups blocks for drawing. `index` is the block's place in the list the actions read. */
 export function layout(blocks: readonly Block[], offset = 0): Item[] {
   const items: Item[] = [];
+  // A steered note that came between two steps waits until the fold ends, so the turn keeps one Steps fold.
+  let held: Item[] = [];
   let replied = false;
+  let faced = false;
   blocks.forEach((block, i) => {
     if (block.kind === "user") {
       replied = false;
+      faced = false;
+    }
+    if (block.kind === "steer" && items.at(-1)?.type === "steps") {
+      held.push({ type: "block", block, index: offset + i, firstReply: false, face: false });
+      return;
+    }
+    if (block.kind !== "step" && held.length) {
+      items.push(...held);
+      held = [];
     }
     if (block.kind === "step") {
       const last = items[items.length - 1];
       if (last?.type === "steps") {
         last.steps.push(block);
       } else {
-        items.push({ type: "steps", key: `steps:${block.key}`, steps: [block] });
+        items.push({ type: "steps", key: `steps:${block.key}`, steps: [block], face: !faced, run: runLine(blocks, i) });
+        faced = true;
       }
       return;
     }
     const firstReply = block.kind === "text" && !replied;
+    const face = firstReply && !faced;
     if (block.kind === "text") {
       replied = true;
+      faced = true;
     }
-    items.push({ type: "block", block, index: offset + i, firstReply });
+    items.push({ type: "block", block, index: offset + i, firstReply, face });
   });
-  return items;
+  return [...items, ...held];
 }
 
-/** The blocks of the turn a block belongs to: from after the user message before it to the next user message. */
+/** The first line of a reply, as plain words: no Markdown marks, no closing full stop, at most 80 characters. */
+export function titleOf(text: string): string {
+  const line = text.split("\n").map((l) => l.trim()).find(Boolean) ?? "";
+  const plain = line.replace(/^(#+|[-*+]|\d+[.)])\s+/, "").replace(/[*_`~]/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[.:]$/, "").trim();
+  return plain.length > 80 ? `${plain.slice(0, 79).trimEnd()}…` : plain;
+}
+
+/** The finished turn after the steps starting at `from`: its reply's first line and its run's length, if it has a reply. */
+function runLine(blocks: readonly Block[], from: number): RunLine | undefined {
+  let title = "";
+  for (let i = from + 1; i < blocks.length && blocks[i].kind !== "user"; i++) {
+    const b = blocks[i];
+    if (b.kind === "text" && !b.streaming && !title) title = titleOf(b.text);
+    if (b.kind === "done") return title ? { title, durationMs: b.durationMs } : undefined;
+  }
+  return undefined;
+}
+
+/** The blocks of a turn: a user message starts its turn; reply blocks start after that user message. */
 export function turnOf(blocks: readonly Block[], index: number): Block[] {
   let start = index;
-  while (start > 0 && blocks[start - 1].kind !== "user") start -= 1;
+  while (blocks[index].kind !== "user" && start > 0 && blocks[start - 1].kind !== "user") start -= 1;
   let end = index;
   while (end + 1 < blocks.length && blocks[end + 1].kind !== "user") end += 1;
   return blocks.slice(start, end + 1);

@@ -1,0 +1,42 @@
+/* The contact list: quiet headings, pinned faces, and a name/time over one activity line. */
+.side .list-sec .lh { font: 500 12.5px/1.3 var(--sans); letter-spacing: 0; text-transform: none; color: var(--ink-3); }
+.side .list-sec .lh-row { padding: 14px 10px 4px; }
+.frame:not(.rail) .side .row:not(.child) .row-open { grid-template-columns: 40px minmax(0, 1fr) auto; grid-template-rows: auto auto; gap: 1px 10px; min-height: 56px; padding: 8px 10px; }
+.frame:not(.rail) .side .row:not(.child) .row-av { width: 40px; height: 40px; grid-column: 1; grid-row: 1 / 3; overflow: visible; }
+.frame:not(.rail) .side .row:not(.child) .row-name { grid-column: 2; grid-row: 1; font-weight: 650; }
+.frame:not(.rail) .side .row:not(.child) .rc { grid-column: 3; grid-row: 1; flex-direction: row; align-items: center; }
+.frame:not(.rail) .side .row:not(.child) .row-preview { grid-column: 2 / 4; grid-row: 2; margin: 0; font-size: 12.5px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.side .row:not(.child).current { background: color-mix(in srgb, var(--accent) 12%, var(--side)); box-shadow: none; }
+.pin-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 2px 4px 6px; }
+.pin-tile { position: relative; min-width: 0; }
+.pin-new { animation: pin-in 250ms ease both; }
+@keyframes pin-in { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .pin-new { animation: none; } }
+.pin-open { width: 100%; border: 0; background: transparent; color: var(--ink); cursor: pointer; display: grid; justify-items: center; gap: 3px; padding: 8px 4px; border-radius: 14px; text-align: center; }
+.pin-open:hover { background: var(--fill); }
+.pin-open[aria-current="true"] { background: color-mix(in srgb, var(--accent) 12%, var(--side)); }
+.pin-open:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.pin-face { position: relative; width: 60px; height: 60px; display: grid; place-items: center; overflow: visible; }
+.pin-face .pebble, .pin-face .emoji-pebble { max-width: 100%; max-height: 100%; }
+.pin-unread { position: absolute; top: 2px; right: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--side); }
+.pin-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 600; }
+.pin-role { box-sizing: border-box; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 7px; border-radius: 999px; background: var(--fill); color: var(--ink-3); font-size: 10.5px; }
+.pin-more { position: absolute; top: 4px; right: 4px; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); opacity: 0; cursor: pointer; }
+.pin-tile:hover .pin-more, .pin-more:focus-visible { opacity: 1; background: var(--raise); }
+.pin-drop-before { box-shadow: inset 3px 0 var(--accent); }
+.pin-drop-after { box-shadow: inset -3px 0 var(--accent); }
+.pin-drop-onto { box-shadow: inset 0 0 0 2px var(--accent); }
+.frame.rail .pin-drop-before { box-shadow: inset 0 3px var(--accent); }
+.frame.rail .pin-drop-after { box-shadow: inset 0 -3px var(--accent); }
+.frame.rail .side .list-sec[data-section="pinned"] { border-bottom: 1px solid var(--hair17); padding-bottom: 5px; margin-bottom: 5px; }
+.rail-unread { display: none; }
+.frame.rail .side .rail-unread { display: block; position: absolute; top: 2px; right: 2px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--side); }
+.frame.rail .side .row .needs-you { display: block; }
+.frame.rail .side .row-open { position: relative; }
+.frame.rail .side .row-av { width: 40px; height: 40px; }
+.frame.rail .side .row-av .pebble { max-width: 40px; max-height: 40px; }
+.frame.rail .side .row .rc { display: contents; }
+.frame.rail .side .row .rc .cnts { display: none; }
+.frame.rail .side .row .rc .mk { position: absolute; z-index: 1; top: 5px; right: 6px; background: var(--side); border-radius: 50%; }
+.frame.rail .side-top { flex-direction: column; gap: 2px; }
+.frame.rail .rail-new { width: 40px; height: 40px; }

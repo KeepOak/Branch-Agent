@@ -7,7 +7,7 @@ import { SessionManager } from "branch/plugin-sdk/agent-sessions";
 import type { Context, Model } from "branch/plugin-sdk/llm";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import { discoverAuthStorage, discoverModels } from "./agent-model-discovery.js";
+import { discoverAuthStorageFacts, discoverModels } from "./agent-model-discovery.js";
 import { resolveDefaultAgentDir } from "./agent-scope.js";
 import { sanitizeSessionHistory } from "./embedded-agent-runner/replay-history.js";
 import {
@@ -247,7 +247,7 @@ describeLive("tool replay repair live", () => {
         await ensureBranchModelsJson(cfg);
 
         const agentDir = resolveDefaultAgentDir(cfg);
-        const authStorage = discoverAuthStorage(agentDir);
+        const { authStorage } = discoverAuthStorageFacts(agentDir);
         const modelRegistry = discoverModels(authStorage, agentDir);
         const model =
           (modelRegistry.find(target.provider, target.modelId) as Model | null) ??
@@ -357,7 +357,7 @@ describeLive("tool replay repair live", () => {
         await ensureBranchModelsJson(cfg);
 
         const agentDir = resolveDefaultAgentDir(cfg);
-        const authStorage = discoverAuthStorage(agentDir);
+        const { authStorage } = discoverAuthStorageFacts(agentDir);
         const modelRegistry = discoverModels(authStorage, agentDir);
         const model =
           (modelRegistry.find(target.provider, target.modelId) as Model | null) ??

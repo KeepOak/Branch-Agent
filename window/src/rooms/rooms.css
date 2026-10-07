@@ -7,7 +7,6 @@
   border-radius: 50%;
   display: grid;
   place-items: center;
-  overflow: hidden;
   background: var(--c);
   color: #fff;
   font-weight: 600;
@@ -18,6 +17,23 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: 50%;
+}
+
+/* Online dot on an outside agent's face (the preview's .tav6 .st.st-online) */
+.rm-av .rm-st {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+  background: var(--ink-3);
+}
+
+.rm-av .rm-st-online {
+  background: var(--ok);
 }
 
 /* A person or an outside agent: their initial, then a bubble with the name over the words */

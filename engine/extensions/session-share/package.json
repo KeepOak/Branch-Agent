@@ -1,6 +1,6 @@
 {
   "name": "@branch/session-share",
-  "version": "2026.9.7",
+  "version": "2026.9.8",
   "private": true,
   "description": "Read-only Branch Agent sessions on paired gateways",
   "type": "module",

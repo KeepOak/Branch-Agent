@@ -2,8 +2,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
 import type {
   BranchPluginGatewayEvents,
-  BranchPluginService,
-  BranchPluginServiceContext,
+  BranchPluginApi,
+  BranchPluginServiceContextV2,
 } from "branch/plugin-sdk/plugin-entry";
 import type {
   OpenKeyedStoreOptions,
@@ -13,10 +13,13 @@ import {
   createPluginStateKeyedStoreForTests,
   openBranchStateDatabase,
 } from "branch/plugin-sdk/plugin-state-test-runtime";
-import { createTestPluginApi } from "branch/plugin-sdk/plugin-test-api";
+import {
+  createTestPluginApi,
+  createTestPluginServiceScheduler,
+} from "branch/plugin-sdk/plugin-test-api";
 import type { PluginRuntime } from "branch/plugin-sdk/runtime-store";
 import { withBranchTestState } from "branch/plugin-sdk/test-state";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 import { registerBrowserPlugin } from "./plugin-registration.js";
 import { getBrowserStateRuntime, setBrowserStateRuntime } from "./src/browser-runtime-state.js";
 import { resolveBrowserConfig } from "./src/browser/config.js";
@@ -66,7 +69,6 @@ it.each(["stop", "replacement"] as const)(
         createBrowserRuntimeState({
           resolved: resolveBrowserConfig(undefined),
           port: 18_791,
-          onWarn: vi.fn(),
         }),
       );
       try {
@@ -95,7 +97,7 @@ it.each(["stop", "replacement"] as const)(
 );
 
 async function registerDiscovery(stateDir: string) {
-  const services: BranchPluginService[] = [];
+  const services: Parameters<BranchPluginApi["registerService"]>[0][] = [];
   const hooks = vi.fn();
   const store = createPluginStateKeyedStoreForTests<unknown>("browser", {
     namespace: "browser.session-tabs",
@@ -145,7 +147,10 @@ async function registerDiscovery(stateDir: string) {
     onBoardChanged = handler;
     return vi.fn();
   });
-  const context: BranchPluginServiceContext = {
+  const scheduler = createTestPluginServiceScheduler();
+  onTestFinished(() => scheduler.stop());
+  const context: BranchPluginServiceContextV2 = {
+    scheduler,
     config: {},
     stateDir,
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },

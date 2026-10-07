@@ -6,7 +6,6 @@ import { redactClaimToken } from "./card-redaction.js";
 import {
   assertNoCursorAdvance,
   createCanopyDispatchHandler,
-  listCanopyCards,
   readId,
   readExpectedUpdatedAt,
   registerCanopyResultMethods,
@@ -118,7 +117,7 @@ function cardMutation(
 export function registerCanopyGatewayMethods(params: {
   api: BranchPluginApi;
   store?: CanopyStore;
-  sessionsBoard?: Pick<CanopySessionsBoardService, "read" | "update" | "move" | "refresh">;
+  sessionsBoard?: Pick<CanopySessionsBoardService, "read" | "update" | "move">;
 }) {
   const { api: hostApi } = params;
   const assertUploadsAllowed = (client: GatewayMethodContext["client"]) => {
@@ -165,7 +164,16 @@ export function registerCanopyGatewayMethods(params: {
     [
       "canopy.cards.list",
       READ_SCOPE,
-      async ({ params: requestParams }) => await listCanopyCards(store, requestParams.boardId),
+      async ({ params: requestParams }) => {
+        const result = await store.listCards(requestParams.boardId);
+        const since = requestParams.sinceRevision;
+        return isRecord(since) &&
+          since.epoch === result.revision.epoch &&
+          since.revision === result.revision.revision &&
+          since.boardId === result.revision.boardId
+          ? { unchanged: true, revision: result.revision }
+          : result;
+      },
     ],
   ]);
 
@@ -279,10 +287,11 @@ export function registerCanopyGatewayMethods(params: {
     [
       "canopy.sessionsBoard.read",
       READ_SCOPE,
-      ({ params: input }) =>
+      (context: GatewayMethodContext) =>
         sessionsBoard().read(
-          readStringParam(input, "boardId", { required: true }),
-          sessionsBoardView(input),
+          readStringParam(context.params, "boardId", { required: true }),
+          sessionsBoardView(context.params),
+          sessionsBoardCaller(context),
         ),
     ],
     [
@@ -307,15 +316,6 @@ export function registerCanopyGatewayMethods(params: {
           readStringParam(context.params, "boardId", { required: true }),
           readStringParam(context.params, "sessionKey", { required: true }),
           readStringParam(context.params, "columnId", { required: true }),
-          sessionsBoardCaller(context),
-        ),
-    ],
-    [
-      "canopy.sessionsBoard.refresh",
-      WRITE_SCOPE,
-      (context: GatewayMethodContext) =>
-        sessionsBoard().refresh(
-          readStringParam(context.params, "boardId", { required: true }),
           sessionsBoardCaller(context),
         ),
     ],

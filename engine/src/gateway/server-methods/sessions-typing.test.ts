@@ -298,7 +298,7 @@ describe("session typing handler", () => {
   ])("uses the canonical global subscription keys for $agentId", async ({ agentId, expected }) => {
     await withBranchTestState({ scenario: "minimal" }, async () => {
       const cfg = {
-        agents: { list: [{ id: "main" }, { id: "work" }] },
+        agents: { entries: { main: {}, work: {} } },
       } satisfies BranchConfig;
       await upsertSessionEntryCore(
         { agentId, sessionKey: "global" },

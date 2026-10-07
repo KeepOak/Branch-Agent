@@ -13,11 +13,7 @@ export {
 } from "./host/branch-runtime-agent.js";
 export { SILENT_REPLY_TOKEN } from "./host/branch-runtime-session.js";
 export { parseNonNegativeByteSize } from "./host/branch-runtime-config.js";
-export {
-  getRuntimeConfig,
-  /** @deprecated Use getRuntimeConfig(), or pass the already loaded config through the call path. */
-  loadConfig,
-} from "./host/branch-runtime-session.js";
+export { getRuntimeConfig } from "./host/branch-runtime-session.js";
 export { resolveStateDir } from "./host/branch-runtime-config.js";
 export { resolveSessionTranscriptsDirForAgent } from "./host/branch-runtime-config.js";
 export { emptyPluginConfigSchema } from "./host/branch-runtime-memory.js";

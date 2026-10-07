@@ -1,9 +1,3 @@
-/**
- * Branch-managed Chrome lifecycle and CDP helpers.
- *
- * Builds launch args, starts/stops managed Chrome, probes CDP readiness, and
- * resolves WebSocket endpoints for browser control.
- */
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import fs from "node:fs";
@@ -102,42 +96,31 @@ const CHROME_HTTP_DISCOVERY_FAILURE_CODES = new Set([
 ]);
 const TCP_LISTEN_STATE_HEX = "0A";
 
-function diagnosticShowsChromeHttpDiscovery(diagnostic: ChromeCdpDiagnostic | null): boolean {
-  if (!diagnostic) {
-    return false;
-  }
-  if (diagnostic.ok) {
-    return true;
-  }
-  return !CHROME_HTTP_DISCOVERY_FAILURE_CODES.has(diagnostic.code);
-}
-
 type ChromeLaunchStderrSignals = {
   singletonInUse: boolean;
   missingDisplay: boolean;
+  noUsableSandbox: boolean;
 };
 
-function createChromeLaunchStderrDiagnostics(maxBytes: number) {
-  const tail = createBoundedUtf8Tail(maxBytes);
+function createChromeLaunchStderrDiagnostics() {
+  const tail = createBoundedUtf8Tail(CHROME_LAUNCH_STDERR_TAIL_MAX_BYTES);
   const signals: ChromeLaunchStderrSignals = {
     singletonInUse: false,
     missingDisplay: false,
+    noUsableSandbox: false,
   };
   let markerScanTail = "";
-
-  const updateSignals = (chunkText: string) => {
-    const scanText = `${markerScanTail}${chunkText}`;
-    signals.singletonInUse ||= CHROME_SINGLETON_IN_USE_PATTERN.test(scanText);
-    signals.missingDisplay ||= CHROME_MISSING_DISPLAY_PATTERN.test(scanText);
-    markerScanTail = scanText.slice(-CHROME_STDERR_MARKER_SCAN_TAIL_CHARS);
-  };
 
   return {
     append(chunk: Buffer | string) {
       tail.append(chunk);
       const chunkText = Buffer.isBuffer(chunk) ? chunk.toString("utf8") : chunk;
       if (chunkText.length > 0) {
-        updateSignals(chunkText);
+        const scanText = `${markerScanTail}${chunkText}`;
+        signals.singletonInUse ||= CHROME_SINGLETON_IN_USE_PATTERN.test(scanText);
+        signals.missingDisplay ||= CHROME_MISSING_DISPLAY_PATTERN.test(scanText);
+        signals.noUsableSandbox ||= /No usable sandbox!/i.test(scanText);
+        markerScanTail = scanText.slice(-CHROME_STDERR_MARKER_SCAN_TAIL_CHARS);
       }
     },
     toString() {
@@ -150,6 +133,7 @@ function createChromeLaunchStderrDiagnostics(maxBytes: number) {
       tail.clear();
       signals.singletonInUse = false;
       signals.missingDisplay = false;
+      signals.noUsableSandbox = false;
       markerScanTail = "";
     },
   };
@@ -428,9 +412,9 @@ function isPortInUseError(err: unknown): boolean {
   );
 }
 
-function readCurrentHostSingletonPid(userDataDir: string, hostname = os.hostname()): number | null {
+function readCurrentHostSingletonPid(userDataDir: string): number | null {
   const lock = readSingletonLockTarget(userDataDir);
-  if (lock.status !== "owner" || lock.hostname !== hostname || !isPidAlive(lock.pid)) {
+  if (lock.status !== "owner" || lock.hostname !== os.hostname() || !isPidAlive(lock.pid)) {
     return null;
   }
   return lock.pid;
@@ -446,10 +430,9 @@ function clearChromeSingletonArtifacts(userDataDir: string) {
   }
 }
 
-/** Remove stale Chrome singleton lock files from a user-data-dir. */
-function clearStaleChromeSingletonLocks(userDataDir: string, hostname = os.hostname()): boolean {
+function clearStaleChromeSingletonLocks(userDataDir: string): boolean {
   const lock = readSingletonLockTarget(userDataDir);
-  if (lock.status !== "owner" || lock.hostname !== hostname || isPidAlive(lock.pid)) {
+  if (lock.status !== "owner" || lock.hostname !== os.hostname() || isPidAlive(lock.pid)) {
     return false;
   }
 
@@ -676,7 +659,11 @@ function chromeLaunchHints(params: {
 }): string {
   const hints: string[] = [];
   if (process.platform === "linux" && !params.resolved.noSandbox) {
-    hints.push("If running in a container or as root, try setting browser.noSandbox: true.");
+    if (params.stderrSignals?.noUsableSandbox) {
+      hints.push("Chromium has no usable sandbox. On Ubuntu, check AppArmor's unprivileged user namespace restriction; to run without Chromium's sandbox, set browser.noSandbox: true.");
+    } else {
+      hints.push("If running in a container or as root, try setting browser.noSandbox: true.");
+    }
   }
   const headlessMode = resolveManagedBrowserHeadlessMode(
     params.resolved,
@@ -702,13 +689,11 @@ function chromeLaunchHints(params: {
   return hints.length > 0 ? `\nHint: ${hints.join("\nHint: ")}` : "";
 }
 
-/** Running managed Chrome process and resolved control metadata. */
 export type RunningChrome = {
   pid: number;
   exe: BrowserExecutable;
   userDataDir: string;
   cdpPort: number;
-  startedAt: number;
   proc: ChildProcess;
   headless?: boolean;
   headlessSource?: ManagedBrowserHeadlessSource;
@@ -739,12 +724,10 @@ function resolveBrowserExecutable(
   );
 }
 
-/** Resolve the user-data-dir path for a managed Branch Agent Chrome profile. */
 export function resolveBranchUserDataDir(profileName = DEFAULT_BRANCH_BROWSER_PROFILE_NAME) {
   return path.join(CONFIG_DIR, "browser", profileName, "user-data");
 }
 
-/** Build Chrome launch arguments for the managed Branch Agent browser. */
 function buildBranchChromeLaunchArgs(params: {
   resolved: ResolvedBrowserConfig;
   profile: ResolvedBrowserProfile;
@@ -821,7 +804,6 @@ async function canOpenWebSocket(
   }
 }
 
-/** Return true when a Chrome CDP endpoint is reachable over HTTP. */
 export async function isChromeReachable(
   cdpUrl: string,
   timeoutMs = CHROME_REACHABILITY_TIMEOUT_MS,
@@ -872,7 +854,6 @@ async function fetchChromeVersion(
   }
 }
 
-/** Resolve a usable Chrome DevTools WebSocket endpoint from a CDP endpoint. */
 export async function getChromeWebSocketEndpoint(
   cdpUrl: string,
   timeoutMs = CHROME_REACHABILITY_TIMEOUT_MS,
@@ -916,7 +897,6 @@ export async function getChromeWebSocketEndpoint(
   return { url: normalizedWsUrl, lookup: discoveredPin?.lookup };
 }
 
-/** Return true when a Chrome CDP endpoint has a healthy WebSocket command path. */
 export async function isChromeCdpReady(
   cdpUrl: string,
   timeoutMs = CHROME_REACHABILITY_TIMEOUT_MS,
@@ -956,7 +936,6 @@ async function waitForManagedLaunchPoll(delayMs: number, signal?: AbortSignal): 
   }
 }
 
-/** Launch or attach to the managed Branch Agent Chrome profile. */
 export async function launchBranchChrome(
   resolved: ResolvedBrowserConfig,
   profile: ResolvedBrowserProfile,
@@ -1020,6 +999,8 @@ export async function launchBranchChrome(
     );
   }
 
+  const launchResolved = resolved;
+
   fs.mkdirSync(userDataDir, { recursive: true });
   await ensureOutputDirectory(DEFAULT_DOWNLOAD_DIR);
 
@@ -1044,7 +1025,7 @@ export async function launchBranchChrome(
   const spawnOnce = async (onStderr?: (chunk: Buffer | string) => void) => {
     signal?.throwIfAborted();
     const args = buildBranchChromeLaunchArgs({
-      resolved,
+      resolved: launchResolved,
       profile,
       userDataDir,
       ...headlessOptions,
@@ -1114,13 +1095,11 @@ export async function launchBranchChrome(
     };
   };
 
-  const startedAt = Date.now();
   const runningForProcess = (proc: ChildProcess, pid: number): RunningChrome => ({
     pid,
     exe,
     userDataDir,
     cdpPort: profile.cdpPort,
-    startedAt,
     proc,
     headless: headlessMode.headless,
     headlessSource: headlessMode.source,
@@ -1129,12 +1108,17 @@ export async function launchBranchChrome(
   // If the profile doesn't exist yet, bootstrap it once so Chrome creates defaults.
   // Then decorate (if needed) before the "real" run.
   if (needsBootstrap) {
-    const { pid: bootstrapPid, proc: bootstrap, releaseAbort } = await spawnOnce();
+    const bootstrapStderr = createChromeLaunchStderrDiagnostics();
+    const onBootstrapStderr = (chunk: Buffer | string) => bootstrapStderr.append(chunk);
+    const { pid: bootstrapPid, proc: bootstrap, releaseAbort } = await spawnOnce(onBootstrapStderr);
     let bootstrapError: Error | undefined;
     try {
       const deadline = Date.now() + CHROME_BOOTSTRAP_PREFS_TIMEOUT_MS;
       while (Date.now() < deadline) {
         signal?.throwIfAborted();
+        if (bootstrapStderr.signals().noUsableSandbox) {
+          throw new Error("Chromium has no usable sandbox. On Ubuntu, check AppArmor's unprivileged user namespace restriction; to run without Chromium's sandbox, set browser.noSandbox: true.");
+        }
         if (fs.existsSync(localStatePath) && fs.existsSync(preferencesPath)) {
           break;
         }
@@ -1149,6 +1133,8 @@ export async function launchBranchChrome(
       exited = await signalChromeProcess(bootstrap, "SIGKILL", CHROME_BOOTSTRAP_EXIT_TIMEOUT_MS);
     }
     releaseAbort();
+    bootstrap.stderr?.off("data", onBootstrapStderr);
+    bootstrapStderr.clear();
     if (!exited) {
       throw new ManagedChromeCleanupError(
         `Managed Chrome bootstrap ${bootstrapPid} survived cleanup.`,
@@ -1192,9 +1178,7 @@ export async function launchBranchChrome(
   const launchOnceAndWait = async (allowSingletonRecovery: boolean): Promise<RunningChrome> => {
     // Keep a bounded stderr tail for diagnostics in case Chrome fails to start.
     // Attach before awaiting spawn so immediate diagnostics cannot be lost.
-    const stderrDiagnostics = createChromeLaunchStderrDiagnostics(
-      CHROME_LAUNCH_STDERR_TAIL_MAX_BYTES,
-    );
+    const stderrDiagnostics = createChromeLaunchStderrDiagnostics();
     const onStderr = (chunk: Buffer | string) => {
       stderrDiagnostics.append(chunk);
     };
@@ -1212,6 +1196,9 @@ export async function launchBranchChrome(
       // waitForCdpReadyAfterLaunch() budget; launch only owns process discovery.
       while (Date.now() < readyDeadline) {
         signal?.throwIfAborted();
+        if (stderrDiagnostics.signals().noUsableSandbox) {
+          break;
+        }
         if (
           await isChromeReachable(
             profile.cdpUrl,
@@ -1228,6 +1215,9 @@ export async function launchBranchChrome(
 
       if (!launchHttpReachable) {
         signal?.throwIfAborted();
+        if (stderrDiagnostics.signals().noUsableSandbox) {
+          throw new Error(`Chromium has no usable sandbox for profile "${profile.name}". On Ubuntu, check AppArmor's unprivileged user namespace restriction; to run without Chromium's sandbox, set browser.noSandbox: true.`);
+        }
         let finalDiagnostic: ChromeCdpDiagnostic | null = null;
         let diagnosticErrorText: string | null = null;
         try {
@@ -1242,7 +1232,10 @@ export async function launchBranchChrome(
           diagnosticErrorText = `CDP diagnostic failed: ${safeChromeCdpErrorMessage(err)}.`;
         }
         signal?.throwIfAborted();
-        if (diagnosticShowsChromeHttpDiscovery(finalDiagnostic)) {
+        if (
+          finalDiagnostic &&
+          (finalDiagnostic.ok || !CHROME_HTTP_DISCOVERY_FAILURE_CODES.has(finalDiagnostic.code))
+        ) {
           launchHttpReachable = true;
         }
         const diagnosticText = finalDiagnostic
@@ -1278,7 +1271,7 @@ export async function launchBranchChrome(
           const launchHints = chromeLaunchHints({
             stderrOutput,
             stderrSignals,
-            resolved,
+            resolved: launchResolved,
             profile,
             launchOptions: headlessOptions,
           });
@@ -1576,7 +1569,6 @@ export async function stopOwnedBranchChrome(
   return { status: "stopped" };
 }
 
-/** Stop a managed Chrome process and wait for shutdown. */
 export async function stopBranchChrome(
   running: RunningChrome,
   timeoutMs = CHROME_STOP_TIMEOUT_MS,

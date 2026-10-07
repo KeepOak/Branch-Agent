@@ -73,6 +73,7 @@ import type {
   BranchPluginReloadRegistration,
   BranchPluginSecurityAuditCollector,
   BranchPluginService,
+  BranchPluginServiceV2,
   PluginInteractiveHandlerRegistration,
   PluginRegistrationMode,
   WidgetPresenter,
@@ -97,6 +98,15 @@ import type { BranchPluginNodeHostCommand } from "./types.node-host.js";
 import type { WebFetchProviderPlugin, WebSearchProviderPlugin } from "./web-provider-types.js";
 
 type ChannelPlugin = import("../channels/plugins/types.plugin.js").ChannelPlugin;
+type AnyChannelPlugin = import("../channels/plugins/types.plugin.js").AnyChannelPlugin;
+
+type ChannelPluginForGatewayVersion<Version extends 1 | 2> = Omit<ChannelPlugin, "gateway"> & {
+  gateway?: Extract<NonNullable<AnyChannelPlugin["gateway"]>, { apiVersion?: Version }>;
+};
+
+type ChannelRegistrationForGatewayVersion<Version extends 1 | 2> =
+  | ChannelPluginForGatewayVersion<Version>
+  | BranchPluginChannelRegistration<ChannelPluginForGatewayVersion<Version>>;
 
 export type PluginTextTransformRegistration = PluginTextTransforms;
 
@@ -229,7 +239,11 @@ export type BranchPluginApi = {
     resolver: import("./types.mcp-connection.js").BranchPluginMcpServerConnectionResolver,
   ) => void;
   /** Register a native messaging channel plugin (channel capability). */
-  registerChannel: (registration: BranchPluginChannelRegistration | ChannelPlugin) => void;
+  registerChannel: {
+    (registration: ChannelRegistrationForGatewayVersion<1>): void;
+    (registration: ChannelRegistrationForGatewayVersion<2>): void;
+    (registration: BranchPluginChannelRegistration<AnyChannelPlugin> | AnyChannelPlugin): void;
+  };
   /**
    * Register a gateway RPC method for this plugin.
    *
@@ -271,7 +285,11 @@ export type BranchPluginApi = {
   registerNodeHostCommand: (command: BranchPluginNodeHostCommand) => void;
   registerNodeInvokePolicy: (policy: BranchPluginNodeInvokePolicy) => void;
   registerSecurityAuditCollector: (collector: BranchPluginSecurityAuditCollector) => void;
-  registerService: (service: BranchPluginService) => void;
+  registerService: {
+    (service: BranchPluginService): void;
+    (service: BranchPluginServiceV2): void;
+    (service: BranchPluginService | BranchPluginServiceV2): void;
+  };
   /** Register a local gateway discovery advertiser such as mDNS/Bonjour. */
   registerGatewayDiscoveryService: (service: BranchGatewayDiscoveryService) => void;
   /** Register a text-only CLI backend used by the local CLI runner. */

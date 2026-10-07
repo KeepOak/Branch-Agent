@@ -1,5 +1,7 @@
 // People › People dialogs: role, one-time code (device.pair.setupCode), invite, link an email, merge two people.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import { Dialog } from "../../shell/Dialog";
 import type { WindowEngine } from "../../connect/engine";
 import { useOperation } from "../library/data";
@@ -28,7 +30,7 @@ type Setup = { setupCode: string; qrDataUrl?: string; gatewayUrl: string; expire
 function useSetupCode(engine: WindowEngine) {
   const op = useOperation(engine);
   const [setup, setSetup] = useState<Setup | null>(null);
-  const make = () => void op.run<unknown>("device.pair.setupCode", { bootstrapProfile: "limited" }, result => {
+  const make = () => void op.run<unknown>("device.pair.setupCode", { bootstrapProfile: "limited", includeQr: true }, result => {
     const r = rec(result);
     setSetup({ setupCode: str(r.setupCode), qrDataUrl: str(r.qrDataUrl) || undefined, gatewayUrl: str(r.gatewayUrl), expiresAtMs: num(r.expiresAtMs) });
   });
@@ -49,7 +51,7 @@ function CodeBody({ setup }: { setup: Setup }) {
 
 export function CodeDialog({ engine, title, onClose }: { engine: WindowEngine; title: string; onClose: () => void }) {
   const code = useSetupCode(engine);
-  return <Dialog title={title} onClose={onClose} footer={<><button type="button" className="btn ghost" onClick={onClose}>Close</button>{!code.setup && <button type="button" className="btn pri" disabled={code.busy} onClick={code.make}>{code.busy ? "Making…" : "Make a one-time code"}</button>}</>}>
+  return <Dialog title={title} onClose={onClose} footer={<>{!code.setup && <button type="button" className="btn pri" disabled={code.busy} onClick={code.make}>{code.busy ? "Making…" : "Make a one-time code"}</button>}</>}>
     <div className="ppl-dlg" style={{ display: "grid", gap: 12 }}>
       {code.setup ? <CodeBody setup={code.setup} /> : <p style={{ margin: 0 }}>A code their own phone or computer uses once to reach this Branch. It never gives them the owner’s rights.</p>}
       {code.error && <p role="alert" className="pp-error">{code.error}</p>}
@@ -62,17 +64,17 @@ export function InviteDialog({ engine, onClose }: { engine: WindowEngine; onClos
   const [tab, setTab] = useState<InviteTab>("this");
   const code = useSetupCode(engine);
   const footer = <><button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-    {tab === "this" && <button type="button" className="btn pri" disabled title={ADD_HERE_OFF}>Add them</button>}
+    {tab === "this" && <button type="button" className="btn pri" disabled title={shownWhy(ADD_HERE_OFF)}>Add them</button>}
     {tab === "keepoak" && <button type="button" className="btn pri" disabled title={KEEPOAK_OFF}>Invite</button>}
     {tab === "device" && !code.setup && <button type="button" className="btn pri" disabled={code.busy} onClick={code.make}>{code.busy ? "Making…" : "Make a one-time code"}</button>}</>;
   return <Dialog title="Invite someone" onClose={onClose} footer={footer}>
     <div className="ppl-dlg" style={{ display: "grid", gap: 12 }}>
       <Tabs label="How they use Branch" value={tab} onChange={setTab} tabs={[{ id: "this", name: "On this computer" }, { id: "device", name: "On their own device" }, { id: "keepoak", name: "From your keepoak.com team" }]} />
-      {tab === "this" && <fieldset disabled title={ADD_HERE_OFF} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 12 }}>
+      {tab === "this" && <fieldset disabled title={shownWhy(ADD_HERE_OFF)} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 12 }}>
         <label className="fld"><span>Name</span><input className="inp" placeholder="Their name" /></label>
         <div className="fld"><span>Role</span><Seg label="Role" value={null} options={[{ id: "adult", name: "Adult" }, { id: "child", name: "Child" }]} off={ADD_HERE_OFF} /></div>
         <label className="fld"><span>Their PIN, at least four digits</span><input className="inp" inputMode="numeric" /></label>
-        <p className="pp-hint" style={{ margin: 0 }}>{ADD_HERE_OFF}</p></fieldset>}
+        {shownWhy(ADD_HERE_OFF) && <p className="pp-hint" style={{ margin: 0 }}>{shownWhy(ADD_HERE_OFF)}</p>}</fieldset>}
       {tab === "device" && (code.setup ? <CodeBody setup={code.setup} /> : <p style={{ margin: 0 }}>Make a one-time code. Their phone or computer uses it once to reach this Branch.</p>)}
       {tab === "keepoak" && <fieldset disabled title={KEEPOAK_OFF} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 12 }}>
         <label className="fld"><span>Their email</span><input className="inp" type="email" placeholder="name@example.com" /></label>

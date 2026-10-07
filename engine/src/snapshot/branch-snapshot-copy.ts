@@ -7,7 +7,7 @@ import {
 } from "../infra/sqlite-snapshot.js";
 import { assertNotUpdateCapturePath } from "../infra/update-capture-paths.js";
 import { isValidAgentId, normalizeAgentId } from "../routing/session-key.js";
-import { assertBranchAgentDatabaseForMaintenance } from "../state/branch-agent-db.js";
+import { assertBranchAgentDatabaseForMaintenance } from "../state/branch-agent-db-maintenance.js";
 import { assertBranchStateDatabaseForMaintenance } from "../state/branch-state-db.js";
 import {
   sanitizeBranchGlobalStateSnapshot,

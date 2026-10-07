@@ -368,7 +368,7 @@ function passerBaseStyle(
     return themeCritterBaseStyle(kind, direction);
   }
   const fixed: Partial<Record<string, string>> = {
-    crab: "--lob-scale:2;--lob-w:1;--lob-h:0.82;--lob-face:1",
+    beetle: "--lob-scale:2;--lob-w:1;--lob-h:0.82;--lob-face:1",
     snail: `--lob-scale:1.7;--lob-w:1;--lob-h:0.9;--lob-face:${direction}`,
     duck: `--lob-scale:1.9;--lob-w:1;--lob-h:1;--lob-face:${direction}`,
     jellyfish: "--lob-scale:1.7;--lob-w:0.9;--lob-h:1.1;--lob-face:1",

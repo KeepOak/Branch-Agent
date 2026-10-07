@@ -4,6 +4,8 @@ import type { Where } from "./setup-model";
 
 const PRE_KEY = "branch.setupPre";
 const TARGET_KEY = "branch.gatewayTarget";
+const TARGET_NAME_KEY = "branch.gatewayTargetName";
+const SAVED_TARGETS_KEY = "branch.gatewayTargets.v1";
 
 export type PreConnect = { promise: boolean; where: Where };
 
@@ -40,10 +42,43 @@ export function saveTarget(url: string | null): void {
       localStorage.setItem(TARGET_KEY, url);
     } else {
       localStorage.removeItem(TARGET_KEY);
+      localStorage.removeItem(TARGET_NAME_KEY);
     }
   } catch {
     // storage blocked: the address lasts for this window only
   }
+}
+
+/** The last name reported by a successfully connected remote Branch. */
+export function readTargetName(url: string): string | null {
+  try {
+    const saved = JSON.parse(localStorage.getItem(TARGET_NAME_KEY) ?? "null") as { url?: string; name?: string } | null;
+    return saved?.url === url && typeof saved.name === "string" ? saved.name : readSavedTargets().find(row => row.url === url)?.name ?? null;
+  } catch { return null; }
+}
+
+export function saveTargetName(url: string, name: string): void {
+  try {
+    localStorage.setItem(TARGET_NAME_KEY, JSON.stringify({ url, name }));
+    if (name.trim()) {
+      const rows = readSavedTargets().filter(row => row.url !== url);
+      localStorage.setItem(SAVED_TARGETS_KEY, JSON.stringify([...rows, { url, name: name.trim() }]));
+    }
+  } catch { /* The connection still works when storage is unavailable. */ }
+}
+
+/** Successfully connected Branches, for the machine switcher. No keys are kept here. */
+export function readSavedTargets(): { url: string; name: string }[] {
+  try {
+    const rows = JSON.parse(localStorage.getItem(SAVED_TARGETS_KEY) ?? "[]") as unknown;
+    return Array.isArray(rows) ? rows.filter((row): row is { url: string; name: string } =>
+      !!row && typeof row.url === "string" && /^wss?:\/\/\S+$/.test(row.url) && typeof row.name === "string" && !!row.name.trim()) : [];
+  } catch { return []; }
+}
+
+export function isLocalTarget(url: string): boolean {
+  try { return ["127.0.0.1", "localhost", "::1"].includes(new URL(url).hostname); }
+  catch { return false; }
 }
 
 /** The engine's own default gateway address on this computer (engine config/paths.ts DEFAULT_GATEWAY_PORT). */
