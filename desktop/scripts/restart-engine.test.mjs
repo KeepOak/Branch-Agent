@@ -578,7 +578,11 @@ test("a standby that is ready keeps the state when only its update record fails:
   restart();
   await eventually(() => swapped(root), 40_000);
   assert.equal(existsSync(join(root, "fail-confirm")), false, "the confirmation failure was never exercised");
-  const standby = JSON.parse(await readFile(join(root, "gateway-engines.json"), "utf8")).find(record => record.role === "standby");
+  let standby;
+  await eventually(async () => {
+    standby = JSON.parse(await readFile(join(root, "gateway-engines.json"), "utf8")).find(record => record.role === "standby");
+    return standby;
+  });
   assert.ok(standby && alive(standby.pid));
   assert.equal(existsSync(join(root, `rolled-back-${old}`)), false, "channels and cron moved back to the old engine");
   assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-handoff").map(([, url]) => url), [`ws://127.0.0.1:${standby.port}`]);
@@ -838,7 +842,7 @@ test("launch retires the engines the last session recorded and left holding thei
       // Only the engine this launch started is recorded now.
       assert.deepEqual(JSON.parse(await readFile(join(root, "gateway-engines.json"), "utf8")).map(record => record.pid), await starts());
     }, false, false, false, "never", false, async (root) => {
-      const orphanIdentity = engineProcessIdentity(orphan.pid), bystanderIdentity = engineProcessIdentity(bystander.pid);
+      const orphanIdentity = await engineProcessIdentity(orphan.pid), bystanderIdentity = await engineProcessIdentity(bystander.pid);
       assert.ok(orphanIdentity && bystanderIdentity);
       await writeFile(join(root, "gateway-engines.json"), JSON.stringify([
         { pid: orphan.pid, port: orphanPort, role: "standby", ...orphanIdentity },
