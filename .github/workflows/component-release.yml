@@ -66,6 +66,30 @@ jobs:
             version="$base"
           fi
           printf 'commit=%s\nversion=%s\n' "$commit" "$version" >> "$GITHUB_OUTPUT"
+  engine:
+    needs: identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BRANCH_RELEASE_COMMIT: ${{ needs.identity.outputs.commit }}
+      BRANCH_RELEASE_VERSION: ${{ needs.identity.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.identity.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Build one shared engine package from frozen source
+        run: node desktop/scripts/release-build.mjs engine "${{ runner.temp }}/shared-engine"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-shared-engine
+          path: ${{ runner.temp }}/shared-engine/
+          if-no-files-found: error
+          retention-days: 3
   window:
     needs: identity
     runs-on: ubuntu-latest
@@ -81,15 +105,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24.19.0'
-      - uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
-        with:
-          path: |
-            ~/.local/share/pnpm/store
-            ~/Library/pnpm/store
-            ~/AppData/Local/pnpm/store
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('engine/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+          package-manager-cache: false
       - name: Build one shared renderer from frozen source
         run: node desktop/scripts/release-build.mjs window "${{ runner.temp }}/shared-window"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -98,10 +114,11 @@ jobs:
           path: ${{ runner.temp }}/shared-window/
           if-no-files-found: error
           retention-days: 3
-  # Native targets start with identity; the engine builds while the shared renderer job runs, and the
-  # renderer artifact is fetched only when packaging needs it (release-build.mjs waits for the ready file).
+  # Native targets wait for the shared engine package (the macOS tsdown compile was the 15-minute
+  # risk). They still start the native install while the renderer job runs, and fetch that artifact
+  # only when packaging needs it (release-build.mjs waits for the ready file).
   native:
-    needs: identity
+    needs: [identity, engine]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     permissions:
@@ -130,15 +147,11 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24.19.0'
-      - uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
+          package-manager-cache: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
-          path: |
-            ~/.local/share/pnpm/store
-            ~/Library/pnpm/store
-            ~/AppData/Local/pnpm/store
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('engine/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+          name: release-shared-engine
+          path: ${{ runner.temp }}/shared-engine
       - name: Prepare stable macOS release signing identity
         if: matrix.target == 'darwin-arm64'
         shell: bash
@@ -167,7 +180,7 @@ jobs:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
         run: |
           node "${{ github.workspace }}/desktop/scripts/prepare-release-layout-tests.mjs"
-          node --test desktop/scripts/release-inventory.test.mjs desktop/scripts/production-engine-smoke.test.mjs desktop/scripts/release-source-freeze.test.mjs desktop/scripts/release-production-layout.test.mjs
+          node --test desktop/scripts/release-inventory.test.mjs desktop/scripts/production-engine-smoke.test.mjs desktop/scripts/release-source-freeze.test.mjs desktop/scripts/release-production-layout.test.mjs desktop/scripts/release-build.test.mjs
       - name: Verify source slices and package native production components
         shell: bash
         env:
@@ -175,6 +188,7 @@ jobs:
           RELEASE_ASSETS: ${{ runner.temp }}/release-assets
           SHARED_WINDOW: ${{ runner.temp }}/shared-window
           BRANCH_RELEASE_WINDOW_READY: ${{ runner.temp }}/shared-window.ready
+          BRANCH_RELEASE_ENGINE_DIST: ${{ runner.temp }}/shared-engine
         run: |
           set -euo pipefail
           node desktop/scripts/release-build.mjs components "$RELEASE_ASSETS" "$SHARED_WINDOW" &

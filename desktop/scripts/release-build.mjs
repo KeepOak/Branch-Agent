@@ -49,11 +49,26 @@ async function prepareWindow(pnpm) {
   await run(process.execPath, [join(windowRoot, "node_modules/vite/bin/vite.js"), "build"], windowRoot);
 }
 
-async function deployEngine(pnpm, scratch, identity) {
+export async function adoptSharedEngineDist(source, destination, identity) {
+  const metadata = JSON.parse(await readFile(join(source, "build-info.json"), "utf8"));
+  assert.equal(metadata.commit, identity.commit, "Shared engine build differs from source freeze");
+  await rm(destination, { recursive: true, force: true });
+  await run(process.execPath, ["--input-type=module", "-e",
+    'import { cp } from "node:fs/promises"; await cp(process.argv[1], process.argv[2], { recursive: true });',
+    source, destination]);
+}
+
+async function buildEnginePackage(pnpm, identity) {
   // Runtime-only package build: the engine component never loads declarations, which were ~75% of build time.
   await run(pnpm, ["build:package"], engineRoot, { ...process.env, BRANCH_RUN_NODE_SKIP_DTS_BUILD: "1" });
   const metadata = JSON.parse(await readFile(join(engineRoot, "dist/build-info.json"), "utf8"));
   assert.equal(metadata.commit, identity.commit, "Engine build metadata differs from source freeze");
+}
+
+async function deployEngine(pnpm, scratch, identity) {
+  const shared = process.env.BRANCH_RELEASE_ENGINE_DIST;
+  if (shared) await adoptSharedEngineDist(shared, join(engineRoot, "dist"), identity);
+  else await buildEnginePackage(pnpm, identity);
   const deployment = join(scratch, "production-engine");
   const flags = await verifiedExceptionFlags("engine");
   await run(pnpm, productionDeployArguments(deployment, flags), engineRoot, productionDeployEnvironment(process.env));
@@ -133,12 +148,18 @@ async function waitForSharedWindow() {
 }
 
 export async function buildRelease(mode, output, windowDirectory) {
-  assert(["window", "components"].includes(mode), "Usage: release-build.mjs window|components output [built-window]");
+  assert(["engine", "window", "components"].includes(mode), "Usage: release-build.mjs engine|window|components output [built-window]");
   const identity = await releaseIdentity();
   const scratch = await scratchRoot();
   const pnpm = await preparePnpm(scratch);
   await mkdir(output, { recursive: true });
-  if (mode === "window") {
+  if (mode === "engine") {
+    await prepareEngine(pnpm);
+    await buildEnginePackage(pnpm, identity);
+    await run(process.execPath, ["--input-type=module", "-e",
+      'import { cp } from "node:fs/promises"; await cp(process.argv[1], process.argv[2], { recursive: true });',
+      join(engineRoot, "dist"), output]);
+  } else if (mode === "window") {
     await prepareWindow(pnpm);
     await writeFile(join(windowRoot, "dist/branch-build.txt"), `${identity.version}\n`);
     await run(process.execPath, ["--input-type=module", "-e", 'import { cp } from "node:fs/promises"; await cp(process.argv[1], process.argv[2], { recursive: true });', join(windowRoot, "dist"), output]);
