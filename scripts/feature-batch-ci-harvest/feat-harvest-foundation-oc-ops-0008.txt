@@ -1,4 +1,3 @@
-engine:src/cli/gateway-cli/run.option-collisions.test.ts
 engine:src/cli/gateway-cli/run.supervised-lock.test.ts
 engine:src/cli/gateway-cli/suspend-cli.test.ts
 engine:src/cli/update-cli.admission-ledger.test.ts
