@@ -24,7 +24,7 @@
 .v23-threads-toggle:hover { color: var(--ink); }
 .v23-tower { flex: 0 0 316px; min-width: 0; height: 100%; overflow-y: auto; background: var(--side); border-left: 1px solid var(--hair17); color: var(--ink); }
 .v23-tower > header { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 3px 8px 3px 14px; }
-.v23-tower > header h2 { flex: 1; margin: 0; font-size: 13px; }
+.v23-tower > header b { flex: 1; margin: 0; font-size: 13px; }
 .v23-tower-health { display: flex; align-items: center; gap: 7px; margin: 2px 12px 10px; padding: 7px 9px; border-radius: 8px; background: var(--fill); color: var(--ink-2); font-size: 11px; }
 .v23-tower-health i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
 .v23-tower section { padding: 10px 12px 12px; border-top: 1px solid var(--hair17); }

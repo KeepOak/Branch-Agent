@@ -23,7 +23,7 @@ export function ControlTower({ engine, rows, needsCount, trunkName, onOpen, onIn
   const recent = rows.filter((row) => row.done && !row.archived && !row.helper && !row.system).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3);
   const decide = (item: Record<string, unknown>, decision: "allow-once" | "deny") => void queue.act(() => resolveApproval(engine, item, decision), decision === "deny" ? "Said no." : "Allowed once.");
   return <aside className="v23-tower" aria-label="Control tower">
-    <header><h2>Control tower</h2><button type="button" className="ib" aria-label="Hide the control tower" onClick={onClose}>×</button></header>
+    <header><b>Control tower</b><button type="button" className="ib" aria-label="Hide the control tower" onClick={onClose}>×</button></header>
     <div className="v23-tower-health"><i />Connected to this computer.</div>
     <section><h3>Needs you {needsCount ? <span>{needsCount}</span> : null}</h3>
       {queue.error ? <p role="alert">{queue.error}</p> : null}
