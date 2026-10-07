@@ -933,7 +933,7 @@ async function start(): Promise<void> {
     let enabled = screenControlEnabled();
     let granted = enabled && macComputerDriver.permissionsGranted(resolveEngineDir(cfg));
     const timer = setInterval(() => {
-      if (engineRestartInProgress) return;
+      if (updateLock.held) return;
       const nextEnabled = screenControlEnabled();
       const nextGranted = nextEnabled && macComputerDriver.permissionsGranted(resolveEngineDir(cfg));
       if (nextEnabled !== enabled || nextGranted && !granted) {
