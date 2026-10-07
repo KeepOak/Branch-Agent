@@ -1,3 +1,4 @@
+// From openclaw/openclaw@3e932a5937b529ae45b89c57a1b5db2078aa1407:src/logging/subsystem.test.ts (atlas OBSERVABILITY-0054). Changed for Branch: Rebranded with scripts/rebrand-map.json; current upstream tests preserve post-pin fixes.
 // Subsystem logger tests cover per-subsystem log routing and filtering.
 import fs from "node:fs";
 import path from "node:path";

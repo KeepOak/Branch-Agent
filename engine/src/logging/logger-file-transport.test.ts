@@ -1,3 +1,4 @@
+// From openclaw/openclaw@3e932a5937b529ae45b89c57a1b5db2078aa1407:src/logging/logger-file-transport.test.ts (atlas OBSERVABILITY-0055). Changed for Branch: Rebranded with scripts/rebrand-map.json; current upstream tests preserve post-pin fixes.
 // Logger file transport tests cover async ordering, overflow, and exit durability.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
