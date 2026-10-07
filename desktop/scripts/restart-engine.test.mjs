@@ -110,7 +110,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
   };
   if (holdStartup) await writeFile(join(root, "hold-startup"), "wait");
   await prepare?.(root);
-  let onStaged, onWithdrawal, swapGuard, pendingVersion, engineWatchTick;
+  let onStaged, onWithdrawal, swapGuard, pendingVersion, engineWatchTick, stopWatching;
   // Auto-apply's clock: a test moves it past the 60 s idle hold instead of waiting for it.
   const clock = { skew: 0 };
   Module._load = function(name, ...args) {
@@ -120,7 +120,8 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
       return { ...source, bootSelectedEngineWithRollback: async options => {
         const result = await source.bootSelectedEngineWithRollback(options);
         await writeFile(join(root, "startup-awaiting-continuation"), "1");
-        while (!existsSync(join(root, "release-start-continuation"))) await pause(5);
+        // Stop if the fixture root is gone: otherwise a late boot after rm() polls forever and hangs `node --test`.
+        while (existsSync(root) && !existsSync(join(root, "release-start-continuation"))) await pause(5);
         return result;
       } };
     }
@@ -154,12 +155,13 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
       return { ...source, watchComponentUpdates: (cfg, log, options) => {
         if (existsSync(join(root, "hold-start-continuation"))) writeFileSync(join(root, "component-watch-started"), "1");
         onStaged = options.onStaged; onWithdrawal = options.onWithdrawal; swapGuard = options.underSwapGuard;
-        return source.watchComponentUpdates(cfg, log, options);
+        stopWatching = source.watchComponentUpdates(cfg, log, options);
+        return stopWatching;
       }, prepareComponentUpdateUndo: async (...args) => {
         const prepared = await source.prepareComponentUpdateUndo(...args);
         if (prepared && holdUndo) {
           await writeFile(join(root, "undo-prepared"), "ready");
-          while (!existsSync(join(root, "release-undo"))) await pause(5);
+          while (existsSync(root) && !existsSync(join(root, "release-undo"))) await pause(5);
         }
         return prepared;
       }, confirmComponentUpdate: async (...args) => {
@@ -189,7 +191,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
       const source = originalLoad.call(this, name, ...args);
       return { ...source, stopCandidate: () => { void writeFile(join(root, "candidate-aborted"), "1"); source.stopCandidate(); }, checkCandidateBeside: async () => {
         await writeFile(join(root, "candidate-started"), "1");
-        while (!existsSync(join(root, "release-candidate")) && !existsSync(join(root, "candidate-aborted"))) await pause(5);
+        while (existsSync(root) && !existsSync(join(root, "release-candidate")) && !existsSync(join(root, "candidate-aborted"))) await pause(5);
         return "exited";
       } };
     }
@@ -208,9 +210,12 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
   } finally {
     await writeFile(join(root, "release-ready"), "ready");
     if (holdUndo) await writeFile(join(root, "release-undo"), "release");
+    await writeFile(join(root, "release-start-continuation"), "1");
+    await writeFile(join(root, "release-candidate"), "1");
     await pause(600);
     runtime.app.emit("will-quit");
     await eventually(async () => (await starts()).every(pid => !alive(pid)));
+    stopWatching?.();
     Module._load = originalLoad; globalThis.fetch = originalFetch;
     previous === undefined ? delete process.env.BRANCH_DESKTOP_DATA : process.env.BRANCH_DESKTOP_DATA = previous;
     previousCandidateMin === undefined ? delete process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB : process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB = previousCandidateMin;
