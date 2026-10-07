@@ -1,6 +1,7 @@
 // Toasts (DESIGN-SPEC §4.10, §5.11): every area calls notify(...). One shows at a time: a new one replaces
 // the old, except outcomes that must not be lost (`keep`), which wait their turn. A toast stays 6 s, pauses
 // while the pointer or keyboard focus is on it, and its × closes it. It is never the only effect of a control.
+import { clearBanner } from "./Banner";
 export type ToastAction = { label: string; run: () => void };
 export type ToastTone = "plain" | "bad";
 export type Toast = { id: number; text: string; line?: string; action?: ToastAction; tone: ToastTone; keep: boolean };
@@ -39,6 +40,7 @@ function emit(): void {
 
 /** Shows a toast and returns its id. `line` is the smaller second line; `action` is its one button (for example Undo). */
 export function notify(text: string, options: NotifyOptions = {}): number {
+  clearBanner();
   const id = nextId++;
   const toast: Toast = { id, text, tone: options.tone ?? "plain", line: options.line, action: options.action, keep: options.keep === true };
   toasts = [...toasts.filter((t) => t.keep), toast];

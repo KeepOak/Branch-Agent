@@ -157,6 +157,9 @@ async function tryRunGatewayRunFastPath(
       // Loads code while another engine still owns state; every state step below runs after release.
       const { waitInGatewayStandby } = await import("./gateway-cli/standby.js");
       await startupTrace.measure("gateway-run-standby", () => waitInGatewayStandby(process.env));
+      // The process is now the owner, not a standby. Subsequent gateway or
+      // launcher decisions must see its live role.
+      delete process.env.BRANCH_GATEWAY_STANDBY;
     }
     await startupTrace.measure("gateway-run-bootstrap", async () => {
       await ensureCliExecutionBootstrap({

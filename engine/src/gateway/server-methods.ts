@@ -25,6 +25,7 @@ import {
 } from "./control-plane-rate-limit.js";
 import { errorShapeFromError } from "./error-shape.js";
 import { createExpectedProfileBinding } from "./expected-profile.js";
+import { lockdownAdmissionError } from "./lockdown-admission.js";
 import { ADMIN_SCOPE } from "./method-scopes.js";
 import {
   createCoreGatewayMethodDescriptors,
@@ -62,6 +63,7 @@ import {
 } from "./server-request-lifecycle.js";
 import { GatewayRpcDiagnostics } from "./server/ws-connection/request-diagnostics.js";
 import type { GatewaySessionAccessAuthority } from "./session-access-authority.js";
+import { waitForSessionHandoffLeasesBeforeRequest } from "./session-handoff-lease-request-gate.js";
 import { sessionLog } from "./session-log.js";
 import { retainSessionListForegroundWork } from "./session-projection-work.js";
 import { SessionMutationAuthorizationChangedError } from "./session-sharing.js";
@@ -260,6 +262,11 @@ export async function handleGatewayRequest(
     extraHandlers?: GatewayRequestHandlers;
     admission?: "continuation";
     requestEntry?: GatewayRequestEntry;
+    /**
+     * How long a write to a session still held by the previous engine may wait (default: the bounded request
+     * wait, for remote clients that time out). In-process dispatch passes its own remaining deadline.
+     */
+    sessionHandoffLeaseMaxWaitMs?: number;
   },
   diagnostics?: GatewayRpcDiagnostics,
 ): Promise<void> {
@@ -330,6 +337,36 @@ export async function handleGatewayRequest(
     let sessionAccessAuthority: GatewaySessionAccessAuthority | undefined;
     try {
       entry?.assertOpen();
+      // A session the previous engine is still finishing has one writer: wait for it before any authorization.
+      const leaseWait = waitForSessionHandoffLeasesBeforeRequest({
+        method: req.method,
+        params: req.params,
+        signal,
+        connectionSignal: client?.connectionSignal,
+        shutdownSignal: context.requestEntryLifetime?.signal,
+        mainKey: () => context.getRuntimeConfig?.()?.session?.mainKey,
+        resolveSessionIdKey: async (sessionId, agentId) => {
+          const { resolveExistingSessionKeyForRequest } =
+            await import("../agents/command/session.js");
+          return resolveExistingSessionKeyForRequest({
+            cfg: context.getRuntimeConfig(),
+            sessionId,
+            ...(agentId ? { agentId } : {}),
+          }).sessionKey;
+        },
+        maxWaitMs: opts.sessionHandoffLeaseMaxWaitMs,
+      });
+      if (leaseWait) {
+        const waited = await leaseWait;
+        if (waited.kind === "aborted") {
+          return;
+        }
+        if (waited.kind === "refused") {
+          respond(false, undefined, waited.error);
+          return;
+        }
+        entry?.assertOpen();
+      }
       const requestMutationAuthority = readGatewayRequestMutationAuthority(opts);
       // Post-hello hydration may supply the first profile. Once selected, the same
       // caller must survive every awaited row read and authorization retry.
@@ -362,6 +399,16 @@ export async function handleGatewayRequest(
       entry?.assertOpen();
       if (authorization.error) {
         respond(false, undefined, authorization.error);
+        return;
+      }
+      const lockdownError = lockdownAdmissionError({
+        method: req.method,
+        params: req.params,
+        scope: methodRegistry.getScope(req.method),
+        client,
+      });
+      if (lockdownError) {
+        respond(false, undefined, lockdownError);
         return;
       }
       const handler = methodRegistry.getHandler(req.method) as GatewayRequestHandler | undefined;

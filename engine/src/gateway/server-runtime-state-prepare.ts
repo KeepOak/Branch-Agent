@@ -367,14 +367,16 @@ export async function prepareGatewayKernelState(params: {
   );
   const nodeReapprovalCoordinator = createNodeReapprovalCoordinator(rateLimitConfig, { scheduler });
 
-  const controlUiRootLifecycle = await startupTrace.measure("control-ui.root", () =>
-    createGatewayControlUiRootLifecycle({
-      controlUiRootOverride,
-      controlUiEnabled,
-      gatewayRuntime,
-      log,
-    }),
-  );
+  const controlUiRootLifecycle =
+    opts.preparedControlUiRootLifecycle ??
+    (await startupTrace.measure("control-ui.root", () =>
+      createGatewayControlUiRootLifecycle({
+        controlUiRootOverride,
+        controlUiEnabled,
+        gatewayRuntime,
+        log,
+      }),
+    ));
   const { createTerminalLaunchPolicy } = await startupTrace.measure(
     "terminal.launch-import",
     () => import("./terminal/launch.js"),

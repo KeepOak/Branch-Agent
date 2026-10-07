@@ -72,10 +72,10 @@ export function isOwnedComponentWindow(event: InvokeEvent, sender: Sender | unde
 }
 
 /** Both the owning webContents and its served main frame are mandatory. */
-export function registerComponentUpdateIpc(ipc: Ipc, owner: () => Sender | undefined, servedUrl: string, controller: ComponentUpdateController): void {
+export function registerComponentUpdateIpc(ipc: Ipc, owner: (event: InvokeEvent) => Sender | undefined, servedUrl: string, controller: ComponentUpdateController): void {
   for (const method of ["status", "check", "stage"] as const) {
     ipc.handle(`branch-desktop:component-update:${method}`, async (event, ...args) => {
-      if (!isOwnedComponentWindow(event, owner(), servedUrl)) throw new Error("Component updates require the owned served window");
+      if (!isOwnedComponentWindow(event, owner(event), servedUrl)) throw new Error("Component updates require the owned served window");
       if (args.length) throw new Error("Component update calls accept no arguments");
       return controller[method]();
     });

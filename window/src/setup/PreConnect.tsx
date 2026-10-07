@@ -23,11 +23,11 @@ function Pairing({ host, address, onRetry }: { host: string; address: string; on
     <div className="ob-status-box" data-testid="setup-pairing">
       <span className="sdot warn" />
       <div>
-        <b>Approve this window</b>
-        <p>This window passed sign-in at {host}, but that computer hasn't seen it before. Approve it once there.</p>
+        <b>Allow this window</b>
+        <p>This window passed sign-in at {host}, but that computer hasn't seen it before. Allow it once there.</p>
         <ol className="ob-steps">
           <li>Prefer a link? Run `branch dashboard` there and open its link here.</li>
-          <li>That command also prints the approve command for the newest request.</li>
+          <li>That command also prints how to allow the newest request.</li>
           <li>Once approved, choose Connect.</li>
         </ol>
         <p className="hint">Waiting for approval… this connects by itself once approved.</p>

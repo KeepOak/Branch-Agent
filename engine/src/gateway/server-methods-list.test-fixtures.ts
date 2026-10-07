@@ -74,7 +74,7 @@ plugin.surface.refresh conversations.list session.discussion.info session.discus
 board.prompt.authorize board.data.read board.action sessions.observer.visibility
 session.visibility.set session.members.list session.members.add session.members.remove
 session.suggestions.add session.suggestions.list session.suggestions.resolve
-session.reactions.set session.reactions.list session.typing
+session.reactions.set session.context.set session.reactions.list session.typing
 sessions.companion.ask sessions.companion.state sessions.companion.reset memory.search
 skills.proposals.events.list skills.proposals.evaluate hooks.status
 audit.run.inspect sessions.patchMany update.hold sessions.catalog.startTerminal

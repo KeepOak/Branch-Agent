@@ -20,7 +20,7 @@ export const DOC_REASONS = {
   map: "Needs an engine method that returns the documents’ topics and the links between them.",
   trash: "Needs the engine’s recently-deleted list for documents, with restore and delete for good.",
   kb: "Needs the engine’s knowledge-base management methods.",
-  folder: "Needs the engine’s guided folder tour.",
+  folder: "Needs the engine’s guided folder walkthrough.",
   sources: "Needs the engine’s synced outside sources.",
   pages: "Needs the engine’s kept-answers pages.",
   connect: "Needs the engine’s connector for this source.",
@@ -134,7 +134,7 @@ function ToolTile({ icon, title, line, reason }: { icon: LibIconName; title: str
 function Managing() {
   const rows: [LibIconName, string, string, string, string][] = [
     ["folder", "Knowledge bases", "Folders it reads, kept as quotable passages. Rename, merge, split and choose how long they stay.", "Manage", DOC_REASONS.kb],
-    ["box", "Understand a folder", "A map of a folder, then a short guided tour of what’s in it.", "Try a folder", DOC_REASONS.folder],
+    ["box", "Understand a folder", "A map of a folder, then a short guided walkthrough.", "Try a folder", DOC_REASONS.folder],
     ["repeat", "Bring things in from other services", "Keeps a copy of chosen items from Drive, Notion or a notes vault, in sync.", "See sources", DOC_REASONS.sources],
     ["book", "Kept answers and long articles", "An answer you like becomes a page you can reopen; a long article is written section by section.", "See pages", DOC_REASONS.pages],
   ];
