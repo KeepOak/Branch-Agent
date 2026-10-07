@@ -116,6 +116,7 @@ test("a moved app path gets rewritten", async () => fixture(async ({ root }) => 
   const oldNode = "/Volumes/OtherDrive/Branch Agent.app/Contents/Resources/node/node";
   await writeEngine(engine, "moved");
   await mkdir(dataDir, { recursive: true });
+  await mkdir(join(root, "bin"), { recursive: true });
   await writeFile(join(dataDir, "engine-running.txt"), `${engine}\n`);
   writeCliPointer({ dataDir, nodePath: oldNode, engineDir: engine, gatewayPort: 19111 });
   await writeFile(launcher, posixCliLauncher(cliPointerPath(dataDir)));
@@ -138,6 +139,7 @@ test("a wrong data folder gets corrected", async () => fixture(async ({ root }) 
   await writeEngine(engine, "data-folder");
   await mkdir(oldData, { recursive: true });
   await mkdir(newData, { recursive: true });
+  await mkdir(join(root, "bin"), { recursive: true });
   await writeFile(join(newData, "engine-running.txt"), `${engine}\n`);
   writeCliPointer({ dataDir: oldData, nodePath: process.execPath, engineDir: "/Volumes/OtherDrive/old-engine", gatewayPort: 19031 });
   await writeFile(launcher, posixCliLauncher(cliPointerPath(oldData)));

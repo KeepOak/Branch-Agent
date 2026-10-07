@@ -143,21 +143,14 @@ function desiredLauncher(options: EnsureCliLauncherOptions): string {
   return posixCliLauncher(cliPointerPath(options.active.dataDir));
 }
 
-function pointerMatches(active: CliActive): boolean {
-  const written = readCliPointer(cliPointerPath(active.dataDir));
-  return Boolean(written
-    && written.dataDir === active.dataDir
-    && written.nodePath === active.nodePath
-    && written.engineDir === active.engineDir
-    && written.gatewayPort === active.gatewayPort);
-}
-
-function launcherMatches(existing: string, desired: string, active: CliActive): boolean {
-  return existing === desired && pointerMatches(active) && cliTargetExists(active);
-}
-
 /** Write the pointer; rewrite an owned launcher when its target or data folder is missing or wrong. */
 export function ensureCliLauncher(options: EnsureCliLauncherOptions): EnsureCliLauncherResult {
+  const previous = readCliPointer(cliPointerPath(options.active.dataDir));
+  const pointerChanged = !previous
+    || previous.dataDir !== options.active.dataDir
+    || previous.nodePath !== options.active.nodePath
+    || previous.engineDir !== options.active.engineDir
+    || previous.gatewayPort !== options.active.gatewayPort;
   writeCliPointer(options.active);
   const desired = desiredLauncher(options);
   let existing: string | undefined;
@@ -170,8 +163,8 @@ export function ensureCliLauncher(options: EnsureCliLauncherOptions): EnsureCliL
     return { action: "wrote" };
   }
   if (!isOwnedCliLauncher(existing)) return { action: "skipped" };
-  if (launcherMatches(existing, desired, options.active)) return { action: "unchanged" };
-  writeLauncherFile(options.launcherPath, desired, options.kind ?? "sh");
+  if (existing === desired && !pointerChanged && cliTargetExists(options.active)) return { action: "unchanged" };
+  if (existing !== desired) writeLauncherFile(options.launcherPath, desired, options.kind ?? "sh");
   return { action: "wrote" };
 }
 
