@@ -39,6 +39,7 @@ jobs:
 
   wait-for-checks:
     runs-on: ubuntu-latest
+    # Same 35-minute allowance as the old merge-gate waiter. The 15-minute cap is for check jobs.
     timeout-minutes: 35
     steps:
       - name: Wait for the PR's other checks
