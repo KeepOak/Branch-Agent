@@ -10,6 +10,7 @@ engine:extensions/vault/src/cli.test.ts
 engine:extensions/vault/src/secret-ref-resolver.test.ts
 engine:src/agents/agent-bundle-mcp-manager.lifecycle.test.ts
 engine:src/agents/agent-bundle-mcp-runtime.sse-recovery.test.ts
+engine:src/agents/agent-bundle-mcp-runtime.test.ts
 engine:src/agents/agent-bundle-mcp-schema.test.ts
 engine:src/agents/agent-bundle-mcp-tools.materialize.test.ts
 engine:src/agents/bootstrap-files.personal.test.ts
