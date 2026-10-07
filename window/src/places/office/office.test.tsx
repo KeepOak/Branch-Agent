@@ -4,8 +4,24 @@ import { parseRoute } from "../../places-nav/routes";
 import { readLayout, readOfficeStore, writeLayout, writeOfficeSetting } from "./index";
 import { a2aVisit, officeRoster, officeToolEvent } from "./model";
 import { Storage, defaultPrefs } from "./pixel/webview-ui/src/branch/storage";
+import { defaultSpriteKey } from "./pixel/webview-ui/src/branch/trunkSprites";
 
 describe("Pixel office", () => {
+  it("uses each Trunk's preview look for its desk sprite", () => {
+    const { agents } = officeRoster({ agents: [
+      { id: "branch", identity: { name: "Branch Agent", avatar: "branch:ember", colour: "#B84A6B" } },
+      { id: "c3po", identity: { name: "C3-PO", avatar: "branch:bolt", colour: "#D4A017" } },
+      { id: "classic", identity: { name: "Classic", avatar: "classic", colour: "#2F8C86", shape: "Leaf", eyes: "Wide" } },
+      { id: "colorless", identity: { name: "Colorless", avatar: "classic", colour: "", shape: "Circle", eyes: "Round" } },
+      { id: "fox", identity: { name: "Fox", avatar: "classic", emoji: "🦊", colour: "#2F8C86", shape: "Leaf", eyes: "Wide" } },
+      { id: "foxGrey", identity: { name: "Fox grey", avatar: "classic", emoji: "🦊" } },
+    ] }, {}, {});
+    expect(agents.map(defaultSpriteKey)).toEqual([
+      "look:ember", "look:bolt", "pebble:2:wide:#2F8C86", "pebble:0:round:#56616B",
+      "pebble:2:wide:#2F8C86", "pebble:0:round:#56616B",
+    ]);
+  });
+
   it("seats the live Trunk roster, guests, and groups with registry states and real chat targets", () => {
     const model = officeRoster(
       { mainKey: "main", agents: [{ id: "oak", identity: { name: "Oak", colour: "#647c55" } }, { id: "elm", identity: { name: "Elm" } }] },

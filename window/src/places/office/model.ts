@@ -1,9 +1,11 @@
 import type { Contact } from "@branch/gateway-protocol";
+import { lookOf } from "../trunk/model";
 
 export type OfficeAgent = {
   id: string; name: string; kind: "trunk" | "grafted" | "group";
   state: "working" | "reading" | "waiting" | "needs_you" | "resting" | "offline";
   activity?: string; needsYou?: number; unread?: boolean; colorHint?: string;
+  look?: string; shape?: number; eyes?: string;
   members?: string[]; subagents?: { id: string; label: string; state: "working" }[];
 };
 export type OfficeLink = { from: string; to: string; at: number };
@@ -36,7 +38,8 @@ export function officeToolEvent(tools: OfficeTools, event: string, payload: unkn
 export function officeRoster(agentsValue: unknown, sessionsValue: unknown, contactsValue: unknown, outsideValue?: unknown, tools: OfficeTools = new Map(), approvalsValue?: unknown): { agents: OfficeAgent[]; openKey: Map<string, string> } {
   const trunks = rows(obj(agentsValue).agents).filter(t => str(t.id) && t.kind !== "system").map(t => ({
     id: str(t.id), name: str(obj(t.identity).name) || str(t.name) || str(t.id),
-    colour: str(obj(t.identity).colour),
+    colour: str(obj(t.identity).colour), avatar: str(obj(t.identity).avatar),
+    shape: str(obj(t.identity).shape), eyes: str(obj(t.identity).eyes),
   }));
   const sessions = rows(obj(sessionsValue).sessions);
   const contacts = (Array.isArray(obj(contactsValue).contacts) ? obj(contactsValue).contacts as Contact[] : []).filter(c => !c.archivedAt);
@@ -63,6 +66,8 @@ export function officeRoster(agentsValue: unknown, sessionsValue: unknown, conta
     const reading = active.some(s => [...(tools.get(str(s.key))?.values() ?? [])].some(name => /^(read|read_file|grep|glob|search|web_fetch|web_search)$/i.test(name)));
     return { id: t.id, name: t.name, kind: "trunk", state: ownApproval || contact?.needsYou && !helperOnly ? "needs_you" : active.length ? reading ? "reading" : "working" : "resting",
       activity, needsYou: needs, unread: Boolean(contact?.threadUnread || contact?.unreadTopics), colorHint: t.colour,
+      look: lookOf(t.avatar, t.name), shape: Math.max(0, ["Circle", "Stone", "Leaf", "Acorn", "Shield"].indexOf(t.shape)),
+      eyes: ["round", "wide", "sleepy"].includes(t.eyes.toLowerCase()) ? t.eyes.toLowerCase() : "round",
       subagents: children.map(s => ({ id: str(s.key), label: str(s.label) || str(s.displayName) || "Job", state: "working" as const })) };
   });
   for (const c of contacts) {
