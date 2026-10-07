@@ -31,7 +31,7 @@ function header(name, size, mode, type = "0", link = "") {
   return block;
 }
 
-async function files(root, folder = root, ancestors = new Set()) {
+async function files(root, folder = root, ancestors = new Set(), preserveLinks = false) {
   const actual = await realpath(folder);
   if (actual !== root && !actual.startsWith(root + sep)) throw new Error("Component symlink leaves deployment root");
   if (ancestors.has(actual)) throw new Error("Component symlink cycle");
@@ -39,15 +39,16 @@ async function files(root, folder = root, ancestors = new Set()) {
   const result = [];
   for (const name of (await readdir(folder)).sort()) {
     const file = join(folder, name);
-    const info = await lstat(file);
-    if (info.isSymbolicLink()) {
-      const target = await realpath(file);
-      if (!target.startsWith(root + sep)) throw new Error("Component symlink leaves deployment root");
-      result.push({ file, name: relative(root, file).split(sep).join("/"), size: 0, mode: info.mode, link: await readlink(file) });
+    const target = await realpath(file);
+    if (!target.startsWith(root + sep)) throw new Error("Component symlink leaves deployment root");
+    const linkInfo = await lstat(file);
+    if (preserveLinks && linkInfo.isSymbolicLink()) {
+      result.push({ file, name: relative(root, file).split(sep).join("/"), size: 0, mode: linkInfo.mode, link: await readlink(file) });
       continue;
     }
+    const info = await stat(file);
     if (info.isDirectory()) {
-      for (const entry of await files(root, file, seen)) result.push(entry);
+      for (const entry of await files(root, file, seen, preserveLinks)) result.push(entry);
     }
     else if (info.isFile()) result.push({ file, name: relative(root, file).split(sep).join("/"), size: info.size, mode: info.mode });
     else throw new Error("Unsupported component file type");
@@ -67,8 +68,8 @@ function portableGzipHeader() {
   } });
 }
 
-async function archive(root, destination, fileMode) {
-  const entries = await files(await realpath(root));
+async function archive(root, destination, fileMode, preserveLinks = false) {
+  const entries = await files(await realpath(root), await realpath(root), new Set(), preserveLinks);
   async function* bytes() {
     for (const entry of entries) {
       yield header(entry.name, entry.size, fileMode ?? entry.mode, entry.link === undefined ? "0" : "2", entry.link);
@@ -118,7 +119,7 @@ async function desktopComponents({ app, runtime, electronVersion }, { stage, out
   const components = {};
   for (const [name, root, filename] of parts) {
     if (await existingDigest(join(output, filename))) throw new Error(`Release asset collision: ${filename}`);
-    const info = await archive(root, join(stage, filename));
+    const info = await archive(root, join(stage, filename), undefined, name === "desktopRuntime" && platform === "darwin");
     // The app.asar this component carries, so an installed desktop with the same bytes skips the download and swap.
     const appAsarSha256 = await existingDigest(join(root, name === "desktop" ? "app.asar"
       : platform === "darwin" ? "Branch Agent.app/Contents/Resources/app.asar" : "resources/app.asar"));
