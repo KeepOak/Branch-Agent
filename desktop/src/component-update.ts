@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { DesktopConfig } from "./config";
 import { extractComponentArchive } from "./component-update-archive";
 import { downloadComponent, move, replaceFile } from "./component-update-files";
@@ -212,11 +212,16 @@ export async function recoverComponentUpdate(cfg: DesktopConfig): Promise<void> 
 export async function pruneReleasesOnLaunch(cfg: DesktopConfig, reportFailure?: (error: unknown) => void): Promise<void> {
   const current = await readOrEmpty(join(cfg.dataDir, "engine-current.txt"));
   const pending = await publication(cfg);
-  const engineDir = current || resolve(cfg.engineDir, "engine");
-  const previousPointer = join(cfg.dataDir, "engine-previous.txt");
-  const previous = await readOrEmpty(previousPointer);
-  
-  await pruneOldReleases(cfg, engineDir, previous, pending?.engineNext, reportFailure);
+  let previous = pending?.enginePrevious ?? "";
+  if (!previous) {
+    const raw = await readOrEmpty(undoFile(cfg));
+    if (raw) {
+      try { previous = (JSON.parse(raw) as UndoReceipt).enginePrevious ?? ""; }
+      catch { previous = ""; }
+    }
+  }
+  try { await pruneOldReleases(cfg, current, previous, pending?.engineNext, reportFailure); }
+  catch (error) { reportFailure?.(error); }
 }
 
 export async function readComponentManifest(request: typeof fetch = fetch): Promise<ComponentRelease> {
@@ -233,26 +238,26 @@ export async function readComponentManifest(request: typeof fetch = fetch): Prom
 async function stage(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch, options?: RefreshOptions): Promise<{ engine: string; window: string }> {
   const updates = join(cfg.dataDir, "updates");
   await mkdir(updates, { recursive: true });
-  
-  // Estimate total download size (both engine and window archives)
-  const totalBytes = release.components.engine.bytes + release.components.window.bytes;
-  
-  // Check if there's enough disk space
-  let spaceCheck = await checkDiskSpace(updates, totalBytes);
-  
-  // If not enough space, try pruning old releases first
-  if (!spaceCheck.enough) {
+  const totalBytes = release.components.engine.bytes + release.components.window.bytes
+    + release.components.engine.expandedBytes + release.components.window.expandedBytes;
+  const ensureSpace = async (): Promise<void> => {
+    const space = await checkDiskSpace(updates, totalBytes);
+    if (space.enough) return;
     const current = await readOrEmpty(join(cfg.dataDir, "engine-current.txt"));
     const pending = await publication(cfg);
-    await pruneOldReleases(cfg, current, "", pending?.engineNext, error => options?.log?.(String(error)));
-    
-    // Check again after pruning
-    spaceCheck = await checkDiskSpace(updates, totalBytes);
-    if (!spaceCheck.enough) {
-      throw new Error(spaceCheck.message ?? "Not enough disk space");
+    let previous = pending?.enginePrevious ?? "";
+    if (!previous) {
+      const raw = await readOrEmpty(undoFile(cfg));
+      if (raw) {
+        try { previous = (JSON.parse(raw) as UndoReceipt).enginePrevious ?? ""; }
+        catch { previous = ""; }
+      }
     }
-  }
-  
+    await pruneOldReleases(cfg, current, previous, pending?.engineNext, error => options?.log?.(String(error)));
+    const retry = await checkDiskSpace(updates, totalBytes);
+    if (!retry.enough) throw new Error(retry.message ?? space.message ?? "Not enough disk space to download the update.");
+  };
+  await ensureSpace();
   const directory = await mkdtemp(join(updates, `release-${release.version}-`));
   try {
     for (const name of ["engine", "window"] as const) {

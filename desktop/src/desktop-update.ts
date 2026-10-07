@@ -12,6 +12,7 @@ import type { DesktopConfig } from "./config";
 import { extractComponentArchive } from "./component-update-archive";
 import { downloadComponent, replaceFile } from "./component-update-files";
 import type { ComponentRelease, DesktopAsset } from "./component-update-manifest";
+import { checkDiskSpace, pruneOldReleases } from "./component-update-prune";
 import type { HelperPlan } from "./desktop-update-helper";
 
 /** Where the running desktop app lives. Only a packaged app has one; development runs never update themselves. */
@@ -140,6 +141,14 @@ export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentR
   }
   const updates = join(cfg.dataDir, "updates");
   await mkdir(updates, { recursive: true });
+  const needed = choice.asset.bytes + choice.asset.expandedBytes;
+  let space = await checkDiskSpace(updates, needed);
+  if (!space.enough) {
+    const current = await readOrEmpty(join(cfg.dataDir, "engine-current.txt"));
+    await pruneOldReleases(cfg, current, "", undefined);
+    space = await checkDiskSpace(updates, needed);
+    if (!space.enough) throw new Error(space.message ?? "Not enough disk space to download the update.");
+  }
   const directory = await mkdtemp(join(updates, `desktop-${release.version}-`));
   try {
     const archive = join(directory, "desktop.tar.gz");
