@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants, createReadStream, createWriteStream } from "node:fs";
-import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -41,10 +41,13 @@ async function files(root, folder = root, ancestors = new Set(), preserveLinks =
     const file = join(folder, name);
     const target = await realpath(file);
     if (!target.startsWith(root + sep)) throw new Error("Component symlink leaves deployment root");
-    const linkInfo = await lstat(file);
-    if (preserveLinks && linkInfo.isSymbolicLink()) {
-      result.push({ file, name: relative(root, file).split(sep).join("/"), size: 0, mode: linkInfo.mode, link: await readlink(file) });
-      continue;
+    if (preserveLinks) {
+      const { lstat, readlink } = await import("node:fs/promises");
+      const linkInfo = await lstat(file);
+      if (linkInfo.isSymbolicLink()) {
+        result.push({ file, name: relative(root, file).split(sep).join("/"), size: 0, mode: linkInfo.mode, link: await readlink(file) });
+        continue;
+      }
     }
     const info = await stat(file);
     if (info.isDirectory()) {

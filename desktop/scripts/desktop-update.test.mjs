@@ -37,7 +37,7 @@ async function fixture(run, { runtime = false, iconRuntime = false, macBundle = 
   await writeFile(join(app, "Branch Agent.exe"), "new runtime"); await writeFile(join(app, "resources/app.asar"), "new desktop asar");
   await writeFile(join(cfg.windowDir, "index.html"), "old window"); await writeFile(join(dataDir, "engine-current.txt"), cfg.engineDir + "\n");
   await writeFile(join(installed, "Branch Agent.exe"), "old runtime"); await writeFile(join(installed, "resources/app.asar"), "old desktop asar");
-  if (macBundle) {
+  if (macBundle || process.platform === "darwin" && (runtime || iconRuntime)) {
     for (const bundle of [join(app, "Branch Agent.app"), join(installed, "Branch Agent.app")]) {
       await mkdir(join(bundle, "Contents/MacOS"), { recursive: true });
       await mkdir(join(bundle, "Contents/Resources"), { recursive: true });
@@ -47,7 +47,7 @@ async function fixture(run, { runtime = false, iconRuntime = false, macBundle = 
     await writeFile(join(installed, "Branch Agent.app/Contents/MacOS/Branch Agent"), "old runtime");
     await writeFile(join(installed, "Branch Agent.app/Contents/Resources/app.asar"), "old desktop asar");
   }
-  const desktop = { app: asar, electronVersion: runtime ? "45.0.0" : ELECTRON, ...(runtime || iconRuntime ? { runtime: app } : {}) };
+  const desktop = { app: asar, electronVersion: runtime ? "45.0.0" : ELECTRON, ...(runtime || iconRuntime || macBundle ? { runtime: app } : {}) };
   const release = await makeComponentRelease({ version: "0.4.5", tag: "v0.4.5", engine, window, desktop, output: join(root, "release") });
   const server = createServer((request, response) => {
     const name = request.url.slice(1);
