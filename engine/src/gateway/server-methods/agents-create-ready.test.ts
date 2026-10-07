@@ -77,11 +77,14 @@ it("resolves the new agent for agents.list when create returns", async () => {
   claim!.settle("applied");
   await created.promise;
   await vi.waitFor(() =>
-    expect(mocks.warmAdmission).toHaveBeenCalledWith({
-      agentId: "new-agent",
-      sessionKey: "agent:new-agent:main",
-      readConsistency: "latest",
-    }),
+    expect(mocks.warmAdmission).toHaveBeenCalledWith(
+      {
+        agentId: "new-agent",
+        sessionKey: "agent:new-agent:main",
+        readConsistency: "latest",
+      },
+      { signal: undefined },
+    ),
   );
   expect(created.respond).toHaveBeenCalledWith(
     true,
