@@ -75,3 +75,4 @@ Every merge to `main` that touches `engine/`, `window/`, or `desktop/` triggers 
 - [ ] No placeholder implementations or skipped tests.
 - [ ] Visual changes include screenshots.
 - [ ] Tests prove the fix (failing on old head, passing on new).
+- [ ] FIX any PR that edits `merge-gate-trusted.yml` or the scripts it runs unless the PR body explains why.

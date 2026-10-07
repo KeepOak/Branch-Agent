@@ -1,0 +1,43 @@
+name: Merge gate trusted
+
+# Runs from the base branch copy via pull_request_target. A pull request cannot change this
+# workflow, check out its own tree, or execute its own files. Permissions stay read-only.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+permissions:
+  contents: read
+  checks: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: merge-gate-trusted-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  merge-gate-trusted:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out the base ref only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up reviewed Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Test the trusted gate helper
+        run: node --test scripts/merge-gate-trusted.test.mjs
+      - name: Wait for checks and run main's coverage and merge-command gates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/merge-gate-trusted.mjs
