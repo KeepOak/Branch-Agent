@@ -2,7 +2,6 @@ engine:extensions/imap/src/watcher.test.ts
 engine:src/cron/command-runner.test.ts
 engine:src/cron/isolated-agent.session-identity.test.ts
 engine:src/cron/session-reaper.test.ts
-engine:src/cron/trigger-script.mcp.test.ts
 engine:src/gateway/hooks.test.ts
 engine:src/gateway/server.hooks-admission.test.ts
 engine:src/gateway/server.hooks.test.ts
