@@ -63,9 +63,13 @@ function useCatalogs(engine: WindowEngine) {
       live = false;
     };
   }, [engine]);
-  const entries = rec(rec(state?.snap.config).plugins).entries;
-  // The switch is on unless set off (Settings › Data & usage reads it the same way).
-  const on = (id: string) => rec(rec(rec(rec(entries)[id]).config).sessionCatalog).enabled !== false;
+  const entries = rec(rec(rec(state?.snap.config).plugins).entries);
+  // Preview otherConvPF18 / readNativeSessionCatalogPreference: unset is off, not on.
+  const preference = (id: string, from: Record<string, unknown> = entries) => {
+    const enabled = rec(rec(rec(from[id]).config).sessionCatalog).enabled;
+    return typeof enabled === "boolean" ? enabled : undefined;
+  };
+  const on = (id: string) => preference(id) === true;
   const checked = Boolean(state?.installed.length) && Boolean(state?.installed.every(on));
   const set = async (value: boolean) => {
     if (!state) return;
@@ -80,6 +84,22 @@ function useCatalogs(engine: WindowEngine) {
       setBusy(false);
     }
   };
+  // Leaving the step unticked writes enabled: false only where the person hasn't chosen yet.
+  useEffect(() => {
+    if (!state?.installed.length) return;
+    const unset = state.installed.filter((id) => preference(id, rec(rec(rec(state.snap.config).plugins).entries)) === undefined);
+    if (!unset.length) return;
+    let live = true;
+    setBusy(true);
+    setError(null);
+    saveConfig(engine, state.snap, Object.fromEntries(unset.map((id) => [catalogPath(id), false]))).then(
+      (snap) => live && setState({ installed: state.installed, snap }),
+      (e: unknown) => live && setError(message(e)),
+    ).finally(() => { if (live) setBusy(false); });
+    return () => {
+      live = false;
+    };
+  }, [engine, state]);
   return { ready: Boolean(state), any: Boolean(state?.installed.length), checked, set, busy, error };
 }
 
