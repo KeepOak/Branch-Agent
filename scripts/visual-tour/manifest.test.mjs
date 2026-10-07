@@ -11,7 +11,11 @@ test('screens loader accepts the committed tour and rejects unasserted clicks', 
     assert.ok(screens.some((screen) => screen.id === id), `missing ${id}`);
   }
   assert.equal(screens.at(-1).id, 'browser-stage');
-  assert.ok(screens.find((screen) => screen.id === 'row-menu').steps.some((step) => step.action === 'contextmenu'));
+  const rowMenu = screens.find((screen) => screen.id === 'row-menu');
+  assert.ok(rowMenu.steps.some((step) => step.action === 'contextmenu'));
+  assert.match(rowMenu.steps[0].target, /Research notes/);
+  assert.equal(rowMenu.steps[0].expectBy, 'testid');
+  assert.equal(rowMenu.steps[0].expect, 'menu-tidy');
   assert.throws(() => loadScreens('[{"id":"a","steps":[{"action":"click","by":"css","target":"button"}]}]'), /response assertion/);
   assert.throws(() => loadScreens('[{"id":"a","steps":[{"action":"contextmenu","by":"css","target":".row"}]}]'), /response assertion/);
   assert.throws(() => loadScreens('[{"id":"a","steps":[{"action":"assert","by":"css","target":"body"}]},{"id":"a","steps":[{"action":"assert","by":"css","target":"body"}]}]'), /duplicate/);

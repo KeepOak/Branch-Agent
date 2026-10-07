@@ -68,7 +68,7 @@ try {
     if (previewUrl) {
       const preview = await context.newPage();
       await preview.goto(previewUrl, { waitUntil: 'domcontentloaded' });
-      await preview.waitForFunction(() => typeof closePop === 'function' && typeof closeDlg === 'function' && typeof render === 'function');
+      await preview.locator('#app').waitFor();
       for (const screen of screens) {
         const stem = `${theme}-${width}-${screen.id}`;
         try {
