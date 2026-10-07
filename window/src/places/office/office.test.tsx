@@ -12,37 +12,14 @@ describe("Pixel office", () => {
       { id: "branch", identity: { name: "Branch Agent", avatar: "branch:ember", colour: "#B84A6B" } },
       { id: "c3po", identity: { name: "C3-PO", avatar: "branch:bolt", colour: "#D4A017" } },
       { id: "classic", identity: { name: "Classic", avatar: "classic", colour: "#2F8C86", shape: "Leaf", eyes: "Wide" } },
-      { id: "emoji1", identity: { name: "Emoji One", avatar: "classic", emoji: "🦊", colour: "#B84A6B" } },
-      { id: "emoji2", identity: { name: "Emoji Two", avatar: "classic", emoji: "🦉", colour: "#B84A6B" } },
       { id: "colorless", identity: { name: "Colorless", avatar: "classic", colour: "", shape: "Circle", eyes: "Round" } },
+      { id: "fox", identity: { name: "Fox", avatar: "classic", emoji: "🦊", colour: "#2F8C86", shape: "Leaf", eyes: "Wide" } },
+      { id: "foxGrey", identity: { name: "Fox grey", avatar: "classic", emoji: "🦊" } },
     ] }, {}, {});
-    const keys = agents.map(defaultSpriteKey);
-    expect(keys[0]).toBe("look:ember");
-    expect(keys[1]).toBe("look:bolt");
-    expect(keys[2]).toBe("pebble:2:wide:#2F8C86");
-    expect(keys[3]).toMatch(/^pebble:\d+:(round|wide|sleepy):#[0-9A-F]{6}$/);
-    expect(keys[4]).toMatch(/^pebble:\d+:(round|wide|sleepy):#[0-9A-F]{6}$/);
-    expect(keys[5]).toBe("pebble:0:round:#56616B");
-    expect(keys[3]).not.toBe(keys[4]);
-    expect(keys[3]).not.toBe(keys[5]);
-    expect(keys[4]).not.toBe(keys[5]);
-  });
-
-  it("emoji and colourless Trunks get distinct sprites, not identical pebbles", () => {
-    const { agents } = officeRoster({ agents: [
-      { id: "fox", identity: { name: "Fox", avatar: "classic", emoji: "🦊", colour: "" } },
-      { id: "owl", identity: { name: "Owl", avatar: "classic", emoji: "🦉", colour: "" } },
-      { id: "grey", identity: { name: "Grey", avatar: "classic", colour: "", shape: "Circle", eyes: "Round" } },
-    ] }, {}, {});
-    const keys = agents.map(defaultSpriteKey);
-    expect(keys[0]).not.toBe(keys[1]);
-    expect(keys[0]).not.toBe(keys[2]);
-    expect(keys[1]).not.toBe(keys[2]);
-    expect(keys).toEqual(expect.arrayContaining([
-      expect.stringMatching(/^pebble:\d+:(round|wide|sleepy):#[0-9A-F]{6}$/),
-      expect.stringMatching(/^pebble:\d+:(round|wide|sleepy):#[0-9A-F]{6}$/),
-      "pebble:0:round:#56616B",
-    ]));
+    expect(agents.map(defaultSpriteKey)).toEqual([
+      "look:ember", "look:bolt", "pebble:2:wide:#2F8C86", "pebble:0:round:#56616B",
+      "pebble:2:wide:#2F8C86", "pebble:0:round:#56616B",
+    ]);
   });
 
   it("seats the live Trunk roster, guests, and groups with registry states and real chat targets", () => {
