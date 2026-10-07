@@ -1,3 +1,6 @@
+# Tests for feat/harvest-pack1-oc-voice-0025 run from scripts/feature-batch-ci-named/feat-harvest-pack1-oc-voice-0025.txt.
+# Left out of Harvest so harvestTests() and namedTests() stay disjoint.
+# merge-gate-trusted coverage reads only named lists from the PR head.
 # VOICE-0025: verified pinned tests after the repository rename; current upstream tests used for newer code. Product code preserved.
 # VOICE-0026: verified pinned tests after the repository rename; current upstream tests used for newer code. Product code preserved.
 # VOICE-0049 blocked: needs macOS on Apple silicon: MLXAudio/MLX speech helper and native TalkMLXSpeechSynthesizer are absent from Branch; Linux has no Swift/AppKit/AVFoundation or Metal runtime.
@@ -15,22 +18,3 @@
 # VOICE-0088 blocked: needs macOS 26: Swabble daemon/CLI and native test targets are absent from Branch; SpeechAnalyzer/AVFoundation capture and ServeCommand tests cannot run on Linux.
 # Upstream 57e0aaa1c190f1abe16e597008fbcc14f5e609e3: apps/swabble/Tests/SwabbleKitTests/WakeWordGateTests.swift; apps/swabble/Tests/swabbleTests/ServeCommandTests.swift.
 # VOICE-0089: verified pinned tests after the repository rename; current upstream tests used for newer code. Product code preserved.
-engine:extensions/gradium/speech-provider.test.ts
-engine:extensions/gradium/tts.test.ts
-engine:extensions/senseaudio/media-understanding-provider.test.ts
-engine:src/auto-reply/reply/commands-tts.test.ts
-engine:src/config/zod-schema.core.test.ts
-engine:src/infra/voicewake-routing.test.ts
-engine:src/infra/voicewake.test.ts
-engine:src/talk/provider-resolver.test.ts
-engine:src/talk/session-runtime.test.ts
-engine:src/talk/talk-session-controller.test.ts
-engine:src/tts/directive-number.test.ts
-engine:src/tts/directives.test.ts
-engine:src/tts/tts-auto-mode.behaviour.test.ts
-engine:src/tts/tts-config.test.ts
-engine:src/tts/tts-core.summary-agent.test.ts
-engine:src/tts/tts-runtime-fallbacks.test.ts
-engine:src/tts/tts-runtime-personas.test.ts
-engine:src/tts/tts-runtime-routing.test.ts
-engine:src/tts/tts-summary.test.ts
