@@ -7,6 +7,7 @@ import type { PlaceId } from "../../places-nav/routes";
 import type { Level } from "../../places-nav/level";
 import { Face } from "../../face/Face";
 import { Icon } from "../../shell/icons";
+import { Dialog } from "../../shell/Dialog";
 import { agentName } from "../overview/engine";
 import { canApprove, has, isSignInFailure, num, rec, resolveApproval, rows, signInRecovered, str, type Needs, type Row } from "./data";
 import { ChatRequest, DeviceRequest, NodeRequest } from "./Requests";
@@ -128,7 +129,10 @@ export function NeedsYou(props: NeedsProps) {
   return <>
     <Cards {...props} />
     {pending.length > 1 ? <div className="ib-bulk"><button type="button" className="btn" disabled={!allow || busy} onClick={() => setConfirmAll(true)}>Allow all {pending.length}…</button></div> : null}
-    {confirmAll ? <section className="ib-confirm" aria-label="Allow all requests"><b>Allow all {pending.length}?</b><ul>{pending.map(item => <li key={`${str(item.kind)}:${str(item.id)}`}>{approvalTitle(item)}</li>)}</ul><p className="ib-hint">Each Trunk still asks next time. Device, computer and chat-app requests are left for you to answer.</p><div className="ib-acts"><button type="button" className="btn ghost sm" disabled={busy} onClick={() => setConfirmAll(false)}>Cancel</button><button type="button" className="btn pri sm" disabled={busy || !allow} onClick={() => void act(async () => { for (const item of pending) await resolveApproval(engine, item, "allow-once"); setConfirmAll(false); }, "All listed requests answered once.")}>Allow all {pending.length}</button></div></section> : null}
+    {confirmAll ? <Dialog title={`Allow all ${pending.length}?`} onClose={() => setConfirmAll(false)} footer={<><button type="button" className="btn ghost" disabled={busy} onClick={() => setConfirmAll(false)}>Cancel</button><button type="button" className="btn pri" disabled={busy || !allow} onClick={() => void act(async () => { for (const item of pending) await resolveApproval(engine, item, "allow-once"); }, "All listed requests answered once.").then(ok => { if (ok) setConfirmAll(false); })}>Allow all {pending.length}</button></>}>
+      <ul className="allow18D">{pending.map(item => <li key={`${str(item.kind)}:${str(item.id)}`}><Icon name="check" small /><span>{agentName(data.agents.list, str(rec(item.request).agentId))}: {approvalTitle(item).replace(/\?$/, "")}</span></li>)}</ul>
+      <p className="ib-hint">Each Trunk still asks next time.</p>
+    </Dialog> : null}
     {!allow && pending.length ? <p className="ib-hint">You can look, but answering requests needs approval permission.</p> : null}
     {!empty ? <div className="ib-list">
       {pending.map(item => <Approval key={`${str(item.kind)}:${str(item.id)}`} item={item} props={props} />)}
