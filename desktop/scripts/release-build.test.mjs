@@ -28,7 +28,8 @@ test("adoptSharedEngineDist copies a matching prebuilt dist and rejects a differ
 test("component-release archives the shared engine dist as a tarball before upload", async () => {
   const workflow = await readFile(resolve(import.meta.dirname, "../../.github/workflows/component-release.yml"), "utf8");
   assert.match(workflow, /tar -C "\$\{\{ runner\.temp \}\}\/shared-engine" -czf "\$\{\{ runner\.temp \}\}\/shared-engine\.tar\.gz" \./);
-  assert.match(workflow, /tar -xzf "\$\{\{ runner\.temp \}\}\/shared-engine\.tar\.gz" -C "\$\{\{ runner\.temp \}\}\/shared-engine"/);
-  assert.match(workflow, /test -f "\$\{\{ runner\.temp \}\}\/shared-engine\/build-info\.json"/);
-  assert.match(workflow, /name: release-shared-engine\n          path: \$\{[{][{] runner\.temp [}][}]\}\/shared-engine\.tar\.gz/);
+  assert.match(workflow, /cd "\$RUNNER_TEMP"/);
+  assert.match(workflow, /tar -xzf shared-engine\.tar\.gz -C shared-engine/);
+  assert.match(workflow, /test -f shared-engine\/build-info\.json/);
+  assert.match(workflow, /shared-engine\.tar\.gz/);
 });

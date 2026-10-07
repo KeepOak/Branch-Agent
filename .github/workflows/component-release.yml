@@ -159,9 +159,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "${{ runner.temp }}/shared-engine"
-          tar -xzf "${{ runner.temp }}/shared-engine.tar.gz" -C "${{ runner.temp }}/shared-engine"
-          test -f "${{ runner.temp }}/shared-engine/build-info.json"
+          cd "$RUNNER_TEMP"
+          mkdir -p shared-engine
+          tar -xzf shared-engine.tar.gz -C shared-engine
+          test -f shared-engine/build-info.json
       - name: Prepare stable macOS release signing identity
         if: matrix.target == 'darwin-arm64'
         shell: bash
