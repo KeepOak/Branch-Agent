@@ -196,9 +196,18 @@ export function StepsFold({ steps, live, run }: { steps: Of<"step">[]; live: boo
   );
 }
 
-/** "Done in <duration>", starting with this Trunk's 20 px face in its "yay" state (§4.2.2 "Done in"). */
+/** "Done in <duration>", starting with this Trunk's 20 px face in its "yay" state (§4.2.2 "Done in"). A turn you
+ *  stopped says so instead, with the red Stopped pill (§4.2.2 Status pills). */
 export function DoneLine({ block, name, words }: { block: Of<"done">; name: string; words: number }) {
   const state: AgentState = "yay";
+  if (block.stopped) {
+    return (
+      <div className="done-line indent stopped" data-testid="run-stopped">
+        <span className="pill bad"><i />Stopped</span>
+        What it did so far is kept.
+      </div>
+    );
+  }
   return (
     <div className="done-line indent" data-testid="run-done">
       <Face size={20} label={name} state={state} />
@@ -207,7 +216,10 @@ export function DoneLine({ block, name, words }: { block: Of<"done">; name: stri
   );
 }
 
-/** "Couldn't finish" (§4.2.2 Parity adds): the reason, a Details fold, Copy error, and × Dismiss. */
+/** Asks the window to open the Gateway popover (§4.9.3) from the thread ("Couldn't finish" › Check status). */
+export const CHECK_STATUS_EVENT = "branch:check-status";
+
+/** "Couldn't finish" (§4.2.2 Parity adds): the reason, a Details fold, Copy error, Check status and × Dismiss. */
 export function ErrorBlock({ block, onDismiss }: { block: Of<"error">; onDismiss: () => void }) {
   const { name, toast } = useThread();
   return (
@@ -231,6 +243,9 @@ export function ErrorBlock({ block, onDismiss }: { block: Of<"error">; onDismiss
       <div className="row-buttons">
         <button type="button" className="btn sm ghost" onClick={() => void copyText(block.message, toast)}>
           Copy error
+        </button>
+        <button type="button" className="btn sm ghost" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); window.dispatchEvent(new CustomEvent(CHECK_STATUS_EVENT, { detail: { left: r.left, right: r.right, top: r.top } })); }}>
+          Check status
         </button>
       </div>
     </div>

@@ -15,7 +15,7 @@ import { HelpersChip } from "./Helpers";
 import { HoverBar } from "./HoverBar";
 import { Rail } from "./Rail";
 import { Icon, ICONS } from "./icons";
-import { layout, shownApprovalIds, turnOf, type Item } from "./layout";
+import { layout, shownApprovalIds, type Item } from "./layout";
 import { PlanCard, planAnchor } from "./PlanCard";
 import { useConversationPrefs } from "./prefs";
 import { isPreparationPending, preparationLabel } from "../connect/preparation-status";
@@ -34,7 +34,7 @@ import { RoomLine } from "../rooms/RoomLine";
 import { fromName, otherSender, type ThreadRoom } from "../rooms/thread-room";
 import "./prefs.css";
 import { QueuedMessages, useOwnWaitingLine } from "./QueuedMessages";
-import type { QueuedMessage, SteeredNote as Steered } from "../connect/session";
+import type { QueuedMessage, RunEnd, SteeredNote as Steered } from "../connect/session";
 import { dayStamp, formatDuration, fullTime, messageTime, modelName, stepLabel } from "./format";
 import { TopicCard, TopicOrigin, topicPosition, type TopicUpdate } from "./TopicCard";
 import { suggestionsFor } from "./suggestions";
@@ -69,6 +69,8 @@ type Props = {
   questions?: QuestionRecord[];
   /** Sends a starter from the empty conversation (§4.2.9), the same way the composer sends. */
   onStart?: (text: string) => void;
+  /** How the last run ended; the done cheer plays only for one that finished. */
+  ended?: RunEnd | null;
   /** The conversation's last run error (sessions.list lastRunError); restart recovery's own one shows "Stopped by restart". */
   recoveryFailure?: string;
   /** The Plan card; it goes after the turn that last updated it (planAnchor), else at the end (§4.2.2). */
@@ -335,7 +337,7 @@ export function Thread(props: Props) {
           <Icon d={ICONS.down} size={16} />
         </button>
       ) : null}
-      {props.room?.isRoom ? null : <DoneCheer name={name} running={running} history={history} />}
+      {props.room?.isRoom ? null : <DoneCheer name={name} ended={props.ended} history={history} />}
       </div>
       {dialog}
     </ThreadContext.Provider>
@@ -466,7 +468,13 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
     case "approval":
       return view.grouped.has(block.approval.id) ? null : <ApprovalCard approval={block.approval} details={view.details.get(block.approval.id)} name={view.name} onAnswer={view.answer} />;
     case "done": {
-      const words = turnOf(view.all, index).filter((entry): entry is Extract<Block, { kind: "text" }> => entry.kind === "text")
+      // The turn up to this line only: what streams after it belongs to the next turn.
+      let start = index;
+      while (start > 0 && view.all[start - 1].kind !== "user") start -= 1;
+      const turn = view.all.slice(start, index);
+      // "Done in" closes a task (a turn with steps), not every plain reply (owner decision 5, 2026-10-06).
+      if (!block.stopped && !turn.some((entry) => entry.kind === "step")) return null;
+      const words = turn.filter((entry): entry is Extract<Block, { kind: "text" }> => entry.kind === "text")
         .reduce((count, entry) => count + (entry.text.trim().match(/\S+/g)?.length ?? 0), 0);
       return <DoneLine block={block} name={view.name} words={words} />;
     }
