@@ -422,6 +422,7 @@ describe("listGatewayMethods", () => {
       "backup.schedule.set",
       "backup.schedule.clear",
       "backup.run",
+      "system.updateWork",
     ]);
   });
 
