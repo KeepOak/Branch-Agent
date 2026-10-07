@@ -16,13 +16,14 @@ import { Glyph } from "./glyphs";
 import type { ToolsCtx } from "./tools";
 
 export type Skill = { key: string; name: string; description: string; source: string; disabled: boolean; eligible: boolean; missing: string[]; installs: { id: string; label: string }[]; always: boolean; userInvocable: boolean; filePath: string; registry: boolean; raw: Rec };
+const WORKSPACE_SOURCE = "In this Trunk’s folder";
 const strings = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 export function readSkillRows(result: unknown): Skill[] {
   return list(rec(result).skills).filter(s => s.modelVisible !== false || s.disabled === true).map(s => {
     const m = rec(s.missing);
     return {
       key: str(s.skillKey) || str(s.name), name: str(s.name), description: str(s.description),
-      source: s.bundled === true ? "Built in" : str(s.source) === "workspace" ? "In this Trunk’s folder" : "Installed",
+      source: s.bundled === true ? "Built in" : str(s.source) === "workspace" ? WORKSPACE_SOURCE : "Installed",
       disabled: s.disabled === true, eligible: s.eligible !== false,
       missing: [...strings(m.bins).map(b => `the ${b} program`), ...strings(m.anyBins).map(b => `the ${b} program`), ...strings(m.env).map(e => `the ${e} key`), ...strings(m.config).map(c => `the ${c} setting`), ...strings(m.os).map(o => `${o}`)],
       installs: list(s.install).map(i => ({ id: str(i.id), label: str(i.label) || str(i.id) })).filter(i => i.id),
@@ -107,7 +108,7 @@ function SkillDetail({ ctx, skill }: { ctx: ToolsCtx; skill: Skill }) {
   const library = useResource<unknown>(ctx.engine, "skills.library.list", {});
   const entry = list(rec(library.data).entries).find(e => str(e.slug) === skill.key || str(e.name) === skill.name);
   const canRemove = skill.source === "Installed" && !!entry;
-  const removeReason = skill.source === "Built in" ? "Built-in skills can't be removed; turn it off instead." : skill.source === "In this Trunk's folder" ? "Workspace skills can't be removed; delete the file." : canRemove ? undefined : "Only skills from the skill library can be removed.";
+  const removeReason = skill.source === "Built in" ? "Built-in skills can't be removed; turn it off instead." : skill.source === WORKSPACE_SOURCE ? "Workspace skills can't be removed; delete the file." : canRemove ? undefined : "Only skills from the skill library can be removed.";
   const handleRemove = () => {
     if (!entry) return;
     void op.run("skills.library.mutate", { skillId: str(entry.skillId), expectedRevision: str(entry.revision), action: "remove" }, () => { setConfirmRemove(false); ctx.skills.reload(); });
@@ -125,7 +126,7 @@ function SkillDetail({ ctx, skill }: { ctx: ToolsCtx; skill: Skill }) {
     <div className="cz-acts">{skill.registry ? <button type="button" className="btn sm" disabled={op.busy} onClick={() => void op.run("skills.update", { ...scopeOf(ctx), source: "clawhub", slug: skill.key }, ctx.skills.reload)}>Check for updates</button> : <Grey reason="Only skills from the skill library can be checked for updates.">Check for updates</Grey>}
       <span className="cz-grow" />{canRemove ? <button type="button" className="btn ghost sm" disabled={op.busy} onClick={() => setConfirmRemove(true)}>Remove</button> : <Grey className="btn ghost sm" reason={removeReason ?? ""}>Remove</Grey>}</div>
     {confirmRemove && <Dialog title={`Remove ${skill.name}?`} onClose={() => setConfirmRemove(false)} footer={<><button type="button" className="btn ghost" onClick={() => setConfirmRemove(false)}>Cancel</button><button type="button" className="btn bad" disabled={op.busy} onClick={handleRemove}>Remove</button></>}>
-      <p style={{ margin: 0 }}>This removes {skill.name} from your library. You can install it again later.</p>
+      <p className="dlg-p">This removes {skill.name} from your library. You can install it again later.</p>
     </Dialog>}
   </div>;
 }

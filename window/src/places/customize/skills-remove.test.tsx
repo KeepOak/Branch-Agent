@@ -2,320 +2,146 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Skills } from "./skills";
-import type { ToolsCtx } from "./tools";
+import type { WindowEngine } from "../../connect/engine";
+import { CustomizePlace } from "./index";
 
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-let root: Root | undefined;
-afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; vi.restoreAllMocks(); });
+vi.mock("../../face/Face", () => ({ Face: ({ label }: { label?: string }) => <span role="img" aria-label={label} /> }));
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const mockEngine = {
-  call: vi.fn(),
-  resource: vi.fn(),
-  request: vi.fn(),
+const CONFIG = {
+  hash: "h1",
+  sourceConfig: { agents: { entries: { main: {} } } },
+  runtimeConfig: {},
+};
+const LIBRARY_SKILL = {
+  name: "file-receipts",
+  skillKey: "file-receipts",
+  description: "File receipts from a folder",
+  bundled: false,
+  source: "clawhub",
+  clawhub: true,
+  disabled: false,
+  eligible: true,
+  missing: {},
+};
+const LIBRARY_ENTRY = {
+  skillId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  slug: "file-receipts",
+  name: "file-receipts",
+  revision: "a".repeat(64),
+};
+const BUILTIN_SKILL = {
+  name: "web",
+  skillKey: "web",
+  description: "Search the web",
+  bundled: true,
+  disabled: false,
+  eligible: true,
+  missing: {},
+};
+const WORKSPACE_SKILL = {
+  name: "local-notes",
+  skillKey: "local-notes",
+  description: "Notes in this Trunk’s folder",
+  bundled: false,
+  source: "workspace",
+  disabled: false,
+  eligible: true,
+  missing: {},
+};
+const BASE: Record<string, unknown> = {
+  "agents.list": { defaultId: "main", mainKey: "main", agents: [{ id: "main", name: "Sapling" }] },
+  "config.get": CONFIG,
+  "tools.effective": { groups: [] },
+  "skills.status": { skills: [LIBRARY_SKILL] },
+  "skills.gardener.status": { lastSuccessAtMs: null, counts: { active: 0, stale: 0, archived: 0 }, skills: [] },
+  "skills.proposals.list": { proposals: [] },
+  "skills.library.list": { entries: [LIBRARY_ENTRY] },
+  "skills.library.read": { revisions: [] },
+  "plugins.list": { plugins: [] },
+  "acpx.agents.list": { agents: [] },
+  "tools.catalog": { groups: [] },
+  "exec.approvals.get": { hash: "e1", file: { version: 1, agents: {} }, resolvedDefaults: { ask: "on-miss" } },
 };
 
-const createMockCtx = (): ToolsCtx => ({
-  engine: mockEngine as never,
-  skills: {
-    data: null,
-    loading: false,
-    error: null,
-    reload: vi.fn(),
-  },
-  level: "advanced",
-  whose: null,
-  trunks: [],
-  config: {} as never,
-  plugins: { data: null, loading: false, error: null, reload: vi.fn() },
-  agents: { data: null, loading: false, error: null, reload: vi.fn() },
-  catalog: { data: null, loading: false, error: null, reload: vi.fn() },
-  openConversation: vi.fn(),
-});
+let root: Root | null = null;
+let host: HTMLDivElement;
+afterEach(async () => { if (root) await act(async () => root!.unmount()); root = null; document.body.innerHTML = ""; });
+
+async function open(fx: Record<string, unknown> = {}, level: "regular" | "advanced" = "advanced") {
+  const table = { ...BASE, ...fx };
+  const request = vi.fn((method: string) => {
+    const v = table[method];
+    if (v instanceof Error) return Promise.reject(v);
+    return Promise.resolve(typeof v === "function" ? (v as () => unknown)() : v ?? { ok: true });
+  });
+  const engine: WindowEngine = { request: request as unknown as WindowEngine["request"], onEvent: () => () => {}, sessionKey: "agent:main:main", scopes: ["operator.admin"] };
+  host = document.createElement("div"); document.body.append(host);
+  root = createRoot(host);
+  await act(async () => { root!.render(<CustomizePlace engine={engine} facts={{ running: 0, waiting: 0 }} openConversation={() => {}} openPlace={() => {}} level={level} />); });
+  await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab: "Skills" } })); });
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { await Promise.resolve(); });
+  return request;
+}
+const detail = () => host.querySelector('[data-testid="skill-detail"]')!;
+const button = (text: string, scope: ParentNode = host) => [...scope.querySelectorAll("button")].find(b => b.textContent?.trim() === text);
+const click = async (el: Element | null | undefined) => { expect(el).toBeTruthy(); await act(async () => { (el as HTMLElement).click(); }); await act(async () => { await Promise.resolve(); }); };
 
 describe("Skills Remove button", () => {
   it("calls skills.library.mutate with remove action after confirmation for library skill", async () => {
-    const librarySkill = {
-      skillKey: "test-skill",
-      name: "Test Skill",
-      description: "A test skill",
-      bundled: false,
-      source: null,
-      clawhub: true,
-      disabled: false,
-      eligible: true,
-      missing: {},
-      install: [],
-      always: false,
-      userInvocable: true,
-      filePath: "/path/to/skill",
-      modelVisible: true,
-      blockedByAgentFilter: false,
-    };
-
-    const libraryEntry = {
-      skillId: "skill-id-123",
-      slug: "test-skill",
-      name: "Test Skill",
-      revision: "abc123def456",
-      enabled: true,
-    };
-
-    const skillsData = { skills: [librarySkill] };
-    const libraryData = { entries: [libraryEntry] };
-
-    mockEngine.resource.mockImplementation((method: string) => {
-      if (method === "skills.library.list") {
-        return { data: libraryData, loading: false, error: null, reload: vi.fn() };
-      }
-      if (method === "skills.proposals.list") {
-        return { data: { proposals: [] }, loading: false, error: null, reload: vi.fn() };
-      }
-      return { data: null, loading: false, error: null, reload: vi.fn() };
-    });
-
-    mockEngine.request.mockImplementation((method: string) => {
-      if (method === "skills.library.list") {
-        return Promise.resolve(libraryData);
-      }
-      if (method === "skills.proposals.list") {
-        return Promise.resolve({ proposals: [] });
-      }
-      if (method === "skills.library.mutate") {
-        return Promise.resolve({});
-      }
-      return Promise.resolve(null);
-    });
-
-    mockEngine.call.mockResolvedValue([true, {}]);
-
-    const ctx = createMockCtx();
-    ctx.skills.data = skillsData;
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root!.render(<Skills ctx={ctx} />);
-    });
-
-    const skillRow = Array.from(document.querySelectorAll('.t9-item')).find(
-      el => el.textContent?.includes("Test Skill")
-    ) as HTMLButtonElement;
-    expect(skillRow).not.toBeNull();
-
-    await act(async () => {
-      skillRow.click();
-    });
-
-    const detail = document.querySelector('[data-testid="skill-detail"]');
-    expect(detail).not.toBeNull();
-
-    const removeButton = Array.from(detail!.querySelectorAll('button')).find(
-      el => el.textContent === "Remove" && el.classList.contains("btn")
-    ) as HTMLButtonElement;
-    expect(removeButton).not.toBeNull();
-    expect(removeButton.disabled).toBe(false);
-
-    await act(async () => {
-      removeButton.click();
-    });
-
+    const request = await open();
+    const remove = button("Remove", detail());
+    expect(remove).toBeTruthy();
+    expect(remove!.disabled).toBe(false);
+    await click(remove);
     const dialog = document.querySelector('[role="dialog"]');
-    expect(dialog).not.toBeNull();
-    expect(dialog?.textContent).toContain("Remove Test Skill?");
-    expect(dialog?.textContent).toContain("This removes Test Skill from your library");
-
-    const confirmButton = Array.from(document.querySelectorAll('button.btn.bad')).find(
-      el => el.textContent === "Remove"
-    ) as HTMLButtonElement;
-    expect(confirmButton).not.toBeNull();
-
-    await act(async () => {
-      confirmButton.click();
-      await new Promise(resolve => setTimeout(resolve, 100));
+    expect(dialog?.getAttribute("aria-label")).toBe("Remove file-receipts?");
+    expect(dialog?.textContent).toContain("This removes file-receipts from your library. You can install it again later.");
+    await click(button("Remove", dialog!));
+    expect(request).toHaveBeenCalledWith("skills.library.mutate", {
+      skillId: LIBRARY_ENTRY.skillId,
+      expectedRevision: LIBRARY_ENTRY.revision,
+      action: "remove",
     });
-
-    expect(mockEngine.request).toHaveBeenCalledWith(
-      "skills.library.mutate",
-      {
-        skillId: "skill-id-123",
-        expectedRevision: "abc123def456",
-        action: "remove",
-      },
-    );
+    expect(request.mock.calls.filter(([method]) => method === "skills.status").length).toBeGreaterThan(1);
   });
 
   it("shows Remove disabled with reason for built-in skill", async () => {
-    const builtInSkill = {
-      skillKey: "builtin-skill",
-      name: "Built-in Skill",
-      description: "A built-in skill",
-      bundled: true,
-      source: null,
-      clawhub: false,
-      disabled: false,
-      eligible: true,
-      missing: {},
-      install: [],
-      always: false,
-      userInvocable: true,
-      filePath: "/path/to/builtin",
-      modelVisible: true,
-      blockedByAgentFilter: false,
-    };
-
-    const skillsData = { skills: [builtInSkill] };
-    const libraryData = { entries: [] };
-
-    mockEngine.resource.mockImplementation((method: string) => {
-      if (method === "skills.library.list") {
-        return { data: libraryData, loading: false, error: null, reload: vi.fn() };
-      }
-      if (method === "skills.proposals.list") {
-        return { data: { proposals: [] }, loading: false, error: null, reload: vi.fn() };
-      }
-      return { data: null, loading: false, error: null, reload: vi.fn() };
+    await open({
+      "skills.status": { skills: [BUILTIN_SKILL] },
+      "skills.library.list": { entries: [] },
     });
+    const remove = button("Remove", detail());
+    expect(remove).toBeTruthy();
+    expect(remove!.disabled).toBe(true);
+    expect(remove!.getAttribute("title")).toBe("Built-in skills can't be removed; turn it off instead.");
+    expect(remove!.getAttribute("data-reason")).toBe("Built-in skills can't be removed; turn it off instead.");
+  });
 
-    mockEngine.request.mockImplementation((method: string) => {
-      if (method === "skills.library.list") {
-        return Promise.resolve(libraryData);
-      }
-      if (method === "skills.proposals.list") {
-        return Promise.resolve({ proposals: [] });
-      }
-      return Promise.resolve(null);
+  it("shows Remove disabled with reason for a workspace skill", async () => {
+    await open({
+      "skills.status": { skills: [WORKSPACE_SKILL] },
+      "skills.library.list": { entries: [] },
     });
-
-    const ctx = createMockCtx();
-    ctx.skills.data = skillsData;
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root!.render(<Skills ctx={ctx} />);
-    });
-
-    const skillRow = Array.from(document.querySelectorAll('.t9-item')).find(
-      el => el.textContent?.includes("Built-in Skill")
-    ) as HTMLButtonElement;
-    expect(skillRow).not.toBeNull();
-
-    await act(async () => {
-      skillRow.click();
-    });
-
-    const detail = document.querySelector('[data-testid="skill-detail"]');
-    expect(detail).not.toBeNull();
-
-    const removeButton = Array.from(detail!.querySelectorAll('button')).find(
-      el => el.textContent === "Remove"
-    ) as HTMLButtonElement;
-    expect(removeButton).not.toBeNull();
-    expect(removeButton.disabled).toBe(true);
-    expect(removeButton.getAttribute("title")).toBe(
-      "Built-in skills can't be removed; turn it off instead."
-    );
+    const remove = button("Remove", detail());
+    expect(remove).toBeTruthy();
+    expect(remove!.disabled).toBe(true);
+    expect(remove!.getAttribute("title")).toBe("Workspace skills can't be removed; delete the file.");
   });
 
   it("shows engine error when remove fails", async () => {
-    const librarySkill = {
-      skillKey: "error-skill",
-      name: "Error Skill",
-      description: "A skill that will error",
-      bundled: false,
-      source: null,
-      clawhub: true,
-      disabled: false,
-      eligible: true,
-      missing: {},
-      install: [],
-      always: false,
-      userInvocable: true,
-      filePath: "/path/to/skill",
-      modelVisible: true,
-      blockedByAgentFilter: false,
-    };
-
-    const libraryEntry = {
-      skillId: "skill-id-error",
-      slug: "error-skill",
-      name: "Error Skill",
-      revision: "def456abc789",
-      enabled: true,
-    };
-
-    const skillsData = { skills: [librarySkill] };
-    const libraryData = { entries: [libraryEntry] };
-
-    mockEngine.resource.mockImplementation((method: string) => {
-      if (method === "skills.library.list") {
-        return { data: libraryData, loading: false, error: null, reload: vi.fn() };
-      }
-      if (method === "skills.proposals.list") {
-        return { data: { proposals: [] }, loading: false, error: null, reload: vi.fn() };
-      }
-      return { data: null, loading: false, error: null, reload: vi.fn() };
+    const request = await open({
+      "skills.library.mutate": new Error("Failed to remove skill"),
     });
-
-    mockEngine.request.mockImplementation((method: string) => {
-      if (method === "skills.library.list") {
-        return Promise.resolve(libraryData);
-      }
-      if (method === "skills.proposals.list") {
-        return Promise.resolve({ proposals: [] });
-      }
-      if (method === "skills.library.mutate") {
-        return Promise.reject(new Error("Failed to remove skill"));
-      }
-      return Promise.resolve(null);
+    await click(button("Remove", detail()));
+    await click(button("Remove", document.querySelector('[role="dialog"]')!));
+    const alert = document.querySelector('[role="alert"]');
+    expect(alert?.textContent).toBe("Failed to remove skill");
+    expect(request).toHaveBeenCalledWith("skills.library.mutate", {
+      skillId: LIBRARY_ENTRY.skillId,
+      expectedRevision: LIBRARY_ENTRY.revision,
+      action: "remove",
     });
-
-    mockEngine.call.mockResolvedValue([false, { message: "Failed to remove skill" }]);
-
-    const ctx = createMockCtx();
-    ctx.skills.data = skillsData;
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root!.render(<Skills ctx={ctx} />);
-    });
-
-    const skillRow = Array.from(document.querySelectorAll('.t9-item')).find(
-      el => el.textContent?.includes("Error Skill")
-    ) as HTMLButtonElement;
-    expect(skillRow).not.toBeNull();
-
-    await act(async () => {
-      skillRow.click();
-    });
-
-    const detail = document.querySelector('[data-testid="skill-detail"]');
-    const removeButton = Array.from(detail!.querySelectorAll('button')).find(
-      el => el.textContent === "Remove" && el.classList.contains("btn")
-    ) as HTMLButtonElement;
-
-    await act(async () => {
-      removeButton.click();
-    });
-
-    const confirmButton = Array.from(document.querySelectorAll('button.btn.bad')).find(
-      el => el.textContent === "Remove"
-    ) as HTMLButtonElement;
-
-    await act(async () => {
-      confirmButton.click();
-      await new Promise(resolve => setTimeout(resolve, 200));
-    });
-
-    const errorElement = document.querySelector('[role="alert"]');
-    expect(errorElement).not.toBeNull();
-    expect(errorElement?.textContent).toBe("Failed to remove skill");
   });
 });
-
-
