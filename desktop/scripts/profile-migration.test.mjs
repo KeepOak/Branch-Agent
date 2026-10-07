@@ -94,9 +94,10 @@ test("gateway log records migration start, counts, and failure details", async (
   await mkdir(join(home, ".branch-dev", "workspace"), { recursive: true });
   await writeFile(join(home, ".branch-dev", "workspace", "IDENTITY.md"), "owner");
   const child = startGateway({ dataDir: root, nodePath: process.execPath, gatewayPort: 19631 }, root, "fixture-token");
+  const exited = once(child, "exit");
   assert.match(await readFile(join(root, "gateway.log"), "utf8"), /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z Profile migration start\n/,
     "migration start must be on disk before startGateway returns");
-  await once(child, "exit");
+  await exited;
   const log = await waitForLog(join(root, "gateway.log"), "Profile migration done:");
   assert.match(log, /Profile migration start/);
   assert.match(log, /Profile migration done: 1 copied, 0 links skipped, 0 failed, \d+ ms/);
