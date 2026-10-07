@@ -23,6 +23,7 @@ export type QueueItem = {
   files: DraftFile[];
   state: QueueState;
   error?: string;
+  createdAt?: number;
   sentWith?: SentWith;
   sentTo?: SentTo;
 };
