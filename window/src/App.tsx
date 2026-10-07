@@ -6,6 +6,7 @@ import { WindowShell } from "./shell/WindowShell";
 import { PreConnect, type PreConnectState } from "./setup/PreConnect";
 import { LOCAL_ADDRESS, readTarget, saveTarget } from "./setup/pre-connect-state";
 import { Connecting } from "./setup/Connecting";
+import { ConnectElsewhereDialog } from "./shell/ConnectElsewhereDialog";
 import "./shell/shell.css";
 import "./shell/frame.css";
 import "./shell/controls.css";
@@ -22,17 +23,18 @@ export function App() {
   const [attempt, setAttempt] = useState(0);
   const [elsewhere, setElsewhere] = useState(false);
   useEffect(() => {
-    // The machine menu's "Connect to a Branch elsewhere…" comes back here, at Where should Branch run? (§4.1.3).
+    // The machine menu's "Connect to a Branch elsewhere…" opens the preview's small dialog over this window.
     const open = () => setElsewhere(true);
     window.addEventListener("branch:connect-elsewhere", open);
     return () => window.removeEventListener("branch:connect-elsewhere", open);
   }, []);
   useEffect(() => {
     const switchComputer = (event: Event) => {
-      const next = (event as CustomEvent<{ url?: unknown }>).detail?.url;
+      const detail = (event as CustomEvent<{ url?: unknown; key?: unknown }>).detail;
+      const next = detail?.url;
       if (typeof next !== "string" || !/^wss?:\/\/\S+$/.test(next)) return;
       saveTarget(next === LOCAL ? null : next);
-      setTyped(null);
+      setTyped(typeof detail?.key === "string" ? detail.key : null);
       setUrl(next);
       setAttempt(n => n + 1);
     };
@@ -47,11 +49,18 @@ export function App() {
     setAttempt((n) => n + 1);
   };
   const key = url ? startKey(url, typed, desktop) : null;
-  if (!url || key === null || elsewhere) {
-    const state: PreConnectState = url && key === null && !elsewhere ? { kind: "key" } : { kind: "address" };
-    return <PreConnect local={LOCAL} address={url} state={state} busy={false} startAtWhere={elsewhere} onConnect={connect} onRetry={() => setAttempt((n) => n + 1)} />;
+  const overlay = elsewhere ? <ConnectElsewhereDialog onClose={() => setElsewhere(false)} /> : null;
+  if (!url || key === null) {
+    const state: PreConnectState = url && key === null ? { kind: "key" } : { kind: "address" };
+    return <>
+      <PreConnect local={LOCAL} address={url} state={state} busy={false} onConnect={connect} onRetry={() => setAttempt((n) => n + 1)} />
+      {overlay}
+    </>;
   }
-  return <Window key={`${url}#${attempt}`} url={url} sharedToken={key || undefined} onConnect={connect} onRetry={() => setAttempt((n) => n + 1)} />;
+  return <>
+    <Window key={`${url}#${attempt}`} url={url} sharedToken={key || undefined} onConnect={connect} onRetry={() => setAttempt((n) => n + 1)} />
+    {overlay}
+  </>;
 }
 
 /** The conversation the window last showed (§3.3 "Reopen where you were"). */

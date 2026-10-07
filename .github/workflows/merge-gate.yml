@@ -32,10 +32,16 @@ jobs:
           package-manager-cache: false
       - name: Test the coverage check
         run: node --test scripts/changed-test-coverage.test.mjs
+      - name: Test the trusted merge-gate helper
+        run: node --test scripts/merge-gate-trusted.test.mjs
       - name: Require every changed test to run in CI
         run: node scripts/changed-test-coverage.mjs
       - name: Check merge command patterns in documentation
         run: node scripts/check-merge-command.mjs
+      - name: Guard COPIED.csv and harvest lists
+        run: |
+          node --test scripts/check-copied-csv.test.mjs scripts/feature-batch-ci-shard.test.mjs
+          node scripts/check-copied-csv.mjs
 
   merge-gate:
     needs: changed-test-coverage
