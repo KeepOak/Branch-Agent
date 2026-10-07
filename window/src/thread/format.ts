@@ -101,15 +101,12 @@ export function dayStamp(ms: number, now = Date.now()): string {
 
 /** "Getting started words" (§4.2.5 Parity adds) for the engine's run_status phases. */
 export const PHASE_WORDS: Record<string, string> = {
-  waiting_for_state: "Waiting for a reply…",
   preparing_workspace: "Preparing the folder…",
   naming_worktree: "Naming the separate copy…",
   creating_worktree: "Making a separate copy…",
   running_setup: "Running setup…",
   provisioning_environment: "Getting its computer ready…",
-  preparing_context: "Preparing this turn…",
   memory_flushing: "Saving what it remembers…",
-  starting_model: "Preparing this turn…",
 };
 
 export function phaseWords(status: Extract<Block, { kind: "status" }>): string {
