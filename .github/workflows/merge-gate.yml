@@ -38,6 +38,10 @@ jobs:
         run: node scripts/changed-test-coverage.mjs
       - name: Check merge command patterns in documentation
         run: node scripts/check-merge-command.mjs
+      - name: Guard COPIED.csv and harvest lists
+        run: |
+          node --test scripts/check-copied-csv.test.mjs scripts/feature-batch-ci-shard.test.mjs
+          node scripts/check-copied-csv.mjs
 
   merge-gate:
     needs: changed-test-coverage
