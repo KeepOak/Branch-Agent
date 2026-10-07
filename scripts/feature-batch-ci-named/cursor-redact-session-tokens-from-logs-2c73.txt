@@ -1,0 +1,2 @@
+engine:src/logging/log-file-scrub.test.ts
+engine:src/logging/logger-credential-leak-regression.test.ts

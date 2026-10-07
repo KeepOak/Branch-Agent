@@ -591,10 +591,12 @@ function buildLogger(): TsLogger<LogObj> {
         const nextActiveFile = resolveActiveLogFileWithMode(settings.file, settings.rolling);
         if (nextActiveFile !== activeFile) {
           activeFile = nextActiveFile;
-          fs.mkdirSync(path.dirname(activeFile), { recursive: true });
+          const logDir = path.dirname(activeFile);
+          fs.mkdirSync(logDir, { recursive: true });
           if (settings.rolling) {
-            pruneOldRollingLogs(path.dirname(activeFile));
+            pruneOldRollingLogs(logDir);
           }
+          scheduleLogScrubOnce(logDir);
         }
         const time = formatTimestamp(logObj.date ?? new Date(), { style: "long" });
         const { fields, messageParts } = prepareFileLogRecord(logObj as TsLogRecord);
@@ -743,4 +745,22 @@ function pruneOldRollingLogs(dir: string): void {
   } catch {
     // ignore missing dir or read errors
   }
+}
+
+let logScrubScheduled = false;
+
+function scheduleLogScrubOnce(dir: string): void {
+  if (logScrubScheduled) {
+    return;
+  }
+  logScrubScheduled = true;
+  // Scrub existing logs asynchronously after a short delay to avoid blocking startup
+  void Promise.resolve().then(async () => {
+    try {
+      const { scrubLogDirectory } = await import("./log-file-scrub.js");
+      await scrubLogDirectory(dir);
+    } catch {
+      // Silent: scrubbing is best-effort retroactive cleanup
+    }
+  });
 }
