@@ -36,8 +36,9 @@
 .ib-x:hover { background:var(--wash17); }
 
 .ib-bulk { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 8px; }
-.ib-confirm { display:grid; gap:8px; margin:8px 0; padding:14px 16px; border:1px solid var(--hair17); border-radius:var(--r3-17); background:var(--raise); font-size:13px; }
-.ib-confirm ul { margin:0; padding-left:18px; color:var(--ink-2); }
+.allow18D{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.allow18D li{display:flex;align-items:flex-start;gap:8px;font-size:13.5px}
+.allow18D li svg{color:var(--ok);margin-top:2px;flex:none}
 
 .ib-list { display:grid; padding:0 16px; border-radius:16px; background:var(--raise); box-shadow:inset 0 0 0 1px var(--hair17); }
 .ib-list.ib-flat { padding:0; background:none; box-shadow:none; }
