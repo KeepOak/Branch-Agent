@@ -1,0 +1,3 @@
+engine:src/agents/main-session-recovery/main-session-restart-recovery-freshness.integration.test.ts
+engine:src/agents/main-session-recovery/main-session-restart-recovery-freshness.test.ts
+window:src/shell/PetReaction.test.tsx
