@@ -386,6 +386,34 @@ describe("configured auth inheritance owner", () => {
     );
   });
 
+  it("follows Make default when recovering an empty main inheritance owner", async () => {
+    await withBranchTestState(
+      { layout: "state-only", prefix: "branch-auth-default-switch-", agentEnv: "clear", env: { OPENAI_API_KEY: undefined } },
+      async (state) => {
+        const cfg: BranchConfig = {
+          agents: {
+            ownership: "explicit",
+            defaultId: "juniper",
+            defaults: { systemAgent: { agentId: "dev" }, authInheritance: { agentId: "main" } },
+            entries: { dev: {}, juniper: {}, willow: {}, cedar: {} },
+          },
+        };
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:juniper": keyCredential("openai", "juniper-key") }),
+          state.agentDir("juniper"),
+        );
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:willow": keyCredential("openai", "willow-key") }),
+          state.agentDir("willow"),
+        );
+        const cedarDir = state.agentDir("cedar");
+        expect(await resolveAuth({ provider: "openai", cfg, agentDir: cedarDir })).toMatchObject({ apiKey: "juniper-key" });
+        const afterMakeDefault: BranchConfig = { ...cfg, agents: { ...cfg.agents, defaultId: "willow" } };
+        expect(await resolveAuth({ provider: "openai", cfg: afterMakeDefault, agentDir: cedarDir })).toMatchObject({ apiKey: "willow-key" });
+      },
+    );
+  });
+
   it("keeps a non-roster main as owner when its legacy credentials exist", async () => {
     await withBranchTestState(
       { layout: "state-only", prefix: "branch-auth-real-main-", agentEnv: "clear", env: { OPENAI_API_KEY: undefined } },
