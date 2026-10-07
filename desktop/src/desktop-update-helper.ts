@@ -336,11 +336,17 @@ try {
 }
 
 export async function listFolderLockers(folder: string): Promise<FolderLocker[]> {
-  if (process.platform === "win32") {
-    const fromRm = listRestartManagerLockers(folder);
-    if (fromRm.length) return fromRm;
+  const listed = await listFolderProcesses(folder);
+  if (process.platform !== "win32") return listed;
+  const byPid = new Map<number, FolderLocker>();
+  for (const proc of listed) byPid.set(proc.pid, proc);
+  for (const locker of listRestartManagerLockers(folder)) {
+    const existing = byPid.get(locker.pid);
+    byPid.set(locker.pid, existing
+      ? { ...existing, sessionId: locker.sessionId ?? existing.sessionId }
+      : locker);
   }
-  return listFolderProcesses(folder);
+  return [...byPid.values()];
 }
 
 function stopPid(pid: number): void {
