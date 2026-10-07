@@ -283,9 +283,77 @@ describe("session handoff leases", () => {
     await expect(enqueueCommandInLane(third, async () => "ran")).rejects.toBeInstanceOf(GatewayDrainingError);
     expect(leaseFiles(third)).toHaveLength(0);
     // A session the hold keeps still takes its own follow-up work.
-    await expect(enqueueCommandInLane(OTHER, async () => "follow-up")).toBeDefined();
+    const followUp = enqueueCommandInLane(OTHER, async () => "follow-up");
     finish.resolve();
     await late;
+    await expect(followUp).resolves.toBe("follow-up");
+  });
+
+  it("still refuses unheld sessions when sealed after the hold already finished", async () => {
+    const hold = holdSessionHandoffLeases({ lanes: [] });
+    await hold.released;
+    hold.seal();
+    await expect(enqueueCommandInLane(OTHER, async () => "ran")).rejects.toBeInstanceOf(
+      GatewayDrainingError,
+    );
+    expect(leaseFiles(OTHER)).toHaveLength(0);
+  });
+
+  it("keeps a lease it could not remove, and removes it on a later poll", async () => {
+    let busy = true;
+    const hold = holdSessionHandoffLeases({ lanes: [LEASED], isBusy: () => busy });
+    const [file] = leaseFiles(LEASED);
+    const unlink = fs.unlinkSync;
+    // Antivirus holds the file for a while: every removal fails, past the immediate retries.
+    const spy = vi.spyOn(fs, "unlinkSync").mockImplementation((target) => {
+      if (String(target) === file) throw Object.assign(new Error("busy"), { code: "EBUSY" });
+      unlink(target);
+    });
+    let released = false;
+    void hold.released.then(() => {
+      released = true;
+    });
+    busy = false;
+    await pause(400);
+    expect(fs.existsSync(file)).toBe(true);
+    expect(released).toBe(false);
+    spy.mockRestore();
+    await hold.released;
+    expect(fs.existsSync(file)).toBe(false);
+  });
+
+  it("never waits on a successor's lease for a session it still finishes (A, then B, then C)", async () => {
+    // A predecessor of this engine still holds OTHER: written before this engine stepped down, it still counts.
+    const predecessor = await liveProcess();
+    const predecessorLease = leaseFor(OTHER, predecessor.pid!);
+    refreshSessionHandoffLeases();
+    await pause(5);
+    // This engine (A) steps down with a run in flight on LEASED.
+    const finish = createDeferred();
+    const inFlight = enqueueCommandInLane(LEASED, () => finish.promise);
+    const hold = holdSessionHandoffLeases({ lanes: [LEASED], hasPendingWork: () => true });
+    // Its successor (B) parks a turn for LEASED behind A, then steps down for C itself and leases LEASED.
+    const successor = await liveProcess();
+    leaseFor(LEASED, successor.pid!);
+    refreshSessionHandoffLeases();
+    // A finishes the run, and the run queues follow-up work into LEASED: it runs, never parked behind B (who
+    // waits for A), so neither waits out the deadline.
+    finish.resolve();
+    await inFlight;
+    const followUp = enqueueCommandInLane(LEASED, async () => "follow-up");
+    await expect(
+      Promise.race([followUp, pause(2_000).then(() => "parked behind the successor")]),
+    ).resolves.toBe("follow-up");
+    // The predecessor's lease still holds this engine's work for OTHER.
+    let ranOther = false;
+    const other = enqueueCommandInLane(OTHER, async () => {
+      ranOther = true;
+    });
+    await pause(300);
+    expect(ranOther).toBe(false);
+    fs.unlinkSync(predecessorLease);
+    await other;
+    hold.releaseAll();
   });
 
   it("waits for pending work that is not tied to a session yet", async () => {
