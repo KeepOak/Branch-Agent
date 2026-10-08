@@ -187,7 +187,7 @@ export function renderDevicePairSetup(props: DevicePairSetupProps) {
                                   ${renderCopyButton(nodeCommand, t("connection.help.copyCommand"))}
                                 </div>
                                 <p class="device-pair-setup__hint">
-                                  ${t("devices.pairing.nodePasteCode")}
+                                  When prompted, paste this setup code:
                                 </p>
                                 <div class="login-gate__command">
                                   <code>${nodeSetupCode}</code>

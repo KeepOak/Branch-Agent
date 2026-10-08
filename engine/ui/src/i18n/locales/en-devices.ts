@@ -207,7 +207,6 @@ const enDevices = {
       qrAlt: "Branch Agent mobile pairing QR code",
       qrUnavailable: "QR unavailable. Copy the setup code instead.",
       copySetupCode: "Copy setup code",
-      nodePasteCode: "When prompted, paste this setup code:",
       nodeExpiresIn: "This setup link expires in {time}.",
       nodeExpired: "This setup link has expired. Create a new one.",
       newCode: "New code",
