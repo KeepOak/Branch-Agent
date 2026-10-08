@@ -159,21 +159,32 @@ export class CodexToolTranscriptProjection {
         return [];
       }
       const reason = typeof details?.failureReason === "string" ? details.failureReason : undefined;
+      const hasDistinctToolFailure = this.messages.some(
+        (candidate) =>
+          candidate.role === "toolResult" &&
+          candidate.isError &&
+          candidate.toolName === message.toolName &&
+          isJsonObject(candidate.details) &&
+          candidate.details.reason !== "missing_tool_result" &&
+          typeof candidate.details.failureReason === "string" &&
+          candidate.details.failureReason !== reason,
+      );
       if (
         !reason ||
         mentionedTexts.some(
           (text) =>
             text.includes(reason.toLowerCase()) ||
-            text
-              .split(/[.!?]/u)
-              .some(
-                (sentence) =>
-                  (sentence.includes(message.toolName.toLowerCase()) ||
-                    sentence.includes(message.toolName.replaceAll("_", " ").toLowerCase())) &&
-                  /\b(?:failed|failure|error|blocked|denied|timed out|could not|couldn't|unable)\b/u.test(
-                    sentence,
-                  ),
-              ),
+            (!hasDistinctToolFailure &&
+              text
+                .split(/[.!?]/u)
+                .some(
+                  (sentence) =>
+                    (sentence.includes(message.toolName.toLowerCase()) ||
+                      sentence.includes(message.toolName.replaceAll("_", " ").toLowerCase())) &&
+                    /\b(?:failed|failure|error|blocked|denied|timed out|could not|couldn't|unable)\b/u.test(
+                      sentence,
+                    ),
+                )),
         )
       ) {
         return [];

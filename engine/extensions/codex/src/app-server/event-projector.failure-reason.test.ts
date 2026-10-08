@@ -97,7 +97,7 @@ it("only lists unmentioned failures when multiple steps failed", async () => {
   const projector = await createProjector();
   recordStep(projector);
   recordStep(projector, false, "Page not found", "step-2");
-  const text = "The first page returned connection refused.";
+  const text = "Browser failed on the first page: connection refused.";
   expect((await finish(projector, text)).assistantTexts).toEqual([
     `${text}\n\n1 step failed: browser — Page not found`,
   ]);
