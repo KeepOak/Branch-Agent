@@ -203,8 +203,11 @@ describe("cua-computer provider", () => {
       const { session } = driver();
       expect(createCuaComputerProvider({ platform: "darwin", env: {}, driver: session }).isAvailable()).toBe(true);
     } finally {
-      if (previous === undefined) delete owner[key];
-      else owner[key] = previous;
+      if (previous === undefined) {
+        delete owner[key];
+      } else {
+        owner[key] = previous;
+      }
     }
   });
 
@@ -219,8 +222,11 @@ describe("cua-computer provider", () => {
       // only reads that variable starts, but Mac control stays unavailable.
       expect(createCuaComputerProvider({ platform: "darwin", env: {}, driver: session }).isAvailable()).toBe(false);
     } finally {
-      if (previous === undefined) delete owner[key];
-      else owner[key] = previous;
+      if (previous === undefined) {
+        delete owner[key];
+      } else {
+        owner[key] = previous;
+      }
     }
   });
 

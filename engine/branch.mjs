@@ -16,12 +16,18 @@ const gatewayMacDriverLease = {};
 if (process.argv.includes("gateway")) {
   let endpoint = process.env[MAC_DRIVER_ENDPOINT_ENV];
   const endpointFile = process.env[MAC_DRIVER_ENDPOINT_FILE_ENV];
-  if (endpoint) gatewayMacDriverLease[MAC_DRIVER_ENDPOINT_ENV] = endpoint;
-  if (endpointFile) gatewayMacDriverLease[MAC_DRIVER_ENDPOINT_FILE_ENV] = endpointFile;
+  if (endpoint) {
+    gatewayMacDriverLease[MAC_DRIVER_ENDPOINT_ENV] = endpoint;
+  }
+  if (endpointFile) {
+    gatewayMacDriverLease[MAC_DRIVER_ENDPOINT_FILE_ENV] = endpointFile;
+  }
   if (!endpoint && endpointFile) {
     try { endpoint = readFileSync(endpointFile, "utf8"); } catch { /* file unavailable */ }
   }
-  if (endpoint) globalThis[Symbol.for("branch.macComputerEndpoint")] = endpoint;
+  if (endpoint) {
+    globalThis[Symbol.for("branch.macComputerEndpoint")] = endpoint;
+  }
   delete process.env[MAC_DRIVER_ENDPOINT_ENV];
   delete process.env[MAC_DRIVER_ENDPOINT_FILE_ENV];
 }

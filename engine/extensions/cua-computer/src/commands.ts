@@ -96,14 +96,18 @@ function resolveMacOsMcpEndpoint(
   if (endpointFile) {
     try {
       const stat = fs.statSync(endpointFile);
-      if (!stat.isFile() || stat.size > 4 * 1024 || (process.platform !== "win32" && (stat.mode & 0o077) !== 0)) return undefined;
+      if (!stat.isFile() || stat.size > 4 * 1024 || (process.platform !== "win32" && (stat.mode & 0o077) !== 0)) {
+        return undefined;
+      }
       rawEndpoint = fs.readFileSync(endpointFile, "utf8");
     } catch { return undefined; }
   } else {
     rawEndpoint = env[CUA_DRIVER_ENDPOINT_ENV] ??
       (globalThis as Record<symbol, unknown>)[Symbol.for("branch.macComputerEndpoint")];
   }
-  if (typeof rawEndpoint !== "string") return undefined;
+  if (typeof rawEndpoint !== "string") {
+    return undefined;
+  }
   if (!rawEndpoint || Buffer.byteLength(rawEndpoint, "utf8") > 4 * 1024) {
     return undefined;
   }

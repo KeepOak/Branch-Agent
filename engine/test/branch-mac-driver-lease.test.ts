@@ -28,8 +28,11 @@ function launcherEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   delete env.NODE_COMPILE_CACHE;
   delete env.NODE_DISABLE_COMPILE_CACHE;
   for (const [key, value] of Object.entries(extra)) {
-    if (value === undefined) delete env[key];
-    else env[key] = value;
+    if (value === undefined) {
+      delete env[key];
+    } else {
+      env[key] = value;
+    }
   }
   return env;
 }
