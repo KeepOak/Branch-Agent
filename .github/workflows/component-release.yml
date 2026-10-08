@@ -45,6 +45,9 @@ jobs:
     if: github.repository == 'KeepOak/Branch-Agent'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
       commit: ${{ steps.check.outputs.commit }}
@@ -99,8 +102,9 @@ jobs:
               fi
             fi
             # Skip only when a check on main's head actually failed. Missing or pending checks do not block.
-            failed_checks=$(node scripts/merge-gate-rate-limit.mjs gh -- api --paginate "repos/KeepOak/Branch-Agent/commits/$main_commit/check-runs" \
-              --jq '[.check_runs[] | select(.conclusion == "failure")] | length' | awk '{s+=$1} END {print s+0}')
+            # One rerun of failed jobs first; skip only if a check is still failing after that.
+            failed_decision="$(node desktop/scripts/component-release-readiness.mjs resolve-failed-checks --sha "$main_commit")"
+            failed_checks="$(node -p 'JSON.parse(process.argv[1]).failedCount' "$failed_decision")"
             if [[ "$failed_checks" != "0" ]]; then
               note "Main has $failed_checks failed check(s) at $main_commit; skipping release"
               printf '%s %s %s\n' false "$main_commit" failed-checks
