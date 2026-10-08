@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mergeCheckRunPages, runGhWithRetry } from "../../scripts/merge-gate-rate-limit.mjs";
+import { mergeCheckRunPages, PASS_CONCLUSIONS, runGhWithRetry } from "../../scripts/merge-gate-rate-limit.mjs";
 import { actionsRunIdFromCheckRun } from "../../scripts/merge-gate-trusted.mjs";
 
 export const PUSH_BACKUP_MIN_AGE_MS = 25 * 60 * 1000;
@@ -95,6 +95,56 @@ export function failedCheckRuns(checkRuns) {
   return latestChecksByName(checkRuns).filter((run) => run.conclusion === "failure");
 }
 
+export function checksGroupedByName(checkRuns) {
+  const groups = new Map();
+  for (const run of checkRuns ?? []) {
+    const name = run?.name;
+    if (!name) continue;
+    const group = groups.get(name);
+    if (group) group.push(run);
+    else groups.set(name, [run]);
+  }
+  return groups;
+}
+
+export function newestCheckInGroup(checks) {
+  let newest = null;
+  for (const run of checks ?? []) {
+    if (!newest || checkRunIsNewer(run, newest)) newest = run;
+  }
+  return newest;
+}
+
+function workflowAttemptBlocks(run) {
+  const attempt = Number(run?.run_attempt);
+  return Number.isFinite(attempt) && attempt > 1 && run.status !== "completed";
+}
+
+export function blockingCheckRuns(checkRuns, { readWorkflowRun } = {}) {
+  const blocking = [];
+  for (const group of checksGroupedByName(checkRuns).values()) {
+    const newest = newestCheckInGroup(group);
+    if (!newest || PASS_CONCLUSIONS.has(newest.conclusion)) continue;
+    if (newest.conclusion === "failure") {
+      blocking.push(newest);
+      continue;
+    }
+    const olderFailed = group.some((run) => run !== newest && run.conclusion === "failure");
+    if (olderFailed) {
+      blocking.push(newest);
+      continue;
+    }
+    const runId = workflowRunIdFromCheck(newest);
+    if (runId == null || !readWorkflowRun) continue;
+    try {
+      if (workflowAttemptBlocks(readWorkflowRun(runId))) blocking.push(newest);
+    } catch {
+      // Same as a missing run: a first-attempt pending check stays non-blocking.
+    }
+  }
+  return blocking;
+}
+
 export function workflowRunIdFromCheck(checkRun) {
   return actionsRunIdFromCheckRun(checkRun);
 }
@@ -168,17 +218,19 @@ export function resolveFailedReleaseChecks({
   const readRun = readWorkflowRun ?? (runId => getWorkflowRun(repo, runId, { gh }));
   const rerun = rerunFailedJobs ?? (runId => rerunFailedWorkflowJobs(repo, runId, { gh }));
 
-  const firstFailed = failedCheckRuns(list());
-  if (firstFailed.length === 0) {
+  const firstListed = list();
+  const firstBlocking = blockingCheckRuns(firstListed, { readWorkflowRun: readRun });
+  if (firstBlocking.length === 0) {
     return { skip: false, failedCount: 0, reran: [], alreadyRetried: [], reason: "no-failed-checks" };
   }
   if (!allowRerun) {
-    log(`Not rerunning ${firstFailed.length} failed check(s); pull-request rehearsal only counts them`);
-    return { skip: true, failedCount: firstFailed.length, reran: [], alreadyRetried: [], reason: "failed-checks" };
+    log(`Not rerunning ${firstBlocking.length} failed check(s); pull-request rehearsal only counts them`);
+    return { skip: true, failedCount: firstBlocking.length, reran: [], alreadyRetried: [], reason: "failed-checks" };
   }
 
   const reran = [];
   const alreadyRetried = [];
+  const firstFailed = failedCheckRuns(firstListed);
   for (const runId of uniqueWorkflowRunIds(firstFailed)) {
     const names = firstFailed.filter((check) => workflowRunIdFromCheck(check) === runId).map((check) => check.name);
     let run = null;
@@ -220,17 +272,18 @@ export function resolveFailedReleaseChecks({
       sleep(Math.min(pollMs, remaining));
     }
     if (pending.size > 0) {
-      log(`Wait budget ended with ${pending.size} rerun(s) still running; pending checks do not block a release`);
+      log(`Wait budget ended with ${pending.size} rerun(s) still running; skipping release`);
+      return { skip: true, failedCount: pending.size, reran, alreadyRetried, reason: "rerun-pending" };
     }
   }
 
-  const stillFailed = failedCheckRuns(list());
-  if (stillFailed.length === 0) {
+  const stillBlocking = blockingCheckRuns(list(), { readWorkflowRun: readRun });
+  if (stillBlocking.length === 0) {
     if (reran.length > 0) log(`Failed checks at ${sha} cleared after rerun; proceeding`);
     return { skip: false, failedCount: 0, reran, alreadyRetried, reason: reran.length ? "cleared-after-rerun" : "no-failed-checks" };
   }
-  log(`Main still has ${stillFailed.length} failed check(s) at ${sha} after retry: ${stillFailed.map((check) => check.name).join(", ")}`);
-  return { skip: true, failedCount: stillFailed.length, reran, alreadyRetried, reason: "failed-checks" };
+  log(`Main still has ${stillBlocking.length} failed check(s) at ${sha} after retry: ${stillBlocking.map((check) => check.name).join(", ")}`);
+  return { skip: true, failedCount: stillBlocking.length, reran, alreadyRetried, reason: "failed-checks" };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
