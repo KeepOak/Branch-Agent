@@ -26,18 +26,22 @@ import type { MessageActionResult } from "../../infra/outbound/message-action-co
 import { projectGatewayQueuedDeliveryResult } from "../../infra/outbound/message-action-execution.js";
 import { hasAcceptedMessageActionResult } from "../../infra/outbound/message-action-result-acceptance.js";
 import { getToolResult, runMessageAction } from "../../infra/outbound/message-action-runner.js";
+import { enforceMessageActionAllowlist } from "../../infra/outbound/outbound-policy.js";
 import { isDeliveredCurrentSourceReplyAsync } from "../../infra/outbound/source-reply-mirror.js";
 import { readBooleanParam } from "../../plugin-sdk/boolean-param.js";
-import { createAgentToAgentPolicy } from "../../plugin-sdk/session-visibility.js";
 import { stringifyRouteThreadId } from "../../plugin-sdk/channel-route.js";
+import { createAgentToAgentPolicy } from "../../plugin-sdk/session-visibility.js";
 import { getPreparedMessageToolCatalog } from "../../plugins/prepared-message-tool-catalog.js";
+import { buildRunUserTurnIdempotencyKey } from "../../sessions/user-turn-transcript.metadata.js";
 import { withPreparedChannelReadAuthority } from "../../shared/channel-read-authority.js";
+import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import * as embeddedMessageDelivery from "../embedded-agent-message-delivery.js";
 import { createSandboxBridgeReadFile } from "../sandbox-media-paths.js";
 import type { SandboxFsBridge } from "../sandbox/fs-bridge.js";
 import { type AnyAgentTool, jsonResult, readToolStringParam } from "./common.js";
 import { captureGatewayToolCallerAssertion } from "./gateway-caller-context.js";
+import { getInProcessGatewayToolContext } from "./in-process-gateway.js";
 import {
   createMessageToolDecisionRecorder,
   resolveTrustedDecisionChannel,
@@ -348,6 +352,59 @@ export function createMessageTool(options?: MessageToolOptions): AnyAgentTool {
         decisions.runBoundary(() => explicitTargetGuard.require(params, action));
       }
 
+      if (
+        action === "react" &&
+        normalizeOptionalLowercaseString(effectiveCurrentChannel.currentChannelProvider) ===
+          INTERNAL_MESSAGE_CHANNEL &&
+        (!normalizeOptionalString(params.channel) ||
+          normalizeOptionalLowercaseString(params.channel) === INTERNAL_MESSAGE_CHANNEL) &&
+        ![params.target, params.to, params.channelId, params.threadId].some(
+          normalizeOptionalString,
+        ) &&
+        !(Array.isArray(params.targets) && params.targets.length > 0)
+      ) {
+        enforceMessageActionAllowlist({ cfg: rawConfig, agentId: resolvedAgentId, action });
+        const context = getInProcessGatewayToolContext();
+        if (!context || !options?.agentSessionKey || !options.sessionId || !resolvedAgentId) {
+          throw new Error("In-app reactions require the active Gateway and session.");
+        }
+        const requestedMessageId =
+          readToolStringParam(params, "messageId") ?? readToolStringParam(params, "message_id");
+        const currentMessageId =
+          options.currentMessageId != null ? String(options.currentMessageId) : undefined;
+        // WebChat's inbound MessageSid is the client run id, not the transcript row id.
+        const sourceTurnId =
+          !requestedMessageId || requestedMessageId === currentMessageId
+            ? (normalizeOptionalString(trustedTurnContext?.toolContext?.currentSourceTurnId) ??
+              (currentMessageId ? buildRunUserTurnIdempotencyKey(currentMessageId) : undefined))
+            : undefined;
+        const messageId = requestedMessageId;
+        if (!messageId && !sourceTurnId) {
+          throw new Error("In-app reactions require a messageId.");
+        }
+        const { setAgentSessionReaction } =
+          await import("../../gateway/server-methods/sessions-reactions.js");
+        const result = await setAgentSessionReaction({
+          context,
+          cfg: rawConfig,
+          agentId: resolvedAgentId,
+          sessionKey: options.agentSessionKey,
+          sessionId: options.sessionId,
+          messageId,
+          sourceTurnId,
+          emoji: readToolStringParam(params, "emoji", { required: true }),
+          remove: readBooleanParam(params, "remove") === true,
+          dryRun: readBooleanParam(params, "dryRun") === true,
+          assertCurrent: () => {
+            assertActionCurrent();
+            if (getInProcessGatewayToolContext() !== context) {
+              throw new Error("In-app reaction Gateway changed.");
+            }
+          },
+        });
+        return jsonResult(result);
+      }
+
       const gatewayContext = { ...options, messageActionTurnCapability: gatewayTurnCapability };
       const gateway = createMessageToolGateway(params, gatewayContext, signal, {
         resolveConfig: () => cfg,
@@ -398,10 +455,15 @@ export function createMessageTool(options?: MessageToolOptions): AnyAgentTool {
             ? params.targets
             : [params.target ?? effectiveCurrentChannel.currentMessagingTarget];
         for (const target of Array.isArray(targets) ? targets : []) {
-          if (typeof target !== "string") continue;
+          if (typeof target !== "string") {
+            continue;
+          }
           const peer = target.trim().replace(/^a2a:/i, "");
           if (
-            !policy.isAllowed(resolvedAgentId ?? rawConfig.agents?.defaultId ?? "main", `a2a:${peer}`)
+            !policy.isAllowed(
+              resolvedAgentId ?? rawConfig.agents?.defaultId ?? "main",
+              `a2a:${peer}`,
+            )
           ) {
             throw new Error("Agent-to-agent messaging denied by agentToAgent policy.");
           }

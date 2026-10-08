@@ -257,6 +257,9 @@ function resolveMessageToolSchemaActions(params: MessageToolDiscoveryParams): st
       buildMessageActionDiscoveryInput(params, currentChannel),
     );
     const allActions = new Set<string>(["send", ...scopedActions]);
+    if (currentChannel === INTERNAL_MESSAGE_CHANNEL && params.sessionKey && params.sessionId) {
+      allActions.add("react");
+    }
     // Include actions from other configured channels so isolated/cron agents
     // can invoke cross-channel actions without validation errors.
     const channels = params.preparedMessageToolCatalog?.channels ?? listChannelPlugins();
