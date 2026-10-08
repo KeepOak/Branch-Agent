@@ -1,7 +1,4 @@
-import type {
-  GroupThreadMentionFacts,
-  InboundEventKind,
-} from "branch/plugin-sdk/channel-inbound";
+import type { GroupThreadMentionFacts, InboundEventKind } from "branch/plugin-sdk/channel-inbound";
 import type {
   ChannelIngressContextBinding,
   ResolvedChannelMessageIngress,
@@ -56,6 +53,8 @@ export type DiscordMessagePreflightContext = DiscordMessagePreflightSharedFields
   author: User;
   sender: DiscordSenderIdentity;
   canonicalMessageId?: string;
+  /** Receipt sequence retained across debounce/preflight/queue delays. */
+  stalenessStartSequence?: number;
   sourceMessageIds?: readonly string[];
   memberRoleIds: string[];
 

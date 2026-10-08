@@ -39,7 +39,7 @@ const {
     channelKeys: ["token"],
     envVars: ["DISCORD_BOT_TOKEN"],
   },
-  nestedObjectKeys: ["activities", "agentComponents", "botLoopProtection"],
+  nestedObjectKeys: ["activities", "agentComponents", "botLoopProtection", "staleness"],
 });
 export const listDiscordAccountIds = listAccountIds;
 export const resolveDefaultDiscordAccountId = resolveDefaultAccountId;
