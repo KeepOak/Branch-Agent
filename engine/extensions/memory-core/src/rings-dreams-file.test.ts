@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:extensions/memory-core/src/dreaming-dreams-file.test.ts (atlas MEMORY-0035). Changed for Branch: retain current upstream narrative contracts and Branch Windows diary preservation checks.
 // Memory Core tests cover managed Dream Diary artifacts.
 import fs from "node:fs/promises";
 import path from "node:path";

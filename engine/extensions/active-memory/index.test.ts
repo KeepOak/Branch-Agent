@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:extensions/active-memory/index.test.ts (atlas MEMORY-0027). Changed for Branch: retain current upstream provider contracts and audience authority checks with Branch agent configuration.
 import { realpathSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";

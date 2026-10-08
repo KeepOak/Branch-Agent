@@ -1,0 +1,15 @@
+engine:extensions/active-memory/escalation.test.ts
+engine:extensions/memory-core/src/flush-plan.test.ts
+engine:extensions/memory-core/src/memory-forget.test.ts
+engine:extensions/memory-core/src/memory/hybrid.test.ts
+engine:extensions/memory-core/src/memory/manager-keyword-retrieval.test.ts
+engine:extensions/memory-core/src/memory/manager-search-knn.test.ts
+engine:extensions/memory-core/src/memory/temporal-decay.test.ts
+engine:extensions/memory-core/src/rings-command.test.ts
+engine:extensions/memory-core/src/session-ingestion.test.ts
+engine:extensions/memory-wiki/src/import-insights.test.ts
+engine:packages/memory-host-sdk/src/host/memory-schema-fts.test.ts
+engine:src/agents/memory-write-provenance.test.ts
+engine:src/memory/memory-artifact-provenance.test.ts
+engine:src/transcripts/library.search.test.ts
+engine:src/transcripts/summary.test.ts

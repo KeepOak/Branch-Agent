@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:extensions/memory-core/src/session-backfill.test.ts (atlas MEMORY-0072). Changed for Branch: retain Branch grounded candidate recording contract.
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";

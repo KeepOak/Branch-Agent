@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:extensions/active-memory/trigger-recall.test.ts (atlas MEMORY-0027). Changed for Branch: retain current upstream provider contracts and audience authority checks with Branch agent configuration.
 import type { MemoryCallerContext, MemorySearchHit } from "branch/plugin-sdk/memory-host-search";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {

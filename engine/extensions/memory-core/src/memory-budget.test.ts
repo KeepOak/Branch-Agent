@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:extensions/memory-core/src/memory-budget.test.ts (atlas MEMORY-0037). Changed for Branch: retain Branch agent configuration and non-finite budget preservation checks.
 // Memory Core tests cover memory budget plugin behavior.
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import { describe, expect, it } from "vitest";

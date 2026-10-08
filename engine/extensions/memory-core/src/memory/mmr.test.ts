@@ -1,5 +1,7 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:extensions/memory-core/src/memory/mmr.test.ts (atlas MEMORY-0061). Changed for Branch: port current upstream hybrid MMR defaults alongside Branch non-finite tuning checks.
 // Memory Core tests cover MMR behavior through the production result adapter.
 import { describe, expect, it } from "vitest";
+import { mergeHybridResults } from "./hybrid.js";
 import { applyMMRToHybridResults, DEFAULT_MMR_CONFIG } from "./mmr.js";
 import { jaccardSimilarity, textSimilarity, tokenize } from "./tokenize.js";
 
@@ -161,6 +163,30 @@ describe("memory MMR", () => {
 
     expect(applyMMRToHybridResults(results, { enabled: false })).toEqual(results);
     expect(DEFAULT_MMR_CONFIG).toEqual({ enabled: false, lambda: 0.7 });
+  });
+
+  it.each([
+    { mmr: undefined, paths: ["/a", "/b", "/c", "/d"] },
+    { mmr: { enabled: false }, paths: ["/a", "/b", "/c", "/d"] },
+    { mmr: { enabled: true }, paths: ["/a", "/c", "/b", "/d"] },
+  ])("applies hybrid MMR defaults for $mmr", async ({ mmr, paths }) => {
+    const results = [
+      { path: "/a", startLine: 1, endLine: 1, score: 1, snippet: "same", source: "memory" },
+      { path: "/b", startLine: 1, endLine: 1, score: 0.9, snippet: "same", source: "memory" },
+      { path: "/c", startLine: 1, endLine: 1, score: 0.85, snippet: "different", source: "memory" },
+      { path: "/d", startLine: 1, endLine: 1, score: 0.1, snippet: "tail", source: "memory" },
+    ];
+
+    const merged = await mergeHybridResults({
+      vector: results.map((result) => ({ ...result, id: result.path, vectorScore: result.score })),
+      keyword: [],
+      vectorWeight: 1,
+      textWeight: 0,
+      mmr,
+    });
+    expect(merged).toEqual(
+      paths.map((path) => expect.objectContaining(results.find((result) => result.path === path)!)),
+    );
   });
 
   it("preserves repeated result objects and locations without mutating inputs", () => {

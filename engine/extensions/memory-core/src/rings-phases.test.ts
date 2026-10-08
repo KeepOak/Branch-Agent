@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:extensions/memory-core/src/dreaming-phases.test.ts (atlas MEMORY-0034). Changed for Branch: retain current upstream Rings contracts and Branch grounded candidate recording and contamination checks.
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
