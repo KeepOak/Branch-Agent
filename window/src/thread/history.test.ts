@@ -107,3 +107,54 @@ describe("historyToBlocks: errors, notes, meta and attachments", () => {
     expect(blocks[2]).toMatchObject({ meta: { entryId: "e2", model: "qwen3:14b", usage: { total: 9, cost: 0 } } });
   });
 });
+
+describe("historyToBlocks: text-channel tool calls", () => {
+  const spawn = {
+    name: "sessions_spawn",
+    arguments: {
+      visible: true,
+      title: "model-smoke-test-2",
+      sessionKey: "agent:<id>:model-smoke-test-2",
+      message: "Starting new session for model smoke test",
+    },
+  };
+
+  it("projects a whole-reply tool-call JSON as a step, not as text", () => {
+    const blocks = historyToBlocks(
+      [
+        { role: "user", content: "new conversation", timestamp: 1 },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: JSON.stringify(spawn) }],
+          stopReason: "stop",
+          timestamp: 2,
+          __branch: { runId: "r" },
+        },
+      ],
+      [],
+      "k",
+      null,
+    );
+    expect(blocks.map((b) => b.kind)).toEqual(["user", "step", "done"]);
+    expect(blocks[1]).toMatchObject({ kind: "step", tool: "sessions_spawn", title: "model-smoke-test-2", status: "ok" });
+    expect(JSON.stringify(blocks)).not.toContain('"name": "sessions_spawn"');
+  });
+
+  it("projects a fenced tool-call JSON the same way, and leaves JSON inside prose as text", () => {
+    const fenced = historyToBlocks(
+      [{ role: "assistant", content: `\`\`\`json\n${JSON.stringify(spawn)}\n\`\`\``, stopReason: "stop", timestamp: 2, __branch: { runId: "r" } }],
+      [],
+      "k",
+      null,
+    );
+    expect(fenced[0]).toMatchObject({ kind: "step", tool: "sessions_spawn", title: "model-smoke-test-2" });
+    const prose = historyToBlocks(
+      [{ role: "assistant", content: [{ type: "text", text: `Here is the call: ${JSON.stringify(spawn)}` }], stopReason: "stop" }],
+      [],
+      "k",
+      null,
+    );
+    expect(prose[0]).toMatchObject({ kind: "text", text: `Here is the call: ${JSON.stringify(spawn)}` });
+  });
+});
+

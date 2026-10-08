@@ -7,7 +7,9 @@ export const KEEP_MAIN_MESSAGE = 'merge main in and keep main\'s version of this
 export const GATE_WORKFLOW_FILES = [
   '.github/workflows/merge-gate.yml',
   '.github/workflows/merge-gate-trusted.yml',
+  '.github/workflows/gate-files-fresh.yml',
   'scripts/merge-gate-trusted.mjs',
+  'scripts/check-gate-files-fresh.mjs',
 ];
 
 export function listedGateFiles(gateScripts = GATE_SCRIPTS) {
