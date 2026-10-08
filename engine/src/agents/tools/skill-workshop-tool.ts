@@ -1,6 +1,13 @@
+import path from "node:path";
 import { truncateUtf16Safe } from "@branch/normalization-core/utf16-slice";
+import { resolveStateDir } from "../../config/paths.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { sha256Hex } from "../../infra/crypto-digest.js";
+import { pathExists } from "../../infra/fs-safe.js";
+import { installPackageDir } from "../../infra/install-package-dir.js";
+import { digestClawHubSkillTree } from "../../skills/lifecycle/skill-tree-digest.js";
+import { loadSkillRootRecords } from "../../skills/loading/skill-root-loader.js";
+import { bumpSkillsSnapshotVersion } from "../../skills/runtime/refresh-state.js";
 import { AUTONOMOUS_SKILL_MAX_CHARS } from "../../skills/workshop/collection-contracts.js";
 import { resolveSkillWorkshopConfig } from "../../skills/workshop/config.js";
 import { stripProposalFrontmatterForSkill } from "../../skills/workshop/frontmatter.js";
@@ -182,6 +189,81 @@ export function createSkillWorkshopTool(options: SkillWorkshopToolOptions): AnyA
 
       if (action === "history") {
         return executeSkillCollectionHistory(options, projectionBudgets.collectionHistoryChars);
+      }
+
+      if (action === "publish") {
+        const skill = await readWritableWorkshopSkill(
+          readToolStringParam(params, "name", { required: true }),
+          { config: options.config, agentId: options.agentId, env: options.env },
+        );
+        const sharedRoot = path.join(resolveStateDir(options.env), "skills");
+        const targetDir = path.join(sharedRoot, path.basename(skill.baseDir));
+        const sourceDigest = await digestClawHubSkillTree(skill.baseDir);
+        const sharedSkills = loadSkillRootRecords({
+          dir: sharedRoot,
+          source: "branch-managed",
+          config: options.config,
+          mode: "audit",
+          onDiagnostic: (diagnostic) => {
+            if (diagnostic.kind === "read") {
+              throw new ToolInputError(
+                "Shared skill library could not be read; retry after checking access.",
+              );
+            }
+          },
+        });
+        const matches = sharedSkills.filter(({ skill: shared }) => shared.name === skill.skillName);
+        const conflict = () =>
+          new ToolInputError(
+            `Cannot publish ${skill.skillName}: a different skill with that name already exists in the shared library.`,
+          );
+        for (const { skill: shared } of matches) {
+          if ((await digestClawHubSkillTree(shared.baseDir)) !== sourceDigest) {
+            throw conflict();
+          }
+        }
+        if (matches.length > 0) {
+          return textResult(
+            `Skill ${skill.skillName} is already published to the shared library.`,
+            {
+              skillName: skill.skillName,
+              published: false,
+            },
+          );
+        }
+        if (await pathExists(targetDir)) {
+          throw conflict();
+        }
+        // Reuse the install transaction: stage and validate the complete directory,
+        // then publish without replacing a skill that appeared concurrently.
+        const installed = await installPackageDir({
+          sourceDir: skill.baseDir,
+          targetDir,
+          mode: "install",
+          timeoutMs: 120_000,
+          copyErrorPrefix: "failed to publish skill",
+          hasDeps: false,
+          depsLogMessage: "",
+          afterCopy: async (stagedDir) => {
+            if ((await digestClawHubSkillTree(stagedDir)) !== sourceDigest) {
+              throw new ToolInputError("Workshop skill changed during publication; retry.");
+            }
+          },
+        });
+        if (!installed.ok) {
+          throw new ToolInputError(installed.error);
+        }
+        bumpSkillsSnapshotVersion({
+          reason: "workshop",
+          changedPath: path.join(targetDir, "SKILL.md"),
+        });
+        return textResult(
+          `Published skill ${skill.skillName} to the shared library for all Trunks.`,
+          {
+            skillName: skill.skillName,
+            published: true,
+          },
+        );
       }
 
       if (action === "read") {

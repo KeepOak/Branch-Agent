@@ -15,6 +15,7 @@ export const SKILL_WORKSHOP_ACTIONS = [
   "inspect",
   "evaluate",
   "apply",
+  "publish",
   "reject",
   "quarantine",
   "history",
@@ -62,7 +63,7 @@ export function buildSkillWorkshopToolSchema(proposalRevision = false) {
       name: Type.Optional(
         Type.String({
           description:
-            "Skill/proposal name. Required for create; for inspect/revise when proposal_id is unknown, resolves a pending proposal or returns candidates.",
+            "Skill/proposal name. Required for create or publish; publish copies an active Workshop skill to the shared library for all Trunks, refusing a different skill with the same name. For inspect/revise when proposal_id is unknown, resolves a pending proposal or returns candidates.",
         }),
       ),
       query: Type.Optional(Type.String({ description: "Optional query for action=list." })),

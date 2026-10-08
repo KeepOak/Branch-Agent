@@ -132,8 +132,11 @@ matches your desired visibility:
 | Workshop       | `<state-dir>/agents/<agentId>/agent/workshop-skills` | Only that agent                |
 | Extra dirs     | `skills.load.extraDirs`                              | All agents using that config   |
 
-Workshop skills learned by one agent are not shared with another agent. Publish
-a skill to the managed library when it must be available to multiple agents.
+Workshop skills learned by one agent stay local until it calls
+`skill_workshop` with `action: "publish"` and `name`. This copies the active skill
+and its supporting files to `<state-dir>/skills`, where every Trunk can discover
+it on its next turn. Publishing refuses a different skill with the same name;
+publishing an identical skill again is a no-op.
 
 When `BRANCH_STATE_DIR` points somewhere other than the default
 `~/.branch`, session skill indexes exclude home-scoped personal or
@@ -358,8 +361,9 @@ publish and sync.
     `~/.branch/skills` directory, visible to all local agents unless agent
     allowlists narrow it.
 
-    Skill Workshop does not install into either location. Generated skills live
-    in the selected agent's `<state-dir>/agents/<agentId>/agent/workshop-skills`.
+    Generated Skill Workshop skills start in the selected agent's
+    `<state-dir>/agents/<agentId>/agent/workshop-skills`. The Workshop `publish`
+    action copies an active skill to the shared managed directory.
 
     Git and local installs expect `SKILL.md` at the source root. The slug comes
     from `SKILL.md` frontmatter `name` when valid, then falls back to the
