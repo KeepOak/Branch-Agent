@@ -46,6 +46,7 @@ export type MessageMeta = {
 /** A picture, sound, video or file carried by a message. `src` is a data: or http(s) address. */
 export type Attachment = {
   kind: "image" | "audio" | "video" | "file";
+  artifactId?: string;
   name: string;
   mimeType?: string;
   src?: string;
