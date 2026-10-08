@@ -77,7 +77,7 @@ export class TwitchClientManager {
       authProvider.onRefresh((userId, token) => {
         this.logger.info(
           `Access token refreshed for user ${userId} (expires in ${token.expiresIn ? `${token.expiresIn}s` : "unknown"})`,
-        );
+        ); // credential-logging-allowed: expiry seconds only, not the token value
       });
 
       authProvider.onRefreshFailure((userId, error) => {

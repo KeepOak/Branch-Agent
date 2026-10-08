@@ -80,3 +80,4 @@ Every merge to `main` that touches `engine/`, `window/`, or `desktop/` triggers 
 - [ ] Visual changes include screenshots.
 - [ ] Tests prove the fix (failing on old head, passing on new).
 - [ ] FIX any PR that edits `merge-gate-trusted.yml` or the scripts it runs unless the PR body explains why.
+- [ ] FIX any change that logs credentials or bypasses the redaction helper. The documented exception is a same-line `// credential-logging-allowed: <reason>` comment.
