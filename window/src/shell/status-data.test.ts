@@ -42,6 +42,32 @@ describe("usage.status (§4.9.4)", () => {
     expect(usagePollResult(new CustomEvent("branch:usage-checked", { detail: empty }))).toEqual(empty);
     expect(usagePollResult(new Event("branch:usage-checked"))).toBeNull();
   });
+  it("the ring falls back to a measured account when the used-next account has no reading", () => {
+    const usedNextEmpty = {
+      updatedAt: NOW,
+      providers: [
+        { provider: "openai-codex", displayName: "ChatGPT plan", plan: "Plus", accountEmail: "a@b.c", windows: [{ label: "5h", usedPercent: 88, resetAt: new Date(2026, 9, 2, 18, 0).getTime() }] },
+        { provider: "anthropic", displayName: "Claude", plan: "Max", accountEmail: "c@d.e", inUse: true, windows: [] },
+      ],
+    };
+    expect(ringReading(readLimits(usedNextEmpty, NOW))).toEqual({ name: "ChatGPT · Account 1", left: 12, reset: "resets 6 PM", low: true });
+    const usedNextWins = {
+      updatedAt: NOW,
+      providers: [
+        { provider: "openai-codex", displayName: "ChatGPT plan", plan: "Plus", accountEmail: "a@b.c", windows: [{ label: "5h", usedPercent: 88, resetAt: new Date(2026, 9, 2, 18, 0).getTime() }] },
+        { provider: "anthropic", displayName: "Claude", plan: "Max", accountEmail: "c@d.e", inUse: true, windows: [{ label: "5h", usedPercent: 40, resetAt: new Date(2026, 9, 2, 15, 0).getTime() }] },
+      ],
+    };
+    expect(ringReading(readLimits(usedNextWins, NOW))).toEqual({ name: "Claude", left: 60, reset: "resets 3 PM", low: false });
+    const noneMeasured = {
+      updatedAt: NOW,
+      providers: [
+        { provider: "anthropic", displayName: "Claude", inUse: true, windows: [] },
+        { provider: "google", displayName: "Google Gemini", windows: [] },
+      ],
+    };
+    expect(ringReading(readLimits(noneMeasured, NOW))).toBeNull();
+  });
   it("window names and resets", () => {
     expect(windowName("3h")).toBe("This 3-hour window");
     expect(windowName("Day")).toBe("Today");
