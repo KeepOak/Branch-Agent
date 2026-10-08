@@ -61,12 +61,18 @@ export function isReplyOperationForSession(
 ): operation is ReplyOperation {
   return (
     operation !== undefined &&
-    (!params.sessionId || operation.sessionId === params.sessionId) &&
-    params.sessionKeys.some((key) => agentSessionKeysMatchByRequestKey(operation.key, key)) &&
+    (!params.sessionId ||
+      (operation.liveInboundSession?.sessionId ?? operation.sessionId) === params.sessionId) &&
+    params.sessionKeys.some((key) =>
+      agentSessionKeysMatchByRequestKey(
+        operation.liveInboundSession?.sessionKey ?? operation.key,
+        key,
+      ),
+    ) &&
     chatRunBelongsToAgent(
       {
         agentId: operation.agentId,
-        sessionKey: operation.key,
+        sessionKey: operation.liveInboundSession?.sessionKey ?? operation.key,
         defaultAgentId: params.defaultAgentId,
       },
       params.agentId,
@@ -76,6 +82,7 @@ export function isReplyOperationForSession(
 
 export function resolveReplyOperationsForSession(params: ReplyOperationSessionTarget) {
   const candidates = [
+    ...[...replyRunState.activeRunsByKey.values()].filter((op) => op.liveInboundSession),
     ...params.sessionKeys.map((key) => replyRunRegistry.get(key)),
     ...(params.sessionId ? [resolveReplyRunForCurrentSessionId(params.sessionId)] : []),
   ];
@@ -309,7 +316,17 @@ export function isReplyRunAbortableForCompaction(sessionId: string): boolean {
 }
 
 export function abortReplyRunBySessionId(sessionId: string): boolean {
-  return resolveReplyRunForCurrentSessionId(sessionId)?.abortByUser() ?? false;
+  const operations = new Set([
+    resolveReplyRunForCurrentSessionId(sessionId),
+    ...[...replyRunState.activeRunsByKey.values()].filter(
+      (operation) => operation.liveInboundSession?.sessionId === sessionId,
+    ),
+  ]);
+  let aborted = false;
+  for (const operation of operations) {
+    aborted = (operation?.abortByUser() ?? false) || aborted;
+  }
+  return aborted;
 }
 
 export { resolveReplyRunForCurrentSessionId as resolveActiveReplyOperationForSessionId };

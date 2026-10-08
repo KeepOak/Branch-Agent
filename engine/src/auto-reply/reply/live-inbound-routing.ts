@@ -1,10 +1,7 @@
 // A held chat turn keeps its lane. A new inbound reply uses a separate lane
 // so it can be answered while that work continues.
 import { resolveSessionLane } from "../../agents/embedded-agent-runner/lanes.js";
-import {
-  getCommandLaneSnapshot,
-  setCommandLaneConcurrency,
-} from "../../process/command-queue.js";
+import { getCommandLaneSnapshot, setCommandLaneConcurrency } from "../../process/command-queue.js";
 import { isSessionLaneHeldByPredecessor } from "../../process/session-handoff-lease-gate.js";
 import type { InputProvenance } from "../../sessions/input-provenance.js";
 import type { FollowupRun, QueueSettings } from "./queue/types.js";
@@ -14,8 +11,6 @@ const LIVE_INBOUND_OWNER_GLOBAL_LANE = "live-inbound:owner";
 const LIVE_INBOUND_AGENT_GLOBAL_LANE = "live-inbound:agent";
 const OWNER_GLOBAL_CONCURRENCY = 16;
 const AGENT_GLOBAL_CONCURRENCY = 8;
-const STALE_REPLY_DRAIN_BACKOFF_MS = 5_000;
-const STALE_REPLY_OPERATION_ERROR = "Reply operation expired as stale";
 
 type LiveInboundClass = "owner" | "agent";
 
@@ -102,6 +97,10 @@ export async function startLiveInboundReply<T>(params: {
   const operation = createReplyOperation({
     sessionKey: `${sessionLane}:op:${sideSessionId}`,
     sessionId: sideSessionId,
+    liveInboundSession: {
+      sessionKey: params.sessionKey,
+      sessionId: params.followupRun.run.sessionId,
+    },
     agentId: params.followupRun.run.agentId,
     resetTriggered: false,
     turnKind: "visible",
@@ -113,24 +112,4 @@ export async function startLiveInboundReply<T>(params: {
       operation.complete();
     }
   }
-}
-
-export function isStaleReplyOperationDrainError(err: unknown): boolean {
-  return String(err).includes(STALE_REPLY_OPERATION_ERROR);
-}
-
-/** The followup drain retries this failure on its debounce. Back off so it does not log every half second. */
-export function waitForStaleReplyDrainBackoff(signal: AbortSignal): Promise<void> {
-  if (signal.aborted) {
-    return Promise.resolve();
-  }
-  return new Promise((resolve) => {
-    const finish = () => {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", finish);
-      resolve();
-    };
-    const timer = setTimeout(finish, STALE_REPLY_DRAIN_BACKOFF_MS);
-    signal.addEventListener("abort", finish, { once: true });
-  });
 }

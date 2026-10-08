@@ -316,6 +316,8 @@ type ReplyOperationResult =
   | { kind: "aborted"; code: ReplyOperationAbortCode };
 
 export type ReplyOperation = {
+  /** Real chat identity for a side operation that does not own its reply slot. */
+  readonly liveInboundSession?: { sessionKey: string; sessionId: string };
   readonly personalToolParticipants?: ReplyTurnParticipants;
   readonly key: string;
   readonly sessionId: string;
@@ -441,6 +443,7 @@ export const REPLY_RUN_IDLE_SETTLE_TIMEOUT_MS = 15_000;
 // Terminal results must release the lane even if the owner never resumes.
 // Without this, abort/failure can leave the session wedged until process restart.
 export const REPLY_RUN_TERMINAL_SETTLE_TIMEOUT_MS = 60_000;
+export const REPLY_OPERATION_EXPIRED_AS_STALE = "Reply operation expired as stale";
 
 export class ReplyRunAlreadyActiveError extends Error {
   constructor(sessionKey: string) {

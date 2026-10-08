@@ -54,6 +54,7 @@ type ReplyOperationResult = NonNullable<ReplyOperation["result"]>;
 type ReplyOperationAbortCode = Extract<ReplyOperationResult, { kind: "aborted" }>["code"];
 
 export function createReplyOperation(params: {
+  liveInboundSession?: { sessionKey: string; sessionId: string };
   sessionKey: string;
   sessionId: string;
   agentId?: string;
@@ -229,6 +230,7 @@ export function createReplyOperation(params: {
     get key() {
       return currentSessionKey;
     },
+    liveInboundSession: params.liveInboundSession,
     get sessionId() {
       return currentSessionId;
     },

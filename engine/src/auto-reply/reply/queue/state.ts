@@ -15,6 +15,7 @@ type FollowupQueueState = {
   abortController: AbortController;
   items: FollowupRun[];
   draining: boolean;
+  staleExpiryDrainAttempts?: number;
   /** Exact operational drain generation; recovery may retire only this owner. */
   drainOwner?: object;
   /** Identities retained in `items` while delivery awaits; pending cap and depth must exclude them. */

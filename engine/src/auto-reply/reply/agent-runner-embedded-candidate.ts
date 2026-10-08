@@ -25,6 +25,7 @@ import {
 import type { CompletedAgentAuthSelection } from "./agent-runner-execution.types.js";
 import type { AgentFallbackCandidateCommonParams } from "./agent-runner-fallback-cycle.types.js";
 import { buildEmbeddedRunExecutionParams } from "./agent-runner-utils.js";
+import { persistLiveInboundReply } from "./live-inbound-persistence.js";
 import type { DirectBlockDelivery } from "./reply-delivery.js";
 import { resolveReplyOperationTerminationFields } from "./reply-operation-abort.js";
 import { markReplyOperationGlobalLaneWaitProgress } from "./reply-run-registry.js";
@@ -367,6 +368,14 @@ export async function runEmbeddedFallbackCandidate(
         };
       };
       return runEmbeddedAgent(embeddedRunParams);
+    });
+    await persistLiveInboundReply({
+      followupRun: turn.followupRun,
+      sessionKey: turn.sessionKey,
+      storePath: turn.storePath,
+      runId: params.runId,
+      signal: params.runAbortSignal,
+      payloads: result.payloads,
     });
     const resultCompactionCount = Math.max(0, result.meta?.agentMeta?.compactionCount ?? 0);
     attemptCompactionCount = Math.max(attemptCompactionCount, resultCompactionCount);
