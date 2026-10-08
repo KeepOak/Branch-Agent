@@ -63,6 +63,8 @@ jobs:
         run: node --test scripts/available-memory.test.mjs
       - name: Check component release readiness
         run: node --test scripts/component-release-readiness.test.mjs
+      - name: Check release publication order and public latest retries
+        run: node --test scripts/publish-component-release.test.mjs
       - name: Check updates, startup and owned process cleanup
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
