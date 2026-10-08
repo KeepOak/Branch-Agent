@@ -49,7 +49,8 @@ const mocks = vi.hoisted(() => ({
   updateConfig: vi.fn(),
 }));
 
-vi.mock("../agents/github-oauth-client.js", () => ({
+vi.mock("../agents/github-oauth-client.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../agents/github-oauth-client.js")>()),
   clearGitHubCredentialVerificationCache: mocks.clearVerificationCache,
   verifyGitHubCredential: mocks.verifyCredential,
   requestGitHubOAuthDeviceCode: mocks.requestDeviceCode,
@@ -245,6 +246,55 @@ afterEach(async () => {
 });
 
 describe("GitHub OAuth authorization lifecycle", () => {
+  it("reconnects a legacy identity with the Branch app and saves its issuer", async () => {
+    currentConfig = configForScope("system", identity(OLD_PROFILE, { oauth: true }));
+    writeGitHubOAuthRecord(oauthRecord(OLD_PROFILE));
+    const lifecycle = createLifecycle();
+    const started = await startAuthorization(lifecycle, "system");
+    expect(mocks.requestDeviceCode).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId: "Ov23liXOoyCXFFT08XYC" }),
+    );
+    expect(readGitHubDeviceAuthorizationRecord(started.requestId)).toMatchObject({
+      clientId: "Ov23liXOoyCXFFT08XYC",
+    });
+    await advanceToPoll(started.requestId);
+    mocks.pollDeviceToken.mockResolvedValue({ status: "authorized", tokens: TOKENS });
+    expect(await lifecycle.pollAuthorization(started.requestId)).toMatchObject({
+      status: "success",
+    });
+    expect(mocks.pollDeviceToken).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId: "Ov23liXOoyCXFFT08XYC" }),
+    );
+    expect(inspectGitHubOAuthRecord(NEW_PROFILE)).toMatchObject({
+      state: "valid",
+      record: { clientId: "Ov23liXOoyCXFFT08XYC" },
+    });
+  });
+
+  it("polls a pre-upgrade device record with the legacy app", async () => {
+    const lifecycle = createLifecycle();
+    const started = await startAuthorization(lifecycle, "system");
+    const record = readGitHubDeviceAuthorizationRecord(started.requestId);
+    if (!record) {
+      throw new Error("expected device record");
+    }
+    const { clientId: _clientId, ...legacy } = record;
+    writeGitHubDeviceAuthorizationRecord(legacy);
+    await advanceToPoll(started.requestId);
+    mocks.pollDeviceToken.mockResolvedValue({ status: "authorized", tokens: TOKENS });
+    expect(await lifecycle.pollAuthorization(started.requestId)).toMatchObject({
+      status: "success",
+    });
+    expect(mocks.pollDeviceToken).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId: "Ov23liUjOXHi28w2fDlH" }),
+    );
+    const saved = inspectGitHubOAuthRecord(NEW_PROFILE);
+    expect(saved.state).toBe("valid");
+    if (saved.state !== "valid") {
+      throw new Error("expected OAuth record");
+    }
+    expect(saved.record).not.toHaveProperty("clientId");
+  });
   it("rejects a missing GitHub CLI before requesting a device code", async () => {
     mocks.assertCli.mockImplementationOnce(() => {
       throw new GitHubCliUnavailableError();
@@ -277,6 +327,7 @@ describe("GitHub OAuth authorization lifecycle", () => {
 
       expect(stored).toEqual({
         version: 1,
+        clientId: "Ov23liXOoyCXFFT08XYC",
         requestId: started.requestId,
         deviceCode: DEVICE_CODE,
         userCode: "ABCD-EFGH",
@@ -725,6 +776,32 @@ describe("GitHub OAuth authorization lifecycle", () => {
 });
 
 describe("GitHub OAuth refresh and maintenance", () => {
+  it.each([undefined, "Ov23liUjOXHi28w2fDlH", "Ov23liXOoyCXFFT08XYC"])(
+    "refreshes with the persisted issuing app %s and preserves it",
+    async (clientId) => {
+      currentConfig = configForScope("system", identity(OLD_PROFILE, { oauth: true }));
+      const issuer = clientId === undefined ? {} : { clientId };
+      writeGitHubOAuthRecord({ ...oauthRecord(OLD_PROFILE), ...issuer });
+      mocks.refreshToken.mockResolvedValue({ status: "refreshed", tokens: TOKENS });
+      const lifecycle = createLifecycle();
+      await lifecycle.refreshEffectiveIdentity("main");
+      expect(mocks.refreshToken).toHaveBeenCalledWith({
+        refreshToken: "refresh-token-current",
+        clientId: clientId ?? "Ov23liUjOXHi28w2fDlH",
+      });
+      const saved = inspectGitHubOAuthRecord(OLD_PROFILE);
+      expect(saved.state).toBe("valid");
+      if (saved.state !== "valid") {
+        throw new Error("expected OAuth record");
+      }
+      expect(saved.record.refreshToken).toBe(TOKENS.refreshToken);
+      if (clientId === undefined) {
+        expect(saved.record).not.toHaveProperty("clientId");
+      } else {
+        expect(saved.record.clientId).toBe(clientId);
+      }
+    },
+  );
   it("bounds roster reads while preserving ordered identities and fresh configuration", () => {
     const count = 128;
     const entries: Record<string, { tools: { github?: GitHubToolIdentityConfig } }> = {};

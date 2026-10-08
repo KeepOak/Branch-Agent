@@ -6,6 +6,7 @@ import type {
   UsersGitHubAuthorizeStartResult,
 } from "../../packages/gateway-protocol/src/schema/users.js";
 import {
+  LEGACY_GITHUB_OAUTH_CLIENT_ID,
   refreshGitHubOAuthToken,
   type GitHubOAuthTokenPair,
 } from "../agents/github-oauth-client.js";
@@ -297,6 +298,7 @@ export function createPersonalGitHubOAuthLifecycle() {
                     accountId: account.accountId,
                     login: account.login,
                     refreshToken: candidate.tokens.refreshToken,
+                    ...(pending.clientId !== undefined ? { clientId: pending.clientId } : {}),
                     scopes: candidate.tokens.scopes,
                     accessExpiresAtMs:
                       candidate.receivedAtMs + candidate.tokens.expiresInSeconds * 1000,
@@ -493,6 +495,7 @@ export function createPersonalGitHubOAuthLifecycle() {
             // Refresh rotates remote credentials: shutdown drains this bounded exchange, never aborts it.
             result = await refreshGitHubOAuthToken({
               refreshToken: selection.refreshToken,
+              clientId: selection.clientId ?? LEGACY_GITHUB_OAUTH_CLIENT_ID,
             });
           } catch {
             updateUserGitHubRefresh({

@@ -135,6 +135,7 @@ export function createGitHubOAuthRecord(params: {
   agentId: string;
   account: GitHubToolAccount;
   tokens: GitHubOAuthTokenPair;
+  clientId?: string;
   now: number;
   pendingInitial?: GitHubOAuthPendingInitial;
   pendingRefresh?: true;
@@ -151,6 +152,7 @@ export function createGitHubOAuthRecord(params: {
     refreshExpiresAtMs: params.now + params.tokens.refreshTokenExpiresInSeconds * 1_000,
     scopes: params.tokens.scopes,
     createdAtMs: params.now,
+    ...(params.clientId !== undefined ? { clientId: params.clientId } : {}),
     ...(params.pendingInitial ? { pendingInitial: params.pendingInitial } : {}),
     ...(params.pendingRefresh ? { pendingRefresh: true } : {}),
   };

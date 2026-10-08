@@ -58,7 +58,8 @@ const network = vi.hoisted(() => ({
   verify: vi.fn<typeof import("../../agents/github-oauth-client.js").verifyGitHubCredential>(),
   command: vi.fn(),
 }));
-vi.mock("../../agents/github-oauth-client.js", () => ({
+vi.mock("../../agents/github-oauth-client.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../agents/github-oauth-client.js")>()),
   clearGitHubCredentialVerificationCache: vi.fn(),
   requestGitHubOAuthDeviceCode: network.start,
   pollGitHubOAuthDeviceToken: network.poll,

@@ -18,6 +18,7 @@ export const githubOAuthScopes = z
   )
   .max(32);
 export const githubOAuthRefreshFields = {
+  clientId: githubOAuthSecret.optional(),
   accountId: z.number().int().positive().safe(),
   login: z.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u),
   refreshToken: githubOAuthSecret,
@@ -26,6 +27,7 @@ export const githubOAuthRefreshFields = {
   scopes: githubOAuthScopes,
 };
 export const githubOAuthDeviceFields = {
+  clientId: githubOAuthSecret.optional(),
   deviceCode: z.string().regex(/^[A-Za-z0-9_-]{40}$/u),
   userCode: z.string().regex(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/u),
   verificationUri: z.literal("https://github.com/login/device"),

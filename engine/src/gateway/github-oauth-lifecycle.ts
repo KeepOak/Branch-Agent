@@ -11,6 +11,7 @@ import {
 import { resolveAgentConfig } from "../agents/agent-scope.js";
 import {
   clearGitHubCredentialVerificationCache,
+  LEGACY_GITHUB_OAUTH_CLIENT_ID,
   refreshGitHubOAuthToken,
   type GitHubOAuthTokenPair,
 } from "../agents/github-oauth-client.js";
@@ -195,6 +196,7 @@ export function createGitHubOAuthLifecycle(params: {
               agentId: record.agentId,
               account,
               tokens,
+              clientId: record.clientId,
               now: Date.now(),
               pendingInitial,
             }),
@@ -362,6 +364,7 @@ export function createGitHubOAuthLifecycle(params: {
     try {
       refreshed = await refreshGitHubOAuthToken({
         refreshToken: currentRecord.refreshToken,
+        clientId: currentRecord.clientId ?? LEGACY_GITHUB_OAUTH_CLIENT_ID,
       });
     } catch {
       if (!currentRecord.pendingRefresh) {

@@ -13,7 +13,8 @@ import {
   verifyGitHubCredential,
 } from "./github-oauth-client.js";
 
-const GITHUB_OAUTH_CLIENT_ID = "Ov23liUjOXHi28w2fDlH";
+const GITHUB_OAUTH_CLIENT_ID = "Ov23liXOoyCXFFT08XYC";
+const LEGACY_GITHUB_OAUTH_CLIENT_ID = "Ov23liUjOXHi28w2fDlH";
 const GITHUB_OAUTH_DEVICE_CODE_URL = "https://github.com/login/device/code";
 const GITHUB_OAUTH_ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token";
 const GITHUB_CREDENTIAL_VERIFICATION_TTL_MS = 60_000;
@@ -363,6 +364,23 @@ describe("GitHub OAuth client", () => {
     });
   });
 
+  it("polls with an explicitly supplied legacy app", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({ error: "authorization_pending" }),
+    );
+    await expect(
+      pollGitHubOAuthDeviceToken({
+        deviceCode: DEVICE_CODE,
+        clientId: LEGACY_GITHUB_OAUTH_CLIENT_ID,
+      }),
+    ).resolves.toEqual({ status: "authorization_pending" });
+    expectOAuthFormCall(GITHUB_OAUTH_ACCESS_TOKEN_URL, {
+      client_id: LEGACY_GITHUB_OAUTH_CLIENT_ID,
+      device_code: DEVICE_CODE,
+      grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+    });
+  });
+
   it.each([
     {
       body: { error: "authorization_pending" },
@@ -396,30 +414,33 @@ describe("GitHub OAuth client", () => {
     );
   });
 
-  it("refreshes by rotating the pair without sending a client secret", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      jsonResponse(tokenPair({ scope: "repo workflow read:org gist" })),
-    );
+  it.each([GITHUB_OAUTH_CLIENT_ID, LEGACY_GITHUB_OAUTH_CLIENT_ID])(
+    "refreshes with issuing app %s without sending a client secret",
+    async (clientId) => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(tokenPair({ scope: "repo workflow read:org gist" })),
+      );
 
-    await expect(
-      refreshGitHubOAuthToken({ refreshToken: "refresh-token-current" }),
-    ).resolves.toEqual({
-      status: "refreshed",
-      tokens: {
-        accessToken: "access-token",
-        tokenType: "bearer",
-        scopes: ["gist", "read:org", "repo", "workflow"],
-        expiresInSeconds: 28_800,
-        refreshToken: "refresh-token-next",
-        refreshTokenExpiresInSeconds: 15_897_600,
-      },
-    });
-    expectOAuthFormCall(GITHUB_OAUTH_ACCESS_TOKEN_URL, {
-      client_id: GITHUB_OAUTH_CLIENT_ID,
-      grant_type: "refresh_token",
-      refresh_token: "refresh-token-current",
-    });
-  });
+      await expect(
+        refreshGitHubOAuthToken({ refreshToken: "refresh-token-current", clientId }),
+      ).resolves.toEqual({
+        status: "refreshed",
+        tokens: {
+          accessToken: "access-token",
+          tokenType: "bearer",
+          scopes: ["gist", "read:org", "repo", "workflow"],
+          expiresInSeconds: 28_800,
+          refreshToken: "refresh-token-next",
+          refreshTokenExpiresInSeconds: 15_897_600,
+        },
+      });
+      expectOAuthFormCall(GITHUB_OAUTH_ACCESS_TOKEN_URL, {
+        client_id: clientId,
+        grant_type: "refresh_token",
+        refresh_token: "refresh-token-current",
+      });
+    },
+  );
 
   it("returns refresh rejection as a typed outcome", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(

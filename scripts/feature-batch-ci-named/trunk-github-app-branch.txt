@@ -1,0 +1,5 @@
+engine:src/agents/github-oauth-client.test.ts
+engine:src/agents/github-oauth-records.test.ts
+engine:src/gateway/github-oauth-lifecycle.test.ts
+engine:src/gateway/github-personal-oauth.issuer.test.ts
+engine:src/gateway/server-methods/tools-github.test.ts

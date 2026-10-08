@@ -9,7 +9,8 @@ import { resolveConfiguredGitHubApiBaseUrl } from "./github-host.js";
 import { clearNativeGitHubTokenCache } from "./github-read-identity.js";
 import type { GitHubToolAccount } from "./github-tool-account.js";
 
-const GITHUB_OAUTH_CLIENT_ID = "Ov23liUjOXHi28w2fDlH";
+export const GITHUB_OAUTH_CLIENT_ID = "Ov23liXOoyCXFFT08XYC";
+export const LEGACY_GITHUB_OAUTH_CLIENT_ID = "Ov23liUjOXHi28w2fDlH";
 const GITHUB_OAUTH_DEVICE_CODE_URL = "https://github.com/login/device/code";
 const GITHUB_OAUTH_ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token";
 const GITHUB_OAUTH_VERIFICATION_URL = "https://github.com/login/device";
@@ -377,12 +378,12 @@ function throwGitHubOAuthHttpError(response: Response, surface: string): never {
 }
 
 export async function requestGitHubOAuthDeviceCode(
-  options: GitHubOAuthRequestOptions = {},
+  options: GitHubOAuthRequestOptions & { clientId?: string } = {},
 ): Promise<GitHubOAuthDeviceAuthorization> {
   const { response, body } = await postGitHubOAuthForm(
     GITHUB_OAUTH_DEVICE_CODE_URL,
     new URLSearchParams({
-      client_id: GITHUB_OAUTH_CLIENT_ID,
+      client_id: options.clientId ?? GITHUB_OAUTH_CLIENT_ID,
       scope: GITHUB_OAUTH_SCOPE,
     }),
     "device authorization",
@@ -419,7 +420,7 @@ export async function requestGitHubOAuthDeviceCode(
 // Each call performs one poll. The lifecycle owner schedules the next attempt and
 // applies GitHub's cumulative slow_down floor using the returned interval.
 export async function pollGitHubOAuthDeviceToken(
-  params: GitHubOAuthRequestOptions & { deviceCode: string },
+  params: GitHubOAuthRequestOptions & { deviceCode: string; clientId?: string },
 ): Promise<GitHubOAuthDevicePollResult> {
   const deviceCode = readBoundedString(params.deviceCode, "device token");
   if (!/^[A-Za-z0-9_-]{40}$/u.test(deviceCode)) {
@@ -428,7 +429,7 @@ export async function pollGitHubOAuthDeviceToken(
   const { response, body } = await postGitHubOAuthForm(
     GITHUB_OAUTH_ACCESS_TOKEN_URL,
     new URLSearchParams({
-      client_id: GITHUB_OAUTH_CLIENT_ID,
+      client_id: params.clientId ?? GITHUB_OAUTH_CLIENT_ID,
       device_code: deviceCode,
       grant_type: "urn:ietf:params:oauth:grant-type:device_code",
     }),
@@ -465,7 +466,7 @@ export async function pollGitHubOAuthDeviceToken(
 }
 
 export async function refreshGitHubOAuthToken(
-  params: GitHubOAuthRequestOptions & { refreshToken: string },
+  params: GitHubOAuthRequestOptions & { refreshToken: string; clientId?: string },
 ): Promise<GitHubOAuthRefreshResult> {
   const refreshToken = readBoundedString(params.refreshToken, "token refresh");
   // Device-flow refresh is a public-client exchange. Sending a bundled client
@@ -473,7 +474,7 @@ export async function refreshGitHubOAuthToken(
   const { response, body } = await postGitHubOAuthForm(
     GITHUB_OAUTH_ACCESS_TOKEN_URL,
     new URLSearchParams({
-      client_id: GITHUB_OAUTH_CLIENT_ID,
+      client_id: params.clientId ?? LEGACY_GITHUB_OAUTH_CLIENT_ID,
       grant_type: "refresh_token",
       refresh_token: refreshToken,
     }),

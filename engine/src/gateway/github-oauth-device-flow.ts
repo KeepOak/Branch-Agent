@@ -1,11 +1,14 @@
 import type { ToolsGitHubAuthorizePollResult } from "../../packages/gateway-protocol/src/index.js";
 import {
+  GITHUB_OAUTH_CLIENT_ID,
+  LEGACY_GITHUB_OAUTH_CLIENT_ID,
   pollGitHubOAuthDeviceToken,
   requestGitHubOAuthDeviceCode,
   type GitHubOAuthTokenPair,
 } from "../agents/github-oauth-client.js";
 
 export type GitHubDeviceFlow = {
+  clientId?: string;
   deviceCode: string;
   userCode: string;
   verificationUri: "https://github.com/login/device";
@@ -19,12 +22,16 @@ type PollResult = Exclude<ToolsGitHubAuthorizePollResult, { status: "success" }>
 /** Transport and scheduling are shared; the caller owns identity, TTL/CAS, and installation. */
 export async function startGitHubDeviceFlow(signal: AbortSignal): Promise<GitHubDeviceFlow> {
   const startedAt = Date.now();
-  const authorization = await requestGitHubOAuthDeviceCode({ signal });
+  const authorization = await requestGitHubOAuthDeviceCode({
+    signal,
+    clientId: GITHUB_OAUTH_CLIENT_ID,
+  });
   if (authorization.expiresInSeconds > 900 || authorization.intervalSeconds > 60) {
     throw new Error("GitHub device authorization timing is outside the supported bounds.");
   }
   const pollIntervalMs = authorization.intervalSeconds * 1000;
   return {
+    clientId: GITHUB_OAUTH_CLIENT_ID,
     deviceCode: authorization.deviceCode,
     userCode: authorization.userCode,
     verificationUri: authorization.verificationUri,
@@ -57,7 +64,11 @@ export async function pollGitHubDeviceFlow(
   }
   let result;
   try {
-    result = await pollGitHubOAuthDeviceToken({ deviceCode: record.deviceCode, signal });
+    result = await pollGitHubOAuthDeviceToken({
+      deviceCode: record.deviceCode,
+      clientId: record.clientId ?? LEGACY_GITHUB_OAUTH_CLIENT_ID,
+      signal,
+    });
   } catch {
     const nextPollAtMs = Math.min(record.expiresAtMs, Date.now() + record.pollIntervalMs);
     return {

@@ -64,6 +64,19 @@ const oauthRecord: GitHubOAuthRecord = {
 describe("GitHub OAuth hidden records", () => {
   beforeEach(() => hiddenStore.records.clear());
 
+  it.each([undefined, "Ov23liUjOXHi28w2fDlH", "Ov23liXOoyCXFFT08XYC"])(
+    "preserves the issuing app %s in version 1 device and OAuth records",
+    (clientId) => {
+      const issuer = clientId === undefined ? {} : { clientId };
+      const device = { ...deviceRecord, ...issuer };
+      const oauth = { ...oauthRecord, ...issuer };
+      writeGitHubDeviceAuthorizationRecord(device);
+      writeGitHubOAuthRecord(oauth);
+      expect(readGitHubDeviceAuthorizationRecord(requestId)).toStrictEqual(device);
+      expect(inspectGitHubOAuthRecord(profileId)).toStrictEqual({ state: "valid", record: oauth });
+    },
+  );
+
   it("round-trips exact pending and refresh records under opaque hidden names", () => {
     writeGitHubDeviceAuthorizationRecord(deviceRecord);
     writeGitHubOAuthRecord(oauthRecord);
