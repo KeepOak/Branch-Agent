@@ -36,6 +36,10 @@ import {
   previewQueueSummaryPrompt,
   waitForQueueDebounce,
 } from "../../../utils/queue-helpers.js";
+import {
+  isStaleReplyOperationDrainError,
+  waitForStaleReplyDrainBackoff,
+} from "../live-inbound-routing.js";
 import { isRoutableChannel } from "../route-reply.js";
 import { resolveCollectedRun } from "./collected-run.js";
 import {
@@ -1242,6 +1246,9 @@ export function scheduleFollowupDrain(
           await waitForGatewayRestartFenceSettlement();
         } else {
           defaultRuntime.error?.(`followup queue drain failed for ${key}: ${String(err)}`);
+          if (isStaleReplyOperationDrainError(err)) {
+            await waitForStaleReplyDrainBackoff(queue.abortController.signal);
+          }
         }
       }
     } finally {

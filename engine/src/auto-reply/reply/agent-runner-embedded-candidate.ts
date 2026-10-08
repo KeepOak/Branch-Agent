@@ -139,6 +139,12 @@ export async function runEmbeddedFallbackCandidate(
         ...runBaseParams,
         contextWindow: turn.getActiveSessionEntry()?.contextWindow,
         lane: params.runLane,
+        ...(turn.followupRun.liveInbound
+          ? {
+              sessionPersistence: "detached" as const,
+              liveInboundSessionLane: turn.followupRun.liveInboundSessionLane,
+            }
+          : {}),
         provider: embeddedRunProvider,
         agentHarnessId: resolveSessionPinnedHarnessId(turn.getActiveSessionEntry()),
         agentHarnessRuntimeOverride: embeddedRunHarnessOverride,
