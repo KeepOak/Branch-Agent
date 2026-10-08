@@ -24,16 +24,18 @@ function who(items: ReturnType<typeof roomRulesItems>) {
 }
 
 describe("Group rules in a Branch group", () => {
-  it("enables all three Who answers choices and checks @mention", () => {
+  it("keeps Everyone and @mention greyed in a Branch group and leaves lead enabled", () => {
     const items = who(roomRulesItems({ chatApp: false, branchGroup: true, rule: "mention", choose: () => undefined }));
     expect(items.map((row) => [row.label, Boolean(row.disabled), row.checked])).toEqual([
       ["A lead Trunk decides", false, false],
-      ["Everyone, every time", false, false],
-      ["Only those you @mention", false, true],
+      ["Everyone, every time", true, false],
+      ["Only those you @mention", true, true],
     ]);
+    expect(items[1]?.disabled).toBe(ROOM_REASONS.everyone);
+    expect(items[2]?.disabled).toBe(ROOM_REASONS.mentions);
   });
 
-  it("choosing Everyone or a lead Trunk calls rooms.rule.set and toasts the preview wording", async () => {
+  it("choosing a lead Trunk calls rooms.rule.set; Everyone and @mention do not persist", async () => {
     const request = vi.fn(async () => ({ room: {} }));
     const names: Record<string, string> = { scout: "Scout", builder: "Builder" };
     let shell: ShellRoom | undefined;
@@ -56,9 +58,12 @@ describe("Group rules in a Branch group", () => {
     await act(async () => root!.render(<Harness />));
     expect(shell?.menu?.ruleWords).toBe("mentions only");
     const items = who(shell!.menu!.rules());
+    expect(items[1]?.disabled).toBe(ROOM_REASONS.everyone);
+    expect(items[2]?.disabled).toBe(ROOM_REASONS.mentions);
     await act(async () => items[1]!.run());
-    expect(request).toHaveBeenCalledWith("rooms.rule.set", { roomId: "room-1", rule: "everyone" });
-    expect(notify).toHaveBeenCalledWith("Everyone, every time, in Planning circle from now on.");
+    await act(async () => items[2]!.run());
+    expect(request).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
     await act(async () => items[0]!.run());
     expect(request).toHaveBeenCalledWith("rooms.rule.set", { roomId: "room-1", rule: "lead" });
     expect(notify).toHaveBeenCalledWith("A lead Trunk decides, in Planning circle from now on.");

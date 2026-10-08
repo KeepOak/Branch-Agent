@@ -46,9 +46,10 @@ export function useShellRoom(a: Args): ShellRoom {
     const picks = all.slice(0, 2).map((member) => member.kind === "trunk" ? { kind: "trunk" as const, name: member.name } : { kind: "person" as const, id: member.id, name: member.name });
     const rule = a.groupRoom.rule === "everyone" ? "always" : a.groupRoom.rule === "mentions" ? "mention" : a.groupRoom.rule === "lead" ? "lead" : null;
     const choose = (next: "mention" | "always" | "lead") => {
-      const engineRule = next === "mention" ? "mentions" : next === "always" ? "everyone" : "lead";
-      void a.engine?.request("rooms.rule.set", { roomId: a.groupRoom!.roomId, rule: engineRule }).then(
-        () => notify(ruleToast(next, a.title)),
+      // rooms.send always calls dispatchLead; persist only the rule the engine actually runs.
+      if (next !== "lead") return;
+      void a.engine?.request("rooms.rule.set", { roomId: a.groupRoom!.roomId, rule: "lead" }).then(
+        () => notify(ruleToast("lead", a.title)),
         (error: unknown) => notify(error instanceof Error ? error.message : String(error), { tone: "bad" }),
       );
     };
