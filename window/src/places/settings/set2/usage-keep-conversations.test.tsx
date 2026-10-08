@@ -21,8 +21,8 @@ beforeEach(() => { (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONM
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.restoreAllMocks(); });
 
 const flush = async () => { for (let i = 0; i < 8; i++) await act(async () => { await Promise.resolve(); }); };
-async function show(engine: WindowEngine) {
-  await act(async () => root.render(<UsagePage page="usage" title="Data & usage" level="regular" engine={engine} />));
+async function show(engine: WindowEngine, level: "regular" | "technical" = "regular") {
+  await act(async () => root.render(<UsagePage page="usage" title="Data & usage" level={level} engine={engine} />));
   await flush();
 }
 function button(text: string, scope: ParentNode = document): HTMLButtonElement {
@@ -50,6 +50,15 @@ describe("Settings › Data & usage › Keep conversations", () => {
     expect(button("30 days", keep).getAttribute("aria-pressed")).toBe("false");
     expect(keep.textContent).toContain("Older ones are deleted for good.");
     expect(keep.textContent).not.toContain("Now:");
+  });
+
+  it("technical pruneAfter help names the Forever default", async () => {
+    const { engine } = engineWith({ ...BASE, ...CFG() });
+    await show(engine, "technical");
+    const prune = row("session.maintenance.pruneAfter")!;
+    expect(prune.textContent).toContain("Default: Forever.");
+    expect(prune.textContent).not.toContain("Default: 30d");
+    expect(button("Forever", row("Keep conversations")!).getAttribute("aria-pressed")).toBe("true");
   });
 
   it("shows 1 year from an enforced 365-day pruneAfter", async () => {
