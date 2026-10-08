@@ -1,4 +1,3 @@
-// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/config/includes.top-level-key.test.ts (atlas OPS-0197). Changed for Branch: preserve native agent roster fixtures and stronger deep nesting coverage.
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {

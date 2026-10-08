@@ -1,4 +1,3 @@
-// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/config/includes.test.ts (atlas OPS-0197). Changed for Branch: preserve native agent roster fixtures and stronger deep nesting coverage.
 // Covers config include scanning and include-file merge behavior.
 import nodeFs from "node:fs";
 import fs from "node:fs/promises";
