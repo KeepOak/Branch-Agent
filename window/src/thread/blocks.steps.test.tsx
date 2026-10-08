@@ -142,6 +142,26 @@ describe("preview step rows", () => {
     expect(host.textContent).not.toContain("frob_widget");
   });
 
+  it("shows screen-tool actions as their own labels and never Used the computer", async () => {
+    const host = await renderFold([
+      step({ key: "d", tool: "screen", title: "desktop_show", status: "ok" }),
+      step({ key: "b", tool: "screen", title: "browser_show", status: "ok" }),
+      step({ key: "s", tool: "screen", title: "split_right", status: "ok" }),
+      step({ key: "u", tool: "screen", title: "frob_pane", status: "ok" }),
+    ]);
+    const rows = [...host.querySelectorAll('[data-testid="step"]')];
+    expect(rows[0]?.querySelector(".step-label")?.textContent).toBe("Showed the desktop");
+    expect(rows[1]?.querySelector(".step-label")?.textContent).toBe("Showed the browser");
+    expect(rows[2]?.querySelector(".step-label")?.textContent).toBe("Split the screen");
+    expect(rows[3]?.querySelector(".step-label")?.textContent).toBe("Used the screen");
+    expect(host.textContent).not.toContain("Used the computer");
+    expect(host.textContent).not.toContain("desktop_show");
+    expect(host.textContent).not.toContain("browser_show");
+    expect(host.textContent).not.toContain("split_right");
+    expect(host.textContent).not.toContain("frob_pane");
+    expect(rows.every((row) => !row.querySelector(".step-detail"))).toBe(true);
+  });
+
   it("renders expanded input as key: value lines, never JSON braces", async () => {
     const host = await renderFold([
       step({

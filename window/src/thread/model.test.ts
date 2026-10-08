@@ -15,6 +15,18 @@ describe("describeToolCall", () => {
     expect(describeToolCall("computer", { action: "unknown_act", extra: "payload-token" })).not.toContain("unknown_act");
     expect(describeToolCall("computer", { action: "unknown_act", extra: "payload-token" })).not.toContain("payload-token");
   });
+
+  it("names a screen-tool action in its own words and never treats it as the computer", () => {
+    expect(describeToolCall("screen", { action: "desktop_show", sessionKey: "agent:main:main" })).toBe("Showed the desktop");
+    expect(describeToolCall("screen", { action: "browser_show" })).toBe("Showed the browser");
+    expect(describeToolCall("screen", { action: "split_right" })).toBe("Split the screen");
+    expect(describeToolCall("plugin.screen", { action: "sidebar_hide" })).toBe("Hid the sidebar");
+    expect(describeToolCall("screen", { action: "frob_pane", sessionKey: "secret-session" })).toBe("Used the screen");
+    expect(describeToolCall("screen", { action: "frob_pane", sessionKey: "secret-session" })).not.toBe("Used the computer");
+    expect(describeToolCall("screen", { action: "frob_pane", sessionKey: "secret-session" })).not.toContain("frob_pane");
+    expect(describeToolCall("screen", { action: "desktop_show", sessionKey: "agent:main:main" })).not.toContain("desktop_show");
+    expect(describeToolCall("screen", { action: "desktop_show", sessionKey: "agent:main:main" })).not.toContain("agent:main:main");
+  });
 });
 
 describe("projectRun", () => {

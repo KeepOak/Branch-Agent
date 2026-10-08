@@ -6,7 +6,7 @@ import { SIcon } from "../stage/stage-icons";
 import { useDesktopView } from "../stage/use-desktop";
 import { describePlacement, placementComputer } from "../stage/computers";
 import "../stage/stage.css";
-import { computerSafeCaption, computerStepTitle } from "./computer-action-label";
+import { computerSafeCaption, plainStepTitle } from "./computer-action-label";
 import {
   announceComputerControl,
   computerCardState,
@@ -132,7 +132,7 @@ export function ComputerActivityCard({
   if (!latest) return null;
   const mode: Mode = /browser/i.test(latest.tool) ? "Browser" : "Computer";
   const where = `${name}'s ${mode === "Browser" ? "browser" : "computer"}`;
-  const actionTitle = (step: Step) => (/browser/i.test(step.tool) ? step.title : computerStepTitle(step));
+  const actionTitle = (step: Step) => (/browser/i.test(step.tool) ? step.title : plainStepTitle(step));
   const actionCaption = (step: Step) => (/browser/i.test(step.tool) ? step.detail : computerSafeCaption(step.detail));
   const controlling = controllingProp ?? takeOver;
   const state = computerCardState({

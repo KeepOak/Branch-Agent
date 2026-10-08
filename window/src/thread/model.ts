@@ -1,4 +1,4 @@
-import { computerActionLabel, isComputerToolName } from "./computer-action-label";
+import { computerActionLabel, isComputerToolName, isScreenToolName, screenActionLabel } from "./computer-action-label";
 import { readBrowserPresentation, type BrowserPresentation } from "./browser-presentation";
 // The thread's blocks, built from a live run's `agent` events (in seq order) and from `chat.history`.
 import type { RunEvent } from "../connect/stream-order";
@@ -109,6 +109,9 @@ export function describeToolCall(_name: string, args: unknown): string {
   const nested = record(a.args);
   if (isComputerToolName(_name)) {
     return computerActionLabel(str(a.action) || str(nested.action));
+  }
+  if (isScreenToolName(_name)) {
+    return screenActionLabel(str(a.action) || str(nested.action));
   }
   const command = str(a.command) || str(nested.command);
   if (command) {

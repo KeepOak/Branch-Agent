@@ -260,6 +260,25 @@ describe("computer card in the conversation", () => {
     expect(container.textContent).not.toContain("frob_widget");
   });
 
+  it("shows a screen-tool action as its own label, not Used the computer", async () => {
+    await render([
+      {
+        kind: "step",
+        key: "s",
+        tool: "screen",
+        title: "desktop_show",
+        detail: "",
+        status: "ok",
+      },
+    ], false);
+    expect(container.textContent).toContain("Showed the desktop");
+    expect(container.textContent).not.toContain("Used the computer");
+    expect(container.textContent).not.toContain("desktop_show");
+    await act(async () => container.querySelector<HTMLButtonElement>(".acts-head-st")!.click());
+    expect(container.querySelector(".acts-list-st li b")?.textContent).toBe("Showed the desktop");
+    expect(container.textContent).not.toContain("desktop_show");
+  });
+
   it("keeps Used Ada's computer when the engine calls the host This computer", async () => {
     const engine: WindowEngine = {
       sessionKey: "agent:main:main",

@@ -23,7 +23,7 @@ import {
 } from "./format";
 import { Icon, ICONS, StepKindIcon } from "./icons";
 import { Markdown } from "./markdown";
-import { computerStepDetail, isComputerToolName } from "./computer-action-label";
+import { computerStepDetail, isComputerToolName, isScreenToolName } from "./computer-action-label";
 import { fullOutput, type Block, type FileChange } from "./model";
 import { readTextToolCall, stepFromTextToolCall } from "./text-tool-call";
 import { withMentions } from "../rooms/RoomMessage";
@@ -282,7 +282,7 @@ function StepRow({ step }: { step: Of<"step"> }) {
   const failed = step.status === "failed" || step.status === "denied";
   const [open, setOpen] = useState(true);
   const label = stepLabel(step);
-  const detail = isComputerToolName(step.tool) ? computerStepDetail(step, label) : step.title || undefined;
+  const detail = isComputerToolName(step.tool) || isScreenToolName(step.tool) ? computerStepDetail(step, label) : step.title || undefined;
   return (
     <li
       className={`step step-pb18${failed ? " errR118" : ""}`}

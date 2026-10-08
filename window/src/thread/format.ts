@@ -1,7 +1,7 @@
 // Words and numbers the thread shows (DESIGN-SPEC §4.2, §7.1 rule 9).
 import type { Block } from "./model";
 import { displayModelName } from "../composer/model-display";
-import { computerStepWords, isComputerToolName } from "./computer-action-label";
+import { computerStepWords, isComputerToolName, isScreenToolName, screenStepWords } from "./computer-action-label";
 
 export function formatDuration(ms?: number): string {
   if (!ms || ms < 0) {
@@ -104,6 +104,7 @@ function stepWords(step: Step): Words {
     const n = editedFiles(step);
     return n === 1 ? { now: "Editing a file", done: "Edited a file" } : { now: `Editing ${n} files`, done: `Edited ${n} files` };
   }
+  if (isScreenToolName(step.tool)) return screenStepWords(step);
   if (isComputerToolName(step.tool)) return computerStepWords(step);
   const name = plainToolName(step.tool);
   return TOOL_WORDS[step.tool] ?? { now: `Using ${name}`, done: `Used ${name}` };

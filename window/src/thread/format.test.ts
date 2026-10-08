@@ -22,6 +22,12 @@ describe("thread words", () => {
     expect(stepLabel({ ...step("computer"), title: "list_windows" })).toBe("Listed open windows");
     expect(stepLabel({ ...step("computer"), title: "frob_widget" })).toBe("Used the computer");
     expect(stepLabel({ ...step("computer"), title: "list_windows" })).not.toContain("list_windows");
+    expect(stepLabel({ ...step("screen"), title: "desktop_show" })).toBe("Showed the desktop");
+    expect(stepLabel({ ...step("screen"), title: "browser_show" })).toBe("Showed the browser");
+    expect(stepLabel({ ...step("screen"), title: "split_right" })).toBe("Split the screen");
+    expect(stepLabel({ ...step("screen"), title: "frob_pane" })).toBe("Used the screen");
+    expect(stepLabel({ ...step("screen"), title: "desktop_show" })).not.toContain("desktop_show");
+    expect(stepLabel({ ...step("screen"), title: "desktop_show" })).not.toBe("Used the computer");
   });
 
   it("stamps the day over the first message of each day", () => {
