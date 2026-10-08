@@ -10,7 +10,8 @@ import { Sidebar, type SidebarProps } from "./Sidebar";
 import { buildContactSections, projectContact } from "./contacts-model";
 import { readPrefs } from "./FilterSort";
 import { rowMenuItems } from "./row-menu";
-import { GroupDropPopover, createDroppedGroup, groupHint, groupPlan, mergeRoomNotices, moveContactToProject, roomContact, useRoomNotices, type GroupContact, type GroupRoom } from "./group-drop";
+import { NEW_GROUP_EVENT } from "../rooms/NewGroupChat";
+import { GroupDropPopover, createDroppedGroup, groupChatPrefill, groupHint, groupPlan, mergeRoomNotices, moveContactToProject, roomContact, useRoomNotices, type GroupContact, type GroupRoom } from "./group-drop";
 import type { SidebarDrop } from "./sidebar-drag";
 
 vi.mock("../face/Face", () => ({ Face: ({ size }: { size: number }) => <span style={{ width: size, height: size }} /> }));
@@ -118,15 +119,19 @@ describe("drag to group", () => {
     await moveContactToProject(session, scout.threadKey, "branch");
     expect(request).toHaveBeenCalledWith("sessions.patch", { key: scout.threadKey, projectId: "branch" });
   });
-  it("keeps the standalone new-group popover and typed name across a sidebar redraw, then creates on Enter", async () => {
+  it("offers a confirm then opens New group chat prefilled with both chats", async () => {
+    const opened: Event[] = [];
+    const onEvent = (event: Event) => opened.push(event);
+    window.addEventListener(NEW_GROUP_EVENT, onEvent);
     const rendered = await show();
-    const input = rendered.host.querySelector<HTMLInputElement>("input")!;
-    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Hartwell check"); input.dispatchEvent(new Event("input", { bubbles: true })); });
-    await act(async () => root!.render(<GroupDropPopover {...rendered.values} />));
-    expect(rendered.host.querySelector<HTMLInputElement>("input")?.value).toBe("Hartwell check");
-    await act(async () => rendered.host.querySelector<HTMLInputElement>("input")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
-    expect(rendered.request).toHaveBeenCalledWith("rooms.create", expect.objectContaining({ name: "Hartwell check" }));
-    expect(rendered.onOpen).toHaveBeenCalledWith("agent:scout:room:new");
+    expect(rendered.host.textContent).toContain("Start a group chat with Scout and Ledger?");
+    expect(groupChatPrefill(scout, ledger, "scout")).toEqual({ name: "Scout and Ledger", trunk: "scout", people: [] });
+    await act(async () => rendered.host.querySelector<HTMLButtonElement>("[data-testid=start-group-with-these]")!.click());
+    expect(rendered.request).not.toHaveBeenCalled();
+    expect(rendered.onClose).toHaveBeenCalled();
+    expect(opened).toHaveLength(1);
+    expect((opened[0] as CustomEvent).detail).toEqual({ name: "Scout and Ledger", trunk: "scout", people: [] });
+    window.removeEventListener(NEW_GROUP_EVENT, onEvent);
   });
   it("asks before adding a grafted contact, notes it is offline, and calls rooms.members.add", async () => {
     const rendered = await show({ drop: { kind: "add", source: hermes.threadKey, target: contacts[3]!.threadKey, anchor } });

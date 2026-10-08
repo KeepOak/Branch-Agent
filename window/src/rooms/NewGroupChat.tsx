@@ -11,9 +11,20 @@ import { A2A_CHANNEL } from "./sender";
 import "./rooms.css";
 import { shownWhy } from "../shell/shown-why";
 
-/** Both entry points (the + new menu and Customize › Trunks) open the dialog with this window event. */
+/** Both entry points (the + new menu and Customize › Trunks) open the dialog with this window event.
+ *  A sidebar drop can pass the two chats so the dialog opens with them already filled in. */
 export const NEW_GROUP_EVENT = "branch:new-group-chat";
-export const openNewGroupChat = () => window.dispatchEvent(new Event(NEW_GROUP_EVENT));
+export type NewGroupPrefill = { name?: string; trunk?: string; people?: string[] };
+export const openNewGroupChat = (prefill?: NewGroupPrefill) => window.dispatchEvent(new CustomEvent<NewGroupPrefill | undefined>(NEW_GROUP_EVENT, { detail: prefill }));
+export function readGroupPrefill(event: Event): NewGroupPrefill | undefined {
+  const detail = event instanceof CustomEvent ? event.detail : undefined;
+  if (!detail || typeof detail !== "object") return undefined;
+  const rec = detail as Record<string, unknown>;
+  const name = typeof rec.name === "string" ? rec.name : undefined;
+  const trunk = typeof rec.trunk === "string" ? rec.trunk : undefined;
+  const people = Array.isArray(rec.people) ? rec.people.filter((id): id is string => typeof id === "string") : undefined;
+  return name || trunk || people?.length ? { ...(name ? { name } : {}), ...(trunk ? { trunk } : {}), ...(people?.length ? { people } : {}) } : undefined;
+}
 
 const NO_METHOD = "needs an engine method Branch doesn't have yet.";
 export const GROUP_REASONS = {
@@ -83,11 +94,11 @@ function useChoices(engine: WindowEngine): { choices: Choices | null; error: str
   return state;
 }
 
-export function NewGroupChat({ engine, onClose, onOpen }: { engine: WindowEngine; onClose: () => void; onOpen: (key: string) => void }) {
+export function NewGroupChat({ engine, onClose, onOpen, prefill }: { engine: WindowEngine; onClose: () => void; onOpen: (key: string) => void; prefill?: NewGroupPrefill }) {
   const { choices, error } = useChoices(engine);
-  const [name, setName] = useState("");
-  const [trunk, setTrunk] = useState<string | null>(null);
-  const [people, setPeople] = useState<string[]>([]);
+  const [name, setName] = useState(prefill?.name ?? "");
+  const [trunk, setTrunk] = useState<string | null>(prefill?.trunk ?? null);
+  const [people, setPeople] = useState<string[]>(prefill?.people ?? []);
   const [busy, setBusy] = useState(false);
   const [fail, setFail] = useState<string | null>(null);
   const progress = useRef<GroupProgress>({ key: null, added: new Set() });
@@ -174,10 +185,14 @@ export function NewGroupChat({ engine, onClose, onOpen }: { engine: WindowEngine
 /** Mounted once by the shell: opens the dialog when either entry point asks. */
 export function NewGroupChatHost({ engine, onOpen }: { engine: WindowEngine | undefined; onOpen: (key: string) => void }) {
   const [open, setOpen] = useState(false);
+  const [prefill, setPrefill] = useState<NewGroupPrefill | undefined>();
   useEffect(() => {
-    const show = () => setOpen(true);
+    const show = (event: Event) => {
+      setPrefill(readGroupPrefill(event));
+      setOpen(true);
+    };
     window.addEventListener(NEW_GROUP_EVENT, show);
     return () => window.removeEventListener(NEW_GROUP_EVENT, show);
   }, []);
-  return open && engine ? <NewGroupChat engine={engine} onClose={() => setOpen(false)} onOpen={onOpen} /> : null;
+  return open && engine ? <NewGroupChat key={`${prefill?.name ?? ""}:${prefill?.trunk ?? ""}`} engine={engine} onClose={() => setOpen(false)} onOpen={onOpen} prefill={prefill} /> : null;
 }

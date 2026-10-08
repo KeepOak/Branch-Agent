@@ -1,0 +1,3 @@
+window:src/rooms/new-group-chat.test.tsx
+window:src/shell/contacts-layout.test.tsx
+window:src/shell/group-drop.test.tsx
