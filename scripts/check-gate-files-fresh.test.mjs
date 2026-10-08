@@ -158,8 +158,8 @@ test('gate-files-fresh workflow checks out the default branch read-only', () => 
   assert.match(yaml, /^\s+gate-files-fresh:\s*$/m);
   assert.match(yaml, /^\s+name:\s*gate-files-fresh\s*$/m);
   assert.match(yaml, /^\s+pull_request_target:\s*$/m);
-  assert.match(yaml, /types:\s*\[opened, synchronize, reopened\]/);
-  assert.match(yaml, /^\s+timeout-minutes:\s*5\s*$/m);
+  assert.match(yaml, /types:\s*\[opened, synchronize, reopened, edited\]/);
+  assert.match(yaml, /^\s+timeout-minutes:\s*10\s*$/m);
   assert.match(yaml, /ref:\s*\$\{\{\s*github\.event\.repository\.default_branch\s*\}\}/);
   assert.match(yaml, /persist-credentials:\s*false/);
   assert.match(yaml, /contents:\s*read/);

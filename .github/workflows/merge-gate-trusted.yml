@@ -42,7 +42,7 @@ jobs:
           node-version: '24.19.0'
           package-manager-cache: false
       - name: Test the trusted gate helper
-        run: node --test scripts/merge-gate-trusted.test.mjs scripts/merge-gate-rate-limit.test.mjs
+        run: node --test scripts/merge-gate-trusted.test.mjs scripts/merge-gate-rate-limit.test.mjs scripts/check-gate-files-fresh.test.mjs
       - name: Wait for checks and run main's coverage and merge-command gates
         env:
           GH_TOKEN: ${{ github.token }}

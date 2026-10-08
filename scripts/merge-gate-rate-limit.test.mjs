@@ -17,6 +17,8 @@ import {
   pollOrdinaryGate,
   rateLimitSleepSeconds,
   resetEpochFromRateLimit,
+  runGhWithRetry,
+  shouldSkipEditedRerun,
   withRateLimitRetry,
 } from './merge-gate-rate-limit.mjs';
 
@@ -295,9 +297,56 @@ test('pollOrdinaryGate times out on a lasting rate limit instead of passing', ()
 test('ordinary merge-gate workflow runs the rate-limit waiter from a checkout', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
   assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs/);
+  assert.match(yaml, /MERGE_GATE_ACTION:/);
   assert.match(yaml, /node --test scripts\/merge-gate-trusted\.test\.mjs scripts\/merge-gate-rate-limit\.test\.mjs/);
   assert.doesNotMatch(yaml, /seq 1 64/);
   assert.doesNotMatch(yaml, /sleep 10/);
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-rate-limit.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-rate-limit.test.mjs'));
+});
+
+test('shouldSkipEditedRerun keeps a failed SHA live and skips in-progress or green runs', () => {
+  const current = { id: 9, head_sha: 'abc', status: 'in_progress', conclusion: null };
+  assert.equal(shouldSkipEditedRerun([
+    current,
+    { id: 8, head_sha: 'abc', status: 'in_progress', conclusion: null },
+  ], { runId: 9, sha: 'abc' }), true);
+  assert.equal(shouldSkipEditedRerun([
+    current,
+    { id: 8, head_sha: 'abc', status: 'completed', conclusion: 'success' },
+  ], { runId: 9, sha: 'abc' }), true);
+  assert.equal(shouldSkipEditedRerun([
+    current,
+    { id: 8, head_sha: 'abc', status: 'completed', conclusion: 'failure' },
+  ], { runId: 9, sha: 'abc' }), false);
+  assert.equal(shouldSkipEditedRerun([current], { runId: 9, sha: 'abc' }), false);
+});
+
+test('runGhWithRetry retries rate limits then returns stdout', () => {
+  const calls = [];
+  const out = runGhWithRetry(['api', 'rate_limit'], {
+    exec: (cmd, args) => {
+      calls.push([cmd, args[0]]);
+      if (calls.length === 1) throw rateLimitError('gh: API rate limit exceeded for installation (HTTP 403)');
+      return '{"ok":true}';
+    },
+    sleep: () => {},
+    now: () => 0,
+    startedAt: 0,
+    budgetSeconds: 60,
+    fetchRateLimit: () => ({ resources: { core: { remaining: 0, reset: 8 } } }),
+  });
+  assert.equal(out, '{"ok":true}');
+  assert.deepEqual(calls[0], ['gh', 'api']);
+});
+
+test('release readiness and gate-files-fresh use the shared gh retry helper', () => {
+  const release = readFileSync(new URL('../.github/workflows/component-release.yml', import.meta.url), 'utf8');
+  const readiness = release.slice(release.indexOf('Check if a release is needed'), release.indexOf('identity:'));
+  assert.match(readiness, /node scripts\/merge-gate-rate-limit\.mjs gh -- api/);
+  assert.doesNotMatch(readiness, /^\s+gh api /m);
+  const fresh = readFileSync(new URL('../.github/workflows/gate-files-fresh.yml', import.meta.url), 'utf8');
+  assert.match(fresh, /types:\s*\[opened, synchronize, reopened, edited\]/);
+  assert.match(fresh, /timeout-minutes:\s*10/);
+  assert.match(fresh, /MERGE_GATE_WAIT_SECONDS/);
 });

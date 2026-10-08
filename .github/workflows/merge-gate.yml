@@ -35,7 +35,7 @@ jobs:
       - name: Test the coverage check
         run: node --test scripts/changed-test-coverage.test.mjs
       - name: Test the trusted merge-gate helper
-        run: node --test scripts/merge-gate-trusted.test.mjs scripts/merge-gate-rate-limit.test.mjs
+        run: node --test scripts/merge-gate-trusted.test.mjs scripts/merge-gate-rate-limit.test.mjs scripts/check-gate-files-fresh.test.mjs
       - name: Require every changed test to run in CI
         run: node scripts/changed-test-coverage.mjs
       - name: Check merge command patterns in documentation
@@ -71,4 +71,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          MERGE_GATE_ACTION: ${{ github.event.action }}
         run: node scripts/merge-gate-rate-limit.mjs

@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { appendFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -195,6 +196,76 @@ function sleepSeconds(seconds) {
   execFileSync('sleep', [String(seconds)], { windowsHide: true });
 }
 
+export function waitOptionsFromEnv(env = process.env) {
+  return {
+    budgetSeconds: Number(env.MERGE_GATE_WAIT_SECONDS ?? DEFAULT_WAIT_BUDGET_SECONDS),
+    maxSleep: Number(env.MERGE_GATE_MAX_SLEEP ?? MAX_RATE_LIMIT_SLEEP_SECONDS),
+    startedAt: Number(env.MERGE_GATE_STARTED_AT_MS) || Date.now(),
+  };
+}
+
+export function runGhWithRetry(args, {
+  token = process.env.GH_TOKEN,
+  exec = execFileSync,
+  sleep = sleepSeconds,
+  now = Date.now,
+  fetchRateLimit,
+  startedAt,
+  budgetSeconds,
+  maxSleep,
+  random = Math.random,
+  log = console.error,
+} = {}) {
+  const wait = waitOptionsFromEnv();
+  return withRateLimitRetry(() => exec('gh', args, {
+    env: { ...process.env, GH_TOKEN: token ?? process.env.GH_TOKEN },
+    encoding: 'utf8',
+    windowsHide: true,
+  }), {
+    sleep,
+    now,
+    fetchRateLimit: fetchRateLimit ?? (() => fetchGitHubRateLimit(token, { exec })),
+    startedAt: startedAt ?? wait.startedAt,
+    budgetSeconds: budgetSeconds ?? wait.budgetSeconds,
+    maxSleep: maxSleep ?? wait.maxSleep,
+    random,
+    log,
+  });
+}
+
+export function shouldSkipEditedRerun(runs, { runId, sha } = {}) {
+  return (runs ?? []).some((run) => {
+    if (runId != null && Number(run.id) === Number(runId)) return false;
+    if (sha && run.head_sha && run.head_sha !== sha) return false;
+    if (run.status !== 'completed') return true;
+    return run.conclusion === 'success';
+  });
+}
+
+export function fetchMergeGateRuns(repo, sha, token, { exec = execFileSync } = {}) {
+  const raw = runGhWithRetry(
+    ['api', `repos/${repo}/actions/workflows/merge-gate.yml/runs?head_sha=${sha}&per_page=20`],
+    { token, exec },
+  );
+  const payload = raw ? JSON.parse(raw) : {};
+  return payload.workflow_runs ?? [];
+}
+
+export function skipEditedMergeGate({
+  repo,
+  sha,
+  token,
+  runId,
+  action = process.env.MERGE_GATE_ACTION ?? process.env.GITHUB_EVENT_ACTION,
+  fetchRuns = fetchMergeGateRuns,
+  outputFile = process.env.GITHUB_OUTPUT,
+} = {}) {
+  if (action !== 'edited') return false;
+  const skip = shouldSkipEditedRerun(fetchRuns(repo, sha, token), { runId, sha });
+  if (outputFile) appendFileSync(outputFile, `skip=${skip ? 'true' : 'false'}\n`);
+  return skip;
+}
+
 export function fetchOrdinaryCheckRuns(repo, sha, token, plan = { mode: 'all' }, {
   exec = execFileSync,
 } = {}) {
@@ -297,6 +368,20 @@ export function pollOrdinaryGate({
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const command = process.argv[2];
+  if (command === 'gh') {
+    const args = process.argv.slice(3);
+    if (args[0] === '--') args.shift();
+    try {
+      process.stdout.write(runGhWithRetry(args) ?? '');
+    } catch (error) {
+      if (error.stderr) process.stderr.write(String(error.stderr));
+      else console.error(errorText(error) || String(error));
+      process.exit(error.status ?? 1);
+    }
+    process.exit(0);
+  }
+
   const repo = process.env.REPO;
   const sha = process.env.SHA;
   const token = process.env.GH_TOKEN;
@@ -304,6 +389,24 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     console.error('Missing required environment variables: REPO, SHA, GH_TOKEN');
     process.exit(1);
   }
+
+  if (command === 'skip-edited' || process.env.MERGE_GATE_ACTION === 'edited') {
+    const skip = skipEditedMergeGate({
+      repo,
+      sha,
+      token,
+      runId: process.env.GITHUB_RUN_ID,
+    });
+    if (command === 'skip-edited') {
+      if (skip) console.log('Skipping redundant edited merge-gate rerun for this SHA.');
+      process.exit(0);
+    }
+    if (skip) {
+      console.log('Skipping redundant edited merge-gate wait; another run for this SHA is in progress or succeeded.');
+      process.exit(0);
+    }
+  }
+
   process.exit(pollOrdinaryGate({
     repo,
     sha,
