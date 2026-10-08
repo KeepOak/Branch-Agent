@@ -128,7 +128,8 @@ const LATEST_PX = 450;
 function useFollow(signature: string, sent: readonly (string | null | undefined)[]) {
   const scroller = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
-  const [distance, setDistance] = useState(0);
+  const distance = useRef(0);
+  const [showLatest, setShowLatest] = useState(false);
   const atEnd = useRef(true);
   const lastSent = useRef(sent);
   const sentKey = sent.join("\u0000");
@@ -139,17 +140,24 @@ function useFollow(signature: string, sent: readonly (string | null | undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sentKey]);
   useEffect(() => {
-    if (atEnd.current) end.current?.scrollIntoView({ block: "end" });
+    if (!atEnd.current) return;
+    const id = requestAnimationFrame(() => {
+      const el = scroller.current;
+      if (atEnd.current && el) el.scrollTop = el.scrollHeight;
+    });
+    return () => cancelAnimationFrame(id);
   }, [signature, sentKey]);
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
     const d = el.scrollHeight - el.scrollTop - el.clientHeight;
     atEnd.current = d < NEAR_END_PX;
-    setDistance(d);
+    distance.current = d;
+    const latest = d > LATEST_PX;
+    setShowLatest((open) => (open === latest ? open : latest));
   };
   const toEnd = () => end.current?.scrollIntoView({ block: "end", behavior: "smooth" });
-  return { scroller, end, onScroll, showLatest: distance > LATEST_PX, toEnd };
+  return { scroller, end, onScroll, showLatest, toEnd };
 }
 
 /** Ctrl Enter allows once, Ctrl Shift Enter always allows, Ctrl D says no, on the first waiting card (§4.2.3 Keyboard);
@@ -236,8 +244,13 @@ export function Thread(props: Props) {
   const suggestions = props.onStart && !firstPending && suggestionKey !== usedSuggestion
     ? suggestionsFor(history, running, Boolean(pendingUser)) : [];
   const preparationError = [props.preparationError, props.earlierError].find(isPreparationPending);
-  const anchors = anchorQuestions(history, props.questions ?? []);
-  const items: RoomItem[] = props.room ? foldTalks(layout(history), props.room.ownAgentId) : layout(history);
+  const inRoom = Boolean(props.room);
+  const ownAgentId = props.room?.ownAgentId;
+  const anchors = useMemo(() => anchorQuestions(history, props.questions ?? []), [history, props.questions]);
+  const items = useMemo<RoomItem[]>(
+    () => (inRoom ? foldTalks(layout(history), ownAgentId) : layout(history)),
+    [history, inRoom, ownAgentId],
+  );
   const helperStartedAt = Math.min(...helpers.map((h) => h.createdAt ?? Number.POSITIVE_INFINITY));
   const helperUserAt = Number.isFinite(helperStartedAt) ? history.findLastIndex((b) => b.kind === "user" && typeof b.meta?.timestamp === "number" && b.meta.timestamp <= helperStartedAt) : -1;
   const helperNextUserAt = helperUserAt < 0 ? -1 : history.findIndex((b, i) => i > helperUserAt && b.kind === "user");
