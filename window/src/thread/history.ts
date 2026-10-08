@@ -17,6 +17,7 @@ import {
   type MessageMeta,
   type StepStatus,
 } from "./model";
+import { readTextToolCall, stepFromTextToolCall } from "./text-tool-call";
 import { readOwner, readSender } from "../rooms/sender";
 
 /** One terminal approval from `approval.history`. */
@@ -164,10 +165,19 @@ function writtenAt(m: Message): number {
   return num(rec(m.__branch).recordTimestampMs) || num(m.timestamp);
 }
 
+function pushAssistantText(b: Builder, key: string, text: string, m: Message): void {
+  const call = readTextToolCall(text);
+  if (call) {
+    b.blocks.push(stepFromTextToolCall(call, key, { outputKey: `${b.runId ?? key}:${key}`, at: num(m.timestamp) }));
+    return;
+  }
+  b.blocks.push({ kind: "text", key, text, streaming: false, meta: readMeta(m) });
+}
+
 function onAssistantPart(b: Builder, part: unknown, key: string, m: Message): void {
   const p = rec(part);
   if (p.type === "text" && str(p.text).trim()) {
-    b.blocks.push({ kind: "text", key, text: str(p.text), streaming: false, meta: readMeta(m) });
+    pushAssistantText(b, key, str(p.text), m);
   } else if (p.type === "thinking" && str(p.thinking).trim()) {
     b.blocks.push({ kind: "thinking", key, text: str(p.thinking), live: false });
   } else if (p.type === "toolCall") {
@@ -176,7 +186,7 @@ function onAssistantPart(b: Builder, part: unknown, key: string, m: Message): vo
     b.blocks.push({ kind: "step", key: id, outputKey: `${b.runId ?? key}:${id}`, tool: str(p.name), title, detail: "", status: "ok", input: toolInput(p.arguments), changes: readFileChanges(p.arguments), ...recordedAt(m.timestamp), ...(isCodeModeCall(str(p.name), p.arguments) ? { codeMode: true } : {}) });
     b.steps.set(id, { at: b.blocks.length - 1, command: str(rec(p.arguments).command), ts: num(m.timestamp) });
   } else if (typeof part === "string" && part.trim()) {
-    b.blocks.push({ kind: "text", key, text: part, streaming: false, meta: readMeta(m) });
+    pushAssistantText(b, key, part, m);
   }
 }
 
