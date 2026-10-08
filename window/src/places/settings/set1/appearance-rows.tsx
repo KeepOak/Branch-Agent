@@ -31,7 +31,7 @@ export const ROWS: RowSpec[] = [
   { sec: "The pet", title: "Pet sounds", key: "petSounds", kind: "sw", def: false, keep: "everywhere", sub: "A tiny sound when you pat it.", help: "Off until you turn it on." },
   { sec: "What’s shown", title: "The usage ring", key: "show.usage", kind: "sw", def: true, keep: "everywhere", sub: SHOWN },
   { sec: "What’s shown", title: "The gateway in the status bar", key: "show.gateway", kind: "sw", def: true, keep: "everywhere", sub: SHOWN },
-  { sec: "What’s shown", title: "Graphics and memory", key: "show.gfx", kind: "sw", def: false, keep: "everywhere", sub: `Shows this computer’s graphics card and memory. ${SHOWN}`, help: "Off until you choose: it keeps checking this computer’s graphics card and memory." },
+  { sec: "What’s shown", title: "Graphics and memory", key: "show.gfx", kind: "sw", def: false, keep: "everywhere", sub: "Shows this computer’s graphics card and memory. Right-click it anywhere to hide it too.", help: "Off until you choose: it keeps checking this computer’s graphics card and memory." },
   { sec: "What’s shown", title: "The pet", key: "show.pet", kind: "sw", def: true, keep: "everywhere" },
   { sec: "What’s shown", title: "Projects in the list", key: "show.projects", kind: "sw", def: true, keep: "everywhere", sub: SHOWN },
   { sec: "What’s shown", title: "What a working Trunk is doing, in the list", key: "show.live", kind: "sw", def: true, keep: "everywhere", sub: "The row’s preview shows its latest step while it works." },
