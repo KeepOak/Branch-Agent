@@ -48,6 +48,20 @@ function hasRecycledIdentity(record: Record<string, unknown>): boolean {
   return liveIdentity !== undefined && liveIdentity !== record.startIdentity;
 }
 
+/** Unjoined or claimed child work keeps the checkout owned even after its owner PID is reused. */
+function hasRetainedChildWork(directory: string): boolean {
+  try {
+    return fs
+      .readdirSync(directory)
+      .some((name) => name === "unjoined" || name.startsWith("child-"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
 function canReclaimDistArtifactOwner(payload: unknown, directory?: string): boolean {
   const record = isRecord(payload) ? payload : {};
   const pid = record.pid;
@@ -60,7 +74,7 @@ function canReclaimDistArtifactOwner(payload: unknown, directory?: string): bool
     return true;
   }
   if (hasRecycledIdentity(record)) {
-    return true;
+    return directory === undefined || !hasRetainedChildWork(directory);
   }
   return directory !== undefined && fs.existsSync(path.join(directory, "unjoined"));
 }
@@ -197,7 +211,8 @@ export async function acquireDistArtifactOwnership(
           retry: { minTimeout: LOCK_POLL_MS, maxTimeout: LOCK_POLL_MS, factor: 1 },
           staleRecovery: "remove-if-unchanged",
           // Preserve legacy fail-closed recovery; only a proven recycled PID is new.
-          shouldRemoveStaleLock: ({ payload }) => isRecord(payload) && hasRecycledIdentity(payload),
+          shouldRemoveStaleLock: ({ payload }) =>
+            isRecord(payload) && hasRecycledIdentity(payload) && !hasRetainedChildWork(directory),
           shouldReclaim: ({ payload }) => {
             owner = payload;
             if (canReclaimDistArtifactOwner(payload, directory)) {

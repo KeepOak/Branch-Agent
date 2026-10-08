@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import childProcesses from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -57,6 +56,26 @@ it("reclaims a lock retained by a recycled live PID", async () => {
     await lock.release();
   }
 });
+
+it.for(["unjoined", "child-4242"])(
+  "keeps a recycled-PID lock while %s child work is retained",
+  async (fence) => {
+    const root = createRoot();
+    const directory = resolveDistArtifactLockPath(root);
+    fs.mkdirSync(directory, { recursive: true });
+    const ownerPath = path.join(directory, "owner.json");
+    const bytes = JSON.stringify({
+      pid: process.pid,
+      startIdentity: "different-process-start",
+      startedAt: new Date().toISOString(),
+    });
+    fs.writeFileSync(ownerPath, bytes);
+    fs.writeFileSync(path.join(directory, fence), "retained child fence");
+    await expect(acquireDistArtifactOwnership(root)).rejects.toThrow("retained by PID");
+    expect(fs.readFileSync(ownerPath, "utf8")).toBe(bytes);
+    expect(fs.existsSync(path.join(directory, fence))).toBe(true);
+  },
+);
 
 it("refuses a live same-identity owner", async () => {
   const root = createRoot();
@@ -135,7 +154,7 @@ it("release script refuses a live owner and removes a dead owner in a temp check
   const script = path.join(scripts, "release-dist-artifact-lock.mjs");
   fs.writeFileSync(script, source);
   const run = (args: string[] = []) =>
-    spawnSync(process.execPath, [script, ...args], {
+    childProcesses.spawnSync(process.execPath, [script, ...args], {
       cwd: fileURLToPath(new URL("../../", import.meta.url)),
       encoding: "utf8",
       windowsHide: true,
@@ -154,7 +173,7 @@ it("release script refuses a live owner and removes a dead owner in a temp check
   } finally {
     await lock.release();
   }
-  const child = spawnSync(process.execPath, ["-e", ""], { windowsHide: true });
+  const child = childProcesses.spawnSync(process.execPath, ["-e", ""], { windowsHide: true });
   expect(child.status).toBe(0);
   fs.writeFileSync(ownerPath, JSON.stringify({ pid: child.pid, startIdentity: "dead" }));
   fs.writeFileSync(path.join(directory, "unjoined"), "retained child fence");
