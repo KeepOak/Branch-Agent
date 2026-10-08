@@ -1,6 +1,8 @@
 // The 11-step setup (DESIGN-SPEC §4.8.1): its steps, choices, and the readers for what the engine detects.
 // Engine: branch.setup.detect / verify / activate (gateway-protocol schema/branch.ts), config wizard.* for the record.
 
+import { JOBS as STARTING_JOBS } from "../places/customize/jobs-data";
+
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const list = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.map(rec) : []);
@@ -35,15 +37,8 @@ export function railTicked(current: number, i: number): boolean {
 export type Where = "this" | "remote" | "keepoak" | "later";
 export type Look = "system" | "light" | "dark";
 
-/** The six starting jobs (§4.8.1.5, the job list in §4.6.6). */
-export const JOBS = [
-  { name: "Inbox Manager", line: "Clears your inbox and drafts replies in your voice", colour: "#4F6FA8" },
-  { name: "Expense Manager", line: "Files receipts and builds monthly reports", colour: "#1785AF" },
-  { name: "Researcher", line: "Reads the web and writes short briefs with sources", colour: "#2F8C86" },
-  { name: "Chief of Staff", line: "Plans your week and chases loose ends", colour: "#56616B" },
-  { name: "Bug Reproduction", line: "Turns a bug report into exact steps", colour: "#B84A6B" },
-  { name: "Trip Planner", line: "Finds and books refundable travel", colour: "#8A5AA8" },
-] as const;
+/** The six starting jobs (§4.8.1.5, the job list in §4.6.6). Colours live on the shared job tiles. */
+export const JOBS = STARTING_JOBS.map((job) => ({ name: job.name, line: job.description, colour: job.color }));
 
 export type SetupChoices = {
   promise: boolean;
