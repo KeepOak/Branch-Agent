@@ -151,8 +151,22 @@ async function checkAll(suite = 'named') {
   }
 }
 
+// Release packaging smoke: the same runtime build and postbuild (including the update-compatibility
+// bridge) the release runs, on Linux only and without declarations. #261 broke every release this way
+// while every PR check passed.
+async function checkPackaging() {
+  const started = Date.now();
+  const scratch = await scratchRoot();
+  const pnpm = await preparePnpm(scratch);
+  await run(pnpm, ['install', '--frozen-lockfile', '--ignore-scripts', ...await verifiedExceptionFlags('engine')], engineRoot);
+  await run(process.execPath, ['--import', './scripts/tsx.mjs', 'scripts/build-all.mts', 'package'], engineRoot,
+    { ...process.env, BRANCH_RUN_NODE_SKIP_DTS_BUILD: '1' });
+  console.log(`Release packaging build passed in ${Math.round((Date.now() - started) / 1000)}s`);
+}
+
 const mode = process.argv[2];
 if (mode === 'validate') await validateScope();
 else if (mode === 'all') await checkAll();
 else if (mode === 'capabilities') await checkAll('capabilities');
-else throw new Error('Usage: node scripts/feature-batch-ci.mjs validate|all|capabilities');
+else if (mode === 'package') await checkPackaging();
+else throw new Error('Usage: node scripts/feature-batch-ci.mjs validate|all|capabilities|package');
