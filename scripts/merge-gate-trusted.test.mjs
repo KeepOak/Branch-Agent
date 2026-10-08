@@ -15,6 +15,8 @@ import {
   TRUSTED_WORKFLOW_PATH,
   VISUAL_TOUR_WORKFLOW_PATH,
   coverageFromPrFiles,
+  resolvePrDesktopWorkflow,
+  trustedDesktopWorkflow,
   evaluateOtherChecks,
   evaluateTrustedGate,
   fetchCheckRuns,
@@ -1330,6 +1332,265 @@ test('PR-only named list entry covers a changed test', () => {
   assert.deepEqual(extraNamed, [{ lane: 'engine', file: 'src/pr-only.test.ts' }]);
   const withList = coverageFromPrFiles(files, workflow, extraNamed);
   assert.ok(!withList.uncovered.includes('engine/src/pr-only.test.ts'));
+});
+
+function prDesktopJob(body) {
+  return ['on:\n  pull_request:\njobs:\n  desktop:\n', body].join('');
+}
+
+function trustedUncovers(pr, file = 'desktop/scripts/new.test.mjs', mainFallback = '') {
+  const files = [{ filename: file, status: 'added' }];
+  const workflow = trustedDesktopWorkflow(pr, mainFallback) ?? '';
+  return coverageFromPrFiles(files, workflow).uncovered.includes(file);
+}
+
+test('trusted desktop coverage reads the PR workflow and fails closed', () => {
+  const files = [{ filename: 'desktop/scripts/component-release-readiness.test.mjs', status: 'added' }];
+  const mainWorkflow = [
+    'on:\n  pull_request:\n',
+    '      - run: node --test scripts/release-inventory.test.mjs\n',
+  ].join('');
+  const prWorkflow = [
+    'on:\n  pull_request:\n    paths: [desktop/**]\n',
+    'jobs:\n',
+    '  desktop:\n',
+    '    name: Desktop on ${{ matrix.os }}\n',
+    '    runs-on: ${{ matrix.os }}\n',
+    '    strategy:\n',
+    '      fail-fast: false\n',
+    '      max-parallel: 3\n',
+    '      matrix:\n',
+    '        os: [windows-latest, macos-latest, ubuntu-latest]\n',
+    '    steps:\n',
+    '      - name: Build strict desktop sources\n',
+    '        run: npm run build\n',
+    '      - name: Check component release readiness\n',
+    '        run: node --test scripts/component-release-readiness.test.mjs\n',
+  ].join('');
+  assert.equal(resolvePrDesktopWorkflow(null), null);
+  assert.equal(resolvePrDesktopWorkflow(''), null);
+  assert.equal(trustedDesktopWorkflow(null), null);
+  assert.equal(trustedDesktopWorkflow(''), null);
+  assert.ok(coverageFromPrFiles(files, mainWorkflow).uncovered.includes(
+    'desktop/scripts/component-release-readiness.test.mjs',
+  ));
+  const workflow = trustedDesktopWorkflow(prWorkflow);
+  assert.ok(!coverageFromPrFiles(files, workflow).uncovered.includes(
+    'desktop/scripts/component-release-readiness.test.mjs',
+  ));
+});
+
+test('trusted desktop coverage ignores comments, if: false, and non-pull_request workflows', () => {
+  const files = [{ filename: 'desktop/scripts/new.test.mjs', status: 'added' }];
+  const commented = [
+    'on:\n  pull_request:\n',
+    '      # run: node --test scripts/new.test.mjs\n',
+    '      - run: node --test scripts/other.test.mjs\n',
+  ].join('');
+  const disabled = [
+    'on:\n  pull_request:\n',
+    '      - name: fake coverage\n',
+    '        if: false\n',
+    '        run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  const pushOnly = [
+    'on:\n  push:\n    branches: [main]\n',
+    '      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  assert.ok(coverageFromPrFiles(files, commented).uncovered.includes('desktop/scripts/new.test.mjs'));
+  assert.ok(coverageFromPrFiles(files, disabled).uncovered.includes('desktop/scripts/new.test.mjs'));
+  assert.equal(trustedDesktopWorkflow(pushOnly), '');
+  assert.ok(coverageFromPrFiles(files, trustedDesktopWorkflow(pushOnly)).uncovered.includes(
+    'desktop/scripts/new.test.mjs',
+  ));
+});
+
+test('if: false after run does not cover a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    steps:\n      - name: fake\n        run: node --test scripts/new.test.mjs\n        if: false\n',
+  )), true);
+});
+
+test('if: false with a trailing comment does not cover a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    steps:\n      - name: fake\n        if: false # skip\n        run: node --test scripts/new.test.mjs\n',
+  )), true);
+});
+
+test('if: always() && false does not cover a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    steps:\n      - name: fake\n        if: always() && false\n        run: node --test scripts/new.test.mjs\n',
+  )), true);
+});
+
+test('if: ${{ 1 == 0 }} does not cover a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    steps:\n      - name: fake\n        if: ${{ 1 == 0 }}\n        run: node --test scripts/new.test.mjs\n',
+  )), true);
+});
+
+test('if: ${{ !true }} does not cover a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    steps:\n      - name: fake\n        if: ${{ !true }}\n        run: node --test scripts/new.test.mjs\n',
+  )), true);
+});
+
+test('job-level if: does not cover a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    if: false\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  )), true);
+});
+
+test('dispatch-only job if: does not cover a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    if: github.event_name == \'workflow_dispatch\'\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  )), true);
+});
+
+test('needs on a job that has if: does not cover a desktop test', () => {
+  const pr = [
+    'on:\n  pull_request:\njobs:\n',
+    '  gate:\n    if: false\n    steps:\n      - run: echo skip\n',
+    '  desktop:\n    needs: gate\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  assert.equal(trustedUncovers(pr), true);
+});
+
+test('YAML anchors or aliases fall back to main and do not cover a PR-only test', () => {
+  const pr = [
+    'on:\n  pull_request:\njobs:\n',
+    '  desktop:\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+    '  unused: &decoy\n    if: false\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  const aliasOnly = [
+    'on:\n  pull_request:\njobs:\n',
+    '  desktop:\n    steps:\n      - <<: *decoy\n',
+  ].join('');
+  assert.equal(trustedUncovers(pr), true);
+  assert.equal(trustedUncovers(aliasOnly), true);
+});
+
+test('matrix exclude does not cover a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob([
+    '    strategy:\n      matrix:\n        os: [ubuntu-latest]\n',
+    '        exclude:\n          - os: ubuntu-latest\n',
+    '    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join(''))), true);
+});
+
+test('matrix include does not cover a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob([
+    '    strategy:\n      matrix:\n        include:\n          - os: ubuntu-latest\n',
+    '    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join(''))), true);
+});
+
+test('node --check combined with --test does not cover a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    steps:\n      - run: node --check scripts/new.test.mjs --test scripts/new.test.mjs\n',
+  )), true);
+});
+
+test('node --eval or -e combined with --test does not cover a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    steps:\n      - run: node --eval "0" --test scripts/new.test.mjs\n',
+  )), true);
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    steps:\n      - run: node -e "0" --test scripts/new.test.mjs\n',
+  )), true);
+});
+
+test('transitive needs through a disqualified job does not cover a desktop test', () => {
+  const pr = [
+    'on:\n  pull_request:\njobs:\n',
+    '  gate:\n    if: false\n    steps:\n      - run: echo skip\n',
+    '  mid:\n    needs: gate\n    steps:\n      - run: echo mid\n',
+    '  extra:\n    needs: mid\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  assert.equal(trustedUncovers(pr), true);
+});
+
+test('step continue-on-error does not cover a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    steps:\n      - name: fake\n        continue-on-error: true\n        run: node --test scripts/new.test.mjs\n',
+  )), true);
+});
+
+test('step shell does not cover a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    steps:\n      - name: fake\n        shell: bash\n        run: node --test scripts/new.test.mjs\n',
+  )), true);
+});
+
+test('step working-directory does not cover a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    steps:\n      - name: fake\n        working-directory: desktop\n        run: node --test scripts/new.test.mjs\n',
+  )), true);
+});
+
+test('job continue-on-error does not cover a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    continue-on-error: true\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  )), true);
+});
+
+test('job defaults.run.working-directory: desktop still covers a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob([
+    '    defaults:\n      run:\n        working-directory: desktop\n',
+    '    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join(''))), false);
+});
+
+test('workflow defaults.run.shell does not cover a desktop test', () => {
+  const pr = [
+    'on:\n  pull_request:\n',
+    'defaults:\n  run:\n    shell: bash\n',
+    'jobs:\n  desktop:\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  assert.equal(trustedUncovers(pr), true);
+});
+
+test('workflow defaults.run.shell after jobs: does not cover a desktop test', () => {
+  const pr = [
+    'on:\n  pull_request:\n',
+    'jobs:\n  desktop:\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+    'defaults:\n  run:\n    shell: bash\n',
+  ].join('');
+  assert.equal(trustedUncovers(pr), true);
+});
+
+test('flow-style workflow defaults.run.shell does not cover a desktop test', () => {
+  const pr = [
+    'on:\n  pull_request:\n',
+    'defaults: { run: { shell: bash } }\n',
+    'jobs:\n  desktop:\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  assert.equal(trustedUncovers(pr), true);
+});
+
+test('workflow defaults.run.working-directory without shell still covers a desktop test', () => {
+  const pr = [
+    'on:\n  pull_request:\n',
+    'defaults:\n  run:\n    working-directory: desktop\n',
+    'jobs:\n  desktop:\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  assert.equal(trustedUncovers(pr), false);
+});
+
+test('workflow complex-key defaults.run.shell does not cover a desktop test', () => {
+  const pr = [
+    'on:\n  pull_request:\n',
+    '? defaults\n',
+    ': { run: { shell: bash } }\n',
+    'jobs:\n  desktop:\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  assert.equal(trustedUncovers(pr), true);
+});
+
+test('plain workflow with no defaults still covers a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  )), false);
 });
 
 test('nameStatusFromPrFiles and coverageFromPrFiles treat API files as data', () => {

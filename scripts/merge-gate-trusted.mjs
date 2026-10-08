@@ -5,9 +5,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   additionFor,
+  allowlistedDesktopRunTargets,
   changedTestPaths,
   coverageTargets,
+  hasYamlAnchorsOrAliases,
   uncoveredTests,
+  workflowHasPullRequestTrigger,
 } from './changed-test-coverage.mjs';
 import { checkMergeCommands, docsToCheck } from './check-merge-command.mjs';
 import { checkUIProof } from './check-ui-proof.mjs';
@@ -447,10 +450,11 @@ export function parseNamedTestList(text, source = 'scripts/feature-batch-ci-name
   return files;
 }
 
-export function coverageFromPrFiles(files, desktopWorkflow, extraNamed = [], handoffWorkflow = '', handoffConfig = '') {
+export function coverageFromPrFiles(files, desktopWorkflow, extraNamed = [], handoffWorkflow = '', handoffConfig = '', extraDesktop = []) {
   const changed = changedTestPaths(nameStatusFromPrFiles(files));
   const covered = coverageTargets(desktopWorkflow, handoffWorkflow, handoffConfig);
   for (const entry of extraNamed) covered.add(`${entry.lane}/${entry.file}`);
+  for (const file of extraDesktop) covered.add(file);
   const uncovered = uncoveredTests(changed, covered);
   return { changed, uncovered };
 }
@@ -669,8 +673,40 @@ export function fetchNamedTestLists(repo, sha, token) {
   return extra;
 }
 
-function runCoverage(files, extraNamed) {
-  const workflow = readFileSync(path.join(root, '.github/workflows/desktop-checks.yml'), 'utf8');
+export function resolvePrDesktopWorkflow(fetched) {
+  return typeof fetched === 'string' && fetched !== '' ? fetched : null;
+}
+
+function serializeAllowlistedDesktopWorkflow(targets, mainFallback = '') {
+  const extraYaml = [...targets].map((file) => {
+    const rel = file.startsWith('desktop/') ? file.slice('desktop/'.length) : file;
+    return `      - run: node --test ${rel}`;
+  }).join('\n');
+  if (mainFallback) {
+    return extraYaml ? `${mainFallback.replace(/\s*$/, '\n')}${extraYaml}\n` : mainFallback;
+  }
+  if (!extraYaml) return 'on:\n  pull_request:\n';
+  return `on:\n  pull_request:\njobs:\n  desktop:\n    steps:\n${extraYaml}\n`;
+}
+
+export function trustedDesktopWorkflow(fetched, mainFallback = '') {
+  const workflow = resolvePrDesktopWorkflow(fetched);
+  if (workflow == null) return null;
+  if (!workflowHasPullRequestTrigger(workflow)) return mainFallback;
+  if (hasYamlAnchorsOrAliases(workflow)) return mainFallback;
+  return serializeAllowlistedDesktopWorkflow(allowlistedDesktopRunTargets(workflow), mainFallback);
+}
+
+function runCoverage(files, extraNamed, repo, sha, token) {
+  const mainWorkflow = readFileSync(path.join(root, '.github/workflows/desktop-checks.yml'), 'utf8');
+  const fetched = repo && sha && token
+    ? fetchFileText(repo, sha, token, '.github/workflows/desktop-checks.yml')
+    : null;
+  const workflow = trustedDesktopWorkflow(fetched, mainWorkflow);
+  if (workflow == null) {
+    console.error('Could not read pull request .github/workflows/desktop-checks.yml; failing closed.');
+    return false;
+  }
   const handoffWorkflow = readFileSync(path.join(root, HANDOFF_WORKFLOW_PATH), 'utf8');
   const handoffConfig = readFileSync(path.join(root, 'engine/test/vitest/vitest.desktop-handoff.config.ts'), 'utf8');
   const { changed, uncovered } = coverageFromPrFiles(files, workflow, extraNamed, handoffWorkflow, handoffConfig);
@@ -825,7 +861,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   writeSummary(formatGateChangeSummary(changedFiles));
 
   const extraNamed = fetchNamedTestLists(repo, sha, token);
-  if (!runCoverage(files, extraNamed)) process.exit(1);
+  if (!runCoverage(files, extraNamed, repo, sha, token)) process.exit(1);
   if (!runMergeCommandCheck(repo, sha, token)) {
     console.error('Merge-command check failed on the pull request documentation.');
     process.exit(1);
