@@ -24,6 +24,39 @@ Conventions and common failure modes for this repository. Bugbot should check th
 - **Wrong:** Leaving MCP servers, mcporter, node, browsers, or other child processes running after a test, self-test, or proof script.
 - **Right:** Stop every started process and its children before finishing. Leftovers lock the app install folder and block updates.
 
+### Proof screenshots on the PR branch
+- **Wrong:** Committing PNGs under `docs/proof/`, embedding `raw.githubusercontent.com/.../main/...` URLs, or attaching desktop screenshots that show other apps, names, emails, paths, or machine names.
+- **Right:** Push images to an orphan `proof/<head-branch>` branch (never merge it, never open a PR for it) and embed a SHA-pinned raw URL, or use a GitHub user-attachments URL. Screenshots show only the Branch app or preview.
+- **Recipe:** From the PR worktree; this does not change the PR branch:
+
+  ```bash
+  PR_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+  PROOF_BRANCH="proof/${PR_BRANCH}"
+  PROOF_PARENT="$(mktemp -d "${TMPDIR:-/tmp}/branch-proof.XXXXXX")"
+  PROOF_DIR="${PROOF_PARENT}/wt"
+
+  git fetch origin "refs/heads/${PROOF_BRANCH}:refs/heads/${PROOF_BRANCH}" 2>/dev/null || true
+  if git show-ref --verify --quiet "refs/heads/${PROOF_BRANCH}"; then
+    git worktree add "$PROOF_DIR" "$PROOF_BRANCH"
+  else
+    git worktree add --detach "$PROOF_DIR" HEAD
+    git -C "$PROOF_DIR" checkout --orphan "$PROOF_BRANCH"
+    git -C "$PROOF_DIR" rm -rf --quiet .
+  fi
+
+  mkdir -p "$PROOF_DIR/proof"
+  cp -- shot.png "$PROOF_DIR/proof/changed-panel.png"
+
+  git -C "$PROOF_DIR" add proof
+  git -C "$PROOF_DIR" commit -m "proof: screenshots for ${PR_BRANCH}"
+  git -C "$PROOF_DIR" push -u origin "refs/heads/${PROOF_BRANCH}"
+  PROOF_SHA="$(git -C "$PROOF_DIR" rev-parse HEAD)"
+  git worktree remove "$PROOF_DIR"
+  rmdir "$PROOF_PARENT"
+
+  printf 'https://raw.githubusercontent.com/KeepOak/Branch-Agent/%s/proof/changed-panel.png\n' "$PROOF_SHA"
+  ```
+
 ### Windows process spawning
 - **Wrong:** Spawning processes on Windows without `windowsHide: true`.
 - **Right:** Every child process spawn includes `windowsHide: true` on the options object (or `CREATE_NO_WINDOW` for native launches).
@@ -66,7 +99,7 @@ Conventions and common failure modes for this repository. Bugbot should check th
 Merges to `main` that touch `engine/`, `window/`, or `desktop/` ship in the next scheduled release at :07 or :37, when main has moved since the last release and no check on main's head has failed. Installed apps jump to the newest release and apply it on restart.
 
 - Test thoroughly before merging.
-- Visual changes must include screenshots in the PR.
+- Visual changes must include screenshots in the PR, published on a `proof/<head-branch>` orphan branch or as a GitHub attachment, never committed to the PR branch.
 - Breaking changes need migration paths.
 
 ## Review checklist
@@ -78,9 +111,9 @@ Merges to `main` that touch `engine/`, `window/`, or `desktop/` ship in the next
 - [ ] No CI job exceeds 15 minutes (except merge-gate).
 - [ ] Lint and typecheck pass.
 - [ ] No placeholder implementations or skipped tests.
-- [ ] Visual changes include screenshots.
+- [ ] Visual changes include screenshots on a `proof/<head-branch>` orphan branch (SHA-pinned raw URL) or a GitHub user-attachments URL.
 - [ ] Tests prove the fix (failing on old head, passing on new).
-- [ ] A window PR includes real app screenshots (preview vs app when it is a parity change).
+- [ ] A window PR includes real app screenshots (preview vs app when it is a parity change) and does not add images under `docs/proof/`.
 - [ ] A claim that a test "fails on the old head" includes the CI or log line from running it against the old head's code; a brand-new test file proves nothing on its own.
 - [ ] A change to `.github/workflows/**` or to scripts that `merge-gate` runs gets a FIX verdict unless the PR body clearly explains why; merge-gate runs the PR's own copy of the workflow, so a PR could weaken its own gate.
 - [ ] FIX any PR that edits `merge-gate-trusted.yml` or the scripts it runs unless the PR body explains why.

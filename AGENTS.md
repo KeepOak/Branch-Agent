@@ -40,6 +40,42 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 10. **Self-test visible changes** in a scratch engine and window (browser or computer tools, or Playwright) and put screenshots in the PR. The `check-ui-proof` gate enforces this for `window/**` changes.
 
+    Proof images go on a separate orphan branch named `proof/<head-branch-name>` (for example `proof/cursor/side-panel-abc1`), with files only under `proof/`. Never merge that branch and never open it as a PR. Embed each image with a raw URL pinned to the proof commit SHA:
+
+    `https://raw.githubusercontent.com/KeepOak/Branch-Agent/<40-char-sha>/proof/<file>.png`
+
+    GitHub attachment URLs (`https://github.com/user-attachments/assets/...`) are also accepted. Do not commit screenshots to the PR branch: no `docs/proof/`, and no new `.png`/`.jpg`/`.jpeg`/`.gif`/`.webp` outside the app's real asset folders (`assets/`, `desktop/assets/`, `window/public/`, extension `assets`/`icons`, and the other shipped art folders). Screenshots must show only the Branch app or preview: no desktop, other apps, names, emails, paths or machine names.
+
+    Copy-paste, from the PR worktree. This writes only to `proof/<your-branch>` and does not change the PR branch:
+
+    ```bash
+    PR_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+    PROOF_BRANCH="proof/${PR_BRANCH}"
+    PROOF_PARENT="$(mktemp -d "${TMPDIR:-/tmp}/branch-proof.XXXXXX")"
+    PROOF_DIR="${PROOF_PARENT}/wt"
+
+    git fetch origin "refs/heads/${PROOF_BRANCH}:refs/heads/${PROOF_BRANCH}" 2>/dev/null || true
+    if git show-ref --verify --quiet "refs/heads/${PROOF_BRANCH}"; then
+      git worktree add "$PROOF_DIR" "$PROOF_BRANCH"
+    else
+      git worktree add --detach "$PROOF_DIR" HEAD
+      git -C "$PROOF_DIR" checkout --orphan "$PROOF_BRANCH"
+      git -C "$PROOF_DIR" rm -rf --quiet .
+    fi
+
+    mkdir -p "$PROOF_DIR/proof"
+    cp -- shot.png "$PROOF_DIR/proof/changed-panel.png"
+
+    git -C "$PROOF_DIR" add proof
+    git -C "$PROOF_DIR" commit -m "proof: screenshots for ${PR_BRANCH}"
+    git -C "$PROOF_DIR" push -u origin "refs/heads/${PROOF_BRANCH}"
+    PROOF_SHA="$(git -C "$PROOF_DIR" rev-parse HEAD)"
+    git worktree remove "$PROOF_DIR"
+    rmdir "$PROOF_PARENT"
+
+    printf 'https://raw.githubusercontent.com/KeepOak/Branch-Agent/%s/proof/changed-panel.png\n' "$PROOF_SHA"
+    ```
+
 11. **Commits and PRs:** Conventional Commits, files staged by name (never `git add -A`), no tool or AI attribution lines, no force-push to `main`. Cloud-agent commits must end with exactly `Co-authored-by: Taofik Bishi <189563683+stabrea@users.noreply.github.com>` so the platform does not append a personal-email co-author line. PR body: what, why, exact test commands and pass counts.
 
 12. **Merging:** Merge with a merge commit (never squash or rebase), pinned to the reviewed head SHA so a new push blocks the merge. Two approved ways:
