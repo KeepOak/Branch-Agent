@@ -69,7 +69,7 @@ describe("Settings › Permissions › This computer", () => {
     await show("Linux x86_64");
     const sentence = "Microphone and camera use PipeWire or the desktop portal. Notifications use this desktop. They open from the Branch app on your computer.";
     expect(host.textContent?.split(sentence)).toHaveLength(2);
-    expect(host.querySelector(".hint")?.textContent).toBe(sentence);
+    expect([...host.querySelectorAll(".hint")].map((el) => el.textContent).filter((text) => text?.includes("PipeWire"))).toEqual([sentence]);
     const location = host.querySelector('[data-row="Location access"]');
     const precise = host.querySelector('[data-row="Precise location"]');
     expect(location?.textContent).toContain("Lets a Trunk ask where this computer is when a tool needs it.");
