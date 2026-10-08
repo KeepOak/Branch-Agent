@@ -65,7 +65,8 @@ jobs:
           for attempt in $(seq 1 64); do
             runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
               --jq '[.check_runs[] | select(.name != "merge-gate" and .name != "merge-gate-trusted")]')
-            pending=$(jq '[.[] | select(.status != "completed")] | length' <<<"$runs")
+            # CodeQL default setup can register Analyze after all other checks finish.
+            pending=$(jq '([.[] | select(.status != "completed")] | length) + (if any(.[]; .name == "Analyze (actions)") then 0 else 1 end)' <<<"$runs")
             failed=$(jq -r '[.[] | select(.status == "completed" and (.conclusion | IN("success","skipped","neutral") | not)) | "\(.name): \(.conclusion)"] | .[]' <<<"$runs")
             if [ -n "$failed" ]; then
               echo "Failed checks:"; echo "$failed"; exit 1
