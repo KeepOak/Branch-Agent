@@ -179,7 +179,7 @@
 .tabs-br .link {flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 @media (max-width:760px) {.tb-br span {display:none;} .drw-br {max-height:46vh;}}
 
-/* The computer card in the conversation: live (picture, Watch full size, Take over) and "Used … · N actions" */
+/* The computer card in the conversation: Working / You have control / Stopped / Done, and "Used … · N actions" */
 .card-st {max-width:min(100%,82ch);margin:0 0 0 38px;border:1px solid var(--hair17);border-radius:var(--r3-17,16px);background:var(--raise);overflow:hidden;font-size:13px;}
 .comp-card-st {display:grid;gap:10px;padding:16px;}
 .card-h-st {display:flex;align-items:center;gap:8px;}
@@ -187,6 +187,9 @@
 .card-h-st .pill {margin-left:auto;}
 .card-st .pill.work {background:var(--accent-tint);color:var(--accent-ink);}
 .card-st .pill.work i {animation:blink 1.2s ease-in-out infinite;}
+.card-st .pill.you {background:var(--fill-2);color:var(--ink);}
+.card-st .pill.done {background:var(--ok-tint);color:var(--ok);}
+.card-st .pill.no {background:var(--bad-tint);color:var(--bad);}
 .card-sub-st {margin:0;color:var(--ink-2);}
 .comp-thumb-st {position:relative;display:block;width:100%;aspect-ratio:16/10;max-height:320px;border:0;padding:0;border-radius:10px;overflow:hidden;background:#0e1419;cursor:pointer;}
 .comp-thumb-st .stage-screen {position:absolute;inset:0;}

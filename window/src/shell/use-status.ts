@@ -2,7 +2,7 @@
 // and whether a new version waits. Each refreshes on the engine's own events, never on a made-up timer result.
 import { useEffect, useState } from "react";
 import type { SaplingSession } from "../connect/session";
-import { readLimits, type Limits, type UpdateInfo } from "./status-data";
+import { readLimits, usagePollResult, type Limits, type UpdateInfo } from "./status-data";
 import { componentDesktop, MANUAL_UPDATE_UNSUPPORTED, useDesktopComponentStatus } from "../connect/desktop-component-updates";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
@@ -65,16 +65,28 @@ export function useLimits(session: SaplingSession, ready: boolean): Limits | nul
     }
     const load = () =>
       session.request("usage.status", {}).then(
-        (r) => setLimits(readLimits(r)),
+        (r) => {
+          const next = readLimits(r);
+          setLimits(next);
+          window.dispatchEvent(new CustomEvent("branch:usage-checked", { detail: next }));
+        },
         (error: unknown) => console.warn("usage.status failed", error),
       );
     void load();
     const timer = setInterval(load, 5 * 60_000);
-    window.addEventListener("branch:usage-checked", load);
+    const onChecked = (event: Event) => {
+      const next = usagePollResult(event);
+      if (next) {
+        setLimits(next);
+        return;
+      }
+      void load();
+    };
+    window.addEventListener("branch:usage-checked", onChecked);
     const off = session.onGatewayEvent((event, payload) => {
       if (event === "chat" && rec(payload).state === "final") void load();
     });
-    return () => { clearInterval(timer); window.removeEventListener("branch:usage-checked", load); off(); };
+    return () => { clearInterval(timer); window.removeEventListener("branch:usage-checked", onChecked); off(); };
   }, [session, ready]);
   return limits;
 }

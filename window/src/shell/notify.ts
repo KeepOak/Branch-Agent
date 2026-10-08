@@ -28,6 +28,39 @@ export function contactAlertTarget(contact: { threadKey: string; preview: { kind
   return contact.preview.kind === "topic" ? contact.preview.topicKey : contact.threadKey;
 }
 
+/** One desktop notice per waiting item: `{who} is waiting for you`. */
+export function waitingNotice(who: string): { title: string; body: string } {
+  return { title: who.trim() || "A Trunk", body: "is waiting for you" };
+}
+
+const waitingNotices = new Map<string, { close: () => void }>();
+
+export function resetWaitingNotices(): void {
+  for (const notice of waitingNotices.values()) notice.close();
+  waitingNotices.clear();
+}
+
+/** Replace or close the OS notice for each waiting item. Never stacks a second copy of the same id. */
+export function syncWaitingNotices(
+  items: readonly { id: string; who: string }[],
+  env: { hidden: boolean; permission?: NotificationPermission; notify?: (title: string, opts: NotificationOptions) => { close: () => void } } = { hidden: typeof document !== "undefined" && document.hidden },
+): void {
+  const ids = new Set(items.map((item) => item.id));
+  for (const [id, notice] of [...waitingNotices]) {
+    if (ids.has(id)) continue;
+    notice.close();
+    waitingNotices.delete(id);
+  }
+  const permission = env.permission ?? (typeof Notification === "undefined" ? "default" : Notification.permission);
+  if (!env.hidden || permission !== "granted") return;
+  const make = env.notify ?? ((title, opts) => new Notification(title, opts));
+  for (const item of items) {
+    if (waitingNotices.has(item.id)) continue;
+    const { title, body } = waitingNotice(item.who);
+    waitingNotices.set(item.id, make(title, { body, tag: item.id }));
+  }
+}
+
 let toasts: Toast[] = [];
 let nextId = 1;
 const listeners = new Set<() => void>();

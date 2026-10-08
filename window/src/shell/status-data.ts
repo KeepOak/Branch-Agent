@@ -62,6 +62,13 @@ export type LimitPill = "Measured" | "Not published";
 export type LimitRow = { id: string; name: string; provider?: string; email?: string; plan?: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string; inUse?: boolean };
 export type Limits = { rows: LimitRow[]; updatedAt: number; refreshing: boolean };
 
+/** Limits carried on branch:usage-checked when the status-bar poll got a result. */
+export function usagePollResult(event: Event): Limits | null {
+  const detail = (event as CustomEvent).detail;
+  if (!detail || typeof detail !== "object" || !Array.isArray((detail as Limits).rows)) return null;
+  return detail as Limits;
+}
+
 /** Usage endpoints return diagnostic text; the status bar only shows human-facing status words. */
 export function usageStatusWords(error: unknown, provider: string): string {
   const raw = str(error);
@@ -103,13 +110,22 @@ export function readLimits(result: unknown, now = Date.now()): Limits {
 
 export type RingReading = { name: string; left: number; reset: string; low: boolean };
 
-/** The bar shows the first measured account's 5-hour reading (FINAL-PASS C1). */
+function readingFrom(row: LimitRow): RingReading | null {
+  const w = row.windows.find((window) => /5-hour/i.test(window.name)) ?? row.windows[0];
+  return w ? { name: row.name, left: w.left, reset: w.reset, low: w.low } : null;
+}
+
+/** The ring shows the account used next; if none is marked, the first measured account. */
 export function ringReading(limits: Limits | null): RingReading | null {
   const rows = limits?.rows ?? [];
+  const usedNext = rows.find((row) => row.inUse);
+  if (usedNext) {
+    return readingFrom(usedNext);
+  }
   for (const row of rows) {
-    const w = row.windows.find((window) => /5-hour/i.test(window.name)) ?? row.windows[0];
-    if (w) {
-      return { name: row.name, left: w.left, reset: w.reset, low: w.low };
+    const reading = readingFrom(row);
+    if (reading) {
+      return reading;
     }
   }
   return null;

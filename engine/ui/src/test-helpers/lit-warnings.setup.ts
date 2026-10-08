@@ -31,12 +31,23 @@ if (typeof Element !== "undefined" && !("getElementById" in Element.prototype)) 
 }
 
 // JSDOM has no Web Animations API. Web Awesome uses this probe to skip
-// animations when none are active.
-if (typeof Element !== "undefined" && !("getAnimations" in Element.prototype)) {
-  Object.defineProperty(Element.prototype, "getAnimations", {
-    configurable: true,
-    value: () => [],
-  });
+// animations when none are active. Some jsdom builds expose a non-callable
+// `getAnimations` on Element or HTMLDialogElement, and leftover dialog work
+// can run after a test restores other polyfills. Always install a no-op in
+// node jsdom (not Chromium browser tests).
+if (typeof Element !== "undefined" && !("__vitest_browser__" in globalThis)) {
+  const getAnimations = () => [];
+  for (const proto of [
+    Element.prototype,
+    HTMLElement.prototype,
+    typeof HTMLDialogElement !== "undefined" ? HTMLDialogElement.prototype : undefined,
+  ]) {
+    if (!proto) continue;
+    Object.defineProperty(proto, "getAnimations", {
+      configurable: true,
+      value: getAnimations,
+    });
+  }
 }
 
 // JSDOM exposes partial ElementInternals. Web Awesome form controls require

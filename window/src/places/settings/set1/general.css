@@ -16,8 +16,7 @@
 }
 /* a stacked row, as the preview draws it: the pin beside its title, then the sub-line, then the control */
 .set-col [data-page-title="General"] .ctl.stack-k { grid-template-columns: auto minmax(0, 1fr); }
-.set-col [data-page-title="General"] .ctl.stack-k > .pin-k { justify-self: start; }
-.set-col [data-page-title="General"] .ctl.stack-k > :not(b, .pin-k) { grid-column: 1 / -1; }
+.set-col [data-page-title="General"] .ctl.stack-k > :not(b) { grid-column: 1 / -1; }
 .set-col [data-page-title="General"] .ctl.stack-k > small:not(.why-k) { order: 1; }
 .set-col [data-page-title="General"] .ctl.stack-k > .right { order: 2; }
 .set-col [data-page-title="General"] .ctl.stack-k > .why-k { order: 3; }

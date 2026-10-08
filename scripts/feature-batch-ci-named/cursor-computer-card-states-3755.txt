@@ -1,0 +1,3 @@
+window:src/thread/ComputerActivityCard.test.tsx
+window:src/thread/Thread.computer-turns.test.tsx
+window:src/thread/computer-card.test.ts

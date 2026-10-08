@@ -20,14 +20,14 @@
 .set-col .ctl:has(> .right textarea) > .right,
 .set-col .ctl:has(> .right .inp.wide-k) > .right { grid-row: auto; grid-column: 1; justify-content: flex-start; margin-top: 8px; }
 .set-col .ctl.off-k { opacity: 0.45; }
-.set-col .ctl.off-k > .pin-k { display: none; }
+.set-col .ctl.off-k > b > .pin-k { display: none; }
 /* A pin appears on hover without moving the right-aligned control. */
-.set-col .ctl > .pin-k { width: 22px; height: 22px; display: inline-grid; place-items: center; margin: 0 0 0 4px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--ink-3); opacity: 0; vertical-align: middle; cursor: pointer; }
-.set-col .ctl:hover > .pin-k, .set-col .ctl > .pin-k:focus-visible, .set-col .ctl > .pin-k[aria-pressed="true"] { opacity: 1; }
-.set-col .ctl > .pin-k[aria-pressed="true"] { color: var(--accent); }
-.set-col .ctl > .pin-k:hover { background: var(--wash17); color: var(--ink); }
+.set-col .ctl > b > .pin-k { width: 22px; height: 22px; flex: none; display: inline-grid; place-items: center; margin: 0 0 0 4px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--ink-3); opacity: 0; vertical-align: middle; cursor: pointer; }
+.set-col .ctl:hover > b > .pin-k, .set-col .ctl > b > .pin-k:focus-visible, .set-col .ctl > b > .pin-k[aria-pressed="true"] { opacity: 1; }
+.set-col .ctl > b > .pin-k[aria-pressed="true"] { color: var(--accent); }
+.set-col .ctl > b > .pin-k:hover { background: var(--wash17); color: var(--ink); }
 /* rows inside a dialog have no pin (the preview pins only the page's rows) */
-.set-col .dlg .ctl > .pin-k { display: none; }
+.set-col .dlg .ctl > b > .pin-k { display: none; }
 .set-col .ctl .kept-k { color: var(--ink-3); }
 /* a section of only rows draws as one card (preview 99-final) */
 .set-col .sec:not(:has(> :not(h2, p, .ctl))) > .ctl { background: var(--raise); padding: 14px 16px; border-bottom: 1px solid var(--hair17); box-shadow: inset 1px 0 0 var(--hair17), inset -1px 0 0 var(--hair17); }
