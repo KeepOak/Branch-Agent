@@ -582,9 +582,10 @@ export function capabilityTests() {
   return targets;
 }
 
-/** FEATURE_SHARD="<n>/<total>" (the workflow matrix): this job runs every total-th named test from the n-th.
+/** FEATURE_SHARD="<n>/<total>" (the workflow matrix): this job runs one duration-balanced slice.
  *  The named list grows with each PR; one serial job per OS passed the 15-minute cap (733 s of engine tests on
- *  Windows for #220), so the list is split across jobs instead of raising the cap. */
+ *  Windows for #220), so the list is split across jobs. Index round-robin then piled the slow files
+ *  onto the same slices, so placement is longest-file-first instead. */
 // Pull requests run the full named suite on Linux. Windows runs only the named tests whose test file,
 // or whose own scripts/feature-batch-ci-named/*.txt list, the PR touches, plus this fixed Windows smoke
 // set; the full Windows suite runs after merge and nightly (about 14 minutes on Windows, over the cap).
@@ -616,6 +617,80 @@ export function shardOf(value = process.env.FEATURE_SHARD) {
   return { index: n - 1, total };
 }
 
-export function shardTests(tests, shard) {
-  return tests.filter((_, i) => i % shard.total === shard.index);
+// Test-body seconds measured from ubuntu-latest named-feature logs on 2026-10-08.
+// Round-robin on the sorted list put several of these on one shard (about 7 minutes of
+// tests on pull-request shard 1/10, about 22 minutes on main shard 2/3). Unlisted files
+// are a few seconds of vitest startup. The numbers only balance shards.
+const featureTestWeights = {
+  'src/gateway/server.auth.control-ui.test.ts': 287,
+  'src/commands/startup-config-preflight.recovery.test.ts': 176,
+  'src/gateway/server-kernel.phases.test.ts': 175,
+  'src/gateway/server-methods/sessions-reactions.test.ts': 157,
+  'src/infra/device-bootstrap.test.ts': 147,
+  'src/gateway/server-methods/sessions-create-category.test.ts': 138,
+  'src/cli/gateway-cli/pre-bootstrap.process.test.ts': 112,
+  'src/cron/store/receipt-authority-owner.test.ts': 105,
+  'src/infra/heartbeat-runner.exact-session-busy.test.ts': 94,
+  'src/gateway/watch-node-http.test.ts': 81,
+  'src/gateway/server/ws-connection.startup.test.ts': 77,
+  'src/commands/doctor/shared/default-agent-role-materialization.write.test.ts': 69,
+  'src/agents/main-session-recovery/main-session-restart-recovery.parallel-startup.test.ts': 57,
+  'src/commands/config-preflight-snapshot.test.ts': 56,
+  'src/gateway/server.lockdown-owner.test.ts': 46,
+  'src/gateway/server-agent-database-startup.multi-agent.test.ts': 41,
+  'src/gateway/server.sessions.create.contact-anchor.test.ts': 36,
+  'src/agents/trunk-characters.test.ts': 34,
+  'src/gateway/session-handoff-lease-orphan-recovery.test.ts': 32,
+  'src/gateway/server-startup-node-capabilities.test.ts': 31,
+  'test/scripts/tsdown-config.test.ts': 29,
+  'src/agents/tools/message-tool-execution.test.ts': 27,
+  'test/scripts/control-ui-i18n.test.ts': 22,
+  'src/cron/trigger-script.test.ts': 22,
+  'src/gateway/session-startup-handoff-recovery.test.ts': 21,
+  'src/gateway/server-methods/session-change-event.test.ts': 21,
+  'src/gateway/sessions-patch.done.test.ts': 20,
+  'src/gateway/server-methods/backup-settings.test.ts': 20,
+  'src/gateway/server-methods/chat-history.segments.test.ts': 18,
+  'src/cron/isolated-agent/run.session-read.test.ts': 17,
+  'src/infra/device-bootstrap-single-use.test.ts': 15,
+};
+export const unlistedFeatureTestSeconds = 5;
+// Linux shard 1 also runs the strict typecheck and the native protocol check (~1 minute).
+export const firstShardReserveSeconds = 60;
+
+export function featureTestWeight(file, weights = featureTestWeights) {
+  const value = weights instanceof Map ? weights.get(file) : weights?.[file];
+  return value ?? unlistedFeatureTestSeconds;
+}
+
+export function featureTestWeightKeys() {
+  return Object.keys(featureTestWeights);
+}
+
+/** Longest-file-first packing. `loads` include the shard-1 reserve; `files` keep list order. */
+export function planShards(tests, total, weights = featureTestWeights) {
+  if (total <= 1) {
+    return {
+      files: [tests.slice()],
+      loads: [tests.reduce((sum, file) => sum + featureTestWeight(file, weights), 0)],
+    };
+  }
+  const loads = Array.from({ length: total }, (_, index) => index === 0 ? firstShardReserveSeconds : 0);
+  const ranked = tests.map((file, index) => ({ file, index, weight: featureTestWeight(file, weights) }));
+  ranked.sort((a, b) => b.weight - a.weight || a.index - b.index);
+  const buckets = Array.from({ length: total }, () => []);
+  for (const item of ranked) {
+    let best = 0;
+    for (let index = 1; index < total; index++) if (loads[index] < loads[best]) best = index;
+    buckets[best].push(item);
+    loads[best] += item.weight;
+  }
+  return {
+    files: buckets.map(bucket => bucket.sort((a, b) => a.index - b.index).map(item => item.file)),
+    loads,
+  };
+}
+
+export function shardTests(tests, shard, weights) {
+  return planShards(tests, shard.total, weights).files[shard.index];
 }
