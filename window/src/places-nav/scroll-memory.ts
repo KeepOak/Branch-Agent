@@ -2,6 +2,9 @@ import { useLayoutEffect, useRef, type RefObject } from "react";
 
 /** Preview TZ2-nav.js `navGoT5` retries after render, when the scroller may not exist yet. */
 const RESTORE_MS = [160, 420] as const;
+/** Chat history can arrive after 420 ms; keep watching `scrollHeight` (the overflow box does not resize). */
+const WATCH_MS = 2000;
+const WATCH_EVERY_MS = 32;
 /** Same near-end distance the thread uses to keep following the latest message. */
 const NEAR_END_PX = 80;
 
@@ -31,10 +34,6 @@ export function historyEntryKey(state: unknown = history.state): string {
 function atEndOf(el: HTMLElement, atEnd?: RefObject<boolean>): boolean {
   if (atEnd) return atEnd.current;
   return el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_END_PX;
-}
-
-function remember(el: HTMLElement, key: string, atEnd?: RefObject<boolean>): void {
-  saved.set(key, { y: el.scrollTop, atEnd: atEndOf(el, atEnd) });
 }
 
 if (typeof window !== "undefined") {
@@ -89,16 +88,18 @@ export function useScrollMemory(ref: RefObject<HTMLElement | null>, opts?: Scrol
         };
         requestAnimationFrame(put);
         for (const ms of RESTORE_MS) timers.push(window.setTimeout(put, ms));
-        // Chat history can arrive after 420 ms; put again when the scroller grows.
-        const scroller = ref.current;
-        if (scroller && typeof ResizeObserver !== "undefined") {
-          const ro = new ResizeObserver(() => {
-            if (put()) ro.disconnect();
-          });
-          ro.observe(scroller);
-          stopWatch = () => ro.disconnect();
-          timers.push(window.setTimeout(stopWatch, 2000));
-        }
+        let lastHeight = -1;
+        const watch = () => {
+          const el = ref.current;
+          if (!el) return;
+          if (el.scrollHeight === lastHeight) return;
+          lastHeight = el.scrollHeight;
+          put();
+        };
+        const interval = window.setInterval(watch, WATCH_EVERY_MS);
+        stopWatch = () => window.clearInterval(interval);
+        timers.push(window.setTimeout(() => stopWatch?.(), WATCH_MS));
+        watch();
       }
     } else if (flag) {
       // Thread stays mounted across chats; a fresh open must follow the end again.
@@ -116,19 +117,28 @@ export function useScrollMemory(ref: RefObject<HTMLElement | null>, opts?: Scrol
     const el = ref.current;
     if (!el) return;
     let raf = 0;
+    const last = { y: el.scrollTop, atEnd: atEndOf(el, atEndRef.current) };
+    const capture = () => {
+      last.y = el.scrollTop;
+      last.atEnd = atEndOf(el, atEndRef.current);
+    };
+    const flush = () => {
+      saved.set(key, { y: last.y, atEnd: last.atEnd });
+    };
     const onScroll = () => {
+      capture();
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
-        remember(el, key, atEndRef.current);
+        flush();
       });
     };
     el.addEventListener("scroll", onScroll);
     return () => {
       el.removeEventListener("scroll", onScroll);
       if (raf) cancelAnimationFrame(raf);
-      // After Back/Forward the scroller already belongs to the next place; keep the last scroll save.
-      if (historyEntryKey() === key) remember(el, key, atEndRef.current);
+      // Flush this entry's last y even if history.state already moved (scroll-then-click in one frame).
+      flush();
     };
   }, [key, ref]);
 }

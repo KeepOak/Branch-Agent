@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
 import { act, createElement, useEffect, useRef, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
 import { PlaceFrame } from "./PlaceFrame";
 import { resetScrollMemoryForTests, useScrollMemory } from "./scroll-memory";
 import { Thread } from "../thread/Thread";
 import type { Block } from "../thread/model";
+import { LibraryPlace } from "../places/library";
+import { CanopyPlace } from "../places/canopy";
+
+vi.mock("../face/Face", () => ({ Face: ({ label }: { label?: string }) => createElement("span", { "data-face": label }) }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Object.defineProperty(window, "matchMedia", { configurable: true, value: () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }) });
@@ -33,8 +37,6 @@ function metricsOf(el: HTMLElement): Metrics {
   return row;
 }
 
-const resizeObservers: Array<{ cb: () => void; disconnect: () => void }> = [];
-
 function installScrollMetrics(): void {
   Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get() { return metricsOf(this as HTMLElement).view; } });
   Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get() { return metricsOf(this as HTMLElement).height; } });
@@ -46,27 +48,6 @@ function installScrollMetrics(): void {
       row.top = Math.max(0, Math.min(Number(value), Math.max(0, row.height - row.view)));
     },
   });
-  Object.defineProperty(window, "ResizeObserver", {
-    configurable: true,
-    writable: true,
-    value: class {
-      cb: () => void;
-      constructor(cb: ResizeObserverCallback) {
-        this.cb = () => cb([] as unknown as ResizeObserverEntry[], this as unknown as ResizeObserver);
-        resizeObservers.push({ cb: this.cb, disconnect: () => {} });
-      }
-      observe(): void { /* test double: tests call fireResize() */ }
-      disconnect(): void {
-        const i = resizeObservers.findIndex((row) => row.cb === this.cb);
-        if (i >= 0) resizeObservers.splice(i, 1);
-      }
-      unobserve(): void { this.disconnect(); }
-    },
-  });
-}
-
-function fireResize(): void {
-  for (const row of [...resizeObservers]) row.cb();
 }
 
 let root: Root | undefined;
@@ -74,7 +55,6 @@ let host: HTMLDivElement | undefined;
 
 beforeEach(() => {
   resetScrollMemoryForTests();
-  resizeObservers.length = 0;
   installScrollMetrics();
 });
 
@@ -180,9 +160,25 @@ const engine: WindowEngine = {
     if (method === "sessions.list") return { sessions: [] };
     if (method === "users.prefs.get") return { status: "ok", entries: {} };
     if (method === "session.reactions.list") return { reactions: {} };
-    if (method === "exec.approval.list" || method === "plugin.approval.list") return { items: [] };
+    if (method === "exec.approval.list" || method === "plugin.approval.list" || method === "branch.approval.list") return { items: [] };
+    if (method === "agents.list") return { agents: [], defaultId: "" };
+    if (method === "cron.list") return { jobs: [], hasMore: false };
+    if (method === "cron.runs") return { entries: [], hasMore: false };
+    if (method === "canopy.cards.list") return { cards: [], boards: [] };
+    if (method === "node.list") return { nodes: [] };
+    if (method === "computer.status") return { configured: false };
+    if (method === "canopy.notifications.list") return { subscriptions: [] };
     return {};
   }) as WindowEngine["request"],
+};
+
+const placeProps = {
+  engine,
+  facts: { running: 0, waiting: 0 },
+  openConversation: () => {},
+  openPlace: () => {},
+  openSettings: () => {},
+  level: "regular" as const,
 };
 
 const historyBlocks: Block[] = [
@@ -231,6 +227,28 @@ describe("place scroll memory", () => {
     await flushFrame();
     await waitMs(430);
     expect(scroller.scrollTop).toBe(0);
+  });
+
+  it("Library and Canopy restore their own .place-scroll after Back", async () => {
+    for (const [name, node] of [
+      ["Library", createElement(LibraryPlace, placeProps)],
+      ["Canopy", createElement(CanopyPlace, placeProps)],
+    ] as const) {
+      resetScrollMemoryForTests();
+      push(1, { kind: "place" as const, place: name === "Library" ? "library" : "canopy" });
+      const first = await remount(node);
+      const scroller = first.querySelector<HTMLElement>(".place-scroll")!;
+      expect(scroller, name).toBeTruthy();
+      await saveScroll(scroller, 600);
+      push(2, placeB);
+      await remount(placeNode());
+      popTo(1, { kind: "place", place: name === "Library" ? "library" : "canopy" });
+      const again = await remount(node);
+      const restored = again.querySelector<HTMLElement>(".place-scroll")!;
+      await flushFrame();
+      await waitMs(170);
+      expect(restored.scrollTop, name).toBe(600);
+    }
   });
 });
 
@@ -290,7 +308,7 @@ describe("chat scroll memory", () => {
     await waitMs(450);
     expect(late.scrollTop).toBe(0);
     metricsOf(late).height = 2000;
-    await act(async () => fireResize());
+    await waitMs(80);
     expect(late.scrollTop).toBe(600);
   });
 
