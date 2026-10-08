@@ -1416,11 +1416,25 @@ test('old-base PR still runs the trusted check from the default branch', () => {
   ]);
   assert.equal(filesAtOldBase.has('scripts/merge-gate-trusted.test.mjs'), false);
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-trusted.test.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-commit-emails.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-commit-emails.test.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.test.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-rate-limit.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-rate-limit.test.mjs'));
   const trustedSource = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
   assert.match(trustedSource, /from '\.\/check-ui-proof\.mjs'/);
   assert.match(trustedSource, /runUiProofFromPr\(/);
+});
+
+test('trusted gate runs the commit email checker on pull request commits', () => {
+  const yaml = readFileSync(new URL(`../${TRUSTED_WORKFLOW_PATH}`, import.meta.url), 'utf8');
+  assert.match(yaml, /^\s+run:\s*node --test scripts\/merge-gate-trusted\.test\.mjs\s*$/m);
+  assert.match(yaml, /node --test scripts\/merge-gate-rate-limit\.test\.mjs scripts\/check-gate-files-fresh\.test\.mjs/);
+  assert.match(yaml, /^\s+run:\s*node --test scripts\/check-commit-emails\.test\.mjs\s*$/m);
+  assert.match(yaml, /^\s+run:\s*node scripts\/check-commit-emails\.mjs\s*$/m);
+  assert.match(yaml, /PR_NUMBER:\s*\$\{\{\s*github\.event\.pull_request\.number\s*\}\}/);
+  assert.doesNotMatch(yaml, /ref:\s*\$\{\{\s*github\.event\.pull_request\.head\.(?:sha|ref)/);
 });
 
 test('trusted gate re-runs the UI screenshot proof check from main', () => {
