@@ -56,15 +56,16 @@ describe("conversation row typingRowsT5", () => {
     expect(html).toContain('class="rowTypT5"');
   });
 
-  it("names who is typing under the dots on a group row", () => {
+  it("keeps a group row on dots and typing… with no whoTypT5 name", () => {
     const html = render({
       ...base, key: "agent:ada:room", title: "Quotes", kind: "group",
       roomPicks: [{ kind: "trunk", name: "Dana" }, { kind: "trunk", name: "Ada" }],
     }, undefined, { trunkName: "Ada" });
     expect(html).toContain('class="rowTypT5"');
     expect(html).toContain("typing…");
-    expect(html).toContain('class="whoTypT5"');
-    expect(html).toContain("Dana is typing…");
+    expect(html).not.toContain("whoTypT5");
+    expect(html).not.toContain("Dana is typing…");
+    expect(html).not.toContain("Ada is typing…");
   });
 
   it("leaves a finished row on its last preview", () => {
