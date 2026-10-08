@@ -180,4 +180,28 @@ describe("Overview screen", () => {
     await act(async () => button(host, "change")!.click());
     expect(openSettings).toHaveBeenCalledWith("permissions");
   });
+
+  it("shows a routine check-in and a display name without a chat-app id in Recent activity", async () => {
+    const sessions = [
+      { key: "agent:main:poll", agentId: "main", label: "[Branch Agent heartbeat poll]", updatedAt: NOW - 2e4 },
+      { key: "agent:main:chat", agentId: "main", label: "Alex River id:10001", updatedAt: NOW - 3e4 },
+    ];
+    const events = [
+      { kind: "agent_run", action: "agent.run.started", runId: "rp", agentId: "main", sessionKey: "agent:main:poll", occurredAt: NOW - 4e4 },
+      { kind: "agent_run", action: "agent.run.finished", runId: "rp", agentId: "main", sessionKey: "agent:main:poll", occurredAt: NOW - 2e4, status: "succeeded" },
+      { kind: "agent_run", action: "agent.run.started", runId: "rc", agentId: "main", sessionKey: "agent:main:chat", occurredAt: NOW - 5e4 },
+      { kind: "agent_run", action: "agent.run.finished", runId: "rc", agentId: "main", sessionKey: "agent:main:chat", occurredAt: NOW - 3e4, status: "succeeded" },
+    ];
+    const { host } = await render(vi.fn(async (method: string) => {
+      if (method === "sessions.list") return { sessions };
+      if (method === "audit.list") return { events };
+      return FX[method] ?? {};
+    }));
+    const recent = [...host.querySelectorAll(".ov-recent")].map(row => row.textContent);
+    expect(recent.some(text => text?.includes("Routine check-in"))).toBe(true);
+    expect(recent.some(text => text?.includes("Alex River"))).toBe(true);
+    expect(host.textContent).not.toMatch(/heartbeat poll/i);
+    expect(host.textContent).not.toMatch(/id:/i);
+    expect(host.textContent).not.toContain("10001");
+  });
 });

@@ -1,6 +1,7 @@
 // Overview (DESIGN-SPEC §4.6.1; preview renderOverview + 40-places + 41-placesap p10-overview).
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { activityLabel } from "../../shell/activity-label";
 import { shownWhy } from "../../shell/shown-why";
 import { useLockdown } from "../../shell/use-lockdown";
 import { notify } from "../../shell/notify";
@@ -112,7 +113,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
       <Tile title="Spend this week">{status("spend", "spending")}<Spending resource={tiles.spend} trunks={trunks.list} /></Tile>
       <Tile title="Recent activity">
         {status("sessions", "recent activity")}
-        {recent.map(({ row, length }) => <button key={row.key} type="button" className="ov-recent" onClick={() => openConversation(row.key)}><Face size={20} label={agentName(trunks.list, row.agentId)} /><span className="ov-recent-t">{row.title}</span><span className="ov-mono">{length}</span></button>)}
+        {recent.map(({ row, length }) => <button key={row.key} type="button" className="ov-recent" onClick={() => openConversation(row.key)}><Face size={20} label={agentName(trunks.list, row.agentId)} /><span className="ov-recent-t">{activityLabel(row.title, "Conversation")}</span><span className="ov-mono">{length}</span></button>)}
         {tiles.sessions.value !== undefined && !rows.length ? <p>Nothing has run yet.</p> : null}
         <div className="ov-acts"><button type="button" className="btn sm" onClick={() => { openPlace("inbox"); setTimeout(() => window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "inbox", tab: "History" } })), 0); }}>All history</button></div>
       </Tile>
