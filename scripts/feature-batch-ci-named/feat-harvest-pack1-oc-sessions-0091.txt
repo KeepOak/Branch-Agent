@@ -1,3 +1,4 @@
+# Unique pack1 session tests; listed for trusted coverage.
 engine:extensions/discord/src/monitor/thread-bindings.acp-reconciliation.test.ts
 engine:extensions/discord/src/monitor/thread-bindings.creation.test.ts
 engine:src/agents/main-session-recovery/main-session-restart-recovery.behaviour.test.ts
