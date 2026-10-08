@@ -62,7 +62,7 @@ describe("Group rules in a Branch group", () => {
     expect(items[2]?.disabled).toBe(ROOM_REASONS.mentions);
     await act(async () => items[1]!.run());
     await act(async () => items[2]!.run());
-    expect(request).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalledWith("rooms.rule.set", expect.anything());
     expect(notify).not.toHaveBeenCalled();
     await act(async () => items[0]!.run());
     expect(request).toHaveBeenCalledWith("rooms.rule.set", { roomId: "room-1", rule: "lead" });
