@@ -1,6 +1,7 @@
 /** Pure file edit planning and shared display/unified-patch receipts. */
 
 import { truncateUtf16Safe } from "@branch/normalization-core/utf16-slice";
+import { findSearchMatches } from "../../../coding/search-match.js";
 import { levenshteinDistance } from "../../../shared/levenshtein-distance.js";
 import { assertLiteralFileEdits } from "../../file-omission-guards.js";
 import { normalizeToLF } from "../../line-endings.js";
@@ -366,7 +367,20 @@ function applyEdits(normalizedContent: string, edits: Edit[], path: string) {
       throw getUnsafeFuzzyBoundaryError(path, i, normalizedEdits.length);
     }
     if (matchIndex === -1) {
-      throw getNotFoundError(path, i, normalizedEdits.length, normalizedContent, edit.oldText);
+      // Continue's fallback strategies return source offsets, so whitespace and
+      // case folding never replace a normalized copy of the surrounding file.
+      const matches = findSearchMatches(normalizedContent, edit.oldText);
+      if (matches.length > 1) {
+        throw getDuplicateError(path, i, normalizedEdits.length, matches.length);
+      }
+      const match = matches[0];
+      if (!match || match.startIndex === match.endIndex) {
+        throw getNotFoundError(path, i, normalizedEdits.length, normalizedContent, edit.oldText);
+      }
+      matchIndex = match.startIndex;
+      matchLength = match.endIndex - match.startIndex;
+      matchedEdits.push({ editIndex: i, matchIndex, matchLength, newText: edit.newText });
+      continue;
     }
     if (fuzzy && fuzzyFile) {
       // Uniqueness precedes boundary errors; only accepted fuzzy matches need the source map.

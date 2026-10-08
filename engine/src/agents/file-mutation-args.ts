@@ -1,9 +1,7 @@
 import path from "node:path";
-import {
-  asOptionalObjectRecord,
-  readStringField,
-} from "@branch/normalization-core/record-coerce";
+import { asOptionalObjectRecord, readStringField } from "@branch/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
+import { diffLines } from "../coding/stream-diff.js";
 import { extractApplyPatchTargetPaths } from "./apply-patch-paths.js";
 import type { FileMutationToolName } from "./tool-mutation-names.js";
 
@@ -57,10 +55,23 @@ export function countStreamingFileMutationLines(
   }
   if (kind === "edit") {
     return readEdits(args).reduce<FileMutationLineCount>(
-      (total, edit) => ({
-        added: total.added + countNewlines(edit.newText ?? edit.new_string),
-        removed: total.removed + countNewlines(edit.oldText ?? edit.old_string),
-      }),
+      (total, edit) => {
+        const oldText = edit.oldText ?? edit.old_string;
+        const newText = edit.newText ?? edit.new_string;
+        // Last unterminated lines remain provisional while JSON arguments stream.
+        const completeLines = (text: unknown): string[] =>
+          typeof text === "string"
+            ? text
+                .slice(0, text.lastIndexOf("\n") + 1)
+                .split("\n")
+                .slice(0, -1)
+            : [];
+        for (const line of diffLines(completeLines(oldText), completeLines(newText))) {
+          total.added += Number(line.type === "new");
+          total.removed += Number(line.type === "old");
+        }
+        return total;
+      },
       { added: 0, removed: 0 },
     );
   }

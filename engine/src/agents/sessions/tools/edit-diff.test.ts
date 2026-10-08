@@ -52,12 +52,21 @@ describe("applyEditsToNormalizedContent", () => {
     expect(message).toContain('expected: "const actualValue = 99;"');
   });
 
-  it("calls out indentation differences", () => {
+  it("calls out indentation differences alongside an unmatched value", () => {
     const message = getMismatchMessage("      const value = 42;\n", [
-      { oldText: "            const value = 42;", newText: "" },
+      { oldText: "            const value = 99;", newText: "" },
     ]);
 
     expect(message).toContain("indentation differs (expected 12 spaces, found 6 spaces)");
+  });
+
+  it("accepts indentation-only differences through the Continue strategy", () => {
+    const plan = prepareChangedEdit(
+      "      const value = 42;\n",
+      [{ oldText: "            const value = 42;", newText: "const value = 99;" }],
+      "test.ts",
+    );
+    expect(plan.content).toBe("      const value = 99;\n");
   });
 
   it("calls out escaping differences", () => {
