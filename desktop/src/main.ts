@@ -21,7 +21,7 @@ import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./ti
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from "./desktop-update";
-import { readBesideLaunch } from "./install-folder-holders";
+import { nodeOutsideSwappedFolder, readBesideLaunch } from "./install-folder-holders";
 import { createAutoApplyUpdate } from "./auto-apply-update";
 import { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes } from "./available-memory";
 import { checkCandidateBeside, stopCandidate } from "./candidate-check";
@@ -64,6 +64,8 @@ const STANDBY_WARM_TIMEOUT_MS = 120_000;
 const STANDBY_ATTEMPTS = 2;
 /** Free memory a candidate check needs (6 GB, or a quarter of RAM); tests lower it with BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB. */
 const cfg: DesktopConfig = loadConfig();
+// The bundled node locks the shell folder. Later launches, including the PATH shim, use the outside copy.
+cfg.nodePath = nodeOutsideSwappedFolder(cfg.nodePath, cfg.dataDir);
 /** The packaged app this process runs from; development runs (`electron .`) never update themselves. */
 const install: DesktopInstall | undefined = app.isPackaged ? {
   appDir: process.platform === "darwin" ? resolve(process.resourcesPath, "..", "..") : dirname(process.execPath),

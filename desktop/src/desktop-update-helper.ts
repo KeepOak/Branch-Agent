@@ -6,7 +6,7 @@ import { spawn, execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
-import { BESIDE_MARKER, besideInstallDir, createHolderDeps, installDirFor, placeAppShell, writeBesideMarker } from "./install-folder-holders";
+import { BESIDE_MARKER, besideInstallDir, createHolderDeps, installDirFor, placeAppShell, shortcutRepairScript, stableShortcutDirectory, writeBesideMarker } from "./install-folder-holders";
 
 export interface HelperPlan {
   journal: string;
@@ -55,15 +55,20 @@ function launch(plan: HelperPlan): number | undefined {
   return child.pid;
 }
 
+/** Points Start in outside the shell folder for shortcuts that already target this executable. */
+function repairWindowsShortcuts(exe: string, dataDir: string, log: (line: string) => void): void {
+  if (process.platform !== "win32" || process.env.BRANCH_DESKTOP_TEST_DIST) return;
+  const work = stableShortcutDirectory(dirname(exe), dataDir);
+  const script = shortcutRepairScript(exe, work);
+  try { execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")], { windowsHide: true, stdio: "ignore", timeout: 15_000 }); }
+  catch (error) { log(`desktop update: could not repair shortcut working directories (${String(error)})`); }
+}
+
 /** Windows caches executable icons by shortcut. Re-save only links that already target this app. */
 function refreshWindowsIcon(plan: HelperPlan, log: (line: string) => void): void {
   if (process.platform !== "win32" || process.env.BRANCH_DESKTOP_TEST_DIST) return;
-  const exe = plan.relaunch.command;
-  const quoted = exe.replaceAll("'", "''");
-  const script = `$exe='${quoted}'; $shell=New-Object -ComObject WScript.Shell; foreach($dir in @([Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'))) { if(!$dir) { continue }; $path=Join-Path $dir 'Branch Agent.lnk'; if(!(Test-Path -LiteralPath $path)) { continue }; $link=$shell.CreateShortcut($path); if($link.TargetPath -ieq $exe) { $link.IconLocation="$exe,0"; $link.Save() } }`;
+  repairWindowsShortcuts(plan.relaunch.command, dirname(plan.journal), log);
   const errors: string[] = [];
-  try { execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")], { windowsHide: true, stdio: "ignore", timeout: 15_000 }); }
-  catch (error) { errors.push(`shortcuts: ${String(error)}`); }
   try { execFileSync("ie4uinit.exe", ["-show"], { windowsHide: true, stdio: "ignore", timeout: 15_000 }); }
   catch (error) { errors.push(`cache: ${String(error)}`); }
   if (errors.length) log(`desktop icon refresh failed (${errors.join("; ")})`);
@@ -96,6 +101,7 @@ async function swap(plan: HelperPlan, journal: Journal, previous: string, log: (
   await rm(previous, { recursive: true, force: true });
   if (journal.kind === "runtime") await restoreAsarNames(journal.staged);
   await writeJournal(plan.journal, { ...journal, phase: "applying" });
+  repairWindowsShortcuts(plan.relaunch.command, dirname(plan.journal), log);
   const installDir = installDirFor(journal.kind, journal.target);
   const besideDir = besideInstallDir(installDir);
   try {

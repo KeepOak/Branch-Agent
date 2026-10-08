@@ -3,7 +3,11 @@ param(
     [Parameter(Mandatory = $true)][string]$Exe,
     [switch]$DryRun,
     [string]$ConfigModule,
-    [string[]]$ShortcutDirectories = @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))
+    [string[]]$ShortcutDirectories = @(
+        [Environment]::GetFolderPath('Desktop'),
+        [Environment]::GetFolderPath('Programs'),
+        [Environment]::GetFolderPath('Startup')
+    )
 )
 $ErrorActionPreference = 'Stop'
 $executable = [IO.Path]::GetFullPath($Exe)
@@ -52,7 +56,8 @@ foreach ($directory in $directories) {
     }
     $link = $shell.CreateShortcut($path)
     $link.TargetPath = $executable
-    $link.WorkingDirectory = Split-Path -Parent $executable
+    # The shell folder is replaced on update. Start in the data folder, which stays put.
+    $link.WorkingDirectory = $dataDirectory
     $link.IconLocation = "$executable,0"
     $link.Description = 'Branch Agent'
     $link.Save()
