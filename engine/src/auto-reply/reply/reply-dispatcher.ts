@@ -312,13 +312,7 @@ export function createReplyDispatcher(
     ...(hasPendingDelivery ? { hasPendingDelivery: true } : {}),
   });
 
-  const unregister = registerDispatcher(
-    () => pending,
-    () =>
-      pending === 1 &&
-      !completeCalled &&
-      queuedCounts.tool + queuedCounts.block + queuedCounts.final === 0,
-  );
+  const unregister = registerDispatcher(() => pending, () => pending === 1 && !completeCalled && queuedCounts.tool + queuedCounts.block + queuedCounts.final === 0);
   const releasePending = () => {
     pending -= 1;
     if (pending === 1 && completeCalled) {

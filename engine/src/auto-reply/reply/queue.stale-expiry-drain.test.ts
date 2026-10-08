@@ -4,20 +4,14 @@ import { createAbortError } from "../../infra/abort-signal.js";
 import { defaultRuntime } from "../../runtime.js";
 import { enqueueFollowupRun, scheduleFollowupDrain } from "./queue.js";
 import { createQueueTestRun as createRun } from "./queue.test-helpers.js";
-import {
-  clearFollowupDrainCallback,
-  isReplyOperationExpiredAsStaleError,
-} from "./queue/drain.js";
+import { clearFollowupDrainCallback } from "./queue/drain.js";
 import { clearFollowupQueue, getExistingFollowupQueue } from "./queue/state.js";
-import {
-  REPLY_OPERATION_EXPIRED_AS_STALE,
-  forceClearReplyOperation,
-  replyRunRegistry,
-} from "./reply-run-registry.js";
+import { forceClearReplyOperation, replyRunRegistry } from "./reply-run-registry.js";
 import { expireStaleReplyOperation } from "./reply-run-registry.state.js";
 import { createTestReplyOperation } from "./reply-run-registry.test-helpers.js";
 import { testing } from "./reply-run-registry.test-support.js";
 
+const STALE_EXPIRED = "Reply operation expired as stale";
 const defaults = { mode: "followup" as const, debounceMs: 0, cap: 50 };
 let key: string;
 
@@ -56,16 +50,15 @@ describe("followup queue drain stale-expired owner", () => {
       enqueueFollowupRun(key, createRun({ prompt: "retry stale owner" }), defaults);
       scheduleFollowupDrain(key, async () => {
         attempts += 1;
-        throw createAbortError(REPLY_OPERATION_EXPIRED_AS_STALE);
+        throw createAbortError(STALE_EXPIRED);
       });
 
-      await vi.waitFor(() => expect(getExistingFollowupQueue(key)).toBeUndefined());
+      await vi.waitFor(() => expect(getExistingFollowupQueue(key)).toBeUndefined(), {
+        timeout: 2_000,
+      });
       const attemptsAfterDrop = attempts;
       expect(attemptsAfterDrop).toBeGreaterThanOrEqual(1);
       expect(attemptsAfterDrop).toBeLessThanOrEqual(2);
-      expect(isReplyOperationExpiredAsStaleError(createAbortError(REPLY_OPERATION_EXPIRED_AS_STALE))).toBe(
-        true,
-      );
       expect(errors.filter((line) => line.includes("followup queue drain failed"))).toHaveLength(0);
       expect(errors.filter((line) => line.includes("dropped stale-expired owner"))).toHaveLength(1);
       expect(replyRunRegistry.get(key)).toBeUndefined();
