@@ -35,7 +35,7 @@ describe("topic update in the contact thread", () => {
       topicUpdates={[{ topic, text: "Topic reply", at: 250, unread: true }, { topic: other, text: "Earlier reply", at: 220, unread: false }]} focusTopic={{ key: topic.key, nonce: 1 }} />));
     const origin = [...container.querySelectorAll<HTMLButtonElement>(".topic-origin")].find((node) => node.textContent?.includes("Research"))!;
     const card = container.querySelector<HTMLButtonElement>(`[data-testid="topic-card-${topic.key}"]`)!;
-    expect(origin.textContent).toContain("Started a conversation: Research");
+    expect(origin.textContent).toContain("Started a thread: Research");
     expect(card.textContent).toContain("Topic reply");
     expect(origin.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(container.querySelectorAll(".topic-update")[1]).toBe(card);
