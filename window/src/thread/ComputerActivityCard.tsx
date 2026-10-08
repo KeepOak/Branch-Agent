@@ -6,7 +6,13 @@ import { SIcon } from "../stage/stage-icons";
 import { useDesktopView } from "../stage/use-desktop";
 import { describePlacement, placementComputer } from "../stage/computers";
 import "../stage/stage.css";
-import { computerCardState, runWasStopped, type ComputerCardState } from "./computer-card";
+import {
+  announceComputerControl,
+  computerCardState,
+  listenComputerControl,
+  runWasStopped,
+  type ComputerCardState,
+} from "./computer-card";
 
 type Mode = "Computer" | "Browser";
 type Step = Extract<Block, { kind: "step" }>;
@@ -99,6 +105,8 @@ export function ComputerActivityCard({
   onWatch,
   engine,
   gatewayUrl,
+  controlling: controllingProp,
+  onHandBack,
 }: {
   blocks: Block[];
   running: boolean;
@@ -106,15 +114,21 @@ export function ComputerActivityCard({
   onWatch: (mode: Mode, takeOver?: boolean) => void;
   engine?: WindowEngine;
   gatewayUrl?: string;
+  /** The real take-over (WindowShell's stageTakeOver or the stage's control). */
+  controlling?: boolean;
+  /** Clears the parent take-over. The stage also hears `branch:computer-control`. */
+  onHandBack?: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [controlling, setControlling] = useState(false);
+  const [takeOver, setTakeOver] = useState(false);
+  useEffect(() => listenComputerControl(setTakeOver), []);
   const steps = blocks.filter(isComputer);
   const computer = useComputerName(steps.length ? engine : undefined);
   const latest = steps.at(-1);
   if (!latest) return null;
   const mode: Mode = /browser/i.test(latest.tool) ? "Browser" : "Computer";
   const where = mode === "Browser" ? `${name}'s browser` : computer.name || `${name}'s computer`;
+  const controlling = controllingProp ?? takeOver;
   const state = computerCardState({
     running,
     status: latest.status,
@@ -130,11 +144,17 @@ export function ComputerActivityCard({
         <ComputerThumb engine={engine} gatewayUrl={gatewayUrl} id={computer.id} yours={state === "yours"} onOpen={() => onWatch(mode)} />
       ) : null
     ) : null;
-  const takeOver = () => {
-    setControlling(true);
+  const takeOverNow = () => {
+    setTakeOver(true);
+    announceComputerControl(true);
     onWatch(mode, true);
   };
-  const handBack = () => setControlling(false);
+  const handBack = () => {
+    setTakeOver(false);
+    announceComputerControl(false);
+    onHandBack?.();
+    onWatch(mode, false);
+  };
   const carryOn = () => {
     void engine?.send?.("Carry on");
   };
@@ -145,7 +165,7 @@ export function ComputerActivityCard({
           <SIcon name="monitor" small />
           Watch full size
         </button>
-        <button type="button" className="btn sm" onClick={takeOver}>
+        <button type="button" className="btn sm" onClick={takeOverNow}>
           Take over
         </button>
       </>

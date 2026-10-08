@@ -10,10 +10,29 @@ export function computerCardState(input: {
   controlling: boolean;
   stopped: boolean;
 }): ComputerCardState {
-  if (input.controlling) return "yours";
-  if (input.running && input.status === "running") return "working";
   if (input.stopped || input.status === "failed" || input.status === "denied") return "stopped";
+  if (!input.running) return "done";
+  if (input.controlling) return "yours";
+  if (input.status === "running") return "working";
   return "done";
+}
+
+/** The stage and the conversation card share take-over through this event (`branch:*` like the others). */
+export const COMPUTER_CONTROL_EVENT = "branch:computer-control";
+
+/** Tell the conversation card (and an open stage) whether the person is driving. */
+export function announceComputerControl(controlling: boolean): void {
+  window.dispatchEvent(new CustomEvent(COMPUTER_CONTROL_EVENT, { detail: { controlling } }));
+}
+
+/** Follow take-over from the stage or the conversation card. */
+export function listenComputerControl(onControl: (controlling: boolean) => void): () => void {
+  const handler = (event: Event) => {
+    const controlling = (event as CustomEvent<{ controlling?: boolean }>).detail?.controlling;
+    if (typeof controlling === "boolean") onControl(controlling);
+  };
+  window.addEventListener(COMPUTER_CONTROL_EVENT, handler);
+  return () => window.removeEventListener(COMPUTER_CONTROL_EVENT, handler);
 }
 
 /** A turn the person or the engine stopped (the thread's Done line carries `stopped`). */

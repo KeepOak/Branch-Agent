@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { ComputerActivityCard } from "./ComputerActivityCard";
+import { announceComputerControl } from "./computer-card";
 import type { WindowEngine } from "../connect/engine";
 import type { Block } from "./model";
 
@@ -30,11 +31,30 @@ function engineWith(send?: WindowEngine["send"]): WindowEngine {
     send,
   };
 }
-async function render(blocks: Block[], running: boolean, onWatch = vi.fn(), engine?: WindowEngine) {
+async function render(
+  blocks: Block[],
+  running: boolean,
+  onWatch = vi.fn(),
+  engine?: WindowEngine,
+  extras?: { controlling?: boolean; onHandBack?: () => void },
+) {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
-  await act(async () => root!.render(<ComputerActivityCard blocks={blocks} running={running} name="Ada" onWatch={onWatch} engine={engine} gatewayUrl={engine ? "ws://127.0.0.1:9" : undefined} />));
+  await act(async () =>
+    root!.render(
+      <ComputerActivityCard
+        blocks={blocks}
+        running={running}
+        name="Ada"
+        onWatch={onWatch}
+        engine={engine}
+        gatewayUrl={engine ? "ws://127.0.0.1:9" : undefined}
+        controlling={extras?.controlling}
+        onHandBack={extras?.onHandBack}
+      />,
+    ),
+  );
   return onWatch;
 }
 const click = async (label: string) => {
@@ -89,6 +109,43 @@ describe("computer card in the conversation", () => {
     await render([step("a", "Opened mail", "ok")], false);
     expect(container.querySelector("[data-state='done']")?.textContent).toContain("Done");
     expect(container.textContent).toContain("Used Ada's computer · 1 action");
+  });
+  it("notifies the parent when you hand back", async () => {
+    const onHandBack = vi.fn();
+    await render([step("a", "Searching the inbox", "running")], true, vi.fn(), undefined, {
+      controlling: true,
+      onHandBack,
+    });
+    expect(container.querySelector("[data-state='yours']")).toBeTruthy();
+    await click("Hand back to Ada");
+    expect(onHandBack).toHaveBeenCalledTimes(1);
+  });
+  it("is not yours after the stage closes", async () => {
+    const blocks = [step("a", "Searching the inbox", "running")];
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    const mount = async (controlling: boolean) => {
+      await act(async () =>
+        root!.render(
+          <ComputerActivityCard blocks={blocks} running={true} name="Ada" onWatch={vi.fn()} controlling={controlling} onHandBack={() => {}} />,
+        ),
+      );
+    };
+    await mount(true);
+    expect(container.querySelector("[data-state='yours']")).toBeTruthy();
+    await mount(false);
+    expect(container.querySelector("[data-state='yours']")).toBeNull();
+    expect(container.textContent).toContain("Working");
+    expect(container.textContent).not.toContain("You have control");
+  });
+  it("is not yours after the stage announces that control was released", async () => {
+    await render([step("a", "Searching the inbox", "running")], true);
+    await click("Take over");
+    expect(container.querySelector("[data-state='yours']")).toBeTruthy();
+    await act(async () => announceComputerControl(false));
+    expect(container.querySelector("[data-state='yours']")).toBeNull();
+    expect(container.textContent).toContain("Working");
   });
   it("shows a live thumbnail and Take over for the browser", async () => {
     const onWatch = await render([step("a", "Opened the inbox", "running", "browser")], true, vi.fn(), engineWith());
