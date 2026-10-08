@@ -243,6 +243,36 @@ test('treats you as a placeholder user', () => {
   assert.deepEqual(types('C:/Users/exampleuser/Code/Branch/spec.html'), ['windows-user-profile']);
 });
 
+test('path usernames stop at markdown and punctuation so placeholders stay clean', () => {
+  const forms = ['C:/Users/you', 'C:/Users/<name>', '/Users/you'];
+  const wraps = [
+    (value) => `\`${value}\``,
+    (value) => `${value},`,
+    (value) => `${value}.`,
+    (value) => `${value})`,
+    (value) => `${value}"`,
+  ];
+  for (const form of forms) {
+    for (const wrap of wraps) {
+      const sample = wrap(form);
+      assert.deepEqual(types(sample), [], sample);
+    }
+  }
+  assert.deepEqual(types('C:/Users/alice/Documents'), ['windows-user-profile']);
+  assert.deepEqual(types('/Users/alice/Documents'), ['macos-user-path']);
+  assert.deepEqual(types('`C:/Users/alice/Documents`'), ['windows-user-profile']);
+  assert.deepEqual(types('See C:/Users/alice/Documents), please'), ['windows-user-profile']);
+});
+
+test('allows cursoragent and noreply addresses while personal mail still flags', () => {
+  assert.deepEqual(types('cursoragent@cursor.com'), []);
+  assert.deepEqual(types('noreply@github.com'), []);
+  assert.deepEqual(types('no-reply@github.com'), []);
+  assert.deepEqual(types('noreply@users.noreply.github.com'), []);
+  assert.deepEqual(types('123+bot@users.noreply.github.com'), []);
+  assert.deepEqual(types('alice@gmail.com'), ['email']);
+});
+
 test('scan workflow copies merge-gate-trusted concurrency so description edits do not cancel', () => {
   const yaml = readFileSync(new URL('../.github/workflows/personal-info-pr-scan.yml', import.meta.url), 'utf8');
   const trusted = readFileSync(new URL('../.github/workflows/merge-gate-trusted.yml', import.meta.url), 'utf8');

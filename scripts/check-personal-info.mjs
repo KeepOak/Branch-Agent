@@ -65,9 +65,21 @@ const CONTEXT_JOIN = String.raw`[\s:,'"-]+(?:(?:name|called|named)[\s:,'"-]+)?`;
 const PC_NAME = String.raw`[A-Z][A-Za-z0-9]{0,20}_[A-Z][A-Za-z0-9]{0,20}`;
 const CONTEXT_WORD = String.raw`[Mm]achines?|[Pp][Cc]s?|[Hh]osts?|[Cc]omputers?`;
 
-const WINDOWS_USER = /(?:^|[^A-Za-z0-9])([A-Za-z]:[/\\]+Users[/\\]+)([^/\\\s]+)/gi;
-const MAC_USER = /(?:^|[^A-Za-z0-9_:])(\/Users\/)([^/\\\s]+)/g;
-const LINUX_USER = /(?:^|[^A-Za-z0-9_])(\/home\/)([^/\\\s]+)/g;
+// Stop the username at markdown and punctuation so `C:/Users/you` and
+// C:/Users/<name>, stay placeholders. Real names such as alice still match.
+const PATH_USER = String.raw`(?:<[^>\s/\\]+>|%[A-Za-z][A-Za-z0-9_]+%|\$[A-Za-z][A-Za-z0-9_]+|[A-Za-z0-9_-]+)`;
+const WINDOWS_USER = new RegExp(
+  String.raw`(?:^|[^A-Za-z0-9])([A-Za-z]:[/\\]+Users[/\\]+)(${PATH_USER})`,
+  'gi',
+);
+const MAC_USER = new RegExp(
+  String.raw`(?:^|[^A-Za-z0-9_:])(\/Users\/)(${PATH_USER})`,
+  'g',
+);
+const LINUX_USER = new RegExp(
+  String.raw`(?:^|[^A-Za-z0-9_])(\/home\/)(${PATH_USER})`,
+  'g',
+);
 const EMAIL = /\b([A-Za-z0-9._%+-]+)@([A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,})\b/g;
 const MDNS = /\b([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)\.local\b/gi;
 const WINDOWS_COMPUTER = /\b(DESKTOP|LAPTOP)-([A-Z0-9]{4,}|<[^>]+>)\b/g;
@@ -111,8 +123,11 @@ export function isRetinaImageName(local, domain) {
 
 export function isAllowedEmail(local, domain) {
   const host = String(domain ?? '').toLowerCase();
+  const mailbox = String(local ?? '').toLowerCase();
   if (!host || host === 'localhost') return true;
-  if (local === 'git' && host === 'github.com') return true;
+  if (mailbox === 'git' && host === 'github.com') return true;
+  if (mailbox === 'cursoragent' && host === 'cursor.com') return true;
+  if (mailbox === 'noreply' || mailbox === 'no-reply') return true;
   if (ALLOWED_EMAIL_DOMAINS.has(host)) return true;
   if ([...ALLOWED_EMAIL_DOMAINS].some((allowed) => host.endsWith(`.${allowed}`))) return true;
   if (WHATSAPP_JID_DOMAINS.has(host)) return true;
