@@ -223,7 +223,7 @@ jobs:
   # burns the 35-minute clock while window is still queued, and the 10-minute poll then fails.
   native:
     needs: [readiness, readiness-rehearsal, identity, window]
-    if: always() && !cancelled() && needs.identity.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+    if: always() && !cancelled() && needs.identity.result == 'success' && needs.window.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 35
     permissions:
@@ -360,7 +360,7 @@ jobs:
           echo "publish skipped"
   publish:
     needs: [readiness, readiness-rehearsal, identity, native]
-    if: always() && !cancelled() && needs.identity.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+    if: always() && !cancelled() && needs.identity.result == 'success' && needs.native.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

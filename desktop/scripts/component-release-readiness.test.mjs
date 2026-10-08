@@ -198,6 +198,26 @@ test("catch-up job waits out the cooldown and dispatches one release", () => {
   assert.match(identityJob, /needs\.readiness-rehearsal\.outputs\.should_release == 'true'/);
 });
 
+test("downstream release jobs require their build dependencies after always()", () => {
+  const windowJob = workflow.slice(workflow.indexOf("\n  window:"), workflow.indexOf("\n  native:"));
+  const nativeJob = workflow.slice(workflow.indexOf("\n  native:"), workflow.indexOf("\n  report:"));
+  const publishJob = workflow.slice(workflow.indexOf("\n  publish:"), workflow.indexOf("\n  catch-up:"));
+  const catchUp = workflow.slice(workflow.indexOf("\n  catch-up:"));
+  const readinessJob = workflow.slice(workflow.indexOf("\n  readiness:"), workflow.indexOf("\n  readiness-rehearsal:"));
+  const rehearsalJob = workflow.slice(workflow.indexOf("\n  readiness-rehearsal:"), workflow.indexOf("\n  identity:"));
+  assert.match(windowJob, /if: always\(\) && !cancelled\(\) && needs\.identity\.result == 'success' && !\(github\.event_name == 'workflow_dispatch' && inputs\.dry_run\)/);
+  assert.match(nativeJob, /if: always\(\) && !cancelled\(\) && needs\.identity\.result == 'success' && needs\.window\.result == 'success' && !\(github\.event_name == 'workflow_dispatch' && inputs\.dry_run\)/);
+  assert.match(publishJob, /if: always\(\) && !cancelled\(\) && needs\.identity\.result == 'success' && needs\.native\.result == 'success' && !\(github\.event_name == 'workflow_dispatch' && inputs\.dry_run\)/);
+  assert.match(catchUp, /needs\.publish\.result == 'success' \|\| needs\.readiness\.outputs\.skip_reason == 'cooldown'/);
+  assert.match(readinessJob, /actions: write/);
+  assert.match(readinessJob, /github\.event_name != 'pull_request'/);
+  assert.doesNotMatch(rehearsalJob, /actions: write/);
+  assert.equal((workflow.match(/^\s+actions: write\s*$/mg) || []).length, 2);
+  assert.doesNotMatch(windowJob, /actions: write/);
+  assert.doesNotMatch(nativeJob, /actions: write/);
+  assert.doesNotMatch(publishJob, /actions: write/);
+});
+
 function failedCapabilityCheck({
   id = 11,
   runId = 506,
