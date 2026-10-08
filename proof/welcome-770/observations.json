@@ -1,0 +1,15 @@
+{
+  "safety": [
+    "It asks before it sends, deletes, spends or installs anything.",
+    "Your conversations and keys stay on your computers.",
+    "You can take over, stop it, or roll back any change."
+  ],
+  "mark": {
+    "color": "rgb(20, 29, 36)",
+    "ink": "#141d24",
+    "background": "rgba(0, 0, 0, 0)",
+    "fill": "currentColor"
+  },
+  "clickthrough": "load -> tick -> Start -> Where (This computer); dark Welcome",
+  "assertions": "passed"
+}
