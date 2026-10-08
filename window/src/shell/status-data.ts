@@ -115,12 +115,13 @@ function readingFrom(row: LimitRow): RingReading | null {
   return w ? { name: row.name, left: w.left, reset: w.reset, low: w.low } : null;
 }
 
-/** The ring shows the account used next; if none is marked, the first measured account. */
+/** The ring shows the account used next when it has a reading; otherwise the first measured account. */
 export function ringReading(limits: Limits | null): RingReading | null {
   const rows = limits?.rows ?? [];
   const usedNext = rows.find((row) => row.inUse);
-  if (usedNext) {
-    return readingFrom(usedNext);
+  const preferred = usedNext ? readingFrom(usedNext) : null;
+  if (preferred) {
+    return preferred;
   }
   for (const row of rows) {
     const reading = readingFrom(row);
