@@ -565,7 +565,7 @@ test("release maker assembles distinct Windows/macOS descriptors sharing only an
 }));
 
 test("macOS runtime component preserves in-bundle framework symlinks", { skip: process.platform !== "darwin" }, async () => fixture(async ({ root, engine, window }) => {
-  const app = join(root, "signed-app"), contents = join(app, "Branch.app/Contents");
+  const app = join(root, "signed-app"), contents = join(app, "Branch Agent.app/Contents");
   const framework = join(contents, "Frameworks/Example.framework");
   await mkdir(join(contents, "Resources"), { recursive: true });
   await mkdir(join(framework, "Versions/A"), { recursive: true });
@@ -580,8 +580,8 @@ test("macOS runtime component preserves in-bundle framework symlinks", { skip: p
   const extracted = join(root, "mac-runtime-extracted"); await mkdir(extracted);
   const { extractComponentArchive } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update-archive.js")));
   await extractComponentArchive(join(output, new URL(asset.url).pathname.split("/").at(-1)), extracted, asset.expandedBytes);
-  assert.equal(await readlink(join(extracted, "Branch.app/Contents/Frameworks/Example.framework/Versions/Current")), "A");
-  assert.equal(await readFile(join(extracted, "Branch.app/Contents/Frameworks/Example.framework/Versions/Current/Example"), "utf8"), "signed framework");
+  assert.equal(await readlink(join(extracted, "Branch Agent.app/Contents/Frameworks/Example.framework/Versions/Current")), "A");
+  assert.equal(await readFile(join(extracted, "Branch Agent.app/Contents/Frameworks/Example.framework/Versions/Current/Example"), "utf8"), "signed framework");
 }));
 
 test("release maker refuses changed shared renderer and preserves existing immutable assets", async () => fixture(async ({ root, engine, window }) => {

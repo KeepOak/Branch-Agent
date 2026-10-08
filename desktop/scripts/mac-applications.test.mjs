@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { gunzipSync } from "node:zlib";
 import test from "node:test";
+import { makeComponentRelease } from "./make-component-release.mjs";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
@@ -101,7 +103,7 @@ test("stamp names the bundle Branch and keeps the stable id, package type, and m
     assert.match(stamped, /Branch document/);
     await assert.equal(mac.darwinPackagerOptions("/icons/branch.icns").appBundleId, mac.MAC_BUNDLE_ID);
     assert.deepEqual(mac.darwinPackagerOptions("/icons/branch.icns"), {
-      name: "Branch", executableName: "Branch Agent", appBundleId: "com.electron.branch-agent", icon: "/icons/branch.icns",
+      name: "Branch Agent", executableName: "Branch Agent", appBundleId: "com.electron.branch-agent", icon: "/icons/branch.icns",
     });
   } finally { await done(); await rm(root, { recursive: true, force: true }); }
 });
@@ -218,20 +220,95 @@ test("packaging, updates, and CI keep the Applications install and the pinned si
   assert.match(updater, /chooseStagedMacBundle/);
   assert.match(helper, /lsregister/);
   assert.match(helper, /windowsHide: true/);
-  assert.match(maker, /Branch\.app\/Contents\/Resources\/app\.asar/);
-  assert.match(componentRelease, /Branch\.app/);
+  assert.match(maker, /Branch Agent\.app\/Contents\/Resources\/app\.asar/);
+  assert.match(componentRelease, /app="\$extracted\/Branch Agent\.app"/);
+  assert.match(componentRelease, /test "\$fingerprint" = "\$BRANCH_MACOS_SIGNING_IDENTITY"/);
+  assert.match(componentRelease, /codesign -dr - "\$app" 2>&1 \| grep -Fx 'designated => identifier "com\.electron\.branch-agent" and certificate root = H"30bbf0b68236ae05e063465c39dea6c5b396b11c"'/);
   assert.match(componentRelease, new RegExp(mac.macReleaseSigning.p12Secret));
   assert.match(componentRelease, new RegExp(mac.macReleaseSigning.passwordSecret));
   assert.match(componentRelease, new RegExp(mac.macReleaseSigning.identitySha1));
   assert.match(componentRelease, /assertMacReleaseSignature/);
   assert.match(checks, /scripts\/mac-applications\.test\.mjs/);
   assert.match(checks, /macOS Applications install/);
-  assert.match(checks, new RegExp(mac.macReleaseSigning.p12Secret));
-  assert.match(checks, new RegExp(mac.macReleaseSigning.passwordSecret));
+  assert.doesNotMatch(checks, /BRANCH_MACOS_SIGNING_P12/);
+  assert.doesNotMatch(checks, /BRANCH_MACOS_SIGNING_PASSWORD/);
+  assert.doesNotMatch(bundleCheck, /BRANCH_MACOS_SIGNING_P12/);
+  assert.doesNotMatch(bundleCheck, /BRANCH_MACOS_SIGNING_PASSWORD/);
   assert.match(bundleCheck, /plutil/);
   assert.match(bundleCheck, /assets\/branch\.icns/);
+  assert.match(release, /MAC_ARCHIVE_BUNDLE_FOLDER/);
   assert.equal(mac.MAC_BUNDLE_FOLDER, "Branch.app");
+  assert.equal(mac.MAC_ARCHIVE_BUNDLE_FOLDER, "Branch Agent.app");
   assert.equal(mac.MAC_BUNDLE_ID, "com.electron.branch-agent");
+});
+
+test("a launch from Applications registers Branch.app and does not copy or delete it", async () => {
+  const { root, done } = await tempTree();
+  try {
+    for (const apps of [join(root, "Applications"), join(root, "home", "Applications")]) {
+      const running = join(apps, "Branch.app");
+      await bundle(running);
+      await writeFile(join(running, "Contents/Resources/marker.txt"), "live");
+      const legacy = join(apps, "Branch Agent.app");
+      await bundle(legacy);
+      const before = await stat(running);
+      const calls = [];
+      const register = async args => { calls.push(args); };
+      const installed = await mac.installMacApp(running, {
+        applicationsDirectory: apps,
+        runningAppDir: running,
+        register,
+      });
+      const after = await stat(installed);
+      assert.equal(installed, running);
+      assert.equal(after.ino, before.ino, apps);
+      assert.equal(await readFile(join(running, "Contents/Resources/marker.txt"), "utf8"), "live");
+      assert.equal((await readdir(apps)).some(name => name.startsWith(".Branch.")), false, apps);
+      assert.deepEqual(calls.filter(args => args[0] === "-f"), [["-f", running]]);
+      assert.equal(calls.some(args => args[0] === "-u" && args[1] === running), false);
+      assert.equal((await readdir(apps)).includes("Branch Agent.app"), false, apps);
+      const linked = join(root, `linked-${apps.endsWith(`${join("home", "Applications")}`) ? "home" : "system"}.app`);
+      await symlink(running, linked);
+      const viaLink = await mac.installMacApp(linked, { applicationsDirectory: apps, runningAppDir: linked, register });
+      assert.equal((await stat(viaLink)).ino, before.ino, apps);
+    }
+  } finally { await done(); }
+});
+
+test("a staged or postponed desktop update does not republish the running app", async () => {
+  const updater = await text("src/desktop-update.ts");
+  const handoff = updater.slice(updater.indexOf("export async function handOffDesktopUpdate"));
+  const early = handoff.slice(0, handoff.indexOf("const work"));
+  assert.match(early, /readDesktopJournal\(cfg\)/);
+  assert.match(early, /phase === "staged"/);
+  assert.doesNotMatch(early, /heldUntil \?\? 0\) > Date\.now\(\)\) \{\s*await ensureMacApplicationsInstall/);
+  assert.match(early, /if \(!updateWaiting\) await ensureMacApplicationsInstall/);
+});
+
+test("darwin desktop tarball root stays Branch Agent.app", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mac-archive-"));
+  try {
+    const engine = join(root, "engine"), window = join(root, "window"), asar = join(root, "asar"), app = join(root, "runtime");
+    await mkdir(join(engine, "dist"), { recursive: true });
+    await mkdir(window);
+    await mkdir(asar);
+    await bundle(join(app, "Branch Agent.app"));
+    await writeFile(join(app, "Branch Agent.app/Contents/Resources/app.asar"), "sealed asar");
+    await writeFile(join(engine, "branch.mjs"), "export {};\n");
+    await writeFile(join(engine, "dist/entry.js"), "export {};\n");
+    await writeFile(join(engine, "dist/build-info.json"), "{}");
+    await writeFile(join(window, "index.html"), "window");
+    await writeFile(join(asar, "app.asar"), "sealed asar");
+    const output = join(root, "out");
+    const release = await makeComponentRelease({
+      version: "0.4.4", tag: "v0.4.4", engine, window, output, platform: "darwin", arch: "arm64",
+      desktop: { app: asar, runtime: app, electronVersion: "44.5.1" },
+    });
+    assert.match(release.components.desktopRuntime.appAsarSha256, /^[a-f0-9]{64}$/);
+    const archive = gunzipSync(await readFile(join(output, "branch-desktop-0.4.4-darwin-arm64.tar.gz")));
+    assert.ok(archive.includes(Buffer.from("Branch Agent.app/Contents/Resources/app.asar")));
+    assert.equal(archive.includes(Buffer.from("Branch.app/")), false);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("install CLI copies Branch.app into the requested Applications directory", async () => {

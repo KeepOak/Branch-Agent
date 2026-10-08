@@ -175,8 +175,9 @@ export async function stagedDesktopVersion(cfg: DesktopConfig): Promise<string |
  */
 export async function handOffDesktopUpdate(cfg: DesktopConfig, install: DesktopInstall, helperSource: string, args: string[] = [], explicit = false): Promise<boolean> {
   const journal = await readDesktopJournal(cfg);
-  if (journal?.phase !== "staged" || !explicit && (journal.heldUntil ?? 0) > Date.now()) {
-    await ensureMacApplicationsInstall(install.appDir, join(cfg.dataDir, "desktop.log"));
+  const updateWaiting = journal?.phase === "staged";
+  if (!updateWaiting || !explicit && (journal?.heldUntil ?? 0) > Date.now()) {
+    if (!updateWaiting) await ensureMacApplicationsInstall(install.appDir, join(cfg.dataDir, "desktop.log"));
     return false;
   }
   const work = dirname(journal.kind === "asar" ? dirname(journal.staged) : journal.staged);

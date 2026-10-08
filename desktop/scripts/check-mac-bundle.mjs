@@ -1,9 +1,7 @@
-// Packages a macOS Branch.app, installs it into a temporary Applications folder, and checks the bundle.
-// When the release signing secrets are present, the signed bundle must match the pinned identity.
+// Packages an unsigned macOS app, installs it into a temporary Applications folder, and checks the bundle.
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { appendFileSync, chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -12,8 +10,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const desktopRoot = fileURLToPath(new URL("..", import.meta.url));
 const require = createRequire(join(desktopRoot, "package.json"));
-const RCODESIGN_URL = "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.29.0/apple-codesign-0.29.0-aarch64-apple-darwin.tar.gz";
-const RCODESIGN_SHA256 = "d1a532150adaf90048260d76359261aa716abafc45c53c5dc18845029184334a";
 
 if (process.platform !== "darwin") {
   console.error("check-mac-bundle.mjs runs on macOS");
@@ -44,16 +40,9 @@ function capture(command, args) {
   return execFileSync(command, args, { encoding: "utf8", windowsHide: true }).trim();
 }
 
-function captureAll(command, args, options = {}) {
-  const result = spawnSync(command, args, { encoding: "utf8", windowsHide: true, ...options });
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`${command} exited ${result.status}\n${result.stderr ?? ""}`);
-  return `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-}
-
 const temp = mkdtempSync(join(process.env.RUNNER_TEMP ?? tmpdir(), "branch-mac-bundle-"));
 try {
-  const { darwinPackagerOptions, stampMacBundle, installMacApp, assertMacReleaseSignature, macReleaseSigning, MAC_BUNDLE_FOLDER, MAC_EXECUTABLE_NAME } = await import(pathToFileURL(join(desktopRoot, "dist/mac-applications.js")));
+  const { darwinPackagerOptions, stampMacBundle, installMacApp, MAC_ARCHIVE_BUNDLE_FOLDER, MAC_BUNDLE_FOLDER, MAC_BUNDLE_ID, MAC_EXECUTABLE_NAME } = await import(pathToFileURL(join(desktopRoot, "dist/mac-applications.js")));
   const packageJson = JSON.parse(readFileSync(join(desktopRoot, "package.json"), "utf8"));
   const appDirectory = join(temp, "app");
   await mkdir(appDirectory);
@@ -73,7 +62,7 @@ try {
     ...darwinPackagerOptions(icon),
   });
   assert.equal(folders.length, 1);
-  const packaged = join(folders[0], MAC_BUNDLE_FOLDER);
+  const packaged = join(folders[0], MAC_ARCHIVE_BUNDLE_FOLDER);
   await stampMacBundle(packaged);
   const applications = join(temp, "Applications");
   const installed = await installMacApp(packaged, { applicationsDirectory: applications });
@@ -89,7 +78,7 @@ try {
   }
   assert.equal(plistString(plist, "CFBundlePackageType"), "APPL");
   assert.equal(capture("plutil", ["-extract", "CFBundlePackageType", "raw", "-o", "-", plistPath]).replaceAll('"', ""), "APPL");
-  assert.equal(plistString(plist, "CFBundleIdentifier"), macReleaseSigning.bundleId);
+  assert.equal(plistString(plist, "CFBundleIdentifier"), MAC_BUNDLE_ID);
   assert.equal(plistString(plist, "CFBundleExecutable"), MAC_EXECUTABLE_NAME);
   const executable = join(installed, "Contents/MacOS", MAC_EXECUTABLE_NAME);
   assert.equal((await readFile(executable)).length > 0, true);
@@ -102,41 +91,7 @@ try {
   assert.deepEqual(types, icnsTypes(sourceIcon));
   assert.ok(types.includes("icp4") && types.includes("ic10"), "bundled icon is missing a required size");
   execFileSync("mdls", [installed], { stdio: "ignore", windowsHide: true });
-
-  const p12 = process.env[macReleaseSigning.p12Secret] ?? "";
-  const password = process.env[macReleaseSigning.passwordSecret] ?? "";
-  if (!p12 && !password) {
-    const line = `MISSING: stable macOS signing is not configured for this job. Add repository secrets ${macReleaseSigning.p12Secret} and ${macReleaseSigning.passwordSecret} (the same names component-release already uses). Bundle install checks passed; the signature was not verified.`;
-    console.error(line);
-    if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${line}\n`);
-  } else if (!p12 || !password) {
-    throw new Error(`macOS signing needs both ${macReleaseSigning.p12Secret} and ${macReleaseSigning.passwordSecret}`);
-  } else {
-    const response = await fetch(RCODESIGN_URL);
-    if (!response.ok) throw new Error(`rcodesign download failed (${response.status})`);
-    const archive = Buffer.from(await response.arrayBuffer());
-    assert.equal(createHash("sha256").update(archive).digest("hex"), RCODESIGN_SHA256, "rcodesign archive hash differs");
-    const archivePath = join(temp, "rcodesign.tar.gz");
-    writeFileSync(archivePath, archive);
-    execFileSync("tar", ["-xzf", archivePath, "-C", temp], { windowsHide: true });
-    const rcodesign = join(temp, "apple-codesign-0.29.0-aarch64-apple-darwin/rcodesign");
-    const p12Path = join(temp, "signing.p12");
-    const passwordPath = join(temp, "signing-password");
-    writeFileSync(p12Path, Buffer.from(p12, "base64"), { mode: 0o600 });
-    writeFileSync(passwordPath, password, { mode: 0o600 });
-    chmodSync(p12Path, 0o600);
-    chmodSync(passwordPath, 0o600);
-    execFileSync(rcodesign, ["sign", "--p12-file", p12Path, "--p12-password-file", passwordPath, installed], { windowsHide: true, stdio: "inherit" });
-    execFileSync("codesign", ["--verify", "--deep", "--strict", installed], { windowsHide: true, stdio: "inherit" });
-    execFileSync("codesign", ["-d", "--extract-certificates", installed], { cwd: temp, windowsHide: true, stdio: "ignore" });
-    const fingerprint = captureAll("openssl", ["x509", "-inform", "DER", "-in", join(temp, "codesign0"), "-noout", "-fingerprint", "-sha1"]);
-    const sha1 = (fingerprint.split("=")[1] ?? "").replaceAll(":", "").trim();
-    const details = captureAll("codesign", ["-dv", "--verbose=4", installed]);
-    const requirement = captureAll("codesign", ["-dr", "-", installed]);
-    assertMacReleaseSignature(`${details}\n${requirement}\n`, sha1);
-    console.log("macOS bundle check passed, including the pinned signing identity");
-  }
-  if (!p12 && !password) console.log("macOS bundle check passed");
+  console.log("macOS bundle check passed");
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }

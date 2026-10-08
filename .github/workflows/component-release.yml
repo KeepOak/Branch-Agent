@@ -342,7 +342,7 @@ jobs:
           extracted="$RUNNER_TEMP/verified-macos-app"
           mkdir -p "$extracted"
           tar -xzf "$RELEASE_ASSETS/branch-desktop-${BRANCH_RELEASE_VERSION}-darwin-arm64.tar.gz" -C "$extracted"
-          app="$extracted/Branch.app"
+          app="$extracted/Branch Agent.app"
           test -f "$app/Contents/_CodeSignature/CodeResources"
           test -L "$app/Contents/Frameworks/Electron Framework.framework/Versions/Current"
           codesign --verify --deep --strict --verbose=2 "$app"
@@ -351,6 +351,8 @@ jobs:
           test "$node_hash" = "$recorded_node_hash"
           (cd "$extracted" && codesign -d --extract-certificates "$app" 2>/dev/null)
           fingerprint="$(openssl x509 -inform DER -in "$extracted/codesign0" -noout -fingerprint -sha1 | cut -d= -f2 | tr -d :)"
+          test "$fingerprint" = "$BRANCH_MACOS_SIGNING_IDENTITY"
+          codesign -dr - "$app" 2>&1 | grep -Fx 'designated => identifier "com.electron.branch-agent" and certificate root = H"30bbf0b68236ae05e063465c39dea6c5b396b11c"'
           report="$RUNNER_TEMP/mac-signature-report.txt"
           {
             codesign -dv --verbose=4 "$app"

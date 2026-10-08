@@ -7,7 +7,9 @@ import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export const MAC_APP_NAME = "Branch";
 export const MAC_BUNDLE_FOLDER = "Branch.app";
-export const MAC_LEGACY_BUNDLE_FOLDER = "Branch Agent.app";
+/** Folder at the root of the darwin release tarball. Installed copies look this name up. */
+export const MAC_ARCHIVE_BUNDLE_FOLDER = "Branch Agent.app";
+export const MAC_LEGACY_BUNDLE_FOLDER = MAC_ARCHIVE_BUNDLE_FOLDER;
 export const MAC_BUNDLE_ID = "com.electron.branch-agent";
 export const MAC_EXECUTABLE_NAME = "Branch Agent";
 export const MAC_ICON_FILE = "branch.icns";
@@ -25,10 +27,10 @@ export const macReleaseSigning = {
 export const LSREGISTER = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
 
 export function darwinPackagerOptions(iconPath: string): { name: string; executableName: string; appBundleId: string; icon: string } {
-  return { name: MAC_APP_NAME, executableName: MAC_EXECUTABLE_NAME, appBundleId: MAC_BUNDLE_ID, icon: iconPath };
+  return { name: "Branch Agent", executableName: MAC_EXECUTABLE_NAME, appBundleId: MAC_BUNDLE_ID, icon: iconPath };
 }
 
-/** Names a staged archive may use. Existing installs can still be `Branch Agent.app` while new archives are `Branch.app`. */
+/** Names a staged archive may use. The tarball root stays `Branch Agent.app`; Applications publishes `Branch.app`. */
 export function macBundleCandidates(installedAppDir: string): string[] {
   return [...new Set([basename(installedAppDir), MAC_BUNDLE_FOLDER, MAC_LEGACY_BUNDLE_FOLDER])];
 }
@@ -177,7 +179,12 @@ export async function installMacApp(source: string, options: InstallMacAppOption
   await mkdir(applicationsDir, { recursive: true });
   const destination = join(applicationsDir, MAC_BUNDLE_FOLDER);
   const sourceReal = await realpath(source);
-  const sameBundle = await sameInstalledBundle(sourceReal, destination);
+  const register = options.register ?? defaultRegister;
+  if (await sameInstalledBundle(sourceReal, destination)) {
+    await register(["-f", destination]);
+    await retireLegacy(applicationsDir, destination, options.runningAppDir ?? source, register);
+    return destination;
+  }
   const stageRoot = join(applicationsDir, `.Branch.install-${process.pid}`);
   const aside = join(applicationsDir, ".Branch.previous");
   await rm(stageRoot, { recursive: true, force: true });
@@ -199,11 +206,8 @@ export async function installMacApp(source: string, options: InstallMacAppOption
   } finally {
     await rm(stageRoot, { recursive: true, force: true });
   }
-  const register = options.register ?? defaultRegister;
   await register(["-f", destination]);
-  if (!sameBundle) {
-    try { await register(["-u", source]); } catch { /* best effort */ }
-  }
+  try { await register(["-u", source]); } catch { /* best effort */ }
   await retireLegacy(applicationsDir, destination, options.runningAppDir, register);
   return destination;
 }

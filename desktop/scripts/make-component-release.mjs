@@ -125,7 +125,7 @@ async function desktopComponents({ app, runtime, electronVersion }, { stage, out
     const info = await archive(root, join(stage, filename), undefined, name === "desktopRuntime" && platform === "darwin");
     // The app.asar this component carries, so an installed desktop with the same bytes skips the download and swap.
     const appAsarSha256 = await existingDigest(join(root, name === "desktop" ? "app.asar"
-      : platform === "darwin" ? "Branch.app/Contents/Resources/app.asar" : "resources/app.asar"));
+      : platform === "darwin" ? "Branch Agent.app/Contents/Resources/app.asar" : "resources/app.asar"));
     components[name] = { url: `https://github.com/KeepOak/Branch-Agent/releases/download/${tag}/${filename}`, ...info, platform, arch, electronVersion,
       ...(appAsarSha256 ? { appAsarSha256 } : {}) };
   }
