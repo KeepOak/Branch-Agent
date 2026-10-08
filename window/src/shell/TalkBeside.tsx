@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type Poin
 import { Pebble } from "../face/Pebble";
 import { readLevel } from "../places-nav/SettingsFrame";
 import { Markdown } from "../thread/markdown";
+import { isPreparationPending, PreparationRetry, preparationLabel, preparationTimeoutLabel } from "../connect/preparation-status";
 import { Icon } from "./icons";
 import { talkRows, workContextFor, type TalkRow, type WorkContext } from "./talk-beside";
 import "./talk-beside.css";
@@ -48,11 +49,14 @@ type OnEvent = (listener: (event: string, payload: unknown) => void) => () => vo
 
 /** The main conversation's messages, whether the Trunk is answering, and sending. Only the newest read is kept; a run
  *  counts as answering from chat.send (or history's in-flight run) until the engine's chat event says it ended. */
-export function useTalkThread(request: Request, onEvent: OnEvent, key: string | null) {
+export function useTalkThread(request: Request, onEvent: OnEvent, key: string | null, name = "") {
   const [rows, setRows] = useState<TalkRow[]>([]);
   const [runId, setRunId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const retry = useRef(new PreparationRetry());
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reads = useRef(0);
   const ended = useRef(new Set<string>());
   const adopt = (id: string) => {
@@ -60,21 +64,50 @@ export function useTalkThread(request: Request, onEvent: OnEvent, key: string | 
   };
   const load = useCallback(async () => {
     if (!key) return;
+    if (retryTimer.current !== null) clearTimeout(retryTimer.current);
+    retryTimer.current = null;
     const n = ++reads.current;
     try {
       const h = rec(await request("chat.history", { sessionKey: key, limit: 60 }));
       if (n !== reads.current) return;
+      retry.current.reset();
+      setError(null);
+      setNotice(null);
       setRows(talkRows(Array.isArray(h.messages) ? h.messages : [], key));
       const live = str(rec(h.inFlightRun).runId);
       if (live && !ended.current.has(live)) setRunId(live);
     } catch (e) {
-      if (n === reads.current) setError(reason(e));
+      if (n !== reads.current) return;
+      if (isPreparationPending(e)) {
+        const delay = retry.current.nextDelay();
+        setError(null);
+        setNotice(delay === null ? preparationTimeoutLabel(name) : preparationLabel(name));
+        if (delay !== null) retryTimer.current = setTimeout(() => void load(), delay);
+      } else {
+        setNotice(null);
+        setError(reason(e));
+      }
     }
-  }, [request, key]);
-  useEffect(() => void load(), [load]);
+  }, [request, key, name]);
+  useEffect(() => {
+    retry.current.reset();
+    setError(null);
+    setNotice(null);
+    void load();
+    return () => {
+      ++reads.current;
+      if (retryTimer.current !== null) clearTimeout(retryTimer.current);
+      retryTimer.current = null;
+    };
+  }, [load]);
   useEffect(() => onEvent((event, payload) => {
     const p = rec(payload);
-    if (event !== "chat" || str(p.sessionKey) !== key || !["final", "error", "aborted"].includes(str(p.state))) return;
+    if (str(p.sessionKey) !== key) return;
+    if (event === "sessions.changed" || event === "session.message") {
+      void load();
+      return;
+    }
+    if (event !== "chat" || !["final", "error", "aborted"].includes(str(p.state))) return;
     ended.current.add(str(p.runId));
     setRunId(null);
     void load();
@@ -94,7 +127,7 @@ export function useTalkThread(request: Request, onEvent: OnEvent, key: string | 
       setSending(false);
     }
   };
-  return { rows, running: sending || runId !== null, error, send };
+  return { rows, running: sending || runId !== null, error, notice, send };
 }
 
 /** Whether text is selected on the page (not in the pane), so "Attach selected text" can be offered. */
@@ -149,7 +182,7 @@ type Props = { request: Request; onEvent: OnEvent; sessionKey: string | null; na
 /** The pane. Closing it hands focus back to the footer button when that is on screen. */
 export function TalkBeside({ request, onEvent, sessionKey, name, page, layout, onLayout, onFull }: Props) {
   const pane = useRef<HTMLElement>(null);
-  const thread = useTalkThread(request, onEvent, sessionKey);
+  const thread = useTalkThread(request, onEvent, sessionKey, name);
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState<string | null>(null);
   const [withPage, setWithPage] = useState(true);
@@ -198,6 +231,7 @@ export function TalkBeside({ request, onEvent, sessionKey, name, page, layout, o
           ) : canAttach ? <button type="button" className="link" onClick={() => setSelection((window.getSelection()?.toString() ?? "").trim().slice(0, 4000))}>Attach selected text</button> : null}
         </div>
         {thread.error ? <p className="talk-error" role="alert">{thread.error}</p> : null}
+        {thread.notice ? <p role="status" style={{ margin: 0, fontSize: 12, color: "var(--ink-3)" }}>{thread.notice}</p> : null}
         <div className="talk-input">
           <textarea rows={2} autoFocus value={draft} placeholder={`Message ${name}`} aria-label={`Message ${name}`} disabled={!sessionKey} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKey} />
           <button type="button" className="btn pri sm" disabled={!sessionKey || !draft.trim()} onClick={() => void send()}>Send</button>
