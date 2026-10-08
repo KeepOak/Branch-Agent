@@ -38,6 +38,33 @@ Symptom-first checks for a Telegram bot that is not behaving.
 
   </Accordion>
 
+  <Accordion title="Tool-progress lines missing even with /verbose full">
+
+    Telegram defaults to `streaming.mode: "progress"`, whose tool log is opt-in. Session verbosity does not enable progress-draft tool rows.
+
+    Merge this into the existing Telegram configuration; do not replace the channel or account object:
+
+    ```json
+    {
+      "channels": {
+        "telegram": {
+          "streaming": {
+            "mode": "progress",
+            "progress": { "toolProgress": true, "commandText": "status" }
+          }
+        }
+      }
+    }
+    ```
+
+    - Check the active account override at `channels.telegram.accounts.<accountId>.streaming` too. An explicit `progress.toolProgress: false` keeps tool rows hidden; `/verbose full` does not override it.
+    - In `partial` or `block` mode, the corresponding control is `streaming.preview.toolProgress`. `streaming.mode: "off"` disables previews.
+    - Keep `commandText: "status"` unless you deliberately want command text shown in the chat. Tool-progress visibility is not a switch for full tool-result output; review verbosity separately, especially in groups.
+    - Changes apply to the next assembled turn without reconnecting Telegram. Ask for a fresh tool call and watch while it runs: progress drafts are cleared at completion, so old final messages will not gain a tool log.
+    - Selected quote replies can skip previews when reply threading is enabled. See [live stream preview](/channels/telegram/messaging#message-behavior) before changing reply threading.
+
+  </Accordion>
+
   <Accordion title="Startup reports unauthorized token">
 
     - `getMe returned 401` is a Telegram auth failure for the configured bot token. Re-copy or regenerate the token in BotFather, then update `channels.telegram.botToken`, `tokenFile`, `accounts.<id>.botToken`, or `TELEGRAM_BOT_TOKEN` (default account).

@@ -64,12 +64,16 @@ export const telegramChannelConfigUiHints = {
       "preview.chunk.breakPreference":
         "Preferred breakpoints for Telegram draft chunks (paragraph | newline | sentence).",
       "preview.toolProgress":
-        "Show tool/progress activity in the live draft preview message (default: true when preview streaming is active). Set false to keep tool updates out of the edited Telegram preview.",
+        "Show tool/progress activity in partial and block preview modes (default: true). For the default progress mode, use streaming.progress.toolProgress instead. Set false to keep tool updates out of the edited Telegram preview.",
       "preview.commandText":
         'Command/exec detail in preview tool-progress lines: "status" is the safe default; "raw" opts into command text.',
     },
     progress: { includeCommentary: true, commentaryOrder: "after-command" },
   }),
+  "streaming.progress.toolProgress": {
+    label: "Telegram Progress Tool Lines",
+    help: "Show individual tool activity, including intermediate failures, in progress drafts (default: false). /verbose full does not enable these rows; set this option to true to show them. Explicit false keeps them hidden. Quiet drafts retain plans, approval requests, and authored progress text. Terminal task errors remain visible.",
+  },
   richMessages: {
     label: "Telegram Rich Messages",
     help: "Opt into Bot API 10.3 rich text sends and edits, including native tables and rich media. Default: false because some current Telegram clients render these messages as unsupported.",

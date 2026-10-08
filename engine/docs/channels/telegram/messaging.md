@@ -31,7 +31,7 @@ remain supported. Transcript deduplication uses recorded message identities;
 markerless assistant replies may appear in both reply context and the transcript.
 
 <Note>
-  **Upgrade note: Telegram's default preview changed in 2026.8.1.** With `channels.telegram.streaming` unset, Telegram keeps one editable status draft during the turn (the agent's current status plus its tool lines) and sends the final answer as a normal message. It previously streamed the answer text itself into the preview. No config becomes invalid and no `doctor --fix` is needed; to keep the previous behavior, set:
+  **Upgrade note: Telegram's default preview changed in 2026.8.1.** With `channels.telegram.streaming` unset, Telegram keeps one editable status draft during the turn (the agent's current status, with tool lines only when enabled) and sends the final answer as a normal message. It previously streamed the answer text itself into the preview. No config becomes invalid and no `doctor --fix` is needed; to keep the previous behavior, set:
 
 ```json5
 { channels: { telegram: { streaming: { mode: "partial" } } } }
@@ -78,6 +78,8 @@ Ordinary text batches are bounded to 12 messages and 50,000 characters. Their co
     - legacy `channels.telegram.streamMode`, boolean `streaming` values, and retired native draft preview keys are detected; run `branch doctor --fix` to migrate them
 
     Tool-progress lines are the short status updates shown while tools run (command execution, file reads, planning updates, patch summaries, Codex preamble/commentary in app-server mode). `partial` and `block` previews show them by default; the `progress` draft shows them only with `streaming.progress.toolProgress: true`. Compaction status follows the same settings and appears as soon as compaction starts, including before the first model output.
+
+    Session verbosity and preview visibility are separate controls: `/verbose full` does not enable the tool log in the default `progress` mode or override an explicit `toolProgress: false`. See [missing tool-progress lines](/channels/telegram/troubleshooting#troubleshooting) for a focused checklist.
 
     Keep answer-preview edits but hide tool-progress lines:
 
