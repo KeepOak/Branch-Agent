@@ -22,7 +22,7 @@ import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate } from "./auto-apply-update";
-import { availableMemoryBytes, candidateMinFreeBytes } from "./available-memory";
+import { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes } from "./available-memory";
 import { checkCandidateBeside, stopCandidate } from "./candidate-check";
 import { clearEngineRecords, retireRecordedEngines } from "./engine-records";
 import { createUpdateLock, type UpdateLockHandle } from "./update-lock";
@@ -532,7 +532,7 @@ async function prepareUpdateStandby(label: string, explicit: boolean): Promise<v
   // A warmed child cannot be given a fresh Electron-owned driver lease on promotion.
   // Preserve computer control by using the guarded stop/start path for this case.
   if (macComputerDriver && screenControlEnabled()) return;
-  if (availableMemoryBytes() < candidateMinFreeBytes() || !standbyProfileReady()) return;
+  if (availableMemory().bytes < candidateMinFreeBytes() || !standbyProfileReady()) return;
   const failures = standbyFailures.get(label) ?? 0;
   // Automatic updates never wait for a click that may not be offered: one failed standby is enough to fall back.
   if (failures >= STANDBY_ATTEMPTS || (!explicit && failures > 0)) {
@@ -599,8 +599,8 @@ async function candidatePassed(label: string, explicit: boolean, signal?: AbortS
   const version = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
   if (!version || candidateCheckedFor === version) return true;
   // The machine-load rule: a second engine only when there is room for it; otherwise the plain swap with its rollback.
-  const available = availableMemoryBytes();
-  if (available < candidateMinFreeBytes()) { log(`update ${label}: candidate check skipped; ${Math.round(available / 2 ** 20)} MB available`); return true; }
+  const { bytes: available, measure } = availableMemory();
+  if (available < candidateMinFreeBytes()) { log(`update ${label}: ${candidateCheckSkippedLine(available, measure)}`); return true; }
   const candidate = resolveEngineDir(cfg);
   if (explicit) sendToBranchWindows("branch-desktop:engine-update", "preparing");
   const started = Date.now();
