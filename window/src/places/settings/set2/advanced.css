@@ -58,7 +58,6 @@
 .dlg .s2advanced-snap summary { cursor: pointer; font-size: 13px; padding: 4px 0; color: var(--ink-2); }
 .dlg .s2advanced-snap .s2-pre { margin: 8px 0; }
 .dlg .s2advanced-json { min-height: 240px; }
-.dlg .s2advanced-how { margin: 0; }
 .dlg .sseg { display: inline-flex; }
 .set-col .s2advanced-add .inp.s2advanced-mono { width: min(200px, 60vw); }
 .set-col .ctl > .acts.s2advanced-acts { grid-column: 1 / -1; gap: 6px; }

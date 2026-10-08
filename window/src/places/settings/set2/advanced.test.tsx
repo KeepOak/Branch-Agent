@@ -111,6 +111,38 @@ describe("Settings › Advanced", () => {
     expect(help.textContent).toContain("A per-model choice lives in Settings › Models");
   });
 
+  it("keeps Advanced rationale in page help while operational facts stay visible", async () => {
+    const { engine } = engineWith(CONFIG);
+    await show(engine);
+    const moved = [
+      "Share memory between Trunks", "Outside memory", "Reach webhooks from outside",
+      "Only signed skill packages", "Let plugins add their own views", "Connector app views",
+      "Run on GitHub Actions while this computer is off", "Also search past conversations",
+      "Pictures and audio in extra folders", "Bring up what it remembers, mid-task",
+      "Notes about this computer", "Keep notes about this computer",
+      "Score memories by whether they helped", "Read text in scans and pictures",
+      "Keep links from messages", "Describe each passage before indexing",
+      "Ask a stronger model on hard calls", "Plan first on long tasks",
+      "Wait for my yes on the plan", "Check the answer before saying done",
+      "Take work over the agent protocol", "Tools lent by a connected program",
+      "Carry a conversation on somewhere else", "Look after several assistants at once",
+      "Other computers running Branch, side by side", "Trunks on other computers",
+      "Steps for other apps",
+    ];
+    for (const title of moved) expect(row(title).textContent, title).not.toContain("Off until you choose");
+    expect(row("Let plugins add their own views").querySelector("small")?.textContent).toContain("Their code runs with your sign-in, so turn it on only for plugins you trust.");
+    expect(row("Pictures and audio in extra folders").querySelector("small")?.textContent).toContain("Files are uploaded to the meaning-search service.");
+    expect(row("Tell me when an automation keeps failing").textContent).toContain("The alert goes wherever the automation already reports.");
+    expect(row("Outside memory").getAttribute("aria-disabled")).toBe("true");
+    expect(row("Code mode").querySelector("small")?.textContent?.length).toBeLessThanOrEqual(70);
+    await act(async () => window.dispatchEvent(new Event("branch-settings-help")));
+    const help = document.querySelector(".kit-help-pop") as HTMLElement;
+    for (const title of moved) expect(help.textContent, title).toContain(title);
+    expect(help.textContent).toContain("Off until you choose: it changes where your data goes.");
+    expect(help.textContent).not.toContain("The alert goes wherever the automation already reports.");
+    expect(help.textContent).not.toContain("This engine has none of these memory services.");
+  });
+
   it("numbers convert units and empty means the engine's default", async () => {
     const { engine, request } = engineWith(CONFIG);
     await show(engine);

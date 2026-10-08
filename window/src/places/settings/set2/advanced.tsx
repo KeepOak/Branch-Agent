@@ -146,10 +146,10 @@ const MEMORY: SecSpec = { title: "Memory", lv: 1, rows: [
   sw("Match by meaning", "Finds “invoice” when the fact says “bill”.", "memory.search.store.vector.enabled", true),
   { t: "Meaning search", draw: (c) => <MeaningSearch c={c} /> },
   { t: "Meaning search uses", s: "The service that turns facts into something searchable by meaning. Changing it rebuilds the index.", k: "memory.search.provider", kind: "pick", def: "openai", opts: PROVIDERS },
-  no("Share memory between Trunks", "Off: each Trunk keeps its own. Off until you choose: it changes where your data goes."),
+  no("Share memory between Trunks", "Off: each Trunk keeps its own.", "sw", { help: "Off until you choose: it changes where your data goes." }),
   no("Ask before remembering", "Off: a Trunk writes what is worth keeping as it works, and the conversation shows “Remembered”. On: it asks “Remember this?” first."),
   { t: "Memory engine", lv: 2, draw: (c) => <MemoryEngine c={c} /> },
-  { t: "Outside memory", s: "Off until you choose: it changes where your data goes.", kind: "seg", off: "This engine has none of these memory services.", opts: ["None", "Mem0", "Honcho", "Hindsight"].map((x) => ({ id: x, label: x })) },
+  { t: "Outside memory", help: "Off until you choose: it changes where your data goes.", kind: "seg", off: "This engine has none of these memory services.", opts: ["None", "Mem0", "Honcho", "Hindsight"].map((x) => ({ id: x, label: x })) },
   no("Keep a history in Git", "Every change to memory as a commit, on this computer."),
   { t: "Recall before replying", s: "Searches memory more deeply when quick recall finds nothing strong.", help: "Before a reply about the past, a helper searches memory more deeply. Off until you choose: it can add a model call before a reply.", plug: "active-memory" },
   { t: "Memory wiki", s: "Keeps what Trunks know as linked Markdown pages.", help: "Each fact has its source. Off until you choose: it adds a second, page-shaped copy of what Trunks know.", plug: "memory-wiki" },
@@ -180,10 +180,10 @@ const AUTOMATIONS: SecSpec = { title: "Automations", showHeading: false, lv: 1, 
   no("Checks and retries in procedures", "A step can check its own result, retry, and clean up."),
   no("Procedures that start themselves", "On a clock or after a task. Only procedures you set a time for."),
   no("Start when a USB device is plugged in", "Only for triggers you make."),
-  no("Reach webhooks from outside", "Off until you choose: it opens a door from the internet.", "seg", { opts: ["Off", "cloudflared", "ngrok", "Tailscale"].map((x) => ({ id: x, label: x })) }),
+  no("Reach webhooks from outside", "", "seg", { help: "Off until you choose: it opens a door from the internet.", opts: ["Off", "cloudflared", "ngrok", "Tailscale"].map((x) => ({ id: x, label: x })) }),
   no("Use what the trigger sent", "{{payload}} and {{field.path}} in the prompt."),
   sw("Checks before a run and event triggers", "Lets a trigger look first and start a Trunk only when there is news. Off stops every “Check first”, script and stream trigger without deleting them.", "cron.triggers.enabled", true),
-  sw("Tell me when an automation keeps failing", "Alerts after 2 failures in a row, at most once an hour.", `${FA}.enabled`, true, { help: "The alert goes where the automation reports. It only tells you where that automation already sends; each automation can choose its own destination (When it fails…)." }),
+  sw("Tell me when an automation keeps failing", "The alert goes wherever the automation already reports.", `${FA}.enabled`, true, { help: "Each automation can choose its own destination (When it fails…)." }),
   { t: "After failures in a row", k: `${FA}.after`, kind: "num", unit: "failures", def: 2, min: 1 },
   { t: "At most every", k: `${FA}.cooldownMs`, kind: "pick", read: (v) => String(typeof v === "number" ? v : 60 * MIN), write: (v) => Number(v), opts: [[15, "15 minutes"], [60, "1 hour"], [360, "6 hours"], [1440, "1 day"]].map(([m, label]) => ({ id: String(Number(m) * MIN), label: String(label) })) },
   sw("Count skipped runs", "", `${FA}.includeSkipped`, false),
@@ -224,7 +224,7 @@ function CodeMode({ c }: { c: Ctx }) {
   const on = raw === undefined ? true : typeof raw === "object" && raw !== null ? (rec(raw).enabled ?? false) !== false : raw !== false;
   const set = (x: boolean) => void c.config.set(typeof raw === "object" && raw !== null ? "tools.codeMode.enabled" : "tools.codeMode", x ? "auto" : false);
   return (
-    <Ctl title="Code mode" sub="Several tool calls in one short script, for models that handle it well." help={CODE_HELP}>
+    <Ctl title="Code mode" sub="Several tool calls in one script, for models that handle it well." help={CODE_HELP}>
       <Switch label="Code mode" checked={on} disabled={c.config.loading} onChange={set} />
     </Ctl>
   );
@@ -236,15 +236,15 @@ const TRY: SecSpec = { title: "Try early", lv: 1, hint: "Early features. They ma
 
 const TOOLS_SKILLS: SecSpec = { title: "Tools and skills", lv: 1, rows: [
   { t: "Check a skill is ready first", s: "Programs, keys and systems it needs.", kind: "sw", def: true, off: "The engine always checks; there is no switch for it." },
-  no("Only signed skill packages", "Off until you choose: it would block most community skills; the malware check stays on."),
+  no("Only signed skill packages", "The malware check stays on.", "sw", { help: "Off until you choose: it would block most community skills." }),
   no("Check install requests for malware", "Against the OSV database, before you approve."),
   sw("Search the web", "Trunks can look up current information. Each person’s “Look things up” (Settings › People) still applies.", "tools.web.search.enabled", true),
   { t: "Web search", draw: (c) => <WebSearchPick c={c} /> },
   { t: "Web search details", draw: (c) => <DialogRow t="Web search details" s="Which search each model uses, setting up a search service, and checking it works." btn="Open" open={(close) => <WebSearchDialog engine={c.engine} agent={c.agent} onClose={close} />} /> },
   sw("Search X", "Turns on when an X account is connected.", ["plugins", "entries", "xai", "config", "xSearch", "enabled"], false),
   no("Video tools", "Download, read captions, and make short videos."),
-  sw("Let plugins add their own views", "Pages, widgets and views from plugins you installed. Off until you choose: their code runs with your sign-in, so turn it on only for plugins you trust.", "gateway.controlUi.experimental.customPlugins", false),
-  sw("Connector app views", "Small apps a connector can show inside a step. Off until you choose: they run pages the connector supplies.", "mcp.apps.enabled", false),
+  sw("Let plugins add their own views", "Pages, widgets and views from plugins you installed. Their code runs with your sign-in, so turn it on only for plugins you trust.", "gateway.controlUi.experimental.customPlugins", false, { help: "Off until you choose." }),
+  sw("Connector app views", "Small apps a connector can show inside a step.", "mcp.apps.enabled", false, { help: "Off until you choose: they run pages the connector supplies." }),
 ] };
 
 /* ---------- the remaining plain sections ---------- */
@@ -257,7 +257,7 @@ const TOOLS_TECH: SecSpec = { title: "Tools, technical", group: "Tools", lv: 2, 
   { t: "Python service", s: "Comes with Branch. Runs Python for tools that need it.", kind: "none", off: "The engine doesn’t report a Python service." },
 ] };
 const HOOKS: SecSpec = { title: "Hooks", lv: 2, rows: ["Before a tool runs", "After a tool runs", "When a conversation starts", "When you send a message", "When a Trunk stops", "When a helper stops", "Before tidying up", "When it needs you", "When a task finishes", "When a session ends", "When settings change", "When a file changes"].map((t) => ({ t })), whole: (c) => <HooksSec c={c} /> };
-const AUTO_MORE: SecSpec = { title: "Automations, more", group: "Automations", lv: 1, rows: [no("Run on GitHub Actions while this computer is off", "Schedules and their skills run on free GitHub runners; results and memory come back as commits. Off until you choose: your skills run on GitHub’s computers.")] };
+const AUTO_MORE: SecSpec = { title: "Automations, more", group: "Automations", lv: 1, rows: [no("Run on GitHub Actions while this computer is off", "Schedules and skills run on GitHub; results return as commits.", "sw", { help: "Schedules and their skills run on free GitHub runners; results and memory come back as commits. Off until you choose: your skills run on GitHub’s computers." })] };
 const SHARING_MORE: SecSpec = { title: "Sharing, more", group: "Sharing", lv: 1, rows: [btnOff("Pages Trunks publish", "Pages and their comments.", "See them", "Needs the engine’s list of published pages.")] };
 const TRUNKS_MORE: SecSpec = { title: "Trunks, more", group: "Trunks", lv: 1, rows: [
   no("Projects pick up matching work", "A message about a project goes to that project by itself."),
@@ -296,10 +296,10 @@ const MEMORY_MORE: SecSpec = { title: "Memory, more", group: "Memory", showHeadi
 ] };
 const MEMORY_TECH: SecSpec = { title: "Memory, technical", group: "Memory", showHeading: false, lv: 2, hint: "For every Trunk that has no memory setting of its own. Each Trunk’s own memory settings win.", rows: [
   sw("Search memory", "Turn off for replies that use no memory at all.", "memory.search.enabled", true),
-  { t: "Also search past conversations", s: "Off until you choose: it reads every past conversation into the index.", k: "memory.search.sources", kind: "sw", read: (v) => (Array.isArray(v) ? v : ["memory"]).includes("sessions"), write: (on, saved) => { const base = (Array.isArray(saved) ? saved : ["memory"]).filter((x) => x !== "sessions"); return on ? [...base, "sessions"] : base; } },
+  { t: "Also search past conversations", help: "Off until you choose: it reads every past conversation into the index.", k: "memory.search.sources", kind: "sw", read: (v) => (Array.isArray(v) ? v : ["memory"]).includes("sessions"), write: (on, saved) => { const base = (Array.isArray(saved) ? saved : ["memory"]).filter((x) => x !== "sessions"); return on ? [...base, "sessions"] : base; } },
   sw("Keep search results ready", "Faster re-indexing; uses a little disk.", "memory.search.cache.enabled", true),
   sw("Index in batches", "Faster for big indexes where the service allows it. Off, as the services’ batch requests are opt-in.", "memory.search.remote.batch.enabled", false),
-  sw("Pictures and audio in extra folders", "Off until you choose: the files are uploaded to the meaning-search service.", "memory.search.multimodal.enabled", false),
+  sw("Pictures and audio in extra folders", "Files are uploaded to the meaning-search service.", "memory.search.multimodal.enabled", false, { help: "Off until you choose." }),
   { t: "Extra folders to search", k: "memory.search.extraPaths", kind: "list", add: "Add a folder", ph: "D:\\Notes" },
   { t: "Show where a memory came from", s: "Auto shows it when it helps.", k: "memory.citations", kind: "seg", def: "auto", opts: [{ id: "auto", label: "Auto" }, { id: "on", label: "Always" }, { id: "off", label: "Never" }] },
   { t: "Every memory setting", draw: (c) => <EditRow c={c} t="Every memory setting" path="memory" /> },
@@ -350,17 +350,17 @@ function LearnRow({ c }: { c: Ctx }) {
   );
 }
 const RECALL: SecSpec = { title: "Recall and memory files", lv: 1, rows: [
-  no("Bring up what it remembers, mid-task", "When something it knows matters to the step it’s on, it says so. Off until you choose: it can add a model call while it works."),
+  no("Bring up what it remembers, mid-task", "When a memory matters to a step, the Trunk says so.", "sw", { help: "Off until you choose: it can add a model call while it works." }),
   no("Helpers and side conversations may", "What a helper or a /btw side question can do with memory.", "seg", { def: "rw", opts: [{ id: "read", label: "Read memory only" }, { id: "rw", label: "Read and write" }] }),
   sw("Save notes before tidying a conversation", "Before older messages fold away, the Trunk writes down what is worth keeping.", "agents.defaults.compaction.memoryFlush.enabled", true),
-  btnOff("Notes about this computer", "Short files kept up to date in the background: this computer, its disks, the devices on your network and what you use most. Off until you choose.", "Read them"),
-  no("Keep notes about this computer", "Off until you choose: it looks at your network, disks and recent activity."),
+  { ...btnOff("Notes about this computer", "Short files about this computer, its disks and nearby devices.", "Read them"), help: "Short files kept up to date in the background: this computer, its disks, the devices on your network and what you use most. Off until you choose." },
+  no("Keep notes about this computer", "", "sw", { help: "Off until you choose: it looks at your network, disks and recent activity." }),
   { t: "Learn from other coding agents’ history on this computer", draw: (c) => <LearnRow c={c} /> },
   btnOff("Rings’ own instructions for this workspace", "Rings works the usual way. Make one to tell it what matters here.", "Make one"),
   { t: "Prefer recent notes", s: "Newer notes win ties; a note’s weight halves every 30 days.", lv: 2, kind: "sw", def: true, off: ALWAYS },
   { t: "Vary the results", s: "Leaves out near-repeats so a search brings back different things.", lv: 2, kind: "sw", def: true, off: ALWAYS },
   no("Pick up edits to memory files", "Your own edits to the Markdown files are read back in; a file it can’t read is set aside, never deleted.", "sw", { lv: 2 }),
-  no("Score memories by whether they helped", "After each answer, the memories it used are marked helped or not, and rank that way. Off until you choose: it adds a model call.", "sw", { lv: 2 }),
+  no("Score memories by whether they helped", "Used memories are marked helpful or not, then ranked that way.", "sw", { lv: 2, help: "Off until you choose: it adds a model call." }),
   no("Also copy the history to", "A second Git address, such as a private repository. Empty: only on this computer. Needs Keep a history in Git.", "text", { lv: 2, ph: "git@github.com:you/memory.git" }),
 ] };
 const seg2 = (...labels: string[]): Opt[] => labels.map((l) => ({ id: l, label: l }));
@@ -369,13 +369,13 @@ const DOCS: SecSpec = { title: "Documents it reads", lv: 1, rows: [
   no("Re-order the best passages", "A second pass that puts the most useful passages first. A model service is used only if you have one set up for this.", "seg", { opts: seg2("Off", "On this computer", "A model service") }),
   no("How documents reach a Trunk", "Added: the best passages go with the message. Searches itself: the Trunk looks things up when it needs to.", "seg", { opts: seg2("Best passages are added", "It searches them itself") }),
   no("A file you attach", "Whole when it fits; otherwise only the parts that match.", "seg", { opts: seg2("Whole when it fits", "Searched") }),
-  no("Read text in scans and pictures", "Off until you choose: scans may be sent to the reading service you pick."),
-  no("Keep links from messages", "Links people send are saved with a title and a short summary, to find later. Off until you choose: it opens every link it sees."),
+  no("Read text in scans and pictures", "", "sw", { help: "Off until you choose: scans may be sent to the reading service you pick." }),
+  no("Keep links from messages", "Saves links with a title and short summary to find later.", "sw", { help: "Off until you choose: it opens every link it sees." }),
   no("Read long documents by their contents page", "For long PDFs: it reads the headings, then opens the right pages, and says which page each answer came from."),
   no("Index code folders", "Only changed files are read again. Ask with @codebase or @folder, or find a function by name."),
   no("Read files with", "Turns PDF, Word, Office and web pages into plain text.", "seg", { lv: 2, opts: seg2("Built in", "A document service") }),
   no("Split documents at", "Where long documents are cut into passages; headings stay with each passage.", "seg", { lv: 2, opts: seg2("Headings", "Sentences", "Meaning") }),
-  no("Describe each passage before indexing", "A sentence on where each passage sits in its document. Off until you choose: one model call per passage.", "sw", { lv: 2 }),
+  no("Describe each passage before indexing", "A sentence on where each passage sits in its document.", "sw", { lv: 2, help: "Off until you choose: one model call per passage." }),
   no("Follow links between passages", "Finds passages that connect to the best ones.", "sw", { lv: 2 }),
   no("Where the index lives", "This computer needs no server. A database server is for big or shared indexes.", "seg", { lv: 2, opts: seg2("This computer", "A database server") }),
   no("Database server address", "Vector or storage databases such as Postgres, Qdrant or Redis.", "text", { lv: 2, ph: "postgres://… or https://…" }),
@@ -383,25 +383,25 @@ const DOCS: SecSpec = { title: "Documents it reads", lv: 1, rows: [
 const HELPERS_AGENTS: SecSpec = { title: "Helpers and other agents", lv: 1, rows: [
   no("New helpers start with", "A copy of the conversation gives a helper everything said so far.", "seg", { off: "Only helpers tied to a chat thread have this choice in this engine.", opts: seg2("The task only", "A copy of the conversation") }),
   no("Helpers use", "Their own: the model set in each specialist.", "seg", { off: "Set in Helpers › Helpers’ model.", opts: seg2("The Trunk’s model", "Their own") }),
-  no("Ask a stronger model on hard calls", "Off until you choose: it spends a call on a bigger model."),
-  no("Plan first on long tasks", "Off until you choose: an extra planning call on long tasks."),
-  no("Wait for my yes on the plan", "Off until you choose: it adds a wait for your go-ahead."),
-  no("Check the answer before saying done", "A second look compares the answer with what was asked. Off until you choose: a reviewer call on every answer."),
+  no("Ask a stronger model on hard calls", "", "sw", { help: "Off until you choose: it spends a call on a bigger model." }),
+  no("Plan first on long tasks", "", "sw", { help: "Off until you choose: an extra planning call on long tasks." }),
+  no("Wait for my yes on the plan", "", "sw", { help: "Off until you choose: it adds a wait for your go-ahead." }),
+  no("Check the answer before saying done", "A second look compares the answer with what was asked.", "sw", { help: "Off until you choose: a reviewer call on every answer." }),
   sw("Trunks message each other", "A Trunk can ask another and wait for the answer. A chain stops after three hops.", "tools.agentToAgent.enabled", true),
-  { t: "Take work over the agent protocol", s: "Other agents can send Branch tasks. Off until you choose: an outside program hands Branch work.", plug: "a2a" },
+  { t: "Take work over the agent protocol", s: "Other agents can send Branch tasks.", help: "Off until you choose: an outside program hands Branch work.", plug: "a2a" },
   no("Who may call your Trunks from outside", "Careful and Strict ask you about strangers; Open answers anyone who signs their request.", "seg", { opts: seg2("Nobody", "Strict", "Careful", "Open") }),
-  no("Tools lent by a connected program", "Off until you choose: an outside program lends tools."),
-  no("Carry a conversation on somewhere else", "Hands a conversation, with its history, to another assistant. Off until you choose: it sends to others."),
-  sw("Look after several assistants at once", "Off until you choose: it sends work to other assistants.", "acp.enabled", false),
-  no("Other computers running Branch, side by side", "Off until you choose: it hands work to other computers."),
-  no("Trunks on other computers", "Off until you choose: it talks to Trunks on other computers."),
+  no("Tools lent by a connected program", "", "sw", { help: "Off until you choose: an outside program lends tools." }),
+  no("Carry a conversation on somewhere else", "Hands a conversation, with its history, to another assistant.", "sw", { help: "Off until you choose: it sends to others." }),
+  sw("Look after several assistants at once", "", "acp.enabled", false, { help: "Off until you choose: it sends work to other assistants." }),
+  no("Other computers running Branch, side by side", "", "sw", { help: "Off until you choose: it hands work to other computers." }),
+  no("Trunks on other computers", "", "sw", { help: "Off until you choose: it talks to Trunks on other computers." }),
   { t: "Helpers at once", s: "In each conversation; each conversation’s helpers count on their own.", lv: 2, k: "agents.defaults.subagents.maxConcurrent", kind: "num", def: 8, min: 1 },
   no("When every helper slot is busy", "Wait in line keeps the request until a slot frees up.", "seg", { lv: 2, opts: seg2("Wait in line", "Say no") }),
   no("Waiting line", "Requests that can wait for a slot.", "num", { lv: 2 }),
   no("Wait at most", "Then the request is turned down.", "num", { lv: 2, unit: "seconds" }),
 ] };
 const AUTO_STEPS: SecSpec = { title: "Automations, steps and nudges", lv: 1, rows: [
-  no("Steps for other apps", "Lets a procedure send email, read an inbox and change spreadsheets. Off until you choose: steps send to outside apps."),
+  no("Steps for other apps", "Lets a procedure send mail, read an inbox and edit sheets.", "sw", { help: "Off until you choose: steps send to outside apps." }),
   no("Nudge a long task that stops early", "When a lead Trunk stops before its goal, it’s nudged on, or you’re asked if something really blocks it."),
 ] };
 const SETUP: SecSpec = { title: "Setup", lv: 1, rows: [{ t: "Suggest tools during setup" }], whole: (c) => <SectionWrap title="Setup"><SetupSec c={c} /></SectionWrap> };
