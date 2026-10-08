@@ -17,10 +17,6 @@ stale	window/src/places/settings/set1/appearance-themes.tsx	const legacyGroups =
 stale	window/src/places/settings/set2/agents.tsx	export function legacyOutsideId(id: string): string | undefined {
 stale	window/src/shell/Sidebar.tsx	/** Legacy prop for callers; contacts render o
 stale	window/src/shell/control-tower-data.ts	function dueFallback(at: number, now: number): string {
-theme	window/src/composer/composer.css	); border-color: var(--bad); color: #fff; }
-theme	window/src/composer/composer.css	-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
-theme	window/src/composer/composer.css	var(--raise); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform
-theme	window/src/composer/composer.css	{ background: var(--accent); color: #fff; box-shadow: 0 4px 12px -4px color-
 theme	window/src/composer/voice.css	color: #fff;
 theme	window/src/connect/title-bar.ts	color: token("--bg", "#f6f8f9"),
 theme	window/src/connect/title-bar.ts	symbolColor: token("--ink-2", "#3a4751"),

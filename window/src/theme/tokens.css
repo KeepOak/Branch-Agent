@@ -49,6 +49,8 @@
   --tint14: transparent;
 
   /* §2.6 elevation */
+  --composer-segment-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  --composer-switch-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   --sh1-17: 0 1px 2px rgba(16, 24, 32, 0.06), 0 0 0 1px color-mix(in srgb, var(--ink) 5%, transparent);
   --sh2-17: 0 1px 2px rgba(16, 24, 32, 0.05), 0 12px 32px -16px rgba(16, 24, 32, 0.24);
   --pop: 0 0 0 1px color-mix(in srgb, var(--ink) 7%, transparent), 0 8px 20px -10px rgba(16, 24, 32, 0.16),

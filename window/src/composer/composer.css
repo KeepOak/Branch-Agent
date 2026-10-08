@@ -76,7 +76,7 @@
   color: var(--ink-3);
   transition: background-color 140ms var(--ease17), box-shadow 140ms var(--ease17);
 }
-.c-wrap .send.ready { background: var(--accent); color: #fff; box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--accent) 60%, transparent); }
+.c-wrap .send.ready { background: var(--accent); color: var(--on-accent); box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--accent) 60%, transparent); }
 .c-wrap .send.stop { background: var(--btn); color: var(--on-btn); }
 .c-wrap .send:disabled { cursor: not-allowed; }
 
@@ -256,7 +256,7 @@ button.c-mi:focus-visible { outline: 0; box-shadow: inset 0 0 0 1.5px color-mix(
   white-space: nowrap;
   transition: background-color 280ms cubic-bezier(.3,.8,.3,1), color 200ms;
 }
-.c-seg button.on { background: var(--raise); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
+.c-seg button.on { background: var(--raise); color: var(--ink); font-weight: 600; box-shadow: var(--composer-segment-shadow); }
 .c-seg.c-seg-list { display: grid; width: 100%; min-width: 0; background: transparent; padding: 0; }
 .c-seg-list button { width: 100%; display: flex; align-items: center; gap: 8px; text-align: left; }
 .c-seg-list button.on { background: var(--accent-soft); color: var(--accent); box-shadow: none; }
@@ -274,7 +274,7 @@ button.c-mi:focus-visible { outline: 0; box-shadow: inset 0 0 0 1.5px color-mix(
   padding: 0;
   transition: background-color 150ms, border-color 150ms;
 }
-.c-switch i { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--raise); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform 150ms var(--ease17); }
+.c-switch i { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--raise); box-shadow: var(--composer-switch-shadow); transition: transform 150ms var(--ease17); }
 .c-switch.on { background: var(--btn); border-color: var(--btn); }
 .c-switch.on i { transform: translateX(16px); background: var(--on-btn); }
 .c-switch:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -351,7 +351,7 @@ button.c-mi:focus-visible { outline: 0; box-shadow: inset 0 0 0 1.5px color-mix(
 .c-wrap .btn.pri { background: var(--btn); border-color: var(--btn); color: var(--on-btn); }
 .c-wrap .btn.ghost { background: transparent; border-color: transparent; color: var(--ink-2); }
 .c-wrap .btn.ghost:hover { background: var(--wash17); color: var(--ink); }
-.c-wrap .btn.bad { background: var(--bad); border-color: var(--bad); color: #fff; }
+.c-wrap .btn.bad { background: var(--bad); border-color: var(--bad); color: var(--on-accent); }
 .c-wrap .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* Drop layer (§4.3.1 Parity adds) and the photo dialog (§5.5) */
