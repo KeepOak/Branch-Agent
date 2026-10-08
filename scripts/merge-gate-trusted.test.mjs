@@ -908,14 +908,20 @@ test('old-base PR still runs the trusted check from the default branch', () => {
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-trusted.test.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.test.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-proof-images.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-proof-images.test.mjs'));
   const trustedSource = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
   assert.match(trustedSource, /from '\.\/check-ui-proof\.mjs'/);
   assert.match(trustedSource, /runUiProofFromPr\(/);
+  assert.match(trustedSource, /lookupProofSha/);
+  assert.match(trustedSource, /checkPrProof/);
 });
 
 test('trusted gate re-runs the UI screenshot proof check from main', () => {
   assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.test.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-proof-images.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-proof-images.test.mjs'));
 });
 
 test('merge-gate does not retrigger on ready_for_review and cancel its waiting run', () => {

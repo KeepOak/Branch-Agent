@@ -87,7 +87,7 @@ Every child process Branch starts on Windows (the engine, shells, probes, git, P
   ```
   Co-authored-by: Taofik Bishi <189563683+stabrea@users.noreply.github.com>
   ```
-- Open the pull request against `main`. Its body says what changed, why, and the exact test commands you ran with their pass counts. For a change with a visible effect, include screenshots of the changed flow (see [Self-testing a change](#self-testing-a-change)).
+- Open the pull request against `main`. Its body says what changed, why, and the exact test commands you ran with their pass counts. For a change with a visible effect, include screenshots of the changed flow on a `proof/<head-branch>` orphan branch (see [Self-testing a change](#self-testing-a-change)). Do not commit screenshots to the PR branch.
 - `main` is protected by the ruleset "main requires the merge gate": the only required check is `merge-gate`, and force-pushes and branch deletion are blocked. The other workflows are path-filtered, so `merge-gate` (`.github/workflows/merge-gate.yml`) waits for whichever of them started on the PR's head commit and fails if any of them failed.
 - After this lands, a second required check will replace it: `merge-gate-trusted` from `.github/workflows/merge-gate-trusted.yml`. That workflow is `pull_request_target`, so GitHub always runs **main's copy** and checks out the default branch (current main), never the PR's recorded base SHA or head. It never checks out or executes the pull request. Permissions are read-only (`contents`, `checks`, `actions`, `pull-requests`) and it uses no secrets. The job waits for the other checks with the same rules as `merge-gate`, fails if `merge-gate` is missing or unsuccessful, fails if a path-filtered core workflow never started, fails if any other workflow posts a check named `merge-gate-trusted`, and re-runs the changed-test-coverage and merge-command scripts from main against the PR file list fetched through the API. Reviewers see workflow, gate-script, and `package.json` changes in the job summary. **Two-step switch:** merge this workflow first and watch it on a few PRs, then the repo admin changes the required check from `merge-gate` to `merge-gate-trusted`. Until that switch, `merge-gate` remains the required check.
 - `gate-files-fresh` (`.github/workflows/gate-files-fresh.yml`) fails a PR that edits a merge-gate file but dropped a line main added since the PR forked; merge main in and keep main's version of this file.
@@ -147,7 +147,41 @@ Before opening a pull request with a visible effect, an agent (or a person) chec
 
 1. Build the change and start a scratch engine and the built window on free loopback ports, with their own data folders. Never use a running desktop app's ports or data.
 2. Click through the changed flow, using the engine's browser tool or computer control, or Playwright (`playwright-core` is an engine dependency) where those cannot reach a loopback page.
-3. Screenshot the result and put the screenshots in the pull request body.
+3. Screenshot only the Branch app or preview (no desktop, other apps, names, emails, paths or machine names). Publish the images on a separate orphan branch named `proof/<head-branch-name>` (for example `proof/cursor/side-panel-abc1`), with files only under `proof/`. Never merge that branch and never open it as a PR. Embed each image in the pull request body with a raw URL pinned to that commit SHA:
+
+   `https://raw.githubusercontent.com/KeepOak/Branch-Agent/<40-char-sha>/proof/<file>.png`
+
+   GitHub attachment URLs (`https://github.com/user-attachments/assets/...`) are also accepted. Do not commit screenshots to the PR branch (`docs/proof/` or any new `.png`/`.jpg`/`.jpeg`/`.gif`/`.webp` outside the app's real asset folders). The `check-ui-proof` gate enforces this for `window/**` changes.
+
+   Copy-paste, from the PR worktree. This writes only to `proof/<your-branch>` and does not change the PR branch:
+
+   ```bash
+   PR_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+   PROOF_BRANCH="proof/${PR_BRANCH}"
+   PROOF_PARENT="$(mktemp -d "${TMPDIR:-/tmp}/branch-proof.XXXXXX")"
+   PROOF_DIR="${PROOF_PARENT}/wt"
+
+   git fetch origin "refs/heads/${PROOF_BRANCH}:refs/heads/${PROOF_BRANCH}" 2>/dev/null || true
+   if git show-ref --verify --quiet "refs/heads/${PROOF_BRANCH}"; then
+     git worktree add "$PROOF_DIR" "$PROOF_BRANCH"
+   else
+     git worktree add --detach "$PROOF_DIR" HEAD
+     git -C "$PROOF_DIR" checkout --orphan "$PROOF_BRANCH"
+     git -C "$PROOF_DIR" rm -rf --quiet .
+   fi
+
+   mkdir -p "$PROOF_DIR/proof"
+   cp -- shot.png "$PROOF_DIR/proof/changed-panel.png"
+
+   git -C "$PROOF_DIR" add proof
+   git -C "$PROOF_DIR" commit -m "proof: screenshots for ${PR_BRANCH}"
+   git -C "$PROOF_DIR" push -u origin "refs/heads/${PROOF_BRANCH}"
+   PROOF_SHA="$(git -C "$PROOF_DIR" rev-parse HEAD)"
+   git worktree remove "$PROOF_DIR"
+   rmdir "$PROOF_PARENT"
+
+   printf 'https://raw.githubusercontent.com/KeepOak/Branch-Agent/%s/proof/changed-panel.png\n' "$PROOF_SHA"
+   ```
 
 The bridge also has window tools for this (`ui_open`, `ui_snapshot`, `ui_click`, `ui_type`, `ui_navigate`, `ui_screenshot` and more), merged on `main`. They start a separate test Branch by default and drive the user's own window only after the user turns on Settings › Branch itself › "Let agents use this window". Their documentation is being added to `serve.md`.
 

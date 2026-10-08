@@ -45,7 +45,7 @@ jobs:
           node --test scripts/check-copied-csv.test.mjs scripts/feature-batch-ci-shard.test.mjs
           node scripts/check-copied-csv.mjs
       - name: Test UI screenshot proof check
-        run: node --test scripts/check-ui-proof.test.mjs
+        run: node --test scripts/check-ui-proof.test.mjs scripts/check-proof-images.test.mjs
       - name: Require screenshots for window UI changes
         env:
           GITHUB_TOKEN: ${{ github.token }}
