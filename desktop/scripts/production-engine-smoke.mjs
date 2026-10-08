@@ -79,10 +79,18 @@ export async function smokeProductionEngine(engine, nodePath, commit, protocol, 
   try {
     await mkdir(join(root, "state"));
     await writeFile(join(root, "state/branch.json"), JSON.stringify({ gateway: { mode: "local", bind: "loopback", auth: { mode: "token", token } }, plugins: { enabled: false }, update: { auto: { enabled: false } } }), { mode: 0o600 });
-    child = spawn(nodePath, ["branch.mjs", "gateway", "--port", String(port)], { cwd: engine, env: isolatedEnvironment(root, port, token), windowsHide: true, detached: process.platform !== "win32", stdio: "ignore" });
+    const stderr = [];
+    child = spawn(nodePath, ["branch.mjs", "gateway", "--port", String(port)], { cwd: engine, env: isolatedEnvironment(root, port, token), windowsHide: true, detached: process.platform !== "win32", stdio: ["ignore", "ignore", "pipe"] });
+    child.stderr.on("data", chunk => { stderr.push(chunk); });
     await Promise.race([once(child, "spawn"), once(child, "error").then(() => { throw new Error("Packaged engine could not start"); })]);
     const deadline = started + budgetMs;
-    await ready(child, port, deadline - Math.min(15_000, budgetMs / 3));
+    try {
+      await ready(child, port, deadline - Math.min(15_000, budgetMs / 3));
+    } catch (error) {
+      const detail = Buffer.concat(stderr).toString("utf8").trim();
+      if (detail) error.message = `${error.message}: ${detail.slice(0, 4000)}`;
+      throw error;
+    }
     await health(port, token, protocol, deadline);
     await shutdown(child);
     return { commit, ready: true, authenticatedHealth: true, exited: true, elapsedMs: Date.now() - started, runtime };

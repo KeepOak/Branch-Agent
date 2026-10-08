@@ -49,11 +49,29 @@ async function prepareWindow(pnpm) {
   await run(process.execPath, [join(windowRoot, "node_modules/vite/bin/vite.js"), "build"], windowRoot);
 }
 
-async function deployEngine(pnpm, scratch, identity) {
+export async function adoptSharedEngineDist(source, destination, identity) {
+  const metadata = JSON.parse(await readFile(join(source, "build-info.json"), "utf8"));
+  assert.equal(metadata.commit, identity.commit, "Shared engine build differs from source freeze");
+  await rm(destination, { recursive: true, force: true });
+  await run(process.execPath, ["--input-type=module", "-e",
+    'import { cp } from "node:fs/promises"; await cp(process.argv[1], process.argv[2], { recursive: true });',
+    source, destination]);
+}
+
+async function buildEnginePackage(pnpm, identity) {
   // Runtime-only package build: the engine component never loads declarations, which were ~75% of build time.
   await run(pnpm, ["build:package"], engineRoot, { ...process.env, BRANCH_RUN_NODE_SKIP_DTS_BUILD: "1" });
+  await run(process.execPath, ["--import", "./scripts/tsx.mjs", "scripts/write-package-dist-inventory.ts"], engineRoot);
   const metadata = JSON.parse(await readFile(join(engineRoot, "dist/build-info.json"), "utf8"));
   assert.equal(metadata.commit, identity.commit, "Engine build metadata differs from source freeze");
+  assert((await stat(join(engineRoot, "dist/index.js"))).isFile(), "Engine package is missing dist/index.js");
+  assert((await stat(join(engineRoot, "dist/postinstall-inventory.json"))).isFile(), "Engine package is missing dist/postinstall-inventory.json");
+}
+
+async function deployEngine(pnpm, scratch, identity) {
+  const shared = process.env.BRANCH_RELEASE_ENGINE_DIST;
+  if (shared) await adoptSharedEngineDist(shared, join(engineRoot, "dist"), identity);
+  else await buildEnginePackage(pnpm, identity);
   const deployment = join(scratch, "production-engine");
   const flags = await verifiedExceptionFlags("engine");
   await run(pnpm, productionDeployArguments(deployment, flags), engineRoot, productionDeployEnvironment(process.env));
@@ -133,20 +151,33 @@ async function waitForSharedWindow() {
 }
 
 export async function buildRelease(mode, output, windowDirectory) {
-  assert(["window", "components"].includes(mode), "Usage: release-build.mjs window|components output [built-window]");
+  assert(["engine", "window", "components"].includes(mode), "Usage: release-build.mjs engine|window|components output [built-window]");
   const identity = await releaseIdentity();
   const scratch = await scratchRoot();
   const pnpm = await preparePnpm(scratch);
   await mkdir(output, { recursive: true });
-  if (mode === "window") {
+  if (mode === "engine") {
+    await prepareEngine(pnpm);
+    const deployment = await deployEngine(pnpm, scratch, identity);
+    await run(process.execPath, ["--input-type=module", "-e",
+      'import { cp } from "node:fs/promises"; await cp(process.argv[1], process.argv[2], { recursive: true });',
+      deployment, output]);
+  } else if (mode === "window") {
     await prepareWindow(pnpm);
     await writeFile(join(windowRoot, "dist/branch-build.txt"), `${identity.version}\n`);
     await run(process.execPath, ["--input-type=module", "-e", 'import { cp } from "node:fs/promises"; await cp(process.argv[1], process.argv[2], { recursive: true });', join(windowRoot, "dist"), output]);
   } else {
     assert(windowDirectory, "Components require the shared tested renderer build");
     // The named feature suites already gate every pull request and main push (feature-batch-checks.yml).
-    await prepareEngine(pnpm);
-    const engine = await deployEngine(pnpm, scratch, identity);
+    const prebuilt = process.env.BRANCH_RELEASE_ENGINE_DEPLOYMENT;
+    let engine;
+    if (prebuilt) {
+      assert.equal(JSON.parse(await readFile(join(prebuilt, "dist/build-info.json"), "utf8")).commit, identity.commit, "Shared engine deployment differs from source freeze");
+      engine = prebuilt;
+    } else {
+      await prepareEngine(pnpm);
+      engine = await deployEngine(pnpm, scratch, identity);
+    }
     // Packaged first, so the manifest's desktop component is the same app.asar as the bootstrap package.
     const { nodePath, desktop, ...runtime } = await packageDesktop(scratch, output, identity);
     await waitForSharedWindow();
