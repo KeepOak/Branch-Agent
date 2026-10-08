@@ -40,7 +40,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 10. **Self-test visible changes** in a scratch engine and window (browser or computer tools, or Playwright) and put screenshots in the PR.
 
-11. **Commits and PRs:** Conventional Commits, files staged by name (never `git add -A`), no tool or AI attribution lines, no force-push to `main`. PR body: what, why, exact test commands and pass counts.
+11. **Commits and PRs:** Conventional Commits, files staged by name (never `git add -A`), no tool or AI attribution lines, no force-push to `main`. Cloud-agent commits must end with exactly `Co-authored-by: Taofik Bishi <189563683+stabrea@users.noreply.github.com>` so the platform does not append a personal-email co-author line. PR body: what, why, exact test commands and pass counts.
 
 12. **Merging:** Merge with a merge commit (never squash or rebase), pinned to the reviewed head SHA so a new push blocks the merge. Two approved ways:
     - `gh pr merge <number> --auto --merge --match-head-commit <reviewed-sha>`
