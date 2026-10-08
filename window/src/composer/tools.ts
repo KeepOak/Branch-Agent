@@ -2,6 +2,7 @@
 // sessions.patch { toolOverrides }, as OpenClaw's composer plus menu does
 // (ui/src/pages/chat/components/chat-composer-plus-menu.ts, composer-capability-catalog.ts, lib/config/mcp-servers.ts).
 import { list, rec, str, type Rec } from "./engine";
+import { visible } from "../places/settings/adapter";
 
 export type ToolOverrides = {
   mcpServers?: Record<string, boolean>;
@@ -42,13 +43,21 @@ function skillProblem(s: Rec): SkillRow["problem"] {
   return anyMissing || s.eligible === false ? "Not running" : undefined;
 }
 
+/** Human-facing skill names; the engine key stays unchanged. */
+function skillLabel(name: string): string {
+  const label = /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(name)
+    ? name.replace(/[-_]/g, " ").replace(/^./, (letter) => letter.toUpperCase())
+    : name;
+  return visible(label);
+}
+
 /** Skills from skills.status that this Trunk may use, with why one can't run. */
 export function readSkills(result: unknown): SkillRow[] {
   return list(rec(result).skills)
     .filter((s) => s.modelVisible !== false && s.blockedByAllowlist !== true && s.blockedByAgentFilter !== true)
     .map((s) => ({
       key: str(s.skillKey) || str(s.name),
-      name: str(s.name),
+      name: skillLabel(str(s.name)),
       line: str(s.description),
       baseEnabled: s.disabled !== true,
       problem: skillProblem(s),
