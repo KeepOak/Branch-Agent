@@ -3,6 +3,7 @@ import type { Conversation } from "../connect/conversations";
 import type { Topic } from "@branch/gateway-protocol";
 import type { TopicUpdate } from "../thread/TopicCard";
 import type { SendExtras } from "../connect/engine";
+import { firstSendEcho } from "../composer/sending";
 import { roomIdOf, type SaplingSession } from "../connect/session";
 import { withOwner } from "../connect/agent-owner";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
@@ -359,6 +360,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   routeRef.current = route;
   const historyIndexRef = useRef(Number(history.state?.branchIndex) || 0);
   const [draftTopic, setDraftTopic] = useState<{ agentId: string; nonce: string; options: Record<string, unknown> } | null>(null);
+  const [draftEcho, setDraftEcho] = useState<string | null>(null);
   const [topicReturnKey, setTopicReturnKey] = useState<string | null>(null);
   const draftTopicRef = useRef(draftTopic);
   draftTopicRef.current = draftTopic;
@@ -523,6 +525,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       }
       draftTopicRef.current = null;
       setDraftTopic(null);
+      setDraftEcho(null);
       setStage(null);
       setRoute(next);
       setSlideOpen(false); // opening anything closes the slide-over (§4.1.8)
@@ -769,6 +772,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     if (!id) { notify("Create a Trunk before starting a conversation.", { tone: "bad" }); return; }
     const next = { agentId: id, nonce: crypto.randomUUID(), options };
     draftTopicRef.current = next;
+    setDraftEcho(null);
     setDraftTopic(next);
     setRoute({ kind: "chat", key: null });
     setSlideOpen(false);
@@ -782,7 +786,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
 
   const sendNew = async (text: string, extras?: SendExtras): Promise<boolean> => {
     if (!draftTopic || creatingTopic.current === draftTopic.nonce) return false;
+    const echo = firstSendEcho(text);
+    if (!echo) return false;
     creatingTopic.current = draftTopic.nonce;
+    setDraftEcho(echo);
     try {
       const threadKey = contactRows.find((contact) => contact.id === `trunk:${draftTopic.agentId}`)?.threadKey;
       const mainKey = threadKey?.slice(`agent:${draftTopic.agentId}:`.length) || mainKeySuffix;
@@ -801,9 +808,13 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         }
       }
       await list.refresh();
-      if (draftTopicRef.current?.nonce === draftTopic.nonce && draftTopicRef.current.agentId === draftTopic.agentId) openConversation(key);
+      if (draftTopicRef.current?.nonce === draftTopic.nonce && draftTopicRef.current.agentId === draftTopic.agentId) {
+        session.seedFirstSend(key, echo);
+        openConversation(key);
+      }
       return true;
     } catch (error) {
+      setDraftEcho(null);
       notify(`Couldn't start the conversation: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" });
       return false;
     } finally {
@@ -1268,7 +1279,17 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     main = draftTopic ? (
       <div className="conversation-column" data-testid="new-topic-draft" ref={setConversationColumn}>
         {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} onList={toggleList} onBack={() => window.history.back()} onForward={() => window.history.forward()} tools={conversationTools} /> : null}
-        <div className="conversation-empty" style={{ flex: 1 }} />
+        <Thread
+          name={trunkName(draftTopic.agentId)}
+          history={[]}
+          live={[]}
+          pendingUser={draftEcho}
+          running={Boolean(draftEcho)}
+          engine={draftEngine}
+          onAnswer={() => undefined}
+          onOpenSession={openConversation}
+          onStart={(start) => void sendNew(start)}
+        />
         <div className={pet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={pet} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={null} /></div>
         <Composer
           key={draftTopic.nonce}

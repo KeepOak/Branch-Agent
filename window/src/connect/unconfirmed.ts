@@ -121,6 +121,25 @@ type Host = {
   notice(text: string): void;
 };
 
+/** In-memory echo of the first message of a conversation: drawn until history holds it. Not a lost send,
+ *  so it is never checked or sent again (the engine's dedupe is minutes-only). */
+export class FirstSendEcho {
+  private echo: { sessionKey: string; text: string; runId: string } | null = null;
+
+  set(sessionKey: string, text: string, runId: string): void {
+    this.echo = { sessionKey, text, runId };
+  }
+
+  peek(sessionKey: string): { text: string; runId: string } | null {
+    return this.echo?.sessionKey === sessionKey ? { text: this.echo.text, runId: this.echo.runId } : null;
+  }
+
+  clear(runId?: string): void {
+    if (!this.echo || (runId && this.echo.runId !== runId)) return;
+    this.echo = null;
+  }
+}
+
 export class UnconfirmedSends {
   private readonly files = new Map<string, unknown[]>();
   private timer: ReturnType<typeof setTimeout> | null = null;

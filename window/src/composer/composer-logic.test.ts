@@ -5,7 +5,7 @@ import { replaceToken, skillTokenAt, tokenAt } from "./mention";
 import { blockedReason, FULL_ACCESS_BLOCKED, MODE_ROWS, nextMode } from "./mode";
 import { chipLabel, currentModelRef, currentThinking, groupModels, readModels } from "./model";
 import { chipWords, enqueue, moveUp, nextToSend, mark, remove, reword, type QueueItem } from "./queue";
-import { buildExtras, planSend, sendTooltip } from "./sending";
+import { buildExtras, firstSendEcho, planSend, sendTooltip, shouldKeepFirstSendEcho } from "./sending";
 import { argQuery, filterCommands, readCommands, slashQuery } from "./slash";
 import { changedCount, patchValue, readConnectors, readSkills, setWebSearch, toggle } from "./tools";
 
@@ -156,6 +156,13 @@ describe("sending", () => {
   it("names both actions in the Send tooltip", () => {
     expect(sendTooltip("steer")).toBe("Enter: steer it now · Ctrl Enter: wait in line");
     expect(sendTooltip("followup")).toBe("Enter: wait in line · Ctrl Enter: steer it now");
+  });
+  it("keeps a first-send echo until history holds the message, and drops a blank", () => {
+    expect(firstSendEcho("  What is 2+3?  ")).toBe("What is 2+3?");
+    expect(firstSendEcho(" \n ")).toBeNull();
+    expect(shouldKeepFirstSendEcho(false, false)).toBe(true);
+    expect(shouldKeepFirstSendEcho(true, false)).toBe(false);
+    expect(shouldKeepFirstSendEcho(false, true)).toBe(false);
   });
   it("adds mentions where the names sit, and the reply target", () => {
     const extras = buildExtras("hi @Ana", [], [{ profileId: "p1", name: "Ana" }], "steer", { entryId: "e1", name: "x", text: "y" });
