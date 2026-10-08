@@ -196,10 +196,10 @@ describe("keeping things", () => {
     expect(patched(request)).toContainEqual({ session: { maintenance: { mode: "enforce", pruneAfter: "30d" } } });
   });
   it("Keep conversations saves Forever as warn mode", async () => {
-    const { engine, request } = engineWith({ ...BASE, ...CFG() });
+    const { engine, request } = engineWith({ ...BASE, ...CFG({ session: { maintenance: { mode: "enforce", pruneAfter: "30d" } } }) });
     await show(engine);
     await click("Forever", row("Keep conversations")!);
-    expect(patched(request)).toContainEqual({ session: { maintenance: { mode: "warn" } } });
+    expect(patched(request)).toContainEqual({ session: { maintenance: { mode: "warn", pruneAfter: "30d" } } });
   });
   it("Keep conversations selects 1 year from enforced 365-day config", async () => {
     const { engine } = engineWith({ ...BASE, ...CFG({ session: { maintenance: { mode: "enforce", pruneAfter: "365d" } } }) });
