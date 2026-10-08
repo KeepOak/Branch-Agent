@@ -50,12 +50,13 @@ type SessionPage = { sessions: SessionRow[]; totalCount?: number; hasMore?: bool
 
 /** Dashboards, a page at a time (sessions.list hasBoard), so every one can be reached. */
 function useDashboards(engine: WindowEngine) {
-  const [offset, setOffset] = useState(0);
+  const [history, setHistory] = useState<{ engine: WindowEngine; offset: number; earlier: SessionRow[] }>({ engine, offset: 0, earlier: [] });
+  const offset = history.engine === engine ? history.offset : 0;
   const rawPage = useResource<unknown>(engine, "sessions.list", { hasBoard: true, excludeSubagents: true, includeDerivedTitles: true, limit: DASH_PAGE, offset });
   const page = { ...rawPage, data: rawPage.data === null ? null : pageOf(rawPage.data) };
-  const [earlier, setEarlier] = useState<SessionRow[]>([]);
+  const earlier = history.engine === engine ? history.earlier : [];
   const all = [...earlier, ...(page.data?.sessions ?? [])];
-  const more = () => { setEarlier(all); setOffset(page.data?.nextOffset ?? offset + DASH_PAGE); };
+  const more = () => { if (!page.loading && page.data?.hasMore) setHistory({ engine, earlier: all, offset: page.data.nextOffset ?? offset + DASH_PAGE }); };
   return { page, all, total: page.data ? page.data.totalCount ?? all.length : null, hasMore: Boolean(page.data?.hasMore), more };
 }
 
