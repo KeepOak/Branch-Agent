@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +12,12 @@ import {
   uncoveredTests,
   workflowHasPullRequestTrigger,
 } from './changed-test-coverage.mjs';
-import { checkMergeCommands, docsToCheck } from './check-merge-command.mjs';
+import {
+  baseContentFromHeadAndPatch,
+  baseContentsFromPrDiff,
+  checkMergeCommands,
+  docsToCheck,
+} from './check-merge-command.mjs';
 // listedGateFiles() is called after both modules load, so this cycle stays safe.
 import { listedGateFiles } from './check-gate-files-fresh.mjs';
 import { checkUIProof } from './check-ui-proof.mjs';
@@ -849,16 +854,88 @@ function runCoverage(files, extraNamed, repo, sha, token) {
   return true;
 }
 
-function runMergeCommandCheck(repo, sha, token) {
-  const dir = mkdtempSync(path.join(tmpdir(), 'merge-gate-trusted-docs-'));
-  for (const doc of docsToCheck) {
-    const text = fetchFileText(repo, sha, token, doc);
-    if (text == null) continue;
-    const dest = path.join(dir, doc);
-    mkdirSync(path.dirname(dest), { recursive: true });
-    writeFileSync(dest, text);
+function readLocalDoc(doc) {
+  try {
+    return readFileSync(path.join(root, doc), 'utf8');
+  } catch {
+    return null;
   }
-  return checkMergeCommands(dir, docsToCheck);
+}
+
+function fetchMergeBaseSha(repo, token, baseRef, headSha) {
+  if (!baseRef || !headSha) return null;
+  try {
+    const payload = ghApiWithRetry(repo, token, `compare/${baseRef}...${headSha}`, {
+      jq: '{sha:.merge_base_commit.sha}',
+      retries: 6,
+    });
+    const sha = payload?.sha;
+    return typeof sha === 'string' && /^[0-9a-f]{40}$/i.test(sha) ? sha : null;
+  } catch {
+    return null;
+  }
+}
+
+function runMergeCommandCheck(repo, sha, token, prFiles = null, baseRef = null) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'merge-gate-trusted-docs-'));
+  try {
+    const headContents = {};
+    for (const doc of docsToCheck) {
+      const text = fetchFileText(repo, sha, token, doc);
+      headContents[doc] = text;
+      if (text == null) continue;
+      const dest = path.join(dir, doc);
+      mkdirSync(path.dirname(dest), { recursive: true });
+      writeFileSync(dest, text);
+    }
+
+    const changedDocs = [];
+    if (Array.isArray(prFiles)) {
+      const names = new Set(prFiles.flatMap((file) => (
+        file?.previous_filename ? [file.filename, file.previous_filename] : [file?.filename]
+      ).filter(Boolean)));
+      for (const doc of docsToCheck) {
+        if (names.has(doc)) changedDocs.push(doc);
+      }
+    }
+
+    const baseContentsForChanged = {};
+    const needsMergeBase = [];
+    for (const doc of changedDocs) {
+      const entry = prFiles.find((file) => file?.filename === doc);
+      if (entry?.status === 'added') continue;
+      const fromPatch = baseContentFromHeadAndPatch(headContents[doc] ?? '', entry?.patch);
+      if (fromPatch != null) {
+        baseContentsForChanged[doc] = fromPatch;
+        continue;
+      }
+      needsMergeBase.push(doc);
+    }
+    if (needsMergeBase.length) {
+      const baseSha = fetchMergeBaseSha(repo, token, baseRef, sha);
+      if (baseSha) {
+        for (const doc of needsMergeBase) {
+          const text = fetchFileText(repo, baseSha, token, doc);
+          if (text != null) baseContentsForChanged[doc] = text;
+        }
+      }
+    }
+
+    const mainContents = {};
+    for (const doc of docsToCheck) {
+      const text = readLocalDoc(doc);
+      if (text != null) mainContents[doc] = text;
+    }
+
+    const baseContents = baseContentsFromPrDiff(docsToCheck, {
+      headContents,
+      prFiles: Array.isArray(prFiles) ? prFiles : null,
+      baseContentsForChanged,
+    });
+    return checkMergeCommands(dir, docsToCheck, { baseContents, mainContents });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 export function pollTrustedGate({
@@ -995,7 +1072,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 
   const extraNamed = fetchNamedTestLists(repo, sha, token);
   if (!runCoverage(files, extraNamed, repo, sha, token)) process.exit(1);
-  if (!runMergeCommandCheck(repo, sha, token)) {
+  if (!runMergeCommandCheck(repo, sha, token, files, baseRef)) {
     console.error('Merge-command check failed on the pull request documentation.');
     process.exit(1);
   }
