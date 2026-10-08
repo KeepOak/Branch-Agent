@@ -15,6 +15,7 @@ const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 const updater = await import(pathToFileURL(join(dist, "component-update.js")));
 const desktopUpdate = await import(pathToFileURL(join(dist, "desktop-update.js")));
 const { runHelper } = await import(pathToFileURL(join(dist, "desktop-update-helper.js")));
+await import("./desktop-update-helper-cases.mjs");
 const { parseComponentRelease } = await import(pathToFileURL(join(dist, "component-update-manifest.js")));
 const ELECTRON = "44.5.1";
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));

@@ -1,0 +1,3 @@
+# Desktop helper cases run via desktop-update.test.mjs on every
+# desktop-checks OS job, including Windows:
+# desktop/scripts/desktop-update-helper-cases.mjs
