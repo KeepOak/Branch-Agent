@@ -691,7 +691,8 @@ export class SaplingSession {
       if (wasLive) this.liveSeen = false;
       const historyHasMessage = Boolean(own && keptInHistory(this.snapshot.history, runId, own.text));
       const keepEcho = Boolean(own?.shown && shouldKeepFirstSendEcho(historyHasMessage, Boolean(failure)));
-      if (!keepEcho) this.firstEcho.clear(runId);
+      // Another turn that is still running took this send in: drop the local echo so the bubble is not drawn twice.
+      if (!keepEcho || (absorbed && !wasLive)) this.firstEcho.clear(runId);
       else if (own) this.firstEcho.set(this.snapshot.sessionKey ?? "", own.text, runId);
       this.set({
         // Only a run that finished plays "Done" (header, agent window, cheer); a stopped or failed one, or one whose
@@ -700,7 +701,7 @@ export class SaplingSession {
         // Your send, taken into another turn that is still running: that turn's history has your message, so your
         // own bubble goes now instead of drawing it twice. Only when the bubble is that send's: someone else's run,
         // or a queued send of yours (not drawn) taken in, leaves the bubble alone.
-        ...(!wasLive && absorbed && own?.shown && this.snapshot.pendingUser === own.text && !keepEcho ? { pendingUser: null, ended: { runId, outcome, at: Date.now() } } : {}),
+        ...(!wasLive && absorbed && own?.shown && this.snapshot.pendingUser === own.text ? { pendingUser: null, ended: { runId, outcome, at: Date.now() } } : {}),
         steered: this.snapshot.steered.filter((note) => note.runId !== runId && note.target !== runId),
       });
     }
