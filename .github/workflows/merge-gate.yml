@@ -134,11 +134,13 @@ jobs:
             runs=$(jq --argjson paths "$comment_paths" --arg tour '.github/workflows/visual-tour.yml' '
               map(select(.name != "comment" or (($paths[.id | tostring] // "") != $tour)))
             ' <<<"$runs")
-            # A close/reopen starts a new run on the same SHA. Keep the newest
-            # check for each GitHub Actions app, workflow path, event, and job
-            # when the run is pull_request or pull_request_target for this PR
-            # on its base. Anything unattributed, or bound to another path,
-            # event, SHA, suite, or PR, stays and can still fail the gate.
+            # A close/reopen starts a new run on the same SHA. For each GitHub
+            # Actions app, workflow path, event, and job, keep every same-name
+            # check from the newest suite. Only a success, or a suite that is
+            # still running, replaces an earlier non-pass. Skipped, neutral, and
+            # any other completed non-success leave the older failure in place.
+            # Unattributed checks, and checks bound to another path, event, SHA,
+            # suite, or PR, never collapse.
             dup_ids=$(jq -c '[group_by(.name)[] | select(length > 1) | .[].id]' <<<"$runs")
             attrs='{}'
             while IFS= read -r check; do
@@ -188,18 +190,24 @@ jobs:
                   and (($w.pullRequests // []) | any((.number | as_num) == ($pr | as_num)))
                   and ($base != "")
                   and (($w.pullRequests // []) | all(.base == $base));
-              reduce .[] as $run ({};
-                (if bound($run) then
-                  [(try $run.app.id catch null), $attrs[$run.id | tostring].path, $attrs[$run.id | tostring].event, $run.name] | tojson
+              def identity($run):
+                [(try $run.app.id catch null), $attrs[$run.id | tostring].path, $attrs[$run.id | tostring].event, $run.name] | tojson;
+              def suite_supersedes:
+                all(.[]; (.status != "completed") or .conclusion == "success");
+              reduce .[] as $run ({unbound: [], groups: {}};
+                if bound($run) then
+                  .groups[identity($run)] = ((.groups[identity($run)] // []) + [$run])
                 else
-                  ["unbound", $run.id] | tojson
-                end) as $key
-                | if (.[$key] == null) or (($run.id | as_num) > (.[$key].id | as_num)) then
-                    .[$key] = $run
-                  else
-                    .
-                  end)
-              | [.[]]
+                  .unbound += [$run]
+                end)
+              | . as $acc
+              | [ $acc.groups[]
+                  | ([.[].check_suite.id | as_num] | max) as $suite
+                  | [.[] | select((.check_suite.id | as_num) == $suite)] as $newest
+                  | if ($newest | suite_supersedes) then $newest else . end
+                ]
+              | add // []
+              | $acc.unbound + .
             ' <<<"$runs")
             # CodeQL default setup can register Analyze after all other checks finish.
             pending=$(jq '([.[] | select(.status != "completed")] | length) + (if any(.[]; .name == "Analyze (actions)") then 0 else 1 end)' <<<"$runs")
