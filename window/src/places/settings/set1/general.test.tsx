@@ -85,6 +85,29 @@ describe("Settings › General", () => {
     expect(withOne.request).toHaveBeenCalledWith("sessions.list", { projectId: "home", limit: 1, excludeSubagents: true, excludeCron: true });
   });
 
+  it("hides transient project errors and retries projects.list on Try again", async () => {
+    const projectsList = vi.fn()
+      .mockRejectedValueOnce(new Error("Session projection changed while preparing the listing. Retry the request."))
+      .mockResolvedValueOnce({ projects: [{ id: "home", displayName: "Home", source: "registered" }] });
+    const { engine, request } = engineOf({ "projects.list": projectsList });
+    await render(engine);
+    expect(host.textContent).not.toContain("Session projection");
+    expect(host.textContent).toContain("Couldn’t read your projects just now.");
+    const projects = host.querySelector('[data-sec="Projects"]')!;
+    expect(projects.querySelector('[role="status"] .sdot.warn')).not.toBeNull();
+    expect(projectsList).toHaveBeenCalledTimes(1);
+    const retry = [...projects.querySelectorAll("button")].find((b) => b.textContent === "Try again")!;
+    expect(retry).toBeDefined();
+    await act(async () => retry.click());
+    expect(projectsList).toHaveBeenCalledTimes(2);
+    expect(request.mock.calls.filter(([method]) => method === "projects.list")).toEqual([
+      ["projects.list", {}],
+      ["projects.list", {}],
+    ]);
+    expect(projects.querySelector(".prow b")?.textContent).toBe("Home");
+    expect(projects.querySelector('[role="status"]')).toBeNull();
+  });
+
   it("When you send while it works saves messages.queue.mode", async () => {
     const { engine, request } = engineOf();
     await render(engine, 1);
