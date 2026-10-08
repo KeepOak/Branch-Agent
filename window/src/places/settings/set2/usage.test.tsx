@@ -222,7 +222,9 @@ describe("keeping things", () => {
     await act(async () => { ttl.value = "24"; ttl.dispatchEvent(new Event("change", { bubbles: true })); }); await flush();
     expect(patched(request)).toContainEqual({ attachments: { ttlHours: 24 } });
     const idle = document.querySelector<HTMLInputElement>('input[aria-label="Archive conversations idle for"]')!;
-    expect(idle.placeholder).toBe("30");
+    expect(idle).toBeTruthy();
+    expect(idle.placeholder).toBe("");
+    expect(row("Archive conversations idle for")?.textContent).toContain("Unset keeps them forever.");
   });
   it("Tidy now runs sessions.cleanup and says what it did", async () => {
     const { engine, request } = engineWith({ ...BASE, ...CFG(), "sessions.cleanup": { allAgents: true, mode: "enforce", stores: [{ archived: 2, capArchived: 0, pruned: 1, capped: 0, modelRunPruned: 0 }] } });

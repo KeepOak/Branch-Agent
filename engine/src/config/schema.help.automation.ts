@@ -84,7 +84,7 @@ export const AUTOMATION_FIELD_HELP: Record<string, string> = {
   "session.maintenance.coldStorage.afterDays":
     "Archive transcripts after this many inactive days (positive integer, default 30). Active work is protected; changing the cutoff takes effect on the next worker pass without a Gateway restart.",
   "session.maintenance.pruneAfter":
-    "Archives eligible durable conversations and removes disposable automation entries older than this duration (default `30d`; for example `12h`). Archived conversations retain their history and can be restored; protected or routable conversations remain active.",
+    "Archives eligible durable conversations and removes disposable automation entries older than this duration (unset or `0` keeps them forever; for example `12h` or `30d`). Archived conversations retain their history and can be restored; protected or routable conversations remain active.",
   "session.maintenance.archiveDashboardAfter":
     "Archives inactive dashboard sessions after this duration (for example `7d`) so they remain available without crowding the active session list. Set `false` or `0` to disable automatic dashboard archiving.",
   "session.maintenance.maxEntries":
