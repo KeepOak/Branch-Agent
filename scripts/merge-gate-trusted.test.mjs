@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import {
   GATE_SCRIPTS,
   TRUSTED_CHECKOUT_REF,
@@ -16,6 +17,7 @@ import {
   nameStatusFromPrFiles,
   parsePullRequestTrigger,
   parseTrustedWorkflowPolicy,
+  resolveWorkflowsForCheckRuns,
   summarizeGateFileChanges,
   trustedCheckoutRef,
   workflowAppliesToChanges,
@@ -132,7 +134,7 @@ test('duplicate-name forgery: merge-gate-trusted from another workflow fails', (
   ];
   const workflowsByCheckId = {
     ...passWorkflows,
-    104: { path: '.github/workflows/merge-gate.yml', name: 'Merge gate', id: 304, event: 'pull_request' },
+    104: { path: '.github/workflows/merge-gate.yml', name: 'Merge gate', id: 304, event: 'pull_request_target' },
   };
   const foreign = findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
     allowedRunId: CURRENT_RUN_ID,
@@ -326,6 +328,92 @@ test('current run alone is accepted as the trusted check', () => {
   assert.equal(result.foreignTrusted.length, 0);
 });
 
+test('two genuine trusted runs on the same SHA pass even when the earlier run was cancelled', () => {
+  const earlier = {
+    ...passCheckRuns[2],
+    id: 104,
+    status: 'completed',
+    conclusion: 'cancelled',
+    details_url: 'https://github.com/example/repo/actions/runs/304/job/104',
+  };
+  const result = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, earlier],
+    workflowsByCheckId: { ...passWorkflows, 104: { ...trustedWorkflow, id: 304 } },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.foreignTrusted, []);
+});
+
+test('successful workflow attribution is cached across polls while new checks are resolved', () => {
+  const attributionCache = new Map();
+  const calls = [];
+  const checks = [{ id: 501, name: 'feature', status: 'in_progress' }];
+  const options = {
+    currentRunId: CURRENT_RUN_ID,
+    attributionCache,
+    resolveWorkflow: (_repo, _token, check) => {
+      calls.push(check.id);
+      return featureBatchWorkflow;
+    },
+  };
+  const first = resolveWorkflowsForCheckRuns('example/repo', 'unused', checks, options);
+  const nextChecks = [
+    { ...checks[0], status: 'completed', conclusion: 'failure' },
+    { id: 502, name: 'new check' },
+  ];
+  const second = resolveWorkflowsForCheckRuns('example/repo', 'unused', nextChecks, options);
+  assert.deepEqual(first, { 501: featureBatchWorkflow });
+  assert.deepEqual(second, { 501: featureBatchWorkflow, 502: featureBatchWorkflow });
+  assert.deepEqual(calls, [501, 502]);
+  const result = evaluateTrustedGate({
+    checkRuns: [passCheckRuns[0], nextChecks[0]],
+    workflowsByCheckId: second,
+    changedFiles: ['engine/src/gateway/contacts.ts'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.failed[0].id, 501);
+  assert.deepEqual(result.missingCore, []);
+});
+
+test('failed or missing workflow lookups are retried instead of cached as unattributed', () => {
+  for (const unavailable of [null, new Error('API rate limit exceeded for installation')]) {
+    let calls = 0;
+    const checks = [{ id: 501, name: 'merge-gate-trusted' }];
+    const options = {
+      currentRunId: CURRENT_RUN_ID,
+      attributionCache: new Map(),
+      resolveWorkflow: () => {
+        calls += 1;
+        if (calls === 1) {
+          if (unavailable instanceof Error) throw unavailable;
+          return unavailable;
+        }
+        return { ...trustedWorkflow, id: 304 };
+      },
+    };
+    const first = resolveWorkflowsForCheckRuns('example/repo', 'unused', checks, options);
+    assert.equal(findForeignTrustedChecks(checks, first, { allowedRunId: CURRENT_RUN_ID }).length, 1);
+    const second = resolveWorkflowsForCheckRuns('example/repo', 'unused', checks, options);
+    assert.deepEqual(second, { 501: { ...trustedWorkflow, id: 304 } });
+    assert.equal(findForeignTrustedChecks(checks, second, { allowedRunId: CURRENT_RUN_ID }).length, 0);
+    assert.equal(calls, 2);
+  }
+});
+
+test('current trusted run self-attribution does not require an API lookup', () => {
+  const result = resolveWorkflowsForCheckRuns('example/repo', 'unused', [passCheckRuns[2]], {
+    currentRunId: CURRENT_RUN_ID,
+    attributionCache: new Map(),
+    resolveWorkflow: () => assert.fail('current trusted run must not query the API'),
+  });
+  assert.deepEqual(result[103], trustedWorkflow);
+});
+
 test('PR-only named list entry covers a changed test', () => {
   const files = [{ filename: 'engine/src/pr-only.test.ts', status: 'added' }];
   const workflow = '      - run: node --test scripts/none.test.mjs\n';
@@ -369,7 +457,7 @@ test('summarizeGateFileChanges lists workflows, gate scripts, and package.json f
 });
 
 test('listCoreWorkflows reads main workflow path filters and skips the trusted gate', () => {
-  const workflows = listCoreWorkflows(new URL('../.github/workflows', import.meta.url).pathname);
+  const workflows = listCoreWorkflows(fileURLToPath(new URL('../.github/workflows', import.meta.url)));
   assert.ok(workflows.some((item) => item.path === '.github/workflows/merge-gate.yml' && item.pullRequestPaths == null));
   assert.ok(workflows.some((item) =>
     item.path === '.github/workflows/feature-batch-checks.yml'
@@ -419,9 +507,10 @@ test('old-base PR still runs the trusted check from the default branch', () => {
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-trusted.test.mjs'));
 });
 
-test('merge-gate also queues on ready_for_review', () => {
+test('merge-gate does not retrigger on ready_for_review and cancel its waiting run', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
-  assert.match(yaml, /types:\s*\[.*ready_for_review.*\]/);
+  assert.match(yaml, /^  pull_request:\s*$/m);
+  assert.doesNotMatch(yaml, /^\s+types:.*ready_for_review/m);
 });
 
 test('merge-gate wait ignores merge-gate-trusted so the two gates cannot deadlock', () => {

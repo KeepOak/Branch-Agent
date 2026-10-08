@@ -104,7 +104,6 @@ export function findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
       return false;
     }
     if (!workflow || workflow.id == null || workflow.id === '') return true;
-    if (currentId == null || !Number.isFinite(currentId) || Number(workflow.id) !== currentId) return true;
     if (workflow.path !== allowedWorkflowPath) return true;
     if (workflow.event !== allowedEvent) return true;
     return false;
@@ -410,6 +409,8 @@ export function resolveWorkflowForCheckRun(repo, token, checkRun) {
 
 export function resolveWorkflowsForCheckRuns(repo, token, checkRuns, {
   currentRunId = process.env.GITHUB_RUN_ID,
+  attributionCache = new Map(),
+  resolveWorkflow = resolveWorkflowForCheckRun,
 } = {}) {
   const workflowsByCheckId = {};
   const currentId = currentRunId == null || currentRunId === '' ? null : Number(currentRunId);
@@ -424,9 +425,17 @@ export function resolveWorkflowsForCheckRuns(repo, token, checkRuns, {
       };
       continue;
     }
+    if (attributionCache.has(run.id)) {
+      workflowsByCheckId[run.id] = attributionCache.get(run.id);
+      continue;
+    }
     try {
-      const workflow = resolveWorkflowForCheckRun(repo, token, run);
-      if (workflow) workflowsByCheckId[run.id] = workflow;
+      const workflow = resolveWorkflow(repo, token, run);
+      if (workflow) {
+        workflowsByCheckId[run.id] = workflow;
+        // Attribution is immutable for a check ID; status/conclusion still come from each poll.
+        attributionCache.set(run.id, workflow);
+      }
     } catch {
       // Fail closed later if a trusted-job name cannot be attributed.
     }
@@ -492,8 +501,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const sha = process.env.SHA;
   const token = process.env.GH_TOKEN;
   const prNumber = process.env.PR_NUMBER;
-  const maxAttempts = Number(process.env.MERGE_GATE_MAX_ATTEMPTS ?? 190);
-  const pollSeconds = Number(process.env.MERGE_GATE_POLL_SECONDS ?? 10);
+  const maxAttempts = Number(process.env.MERGE_GATE_MAX_ATTEMPTS ?? 64);
+  const pollSeconds = Number(process.env.MERGE_GATE_POLL_SECONDS ?? 30);
   const initialWait = Number(process.env.MERGE_GATE_INITIAL_WAIT ?? 30);
 
   if (!repo || !sha || !token || !prNumber) {
@@ -519,9 +528,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   if (initialWait > 0) sleepSeconds(initialWait);
 
   const coreWorkflows = listCoreWorkflows(path.join(root, '.github/workflows'));
+  const attributionCache = new Map();
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const checkRuns = fetchCheckRuns(repo, sha, token);
-    const workflowsByCheckId = resolveWorkflowsForCheckRuns(repo, token, checkRuns);
+    const workflowsByCheckId = resolveWorkflowsForCheckRuns(repo, token, checkRuns, { attributionCache });
     const result = evaluateTrustedGate({
       checkRuns,
       workflowsByCheckId,
