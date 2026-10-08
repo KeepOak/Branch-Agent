@@ -209,3 +209,64 @@ it("recovers a leased subagent after the predecessor dies without a second start
     }
   });
 });
+
+it("recovers a predecessor death that settles between the startup scan and watcher registration", async () => {
+  await withBranchTestState({ label: "handoff-lease-gap-death" }, async (state) => {
+    const crashed = { agentId: "main", sessionKey: "agent:main:handoff-gap" };
+    await replaceSessionEntry(crashed, { ...runningEntry, sessionId: "gap-death-session" });
+    const holder = await livePredecessor();
+    publishPredecessorLease(crashed.sessionKey, holder.pid!);
+    refreshSessionHandoffLeases();
+    const beforeCrash = loadSessionEntry(crashed);
+    await expect(
+      markStartupOrphanedMainSessionsForRecovery({ stateDir: state.stateDir }),
+    ).resolves.toEqual({ marked: 0, skipped: 0 });
+    expect(loadSessionEntry(crashed)).toEqual(beforeCrash);
+
+    holder.kill();
+    await new Promise<void>((resolve) => {
+      holder.once("exit", () => {
+        resolve();
+      });
+    });
+    pollSessionHandoffLeasesForTest();
+    expect(loadSessionEntry(crashed)).toEqual(beforeCrash);
+
+    watchers.push(startSessionHandoffLeaseOrphanRecovery({ stateDir: state.stateDir }));
+    await waitForAborted(crashed.sessionKey);
+  });
+});
+
+it("leaves a successor-owned running conversation alone when another predecessor lane is released", async () => {
+  await withBranchTestState({ label: "handoff-lease-successor-owned" }, async (state) => {
+    const predecessor = { agentId: "main", sessionKey: "agent:main:handoff-released" };
+    await replaceSessionEntry(predecessor, runningEntry);
+    const holder = await livePredecessor();
+    publishPredecessorLease(predecessor.sessionKey, holder.pid!);
+    refreshSessionHandoffLeases();
+    await expect(
+      markStartupOrphanedMainSessionsForRecovery({ stateDir: state.stateDir }),
+    ).resolves.toEqual({ marked: 0, skipped: 0 });
+
+    watchers.push(startSessionHandoffLeaseOrphanRecovery({ stateDir: state.stateDir }));
+
+    const successorOwned = { agentId: "main", sessionKey: "agent:main:successor-inflight" };
+    await replaceSessionEntry(successorOwned, {
+      ...runningEntry,
+      sessionId: "successor-inflight-session",
+      lifecycleRunId: "successor-run",
+      activeWriterRunId: "successor-run",
+    });
+    const beforeSuccessor = loadSessionEntry(successorOwned);
+
+    holder.kill();
+    await new Promise<void>((resolve) => {
+      holder.once("exit", () => {
+        resolve();
+      });
+    });
+    pollSessionHandoffLeasesForTest();
+    await waitForAborted(predecessor.sessionKey);
+    expect(loadSessionEntry(successorOwned)).toEqual(beforeSuccessor);
+  });
+});

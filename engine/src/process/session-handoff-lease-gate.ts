@@ -59,6 +59,8 @@ const gate = resolveGlobalSingleton(Symbol.for("branch.sessionHandoffLeaseGate")
   ownHoldStartedAt: undefined as number | undefined,
   /** Successor recovery hooks: a lane is free after its last predecessor died, expired, or released. */
   releasedListeners: new Set<(lane: string) => void>(),
+  /** Releases that settled with no listener; replayed when a watcher registers. */
+  releasedWhileUnwatched: [] as string[],
 }));
 
 /**
@@ -159,6 +161,10 @@ function settleLane(lane: string, held: HeldLane): boolean {
   if (held.holders.size > 0) return false;
   gate.lanes.delete(lane);
   held.release();
+  if (gate.releasedListeners.size === 0) {
+    gate.releasedWhileUnwatched.push(lane);
+    return true;
+  }
   for (const listener of gate.releasedListeners) {
     try {
       listener(lane);
@@ -177,6 +183,16 @@ function settleLane(lane: string, held: HeldLane): boolean {
  */
 export function onSessionHandoffLaneReleased(listener: (lane: string) => void): () => void {
   gate.releasedListeners.add(listener);
+  const pending = gate.releasedWhileUnwatched.splice(0);
+  for (const lane of pending) {
+    try {
+      listener(lane);
+    } catch (error) {
+      log.warn(
+        `session handoff lease release hook failed (${lane}): ${String(error)}`,
+      );
+    }
+  }
   return () => {
     gate.releasedListeners.delete(listener);
   };
@@ -289,4 +305,5 @@ export function resetSessionHandoffLeaseGateForTest(
   gate.env = undefined;
   gate.ownHoldStartedAt = undefined;
   gate.releasedListeners.clear();
+  gate.releasedWhileUnwatched.length = 0;
 }

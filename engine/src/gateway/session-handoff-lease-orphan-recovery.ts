@@ -2,12 +2,16 @@
 // under handoff leases. If that predecessor dies or its lease expires later, those
 // conversations would stay "running" until the next restart. This hook recovers them
 // with the same owner checks as startup, and leaves still-held lanes alone.
-import { markStartupOrphanedMainSessionsForRecovery } from "../agents/main-session-recovery/main-session-restart-recovery-marking.js";
-import { mainSessionRecoveryLog } from "../agents/main-session-recovery/main-session-restart-recovery-shared.js";
+import { markOrphanedMainSessionForRecovery } from "../agents/main-session-recovery/main-session-restart-recovery-marking.js";
+import {
+  discoverRestartRecoveryStoreTargets,
+  mainSessionRecoveryLog,
+} from "../agents/main-session-recovery/main-session-restart-recovery-shared.js";
+import { loadSessionEntry } from "../config/sessions/session-accessor.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { SESSION_LANE_PREFIX } from "../process/session-handoff-lease-files.js";
 import { onSessionHandoffLaneReleased } from "../process/session-handoff-lease-gate.js";
-import { isSubagentSessionKey } from "../routing/session-key.js";
+import { isSubagentSessionKey, resolveAgentIdFromSessionKey } from "../routing/session-key.js";
 import { runStartupSessionMigration } from "./server-startup-session-migration.js";
 
 export type SessionHandoffLeaseOrphanRecovery = {
@@ -36,18 +40,62 @@ export async function recoverReleasedHandoffLeaseOrphans(params: {
   if (params.shouldContinue?.() === false) {
     return { marked: 0, skipped: 0 };
   }
-  const result = await markStartupOrphanedMainSessionsForRecovery({
+  const releasedKeys = [
+    ...new Set(
+      (params.releasedLanes ?? [])
+        .map(sessionKeyFromLane)
+        .filter((sessionKey): sessionKey is string => sessionKey !== undefined),
+    ),
+  ];
+  if (releasedKeys.length === 0) {
+    return { marked: 0, skipped: 0 };
+  }
+  const storeTargets = await discoverRestartRecoveryStoreTargets({
     cfg: params.cfg,
     stateDir: params.stateDir,
+    shouldContinue: params.shouldContinue,
   });
-  const releasedSubagent = (params.releasedLanes ?? []).some((lane) => {
-    const sessionKey = sessionKeyFromLane(lane);
-    return sessionKey !== undefined && isSubagentSessionKey(sessionKey);
-  });
+  const result = { marked: 0, skipped: 0 };
+  for (const sessionKey of releasedKeys) {
+    if (params.shouldContinue?.() === false) {
+      return result;
+    }
+    let agentId: string | undefined;
+    try {
+      agentId = resolveAgentIdFromSessionKey(sessionKey);
+    } catch {
+      agentId = undefined;
+    }
+    const candidates = agentId
+      ? storeTargets.filter((target) => target.agentId === agentId)
+      : storeTargets;
+    const stores = candidates.length > 0 ? candidates : storeTargets;
+    for (const store of stores) {
+      const entry = loadSessionEntry({
+        agentId: store.agentId,
+        sessionKey,
+        storePath: store.storePath,
+      });
+      if (!entry?.sessionId) {
+        continue;
+      }
+      const storeResult = await markOrphanedMainSessionForRecovery({
+        target: { ...store, sessionKey },
+        expectedSessionId: entry.sessionId,
+        expectedLifecycleRevision:
+          typeof entry.lifecycleRevision === "string" ? entry.lifecycleRevision : undefined,
+        cfg: params.cfg,
+      });
+      result.marked += storeResult.marked;
+      result.skipped += storeResult.skipped;
+    }
+  }
+  const releasedSubagent = releasedKeys.some((sessionKey) => isSubagentSessionKey(sessionKey));
   if (params.cfg && releasedSubagent) {
     try {
       await runStartupSessionMigration({
         cfg: params.cfg,
+        sessionKeys: new Set(releasedKeys.filter((sessionKey) => isSubagentSessionKey(sessionKey))),
         log: {
           info: params.log?.info ?? (() => {}),
           warn: params.log?.warn ?? mainSessionRecoveryLog.warn,
