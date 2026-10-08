@@ -1,6 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerTrunkMcpTools, type TrunkGateway } from "./trunk-tools.js";
 
@@ -45,11 +46,8 @@ async function check(models: unknown = accounts, github: unknown = identity, fai
   const client = new Client({ name: "signin-test", version: "1" });
   clients.push(client);
   await Promise.all([server.connect(a), client.connect(b)]);
-  const result = await client.callTool({ name: "signin_check", arguments: {} });
-  return {
-    result: { ...result, structuredContent: result.structuredContent as Record<string, unknown> },
-    request,
-  };
+  const result = (await client.callTool({ name: "signin_check", arguments: {} })) as CallToolResult;
+  return { result, request };
 }
 
 describe("signin_check", () => {
