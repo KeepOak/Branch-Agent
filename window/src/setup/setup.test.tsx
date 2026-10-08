@@ -263,6 +263,13 @@ describe("setup flow", () => {
     expect(dialog?.textContent?.toLowerCase()).not.toContain("claude setup-token");
     expect(params(request, "models.authStatus")).toEqual([{ agentId: "main" }]);
   });
+  it("Make it yours says Full access does not include the screen switch", async () => {
+    const { engine: e } = engine({});
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={3} onClose={() => {}} onLocalModel={() => {}} />);
+    expect(host.querySelector("h2")?.textContent).toBe("Make it yours");
+    expect(host.textContent).toContain("Full access");
+    expect(host.textContent).toContain("Seeing the screen and using the mouse is a separate switch in Settings › Computer & browser");
+  });
   it("Welcome holds Start until the promise is ticked and has no Skip", async () => {
     const { engine: e } = engine({});
     const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" onClose={() => {}} onLocalModel={() => {}} />);
