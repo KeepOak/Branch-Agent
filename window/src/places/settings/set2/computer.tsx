@@ -156,18 +156,23 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
   const other = all.filter((n) => n.gatewayLocal !== true);
   const card = (n: Node) => <ComputerCard key={str(n.nodeId)} engine={engine} node={n} lv={lv} users={usersOf(n, agents, cfgAgents)} onChanged={() => void nodes.reload()} />;
   const local = rec(status.data);
+  // Screen control on this computer is enough to list it, even when computer.status
+  // is missing — the chat already calls that machine "This computer".
+  const screenOn = config.get("plugins.entries.cua-computer.enabled") === true;
+  const usableHere = Boolean(status.data) || screenOn;
+  const hereStatus: RecordValue = { ...local, available: local.available === true || screenOn };
   return (
     <Sec title="Computers they may use">
       {nodes.error ? <p className="hint s2-err" role="alert">{nodes.error}</p> : null}
       {lv >= 1 ? <FindRow find={find} onFind={setFind} onRefresh={() => { void nodes.reload(); void status.reload(); }} /> : null}
       {lv >= 1 && paired.length && !all.length ? <Hint>No computer matches.</Hint> : null}
-      {here.length || (status.data && !find.q) ? <div className="s2-grp">On this computer</div> : null}
+      {here.length || (usableHere && !find.q) ? <div className="s2-grp">On this computer</div> : null}
       <div className="s2-comps">
         {here.map(card)}
-        {status.data && !here.length && !find.q ? <ThisComputer status={local} /> : null}
+        {usableHere && !here.length && !find.q ? <ThisComputer status={hereStatus} /> : null}
       </div>
       {other.length ? <><div className="s2-grp">Your other computers</div><div className="s2-comps">{other.map(card)}</div></> : null}
-      {nodes.data && !all.length && !status.data ? <Hint>No computers are paired yet.</Hint> : null}
+      {nodes.data && !all.length && !usableHere && !config.loading ? <Hint>No computers are paired yet.</Hint> : null}
       <InTheCloud engine={engine} />
       <DesktopCtl title="Keep this computer awake" sub="Keeps this computer awake while Trunks use it." help="Stays awake between tasks while Trunks may use it. Locking and signing out still work; Branch never unlocks it. Off until you choose: it stops this computer sleeping on its power plan." name="keepAwake" />
       <Acts><Btn pri onClick={() => window.dispatchEvent(new CustomEvent("branch:add-computer"))}><Icon name="plus" small />Add a computer</Btn></Acts>
@@ -241,7 +246,7 @@ function ThisComputer({ status }: { status: RecordValue }) {
   const use = rec(status.computerUse);
   const ok = status.available === true;
   return (
-    <div className="s2-comp">
+    <div className="s2-comp" data-row="This computer">
       <Tile><Ico name="monitor" s /></Tile>
       <span className="grow">
         <b>This computer</b>

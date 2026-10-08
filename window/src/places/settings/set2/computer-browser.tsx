@@ -86,7 +86,7 @@ export const BROWSER_MORE: SecSpec[] = [MORE, HOW, CLEANERS, SITES, HANDS, FLOWS
 const TECH: SecSpec = { t: "The browser, technical", group: "The browser", showHeading: false, lv: 2, rows: [
   { t: "Browser program", k: "custom", render: (c) => <Program c={c} /> },
   { t: "Branch’s own browser", k: "custom", render: (c) => <Found c={c} /> },
-  { t: "Show the browser window", k: "seg", key: "browser.headless", opts: [{ v: null, l: "Auto" }, { v: false, l: "Always" }, { v: true, l: "Never" }], sub: "Auto shows a window when this computer has a screen." },
+  { t: "Show the browser window", k: "seg", key: "browser.headless", opts: [{ v: null, l: "Auto" }, { v: false, l: "Always" }, { v: true, l: "Never" }], sub: "Auto works without a window. Always opens one on this computer.", help: "Auto keeps the browser out of sight so it does not take over your screen. Always opens a window you can see. Never keeps it hidden." },
   sw("A light browser for reading pages", "Needs a reading-only browser service to connect to.", "Every page opens in the full browser."),
   { t: "Where browser actions go", k: "info", off: "Needs the engine to report how it routes browser actions." },
   { t: "Connect to a browser at an address", k: "text", key: "browser.cdpUrl", ph: "http://127.0.0.1:9222", sub: "A browser’s debugging link, on this computer or another. Empty: Branch starts its own." },
