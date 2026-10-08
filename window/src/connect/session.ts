@@ -9,6 +9,7 @@ import { storedOperatorToken } from "./device-token-store";
 import { withOwner } from "./agent-owner";
 import { projectRun, type Approval, type Block } from "../thread/model";
 import { historyToBlocks, markStopped, readApprovalRecords } from "../thread/history";
+import { sanitizeBlocks } from "../thread/tool-output-display";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "./preparation-status";
 import { addNotSent, healNotSent } from "../composer/queue";
 import { droppedFiles, engineKeyOf, heldRuns, UnconfirmedSends } from "./unconfirmed";
@@ -588,7 +589,7 @@ export class SaplingSession {
     if (this.liveRefreshTimer) clearTimeout(this.liveRefreshTimer);
     this.liveRefreshTimer = null;
     const runId = this.snapshot.liveRunId;
-    this.set({ live: runId ? withWaitingApprovals(projectRun(this.runs.events(runId), this.approvals), this.approvals, runId) : [] });
+    this.set({ live: runId ? withWaitingApprovals(sanitizeBlocks(projectRun(this.runs.events(runId), this.approvals)), this.approvals, runId) : [] });
   }
 
   private scheduleLiveRefresh(): void {

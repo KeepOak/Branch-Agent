@@ -18,6 +18,7 @@ import {
   type StepStatus,
 } from "./model";
 import { readTextToolCall, stepFromTextToolCall } from "./text-tool-call";
+import { sanitizeBlocks } from "./tool-output-display";
 import { readOwner, readSender } from "../rooms/sender";
 
 /** One terminal approval from `approval.history`. */
@@ -362,7 +363,7 @@ export function historyToBlocks(
     if ((m.role !== "custom" && m.role !== "system") || ["run-failed-before-reply", "branch.nested-tool.v1"].includes(str(m.customType))) b.lastTs = Math.max(b.lastTs, writtenAt(m));
   }
   closeRun(b, inFlightRunId);
-  return dropWrappers(b);
+  return sanitizeBlocks(dropWrappers(b));
 }
 
 /**
