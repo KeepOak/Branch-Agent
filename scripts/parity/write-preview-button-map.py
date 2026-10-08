@@ -50,7 +50,7 @@ add("titlebar-focus", "titlebar", "Clear the view (Ctrl .)",
     "Toggles focus mode (hides sidebar and status bar).",
     "window/src/shell/WindowShell.tsx", "WindowShell",
     "Focus mode exists via Ctrl+. and Leave focus mode. No titlebar eye button.",
-    "different")
+    "missing")
 add("titlebar-minimize", "titlebar", "Minimize",
     "Shows a toast: Branch keeps working from the tray.",
     "window/src/connect/title-bar.ts", "syncTitleBar (Electron chrome)",
@@ -60,7 +60,7 @@ add("titlebar-window-focus", "titlebar", "Focus mode",
     "Same as Clear the view: toggles focus mode.",
     "window/src/shell/WindowShell.tsx", "WindowShell",
     "No maximize/focus window button in the React chrome; focus is Ctrl+.",
-    "different")
+    "missing")
 add("titlebar-quit", "titlebar", "Quit",
     "If a Trunk is working, opens a quit-while-working dialog; otherwise toasts that Branch closes to the tray.",
     "window/src/connect/title-bar.ts", "syncTitleBar (Electron chrome)",
@@ -187,7 +187,7 @@ add("sidebar-update-chip", "sidebar", "Update chip",
     "On the person row, a copper Update chip opens the update menu.",
     "window/src/shell/PersonMenu.tsx", "PersonMenu",
     "Update to Branch <version> is a person-menu row, not a chip on the sidebar row.",
-    "different")
+    "missing")
 add("sidebar-hide-list", "sidebar", "Hide or show the list",
     "Ctrl B toggles the sidebar.",
     "window/src/shell/TopBar.tsx", "TopBar list-toggle",
@@ -229,12 +229,12 @@ add("chat-back", "chat-header", "Back",
     "Not in the early preview header.",
     "window/src/shell/TopBar.tsx", "TopBar",
     "History back. Preview has no back/forward in the chat header.",
-    "app-extra")
+    "extra")
 add("chat-forward", "chat-header", "Forward",
     "Not in the early preview header.",
     "window/src/shell/TopBar.tsx", "TopBar",
     "History forward.",
-    "app-extra")
+    "extra")
 add("lock-banner-off", "chat-header", "Turn it off",
     "Turns Lockdown off from the red banner.",
     "window/src/shell/LockdownBanner.tsx", "LockdownBanner",
@@ -404,12 +404,12 @@ add("plus-google-drive", "plus-menu", "From Google Drive",
     "Not in the early + menu.",
     "window/src/composer/PlusMenu.tsx", "PlusMenu",
     "Listed and greyed: Google's picker opens in the desktop app.",
-    "app-extra")
+    "extra")
 add("plus-onedrive", "plus-menu", "From OneDrive or SharePoint",
     "Not in the early + menu.",
     "window/src/composer/PlusMenu.tsx", "PlusMenu",
     "Listed and greyed.",
-    "app-extra")
+    "extra")
 add("plus-photo", "plus-menu", "Take a photo",
     "Later preview adds a photo capture row.",
     "window/src/composer/PlusMenu.tsx", "PlusMenu",
@@ -523,12 +523,12 @@ add("person-switch", "person-menu", "Switch person",
     "Cycles the demo person (Owner ↔ Guest) and toasts.",
     "window/src/shell/PersonMenu.tsx", "PersonMenu",
     "No Switch person row. Add opens inviting another person.",
-    "different")
+    "missing")
 add("person-add", "person-menu", "Add",
     "Not in the early owner menu (Invite lives in Settings › People).",
     "window/src/shell/PersonMenu.tsx", "PersonMenu",
     "Add person.",
-    "same")
+    "extra")
 add("person-settings", "person-menu", "Settings",
     "Opens Settings (Ctrl ,).",
     "window/src/shell/PersonMenu.tsx", "PersonMenu",
@@ -1087,7 +1087,7 @@ add("inbox-tab-later", "inbox", "Later",
     "Not in the early preview inbox tabs.",
     "window/src/places/inbox/index.tsx", "InboxPlace",
     "Shows Later (snoozed).",
-    "app-extra")
+    "extra")
 add("inbox-allow-all", "inbox", "Allow all N…",
     "Opens a confirm dialog then allows every pending item.",
     "window/src/places/inbox/NeedsYou.tsx", "NeedsYou",
@@ -1206,12 +1206,12 @@ add("lib-tab-meetings", "library", "Meetings",
     "Not in the early preview library tabs.",
     "window/src/places/library/index.tsx", "LibraryPlace",
     "Shows Meetings.",
-    "app-extra")
+    "extra")
 add("lib-tab-logbook", "library", "Logbook",
     "Not in the early preview library tabs.",
     "window/src/places/library/index.tsx", "LibraryPlace",
     "Shows Logbook.",
-    "app-extra")
+    "extra")
 add("lib-forget", "library", "Forget",
     "Removes a memory with Undo toast.",
     "window/src/places/library/memory.tsx", "MemoryTab",
@@ -1415,7 +1415,7 @@ add("set-nav-seasons", "settings", "Seasons",
     "Not in the preview SET_NAV.",
     "window/src/places-nav/settings-nav.ts", "settingsGroups",
     "Opens Settings › Seasons. Preview has no Seasons page.",
-    "app-extra")
+    "extra")
 add("set-nav-advanced", "settings", "Advanced",
     "Shown when Show everything / level is on.",
     "window/src/places-nav/SettingsFrame.tsx", "SettingsFrame",
@@ -1939,7 +1939,7 @@ def main() -> None:
     dup = [i for i, n in Counter(ids).items() if n > 1]
     if dup:
         raise SystemExit(f"duplicate ids: {dup}")
-    allowed = {"same", "different", "missing", "app-extra", "dead", "unknown"}
+    allowed = {"same", "different", "missing", "extra", "dead", "unknown"}
     bad = [e["id"] for e in E if e["status"] not in allowed]
     if bad:
         raise SystemExit(f"bad status: {bad}")
@@ -1949,7 +1949,7 @@ def main() -> None:
     OUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     OUT_JSON.write_text(json.dumps(E, indent=2) + "\n", encoding="utf-8")
     counts = Counter(e["status"] for e in E)
-    order = ["same", "different", "missing", "app-extra", "dead", "unknown"]
+    order = ["same", "different", "missing", "extra", "dead", "unknown"]
     lines = [
         "# Preview button map",
         "",
@@ -1957,7 +1957,7 @@ def main() -> None:
         "This is the expected-destination list for a click-every-button tester.",
         "",
         "Each JSON entry has `id`, `screen`, `label`, `previewAction`, `appFile`, `appComponent`, `appAction`, `status`.",
-        "Statuses: `same` (app matches the preview), `different` (exists but destination or behaviour differs), `missing` (preview control the app lacks), `app-extra` (app control the early preview does not have), `dead` (app control does nothing / only a toast), `unknown` (could not determine statically).",
+        "Statuses: `same` (app matches the preview), `different` (exists but destination or behaviour differs), `missing` (the preview has it, the app doesn't), `extra` (exists in the app, not in the preview), `dead` (app control does nothing / only a toast), `unknown` (could not determine statically).",
         "",
         "Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Later-pass interpolated `data-act` keys that are not distinct product destinations are omitted; `scripts/parity/extract-preview-acts.mjs` lists raw act keys.",
         "",
