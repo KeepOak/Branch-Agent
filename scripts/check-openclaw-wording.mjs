@@ -46,9 +46,21 @@ export const ALLOWLIST = [
     re: /(?<![/\w])github\.com\/openclaw\/[\w.-]+(?:\/[\w.-]+)*@[\w.-]+/,
   },
   {
+    id: 'go-mod',
+    why: 'go.mod module and require paths still use github.com/openclaw/... and have no version suffix',
+    file: /(^|\/)go\.mod$/,
+    re: /github\.com\/openclaw\/[\w./-]+/,
+  },
+  {
     id: 'image-ref',
-    why: 'Upstream images still publish at ghcr.io/openclaw, docker.io/openclaw, and the short openclaw/openclaw ref; there is no Branch registry image yet. Does not allow github.com/openclaw links.',
+    why: 'scripts/rebrand-map.json protect rule for image and repo names that must not be renamed: ghcr.io/openclaw/, docker.io/openclaw/, and the short openclaw/openclaw ref. Does not allow github.com/openclaw links.',
     re: /(?:ghcr\.io\/|docker\.io\/)openclaw\/[\w.-]+|(?<![\w.@/~-])openclaw\/openclaw(?![\w-])/i,
+  },
+  {
+    id: 'upstream-attribution',
+    why: 'Contributor docs name the fork origin; rewrapping "upstream OpenClaw" / "forked from OpenClaw" must not fail',
+    file: /^(?:AGENTS|CONTRIBUTING|README)\.md$/,
+    line: /upstream OpenClaw|forked from OpenClaw/i,
   },
   {
     id: 'upstream-pin',
@@ -108,34 +120,64 @@ export function parseAddedLines(diff) {
   const added = [];
   let file = null;
   let newLine = 0;
+  let inHunk = false;
+  let oldLeft = 0;
+  let newLeft = 0;
+  let expectPlusHeader = false;
+
+  const endHunkIfDone = () => {
+    if (inHunk && oldLeft <= 0 && newLeft <= 0) inHunk = false;
+  };
+
   for (const raw of diff.split(/\r?\n/)) {
-    const plusFile = /^\+\+\+ (?:b\/)?(.+)$/.exec(raw);
-    if (plusFile) {
-      file = plusFile[1] === '/dev/null' ? null : stripDiffQuotes(plusFile[1]);
+    if (raw.startsWith('diff ')) {
+      file = null;
+      inHunk = false;
+      expectPlusHeader = false;
       continue;
     }
-    if (raw.startsWith('--- ') || raw.startsWith('diff ') || raw.startsWith('index ')
-      || raw.startsWith('old mode') || raw.startsWith('new mode') || raw.startsWith('similarity ')
-      || raw.startsWith('rename ') || raw.startsWith('copy ') || raw.startsWith('new file')
-      || raw.startsWith('deleted file') || raw.startsWith('Binary files')) {
+    if (!inHunk && /^--- (?:a\/|\/dev\/null|")/.test(raw)) {
+      expectPlusHeader = true;
       continue;
     }
-    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
+    if (!inHunk && expectPlusHeader && raw.startsWith('+++ ')) {
+      const plusFile = /^\+\+\+ (?:b\/)?(.+)$/.exec(raw);
+      file = !plusFile || plusFile[1] === '/dev/null' ? null : stripDiffQuotes(plusFile[1]);
+      expectPlusHeader = false;
+      continue;
+    }
+    const hunk = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(raw);
     if (hunk) {
-      newLine = Number(hunk[1]);
+      expectPlusHeader = false;
+      oldLeft = hunk[2] === undefined ? 1 : Number(hunk[2]);
+      newLine = Number(hunk[3]);
+      newLeft = hunk[4] === undefined ? 1 : Number(hunk[4]);
+      inHunk = oldLeft > 0 || newLeft > 0;
       continue;
     }
-    if (file == null || SKIP_PATH.test(file)) continue;
-    if (raw.startsWith('+') && !raw.startsWith('+++')) {
-      added.push({ file, line: newLine, text: raw.slice(1) });
-      newLine += 1;
-    } else if (raw.startsWith('\\')) {
-      // "\ No newline at end of file" does not advance the new-file line counter.
-    } else if (raw.startsWith('-') && !raw.startsWith('---')) {
-      // Deleted line: stays on the same new-file line number.
-    } else {
-      newLine += 1;
+    if (!inHunk) {
+      expectPlusHeader = false;
+      continue;
     }
+    if (raw.startsWith('\\')) continue;
+    if (raw.startsWith('+')) {
+      if (file && !SKIP_PATH.test(file)) {
+        added.push({ file, line: newLine, text: raw.slice(1) });
+      }
+      newLine += 1;
+      newLeft -= 1;
+      endHunkIfDone();
+      continue;
+    }
+    if (raw.startsWith('-')) {
+      oldLeft -= 1;
+      endHunkIfDone();
+      continue;
+    }
+    newLine += 1;
+    newLeft -= 1;
+    oldLeft -= 1;
+    endHunkIfDone();
   }
   return added;
 }

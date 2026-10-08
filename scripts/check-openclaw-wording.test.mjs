@@ -93,7 +93,7 @@ test('upstream image refs pass and docs.openclaw.ai still fails', () => {
   assert.deepEqual(checkAddedDiff(added(
     'engine/src/cli/fleet-cli/register.ts',
     64,
-    '.option("--image <ref>", "Container image", "ghcr.io/openclaw/openclaw:latest")',
+    '.option("--image <ref>", "Container image", "ghcr.io/openclaw/openclaw:1.2.3")',
   )), []);
   assert.deepEqual(checkAddedDiff(added(
     'engine/docs/install/docker.md',
@@ -113,6 +113,38 @@ test('upstream image refs pass and docs.openclaw.ai still fails', () => {
   assert.equal(docs.length, 1);
   assert.equal(docs[0].kind, 'host');
   assert.match(docs[0].match, /docs\.openclaw\.ai/);
+});
+
+test('go.mod module paths without a version pass', () => {
+  assert.deepEqual(checkAddedDiff(added(
+    'engine/scripts/docs-i18n/go.mod',
+    1,
+    'module github.com/openclaw/openclaw/scripts/docs-i18n',
+  )), []);
+  const other = checkAddedDiff(added(
+    'engine/src/compat.ts',
+    1,
+    'module github.com/openclaw/openclaw/scripts/docs-i18n',
+  ));
+  assert.equal(other.length, 1);
+  assert.equal(other[0].kind, 'github');
+});
+
+test('rewrapping upstream OpenClaw attribution in contributor docs passes', () => {
+  assert.deepEqual(checkAddedDiff(added(
+    'CONTRIBUTING.md',
+    18,
+    'The engine follows upstream OpenClaw.',
+  )), []);
+  assert.deepEqual(checkAddedDiff(added(
+    'AGENTS.md',
+    17,
+    'If upstream OpenClaw or an established open-source project already does it, copy that code.',
+  )), []);
+  const fresh = checkAddedDiff(added('CONTRIBUTING.md', 20, 'Welcome to OpenClaw'));
+  assert.equal(fresh.length, 1);
+  const ui = checkAddedDiff(added('engine/src/wizard/setup.ts', 4, 'The engine follows upstream OpenClaw.'));
+  assert.equal(ui.length, 1);
 });
 
 test('allowlist is explicit: every rule has an id and a why', () => {
@@ -142,7 +174,7 @@ test('parseAddedLines records only plus lines and their new-file numbers', () =>
     'diff --git a/engine/src/a.ts b/engine/src/a.ts',
     '--- a/engine/src/a.ts',
     '+++ b/engine/src/a.ts',
-    '@@ -10,1 +10,2 @@',
+    '@@ -10,2 +10,3 @@',
     ' context',
     '-gone OpenClaw',
     '+Branch Agent',
@@ -152,6 +184,25 @@ test('parseAddedLines records only plus lines and their new-file numbers', () =>
     { file: 'engine/src/a.ts', line: 11, text: 'Branch Agent' },
     { file: 'engine/src/a.ts', line: 12, text: 'extra' },
   ]);
+});
+
+test('a +++ line inside a hunk is added content, not a file header', () => {
+  const text = [
+    'diff --git a/engine/src/a.ts b/engine/src/a.ts',
+    '--- a/engine/src/a.ts',
+    '+++ b/engine/src/a.ts',
+    '@@ -10,0 +11,2 @@',
+    '+++ b/window/src/app.tsx',
+    '+Welcome to OpenClaw',
+  ].join('\n');
+  assert.deepEqual(parseAddedLines(text), [
+    { file: 'engine/src/a.ts', line: 11, text: '++ b/window/src/app.tsx' },
+    { file: 'engine/src/a.ts', line: 12, text: 'Welcome to OpenClaw' },
+  ]);
+  const hits = checkAddedDiff(text);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].file, 'engine/src/a.ts');
+  assert.equal(hits[0].line, 12);
 });
 
 test('host spans win over the product-name span inside the same URL', () => {
