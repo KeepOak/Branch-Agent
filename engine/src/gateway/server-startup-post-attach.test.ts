@@ -83,7 +83,6 @@ const hoisted = vi.hoisted(() => {
     marked: 0,
     skipped: 0,
   }));
-  const startSessionHandoffLeaseOrphanRecovery = vi.fn(() => ({ stop: vi.fn() }));
   const scheduleRestartAbortedMainSessionRecovery = vi.fn();
   const getAcpRuntimeBackend = vi.fn<(id?: string) => unknown>(() => null);
   const reconcilePendingSessionIdentities = vi.fn(async () => ({
@@ -128,7 +127,6 @@ const hoisted = vi.hoisted(() => {
     logGatewayStartup,
     activateSubagentRegistry,
     markStartupOrphanedMainSessionsForRecovery,
-    startSessionHandoffLeaseOrphanRecovery,
     scheduleRestartAbortedMainSessionRecovery,
     getAcpRuntimeBackend,
     reconcilePendingSessionIdentities,
@@ -151,10 +149,6 @@ vi.mock("../agents/subagents/registry/subagent-registry.js", () => ({
 
 vi.mock("../agents/main-session-recovery/main-session-restart-recovery-marking.js", () => ({
   markStartupOrphanedMainSessionsForRecovery: hoisted.markStartupOrphanedMainSessionsForRecovery,
-}));
-
-vi.mock("./session-handoff-lease-orphan-recovery.js", () => ({
-  startSessionHandoffLeaseOrphanRecovery: hoisted.startSessionHandoffLeaseOrphanRecovery,
 }));
 
 vi.mock("../agents/main-session-recovery/main-session-restart-recovery.js", () => ({
@@ -489,8 +483,6 @@ describe("startGatewayPostAttachRuntime", () => {
       marked: 0,
       skipped: 0,
     });
-    hoisted.startSessionHandoffLeaseOrphanRecovery.mockReset();
-    hoisted.startSessionHandoffLeaseOrphanRecovery.mockReturnValue({ stop: vi.fn() });
     hoisted.scheduleRestartAbortedMainSessionRecovery.mockClear();
     hoisted.getAcpRuntimeBackend.mockReset();
     hoisted.getAcpRuntimeBackend.mockReturnValue(null);

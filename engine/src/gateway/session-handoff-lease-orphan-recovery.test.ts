@@ -30,7 +30,11 @@ afterEach(async () => {
   for (const child of children.splice(0)) {
     if (child.exitCode === null && child.signalCode === null) {
       child.kill();
-      await new Promise((resolve) => child.once("exit", resolve));
+      await new Promise<void>((resolve) => {
+        child.once("exit", () => {
+          resolve();
+        });
+      });
     }
   }
   vi.restoreAllMocks();
@@ -43,7 +47,11 @@ async function livePredecessor(): Promise<ChildProcess> {
     windowsHide: true,
   });
   children.push(child);
-  await new Promise((resolve) => child.once("spawn", resolve));
+  await new Promise<void>((resolve) => {
+    child.once("spawn", () => {
+      resolve();
+    });
+  });
   return child;
 }
 
@@ -81,7 +89,9 @@ async function waitForAborted(sessionKey: string): Promise<void> {
     if (loadSessionEntry(scope)?.abortedLastRun === true) {
       return;
     }
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 25);
+    });
   }
   throw new Error(`timed out waiting for ${sessionKey} to be recovered`);
 }
@@ -109,7 +119,11 @@ it("recovers a predecessor-leased conversation after the holder dies without a s
 
     watchers.push(startSessionHandoffLeaseOrphanRecovery({ stateDir: state.stateDir }));
     holder.kill();
-    await new Promise((resolve) => holder.once("exit", resolve));
+    await new Promise<void>((resolve) => {
+      holder.once("exit", () => {
+        resolve();
+      });
+    });
     pollSessionHandoffLeasesForTest();
     await waitForAborted(crashed.sessionKey);
     expect(loadSessionEntry(finishing)).toEqual(beforeLive);
@@ -178,7 +192,11 @@ it("recovers a leased subagent after the predecessor dies without a second start
         await runStartupSessionMigration({ cfg, log });
         expect(loadSessionEntry(scope)).toEqual(before);
         holder.kill();
-        await new Promise((resolve) => holder.once("exit", resolve));
+        await new Promise<void>((resolve) => {
+          holder.once("exit", () => {
+            resolve();
+          });
+        });
         pollSessionHandoffLeasesForTest();
         await waitForAborted(scope.sessionKey);
         expect(loadSessionEntry(scope)).toMatchObject({
