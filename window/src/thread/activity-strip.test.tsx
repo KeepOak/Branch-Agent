@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { UsageBar, readAllowances } from "./UsageBar";
 import { HelpersTree } from "./Helpers";
 import type { WindowEngine } from "../connect/engine";
 import { useHelpers } from "./useEngineData";
@@ -15,6 +16,42 @@ async function render(node: React.ReactNode) {
   await act(async () => root!.render(node));
 }
 const engine = (request: WindowEngine["request"]): WindowEngine => ({ request, sessionKey: "root", scopes: [], onEvent: () => () => {} });
+const measured = { providers: [{ displayName: "ChatGPT", windows: [{ label: "5 hours", usedPercent: 75 }] }] };
+
+describe("conversation usage", () => {
+  it("shows service-measured usage as an accessible meter", async () => {
+    const request = vi.fn().mockResolvedValue(measured);
+    await render(<UsageBar engine={engine(request)} />);
+    expect(request).toHaveBeenCalledWith("usage.status", {});
+    expect(container.querySelector("meter")?.value).toBe(75);
+    expect(container.textContent).toContain("75% used");
+  });
+  it("does not fabricate an allowance for missing, invalid or failed provider values", () => {
+    expect(readAllowances({ providers: [{ windows: [{}, { usedPercent: "12" }, { usedPercent: NaN }] }, { error: "offline", windows: [{ usedPercent: 0 }] }] })).toEqual([]);
+    expect(readAllowances({ providers: [{ windows: [{ usedPercent: 120 }, { usedPercent: -5 }] }] }).map(r => r.used)).toEqual([100, 0]);
+  });
+  it("shows unavailable rather than retaining old measured bars after a failed refresh", async () => {
+    vi.useFakeTimers();
+    const request = vi.fn().mockResolvedValueOnce(measured).mockRejectedValue(new Error("offline"));
+    await render(<UsageBar engine={engine(request)} />);
+    await act(async () => vi.advanceTimersByTimeAsync(4 * 60_000));
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(container.querySelector("meter")?.value).toBe(75);
+    await act(async () => vi.advanceTimersByTimeAsync(60_000));
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(container.querySelector("meter")).toBeNull();
+    expect(container.textContent).toContain("Usage unavailable");
+  });
+  it("ignores an old connection's late response", async () => {
+    let resolve!: (v: unknown) => void;
+    const old = engine(vi.fn().mockImplementation(() => new Promise(r => { resolve = r; })));
+    await render(<UsageBar engine={old} />);
+    await render(<UsageBar engine={engine(vi.fn().mockResolvedValue({ providers: [] }))} />);
+    await act(async () => resolve(measured));
+    expect(container.querySelector("meter")).toBeNull();
+    expect(container.textContent).toContain("No measured allowance reported");
+  });
+});
 
 describe("inline helper activity", () => {
   it("never shows the previous conversation's helpers while the next conversation loads", async () => {
