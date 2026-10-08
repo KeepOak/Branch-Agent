@@ -7,6 +7,7 @@ import type { StreamFn } from "branch/plugin-sdk/agent-core";
 import { describe, expect, it, vi } from "vitest";
 import { SessionTranscriptWriterClaimReboundError } from "../../config/sessions/transcript-write-context.js";
 import { attachModelProviderRequestTransport } from "../provider-request-config.js";
+import { closeProviderTransportDispatcherPool } from "../provider-transport-dispatcher-pool.js";
 import { buildGuardedModelFetch } from "../provider-transport-fetch.js";
 import {
   createCacheFetchMock,
@@ -509,8 +510,11 @@ describe("google prompt cache failure handling", () => {
       ]);
       expect(entries.at(-1)?.data).toMatchObject({ status: "failed" });
     } finally {
-      server.close();
-      await once(server, "close");
+      await closeProviderTransportDispatcherPool();
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
     }
   });
 });
