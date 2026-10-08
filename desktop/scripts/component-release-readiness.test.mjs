@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { PUSH_BACKUP_MIN_AGE_MS, pushBackupShouldRelease } from "./component-release-readiness.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const workflow = readFileSync(join(here, "../../.github/workflows/component-release.yml"), "utf8");
+const workflow = readFileSync(join(here, "../../.github/workflows/component-release.yml"), "utf8").replace(/\r\n/g, "\n");
 const helper = join(here, "component-release-readiness.mjs");
 
 test("push backup releases when there is no previous publication time", () => {
