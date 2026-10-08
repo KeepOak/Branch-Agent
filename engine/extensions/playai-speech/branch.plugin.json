@@ -1,0 +1,56 @@
+{
+  "id": "playai-speech",
+  "categories": [
+    "voice"
+  ],
+  "capabilityCatalogEntry": "./capability-catalog.ts",
+  "activation": {
+    "onStartup": false
+  },
+  "enabledByDefault": true,
+  "name": "PlayAI Speech",
+  "description": "PlayAI streaming text-to-speech with PlayDialog and Play3.0-mini.",
+  "setup": {
+    "providers": [
+      {
+        "id": "playai-speech",
+        "envVars": [
+          "PLAYAI_API_KEY",
+          "PLAYAI_USER_ID"
+        ]
+      }
+    ]
+  },
+  "contracts": {
+    "speechProviders": [
+      "playai-speech",
+      "playai"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "apiKey": {
+        "type": "string",
+        "description": "PlayAI API key. Falls back to PLAYAI_API_KEY."
+      },
+      "userId": {
+        "type": "string",
+        "description": "PlayAI user ID. Falls back to PLAYAI_USER_ID."
+      },
+      "model": {
+        "type": "string",
+        "enum": [
+          "PlayDialog",
+          "Play3.0-mini"
+        ],
+        "default": "PlayDialog"
+      },
+      "voice": {
+        "type": "string",
+        "default": "s3://voice-cloning-zero-shot/baf1ef41-36b6-428c-9bdf-50ba54682bd8/original/manifest.json"
+      }
+    }
+  }
+}
