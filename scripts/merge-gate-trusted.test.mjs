@@ -426,7 +426,7 @@ test('merge-gate also queues on ready_for_review', () => {
 
 test('merge-gate wait ignores merge-gate-trusted so the two gates cannot deadlock', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
-  assert.match(yaml, /select\(\.name != "merge-gate" and \.name != "merge-gate-trusted"\)/);
+  assert.match(yaml, /select\(\.name != "merge-gate" and \.name != "merge-gate-trusted"/);
 });
 
 test('merge-gate recheck fires when Visual tour and Engine build complete', () => {
