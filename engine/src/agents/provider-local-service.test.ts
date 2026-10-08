@@ -784,8 +784,12 @@ describe("provider local service", () => {
         servicePid = await readPidFile(servicePidPath).catch(() => undefined);
       }
       killPidIfAlive(servicePid);
-      await waitForPidToExit(parent.pid);
-      await waitForPidToExit(servicePid);
+      if (parent.pid !== undefined) {
+        await waitForPidToExit(parent.pid);
+      }
+      if (servicePid !== undefined) {
+        await waitForPidToExit(servicePid);
+      }
     }
   });
 
