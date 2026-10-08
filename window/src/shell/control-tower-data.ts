@@ -132,24 +132,47 @@ export function towerClock(at: number, now = Date.now()): string {
 
 export type TowerFinished = { key: string; title: string; agentId?: string; duration: string; when: string };
 
-/** Last four finished conversations, with run length and the time (towerHtmlT5 Just finished). */
-export function towerFinished(rows: Conversation[], audit: unknown, now = Date.now()): TowerFinished[] {
+/** Session keys that left Working now: that conversation's run just ended. */
+export function justEndedKeys(wasWorking: readonly string[], rows: Conversation[]): string[] {
+  const working = new Set(rows.filter((row) => row.working && !row.archived && !row.helper && !row.system).map((row) => row.key));
+  return wasWorking.filter((key) => !working.has(key));
+}
+
+function visibleFinished(row: Conversation | undefined): row is Conversation {
+  return Boolean(row && !row.archived && !row.helper && !row.system);
+}
+
+/** Last four finished runs, newest first, one per conversation (preview history / Overview recentActivity). */
+export function towerFinished(rows: Conversation[], audit: unknown, now = Date.now(), endedKeys: readonly string[] = []): TowerFinished[] {
   const runList = runs(audit);
-  return rows
-    .filter((row) => row.done && !row.archived && !row.helper && !row.system)
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-    .slice(0, 4)
-    .map((row) => {
-      const run = runList.find((item) => item.sessionKey === row.key);
-      const ms = run ? runMs(run) : undefined;
-      return {
-        key: row.key,
-        title: row.title,
-        agentId: row.agentId,
-        duration: ms !== undefined ? runLength(ms) : "",
-        when: towerClock(row.updatedAt, now),
-      };
+  const finishedRuns = [...runList].filter((run) => run.finishedAt !== undefined).sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0));
+  const seen = new Set<string>();
+  const out: TowerFinished[] = [];
+  const take = (row: Conversation, run?: (typeof runList)[number], at?: number) => {
+    if (!visibleFinished(row) || seen.has(row.key)) return;
+    seen.add(row.key);
+    const ms = run ? runMs(run) : undefined;
+    out.push({
+      key: row.key,
+      title: row.title,
+      agentId: row.agentId,
+      duration: ms !== undefined ? runLength(ms) : "",
+      when: towerClock(at ?? run?.finishedAt ?? row.updatedAt, now),
     });
+  };
+  for (const key of endedKeys) {
+    const row = rows.find((item) => item.key === key);
+    if (!row) continue;
+    take(row, finishedRuns.find((run) => run.sessionKey === key), row.updatedAt);
+    if (out.length >= 4) return out;
+  }
+  for (const run of finishedRuns) {
+    const row = rows.find((item) => item.key === run.sessionKey);
+    if (!row) continue;
+    take(row, run, run.finishedAt);
+    if (out.length >= 4) return out;
+  }
+  return out;
 }
 
 export type TowerChatter = { key: string; text: string };
