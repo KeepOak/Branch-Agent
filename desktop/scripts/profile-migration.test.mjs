@@ -88,6 +88,16 @@ test("desktop passes only its app-owned Mac driver lease to the live gateway", a
   assert.equal(existsSync(launch.file), false);
 }));
 
+test("a retained older engine has Mac control unavailable without the legacy environment secret", async () => homeFixture(async root => {
+  await writeFile(join(root, "branch.mjs"), 'import {writeFileSync} from "node:fs"; writeFileSync("launch.json",JSON.stringify({endpoint:process.env.BRANCH_CUA_DRIVER_ENDPOINT??null,available:Boolean(process.env.BRANCH_CUA_DRIVER_ENDPOINT)}));');
+  const endpoint = JSON.stringify({ v: 2, port: 21831, secret: "a".repeat(64) });
+  const child = startGateway({ dataDir: root, nodePath: process.execPath, gatewayPort: 19631 }, root, "fixture-token", false, 19631, endpoint);
+  await once(child, "exit");
+  const launch = JSON.parse(await readFile(join(root, "launch.json"), "utf8"));
+  assert.equal(launch.endpoint, null);
+  assert.equal(launch.available, false);
+}));
+
 test("owner-shaped dev workspace migrates once with the original archived and normal files preserved", async () => homeFixture(async (_root, home) => {
   await mkdir(join(home, ".branch", "state"), { recursive: true });
   await mkdir(join(home, ".branch-dev", "workspace"), { recursive: true });

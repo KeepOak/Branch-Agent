@@ -194,6 +194,36 @@ describe("cua-computer provider", () => {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
+  it("resolves the Mac endpoint from the gateway process symbol after environment secrets are stripped", () => {
+    const key = Symbol.for("branch.macComputerEndpoint");
+    const owner = globalThis as Record<symbol, unknown>;
+    const previous = owner[key];
+    try {
+      owner[key] = macOsEndpoint().BRANCH_CUA_DRIVER_ENDPOINT;
+      const { session } = driver();
+      expect(createCuaComputerProvider({ platform: "darwin", env: {}, driver: session }).isAvailable()).toBe(true);
+    } finally {
+      if (previous === undefined) delete owner[key];
+      else owner[key] = previous;
+    }
+  });
+
+  it("fails closed for a retained older engine that only reads the legacy environment secret", () => {
+    const key = Symbol.for("branch.macComputerEndpoint");
+    const owner = globalThis as Record<symbol, unknown>;
+    const previous = owner[key];
+    delete owner[key];
+    try {
+      const { session } = driver();
+      // Desktop no longer sets BRANCH_CUA_DRIVER_ENDPOINT. An older engine that
+      // only reads that variable starts, but Mac control stays unavailable.
+      expect(createCuaComputerProvider({ platform: "darwin", env: {}, driver: session }).isAvailable()).toBe(false);
+    } finally {
+      if (previous === undefined) delete owner[key];
+      else owner[key] = previous;
+    }
+  });
+
   it("lazily owns one session and closes it when node-host availability stops", async () => {
     const { session, dispose } = driver();
     const createDriver = vi.fn(() => session);
