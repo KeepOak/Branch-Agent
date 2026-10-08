@@ -15,7 +15,7 @@ import { BrowserProfileUnavailableError } from "./errors.js";
 import {
   armManagedChromeIdleWatch,
   clearManagedChromeIdleWatch,
-  resolveManagedChromeIdleTimeoutMs,
+  resolveLiveManagedChromeIdleTimeoutMs,
 } from "./managed-chrome-idle.js";
 import type { ExtensionRelayResource } from "./extension-relay/relay-access.js";
 import { getBrowserProfileCapabilities } from "./profile-capabilities.js";
@@ -205,7 +205,7 @@ function armManagedChromeIdleTimeout(
     runtime,
     getBusy: () => isProfileBusy(getProfileLifecycle(runtime)),
     getRunning: () => runtime.running,
-    getTimeoutMs: () => resolveManagedChromeIdleTimeoutMs(state.resolved),
+    getTimeoutMs: () => resolveLiveManagedChromeIdleTimeoutMs(),
     close: async () => {
       if (!isBrowserRuntimeRunning(state)) {
         return;

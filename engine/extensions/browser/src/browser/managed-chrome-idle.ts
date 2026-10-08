@@ -1,6 +1,7 @@
+import { getRuntimeConfig } from "branch/plugin-sdk/runtime-config-snapshot";
 import type { RunningChrome } from "./chrome.js";
 import { DEFAULT_BROWSER_IDLE_TIMEOUT_MINUTES } from "./constants.js";
-import type { ResolvedBrowserConfig } from "./config.js";
+import { resolveBrowserConfig, type ResolvedBrowserConfig } from "./config.js";
 import type { ProfileRuntimeState } from "./server-context.types.js";
 
 type ManagedChromeIdleWatch = {
@@ -24,6 +25,12 @@ export function resolveManagedChromeIdleTimeoutMs(
   resolved: Pick<ResolvedBrowserConfig, "idleTimeoutMinutes">,
 ): number {
   return minutesToIdleTimeoutMs(resolved.idleTimeoutMinutes ?? DEFAULT_BROWSER_IDLE_TIMEOUT_MINUTES);
+}
+
+/** Live Gateway snapshot, same source tab cleanup uses after a hot save. */
+export function resolveLiveManagedChromeIdleTimeoutMs(): number {
+  const cfg = getRuntimeConfig();
+  return resolveManagedChromeIdleTimeoutMs(resolveBrowserConfig(cfg.browser, cfg));
 }
 
 /** True only for a Chrome process this runtime launched in headless mode. */

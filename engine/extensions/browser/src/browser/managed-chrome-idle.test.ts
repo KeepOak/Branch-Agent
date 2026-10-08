@@ -1,4 +1,8 @@
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "branch/plugin-sdk/runtime-config-snapshot";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./server-context.chrome-test-harness.js";
 import type { RunningChrome } from "./chrome.js";
@@ -6,6 +10,7 @@ import * as chromeModule from "./chrome.js";
 import { resolveBrowserConfig } from "./config.js";
 import {
   isIdleEligibleManagedChrome,
+  resolveLiveManagedChromeIdleTimeoutMs,
   resolveManagedChromeIdleTimeoutMs,
 } from "./managed-chrome-idle.js";
 import { createBrowserRouteContext } from "./server-context.js";
@@ -21,6 +26,11 @@ import {
 } from "./server-context.test-harness.js";
 
 const IDLE_MS = 5 * 60_000;
+
+function publishIdleTimeoutMinutes(minutes: number): void {
+  const config = { browser: { idleTimeoutMinutes: minutes } };
+  setRuntimeConfigSnapshot(config, config);
+}
 
 function markHeadless(running: RunningChrome): RunningChrome {
   running.headless = true;
@@ -54,6 +64,7 @@ function setupIdleHarness(params?: {
       idleTimeoutMinutes: params?.idleTimeoutMinutes ?? 5,
     },
   });
+  publishIdleTimeoutMinutes(params?.idleTimeoutMinutes ?? 5);
   const ctx = createBrowserRouteContext({ getState: () => state });
   const profile = ctx.forProfile("branch");
   return {
@@ -77,9 +88,11 @@ async function launchHeadlessChrome(
 
 beforeEach(() => {
   vi.useFakeTimers();
+  clearRuntimeConfigSnapshot();
 });
 
 afterEach(() => {
+  clearRuntimeConfigSnapshot();
   vi.useRealTimers();
   vi.clearAllMocks();
 });
@@ -89,6 +102,8 @@ describe("managed Chrome idle timeout", () => {
     expect(resolveBrowserConfig(undefined).idleTimeoutMinutes).toBe(5);
     expect(resolveManagedChromeIdleTimeoutMs({ idleTimeoutMinutes: 5 })).toBe(IDLE_MS);
     expect(resolveManagedChromeIdleTimeoutMs({ idleTimeoutMinutes: 0 })).toBe(0);
+    publishIdleTimeoutMinutes(0);
+    expect(resolveLiveManagedChromeIdleTimeoutMs()).toBe(0);
   });
 
   it("closes an engine-launched headless browser after the quiet interval", async () => {
@@ -201,6 +216,7 @@ describe("managed Chrome idle timeout", () => {
     await vi.advanceTimersByTimeAsync(IDLE_MS - 1_000);
     expect(harness.stopBranchChrome).not.toHaveBeenCalled();
 
+    publishIdleTimeoutMinutes(0);
     harness.state.resolved = { ...harness.state.resolved, idleTimeoutMinutes: 0 };
     refreshManagedChromeIdleWatches(harness.state);
 
@@ -209,12 +225,14 @@ describe("managed Chrome idle timeout", () => {
     expect(harness.state.profiles.get("branch")?.running).toBe(running);
   });
 
-  it("does not close when a pending timer sees the timeout disabled", async () => {
+  it("does not close when only the runtime snapshot disables the idle timeout", async () => {
     const harness = setupIdleHarness();
     const running = await launchHeadlessChrome(harness, 710);
+    expect(harness.state.resolved.idleTimeoutMinutes).toBe(5);
 
     await vi.advanceTimersByTimeAsync(IDLE_MS - 1_000);
-    harness.state.resolved = { ...harness.state.resolved, idleTimeoutMinutes: 0 };
+    publishIdleTimeoutMinutes(0);
+    expect(harness.state.resolved.idleTimeoutMinutes).toBe(5);
 
     await vi.advanceTimersByTimeAsync(2_000);
     expect(harness.stopBranchChrome).not.toHaveBeenCalled();
