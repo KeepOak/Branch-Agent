@@ -18,6 +18,7 @@ import {
   type StepStatus,
 } from "./model";
 import { readTextToolCall, stepFromTextToolCall } from "./text-tool-call";
+import { displayToolInput, displayToolOutput, sanitizeBlocks } from "./tool-output-display";
 import { readOwner, readSender } from "../rooms/sender";
 
 /** One terminal approval from `approval.history`. */
@@ -239,7 +240,8 @@ function onToolResult(b: Builder, m: Message, records: readonly ApprovalRecord[]
     b.wrappers.delete(str(m.toolCallId));
   }
   const status: StepStatus = isDeniedResultText(text) ? "denied" : m.isError || codeFailed ? "failed" : "ok";
-  b.blocks[step.at] = { ...block, status, detail: text.slice(0, 400), output: b.wholeOutput ? text : keepOutput(block.outputKey ?? block.key, text), browser: status === "ok" ? readBrowserPresentation(m, block.tool, block.key) : undefined, ...recordedAt(m.timestamp) };
+  const shown = displayToolOutput({ tool: block.tool, text, title: block.title });
+  b.blocks[step.at] = { ...block, status, detail: shown.slice(0, 400), output: b.wholeOutput ? shown : keepOutput(block.outputKey ?? block.key, shown), input: displayToolInput(block.tool, block.input), browser: status === "ok" ? readBrowserPresentation(m, block.tool, block.key) : undefined, ...recordedAt(m.timestamp) };
   const deniedId = /gateway id=([0-9a-f-]{8,})/i.exec(text)?.[1];
   const found = findApproval(records, sessionKey, step, num(m.timestamp));
   const id = deniedId ?? found?.id;
@@ -362,7 +364,7 @@ export function historyToBlocks(
     if ((m.role !== "custom" && m.role !== "system") || ["run-failed-before-reply", "branch.nested-tool.v1"].includes(str(m.customType))) b.lastTs = Math.max(b.lastTs, writtenAt(m));
   }
   closeRun(b, inFlightRunId);
-  return dropWrappers(b);
+  return sanitizeBlocks(dropWrappers(b), { wholeOutput: b.wholeOutput });
 }
 
 /**
