@@ -691,25 +691,6 @@ export function isLiveReplyOperation(operation: ReplyOperation | undefined): boo
   );
 }
 
-export function countLiveReplyOperations(): number {
-  let count = 0;
-  for (const operation of replyRunState.activeRunsByKey.values()) {
-    if (isLiveReplyOperation(operation)) {
-      count += 1;
-    }
-  }
-  return count;
-}
-
-export function hasRetainedNonLiveReplyOperation(): boolean {
-  for (const operation of replyRunState.activeRunsByKey.values()) {
-    if (!isLiveReplyOperation(operation)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 export function isReplyRunEvidenceStale(operation: ReplyOperation): boolean {
   // Reading the wait may expire it and record the owner's resumed activity.
   const recoveryBlocked = isReplyRunRecoveryBlocked(operation);
