@@ -278,6 +278,7 @@ function StepRow({ step }: { step: Of<"step"> }) {
   const kind = stepKind(step.tool);
   const exit = stepExitCode(step.detail);
   const failed = step.status === "failed" || step.status === "denied";
+  const [open, setOpen] = useState(true);
   return (
     <li
       className={`step step-pb18${failed ? " errR118" : ""}`}
@@ -286,7 +287,7 @@ function StepRow({ step }: { step: Of<"step"> }) {
       data-step-kind={kind ?? "check"}
       data-status={step.status}
     >
-      <details defaultOpen>
+      <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>
       <StepKindIcon kind={kind} className="s" />
       <span>

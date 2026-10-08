@@ -104,10 +104,11 @@ describe("preview step rows", () => {
     expect(card.textContent).toContain("src/dates.ts");
     expect(card.textContent).toContain("+3");
     expect(card.textContent).toContain("−1");
-    expect(card.querySelector('[data-testid="file-diff"]')?.textContent).toContain("-  return day.toLocaleDateString();");
+    expect(card.querySelector('[data-testid="file-diff"]')?.textContent).toContain("return day.toLocaleDateString();");
+    expect(card.querySelector('[data-testid="file-diff"] .del')?.textContent).toMatch(/^- /);
     const rawBtn = [...card.querySelectorAll(".seg button")].find((b) => b.textContent === "Raw") as HTMLButtonElement;
     await act(async () => { rawBtn.click(); });
-    expect(card.querySelector('[data-testid="file-raw"]')?.textContent).not.toContain("-  return day.toLocaleDateString();");
+    expect(card.querySelector('[data-testid="file-raw"]')?.textContent).not.toContain("- ");
     expect(card.querySelector('[data-testid="file-raw"]')?.textContent).toContain("timeZone: \"UTC\"");
     expect(card.querySelector(".seg button[aria-pressed=\"true\"]")?.textContent).toBe("Raw");
   });
