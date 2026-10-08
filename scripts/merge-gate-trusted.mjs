@@ -14,6 +14,7 @@ import { checkMergeCommands, docsToCheck } from './check-merge-command.mjs';
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const TRUSTED_JOB = 'merge-gate-trusted';
 export const TRUSTED_WORKFLOW_PATH = '.github/workflows/merge-gate-trusted.yml';
+export const TRUSTED_CHECKOUT_REF = '${{ github.event.repository.default_branch }}';
 export const REQUIRED_JOBS = ['merge-gate'];
 export const PASS_CONCLUSIONS = new Set(['success', 'skipped', 'neutral']);
 export const GATE_SCRIPTS = [
@@ -39,6 +40,25 @@ const SKIP_WORKFLOWS = new Set([
   '.github/workflows/merge-gate-recheck.yml',
 ]);
 
+export function trustedCheckoutRef(event) {
+  const defaultBranch = event?.repository?.default_branch;
+  if (typeof defaultBranch !== 'string' || defaultBranch.length === 0) {
+    throw new Error('trusted checkout requires repository.default_branch');
+  }
+  return defaultBranch;
+}
+
+export function parseTrustedWorkflowPolicy(yaml) {
+  const checkoutRef = yaml.match(/^\s+ref:\s*(.+)$/m)?.[1].trim() ?? null;
+  return {
+    checkoutRef,
+    persistCredentialsFalse: /^\s+persist-credentials:\s*false\s*$/m.test(yaml),
+    checksOutDefaultBranch: checkoutRef === TRUSTED_CHECKOUT_REF,
+    checksOutPrBaseSha: /^\s+ref:\s*\$\{\{\s*github\.event\.pull_request\.base\.sha\s*\}\}\s*$/m.test(yaml),
+    checksOutPrHead: /^\s+ref:\s*\$\{\{\s*github\.event\.pull_request\.head\.(?:sha|ref)\s*\}\}\s*$/m.test(yaml),
+  };
+}
+
 export function nameStatusFromPrFiles(files) {
   return files.flatMap((file) => {
     const name = file.filename;
@@ -61,6 +81,11 @@ export function lookupWorkflow(workflowsByCheckId, checkRunId) {
   return workflowsByCheckId[checkRunId] ?? workflowsByCheckId[String(checkRunId)] ?? null;
 }
 
+export function actionsRunIdFromCheckRun(checkRun) {
+  const fromUrl = String(checkRun?.details_url ?? checkRun?.html_url ?? '').match(/\/actions\/runs\/(\d+)/);
+  return fromUrl ? Number(fromUrl[1]) : null;
+}
+
 export function findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
   jobName = TRUSTED_JOB,
   allowedWorkflowPath = TRUSTED_WORKFLOW_PATH,
@@ -69,7 +94,15 @@ export function findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
 } = {}) {
   const currentId = allowedRunId == null || allowedRunId === '' ? null : Number(allowedRunId);
   return checkRuns.filter((run) => run.name === jobName).filter((run) => {
+    const urlRunId = actionsRunIdFromCheckRun(run);
     const workflow = lookupWorkflow(workflowsByCheckId, run.id);
+    if (currentId != null && Number.isFinite(currentId) && urlRunId === currentId) {
+      if (!workflow) return false;
+      if (workflow.id != null && workflow.id !== '' && Number(workflow.id) !== currentId) return true;
+      if (workflow.path && workflow.path !== allowedWorkflowPath) return true;
+      if (workflow.event && workflow.event !== allowedEvent) return true;
+      return false;
+    }
     if (!workflow || workflow.id == null || workflow.id === '') return true;
     if (currentId == null || !Number.isFinite(currentId) || Number(workflow.id) !== currentId) return true;
     if (workflow.path !== allowedWorkflowPath) return true;
@@ -206,6 +239,10 @@ export function missingCoreWorkflows({
 
   for (const workflow of coreWorkflows) {
     if (!workflowAppliesToChanges(changedFiles, workflow.pullRequestPaths)) continue;
+    if (workflow.path === '.github/workflows/merge-gate.yml'
+      && checkRuns.some((run) => run.name === 'merge-gate')) {
+      continue;
+    }
     const ran = checkRuns.some((run) => lookupWorkflow(workflowsByCheckId, run.id)?.path === workflow.path);
     if (!ran) missing.push(`${workflow.path} (path filter matched, no check run)`);
   }
@@ -303,15 +340,30 @@ export function coverageFromPrFiles(files, desktopWorkflow, extraNamed = []) {
   return { changed, uncovered };
 }
 
-export function ghApi(repo, token, requestPath, { paginate = false } = {}) {
+export function isRateLimitError(error) {
+  const text = `${error?.stderr ?? ''}\n${error?.message ?? ''}\n${error?.stdout ?? ''}`;
+  return /rate limit exceeded/i.test(text);
+}
+
+export function ghApi(repo, token, requestPath, { paginate = false, retries = 6 } = {}) {
   const args = ['api', `repos/${repo}/${requestPath}`, '-H', 'Accept: application/vnd.github+json'];
   if (paginate) args.splice(1, 0, '--paginate');
-  const result = execFileSync('gh', args, {
-    env: { ...process.env, GH_TOKEN: token },
-    encoding: 'utf8',
-    windowsHide: true,
-  });
-  return result ? JSON.parse(result) : null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const result = execFileSync('gh', args, {
+        env: { ...process.env, GH_TOKEN: token },
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+      return result ? JSON.parse(result) : null;
+    } catch (error) {
+      if (!isRateLimitError(error) || attempt === retries) throw error;
+      const wait = Math.min(32, 2 ** (attempt + 2));
+      console.log(`GitHub API rate limited; retrying in ${wait}s…`);
+      sleepSeconds(wait);
+    }
+  }
+  return null;
 }
 
 export function fetchCheckRuns(repo, sha, token) {
@@ -346,9 +398,9 @@ export function workflowFromActionsRun(run) {
 }
 
 export function resolveWorkflowForCheckRun(repo, token, checkRun) {
-  const fromUrl = String(checkRun.details_url ?? checkRun.html_url ?? '').match(/\/actions\/runs\/(\d+)/);
-  if (fromUrl) {
-    return workflowFromActionsRun(ghApi(repo, token, `actions/runs/${fromUrl[1]}`));
+  const fromUrl = actionsRunIdFromCheckRun(checkRun);
+  if (fromUrl != null) {
+    return workflowFromActionsRun(ghApi(repo, token, `actions/runs/${fromUrl}`));
   }
   const suiteId = checkRun.check_suite?.id;
   if (!suiteId) return null;
@@ -356,9 +408,22 @@ export function resolveWorkflowForCheckRun(repo, token, checkRun) {
   return workflowFromActionsRun(payload?.workflow_runs?.[0]);
 }
 
-export function resolveWorkflowsForCheckRuns(repo, token, checkRuns) {
+export function resolveWorkflowsForCheckRuns(repo, token, checkRuns, {
+  currentRunId = process.env.GITHUB_RUN_ID,
+} = {}) {
   const workflowsByCheckId = {};
+  const currentId = currentRunId == null || currentRunId === '' ? null : Number(currentRunId);
   for (const run of checkRuns) {
+    const urlRunId = actionsRunIdFromCheckRun(run);
+    if (currentId != null && Number.isFinite(currentId) && urlRunId === currentId) {
+      workflowsByCheckId[run.id] = {
+        path: TRUSTED_WORKFLOW_PATH,
+        name: 'Merge gate trusted',
+        id: currentId,
+        event: 'pull_request_target',
+      };
+      continue;
+    }
     try {
       const workflow = resolveWorkflowForCheckRun(repo, token, run);
       if (workflow) workflowsByCheckId[run.id] = workflow;
