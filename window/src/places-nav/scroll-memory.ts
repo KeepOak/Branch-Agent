@@ -96,7 +96,7 @@ function watchContent(ref: RefObject<HTMLElement | null>, put: () => boolean): (
     if (!el) return;
     observeChildren(el);
     if (el.scrollHeight !== lastHeight || lastHeight < 0) lastHeight = el.scrollHeight;
-    put();
+    if (put()) stop();
   };
   const attach = () => {
     const el = ref.current;
@@ -130,14 +130,19 @@ export function useScrollMemory(ref: RefObject<HTMLElement | null>, opts?: Scrol
       const entry = saved.get(key);
       if (entry) {
         if (flag) flag.current = entry.atEnd;
+        let placed = false;
         const put = () => {
           const el = ref.current;
           // A chat left at the end keeps following; pinning the old y would fight new tokens.
           if (!el || entry.atEnd) return false;
+          // A successful restore must not pin again after a hand scroll.
+          if (placed) return true;
           el.scrollTop = entry.y;
           // Setting scrollTop can fire `scroll` and mark a still-short scroller as at the end.
           if (flag) flag.current = entry.atEnd;
-          return el.scrollHeight - el.clientHeight >= entry.y;
+          const ok = el.scrollHeight - el.clientHeight >= entry.y;
+          if (ok) placed = true;
+          return ok;
         };
         requestAnimationFrame(put);
         for (const ms of RESTORE_MS) timers.push(window.setTimeout(put, ms));

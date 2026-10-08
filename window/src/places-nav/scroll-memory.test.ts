@@ -127,11 +127,18 @@ async function remount(node: ReactNode): Promise<HTMLElement> {
   return mount(node);
 }
 
-function placeNode(): ReactNode {
-  return createElement(PlaceFrame, { title: "Library", lede: "Your files and memories." }, createElement("div", { "data-tall": true }));
+function placeNode(inner?: number): ReactNode {
+  return createElement(PlaceFrame, { title: "Library", lede: "Your files and memories." }, createElement("div", {
+    "data-tall": true,
+    ref: (el: HTMLDivElement | null) => {
+      if (!el || inner == null) return;
+      const place = el.closest(".place-scroll")?.firstElementChild;
+      if (place instanceof HTMLElement) metricsOf(place).height = inner;
+    },
+  }));
 }
 
-function FollowChat({ signature, sent }: { signature: string; sent: readonly (string | null | undefined)[] }) {
+function FollowChat({ signature, sent, inner }: { signature: string; sent: readonly (string | null | undefined)[]; inner?: number }) {
   const scroller = useRef<HTMLDivElement>(null);
   const atEnd = useRef(true);
   const lastSent = useRef(sent);
@@ -159,7 +166,12 @@ function FollowChat({ signature, sent }: { signature: string; sent: readonly (st
       if (!el) return;
       atEnd.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     },
-  }, createElement("div", { className: "thread-end" }));
+  }, createElement("div", {
+    className: "thread-end",
+    ref: (el: HTMLDivElement | null) => {
+      if (el && inner != null) metricsOf(el).height = inner;
+    },
+  }));
 }
 
 const engine: WindowEngine = {
@@ -212,15 +224,13 @@ describe("place scroll memory", () => {
     push(2, placeB);
     await remount(placeNode());
     popTo(1, placeA);
-    const again = await remount(placeNode());
+    const again = await remount(placeNode(400));
     const late = again.querySelector<HTMLElement>(".place-scroll")!;
-    metricsOf(late).height = 400;
-    metricsOf(late).top = 0;
     await flushFrame();
     expect(late.scrollTop).toBe(0);
     await waitMs(170);
     expect(late.scrollTop).toBe(0);
-    metricsOf(late).height = 2000;
+    metricsOf(late.firstElementChild as HTMLElement).height = 2000;
     await waitMs(270);
     expect(late.scrollTop).toBe(600);
   });
@@ -291,13 +301,11 @@ describe("chat scroll memory", () => {
     push(2, chatB);
     await remount(createElement(FollowChat, { signature: "1", sent: [null] }));
     popTo(1, chatA);
-    const again = await remount(createElement(FollowChat, { signature: "1", sent: [null] }));
+    const again = await remount(createElement(FollowChat, { signature: "1", sent: [null], inner: 400 }));
     const late = again.querySelector<HTMLElement>("[data-testid=thread-scroll]")!;
-    metricsOf(late).height = 400;
-    metricsOf(late).top = 0;
     late.dispatchEvent(new Event("scroll"));
     await flushFrame();
-    metricsOf(late).height = 2000;
+    metricsOf(late.firstElementChild as HTMLElement).height = 2000;
     await waitMs(430);
     expect(late.scrollTop).toBe(600);
   });
@@ -310,10 +318,8 @@ describe("chat scroll memory", () => {
     push(2, chatB);
     await remount(createElement(FollowChat, { signature: "1", sent: [null] }));
     popTo(1, chatA);
-    const again = await remount(createElement(FollowChat, { signature: "1", sent: [null] }));
+    const again = await remount(createElement(FollowChat, { signature: "1", sent: [null], inner: 400 }));
     const late = again.querySelector<HTMLElement>("[data-testid=thread-scroll]")!;
-    metricsOf(late).height = 400;
-    metricsOf(late).top = 0;
     late.dispatchEvent(new Event("scroll"));
     await waitMs(450);
     expect(late.scrollTop).toBe(0);
@@ -326,6 +332,27 @@ describe("chat scroll memory", () => {
     expect(late.scrollHeight).toBeGreaterThanOrEqual(2000);
     await waitMs(80);
     expect(late.scrollTop).toBe(600);
+  });
+
+  it("a restored mid-thread chat stays at 120 after a hand scroll past a poll tick", async () => {
+    push(1, chatA);
+    const first = await mount(createElement(FollowChat, { signature: "1", sent: [null] }));
+    const scroller = first.querySelector<HTMLElement>("[data-testid=thread-scroll]")!;
+    await saveScroll(scroller, 600);
+    push(2, chatB);
+    await remount(createElement(FollowChat, { signature: "1", sent: [null] }));
+    popTo(1, chatA);
+    const again = await remount(createElement(FollowChat, { signature: "1", sent: [null] }));
+    const restored = again.querySelector<HTMLElement>("[data-testid=thread-scroll]")!;
+    await flushFrame();
+    await waitMs(170);
+    expect(restored.scrollTop).toBe(600);
+    restored.scrollTop = 120;
+    restored.dispatchEvent(new Event("scroll"));
+    await waitMs(80);
+    expect(restored.scrollTop).toBe(120);
+    await waitMs(250);
+    expect(restored.scrollTop).toBe(120);
   });
 
   it("does not overwrite a saved place when the scroller has already moved on", async () => {
