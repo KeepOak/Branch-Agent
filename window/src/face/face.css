@@ -23,6 +23,11 @@
   display: none;
 }
 
+.character-face.broken img,
+.character-face.broken video {
+  visibility: hidden;
+}
+
 /* At 24 px and smaller: the flat pebble, the colour in its shape with two white eyes (§6.3). */
 .flat-pebble {
   position: relative;

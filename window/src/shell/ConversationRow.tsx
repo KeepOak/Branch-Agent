@@ -4,6 +4,7 @@ import { Pebble } from "../face/Pebble";
 import { RoomFaces } from "../rooms/RoomFaces";
 import { Icon, type IconName } from "./icons";
 import { colourHue, RowIcon } from "./row-look";
+import { rowDisplayName, rowInitial } from "./sidebar-row";
 import "./rows.css";
 
 export type RowState = { waiting: boolean; working: boolean };
@@ -47,6 +48,10 @@ type Props = {
   onMenu: (event: MouseEvent<HTMLElement>) => void;
   onPin?: () => void;
   onArchive?: () => void;
+  /** Archive stays visible when the row cannot be archived. */
+  archive?: { disabled: boolean; label: string; title: string };
+  /** The icon rail hides names, so the native title stays. A hover card replaces it in the full list. */
+  rail?: boolean;
   /** The conversation card on hover or keyboard focus (§4.1.1.1). */
   onCard?: (el: HTMLElement | null) => void;
 };
@@ -132,7 +137,7 @@ function RightColumn({ row, p, mark }: { row: Conversation; p: Props; mark: (typ
  *  run mark or unread dot) and a second line when previews are on or it waits, failed or works; hover buttons. */
 export function ConversationRow(p: Props) {
   const { row, current, state } = p;
-  const name = row.title || "New conversation";
+  const name = rowDisplayName(row.title, p.trunkName) || "New conversation";
   const mark = row.runMark ? MARKS[row.runMark] : null;
   const line = secondLine(row, state, p.extras);
   // One line unless previews are on, or it waits for you or failed (the preview's rowPA18).
@@ -165,11 +170,12 @@ export function ConversationRow(p: Props) {
         onPointerEnter={(e) => card(e.currentTarget)}
         onPointerLeave={() => card(null)}
       >
-        <button type="button" className="row-open" aria-current={current ? "true" : undefined} aria-selected={p.selected ? true : undefined} title={name} onClick={p.onOpen}
+        <button type="button" className="row-open" aria-current={current ? "true" : undefined} aria-selected={p.selected ? true : undefined} title={p.onCard && !p.rail ? undefined : name} onClick={p.onOpen}
           onKeyDown={(e) => { if (e.key === "F10" && e.shiftKey) { e.preventDefault(); p.onMenu(e as unknown as MouseEvent<HTMLElement>); } }}
           onFocus={(e) => e.currentTarget.matches(":focus-visible") && card(e.currentTarget.parentElement)} onBlur={() => card(null)}>
           <span className={state.working ? "row-av working-ring" : "row-av"} data-working={state.working ? "true" : undefined}>
-            {row.roomPicks ? <RoomFaces picks={row.roomPicks} size={twoLine ? 40 : 28} /> : <Pebble size={twoLine ? 40 : 28} label={row.kind === "group" || row.kind === "chatGroup" || row.kind === "outside" ? row.title : p.trunkName} state={state.waiting ? "wait" : state.working ? "work" : "idle"} priority={state.working || state.waiting ? 200 : 100} />}
+            {row.roomPicks ? <RoomFaces picks={row.roomPicks} size={twoLine ? 40 : 28} /> : <Pebble size={twoLine ? 40 : 28} label={row.kind === "group" || row.kind === "chatGroup" || row.kind === "outside" ? name : p.trunkName} state={state.waiting ? "wait" : state.working ? "work" : "idle"} priority={state.working || state.waiting ? 200 : 100} />}
+            <span className="row-initial" aria-hidden="true">{rowInitial(name)}</span>
             {row.unread && !current ? <i className="rail-unread" aria-label="Unread" /> : null}
             {state.waiting ? <i className="needs-you" aria-label="Waiting for you" /> : null}
             {p.selected ? <span className="sel-tick" aria-hidden="true"><Icon name="tick" size={11} /></span> : null}
@@ -220,8 +226,8 @@ function rowButtons(p: Props, row: Conversation): ReactNode {
           <Icon name="pin" small />
         </button>
       ) : null}
-      {p.onArchive && !p.child ? (
-        <button type="button" className="ib sm" aria-label={row.archived ? "Restore" : "Archive"} title={row.archived ? "Restore" : "Archive"} onClick={p.onArchive}>
+      {(p.archive || p.onArchive) && !p.child ? (
+        <button type="button" className="ib sm" aria-label={p.archive?.label ?? (row.archived ? "Restore" : "Archive")} title={p.archive?.title ?? (row.archived ? "Restore" : "Archive")} disabled={p.archive?.disabled || undefined} onClick={p.archive?.disabled ? undefined : p.onArchive}>
           <Icon name="archive" small />
         </button>
       ) : null}

@@ -225,12 +225,6 @@
     ],
     "settings:voice :: Never": [
       "dead"
-    ],
-    "sidebar :: Builder": [
-      "row-actions-inconsistent"
-    ],
-    "sidebar :: Researcher": [
-      "row-actions-inconsistent"
     ]
   }
 }
