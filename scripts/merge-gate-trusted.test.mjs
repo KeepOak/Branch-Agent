@@ -1345,6 +1345,22 @@ test('workflow defaults.run.working-directory without shell still covers a deskt
   assert.equal(trustedUncovers(pr), false);
 });
 
+test('workflow complex-key defaults.run.shell does not cover a desktop test', () => {
+  const pr = [
+    'on:\n  pull_request:\n',
+    '? defaults\n',
+    ': { run: { shell: bash } }\n',
+    'jobs:\n  desktop:\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  assert.equal(trustedUncovers(pr), true);
+});
+
+test('plain workflow with no defaults still covers a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  )), false);
+});
+
 test('nameStatusFromPrFiles and coverageFromPrFiles treat API files as data', () => {
   const status = nameStatusFromPrFiles([
     { filename: 'engine/src/covered.test.ts', status: 'modified' },

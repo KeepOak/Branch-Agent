@@ -261,13 +261,16 @@ function defaultsMappingHasRunShell(rest, body) {
   return runMappingHasShell(parsed);
 }
 
+function hasTopLevelComplexOrMergeKey(workflow) {
+  const stripped = String(workflow ?? '').replace(/(^|[ \t])#.*$/gm, '$1');
+  return /^(?:\?[ \t]|<<:)/m.test(stripped);
+}
+
 export function workflowDefaultsSetShell(workflow) {
   const text = String(workflow ?? '');
+  if (hasTopLevelComplexOrMergeKey(text)) return true;
   const entries = topLevelEntries(text);
-  if (entries == null) {
-    const stripped = text.replace(/(^|[ \t])#.*$/gm, '$1');
-    return /^defaults\s*:/m.test(stripped) || /^["']defaults["']\s*:/m.test(stripped);
-  }
+  if (entries == null) return true;
   return entries.some((entry) =>
     entry.key === 'defaults' && defaultsMappingHasRunShell(entry.rest, entry.body));
 }

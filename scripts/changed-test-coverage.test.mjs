@@ -77,6 +77,39 @@ test('allowlisted desktop coverage counts #677\'s plain post-build step on the r
   assert.ok(!targets.has('desktop/scripts/gateway-ready.test.mjs'));
 });
 
+test('workflowDefaultsSetShell fails closed on complex-key defaults and still allows a plain workflow', () => {
+  const complex = [
+    'on:\n  pull_request:\n',
+    '? defaults\n',
+    ': { run: { shell: bash } }\n',
+    'jobs:\n  desktop:\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  const mergeKey = [
+    'on:\n  pull_request:\n',
+    '<<: { defaults: { run: { shell: bash } } }\n',
+    'jobs:\n  desktop:\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  const documentMarker = [
+    '---\n',
+    'on:\n  pull_request:\n',
+    'defaults: { run: { shell: bash } }\n',
+    'jobs:\n  desktop:\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  const plain = [
+    'on:\n  pull_request:\n',
+    'jobs:\n  desktop:\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  assert.equal(workflowDefaultsSetShell(complex), true);
+  assert.equal(workflowDefaultsSetShell(mergeKey), true);
+  assert.equal(workflowDefaultsSetShell(documentMarker), true);
+  assert.equal(workflowDefaultsSetShell(plain), false);
+  assert.deepEqual([...allowlistedDesktopRunTargets(complex)], []);
+  assert.deepEqual([...allowlistedDesktopRunTargets(mergeKey)], []);
+  assert.deepEqual([...allowlistedDesktopRunTargets(plain)], [
+    'desktop/scripts/new.test.mjs',
+  ]);
+});
+
 test('workflowDefaultsSetShell detects run.shell after jobs: and in flow style', () => {
   const afterJobs = [
     'on:\n  pull_request:\n',
