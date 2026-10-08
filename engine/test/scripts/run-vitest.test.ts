@@ -442,7 +442,7 @@ registerHooks({resolve(specifier, context, nextResolve) {
           requireResolve,
         }),
       ).toMatch(/^[/\\]repo[/\\]node_modules[/\\]vitest[/\\]vitest\.mjs$/u);
-      expect(symlinkSync.mock.calls).toEqual([
+      expect(symlinkSync.mock.calls.map((args) => args.map((arg) => arg.replaceAll("\\", "/")))).toEqual([
         [modulesDir, modulesDir + "/node_modules", "junction"],
         [modulesDir, "/repo/node_modules", "junction"],
       ]);
