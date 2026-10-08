@@ -14,6 +14,11 @@ Object.defineProperty(window, "matchMedia", {
   value: () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }),
 });
 vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+function stubScrollIntoView() {
+  const intoView = vi.fn();
+  Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: intoView });
+  return intoView;
+}
 
 let root: Root | undefined;
 afterEach(async () => {
@@ -109,7 +114,7 @@ describe("thread follow scroll", () => {
   });
 
   it("shows Scroll to latest past 450 px and that button still scrolls to the end", async () => {
-    const intoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+    const intoView = stubScrollIntoView();
     const container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -130,7 +135,7 @@ describe("thread follow scroll", () => {
   });
 
   it("sets scrollTop to scrollHeight for live tokens at the end and never calls scrollIntoView", async () => {
-    const intoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+    const intoView = stubScrollIntoView();
     function Harness({ text }: { text: string }) {
       return (
         <Thread
@@ -166,7 +171,7 @@ describe("thread follow scroll", () => {
   });
 
   it("does not move the scroll position for a new live token when scrolled up", async () => {
-    const intoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+    const intoView = stubScrollIntoView();
     function Harness({ text }: { text: string }) {
       return (
         <Thread
