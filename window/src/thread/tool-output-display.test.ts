@@ -245,6 +245,34 @@ describe("truncated computer payloads", () => {
     assertCardSafe(shown);
   });
 
+  it("exports a long wrapped list_apps inventory cleaned, not raw", () => {
+    const wrapped = wrappedListApps(80);
+    expect(wrapped.length).toBeGreaterThan(2000);
+    const messages = [
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "c-export", name: "computer", arguments: { action: "list_apps" } }],
+        stopReason: "toolUse",
+      },
+      {
+        role: "toolResult",
+        toolCallId: "c-export",
+        toolName: "computer",
+        content: [{ type: "text", text: wrapped }],
+      },
+    ];
+    const exported = historyToBlocks(messages, [], "agent:scout:one", null, { wholeOutput: true }).find(
+      (b): b is Extract<Block, { kind: "step" }> => b.kind === "step",
+    );
+    expect(exported?.output).toBe(CHECKED_WHATS_OPEN);
+    expect(exported?.detail).toBe(CHECKED_WHATS_OPEN);
+    expect(exported?.input).toBeUndefined();
+    expect(fullOutput(exported?.outputKey ?? exported?.key ?? "")).toBeUndefined();
+    assertCardSafe(exported?.detail);
+    assertCardSafe(exported?.output);
+    assertCardSafe(exported?.input);
+  });
+
   it("leaves a long bash result whole when history asks for wholeOutput", () => {
     const output = "x".repeat(5_000);
     const messages = [
