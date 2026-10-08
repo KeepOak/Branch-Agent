@@ -13,6 +13,8 @@ import {
   workflowHasPullRequestTrigger,
 } from './changed-test-coverage.mjs';
 import { checkMergeCommands, docsToCheck } from './check-merge-command.mjs';
+// listedGateFiles() is called after both modules load, so this cycle stays safe.
+import { listedGateFiles } from './check-gate-files-fresh.mjs';
 import { checkUIProof } from './check-ui-proof.mjs';
 import {
   DEFAULT_WAIT_BUDGET_SECONDS,
@@ -433,6 +435,127 @@ export function formatGateChangeSummary(changedFiles) {
   lines.push('This pull request changes files the merge gates use. Review them before merging:');
   lines.push('');
   for (const file of listed) lines.push(`- \`${file}\``);
+  return lines.join('\n');
+}
+
+export const GATE_CHANGE_REVIEW_REQUIRED =
+  'The gate change needs a separate review before the marker can be added for this head.';
+const GATE_CHANGE_REVIEWED_LINE = /^gate-change-reviewed: ([0-9a-f]{40})$/;
+const GATE_RUNNER_WORKFLOWS = [
+  '.github/workflows/merge-gate.yml',
+  TRUSTED_WORKFLOW_PATH,
+];
+
+export function isCodeownersPath(file) {
+  return file === 'CODEOWNERS' || file.endsWith('/CODEOWNERS');
+}
+
+export function isProtectedWorkflowPath(file) {
+  return file.startsWith('.github/workflows/');
+}
+
+export function scriptsInvokedByGateWorkflows(yamlTexts) {
+  const scripts = new Set();
+  const pattern = /(?:^|[\s'"`])(scripts\/[\w./-]+\.mjs)\b/g;
+  for (const yaml of yamlTexts) {
+    for (const match of String(yaml).matchAll(pattern)) scripts.add(match[1]);
+  }
+  return [...scripts].sort();
+}
+
+export function withGateScriptTests(scriptPaths) {
+  const all = new Set(scriptPaths);
+  for (const file of scriptPaths) {
+    if (file.startsWith('scripts/') && file.endsWith('.mjs') && !file.endsWith('.test.mjs')) {
+      all.add(`${file.slice(0, -'.mjs'.length)}.test.mjs`);
+    }
+  }
+  return [...all].sort();
+}
+
+export function protectedGatePathSet({ gateFiles, invokedScripts }) {
+  return new Set([...gateFiles, ...withGateScriptTests(invokedScripts)]);
+}
+
+export function loadProtectedGatePaths({
+  gateFiles = listedGateFiles(),
+  workflowYamls = GATE_RUNNER_WORKFLOWS.map((file) => readFileSync(path.join(root, file), 'utf8')),
+} = {}) {
+  return protectedGatePathSet({
+    gateFiles,
+    invokedScripts: scriptsInvokedByGateWorkflows(workflowYamls),
+  });
+}
+
+export function touchedProtectedFiles(changedFiles, protectedPaths) {
+  const hits = [];
+  const seen = new Set();
+  for (const file of changedFiles) {
+    if (!file || seen.has(file)) continue;
+    seen.add(file);
+    if (isProtectedWorkflowPath(file) || isCodeownersPath(file) || protectedPaths.has(file)) {
+      hits.push(file);
+    }
+  }
+  return hits.sort();
+}
+
+export function gateChangeReviewedShas(body) {
+  const shas = [];
+  for (const line of String(body ?? '').split(/\r?\n/)) {
+    const match = GATE_CHANGE_REVIEWED_LINE.exec(line);
+    if (match) shas.push(match[1]);
+  }
+  return shas;
+}
+
+export function gateChangeMarkerMatches(body, headSha) {
+  return typeof headSha === 'string' && gateChangeReviewedShas(body).includes(headSha);
+}
+
+export function formatGateChangeReviewFailure(protectedFiles, headSha, body) {
+  const found = gateChangeReviewedShas(body);
+  const lines = [
+    'This pull request changes protected gate files:',
+    ...protectedFiles.map((file) => `- ${file}`),
+    GATE_CHANGE_REVIEW_REQUIRED,
+  ];
+  if (found.length === 0) {
+    lines.push('The pull request body has no gate-change-reviewed marker for this head.');
+  } else {
+    lines.push(`The gate-change-reviewed marker does not match the current head ${headSha}.`);
+  }
+  return lines.join('\n');
+}
+
+export function evaluateGateChangeReview({ changedFiles, body, headSha, protectedPaths }) {
+  const paths = protectedPaths ?? loadProtectedGatePaths();
+  const protectedFiles = touchedProtectedFiles(changedFiles, paths);
+  const markerMatched = gateChangeMarkerMatches(body, headSha);
+  const touched = protectedFiles.length > 0;
+  return {
+    ok: !touched || markerMatched,
+    touched,
+    protectedFiles,
+    markerMatched,
+    message: touched && !markerMatched
+      ? formatGateChangeReviewFailure(protectedFiles, headSha, body)
+      : '',
+  };
+}
+
+export function formatGateChangeReviewSummary(result) {
+  const lines = [
+    '## Gate change review',
+    '',
+    `Protected files touched: ${result.touched ? 'yes' : 'no'}`,
+  ];
+  if (result.protectedFiles.length) {
+    lines.push('');
+    for (const file of result.protectedFiles) lines.push(`- \`${file}\``);
+  }
+  lines.push('');
+  lines.push(`Marker matched: ${result.markerMatched ? 'yes' : 'no'}`);
   return lines.join('\n');
 }
 
@@ -857,8 +980,14 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const changedFiles = files.flatMap((file) => (
     file.previous_filename ? [file.filename, file.previous_filename] : [file.filename]
   ));
-
+  const body = fetchPrBody(repo, prNumber, token);
+  const review = evaluateGateChangeReview({ changedFiles, body, headSha: sha });
   writeSummary(formatGateChangeSummary(changedFiles));
+  writeSummary(formatGateChangeReviewSummary(review));
+  if (!review.ok) {
+    console.error(review.message);
+    process.exit(1);
+  }
 
   const extraNamed = fetchNamedTestLists(repo, sha, token);
   if (!runCoverage(files, extraNamed, repo, sha, token)) process.exit(1);
@@ -867,7 +996,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exit(1);
   }
   console.log('Merge-command check passed.');
-  if (!runUiProofFromPr(files, fetchPrBody(repo, prNumber, token))) process.exit(1);
+  if (!runUiProofFromPr(files, body)) process.exit(1);
 
   if (initialWait > 0) sleepSeconds(initialWait);
 

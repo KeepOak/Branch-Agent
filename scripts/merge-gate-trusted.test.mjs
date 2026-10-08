@@ -27,6 +27,10 @@ import {
   mergeCheckRunPages,
   parseNamedTestList,
   formatGateChangeSummary,
+  formatGateChangeReviewSummary,
+  evaluateGateChangeReview,
+  GATE_CHANGE_REVIEW_REQUIRED,
+  loadProtectedGatePaths,
   listCoreWorkflows,
   missingCoreWorkflows,
   nameStatusFromPrFiles,
@@ -45,6 +49,7 @@ import {
   formatOrdinaryTimeout,
   pollOrdinaryGate,
 } from './merge-gate-rate-limit.mjs';
+import { listedGateFiles } from './check-gate-files-fresh.mjs';
 
 function ordinaryYaml() {
   return readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
@@ -2034,4 +2039,122 @@ test('ordinary JS waiter additions stay aligned with the yaml jq filters', () =>
   });
   assert.equal(ordinaryCode, 1);
   assert.match(formatOrdinaryTimeout([{ name: 'build' }]), /Timed out waiting for: build/);
+});
+
+const REVIEW_HEAD = '0123456789abcdef0123456789abcdef01234567';
+const REVIEW_OLD = 'fedcba9876543210fedcba9876543210fedcba98';
+
+function reviewChange(changedFiles, body, headSha = REVIEW_HEAD) {
+  return evaluateGateChangeReview({ changedFiles, body, headSha });
+}
+
+test('protected paths reuse the gate file lists and the scripts merge-gate runs', () => {
+  const paths = loadProtectedGatePaths();
+  for (const file of listedGateFiles()) assert.ok(paths.has(file), file);
+  assert.equal(GATE_SCRIPTS.includes('scripts/check-copied-csv.mjs'), false);
+  assert.ok(paths.has('scripts/check-copied-csv.mjs'));
+  assert.ok(paths.has('scripts/check-copied-csv.test.mjs'));
+  assert.ok(paths.has('scripts/check-commit-emails.mjs'));
+  assert.ok(paths.has('scripts/check-commit-emails.test.mjs'));
+  assert.ok(paths.has('scripts/check-gate-files-fresh.test.mjs'));
+  const owners = reviewChange(['engine/.github/CODEOWNERS'], '');
+  assert.equal(owners.ok, false);
+  assert.deepEqual(owners.protectedFiles, ['engine/.github/CODEOWNERS']);
+});
+
+test('no protected files means the gate change review passes', () => {
+  const result = reviewChange(['README.md', 'window/src/app.tsx'], '');
+  assert.equal(result.ok, true);
+  assert.equal(result.touched, false);
+  assert.equal(result.markerMatched, false);
+  assert.deepEqual(result.protectedFiles, []);
+  const summary = formatGateChangeReviewSummary(result);
+  assert.match(summary, /Protected files touched: no/);
+  assert.match(summary, /Marker matched: no/);
+});
+
+test('a protected file with no marker fails the gate change review', () => {
+  const result = reviewChange(['scripts/merge-gate-trusted.mjs'], 'Reviewed offline.\n');
+  assert.equal(result.ok, false);
+  assert.equal(result.touched, true);
+  assert.equal(result.markerMatched, false);
+  assert.deepEqual(result.protectedFiles, ['scripts/merge-gate-trusted.mjs']);
+  assert.match(result.message, /scripts\/merge-gate-trusted\.mjs/);
+  assert.ok(result.message.includes(GATE_CHANGE_REVIEW_REQUIRED));
+  const summary = formatGateChangeReviewSummary(result);
+  assert.match(summary, /Protected files touched: yes/);
+  assert.match(summary, /`scripts\/merge-gate-trusted\.mjs`/);
+  assert.match(summary, /Marker matched: no/);
+});
+
+test('a gate-change-reviewed marker for an older SHA fails', () => {
+  const body = `gate-change-reviewed: ${REVIEW_OLD}\n`;
+  const result = reviewChange(['scripts/check-commit-emails.mjs'], body);
+  assert.equal(result.ok, false);
+  assert.equal(result.markerMatched, false);
+  assert.match(result.message, /scripts\/check-commit-emails\.mjs/);
+  assert.ok(result.message.includes(GATE_CHANGE_REVIEW_REQUIRED));
+  assert.match(result.message, new RegExp(`does not match the current head ${REVIEW_HEAD}`));
+  const padded = reviewChange(
+    ['scripts/check-commit-emails.mjs'],
+    `gate-change-reviewed: ${REVIEW_HEAD} \n`,
+  );
+  assert.equal(padded.ok, false);
+});
+
+test('a gate-change-reviewed marker for the current head SHA passes', () => {
+  const body = [
+    'Workflow and gate files reviewed on this head.',
+    `gate-change-reviewed: ${REVIEW_OLD}`,
+    `gate-change-reviewed: ${REVIEW_HEAD}`,
+  ].join('\n');
+  const result = reviewChange(['.github/workflows/merge-gate.yml', 'CODEOWNERS'], body);
+  assert.equal(result.ok, true);
+  assert.equal(result.touched, true);
+  assert.equal(result.markerMatched, true);
+  assert.deepEqual(result.protectedFiles, [
+    '.github/workflows/merge-gate.yml',
+    'CODEOWNERS',
+  ]);
+  assert.equal(result.message, '');
+  const summary = formatGateChangeReviewSummary(result);
+  assert.match(summary, /Protected files touched: yes/);
+  assert.match(summary, /Marker matched: yes/);
+  assert.match(summary, /`CODEOWNERS`/);
+});
+
+test('a desktop-checks.yml-only change is a protected gate change', () => {
+  const file = '.github/workflows/desktop-checks.yml';
+  const result = reviewChange([file], '');
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.protectedFiles, [file]);
+  assert.match(result.message, /desktop-checks\.yml/);
+  assert.ok(result.message.includes(GATE_CHANGE_REVIEW_REQUIRED));
+  const summary = formatGateChangeReviewSummary(result);
+  assert.match(summary, /Protected files touched: yes/);
+  assert.match(summary, /desktop-checks\.yml/);
+  assert.match(summary, /Marker matched: no/);
+});
+
+test('a docs-only change is not a protected gate change', () => {
+  const result = reviewChange(['docs/CHECKPOINT.md'], '');
+  assert.equal(result.ok, true);
+  assert.equal(result.touched, false);
+  assert.deepEqual(result.protectedFiles, []);
+  const summary = formatGateChangeReviewSummary(result);
+  assert.match(summary, /Protected files touched: no/);
+  assert.match(summary, /Marker matched: no/);
+});
+
+test('merge-gate-trusted still reruns when the pull request body is edited', () => {
+  const yaml = readFileSync(new URL(`../${TRUSTED_WORKFLOW_PATH}`, import.meta.url), 'utf8');
+  assert.match(yaml, /pull_request_target:/);
+  assert.match(yaml, /types:\s*\[opened, synchronize, reopened, ready_for_review, edited\]/);
+  assert.match(yaml, /cancel-in-progress:\s*\$\{\{\s*github\.event\.action\s*!=\s*'edited'\s*\}\}/);
+  assert.match(yaml, /SHA:\s*\$\{\{\s*github\.event\.pull_request\.head\.sha\s*\}\}/);
+  const source = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
+  assert.match(source, /fetchPrFiles\(repo, prNumber, token\)/);
+  assert.match(source, /evaluateGateChangeReview\(\{ changedFiles, body, headSha: sha \}\)/);
+  assert.match(source, /writeSummary\(formatGateChangeReviewSummary\(review\)\)/);
+  assert.match(source, /if \(!review\.ok\)/);
 });
