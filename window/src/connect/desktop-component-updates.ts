@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getToasts, notify, subscribeToasts } from "../shell/notify";
+import { dismiss, getToasts, notify, subscribeToasts } from "../shell/notify";
 import type { WindowEngine } from "./engine";
 
 export type ComponentUpdateStatus = {
@@ -21,7 +21,50 @@ export const UPDATE_TOAST_SETUP_WAIT_MS = 5000;
 type Desktop = { gatewayUrl?: string; getGatewayUrl?: () => string; componentUpdates?: ComponentUpdates; unavailableReason?: string;
   onAutoApplyProbe?: (listener: () => Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean }>) => () => void;
   onUpdateApplied?: (listener: (notice: AppliedUpdateNotice) => void) => () => void;
+  onUpdateUndone?: (listener: () => void) => () => void;
   reportUpdateNotice?: (event: UpdateNoticeEvent, notice: AppliedUpdateNotice) => void };
+
+/** Preload-time buffer: keep the last applied/undone event and replay it when a subscriber attaches. Dedupes by version. */
+export function createUpdateNoticeHub(): {
+  pushApplied: (notice: AppliedUpdateNotice) => void;
+  pushUndone: () => void;
+  onUpdateApplied: (listener: (notice: AppliedUpdateNotice) => void) => () => void;
+  onUpdateUndone: (listener: () => void) => () => void;
+} {
+  let lastApplied: AppliedUpdateNotice | undefined;
+  let lastUndone = false;
+  let applied: ((notice: AppliedUpdateNotice) => void) | undefined;
+  let undone: (() => void) | undefined;
+  let deliveredVersion: string | undefined;
+  const deliver = (notice: AppliedUpdateNotice) => {
+    if (!applied || deliveredVersion === notice.version) return;
+    deliveredVersion = notice.version;
+    applied(notice);
+  };
+  return {
+    pushApplied(notice) {
+      lastApplied = notice;
+      lastUndone = false;
+      deliver(notice);
+    },
+    pushUndone() {
+      lastUndone = true;
+      lastApplied = undefined;
+      deliveredVersion = undefined;
+      undone?.();
+    },
+    onUpdateApplied(listener) {
+      applied = listener;
+      if (lastApplied) deliver(lastApplied);
+      return () => { if (applied === listener) applied = undefined; };
+    },
+    onUpdateUndone(listener) {
+      undone = listener;
+      if (lastUndone) listener();
+      return () => { if (undone === listener) undone = undefined; };
+    },
+  };
+}
 /** An older Branch Agent app has no Check now bridge, but it still checks every hour and stages updates itself. */
 export const MANUAL_UPDATE_UNSUPPORTED = "Update the Branch app to check by hand.";
 export const DESKTOP_CHECKS_HOURLY = "Branch checks for updates every 10 minutes and lets you know when one is ready to apply.";
@@ -111,7 +154,20 @@ export function showAppliedUpdateToast(notice: AppliedUpdateNotice): void {
   show();
 }
 
-/** The desktop preload forwards `branch-desktop:update-applied` here instead of injecting its own notice. */
+function dismissInPlaceToast(): void {
+  for (const toast of getToasts()) {
+    if (toast.text === UPDATED_IN_PLACE) dismiss(toast.id);
+  }
+}
+
+/** Toasts (always mounted) subscribe here. Preload buffers the last event so a late subscribe still sees it. */
 export function useDesktopAppliedUpdateNotice(): void {
-  useEffect(() => desktopBridge()?.onUpdateApplied?.(showAppliedUpdateToast), []);
+  useEffect(() => {
+    const desktop = desktopBridge();
+    const stopApplied = desktop?.onUpdateApplied?.(showAppliedUpdateToast);
+    const stopUndone = desktop?.onUpdateUndone?.(() => {
+      dismissInPlaceToast();
+    });
+    return () => { stopApplied?.(); stopUndone?.(); };
+  }, []);
 }

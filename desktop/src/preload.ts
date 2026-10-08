@@ -9,6 +9,48 @@ interface DesktopInfo {
   gatewayToken: string;
 }
 
+type AppliedUpdateNotice = { version: string; canUndo: boolean; expiresAt: number };
+type UpdateAppliedListener = (notice: AppliedUpdateNotice) => void;
+type UpdateUndoneListener = () => void;
+
+/** Listen at preload time so did-finish-load / hotSwapWindow replay is not dropped before React subscribes. */
+let lastApplied: AppliedUpdateNotice | undefined;
+let lastUndone = false;
+let appliedListener: UpdateAppliedListener | undefined;
+let undoneListener: UpdateUndoneListener | undefined;
+let deliveredVersion: string | undefined;
+
+function rememberApplied(notice: AppliedUpdateNotice): void {
+  lastApplied = notice;
+  lastUndone = false;
+  if (appliedListener && deliveredVersion !== notice.version) {
+    deliveredVersion = notice.version;
+    appliedListener(notice);
+  }
+}
+
+function rememberUndone(): void {
+  lastUndone = true;
+  lastApplied = undefined;
+  deliveredVersion = undefined;
+  undoneListener?.();
+}
+
+function subscribeApplied(listener: UpdateAppliedListener): () => void {
+  appliedListener = listener;
+  if (lastApplied && deliveredVersion !== lastApplied.version) {
+    deliveredVersion = lastApplied.version;
+    listener(lastApplied);
+  }
+  return () => { if (appliedListener === listener) appliedListener = undefined; };
+}
+
+function subscribeUndone(listener: UpdateUndoneListener): () => void {
+  undoneListener = listener;
+  if (lastUndone) listener();
+  return () => { if (undoneListener === listener) undoneListener = undefined; };
+}
+
 // Null on any page other than the served window (for example the "Starting" page).
 const info = ipcRenderer.sendSync("branch-desktop:info") as DesktopInfo | null;
 if (info) {
@@ -41,11 +83,8 @@ if (info) {
       check: () => ipcRenderer.invoke("branch-desktop:component-update:check"),
       stage: () => ipcRenderer.invoke("branch-desktop:component-update:stage"),
     },
-    onUpdateApplied: (listener: (notice: AppliedUpdateNotice) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, notice: AppliedUpdateNotice) => listener(notice);
-      ipcRenderer.on("branch-desktop:update-applied", handler);
-      return () => ipcRenderer.removeListener("branch-desktop:update-applied", handler);
-    },
+    onUpdateApplied: (listener: (notice: AppliedUpdateNotice) => void) => subscribeApplied(listener),
+    onUpdateUndone: (listener: () => void) => subscribeUndone(listener),
     reportUpdateNotice: (event: string, notice: AppliedUpdateNotice) => {
       ipcRenderer.send("branch-desktop:update-notice", event, notice);
     },
@@ -80,7 +119,8 @@ if (info) {
   });
   ipcRenderer.on("branch-desktop:engine-update", (_e, state: UpdateState) => showUpdateBar(state));
   ipcRenderer.on("branch-desktop:update-undo-failed", (_e, message: string) => showToast(`Undo couldn't finish: ${message}`));
-  ipcRenderer.on("branch-desktop:update-undone", () => document.getElementById("branch-desktop-update-notice")?.remove());
+  ipcRenderer.on("branch-desktop:update-applied", (_e, notice: AppliedUpdateNotice) => rememberApplied(notice));
+  ipcRenderer.on("branch-desktop:update-undone", () => rememberUndone());
   ipcRenderer.on("branch-desktop:engine-handoff", (_e, nextUrl: string) => {
     try {
       const target = new URL(nextUrl);
@@ -98,7 +138,6 @@ if (info) {
 }
 
 type UpdateState = "ready" | "restarting" | "auto-wait" | "preparing" | "updating" | "updated" | "kept";
-type AppliedUpdateNotice = { version: string; canUndo: boolean; expiresAt: number };
 const SWAP_KEY = "branch-desktop:window-swap";
 
 /** Before the window swaps in its new build: the scroll position of every scrolled area (route and drafts are the window's own). */

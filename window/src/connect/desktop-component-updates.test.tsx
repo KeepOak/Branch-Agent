@@ -7,7 +7,7 @@ import { UpdatesPage } from "../places/settings/set2/updates";
 import { dismiss, getToasts } from "../shell/notify";
 import { Toasts } from "../shell/Toasts";
 import {
-  componentDesktop, setupBlocksUpdateToast, showAppliedUpdateToast, stageWindowUpdate,
+  componentDesktop, createUpdateNoticeHub, setupBlocksUpdateToast, showAppliedUpdateToast, stageWindowUpdate,
   UPDATED_IN_PLACE, UPDATE_TOAST_SETUP_WAIT_MS, useDesktopAppliedUpdateNotice,
 } from "./desktop-component-updates";
 import { StatusPopover, type StatusContext } from "../shell/StatusLayer";
@@ -219,4 +219,37 @@ it("logs expired when setup outlasts the update notice", async () => {
   await act(async () => { vi.advanceTimersByTime(UPDATE_TOAST_SETUP_WAIT_MS); });
   expect(getToasts()).toEqual([]);
   expect(report).toHaveBeenCalledWith("expired", stale);
+});
+
+it("shows the in-place toast when update-applied arrives before subscribe and the status bar is hidden", async () => {
+  const report = vi.fn();
+  const hub = createUpdateNoticeHub();
+  desktopWindow.branchDesktop = { ...hub, reportUpdateNotice: report };
+  hub.pushApplied(applied);
+  await act(async () => root.render(<Toasts />));
+  expect(host.querySelector("[data-testid=toast]")?.textContent).toContain(UPDATED_IN_PLACE);
+  expect(report).toHaveBeenCalledWith("shown", applied);
+  expect(report.mock.calls.filter((call) => call[0] === "shown")).toHaveLength(1);
+});
+
+it("dedupes the same update version across live delivery and subscribe replay", async () => {
+  const report = vi.fn();
+  const hub = createUpdateNoticeHub();
+  desktopWindow.branchDesktop = { ...hub, reportUpdateNotice: report };
+  await act(async () => root.render(<Toasts />));
+  await act(async () => hub.pushApplied(applied));
+  await act(async () => hub.pushApplied(applied));
+  expect(host.querySelectorAll("[data-testid=toast]")).toHaveLength(1);
+  expect(report.mock.calls.filter((call) => call[0] === "shown")).toHaveLength(1);
+});
+
+it("dismisses the in-place toast when update-undone arrives through the new path", async () => {
+  const report = vi.fn();
+  const hub = createUpdateNoticeHub();
+  desktopWindow.branchDesktop = { ...hub, reportUpdateNotice: report };
+  await act(async () => root.render(<Toasts />));
+  await act(async () => hub.pushApplied(applied));
+  expect(host.querySelector("[data-testid=toast]")?.textContent).toContain(UPDATED_IN_PLACE);
+  await act(async () => hub.pushUndone());
+  expect(host.querySelector("[data-testid=toast]")).toBeNull();
 });

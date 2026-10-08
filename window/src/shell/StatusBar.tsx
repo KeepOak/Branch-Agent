@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import type { RingReading } from "./status-data";
 import { BRANCH_VERSION_TIP, branchVersionDetail, branchVersionLabel } from "../connect/branch-version";
-import { useDesktopAppliedUpdateNotice } from "../connect/desktop-component-updates";
 
 export type ConnectionPhase = "connected" | "connecting" | "offline";
 /** The gateway's own state (§4.9.1 item 2): its dot is green only while its health check answers. */
@@ -81,7 +80,6 @@ function GatewayStatus(p: Pick<Props, "gateway" | "open" | "onItem">) {
 
 /** The status bar (DESIGN-SPEC §4.9.1): connection, gateway, room left, running, then the usage ring and version. */
 export function StatusBar(p: Props) {
-  useDesktopAppliedUpdateNotice();
   const [usageExpanded, setUsageExpanded] = useState(true);
   const usageRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
