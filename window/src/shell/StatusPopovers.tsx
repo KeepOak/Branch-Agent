@@ -211,23 +211,16 @@ export function RoomPopover({ request, row, level, onTidy, ...base }: RoomProps)
 
 type RunningProps = Base & { request: Request; working: { key: string; title: string; line: string; runIds?: string[] }[]; onOpen: (key: string) => void; onAutomations: () => void; onBackground: () => void; onPauseAll: () => void };
 
-/** Running now is exactly the live run rows; scheduled jobs are separate. */
+/** Running in the background is exactly the live run rows; scheduled jobs are separate. */
 export function RunningPopover({ request, working, onOpen, onAutomations, onBackground, onPauseAll, ...base }: RunningProps) {
   const jobs = useRead(request, "cron.list", { limit: 200 }, (r) => comingUp(Array.isArray(rec(r).jobs) ? (rec(r).jobs as unknown[]) : []));
+  const upcoming = jobs.data ?? [];
   return (
-    <Popover at={{ x: 0, y: 0 }} label="Running now" testid="pop-running" className="sp" {...base}>
-      <div className="pt sp-title"><span>Running now</span><small>{working.length}</small></div>
-      {working.length ? null : <p className="sp-note">Nothing is running.</p>}
-      {working.map((w) => (
-        <button type="button" className="mi" key={w.key} onClick={() => onOpen(w.key)}>
-          <span className="sp-spin"><Icon name="spin" small /></span>
-          <span className="mi-text"><span>{w.title}</span><small className="mi-s">{w.line}</small></span>
-        </button>
-      ))}
-      {jobs.data && jobs.data.length ? (
+    <Popover at={{ x: 0, y: 0 }} label="Running in the background" testid="pop-running" className="sp" {...base}>
+      {upcoming.length ? (
         <>
           <div className="ph">Coming up</div>
-          {jobs.data.map((j, i) => (
+          {upcoming.map((j, i) => (
             <div className="mi info" key={i}>
               <Icon name="clock" small />
               <span className="mi-label">{j.name}</span>
@@ -236,6 +229,14 @@ export function RunningPopover({ request, working, onOpen, onAutomations, onBack
           ))}
         </>
       ) : null}
+      <div className="pt sp-title"><span>Running in the background</span><small>{working.length}</small></div>
+      {working.length ? null : <p className="sp-note" role="status">Nothing is running.</p>}
+      {working.map((w) => (
+        <button type="button" className="mi" key={w.key} onClick={() => onOpen(w.key)}>
+          <span className="sp-spin"><Icon name="spin" small /></span>
+          <span className="mi-text"><span>{w.title}</span><small className="mi-s">{w.line}</small></span>
+        </button>
+      ))}
       <hr className="msep" />
       <Item icon="plus" label="Start something in the background" hint={<kbd>/bg</kbd>} onClick={onBackground} />
       <Item icon="clock" label="Open Automations…" onClick={onAutomations} />

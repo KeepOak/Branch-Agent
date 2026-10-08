@@ -1,14 +1,16 @@
 // Inbox › Needs you (DESIGN-SPEC §4.6.2.1; preview renderInbox + 41-placesap p20-inbox): status cards above the
 // approvals card, the approvals and requests, the questions, then Mentions.
-import { useState } from "react";
-import type { WindowEngine } from "../../connect/engine";
+import { useEffect, useRef, useState } from "react";
+import type { ScopeUpgradeOutcome, WindowEngine } from "../../connect/engine";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import type { PlaceId } from "../../places-nav/routes";
 import type { Level } from "../../places-nav/level";
 import { Face } from "../../face/Face";
 import { Icon } from "../../shell/icons";
+import { Dialog } from "../../shell/Dialog";
+import { notify } from "../../shell/notify";
 import { agentName } from "../overview/engine";
-import { canApprove, has, isSignInFailure, num, rec, resolveApproval, rows, signInRecovered, str, type Needs, type Row } from "./data";
+import { canApprove, errorText, has, isSignInFailure, num, rec, resolveApproval, rows, signInRecovered, str, type Needs, type Row } from "./data";
 import { ChatRequest, DeviceRequest, NodeRequest } from "./Requests";
 import { InboxRow, StatusCard, Tile, minutesAgo, minutesLeft } from "./Rows";
 import { whenWord } from "../overview/format";
@@ -18,6 +20,66 @@ type Act = (operation: () => Promise<unknown>, message: string) => Promise<boole
 export type NeedsProps = { engine: WindowEngine; data: Needs; busy: boolean; act: Act; level: Level; loading: boolean; openConversation: (key: string) => void; openPlace: (place: PlaceId) => void; openSettings?: (page: string) => void };
 
 export const FULL_ACCESS_GAP = "Needs the window’s connection to take the upgraded device key (device.scopes.requestUpgrade).";
+type LimitedState = "idle" | "asking" | "no" | "expired" | "yes";
+type LimitedOutcome = "pending" | ScopeUpgradeOutcome["status"];
+
+/** A line the person can read: no method names, no stack. */
+function plainUpgradeError(error: unknown): string {
+  const raw = errorText(error).split("\n")[0] ?? "";
+  const cleaned = raw.replace(/\bdevice\.scopes\.(?:requestUpgrade|waitUpgrade)\b/g, "").replace(/\s{2,}/g, " ").replace(/^[:.\s-]+|[:.\s-]+$/g, "").trim();
+  return cleaned || "Couldn't ask for full access. Try again.";
+}
+
+function limitedLine(state: LimitedState): string {
+  if (state === "asking") return "Waiting for an owner to say yes in their Inbox or in People › Signing in.";
+  if (state === "no") return "An owner said no to full access.";
+  if (state === "expired") return "The request ran out of time. Ask again.";
+  return "You can look around, but some changes need an owner’s yes.";
+}
+
+function LimitedAccess({ engine, busy }: { engine: WindowEngine; busy: boolean }) {
+  const [state, setState] = useState<LimitedState>("idle");
+  const outcome = useRef<LimitedOutcome>("pending");
+  const live = useRef(true);
+  useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
+  if (has(engine, "operator.admin") || state === "yes") return null;
+  const canAsk = typeof engine.requestScopeUpgrade === "function";
+  const apply = (status: ScopeUpgradeOutcome["status"]) => {
+    if (status === "approved") { setState("yes"); notify("An owner said yes. You have full access."); }
+    else if (status === "expired") setState("expired");
+    else { setState("no"); notify("An owner said no to full access."); }
+  };
+  const ask = () => {
+    if (!engine.requestScopeUpgrade) return;
+    outcome.current = "pending";
+    void engine.requestScopeUpgrade({
+      onPending: () => { if (live.current) { setState("asking"); notify("Asked. An owner sees it in their Inbox."); } },
+    }).then(result => {
+      if (!live.current) return;
+      outcome.current = result.status;
+      apply(result.status);
+    }).catch((error: unknown) => {
+      if (!live.current || (error instanceof Error && error.name === "AbortError")) return;
+      notify(plainUpgradeError(error), { tone: "bad" });
+      setState("idle");
+    });
+  };
+  const check = () => {
+    if (outcome.current === "pending") notify("No answer yet.");
+    else apply(outcome.current);
+  };
+  const stop = () => {
+    engine.cancelScopeUpgrade?.();
+    outcome.current = "pending";
+    setState("idle");
+  };
+  return <StatusCard icon="lock" title="This device has limited access" sub={limitedLine(state)}>
+    {state === "asking" ? <>
+      <button type="button" className="btn sm" onClick={check}>Check again</button>
+      <button type="button" className="btn ghost sm" onClick={stop}>Stop waiting</button>
+    </> : <button type="button" className="btn pri sm" disabled={busy || !canAsk} title={canAsk ? undefined : FULL_ACCESS_GAP} onClick={ask}>{state === "idle" ? "Ask for full access" : "Ask again"}</button>}
+  </StatusCard>;
+}
 const DAY = 864e5;
 const DISMISSED_KEY = "branch:inbox-dismissed-failures";
 function savedDismissals(): string[] {
@@ -74,7 +136,7 @@ function Cards({ data, engine, busy, act, openConversation, openPlace, openSetti
     {names.length ? <StatusCard tone="warn" icon="key" title={names.length > 1 ? `Sign-ins expired: ${names.join(", ")}` : `Your ${names[0]} sign-in expired`} sub={`${expiredAt !== undefined ? `Expired ${minutesAgo(expiredAt)}. ` : ""}Trunks that use it stop until you sign in again.`}>
       {askBtn(`These sign-ins expired: ${names.join(", ")}. Explain what stops working and how to sign in again.`, true)}<button type="button" className="btn pri sm" disabled={!openSettings} onClick={() => openSettings?.("accounts")}>Sign in again</button>
     </StatusCard> : null}
-    {!has(engine, "operator.admin") ? <StatusCard icon="lock" title="This device has limited access" sub="You can look around, but some changes need an owner’s yes."><button type="button" className="btn pri sm" disabled title={FULL_ACCESS_GAP}>Ask for full access</button></StatusCard> : null}
+    {!has(engine, "operator.admin") ? <LimitedAccess engine={engine} busy={busy} /> : null}
   </div>;
 }
 
@@ -128,7 +190,10 @@ export function NeedsYou(props: NeedsProps) {
   return <>
     <Cards {...props} />
     {pending.length > 1 ? <div className="ib-bulk"><button type="button" className="btn" disabled={!allow || busy} onClick={() => setConfirmAll(true)}>Allow all {pending.length}…</button></div> : null}
-    {confirmAll ? <section className="ib-confirm" aria-label="Allow all requests"><b>Allow all {pending.length}?</b><ul>{pending.map(item => <li key={`${str(item.kind)}:${str(item.id)}`}>{approvalTitle(item)}</li>)}</ul><p className="ib-hint">Each Trunk still asks next time. Device, computer and chat-app requests are left for you to answer.</p><div className="ib-acts"><button type="button" className="btn ghost sm" disabled={busy} onClick={() => setConfirmAll(false)}>Cancel</button><button type="button" className="btn pri sm" disabled={busy || !allow} onClick={() => void act(async () => { for (const item of pending) await resolveApproval(engine, item, "allow-once"); setConfirmAll(false); }, "All listed requests answered once.")}>Allow all {pending.length}</button></div></section> : null}
+    {confirmAll ? <Dialog title={`Allow all ${pending.length}?`} onClose={() => setConfirmAll(false)} footer={<><button type="button" className="btn ghost" disabled={busy} onClick={() => setConfirmAll(false)}>Cancel</button><button type="button" className="btn pri" disabled={busy || !allow} onClick={() => void act(async () => { for (const item of pending) await resolveApproval(engine, item, "allow-once"); }, "All listed requests answered once.").then(ok => { if (ok) setConfirmAll(false); })}>Allow all {pending.length}</button></>}>
+      <ul className="allow18D">{pending.map(item => <li key={`${str(item.kind)}:${str(item.id)}`}><Icon name="check" small /><span>{agentName(data.agents.list, str(rec(item.request).agentId))}: {approvalTitle(item).replace(/\?$/, "")}</span></li>)}</ul>
+      <p className="ib-hint">Each Trunk still asks next time.</p>
+    </Dialog> : null}
     {!allow && pending.length ? <p className="ib-hint">You can look, but answering requests needs approval permission.</p> : null}
     {!empty ? <div className="ib-list">
       {pending.map(item => <Approval key={`${str(item.kind)}:${str(item.id)}`} item={item} props={props} />)}
