@@ -7,7 +7,9 @@ export const KEEP_MAIN_MESSAGE = 'merge main in and keep main\'s version of this
 export const GATE_WORKFLOW_FILES = [
   '.github/workflows/merge-gate.yml',
   '.github/workflows/merge-gate-trusted.yml',
+  '.github/workflows/gate-files-fresh.yml',
   'scripts/merge-gate-trusted.mjs',
+  'scripts/check-gate-files-fresh.mjs',
 ];
 
 export function listedGateFiles(gateScripts = GATE_SCRIPTS) {
@@ -141,8 +143,71 @@ export function fetchPrCommits(repo, prNumber, token) {
   return Array.isArray(payload) ? payload : [];
 }
 
+export const COMPARE_FILE_PAGE_SIZE = 100;
+export const COMPARE_FILE_LIMIT = 300;
+export const COMPARE_SLIM_JQ = [
+  '{',
+  'merge_base_sha: .merge_base_commit.sha,',
+  'commits: [.commits[].sha],',
+  'truncated: .truncated,',
+  'total_commits: .total_commits,',
+  'files: [.files[].filename]',
+  '}',
+].join(' ');
+export const COMPARE_FILES_JQ = '[.files[].filename]';
+
+export function compareTooLargeMessage(base, head, {
+  truncated,
+  fileCount,
+  commitCount,
+  totalCommits,
+} = {}) {
+  return [
+    `Compare ${base}...${head} is too large or truncated`,
+    `(files=${fileCount ?? 0}, commits=${commitCount ?? 0},`,
+    `total_commits=${totalCommits ?? '?'}, truncated=${Boolean(truncated)}).`,
+    'Merge main so the fork point is recent, then re-run gate-files-fresh.',
+  ].join(' ');
+}
+
 export function fetchCompare(repo, token, base, head) {
+  return fetchComparePaged(repo, token, base, head, arguments[4] ?? {});
   return ghApi(repo, token, `compare/${base}...${head}`) ?? {};
+}
+
+export function fetchComparePaged(repo, token, base, head, { api = ghApi, requireComplete = true } = {}) {
+  const firstPath = `compare/${base}...${head}?per_page=${COMPARE_FILE_PAGE_SIZE}&page=1`;
+  const slim = api(repo, token, firstPath, { jq: COMPARE_SLIM_JQ }) ?? {};
+  const files = [...(Array.isArray(slim.files) ? slim.files : [])];
+  const commits = Array.isArray(slim.commits) ? slim.commits : [];
+  const truncated = Boolean(slim.truncated);
+  for (let page = 2; !truncated && files.length < COMPARE_FILE_LIMIT; page += 1) {
+    const more = api(repo, token, `compare/${base}...${head}?per_page=${COMPARE_FILE_PAGE_SIZE}&page=${page}`, {
+      jq: COMPARE_FILES_JQ,
+    });
+    const names = Array.isArray(more) ? more : [];
+    if (!names.length) break;
+    files.push(...names);
+    if (names.length < COMPARE_FILE_PAGE_SIZE) break;
+  }
+  const tooLarge = truncated
+    || files.length > COMPARE_FILE_LIMIT
+    || (Number.isInteger(slim.total_commits) && slim.total_commits > commits.length);
+  if (requireComplete && tooLarge) {
+    throw new Error(compareTooLargeMessage(base, head, {
+      truncated,
+      fileCount: files.length,
+      commitCount: commits.length,
+      totalCommits: slim.total_commits,
+    }));
+  }
+  return {
+    merge_base_commit: slim.merge_base_sha ? { sha: slim.merge_base_sha } : undefined,
+    commits: commits.map((sha) => ({ sha })),
+    files: files.map((filename) => ({ filename })),
+    truncated,
+    total_commits: slim.total_commits ?? commits.length,
+  };
 }
 
 export function fetchCommitsForPath(repo, token, sha, filePath) {

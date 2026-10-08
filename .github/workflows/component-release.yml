@@ -56,6 +56,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          MERGE_GATE_WAIT_SECONDS: '240'
         run: |
           set -euo pipefail
           decide_scheduled() {
@@ -64,7 +65,7 @@ jobs:
             main_commit="$(git rev-parse origin/main)"
             latest_release=""
             published_at=""
-            latest_meta=$(gh api repos/KeepOak/Branch-Agent/releases/latest --jq '[.tag_name,.published_at] | @tsv' 2>/dev/null || echo "")
+            latest_meta=$(node scripts/merge-gate-rate-limit.mjs gh -- api repos/KeepOak/Branch-Agent/releases/latest --jq '[.tag_name,.published_at] | @tsv' 2>/dev/null || echo "")
             if [[ -n "$latest_meta" ]]; then
               latest_release="${latest_meta%%$'\t'*}"
               published_at="${latest_meta#*$'\t'}"
@@ -75,14 +76,14 @@ jobs:
               return
             fi
             # Resolves lightweight and annotated tags to the commit they point at.
-            latest_commit=$(gh api repos/KeepOak/Branch-Agent/commits/"$latest_release" --jq .sha)
+            latest_commit=$(node scripts/merge-gate-rate-limit.mjs gh -- api repos/KeepOak/Branch-Agent/commits/"$latest_release" --jq .sha)
             if [[ "$main_commit" == "$latest_commit" ]]; then
               echo "Main has not changed since $latest_release ($latest_commit); skipping release" >&2
               printf '%s %s\n' false "$main_commit"
               return
             fi
             # Skip only when a check on main's head actually failed. Missing or pending checks do not block.
-            failed_checks=$(gh api --paginate "repos/KeepOak/Branch-Agent/commits/$main_commit/check-runs" \
+            failed_checks=$(node scripts/merge-gate-rate-limit.mjs gh -- api --paginate "repos/KeepOak/Branch-Agent/commits/$main_commit/check-runs" \
               --jq '[.check_runs[] | select(.conclusion == "failure")] | length' | awk '{s+=$1} END {print s+0}')
             if [[ "$failed_checks" != "0" ]]; then
               echo "Main has $failed_checks failed check(s) at $main_commit; skipping release" >&2

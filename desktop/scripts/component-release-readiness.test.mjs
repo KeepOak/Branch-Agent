@@ -49,4 +49,5 @@ test("component-release workflow keeps the schedule and uses push as a 25-minute
   assert.match(workflow, /more than 25 minutes old/);
   assert.match(workflow, /GITHUB_EVENT_NAME" == "push"/);
   assert.match(workflow, /decide_scheduled >\/dev\/null \|\| echo "scheduled rehearsal could not finish"/);
+  assert.match(workflow, /node scripts\/merge-gate-rate-limit\.mjs gh -- api/);
 });
