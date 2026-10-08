@@ -465,6 +465,22 @@ test("failed-check rerun wait fits the readiness job timeout and uses the shared
   assert.ok(calls.some(args => args.includes("-X") && args.some(part => String(part).includes("rerun-failed-jobs"))));
 });
 
+test("native job caches npm, the pnpm store and Electron downloads without changing release timeouts", () => {
+  const native = workflow.slice(workflow.indexOf("\n  native:"), workflow.indexOf("\n  report:"));
+  assert.ok(native.length > 0);
+  assert.match(native, /timeout-minutes: 35/);
+  assert.match(native, /cache: npm/);
+  assert.match(native, /cache-dependency-path: desktop\/package-lock\.json/);
+  assert.match(native, /actions\/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9/);
+  assert.match(native, /component-release-pnpm-\$\{\{ runner\.os \}\}-\$\{\{ runner\.arch \}\}-\$\{\{ hashFiles\('engine\/pnpm-lock\.yaml'\) \}\}/);
+  assert.match(native, /component-release-electron-\$\{\{ runner\.os \}\}-\$\{\{ runner\.arch \}\}-\$\{\{ hashFiles\('desktop\/package-lock\.json'\) \}\}/);
+  assert.match(native, /Library\/Caches\/electron/);
+  assert.match(native, /Library\/Caches\/electron-builder/);
+  assert.match(native, /PNPM_STORE_DIR: \$\{\{ github\.workspace \}\}\/\.cache\/pnpm-store/);
+  assert.match(native, /ELECTRON_CACHE: \$\{\{ github\.workspace \}\}\/\.cache\/electron/);
+  assert.doesNotMatch(native, /package-manager-cache: false/);
+});
+
 test("desktop-checks runs readiness as its own node --test step after the desktop build", () => {
   const buildAt = desktopChecks.indexOf("run: npm run build");
   const stepAt = desktopChecks.indexOf("run: node --test scripts/component-release-readiness.test.mjs");
