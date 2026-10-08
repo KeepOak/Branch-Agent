@@ -6,12 +6,35 @@ import { renderDevicePairSetup } from "./view-pairing.runtime.ts";
 
 let restoreDialogPolyfill: () => void;
 
+function hushGetAnimations(root: ParentNode) {
+  const nodes = [root, ...root.querySelectorAll("*")];
+  for (const node of nodes) {
+    if (node instanceof Element) {
+      Object.defineProperty(node, "getAnimations", {
+        configurable: true,
+        value: () => [],
+      });
+      if (node.shadowRoot) {
+        hushGetAnimations(node.shadowRoot);
+      }
+    }
+  }
+}
+
 describe("device pairing dialog", () => {
   beforeEach(() => {
     restoreDialogPolyfill = installDialogPolyfill();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    for (const modal of document.querySelectorAll("branch-modal-dialog")) {
+      Object.assign(modal, { open: false });
+      const update = (modal as { updateComplete?: Promise<unknown> }).updateComplete;
+      if (update) {
+        await update;
+      }
+    }
+    hushGetAnimations(document);
     document.body.replaceChildren();
     restoreDialogPolyfill();
   });
@@ -25,7 +48,7 @@ describe("device pairing dialog", () => {
       access: "node" as const,
       href: "https://docs.openclaw.ai/gateway/pairing#one-paste-node-pairing",
     },
-  ])("links $access setup help to the matching workflow", ({ access, href }) => {
+  ])("links $access setup help to the matching workflow", async ({ access, href }) => {
     const container = document.createElement("div");
 
     render(
@@ -42,6 +65,10 @@ describe("device pairing dialog", () => {
       }),
       container,
     );
+    for (const modal of container.querySelectorAll("branch-modal-dialog")) {
+      await (modal as { updateComplete: Promise<unknown> }).updateComplete;
+    }
+    hushGetAnimations(container);
 
     expect(container.textContent).toContain(
       "Device capabilities plus complete Gateway controls, including settings and upgrades.",
@@ -52,7 +79,7 @@ describe("device pairing dialog", () => {
     );
   });
 
-  it("renders the node one-paste command and quiet expiry countdown", () => {
+  it("renders the node one-paste command and quiet expiry countdown", async () => {
     const container = document.createElement("div");
     document.body.append(container);
 
@@ -82,6 +109,10 @@ describe("device pairing dialog", () => {
       }),
       container,
     );
+    for (const modal of container.querySelectorAll("branch-modal-dialog")) {
+      await (modal as { updateComplete: Promise<unknown> }).updateComplete;
+    }
+    hushGetAnimations(container);
 
     expect(container.querySelectorAll('input[name="device-pair-access"]')).toHaveLength(3);
     const commandText = container.querySelector(".device-pair-setup__command code")?.textContent;
