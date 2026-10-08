@@ -1,0 +1,33 @@
+{
+  "id": "tencent-wsa",
+  "categories": ["web"],
+  "activation": { "onStartup": false },
+  "setup": { "providers": [{ "id": "tencent-wsa", "envVars": ["TENCENTCLOUD_WSA_APIKEY"] }] },
+  "contracts": { "webSearchProviders": ["tencent-wsa"] },
+  "uiHints": {
+    "webSearch.apiKey": { "label": "Tencent Cloud WSA API key", "sensitive": true },
+    "webSearch.maxResults": {
+      "label": "Maximum results",
+      "help": "Default 5, clamped to 50. Values over 10 request the next supported Tencent batch of 10."
+    },
+    "webSearch.mode": {
+      "label": "Result mode",
+      "help": "Optional Tencent mode: 0, 1 or 2. Omitted by default."
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "webSearch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiKey": { "type": ["string", "object"] },
+          "maxResults": { "type": ["integer", "string"] },
+          "mode": { "type": "integer", "enum": [0, 1, 2] }
+        }
+      }
+    }
+  }
+}
