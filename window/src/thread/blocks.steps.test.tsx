@@ -129,6 +129,19 @@ describe("preview step rows", () => {
     expect(card.querySelector(".seg button[aria-pressed=\"true\"]")?.textContent).toBe("Raw");
   });
 
+  it("shows list_windows as Listed open windows and never the raw action name", async () => {
+    const host = await renderFold([
+      step({ key: "w", tool: "computer", title: "list_windows", status: "ok", detail: "Checked what's open on the computer" }),
+      step({ key: "u", tool: "computer", title: "frob_widget", status: "ok" }),
+    ]);
+    const rows = [...host.querySelectorAll('[data-testid="step"]')];
+    expect(rows[0]?.querySelector(".step-label")?.textContent).toBe("Listed open windows");
+    expect(rows[0]?.querySelector(".step-detail")).toBeNull();
+    expect(rows[1]?.querySelector(".step-label")?.textContent).toBe("Used the computer");
+    expect(host.textContent).not.toContain("list_windows");
+    expect(host.textContent).not.toContain("frob_widget");
+  });
+
   it("renders expanded input as key: value lines, never JSON braces", async () => {
     const host = await renderFold([
       step({

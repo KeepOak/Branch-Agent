@@ -1,9 +1,21 @@
 import { describe, expect, it } from "vitest";
 import type { RunEvent } from "../connect/stream-order";
-import { projectRun, readApproval } from "./model";
+import { describeToolCall, projectRun, readApproval } from "./model";
 
 let seq = 0;
 const ev = (stream: string, data: Record<string, unknown>): RunEvent => ({ runId: "r1", seq: ++seq, stream, ts: 0, data });
+
+describe("describeToolCall", () => {
+  it("names a computer action in plain words and never uses a raw action or extra argument", () => {
+    expect(describeToolCall("computer", { action: "list_windows" })).toBe("Listed open windows");
+    expect(describeToolCall("computer", { action: "list_apps" })).toBe("Listed open apps");
+    expect(describeToolCall("computer", { action: "screenshot" })).toBe("Took a screenshot");
+    expect(describeToolCall("computer", { action: "click" })).toBe("Clicked");
+    expect(describeToolCall("computer", { action: "unknown_act", extra: "payload-token" })).toBe("Used the computer");
+    expect(describeToolCall("computer", { action: "unknown_act", extra: "payload-token" })).not.toContain("unknown_act");
+    expect(describeToolCall("computer", { action: "unknown_act", extra: "payload-token" })).not.toContain("payload-token");
+  });
+});
 
 describe("projectRun", () => {
   it("keeps recorded tool times without substituting the browser clock", () => {

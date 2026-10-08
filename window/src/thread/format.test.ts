@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clockLeft, dayStamp, formatDuration, modelName, parseDiffLines, rawDiffText, shortReason, stepExitCode, stepInputLines, stepKind, stepOutputFilename, stepOutputTail, stepsSummary } from "./format";
+import { clockLeft, dayStamp, formatDuration, modelName, parseDiffLines, rawDiffText, shortReason, stepExitCode, stepInputLines, stepKind, stepLabel, stepOutputFilename, stepOutputTail, stepsSummary } from "./format";
 import type { Block } from "./model";
 
 const step = (tool: string, status: "running" | "ok" = "ok"): Extract<Block, { kind: "step" }> => ({
@@ -19,6 +19,9 @@ describe("thread words", () => {
     expect(stepsSummary([{ ...step("exec"), at: 1_000 }, { ...step("read"), at: 42_000 }])).toBe("Ran a command and read a file · 2 steps · 41s");
     expect(stepsSummary([step("exec"), step("read", "running")])).toBe("Reading a file");
     expect(stepsSummary([step("exec")], { title: "text", durationMs: 59_000 })).toBe("Ran a command");
+    expect(stepLabel({ ...step("computer"), title: "list_windows" })).toBe("Listed open windows");
+    expect(stepLabel({ ...step("computer"), title: "frob_widget" })).toBe("Used the computer");
+    expect(stepLabel({ ...step("computer"), title: "list_windows" })).not.toContain("list_windows");
   });
 
   it("stamps the day over the first message of each day", () => {
