@@ -21,6 +21,8 @@ export {
   buildUnsupportedSearchFilterResponse,
   DEFAULT_SEARCH_COUNT,
   FRESHNESS_TO_RECENCY,
+  resolveWebSearchErrorDocs,
+  WEB_SEARCH_HELP_URL,
   isoToPerplexityDate,
   MAX_SEARCH_COUNT,
   normalizeFreshness,

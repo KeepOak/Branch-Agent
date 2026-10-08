@@ -33,6 +33,17 @@ export type SearchConfigRecord = NonNullable<
 
 export const DEFAULT_SEARCH_COUNT = 5;
 export const MAX_SEARCH_COUNT = 10;
+
+/** Public KeepOak site shown on user-visible web_search errors. */
+export const WEB_SEARCH_HELP_URL = "https://keepoak.com";
+
+/** Docs link on web_search errors. OpenClaw destinations are never shown to users. */
+export function resolveWebSearchErrorDocs(docs?: string): string {
+  if (!docs || /openclaw/i.test(docs)) {
+    return WEB_SEARCH_HELP_URL;
+  }
+  return docs;
+}
 const SEARCH_CACHE = new Map<string, CacheEntry<Record<string, unknown>>>();
 
 export function resolveSearchTimeoutSeconds(searchConfig?: SearchConfigRecord): number {
@@ -215,7 +226,7 @@ export function parseIsoDateRange(params: {
       message: string;
       docs: string;
     } {
-  const docs = params.docs ?? "https://docs.openclaw.ai/tools/web";
+  const docs = resolveWebSearchErrorDocs(params.docs);
   const dateAfter = params.rawDateAfter ? normalizeToIsoDate(params.rawDateAfter) : undefined;
   if (params.rawDateAfter && !dateAfter) {
     return {
@@ -308,7 +319,7 @@ export function parseWebSearchTimeFilters<Provider extends WebSearchFreshnessPro
       message: string;
       docs: string;
     } {
-  const docs = params.docs ?? "https://docs.openclaw.ai/tools/web";
+  const docs = resolveWebSearchErrorDocs(params.docs);
   const freshness = params.rawFreshness
     ? normalizeFreshness(params.rawFreshness, params.freshnessProvider)
     : undefined;
@@ -369,7 +380,7 @@ export function writeCachedSearchPayload(
 export function buildUnsupportedSearchFilterResponse(
   params: Record<string, unknown>,
   provider: string,
-  docs = "https://docs.openclaw.ai/tools/web",
+  docs = WEB_SEARCH_HELP_URL,
 ):
   | {
       error: string;
@@ -393,6 +404,6 @@ export function buildUnsupportedSearchFilterResponse(
       ? "unsupported_date_filter"
       : `unsupported_${unsupported}`,
     message: `${label} is not supported by the ${provider} provider. Only Brave and Perplexity support ${supportedLabel}.`,
-    docs,
+    docs: resolveWebSearchErrorDocs(docs),
   };
 }
