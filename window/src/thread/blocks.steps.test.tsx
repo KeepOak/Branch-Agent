@@ -91,6 +91,22 @@ describe("preview step rows", () => {
     expect(rows[0]?.querySelector('[data-testid="step-output"]')).toBeNull();
   });
 
+  it("does not show No output on a read or edit step that has no output field", async () => {
+    const host = await renderFold([
+      step({ key: "r", tool: "read", title: "src/dates.test.ts", status: "ok" }),
+      step({
+        key: "e",
+        tool: "apply_patch",
+        title: "src/dates.ts",
+        status: "ok",
+        changes: [{ path: "src/dates.ts", added: 1, removed: 0, diff: "+ok" }],
+      }),
+    ]);
+    expect(host.querySelector(".nout-pb18")).toBeNull();
+    expect(host.querySelector('[data-testid="step-output"]')).toBeNull();
+    expect(host.querySelector('[data-testid="files-changed"]')).not.toBeNull();
+  });
+
   it("toggles a file card between Diff and Raw and labels failed edits Attempted changes", async () => {
     const changes = [
       { path: "src/dates.ts", added: 3, removed: 1, diff: "@@ -1 +1 @@\n export function format(day: Date) {\n-  return day.toLocaleDateString();\n+  return day.toLocaleDateString(\"en-US\", { timeZone: \"UTC\" });\n }" },

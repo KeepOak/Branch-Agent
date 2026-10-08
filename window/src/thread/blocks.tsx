@@ -161,7 +161,8 @@ function StepOutput({ step }: { step: Of<"step"> }) {
   const done = step.status !== "running";
   const exit = stepExitCode(step.detail);
   if (!whole) {
-    return done ? <p className="nout-pb18 step-none">{step.status === "ok" ? "No output · it finished." : "No output · it failed."}</p> : null;
+    const ran = stepKind(step.tool) === "run" || step.output != null || Boolean(step.outputKey);
+    return done && ran ? <p className="nout-pb18 step-none">{step.status === "ok" ? "No output · it finished." : "No output · it failed."}</p> : null;
   }
   const tail = stepOutputTail(whole);
   const name = stepOutputFilename(step.title || stepLabel(step));
