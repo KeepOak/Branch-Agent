@@ -97,7 +97,16 @@ function Window({ url, sharedToken, onConnect, onRetry }: WindowProps) {
     };
   }, [session]);
   const s = useSyncExternalStore(session.subscribe, session.getSnapshot);
-  const [everConnected, setEverConnected] = useState(() => sessionStorage.getItem(RESIDENT_URL_KEY) === url);
+  const [everConnected, setEverConnected] = useState(() => {
+    const residentUrl = sessionStorage.getItem(RESIDENT_URL_KEY);
+    if (!residentUrl) return false;
+    try {
+      // Preload's handoff URL has a trailing slash; desktop info after reload may not.
+      return new URL(residentUrl).href === new URL(url).href;
+    } catch {
+      return false;
+    }
+  });
   useEffect(() => {
     if (s.status.phase === "connected") {
       sessionStorage.setItem(RESIDENT_URL_KEY, activeUrl);

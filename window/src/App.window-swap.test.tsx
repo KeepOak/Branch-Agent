@@ -57,8 +57,9 @@ async function connected() {
   await act(async () => fake.gateways[0]!.options.onStatus({ phase: "connected", hello } as unknown as GatewayStatus));
 }
 
-it("keeps the resident window while reconnecting after a reload of the same target", async () => {
-  sessionStorage.setItem(marker, url);
+it.each([[url, url], [`${url}/`, url], [url, `${url}/`]])("keeps the resident window while reconnecting after a reload of the same target (%s, %s)", async (storedUrl, desktopUrl) => {
+  sessionStorage.setItem(marker, storedUrl);
+  (window as { branchDesktop?: unknown }).branchDesktop = { gatewayUrl: desktopUrl, gatewayToken: "test-token" };
   const host = await mount();
   expect(host.querySelector('[data-testid="resident-window"]')).not.toBeNull();
   expect(host.textContent).not.toContain("Starting Branch");
@@ -100,20 +101,23 @@ it("keeps the resident window after a local engine handoff and reload", async ()
   await connected();
   expect(sessionStorage.getItem(marker)).toBe(url);
 
-  currentUrl = otherUrl;
+  // Production preload stores and dispatches new URL(next).href, including its trailing slash.
+  currentUrl = new URL(otherUrl).href;
   await act(async () => window.dispatchEvent(new CustomEvent("branch:engine-handoff", {
     detail: { gatewayUrl: currentUrl },
   })));
   expect(fake.gateways).toHaveLength(2);
   const successor = fake.gateways[1]!;
-  expect(successor.options.url).toBe(otherUrl);
+  expect(successor.options.url).toBe(currentUrl);
   await act(async () => successor.options.onStatus({ phase: "connected", hello } as unknown as GatewayStatus));
-  expect(sessionStorage.getItem(marker)).toBe(otherUrl);
+  expect(sessionStorage.getItem(marker)).toBe(currentUrl);
   expect(host.querySelector('[data-testid="resident-window"]')).not.toBeNull();
 
   await act(async () => root?.unmount());
   root = undefined;
   vi.resetModules();
+  // After reload, branch-desktop:info provides the target without a trailing slash.
+  currentUrl = otherUrl;
   (window as { branchDesktop?: unknown }).branchDesktop = {
     gatewayUrl: currentUrl, getGatewayUrl: () => currentUrl, gatewayToken: "test-token",
   };
