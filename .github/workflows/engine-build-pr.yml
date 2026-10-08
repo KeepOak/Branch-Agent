@@ -14,8 +14,8 @@ env:
   BRANCH_BUILD_TIMESTAMP: ${{ github.event.pull_request.updated_at }}
 
 concurrency:
-  group: engine-build-pr-${{ github.ref }}
-  cancel-in-progress: true
+  group: engine-build-pr-${{ github.event.pull_request.head.sha || github.ref }}
+  cancel-in-progress: ${{ github.event.action == 'converted_to_draft' }}
 
 jobs:
   prepare:

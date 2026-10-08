@@ -35,8 +35,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: os-specific-${{ github.ref }}
-  cancel-in-progress: true
+  group: os-specific-${{ github.event.pull_request.head.sha || github.ref }}
+  cancel-in-progress: ${{ github.event.action == 'converted_to_draft' }}
 
 jobs:
   named:

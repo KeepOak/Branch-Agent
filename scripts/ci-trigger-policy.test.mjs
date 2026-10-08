@@ -88,16 +88,35 @@ test('PR-triggered check workflows list ready_for_review and converted_to_draft 
   }
 });
 
-test('merge-gate lists ready_for_review and converted_to_draft', () => {
+test('merge-gate lists edited so body updates retrigger without cancelling the wait', () => {
   const types = pullRequestTypes(readWorkflow('merge-gate.yml'));
-  for (const required of requiredPullRequestTypes) {
-    assert.ok(types.includes(required),
-      `merge-gate pull_request types must include ${required}`);
-  }
+  assert.ok(types.includes('edited'),
+    'merge-gate pull_request types must include edited');
 });
 
 test("component-release concurrency never cancels pushes", () => {
   const concurrency = blockAt(readWorkflow('component-release.yml'), 'concurrency', 0);
   assert.match(concurrency, /cancel-in-progress:\s*\$\{\{\s*github\.event_name\s*==\s*'pull_request'\s*\}\}/);
   assert.doesNotMatch(concurrency, /github\.event_name\s*==\s*'push'/);
+});
+
+test('PR check workflows key concurrency by head SHA and do not cancel synchronize', () => {
+  for (const name of checkWorkflows()) {
+    if (name === 'component-release.yml' || name === 'gate-files-fresh.yml') continue;
+    const concurrency = blockAt(readWorkflow(name), 'concurrency', 0);
+    assert.ok(
+      concurrency.includes('github.event.pull_request.head.sha'),
+      `${name} concurrency group must include the PR head SHA`,
+    );
+    assert.doesNotMatch(
+      concurrency,
+      /cancel-in-progress:\s*true\s*$/m,
+      `${name} must not cancel every in-progress PR run`,
+    );
+    assert.doesNotMatch(
+      concurrency,
+      /cancel-in-progress:\s*\$\{\{\s*github\.event_name\s*==\s*'pull_request'\s*\}\}/,
+      `${name} must not cancel all pull_request events`,
+    );
+  }
 });

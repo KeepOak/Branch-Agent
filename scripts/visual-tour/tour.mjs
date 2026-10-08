@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { readScreens } from './manifest.mjs';
 import { checkedStep } from './dead-click.mjs';
 import { gatewayPort } from './gateway-port.mjs';
+import { previewState } from './preview.mjs';
 
 const require = createRequire(new URL('../../engine/package.json', import.meta.url));
 const { chromium } = require('playwright-core');
@@ -35,6 +36,8 @@ try {
     await page.addInitScript(([url, key, look]) => {
       window.branchDesktop = { gatewayUrl: url, gatewayToken: key };
       localStorage.setItem('branch.theme', look);
+      localStorage.setItem('branch-proto-welcomed', '1');
+      localStorage.setItem('branch-proto-seen13', '1');
     }, [gateway, token, theme]);
     for (const screen of screens) {
       const stem = `${theme}-${width}-${screen.id}`;
@@ -48,7 +51,7 @@ try {
         await page.reload({ waitUntil: 'domcontentloaded' });
         await page.locator('[data-connection=ready]').waitFor({ timeout: 60000 });
         await page.getByText('Researcher', { exact: true }).first().waitFor({ state: 'attached', timeout: 30000 });
-        if (width === 700 && ['main-chat', 'new-menu', 'settings-general', 'settings-accounts', 'add-claude-account', 'settings-updates', 'group-chat', 'topics'].includes(screen.id)) {
+        if (width === 700 && ['main-chat', 'new-menu', 'settings-general', 'settings-accounts', 'add-claude-account', 'settings-updates', 'group-chat', 'topics', 'row-menu'].includes(screen.id)) {
           const list = page.getByTestId('list-toggle');
           // At narrow widths the button opens a slide-out drawer. aria-pressed
           // describes the desktop rail, not the drawer's open state.
@@ -65,17 +68,24 @@ try {
     if (previewUrl) {
       const preview = await context.newPage();
       await preview.goto(previewUrl, { waitUntil: 'domcontentloaded' });
+      await preview.locator('#app').waitFor();
       for (const screen of screens) {
         const stem = `${theme}-${width}-${screen.id}`;
         try {
-          await preview.evaluate((id) => {
+          await preview.evaluate((state) => {
             closePop(); closeDlg();
-            if (id.startsWith('settings-') || id === 'add-claude-account') {
-              S.view = 'settings'; S.setPage = id === 'settings-updates' ? 'updates' : id === 'settings-general' ? 'general' : 'accounts'; render();
-            } else if (id === 'pixel-office' || id === 'drag-to-group') openGroveT5();
-            else { S.view = 'chat'; S.chat = id === 'group-chat' ? 'room' : 'scout'; render(); }
-          }, screen.id);
+            if (state.kind === 'grove') { openGroveT5(); return; }
+            if (state.kind === 'settings') { S.view = 'settings'; S.setPage = state.page; render(); return; }
+            S.view = state.view;
+            if (state.chat) S.chat = state.chat;
+            if (state.tabs) Object.assign(S.tabs, state.tabs);
+            if (state.tools9) S.tools9 = { ...S.tools9, ...state.tools9 };
+            if (state.stage) S.stage = state.stage;
+            if ('pane' in state) S.pane = state.pane;
+            render();
+          }, previewState(screen.id));
           if (screen.id === 'add-claude-account') await preview.getByText('Add a Claude account', { exact: true }).first().click().catch(() => {});
+          if (screen.id === 'row-menu') await preview.locator('.row[data-id]').first().click({ button: 'right' }).catch(() => {});
           await preview.screenshot({ path: resolve(out, `${stem}-preview.png`) });
           pairs.push({ app: `${stem}.png`, preview: `${stem}-preview.png` });
         } catch (error) { failures.push(`${stem} preview: ${error.message}`); }

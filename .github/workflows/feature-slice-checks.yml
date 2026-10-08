@@ -25,8 +25,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: feature-slices-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+  group: feature-slices-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' || github.event.action == 'converted_to_draft' }}
 
 jobs:
   feature-slices:

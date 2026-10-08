@@ -5,7 +5,7 @@ name: Merge gate
 # commit and fails if any of them failed. `main` requires only this check.
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
@@ -13,8 +13,9 @@ permissions:
   actions: read
 
 concurrency:
-  group: merge-gate-${{ github.ref }}
-  cancel-in-progress: true
+  # Body edits keep the same SHA; do not cancel the wait already running for this PR.
+  group: merge-gate-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: ${{ github.event.action != 'edited' }}
 
 jobs:
   changed-test-coverage:
@@ -44,6 +45,12 @@ jobs:
         run: |
           node --test scripts/check-copied-csv.test.mjs scripts/feature-batch-ci-shard.test.mjs
           node scripts/check-copied-csv.mjs
+      - name: Test UI screenshot proof check
+        run: node --test scripts/check-ui-proof.test.mjs
+      - name: Require screenshots for window UI changes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/check-ui-proof.mjs
 
   merge-gate:
     needs: changed-test-coverage

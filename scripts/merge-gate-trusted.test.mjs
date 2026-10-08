@@ -906,13 +906,29 @@ test('old-base PR still runs the trusted check from the default branch', () => {
   ]);
   assert.equal(filesAtOldBase.has('scripts/merge-gate-trusted.test.mjs'), false);
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-trusted.test.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.test.mjs'));
+  const trustedSource = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
+  assert.match(trustedSource, /from '\.\/check-ui-proof\.mjs'/);
+  assert.match(trustedSource, /runUiProofFromPr\(/);
 });
 
-test('merge-gate lists ready_for_review and converted_to_draft so drafts start and stop the wait', () => {
+test('trusted gate re-runs the UI screenshot proof check from main', () => {
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.test.mjs'));
+});
+
+test('merge-gate skips coverage on drafts and fails fast without waiting', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
   assert.match(yaml, /^  pull_request:\s*$/m);
-  assert.match(yaml, /^\s+types:.*ready_for_review/m);
-  assert.match(yaml, /^\s+types:.*converted_to_draft/m);
+  assert.match(yaml, /if: github\.event\.pull_request\.draft == false/);
+  assert.match(yaml, /Fail drafts without waiting/);
+});
+
+test('merge-gate edited trigger does not cancel an in-progress wait', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /types:\s*\[[^\]]*edited[^\]]*\]/);
+  assert.match(yaml, /cancel-in-progress:\s*\$\{\{\s*github\.event\.action\s*!=\s*'edited'\s*\}\}/);
 });
 
 test('merge-gate wait ignores merge-gate-trusted so the two gates cannot deadlock', () => {
