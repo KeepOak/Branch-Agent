@@ -1,0 +1,19 @@
+{
+  "screenCount": 41,
+  "clickCount": 752,
+  "caps": {
+    "maxScreens": 48,
+    "maxPerScreen": 28,
+    "maxClicks": 800,
+    "maxDepth": 1,
+    "maxOverlays": 8,
+    "maxChrome": 20,
+    "maxNav": 48,
+    "maxSidebar": 40
+  },
+  "gate": {
+    "ok": true,
+    "news": [],
+    "stale": []
+  }
+}
