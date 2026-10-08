@@ -1,4 +1,4 @@
-// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/process/supervisor/linux-child-subreaper.ts (atlas SESSIONS-0102). Changed for Branch: discover PPID and waitid candidates when optional procfs task children files are absent; admit a source-loaded owner only when that census is empty.
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/process/supervisor/linux-child-subreaper.ts (atlas SESSIONS-0102). Changed for Branch: discover process-leader PPIDs and waitid candidates when optional procfs task children files are absent; reap leftover loader children until waitid is ECHILD before admitting a source-loaded owner.
 import type { ChildProcess } from "node:child_process";
 import { Buffer } from "node:buffer";
 import { readdirSync, readFileSync } from "node:fs";
@@ -78,9 +78,23 @@ function childPidsFromParentIdentity(): number[] {
         }
       }
     }
-    if (ppid === process.pid) {
-      children.push(Number(name));
+    if (ppid !== process.pid) {
+      continue;
     }
+    // /proc lists thread tids next to tgids. A thread of a child is not itself
+    // a waitable child of this process; only the thread-group leader is.
+    try {
+      const status = readFileSync(`/proc/${name}/status`, "utf8");
+      const tgid = /^Tgid:\s+(\d+)\s*$/mu.exec(status);
+      if (tgid && tgid[1] !== name) {
+        continue;
+      }
+    } catch (error) {
+      if (!isAbsentProcEntry(error)) {
+        throw error;
+      }
+    }
+    children.push(Number(name));
   }
   return children;
 }
@@ -199,17 +213,25 @@ export function acquireLinuxChildSubreaper() {
       signaledChildren.delete(pid);
     });
   };
-  // Task-children files are the dedicated-owner census when this kernel has
-  // them. A NODE_OPTIONS preload can hide those files; PPID walks then pick up
-  // leftover tsx compiler pids that waitid no longer owns. In that case admit
-  // only from kernel wait ownership.
+  // Task-children files are the live-child census when this kernel has them.
+  // A NODE_OPTIONS preload can hide those files. waitid with a null siginfo
+  // then returns rc=0 for both a leftover tsx-compiler zombie and a compiler
+  // that has not exited yet. Collect wait-owned leftovers until ECHILD so a
+  // source-loaded owner admits after its loader finishes. Visible live
+  // children still refuse admission.
   const fromFiles = childPidsFromTaskFiles();
-  const waited = probeWaitid(P_ALL, 0, WEXITED | WNOHANG | WNOWAIT | WALL);
-  if (fromFiles.readableThreads > 0 ? fromFiles.pids.length > 0 : waited.rc === 0) {
+  if (fromFiles.readableThreads > 0 && fromFiles.pids.length > 0) {
     throw new Error("Linux child ownership requires a dedicated owner without existing children");
   }
-  if (fromFiles.readableThreads === 0 && waited.errno !== ECHILD) {
-    fail("admission wait", waited.errno);
+  for (;;) {
+    const leftover = observeWaitid(P_ALL, 0, WEXITED | WALL);
+    if (leftover.errno === ECHILD) {
+      break;
+    }
+    if (leftover.rc !== 0) {
+      fail("admission wait", leftover.errno);
+    }
+    // observeWaitid without WNOWAIT already reaped this leftover.
   }
   let closed = false;
   const owns = (pid: number): boolean => {
