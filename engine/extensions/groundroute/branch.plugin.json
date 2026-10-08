@@ -1,0 +1,94 @@
+{
+  "id": "groundroute",
+  "categories": [
+    "web"
+  ],
+  "activation": {
+    "onStartup": false
+  },
+  "setup": {
+    "providers": [
+      {
+        "id": "groundroute",
+        "envVars": [
+          "GROUNDROUTE_API_KEY"
+        ]
+      }
+    ]
+  },
+  "contracts": {
+    "webSearchProviders": [
+      "groundroute"
+    ],
+    "webFetchProviders": [
+      "groundroute"
+    ]
+  },
+  "uiHints": {
+    "webSearch.apiKey": {
+      "label": "GroundRoute web search API Key",
+      "help": "Uses GROUNDROUTE_API_KEY when this tool has no configured key.",
+      "sensitive": true
+    },
+    "webFetch.apiKey": {
+      "label": "GroundRoute web fetch API Key",
+      "help": "Uses GROUNDROUTE_API_KEY when this tool has no configured key.",
+      "sensitive": true
+    }
+  },
+  "configGroups": [
+    {
+      "id": "webSearch",
+      "title": "Web search",
+      "order": 10,
+      "properties": [
+        "webSearch"
+      ]
+    },
+    {
+      "id": "webFetch",
+      "title": "Web fetch",
+      "order": 20,
+      "properties": [
+        "webFetch"
+      ]
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "webSearch": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "apiKey": {
+            "type": [
+              "string",
+              "object"
+            ]
+          },
+          "maxResults": {
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "Maximum results, default 5. Requests clamp to 1\u201350."
+          }
+        }
+      },
+      "webFetch": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "apiKey": {
+            "type": [
+              "string",
+              "object"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
