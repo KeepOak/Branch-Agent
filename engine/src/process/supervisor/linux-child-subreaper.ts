@@ -1,5 +1,6 @@
 // From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/process/supervisor/linux-child-subreaper.ts (atlas SESSIONS-0102). Changed for Branch: discover PPID candidates when optional procfs task children files are absent; retain kernel wait ownership before signaling or reaping.
 import type { ChildProcess } from "node:child_process";
+import { Buffer } from "node:buffer";
 import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { hasErrnoCode } from "../../infra/errno.js";
@@ -87,14 +88,16 @@ function childPidsFromParentIdentity(): number[] {
 function childPids(): number[] {
   const children = new Set<number>();
   let readableThreads = 0;
+  let absentThreads = 0;
   for (const thread of readdirSync("/proc/self/task")) {
     let value: string;
     try {
       value = readFileSync("/proc/self/task/" + thread + "/children", "utf8");
     } catch (error) {
       // A thread can retire, or this kernel can omit task children files.
-      // Neither is extinction evidence; fall back only when no file was readable.
+      // Partial visibility is not a complete census; merge the PPID scan.
       if (isAbsentProcEntry(error)) {
+        absentThreads += 1;
         continue;
       }
       throw error;
@@ -107,7 +110,12 @@ function childPids(): number[] {
       children.add(Number(pid));
     }
   }
-  return readableThreads > 0 ? [...children] : childPidsFromParentIdentity();
+  if (readableThreads === 0 || absentThreads > 0) {
+    for (const pid of childPidsFromParentIdentity()) {
+      children.add(pid);
+    }
+  }
+  return [...children];
 }
 
 /** One dedicated process acquires adoption before launching any application work. */
@@ -129,22 +137,29 @@ export function acquireLinuxChildSubreaper() {
   const getSubreaper = libc.func(
     "int prctl(int, _Out_ int *, unsigned long, unsigned long, unsigned long)",
   );
-  // Linux permits a null siginfo pointer. WNOWAIT checks wait ownership without
-  // consuming libuv's direct-child status or releasing an adopted child's PID.
-  const waitid = libc.func("int waitid(int, unsigned int, void *, int)");
-  const SigInfo = koffi.struct("siginfo_waitid", {
-    si_signo: "int",
-    si_errno: "int",
-    si_code: "int",
-    __pad0: "int",
-    si_pid: "int",
-    si_uid: "uint32",
-    si_status: "int",
-  });
-  const waitidInfo = libc.func("int waitid(int, unsigned int, _Out_ siginfo_waitid *, int)");
+  // Linux writes siginfo_t in place. koffi only copies a Buffer back when the
+  // pointer is _Inout_; a bare void* keeps the kernel write in a discarded temp.
+  // 64-bit siginfo_t places si_pid at offset 16 after si_signo/si_errno/si_code/pad.
+  const SIGINFO_SIZE = 128;
+  const SI_PID_OFFSET = 16;
+  const waitid = libc.func("int waitid(int, unsigned int, _Inout_ uint8_t *, int)");
   const waitpid = libc.func("int waitpid(int, int *, int)");
   const fail = (operation: string, errno = koffi.errno()): never => {
     throw new Error("Linux child ownership " + operation + " failed (errno " + errno + ")");
+  };
+  const observeWaitid = (idtype: number, id: number, options: number) => {
+    for (;;) {
+      const info = Buffer.alloc(SIGINFO_SIZE);
+      const rc = waitid(idtype, id, info, options);
+      if (rc === 0) {
+        const pid = info.readInt32LE(SI_PID_OFFSET);
+        return { rc, errno: 0, pid: Number.isSafeInteger(pid) && pid > 0 ? pid : 0 };
+      }
+      const errno = koffi.errno();
+      if (errno !== EINTR) {
+        return { rc, errno, pid: 0 };
+      }
+    }
   };
   if (prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) !== 0) {
     fail("admission");
@@ -170,40 +185,34 @@ export function acquireLinuxChildSubreaper() {
   // A loader thread can reap its compiler concurrently with this thread. That
   // would invalidate numeric-PID pinning. Admit only the dedicated built owner,
   // before its one libuv-owned application root has been spawned.
-  if (childPids().length > 0) {
+  const waited = observeWaitid(P_ALL, 0, WEXITED | WNOHANG | WNOWAIT | WALL);
+  if (childPids().length > 0 || waited.rc === 0) {
     throw new Error("Linux child ownership requires a dedicated owner without existing children");
+  }
+  if (waited.errno !== ECHILD) {
+    fail("admission wait", waited.errno);
   }
   let closed = false;
   const owns = (pid: number): boolean => {
-    for (;;) {
-      if (waitid(P_PID, pid, null, WEXITED | WNOHANG | WNOWAIT | WALL) === 0) {
-        return true;
-      }
-      const errno = koffi.errno();
-      if (errno === ECHILD) {
-        return false;
-      }
-      if (errno !== EINTR) {
-        fail("child wait", errno);
-      }
+    const observed = observeWaitid(P_PID, pid, WEXITED | WNOHANG | WNOWAIT | WALL);
+    if (observed.rc === 0) {
+      return true;
     }
+    if (observed.errno === ECHILD) {
+      return false;
+    }
+    fail("child wait", observed.errno);
   };
   /** When task children files and /proc PPID scans miss a descendant, waitid still names one. */
   const childPidsFromWaitOwnership = (): number[] => {
-    for (;;) {
-      const info = { si_signo: 0, si_errno: 0, si_code: 0, __pad0: 0, si_pid: 0, si_uid: 0, si_status: 0 };
-      if (waitidInfo(P_ALL, 0, info, WEXITED | WNOHANG | WNOWAIT | WALL) === 0) {
-        const pid = info.si_pid;
-        return Number.isSafeInteger(pid) && pid > 0 ? [pid] : [];
-      }
-      const errno = koffi.errno();
-      if (errno === ECHILD) {
-        return [];
-      }
-      if (errno !== EINTR) {
-        fail("child wait", errno);
-      }
+    const observed = observeWaitid(P_ALL, 0, WEXITED | WNOHANG | WNOWAIT | WALL);
+    if (observed.rc === 0) {
+      return observed.pid > 0 ? [observed.pid] : [];
     }
+    if (observed.errno === ECHILD) {
+      return [];
+    }
+    fail("child wait", observed.errno);
   };
   return {
     retainLibuvChild,
@@ -212,8 +221,11 @@ export function acquireLinuxChildSubreaper() {
       if (closed) {
         return true;
       }
-      const discovered = childPids();
-      for (const pid of discovered.length > 0 ? discovered : childPidsFromWaitOwnership()) {
+      const discovered = new Set(childPids());
+      for (const pid of childPidsFromWaitOwnership()) {
+        discovered.add(pid);
+      }
+      for (const pid of discovered) {
         if (!owns(pid)) {
           continue;
         }
@@ -244,15 +256,15 @@ export function acquireLinuxChildSubreaper() {
           }
         }
       }
-      if (waitid(P_ALL, 0, null, WEXITED | WNOHANG | WNOWAIT | WALL) === 0) {
+      const remaining = observeWaitid(P_ALL, 0, WEXITED | WNOHANG | WNOWAIT | WALL);
+      if (remaining.rc === 0) {
         return false;
       }
-      const errno = koffi.errno();
-      if (errno === EINTR) {
+      if (remaining.errno === EINTR) {
         return false;
       }
-      if (errno !== ECHILD) {
-        fail("extinction observation", errno);
+      if (remaining.errno !== ECHILD) {
+        fail("extinction observation", remaining.errno);
       }
       closed = true;
       return true;
