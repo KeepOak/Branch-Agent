@@ -2,19 +2,13 @@ import {
   normalizeOptionalLowercaseString,
   normalizeOptionalString,
 } from "@branch/normalization-core/string-coerce";
-import type { SourceReplyDeliveryMode } from "../../auto-reply/get-reply-options.types.js";
 import { resolveActiveReplyOperationForSessionId } from "../../auto-reply/reply/reply-run-registry.js";
-import type { ChatType } from "../../channels/chat-type.js";
-import type { InboundEventKind } from "../../channels/inbound-event/kind.js";
-import type { ConversationReadInvocationOrigin } from "../../channels/plugins/conversation-read-origin.js";
-import type { PreparedMessageToolCatalog } from "../../channels/plugins/message-action-discovery.js";
 import { isScheduledMessageWriteAction } from "../../channels/plugins/message-action-dispatch.js";
 import type { ChannelMessageActionName } from "../../channels/plugins/types.public.js";
 import { resolveCommandSecretRefsViaGateway } from "../../cli/command-secret-gateway.js";
 import { getScopedChannelsCommandSecretTargets } from "../../cli/command-secret-targets.js";
 import { resolveMessageSecretScope } from "../../cli/message-secret-scope.js";
 import { getRuntimeConfig } from "../../config/config.js";
-import type { BranchConfig } from "../../config/types.branch.js";
 import * as messageActionTurnCapability from "../../gateway/message-action-turn-capability.js";
 import type { MessageActionAuthorization } from "../../gateway/message-action-turn-capability.js";
 import { resolveMessageChannelSelection } from "../../infra/outbound/channel-selection.js";
@@ -28,16 +22,16 @@ import { hasAcceptedMessageActionResult } from "../../infra/outbound/message-act
 import { getToolResult, runMessageAction } from "../../infra/outbound/message-action-runner.js";
 import { isDeliveredCurrentSourceReplyAsync } from "../../infra/outbound/source-reply-mirror.js";
 import { readBooleanParam } from "../../plugin-sdk/boolean-param.js";
-import { createAgentToAgentPolicy } from "../../plugin-sdk/session-visibility.js";
 import { stringifyRouteThreadId } from "../../plugin-sdk/channel-route.js";
+import { createAgentToAgentPolicy } from "../../plugin-sdk/session-visibility.js";
 import { getPreparedMessageToolCatalog } from "../../plugins/prepared-message-tool-catalog.js";
 import { withPreparedChannelReadAuthority } from "../../shared/channel-read-authority.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import * as embeddedMessageDelivery from "../embedded-agent-message-delivery.js";
 import { createSandboxBridgeReadFile } from "../sandbox-media-paths.js";
-import type { SandboxFsBridge } from "../sandbox/fs-bridge.js";
 import { type AnyAgentTool, jsonResult, readToolStringParam } from "./common.js";
 import { captureGatewayToolCallerAssertion } from "./gateway-caller-context.js";
+import { executeInAppReaction } from "./message-tool-app-reaction.js";
 import {
   createMessageToolDecisionRecorder,
   resolveTrustedDecisionChannel,
@@ -46,6 +40,7 @@ import {
   buildMessageToolDescription,
   buildMessageToolSchema,
   type MessageToolDiscoveryParams,
+  type MessageToolOptions,
   resolveAgentAccountId,
   resolveEffectiveCurrentChannelContext,
   resolveMessageToolActionSchemaActions,
@@ -86,49 +81,6 @@ const recentPollVoteBySession = new Map<
   string,
   { option: string; route: string; recordedAt: number }
 >();
-
-type MessageToolOptions = {
-  agentAccountId?: string;
-  agentSessionKey?: string;
-  runSessionKey?: string;
-  runId?: string;
-  sessionId?: string;
-  agentId?: string;
-  config?: BranchConfig;
-  preparedMessageToolCatalog?: PreparedMessageToolCatalog;
-  getRuntimeConfig?: () => BranchConfig;
-  admitScheduledInvocation?: () => BranchConfig;
-  getScopedChannelsCommandSecretTargets?: typeof getScopedChannelsCommandSecretTargets;
-  resolveCommandSecretRefsViaGateway?: typeof resolveCommandSecretRefsViaGateway;
-  runMessageAction?: typeof runMessageAction;
-  currentChannelId?: string;
-  currentChatType?: ChatType;
-  currentMessagingTarget?: string;
-  messageActionTurnCapability?: string;
-  currentChannelProvider?: string;
-  currentThreadTs?: string;
-  agentThreadId?: string | number;
-  currentMessageId?: string | number;
-  currentInboundAudio?: boolean;
-  hasCurrentInboundAudio?: () => boolean;
-  replyToMode?: "off" | "first" | "all" | "batched";
-  hasRepliedRef?: { value: boolean };
-  sameChannelThreadRequired?: boolean;
-  sandboxRoot?: string;
-  sandboxContainerWorkdir?: string;
-  sandboxFsBridge?: SandboxFsBridge;
-  sandboxReadOnlyResourceMounts?: readonly { hostPath: string; containerPath: string }[];
-  sandboxWorkspaceMediaReadAllowed?: boolean;
-  requireExplicitTarget?: boolean;
-  sourceReplyDeliveryMode?: SourceReplyDeliveryMode;
-  /** Process-local completion authority: send only to the current source route. */
-  sourceReplyOnly?: boolean;
-  inboundEventKind?: InboundEventKind;
-  requesterSenderId?: string;
-  senderIsOwner?: boolean;
-  conversationReadOrigin?: ConversationReadInvocationOrigin;
-  workspaceDir?: string;
-};
 
 export function createMessageTool(options?: MessageToolOptions): AnyAgentTool {
   const loadConfigForTool = options?.getRuntimeConfig ?? getRuntimeConfig;
@@ -348,6 +300,20 @@ export function createMessageTool(options?: MessageToolOptions): AnyAgentTool {
         decisions.runBoundary(() => explicitTargetGuard.require(params, action));
       }
 
+      const appReaction = await executeInAppReaction({
+        action,
+        params,
+        options,
+        cfg: rawConfig,
+        agentId: resolvedAgentId,
+        currentChannelProvider: effectiveCurrentChannel.currentChannelProvider,
+        currentSourceTurnId: trustedTurnContext?.toolContext?.currentSourceTurnId,
+        assertCurrent: assertActionCurrent,
+      });
+      if (appReaction) {
+        return appReaction;
+      }
+
       const gatewayContext = { ...options, messageActionTurnCapability: gatewayTurnCapability };
       const gateway = createMessageToolGateway(params, gatewayContext, signal, {
         resolveConfig: () => cfg,
@@ -398,10 +364,15 @@ export function createMessageTool(options?: MessageToolOptions): AnyAgentTool {
             ? params.targets
             : [params.target ?? effectiveCurrentChannel.currentMessagingTarget];
         for (const target of Array.isArray(targets) ? targets : []) {
-          if (typeof target !== "string") continue;
+          if (typeof target !== "string") {
+            continue;
+          }
           const peer = target.trim().replace(/^a2a:/i, "");
           if (
-            !policy.isAllowed(resolvedAgentId ?? rawConfig.agents?.defaultId ?? "main", `a2a:${peer}`)
+            !policy.isAllowed(
+              resolvedAgentId ?? rawConfig.agents?.defaultId ?? "main",
+              `a2a:${peer}`,
+            )
           ) {
             throw new Error("Agent-to-agent messaging denied by agentToAgent policy.");
           }
