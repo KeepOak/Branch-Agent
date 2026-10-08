@@ -249,17 +249,25 @@ test('same-path merge-gate-trusted from another run with pull_request event fail
 });
 
 test('unattributed merge-gate-trusted check fails closed', () => {
+  const checkRuns = [
+    passCheckRuns[0],
+    passCheckRuns[1],
+    {
+      ...passCheckRuns[2],
+      details_url: 'https://github.com/example/repo/actions/runs/999/job/103',
+    },
+  ];
   const workflowsByCheckId = {
     101: mergeGateWorkflow,
     102: featureBatchWorkflow,
   };
-  const foreign = findForeignTrustedChecks(passCheckRuns, workflowsByCheckId, {
+  const foreign = findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
     allowedRunId: CURRENT_RUN_ID,
   });
   assert.equal(foreign.length, 1);
   assert.equal(foreign[0].id, 103);
   const result = evaluateTrustedGate({
-    checkRuns: passCheckRuns,
+    checkRuns,
     workflowsByCheckId,
     changedFiles: ['README.md'],
     coreWorkflows,
@@ -267,6 +275,38 @@ test('unattributed merge-gate-trusted check fails closed', () => {
   });
   assert.equal(result.ok, false);
   assert.match(result.errors.join('\n'), /unattributed/);
+});
+
+test('rate-limited current trusted check is accepted from its actions run URL', () => {
+  const workflowsByCheckId = {
+    101: mergeGateWorkflow,
+  };
+  const checkRuns = [passCheckRuns[0], passCheckRuns[2]];
+  const foreign = findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
+    allowedRunId: CURRENT_RUN_ID,
+  });
+  assert.deepEqual(foreign, []);
+  const result = evaluateTrustedGate({
+    checkRuns,
+    workflowsByCheckId,
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.foreignTrusted.length, 0);
+  assert.equal(result.missingCore.length, 0);
+});
+
+test('merge-gate.yml path attribution is satisfied by the merge-gate job', () => {
+  const missing = missingCoreWorkflows({
+    checkRuns: [passCheckRuns[0]],
+    workflowsByCheckId: {},
+    changedFiles: ['README.md'],
+    coreWorkflows,
+  });
+  assert.ok(!missing.some((item) => item.includes('merge-gate.yml')));
+  assert.ok(!missing.some((item) => item.includes('merge-gate (not present)')));
 });
 
 test('current run alone is accepted as the trusted check', () => {
@@ -382,6 +422,11 @@ test('old-base PR still runs the trusted check from the default branch', () => {
 test('merge-gate also queues on ready_for_review', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
   assert.match(yaml, /types:\s*\[.*ready_for_review.*\]/);
+});
+
+test('merge-gate wait ignores merge-gate-trusted so the two gates cannot deadlock', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /select\(\.name != "merge-gate" and \.name != "merge-gate-trusted"\)/);
 });
 
 test('merge-gate recheck fires when Visual tour and Engine build complete', () => {
