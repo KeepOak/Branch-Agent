@@ -87,6 +87,8 @@ Every child process Branch starts on Windows (the engine, shells, probes, git, P
   ```
   Co-authored-by: Taofik Bishi <189563683+stabrea@users.noreply.github.com>
   ```
+
+  Commits dated 2026-10-08T04:05:00Z or later must use a GitHub noreply (or `cursoragent@cursor.com`) author, committer and `Co-authored-by` address; `merge-gate-trusted` fails the pull request otherwise.
 - Never force-push or rewrite pushed history on any branch, not even to change a commit message. GitHub ruleset 'No force-push on any branch' (all branches, no bypass) refuses it. Fix a bad commit with a new commit, or for a commit with a personal email, redo the work on a fresh branch from main as a new PR that supersedes the old one.
 - Open the pull request against `main`. Its body says what changed, why, and the exact test commands you ran with their pass counts. For a change with a visible effect, include screenshots of the changed flow (see [Self-testing a change](#self-testing-a-change)).
 - `main` is protected by the ruleset "main requires the merge gate": the only required check is `merge-gate`, and force-pushes and branch deletion are blocked. The other workflows are path-filtered, so `merge-gate` (`.github/workflows/merge-gate.yml`) waits for whichever of them started on the PR's head commit and fails if any of them failed.
@@ -103,7 +105,7 @@ Every child process Branch starts on Windows (the engine, shells, probes, git, P
 
 ## Releases and component updates
 
-`.github/workflows/component-release.yml` publishes a GitHub release on a 30-minute schedule at :07 and :37 past each hour, for a source-version tag, or from a manual run — not on each merge. Scheduled and manual runs skip when main has not moved since the last release or when a check on main's head has failed. A published release has four components:
+`.github/workflows/component-release.yml` publishes a GitHub release on a 30-minute schedule at :07 and :37 past each hour, from a push to main when the latest release is more than 25 minutes old, for a source-version tag, or from a manual run — not on each merge. Scheduled, manual, and push-backup runs skip when main has not moved since the last release or when a check on main's head has failed. A published release has four components:
 
 | Component | Asset |
 |---|---|

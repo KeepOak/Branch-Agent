@@ -121,6 +121,40 @@ describe("Library › Memory › Bring in", () => {
     expect(host.textContent).toContain("Brought in from Claude Code.");
   });
 
+  it("marks only the picked assistant with the shared selection style and a check", async () => {
+    const plan = {
+      ...FOUND_PLAN,
+      providers: [
+        ...FOUND_PLAN.providers,
+        { ...FOUND_PLAN.providers[0], providerId: "other", label: "Other assistant" },
+      ],
+    };
+    const { engine } = engineOf(base((m) => m === "migrations.memory.plan" ? plan : undefined));
+    await mount(engine);
+    await act(async () => { host.querySelector<HTMLButtonElement>('[data-testid="memory-bring-in"]')!.click(); });
+    await flush();
+    const dlg = host.querySelector('[data-testid="bring-in-dialog"]')!;
+    const cards = [...dlg.querySelectorAll<HTMLButtonElement>('[role="radio"]')];
+    const [claude, unavailable, other] = cards;
+    const expectPicked = (picked?: HTMLButtonElement) => {
+      for (const card of cards) {
+        expect(card.classList.contains("prov-st")).toBe(true);
+        expect(card.getAttribute("aria-checked")).toBe(String(card === picked));
+        expect(card.querySelector('[aria-hidden="true"]')?.textContent ?? "").toBe(card === picked ? "✓" : "");
+      }
+    };
+    expect(cards).toHaveLength(3);
+    expectPicked();
+    expect(unavailable.disabled).toBe(true);
+    await act(async () => { claude.click(); });
+    expectPicked(claude);
+    await act(async () => { unavailable.click(); });
+    expectPicked(claude);
+    await act(async () => { other.click(); });
+    expectPicked(other);
+    expect(button("Bring it in", dlg)!.disabled).toBe(false);
+  });
+
   it("says nothing to apply when no assistant is found", async () => {
     const { engine, request } = engineOf(base((m) => m === "migrations.memory.plan" ? EMPTY_PLAN : undefined));
     await mount(engine);

@@ -1,0 +1,2 @@
+window:src/thread/Thread.computer-turns.test.tsx
+window:src/thread/layout.test.ts

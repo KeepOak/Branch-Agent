@@ -3,6 +3,7 @@ import type { Conversation } from "../connect/conversations";
 import {
   checkedLine,
   jobProgress,
+  justEndedKeys,
   readCronJobs,
   readLocked,
   towerAccounts,
@@ -11,6 +12,7 @@ import {
   towerComingUp,
   towerFinished,
   towerHealth,
+  towerNeeds,
   trunkList,
 } from "./control-tower-data";
 import { readLimits } from "./status-data";
@@ -134,6 +136,25 @@ describe("Just finished and chatter", () => {
     expect(towerClock(NOW, NOW)).toBe("12 PM");
   });
 
+  it("lists a finished run that was never marked done", () => {
+    const rows = [
+      row({ key: "agent:ada:task", title: "Tidy the Downloads folder", agentId: "ada", working: false, updatedAt: NOW }),
+      row({ key: "agent:scout:idle", title: "Always idle", agentId: "scout", working: false }),
+    ];
+    const audit = {
+      events: [
+        { kind: "agent_run", runId: "r2", sessionKey: "agent:ada:task", agentId: "ada", action: "agent.run.started", occurredAt: NOW - 32_000 },
+        { kind: "agent_run", runId: "r2", sessionKey: "agent:ada:task", agentId: "ada", action: "agent.run.finished", occurredAt: NOW, status: "ok" },
+      ],
+    };
+    expect(towerFinished(rows, audit, NOW).map((item) => item.title)).toEqual(["Tidy the Downloads folder"]);
+    expect(towerFinished(rows, audit, NOW)[0]).toMatchObject({ duration: "32s" });
+    expect(towerFinished(rows, {}, NOW)).toEqual([]);
+    expect(justEndedKeys(["agent:ada:task"], rows)).toEqual(["agent:ada:task"]);
+    expect(justEndedKeys([], rows)).toEqual([]);
+    expect(towerFinished(rows, {}, NOW, ["agent:ada:task"])[0]).toMatchObject({ title: "Tidy the Downloads folder" });
+  });
+
   it("keeps group previews without inventing who spoke", () => {
     const lines = towerChatter([
       row({
@@ -150,6 +171,30 @@ describe("Just finished and chatter", () => {
   it("reads a percent from a job headline", () => {
     expect(jobProgress("Copying the code · 42%")).toBe(42);
     expect(jobProgress("Working")).toBeNull();
+  });
+});
+
+describe("Needs you", () => {
+  it("lists real approvals, pending questions and needsYou rows, and never invents extras", () => {
+    const name = (id?: string) => (id === "ada" ? "Ada" : id === "ledger" ? "Ledger" : id ?? "");
+    const items = towerNeeds(
+      [
+        row({ key: "agent:ada:wait", title: "Tidy the Downloads folder", agentId: "ada", needsYou: true, headline: "Which folder first?" }),
+        row({ key: "agent:ledger:ask", title: "September expense report", agentId: "ledger", needsYou: true, preview: "Send Dana the report?" }),
+        row({ key: "agent:ada:idle", title: "Idle", agentId: "ada" }),
+      ],
+      [{ id: "ex1", kind: "exec", request: { title: "Run tidy.sh", agentId: "ada", sessionKey: "agent:ada:wait", description: "exec" } }],
+      [{ id: "q1", status: "pending", agentId: "ledger", sessionKey: "agent:ledger:ask", questions: [{ questionId: "send", question: "Send Dana the report?", header: "Email" }] }],
+      name,
+    );
+    expect(items.map((item) => [item.kind, item.title, item.who])).toEqual([
+      ["approval", "Run tidy.sh", "Ada"],
+      ["question", "Send Dana the report?", "Ledger"],
+    ]);
+    expect(towerNeeds([row({ key: "agent:ada:wait", agentId: "ada", needsYou: true, headline: "Which folder first?" })], [], [], name)).toEqual([
+      expect.objectContaining({ id: "waiting:agent:ada:wait", kind: "waiting", title: "Which folder first?", who: "Ada" }),
+    ]);
+    expect(towerNeeds([row({ key: "agent:ada:idle", agentId: "ada" })], [], [], name)).toEqual([]);
   });
 });
 

@@ -5,9 +5,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   additionFor,
+  allowlistedDesktopRunTargets,
   changedTestPaths,
   coverageTargets,
+  hasYamlAnchorsOrAliases,
   uncoveredTests,
+  workflowHasPullRequestTrigger,
 } from './changed-test-coverage.mjs';
 import {
   baseContentFromHeadAndPatch,
@@ -44,6 +47,8 @@ export const GATE_SCRIPTS = [
   'scripts/changed-test-coverage.test.mjs',
   'scripts/check-merge-command.mjs',
   'scripts/check-merge-command.test.mjs',
+  'scripts/check-commit-emails.mjs',
+  'scripts/check-commit-emails.test.mjs',
   'scripts/check-ui-proof.mjs',
   'scripts/check-ui-proof.test.mjs',
   'scripts/feature-batch-ci-targets.mjs',
@@ -93,25 +98,54 @@ export function nameStatusFromPrFiles(files) {
   }).join('\n');
 }
 
+export const COLLAPSIBLE_CHECK_EVENTS = ['pull_request', 'pull_request_target'];
+
+function suiteNumber(run) {
+  return Number(run?.check_suite?.id);
+}
+
+function newestSuiteSupersedes(runs) {
+  // A still-running suite waits. Only success replaces an earlier non-pass.
+  return runs.every((run) => run.status !== 'completed' || run.conclusion === 'success');
+}
+
+function keepNewestSuite(runs) {
+  let newestSuite = suiteNumber(runs[0]);
+  for (const run of runs) {
+    const suite = suiteNumber(run);
+    if (suite > newestSuite) newestSuite = suite;
+  }
+  const inNewest = runs.filter((run) => suiteNumber(run) === newestSuite);
+  return newestSuiteSupersedes(inNewest) ? inNewest : runs;
+}
+
 export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}, { sha, prNumber, baseRef } = {}) {
-  const newest = new Map();
+  const drop = new Set();
+  const groups = new Map();
   for (const run of checkRuns) {
     const workflow = lookupWorkflow(workflowsByCheckId, run.id);
-    // Only this PR's pull_request runs can supersede each other on reopen.
+    // Same app, workflow path, event, and job can supersede older suites only.
     const prs = workflow?.pullRequests ?? [];
-    const bound = run.app?.id != null && workflow?.path && workflow.event === 'pull_request'
+    const bound = run.app?.id != null && workflow?.path
+      && COLLAPSIBLE_CHECK_EVENTS.includes(workflow.event)
       && sha && workflow.headSha === sha
       && workflow.checkSuiteId != null && run.check_suite?.id != null
       && Number(run.check_suite.id) === Number(workflow.checkSuiteId)
       && prNumber && prs.some((pr) => Number(pr.number) === Number(prNumber))
       && baseRef && prs.every((pr) => pr.base === baseRef);
-    const key = bound
-      ? JSON.stringify([run.app.id, workflow.path, run.name]) : Symbol();
-    const previous = newest.get(key);
-    // IDs increase with check creation, including queued checks without started_at.
-    if (!previous || Number(run.id) > Number(previous.id)) newest.set(key, run);
+    if (!bound) continue;
+    const key = JSON.stringify([run.app.id, workflow.path, workflow.event, run.name]);
+    const group = groups.get(key);
+    if (group) group.push(run);
+    else groups.set(key, [run]);
   }
-  return [...newest.values()];
+  for (const runs of groups.values()) {
+    const kept = new Set(keepNewestSuite(runs));
+    for (const run of runs) {
+      if (!kept.has(run)) drop.add(run);
+    }
+  }
+  return checkRuns.filter((run) => !drop.has(run));
 }
 
 export function isVisualTourWorkflow(workflow) {
@@ -421,10 +455,11 @@ export function parseNamedTestList(text, source = 'scripts/feature-batch-ci-name
   return files;
 }
 
-export function coverageFromPrFiles(files, desktopWorkflow, extraNamed = [], handoffWorkflow = '', handoffConfig = '') {
+export function coverageFromPrFiles(files, desktopWorkflow, extraNamed = [], handoffWorkflow = '', handoffConfig = '', extraDesktop = []) {
   const changed = changedTestPaths(nameStatusFromPrFiles(files));
   const covered = coverageTargets(desktopWorkflow, handoffWorkflow, handoffConfig);
   for (const entry of extraNamed) covered.add(`${entry.lane}/${entry.file}`);
+  for (const file of extraDesktop) covered.add(file);
   const uncovered = uncoveredTests(changed, covered);
   return { changed, uncovered };
 }
@@ -643,8 +678,40 @@ export function fetchNamedTestLists(repo, sha, token) {
   return extra;
 }
 
-function runCoverage(files, extraNamed) {
-  const workflow = readFileSync(path.join(root, '.github/workflows/desktop-checks.yml'), 'utf8');
+export function resolvePrDesktopWorkflow(fetched) {
+  return typeof fetched === 'string' && fetched !== '' ? fetched : null;
+}
+
+function serializeAllowlistedDesktopWorkflow(targets, mainFallback = '') {
+  const extraYaml = [...targets].map((file) => {
+    const rel = file.startsWith('desktop/') ? file.slice('desktop/'.length) : file;
+    return `      - run: node --test ${rel}`;
+  }).join('\n');
+  if (mainFallback) {
+    return extraYaml ? `${mainFallback.replace(/\s*$/, '\n')}${extraYaml}\n` : mainFallback;
+  }
+  if (!extraYaml) return 'on:\n  pull_request:\n';
+  return `on:\n  pull_request:\njobs:\n  desktop:\n    steps:\n${extraYaml}\n`;
+}
+
+export function trustedDesktopWorkflow(fetched, mainFallback = '') {
+  const workflow = resolvePrDesktopWorkflow(fetched);
+  if (workflow == null) return null;
+  if (!workflowHasPullRequestTrigger(workflow)) return mainFallback;
+  if (hasYamlAnchorsOrAliases(workflow)) return mainFallback;
+  return serializeAllowlistedDesktopWorkflow(allowlistedDesktopRunTargets(workflow), mainFallback);
+}
+
+function runCoverage(files, extraNamed, repo, sha, token) {
+  const mainWorkflow = readFileSync(path.join(root, '.github/workflows/desktop-checks.yml'), 'utf8');
+  const fetched = repo && sha && token
+    ? fetchFileText(repo, sha, token, '.github/workflows/desktop-checks.yml')
+    : null;
+  const workflow = trustedDesktopWorkflow(fetched, mainWorkflow);
+  if (workflow == null) {
+    console.error('Could not read pull request .github/workflows/desktop-checks.yml; failing closed.');
+    return false;
+  }
   const handoffWorkflow = readFileSync(path.join(root, HANDOFF_WORKFLOW_PATH), 'utf8');
   const handoffConfig = readFileSync(path.join(root, 'engine/test/vitest/vitest.desktop-handoff.config.ts'), 'utf8');
   const { changed, uncovered } = coverageFromPrFiles(files, workflow, extraNamed, handoffWorkflow, handoffConfig);
@@ -871,7 +938,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   writeSummary(formatGateChangeSummary(changedFiles));
 
   const extraNamed = fetchNamedTestLists(repo, sha, token);
-  if (!runCoverage(files, extraNamed)) process.exit(1);
+  if (!runCoverage(files, extraNamed, repo, sha, token)) process.exit(1);
   if (!runMergeCommandCheck(repo, sha, token, files, baseRef)) {
     console.error('Merge-command check failed on the pull request documentation.');
     process.exit(1);
