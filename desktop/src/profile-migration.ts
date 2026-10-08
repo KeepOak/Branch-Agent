@@ -1,5 +1,5 @@
-import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 
 const MARKER = ".normal-profile-migrated.json";
 const PENDING = ".normal-profile-migration-pending.json";
@@ -21,9 +21,12 @@ function generatedTemplate(file: string, templateDir?: string): string | undefin
 
 function backupName(file: string): string {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  let backup = `${file}.${stamp}.bak`;
-  for (let suffix = 1; existsSync(backup); suffix++) backup = `${file}.${stamp}-${suffix}.bak`;
-  return backup;
+  const root = join(dirname(dirname(file)), ".migration-replaced");
+  let directory = join(root, stamp);
+  for (let suffix = 1; lstatSync(directory, { throwIfNoEntry: false }); suffix++) directory = join(root, `${stamp}-${suffix}`);
+  const workspace = join(directory, "workspace");
+  mkdirSync(workspace, { recursive: true });
+  return join(workspace, basename(file));
 }
 
 /** A standby may inspect the established profile, but must not run migrations beside its owner. */
@@ -60,7 +63,7 @@ function mergeMissing(source: string, destination: string, counts: MigrationCoun
         mergeMissing(from, to, counts, log, afterCopy, join(relative, entry.name), pending, pendingFile, templateDir);
       } else {
         const eligible = relative === "workspace" && BOOTSTRAP_FILES.has(entry.name) && pending?.has(entry.name);
-        if (existing.has(entry.name)) {
+        if (existing.has(entry.name) || lstatSync(to, { throwIfNoEntry: false })) {
           if (!eligible || !lstatSync(to).isFile() || readFileSync(to, "utf8") !== generatedTemplate(entry.name, templateDir)) continue;
           // Consume the one replacement attempt before moving the untouched engine template aside.
           pending!.delete(entry.name);
@@ -141,16 +144,19 @@ export function prepareNormalProfile(home: string, afterCopy?: () => void, log?:
       if (!lstatSync(archive).isDirectory()) throw new Error("Legacy profile archive is not a directory");
       // Only files absent before the first merge may displace an untouched engine template later.
       // An older interrupted migration without this record is conservatively missing-only.
-      const pending = existsSync(pendingFile)
-        ? new Set<string>(JSON.parse(readFileSync(pendingFile, "utf8")) as string[])
-        : new Set<string>();
+      let pending = new Set<string>();
+      try {
+        const saved: unknown = JSON.parse(readFileSync(pendingFile, "utf8"));
+        if (Array.isArray(saved)) pending = new Set(saved.filter((name): name is string => typeof name === "string" && BOOTSTRAP_FILES.has(name)));
+      } catch { /* Missing or corrupt progress is conservatively missing-only. */ }
       if (!resuming) {
         const archivedWorkspace = join(archive, "workspace");
         const normalWorkspace = join(normal, "workspace");
         if (existsSync(archivedWorkspace)) {
           const initial = existsSync(normalWorkspace) ? new Set(readdirSync(normalWorkspace)) : new Set<string>();
           for (const name of BOOTSTRAP_FILES) {
-            if (!initial.has(name) && existsSync(join(archivedWorkspace, name))) pending.add(name);
+            const to = join(normalWorkspace, name);
+            if (!(initial.has(name) || lstatSync(to, { throwIfNoEntry: false })) && existsSync(join(archivedWorkspace, name))) pending.add(name);
           }
         }
         savePending(pendingFile, pending);
@@ -168,6 +174,7 @@ export function prepareNormalProfile(home: string, afterCopy?: () => void, log?:
     writeDefaultConfig(config, normal);
     if (!existsSync(marker) && counts.failed === 0) {
       writeFileSync(marker, JSON.stringify({ archive }) + "\n", { flag: "wx" });
+      if (existsSync(pendingFile)) unlinkSync(pendingFile);
     }
     if (started !== undefined) log?.(`Profile migration done: ${counts.copied} copied, ${counts.linksSkipped} links skipped, ${counts.failed} failed, ${Date.now() - started} ms`);
     return { legacyDevMode: false, note: counts.failed ? `${counts.failed} profile migration file(s) failed; will resume on next launch.` : undefined };
