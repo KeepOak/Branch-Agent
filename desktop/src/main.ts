@@ -390,8 +390,8 @@ async function afterUpdateLockRelease(released: UpdateLockHandle): Promise<void>
   }
 }
 
-/** P45's seamless handoff runs only when desktop.json turns it on; off, an update drains the old engine first. */
-const seamlessHandoff = (): boolean => cfg.seamlessHandoff === true;
+/** Seamless handoff is on by default; desktop.json can set seamlessHandoff to false for drain-first updates. */
+const seamlessHandoff = (): boolean => cfg.seamlessHandoff !== false;
 
 /**
  * Old engines from the moment step-down is sent: quitting stops them (shutdown), a crash leaves their

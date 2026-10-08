@@ -90,8 +90,9 @@ else if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-b
 else if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-needs-take-over")){const timer=setInterval(()=>{if(globalThis.tookOver){clearInterval(timer);listen();}},10);}else listen();`;
   await writeFile(join(engine, "branch.mjs"), script); await writeFile(join(windowDir, "index.html"), "<html>fixture</html>");
   await writeFile(join(root, "gateway-token"), "isolated-fixture-token");
+  // Preserve drain-first coverage explicitly; handoff tests override or remove this opt-out.
   await writeFile(join(root, "desktop.json"), JSON.stringify({ dataDir: root, engineDir: engine, windowDir,
-    nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort() }));
+    nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort(), seamlessHandoff: false }));
 }
 /** standby: true always warms a standby; "never" (the default) always runs the plain guarded swap, whatever the runner's memory. */
 async function fixture(run, holdStartup = false, fastSupervisor = false, holdCandidate = false, standby = "never", keepWorkingOff = false, prepare = undefined, holdUndo = false, manualEngineWatch = false) {
@@ -247,7 +248,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     await rm(root, { recursive: true, force: true });
   }
 }
-/** Turns the P45 handoff on (desktop.json "seamlessHandoff", off by default), with shorter deadlines from `env`. */
+/** Explicitly enables the default-on P45 handoff, overriding drain-first fixtures, with shorter deadlines from `env`. */
 const handoffOn = (env = {}) => async (root) => {
   const file = join(root, "desktop.json");
   await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, "utf8")), seamlessHandoff: true }));
@@ -482,6 +483,45 @@ test("after a standby handoff the window and the next swap follow the live port;
   assert.equal(await readFile(join(root, "gateway-port"), "utf8"), String(second.port), "the branch command would dial a stale port");
   assert.equal((await starts()).length, 3);
 }, false, false, false, true));
+test("an update with no seamlessHandoff key hands over while the old run finishes", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const cfg = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  assert.equal(Object.hasOwn(cfg, "seamlessHandoff"), false);
+  const old = (await starts())[0];
+  await writeFile(join(root, "release-ready"), "ready");
+  await writeFile(join(root, "busy-run"), "a Trunk is working");
+  await writeFile(join(root, "standby-binds-after-release"), "1");
+  await writeFile(join(root, "transcript.txt"), "");
+  restart();
+  await eventually(() => swapped(root), 30_000);
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /engine swapped in place by handoff/);
+  assert.equal(alive(old), true, "the update stopped the old engine before its run finished");
+  assert.ok(existsSync(join(root, `released-${old}`)), "the old engine did not step down");
+  assert.equal(existsSync(join(root, `drained-${old}`)), false);
+  assert.equal(alive((await starts())[1]), true);
+  assert.equal(runtime.window.reloads, 0);
+  await eventually(async () => (await readFile(join(root, "transcript.txt"), "utf8")) === "old run final\n");
+  await eventually(() => !alive(old));
+}, false, false, false, true, false, async root => {
+  const file = join(root, "desktop.json");
+  const cfg = JSON.parse(await readFile(file, "utf8"));
+  delete cfg.seamlessHandoff;
+  await writeFile(file, JSON.stringify(cfg));
+}));
+test("an update with seamlessHandoff false drains before the standby takes over", () => fixture(async ({ root, starts, restart }) => {
+  assert.equal(JSON.parse(await readFile(join(root, "desktop.json"), "utf8")).seamlessHandoff, false);
+  const old = (await starts())[0];
+  await writeFile(join(root, "release-ready"), "ready");
+  await writeFile(join(root, "standby-needs-take-over"), "1");
+  restart();
+  await eventually(() => swapped(root), 30_000);
+  const standby = (await starts())[1];
+  assert.ok(existsSync(join(root, `drained-${old}`)), "the opt-out did not drain the old engine");
+  assert.equal(existsSync(join(root, `released-${old}`)), false, "the opt-out stepped down instead of draining");
+  assert.deepEqual(JSON.parse(await readFile(join(root, `took-over-${standby}`), "utf8")), { oldEngineAlive: false });
+  assert.equal(alive(old), false);
+  assert.equal(alive(standby), true);
+  assert.doesNotMatch(await readFile(join(root, "desktop.log"), "utf8"), /swapped in place by handoff/);
+}, false, false, false, true));
 test("a busy old engine steps down: the window moves to the standby while the old run finishes there, then the old engine stops", () => fixture(async ({ root, runtime, starts, restart }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
   const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
@@ -593,7 +633,7 @@ test("an old engine that cannot step down is drained instead and the update stil
   assert.match(await readFile(join(root, "desktop.log"), "utf8"), /the old engine did not step down in time; it kept serving; draining it instead/);
   assert.equal(alive(old), false); assert.ok(existsSync(join(root, `drained-${old}`)));
 }, false, false, false, true, false, handoffOn({ STEP_DOWN_TIMEOUT_MS: 1000, ROLLBACK_TIMEOUT_MS: 1000 })));
-test("with the handoff off (the default) a warmed standby never makes the old engine step down", () => fixture(async ({ root, starts, restart }) => {
+test("with the handoff explicitly off a warmed standby never makes the old engine step down", () => fixture(async ({ root, starts, restart }) => {
   const old = (await starts())[0];
   await writeFile(join(root, "release-ready"), "ready");
   restart();
@@ -718,7 +758,7 @@ test("a busy engine from before drain-stop is never killed by an update click; t
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
   const old = (await starts())[0]; await writeFile(join(root, "older-engine"), "1"); await writeFile(join(root, "busy"), "a Trunk is working");
   restart();
-  // An older engine never answers the step-down (20 s), then refuses to drain while busy (20 s).
+  // With handoff explicitly off, an older engine refuses to drain while busy (20 s).
   await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("update failed"), 70_000);
   assert.equal(alive(old), true, "A busy engine that cannot drain was killed");
   const launched = await starts();
