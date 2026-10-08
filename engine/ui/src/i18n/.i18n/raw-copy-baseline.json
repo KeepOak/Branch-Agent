@@ -432,6 +432,13 @@
       "count": 1,
       "kind": "html-text",
       "name": "text",
+      "path": "ui/src/pages/devices/view-pairing.runtime.ts",
+      "text": "When prompted, paste this setup code:"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
       "path": "ui/src/pages/new-session/cloud-target.ts",
       "text": "branch connect --service --session-host"
     },
