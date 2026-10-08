@@ -1,4 +1,4 @@
-// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/process/supervisor/linux-child-subreaper.ts (atlas SESSIONS-0102). Changed for Branch: discover process-leader PPIDs and waitid candidates when optional procfs task children files are absent; reap leftover loader children until waitid is ECHILD before admitting a source-loaded owner.
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/process/supervisor/linux-child-subreaper.ts (atlas SESSIONS-0102). Changed for Branch: discover process-leader PPIDs and waitid candidates when optional procfs task children files are absent; reap waitable loader leftovers without blocking on a still-running tsx compiler.
 import type { ChildProcess } from "node:child_process";
 import { Buffer } from "node:buffer";
 import { readdirSync, readFileSync } from "node:fs";
@@ -214,24 +214,29 @@ export function acquireLinuxChildSubreaper() {
     });
   };
   // Task-children files are the live-child census when this kernel has them.
-  // A NODE_OPTIONS preload can hide those files. waitid with a null siginfo
-  // then returns rc=0 for both a leftover tsx-compiler zombie and a compiler
-  // that has not exited yet. Collect wait-owned leftovers until ECHILD so a
-  // source-loaded owner admits after its loader finishes. Visible live
-  // children still refuse admission.
+  // A NODE_OPTIONS preload can hide those files. Null waitid then returns
+  // rc=0 for both a loader zombie and a still-running tsx compiler worker.
+  // Reap waitable leftovers; do not block on live loader children (they do
+  // not exit before the owner is done). Visible live children still refuse.
   const fromFiles = childPidsFromTaskFiles();
   if (fromFiles.readableThreads > 0 && fromFiles.pids.length > 0) {
     throw new Error("Linux child ownership requires a dedicated owner without existing children");
   }
   for (;;) {
-    const leftover = observeWaitid(P_ALL, 0, WEXITED | WALL);
+    const leftover = observeWaitid(P_ALL, 0, WEXITED | WNOHANG | WNOWAIT | WALL);
     if (leftover.errno === ECHILD) {
       break;
     }
     if (leftover.rc !== 0) {
       fail("admission wait", leftover.errno);
     }
-    // observeWaitid without WNOWAIT already reaped this leftover.
+    if (leftover.pid <= 0) {
+      break;
+    }
+    const reaped = observeWaitid(P_PID, leftover.pid, WEXITED | WNOHANG | WALL);
+    if (reaped.rc !== 0 && reaped.errno !== ECHILD) {
+      fail("admission reap", reaped.errno);
+    }
   }
   let closed = false;
   const owns = (pid: number): boolean => {
