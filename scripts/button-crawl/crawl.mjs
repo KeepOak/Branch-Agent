@@ -2,8 +2,10 @@
 // Preview-map differences (PR #764) are written into the report and do not fail the job.
 //
 // Caps keep the pull-request job inside the 15 minute limit: every root screen is opened
-// (each seeded conversation, each place, each settings page). Each screen clicks its first
-// controls; one overlay level (a menu or dialog) is opened from those clicks, with a cap.
+// (each seeded conversation, each place, each settings page). Each screen clicks its own
+// controls. Shared chrome, the sidebar, and the settings nav are clicked once, so they
+// do not spend that screen budget. One overlay level (a menu or dialog) is opened from
+// those clicks, with a cap.
 
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -11,6 +13,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { skipReason } from './denylist.mjs';
+import { chooseRegion, chooseScreenClicks } from './targets.mjs';
 import { classifyClick, elementKey, isNoise } from './observe.mjs';
 import { inconsistentOpens, internalNameProblems, rowActionProblems } from './list-checks.mjs';
 import { compareBaseline, formatGate, normalizeBaseline } from './baseline.mjs';
@@ -29,19 +32,23 @@ const number = (name, fallback) => {
 
 const caps = {
   maxScreens: number('BUTTON_CRAWL_MAX_SCREENS', 48),
-  maxPerScreen: number('BUTTON_CRAWL_MAX_PER_SCREEN', 12),
-  maxClicks: number('BUTTON_CRAWL_MAX_CLICKS', 460),
+  maxPerScreen: number('BUTTON_CRAWL_MAX_PER_SCREEN', 28),
+  maxClicks: number('BUTTON_CRAWL_MAX_CLICKS', 800),
   maxDepth: number('BUTTON_CRAWL_MAX_DEPTH', 1),
   maxOverlays: number('BUTTON_CRAWL_MAX_OVERLAYS', 8),
+  maxChrome: number('BUTTON_CRAWL_MAX_CHROME', 20),
+  maxNav: number('BUTTON_CRAWL_MAX_NAV', 48),
+  maxSidebar: number('BUTTON_CRAWL_MAX_SIDEBAR', 40),
 };
 
 const port = number('BUTTON_CRAWL_PORT', 5653);
+let harnessUrl = '';
 const outDir = resolve(root, 'button-crawl-output');
 const baselinePath = resolve(root, 'scripts/button-crawl/baseline.json');
 const mapPath = process.env.BUTTON_CRAWL_MAP || resolve(root, MAP_PATH);
 
 function signature(surface) {
-  return [surface.route, surface.dialog, surface.menu, surface.panel, surface.toast, surface.mainText, surface.control, surface.alert, surface.focus, surface.hash, surface.chrome, surface.historyMoves].join('\n');
+  return [surface.route, surface.dialog, surface.menu, surface.panel, surface.toast, surface.mainText, surface.viewText, surface.control, surface.alert, surface.focus, surface.hash, surface.chrome, surface.historyMoves].join('\n');
 }
 
 function add(found, key, problems) {
@@ -85,7 +92,7 @@ async function show(page, screen) {
   await page.evaluate((route) => window.__crawl.mount(route), screen.route);
   await page.locator('[data-connection="ready"]').waitFor({ timeout: 20000 });
   for (const step of screen.path || []) {
-    const marked = await page.evaluate(({ name, occurrence }) => window.__crawl.mark(name, occurrence), step);
+    const marked = await page.evaluate((target) => window.__crawl.mark(target.name, target.occurrence, target.region), step);
     if (!marked) return false;
     await page.evaluate(() => window.__crawl.clickTarget());
     await page.waitForTimeout(60);
@@ -93,21 +100,29 @@ async function show(page, screen) {
   return true;
 }
 
-async function clickOne(page, errors, name, occurrence, overlay) {
-  const marked = await page.evaluate(({ nextName, nextOccurrence, inOverlay }) => window.__crawl.mark(nextName, nextOccurrence, inOverlay), { nextName: name, nextOccurrence: occurrence, inOverlay: overlay });
+async function clickOne(page, errors, target) {
+  const marked = await page.evaluate((el) => window.__crawl.mark(el.name, el.occurrence, el.region), target);
   if (!marked) return null;
   const before = await page.evaluate(() => window.__crawl.surface());
   const errorFrom = errors.length;
   const started = Date.now();
-  await page.evaluate(() => window.__crawl.clickTarget());
   let after = before;
-  for (;;) {
-    after = await page.evaluate(() => window.__crawl.surface());
-    if (signature(after) !== signature(before) || Date.now() - started > 450) break;
-    await page.waitForTimeout(20);
+  let leftThePage = false;
+  try {
+    await page.evaluate(() => window.__crawl.clickTarget());
+    for (;;) {
+      after = await page.evaluate(() => window.__crawl.surface());
+      if (signature(after) !== signature(before) || Date.now() - started > 450) break;
+      await page.waitForTimeout(20);
+    }
+  } catch (error) {
+    if (!/Execution context was destroyed|Navigation|Target closed|frame was detached/i.test(String(error))) throw error;
+    leftThePage = true;
+    after = { ...before, route: `${before.route || ''}#left` };
   }
   const elapsedMs = Date.now() - started;
-  const consoleErrors = errors.slice(errorFrom).filter((line) => !isNoise(line));
+  if (leftThePage && harnessUrl) await page.goto(harnessUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => undefined);
+  const consoleErrors = leftThePage ? [] : errors.slice(errorFrom).filter((line) => !isNoise(line));
   const failedCalls = (after.requests || []).slice(before.requestCount || 0).filter((call) => call && call.ok === false);
   return { before, after, elapsedMs, consoleErrors, failedCalls, ...classifyClick({ before, after, elapsedMs, consoleErrors, failedCalls }) };
 }
@@ -127,6 +142,7 @@ async function main() {
   const ownServer = !process.env.BUTTON_CRAWL_URL;
   const vite = ownServer ? startVite() : null;
   const base = process.env.BUTTON_CRAWL_URL || `http://127.0.0.1:${port}`;
+  harnessUrl = `${base}/scripts/button-crawl-harness.html`;
   const errors = [];
   let browser;
   try {
@@ -149,6 +165,9 @@ async function main() {
     let clickCount = 0;
     let overlays = 0;
     let screenCount = 0;
+    const chromeNames = new Set();
+    let sidebarDone = false;
+    let navDone = false;
     while (queue.length && screenCount < caps.maxScreens) {
       const screen = queue.shift();
       screenCount += 1;
@@ -201,30 +220,49 @@ async function main() {
       }
       const elements = await page.evaluate((overlay) => window.__crawl.collect(overlay), screen.depth > 0);
       const pathNames = new Set((screen.path || []).map((step) => step.name));
-      const actionable = elements.filter((el) => !pathNames.has(el.name) && !skipReason(el));
+      const skip = (el) => pathNames.has(el.name) || Boolean(skipReason(el)) || Boolean(el.selected);
+      const wanted = chooseScreenClicks(elements, { limit: 10000, skip });
+      const thread = wanted.find((el) => /how threads show|threads show as/i.test(el.name));
+      const ordered = thread ? [thread, ...wanted.filter((el) => el !== thread)] : wanted;
       const room = Math.min(caps.maxPerScreen, Math.max(0, caps.maxClicks - clickCount));
-      const thread = actionable.find((el) => /how threads show/i.test(el.name));
-      const chosen = [];
-      if (thread && room > 0) chosen.push(thread);
-      for (const el of actionable) {
-        if (chosen.length >= room) break;
-        if (el !== thread) chosen.push(el);
+      const chosen = ordered.slice(0, room);
+      const shared = [];
+      if (screen.depth === 0 && chromeNames.size < caps.maxChrome) {
+        const fresh = chooseRegion(elements, 'chrome', {
+          limit: caps.maxChrome - chromeNames.size,
+          skip: (el) => skip(el) || chromeNames.has(el.name),
+        });
+        for (const el of fresh) chromeNames.add(el.name);
+        shared.push(...fresh);
+      }
+      if (screen.depth === 0 && !sidebarDone) {
+        sidebarDone = true;
+        shared.push(...chooseRegion(elements, 'sidebar', { limit: caps.maxSidebar, skip }));
+      }
+      if (screen.depth === 0 && !navDone && elements.some((el) => el.region === 'nav')) {
+        navDone = true;
+        shared.push(...chooseRegion(elements, 'nav', { limit: caps.maxNav, skip }));
       }
       for (const el of elements) {
         if (pathNames.has(el.name)) continue;
+        if (el.selected) {
+          skipped.push({ screen: screen.id, label: el.name, reason: 'already-selected' });
+          continue;
+        }
         const reason = skipReason(el);
         if (reason) skipped.push({ screen: screen.id, label: el.name, reason });
       }
       const screenKeys = openErrors.length ? [elementKey(screen.id, '(open)')] : [];
-      for (const el of chosen) {
+      for (const el of [...chosen, ...shared]) {
+        if (clickCount >= caps.maxClicks) break;
         await show(page, screen);
-        const result = await clickOne(page, errors, el.name, el.occurrence, screen.depth > 0);
+        const result = await clickOne(page, errors, el);
         if (!result) continue;
         clickCount += 1;
         const key = elementKey(screen.id, el.name);
         screenKeys.push(key);
         add(found, key, result.problems);
-        clicks.push({ screen: screen.id, label: el.name, problems: result.problems, elapsedMs: result.elapsedMs, ledTo: result.ledTo, requests: result.requests });
+        clicks.push({ screen: screen.id, label: el.name, region: el.region, problems: result.problems, elapsedMs: result.elapsedMs, ledTo: result.ledTo, requests: result.requests });
         const labelKey = el.name.trim().toLowerCase().replace(/\s+/g, ' ');
         for (const entry of byLabel.get(labelKey) || []) {
           if (compared.has(entry.id) || isInformationalStatus(entry.status)) continue;
@@ -237,18 +275,20 @@ async function main() {
         if (!threadMenu && isThreadLayoutMenu(result.after.menu, el.name)) {
           threadMenu = { items: result.after.menuItems || [], ...threadLayoutDiff(result.after.menuItems || []) };
         }
-        const openedOverlay = result.after.menu !== result.before.menu || result.after.dialog !== result.before.dialog;
-        if (openedOverlay && screen.depth < caps.maxDepth && overlays < caps.maxOverlays && (result.after.menuItems || []).length) {
+        const menuOpened = Boolean(result.after.menu) && result.after.menu !== result.before.menu;
+        const dialogOpened = Boolean(result.after.dialog) && result.after.dialog !== result.before.dialog;
+        const hasMenuItems = (result.after.menuItems || []).length > 0;
+        if ((menuOpened || dialogOpened) && (dialogOpened || hasMenuItems) && screen.depth < caps.maxDepth && overlays < caps.maxOverlays) {
           overlays += 1;
           queue.push({
             id: `${screen.id} > ${el.name}`,
             route: screen.route,
             depth: screen.depth + 1,
-            path: [...(screen.path || []), { name: el.name, occurrence: el.occurrence }],
+            path: [...(screen.path || []), { name: el.name, occurrence: el.occurrence, region: el.region }],
           });
         }
       }
-      checks.push({ screenId: screen.id, complete: chosen.length === actionable.length, keys: screenKeys });
+      checks.push({ screenId: screen.id, complete: chosen.length === wanted.length, keys: screenKeys });
     }
     const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'));
     const gate = compareBaseline({ baseline: baseline.problems || {}, found, checks });

@@ -74,6 +74,8 @@ const listeners = new Set<() => void>();
 const events = new Set<(event: string, payload: unknown) => void>();
 let root: Root | null = null;
 let nonce = 0;
+let marked: { name: string; occurrence: number; region: string } | null = null;
+let markedEl: Element | null = null;
 let cachedEngine: { sessionKey: string; request: typeof request } | null = null;
 let snap = snapshot('agent:researcher:notes');
 
@@ -93,7 +95,20 @@ function snapshot(key: string) {
   };
 }
 
-function request(method: string, params: { key?: string; sessionKey?: string } | undefined) {
+function mergeConfig(base: unknown, patch: unknown): unknown {
+  if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) return patch;
+  const out: Record<string, unknown> = base && typeof base === 'object' && !Array.isArray(base) ? { ...(base as Record<string, unknown>) } : {};
+  for (const [key, value] of Object.entries(patch as Record<string, unknown>)) {
+    if (value === null) delete out[key];
+    else if (value && typeof value === 'object' && !Array.isArray(value)) out[key] = mergeConfig(out[key], value);
+    else out[key] = value;
+  }
+  return out;
+}
+
+let prefs: { status: string; entries: Record<string, unknown> } = { status: 'ok', entries: {} };
+
+function request(method: string, params: { key?: string; sessionKey?: string; raw?: string; entries?: Record<string, unknown> } | undefined) {
   const started = performance.now();
   try {
     const result = respond(method, params);
@@ -107,7 +122,7 @@ function request(method: string, params: { key?: string; sessionKey?: string } |
   }
 }
 
-function respond(method: string, params: { key?: string; sessionKey?: string } | undefined) {
+function respond(method: string, params: { key?: string; sessionKey?: string; raw?: string; entries?: Record<string, unknown> } | undefined) {
   if (method === 'agents.list') return AGENTS;
   if (method === 'sessions.subscribe') return { list: { sessions: SESSIONS } };
   if (method === 'sessions.list') return { sessions: SESSIONS, defaults: { modelProvider: 'local', model: 'fixture', thinkingLevel: 'medium' } };
@@ -125,8 +140,19 @@ function respond(method: string, params: { key?: string; sessionKey?: string } |
   if (method === 'a2a.peers.list') return { peers: [] };
   if (method === 'config.get') return config;
   if (method === 'config.patch') {
-    config = { ...config, hash: `${config.hash}x` };
+    const patch = JSON.parse(params?.raw || '{}') as unknown;
+    config = { ...config, hash: `${config.hash}x`, config: mergeConfig(config.config, patch) as typeof config.config };
     return { ok: true, hash: config.hash, config: config.config };
+  }
+  if (method === 'users.prefs.get') return prefs;
+  if (method === 'users.prefs.set') {
+    const entries = { ...prefs.entries };
+    for (const [key, value] of Object.entries(params?.entries || {})) {
+      if (value === null) delete entries[key];
+      else entries[key] = value;
+    }
+    prefs = { status: 'ok', entries };
+    return { status: 'ok' };
   }
   if (method === 'models.list') return { models: [{ id: 'fixture', provider: 'local', name: 'Local model', contextWindow: 32768 }] };
   if (method === 'system.info') return { machineName: 'This computer' };
@@ -178,47 +204,81 @@ function visible(el: Element) {
 function nameOf(el: Element) {
   const aria = el.getAttribute('aria-label');
   if (aria?.trim()) return aria.trim().slice(0, 80);
+  const mirror = el.classList.contains('mirror') ? el.querySelector(':scope > b') : null;
+  const mirrorName = mirror?.textContent?.replace(/\s+/g, ' ').trim();
+  if (mirrorName) return mirrorName.slice(0, 80);
   const rowName = el.querySelector('.nm-t')?.textContent?.replace(/\s+/g, ' ').trim();
   if (rowName) return rowName.slice(0, 80);
   const text = ((el instanceof HTMLElement ? el.innerText : el.textContent) || '').replace(/\s+/g, ' ').trim();
   return (text || el.getAttribute('title') || el.getAttribute('data-testid') || el.tagName).slice(0, 80);
 }
 
+function regionOf(el: Element) {
+  if (el.closest('[role="menu"], [role="dialog"]')) return 'overlay';
+  if (el.closest('.set-nav')) return 'nav';
+  if (el.closest('.topbar') || el.closest('a.skip')) return 'chrome';
+  if (el.closest('[data-testid="sidebar"]')) return 'sidebar';
+  if (el.closest('#main')) return 'screen';
+  return 'ignored';
+}
+
+function regionRoot(region: string) {
+  if (region === 'overlay') return document.querySelector('[role="menu"], [role="dialog"]');
+  if (region === 'nav') return document.querySelector('.set-nav');
+  if (region === 'sidebar') return document.querySelector('[data-testid="sidebar"]');
+  if (region === 'screen') return document.querySelector('#main');
+  return document;
+}
+
+function findMarked() {
+  if (!marked) return null;
+  const root = regionRoot(marked.region);
+  if (!root) return null;
+  let seen = 0;
+  for (const el of root.querySelectorAll(SELECTOR)) {
+    if (!visible(el) || regionOf(el) !== marked.region || nameOf(el) !== marked.name) continue;
+    if (seen === marked.occurrence) return el;
+    seen += 1;
+  }
+  return null;
+}
+
 function collect(overlay = false) {
   const root = overlay ? document.querySelector('[role="menu"], [role="dialog"]') : document;
   if (!root) return [];
   const seen = new Map<string, number>();
-  const elements: { name: string; href: string; disabled: boolean; occurrence: number }[] = [];
+  const elements: { name: string; href: string; disabled: boolean; selected: boolean; occurrence: number; region: string }[] = [];
   for (const el of root.querySelectorAll(SELECTOR)) {
     if (!visible(el)) continue;
+    const region = regionOf(el);
+    if (region === 'ignored') continue;
+    if (overlay ? region !== 'overlay' : region === 'overlay') continue;
     const name = nameOf(el);
-    const occurrence = seen.get(name) ?? 0;
-    seen.set(name, occurrence + 1);
+    const key = `${region}\0${name}`;
+    const occurrence = seen.get(key) ?? 0;
+    seen.set(key, occurrence + 1);
     const control = el as HTMLButtonElement;
     elements.push({
       name,
       href: el instanceof HTMLAnchorElement ? el.href : '',
       disabled: control.disabled === true || el.getAttribute('aria-disabled') === 'true',
+      selected: Boolean(el.closest('.sseg') && (el.getAttribute('aria-pressed') === 'true' || el.getAttribute('aria-checked') === 'true')),
       occurrence,
+      region,
     });
   }
   return elements;
 }
 
-function mark(name: string, occurrence: number, overlay = false) {
+function mark(name: string, occurrence: number, region = 'screen') {
   document.querySelectorAll('[data-crawl-target]').forEach((el) => el.removeAttribute('data-crawl-target'));
-  const root = overlay ? document.querySelector('[role="menu"], [role="dialog"]') ?? document : document;
-  let seen = 0;
-  for (const el of root.querySelectorAll(SELECTOR)) {
-    if (!visible(el) || nameOf(el) !== name) continue;
-    if (seen === occurrence) {
-      el.setAttribute('data-crawl-target', '1');
-      el.scrollIntoView({ block: 'center', inline: 'nearest' });
-      return true;
-    }
-    seen += 1;
-  }
-  return false;
+  marked = { name, occurrence, region };
+  const el = findMarked();
+  markedEl = el;
+  if (!(el instanceof HTMLElement)) return false;
+  el.setAttribute('data-crawl-target', '1');
+  el.scrollIntoView({ block: 'center', inline: 'nearest' });
+  return true;
 }
 
 function clickTarget() {
@@ -251,14 +311,38 @@ function rowCardOpen() {
   return style.visibility !== 'hidden' && style.display !== 'none' && card.getClientRects().length > 0;
 }
 
+function textOf(node: Element | null) {
+  if (!node) return '';
+  const copy = node.cloneNode(true) as HTMLElement;
+  copy.querySelectorAll('[role="menu"], [role="dialog"], .toast, .toasts').forEach((el) => el.remove());
+  return (copy.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+function screenText() {
+  const main = document.querySelector('#main .set-col') ?? document.querySelector('#main') ?? document.body;
+  return textOf(main).slice(0, 4000);
+}
+
+function viewText() {
+  const main = document.querySelector('#main .set-col') ?? document.querySelector('#main');
+  const side = document.querySelector('[data-testid="sidebar"]');
+  return [textOf(main), textOf(side)].filter(Boolean).join(' ').slice(0, 8000);
+}
+
+function controlState(el: Element) {
+  const pressed = el.getAttribute('aria-pressed');
+  const checked = el.getAttribute('aria-checked');
+  const input = el instanceof HTMLInputElement ? String(el.checked) : '';
+  return [pressed, checked, input].join('|');
+}
+
 function surface() {
-  const main = document.querySelector('.v23-main, .main, main') ?? document.body;
   const dialog = document.querySelector('[role="dialog"]');
   const menu = document.querySelector('[role="menu"]');
   const toast = document.querySelector('.toast');
-  const alert = document.querySelector('[role="alert"]');
-  const target = document.querySelector('[data-crawl-target]');
-  const mainText = (main.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 400);
+  const alert = [...document.querySelectorAll('[role="alert"]')].find((el) => !el.closest('.toast, .toasts'));
+  const target = markedEl && markedEl.isConnected ? markedEl : findMarked();
+  const mainText = screenText();
   const menuItems = [...document.querySelectorAll('[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]')]
     .map((el) => (el.textContent || '').replace(/\s+/g, ' ').trim())
     .filter(Boolean);
@@ -269,13 +353,15 @@ function surface() {
     panel: document.querySelector('.side-pane, .panel') instanceof HTMLElement ? 'panel' : null,
     toast: toast instanceof HTMLElement ? toast.textContent?.replace(/\s+/g, ' ').trim().slice(0, 120) || null : null,
     mainText,
+    viewText: viewText(),
     alert: alert instanceof HTMLElement ? alert.textContent?.replace(/\s+/g, ' ').trim().slice(0, 160) || '' : '',
     unimplemented: /\b(coming soon|not implemented|not yet implemented|placeholder)\b/i.test(mainText),
     blank: mainText.length < 12,
-    control: target instanceof HTMLElement
-      ? [target.getAttribute('aria-label'), target.getAttribute('aria-pressed'), target.getAttribute('aria-expanded'), target.getAttribute('aria-checked'), String((target as HTMLInputElement).checked)].join('|')
-      : '',
-    focus: document.activeElement instanceof HTMLElement && !document.activeElement.hasAttribute('data-crawl-target')
+    control: target instanceof HTMLElement ? controlState(target) : '',
+    focus: document.activeElement instanceof HTMLElement
+      && document.activeElement !== target
+      && document.activeElement !== document.body
+      && document.activeElement !== document.documentElement
       ? nameOf(document.activeElement)
       : '',
     hash: location.hash,
@@ -319,6 +405,8 @@ function mount(route: Route) {
   for (const toast of getToasts()) dismiss(toast.id);
   calls.length = 0;
   cachedEngine = null;
+  marked = null;
+  markedEl = null;
   if (location.hash) history.replaceState(null, '', `${location.pathname}${location.search}`);
   historyMoves = 0;
   const key = route.kind === 'chat' && route.key ? route.key : SESSIONS[0].key;

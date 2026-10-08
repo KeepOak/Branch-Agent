@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isExternalHref, skipReason } from './denylist.mjs';
 import { classifyClick, isNoise } from './observe.mjs';
+import { chooseRegion, chooseScreenClicks } from './targets.mjs';
 import { actionSet, inconsistentOpens, internalNameProblems, rowActionProblems } from './list-checks.mjs';
 import { compareBaseline, formatGate } from './baseline.mjs';
 import { isInformationalStatus, loadPreviewMap, previewDestinationMatches, threadLayoutDiff } from './preview-map.mjs';
@@ -50,18 +51,75 @@ test('click classification flags dead, toast-only, slow, and error screens', () 
   }).problems.includes('empty-route'));
   assert.deepEqual(classifyClick({
     before, after: surface({ requests: [{ method: 'config.patch', ok: true }], requestCount: 0 }), elapsedMs: 30,
-  }).problems, []);
+  }).problems, ['dead']);
   assert.deepEqual(classifyClick({
     before, after: surface({ focus: 'Conversation' }), elapsedMs: 20,
   }).problems, []);
   assert.deepEqual(classifyClick({ before, after: surface({ chrome: 'dark' }), elapsedMs: 20 }).problems, []);
   assert.deepEqual(classifyClick({ before, after: surface({ hash: '#main' }), elapsedMs: 20 }).problems, []);
-  assert.deepEqual(classifyClick({ before, after: surface({ historyMoves: 1 }), elapsedMs: 20 }).problems, []);
+  assert.deepEqual(classifyClick({ before, after: surface({ historyMoves: 1 }), elapsedMs: 20 }).problems, ['dead']);
   assert.deepEqual(classifyClick({ before, after: surface({ alreadyCurrent: true }), elapsedMs: 20 }).problems, []);
   assert.equal(isNoise('Failed to load resource: favicon.ico'), true);
   assert.ok(classifyClick({
     before, after: surface({ dialog: 'Guide' }), elapsedMs: 20, consoleErrors: ['boom'],
   }).problems.includes('console-error'));
+});
+
+test('Copy link is toast-only, a menu that only closes is dead, and an ok RPC is dead', () => {
+  const before = surface({});
+  const copyLink = classifyClick({
+    before,
+    after: surface({ toast: "Couldn't copy." }),
+  });
+  assert.deepEqual(copyLink.problems, ['toast-only']);
+
+  const menuCloses = classifyClick({
+    before: surface({ menu: 'Conversation actions' }),
+    after: surface({ menu: null, focus: 'Conversation actions' }),
+  });
+  assert.deepEqual(menuCloses.problems, ['dead']);
+
+  const okOnly = classifyClick({
+    before,
+    after: surface({ requests: [{ method: 'sessions.share', ok: true, fixture: true }], requestCount: 1 }),
+  });
+  assert.deepEqual(okOnly.problems, ['dead']);
+});
+
+test('a navigation and a dialog are real results', () => {
+  const before = surface({ route: 'place:overview', mainText: 'grove' });
+  assert.deepEqual(classifyClick({
+    before,
+    after: surface({ route: 'place:canopy', mainText: 'canopy' }),
+  }).problems, []);
+  assert.deepEqual(classifyClick({
+    before,
+    after: surface({ route: 'place:overview', mainText: 'grove', dialog: 'Invite someone' }),
+  }).problems, []);
+});
+
+test('the screen budget reaches Overview and Appearance controls', () => {
+  const chrome = ['Skip to the page', 'Back', 'Forward', 'Guide', 'Dark'].map((name) => ({ name, region: 'chrome' }));
+  const sidebar = ['Researcher', 'Builder', 'Studio computer'].map((name) => ({ name, region: 'sidebar' }));
+  const nav = ['General', 'Appearance'].map((name) => ({ name, region: 'nav' }));
+  const overview = ['Open Canopy', 'All history', 'Invite someone', 'Lockdown'].map((name) => ({ name, region: 'screen' }));
+  const appearance = ['Light', 'Dark', 'Match this computer', 'Browse themes', 'Make your own'].map((name) => ({
+    name,
+    region: 'screen',
+  }));
+  assert.deepEqual(
+    chooseScreenClicks([...chrome, ...sidebar, ...nav, ...overview], { limit: 12 }).map((el) => el.name),
+    overview.map((el) => el.name),
+  );
+  const appearanceClicks = chooseScreenClicks([...chrome, ...sidebar, ...appearance], { limit: 12 }).map((el) => el.name);
+  assert.ok(appearanceClicks.includes('Browse themes'));
+  assert.ok(appearanceClicks.includes('Make your own'));
+  assert.ok(appearanceClicks.includes('Light'));
+  assert.deepEqual(
+    chooseRegion([...chrome, ...overview], 'chrome', { limit: 16 }).map((el) => el.name),
+    chrome.map((el) => el.name),
+  );
+  assert.deepEqual(chooseRegion(nav, 'nav', { limit: 40 }).map((el) => el.name), ['General', 'Appearance']);
 });
 
 test('sidebar rows must share pin, archive, and more, and must not show internal ids', () => {

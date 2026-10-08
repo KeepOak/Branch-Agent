@@ -26,40 +26,45 @@ export function isNoise(text) {
   return /favicon\.ico|Download the React DevTools|chrome-extension:\/\//.test(String(text || ''));
 }
 
-/** Problems a single click produced. Report-only notes are not included. */
+/**
+ * A real result is a navigation, a dialog or panel opening (or a dialog closing),
+ * or a visible change on the screen. A menu closing, a toast, and an RPC that only
+ * returns ok are not results.
+ */
 export function classifyClick({ before, after, elapsedMs = 0, consoleErrors = [], failedCalls = [] }) {
   const problems = [];
   const requests = (after.requests || []).slice(before.requestCount || 0);
-  const requestSent = requests.some((call) => call && call.ok !== false) || requests.length > 0;
   const toastChanged = before.toast !== after.toast && Boolean(after.toast);
   const routeChanged = before.route !== after.route;
-  const dialogChanged = before.dialog !== after.dialog;
-  const menuChanged = before.menu !== after.menu;
-  const panelChanged = before.panel !== after.panel;
-  const stateChanged = before.control !== after.control;
-  const textChanged = before.mainText !== after.mainText;
-  // Focus landing on the clicked control is the click itself. Focus moving to another element,
-  // such as a skip link's target, is a result.
-  const focusChanged = Boolean(after.focus) && before.focus !== after.focus;
+  const dialogOpened = Boolean(after.dialog) && after.dialog !== before.dialog;
+  const dialogClosed = Boolean(before.dialog) && !after.dialog;
+  const menuOpened = Boolean(after.menu) && after.menu !== before.menu;
+  const panelOpened = Boolean(after.panel) && after.panel !== before.panel && !before.panel;
+  const menuClosed = Boolean(before.menu) && !after.menu;
+  // Both sides must still describe a control. A menu unmounting the clicked item is not a state change.
+  const stateChanged = Boolean(before.control) && Boolean(after.control) && before.control !== after.control;
+  const textChanged = (before.viewText ?? before.mainText) !== (after.viewText ?? after.mainText);
+  const focusChanged = Boolean(after.focus) && before.focus !== after.focus && !menuClosed;
   const hashChanged = (before.hash || '') !== (after.hash || '');
   const chromeChanged = (before.chrome || '') !== (after.chrome || '');
-  const historyChanged = (before.historyMoves || 0) !== (after.historyMoves || 0);
-  const observable = routeChanged || dialogChanged || menuChanged || panelChanged || stateChanged || textChanged || toastChanged || requestSent || focusChanged || hashChanged || chromeChanged || historyChanged;
+  const real = routeChanged || dialogOpened || dialogClosed || menuOpened || panelOpened || stateChanged || textChanged || focusChanged || hashChanged || chromeChanged;
 
-  if (!observable && !after.alreadyCurrent) problems.push('dead');
-  else if (toastChanged && !routeChanged && !dialogChanged && !menuChanged && !panelChanged && !stateChanged && !textChanged && !requestSent && !focusChanged && !hashChanged && !chromeChanged && !historyChanged) problems.push('toast-only');
+  if (!real && !after.alreadyCurrent) {
+    if (toastChanged) problems.push('toast-only');
+    else problems.push('dead');
+  }
 
   if (after.alert && after.alert !== before.alert) problems.push('error');
   if (after.unimplemented && !before.unimplemented && UNIMPLEMENTED.test(after.mainText || '')) problems.push('unimplemented');
   if (after.blank && !before.blank) problems.push('blank');
   if (routeChanged && after.blank) problems.push('empty-route');
-  if (observable && elapsedMs > SLOW_MS) problems.push('slow');
+  if (real && elapsedMs > SLOW_MS) problems.push('slow');
   if (consoleErrors.filter((line) => !isNoise(line)).length) problems.push('console-error');
   // failedCalls stay on the click record. They block only when they also surface as a console error.
 
   const ledTo = {
     route: after.route || null,
-    dialog: (dialogChanged ? after.dialog : null) || (menuChanged ? after.menu : null) || after.dialog || after.menu || null,
+    dialog: dialogOpened ? after.dialog : menuOpened ? after.menu : after.dialog || after.menu || null,
     panel: after.panel || null,
     toast: after.toast || null,
     menuItems: after.menuItems || [],
