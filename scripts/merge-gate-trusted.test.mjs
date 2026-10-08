@@ -30,6 +30,9 @@ import {
   formatGateChangeReviewSummary,
   changedFilesFromPrFiles,
   evaluateGateChangeReview,
+  BUTTON_CRAWL_BASELINE,
+  buttonCrawlBaselineGrew,
+  buttonCrawlBaselineGrowth,
   GATE_CHANGE_REVIEW_REQUIRED,
   loadProtectedGatePaths,
   listCoreWorkflows,
@@ -2182,6 +2185,102 @@ test('a docs-only change is not a protected gate change', () => {
   assert.match(summary, /Marker matched: no/);
 });
 
+const baselineOnMain = JSON.stringify({
+  version: 1,
+  problems: {
+    'sidebar :: Builder': ['row-actions-inconsistent'],
+    'sidebar :: Researcher': ['row-actions-inconsistent'],
+  },
+}, null, 2);
+
+test('a grown button-crawl baseline is a protected gate change', () => {
+  const head = JSON.stringify({
+    version: 1,
+    problems: {
+      'sidebar :: Builder': ['dead', 'row-actions-inconsistent'],
+      'sidebar :: Researcher': ['row-actions-inconsistent'],
+    },
+  });
+  assert.equal(buttonCrawlBaselineGrew(baselineOnMain, head), true);
+  assert.equal(buttonCrawlBaselineGrew(baselineOnMain, '{'), true);
+  assert.equal(buttonCrawlBaselineGrowth({
+    files: [{ filename: BUTTON_CRAWL_BASELINE, status: 'modified' }],
+    baseText: baselineOnMain,
+    headText: head,
+  }), true);
+  const result = evaluateGateChangeReview({
+    changedFiles: [BUTTON_CRAWL_BASELINE],
+    body: '',
+    headSha: REVIEW_HEAD,
+    baselineGrew: true,
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.touched, true);
+  assert.deepEqual(result.protectedFiles, [BUTTON_CRAWL_BASELINE]);
+  assert.match(result.message, /scripts\/button-crawl\/baseline\.json/);
+  assert.match(result.message, /entry that main does not/);
+  assert.ok(result.message.includes(GATE_CHANGE_REVIEW_REQUIRED));
+  const signed = evaluateGateChangeReview({
+    changedFiles: [BUTTON_CRAWL_BASELINE],
+    body: `gate-change-reviewed: ${REVIEW_HEAD}\n`,
+    headSha: REVIEW_HEAD,
+    baselineGrew: true,
+  });
+  assert.equal(signed.ok, true);
+});
+
+test('a shrunk button-crawl baseline is not a protected gate change', () => {
+  const head = JSON.stringify({
+    version: 1,
+    problems: {
+      'sidebar :: Researcher': ['row-actions-inconsistent'],
+    },
+  });
+  assert.equal(buttonCrawlBaselineGrew(baselineOnMain, head), false);
+  assert.equal(buttonCrawlBaselineGrew(baselineOnMain, null), false);
+  const result = evaluateGateChangeReview({
+    changedFiles: [BUTTON_CRAWL_BASELINE],
+    body: '',
+    headSha: REVIEW_HEAD,
+    baselineGrew: false,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.touched, false);
+  assert.deepEqual(result.protectedFiles, []);
+});
+
+test('an unchanged button-crawl baseline is not a protected gate change', () => {
+  assert.equal(buttonCrawlBaselineGrew(baselineOnMain, baselineOnMain), false);
+  assert.equal(buttonCrawlBaselineGrew(baselineOnMain, `${baselineOnMain}\n`), false);
+  assert.equal(buttonCrawlBaselineGrowth({
+    files: [{ filename: 'README.md', status: 'modified' }],
+    baseText: '{}',
+    headText: baselineOnMain,
+  }), false);
+  const result = reviewChange([BUTTON_CRAWL_BASELINE], '');
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.protectedFiles, []);
+});
+
+test('reordering the button-crawl baseline is not growth', () => {
+  const reordered = JSON.stringify({
+    problems: {
+      'sidebar :: Researcher': ['row-actions-inconsistent'],
+      'sidebar :: Builder': ['row-actions-inconsistent'],
+    },
+  });
+  assert.equal(buttonCrawlBaselineGrew(baselineOnMain, reordered), false);
+  const flipped = JSON.stringify({ problems: { 'place:overview :: Export': ['slow', 'dead'] } });
+  const flippedBase = '{\n  "problems": {\n    "place:overview :: Export": ["dead", "slow"]\n  }\n}\n';
+  assert.equal(buttonCrawlBaselineGrew(flippedBase, flipped), false);
+});
+
+test('button-crawl baseline growth tests run in the changed-test-coverage job', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /^\s+run:\s*node --test scripts\/merge-gate-trusted\.test\.mjs\s*$/m);
+  assert.doesNotMatch(yaml, /merge-gate-trusted\.test\.mjs -t /);
+});
+
 test('merge-gate-trusted still reruns when the pull request body is edited', () => {
   const yaml = readFileSync(new URL(`../${TRUSTED_WORKFLOW_PATH}`, import.meta.url), 'utf8');
   assert.match(yaml, /pull_request_target:/);
@@ -2191,7 +2290,10 @@ test('merge-gate-trusted still reruns when the pull request body is edited', () 
   const source = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
   assert.match(source, /fetchPrFiles\(repo, prNumber, token\)/);
   assert.match(source, /changedFilesFromPrFiles\(files\)/);
-  assert.match(source, /evaluateGateChangeReview\(\{ changedFiles, body, headSha: sha \}\)/);
+  assert.match(source, /buttonCrawlBaselineGrowth\(\{/);
+  assert.match(source, /fetchFileText\(repo, baseRef, token, BUTTON_CRAWL_BASELINE\)/);
+  assert.match(source, /fetchFileText\(repo, sha, token, BUTTON_CRAWL_BASELINE\)/);
+  assert.match(source, /evaluateGateChangeReview\(\{ changedFiles, body, headSha: sha, baselineGrew \}\)/);
   assert.match(source, /writeSummary\(formatGateChangeReviewSummary\(review\)\)/);
   assert.match(source, /if \(!review\.ok\)/);
 });
