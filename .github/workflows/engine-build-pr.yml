@@ -2,6 +2,7 @@ name: Engine build (PR)
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - 'engine/**'
       - '.github/workflows/engine-build-pr.yml'
@@ -13,11 +14,12 @@ env:
   BRANCH_BUILD_TIMESTAMP: ${{ github.event.pull_request.updated_at }}
 
 concurrency:
-  group: engine-build-pr-${{ github.ref }}
-  cancel-in-progress: true
+  group: engine-build-pr-${{ github.event.pull_request.head.sha || github.ref }}
+  cancel-in-progress: ${{ github.event.action == 'converted_to_draft' }}
 
 jobs:
   prepare:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -45,6 +47,7 @@ jobs:
 
   declarations:
     needs: prepare
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -82,6 +85,7 @@ jobs:
 
   build:
     needs: declarations
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

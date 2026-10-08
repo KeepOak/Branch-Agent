@@ -2,17 +2,19 @@ name: OpenClaw wording
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
 
 permissions:
   contents: read
 
 concurrency:
-  group: openclaw-wording-${{ github.ref }}
-  cancel-in-progress: true
+  group: openclaw-wording-${{ github.event.pull_request.head.sha || github.ref }}
+  cancel-in-progress: ${{ github.event.action == 'converted_to_draft' }}
 
 jobs:
   wording:
     name: OpenClaw wording
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

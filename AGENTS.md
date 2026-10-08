@@ -47,7 +47,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
     - REST API: `PUT /repos/KeepOak/Branch-Agent/pulls/<number>/merge` with `{"merge_method": "merge", "sha": "<reviewed-sha>"}`
     The repository allows merge commits only and has auto-merge turned off. A workflow opens one tracking issue if anything lands on main as a squash or rebase.
 
-13. **CI has a hard 15-minute cap.** Every check job sets `timeout-minutes: 15` or less; the merge-gate job allows up to 35 because it waits for the others. A change that makes CI slower than the cap gets split, sharded or cut, never given a longer timeout.
+13. **CI has a hard 15-minute cap.** Every check job sets `timeout-minutes: 15` or less; the merge-gate job allows up to 35 because it waits for the others. A change that makes CI slower than the cap gets split, sharded or cut, never given a longer timeout. Draft PRs don't run the heavy checks. Mark a PR ready for review when it's complete, and merge-gate runs then. Don't merge main into your PR branch unless GitHub reports a conflict. Main doesn't need to be up to date to merge, and every re-merge restarts all checks.
 
 14. **Releases are batched.** A merge touching `engine/`, `window/` or `desktop/` is built in CI but only published in scheduled 30-minute batches when at least one commit landed since the last release and no check run on main's head has failed. Installed apps pick up the batched release within the hour and apply on restart. Treat every merge as potentially shipping in the next batch.
 

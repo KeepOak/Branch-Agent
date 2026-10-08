@@ -2,6 +2,7 @@ name: Feature slice checks
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - 'engine/**'
       - 'window/**'
@@ -24,12 +25,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: feature-slices-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: feature-slices-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' || github.event.action == 'converted_to_draft' }}
 
 jobs:
   feature-slices:
     name: Exact feature slices on ${{ matrix.os }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:

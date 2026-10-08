@@ -1190,10 +1190,11 @@ test('trusted gate re-runs the UI screenshot proof check from main', () => {
   assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.test.mjs'));
 });
 
-test('merge-gate does not retrigger on ready_for_review and cancel its waiting run', () => {
+test('merge-gate skips coverage on drafts and fails fast without waiting', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
   assert.match(yaml, /^  pull_request:\s*$/m);
-  assert.doesNotMatch(yaml, /^\s+types:.*ready_for_review/m);
+  assert.match(yaml, /if: github\.event\.pull_request\.draft == false/);
+  assert.match(yaml, /Fail drafts without waiting/);
 });
 
 test('merge-gate edited trigger does not cancel an in-progress wait', () => {

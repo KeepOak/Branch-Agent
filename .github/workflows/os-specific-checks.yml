@@ -6,6 +6,7 @@ name: macOS checks for OS-specific changes
 # the CI runners themselves. Desktop changes already run all three systems in desktop-checks.yml.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - 'engine/src/process/**'
       - 'engine/src/daemon/**'
@@ -34,12 +35,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: os-specific-${{ github.ref }}
-  cancel-in-progress: true
+  group: os-specific-${{ github.event.pull_request.head.sha || github.ref }}
+  cancel-in-progress: ${{ github.event.action == 'converted_to_draft' }}
 
 jobs:
   named:
     name: Named feature tests on macos-latest (${{ matrix.shard }}/12)
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: macos-latest
     timeout-minutes: 15
     strategy:
@@ -63,6 +65,7 @@ jobs:
 
   capabilities:
     name: Capability tests on macos-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: macos-latest
     timeout-minutes: 15
     env:
@@ -81,6 +84,7 @@ jobs:
 
   slices:
     name: Exact feature slices on macos-latest (${{ matrix.shard }}/2)
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: macos-latest
     timeout-minutes: 15
     strategy:

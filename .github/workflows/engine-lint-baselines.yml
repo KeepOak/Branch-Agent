@@ -6,6 +6,7 @@ name: Engine lint baselines
 # check that catches that drift before merge.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - 'engine/**'
       - '.github/workflows/engine-lint-baselines.yml'
@@ -19,12 +20,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: engine-lint-baselines-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: engine-lint-baselines-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' || github.event.action == 'converted_to_draft' }}
 
 jobs:
   lint-baselines:
     name: Control UI i18n baselines
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

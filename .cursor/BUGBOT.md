@@ -34,6 +34,16 @@ Conventions and common failure modes for this repository. Bugbot should check th
 - **Right:** Engine/window tests go in `scripts/feature-batch-ci-named/<branch-name>.txt`. Desktop tests are added as explicit `node --test` steps in `.github/workflows/desktop-checks.yml`.
 - **Check:** The merge-gate workflow's `changed-test-coverage` job enforces this.
 
+### Draft PR CI
+- **Wrong:** Adding a new PR-triggered check workflow that runs on draft PRs or omits the draft skip.
+- **Right:** PR check workflows list `ready_for_review` and `converted_to_draft` and skip drafts with `if: github.event_name != 'pull_request' || github.event.pull_request.draft == false`.
+- **Check:** `scripts/ci-trigger-policy.test.mjs` enforces this.
+
+### Unnecessary merge-from-main
+- **Wrong:** Merging `main` into a PR branch when GitHub has not reported a conflict. Those commits restart every check and do not make the PR more mergeable.
+- **Right:** Leave the branch as-is until GitHub reports a conflict, then merge main only to resolve it.
+- **Check:** Flag a PR whose recent commits are only "Merge main" commits with no conflict resolution.
+
 ### CI timeout violations
 - **Wrong:** Adding slow operations that push a job over 15 minutes.
 - **Right:** Keep all check jobs under 15 minutes. Split or shard work rather than raising timeouts.
@@ -76,6 +86,8 @@ Merges to `main` that touch `engine/`, `window/`, or `desktop/` ship in the next
 - [ ] Tests use isolated ports and data folders.
 - [ ] Windows spawns include `windowsHide: true`.
 - [ ] New test files are listed in CI.
+- [ ] New PR-triggered workflows skip drafts and list `ready_for_review` and `converted_to_draft`.
+- [ ] Recent commits are not only "Merge main" commits with no conflict resolution.
 - [ ] No CI job exceeds 15 minutes (except merge-gate).
 - [ ] Lint and typecheck pass.
 - [ ] No placeholder implementations or skipped tests.

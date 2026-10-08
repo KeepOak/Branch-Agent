@@ -4,6 +4,7 @@ name: Engine handoff checks
 # Each job builds once and runs only its named real-engine cases, below the 15-minute CI job cap.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - 'engine/src/agents/main-session-recovery/**'
       - 'engine/src/cli/gateway-cli/**'
@@ -68,12 +69,13 @@ permissions:
 
 concurrency:
   # Independent manual proof runs must not replace each other's pending run.
-  group: engine-handoff-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'automatic' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: engine-handoff-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'automatic' }}
+  cancel-in-progress: ${{ github.event_name == 'push' || github.event.action == 'converted_to_draft' }}
 
 jobs:
   handoff:
     name: Real-engine handoff ${{ matrix.shard.name }} on ${{ matrix.os }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:

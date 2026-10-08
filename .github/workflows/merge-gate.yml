@@ -14,11 +14,12 @@ permissions:
 
 concurrency:
   # Body edits keep the same SHA; do not cancel the wait already running for this PR.
-  group: merge-gate-${{ github.ref }}
+  group: merge-gate-${{ github.event.pull_request.head.sha }}
   cancel-in-progress: ${{ github.event.action != 'edited' }}
 
 jobs:
   changed-test-coverage:
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -33,7 +34,7 @@ jobs:
           node-version: '24.19.0'
           package-manager-cache: false
       - name: Test the coverage check
-        run: node --test scripts/changed-test-coverage.test.mjs
+        run: node --test scripts/changed-test-coverage.test.mjs scripts/ci-trigger-policy.test.mjs
       - name: Test the trusted merge-gate helper
         run: node --test scripts/merge-gate-trusted.test.mjs
       - name: Require every changed test to run in CI
@@ -57,6 +58,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
+      - name: Fail drafts without waiting
+        if: github.event.pull_request.draft
+        run: |
+          echo "Draft PR: checks run when it is marked ready for review"
+          exit 1
       - name: Require changed test coverage
         env:
           COVERAGE_RESULT: ${{ needs.changed-test-coverage.result }}

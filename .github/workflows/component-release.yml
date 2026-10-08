@@ -7,6 +7,7 @@ on:
     # Every 30 minutes, offset from the top of the hour: batch merges into releases.
     - cron: '7,37 * * * *'
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - 'desktop/scripts/release-*'
       - 'desktop/scripts/make-component-release.mjs'
@@ -37,7 +38,7 @@ concurrency:
 
 jobs:
   readiness:
-    if: github.repository == 'KeepOak/Branch-Agent'
+    if: github.repository == 'KeepOak/Branch-Agent' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -102,7 +103,7 @@ jobs:
   
   identity:
     needs: readiness
-    if: needs.readiness.outputs.should_release == 'true'
+    if: needs.readiness.outputs.should_release == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -134,7 +135,7 @@ jobs:
           printf 'commit=%s\nversion=%s\n' "$commit" "$version" >> "$GITHUB_OUTPUT"
   window:
     needs: [readiness, identity]
-    if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+    if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -161,7 +162,7 @@ jobs:
   # burns the 15-minute clock while window is still queued, and the 10-minute poll then fails.
   native:
     needs: [readiness, identity, window]
-    if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+    if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     permissions:
@@ -279,7 +280,7 @@ jobs:
           retention-days: 3
   report:
     needs: [readiness, identity]
-    if: always() && github.event_name != 'pull_request' && (needs.readiness.outputs.should_release != 'true' || (github.event_name == 'workflow_dispatch' && inputs.dry_run))
+    if: always() && github.event_name != 'pull_request' && (needs.readiness.outputs.should_release != 'true' || (github.event_name == 'workflow_dispatch' && inputs.dry_run)) && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -298,7 +299,7 @@ jobs:
           echo "publish skipped"
   publish:
     needs: [readiness, identity, native]
-    if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+    if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
