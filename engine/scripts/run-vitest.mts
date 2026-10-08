@@ -702,7 +702,11 @@ export function installVitestNoOutputWatchdog(params: {
         return;
       }
       silentForMs += heartbeatMs;
-      params.log?.(`[vitest] still running with no output for ${silentForMs}ms.`);
+      const silentSeconds = Math.floor(silentForMs / 1000);
+      const remainingSeconds = Math.floor((timeoutMs - silentForMs) / 1000);
+      params.log?.(
+        `[vitest] still running (healthy): no new output for ${silentSeconds}s; the wrapper stops it automatically after ${remainingSeconds}s of silence. Do not interrupt.`,
+      );
       if (silentForMs + heartbeatMs < timeoutMs) {
         scheduleHeartbeatTimer();
       }
