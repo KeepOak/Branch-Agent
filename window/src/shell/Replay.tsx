@@ -1,17 +1,40 @@
 // "Replay this conversation" (the preview's replayDlgR118): the conversation's messages, one at a time, with Play and
 // Pause, a slider for where it is, and 1×, 2× or 4×. It plays back what the engine already holds (chat.history).
 import { useEffect, useState } from "react";
+import { stepLabel } from "../thread/format";
 import type { Block } from "../thread/model";
+import { readTextToolCall, stepFromTextToolCall } from "../thread/text-tool-call";
 import { Dialog } from "./Dialog";
 import { Icon } from "./icons";
 
 type Line = { who: string; text: string };
 
+/** Whole-reply tool-call JSON as the preview's step words (AGENT-LOOP-0088 / stepRowPB18). */
+function wordsForTextToolCall(text: string, key: string): string | null {
+  const call = readTextToolCall(text);
+  if (!call) return null;
+  const step = stepFromTextToolCall(call, key);
+  return [stepLabel(step), step.title].filter(Boolean).join(" · ");
+}
+
+function replayText(block: Block): string | null {
+  if (block.kind === "user" || block.kind === "text") {
+    const text = block.text.trim();
+    if (!text) return null;
+    return wordsForTextToolCall(text, block.key) ?? text;
+  }
+  if (block.kind === "step") {
+    return [stepLabel(block), block.title].filter(Boolean).join(" · ");
+  }
+  return null;
+}
+
 /** The replay's lines: what you wrote and what the Trunk answered, in order. */
 export function replayLines(history: Block[], trunkName: string): Line[] {
-  return history.flatMap((b): Line[] =>
-    (b.kind === "user" || b.kind === "text") && b.text.trim() ? [{ who: b.kind === "user" ? "You" : trunkName, text: b.text.trim() }] : [],
-  );
+  return history.flatMap((b): Line[] => {
+    const text = replayText(b);
+    return text ? [{ who: b.kind === "user" ? "You" : trunkName, text }] : [];
+  });
 }
 
 const STEP_MS = 1600;

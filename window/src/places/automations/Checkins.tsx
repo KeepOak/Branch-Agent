@@ -14,6 +14,8 @@ import { SwitchRow } from "./Proposal";
 import { Section, ToolRow } from "./Sections";
 import { errorText, rec, str, usePlaceData, type Row } from "./runtime";
 import { shownWhy } from "../../shell/shown-why";
+import { stepLabel } from "../../thread/format";
+import { readTextToolCall, stepFromTextToolCall } from "../../thread/text-tool-call";
 
 export type CheckinSnapshot = { hash: string; valid: boolean; defaults: Row; entries: { id: string; name: string; heartbeat: Row }[] };
 export async function loadCheckins(engine: WindowEngine): Promise<CheckinSnapshot> {
@@ -111,10 +113,29 @@ function WhatItChecks({ engine, agentId, trunk, level, canWrite }: { engine: Win
 }
 
 const LAST_WORDS: Record<string, string> = { sent: "Told you.", "ok-empty": "Nothing new.", "ok-token": "Nothing new.", skipped: "Skipped.", failed: "It didn’t finish." };
+
+/** Whole-reply tool-call JSON as the preview's step words (AGENT-LOOP-0088 / stepRowPB18). */
+function wordsForTextToolCall(text: string, key: string): string | null {
+  const call = readTextToolCall(text);
+  if (!call) return null;
+  const step = stepFromTextToolCall(call, key);
+  return [stepLabel(step), step.title].filter(Boolean).join(" · ");
+}
+
+/** Last check-in's line: status words, or the preview's step words when the preview is a tool-call JSON. */
+export function lastCheckinWords(last: Row): string {
+  const preview = str(last.preview);
+  if (preview) return wordsForTextToolCall(preview, "checkin") ?? preview;
+  const message = str(last.message);
+  const fromMessage = wordsForTextToolCall(message, "checkin");
+  if (fromMessage) return fromMessage;
+  return [LAST_WORDS[str(last.status)], message].filter(Boolean).join(" ");
+}
+
 function LastCheckins({ last }: { last: Row | null }) {
   return <div className="au-checks">
     <h3 className="au-sub">Last check-ins</h3>
-    {last && last.ts ? <div className="au-last"><Glyph name="pulse" size={14} /><span className="au-grow">{str(last.preview) || [LAST_WORDS[str(last.status)], str(last.message)].filter(Boolean).join(" ")}</span><time className="au-time">{new Date(Number(last.ts)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></div> : <p className="au-hint">No check-ins since Branch started.</p>}
+    {last && last.ts ? <div className="au-last"><Glyph name="pulse" size={14} /><span className="au-grow">{lastCheckinWords(last)}</span><time className="au-time">{new Date(Number(last.ts)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></div> : <p className="au-hint">No check-ins since Branch started.</p>}
   </div>;
 }
 
