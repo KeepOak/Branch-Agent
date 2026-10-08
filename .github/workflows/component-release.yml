@@ -419,9 +419,11 @@ jobs:
         run: node desktop/scripts/publish-component-release.mjs "${{ runner.temp }}/release-assets" "${{ needs.identity.outputs.commit }}" "${{ needs.identity.outputs.version }}"
   # Waits out the 25-minute batching window, then starts one release if main moved.
   # The sleep is the catch-up, so this job is longer than the 15-minute check cap.
+  # A failed publish still enters this job. It continues only when that commit is
+  # still Latest; a rolled-back release exits here without dispatching.
   catch-up:
-    needs: [readiness, publish]
-    if: always() && !cancelled() && github.event_name != 'pull_request' && github.repository == 'KeepOak/Branch-Agent' && (needs.publish.result == 'success' || needs.readiness.outputs.skip_reason == 'cooldown')
+    needs: [readiness, identity, publish]
+    if: always() && !cancelled() && github.event_name != 'pull_request' && github.repository == 'KeepOak/Branch-Agent' && (needs.publish.result == 'success' || needs.publish.result == 'failure' || needs.readiness.outputs.skip_reason == 'cooldown')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency:
@@ -473,6 +475,14 @@ jobs:
           catch_wait_ms="0"
           catch_reason=""
           load_main_and_release
+          if [[ "${{ needs.publish.result }}" == "failure" ]]; then
+            failed_gate="$(node desktop/scripts/component-release-readiness.mjs catch-up-after-failed-publish --latest "$latest_commit" --released "${{ needs.identity.outputs.commit }}")"
+            failed_proceed="$(node -p 'JSON.parse(process.argv[1]).proceed ? "true" : "false"' "$failed_gate")"
+            note "$(node -p 'JSON.parse(process.argv[1]).reason' "$failed_gate")"
+            if [[ "$failed_proceed" != "true" ]]; then
+              exit 0
+            fi
+          fi
           read_catch_up
           note "$catch_reason"
           if [[ "$catch_dispatch" == "true" ]]; then
