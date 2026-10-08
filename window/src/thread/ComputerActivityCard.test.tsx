@@ -110,6 +110,13 @@ describe("computer card in the conversation", () => {
     expect(container.querySelector("[data-state='done']")?.textContent).toContain("Done");
     expect(container.textContent).toContain("Used Ada's computer · 1 action");
   });
+  it("shows one finished card, not a Done card and a Used card", async () => {
+    await render([step("a", "Opened mail", "ok"), step("b", "Clicked Sign in", "ok")], false);
+    expect(container.querySelectorAll(".acts-card-st, .comp-card-st")).toHaveLength(1);
+    expect(container.querySelector(".comp-card-st")).toBeNull();
+    expect(container.querySelector(".acts-card-st")?.textContent).toContain("Used Ada's computer · 2 actions");
+    expect(container.querySelector(".acts-card-st")?.textContent).toContain("Done");
+  });
   it("notifies the parent when you hand back", async () => {
     const onHandBack = vi.fn();
     await render([step("a", "Searching the inbox", "running")], true, vi.fn(), undefined, {

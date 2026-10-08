@@ -194,61 +194,65 @@ export function ComputerActivityCard({
     .slice(0, 3)
     .map((s) => s.title)
     .join(", ");
-  return (
-    <>
-      <section className="card-st comp-card-st" aria-label={`${where}: ${pill.text}`} data-state={state}>
-        <div className="card-h-st">
-          <b>
-            <SIcon name={mode === "Browser" ? "globe" : "monitor"} small />
-            {where}
-          </b>
+  if (state === "done") {
+    return (
+      <section className="card-st acts-card-st" aria-label={`${where}: ${pill.text}`} data-state={state}>
+        <button type="button" className="acts-head-st" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          <SIcon name={mode === "Browser" ? "globe" : "monitor"} small />
+          <span className="grow">
+            <b>
+              Used {where} · {count} action{count === 1 ? "" : "s"}
+            </b>
+            <small>
+              {summary}
+              {count > 3 ? "…" : ""}
+            </small>
+          </span>
           <span className={`pill ${pill.className}`}>
             <i />
             {pill.text}
           </span>
-        </div>
-        <p className="card-sub-st">{latest.title}</p>
-        {thumb}
-        {acts ? <div className="card-acts-st">{acts}</div> : null}
+          <SIcon name="chev" small className="acts-chev-st" />
+        </button>
+        {open ? (
+          <>
+            <ol className="acts-list-st">
+              {steps.map((s) => (
+                <li key={s.key} className={s.status}>
+                  <SIcon name={s.status === "ok" ? "check" : s.status === "running" ? "spin" : "x"} small />
+                  <span className="grow">
+                    <b>{s.title}</b>
+                    {s.detail ? <small>{s.detail}</small> : null}
+                  </span>
+                </li>
+              ))}
+            </ol>
+            <div className="card-acts-st">
+              <button type="button" className="btn ghost sm" onClick={() => onWatch(mode)}>
+                <SIcon name={mode === "Browser" ? "globe" : "monitor"} small />
+                Open the {mode === "Browser" ? "browser" : "computer"}
+              </button>
+            </div>
+          </>
+        ) : null}
       </section>
-      {state === "done" ? (
-        <section className="card-st acts-card-st" aria-label={`${mode} activity`}>
-          <button type="button" className="acts-head-st" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-            <SIcon name={mode === "Browser" ? "globe" : "monitor"} small />
-            <span className="grow">
-              <b>
-                Used {where} · {count} action{count === 1 ? "" : "s"}
-              </b>
-              <small>
-                {summary}
-                {count > 3 ? "…" : ""}
-              </small>
-            </span>
-            <SIcon name="chev" small className="acts-chev-st" />
-          </button>
-          {open ? (
-            <>
-              <ol className="acts-list-st">
-                {steps.map((s) => (
-                  <li key={s.key} className={s.status}>
-                    <SIcon name={s.status === "ok" ? "check" : s.status === "running" ? "spin" : "x"} small />
-                    <span className="grow">
-                      <b>{s.title}</b>
-                      {s.detail ? <small>{s.detail}</small> : null}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-              <div className="card-acts-st">
-                <button type="button" className="btn ghost sm" onClick={() => onWatch(mode)}>
-                  <SIcon name={mode === "Browser" ? "globe" : "monitor"} small />
-                  Open the {mode === "Browser" ? "browser" : "computer"}
-                </button>
-              </div>
-            </>
-          ) : null}
-        </section>
-      ) : null}
-    </>
+    );
+  }
+  return (
+    <section className="card-st comp-card-st" aria-label={`${where}: ${pill.text}`} data-state={state}>
+      <div className="card-h-st">
+        <b>
+          <SIcon name={mode === "Browser" ? "globe" : "monitor"} small />
+          {where}
+        </b>
+        <span className={`pill ${pill.className}`}>
+          <i />
+          {pill.text}
+        </span>
+      </div>
+      <p className="card-sub-st">{latest.title}</p>
+      {thumb}
+      {acts ? <div className="card-acts-st">{acts}</div> : null}
+    </section>
   );
 }
