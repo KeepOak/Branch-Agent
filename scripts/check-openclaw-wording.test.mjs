@@ -89,6 +89,32 @@ test('allowlisted internals pass', () => {
   }
 });
 
+test('upstream image refs pass and docs.openclaw.ai still fails', () => {
+  assert.deepEqual(checkAddedDiff(added(
+    'engine/src/cli/fleet-cli/register.ts',
+    64,
+    '.option("--image <ref>", "Container image", "ghcr.io/openclaw/openclaw:latest")',
+  )), []);
+  assert.deepEqual(checkAddedDiff(added(
+    'engine/docs/install/docker.md',
+    47,
+    'Use `ghcr.io/openclaw/openclaw` or `openclaw/openclaw` and avoid unofficial mirrors.',
+  )), []);
+  assert.deepEqual(checkAddedDiff(added(
+    'engine/docs/install/docker.md',
+    48,
+    'images: ["ghcr.io/openclaw/openclaw", "docker.io/openclaw/openclaw"]',
+  )), []);
+  const docs = checkAddedDiff(added(
+    'engine/docs/install/docker.md',
+    49,
+    'See https://docs.openclaw.ai/install/docker',
+  ));
+  assert.equal(docs.length, 1);
+  assert.equal(docs[0].kind, 'host');
+  assert.match(docs[0].match, /docs\.openclaw\.ai/);
+});
+
 test('allowlist is explicit: every rule has an id and a why', () => {
   assert.ok(ALLOWLIST.length >= 8);
   for (const rule of ALLOWLIST) {

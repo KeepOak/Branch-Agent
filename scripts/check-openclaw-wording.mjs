@@ -46,6 +46,11 @@ export const ALLOWLIST = [
     re: /(?<![/\w])github\.com\/openclaw\/[\w.-]+(?:\/[\w.-]+)*@[\w.-]+/,
   },
   {
+    id: 'image-ref',
+    why: 'Upstream images still publish at ghcr.io/openclaw, docker.io/openclaw, and the short openclaw/openclaw ref; there is no Branch registry image yet. Does not allow github.com/openclaw links.',
+    re: /(?:ghcr\.io\/|docker\.io\/)openclaw\/[\w.-]+|(?<![\w.@/~-])openclaw\/openclaw(?![\w-])/i,
+  },
+  {
     id: 'upstream-pin',
     why: 'Pinned upstream citations (openclaw/openclaw@sha) used by the rename and harvest records',
     re: /\bopenclaw\/openclaw@[0-9a-f]{7,40}\b/i,
@@ -203,7 +208,7 @@ export function formatFailure(hits) {
     '',
     'Do not add a baseline file. Remove leftover wording, or keep only an allowlisted internal',
     '(package names, import paths, compatibility config keys and env vars, license notices,',
-    'test fixtures). See ALLOWLIST in scripts/check-openclaw-wording.mjs.',
+    'test fixtures, upstream image refs). See ALLOWLIST in scripts/check-openclaw-wording.mjs.',
     '',
     'Hits:',
   ];
