@@ -75,26 +75,201 @@ function parseNeedsValue(raw) {
 
 const STEP_DISALLOWED_KEY = /^(?:if|continue-on-error|shell|working-directory):/;
 
-export function workflowDefaultsSetShell(workflow) {
-  const lines = String(workflow).split(/\r?\n/);
-  let inDefaults = false;
-  let inRun = false;
-  for (const line of lines) {
-    if (/^jobs:\s*$/.test(line) || (/^\S/.test(line) && inDefaults && !/^defaults:/.test(line))) break;
-    if (/^defaults:\s*$/.test(line)) {
-      inDefaults = true;
-      inRun = false;
+function tokenizeFlow(text) {
+  const tokens = [];
+  const source = String(text);
+  let index = 0;
+  while (index < source.length) {
+    const char = source[index];
+    if (/\s/.test(char)) {
+      index += 1;
       continue;
     }
-    if (!inDefaults) continue;
-    if (/^  run:\s*$/.test(line)) {
-      inRun = true;
+    if ('{}[],:'.includes(char)) {
+      tokens.push(char);
+      index += 1;
       continue;
     }
-    if (inRun && /^    shell:/.test(line)) return true;
-    if (/^  [A-Za-z_]/.test(line) && !/^  run:/.test(line)) inRun = false;
+    if (char === '"' || char === "'") {
+      const quote = char;
+      index += 1;
+      let value = '';
+      while (index < source.length && source[index] !== quote) {
+        if (source[index] === '\\' && index + 1 < source.length) {
+          value += source[index + 1];
+          index += 2;
+          continue;
+        }
+        value += source[index];
+        index += 1;
+      }
+      if (index >= source.length) return null;
+      tokens.push(value);
+      index += 1;
+      continue;
+    }
+    const start = index;
+    while (index < source.length && !/[\s{}[\],:]/.test(source[index])) index += 1;
+    tokens.push(source.slice(start, index));
   }
-  return false;
+  return tokens;
+}
+
+function parseFlowTokens(tokens) {
+  if (!tokens) return null;
+  let index = 0;
+  const parse = () => {
+    const token = tokens[index];
+    if (token === '{') {
+      index += 1;
+      const map = {};
+      if (tokens[index] === '}') {
+        index += 1;
+        return { kind: 'map', map };
+      }
+      while (index < tokens.length) {
+        const key = tokens[index];
+        if (typeof key !== 'string' || '{}[],:'.includes(key)) return null;
+        index += 1;
+        if (tokens[index] !== ':') return null;
+        index += 1;
+        const value = parse();
+        if (value == null) return null;
+        map[key] = value;
+        if (tokens[index] === ',') {
+          index += 1;
+          continue;
+        }
+        if (tokens[index] === '}') {
+          index += 1;
+          return { kind: 'map', map };
+        }
+        return null;
+      }
+      return null;
+    }
+    if (token === '[') {
+      index += 1;
+      while (index < tokens.length && tokens[index] !== ']') {
+        if (parse() == null) return null;
+        if (tokens[index] === ',') index += 1;
+      }
+      if (tokens[index] !== ']') return null;
+      index += 1;
+      return { kind: 'seq' };
+    }
+    if (token == null || '{}[],:'.includes(token)) return null;
+    index += 1;
+    return { kind: 'scalar', value: token };
+  };
+  const value = parse();
+  if (value == null || index !== tokens.length) return null;
+  return value;
+}
+
+function parseFlowValue(text) {
+  return parseFlowTokens(tokenizeFlow(text));
+}
+
+function parseBlockMapping(lines, indent) {
+  const map = {};
+  const prefix = ' '.repeat(indent);
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index];
+    if (line.trim() === '' || /^\s*#/.test(line)) {
+      index += 1;
+      continue;
+    }
+    if (!line.startsWith(prefix)) return line.startsWith(' ') ? null : map;
+    if (line[indent] === ' ') return null;
+    const match = new RegExp(`^${prefix}([A-Za-z_][\\w-]*)\\s*:(.*)$`).exec(line);
+    if (!match) return null;
+    const rest = match[2].trim();
+    index += 1;
+    if (rest && rest !== '|' && rest !== '>') {
+      const value = parseFlowValue(rest);
+      if (value == null) return null;
+      map[match[1]] = value;
+      continue;
+    }
+    const nested = [];
+    while (index < lines.length) {
+      const next = lines[index];
+      if (next.trim() === '' || /^\s*#/.test(next) || next.startsWith(' '.repeat(indent + 1))) {
+        nested.push(next);
+        index += 1;
+        continue;
+      }
+      break;
+    }
+    if (rest === '|' || rest === '>') {
+      map[match[1]] = { kind: 'scalar', value: nested.join('\n') };
+      continue;
+    }
+    const child = parseBlockMapping(nested, indent + 2);
+    if (child == null) return null;
+    map[match[1]] = { kind: 'map', map: child };
+  }
+  return map;
+}
+
+function topLevelEntries(workflow) {
+  const lines = String(workflow).split(/\r?\n/);
+  const entries = [];
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index];
+    if (line.trim() === '' || /^\s*#/.test(line)) {
+      index += 1;
+      continue;
+    }
+    const match = /^([A-Za-z_][\w-]*)\s*:(.*)$/.exec(line);
+    if (!match) return null;
+    index += 1;
+    const body = [];
+    while (index < lines.length) {
+      const next = lines[index];
+      if (next.trim() === '' || /^\s*#/.test(next) || /^\s/.test(next)) {
+        body.push(next);
+        index += 1;
+        continue;
+      }
+      break;
+    }
+    entries.push({ key: match[1], rest: match[2], body });
+  }
+  return entries;
+}
+
+function runMappingHasShell(defaultsMap) {
+  if (!Object.hasOwn(defaultsMap, 'run')) return false;
+  const run = defaultsMap.run;
+  if (!run || run.kind !== 'map') return true;
+  return Object.hasOwn(run.map, 'shell');
+}
+
+function defaultsMappingHasRunShell(rest, body) {
+  const inline = String(rest ?? '').trim();
+  if (inline && inline !== '|' && inline !== '>') {
+    const parsed = parseFlowValue(inline);
+    if (parsed == null || parsed.kind !== 'map') return true;
+    return runMappingHasShell(parsed.map);
+  }
+  const parsed = parseBlockMapping(body, 2);
+  if (parsed == null) return true;
+  return runMappingHasShell(parsed);
+}
+
+export function workflowDefaultsSetShell(workflow) {
+  const text = String(workflow ?? '');
+  const entries = topLevelEntries(text);
+  if (entries == null) {
+    const stripped = text.replace(/(^|[ \t])#.*$/gm, '$1');
+    return /^defaults\s*:/m.test(stripped) || /^["']defaults["']\s*:/m.test(stripped);
+  }
+  return entries.some((entry) =>
+    entry.key === 'defaults' && defaultsMappingHasRunShell(entry.rest, entry.body));
 }
 
 function emptyJob(id) {

@@ -1318,6 +1318,33 @@ test('workflow defaults.run.shell does not cover a desktop test', () => {
   assert.equal(trustedUncovers(pr), true);
 });
 
+test('workflow defaults.run.shell after jobs: does not cover a desktop test', () => {
+  const pr = [
+    'on:\n  pull_request:\n',
+    'jobs:\n  desktop:\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+    'defaults:\n  run:\n    shell: bash\n',
+  ].join('');
+  assert.equal(trustedUncovers(pr), true);
+});
+
+test('flow-style workflow defaults.run.shell does not cover a desktop test', () => {
+  const pr = [
+    'on:\n  pull_request:\n',
+    'defaults: { run: { shell: bash } }\n',
+    'jobs:\n  desktop:\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  assert.equal(trustedUncovers(pr), true);
+});
+
+test('workflow defaults.run.working-directory without shell still covers a desktop test', () => {
+  const pr = [
+    'on:\n  pull_request:\n',
+    'defaults:\n  run:\n    working-directory: desktop\n',
+    'jobs:\n  desktop:\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  assert.equal(trustedUncovers(pr), false);
+});
+
 test('nameStatusFromPrFiles and coverageFromPrFiles treat API files as data', () => {
   const status = nameStatusFromPrFiles([
     { filename: 'engine/src/covered.test.ts', status: 'modified' },

@@ -9,6 +9,7 @@ import {
   handoffRunTargets,
   pullRequestDesktopRunTargets,
   uncoveredTests,
+  workflowDefaultsSetShell,
   workflowHasPullRequestTrigger,
 } from './changed-test-coverage.mjs';
 
@@ -74,6 +75,32 @@ test('allowlisted desktop coverage counts #677\'s plain post-build step on the r
   assert.ok(targets.has('desktop/scripts/component-release-readiness.test.mjs'));
   assert.ok(targets.has('desktop/scripts/handoff-timeouts.test.mjs'));
   assert.ok(!targets.has('desktop/scripts/gateway-ready.test.mjs'));
+});
+
+test('workflowDefaultsSetShell detects run.shell after jobs: and in flow style', () => {
+  const afterJobs = [
+    'on:\n  pull_request:\n',
+    'jobs:\n  desktop:\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+    'defaults:\n  run:\n    shell: bash\n',
+  ].join('');
+  const flow = [
+    'on:\n  pull_request:\n',
+    'defaults: { run: { shell: bash } }\n',
+    'jobs:\n  desktop:\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  const workingDirectoryOnly = [
+    'on:\n  pull_request:\n',
+    'defaults:\n  run:\n    working-directory: desktop\n',
+    'jobs:\n  desktop:\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  assert.equal(workflowDefaultsSetShell(afterJobs), true);
+  assert.equal(workflowDefaultsSetShell(flow), true);
+  assert.equal(workflowDefaultsSetShell(workingDirectoryOnly), false);
+  assert.deepEqual([...allowlistedDesktopRunTargets(afterJobs)], []);
+  assert.deepEqual([...allowlistedDesktopRunTargets(flow)], []);
+  assert.deepEqual([...allowlistedDesktopRunTargets(workingDirectoryOnly)], [
+    'desktop/scripts/new.test.mjs',
+  ]);
 });
 
 test('coverage includes actual slice, priority, Harvest and desktop CI targets', () => {
