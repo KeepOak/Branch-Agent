@@ -28,6 +28,7 @@ import {
   parseNamedTestList,
   formatGateChangeSummary,
   formatGateChangeReviewSummary,
+  changedFilesFromPrFiles,
   evaluateGateChangeReview,
   GATE_CHANGE_REVIEW_REQUIRED,
   loadProtectedGatePaths,
@@ -2136,6 +2137,41 @@ test('a desktop-checks.yml-only change is a protected gate change', () => {
   assert.match(summary, /Marker matched: no/);
 });
 
+test('a deleted protected gate file with no marker is flagged', () => {
+  const changedFiles = changedFilesFromPrFiles([
+    { filename: 'scripts/merge-gate-trusted.mjs', status: 'removed' },
+  ]);
+  assert.deepEqual(changedFiles, ['scripts/merge-gate-trusted.mjs']);
+  const result = reviewChange(changedFiles, '');
+  assert.equal(result.ok, false);
+  assert.equal(result.touched, true);
+  assert.equal(result.markerMatched, false);
+  assert.deepEqual(result.protectedFiles, ['scripts/merge-gate-trusted.mjs']);
+  assert.match(result.message, /scripts\/merge-gate-trusted\.mjs/);
+  assert.ok(result.message.includes(GATE_CHANGE_REVIEW_REQUIRED));
+});
+
+test('a renamed protected gate file with no marker is flagged', () => {
+  const changedFiles = changedFilesFromPrFiles([
+    {
+      filename: 'docs/desktop-checks.yml',
+      previous_filename: '.github/workflows/desktop-checks.yml',
+      status: 'renamed',
+    },
+  ]);
+  assert.deepEqual(changedFiles, [
+    'docs/desktop-checks.yml',
+    '.github/workflows/desktop-checks.yml',
+  ]);
+  const result = reviewChange(changedFiles, '');
+  assert.equal(result.ok, false);
+  assert.equal(result.touched, true);
+  assert.equal(result.markerMatched, false);
+  assert.deepEqual(result.protectedFiles, ['.github/workflows/desktop-checks.yml']);
+  assert.match(result.message, /\.github\/workflows\/desktop-checks\.yml/);
+  assert.ok(result.message.includes(GATE_CHANGE_REVIEW_REQUIRED));
+});
+
 test('a docs-only change is not a protected gate change', () => {
   const result = reviewChange(['docs/CHECKPOINT.md'], '');
   assert.equal(result.ok, true);
@@ -2154,6 +2190,7 @@ test('merge-gate-trusted still reruns when the pull request body is edited', () 
   assert.match(yaml, /SHA:\s*\$\{\{\s*github\.event\.pull_request\.head\.sha\s*\}\}/);
   const source = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
   assert.match(source, /fetchPrFiles\(repo, prNumber, token\)/);
+  assert.match(source, /changedFilesFromPrFiles\(files\)/);
   assert.match(source, /evaluateGateChangeReview\(\{ changedFiles, body, headSha: sha \}\)/);
   assert.match(source, /writeSummary\(formatGateChangeReviewSummary\(review\)\)/);
   assert.match(source, /if \(!review\.ok\)/);

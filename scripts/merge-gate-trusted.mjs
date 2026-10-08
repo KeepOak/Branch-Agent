@@ -487,6 +487,12 @@ export function loadProtectedGatePaths({
   });
 }
 
+export function changedFilesFromPrFiles(files) {
+  return files.flatMap((file) => (
+    file.previous_filename ? [file.filename, file.previous_filename] : [file.filename]
+  ));
+}
+
 export function touchedProtectedFiles(changedFiles, protectedPaths) {
   const hits = [];
   const seen = new Set();
@@ -977,9 +983,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   }
 
   const files = fetchPrFiles(repo, prNumber, token);
-  const changedFiles = files.flatMap((file) => (
-    file.previous_filename ? [file.filename, file.previous_filename] : [file.filename]
-  ));
+  const changedFiles = changedFilesFromPrFiles(files);
   const body = fetchPrBody(repo, prNumber, token);
   const review = evaluateGateChangeReview({ changedFiles, body, headSha: sha });
   writeSummary(formatGateChangeSummary(changedFiles));
