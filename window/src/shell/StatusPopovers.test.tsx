@@ -52,14 +52,14 @@ describe("status popovers", () => {
   });
   it("Usage: a flat Every account row with left · reset and this week used", async () => {
     const request = vi.fn(async (method: string) => method === "usage.status"
-      ? { updatedAt: Date.now(), providers: [{ provider: "openai", displayName: "ChatGPT", accountEmail: "you@example.com", plan: "Plus", windows: [{ label: "5h", usedPercent: 60 }, { label: "Week", usedPercent: 30 }] }] }
+      ? { updatedAt: Date.now(), providers: [{ provider: "openai-codex", displayName: "ChatGPT plan", accountEmail: "you@example.com", plan: "Plus", windows: [{ label: "5h", usedPercent: 60, resetAt: Date.now() + 6 * 3_600_000 }, { label: "Week", usedPercent: 30 }] }] }
       : {});
     const limits = { updatedAt: Date.now(), refreshing: false, rows: [{ id: "a", name: "ChatGPT · Account 1", email: "you@example.com", plan: "Plus", account: "you@example.com · Plus", pill: "Measured" as const, windows: [{ name: "This 5-hour window", left: 40, reset: "resets 6 PM", low: false }, { name: "This week", left: 70, reset: "", low: false }], line: "as of just now" }] };
     const host = await show(<UsagePopover above={above} onClose={() => {}} limits={limits} request={request as never} onOpenUsage={() => {}} />);
     expect(request).toHaveBeenCalledWith("usage.status", { refresh: true });
     expect(host.querySelector(".sp-provider")).toBeNull();
     expect(host.textContent).toContain("you@example.com");
-    expect(host.textContent).toContain("40% left · resets 6 PM");
+    expect(host.textContent).toMatch(/40% left · resets /);
     expect(host.textContent).toContain("ChatGPT · Account 1 · Plus · this week 30% used");
     expect(host.querySelector(".meterT5 i")?.getAttribute("style")).toContain("60%");
   });
