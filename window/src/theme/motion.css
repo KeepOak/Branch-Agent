@@ -1,0 +1,13 @@
+/* Preview .pinTileT5.newT5: a pin fades in once, when it is first pinned.
+   Higher specificity than contacts-layout.css so the tokens and still-guards win. */
+.side .pin-tile.pin-new {
+  animation: pin-in var(--t-enter) var(--ease-enter) both;
+}
+@keyframes pin-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .side .pin-tile.pin-new { animation: none; }
+}
+:root[data-still] .side .pin-tile.pin-new { animation: none; }
