@@ -125,7 +125,9 @@ describe("reclaimConfiguredGatewayPort", () => {
       log: logs,
       deps: { pollMs: 20, giveUpMs: 5_000 },
     });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 50);
+    });
     expect(await probeReadyz(configuredPort)).toBe(200);
     await closeServer(predecessor);
 

@@ -29,8 +29,9 @@ export type ReclaimConfiguredPortDeps = {
 };
 
 function parsePort(value: unknown): number | undefined {
-  const port = typeof value === "number" ? value : Number(String(value ?? "").trim());
-  return Number.isInteger(port) && port > 0 && port < 65536 ? port : undefined;
+  const raw =
+    typeof value === "number" ? value : typeof value === "string" ? Number(value.trim()) : Number.NaN;
+  return Number.isInteger(raw) && raw > 0 && raw < 65536 ? raw : undefined;
 }
 
 /**
@@ -41,9 +42,13 @@ export function resolveConfiguredDesktopGatewayPort(
   env: NodeJS.ProcessEnv = process.env,
 ): number | undefined {
   const preferred = parsePort(env.BRANCH_GATEWAY_PREFERRED_PORT);
-  if (preferred !== undefined) return preferred;
+  if (preferred !== undefined) {
+    return preferred;
+  }
   // A promoted standby still has this set; a normal start must not probe the owner's desktop.json.
-  if (env.BRANCH_GATEWAY_STANDBY !== "1") return undefined;
+  if (env.BRANCH_GATEWAY_STANDBY !== "1") {
+    return undefined;
+  }
   const dataDir = desktopDataDirectory(env);
   try {
     const raw = JSON.parse(fs.readFileSync(path.join(dataDir, "desktop.json"), "utf8")) as {
@@ -105,13 +110,17 @@ async function bindAfterFree(
   deps: Required<Pick<ReclaimConfiguredPortDeps, "isPortFree" | "sleep" | "attach">>,
 ): Promise<boolean> {
   for (let attempt = 0; attempt < BIND_RETRIES_AFTER_FREE; attempt++) {
-    if (!(await deps.isPortFree(port))) return false;
+    if (!(await deps.isPortFree(port))) {
+      return false;
+    }
     try {
       await deps.attach(httpServer, port);
       return true;
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "EADDRINUSE" || attempt === BIND_RETRIES_AFTER_FREE - 1) return false;
+      if (code !== "EADDRINUSE" || attempt === BIND_RETRIES_AFTER_FREE - 1) {
+        return false;
+      }
       await deps.sleep(POLL_MS);
     }
   }
@@ -132,9 +141,12 @@ export async function reclaimConfiguredGatewayPort(params: {
 }): Promise<ConfiguredPortReclaimResult> {
   const log = params.log;
   const configuredPort = params.configuredPort;
-  if (configuredPort === params.currentPort) return "already";
+  if (configuredPort === params.currentPort) {
+    return "already";
+  }
   const isPortFree = params.deps?.isPortFree ?? isLoopbackPortFree;
-  const sleep = params.deps?.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const sleep =
+    params.deps?.sleep ?? ((ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); }));
   const now = params.deps?.now ?? Date.now;
   const giveUpMs = params.deps?.giveUpMs ?? CONFIGURED_PORT_RECLAIM_GIVE_UP_MS;
   const pollMs = params.deps?.pollMs ?? POLL_MS;
@@ -148,7 +160,9 @@ export async function reclaimConfiguredGatewayPort(params: {
       );
       return "bound";
     }
-    if (params.signal?.aborted) break;
+    if (params.signal?.aborted) {
+      break;
+    }
     if (now() >= deadline) {
       log.warn(
         `gateway: configured port ${configuredPort} is held by another process; keeping the current port ${params.currentPort}`,
