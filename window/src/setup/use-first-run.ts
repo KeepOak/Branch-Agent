@@ -3,7 +3,7 @@
 // usable Trunks also reopens at the first-Trunk step so the window cannot strand a person without a contact.
 import { useEffect, useRef, useState } from "react";
 import type { SaplingSession } from "../connect/session";
-import { needsFirstContact, setupDone } from "./setup-model";
+import { needsFirstContact, RUN_SETUP_AGAIN, setupDone } from "./setup-model";
 
 /** The step setup is open at, or null; `open(step)` reopens it by hand (Guide › Set up Branch, Replay the first run). */
 export function useFirstRun(session: SaplingSession, ready: boolean, busy: () => boolean, usableTrunks: number | null = null, inSettings = false) {
@@ -53,5 +53,10 @@ export function useFirstRun(session: SaplingSession, ready: boolean, busy: () =>
     // Once per connection; `busy` is read when the timer fires.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, ready, usableTrunks]);
+  useEffect(() => {
+    const on = () => { returningFromLocalModel.current = false; closed.current = false; setStep(0); };
+    window.addEventListener(RUN_SETUP_AGAIN, on);
+    return () => window.removeEventListener(RUN_SETUP_AGAIN, on);
+  }, []);
   return { step, requiresContact, isFirstRun, contactCreated: () => setRequiresContact(false), open: (at = 0) => { returningFromLocalModel.current = false; closed.current = false; setStep(at); }, close: () => { returningFromLocalModel.current = false; closed.current = true; setStep(null); }, leaveForLocalModel: () => { returningFromLocalModel.current = true; closed.current = true; setStep(null); } };
 }
