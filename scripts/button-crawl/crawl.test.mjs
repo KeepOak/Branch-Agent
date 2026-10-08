@@ -34,7 +34,7 @@ test('denylist records external sign-in controls without clicking them', () => {
   for (const name of ['Connect GitHub', 'connect Google', 'CONNECT Microsoft', 'Sign in with Google', 'Continue with GitHub']) {
     assert.equal(skipReason({ name }), 'external-sign-in');
   }
-  for (const name of ['Connect', 'New chat', 'Sign in', 'Continue', 'Reconnect GitHub']) {
+  for (const name of ['Connect', 'New chat', 'Sign in', 'Continue', 'Reconnect GitHub', 'Connect to a Branch elsewhere…']) {
     assert.equal(skipReason({ name }), null);
   }
   assert.equal(skipReason({ name: 'Remove GitHub account' }), 'destructive');

@@ -4,7 +4,7 @@
 // "remove" is included with delete: in this window it drops a conversation, trunk, or account.
 
 const DESTRUCTIVE = /\b(delete|remove|uninstall|erase|wipe|destroy|quit|sign[\s-]?out|log[\s-]?out)\b/i;
-const EXTERNAL_SIGN_IN = /^(?:connect|sign in with|continue with)\s+\S/i;
+const EXTERNAL_SIGN_IN = /^(?:connect|sign in with|continue with)\s+(?!to\b)\S/i;
 
 /** True when a link would leave this window for another site. */
 export function isExternalHref(href) {
