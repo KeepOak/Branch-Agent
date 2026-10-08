@@ -1029,4 +1029,5 @@ test('merge-gate recheck fires when Visual tour and Engine build complete', () =
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate-recheck.yml', import.meta.url), 'utf8');
   assert.match(yaml, /^\s+-\s+Visual tour\s*$/m);
   assert.match(yaml, /^\s+-\s+Engine build \(PR\)\s*$/m);
+  assert.match(yaml, /^\s+-\s+Gate files fresh\s*$/m);
 });
