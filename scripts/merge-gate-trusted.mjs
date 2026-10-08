@@ -498,7 +498,58 @@ export function formatGateChangeSummary(changedFiles) {
 
 export const GATE_CHANGE_REVIEW_REQUIRED =
   'The gate change needs a separate review before the marker can be added for this head.';
+export const BUTTON_CRAWL_BASELINE = 'scripts/button-crawl/baseline.json';
 const GATE_CHANGE_REVIEWED_LINE = /^gate-change-reviewed: ([0-9a-f]{40})$/;
+
+/** Problem entries in the button-crawl baseline. Unparseable text is not a usable set. */
+export function buttonCrawlBaselineEntries(text) {
+  if (text == null || String(text).trim() === '') return { ok: true, entries: new Set() };
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { ok: false, entries: new Set() };
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { ok: false, entries: new Set() };
+  const problems = parsed.problems;
+  if (problems == null) return { ok: true, entries: new Set() };
+  if (typeof problems !== 'object' || Array.isArray(problems)) return { ok: false, entries: new Set() };
+  const entries = new Set();
+  for (const [key, list] of Object.entries(problems)) {
+    if (!Array.isArray(list)) return { ok: false, entries: new Set() };
+    for (const problem of list) {
+      if (typeof problem !== 'string' || problem.trim() === '') return { ok: false, entries: new Set() };
+      entries.add(`${key}\0${problem}`);
+    }
+  }
+  return { ok: true, entries };
+}
+
+/** True when the pull request baseline has a problem entry main does not. Order and formatting do not count. */
+export function buttonCrawlBaselineGrew(baseText, headText) {
+  const base = buttonCrawlBaselineEntries(baseText);
+  const head = buttonCrawlBaselineEntries(headText);
+  if (!head.ok) return true;
+  const known = base.ok ? base.entries : new Set();
+  for (const entry of head.entries) {
+    if (!known.has(entry)) return true;
+  }
+  return false;
+}
+
+export function pullRequestTouchesPath(files, filePath) {
+  return (files ?? []).some((file) => {
+    const name = typeof file === 'string' ? file : file?.filename;
+    const previous = typeof file === 'string' ? '' : file?.previous_filename;
+    return name === filePath || previous === filePath;
+  });
+}
+
+/** Growth only counts when this pull request changes the baseline file. */
+export function buttonCrawlBaselineGrowth({ files, baseText, headText }) {
+  if (!pullRequestTouchesPath(files, BUTTON_CRAWL_BASELINE)) return false;
+  return buttonCrawlBaselineGrew(baseText, headText);
+}
 const GATE_RUNNER_WORKFLOWS = [
   '.github/workflows/merge-gate.yml',
   TRUSTED_WORKFLOW_PATH,
@@ -589,12 +640,19 @@ export function formatGateChangeReviewFailure(protectedFiles, headSha, body) {
   } else {
     lines.push(`The gate-change-reviewed marker does not match the current head ${headSha}.`);
   }
+  if (protectedFiles.includes(BUTTON_CRAWL_BASELINE)) {
+    lines.push('The button-crawl baseline has an entry that main does not. A shrink or a reorder does not need this review.');
+  }
   return lines.join('\n');
 }
 
-export function evaluateGateChangeReview({ changedFiles, body, headSha, protectedPaths }) {
+export function evaluateGateChangeReview({ changedFiles, body, headSha, protectedPaths, baselineGrew = false }) {
   const paths = protectedPaths ?? loadProtectedGatePaths();
   const protectedFiles = touchedProtectedFiles(changedFiles, paths);
+  if (baselineGrew && !protectedFiles.includes(BUTTON_CRAWL_BASELINE)) {
+    protectedFiles.push(BUTTON_CRAWL_BASELINE);
+    protectedFiles.sort();
+  }
   const markerMatched = gateChangeMarkerMatches(body, headSha);
   const touched = protectedFiles.length > 0;
   return {
@@ -1122,7 +1180,16 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const files = fetchPrFiles(repo, prNumber, token);
   const changedFiles = changedFilesFromPrFiles(files);
   const body = fetchPrBody(repo, prNumber, token);
-  const review = evaluateGateChangeReview({ changedFiles, body, headSha: sha });
+  const baselineGrew = buttonCrawlBaselineGrowth({
+    files,
+    baseText: pullRequestTouchesPath(files, BUTTON_CRAWL_BASELINE)
+      ? fetchFileText(repo, baseRef, token, BUTTON_CRAWL_BASELINE)
+      : null,
+    headText: pullRequestTouchesPath(files, BUTTON_CRAWL_BASELINE)
+      ? fetchFileText(repo, sha, token, BUTTON_CRAWL_BASELINE)
+      : null,
+  });
+  const review = evaluateGateChangeReview({ changedFiles, body, headSha: sha, baselineGrew });
   writeSummary(formatGateChangeSummary(changedFiles));
   writeSummary(formatGateChangeReviewSummary(review));
   if (!review.ok) {
