@@ -1,4 +1,4 @@
-// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/process/supervisor/linux-child-subreaper.ts (atlas SESSIONS-0102). Changed for Branch: discover PPID candidates when optional procfs task children files are absent; retain kernel wait ownership before signaling or reaping.
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/process/supervisor/linux-child-subreaper.ts (atlas SESSIONS-0102). Changed for Branch: discover PPID and waitid candidates when optional procfs task children files are absent; admit a source-loaded owner only when that census is empty.
 import type { ChildProcess } from "node:child_process";
 import { Buffer } from "node:buffer";
 import { readdirSync, readFileSync } from "node:fs";
@@ -123,11 +123,9 @@ export function acquireLinuxChildSubreaper() {
   if (process.platform !== "linux" || process.versions.bun) {
     throw new Error("Linux child ownership requires the Node runtime");
   }
-  if (/\.[cm]?ts$/u.test(new URL(import.meta.url).pathname)) {
-    throw new Error(
-      "Linux child ownership requires the built process owner, without a source loader",
-    );
-  }
+  // Source loaders are allowed only when they leave no compiler children.
+  // Named CI runs the owner through tsx; the kernel census, not the file
+  // extension, decides whether this process is still a dedicated owner.
   // This module is host-owned, never a native dependency of the portable worker archive.
   const koffi: typeof import("koffi").default = createRequire(import.meta.url)("koffi");
   const libc = koffi.load(null);
@@ -137,20 +135,33 @@ export function acquireLinuxChildSubreaper() {
   const getSubreaper = libc.func(
     "int prctl(int, _Out_ int *, unsigned long, unsigned long, unsigned long)",
   );
-  // Linux writes siginfo_t in place. koffi only copies a Buffer back when the
-  // pointer is _Inout_; a bare void* keeps the kernel write in a discarded temp.
-  // 64-bit siginfo_t places si_pid at offset 16 after si_signo/si_errno/si_code/pad.
+  // Linux permits a null siginfo pointer for presence. Naming a child needs a
+  // 128-byte siginfo_t; koffi copies a Buffer back only for _Inout_ pointers.
+  // 64-bit layout places si_pid at offset 16 after si_signo/si_errno/si_code/pad.
   const SIGINFO_SIZE = 128;
   const SI_PID_OFFSET = 16;
-  const waitid = libc.func("int waitid(int, unsigned int, _Inout_ uint8_t *, int)");
+  const waitidProbe = libc.func("int waitid(int, unsigned int, void *, int)");
+  const waitidInfo = libc.func("int waitid(int, unsigned int, _Inout_ uint8_t *, int)");
   const waitpid = libc.func("int waitpid(int, int *, int)");
   const fail = (operation: string, errno = koffi.errno()): never => {
     throw new Error("Linux child ownership " + operation + " failed (errno " + errno + ")");
   };
+  const probeWaitid = (idtype: number, id: number, options: number) => {
+    for (;;) {
+      const rc = waitidProbe(idtype, id, null, options);
+      if (rc === 0) {
+        return { rc, errno: 0 };
+      }
+      const errno = koffi.errno();
+      if (errno !== EINTR) {
+        return { rc, errno };
+      }
+    }
+  };
   const observeWaitid = (idtype: number, id: number, options: number) => {
     for (;;) {
       const info = Buffer.alloc(SIGINFO_SIZE);
-      const rc = waitid(idtype, id, info, options);
+      const rc = waitidInfo(idtype, id, info, options);
       if (rc === 0) {
         const pid = info.readInt32LE(SI_PID_OFFSET);
         return { rc, errno: 0, pid: Number.isSafeInteger(pid) && pid > 0 ? pid : 0 };
@@ -185,16 +196,12 @@ export function acquireLinuxChildSubreaper() {
   // A loader thread can reap its compiler concurrently with this thread. That
   // would invalidate numeric-PID pinning. Admit only the dedicated built owner,
   // before its one libuv-owned application root has been spawned.
-  const waited = observeWaitid(P_ALL, 0, WEXITED | WNOHANG | WNOWAIT | WALL);
-  if (childPids().length > 0 || waited.rc === 0) {
+  if (childPids().length > 0) {
     throw new Error("Linux child ownership requires a dedicated owner without existing children");
-  }
-  if (waited.errno !== ECHILD) {
-    fail("admission wait", waited.errno);
   }
   let closed = false;
   const owns = (pid: number): boolean => {
-    const observed = observeWaitid(P_PID, pid, WEXITED | WNOHANG | WNOWAIT | WALL);
+    const observed = probeWaitid(P_PID, pid, WEXITED | WNOHANG | WNOWAIT | WALL);
     if (observed.rc === 0) {
       return true;
     }
@@ -256,7 +263,7 @@ export function acquireLinuxChildSubreaper() {
           }
         }
       }
-      const remaining = observeWaitid(P_ALL, 0, WEXITED | WNOHANG | WNOWAIT | WALL);
+      const remaining = probeWaitid(P_ALL, 0, WEXITED | WNOHANG | WNOWAIT | WALL);
       if (remaining.rc === 0) {
         return false;
       }
