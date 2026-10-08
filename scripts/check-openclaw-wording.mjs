@@ -88,6 +88,11 @@ export const ALLOWLIST = [
     file: /^(?:scripts\/check-openclaw-wording(?:\.test)?\.mjs|\.github\/workflows\/openclaw-wording-checks\.yml)$/,
   },
   {
+    id: 'window-clean-check',
+    why: 'The window cleanliness check and its baseline name old product words so leftover window copy can be found and shrunk',
+    file: /^scripts\/(?:check-window-clean\.mjs|window-clean-baseline\.txt)$/,
+  },
+  {
     id: 'rulebook',
     why: 'AGENTS.md documents that this check blocks new OpenClaw wording',
     file: /^AGENTS\.md$/,
