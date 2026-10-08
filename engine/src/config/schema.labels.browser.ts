@@ -26,7 +26,6 @@ export const BROWSER_FIELD_LABELS: Record<string, string> = {
   "browser.snapshotDefaults.mode": "Browser Snapshot Mode",
   "browser.tabCleanup": "Browser Tab Cleanup",
   "browser.tabCleanup.enabled": "Browser Tab Cleanup Enabled",
-  "browser.idleTimeoutMinutes": "Browser Idle Timeout Minutes",
   "browser.ssrfPolicy": "Browser SSRF Policy",
   "browser.ssrfPolicy.dangerouslyAllowPrivateNetwork": "Browser Dangerously Allow Private Network",
   "browser.ssrfPolicy.allowedHostnames": "Browser Allowed Hostnames",
