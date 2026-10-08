@@ -24,13 +24,15 @@ const MOUNTS: Record<PlaceId, (p: PlaceProps) => React.ReactNode> = {
   office: OfficePlace,
 };
 
-/** Routes to a place's mount point (window/src/places/<place>/index.tsx). */
+/** Routes to a place's mount point (window/src/places/<place>/index.tsx). Preview enter11: only the place remounts. */
 export function PlaceView({ place, ...props }: Omit<PlaceProps, "level"> & { place: PlaceId }) {
   const Mount = MOUNTS[place];
   const level = useLevel();
   return (
     <>
-      <Suspense fallback={<p role="status">Opening the office…</p>}><Mount {...props} level={level} /></Suspense>
+      <div className="enter11" key={place}>
+        <Suspense fallback={<p role="status">Opening the office…</p>}><Mount {...props} level={level} /></Suspense>
+      </div>
       <TrunkHost engine={props.engine} level={level} openSettings={props.openSettings} openPlace={props.openPlace} />
     </>
   );

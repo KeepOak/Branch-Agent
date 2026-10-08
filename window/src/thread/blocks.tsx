@@ -6,6 +6,7 @@ import { Face } from "../face/Face";
 import type { AgentState } from "../face/agentState";
 import { Attachments } from "./Attachments";
 import { copyText, useThread } from "./context";
+import { useFreshClass } from "./fresh";
 import { formatDuration, shortReason, stepLabel, stepsSummary } from "./format";
 import { Icon, ICONS } from "./icons";
 import { Markdown } from "./markdown";
@@ -23,8 +24,9 @@ export function isLong(text: string): boolean {
 export function UserMessage({ block, children }: { block: Of<"user">; children?: ReactNode }) {
   const long = isLong(block.text);
   const [open, setOpen] = useState(false);
+  const fresh = useFreshClass(block.key);
   return (
-    <div className={`msg user-msg${block.meta?.excluded ? " left-out" : ""}`} data-entry={block.meta?.entryId}>
+    <div className={`msg user-msg${block.meta?.excluded ? " left-out" : ""}${fresh}`} data-entry={block.meta?.entryId}>
       {children}
       {block.meta?.via ? (
         <span className="via-line">
@@ -76,8 +78,9 @@ export function NotSent({ text, reason, onRetry, onDiscard }: { text: string; re
 export function Reply({ block, face, from, working, children }: { block: Of<"text">; face?: ReactNode; from?: string; working?: boolean; children?: ReactNode }) {
   const call = readTextToolCall(block.text);
   const step = call ? stepFromTextToolCall(call, block.key) : null;
+  const fresh = useFreshClass(block.key);
   return (
-    <div className={`msg reply${block.meta?.excluded ? " left-out" : ""}`} data-entry={block.meta?.entryId}>
+    <div className={`msg reply${block.meta?.excluded ? " left-out" : ""}${fresh}`} data-entry={block.meta?.entryId}>
       {children}
       <span className="gutter">{face ? <span className={working ? "gutter-face working-ring" : "gutter-face"}>{face}</span> : null}</span>
       <div className="reply-text" data-testid="message" data-role="assistant">
