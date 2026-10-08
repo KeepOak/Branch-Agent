@@ -1,0 +1,97 @@
+{
+  "id": "infoquest",
+  "categories": ["web"],
+  "activation": {
+    "onStartup": false
+  },
+  "setup": {
+    "providers": [
+      {
+        "id": "infoquest",
+        "envVars": ["INFOQUEST_API_KEY"]
+      }
+    ]
+  },
+  "contracts": {
+    "webSearchProviders": ["infoquest"],
+    "webFetchProviders": ["infoquest"],
+    "tools": ["infoquest_image_search"]
+  },
+  "uiHints": {
+    "webSearch.apiKey": {
+      "label": "InfoQuest webSearch API Key",
+      "sensitive": true
+    },
+    "webFetch.apiKey": {
+      "label": "InfoQuest webFetch API Key",
+      "sensitive": true
+    },
+    "imageSearch.apiKey": {
+      "label": "InfoQuest imageSearch API Key",
+      "sensitive": true
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "webSearch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiKey": {
+            "type": ["string", "object"]
+          },
+          "search_time_range": {
+            "type": ["number", "string", "boolean", "object", "null"],
+            "default": -1,
+            "description": "Integral seconds or integer strings. -1 disables filtering; invalid values keep -1."
+          }
+        }
+      },
+      "webFetch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiKey": {
+            "type": ["string", "object"]
+          },
+          "fetch_time": {
+            "type": ["number", "string", "boolean", "object", "null"],
+            "default": -1,
+            "description": "Integral seconds or integer strings. -1 disables filtering; invalid values keep -1."
+          },
+          "timeout": {
+            "type": ["number", "string", "boolean", "object", "null"],
+            "default": -1,
+            "description": "Integral seconds or integer strings. -1 disables filtering; invalid values keep -1."
+          },
+          "navigation_timeout": {
+            "type": ["number", "string", "boolean", "object", "null"],
+            "default": -1,
+            "description": "Integral seconds or integer strings. -1 disables filtering; invalid values keep -1."
+          }
+        }
+      },
+      "imageSearch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiKey": {
+            "type": ["string", "object"]
+          },
+          "image_search_time_range": {
+            "type": ["number", "string", "boolean", "object", "null"],
+            "default": -1,
+            "description": "Integral seconds or integer strings. -1 disables filtering; invalid values keep -1."
+          },
+          "image_size": {
+            "type": "string",
+            "default": "i",
+            "description": "l, m or i; other values omit the image size filter."
+          }
+        }
+      }
+    }
+  }
+}
