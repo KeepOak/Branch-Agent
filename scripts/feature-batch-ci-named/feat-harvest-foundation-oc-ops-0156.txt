@@ -1,2 +1,3 @@
+# Unique foundation-0156 harvest tests; listed for trusted coverage after rate limit.
 engine:src/config/env-substitution.behaviour.test.ts
 engine:src/infra/dotenv.behaviour.test.ts
