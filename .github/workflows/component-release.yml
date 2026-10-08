@@ -60,9 +60,15 @@ jobs:
           set -euo pipefail
           decide_scheduled() {
             git fetch origin main
-            local main_commit latest_release latest_commit failed_checks
+            local main_commit latest_release latest_commit failed_checks latest_meta published_at
             main_commit="$(git rev-parse origin/main)"
-            latest_release=$(gh api repos/KeepOak/Branch-Agent/releases/latest --jq .tag_name 2>/dev/null || echo "")
+            latest_release=""
+            published_at=""
+            latest_meta=$(gh api repos/KeepOak/Branch-Agent/releases/latest --jq '[.tag_name,.published_at] | @tsv' 2>/dev/null || echo "")
+            if [[ -n "$latest_meta" ]]; then
+              latest_release="${latest_meta%%$'\t'*}"
+              published_at="${latest_meta#*$'\t'}"
+            fi
             if [[ -z "$latest_release" ]]; then
               echo "No previous release found; proceeding with release" >&2
               printf '%s %s\n' true "$main_commit"
@@ -84,7 +90,6 @@ jobs:
               return
             fi
             if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-              published_at=$(gh api repos/KeepOak/Branch-Agent/releases/latest --jq .published_at)
               if ! node desktop/scripts/component-release-readiness.mjs "$published_at"; then
                 echo "Latest release $latest_release was published at $published_at; push backup waits until it is more than 25 minutes old" >&2
                 printf '%s %s\n' false "$main_commit"
@@ -100,7 +105,7 @@ jobs:
 
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             echo "scheduled rehearsal (does not decide this pull-request build):"
-            decide_scheduled >/dev/null
+            decide_scheduled >/dev/null || echo "scheduled rehearsal could not finish" >&2
             node desktop/scripts/component-release-readiness.mjs "2000-01-01T00:00:00Z"
             should_release="true"
             commit="$(git rev-parse HEAD)"
