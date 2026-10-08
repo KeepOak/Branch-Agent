@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { GATE_SCRIPTS } from './merge-gate-trusted.mjs';
 import {
@@ -26,6 +30,7 @@ import {
   resetEpochFromRateLimit,
   runGhWithRetry,
   shouldSkipEditedRerun,
+  withIncludeFlag,
   withRateLimitRetry,
 } from './merge-gate-rate-limit.mjs';
 
@@ -563,4 +568,128 @@ test('ordinary waiter skips only a Visual tour comment proven by workflow path',
 
   const unattributed = evaluateOrdinaryChecks([feature, analyze, comment]);
   assert.equal(unattributed.ready, false);
+});
+
+test('parseGhApiIncludeOutput does not split a JSON body that mentions HTTP/', () => {
+  const body = JSON.stringify({
+    check_runs: [{
+      name: 'build',
+      output: {
+        summary: 'saw HTTP/1.1 200 OK and HTTP/2 403 Forbidden in the log',
+        text: 'HTTP/2 403 is inside this string\nHTTP/1.1 200 too',
+      },
+    }],
+    total_count: 1,
+  });
+  const parsed = parseGhApiIncludeOutput([
+    'HTTP/2.0 200 OK',
+    'Content-Type: application/json',
+    'X-RateLimit-Remaining: 12',
+    '',
+    body,
+  ].join('\n'));
+  assert.equal(parsed.status, 200);
+  assert.equal(parsed.body, body);
+  assert.equal(parsed.json.total_count, 1);
+  assert.match(parsed.json.check_runs[0].output.summary, /HTTP\/1\.1 200/);
+  assert.match(parsed.json.check_runs[0].output.text, /HTTP\/2 403/);
+});
+
+test('parseGhApiIncludeOutput uses the final status after 100 Continue', () => {
+  const body = JSON.stringify({
+    check_runs: [{ output: { summary: 'HTTP/1.1 200 then HTTP/2 403 in the log' } }],
+    total_count: 1,
+  });
+  const parsed = parseGhApiIncludeOutput([
+    'HTTP/1.1 100 Continue\r',
+    '\r',
+    'HTTP/2.0 200 OK\r',
+    'Content-Type: application/json\r',
+    'X-RateLimit-Remaining: 9\r',
+    '\r',
+    body,
+  ].join('\n'));
+  assert.equal(parsed.status, 200);
+  assert.equal(parsed.headers['x-ratelimit-remaining'], '9');
+  assert.equal(parsed.body, body);
+  assert.equal(parsed.json.total_count, 1);
+});
+
+test('withIncludeFlag never sends --paginate together with -i', () => {
+  assert.deepEqual(withIncludeFlag(['api', '--paginate', 'repos/example/commits/abc/check-runs']), {
+    args: ['api', '--paginate', 'repos/example/commits/abc/check-runs'],
+    includeHeaders: false,
+  });
+  assert.deepEqual(withIncludeFlag(['api', '-i', '--paginate', 'repos/example/commits/abc/check-runs']), {
+    args: ['api', '--paginate', 'repos/example/commits/abc/check-runs'],
+    includeHeaders: false,
+  });
+  assert.deepEqual(withIncludeFlag(['api', '--paginate', '--include', 'repos/example/commits/abc/check-runs']), {
+    args: ['api', '--paginate', 'repos/example/commits/abc/check-runs'],
+    includeHeaders: false,
+  });
+  const paginated = ghApiArgs('repos/example/commits/abc/check-runs', {
+    paginate: true,
+    includeHeaders: true,
+  });
+  assert.ok(paginated.includes('--paginate'));
+  assert.equal(paginated.includes('-i'), false);
+  assert.equal(paginated.includes('--include'), false);
+
+  let seen;
+  runGhWithRetry(['api', '--paginate', '-i', 'repos/example/commits/abc/check-runs'], {
+    exec: (_cmd, args) => {
+      seen = args;
+      return '[]';
+    },
+    sleep() {},
+  });
+  assert.ok(seen.includes('--paginate'));
+  assert.equal(seen.includes('-i'), false);
+  assert.equal(seen.includes('--include'), false);
+});
+
+test('gh wrapper preserves a >1MB JSON body through a pipe', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'merge-gate-gh-'));
+  const pad = 'HTTP/1.1 200 and HTTP/2 403 '.repeat(40_000);
+  const payload = JSON.stringify({
+    check_runs: [{ name: 'build', output: { summary: pad } }],
+    total_count: 1,
+  });
+  assert.ok(Buffer.byteLength(payload) > 1_000_000);
+  const bodyFile = path.join(dir, 'body.json');
+  writeFileSync(bodyFile, payload);
+  const fakeGh = path.join(dir, process.platform === 'win32' ? 'gh.cmd' : 'gh');
+  writeFileSync(fakeGh, [
+    '#!/usr/bin/env node',
+    "const { readFileSync } = require('node:fs');",
+    `const body = readFileSync(${JSON.stringify(bodyFile)}, 'utf8');`,
+    "process.stdout.write(`HTTP/2.0 200 OK\\r\\nContent-Type: application/json\\r\\n\\r\\n${body}`, () => {",
+    '  process.exitCode = 0;',
+    '});',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  const child = spawn(process.execPath, [
+    fileURLToPath(new URL('./merge-gate-rate-limit.mjs', import.meta.url)),
+    'gh', '--', 'api', 'repos/example/commits/abc/check-runs?per_page=100&page=1',
+  ], {
+    env: {
+      ...process.env,
+      PATH: `${dir}${path.delimiter}${process.env.PATH}`,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  const collect = async (stream) => {
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    return Buffer.concat(chunks);
+  };
+  const [received, stderr] = await Promise.all([collect(child.stdout), collect(child.stderr)]);
+  const code = await new Promise((resolve) => child.once('close', resolve));
+  assert.equal(code, 0, stderr.toString());
+  assert.equal(received.length, Buffer.byteLength(payload));
+  const parsed = JSON.parse(received.toString());
+  assert.equal(parsed.total_count, 1);
+  assert.equal(parsed.check_runs[0].output.summary, pad);
 });

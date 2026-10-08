@@ -39,37 +39,72 @@ function headerNumber(headers, name) {
   return Number.isFinite(number) ? number : null;
 }
 
-export function parseGhApiIncludeOutput(text) {
-  const src = String(text ?? '');
-  const blocks = [...src.matchAll(/^HTTP\/\S+\s+(\d{3})[^\n]*\r?\n/gm)];
-  if (blocks.length === 0) {
-    let json = null;
-    try {
-      json = src.trim() ? JSON.parse(src) : null;
-    } catch {
-      json = null;
-    }
-    return { status: null, headers: {}, body: src, json };
-  }
-  const last = blocks[blocks.length - 1];
-  const headerStart = last.index + last[0].length;
-  const rest = src.slice(headerStart);
-  const split = rest.search(/\r?\n\r?\n/);
-  const headerBlock = split === -1 ? rest : rest.slice(0, split);
-  const body = split === -1 ? '' : rest.slice(split).replace(/^\r?\n\r?\n/, '');
+function parseHeaderLines(headerBlock) {
   const headers = {};
-  for (const line of headerBlock.split(/\r?\n/)) {
+  for (const line of String(headerBlock).split(/\r?\n/)) {
     const idx = line.indexOf(':');
     if (idx === -1) continue;
     headers[line.slice(0, idx).trim().toLowerCase()] = line.slice(idx + 1).trim();
   }
+  return headers;
+}
+
+function leadingHttpStatus(text) {
+  return String(text).match(/^HTTP\/\S+\s+(\d{3})[^\n]*\r?\n/);
+}
+
+function splitHeadersFromBody(rest) {
+  if (rest.startsWith('\r\n')) return { headerBlock: '', bodyOffset: 2 };
+  if (rest.startsWith('\n')) return { headerBlock: '', bodyOffset: 1 };
+  const blank = rest.search(/\r?\n\r?\n/);
+  if (blank === -1) return null;
+  const separator = rest.slice(blank).match(/^\r?\n\r?\n/)?.[0] ?? '\n\n';
+  return { headerBlock: rest.slice(0, blank), bodyOffset: blank + separator.length };
+}
+
+export function parseGhApiIncludeOutput(text) {
+  const src = String(text ?? '');
+  let pos = 0;
+  let status = null;
+  let headers = {};
+  while (pos < src.length) {
+    const match = leadingHttpStatus(src.slice(pos));
+    if (!match) break;
+    const afterStatus = pos + match[0].length;
+    const rest = src.slice(afterStatus);
+    const split = splitHeadersFromBody(rest);
+    if (!split) {
+      status = Number(match[1]);
+      headers = parseHeaderLines(rest);
+      return { status, headers, body: '', json: null };
+    }
+    headers = parseHeaderLines(split.headerBlock);
+    status = Number(match[1]);
+    pos = afterStatus + split.bodyOffset;
+    if (!leadingHttpStatus(src.slice(pos))) break;
+  }
+  const body = status == null ? src : src.slice(pos);
   let json = null;
   try {
     json = body.trim() ? JSON.parse(body) : null;
   } catch {
     json = null;
   }
-  return { status: Number(last[1]), headers, body, json };
+  return { status, headers, body, json };
+}
+
+export function writeFully(stream, data) {
+  return new Promise((resolve, reject) => {
+    const payload = data ?? '';
+    if (payload.length === 0) {
+      resolve();
+      return;
+    }
+    stream.write(payload, (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
 }
 
 export function httpStatusOf(error) {
@@ -300,7 +335,8 @@ export function attachGhApiError(error, stdout) {
 export function execGhApi(args, {
   token = process.env.GH_TOKEN,
   exec = execFileSync,
-  includeHeaders = args.includes('-i') || args.includes('--include'),
+  includeHeaders = !args.includes('--paginate')
+    && (args.includes('-i') || args.includes('--include')),
   maxBuffer = GH_API_MAX_BUFFER,
 } = {}) {
   try {
@@ -395,9 +431,14 @@ export function waitOptionsFromEnv(env = process.env) {
   };
 }
 
-function withIncludeFlag(args) {
+export function withIncludeFlag(args) {
   if (!Array.isArray(args) || args[0] !== 'api') return { args, includeHeaders: false };
-  if (args.includes('--paginate')) return { args, includeHeaders: false };
+  if (args.includes('--paginate')) {
+    return {
+      args: args.filter((arg) => arg !== '-i' && arg !== '--include'),
+      includeHeaders: false,
+    };
+  }
   if (args.includes('-i') || args.includes('--include')) return { args, includeHeaders: true };
   return { args: ['api', '-i', ...args.slice(1)], includeHeaders: true };
 }
@@ -430,7 +471,7 @@ export function runGhWithRetry(args, {
     random,
     log,
   });
-  return prepared.includeHeaders ? (parsed.body || parsed.raw || '') : (parsed.raw ?? parsed.body ?? '');
+  return prepared.includeHeaders ? (parsed.body ?? '') : (parsed.raw ?? parsed.body ?? '');
 }
 
 export function shouldSkipEditedRerun(runs, { runId, sha } = {}) {
@@ -604,20 +645,28 @@ export function pollOrdinaryGate({
   }
 }
 
+async function runGhCli(args) {
+  if (args[0] === '--') args.shift();
+  try {
+    await writeFully(process.stdout, runGhWithRetry(args) ?? '');
+    process.exitCode = 0;
+  } catch (error) {
+    const errText = error.stderr != null && String(error.stderr).length > 0
+      ? String(error.stderr)
+      : `${errorText(error) || String(error)}\n`;
+    await writeFully(process.stderr, errText);
+    process.exitCode = error.status ?? 1;
+  }
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const command = process.argv[2];
   if (command === 'gh') {
-    const args = process.argv.slice(3);
-    if (args[0] === '--') args.shift();
-    try {
-      process.stdout.write(runGhWithRetry(args) ?? '');
-    } catch (error) {
-      if (error.stderr) process.stderr.write(String(error.stderr));
-      else console.error(errorText(error) || String(error));
-      process.exit(error.status ?? 1);
-    }
-    process.exit(0);
-  }
+    void runGhCli(process.argv.slice(3)).catch((error) => {
+      console.error(errorText(error) || String(error));
+      process.exitCode = 1;
+    });
+  } else {
 
   const repo = process.env.REPO;
   const sha = process.env.SHA;
@@ -652,4 +701,5 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     waitBudgetSeconds: Number(process.env.MERGE_GATE_WAIT_SECONDS ?? DEFAULT_WAIT_BUDGET_SECONDS),
     maxPolls: Number(process.env.MERGE_GATE_MAX_ATTEMPTS ?? 64),
   }));
+  }
 }
