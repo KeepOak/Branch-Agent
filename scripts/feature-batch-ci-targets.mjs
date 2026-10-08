@@ -534,8 +534,15 @@ export function harvestTestFiles(lane, only) {
   return files;
 }
 
+export function harvestE2eError(lane, file) {
+  if (!/\.e2e\.test\.(?:ts|tsx)$/.test(file)) return undefined;
+  return `Harvest test "${lane}:${file}" is an e2e file; Harvest vitest excludes **/*.e2e.test.ts so it would never run. Register it in the e2e suite instead.`;
+}
+
 export function harvestTests(lane) {
   const targets = [...new Set(harvestTestFiles(lane))].sort();
+  const e2e = targets.find(file => harvestE2eError(lane, file));
+  if (e2e) throw new Error(harvestE2eError(lane, e2e));
   const bad = targets.find(file => !/^.+\.test\.(?:ts|tsx|mjs|mts)$/.test(file) || file.includes('..') || file.startsWith('/'));
   if (bad) throw new Error(`Harvest test "${lane}:${bad}" must be repository-relative *.test.ts, *.test.tsx, *.test.mjs, or *.test.mts`);
   return targets;

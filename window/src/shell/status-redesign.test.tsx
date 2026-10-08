@@ -113,7 +113,7 @@ it("Gateway, Running, and Update actions use their live callbacks", async () => 
   await act(async () => root?.unmount()); root = undefined;
   const open = vi.fn(), automations = vi.fn();
   host = await show(<RunningPopover above={above} onClose={() => {}} request={vi.fn(async () => ({ jobs: [{ name: "Nightly check", enabled: true, state: { nextRunAtMs: Date.now() + 60_000 } }] })) as never} working={[{ key: "live", title: "Scout", line: "Reading", runIds: ["run-1"] }]} onOpen={open} onAutomations={automations} onBackground={() => {}} onPauseAll={() => {}} />);
-  expect(host.textContent?.indexOf("Scout")).toBeLessThan(host.textContent!.indexOf("Nightly check"));
+  expect(host.textContent?.indexOf("Nightly check")).toBeLessThan(host.textContent!.indexOf("Scout"));
   await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent?.includes("Scout"))!.click());
   await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent?.includes("Open Automations"))!.click());
   expect(open).toHaveBeenCalledWith("live");
