@@ -54,6 +54,27 @@ test('hasScreenshotProof returns false for body without proof', () => {
   assert.equal(hasScreenshotProof(null), false);
 });
 
+const cursorAgentFooter = '<div><a href="https://cursor.com/agents/bc-example?cursor_ref=pr_footer&cursor_cta=open_in_web"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cursor.com/assets/images/open-in-web-dark.png"><source media="(prefers-color-scheme: light)" srcset="https://cursor.com/assets/images/open-in-web-light.png"><img alt="Open in Web" width="114" height="28" src="https://cursor.com/assets/images/open-in-web-dark.png"></picture></a>&nbsp;<a href="https://cursor.com/background-agent?bcId=bc-example&cursor_ref=pr_footer&cursor_cta=open_in_cursor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cursor.com/assets/images/open-in-cursor-dark.png"><source media="(prefers-color-scheme: light)" srcset="https://cursor.com/assets/images/open-in-cursor-light.png"><img alt="Open in Cursor" width="131" height="28" src="https://cursor.com/assets/images/open-in-cursor-dark.png"></picture></a>&nbsp;</div>';
+
+test('hasScreenshotProof rejects Cursor footer images and shields badges', () => {
+  assert.equal(hasScreenshotProof(cursorAgentFooter), false);
+  assert.equal(hasScreenshotProof('![ci](https://img.shields.io/badge/ci-passing-green)'), false);
+  assert.equal(hasScreenshotProof('<img src="https://cursor.com/assets/images/open-in-web-dark.png" />'), false);
+});
+
+test('checkUIProof fails when a window UI PR only has the Cursor agent footer', () => {
+  const result = checkUIProof(['window/src/composer/Composer.tsx'], cursorAgentFooter);
+  assert.equal(result.exitCode, 1);
+  assert.match(result.message, /window\/src\/composer\/Composer\.tsx/);
+});
+
+test('checkUIProof passes a user-attachments shot even when the Cursor footer is present', () => {
+  const body = `${cursorAgentFooter}\n\n![App](https://github.com/user-attachments/assets/abcd-efgh)`;
+  const result = checkUIProof(['window/src/composer/Composer.tsx'], body);
+  assert.equal(result.exitCode, 0);
+  assert.match(result.message, /screenshot proof/);
+});
+
 test('checkUIProof passes when no window UI files changed', () => {
   const files = ['engine/src/agent.ts', 'desktop/scripts/config.mjs', 'window/src/test.test.tsx'];
   const result = checkUIProof(files, '');

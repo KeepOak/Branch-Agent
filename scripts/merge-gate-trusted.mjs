@@ -441,6 +441,18 @@ export function fetchPrFiles(repo, prNumber, token) {
   return Array.isArray(payload) ? payload : [];
 }
 
+export function fetchPrBody(repo, prNumber, token) {
+  const payload = ghApi(repo, token, `pulls/${prNumber}`);
+  return payload?.body ?? '';
+}
+
+export function runUiProofFromPr(files, prBody) {
+  const result = checkUIProof(files.map((file) => file.filename ?? file), prBody ?? '');
+  if (result.exitCode) console.error(result.message);
+  else console.log(result.message);
+  return result.exitCode === 0;
+}
+
 export function fetchFileText(repo, sha, token, filePath) {
   try {
     const payload = ghApi(repo, token, `contents/${filePath}?ref=${sha}`);
@@ -554,21 +566,6 @@ function runMergeCommandCheck(repo, sha, token) {
   return checkMergeCommands(dir, docsToCheck);
 }
 
-export function fetchPrBody(repo, prNumber, token) {
-  const payload = ghApi(repo, token, `pulls/${prNumber}`);
-  return typeof payload?.body === 'string' ? payload.body : '';
-}
-
-function runUIProofCheck(changedFiles, body) {
-  const result = checkUIProof(changedFiles, body);
-  if (result.exitCode) {
-    console.error(result.message);
-    return false;
-  }
-  console.log(result.message);
-  return true;
-}
-
 export function pollTrustedGate({
   repo, sha, token, changedFiles, coreWorkflows, currentRunId, prNumber, baseRef,
   maxAttempts = 64, pollSeconds = 30,
@@ -637,10 +634,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exit(1);
   }
   console.log('Merge-command check passed.');
-  if (!runUIProofCheck(changedFiles, fetchPrBody(repo, prNumber, token))) {
-    console.error('UI screenshot proof check failed on the pull request body.');
-    process.exit(1);
-  }
+  if (!runUiProofFromPr(files, fetchPrBody(repo, prNumber, token))) process.exit(1);
 
   if (initialWait > 0) sleepSeconds(initialWait);
 
