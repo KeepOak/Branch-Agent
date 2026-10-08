@@ -5,17 +5,12 @@ import {
 } from "branch/plugin-sdk/agent-harness-attempt-runtime";
 import {
   embeddedAgentLog,
-  extractToolErrorMessage,
   runAgentHarnessAfterToolCallHook,
   type AgentMessage,
   type EmbeddedRunAttemptParamsV2 as EmbeddedRunAttemptParams,
 } from "branch/plugin-sdk/agent-harness-runtime";
 import { asDateTimestampMs } from "branch/plugin-sdk/number-runtime";
-import { redactSensitiveText } from "branch/plugin-sdk/security-runtime";
-import {
-  normalizeOptionalString,
-  readStringField as readString,
-} from "branch/plugin-sdk/string-coerce-runtime";
+import { readStringField as readString } from "branch/plugin-sdk/string-coerce-runtime";
 import {
   codeModeCommandFailed,
   readCodeModeNativeCall,
@@ -28,6 +23,12 @@ import {
   itemName,
   itemStatus,
 } from "./event-projector-items.js";
+import {
+  nativeCodexToolFailureText,
+  summarizeUnmentionedCodexToolFailures,
+  withCodexToolFailureReason,
+  type ToolTranscriptFailureInput,
+} from "./event-projector-tool-failure.js";
 import {
   isNativePostToolUseRelayItem,
   itemMeta,
@@ -45,7 +46,6 @@ import {
 import {
   CodexToolProgressProjection,
   type ToolTranscriptCallInput,
-  type ToolTranscriptResultInput,
 } from "./event-projector-tool-progress.js";
 import { resolveCodexLocalRuntimeAttribution } from "./local-runtime-attribution.js";
 import {
@@ -70,8 +70,6 @@ const NATIVE_COMMAND_WORKSPACE_REJECTION_RE =
 const CODE_MODE_RESULT_RE =
   /^\s*Script (completed|failed)\s*\r?\nWall time\s+\d+(?:\.\d+)?\s+seconds\s*\r?\nOutput:\s*([\s\S]*?)\s*$/iu;
 const MAX_TOOL_APPROVAL_REVIEWS = 16;
-
-type ToolTranscriptFailureInput = ToolTranscriptResultInput & { failureText?: string };
 
 type ToolApprovalReviewOutcome = "approved" | "denied" | "reviewing";
 
@@ -130,70 +128,7 @@ export class CodexToolTranscriptProjection {
   }
 
   unmentionedFailureSummary(assistantTexts: readonly string[]): string | undefined {
-    const progressTexts = this.messages.flatMap((message) =>
-      message.role === "assistant"
-        ? message.content.flatMap((block) => {
-            if (block.type !== "toolCall" || block.name !== "progress_card") {
-              return [];
-            }
-            const result = this.messages.find(
-              (candidate) => candidate.role === "toolResult" && candidate.toolCallId === block.id,
-            );
-            return result?.role === "toolResult" &&
-              !result.isError &&
-              typeof block.arguments.markdown === "string"
-              ? [block.arguments.markdown]
-              : [];
-          })
-        : [],
-    );
-    const mentionedTexts = [...assistantTexts, ...progressTexts].map((text) =>
-      text.replace(/\s+/gu, " ").toLowerCase(),
-    );
-    const failures = this.messages.flatMap((message) => {
-      if (message.role !== "toolResult" || !message.isError) {
-        return [];
-      }
-      const details = isJsonObject(message.details) ? message.details : undefined;
-      if (details?.reason === "missing_tool_result") {
-        return [];
-      }
-      const reason = typeof details?.failureReason === "string" ? details.failureReason : undefined;
-      const hasDistinctToolFailure = this.messages.some(
-        (candidate) =>
-          candidate.role === "toolResult" &&
-          candidate.isError &&
-          candidate.toolName === message.toolName &&
-          isJsonObject(candidate.details) &&
-          candidate.details.reason !== "missing_tool_result" &&
-          typeof candidate.details.failureReason === "string" &&
-          candidate.details.failureReason !== reason,
-      );
-      if (
-        !reason ||
-        mentionedTexts.some(
-          (text) =>
-            text.includes(reason.toLowerCase()) ||
-            (!hasDistinctToolFailure &&
-              text
-                .split(/[.!?]/u)
-                .some(
-                  (sentence) =>
-                    (sentence.includes(message.toolName.toLowerCase()) ||
-                      sentence.includes(message.toolName.replaceAll("_", " ").toLowerCase())) &&
-                    /\b(?:failed|failure|error|blocked|denied|timed out|could not|couldn't|unable)\b/u.test(
-                      sentence,
-                    ),
-                )),
-        )
-      ) {
-        return [];
-      }
-      return [`${message.toolName} — ${reason}`];
-    });
-    return failures.length
-      ? `${failures.length} ${failures.length === 1 ? "step" : "steps"} failed: ${failures.join("; ")}`
-      : undefined;
+    return summarizeUnmentionedCodexToolFailures(this.messages, assistantTexts);
   }
 
   recordToolApprovalReview(
@@ -300,10 +235,7 @@ export class CodexToolTranscriptProjection {
       isError: isNonSuccessItemStatus(status),
       failureText:
         approvalTimeoutExplanation ??
-        (isNonSuccessItemStatus(status) && isJsonObject(item.error)
-          ? normalizeOptionalString(readString(item.error, "message"))
-          : undefined) ??
-        itemToolError(item, status, this.progress.outputTextByItem),
+        nativeCodexToolFailureText(item, status, this.progress.outputTextByItem),
       ...(item.type === "commandExecution" &&
       item.aggregatedOutput == null &&
       this.progress.isOutputTruncated(item.id)
@@ -779,45 +711,11 @@ export class CodexToolTranscriptProjection {
   private createToolResultMessage(params: ToolTranscriptFailureInput) {
     const response = this.rawNativeToolOutputByCallId.get(params.id);
     const text = response ?? params.text;
-    const baseMessage = createAgentHarnessToolResultMessage(
-      { ...params, text },
-      this.nextTranscriptTimestamp(),
+    const message = withCodexToolFailureReason(
+      createAgentHarnessToolResultMessage({ ...params, text }, this.nextTranscriptTimestamp()),
+      params,
+      response,
     );
-    const errorText =
-      params.failureText ??
-      baseMessage.content
-        .flatMap((block) => (block.type === "text" ? [block.text] : []))
-        .join("\n");
-    const failureReason =
-      params.isError && !params.outcomeUnknown
-        ? extractToolErrorMessage({
-            content: [{ type: "text", text: redactSensitiveText(errorText, { mode: "tools" }) }],
-            isError: true,
-          })
-            ?.replace(/\s+/gu, " ")
-            .trim()
-        : undefined;
-    const message = {
-      ...baseMessage,
-      // Execution-only JSON is a projection, not a provider response receipt.
-      // Give the existing step renderer plain failure text, preserving raw
-      // provider responses and successful transcript content byte-for-byte.
-      ...(failureReason && response === undefined && text?.trimStart().startsWith("{")
-        ? { content: [{ type: "text" as const, text: failureReason }] }
-        : {}),
-      ...(failureReason
-        ? {
-            details: {
-              ...(isJsonObject(params.details)
-                ? params.details
-                : params.details === undefined
-                  ? {}
-                  : { toolDetails: params.details }),
-              failureReason,
-            },
-          }
-        : {}),
-    };
     return {
       ...message,
       __branch: {
