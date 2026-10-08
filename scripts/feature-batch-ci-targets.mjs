@@ -619,8 +619,8 @@ export function shardOf(value = process.env.FEATURE_SHARD) {
 
 // Test-body seconds measured from ubuntu-latest named-feature logs on 2026-10-08.
 // Round-robin on the sorted list put several of these on one shard (about 7 minutes of
-// tests on pull-request shard 1/10, about 22 minutes on main shard 2/3). Unlisted files
-// are a few seconds of vitest startup. The numbers only balance shards.
+// tests on pull-request shard 1/10, about 22 minutes on the old main shard 2/3). Unlisted
+// files are a few seconds of vitest startup. The numbers only balance shards.
 const featureTestWeights = {
   'src/gateway/server.auth.control-ui.test.ts': 287,
   'src/commands/startup-config-preflight.recovery.test.ts': 176,
@@ -693,4 +693,26 @@ export function planShards(tests, total, weights = featureTestWeights) {
 
 export function shardTests(tests, shard, weights) {
   return planShards(tests, shard.total, weights).files[shard.index];
+}
+
+// Pull requests stay at ten Linux shards. Main and nightly use these counts so each
+// shard's expected job, including setup and the Linux shard-1 typecheck, is at most
+// 12 minutes. Windows and macOS scales are the median job-time / linux-test-weight
+// ratio from main-push successes on 2026-10-08 (1.50 and 1.35). Ubuntu weights are
+// already hot measurements, so that scale stays 1.
+export const pullRequestLinuxShardCount = 10;
+export const mainPushShardCounts = { ubuntu: 6, windows: 8, macos: 7 };
+export const shardBudgetSeconds = 12 * 60;
+export const windowShardFileSeconds = 2;
+export const runnerTestScale = { ubuntu: 1, windows: 1.5, macos: 1.35 };
+
+export function expectedShardSeconds(total, { typecheck = false, scale = 1 } = {}) {
+  const engine = planShards(namedTests('engine'), total);
+  const windowFiles = planShards(namedTests('window'), total).files;
+  return engine.loads.map((load, index) => {
+    const reserve = index === 0 ? firstShardReserveSeconds : 0;
+    const body = (load - reserve) + windowFiles[index].length * windowShardFileSeconds
+      + (typecheck && index === 0 ? reserve : 0);
+    return body * scale;
+  });
 }

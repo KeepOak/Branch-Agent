@@ -1,7 +1,8 @@
 // node --test scripts/feature-batch-ci-shard.test.mjs
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { featureTestWeight, featureTestWeightKeys, firstShardReserveSeconds, harvestE2eError, harvestMatrix, harvestTestFiles, harvestTests, namedTests, planShards, shardOf, shardTests, touchedHarvestTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
+import { expectedShardSeconds, featureTestWeight, featureTestWeightKeys, firstShardReserveSeconds, harvestE2eError, harvestMatrix, harvestTestFiles, harvestTests, mainPushShardCounts, namedTests, planShards, pullRequestLinuxShardCount, runnerTestScale, shardBudgetSeconds, shardOf, shardTests, touchedHarvestTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
 
 test('no FEATURE_SHARD runs everything in one job', () => {
   assert.deepEqual(shardOf(''), { index: 0, total: 1 });
@@ -33,12 +34,41 @@ test('duration weighting keeps named engine shards within one heavy file', () =>
   for (const file of featureTestWeightKeys()) assert.ok(known.has(file), `${file} is not a named test`);
   const all = namedTests('engine');
   const heaviest = Math.max(...all.map(file => featureTestWeight(file)));
-  for (const total of [3, 6, 10]) {
+  for (const total of [3, 6, 7, 8, 10]) {
     const plan = planShards(all, total);
     const testLoads = plan.loads.map((load, index) => load - (index === 0 ? firstShardReserveSeconds : 0));
     const span = Math.max(...testLoads) - Math.min(...testLoads);
     assert.ok(span <= heaviest, `engine ${total}: shard span ${span}s is wider than the slowest file ${heaviest}s`);
     assert.ok(Math.max(...testLoads) / Math.min(...testLoads) < 1.25, `engine ${total}: ${testLoads.join(',')}`);
+  }
+});
+
+function workflowMatrices(yaml) {
+  const match = /fromJSON\(github\.event_name == 'pull_request' && '(\[.*?\])' \|\| '(\[.*?\])'\)/.exec(yaml);
+  assert.ok(match, 'feature-batch matrix JSON is missing');
+  return { pullRequest: JSON.parse(match[1]), main: JSON.parse(match[2]) };
+}
+
+test('the 15-minute cap stays, and every planned shard fits the 12-minute budget', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/feature-batch-checks.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /timeout-minutes: 15/);
+  assert.doesNotMatch(yaml, /timeout-minutes: 20/);
+  const { pullRequest, main } = workflowMatrices(yaml);
+  const labels = (rows, os) => rows.filter(row => row.os === os).map(row => row.label);
+  assert.deepEqual(labels(pullRequest, 'ubuntu-latest'), Array.from({ length: pullRequestLinuxShardCount }, (_, index) => `${index + 1}/10`));
+  assert.deepEqual(pullRequest.filter(row => row.os === 'windows-latest').map(row => row.label), ['touched']);
+  assert.deepEqual(labels(main, 'ubuntu-latest'), Array.from({ length: mainPushShardCounts.ubuntu }, (_, index) => `${index + 1}/6`));
+  assert.deepEqual(labels(main, 'windows-latest'), Array.from({ length: mainPushShardCounts.windows }, (_, index) => `${index + 1}/8`));
+  assert.deepEqual(labels(main, 'macos-latest'), Array.from({ length: mainPushShardCounts.macos }, (_, index) => `${index + 1}/7`));
+  const plans = [
+    ['ubuntu', expectedShardSeconds(mainPushShardCounts.ubuntu, { typecheck: true, scale: runnerTestScale.ubuntu })],
+    ['windows', expectedShardSeconds(mainPushShardCounts.windows, { typecheck: false, scale: runnerTestScale.windows })],
+    ['macos', expectedShardSeconds(mainPushShardCounts.macos, { typecheck: false, scale: runnerTestScale.macos })],
+    ['pull-request', expectedShardSeconds(pullRequestLinuxShardCount, { typecheck: true, scale: runnerTestScale.ubuntu })],
+  ];
+  for (const [name, loads] of plans) {
+    const slowest = Math.max(...loads);
+    assert.ok(slowest <= shardBudgetSeconds, `${name} shard is ${slowest}s, over the ${shardBudgetSeconds}s budget`);
   }
 });
 
