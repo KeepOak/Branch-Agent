@@ -87,6 +87,16 @@ describe("scoped browser viewing", () => {
     expect(container.textContent).toContain("Nothing open");
     expect(container.textContent).toContain("Scout hasn't opened a page in this conversation.");
   });
+  it("keeps the preview Reads strip when no tab is recorded", async () => {
+    await render(owner(vi.fn()), []);
+    const strip = container.querySelector('[aria-label="Browser tools"]');
+    expect(strip).not.toBeNull();
+    expect(strip!.textContent).toContain("Reads");
+    expect(strip!.textContent).toContain("Page");
+    expect(strip!.textContent).toContain("Picture");
+    expect(strip!.textContent).toContain("Both");
+    expect(container.textContent).toContain("Nothing open");
+  });
   it("drops a late stream response after navigating to another conversation", async () => {
     let resolve!: (v: any) => void;
     const waiting = new Promise((r) => (resolve = r));
