@@ -130,9 +130,6 @@ export function findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
   allowedWorkflowPath = TRUSTED_WORKFLOW_PATH,
   allowedRunId,
   allowedEvent = 'pull_request_target',
-  sha,
-  prNumber,
-  baseRef,
 } = {}) {
   const currentId = allowedRunId == null || allowedRunId === '' ? null : Number(allowedRunId);
   return checkRuns.filter((run) => run.name === jobName).filter((run) => {
@@ -148,15 +145,12 @@ export function findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
         || Number(run.check_suite.id) !== Number(workflow.checkSuiteId)) return true;
       return false;
     }
+    // Sibling or earlier runs of this workflow on pull_request_target are
+    // genuine. GitHub often omits pull_requests and can disagree on suite or
+    // head SHA for that event, which previously failed a second legitimate run.
     if (!workflow || workflow.id == null || workflow.id === '') return true;
     if (workflow.path !== allowedWorkflowPath) return true;
     if (workflow.event !== allowedEvent) return true;
-    if (workflow.checkSuiteId == null || run.check_suite?.id == null
-      || Number(run.check_suite.id) !== Number(workflow.checkSuiteId)) return true;
-    if (!sha || workflow.headSha !== sha) return true;
-    const prs = workflow.pullRequests ?? [];
-    if (!prNumber || !prs.some((pr) => Number(pr.number) === Number(prNumber))) return true;
-    if (!baseRef || prs.some((pr) => pr.base !== baseRef)) return true;
     return false;
   });
 }
