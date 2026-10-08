@@ -429,7 +429,7 @@ describe.runIf(process.env.BRANCH_BROWSER_SNAPSHOT_E2E === "1")("native humanize
         action: { kind: "humanClick", selector: "#target" },
         ssrfPolicy: { dangerouslyAllowPrivateNetwork: false },
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/Blocked hostname or private\/internal\/special-use IP address/);
     expect(service.blockedRequests()).toBe(0);
   });
 });

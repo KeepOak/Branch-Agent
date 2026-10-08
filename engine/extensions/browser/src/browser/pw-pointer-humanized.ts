@@ -124,6 +124,72 @@ async function assertTargetUnmoved(handle: ElementHandle<Element>, box: Box, gua
   await fence(guard);
 }
 
+const HUMAN_CLICK_JOIN = "__branchHumanClickJoin";
+
+function isHumanClickJoinContextDestroyed(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Execution context was destroyed|Cannot find context with specified id|Frame (?:was |is )?detached|detached Frame|Node is detached from document/i.test(
+    message,
+  );
+}
+
+async function installTrustedClickJoin(handle: ElementHandle<Element>): Promise<void> {
+  await handle.evaluate((el, key) => {
+    const root = globalThis as typeof globalThis & {
+      [name: string]: WeakMap<Element, Promise<void>> | undefined;
+    };
+    root[key] ??= new WeakMap();
+    root[key].set(
+      el,
+      new Promise<void>((resolve) => {
+        el.addEventListener("click", () => resolve(), { once: true });
+      }),
+    );
+  }, HUMAN_CLICK_JOIN);
+}
+
+async function waitTrustedClickJoin(
+  handle: ElementHandle<Element>,
+  timeoutMs: number,
+): Promise<void> {
+  try {
+    await handle.evaluate(
+      (el, args) => {
+        const root = globalThis as typeof globalThis & {
+          [name: string]: WeakMap<Element, Promise<void>> | undefined;
+        };
+        const clicked = root[args.key]?.get(el);
+        if (!clicked) {
+          throw new Error("humanClick page click join was not armed");
+        }
+        return new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            reject(new Error("humanClick page click was not dispatched"));
+          }, args.timeoutMs);
+          void clicked.then(
+            () => {
+              clearTimeout(timer);
+              resolve();
+            },
+            (error: unknown) => {
+              clearTimeout(timer);
+              reject(error);
+            },
+          );
+        });
+      },
+      { key: HUMAN_CLICK_JOIN, timeoutMs },
+    );
+  } catch (error) {
+    // A click that starts navigation can tear the document down before the
+    // waiter evaluates; the click listeners already ran in that case.
+    if (isHumanClickJoinContextDestroyed(error)) {
+      return;
+    }
+    throw error;
+  }
+}
+
 async function clickAtTarget(
   page: Page,
   handle: ElementHandle<Element>,
@@ -137,6 +203,10 @@ async function clickAtTarget(
   await assertTargetUnmoved(handle, box, guard);
   await sleepWithAbort(60 + Math.random() * 50, guard.signal);
   await assertTargetUnmoved(handle, box, guard);
+  // CDP mouse.up resolves when the event is dispatched, not when page click
+  // listeners run. Join that click so a click-triggered navigation is admitted
+  // to the request guard before humanClick settles.
+  await fenced(guard, () => installTrustedClickJoin(handle));
   let buttonHeld = false;
   try {
     await fence(guard);
@@ -148,6 +218,7 @@ async function clickAtTarget(
     await fence(guard);
     await fenced(guard, () => page.mouse.up());
     buttonHeld = false;
+    await fenced(guard, () => waitTrustedClickJoin(handle, remainingMs(guard)));
   } finally {
     // Join release under the same navigation guard, even after cancellation.
     if (buttonHeld) {
