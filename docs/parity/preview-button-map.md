@@ -4,11 +4,11 @@ Unique clickable controls in `design/spec-v23` (the design preview) and where th
 This is the expected-destination list for a click-every-button tester.
 
 Each JSON entry has `id`, `screen`, `label`, `previewAction`, `appFile`, `appComponent`, `appAction`, `status`.
-Statuses: `same` (app matches the preview), `different` (exists but destination or behaviour differs), `missing` (the preview has it, the app doesn't), `extra` (exists in the app, not in the preview), `dead` (app control does nothing / only a toast), `unknown` (could not determine statically).
+Statuses: `same` (app matches the preview), `different` (exists but destination or behaviour differs), `missing` (preview control the app lacks), `app-extra` (app control the early preview does not have), `dead` (app control does nothing / only a toast), `unknown` (could not determine statically).
 
 Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Later-pass interpolated `data-act` keys that are not distinct product destinations are omitted; `scripts/parity/extract-preview-acts.mjs` lists raw act keys.
 
-**379 controls.** Totals: same 262, different 98, missing 5, extra 9, dead 0, unknown 5.
+**379 controls.** Totals: same 263, different 102, missing 1, app-extra 8, dead 0, unknown 5.
 
 ## Non-`same` entries
 
@@ -18,9 +18,9 @@ Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Lat
 |---|---|---|---|---|
 | `titlebar-guide` | Guide | different | Opens the Guide popover (design notes / critique pins) and toggles the notes layer. | Opens the Guide menu: What's new, Set up Branch, walkthrough, Docs, Get help, Community — not the prototype notes layer. |
 | `titlebar-theme` | Switch light or dark | different | Toggles document theme between light and dark. | Toggles light/dark. Shown on place/settings headers; chat uses the conversation ⋯ or person menu Look instead. |
-| `titlebar-focus` | Clear the view (Ctrl .) | missing | Toggles focus mode (hides sidebar and status bar). | Focus mode exists via Ctrl+. and Leave focus mode. No titlebar eye button. |
+| `titlebar-focus` | Clear the view (Ctrl .) | different | Toggles focus mode (hides sidebar and status bar). | Focus mode exists via Ctrl+. and Leave focus mode. No titlebar eye button. |
 | `titlebar-minimize` | Minimize | different | Shows a toast: Branch keeps working from the tray. | Minimize is the OS/Electron window button, not a React control. In a browser there is no minimize control. |
-| `titlebar-window-focus` | Focus mode | missing | Same as Clear the view: toggles focus mode. | No maximize/focus window button in the React chrome; focus is Ctrl+. |
+| `titlebar-window-focus` | Focus mode | different | Same as Clear the view: toggles focus mode. | No maximize/focus window button in the React chrome; focus is Ctrl+. |
 | `titlebar-quit` | Quit | different | If a Trunk is working, opens a quit-while-working dialog; otherwise toasts that Branch closes to the tray. | Close is the OS/Electron window button. Settings › Gateway has a greyed 'Ask before quitting while work runs' row. |
 
 ### sidebar
@@ -31,7 +31,7 @@ Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Lat
 | `sidebar-row-new-trunk` | New Trunk | different | Opens the just-made Trunk's setup conversation. | New Trunk is a + menu / Customize action that starts a setup conversation, not a standing demo row. |
 | `sidebar-row-context-menu` | Conversation row context menu | different | Right-click / ⋯ on a row opens pin, rename, pause, archive, copy, delete. | Opens the row menu with pin, snooze, archive, copy, rename, and more. Pause is listed but greyed (no engine method). |
 | `sidebar-projects` | Projects | different | Toggles the projects fold and opens a project view. | Folds projects and lists their conversations. Opening a project is a conversation filter, not a separate project screen. |
-| `sidebar-update-chip` | Update chip | missing | On the person row, a copper Update chip opens the update menu. | Update to Branch <version> is a person-menu row, not a chip on the sidebar row. |
+| `sidebar-update-chip` | Update chip | different | On the person row, a copper Update chip opens the update menu. | Update to Branch <version> is a person-menu row, not a chip on the sidebar row. |
 
 ### chat-header
 
@@ -40,8 +40,8 @@ Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Lat
 | `chat-header-name` | Conversation name | different | Shows the name; rename replaces it with an input (Enter saves, Esc cancels). | Click opens the Trunk profile. Rename uses the same in-header field. |
 | `chat-computer-view` | Computer view | different | Toggles the side panel on the Computer tab. | Opens Computer full-size / the Computer pane, not only a pressed icon in the header. |
 | `chat-side-panel` | Side panel | different | Toggles the side panel on Activity (or closes it if already a non-computer pane). | Toggles the side panel (Ctrl Shift K). Header uses conversation ⋯ › Side panel more than a dedicated icon. |
-| `chat-back` | Back | extra | Not in the early preview header. | History back. Preview has no back/forward in the chat header. |
-| `chat-forward` | Forward | extra | Not in the early preview header. | History forward. |
+| `chat-back` | Back | app-extra | Not in the early preview header. | History back. Preview has no back/forward in the chat header. |
+| `chat-forward` | Forward | app-extra | Not in the early preview header. | History forward. |
 | `teach-stop` | I'm done, save it | different | Stops teach mode and saves a procedure under Automations › Procedures. | Show it how, once is listed and greyed: needs an engine method. |
 | `call-mute` | Mute | different | Toasts that the Trunk can't hear you. | Live call has real mute/camera controls, not a toast-only Mute on a header bar. |
 | `call-pause` | Pause | missing | Toasts Paused. | No header call Pause button. Live voice is a composer overlay. |
@@ -67,8 +67,8 @@ Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Lat
 | `plus-think-normal` | Normal | different | Sets thinking to Normal. | Thinking is on the model chip. |
 | `plus-think-deep` | Deep | different | Sets thinking to Deep. | Thinking is on the model chip. |
 | `plus-who-answers` | Whoever fits | different | In a room, picks who answers (Whoever fits / Scout / Ledger). | Who answers here lists Trunks; the conversation's Trunk is often fixed after the first message. |
-| `plus-google-drive` | From Google Drive | extra | Not in the early + menu. | Listed and greyed: Google's picker opens in the desktop app. |
-| `plus-onedrive` | From OneDrive or SharePoint | extra | Not in the early + menu. | Listed and greyed. |
+| `plus-google-drive` | From Google Drive | app-extra | Not in the early + menu. | Listed and greyed: Google's picker opens in the desktop app. |
+| `plus-onedrive` | From OneDrive or SharePoint | app-extra | Not in the early + menu. | Listed and greyed. |
 | `plus-saved-prompts` | Saved prompts | different | Later preview has a prompts picker. | Greyed: engine keeps no saved prompts. |
 | `plus-office-doc` | Write a document, spreadsheet or slides | different | Later preview office-make row. | Greyed: no document command. |
 | `plus-gif` | Find a GIF… | different | Later preview GIF search. | Greyed: no GIF search. |
@@ -86,8 +86,7 @@ Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Lat
 
 | id | label | status | preview | app |
 |---|---|---|---|---|
-| `person-switch` | Switch person | missing | Cycles the demo person (Owner ↔ Guest) and toasts. | No Switch person row. Add opens inviting another person. |
-| `person-add` | Add | extra | Not in the early owner menu (Invite lives in Settings › People). | Add person. |
+| `person-switch` | Switch person | different | Cycles the demo person (Owner ↔ Guest) and toasts. | No Switch person row. Add opens inviting another person. |
 | `person-help` | Help and design notes | different | Toggles the prototype Guide/notes layer. | Guide opens the product Guide menu, not design-critique pins. |
 | `person-replay` | Replay the first run | different | Replays the first-run / setup flow. | Label is Set up Branch; opens setup, not a design-preview first-run slideshow. |
 
@@ -165,7 +164,7 @@ Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Lat
 
 | id | label | status | preview | app |
 |---|---|---|---|---|
-| `inbox-tab-later` | Later | extra | Not in the early preview inbox tabs. | Shows Later (snoozed). |
+| `inbox-tab-later` | Later | app-extra | Not in the early preview inbox tabs. | Shows Later (snoozed). |
 | `inbox-watch-again` | Watch again | different | Toasts: Plays the task back step by step. | Replay/open the run when the engine has it; not a toast-only stub. |
 
 ### automations
@@ -179,8 +178,8 @@ Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Lat
 
 | id | label | status | preview | app |
 |---|---|---|---|---|
-| `lib-tab-meetings` | Meetings | extra | Not in the early preview library tabs. | Shows Meetings. |
-| `lib-tab-logbook` | Logbook | extra | Not in the early preview library tabs. | Shows Logbook. |
+| `lib-tab-meetings` | Meetings | app-extra | Not in the early preview library tabs. | Shows Meetings. |
+| `lib-tab-logbook` | Logbook | app-extra | Not in the early preview library tabs. | Shows Logbook. |
 | `lib-write` | Write a new document | different | Toasts: Opens a blank document a Trunk can help write. | Head actions Canvas / Translate / Make pictures are greyed (engine gaps). No toast-only Write button. |
 | `lib-open` | Open | different | Toasts: Opens in its own app. | Opens the document when the engine can; not a toast-only stub. |
 | `lib-canvas` | Canvas | different | Later preview Clearings/canvas. | Greyed: needs an engine method that lists Clearings. |
@@ -201,7 +200,7 @@ Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Lat
 
 | id | label | status | preview | app |
 |---|---|---|---|---|
-| `set-nav-seasons` | Seasons | extra | Not in the preview SET_NAV. | Opens Settings › Seasons. Preview has no Seasons page. |
+| `set-nav-seasons` | Seasons | app-extra | Not in the preview SET_NAV. | Opens Settings › Seasons. Preview has no Seasons page. |
 | `set-show-everything` | Show everything | different | Toggles extra pages (Advanced, Developer). Off drops those pages back to General. | Level control is a three-way Regular / Advanced / Technical segmented control, not a single checkbox. |
 
 ### settings-general
