@@ -63,10 +63,14 @@ type Scenario = {
 
 let scenario: Scenario | undefined;
 
-afterEach(async () => {
+afterEach(async ({ task }) => {
   const current = scenario;
   scenario = undefined;
   if (!current) return;
+  if (task.result?.state === "fail") {
+    for (const engine of current.engines) console.error(engineLog(engine, 40_000));
+    console.error(`[handoff] model answers: ${JSON.stringify(current.provider.answered)}`);
+  }
   for (const client of current.clients)
     await client.stopAndWait({ timeoutMs: 1_000 }).catch(() => {});
   for (const engine of current.engines) await stopHandoffEngine(engine);
