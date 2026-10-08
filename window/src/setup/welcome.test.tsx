@@ -44,7 +44,7 @@ describe("Welcome", () => {
     expect(tid(host, "setup-next").disabled).toBe(true);
     expect(tid(host, "setup-next").textContent).toBe("Start");
     expect(tid(host, "setup-skip")).toBeNull();
-    const later = [...host.querySelectorAll(".ob-rail li button")].slice(1);
+    const later = [...host.querySelectorAll<HTMLButtonElement>(".ob-rail li button")].slice(1);
     expect(later.length).toBeGreaterThan(0);
     expect(later.every((b) => b.disabled)).toBe(true);
     await act(async () => tid(host, "setup-promise").click());
