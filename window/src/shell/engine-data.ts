@@ -29,6 +29,12 @@ export function useConversations(session: SaplingSession, ready: boolean, mainKe
     };
   }, [list, session, ready]);
   const snap = useSyncExternalStore(list.subscribe, list.getSnapshot);
+  useEffect(() => {
+    if (!ready || !snap.loaded) return;
+    const keys = [...snap.rows].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 8).map((row) => row.key);
+    // Fakes passed as a session in shell tests have no warmer. A real session always does.
+    if ("warmHistories" in session && typeof session.warmHistories === "function") session.warmHistories(keys);
+  }, [ready, snap, session]);
   return [ready ? snap : EMPTY_LIST, list];
 }
 
