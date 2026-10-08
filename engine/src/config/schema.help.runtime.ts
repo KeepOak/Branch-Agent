@@ -58,6 +58,8 @@ export const RUNTIME_FIELD_HELP: Record<string, string> = {
     "Best-effort cleanup policy for browser tabs opened by primary-agent sessions. Keep enabled to avoid stale sandbox or managed-browser tabs accumulating across long-lived gateways.",
   "browser.tabCleanup.enabled":
     "Enables cleanup of idle tracked browser tabs for primary-agent sessions. Disable only when external tooling owns tab lifecycle completely.",
+  "browser.idleTimeoutMinutes":
+    "Minutes of quiet time before Branch Agent closes an idle engine-launched headless Chrome and its child processes. Default 5. Set 0 to keep that process until shutdown. Attached user browsers and in-progress browser tasks are never closed.",
   "browser.extensionRelay":
     "Chrome extension relay authentication compatibility settings. Keep the legacy window only while older paired extensions or external CDP clients still need it.",
   "browser.extensionRelay.allowLegacyAuth":

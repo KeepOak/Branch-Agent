@@ -1,0 +1,2 @@
+engine:extensions/browser/src/browser/config.test.ts
+engine:extensions/browser/src/browser/managed-chrome-idle.test.ts
