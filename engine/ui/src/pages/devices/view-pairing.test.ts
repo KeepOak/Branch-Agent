@@ -1,44 +1,13 @@
 /* @vitest-environment jsdom */
 import { render } from "lit";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { installDialogPolyfill } from "../../test-helpers/modal-dialog.ts";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderDevicePairSetup } from "./view-pairing.runtime.ts";
 
-let restoreDialogPolyfill: () => void;
-
-function hushGetAnimations(root: ParentNode) {
-  const nodes = [root, ...root.querySelectorAll("*")];
-  for (const node of nodes) {
-    if (node instanceof Element) {
-      Object.defineProperty(node, "getAnimations", {
-        configurable: true,
-        value: () => [],
-      });
-      if (node.shadowRoot) {
-        hushGetAnimations(node.shadowRoot);
-      }
-    }
-  }
-}
+afterEach(() => {
+  document.body.replaceChildren();
+});
 
 describe("device pairing dialog", () => {
-  beforeEach(() => {
-    restoreDialogPolyfill = installDialogPolyfill();
-  });
-
-  afterEach(async () => {
-    for (const modal of document.querySelectorAll("branch-modal-dialog")) {
-      Object.assign(modal, { open: false });
-      const update = (modal as { updateComplete?: Promise<unknown> }).updateComplete;
-      if (update) {
-        await update;
-      }
-    }
-    hushGetAnimations(document);
-    document.body.replaceChildren();
-    restoreDialogPolyfill();
-  });
-
   it.each([
     {
       access: "full" as const,
@@ -48,7 +17,7 @@ describe("device pairing dialog", () => {
       access: "node" as const,
       href: "https://docs.openclaw.ai/gateway/pairing#one-paste-node-pairing",
     },
-  ])("links $access setup help to the matching workflow", async ({ access, href }) => {
+  ])("links $access setup help to the matching workflow", ({ access, href }) => {
     const container = document.createElement("div");
 
     render(
@@ -65,10 +34,6 @@ describe("device pairing dialog", () => {
       }),
       container,
     );
-    for (const modal of container.querySelectorAll("branch-modal-dialog")) {
-      await (modal as { updateComplete: Promise<unknown> }).updateComplete;
-    }
-    hushGetAnimations(container);
 
     expect(container.textContent).toContain(
       "Device capabilities plus complete Gateway controls, including settings and upgrades.",
@@ -79,9 +44,8 @@ describe("device pairing dialog", () => {
     );
   });
 
-  it("renders the node one-paste command and quiet expiry countdown", async () => {
+  it("renders the node one-paste command and quiet expiry countdown", () => {
     const container = document.createElement("div");
-    document.body.append(container);
 
     render(
       renderDevicePairSetup({
@@ -109,10 +73,6 @@ describe("device pairing dialog", () => {
       }),
       container,
     );
-    for (const modal of container.querySelectorAll("branch-modal-dialog")) {
-      await (modal as { updateComplete: Promise<unknown> }).updateComplete;
-    }
-    hushGetAnimations(container);
 
     expect(container.querySelectorAll('input[name="device-pair-access"]')).toHaveLength(3);
     const commandText = container.querySelector(".device-pair-setup__command code")?.textContent;
