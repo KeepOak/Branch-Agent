@@ -18,8 +18,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: personal-info-${{ github.event.pull_request.number }}-${{ github.event_name }}
-  cancel-in-progress: true
+  # Head SHA is in the group so a new commit starts its own run. `edited` (title/body)
+  # keeps the same SHA, so cancel-in-progress is off for that action and cannot abort
+  # the scan already running for this SHA.
+  group: personal-info-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event.action != 'edited' }}
 
 jobs:
   personal-info-matcher:

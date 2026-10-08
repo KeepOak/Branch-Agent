@@ -34,6 +34,7 @@ const SYSTEM_USERS = new Set([
   'default user',
   'all users',
   'runner',
+  'you',
 ]);
 
 const ALLOWED_EMAIL_DOMAINS = new Set([
@@ -42,6 +43,14 @@ const ALLOWED_EMAIL_DOMAINS = new Set([
   'example.net',
   'users.noreply.github.com',
   'noreply.github.com',
+]);
+
+const RESERVED_EMAIL_TLDS = new Set(['example', 'test', 'invalid']);
+
+const WHATSAPP_JID_DOMAINS = new Set([
+  's.whatsapp.net',
+  'g.us',
+  'c.us',
 ]);
 
 const PLACEHOLDER_MDNS = new Set([
@@ -61,7 +70,7 @@ const MAC_USER = /(?:^|[^A-Za-z0-9_:])(\/Users\/)([^/\\\s]+)/g;
 const LINUX_USER = /(?:^|[^A-Za-z0-9_])(\/home\/)([^/\\\s]+)/g;
 const EMAIL = /\b([A-Za-z0-9._%+-]+)@([A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,})\b/g;
 const MDNS = /\b([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)\.local\b/gi;
-const WINDOWS_COMPUTER = /\b(DESKTOP|LAPTOP)-([A-Z0-9]{4,}|<[^>]+>)\b/gi;
+const WINDOWS_COMPUTER = /\b(DESKTOP|LAPTOP)-([A-Z0-9]{4,}|<[^>]+>)\b/g;
 const PC_AFTER_CONTEXT = new RegExp(
   String.raw`\b(${CONTEXT_WORD})\b${CONTEXT_JOIN}\b(${PC_NAME})\b`,
   'g',
@@ -96,18 +105,37 @@ export function isAllowlistedDiffPath(filePath) {
   });
 }
 
+export function isRetinaImageName(local, domain) {
+  return /^[23]x\.[A-Za-z][A-Za-z0-9]*$/i.test(String(domain ?? ''));
+}
+
 export function isAllowedEmail(local, domain) {
   const host = String(domain ?? '').toLowerCase();
   if (!host || host === 'localhost') return true;
   if (local === 'git' && host === 'github.com') return true;
   if (ALLOWED_EMAIL_DOMAINS.has(host)) return true;
-  return [...ALLOWED_EMAIL_DOMAINS].some((allowed) => host.endsWith(`.${allowed}`));
+  if ([...ALLOWED_EMAIL_DOMAINS].some((allowed) => host.endsWith(`.${allowed}`))) return true;
+  if (WHATSAPP_JID_DOMAINS.has(host)) return true;
+  if (RESERVED_EMAIL_TLDS.has(host.split('.').pop())) return true;
+  if (isRetinaImageName(local, host)) return true;
+  return false;
 }
 
 export function isPlaceholderHostname(raw) {
   const host = String(raw ?? '');
   if (host.startsWith('<') && host.endsWith('>') && host.length > 2) return true;
   return PLACEHOLDER_MDNS.has(host.toLowerCase());
+}
+
+export function isHostnameShapedMdns(label) {
+  // Personal Bonjour names are hyphenated (alice-office, Alices-MacBook-Pro).
+  // A single JS identifier such as foo.local or x.local is property access.
+  return String(label ?? '').includes('-');
+}
+
+export function isJsLocalAccess(text, matchIndex, matchLength) {
+  const next = String(text ?? '')[(matchIndex ?? 0) + (matchLength ?? 0)];
+  return next === '(' || next === '[';
 }
 
 export function isWindowsPcNameHit(name, contextWord, phrase) {
@@ -156,7 +184,9 @@ export function findPersonalInfo(text) {
     return { match: found[0] };
   }));
   hits.push(...collectRegexHits(text, MDNS, 'mdns-hostname', (found) => {
+    if (isJsLocalAccess(text, found.index, found[0].length)) return null;
     if (isPlaceholderHostname(found[1])) return null;
+    if (!isHostnameShapedMdns(found[1])) return null;
     return { match: found[0] };
   }));
   hits.push(...collectRegexHits(text, WINDOWS_COMPUTER, 'windows-computer-name', (found) => {
@@ -266,6 +296,8 @@ export function formatReport(findings) {
 
 export function parseScanWorkflowPolicy(yaml) {
   const checkoutRef = yaml.match(/^\s+ref:\s*(.+)$/m)?.[1].trim() ?? null;
+  const concurrencyGroup = yaml.match(/^\s+group:\s*(.+)$/m)?.[1].trim() ?? null;
+  const cancelInProgress = yaml.match(/^\s+cancel-in-progress:\s*(.+)$/m)?.[1].trim() ?? null;
   return {
     checkoutRef,
     persistCredentialsFalse: /^\s+persist-credentials:\s*false\s*$/m.test(yaml),
@@ -277,6 +309,10 @@ export function parseScanWorkflowPolicy(yaml) {
       .map((item) => item.trim())
       .filter(Boolean),
     interpolatesTitleOrBody: /github\.event\.pull_request\.(title|body)/.test(yaml),
+    concurrencyGroup,
+    cancelInProgress,
+    concurrencyIncludesHeadSha: /github\.event\.pull_request\.head\.sha/.test(concurrencyGroup ?? ''),
+    cancelInProgressSkipsEdited: cancelInProgress === "${{ github.event.action != 'edited' }}",
   };
 }
 

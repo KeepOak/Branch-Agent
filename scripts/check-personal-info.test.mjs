@@ -62,7 +62,7 @@ test('flags macOS /Users and Linux /home personal paths', () => {
 });
 
 test('flags personal email addresses', () => {
-  assert.deepEqual(types('contact exampleuser@mail.test'), ['email']);
+  assert.deepEqual(types('contact exampleuser@gmail.com'), ['email']);
 });
 
 test('flags mDNS hostnames and Windows computer names', () => {
@@ -122,11 +122,11 @@ test('masked snippets hide the personal value and keep the pattern type', () => 
 
   const emailReport = formatReport(collectFindings({
     title: '',
-    body: 'write exampleuser@mail.test',
+    body: 'write exampleuser@gmail.com',
   }));
   assert.match(emailReport, /body: email/);
   assert.match(emailReport, /••••@••••/);
-  assert.equal(emailReport.includes('exampleuser@mail.test'), false);
+  assert.equal(emailReport.includes('exampleuser@gmail.com'), false);
 
   assert.equal(maskSnippet('mdns-hostname', 'exampleuser-office.local'), '••••.local');
   assert.equal(maskSnippet('windows-computer-name', 'DESKTOP-A1B2C3D'), 'DESKTOP-••••');
@@ -204,6 +204,56 @@ test('reads title and body from the event payload file', () => {
     title: 'feat(window): topic row',
     body: pr441CleanBody,
   });
+});
+
+test('does not treat lowercase desktop- or laptop- names as Windows computer names', () => {
+  assert.deepEqual(types('see .github/workflows/desktop-checks.yml'), []);
+  assert.deepEqual(types('vitest.desktop-handoff.config.ts and desktop-update'), []);
+  assert.deepEqual(types('Desktop-only window and desktop-version'), []);
+  assert.deepEqual(types('laptop-bag next to desktop-controls'), []);
+  assert.deepEqual(types('ran on DESKTOP-A1B2C3D'), ['windows-computer-name']);
+  assert.deepEqual(types('ran on LAPTOP-ZX9Y8W7'), ['windows-computer-name']);
+});
+
+test('does not treat JS .local property access as an mDNS hostname', () => {
+  assert.deepEqual(types('!m.models.some((x) => x.local)'), []);
+  assert.deepEqual(types('const nearby = foo.local'), []);
+  assert.deepEqual(types('if (model.local && m.local) return'), []);
+  assert.deepEqual(types('cache.local('), []);
+  assert.deepEqual(types('items.local[0]'), []);
+  assert.deepEqual(types('resolved exampleuser-office.local'), ['mdns-hostname']);
+  assert.deepEqual(types('Alices-MacBook-Pro.local'), ['mdns-hostname']);
+});
+
+test('skips retina @2x/@3x assets, WhatsApp JIDs, and reserved example domains', () => {
+  assert.deepEqual(types('icon@2x.png and branch-16@3x.webp'), []);
+  assert.deepEqual(types('15551234567@s.whatsapp.net'), []);
+  assert.deepEqual(types('sample-group@g.us and sample-contact@c.us'), []);
+  assert.deepEqual(types('docs@device.example and robot@mail.test'), []);
+  assert.deepEqual(types('noreply@host.invalid'), []);
+  assert.deepEqual(types('user@example.com and docs@example.org and ops@example.net'), []);
+  assert.deepEqual(types('contact exampleuser@gmail.com'), ['email']);
+});
+
+test('treats you as a placeholder user', () => {
+  assert.deepEqual(types('C:/Users/you/Code/branch-wt/foundation'), []);
+  assert.deepEqual(types('C:\\Users\\you\\BranchApp'), []);
+  assert.deepEqual(types('/Users/you/BranchApp'), []);
+  assert.deepEqual(types('/home/you/.branch'), []);
+  assert.deepEqual(types('C:/Users/exampleuser/Code/Branch/spec.html'), ['windows-user-profile']);
+});
+
+test('scan workflow copies merge-gate-trusted concurrency so description edits do not cancel', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/personal-info-pr-scan.yml', import.meta.url), 'utf8');
+  const trusted = readFileSync(new URL('../.github/workflows/merge-gate-trusted.yml', import.meta.url), 'utf8');
+  const policy = parseScanWorkflowPolicy(yaml);
+  const trustedPolicy = parseScanWorkflowPolicy(trusted);
+  assert.equal(policy.concurrencyIncludesHeadSha, true);
+  assert.equal(policy.cancelInProgressSkipsEdited, true);
+  assert.equal(trustedPolicy.cancelInProgressSkipsEdited, true);
+  assert.match(policy.concurrencyGroup, /github\.event\.pull_request\.head\.sha/);
+  assert.equal(policy.cancelInProgress, "${{ github.event.action != 'edited' }}");
+  assert.equal(trustedPolicy.cancelInProgress, policy.cancelInProgress);
 });
 
 test('trusted workflow checks out the default branch and does not echo the PR body', () => {
