@@ -88,7 +88,8 @@ import { useLockdown } from "./use-lockdown";
 import { LockdownBanner } from "./LockdownBanner";
 import { stageWindowUpdate } from "../connect/desktop-component-updates";
 import { Toasts } from "./Toasts";
-import { HeaderRow, PlaceHead, TopBar } from "./TopBar";
+import { conversationNeedsYou } from "./conversation-more";
+import { ConversationMoreButton, HeaderRow, PlaceHead, TopBar } from "./TopBar";
 import { toggleListLayout, useLayout } from "./use-layout";
 import { usePinOrder } from "./use-pin-order";
 import { hideMenuItems, hideTarget, HIDEABLE, usePetLook, useShown } from "./shown";
@@ -1228,12 +1229,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const filterOpen = overlay?.kind === "filter";
 
   const who = trunkName(openRow?.agentId);
+  const conversationNeed = conversationNeedsYou(pending, openKey, questions.list, now);
   const conversationTools = (
     <>
       {draftTopic ? null :
-      <button type="button" className="ib" aria-label="Conversation menu" title={`More for ${openRow?.kind === "group" ? name : who}`} data-testid="conversation-menu-button" onClick={conversationMenu.open}>
-        <Icon name="more" />
-      </button>
+      <ConversationMoreButton need={conversationNeed} idleTitle={`More for ${openRow?.kind === "group" ? name : who}`} onClick={conversationMenu.open} />
       }
     </>
   );

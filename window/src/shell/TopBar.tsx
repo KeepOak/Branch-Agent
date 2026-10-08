@@ -4,6 +4,7 @@ import { STATE_LABEL, type AgentState } from "../face/agentState";
 import { useTrunkAppearance } from "../face/appearance";
 import { Icon } from "./icons";
 import { syncTitleBar } from "../connect/title-bar";
+import { CONVERSATION_MORE_IDLE_LABEL, conversationMoreLabel } from "./conversation-more";
 
 export type FaceState = AgentState;
 
@@ -106,6 +107,25 @@ function HeaderFace({ header, onCharacter, size = 32 }: { header: HeaderInfo; on
   return (
     <button className={["think", "work", "search", "read"].includes(state) ? "header-face working-ring" : "header-face"} type="button" aria-label={header.onProfile ? `${header.trunkName}’s profile` : "Show or hide character"} title={header.onProfile ? `${header.trunkName}’s profile` : undefined} onClick={header.onProfile ?? onCharacter}>
       <Pebble size={size} label={header.trunkName} state={state} priority={300} />
+    </button>
+  );
+}
+
+/** Preview headDotT5: the chat header ⋯, with a warn dot when this conversation needs you. */
+export function ConversationMoreButton({
+  need,
+  idleTitle,
+  onClick,
+}: {
+  need: number;
+  idleTitle?: string;
+  onClick: (event: MouseEvent<HTMLElement>) => void;
+}) {
+  const label = conversationMoreLabel(need, CONVERSATION_MORE_IDLE_LABEL);
+  return (
+    <button type="button" className={need > 0 ? "ib dotsT5" : "ib"} aria-label={label} title={need > 0 ? label : idleTitle ?? label} data-testid="conversation-menu-button" onClick={onClick}>
+      <Icon name="more" />
+      {need > 0 ? <span className="dotsDotT5" aria-hidden="true" /> : null}
     </button>
   );
 }
