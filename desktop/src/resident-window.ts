@@ -1,7 +1,7 @@
 import { Menu, Tray, nativeImage, type App, type BrowserWindow, type NativeImage } from "electron";
 
 /** macOS tints a template image for light and dark menu bars. Other platforms keep the given file. */
-function menuBarIcon(icon: string, platform: NodeJS.Platform): string | NativeImage {
+export function menuBarIcon(icon: string, platform: NodeJS.Platform): string | NativeImage {
   if (platform !== "darwin") return icon;
   const image = nativeImage?.createFromPath?.(icon);
   if (!image) return icon;
