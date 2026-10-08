@@ -1150,11 +1150,13 @@ test("failed automatic flagged standby postpones once without draining the servi
   assert.equal(alive(old), true);
   assert.equal(existsSync(join(root, `drained-${old}`)), false, "automatic failure drained the serving engine");
   assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-update-failed"), []);
+  assert.equal(sent.some(([channel]) => channel === "branch-desktop:update-applied"), false);
   clock.skew = 61_000; offerStaged();
   await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("auto-apply: idle hold"));
   clock.skew = 122_000; offerStaged();
   await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("failed 1 time(s)"), 30_000);
   assert.equal(sent.filter(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept").length, 1);
+  assert.equal(sent.some(([channel]) => channel === "branch-desktop:update-applied"), false);
 }, false, false, false, true, false, handoffOn()));
 test("two automatic busy-stop failures for one version never leave an updating bar", () => fixture(async ({ root, runtime, starts, offerStaged, clock }) => {
   const sent = idleWindow(runtime);
