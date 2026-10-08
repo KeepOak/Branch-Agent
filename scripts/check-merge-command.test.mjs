@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
-import { baseContentFromHeadAndPatch, baseContentsFromPrDiff, checkMergeCommands } from './check-merge-command.mjs';
+import { baseContentFromHeadAndPatch, baseContentsFromPrDiff, checkMergeCommands, samePath } from './check-merge-command.mjs';
 
 const STALE_AUTO = 'Use `gh pr merge <number> --auto --merge --match-head-commit <reviewed-sha>`.';
 const CLEAN_MERGE = 'Use `gh pr merge <number> --merge --match-head-commit <reviewed-sha>`.';
@@ -203,6 +203,36 @@ test('fallback still rejects an auto-merge command that is on main', async () =>
   });
   assert.equal(result.passed, false);
   assert.match(result.errors, /AGENTS\.md: merge command must not use --auto:/);
+});
+
+test('samePath equates Windows short names and slash styles', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'merge-check-path-'));
+  try {
+    assert.equal(samePath(dir, dir), true);
+
+    if (process.platform !== 'win32') return;
+
+    const forward = dir.replaceAll('\\', '/');
+    const backward = dir.replaceAll('/', '\\');
+    assert.equal(samePath(forward, backward), true);
+    assert.equal(samePath(forward, dir), true);
+
+    let short = '';
+    try {
+      short = execFileSync(
+        'cmd.exe',
+        ['/d', '/s', '/c', `for %I in ("${dir.replaceAll('"', '')}") do @echo %~sI`],
+        { encoding: 'utf8', windowsHide: true },
+      ).trim();
+    } catch {
+      short = '';
+    }
+    if (!short || short.toLowerCase() === backward.toLowerCase()) return;
+    assert.equal(samePath(short, dir), true);
+    assert.equal(samePath(short.replaceAll('\\', '/'), dir), true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 function git(cwd, args) {
