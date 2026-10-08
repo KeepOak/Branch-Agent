@@ -265,7 +265,7 @@ export class SaplingSession {
   }
 
   /** Local unconfirmed echo of the first message, so opening the new conversation does not flash EmptyState. */
-  seedFirstSend(sessionKey: string, text: string, runId = crypto.randomUUID()): string {
+  seedFirstSend(sessionKey: string, text: string, runId: string = crypto.randomUUID()): string {
     const echo = firstSendEcho(text);
     if (!echo || !sessionKey) return runId;
     this.firstEcho.set(sessionKey, echo, runId);
