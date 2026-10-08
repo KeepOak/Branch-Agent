@@ -1,8 +1,10 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { acquireFileLock, type FileLockHandle } from "@openclaw/fs-safe/file-lock";
 import { root as openLockRoot } from "@openclaw/fs-safe/root";
+import { readWindowsProcessStartTimeSync } from "../../src/infra/windows-process-start.ts";
 import { hasUnjoinedWork } from "./managed-child-process.mts";
 import { isRecord } from "./record-shared.mjs";
 import { findRepoRoot } from "./repo-root.mjs";
@@ -12,6 +14,110 @@ const DIST_ARTIFACT_LOCK_PATH = ".artifacts/dist-artifacts.lock";
 const LOCK_POLL_MS = 500;
 type ArtifactOwner = { directory: string; unjoinedError?: Error };
 let inheritedOwner: ArtifactOwner | undefined;
+
+function readDistArtifactStartIdentity(pid: number): string | undefined {
+  try {
+    if (process.platform === "win32") {
+      const started = readWindowsProcessStartTimeSync(pid);
+      return started === null ? undefined : String(started);
+    }
+    if (process.platform === "linux") {
+      const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+      // The command in parentheses may itself contain spaces or parentheses.
+      return stat.slice(stat.lastIndexOf(")") + 2).split(/\s+/u)[19] || undefined;
+    }
+    if (process.platform === "darwin") {
+      const result = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], {
+        encoding: "utf8",
+        timeout: 10_000,
+        windowsHide: true,
+      });
+      return !result.error && result.status === 0 ? result.stdout.trim() || undefined : undefined;
+    }
+  } catch {
+    // Unreadable identities must never authorize reclaiming a live PID.
+  }
+  return undefined;
+}
+
+function hasRecycledIdentity(record: Record<string, unknown>): boolean {
+  if (typeof record.pid !== "number" || typeof record.startIdentity !== "string") {
+    return false;
+  }
+  const liveIdentity = readDistArtifactStartIdentity(record.pid);
+  return liveIdentity !== undefined && liveIdentity !== record.startIdentity;
+}
+
+function canReclaimDistArtifactOwner(payload: unknown, directory?: string): boolean {
+  const record = isRecord(payload) ? payload : {};
+  const pid = record.pid;
+  if (typeof pid !== "number" || !Number.isSafeInteger(pid) || pid <= 1 || pid > 0x7fffffff) {
+    return true;
+  }
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return true;
+  }
+  if (hasRecycledIdentity(record)) {
+    return true;
+  }
+  return directory !== undefined && fs.existsSync(path.join(directory, "unjoined"));
+}
+
+/** Release only this checkout's lock, with the acquisition ownership policy. */
+export async function releaseDistArtifactLock(rootDir: string, requestedDirectory?: string) {
+  const root = fs.realpathSync(rootDir);
+  const artifacts = path.join(root, ".artifacts");
+  const directory = path.resolve(requestedDirectory ?? path.join(artifacts, "dist-artifacts.lock"));
+  if (directory !== path.join(artifacts, "dist-artifacts.lock")) {
+    throw new Error("Release target must be this checkout's dist-artifacts lock directory");
+  }
+  if (!fs.existsSync(directory)) {
+    return;
+  }
+  if (fs.realpathSync(directory) !== directory) {
+    throw new Error("Release target must not escape the checkout through a link");
+  }
+  const ownerPath = path.join(directory, "owner.json");
+  const observed = fs.readFileSync(ownerPath, "utf8");
+  const owner: unknown = JSON.parse(observed);
+  if (!canReclaimDistArtifactOwner(owner)) {
+    throw new Error(`Refusing to release live dist-artifacts owner: ${observed.trim()}`);
+  }
+  // fs-safe rechecks the observed owner and exclusively claims before release.
+  const lockRoot = await openLockRoot(directory);
+  const lock = await acquireFileLock(ownerPath, {
+    lockPath: ownerPath,
+    lockRoot,
+    retainOnExit: true,
+    payload: () => ({
+      pid: process.pid,
+      startIdentity: readDistArtifactStartIdentity(process.pid),
+    }),
+    timeoutMs: 0,
+    staleRecovery: "remove-if-unchanged",
+    shouldReclaim: ({ payload }) => canReclaimDistArtifactOwner(payload),
+    shouldRemoveStaleLock: ({ payload }) => canReclaimDistArtifactOwner(payload),
+  });
+  try {
+    for (const name of fs.readdirSync(directory)) {
+      if (name !== "owner.json") {
+        fs.rmSync(path.join(directory, name), { recursive: true, force: true });
+      }
+    }
+  } finally {
+    await lock.release();
+  }
+  // Removing an empty directory cannot delete a new owner's contents.
+  try {
+    fs.rmdirSync(directory);
+  } catch (error) {
+    if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes((error as NodeJS.ErrnoException).code ?? "")) {
+      throw error;
+    }
+  }
+}
 
 export function resolveDistArtifactLockPath(rootDir: string) {
   // Subdirectories share checkout ownership; standalone work owns its directory.
@@ -81,30 +187,20 @@ export async function acquireDistArtifactOwnership(
           // Explicit release owns cleanup; detached children can outlive their parent.
           retainOnExit: true,
           lockRoot,
-          payload: () => ({ pid: process.pid, startedAt: new Date().toISOString() }),
+          payload: () => ({
+            pid: process.pid,
+            startedAt: new Date().toISOString(),
+            startIdentity: readDistArtifactStartIdentity(process.pid),
+          }),
           // Published updaters call without a signal; retain fs-safe's original wait.
           timeoutMs: wait ? (signal ? LOCK_POLL_MS : Number.POSITIVE_INFINITY) : 0,
           retry: { minTimeout: LOCK_POLL_MS, maxTimeout: LOCK_POLL_MS, factor: 1 },
-          staleRecovery: "fail-closed",
+          staleRecovery: "remove-if-unchanged",
+          // Preserve legacy fail-closed recovery; only a proven recycled PID is new.
+          shouldRemoveStaleLock: ({ payload }) => isRecord(payload) && hasRecycledIdentity(payload),
           shouldReclaim: ({ payload }) => {
             owner = payload;
-            // fs-safe rechecks the observed owner before failing closed, never reclaiming it.
-            const pid =
-              payload && typeof payload === "object" && "pid" in payload ? payload.pid : null;
-            if (
-              typeof pid !== "number" ||
-              !Number.isSafeInteger(pid) ||
-              pid <= 1 ||
-              pid > 0x7fffffff
-            ) {
-              return true;
-            }
-            try {
-              process.kill(pid, 0);
-            } catch {
-              return true;
-            }
-            if (fs.existsSync(path.join(directory, "unjoined"))) {
+            if (canReclaimDistArtifactOwner(payload, directory)) {
               return true;
             }
             if (!reportedWait) {
@@ -148,12 +244,9 @@ export async function acquireDistArtifactOwnership(
     const started = record.startedAt ?? "unknown";
     const identity = record.startIdentity ?? record.starttime ?? "unknown";
     const lastSeen = record.heartbeatAt ?? record.heartbeat ?? started;
-    const release =
-      process.platform === "win32"
-        ? `Remove-Item -LiteralPath '${directory.replaceAll("'", "''")}' -Recurse -Force`
-        : `rm -rf -- '${directory.replaceAll("'", "'\\''")}'`;
+    const release = "node scripts/release-dist-artifact-lock.mjs";
     throw new Error(
-      `Could not acquire ${directory}: retained by PID ${JSON.stringify(pid)}, started ${JSON.stringify(started)}, identity ${JSON.stringify(identity)}, last seen ${JSON.stringify(lastSeen)}. Inspect owner.json and verify all associated build/check processes, including detached descendants, have stopped; then run \`${release}\` to release and retry. PID death alone is not sufficient.`,
+      `Could not acquire ${directory}: retained by PID ${JSON.stringify(pid)}, started ${JSON.stringify(started)}, identity ${JSON.stringify(identity)}, last seen ${JSON.stringify(lastSeen)}. Inspect owner.json and verify all associated build/check processes, including detached descendants, have stopped; then run \`${release}\` from engine/ to release and retry. PID death alone is not sufficient.`,
       { cause: error },
     );
   }
