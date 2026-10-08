@@ -130,7 +130,7 @@ describe("Control tower live sections", () => {
     expect(text).toContain("Check the invoice");
     expect(text).toContain("Ada · 42%");
     expect(host.querySelector(".v23-tower-bar i")?.getAttribute("style")).toContain("42%");
-    expect(text).toContain("Scout → Ledger");
+    expect(text).not.toContain("Scout → Ledger");
     expect(text).toContain("Found the Hartwell invoice.");
     expect(text).toContain("Who it knows");
     expect(text).toContain("September expense report");
@@ -162,5 +162,31 @@ describe("Control tower live sections", () => {
     await act(async () => { [...host.querySelectorAll("button")].find((button) => button.textContent === "Add an account")?.click(); });
     expect(places).toEqual([{ place: "automations" }, { place: "inbox", tab: "History" }]);
     expect(settings).toEqual([{ page: "accounts" }]);
+  });
+
+  it("disables Who it knows until Trunks load and surfaces a Check now failure", async () => {
+    let finishList: (value: unknown) => void = () => undefined;
+    const listed = new Promise((resolve) => { finishList = resolve; });
+    const request = vi.fn(async (method: string, params?: { refresh?: boolean }) => {
+      if (method === "agents.list") return listed;
+      if (method === "usage.status" && params?.refresh) throw new Error("offline");
+      if (method === "usage.status") return usage;
+      if (method === "cron.list") return live["cron.list"];
+      if (method === "config.get") return live["config.get"];
+      if (method === "audit.activity.list") return live["audit.activity.list"];
+      if (method === "exec.approval.list" || method === "plugin.approval.list" || method === "branch.approval.list") return [];
+      return {};
+    });
+    const session = { request, onEvent: () => () => undefined, sessionKey: "agent:ada:main", scopes: ["operator.admin"] } as unknown as WindowEngine;
+    const host = await show(<ControlTower engine={session} rows={[]} needsCount={0} trunkName={(id) => id ?? ""} onOpen={() => undefined} onInbox={() => undefined} onClose={() => undefined} />);
+    const who = [...host.querySelectorAll("button")].find((button) => button.textContent === "Who it knows");
+    expect(who?.disabled).toBe(true);
+    expect(who?.title).toBe("Still loading Trunks.");
+    await act(async () => { finishList({ defaultId: "ada", agents: [{ id: "ada", identity: { name: "Ada" } }] }); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect([...host.querySelectorAll("button")].find((button) => button.textContent === "Who it knows")?.disabled).toBe(false);
+    await act(async () => { [...host.querySelectorAll("button")].find((button) => button.textContent === "Check now")?.click(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(host.textContent).toContain("Couldn’t check accounts right now. Branch will try again.");
   });
 });

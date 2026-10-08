@@ -36,6 +36,7 @@ export type TowerAccount = {
   name: string;
   plan: string;
   provider: string;
+  windowLabel: string;
   fiveLeft: number | null;
   reset: string;
   weekLeft: number | null;
@@ -44,20 +45,29 @@ export type TowerAccount = {
   line: string;
 };
 
+/** Preview's "5-hour" / "Week" from status-data's "This 5-hour window" / "This week". */
+export function shortWindow(name: string): string {
+  const hours = /(\d+)-hour/i.exec(name);
+  if (hours) return `${hours[1]}-hour`;
+  if (/week/i.test(name)) return "Week";
+  return name.replace(/^This\s+/i, "").replace(/\s+window$/i, "") || name;
+}
+
 /** One Accounts row per connection, using status-data's left-percent windows. */
 export function towerAccounts(limits: Limits | null): TowerAccount[] {
   return (limits?.rows ?? []).map((row) => {
-    const five = row.windows.find((window) => /5-hour/i.test(window.name));
+    const primary = row.windows.find((window) => /5-hour/i.test(window.name)) ?? row.windows[0];
     const week = row.windows.find((window) => /week/i.test(window.name));
-    const fiveLeft = five ? five.left : null;
+    const fiveLeft = primary ? primary.left : null;
     return {
       id: row.id,
       email: row.email || row.name,
       name: row.name,
       plan: row.plan || "",
       provider: row.provider || "",
+      windowLabel: primary ? shortWindow(primary.name) : "",
       fiveLeft,
-      reset: five?.reset ?? "",
+      reset: primary?.reset ?? "",
       weekLeft: week ? week.left : null,
       heat: fiveLeft !== null && fiveLeft <= NEARLY ? "hot" : fiveLeft !== null && fiveLeft <= WARM_LEFT ? "warm" : "",
       meter: fiveLeft !== null ? Math.max(fiveLeft, 1) : 0,
@@ -142,18 +152,15 @@ export function towerFinished(rows: Conversation[], audit: unknown, now = Date.n
     });
 }
 
-export type TowerChatter = { key: string; from: string; to: string; text: string };
+export type TowerChatter = { key: string; text: string };
 
-/** Group-chat rows as "A → B: …" lines. Preview sample chatter is never invented. */
-export function towerChatter(rows: Conversation[], nameOf: (id?: string) => string): TowerChatter[] {
+/** Group-chat previews only. sessions.list has no last-message sender, so A → B is never invented. */
+export function towerChatter(rows: Conversation[]): TowerChatter[] {
   return rows
     .filter((row) => row.groupChat && !row.archived && row.preview)
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 4)
-    .map((row) => {
-      const other = (row.participantIds ?? []).find((id) => id && id !== row.agentId);
-      return { key: row.key, from: nameOf(row.agentId), to: other ? nameOf(other) : "the group", text: row.preview };
-    });
+    .map((row) => ({ key: row.key, text: row.preview }));
 }
 
 export function readLocked(result: unknown): boolean {

@@ -41,7 +41,8 @@ function useTowerLive(engine: WindowEngine) {
   const [audit, setAudit] = useState<unknown>({});
   const [locked, setLocked] = useState(false);
   const [checking, setChecking] = useState(false);
-  const [trunks, setTrunks] = useState<{ defaultId: string; list: { id: string; name: string }[] }>({ defaultId: "", list: [] });
+  const [checkError, setCheckError] = useState<string | null>(null);
+  const [trunks, setTrunks] = useState<{ defaultId: string; list: { id: string; name: string }[]; ready: boolean }>({ defaultId: "", list: [], ready: false });
 
   const load = useCallback(async () => {
     const [usage, cron, cfg, activity, listed] = await Promise.all([
@@ -56,7 +57,7 @@ function useTowerLive(engine: WindowEngine) {
     setJobs(readCronJobs(cron));
     setLocked(readLocked(cfg));
     setAudit(activity);
-    setTrunks(trunkList(listed));
+    setTrunks({ ...trunkList(listed), ready: true });
   }, [engine]);
 
   useEffect(() => {
@@ -72,17 +73,20 @@ function useTowerLive(engine: WindowEngine) {
   const checkNow = useCallback(async () => {
     if (checking) return;
     setChecking(true);
+    setCheckError(null);
     try {
       await engine.request("models.authStatus", { refresh: true }).catch(() => undefined);
       const result = await engine.request("usage.status", { refresh: true });
       setLimits(readUsage(result));
       window.dispatchEvent(new Event("branch:usage-checked"));
+    } catch {
+      setCheckError("Couldn’t check accounts right now. Branch will try again.");
     } finally {
       setChecking(false);
     }
   }, [checking, engine]);
 
-  return { limits, jobs, audit, locked, checking, trunks, checkNow };
+  return { limits, jobs, audit, locked, checking, checkError, trunks, checkNow };
 }
 
 /** Live Control tower. The preview's sample approvals and jobs are never shown as real data. */
@@ -92,20 +96,19 @@ export function ControlTower({ engine, rows, needsCount, trunkName, onOpen, onIn
   const pending = queue.data?.items ?? [];
   const working = rows.filter((row) => row.working && !row.archived && !row.helper && !row.system);
   const jobs = rows.filter((row) => row.working && !row.archived && row.helper && !row.system);
-  const chatter = towerChatter(rows, trunkName);
+  const chatter = towerChatter(rows);
   const finished = towerFinished(rows, live.audit);
   const coming = towerComingUp(live.jobs);
   const accounts = towerAccounts(live.limits);
   const health = towerHealth(live.locked, live.checking, live.limits);
   const [known, setKnown] = useState<{ at: MenuAnchor; items: MenuItem[] } | null>(null);
   const decide = (item: Record<string, unknown>, decision: "allow-once" | "deny") => void queue.act(() => resolveApproval(engine, item, decision), decision === "deny" ? "Said no." : "Allowed once.");
+  const knownWhy = !live.trunks.ready ? "Still loading Trunks." : !live.trunks.list.length ? "No Trunks yet." : undefined;
   const openKnown = async (event: MouseEvent<HTMLButtonElement>) => {
+    if (knownWhy) return;
     const box = event.currentTarget.getBoundingClientRect();
     const self = live.trunks.list.find((row) => row.id === live.trunks.defaultId) ?? live.trunks.list[0];
-    if (!self) {
-      openTowerSettings("models");
-      return;
-    }
+    if (!self) return;
     const items = await whoItKnowsItems((method, params) => engine.request(method, params), self, live.trunks.list);
     setKnown({ at: { x: box.left, y: box.bottom + 4 }, items });
   };
@@ -136,8 +139,8 @@ export function ControlTower({ engine, rows, needsCount, trunkName, onOpen, onIn
         })}
       </> : <p>No Trunk is working right now.</p>}
     </section>
-    <section><h3>Team chatter <button type="button" className="v23-link" title="Who each Trunk may message" onClick={(event) => void openKnown(event)}>Who it knows</button></h3>
-      {chatter.length ? chatter.map((line) => <button type="button" className="v23-chatter" key={line.key} onClick={() => onOpen(line.key)}><span className="v23-chatter-who">{line.from} → {line.to}</span><span>{line.text}</span></button>) : <p>No team messages yet.</p>}
+    <section><h3>Team chatter <button type="button" className="v23-link" title={knownWhy ?? "Who each Trunk may message"} disabled={Boolean(knownWhy)} onClick={(event) => void openKnown(event)}>Who it knows</button></h3>
+      {chatter.length ? chatter.map((line) => <button type="button" className="v23-chatter" key={line.key} onClick={() => onOpen(line.key)}><span>{line.text}</span></button>) : <p>No team messages yet.</p>}
     </section>
     <section><h3>Just finished</h3>
       {finished.length ? finished.map((row) => <button type="button" className="v23-tower-row" key={row.key} onClick={() => onOpen(row.key)}><Face size={26} label={trunkName(row.agentId)} /><span className="v23-tower-row-text"><b>{row.title || trunkName(row.agentId)}</b><small>{[trunkName(row.agentId), row.duration].filter(Boolean).join(" · ")}</small></span><time className="v23-tower-time">{row.when}</time></button>) : <p>Nothing finished yet.</p>}
@@ -148,7 +151,7 @@ export function ControlTower({ engine, rows, needsCount, trunkName, onOpen, onIn
     </section>
     <section><h3>Accounts <button type="button" className="v23-link" disabled={live.checking} onClick={() => void live.checkNow()}>{live.checking ? "Checking…" : "Check now"}</button></h3>
       {accounts.map((account) => {
-        const five = account.fiveLeft !== null ? `5-hour: ${account.fiveLeft}% left${account.reset ? ` · ${account.reset}` : ""}` : account.line;
+        const five = account.fiveLeft !== null ? `${account.windowLabel}: ${account.fiveLeft}% left${account.reset ? ` · ${account.reset}` : ""}` : account.line;
         const week = account.weekLeft !== null ? `Week: ${account.weekLeft}% left` : "";
         return <button type="button" className={`v23-acct ${account.heat}`.trim()} key={account.id} onClick={() => openTowerSettings("accounts")} aria-label={`${account.email}, ${account.name}: ${five}${week ? `; ${week}` : ""}`}>
           <span className="v23-acct-name"><span className={`v23-acct-dot ${account.provider}`} aria-hidden="true" />{account.email}</span>
@@ -157,6 +160,7 @@ export function ControlTower({ engine, rows, needsCount, trunkName, onOpen, onIn
           <small>{[account.name, account.plan, week].filter(Boolean).join(" · ")}</small>
         </button>;
       })}
+      {live.checkError ? <p role="alert">{live.checkError}</p> : null}
       <p>{live.limits ? `${checkedLine(live.limits.updatedAt)} · ` : null}<button type="button" className="v23-link" onClick={() => openTowerSettings("accounts")}>Add an account</button></p>
     </section>
     {known ? <Menu at={known.at} items={known.items} onClose={() => setKnown(null)} label="Who it knows" testid="who-it-knows" /> : null}

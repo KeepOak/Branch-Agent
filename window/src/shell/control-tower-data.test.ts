@@ -68,6 +68,7 @@ describe("tower accounts", () => {
     }, NOW);
     expect(towerAccounts(limits)[0]).toMatchObject({
       email: "ada@example.test",
+      windowLabel: "5-hour",
       fiveLeft: 77,
       reset: "resets 6 PM",
       weekLeft: 59,
@@ -75,6 +76,27 @@ describe("tower accounts", () => {
       meter: 77,
     });
     expect(checkedLine(limits.updatedAt, NOW)).toBe("checked 4 min ago");
+  });
+
+  it("falls back to the first measured window when it is not 5-hour", () => {
+    const limits = readLimits({
+      updatedAt: NOW,
+      providers: [{
+        provider: "openai-codex",
+        displayName: "ChatGPT plan",
+        windows: [
+          { label: "3h", usedPercent: 40, resetAt: new Date(2026, 9, 8, 15, 0).getTime() },
+          { label: "Week", usedPercent: 20 },
+        ],
+      }],
+    }, NOW);
+    expect(towerAccounts(limits)[0]).toMatchObject({
+      windowLabel: "3-hour",
+      fiveLeft: 60,
+      reset: "resets 3 PM",
+      weekLeft: 80,
+      meter: 60,
+    });
   });
 });
 
@@ -112,7 +134,7 @@ describe("Just finished and chatter", () => {
     expect(towerClock(NOW, NOW)).toBe("12 PM");
   });
 
-  it("formats group rows as A → B lines", () => {
+  it("keeps group previews without inventing who spoke", () => {
     const lines = towerChatter([
       row({
         key: "agent:scout:room:r1",
@@ -121,8 +143,8 @@ describe("Just finished and chatter", () => {
         preview: "Found the Hartwell invoice.",
         participantIds: ["scout", "ledger"],
       }),
-    ], (id) => id === "scout" ? "Scout" : id === "ledger" ? "Ledger" : id ?? "");
-    expect(lines).toEqual([{ key: "agent:scout:room:r1", from: "Scout", to: "Ledger", text: "Found the Hartwell invoice." }]);
+    ]);
+    expect(lines).toEqual([{ key: "agent:scout:room:r1", text: "Found the Hartwell invoice." }]);
   });
 
   it("reads a percent from a job headline", () => {
