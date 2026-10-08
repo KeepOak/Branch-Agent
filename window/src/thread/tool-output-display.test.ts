@@ -296,6 +296,35 @@ describe("truncated computer payloads", () => {
     );
     expect(whole?.output).toBe(output);
     expect(shown?.output?.length ?? 0).toBeLessThan(2_100);
+    expect(whole?.detail.length ?? 0).toBeLessThanOrEqual(400);
+    expect(shown?.detail.length ?? 0).toBeLessThanOrEqual(400);
+  });
+
+  it("keeps a long bash detail at 400 characters or fewer", () => {
+    const output = "x".repeat(2_764);
+    expect(output.length).toBeGreaterThan(2000);
+    const messages = [
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "bash-detail", name: "bash", arguments: { command: "cat log" } }],
+        stopReason: "toolUse",
+      },
+      {
+        role: "toolResult",
+        toolCallId: "bash-detail",
+        toolName: "bash",
+        content: [{ type: "text", text: output }],
+      },
+    ];
+    const shown = historyToBlocks(messages, [], "agent:scout:one", null).find(
+      (b): b is Extract<Block, { kind: "step" }> => b.kind === "step",
+    );
+    const exported = historyToBlocks(messages, [], "agent:scout:one", null, { wholeOutput: true }).find(
+      (b): b is Extract<Block, { kind: "step" }> => b.kind === "step",
+    );
+    expect(shown?.detail.length ?? 0).toBeLessThanOrEqual(400);
+    expect(exported?.detail.length ?? 0).toBeLessThanOrEqual(400);
+    expect(exported?.output).toBe(output);
   });
 
   it("clears fullOutput after a computer result longer than 2000 characters", () => {

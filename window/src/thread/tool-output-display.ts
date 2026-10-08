@@ -174,7 +174,7 @@ export function sanitizeStepDisplay(step: Step, options?: { wholeOutput?: boolea
   const shown = displayToolOutput({ tool: step.tool, text: source, title: step.title });
   const detail = /^Exit \d+/.test(step.detail)
     ? step.detail
-    : displayToolOutput({ tool: step.tool, text: stored ?? step.detail, title: step.title });
+    : displayToolOutput({ tool: step.tool, text: step.detail, title: step.title }).slice(0, 400);
   const input = displayToolInput(step.tool, step.input);
   keepOutput(key, shown);
   const output = options?.wholeOutput ? shown : keepOutput(key, shown);
