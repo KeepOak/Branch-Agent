@@ -681,6 +681,35 @@ function isReplyRunRecoveryBlocked(operation: ReplyOperation): boolean {
   return blocker === "human_input_wait" || blocker === "runtime_owned_wait";
 }
 
+/** True while a reply operation still represents live work, not a retained terminal slot. */
+export function isLiveReplyOperation(operation: ReplyOperation | undefined): boolean {
+  return (
+    operation !== undefined &&
+    !operation.result &&
+    !operation.abortSignal.aborted &&
+    !isReplyRunEvidenceStale(operation)
+  );
+}
+
+export function countLiveReplyOperations(): number {
+  let count = 0;
+  for (const operation of replyRunState.activeRunsByKey.values()) {
+    if (isLiveReplyOperation(operation)) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+export function hasRetainedNonLiveReplyOperation(): boolean {
+  for (const operation of replyRunState.activeRunsByKey.values()) {
+    if (!isLiveReplyOperation(operation)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function isReplyRunEvidenceStale(operation: ReplyOperation): boolean {
   // Reading the wait may expire it and record the owner's resumed activity.
   const recoveryBlocked = isReplyRunRecoveryBlocked(operation);
