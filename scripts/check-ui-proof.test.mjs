@@ -95,3 +95,53 @@ test('checkUIProof ignores test files in window directory', () => {
   assert.equal(result.exitCode, 0);
   assert.match(result.message, /1 file\(s\)/); // Only counts Composer.tsx
 });
+
+const CURSOR_AGENT_FOOTER = [
+  '<div><a href="https://cursor.com/agents/bc-example?cursor_ref=pr_footer&cursor_cta=open_in_web">',
+  '<picture><source media="(prefers-color-scheme: dark)" srcset="https://cursor.com/assets/images/open-in-web-dark.png">',
+  '<source media="(prefers-color-scheme: light)" srcset="https://cursor.com/assets/images/open-in-web-light.png">',
+  '<img alt="Open in Web" width="114" height="28" src="https://cursor.com/assets/images/open-in-web-dark.png"></picture></a>',
+  '&nbsp;<a href="https://cursor.com/background-agent?bcId=bc-example&cursor_ref=pr_footer&cursor_cta=open_in_cursor">',
+  '<picture><source media="(prefers-color-scheme: dark)" srcset="https://cursor.com/assets/images/open-in-cursor-dark.png">',
+  '<source media="(prefers-color-scheme: light)" srcset="https://cursor.com/assets/images/open-in-cursor-light.png">',
+  '<img alt="Open in Cursor" width="131" height="28" src="https://cursor.com/assets/images/open-in-cursor-dark.png"></picture></a>&nbsp;</div>',
+].join('');
+
+test('checkUIProof fails when a window tsx change has only the Cursor agent footer', () => {
+  const files = ['window/src/composer/Composer.tsx'];
+  const body = [
+    'Updated the composer.',
+    '',
+    '<!-- CURSOR_AGENT_PR_BODY_END -->',
+    CURSOR_AGENT_FOOTER,
+  ].join('\n');
+  const result = checkUIProof(files, body);
+  assert.equal(hasScreenshotProof(body), false);
+  assert.equal(result.exitCode, 1);
+  assert.match(result.message, /window\/src\/composer\/Composer\.tsx/);
+});
+
+test('checkUIProof fails when a window tsx change has only badge images', () => {
+  const files = ['window/src/composer/Composer.tsx'];
+  const body = [
+    '[![CI](https://img.shields.io/github/actions/workflow/status/KeepOak/Branch-Agent/ci.yml)](https://github.com/KeepOak/Branch-Agent/actions)',
+    '![coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)',
+    '<img alt="build" src="https://github.com/KeepOak/Branch-Agent/actions/workflows/ci.yml/badge.svg">',
+  ].join('\n');
+  const result = checkUIProof(files, body);
+  assert.equal(hasScreenshotProof(body), false);
+  assert.equal(result.exitCode, 1);
+});
+
+test('checkUIProof passes when a window tsx change has a real screenshot', () => {
+  const files = ['window/src/composer/Composer.tsx'];
+  const body = [
+    '![Demo](https://github.com/user-attachments/assets/abcd-efgh)',
+    '[![CI](https://img.shields.io/badge/ci-passing-green)](https://github.com/KeepOak/Branch-Agent/actions)',
+    CURSOR_AGENT_FOOTER,
+  ].join('\n');
+  const result = checkUIProof(files, body);
+  assert.equal(hasScreenshotProof(body), true);
+  assert.equal(result.exitCode, 0);
+  assert.match(result.message, /screenshot proof/);
+});

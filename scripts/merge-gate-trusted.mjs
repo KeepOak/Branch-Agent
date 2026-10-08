@@ -10,6 +10,7 @@ import {
   uncoveredTests,
 } from './changed-test-coverage.mjs';
 import { checkMergeCommands, docsToCheck } from './check-merge-command.mjs';
+import { checkUIProof } from './check-ui-proof.mjs';
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const TRUSTED_JOB = 'merge-gate-trusted';
@@ -25,6 +26,8 @@ export const GATE_SCRIPTS = [
   'scripts/changed-test-coverage.test.mjs',
   'scripts/check-merge-command.mjs',
   'scripts/check-merge-command.test.mjs',
+  'scripts/check-ui-proof.mjs',
+  'scripts/check-ui-proof.test.mjs',
   'scripts/feature-batch-ci-targets.mjs',
   'scripts/feature-slice-ci-targets.mjs',
   'scripts/priority-capabilities-ci-targets.mjs',
@@ -551,6 +554,21 @@ function runMergeCommandCheck(repo, sha, token) {
   return checkMergeCommands(dir, docsToCheck);
 }
 
+export function fetchPrBody(repo, prNumber, token) {
+  const payload = ghApi(repo, token, `pulls/${prNumber}`);
+  return typeof payload?.body === 'string' ? payload.body : '';
+}
+
+function runUIProofCheck(changedFiles, body) {
+  const result = checkUIProof(changedFiles, body);
+  if (result.exitCode) {
+    console.error(result.message);
+    return false;
+  }
+  console.log(result.message);
+  return true;
+}
+
 export function pollTrustedGate({
   repo, sha, token, changedFiles, coreWorkflows, currentRunId, prNumber, baseRef,
   maxAttempts = 64, pollSeconds = 30,
@@ -619,6 +637,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exit(1);
   }
   console.log('Merge-command check passed.');
+  if (!runUIProofCheck(changedFiles, fetchPrBody(repo, prNumber, token))) {
+    console.error('UI screenshot proof check failed on the pull request body.');
+    process.exit(1);
+  }
 
   if (initialWait > 0) sleepSeconds(initialWait);
 

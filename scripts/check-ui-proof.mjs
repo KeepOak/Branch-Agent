@@ -14,15 +14,57 @@ export function isWindowUISource(filePath) {
   return windowSource.test(filePath) && !windowTest.test(filePath) && !windowTypes.test(filePath);
 }
 
+const CURSOR_FOOTER_AFTER_MARKER = /<!--\s*CURSOR_AGENT_PR_BODY_END\s*-->[\s\S]*$/i;
+const CURSOR_FOOTER_DIV = /<div\b[^>]*>[\s\S]*?cursor_ref=pr_footer[\s\S]*?<\/div>\s*/gi;
+const CURSOR_LINKED_MARKDOWN_IMAGE = /\[!\[[^\]]*\]\([^)]+\)\]\(\s*https?:\/\/(?:[\w.-]+\.)?cursor\.com[^)]*\)/gi;
+const CURSOR_LINKED_HTML = /<a\b[^>]*\bhref\s*=\s*["'][^"']*cursor\.com[^"']*["'][^>]*>[\s\S]*?<\/a>/gi;
+const MARKDOWN_IMAGE = /!\[([^\]]*)\]\(([^)]+)\)/g;
+const HTML_IMAGE = /<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
+const GITHUB_ATTACHMENT = /https:\/\/(?:user-images\.githubusercontent\.com|github\.com\/user-attachments\/assets\/)[^\s)"']+/gi;
+
+function firstUrlToken(value) {
+  return String(value).trim().replace(/^<|>$/g, '').split(/\s+/, 1)[0] ?? '';
+}
+
+function hostnameOf(url) {
+  try {
+    return new URL(url, 'https://proof.invalid').hostname;
+  } catch {
+    return '';
+  }
+}
+
+/** Badge hosts, cursor.com assets, and /badge.svg-style URLs are not app screenshots. */
+export function isIgnoredProofUrl(url) {
+  const value = firstUrlToken(url);
+  if (!value) return true;
+  const hostname = hostnameOf(value);
+  if (/(^|\.)(?:shields\.io|badgen\.net|badge\.fury\.io|cursor\.com)$/i.test(hostname)) return true;
+  if (/(?:^|\/)badge(?:s)?(?:\.svg|\.png|\/|$|\?)/i.test(value)) return true;
+  return false;
+}
+
+function bodyWithoutIgnoredBlocks(prBody) {
+  return String(prBody)
+    .replace(CURSOR_FOOTER_AFTER_MARKER, '')
+    .replace(CURSOR_FOOTER_DIV, '')
+    .replace(CURSOR_LINKED_MARKDOWN_IMAGE, '')
+    .replace(CURSOR_LINKED_HTML, '');
+}
+
+function proofUrlsIn(prBody) {
+  const text = bodyWithoutIgnoredBlocks(prBody);
+  const urls = [];
+  for (const match of text.matchAll(MARKDOWN_IMAGE)) urls.push(firstUrlToken(match[2]));
+  for (const match of text.matchAll(HTML_IMAGE)) urls.push(firstUrlToken(match[1]));
+  for (const match of text.matchAll(GITHUB_ATTACHMENT)) urls.push(firstUrlToken(match[0]));
+  return urls;
+}
+
 export function hasScreenshotProof(prBody) {
   if (!prBody) return false;
   if (/^No visible change:\s+\S+/im.test(prBody)) return true;
-  if (/!\[[^\]]*\]\([^)]+\)/.test(prBody)) return true;
-  if (/<img\b[^>]*\bsrc\s*=\s*["'][^"']+["'][^>]*>/i.test(prBody)) return true;
-  if (/https:\/\/(?:user-images\.githubusercontent\.com|github\.com\/user-attachments\/assets\/)/i.test(prBody)) {
-    return true;
-  }
-  return false;
+  return proofUrlsIn(prBody).some((url) => !isIgnoredProofUrl(url));
 }
 
 export function checkUIProof(changedFiles, prBody) {

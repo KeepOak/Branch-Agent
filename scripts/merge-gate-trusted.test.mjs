@@ -906,12 +906,23 @@ test('old-base PR still runs the trusted check from the default branch', () => {
   ]);
   assert.equal(filesAtOldBase.has('scripts/merge-gate-trusted.test.mjs'), false);
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-trusted.test.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.test.mjs'));
+  const trustedSource = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
+  assert.match(trustedSource, /from '\.\/check-ui-proof\.mjs'/);
+  assert.match(trustedSource, /runUIProofCheck\(/);
 });
 
 test('merge-gate does not retrigger on ready_for_review and cancel its waiting run', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
   assert.match(yaml, /^  pull_request:\s*$/m);
   assert.doesNotMatch(yaml, /^\s+types:.*ready_for_review/m);
+});
+
+test('merge-gate edited trigger does not cancel an in-progress wait', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /types:\s*\[[^\]]*edited[^\]]*\]/);
+  assert.match(yaml, /cancel-in-progress:\s*\$\{\{\s*github\.event\.action\s*!=\s*'edited'\s*\}\}/);
 });
 
 test('merge-gate wait ignores merge-gate-trusted so the two gates cannot deadlock', () => {
