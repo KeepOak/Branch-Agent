@@ -11,6 +11,18 @@ type Props = {
   onOpen: (key: string) => void;
 };
 
+/** Main's v23 thread column stays until the preview topic row is mounted for that contact. */
+export function shouldShowThreadColumn(p: {
+  chat: boolean;
+  focus: boolean;
+  stage: boolean;
+  draft: boolean;
+  generalKey: string | null | undefined;
+  topicRow: boolean;
+}): boolean {
+  return p.chat && !p.focus && !p.stage && !p.draft && Boolean(p.generalKey) && !p.topicRow;
+}
+
 /** The preview's per-contact threads, separate from the Control tower. */
 export function ThreadColumn({ name, generalKey, openKey, items, onOpen }: Props) {
   const [expanded, setExpanded] = useState(true);
