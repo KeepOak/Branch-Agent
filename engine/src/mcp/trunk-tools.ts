@@ -3,6 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { EventFrame } from "../../packages/gateway-protocol/src/index.js";
 import { extractFirstTextBlock } from "../shared/chat-message-content.js";
+import { registerSigninMcpTools } from "./signin-tools.js";
 
 /**
  * Trunk tools for `branch mcp serve`: an outside agent sees and drives Trunks the way the owner's window does.
@@ -218,6 +219,7 @@ export function registerTrunkMcpTools(
   gw: TrunkGateway,
   opts: TrunkToolsOptions,
 ): void {
+  registerSigninMcpTools(server, gw);
   registerTrunkReadTools(server, gw);
   registerTrunkWriteTools(server, gw, opts);
   registerRunTools(server, gw);
