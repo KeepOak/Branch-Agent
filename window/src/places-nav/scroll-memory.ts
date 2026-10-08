@@ -59,6 +59,59 @@ export type ScrollMemoryOptions = {
   atEnd?: RefObject<boolean>;
 };
 
+/** Watch children and `scrollHeight` — not the overflow element's border box. */
+function watchContent(ref: RefObject<HTMLElement | null>, put: () => boolean): () => void {
+  let stopped = false;
+  let lastHeight = -1;
+  let interval = 0;
+  const seen = new Set<Element>();
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    window.clearInterval(interval);
+    mo?.disconnect();
+    ro?.disconnect();
+  };
+  const ro = typeof ResizeObserver === "function"
+    ? new ResizeObserver(() => {
+        if (!stopped) check();
+      })
+    : null;
+  const mo = typeof MutationObserver === "function"
+    ? new MutationObserver(() => {
+        if (!stopped) check();
+      })
+    : null;
+  const observeChildren = (el: HTMLElement) => {
+    if (!ro) return;
+    for (const child of el.children) {
+      if (seen.has(child)) continue;
+      seen.add(child);
+      ro.observe(child);
+    }
+  };
+  const check = () => {
+    if (stopped) return;
+    const el = ref.current;
+    if (!el) return;
+    observeChildren(el);
+    if (el.scrollHeight !== lastHeight || lastHeight < 0) lastHeight = el.scrollHeight;
+    put();
+  };
+  const attach = () => {
+    const el = ref.current;
+    if (!el) return;
+    mo?.observe(el, { childList: true, subtree: true });
+    observeChildren(el);
+    check();
+  };
+  interval = window.setInterval(() => {
+    if (!stopped) attach();
+  }, WATCH_EVERY_MS);
+  attach();
+  return stop;
+}
+
 /**
  * Remembers the scroller for the current history entry and puts it back after
  * Back/Forward, the way preview `recordNavT5` / `navGoT5` keep `y`.
@@ -88,18 +141,9 @@ export function useScrollMemory(ref: RefObject<HTMLElement | null>, opts?: Scrol
         };
         requestAnimationFrame(put);
         for (const ms of RESTORE_MS) timers.push(window.setTimeout(put, ms));
-        let lastHeight = -1;
-        const watch = () => {
-          const el = ref.current;
-          if (!el) return;
-          if (el.scrollHeight === lastHeight) return;
-          lastHeight = el.scrollHeight;
-          put();
-        };
-        const interval = window.setInterval(watch, WATCH_EVERY_MS);
-        stopWatch = () => window.clearInterval(interval);
+        // The overflow box stays the same size; history/lists grow children and scrollHeight.
+        stopWatch = watchContent(ref, put);
         timers.push(window.setTimeout(() => stopWatch?.(), WATCH_MS));
-        watch();
       }
     } else if (flag) {
       // Thread stays mounted across chats; a fresh open must follow the end again.

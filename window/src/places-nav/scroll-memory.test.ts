@@ -37,15 +37,25 @@ function metricsOf(el: HTMLElement): Metrics {
   return row;
 }
 
+function contentHeight(el: HTMLElement): number {
+  let fromKids = 0;
+  for (const child of el.children) {
+    const row = sizes.get(child as HTMLElement);
+    if (row) fromKids += row.height;
+  }
+  return fromKids > 0 ? fromKids : metricsOf(el).height;
+}
+
 function installScrollMetrics(): void {
   Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get() { return metricsOf(this as HTMLElement).view; } });
-  Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get() { return metricsOf(this as HTMLElement).height; } });
+  Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get() { return contentHeight(this as HTMLElement); } });
   Object.defineProperty(HTMLElement.prototype, "scrollTop", {
     configurable: true,
     get() { return metricsOf(this as HTMLElement).top; },
     set(value: number) {
       const row = metricsOf(this as HTMLElement);
-      row.top = Math.max(0, Math.min(Number(value), Math.max(0, row.height - row.view)));
+      const height = contentHeight(this as HTMLElement);
+      row.top = Math.max(0, Math.min(Number(value), Math.max(0, height - row.view)));
     },
   });
 }
@@ -307,7 +317,13 @@ describe("chat scroll memory", () => {
     late.dispatchEvent(new Event("scroll"));
     await waitMs(450);
     expect(late.scrollTop).toBe(0);
-    metricsOf(late).height = 2000;
+    const history = document.createElement("div");
+    history.setAttribute("data-testid", "late-history");
+    metricsOf(history).height = 2000;
+    await act(async () => {
+      late.append(history);
+    });
+    expect(late.scrollHeight).toBeGreaterThanOrEqual(2000);
     await waitMs(80);
     expect(late.scrollTop).toBe(600);
   });
