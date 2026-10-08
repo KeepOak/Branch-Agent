@@ -1,2 +1,2 @@
-# Unique pack6-0002 harvest test; listed for trusted coverage.
+# Unique pack6-0002 harvest test; listed for trusted coverage after rate limit.
 engine:src/cron/service/restart-recovery.behaviour.test.ts
