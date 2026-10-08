@@ -84,20 +84,46 @@ test("flagged handoff applies during active work without an idle hold", async ()
 });
 
 test("failed flagged handoff falls back after idle and notifies once per version", async () => {
-  let now = 0; let attempts = 0; let version = "next"; let activeRuns = 1; const failures = [];
+  let now = 0; let version = "next"; let activeRuns = 1; const attempts = []; const failures = [];
   const controller = createAutoApplyUpdate({ pendingVersion: async () => version, enabled: () => true,
     seamlessHandoff: () => true, activity: async () => ({ activeRuns, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }),
-    restart: async (_version, handoffOnly) => { attempts++; assert.equal(handoffOnly, attempts === 1 || version === "later"); throw new Error("standby failed"); },
+    restart: async (_version, handoffOnly) => { attempts.push(handoffOnly); throw new Error("standby failed"); },
     onFailure: value => failures.push(value), log: () => {}, now: () => now });
-  await controller.tick(); await controller.tick();
-  assert.equal(attempts, 1); assert.deepEqual(failures, ["next"]);
-  now += AUTO_APPLY_RETRY_MS; await controller.tick();
-  assert.equal(attempts, 1);
+  await controller.tick();
+  assert.deepEqual(attempts, [true]);
+  assert.deepEqual(failures, []);
+  now += 1; await controller.tick();
+  assert.deepEqual(attempts, [true], "handoff failure waited the retry back-off before the idle path");
   now += AUTO_APPLY_IDLE_MS; await controller.tick();
-  assert.equal(attempts, 1, "fallback interrupted active work");
+  assert.deepEqual(attempts, [true], "fallback interrupted active work");
   activeRuns = 0; await controller.tick();
   now += AUTO_APPLY_IDLE_MS; await controller.tick();
-  assert.equal(attempts, 2); assert.deepEqual(failures, ["next"]);
+  assert.deepEqual(attempts, [true, false]);
+  assert.deepEqual(failures, ["next"]);
   version = "later"; await controller.tick();
+  assert.deepEqual(attempts, [true, false, true]);
+  assert.deepEqual(failures, ["next"]);
+  now += AUTO_APPLY_IDLE_MS; await controller.tick();
+  assert.deepEqual(attempts, [true, false, true, false]);
   assert.deepEqual(failures, ["next", "later"]);
+});
+
+test("failed flagged handoff falls back after idle without notifying or waiting the retry back-off", async () => {
+  let now = 0; const attempts = []; const failures = [];
+  const controller = createAutoApplyUpdate({ pendingVersion: async () => "next", enabled: () => true,
+    seamlessHandoff: () => true,
+    activity: async () => ({ activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }),
+    restart: async (_version, handoffOnly) => {
+      attempts.push(handoffOnly);
+      if (handoffOnly) throw new Error("A standby is needed to hand off without interrupting running work");
+    },
+    onFailure: value => failures.push(value), log: () => {}, now: () => now });
+  await controller.tick();
+  assert.deepEqual(attempts, [true]);
+  assert.deepEqual(failures, []);
+  now += 1; await controller.tick();
+  assert.deepEqual(attempts, [true], "drain ran during the retry back-off window");
+  now += AUTO_APPLY_IDLE_MS; await controller.tick();
+  assert.deepEqual(attempts, [true, false]);
+  assert.deepEqual(failures, []);
 });

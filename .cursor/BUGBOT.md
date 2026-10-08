@@ -8,7 +8,7 @@ Conventions and common failure modes for this repository. Bugbot should check th
 
 2. **Desktop is independent.** `desktop/` is a standalone npm package that does not depend on engine or window sources. It launches them as separate processes.
 
-3. **Three-component release.** `engine/`, `window/`, and `desktop/` release independently. A change touching any of them triggers a component release on merge to main.
+3. **Three-component release.** `engine/`, `window/`, and `desktop/` release independently. A change touching any of them is included in the next scheduled release at :07 or :37 when main has moved and no check on main's head has failed.
 
 ## Common mistakes
 
@@ -62,7 +62,7 @@ Conventions and common failure modes for this repository. Bugbot should check th
 
 ## Release implications
 
-Every merge to `main` that touches `engine/`, `window/`, or `desktop/` triggers an automatic release. Changes ship to installed apps within an hour and apply on restart.
+Merges to `main` that touch `engine/`, `window/`, or `desktop/` ship in the next scheduled release at :07 or :37, when main has moved since the last release and no check on main's head has failed. Installed apps jump to the newest release and apply it on restart.
 
 - Test thoroughly before merging.
 - Visual changes must include screenshots in the PR.
