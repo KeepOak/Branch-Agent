@@ -2,6 +2,7 @@ name: GitHub component release
 
 on:
   push:
+    branches: [main]
     tags: ['v[0-9]*.[0-9]*.[0-9]*']
   schedule:
     # Every 30 minutes, offset from the top of the hour: batch merges into releases.
@@ -11,6 +12,7 @@ on:
       - 'desktop/scripts/release-*'
       - 'desktop/scripts/make-component-release.mjs'
       - 'desktop/scripts/publish-component-release.mjs'
+      - 'desktop/scripts/component-release-readiness.mjs'
       - 'desktop/scripts/production-engine-smoke*'
       - 'desktop/scripts/bundle-node.mjs'
       - 'desktop/src/component-update*'
@@ -29,8 +31,10 @@ on:
 permissions:
   contents: read
 
-# Scheduled and manual releases run one at a time and never cancel each other: an in-flight release
-# always finishes; a queued run waits. Pull requests: a new push replaces the previous check.
+# Scheduled, manual, and main-push backup releases share one group and never cancel each other: an
+# in-flight release always finishes; queued runs collapse to the newest pending run. A push to main
+# releases only when the latest release is more than 25 minutes old, so a missed cron cannot strand a
+# merge and bursts still batch. Pull requests: a new push replaces the previous check.
 concurrency:
   group: github-component-release-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -79,6 +83,14 @@ jobs:
               printf '%s %s\n' false "$main_commit"
               return
             fi
+            if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+              published_at=$(gh api repos/KeepOak/Branch-Agent/releases/latest --jq .published_at)
+              if ! node desktop/scripts/component-release-readiness.mjs "$published_at"; then
+                echo "Latest release $latest_release was published at $published_at; push backup waits until it is more than 25 minutes old" >&2
+                printf '%s %s\n' false "$main_commit"
+                return
+              fi
+            fi
             echo "Main has new changes since $latest_release and no failed checks; proceeding with release" >&2
             printf '%s %s\n' true "$main_commit"
           }
@@ -89,6 +101,7 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             echo "scheduled rehearsal (does not decide this pull-request build):"
             decide_scheduled >/dev/null
+            node desktop/scripts/component-release-readiness.mjs "2000-01-01T00:00:00Z"
             should_release="true"
             commit="$(git rev-parse HEAD)"
           elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
