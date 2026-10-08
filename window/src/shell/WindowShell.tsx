@@ -44,6 +44,7 @@ import { createTopic, newMenuItems } from "./new-menu";
 import type { TopicListItem } from "./contact-topics";
 import { TopicRail } from "./TopicRail";
 import { historyToBlocks } from "../thread/history";
+import { lastSpeakerWho } from "./topic-who";
 import { topicLayoutFor, readTopicSettings, setContactTopicLayout, type TopicLayout } from "./topic-layout";
 import { patchTopicSession } from "./topic-session";
 import { loadAllTopicTranscripts } from "./topic-all";
@@ -486,13 +487,13 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     if (!ready || !topicContact || !activeTopics.length) { setTopicWho({}); return; }
     let live = true;
     const contactName = topicContact.name;
-    void Promise.all(activeTopics.map(async (topic) => {
+    const keys = [topicContact.threadKey, ...activeTopics.map((topic) => topic.key)];
+    void Promise.all(keys.map(async (key) => {
       try {
-        const result = await request<{ messages?: unknown[] }>("chat.history", { sessionKey: topic.key, limit: 1 });
-        const blocks = historyToBlocks(Array.isArray(result.messages) ? result.messages : [], [], topic.key, null);
-        const last = blocks.findLast((block) => block.kind === "user" || block.kind === "text");
-        return [topic.key, last?.kind === "user" ? "You" : last?.kind === "text" ? contactName : ""] as const;
-      } catch { return [topic.key, ""] as const; }
+        const result = await request<{ messages?: unknown[] }>("chat.history", { sessionKey: key, limit: 1 });
+        const blocks = historyToBlocks(Array.isArray(result.messages) ? result.messages : [], [], key, null);
+        return [key, lastSpeakerWho(blocks, contactName)] as const;
+      } catch { return [key, ""] as const; }
     })).then((entries) => { if (live) setTopicWho(Object.fromEntries(entries)); });
     return () => { live = false; };
   }, [request, ready, topicContact?.id, activeTopics]);
@@ -1296,7 +1297,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           contactName={topicContact.name}
           contactKey={topicContact.threadKey}
           generalPreview={topicMainRow?.preview ?? ""}
-          generalWho={s.history.findLast((block) => block.kind === "user" || block.kind === "text")?.kind === "user" ? "You" : topicMainRow?.preview ? topicContact.name : ""}
+          generalWho={topicWho[topicContact.threadKey] ?? ""}
           generalUpdatedAt={topicMainRow?.updatedAt ?? topicContact.lastActivityAt}
           currentKey={openKey}
           allSelected={showingAll}
@@ -1449,7 +1450,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     );
   }
   const threadGeneralKey = topicContact?.threadKey ?? (openRow?.isMain ? openKey : null);
-  const showThreadColumn = route.kind === "chat" && !layout.focus && !stage && !draftTopic && Boolean(threadGeneralKey);
+  const showTopicRail = Boolean(topicContact && activeTopics.length);
+  const showThreadColumn = route.kind === "chat" && !layout.focus && !stage && !draftTopic && Boolean(threadGeneralKey) && !showTopicRail;
   const showTower = route.kind === "chat" && ready && towerOn && !pane && !layout.focus && !stage && !draftTopic && firstRun.step === null;
   const mainClass = route.kind === "chat" ? `main${pane ? " with-pane" : ""}${showThreadColumn || showTower ? " v23-layout" : ""}` : talkShown ? (talk.dock === "bottom" ? "main with-talk talk-bottom" : "main with-talk") : "main";
 

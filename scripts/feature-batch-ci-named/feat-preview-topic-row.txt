@@ -1,2 +1,4 @@
 engine:src/gateway/contacts/project.test.ts
 window:src/shell/TopicRail.test.tsx
+window:src/shell/WindowShell.topics.test.tsx
+window:src/shell/topic-who.test.ts
