@@ -1,19 +1,17 @@
 // Library › Memory › About you: USER.md starts as a developer template. Show a
 // short plain summary of real facts; hide template boilerplate, fences, HTML
-// comments and docs links.
+// comments and docs links. Superseded directives stay out of the summary.
 
-const TEMPLATE_MARK = [
-  "store stable user preferences and profile facts",
-  "use one directive per entry",
-  "begin each directive with an imperative",
-  "record the observation date",
-  "when a preference changes, mark the old entry",
-  "keep stable communication style, relationships",
-  "save this file at the workspace root",
-  "replace the example below with a real directive",
-  "never leave a placeholder directive",
-  "put durable non-profile facts",
-];
+const TEMPLATE_LINES = new Set([
+  "store stable user preferences and profile facts as directives that can guide future sessions.",
+  "use one directive per entry:",
+  "begin each directive with an imperative such as always, never, or prefer.",
+  "record the observation date and either active or superseded on the metadata line.",
+  "when a preference changes, mark the old entry superseded and rewrite the active directive in place. never append a contradictory active directive.",
+  "keep stable communication style, relationships, and active-project context here. put durable non-profile facts and decisions in memory.md.",
+  "save this file at the workspace root as user.md. it loads every session with a separate 4,000-character budget.",
+  "replace the example below with a real directive and a real observation date before you save this file. never leave a placeholder directive active.",
+]);
 
 const PLACEHOLDER = /^(prefer|always|never)\s+\.\.\.$/i;
 const EMPTY_FIELD = /^[^:]+:\s*$/;
@@ -21,9 +19,15 @@ const DOCS_LINK = /^\[[^\]]+\]\(\s*(\/|https?:|#)/i;
 const HEADING = /^#{1,6}\s/;
 const FENCE = /^```/;
 const RULE = /^-{3,}$/;
+const OBSERVED = /<!--\s*observed:[^>]*?\bstatus:\s*(\w+)\s*-->/gi;
+const STATUS_MARK = /^\0status:(\w+)$/;
 
 function stripFrontMatter(content: string): string {
   return content.replace(/^\uFEFF?---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n/, "");
+}
+
+function normalize(line: string): string {
+  return line.toLowerCase().replace(/`/g, "").replace(/\s+/g, " ").trim();
 }
 
 function bulletText(line: string): string {
@@ -31,19 +35,22 @@ function bulletText(line: string): string {
 }
 
 function isTemplateLine(line: string): boolean {
-  const lower = line.toLowerCase();
-  return TEMPLATE_MARK.some((mark) => lower.includes(mark));
+  return TEMPLATE_LINES.has(normalize(line));
 }
 
 /** Plain facts from USER.md, or "" when the file is empty or still the template. */
 export function aboutYouSummary(content: string): string {
   const raw = stripFrontMatter(content.replace(/\r\n/g, "\n"))
+    .replace(OBSERVED, (_all, status: string) => `\n\0status:${status.toLowerCase()}\n`)
     .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/```[\s\S]*?(```|$)/g, "");
   const kept: string[] = [];
+  let skip = false;
   for (const original of raw.split("\n")) {
     const line = original.trim();
-    if (!line || HEADING.test(line) || FENCE.test(line) || RULE.test(line)) continue;
+    const status = STATUS_MARK.exec(line);
+    if (status) { skip = status[1] === "superseded"; continue; }
+    if (!line || skip || HEADING.test(line) || FENCE.test(line) || RULE.test(line)) continue;
     const item = bulletText(line);
     if (DOCS_LINK.test(item) || isTemplateLine(item)) continue;
     const text = item.replace(/`([^`]+)`/g, "$1").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").trim();

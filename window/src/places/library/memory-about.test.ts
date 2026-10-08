@@ -51,4 +51,20 @@ describe("aboutYouSummary", () => {
     expect(summary).toBe("Prefers short replies while a task is running\nWorks from Lisbon most weekdays");
     expect(summary).not.toMatch(/Store stable user preferences|```|observed:|Save this file|Agent workspace|Prefer \.\.\./);
   });
+
+  it("keeps a real preference that only contains a template phrase", () => {
+    expect(aboutYouSummary("- Always record the observation date for my health measurements.\n")).toBe(
+      "Always record the observation date for my health measurements.",
+    );
+  });
+
+  it("drops superseded directives and keeps the active replacement", () => {
+    const summary = aboutYouSummary(`<!-- observed: 2026-01-01 | status: superseded -->
+- Used to work from Porto
+<!-- observed: 2026-09-12 | status: active -->
+- Works from Lisbon most weekdays
+`);
+    expect(summary).toBe("Works from Lisbon most weekdays");
+    expect(summary).not.toContain("Porto");
+  });
 });
