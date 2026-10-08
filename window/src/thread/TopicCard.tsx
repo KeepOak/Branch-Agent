@@ -21,7 +21,7 @@ export function topicPosition(history: readonly Block[], at: number, afterMessag
 }
 
 export function TopicOrigin({ topic, onOpen }: { topic: Topic; onOpen: (key: string) => void }) {
-  return <button type="button" className="topic-origin" onClick={() => onOpen(topic.key)}>Started a conversation: {topic.title}</button>;
+  return <button type="button" className="topic-origin" onClick={() => onOpen(topic.key)}>Started a thread: {topic.title}</button>;
 }
 
 export function TopicCard({ update, onOpen }: { update: TopicUpdate; onOpen: (key: string) => void }) {
