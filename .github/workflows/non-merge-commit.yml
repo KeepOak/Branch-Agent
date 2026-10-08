@@ -7,6 +7,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - '.github/workflows/non-merge-commit.yml'
       - 'scripts/detect-non-merge-commit.mjs'
@@ -18,12 +19,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: non-merge-commit-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: non-merge-commit-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'push' || github.event.action == 'converted_to_draft' }}
 
 jobs:
   test:
     name: Merge-commit guard tests
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -42,7 +44,7 @@ jobs:
 
   track:
     name: Track non-merge-commit landing
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 5
