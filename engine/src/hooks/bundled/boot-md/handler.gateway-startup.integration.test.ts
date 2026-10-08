@@ -1,4 +1,3 @@
-// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/hooks/bundled/boot-md/handler.gateway-startup.integration.test.ts (atlas AUTOMATION-0072). Changed for Branch: names mapped with scripts/rebrand-map.json; retain current-main agent entries roster fixtures.
 // Boot.md gateway startup tests cover boot context injection during gateway startup.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveAgentWorkspaceDir } from "../../../agents/agent-scope.js";

@@ -1,4 +1,3 @@
-// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/agents/tools/sessions-yield-tool.test.ts (atlas MULTI-AGENT-0013). Changed for Branch: names mapped with scripts/rebrand-map.json; retain current-main yield continuation and caller permission assertions.
 // sessions_yield tool tests cover cooperative turn yielding and unsupported
 // context errors.
 import { describe, expect, it, vi } from "vitest";

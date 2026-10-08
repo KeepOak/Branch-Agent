@@ -1,4 +1,3 @@
-// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/claws/package-update.test.ts (atlas MULTI-AGENT-0052). Changed for Branch: names mapped with scripts/rebrand-map.json; retain current-main agent roster and package ownership fixtures.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
