@@ -94,7 +94,7 @@ Every child process Branch starts on Windows (the engine, shells, probes, git, P
 - After review, merge with a merge commit (never squash or rebase), pinned to the reviewed head SHA so a new push blocks the merge:
 
   ```bash
-  gh pr merge <number> --auto --merge --match-head-commit <reviewed-sha>
+  gh pr merge <number> --merge --match-head-commit <reviewed-sha>
   ```
 
   The pull request then merges as soon as `merge-gate` passes. Don't force-push to `main`, and don't re-enable auto-merge on a pull request a reviewer paused.

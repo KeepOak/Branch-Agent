@@ -47,7 +47,7 @@ Conventions and common failure modes for this repository. Bugbot should check th
 ### Merge commands
 - **Wrong:** Merging without pinning to the reviewed head SHA, or using squash/rebase.
 - **Right:** Always merge with a merge commit, pinned to the reviewed SHA:
-  - `gh pr merge <number> --auto --merge --match-head-commit <reviewed-sha>`
+  - `gh pr merge <number> --merge --match-head-commit <reviewed-sha>`
   - Or REST API: `PUT /repos/KeepOak/Branch-Agent/pulls/<number>/merge` with `{"merge_method": "merge", "sha": "<reviewed-sha>"}`
 - **Why:** A new push after review must block the merge until re-reviewed. Merge commits preserve the full history.
 
