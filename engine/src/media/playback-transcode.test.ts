@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/media/playback-transcode.test.ts (atlas MEDIA-0103). Retains current upstream cooldown and codec assertions beyond the atlas pin.
 import "../test-utils/prepare-compiled-subprocesses.js";
 import fs from "node:fs/promises";
 import path from "node:path";

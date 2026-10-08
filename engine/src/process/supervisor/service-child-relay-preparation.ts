@@ -46,13 +46,19 @@ export type ServiceChildRelayAdapter = SpawnProcessAdapter<NodeJS.Signals | null
 
 /** Prepare transport facts; the host revalidates authority immediately before spawning. */
 export function prepareServiceChildRelay(params: ServiceChildRelayParams) {
-  const nativeProcessOwner =
+  const resolvedOwner =
     getInheritedNativeProcessOwner() ??
     (process.platform === "linux" &&
     !process.versions.bun &&
     (typeof WORKER_DEPLOY_BUILD !== "boolean" || !WORKER_DEPLOY_BUILD)
       ? resolveRuntimeProcessEntrypointUrl("serviceChildGroupAnchor").href
       : undefined);
+  // The native owner refuses a TypeScript module. Source checkouts keep the
+  // process-group relay until a built owner is on the path.
+  const nativeProcessOwner =
+    resolvedOwner && !/\.[cm]?ts$/u.test(new URL(resolvedOwner, "file:").pathname)
+      ? resolvedOwner
+      : undefined;
   const useLinuxSubreaper =
     nativeProcessOwner !== undefined &&
     (!params.ownedWorker || params.nativeProcessOwnerSupported === true);

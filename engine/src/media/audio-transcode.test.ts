@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/media/audio-transcode.test.ts (atlas MEDIA-0104). Changed for Branch: scope the Darwin fixture to routing so Linux user-namespace ownership checks stay real; preserve staging failure and cleanup assertions.
 // Audio transcode tests cover ffmpeg-backed audio conversion behavior.
 import { existsSync, realpathSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
@@ -38,6 +39,28 @@ function firstMockCall(mock: MockWithCalls, label: string): unknown[] {
     throw new Error(`expected ${label} call`);
   }
   return call;
+}
+
+function canonicalizeTempPath(target: string): string {
+  let current = path.resolve(target);
+  const missing: string[] = [];
+  while (!existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return path.resolve(target);
+    }
+    missing.unshift(path.basename(current));
+    current = parent;
+  }
+  const real = realpathSync.native(current);
+  return missing.length > 0 ? path.join(real, ...missing) : real;
+}
+
+function expectPathPrefixed(full: string | undefined, prefix: string): void {
+  expect(full).toEqual(expect.any(String));
+  expect(canonicalizeTempPath(full!).toLowerCase().startsWith(canonicalizeTempPath(prefix).toLowerCase())).toBe(
+    true,
+  );
 }
 
 describe("transcodeAudioBufferToOpus", () => {
@@ -98,7 +121,7 @@ describe("transcodeAudioBufferToOpus", () => {
       { timeoutMs: 1234 },
     ]);
     const tempRoot = realpathSync(resolvePreferredBranchTmpDir());
-    expect(capturedInputPath?.startsWith(path.join(tempRoot, "tts-test-"))).toBe(true);
+    expectPathPrefixed(capturedInputPath, path.join(tempRoot, "tts-test-"));
     expect(capturedInputPath ? existsSync(capturedInputPath) : true).toBe(false);
     expect(capturedOutputPath ? existsSync(capturedOutputPath) : true).toBe(false);
   });
@@ -166,7 +189,7 @@ describe("transcodeAudioBufferToOpus", () => {
     });
 
     const tempRoot = realpathSync(resolvePreferredBranchTmpDir());
-    expect(capturedInputPath?.startsWith(tempRoot)).toBe(true);
+    expectPathPrefixed(capturedInputPath, tempRoot);
     expect(capturedOutputPath ? existsSync(capturedOutputPath) : true).toBe(false);
   });
 
@@ -202,7 +225,11 @@ describe("transcodeAudioBuffer", () => {
   });
 
   it("returns a failure and cleans its workspace when input staging fails", async () => {
-    vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+    // Mock only the afconvert routing check; filesystem admission uses the real host.
+    const hostPlatform = process.platform;
+    vi.spyOn(process, "platform", "get")
+      .mockReturnValue(hostPlatform)
+      .mockReturnValueOnce("darwin");
     let workspaceDir: string | undefined;
     __setFsSafeTestHooksForTest({
       beforeFileStoreSyncPrivateWrite: (filePath) => {

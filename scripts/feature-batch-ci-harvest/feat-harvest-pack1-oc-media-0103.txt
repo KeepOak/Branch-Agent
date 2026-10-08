@@ -1,0 +1,4 @@
+# Tests for feat/harvest-pack1-oc-media-0103 run from scripts/feature-batch-ci-named/feat-harvest-pack1-oc-media-0103.txt.
+# Left out of Harvest so harvestTests() and namedTests() stay disjoint.
+# merge-gate-trusted coverage reads only named lists from the PR head.
+# Unchanged pack tests stay off both lists so Windows touched stays under 15 minutes.

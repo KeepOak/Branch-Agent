@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/agents/cli-runner.helpers.test.ts (atlas MODELS-ACCOUNTS-0032). Changed for Branch: retain Branch hydration suppression and stale workspace-image cleanup assertions.
 /** Tests CLI runner prompt/image/system-prompt helper utilities. */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -53,8 +54,7 @@ describe("prepareCliPromptImagePayload prompt references", () => {
     await expect(
       prepareCliPromptImagePayload({
         backend: { command: "gemini", imagePathScope: "workspace" },
-        prompt:
-          'Called the Read tool with {"file_path":"/workspace/.branch-cli-images/stale.png"}',
+        prompt: 'Called the Read tool with {"file_path":"/workspace/.branch-cli-images/stale.png"}',
         workspaceDir: "/workspace",
       }),
     ).resolves.toStrictEqual({
@@ -209,7 +209,7 @@ describe("writeCliImages", () => {
       expect(first.imagePaths).toStrictEqual([
         expect.stringMatching(
           new RegExp(
-            `^${escapeRegExp(`${resolvePreferredBranchTmpDir()}/branch-cli-images/`)}.*\\.png$`,
+            `^${escapeRegExp(path.join(resolvePreferredBranchTmpDir(), "branch-cli-images") + path.sep)}.*\\.png$`,
           ),
         ),
       ]);

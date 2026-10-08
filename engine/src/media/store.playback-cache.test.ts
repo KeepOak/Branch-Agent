@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/media/store.playback-cache.test.ts (atlas MEDIA-0103). Changed for Branch: retain compiled-subprocess preparation required by the current engine test runtime.
 import "../test-utils/prepare-compiled-subprocesses.js";
 import fs from "node:fs/promises";
 import path from "node:path";
