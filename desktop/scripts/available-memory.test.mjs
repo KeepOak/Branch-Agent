@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { totalmem } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
-const { availableMemoryBytes, candidateMinFreeBytes, CANDIDATE_MIN_FREE_MB_DEFAULT } =
+const { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes, CANDIDATE_MIN_FREE_MB_DEFAULT } =
   await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "available-memory.js")));
 
 const GIB = 2 ** 30, MIB = 2 ** 20, PAGE = 16384;
@@ -26,15 +25,16 @@ const linuxMeminfo = [
 
 test("Linux uses MemAvailable, not MemFree", () => {
   const strictlyFree = 80 * MIB;
-  assert.equal(availableMemoryBytes({ platform: "linux", meminfo: linuxMeminfo, freemem: strictlyFree }), 8388608 * 1024);
+  const memory = availableMemory({ platform: "linux", meminfo: linuxMeminfo, freemem: strictlyFree });
+  assert.equal(memory.bytes, 8388608 * 1024);
+  assert.equal(memory.measure, "MemAvailable");
 });
 
 test("macOS counts free, inactive and purgeable pages the OS can hand out", () => {
   const strictlyFree = 5120 * PAGE;
-  assert.equal(
-    availableMemoryBytes({ platform: "darwin", vmStat: macReport, freemem: strictlyFree }),
-    (5120 + 371200 + 32768) * PAGE,
-  );
+  const memory = availableMemory({ platform: "darwin", vmStat: macReport, freemem: strictlyFree });
+  assert.equal(memory.bytes, (5120 + 371200 + 32768) * PAGE);
+  assert.equal(memory.measure, "vm_stat");
 });
 
 test("macOS without a purgeable line still counts free and inactive pages", () => {
@@ -43,28 +43,37 @@ test("macOS without a purgeable line still counts free and inactive pages", () =
     "Pages free:                               5120.",
     "Pages inactive:                         371200.",
   ].join("\n");
-  assert.equal(availableMemoryBytes({ platform: "darwin", vmStat, freemem: 0 }), (5120 + 371200) * PAGE);
+  const memory = availableMemory({ platform: "darwin", vmStat, freemem: 0 });
+  assert.equal(memory.bytes, (5120 + 371200) * PAGE);
+  assert.equal(memory.measure, "vm_stat");
 });
 
 test("Windows stays on os.freemem()", () => {
-  assert.equal(availableMemoryBytes({ platform: "win32", meminfo: linuxMeminfo, vmStat: macReport, freemem: 7 * GIB }), 7 * GIB);
+  const memory = availableMemory({ platform: "win32", meminfo: linuxMeminfo, vmStat: macReport, freemem: 7 * GIB });
+  assert.equal(memory.bytes, 7 * GIB);
+  assert.equal(memory.measure, "os.freemem");
 });
 
 test("a failed or unreadable probe falls back to os.freemem()", () => {
-  assert.equal(availableMemoryBytes({ platform: "linux", meminfo: "no counters here", freemem: 3 * GIB }), 3 * GIB);
-  assert.equal(availableMemoryBytes({
+  const linux = availableMemory({ platform: "linux", meminfo: "no counters here", freemem: 3 * GIB });
+  assert.equal(linux.bytes, 3 * GIB);
+  assert.equal(linux.measure, "os.freemem");
+  const darwin = availableMemory({
     platform: "darwin",
     vmStat: "Mach Virtual Memory Statistics: (page size of 16384 bytes)\n",
     freemem: 2 * GIB,
-  }), 2 * GIB);
+  });
+  assert.equal(darwin.bytes, 2 * GIB);
+  assert.equal(darwin.measure, "os.freemem");
 });
 
 test("the 16 GB Mac report from #459 has room once reclaimable pages count", () => {
   const strictlyFree = 5120 * PAGE;
-  const available = availableMemoryBytes({ platform: "darwin", vmStat: macReport, freemem: strictlyFree });
+  const memory = availableMemory({ platform: "darwin", vmStat: macReport, freemem: strictlyFree });
   const min = candidateMinFreeBytes({ envMb: undefined, totalmem: 16 * GIB });
   assert.ok(strictlyFree < CANDIDATE_MIN_FREE_MB_DEFAULT * MIB, "old os.freemem() gate would skip");
-  assert.ok(available >= min);
+  assert.equal(memory.measure, "vm_stat");
+  assert.ok(memory.bytes >= min);
 });
 
 test("default threshold is a quarter of RAM, capped at 6 GB", () => {
@@ -80,15 +89,20 @@ test("BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB stays an absolute megabyte floor", ()
   assert.equal(candidateMinFreeBytes({ envMb: String(2 ** 40), totalmem: 16 * GIB }), 2 ** 40 * MIB);
 });
 
-test("live measurement is a non-negative byte count at most total RAM", () => {
-  const available = availableMemoryBytes();
-  assert.ok(Number.isInteger(available) && available >= 0);
-  assert.ok(available <= totalmem());
+test("the skip log names the measure that produced the byte count", () => {
+  const mac = availableMemory({ platform: "darwin", vmStat: macReport, freemem: 80 * MIB });
+  assert.equal(
+    candidateCheckSkippedLine(mac.bytes, mac.measure),
+    `candidate check skipped; ${Math.round(mac.bytes / MIB)} MB free (vm_stat)`,
+  );
+  const linux = availableMemory({ platform: "linux", meminfo: "unreadable", freemem: 324 * MIB });
+  assert.equal(candidateCheckSkippedLine(linux.bytes, linux.measure), "candidate check skipped; 324 MB free (os.freemem)");
 });
 
-test("the candidate and standby gates use reclaimable memory", () => {
+test("the candidate and standby gates use reclaimable memory and name the measure", () => {
   const main = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../src/main.ts"), "utf8");
   assert.doesNotMatch(main, /\bfreemem\b/);
-  assert.match(main, /availableMemoryBytes\(\)/);
+  assert.match(main, /availableMemory\(\)/);
   assert.match(main, /candidateMinFreeBytes\(\)/);
+  assert.match(main, /candidateCheckSkippedLine\(available, measure\)/);
 });

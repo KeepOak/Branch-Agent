@@ -31,14 +31,22 @@ function vmStat(probe: MemoryProbe): string {
   });
 }
 
-/** Bytes the OS can give a new process now. */
-export function availableMemoryBytes(probe: MemoryProbe = {}): number {
+/** Which counter produced the byte count. Named in the candidate-check skip log. */
+export type MemoryMeasure = "vm_stat" | "MemAvailable" | "os.freemem";
+
+export interface AvailableMemory {
+  bytes: number;
+  measure: MemoryMeasure;
+}
+
+/** Bytes the OS can give a new process now, and which counter produced that figure. */
+export function availableMemory(probe: MemoryProbe = {}): AvailableMemory {
   const platform = probe.platform ?? process.platform;
   try {
     if (platform === "linux") {
       const available = /^MemAvailable:\s+(\d+)\s+kB$/mu.exec(probe.meminfo ?? readFileSync("/proc/meminfo", "utf8"))?.[1];
       const kib = pages(available);
-      if (kib !== undefined) return kib * 1024;
+      if (kib !== undefined) return { bytes: kib * 1024, measure: "MemAvailable" };
     }
     if (platform === "darwin") {
       const text = vmStat(probe);
@@ -47,13 +55,23 @@ export function availableMemoryBytes(probe: MemoryProbe = {}): number {
       const inactive = pages(/^Pages inactive:\s+(\d+)\./mu.exec(text)?.[1]);
       const purgeable = pages(/^Pages purgeable:\s+(\d+)\./mu.exec(text)?.[1]) ?? 0;
       if (pageSize !== undefined && free !== undefined && inactive !== undefined) {
-        return (free + inactive + purgeable) * pageSize;
+        return { bytes: (free + inactive + purgeable) * pageSize, measure: "vm_stat" };
       }
     }
   } catch {
     // A failed probe must not block an update: fall back to os.freemem(), as before.
   }
-  return probe.freemem ?? freemem();
+  return { bytes: probe.freemem ?? freemem(), measure: "os.freemem" };
+}
+
+/** Bytes the OS can give a new process now. */
+export function availableMemoryBytes(probe: MemoryProbe = {}): number {
+  return availableMemory(probe).bytes;
+}
+
+/** Skip line written to desktop.log when there is not enough room for a second engine. */
+export function candidateCheckSkippedLine(bytes: number, measure: MemoryMeasure): string {
+  return `candidate check skipped; ${Math.round(bytes / 2 ** 20)} MB free (${measure})`;
 }
 
 /**
