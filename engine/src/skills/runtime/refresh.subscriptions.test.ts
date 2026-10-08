@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/skills/runtime/refresh.subscriptions.test.ts (atlas TOOLS-0117). Changed for Branch: restore pinned shared discovery fanout coverage while retaining expanded lifecycle assertions.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -274,4 +275,20 @@ describe("skills watcher subscription lifecycle", () => {
       });
     },
   );
+
+  it("fans shared discovery out once per workspace across execution subscriptions", async () => {
+    const workspaceDir = fixtureWorkspaceDir;
+    const first = await createFixtureDirectory("execution-one");
+    const second = await createFixtureDirectory("execution-two");
+    refreshModule.ensureSkillsWatcher({ workspaceDir, executionWorkspaceDir: first });
+    refreshModule.ensureSkillsWatcher({ workspaceDir, executionWorkspaceDir: second });
+    await observer.readyAll();
+    const seen = vi.fn();
+    refreshModule.registerSkillsChangeListener(seen);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date", "performance"] });
+    const changedPath = path.join(workspaceDir, "skills", "demo", "SKILL.md");
+    observer.forRoot(path.join(workspaceDir, "skills")).change(changedPath);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(seen).toHaveBeenCalledExactlyOnceWith({ workspaceDir, reason: "watch", changedPath });
+  });
 });

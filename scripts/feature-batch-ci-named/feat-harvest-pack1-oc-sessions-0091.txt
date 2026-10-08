@@ -1,0 +1,8 @@
+# Unique pack1 session tests; listed for trusted coverage.
+# Retrigger macos named shard 1 after the previous head hit the 15-minute cap.
+engine:extensions/discord/src/monitor/thread-bindings.acp-reconciliation.test.ts
+engine:extensions/discord/src/monitor/thread-bindings.creation.test.ts
+engine:src/agents/main-session-recovery/main-session-restart-recovery.behaviour.test.ts
+engine:src/agents/session-transcript-repair.test.ts
+engine:src/process/supervisor/linux-child-subreaper.behaviour.test.ts
+engine:src/skills/runtime/refresh.subscriptions.test.ts

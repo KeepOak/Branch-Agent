@@ -95,6 +95,12 @@ export async function windowInventory() {
   }), async file => crypto.createHash('sha256').update(await fs.readFile(path.join(windowRoot, file))).digest('hex'), windowSlices);
 }
 
+// The strict typecheck is the same on every OS; Linux and Windows PR slice jobs already run it.
+// Cold hosted macOS tsgo hits BRANCH_TSGO_TIMEOUT_MS and fails the 15-minute job.
+export function shouldRunStrictChecks(platform = process.platform) {
+  return platform !== 'darwin';
+}
+
 function execute(command, args, cwd, env, scratch, receipt, label, timeoutMs = 180_000) {
   const step = { label, command, args, cwd: path.relative(repoRoot, cwd), startedAt: new Date().toISOString() };
   receipt.steps.push(step);
@@ -279,7 +285,7 @@ async function all() {
         'const { withDistArtifactOwnership } = await import("./scripts/lib/dist-artifact-ownership.mts");\n' +
         'const { ensureKyselyTypes } = await import("./scripts/generate-kysely-types.mts");\n' +
         'await withDistArtifactOwnership(process.cwd(), () => ensureKyselyTypes(process.cwd()));'], engineRoot, env, scratch, receipt, 'canonical-kysely-types');
-      await strictChecks(selected, scratch, receipt, env);
+      if (shouldRunStrictChecks()) await strictChecks(selected, scratch, receipt, env);
       for (const slice of selected) {
         if (slice.native.length) await execute(process.execPath, [nodeHeap, '--import', pathToFileURL(path.join(engineRoot, 'scripts/tsx.mjs')).href,
           '--test', '--test-concurrency=1', '--test-timeout=30000', ...slice.native], engineRoot, env, scratch, receipt, `native-${slice.id}`);
@@ -320,6 +326,10 @@ async function selfTest() {
   assert.deepEqual(shardSelection(''), { index: 0, total: 1 });
   assert.deepEqual(shardSelection('2/2'), { index: 1, total: 2 });
   assert.throws(() => shardSelection('3/2'), /Invalid FEATURE_SLICE_SHARD/);
+  controls += 3;
+  assert.equal(shouldRunStrictChecks('linux'), true);
+  assert.equal(shouldRunStrictChecks('win32'), true);
+  assert.equal(shouldRunStrictChecks('darwin'), false);
   controls += 3;
   const empty = await inventory(async () => false);
   assert(empty.every(slice => slice.state === 'absent'));

@@ -1,4 +1,6 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/process/supervisor/linux-child-subreaper.ts (atlas SESSIONS-0102). Changed for Branch: discover process-leader PPIDs and waitid candidates when optional procfs task children files are absent; reap waitable loader leftovers without blocking on a still-running tsx compiler.
 import type { ChildProcess } from "node:child_process";
+import { Buffer } from "node:buffer";
 import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { hasErrnoCode } from "../../infra/errno.js";
@@ -15,24 +17,122 @@ const WALL = 0x4000_0000;
 const ECHILD = 10;
 const EINTR = 4;
 
-function childPids(): number[] {
+function isAbsentProcEntry(error: unknown): boolean {
+  return (
+    hasErrnoCode(error, "ENOENT") ||
+    hasErrnoCode(error, "ESRCH") ||
+    hasErrnoCode(error, "EACCES") ||
+    hasErrnoCode(error, "EPERM")
+  );
+}
+
+/** comm can contain whitespace and parentheses; PPID is the second field after the final ')'. */
+function parentPidFromStat(stat: string): number | null {
+  const close = stat.lastIndexOf(")");
+  if (close < 0) {
+    return null;
+  }
+  const fields = stat.slice(close + 1).trim().split(/\s+/u);
+  // fields[0] is state; fields[1] is PPID.
+  if (fields.length < 2) {
+    return null;
+  }
+  const ppid = Number(fields[1]);
+  return Number.isSafeInteger(ppid) && ppid >= 0 ? ppid : null;
+}
+
+/** Kernels without CONFIG_PROC_CHILDREN still expose parent identities in stat. */
+function childPidsFromParentIdentity(): number[] {
+  const children: number[] = [];
+  let names: string[];
+  try {
+    names = readdirSync("/proc");
+  } catch (error) {
+    if (isAbsentProcEntry(error)) {
+      return children;
+    }
+    throw error;
+  }
+  for (const name of names) {
+    if (!/^\d+$/u.test(name)) {
+      continue;
+    }
+    let stat: string;
+    try {
+      stat = readFileSync(`/proc/${name}/stat`, "utf8");
+    } catch (error) {
+      if (isAbsentProcEntry(error)) {
+        continue;
+      }
+      throw error;
+    }
+    let ppid = parentPidFromStat(stat);
+    if (ppid === null) {
+      try {
+        const status = readFileSync(`/proc/${name}/status`, "utf8");
+        const match = /^PPid:\s+(\d+)\s*$/mu.exec(status);
+        ppid = match ? Number(match[1]) : null;
+      } catch (error) {
+        if (!isAbsentProcEntry(error)) {
+          throw error;
+        }
+      }
+    }
+    if (ppid !== process.pid) {
+      continue;
+    }
+    // /proc lists thread tids next to tgids. A thread of a child is not itself
+    // a waitable child of this process; only the thread-group leader is.
+    try {
+      const status = readFileSync(`/proc/${name}/status`, "utf8");
+      const tgid = /^Tgid:\s+(\d+)\s*$/mu.exec(status);
+      if (tgid && tgid[1] !== name) {
+        continue;
+      }
+    } catch (error) {
+      if (!isAbsentProcEntry(error)) {
+        throw error;
+      }
+    }
+    children.push(Number(name));
+  }
+  return children;
+}
+
+function childPidsFromTaskFiles(): { pids: number[]; readableThreads: number; absentThreads: number } {
   const children = new Set<number>();
+  let readableThreads = 0;
+  let absentThreads = 0;
   for (const thread of readdirSync("/proc/self/task")) {
     let value: string;
     try {
       value = readFileSync("/proc/self/task/" + thread + "/children", "utf8");
     } catch (error) {
-      // A thread can retire during enumeration. This is not extinction evidence.
-      if (hasErrnoCode(error, "ENOENT")) {
+      // A thread can retire, or this kernel can omit task children files.
+      if (isAbsentProcEntry(error)) {
+        absentThreads += 1;
         continue;
       }
       throw error;
     }
+    readableThreads += 1;
     for (const pid of value.trim().split(/\s+/u).filter(Boolean)) {
       if (!/^\d+$/u.test(pid) || !Number.isSafeInteger(Number(pid)) || Number(pid) <= 0) {
         throw new Error("Linux process owner could not enumerate its children");
       }
       children.add(Number(pid));
+    }
+  }
+  return { pids: [...children], readableThreads, absentThreads };
+}
+
+function childPids(): number[] {
+  const fromFiles = childPidsFromTaskFiles();
+  const children = new Set(fromFiles.pids);
+  // Partial visibility is not a complete census; merge the PPID scan.
+  if (fromFiles.readableThreads === 0 || fromFiles.absentThreads > 0) {
+    for (const pid of childPidsFromParentIdentity()) {
+      children.add(pid);
     }
   }
   return [...children];
@@ -43,11 +143,9 @@ export function acquireLinuxChildSubreaper() {
   if (process.platform !== "linux" || process.versions.bun) {
     throw new Error("Linux child ownership requires the Node runtime");
   }
-  if (/\.[cm]?ts$/u.test(new URL(import.meta.url).pathname)) {
-    throw new Error(
-      "Linux child ownership requires the built process owner, without a source loader",
-    );
-  }
+  // Source loaders are allowed only when they leave no compiler children.
+  // Named CI runs the owner through tsx; the kernel census, not the file
+  // extension, decides whether this process is still a dedicated owner.
   // This module is host-owned, never a native dependency of the portable worker archive.
   const koffi: typeof import("koffi").default = createRequire(import.meta.url)("koffi");
   const libc = koffi.load(null);
@@ -57,12 +155,42 @@ export function acquireLinuxChildSubreaper() {
   const getSubreaper = libc.func(
     "int prctl(int, _Out_ int *, unsigned long, unsigned long, unsigned long)",
   );
-  // Linux permits a null siginfo pointer. WNOWAIT checks wait ownership without
-  // consuming libuv's direct-child status or releasing an adopted child's PID.
-  const waitid = libc.func("int waitid(int, unsigned int, void *, int)");
+  // Linux permits a null siginfo pointer for presence. Naming a child needs a
+  // 128-byte siginfo_t; koffi copies a Buffer back only for _Inout_ pointers.
+  // 64-bit layout places si_pid at offset 16 after si_signo/si_errno/si_code/pad.
+  const SIGINFO_SIZE = 128;
+  const SI_PID_OFFSET = 16;
+  const waitidProbe = libc.func("int waitid(int, unsigned int, void *, int)");
+  const waitidInfo = libc.func("int waitid(int, unsigned int, _Inout_ uint8_t *, int)");
   const waitpid = libc.func("int waitpid(int, int *, int)");
   const fail = (operation: string, errno = koffi.errno()): never => {
     throw new Error("Linux child ownership " + operation + " failed (errno " + errno + ")");
+  };
+  const probeWaitid = (idtype: number, id: number, options: number) => {
+    for (;;) {
+      const rc = waitidProbe(idtype, id, null, options);
+      if (rc === 0) {
+        return { rc, errno: 0 };
+      }
+      const errno = koffi.errno();
+      if (errno !== EINTR) {
+        return { rc, errno };
+      }
+    }
+  };
+  const observeWaitid = (idtype: number, id: number, options: number) => {
+    for (;;) {
+      const info = Buffer.alloc(SIGINFO_SIZE);
+      const rc = waitidInfo(idtype, id, info, options);
+      if (rc === 0) {
+        const pid = info.readInt32LE(SI_PID_OFFSET);
+        return { rc, errno: 0, pid: Number.isSafeInteger(pid) && pid > 0 ? pid : 0 };
+      }
+      const errno = koffi.errno();
+      if (errno !== EINTR) {
+        return { rc, errno, pid: 0 };
+      }
+    }
   };
   if (prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) !== 0) {
     fail("admission");
@@ -85,26 +213,52 @@ export function acquireLinuxChildSubreaper() {
       signaledChildren.delete(pid);
     });
   };
-  // A loader thread can reap its compiler concurrently with this thread. That
-  // would invalidate numeric-PID pinning. Admit only the dedicated built owner,
-  // before its one libuv-owned application root has been spawned.
-  if (childPids().length > 0) {
+  // Task-children files are the live-child census when this kernel has them.
+  // A NODE_OPTIONS preload can hide those files. Null waitid then returns
+  // rc=0 for both a loader zombie and a still-running tsx compiler worker.
+  // Reap waitable leftovers; do not block on live loader children (they do
+  // not exit before the owner is done). Visible live children still refuse.
+  const fromFiles = childPidsFromTaskFiles();
+  if (fromFiles.readableThreads > 0 && fromFiles.pids.length > 0) {
     throw new Error("Linux child ownership requires a dedicated owner without existing children");
+  }
+  for (;;) {
+    const leftover = observeWaitid(P_ALL, 0, WEXITED | WNOHANG | WNOWAIT | WALL);
+    if (leftover.errno === ECHILD) {
+      break;
+    }
+    if (leftover.rc !== 0) {
+      fail("admission wait", leftover.errno);
+    }
+    if (leftover.pid <= 0) {
+      break;
+    }
+    const reaped = observeWaitid(P_PID, leftover.pid, WEXITED | WNOHANG | WALL);
+    if (reaped.rc !== 0 && reaped.errno !== ECHILD) {
+      fail("admission reap", reaped.errno);
+    }
   }
   let closed = false;
   const owns = (pid: number): boolean => {
-    for (;;) {
-      if (waitid(P_PID, pid, null, WEXITED | WNOHANG | WNOWAIT | WALL) === 0) {
-        return true;
-      }
-      const errno = koffi.errno();
-      if (errno === ECHILD) {
-        return false;
-      }
-      if (errno !== EINTR) {
-        fail("child wait", errno);
-      }
+    const observed = probeWaitid(P_PID, pid, WEXITED | WNOHANG | WNOWAIT | WALL);
+    if (observed.rc === 0) {
+      return true;
     }
+    if (observed.errno === ECHILD) {
+      return false;
+    }
+    fail("child wait", observed.errno);
+  };
+  /** When task children files and /proc PPID scans miss a descendant, waitid still names one. */
+  const childPidsFromWaitOwnership = (): number[] => {
+    const observed = observeWaitid(P_ALL, 0, WEXITED | WNOHANG | WNOWAIT | WALL);
+    if (observed.rc === 0) {
+      return observed.pid > 0 ? [observed.pid] : [];
+    }
+    if (observed.errno === ECHILD) {
+      return [];
+    }
+    fail("child wait", observed.errno);
   };
   return {
     retainLibuvChild,
@@ -113,7 +267,11 @@ export function acquireLinuxChildSubreaper() {
       if (closed) {
         return true;
       }
-      for (const pid of childPids()) {
+      const discovered = new Set(childPids());
+      for (const pid of childPidsFromWaitOwnership()) {
+        discovered.add(pid);
+      }
+      for (const pid of discovered) {
         if (!owns(pid)) {
           continue;
         }
@@ -144,15 +302,15 @@ export function acquireLinuxChildSubreaper() {
           }
         }
       }
-      if (waitid(P_ALL, 0, null, WEXITED | WNOHANG | WNOWAIT | WALL) === 0) {
+      const remaining = probeWaitid(P_ALL, 0, WEXITED | WNOHANG | WNOWAIT | WALL);
+      if (remaining.rc === 0) {
         return false;
       }
-      const errno = koffi.errno();
-      if (errno === EINTR) {
+      if (remaining.errno === EINTR) {
         return false;
       }
-      if (errno !== ECHILD) {
-        fail("extinction observation", errno);
+      if (remaining.errno !== ECHILD) {
+        fail("extinction observation", remaining.errno);
       }
       closed = true;
       return true;

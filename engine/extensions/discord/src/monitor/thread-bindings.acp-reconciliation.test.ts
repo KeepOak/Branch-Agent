@@ -1,3 +1,5 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/discord/src/monitor/thread-bindings.acp-reconciliation.test.ts (atlas SESSIONS-0103). Changed for Branch: restore pinned parallel health-probe coverage.
+import { createDeferred } from "branch/plugin-sdk/extension-shared";
 import { describe, expect, it } from "vitest";
 import { EMPTY_DISCORD_TEST_CONFIG } from "../test-support/config.js";
 import {
@@ -106,5 +108,46 @@ describe("thread binding ACP startup reconciliation", () => {
       }),
     ).toEqual({ checked: 1, removed: 1, staleSessionKeys: [sessionKey("running")] });
     expect(manager.getByThreadId("running")).toBeUndefined();
+  });
+
+  it("runs health probes in parallel with a bounded first wave", async () => {
+    const manager = await createTestThreadBindingManager();
+    for (let i = 0; i < 12; i++) {
+      await bindAcp(manager, `cap-${i}`);
+    }
+    hoisted.readAcpSessionEntry.mockImplementation(({ sessionKey: key }: { sessionKey: string }) =>
+      session(key),
+    );
+    const entered = createDeferred<void>();
+    const release = createDeferred<void>();
+    let calls = 0;
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const reconciliation = reconcileAcpThreadBindingsOnStartup({
+      ...reconcileOptions,
+      healthProbe: async () => {
+        calls++;
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        if (calls === 8) {
+          entered.resolve();
+        }
+        if (calls <= 8) {
+          await release.promise;
+        }
+        inFlight--;
+        return { status: "healthy" };
+      },
+    });
+    try {
+      await entered.promise;
+      expect(calls).toBe(8);
+      expect(maxInFlight).toBe(8);
+    } finally {
+      release.resolve();
+      await reconciliation;
+    }
+    expect(await reconciliation).toEqual({ checked: 12, removed: 0, staleSessionKeys: [] });
+    expect(maxInFlight).toBeLessThanOrEqual(8);
   });
 });

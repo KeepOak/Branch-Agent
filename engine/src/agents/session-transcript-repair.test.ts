@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/session-transcript-repair.test.ts (atlas SESSIONS-0154). Changed for Branch: restore pinned unchanged-array coverage while retaining synthetic result metadata assertions.
 // Verifies transcript repair pairs tool calls/results and sanitizes tool inputs.
 import { DEFAULT_MISSING_TOOL_RESULT_TEXT } from "@branch/llm-core/types";
 import type { AgentMessage } from "branch/plugin-sdk/agent-core";
@@ -1363,6 +1364,17 @@ describe("stripToolResultDetails", () => {
     expect((out[2] ?? {}).role).toBe("user");
     expect(out[3]?.details).toEqual({ branchSyntheticMissingToolResult: true });
     expect(stripToolResultDetails(out)).toBe(out);
+  });
+
+  it("returns the same array reference when there are no toolResult details", () => {
+    const input = castAgentMessages([
+      { role: "assistant", content: [{ type: "text", text: "a" }] },
+      textToolResult("call_1", "read", "ok"),
+      { role: "user", content: "b" },
+    ]);
+
+    const out = stripToolResultDetails(input);
+    expect(out).toBe(input);
   });
 });
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
