@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import * as gate from './merge-gate-trusted.mjs';
@@ -27,6 +26,7 @@ import {
   workflowAppliesToChanges,
   workflowFromActionsRun,
 } from './merge-gate-trusted.mjs';
+import { evaluateOrdinaryChecks } from './merge-gate-rate-limit.mjs';
 
 const CURRENT_RUN_ID = 303;
 const SHA = 'abc123';
@@ -130,19 +130,10 @@ test('regression: real 3093a8dd build pair fails the trusted gate in both orders
 });
 
 test('regression: real 3093a8dd build pair fails the actual ordinary jq filter', () => {
-  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
-  const filter = yaml.match(/--jq '([^']+)'/)[1];
-  const failedFilter = yaml.match(/failed=\$\(jq -r '([^']+)'/)[1];
   for (const pair of [realBuildPair, [...realBuildPair].reverse()]) {
-    const runs = execFileSync('jq', [filter], {
-      input: JSON.stringify({ check_runs: pair }), encoding: 'utf8', windowsHide: true,
-    });
-    const failed = execFileSync('jq', ['-r', failedFilter], {
-      input: runs, encoding: 'utf8', windowsHide: true,
-    });
-    const result = { ok: failed.trim().length === 0 };
-    assert.equal(result.ok, false);
-    assert.equal(failed.trim(), 'build: failure');
+    const result = evaluateOrdinaryChecks(pair);
+    assert.equal(result.failed.length > 0, true);
+    assert.equal(result.failed.map((run) => `${run.name}: ${run.conclusion}`).join('\n'), 'build: failure');
   }
 });
 
@@ -626,25 +617,18 @@ test('regression: trusted gate waits for missing or running Analyze and rejects 
 });
 
 test('regression: ordinary gate waits for absent Analyze through the actual pending jq', () => {
-  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
-  const filter = yaml.match(/pending=\$\(jq '([^']+)'/)[1];
-  const failedFilter = yaml.match(/failed=\$\(jq -r '([^']+)'/)[1];
   for (const [checks, expected] of [
     [[passCheckRuns[1]], 1],
     [[passCheckRuns[1], { ...analyzeCheck, status: 'queued', conclusion: null }], 1],
     [[passCheckRuns[1], { ...analyzeCheck, status: 'in_progress', conclusion: null }], 1],
     [[passCheckRuns[1], analyzeCheck], 0],
   ]) {
-    const pending = Number(execFileSync('jq', [filter], {
-      input: JSON.stringify(checks), encoding: 'utf8', windowsHide: true,
-    }));
-    assert.equal(pending, expected);
+    const result = evaluateOrdinaryChecks(checks);
+    assert.equal(result.pending.length, expected);
+    assert.equal(result.ready, expected === 0);
   }
-  const failed = execFileSync('jq', ['-r', failedFilter], {
-    input: JSON.stringify([{ ...analyzeCheck, conclusion: 'failure' }]),
-    encoding: 'utf8', windowsHide: true,
-  });
-  assert.equal(failed.trim(), 'Analyze (actions): failure');
+  const failed = evaluateOrdinaryChecks([{ ...analyzeCheck, conclusion: 'failure' }]);
+  assert.equal(failed.failed.map((run) => `${run.name}: ${run.conclusion}`).join('\n'), 'Analyze (actions): failure');
 });
 
 test('regression: trusted polling waits for late Analyze, rejects red, and times out if absent', () => {
@@ -708,7 +692,6 @@ test('regression: unresolved current claims retry, reject a resolved forgery, or
 
 test('ordinary merge gate jq preserves all checks and its polling budget', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
-  const filter = yaml.match(/--jq '([^']+)'/)[1];
   const feature = passCheckRuns[1];
   for (const latest of [
     feature,
@@ -716,13 +699,10 @@ test('ordinary merge gate jq preserves all checks and its polling budget', () =>
     { ...feature, id: 110, status: 'completed', conclusion: 'failure' },
   ]) {
     const checks = [...passCheckRuns, latest, { ...feature, id: 90, conclusion: 'cancelled' }];
-    const actual = JSON.parse(execFileSync('jq', [filter], {
-      input: JSON.stringify({ check_runs: checks }), encoding: 'utf8', windowsHide: true,
-    }));
+    const actual = evaluateOrdinaryChecks(checks).others;
     assert.deepEqual(actual, [feature, analyzeCheck, latest, { ...feature, id: 90, conclusion: 'cancelled' }]);
   }
-  assert.match(yaml, /seq 1 64/);
-  assert.match(yaml, /if \[ "\$attempt" -lt 64 \]; then sleep 30; fi/);
+  assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs/);
   assert.doesNotMatch(yaml, /sleep 10/);
 });
 
@@ -932,7 +912,10 @@ test('merge-gate edited trigger does not cancel an in-progress wait', () => {
 
 test('merge-gate wait ignores merge-gate-trusted so the two gates cannot deadlock', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
-  assert.match(yaml, /select\(\.name != "merge-gate" and \.name != "merge-gate-trusted"\)/);
+  assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs/);
+  const result = evaluateOrdinaryChecks(passCheckRuns);
+  assert.equal(result.others.some((run) => run.name === 'merge-gate-trusted'), false);
+  assert.equal(result.others.some((run) => run.name === 'merge-gate'), false);
 });
 
 const handoffPullRequestPaths = listCoreWorkflows(fileURLToPath(new URL('../.github/workflows', import.meta.url)))
