@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "problems": {
+    "sidebar :: Builder": [
+      "row-actions-inconsistent"
+    ],
+    "sidebar :: Researcher": [
+      "row-actions-inconsistent"
+    ]
+  }
+}
