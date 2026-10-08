@@ -215,6 +215,10 @@ jobs:
       BRANCH_RELEASE_VERSION: ${{ needs.identity.outputs.version }}
       BRANCH_RELEASE_TARGET: ${{ matrix.target }}
       BRANCH_MACOS_SIGNING_IDENTITY: 30BBF0B68236AE05E063465C39DEA6C5B396B11C
+      PNPM_STORE_DIR: ${{ github.workspace }}/.cache/pnpm-store
+      PNPM_CONFIG_STORE_DIR: ${{ github.workspace }}/.cache/pnpm-store
+      ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+      ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -223,7 +227,29 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24.19.0'
-          package-manager-cache: false
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      # Reuse the engine pnpm store and Electron zips. Cache misses must not fail a release.
+      - name: Cache the engine pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ${{ github.workspace }}/.cache/pnpm-store
+          key: component-release-pnpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('engine/pnpm-lock.yaml') }}
+          restore-keys: |
+            component-release-pnpm-${{ runner.os }}-${{ runner.arch }}-
+      - name: Cache Electron downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: |
+            ${{ github.workspace }}/.cache/electron
+            ${{ github.workspace }}/.cache/electron-builder
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: component-release-electron-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('desktop/package-lock.json') }}
+          restore-keys: |
+            component-release-electron-${{ runner.os }}-${{ runner.arch }}-
       - name: Prepare stable macOS release signing identity
         if: matrix.target == 'darwin-arm64'
         shell: bash
