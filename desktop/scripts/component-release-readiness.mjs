@@ -64,6 +64,23 @@ export function decideCatchUp({ mainCommit, latestCommit, publishedAt, now = Dat
   };
 }
 
+// A failed publish still catches up when that commit is the live Latest release.
+// Rolling Latest back means this commit is not the update apps should follow.
+export function catchUpAfterFailedPublish({ latestCommit, releasedCommit } = {}) {
+  const released = typeof releasedCommit === "string" ? releasedCommit : "";
+  const latest = typeof latestCommit === "string" ? latestCommit : "";
+  if (released !== "" && latest === released) {
+    return {
+      proceed: true,
+      reason: `Publish failed but ${released} is still Latest; continuing catch-up`,
+    };
+  }
+  return {
+    proceed: false,
+    reason: "Publish failed and this commit is not Latest; skipping catch-up",
+  };
+}
+
 function argValue(argv, name) {
   const index = argv.indexOf(name);
   if (index === -1) return "";
@@ -287,6 +304,14 @@ export function resolveFailedReleaseChecks({
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  if (process.argv[2] === "catch-up-after-failed-publish") {
+    const decision = catchUpAfterFailedPublish({
+      latestCommit: argValue(process.argv, "--latest"),
+      releasedCommit: argValue(process.argv, "--released"),
+    });
+    process.stdout.write(`${JSON.stringify(decision)}\n`);
+    process.exit(0);
+  }
   if (process.argv[2] === "decide-catch-up") {
     const nowArg = argValue(process.argv, "--now");
     const decision = decideCatchUp({

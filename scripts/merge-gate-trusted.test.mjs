@@ -14,7 +14,9 @@ import {
   TRUSTED_CHECKOUT_REF,
   TRUSTED_WORKFLOW_PATH,
   VISUAL_TOUR_WORKFLOW_PATH,
+  PATH_FILTER_NO_CHECK_RUN,
   coverageFromPrFiles,
+  newestChecksByIdentity,
   resolvePrDesktopWorkflow,
   trustedDesktopWorkflow,
   evaluateOtherChecks,
@@ -828,6 +830,284 @@ test('newer neutral run does not hide an older failure', () => {
   });
   assert.equal(trustedResult.ok, false);
   assert.deepEqual(trustedResult.failed.map((check) => check.id), [failed.id]);
+});
+
+// PR #767 harvest pair: concurrency cancelled run 37791522434 (higher suite
+// id) while run 37791522096 finished with select=success and two skipped jobs.
+const harvestApp = { id: 15368 };
+const harvestCancelledSuite = 102385772354;
+const harvestPassingSuite = 102385771625;
+const harvestCancelledRun = 37791522434;
+const harvestPassingRun = 37791522096;
+function harvestJob(id, name, suite, runId, conclusion) {
+  return {
+    id,
+    app: harvestApp,
+    name,
+    status: 'completed',
+    conclusion,
+    check_suite: { id: suite },
+    details_url: `https://github.com/KeepOak/Branch-Agent/actions/runs/${runId}/job/${id}`,
+  };
+}
+const harvestCancelledChecks = [
+  harvestJob(113359874720, 'select', harvestCancelledSuite, harvestCancelledRun, 'cancelled'),
+  harvestJob(113359886668, 'Harvest ${{ matrix.lane }} ${{ matrix.shard }}',
+    harvestCancelledSuite, harvestCancelledRun, 'cancelled'),
+  harvestJob(113359887083, 'report-nightly', harvestCancelledSuite, harvestCancelledRun, 'cancelled'),
+];
+const harvestPassingChecks = [
+  harvestJob(113359901237, 'select', harvestPassingSuite, harvestPassingRun, 'success'),
+  harvestJob(113360430916, 'Harvest ${{ matrix.lane }} ${{ matrix.shard }}',
+    harvestPassingSuite, harvestPassingRun, 'skipped'),
+  harvestJob(113360432533, 'report-nightly', harvestPassingSuite, harvestPassingRun, 'skipped'),
+];
+function harvestWorkflow(suite, runId) {
+  return {
+    path: '.github/workflows/harvest-checks.yml',
+    name: 'Harvest checks',
+    id: runId,
+    event: 'pull_request',
+    headSha: SHA,
+    checkSuiteId: suite,
+    pullRequests: [{ number: PR_NUMBER, base: BASE_REF }],
+  };
+}
+const harvestWorkflows = {
+  113359874720: harvestWorkflow(harvestCancelledSuite, harvestCancelledRun),
+  113359886668: harvestWorkflow(harvestCancelledSuite, harvestCancelledRun),
+  113359887083: harvestWorkflow(harvestCancelledSuite, harvestCancelledRun),
+  113359901237: harvestWorkflow(harvestPassingSuite, harvestPassingRun),
+  113360430916: harvestWorkflow(harvestPassingSuite, harvestPassingRun),
+  113360432533: harvestWorkflow(harvestPassingSuite, harvestPassingRun),
+};
+
+function assertHarvestPairPasses(checkRuns) {
+  const ordinary = assertOrdinaryAgreesWithYaml(
+    [...checkRuns, analyzeCheck],
+    harvestWorkflows,
+  );
+  assert.equal(ordinary.ready, true);
+  assert.deepEqual(ordinary.failed, []);
+  assert.deepEqual(
+    ordinary.others.filter((run) => harvestWorkflows[run.id]).map((run) => run.id).sort((a, b) => a - b),
+    harvestPassingChecks.map((run) => run.id).sort((a, b) => a - b),
+  );
+  const trustedResult = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, ...checkRuns],
+    workflowsByCheckId: { ...passWorkflows, ...harvestWorkflows },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(trustedResult.ok, true);
+  assert.deepEqual(trustedResult.failed, []);
+  const kept = newestChecksByIdentity(
+    checkRuns,
+    harvestWorkflows,
+    prContext,
+  ).map((run) => run.id).sort((a, b) => a - b);
+  assert.deepEqual(kept, harvestPassingChecks.map((run) => run.id).sort((a, b) => a - b));
+}
+
+test('regression: #767 cancelled harvest suite is superseded by skipped+success replacement', () => {
+  for (const pair of [
+    [...harvestCancelledChecks, ...harvestPassingChecks],
+    [...harvestPassingChecks, ...harvestCancelledChecks],
+  ]) {
+    assertHarvestPairPasses(pair);
+  }
+});
+
+test('regression: cancelled harvest suite with no replacement still fails both gates', () => {
+  const ordinary = assertOrdinaryAgreesWithYaml(
+    [...harvestCancelledChecks, analyzeCheck],
+    harvestWorkflows,
+  );
+  assert.equal(ordinary.ready, false);
+  assert.deepEqual(
+    ordinary.failed.map((run) => `${run.name}: ${run.conclusion}`).sort(),
+    harvestCancelledChecks.map((run) => `${run.name}: cancelled`).sort(),
+  );
+  const trustedResult = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, ...harvestCancelledChecks],
+    workflowsByCheckId: { ...passWorkflows, ...harvestWorkflows },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(trustedResult.ok, false);
+  assert.deepEqual(
+    trustedResult.failed.map((run) => `${run.name}: ${run.conclusion}`).sort(),
+    harvestCancelledChecks.map((run) => `${run.name}: cancelled`).sort(),
+  );
+});
+
+test('regression: older harvest failure plus newer skipped suite still fails both gates', () => {
+  for (const conclusion of ['failure', 'timed_out', 'action_required', 'startup_failure']) {
+    const failedSelect = harvestJob(90, 'select', 490, 90, conclusion);
+    const skippedSelect = harvestJob(110, 'select', harvestPassingSuite, harvestPassingRun, 'skipped');
+    const workflows = {
+      90: harvestWorkflow(490, 90),
+      110: harvestWorkflow(harvestPassingSuite, harvestPassingRun),
+    };
+    const ordinary = assertOrdinaryAgreesWithYaml(
+      [failedSelect, skippedSelect, analyzeCheck],
+      workflows,
+    );
+    assert.equal(ordinary.ready, false, conclusion);
+    assert.deepEqual(ordinary.failed.map((run) => run.id), [90]);
+    assert.equal(ordinary.others.some((run) => run.id === 110), true);
+    const trustedResult = evaluateTrustedGate({
+      checkRuns: [...passCheckRuns, failedSelect, skippedSelect],
+      workflowsByCheckId: { ...passWorkflows, ...workflows },
+      changedFiles: ['README.md'],
+      coreWorkflows,
+      currentRunId: CURRENT_RUN_ID,
+      ...prContext,
+    });
+    assert.equal(trustedResult.ok, false, conclusion);
+    assert.deepEqual(trustedResult.failed.map((check) => check.id), [90]);
+  }
+});
+
+const visualTourCore = [
+  { path: '.github/workflows/merge-gate.yml', pullRequestPaths: null },
+  { path: VISUAL_TOUR_WORKFLOW_PATH, pullRequestPaths: ['window/**', 'engine/**', 'desktop/**'] },
+];
+const visualTourWindowFiles = ['window/src/app.tsx'];
+const visualTourBuild = {
+  id: 113361725521,
+  app: harvestApp,
+  name: 'build',
+  status: 'completed',
+  conclusion: 'success',
+  check_suite: { id: 102385772397 },
+  details_url: 'https://github.com/KeepOak/Branch-Agent/actions/runs/37791522451/job/113361725521',
+};
+const visualTourTour = {
+  id: 113364294349,
+  app: harvestApp,
+  name: 'tour',
+  status: 'completed',
+  conclusion: 'success',
+  check_suite: { id: 102385772397 },
+  details_url: 'https://github.com/KeepOak/Branch-Agent/actions/runs/37791522451/job/113364294349',
+};
+const visualTourRunWorkflow = {
+  path: VISUAL_TOUR_WORKFLOW_PATH,
+  name: 'Visual tour',
+  id: 37791522451,
+  event: 'pull_request',
+  headSha: SHA,
+  checkSuiteId: 102385772397,
+  pullRequests: [{ number: PR_NUMBER, base: BASE_REF }],
+};
+const visualTourCheckWorkflows = {
+  113361725521: visualTourRunWorkflow,
+  113364294349: visualTourRunWorkflow,
+};
+
+test('regression: #767 Visual tour build and tour satisfy the path-filter once attributed', () => {
+  const missing = missingCoreWorkflows({
+    checkRuns: [passCheckRuns[0], analyzeCheck, visualTourBuild, visualTourTour],
+    workflowsByCheckId: { 101: mergeGateWorkflow, ...visualTourCheckWorkflows },
+    changedFiles: visualTourWindowFiles,
+    coreWorkflows: visualTourCore,
+    ...prContext,
+  });
+  assert.deepEqual(missing, []);
+  const result = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, visualTourBuild, visualTourTour],
+    workflowsByCheckId: { ...passWorkflows, ...visualTourCheckWorkflows },
+    changedFiles: visualTourWindowFiles,
+    coreWorkflows: visualTourCore,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.ready, true);
+  assert.deepEqual(result.unregisteredCore, []);
+  assert.equal(result.others.some((run) => run.id === visualTourBuild.id), true);
+  assert.equal(result.others.some((run) => run.id === visualTourTour.id), true);
+});
+
+test('regression: Visual tour registering late is waited for and then passes', () => {
+  let polls = 0;
+  const waits = [];
+  const code = gate.pollTrustedGate({
+    repo: 'example/repo', token: 'unused', ...prContext,
+    changedFiles: visualTourWindowFiles,
+    coreWorkflows: visualTourCore, currentRunId: CURRENT_RUN_ID,
+    maxAttempts: 3, pollSeconds: 30,
+  }, {
+    fetchChecks: () => {
+      polls += 1;
+      return polls === 1
+        ? passCheckRuns
+        : [...passCheckRuns, visualTourBuild, visualTourTour];
+    },
+    resolveWorkflows: (_repo, _token, runs) => {
+      const found = { ...passWorkflows };
+      for (const run of runs) {
+        if (visualTourCheckWorkflows[run.id]) found[run.id] = visualTourCheckWorkflows[run.id];
+      }
+      return found;
+    },
+    sleep: (seconds) => waits.push(seconds), log: () => {}, error: () => {},
+  });
+  assert.equal(code, 0);
+  assert.equal(polls, 2);
+  assert.deepEqual(waits, [30]);
+});
+
+test('regression: Visual tour truly missing still fails after the timeout', () => {
+  const errors = [];
+  let polls = 0;
+  const code = gate.pollTrustedGate({
+    repo: 'example/repo', token: 'unused', ...prContext,
+    changedFiles: visualTourWindowFiles,
+    coreWorkflows: visualTourCore, currentRunId: CURRENT_RUN_ID,
+    maxAttempts: 3, pollSeconds: 30,
+  }, {
+    fetchChecks: () => {
+      polls += 1;
+      return passCheckRuns;
+    },
+    resolveWorkflows: () => passWorkflows,
+    sleep: () => {}, log: () => {}, error: (text) => errors.push(text),
+  });
+  assert.equal(code, 1);
+  assert.equal(polls, 3);
+  const snapshot = evaluateTrustedGate({
+    checkRuns: passCheckRuns,
+    workflowsByCheckId: passWorkflows,
+    changedFiles: visualTourWindowFiles,
+    coreWorkflows: visualTourCore,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(snapshot.ready, false);
+  assert.ok(snapshot.unregisteredCore.some((item) => item.includes(VISUAL_TOUR_WORKFLOW_PATH)));
+  assert.match(errors.join('\n'), new RegExp(`${VISUAL_TOUR_WORKFLOW_PATH.replaceAll('.', '\\.')}`));
+  assert.match(errors.join('\n'), /Timed out waiting for:/);
+  assert.match(errors.join('\n'), new RegExp(TIMEOUT_RERUN_LINE));
+});
+
+test('regression: unattributed Visual tour jobs stay a path-filter miss until resolved', () => {
+  const result = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, visualTourBuild, visualTourTour],
+    workflowsByCheckId: passWorkflows,
+    changedFiles: visualTourWindowFiles,
+    coreWorkflows: visualTourCore,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(result.ready, false);
+  assert.ok(result.unregisteredCore.some((item) => item.includes(VISUAL_TOUR_WORKFLOW_PATH)));
+  assert.ok(result.missingCore.some((item) => item.includes(PATH_FILTER_NO_CHECK_RUN)));
 });
 
 test('older forged trusted checks cannot be hidden by name deduplication', () => {
@@ -1978,6 +2258,19 @@ test('ordinary JS waiter additions stay aligned with the yaml jq filters', () =>
   align(
     [older, newer, analyzeCheck],
     { 90: desktopWorkflow(490), 110: desktopWorkflow(501, { pullRequests: [{ number: 900, base: BASE_REF }] }) },
+  );
+  align([...harvestCancelledChecks, ...harvestPassingChecks, analyzeCheck], harvestWorkflows);
+  align([...harvestCancelledChecks, analyzeCheck], harvestWorkflows);
+  align(
+    [
+      harvestJob(90, 'select', 490, 90, 'failure'),
+      harvestJob(110, 'select', harvestPassingSuite, harvestPassingRun, 'skipped'),
+      analyzeCheck,
+    ],
+    {
+      90: harvestWorkflow(490, 90),
+      110: harvestWorkflow(harvestPassingSuite, harvestPassingRun),
+    },
   );
   align(realBuildPair, {
     112992933987: {

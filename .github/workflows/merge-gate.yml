@@ -52,6 +52,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/check-ui-proof.mjs
+      - name: Test the window cleanliness check
+        run: node --test scripts/check-window-clean.test.mjs
+      - name: Fail new window cleanliness violations
+        run: node scripts/check-window-clean.mjs
 
   merge-gate:
     needs: changed-test-coverage
@@ -137,10 +141,13 @@ jobs:
             # A close/reopen starts a new run on the same SHA. For each GitHub
             # Actions app, workflow path, event, and job, keep every same-name
             # check from the newest suite. Only a success, or a suite that is
-            # still running, replaces an earlier non-pass. Skipped, neutral, and
-            # any other completed non-success leave the older failure in place.
-            # Unattributed checks, and checks bound to another path, event, SHA,
-            # suite, or PR, never collapse.
+            # still running, replaces an earlier hard non-pass. A completed
+            # success/skipped/neutral suite supersedes cancelled-only suites of
+            # the same identity, even when the cancelled suite has a higher ID.
+            # A newer skipped or neutral run must not hide failure, timed_out,
+            # action_required, or startup_failure. Unattributed checks, and
+            # checks bound to another path, event, SHA, suite, or PR, never
+            # collapse.
             dup_ids=$(jq -c '[group_by(.name)[] | select(length > 1) | .[].id]' <<<"$runs")
             attrs='{}'
             while IFS= read -r check; do
@@ -192,8 +199,30 @@ jobs:
                   and (($w.pullRequests // []) | all(.base == $base));
               def identity($run):
                 [(try $run.app.id catch null), $attrs[$run.id | tostring].path, $attrs[$run.id | tostring].event, $run.name] | tojson;
+              def pass_conclusion:
+                . == "success" or . == "skipped" or . == "neutral";
               def suite_supersedes:
                 all(.[]; (.status != "completed") or .conclusion == "success");
+              def suite_completed_pass:
+                length > 0 and all(.[]; .status == "completed" and (.conclusion | pass_conclusion));
+              def suite_only_cancelled_nonpasses:
+                all(.[];
+                  (.status != "completed")
+                  or (.conclusion | pass_conclusion)
+                  or .conclusion == "cancelled");
+              def keep_newest:
+                ([.[].check_suite.id | as_num] | max) as $suite
+                | [.[] | select((.check_suite.id | as_num) == $suite)] as $newest
+                | if ($newest | suite_supersedes) then $newest
+                  else
+                    ([group_by(.check_suite.id)[] | select(suite_completed_pass)] | last) as $pass
+                    | if $pass != null
+                        and ([.[] | select((.check_suite.id | as_num)
+                          != ($pass[0].check_suite.id | as_num))]
+                          | suite_only_cancelled_nonpasses)
+                      then $pass
+                      else . end
+                  end;
               reduce .[] as $run ({unbound: [], groups: {}};
                 if bound($run) then
                   .groups[identity($run)] = ((.groups[identity($run)] // []) + [$run])
@@ -201,11 +230,7 @@ jobs:
                   .unbound += [$run]
                 end)
               | . as $acc
-              | [ $acc.groups[]
-                  | ([.[].check_suite.id | as_num] | max) as $suite
-                  | [.[] | select((.check_suite.id | as_num) == $suite)] as $newest
-                  | if ($newest | suite_supersedes) then $newest else . end
-                ]
+              | [ $acc.groups[] | keep_newest ]
               | add // []
               | $acc.unbound + .
             ' <<<"$runs")

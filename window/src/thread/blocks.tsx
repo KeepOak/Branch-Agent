@@ -23,6 +23,7 @@ import {
 } from "./format";
 import { Icon, ICONS, StepKindIcon } from "./icons";
 import { Markdown } from "./markdown";
+import { computerStepDetail, isComputerToolName, isScreenToolName } from "./computer-action-label";
 import { fullOutput, type Block, type FileChange } from "./model";
 import { readTextToolCall, stepFromTextToolCall } from "./text-tool-call";
 import { withMentions } from "../rooms/RoomMessage";
@@ -280,6 +281,8 @@ function StepRow({ step }: { step: Of<"step"> }) {
   const exit = stepExitCode(step.detail);
   const failed = step.status === "failed" || step.status === "denied";
   const [open, setOpen] = useState(true);
+  const label = stepLabel(step);
+  const detail = isComputerToolName(step.tool) || isScreenToolName(step.tool) ? computerStepDetail(step, label) : step.title || undefined;
   return (
     <li
       className={`step step-pb18${failed ? " errR118" : ""}`}
@@ -292,8 +295,8 @@ function StepRow({ step }: { step: Of<"step"> }) {
       <summary>
       <StepKindIcon kind={kind} className="s" />
       <span>
-        <span className="step-label">{stepLabel(step)}</span>
-        {step.title ? <small className="step-detail">{step.title}</small> : null}
+        <span className="step-label">{label}</span>
+        {detail ? <small className="step-detail">{detail}</small> : null}
       </span>
       <span className="step-state">{STEP_STATE[step.status]}{exit != null ? ` · Exit code ${exit}` : ""}</span>
       </summary>

@@ -1385,6 +1385,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           liveStartedAt={s.liveStartedAt}
           room={room.thread}
           history={showingAll ? allTopics?.loading ? [] : allTopics!.history : mergeRoomNotices(s.history, roomNotices)}
+          historyReady={showingAll ? !allTopics?.loading : s.historyReady}
           live={showingAll ? [] : s.live}
           questions={showingAll ? [] : questions.list}
           onStart={(text: string) => void session.send(text)}
@@ -1419,7 +1420,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
               <TalkSetup handle={setupTalk} />
             ) : newTrunkFlow && newTrunkFlow.sessionKey === openKey ? (
               <NewTrunkCard engine={session.engine} flow={newTrunkFlow} onDone={(name) => { setNewTrunkFlow(null); notify(`${name} is ready. What’s the first job?`); }} />
-            ) : ready && !roomNotices.length && !s.history.length && !s.pendingUser && !s.liveRunId ? (
+            ) : ready && s.historyReady !== false && !roomNotices.length && !s.history.length && !s.pendingUser && !s.liveRunId ? (
               <WhereChips key={s.sessionKey} engine={session.engine} row={openRow} trunkName={trunkName(openRow?.agentId)} advanced={level !== "regular"}
                 projectName={projects.projects.find((x) => x.id === openRow?.projectId)?.name ?? null} onStartTopic={(options) => startNew(openRow?.agentId, options)} />
             ) : null
