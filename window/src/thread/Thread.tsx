@@ -17,6 +17,7 @@ import { HoverBar } from "./HoverBar";
 import { Rail } from "./Rail";
 import { Icon, ICONS } from "./icons";
 import { ComputerActivityCard } from "./ComputerActivityCard";
+import { turnDoneLines } from "./computer-card";
 import { isComputerStep, layout, shownApprovalIds, type Item } from "./layout";
 import { PlanCard, planAnchor } from "./PlanCard";
 import { useConversationPrefs } from "./prefs";
@@ -416,7 +417,7 @@ function ActivityCard({ steps, view }: { steps: Extract<Block, { kind: "step" }>
   if (!steps.some(isComputerStep)) return null;
   return (
     <ComputerActivityCard
-      blocks={steps}
+      blocks={[...steps, ...turnDoneLines(steps, view.all)]}
       running={view.running}
       name={view.name}
       engine={view.engine}

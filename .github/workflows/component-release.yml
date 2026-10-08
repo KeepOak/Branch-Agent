@@ -5,7 +5,8 @@ on:
     branches: [main]
     tags: ['v[0-9]*.[0-9]*.[0-9]*']
   schedule:
-    # Every 30 minutes, offset from the top of the hour: batch merges into releases.
+    # Backup only. Scheduled slots are often dropped; the catch-up job releases merges
+    # that landed inside the 25-minute window. Offset from the top of the hour.
     - cron: '7,37 * * * *'
   pull_request:
     paths:
@@ -31,10 +32,10 @@ on:
 permissions:
   contents: read
 
-# Scheduled, manual, and main-push backup releases share one group and never cancel each other: an
-# in-flight release always finishes; queued runs collapse to the newest pending run. A push to main
-# releases only when the latest release is more than 25 minutes old, so a missed cron cannot strand a
-# merge and bursts still batch. Pull requests: a new push replaces the previous check.
+# Release runs share one group and never cancel an in-flight publish. Queued runs collapse to the
+# newest pending run. Push and schedule releases wait until the latest release is more than 25
+# minutes old. The catch-up job, in its own group, waits out that window and dispatches one
+# follow-up when main is still ahead. Pull requests: a new push replaces the previous check.
 concurrency:
   group: github-component-release-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -47,6 +48,7 @@ jobs:
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
       commit: ${{ steps.check.outputs.commit }}
+      skip_reason: ${{ steps.check.outputs.skip_reason }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -59,6 +61,12 @@ jobs:
           MERGE_GATE_WAIT_SECONDS: '240'
         run: |
           set -euo pipefail
+          note() {
+            printf '%s\n' "$1" >&2
+            if [[ "${RECORD_SUMMARY:-}" == "1" && -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+              printf '%s\n' "$1" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          }
           decide_scheduled() {
             git fetch origin main
             local main_commit latest_release latest_commit failed_checks latest_meta published_at
@@ -71,42 +79,44 @@ jobs:
               published_at="${latest_meta#*$'\t'}"
             fi
             if [[ -z "$latest_release" ]]; then
-              echo "No previous release found; proceeding with release" >&2
-              printf '%s %s\n' true "$main_commit"
+              note "No previous release found; proceeding with release"
+              printf '%s %s %s\n' true "$main_commit" ok
               return
             fi
             # Resolves lightweight and annotated tags to the commit they point at.
             latest_commit=$(node scripts/merge-gate-rate-limit.mjs gh -- api repos/KeepOak/Branch-Agent/commits/"$latest_release" --jq .sha)
             if [[ "$main_commit" == "$latest_commit" ]]; then
-              echo "Main has not changed since $latest_release ($latest_commit); skipping release" >&2
-              printf '%s %s\n' false "$main_commit"
+              note "Main has not changed since $latest_release ($latest_commit); skipping release"
+              printf '%s %s %s\n' false "$main_commit" already-released
               return
+            fi
+            # Cooldown skips stay on the two calls above. Check runs are only for a release we may publish.
+            if [[ "$GITHUB_EVENT_NAME" == "push" || "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+              if ! node desktop/scripts/component-release-readiness.mjs "$published_at"; then
+                note "Latest release $latest_release was published at $published_at; waiting until it is more than 25 minutes old"
+                printf '%s %s %s\n' false "$main_commit" cooldown
+                return
+              fi
             fi
             # Skip only when a check on main's head actually failed. Missing or pending checks do not block.
             failed_checks=$(node scripts/merge-gate-rate-limit.mjs gh -- api --paginate "repos/KeepOak/Branch-Agent/commits/$main_commit/check-runs" \
               --jq '[.check_runs[] | select(.conclusion == "failure")] | length' | awk '{s+=$1} END {print s+0}')
             if [[ "$failed_checks" != "0" ]]; then
-              echo "Main has $failed_checks failed check(s) at $main_commit; skipping release" >&2
-              printf '%s %s\n' false "$main_commit"
+              note "Main has $failed_checks failed check(s) at $main_commit; skipping release"
+              printf '%s %s %s\n' false "$main_commit" failed-checks
               return
             fi
-            if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-              if ! node desktop/scripts/component-release-readiness.mjs "$published_at"; then
-                echo "Latest release $latest_release was published at $published_at; push backup waits until it is more than 25 minutes old" >&2
-                printf '%s %s\n' false "$main_commit"
-                return
-              fi
-            fi
-            echo "Main has new changes since $latest_release and no failed checks; proceeding with release" >&2
-            printf '%s %s\n' true "$main_commit"
+            note "Main has new changes since $latest_release and no failed checks; proceeding with release"
+            printf '%s %s %s\n' true "$main_commit" ok
           }
 
           should_release="false"
           commit=""
+          skip_reason=""
 
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             echo "scheduled rehearsal (does not decide this pull-request build):"
-            decide_scheduled >/dev/null || echo "scheduled rehearsal could not finish" >&2
+            RECORD_SUMMARY=0 decide_scheduled >/dev/null || echo "scheduled rehearsal could not finish" >&2
             node desktop/scripts/component-release-readiness.mjs "2000-01-01T00:00:00Z"
             should_release="true"
             commit="$(git rev-parse HEAD)"
@@ -114,10 +124,14 @@ jobs:
             should_release="true"
             commit="$(git rev-parse HEAD)"
           else
-            read -r should_release commit < <(decide_scheduled)
+            RECORD_SUMMARY=1
+            read -r should_release commit skip_reason < <(decide_scheduled)
           fi
 
-          printf 'should_release=%s\ncommit=%s\n' "$should_release" "$commit" >> "$GITHUB_OUTPUT"
+          if [[ "$skip_reason" != "cooldown" ]]; then
+            skip_reason=""
+          fi
+          printf 'should_release=%s\ncommit=%s\nskip_reason=%s\n' "$should_release" "$commit" "$skip_reason" >> "$GITHUB_OUTPUT"
   
   identity:
     needs: readiness
@@ -177,12 +191,12 @@ jobs:
           if-no-files-found: error
           retention-days: 3
   # Wait for the shared renderer artifact before starting natives. Starting them in parallel
-  # burns the 15-minute clock while window is still queued, and the 10-minute poll then fails.
+  # burns the 35-minute clock while window is still queued, and the 10-minute poll then fails.
   native:
     needs: [readiness, identity, window]
     if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 35
     permissions:
       contents: read
       actions: read
@@ -348,3 +362,88 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node desktop/scripts/publish-component-release.mjs "${{ runner.temp }}/release-assets" "${{ needs.identity.outputs.commit }}" "${{ needs.identity.outputs.version }}"
+  # Waits out the 25-minute batching window, then starts one release if main moved.
+  # The sleep is the catch-up, so this job is longer than the 15-minute check cap.
+  catch-up:
+    needs: [readiness, publish]
+    if: always() && !cancelled() && github.event_name != 'pull_request' && github.repository == 'KeepOak/Branch-Agent' && (needs.publish.result == 'success' || needs.readiness.outputs.skip_reason == 'cooldown')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: github-component-release-catch-up
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Wait for the release window, then dispatch if main is ahead
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_GATE_WAIT_SECONDS: '60'
+        run: |
+          set -euo pipefail
+          note() {
+            printf '%s\n' "$1" >&2
+            if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+              printf '%s\n' "$1" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+          load_main_and_release() {
+            git fetch origin main
+            main_commit="$(git rev-parse origin/main)"
+            latest_release=""
+            published_at=""
+            latest_commit=""
+            latest_meta=$(node scripts/merge-gate-rate-limit.mjs gh -- api repos/KeepOak/Branch-Agent/releases/latest --jq '[.tag_name,.published_at] | @tsv' 2>/dev/null || echo "")
+            if [[ -n "$latest_meta" ]]; then
+              latest_release="${latest_meta%%$'\t'*}"
+              published_at="${latest_meta#*$'\t'}"
+              latest_commit=$(node scripts/merge-gate-rate-limit.mjs gh -- api repos/KeepOak/Branch-Agent/commits/"$latest_release" --jq .sha)
+            fi
+          }
+          read_catch_up() {
+            local decision
+            decision="$(node desktop/scripts/component-release-readiness.mjs decide-catch-up --main "$main_commit" --latest "$latest_commit" --published-at "$published_at")"
+            catch_dispatch="$(node -p 'JSON.parse(process.argv[1]).dispatch ? "true" : "false"' "$decision")"
+            catch_wait_ms="$(node -p 'JSON.parse(process.argv[1]).waitMs' "$decision")"
+            catch_reason="$(node -p 'JSON.parse(process.argv[1]).reason' "$decision")"
+          }
+          main_commit=""
+          latest_commit=""
+          published_at=""
+          catch_dispatch="false"
+          catch_wait_ms="0"
+          catch_reason=""
+          load_main_and_release
+          read_catch_up
+          note "$catch_reason"
+          if [[ "$catch_dispatch" == "true" ]]; then
+            gh workflow run component-release.yml --ref main
+            note "Dispatched component-release.yml on main"
+            exit 0
+          fi
+          if ! [[ "$catch_wait_ms" =~ ^[0-9]+$ ]]; then
+            echo "Catch-up wait was not a number: ${catch_wait_ms}" >&2
+            exit 1
+          fi
+          max_sleep_seconds=$((26 * 60))
+          sleep_seconds=$(( (catch_wait_ms + 999) / 1000 ))
+          if (( sleep_seconds > max_sleep_seconds )); then
+            sleep_seconds=$max_sleep_seconds
+          fi
+          if (( sleep_seconds == 0 )); then
+            exit 0
+          fi
+          note "Sleeping ${sleep_seconds}s until the release window ends"
+          sleep "$sleep_seconds"
+          load_main_and_release
+          read_catch_up
+          note "$catch_reason"
+          if [[ "$catch_dispatch" != "true" ]]; then
+            exit 0
+          fi
+          gh workflow run component-release.yml --ref main
+          note "Dispatched component-release.yml on main"
