@@ -220,6 +220,7 @@ export async function withLocalSessionPlacementTurnSettlement(
     | "admittedRunContext"
     | "preparedRunAdmission"
     | "isFinalFallbackAttempt"
+    | "liveInboundSessionLane"
   > = {},
 ): Promise<EmbeddedAgentRunResult> {
   const provider = state.provider;
@@ -252,7 +253,8 @@ export async function withLocalSessionPlacementTurnSettlement(
   let releaseCapacityWait: (() => void) | undefined;
   try {
     return await enqueueCommandInLane(
-      resolveSessionLane(claim.sessionKey?.trim() || claim.sessionId),
+      options.liveInboundSessionLane?.trim() ||
+        resolveSessionLane(claim.sessionKey?.trim() || claim.sessionId),
       async (taskMarker) => {
         assertCurrent();
         const runLocal = async () => {
