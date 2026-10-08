@@ -101,6 +101,28 @@ describe("displayToolOutput", () => {
     expect(displayToolOutput({ tool: "browser", text: "Opened mail.example" })).toBe("Opened mail.example");
     expect(displayToolOutput({ tool: "computer", text: "Clicked Sign in" })).toBe("Clicked Sign in");
   });
+
+  it("hides the #684 browser status payload and computer list_apps inventory", () => {
+    const status = '{"enabled": true, "profile": "branch", "driver": "demo"}';
+    expect(displayToolOutput({ tool: "browser", text: status, title: "Checked the browser" })).toBe("Checked the browser");
+    expect(displayToolOutput({ tool: "browser", text: status })).toBe("Used the browser");
+    const apps = JSON.stringify({
+      action: "list_apps",
+      ok: true,
+      details: { apps: [{ app: "cua:v2:app:demo", name: "demo-app" }] },
+    });
+    const listed = displayToolOutput({ tool: "computer", text: wrap(apps) });
+    expect(listed).toBe(CHECKED_WHATS_OPEN);
+    expect(listed).not.toMatch(/UNTRUSTED|demo-app|cua:v2/);
+  });
+
+  it("does not show a failed computer result as raw JSON", () => {
+    const failed =
+      '{"status":"error","tool":"computer","error":"Error: COMPUTER_STALE_OBSERVATION: refresh list_apps and retry"}';
+    const shown = displayToolOutput({ tool: "computer", text: failed });
+    expect(shown).not.toContain("{");
+    expect(shown).not.toContain("\"status\"");
+  });
 });
 
 describe("displayToolInput", () => {

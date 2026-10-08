@@ -44,7 +44,11 @@ function hasPidAndName(value: unknown): boolean {
   if (!row) return false;
   const pid = row.pid ?? row.processId ?? row.process_id ?? row.PID;
   const name = row.title ?? row.appName ?? row.app_name ?? row.name ?? row.process ?? row.windowTitle;
-  return (typeof pid === "number" || typeof pid === "string") && typeof name === "string" && name.length > 0;
+  const app = row.app;
+  if ((typeof pid === "number" || typeof pid === "string") && typeof name === "string" && name.length > 0) {
+    return true;
+  }
+  return typeof name === "string" && name.length > 0 && typeof app === "string" && app.length > 0;
 }
 
 function listField(value: Record<string, unknown>, ...keys: string[]): unknown[] | undefined {
@@ -59,10 +63,14 @@ export function isProcessOrWindowList(tool: string, text: string, parsed?: unkno
   if (!isComputerOrBrowser(tool)) return false;
   const value = parsed ?? asJson(text);
   const obj = record(value);
+  const nested = record(obj?.details);
   if (obj) {
-    const action = typeof obj.action === "string" ? obj.action : "";
+    const action = typeof obj.action === "string" ? obj.action : typeof nested?.action === "string" ? nested.action : "";
     if (/^(list_windows|list_apps|get_window_state)$/i.test(action)) return true;
-    const rows = listField(obj, "windows", "processes", "apps", "running") ?? (Array.isArray(value) ? value : undefined);
+    const rows =
+      listField(obj, "windows", "processes", "apps", "running") ??
+      (nested ? listField(nested, "windows", "processes", "apps", "running") : undefined) ??
+      (Array.isArray(value) ? value : undefined);
     if (rows?.some(hasPidAndName)) return true;
   }
   if (/^\s*PID\b/im.test(text) && /\b\d{2,7}\b/.test(text) && /\b(title|name|window|process)\b/i.test(text)) {
