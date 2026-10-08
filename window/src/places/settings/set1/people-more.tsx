@@ -18,8 +18,10 @@ export function separate(roles: Roles): boolean {
   return Object.values(roles.defs).every((d) => record(d.sessions).others === "none");
 }
 
-/** Opens the People place at a tab (WindowShell's branch:navigate-place). */
-const openPeople = (tab: string) => window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "people", tab } }));
+/** Opens the People place at a tab (WindowShell's branch:navigate-place). Settings › People stays in Settings; this is the obvious way out. */
+export function openPeople(tab?: string) {
+  window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "people", ...(tab ? { tab } : {}) } }));
+}
 
 export function EachPerson({ roles }: { roles: Roles }) {
   return (
@@ -30,6 +32,9 @@ export function EachPerson({ roles }: { roles: Roles }) {
         </Ctl>
         <Ctl title="Keep conversations separate" sub="People can’t read each other’s conversations unless they share one." off={roles.names.length ? "Each role sets this in the settings file." : "No roles are set up on this Gateway yet."}>
           <Switch checked={separate(roles)} label="Keep conversations separate" onChange={() => undefined} />
+        </Ctl>
+        <Ctl title="Open People" sub="The People place: who’s here now, groups, what you share, and signing in from other devices.">
+          <Btn sm onClick={() => openPeople()}>Open People</Btn>
         </Ctl>
       </Sec>
       <Acts>

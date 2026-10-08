@@ -151,6 +151,24 @@ describe("Settings › People", () => {
     expect([...host.querySelectorAll(".scopes-pp code")].map((c) => c.textContent)).toEqual(["operator.read", "operator.write", "operator.admin"]);
   });
 
+  it("stays inside Settings: Open People is the way out to the People place", async () => {
+    const left: unknown[] = [];
+    const onLeave = (event: Event) => left.push((event as CustomEvent).detail);
+    window.addEventListener("branch:navigate-place", onLeave);
+    try {
+      await render(engineOf().engine);
+      expect(host.querySelector('[data-page-title="People"]')).not.toBeNull();
+      expect(host.querySelector('[data-row="Open People"]')).not.toBeNull();
+      expect(host.querySelector(".ppl")).toBeNull();
+      expect(host.textContent).not.toContain("Live now");
+      expect(left).toEqual([]);
+      await act(async () => button("Open People")!.click());
+      expect(left).toEqual([{ place: "people" }]);
+    } finally {
+      window.removeEventListener("branch:navigate-place", onLeave);
+    }
+  });
+
   it("pure rules: may for the owner, revoke plan", () => {
     expect(mayOf(true, [])).toEqual([true, true, true, true, true, true, true]);
     expect(mayOf(false, ["operator.read"])).toEqual([true, false, false, false, false, false, false]);

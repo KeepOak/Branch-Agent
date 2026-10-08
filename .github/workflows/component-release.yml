@@ -353,6 +353,13 @@ jobs:
           fingerprint="$(openssl x509 -inform DER -in "$extracted/codesign0" -noout -fingerprint -sha1 | cut -d= -f2 | tr -d :)"
           test "$fingerprint" = "$BRANCH_MACOS_SIGNING_IDENTITY"
           codesign -dr - "$app" 2>&1 | grep -Fx 'designated => identifier "com.electron.branch-agent" and certificate root = H"30bbf0b68236ae05e063465c39dea6c5b396b11c"'
+          report="$RUNNER_TEMP/mac-signature-report.txt"
+          {
+            codesign -dv --verbose=4 "$app"
+            codesign -dr - "$app"
+          } >"$report" 2>&1
+          printf 'SHA1 Fingerprint=%s\n' "$fingerprint" >> "$report"
+          node --input-type=module -e 'import { readFileSync } from "node:fs"; import { pathToFileURL } from "node:url"; const mod = await import(pathToFileURL(process.argv[1])); if (process.env.BRANCH_MACOS_SIGNING_IDENTITY !== mod.macReleaseSigning.identitySha1) throw new Error("workflow signing identity differs from the pinned release identity"); const text = readFileSync(process.argv[2], "utf8"); const actual = (text.match(/SHA1 Fingerprint=([0-9A-Fa-f]+)/) || [])[1] || ""; mod.assertMacReleaseSignature(text, actual);' "$GITHUB_WORKSPACE/desktop/dist/mac-applications.js" "$report"
           # The self-signed identity is stable but not notarized; report Gatekeeper's assessment.
           spctl -a -vv "$app" || true
       - name: Check compiled startup and update rollback
@@ -419,9 +426,11 @@ jobs:
         run: node desktop/scripts/publish-component-release.mjs "${{ runner.temp }}/release-assets" "${{ needs.identity.outputs.commit }}" "${{ needs.identity.outputs.version }}"
   # Waits out the 25-minute batching window, then starts one release if main moved.
   # The sleep is the catch-up, so this job is longer than the 15-minute check cap.
+  # A failed publish still enters this job. It continues only when that commit is
+  # still Latest; a rolled-back release exits here without dispatching.
   catch-up:
-    needs: [readiness, publish]
-    if: always() && !cancelled() && github.event_name != 'pull_request' && github.repository == 'KeepOak/Branch-Agent' && (needs.publish.result == 'success' || needs.readiness.outputs.skip_reason == 'cooldown')
+    needs: [readiness, identity, publish]
+    if: always() && !cancelled() && github.event_name != 'pull_request' && github.repository == 'KeepOak/Branch-Agent' && (needs.publish.result == 'success' || needs.publish.result == 'failure' || needs.readiness.outputs.skip_reason == 'cooldown')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency:
@@ -473,6 +482,14 @@ jobs:
           catch_wait_ms="0"
           catch_reason=""
           load_main_and_release
+          if [[ "${{ needs.publish.result }}" == "failure" ]]; then
+            failed_gate="$(node desktop/scripts/component-release-readiness.mjs catch-up-after-failed-publish --latest "$latest_commit" --released "${{ needs.identity.outputs.commit }}")"
+            failed_proceed="$(node -p 'JSON.parse(process.argv[1]).proceed ? "true" : "false"' "$failed_gate")"
+            note "$(node -p 'JSON.parse(process.argv[1]).reason' "$failed_gate")"
+            if [[ "$failed_proceed" != "true" ]]; then
+              exit 0
+            fi
+          fi
           read_catch_up
           note "$catch_reason"
           if [[ "$catch_dispatch" == "true" ]]; then

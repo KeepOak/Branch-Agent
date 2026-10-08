@@ -1,4 +1,6 @@
 // The thread's line icons (DESIGN-SPEC §2.9): one stroke set on a 24 × 24 box, stroke 1.7, round caps, no fill.
+import type { ReactNode } from "react";
+import type { StepKind } from "./format";
 
 export const ICONS = {
   copy: "M9 9h10v10H9zM5 15V5h10",
@@ -42,6 +44,57 @@ export function Icon({ d, size = 14, className }: { d: string; size?: number; cl
       aria-hidden="true"
     >
       <path d={d} />
+    </svg>
+  );
+}
+
+/** Preview STEP_IC_PB18 paths (spec-v23 ~18608–18611, 18834). */
+export const STEP_KIND_MARKUP: Record<StepKind, ReactNode> = {
+  read: (
+    <>
+      <path d="M7 3.5h7l4 4V20.5H7z" />
+      <path d="M14 3.5v4h4M9.5 12h6M9.5 15.5h6" />
+    </>
+  ),
+  edit: <path d={ICONS.edit} />,
+  run: (
+    <>
+      <rect x="3.5" y="5" width="17" height="14" rx="2" />
+      <path d="M7.5 10l2.5 2-2.5 2M12.5 15h4" />
+    </>
+  ),
+  search: (
+    <>
+      <circle cx="11" cy="11" r="6" />
+      <path d="M20 20l-4.5-4.5" />
+    </>
+  ),
+  fetch: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.5 12h17M12 3.5c2.5 2.7 2.5 14.3 0 17M12 3.5c-2.5 2.7-2.5 14.3 0 17" />
+    </>
+  ),
+};
+
+/** Kind icon on a step row. Unknown kinds use the preview's check fallback. */
+export function StepKindIcon({ kind, size = 14, className }: { kind?: StepKind; size?: number; className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      data-testid="step-icon"
+      data-kind={kind ?? "check"}
+    >
+      {kind ? STEP_KIND_MARKUP[kind] : <path d={ICONS.check} />}
     </svg>
   );
 }

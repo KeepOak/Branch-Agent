@@ -42,6 +42,7 @@ import { dayStamp, formatDuration, fullTime, messageTime, modelName, stepLabel }
 import { TopicCard, TopicOrigin, topicPosition, type TopicUpdate } from "./TopicCard";
 import { suggestionsFor } from "./suggestions";
 import type { EarlierPage } from "../shell/useContactSegments";
+import { useScrollMemory } from "../places-nav/scroll-memory";
 
 type Props = {
   lockdown?: boolean;
@@ -49,6 +50,11 @@ type Props = {
   onOpenActivity?: () => void;
   name: string;
   history: Block[];
+  /**
+   * False while this conversation's transcript has not been read. Omitted means the
+   * caller already knows the history, so an empty list is still a new conversation.
+   */
+  historyReady?: boolean;
   live: Block[];
   pendingUser: string | null;
   /** Messages accepted but waiting for a turn (connect/session.ts queued). */
@@ -132,6 +138,7 @@ function useFollow(signature: string, sent: readonly (string | null | undefined)
   const distance = useRef(0);
   const [showLatest, setShowLatest] = useState(false);
   const atEnd = useRef(true);
+  useScrollMemory(scroller, { atEnd });
   const lastSent = useRef(sent);
   const sentKey = sent.join("\u0000");
   useEffect(() => {
@@ -239,7 +246,8 @@ export function Thread(props: Props) {
     setFindRequest((current) => ({ query, nonce: current.nonce + 1 }));
     props.onFindRequestHandled?.(props.findRequest.nonce);
   }, [props.findRequest?.nonce]);
-  const empty = !history.length && !pendingUser && !running && !props.questions?.length && !waitingCount;
+  const historyReady = props.historyReady !== false;
+  const empty = historyReady && !history.length && !pendingUser && !running && !props.questions?.length && !waitingCount;
   const lastReply = [...history].reverse().find((block) => block.kind === "text");
   const suggestionKey = lastReply ? `${props.sessionKey ?? ""}:${lastReply.key}` : null;
   const suggestions = props.onStart && !firstPending && suggestionKey !== usedSuggestion
@@ -322,7 +330,12 @@ export function Thread(props: Props) {
             </div>)}
           </div>)}
           {(props.earlierPages?.length || props.hasEarlierPages) ? <div className="stamp">New start · {props.currentStartedAt ? new Date(props.currentStartedAt).toLocaleDateString() : "Current"}</div> : null}
-          {empty ? <EmptyState onOpenSession={props.onOpenSession} onStart={props.onStart} /> : null}
+          {empty ? <EmptyState onOpenSession={props.onOpenSession} onStart={props.onStart} /> : !historyReady && !history.length && !props.preparationError ? (
+            <div className="stamp preparation-status" role="status" data-testid="thread-opening">
+              <span className="preparation-spinner" aria-hidden="true" />
+              Opening this conversation…
+            </div>
+          ) : null}
           {renderTopicEvents(-1)}
           {items.map((item) =>
             item.type === "talk" ? (

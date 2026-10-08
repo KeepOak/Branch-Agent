@@ -7,14 +7,31 @@ import type { AgentState } from "../face/agentState";
 import { Attachments } from "./Attachments";
 import { copyText, useThread } from "./context";
 import { useFreshClass } from "./fresh";
-import { formatDuration, shortReason, stepLabel, stepsSummary } from "./format";
-import { Icon, ICONS } from "./icons";
+import { Dialog } from "./Dialog";
+import {
+  formatDuration,
+  parseDiffLines,
+  rawDiffText,
+  shortReason,
+  stepExitCode,
+  stepInputLines,
+  stepKind,
+  stepLabel,
+  stepOutputFilename,
+  stepOutputTail,
+  stepsSummary,
+} from "./format";
+import { Icon, ICONS, StepKindIcon } from "./icons";
 import { Markdown } from "./markdown";
-import { fullOutput, type Block } from "./model";
+import { computerStepDetail, isComputerToolName, isScreenToolName } from "./computer-action-label";
+import { fullOutput, type Block, type FileChange } from "./model";
 import { readTextToolCall, stepFromTextToolCall } from "./text-tool-call";
 import { withMentions } from "../rooms/RoomMessage";
 
 type Of<K extends Block["kind"]> = Extract<Block, { kind: K }>;
+
+/** Asks the window to open a workspace file from a step's File changes card (preview pathPB18). */
+export const OPEN_FILE_EVENT = "branch:open-file";
 
 /** Over 1,200 characters or 40 lines, your message shows its first 5 lines (§4.2.2 Parity adds "Long messages"). */
 export function isLong(text: string): boolean {
@@ -126,62 +143,165 @@ export function Thinking({ block }: { block: Of<"thinking"> }) {
   );
 }
 
+function saveTextFile(name: string, text: string, toast: (msg: string) => void): void {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
+  toast(`Saved ${name}.`);
+}
+
+/** Preview outPB18: last 4 lines, Exit code pill, Show full output · Copy output · Save output. */
 function StepOutput({ step }: { step: Of<"step"> }) {
   const { toast } = useThread();
-  const [all, setAll] = useState(false);
+  const [fullOpen, setFullOpen] = useState(false);
   const outputKey = step.outputKey ?? step.key;
-  const expanded = all ? fullOutput(outputKey) : undefined;
-  const output = (expanded ?? step.output ?? "").trimEnd();
+  const whole = (fullOutput(outputKey) ?? step.output ?? "").replace(/\s+$/u, "");
   const done = step.status !== "running";
-  if (!output) {
-    return done ? <p className="step-none">{step.status === "ok" ? "No output · it finished." : "No output · it failed."}</p> : null;
+  const exit = stepExitCode(step.detail);
+  if (!whole) {
+    const ran = stepKind(step.tool) === "run" || step.output != null || Boolean(step.outputKey);
+    return done && ran ? <p className="nout-pb18 step-none">{step.status === "ok" ? "No output · it finished." : "No output · it failed."}</p> : null;
   }
-  const lines = output.split("\n");
-  const tail = lines.slice(-12).join("\n");
+  const tail = stepOutputTail(whole);
+  const name = stepOutputFilename(step.title || stepLabel(step));
   return (
-    <div className="step-output">
-      <pre>{all ? output : tail}</pre>
-      <div className="row-buttons">
-        {lines.length > 12 || fullOutput(outputKey) ? <button type="button" className="btn sm ghost" onClick={() => setAll((v) => !v)}>{all ? "Show less" : "Show all"}</button> : null}
-        <button type="button" className="btn sm ghost" onClick={() => void copyText(fullOutput(outputKey) ?? output, toast)}>
-          Copy output
-        </button>
+    <div className="out-pb18 step-output" data-testid="step-output">
+      <pre>{tail}</pre>
+      {exit != null ? <span className="pill no"><i />Exit code {exit}</span> : null}
+      <div className="acts row-buttons">
+        <button type="button" className="btn ghost sm" onClick={() => setFullOpen(true)}>Show full output</button>
+        <button type="button" className="btn ghost sm" onClick={() => void copyText(whole, toast)}>Copy output</button>
+        <button type="button" className="btn ghost sm" onClick={() => saveTextFile(name, whole, toast)}>Save output</button>
       </div>
+      {fullOpen ? (
+        <Dialog
+          title="Full output"
+          onClose={() => setFullOpen(false)}
+          testid="step-full-output"
+          footer={
+            <>
+              <button type="button" className="btn ghost" onClick={() => void copyText(whole, toast)}>Copy output</button>
+              <button type="button" className="btn primary" onClick={() => setFullOpen(false)}>Close</button>
+            </>
+          }
+        >
+          {step.title ? <p className="hint"><code>{step.title}</code></p> : null}
+          {fullOutput(outputKey) ? <p className="hint">Only part of the output was kept.</p> : null}
+          <pre className="err-pb18">{whole}</pre>
+        </Dialog>
+      ) : null}
     </div>
   );
 }
 
+function FileChangeRow({ change }: { change: FileChange }) {
+  const { engine, sessionKey, toast } = useThread();
+  const [raw, setRaw] = useState(false);
+  const [opened, setOpened] = useState<string | null>(null);
+  const lines = change.diff ? parseDiffLines(change.diff) : [];
+  const body = raw
+    ? rawDiffText(lines)
+    : lines.map((line) => `${line.mark === " " ? "  " : `${line.mark} `}${line.text}`).join("\n");
+  const openFile = () => {
+    window.dispatchEvent(new CustomEvent(OPEN_FILE_EVENT, { detail: { path: change.path } }));
+    if (!engine || !sessionKey) {
+      toast("The Files pane opens this from the conversation’s folder.");
+      return;
+    }
+    void engine.request<{ file?: { content?: string } }>("sessions.files.get", { sessionKey, path: change.path }).then(
+      (result) => setOpened(typeof result.file?.content === "string" ? result.file.content : change.diff ?? ""),
+      (error: unknown) => toast(error instanceof Error ? error.message : String(error)),
+    );
+  };
+  return (
+    <div className="fch-row-pb18">
+      <div className="fch-top-pb18">
+        <code>{change.path}</code>
+        <span className="fch-n-pb18"><b className="a">+{change.added}</b> <b className="d">−{change.removed}</b></span>
+        <span className="seg" role="group" aria-label={`Show ${change.path} as`}>
+          <button type="button" aria-pressed={!raw} onClick={() => setRaw(false)}>Diff</button>
+          <button type="button" aria-pressed={raw} onClick={() => setRaw(true)}>Raw</button>
+        </span>
+        <button type="button" className="btn ghost sm" onClick={openFile}>Open file</button>
+      </div>
+      {body ? (
+        <pre className="diff-pb18" data-testid={raw ? "file-raw" : "file-diff"}>
+          {raw
+            ? body
+            : lines.map((line, i) => (
+                <span key={i} className={line.mark === "+" ? "add" : line.mark === "-" ? "del" : ""}>
+                  {line.mark === " " ? `  ${line.text}` : `${line.mark} ${line.text}`}
+                </span>
+              ))}
+        </pre>
+      ) : null}
+      {opened != null ? (
+        <Dialog
+          title={change.path}
+          onClose={() => setOpened(null)}
+          testid="step-open-file"
+          footer={<button type="button" className="btn primary" onClick={() => setOpened(null)}>Close</button>}
+        >
+          <pre className="err-pb18">{opened}</pre>
+        </Dialog>
+      ) : null}
+    </div>
+  );
+}
+
+/** Preview fileChangesPB18: File changes / Attempted changes, +/−, Diff · Raw, Open file. */
 function ChangedFiles({ step }: { step: Of<"step"> }) {
   if (!step.changes?.length) return null;
-  return <div className="changed-files" data-testid="files-changed">
-    <b>Files changed</b>
-    {step.changes.map((change) => <details key={change.path}>
-      <summary>{change.path} <span>+{change.added} −{change.removed}</span></summary>
-      {change.diff ? <pre>{change.diff}</pre> : null}
-    </details>)}
-  </div>;
+  const failed = step.status === "failed" || step.status === "denied";
+  return (
+    <div className="card fch-pb18" data-testid="files-changed">
+      <div className="card-h"><b>{failed ? "Attempted changes" : "File changes"}</b></div>
+      {step.changes.map((change) => <FileChangeRow key={change.path} change={change} />)}
+    </div>
+  );
 }
 
 const STEP_STATE: Record<Of<"step">["status"], string> = { running: "Running", ok: "Done", failed: "Failed", denied: "Not allowed" };
 
-function StepRow({ step }: { step: Of<"step"> }) {
-  const mark = step.status === "ok" ? ICONS.check : step.status === "running" ? ICONS.spin : ICONS.x;
-  const exit = /^Exit \d+/.test(step.detail) ? step.detail : "";
-  // The detail is the output's first lines unless it says how the call ended; don't print the output twice.
-  const detail = !exit && step.detail && !(step.output ?? "").startsWith(step.detail) ? step.detail : "";
+function StepInput({ input }: { input: string }) {
+  const lines = stepInputLines(input);
+  if (!lines.length) return null;
   return (
-    <li className="step" data-testid="step" data-kind={step.tool} data-status={step.status}>
-      <details>
+    <div className="step-input" data-testid="step-input">
+      {lines.map((line, i) => <div key={i}>{line}</div>)}
+    </div>
+  );
+}
+
+function StepRow({ step }: { step: Of<"step"> }) {
+  const kind = stepKind(step.tool);
+  const exit = stepExitCode(step.detail);
+  const failed = step.status === "failed" || step.status === "denied";
+  const [open, setOpen] = useState(true);
+  const label = stepLabel(step);
+  const detail = isComputerToolName(step.tool) || isScreenToolName(step.tool) ? computerStepDetail(step, label) : step.title || undefined;
+  return (
+    <li
+      className={`step step-pb18${failed ? " errR118" : ""}`}
+      data-testid="step"
+      data-kind={step.tool}
+      data-step-kind={kind ?? "check"}
+      data-status={step.status}
+    >
+      <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>
-      <span className={`step-mark ${step.status}`}>
-        <Icon d={mark} />
+      <StepKindIcon kind={kind} className="s" />
+      <span>
+        <span className="step-label">{label}</span>
+        {detail ? <small className="step-detail">{detail}</small> : null}
       </span>
-      <span className="step-label">{stepLabel(step)}</span>{step.title ? <> <code className="step-detail">{step.title}</code></> : null}
-      <span className="step-state">{STEP_STATE[step.status]}{exit ? ` · ${exit}` : ""}</span>
+      <span className="step-state">{STEP_STATE[step.status]}{exit != null ? ` · Exit code ${exit}` : ""}</span>
       </summary>
       <div className="step-body">
-        {step.input ? <pre className="step-input" data-testid="step-input">{step.input}</pre> : null}
-        {detail ? <span>{detail}</span> : null}
+        {step.input ? <StepInput input={step.input} /> : null}
         <ChangedFiles step={step} />
         <StepOutput step={step} />
       </div>
@@ -190,11 +310,28 @@ function StepRow({ step }: { step: Of<"step"> }) {
   );
 }
 
-/** Steps fold (§4.2.2): closed in the history, open while the run is live, so steps show as they happen. */
+const foldChoice = new Map<string, boolean>();
+
+/** Test hook: forget which steps folds the person opened or closed. */
+export function resetStepsFoldChoice(): void {
+  foldChoice.clear();
+}
+
+/** Steps fold (§4.2.2): open while the run is live; keep the person's choice when it finishes. */
 export function StepsFold({ steps, live, run }: { steps: Of<"step">[]; live: boolean; run?: { title: string; durationMs?: number } }) {
-  const [open, setOpen] = useState(live);
+  const id = steps[0]?.key ?? "";
+  if (live && id && !foldChoice.has(id)) foldChoice.set(id, true);
+  const [open, setOpen] = useState(() => foldChoice.get(id) ?? live);
   return (
-    <details className="fold steps-fold indent" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
+    <details
+      className="fold steps-fold steps-pb18 stepsR118 indent"
+      open={open}
+      onToggle={(e) => {
+        const next = e.currentTarget.open;
+        if (id) foldChoice.set(id, next);
+        setOpen(next);
+      }}
+    >
       <summary>
         <Icon d={ICONS.chev} className="chev" />
         {stepsSummary(steps, live ? undefined : run)}
