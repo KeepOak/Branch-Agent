@@ -10,6 +10,7 @@ import { GENERAL_ROWS, GeneralPage } from "./general";
 import { GENERAL_PREFS } from "./general-conversation";
 import { ttlMinutes } from "./general-summaries";
 import { IN_BROWSER } from "../../../connect/desktop-controls";
+import { platformName } from "../../../setup/steps-later";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
@@ -47,6 +48,15 @@ async function press(title: string, label: string) {
 }
 
 describe("Settings › General", () => {
+  it("keeps a row pin beside its title, clear of the Show all control", async () => {
+    const { engine } = engineOf();
+    const pins: Pins = { page: "general", list: [], has: () => false, toggle: vi.fn(), go: vi.fn(), unpin: vi.fn() };
+    await act(async () => root.render(<KitProvider level={0} report={report} scope={null} pins={pins}><GeneralPage page="general" title="General" level="regular" engine={engine} /></KitProvider>));
+    const keyboard = row("Keyboard shortcuts");
+    expect(keyboard.querySelector("b > .pin-k")).not.toBeNull();
+    await act(async () => keyboard.querySelector<HTMLButtonElement>(".right button")!.click());
+    expect(document.querySelector('[role="dialog"][aria-label="Keyboard shortcuts"]')).not.toBeNull();
+  });
   it("shows the preview's sections at each level", async () => {
     const { engine } = engineOf();
     await render(engine, 0);
@@ -130,7 +140,7 @@ describe("Settings › General", () => {
       expect(row(t).querySelector(".why-k")?.textContent).toMatch(/window can’t/);
     }
     // In a plain browser the Branch app's own rows are greyed and say where they are changed.
-    for (const t of ["Start with Windows"]) {
+    for (const t of [`Start with ${platformName()}`]) {
       expect(row(t).getAttribute("aria-disabled")).toBe("true");
       expect(row(t).querySelector(".why-k")?.textContent).toBe(IN_BROWSER);
     }
@@ -158,6 +168,26 @@ describe("Settings › General", () => {
       delete (window as { branchDesktop?: unknown }).branchDesktop;
       delete (navigator as { platform?: string }).platform;
       if (platform) Object.defineProperty(Navigator.prototype, "platform", platform);
+    }
+  });
+
+  it("Starting up uses the real platform name, like setup", async () => {
+    const { engine } = engineOf();
+    const prev = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
+    const cases: [string, string, string][] = [
+      ["Win32", "Start with Windows", "Start with macOS"],
+      ["MacIntel", "Start with macOS", "Start with Windows"],
+      ["Linux x86_64", "Start with Linux", "Start with Windows"],
+    ];
+    try {
+      for (const [platform, title, absent] of cases) {
+        Object.defineProperty(Navigator.prototype, "platform", { configurable: true, get: () => platform });
+        await render(engine, 0);
+        expect(row(title)).toBeTruthy();
+        expect(host.textContent).not.toContain(absent);
+      }
+    } finally {
+      if (prev) Object.defineProperty(Navigator.prototype, "platform", prev);
     }
   });
 

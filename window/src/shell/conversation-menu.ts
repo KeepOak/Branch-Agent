@@ -8,6 +8,7 @@ import { snoozeChoices, snoozeTime, wakeWords } from "./conversation-actions";
 import { isSnoozed } from "./list-model";
 import type { MenuItem } from "./Menu";
 import { menuIcon } from "./menu-icons";
+import { topicLayoutNames, type TopicLayout } from "./topic-layout";
 
 /** What the engine says about the open conversation (sessions.describe), as far as the menu needs it. */
 export type ConversationDetail = { showThinking: boolean };
@@ -76,6 +77,7 @@ export type ConversationMenuContext = {
   ownWindowOff?: string | null;
   hasContactReturn?: boolean;
   hasContactConversations?: boolean;
+  threadView?: { contactName: string; layout: TopicLayout; set: (layout: TopicLayout) => void };
   towerVisible?: boolean;
   /** In a room, the room rows (rooms/room-menu.ts) in place of the Trunk rows; a room has no Move, Archive or Share this Trunk. */
   room?: MenuItem[] | null;
@@ -162,6 +164,11 @@ export function conversationMenuItems(c: ConversationMenuContext): MenuItem[] {
     { kind: "sub", label: "Export", icon: menuIcon("doc"), items: exportItems },
     SEP,
     { kind: "head", label: "View" },
+    // Preview View opens on click (viewmPB18). Hover here covers Side panel and Open the browser.
+    c.threadView ? { kind: "sub", label: "View", icon: menuIcon("eye"), hover: false, testid: "conversation-view", items: [
+      { kind: "head", label: `${c.threadView.contactName}’s threads show as` },
+      ...(Object.entries(topicLayoutNames) as [TopicLayout, string][]).map(([layout, label]): MenuItem => ({ label, checked: c.threadView!.layout === layout, radio: true, run: () => c.threadView!.set(layout) })),
+    ] } : null,
     item("Side panel", "panel", c.run.sidePanel, { hint: "Ctrl Shift K" }),
     c.hasContactConversations ? item("Conversations", "chat", c.run.conversations) : null,
     item(c.towerVisible ? "Hide the Control tower" : "Show the Control tower", "panel", c.run.tower, { hint: "Ctrl Shift T" }),
