@@ -11,7 +11,7 @@ export function loadScreens(raw) {
     ids.add(screen.id);
     if (!Array.isArray(screen.steps) || !screen.steps.length) throw new Error(`${screen.id}: no interaction steps`);
     for (const step of screen.steps) {
-      if (!['click', 'drag', 'assert'].includes(step.action) || !kinds.has(step.by) || typeof step.target !== 'string' || !step.target) throw new Error(`${screen.id}: invalid step`);
+      if (!['click', 'contextmenu', 'drag', 'assert'].includes(step.action) || !kinds.has(step.by) || typeof step.target !== 'string' || !step.target) throw new Error(`${screen.id}: invalid step`);
       if (step.action === 'drag' && (!kinds.has(step.toBy) || !step.to)) throw new Error(`${screen.id}: drag needs destination`);
       if (step.action !== 'assert' && (!(kinds.has(step.expectBy) || (step.action === 'drag' && step.expectBy === 'movement')) || !step.expect)) throw new Error(`${screen.id}: click needs a response assertion`);
     }

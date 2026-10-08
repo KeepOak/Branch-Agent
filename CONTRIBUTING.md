@@ -82,10 +82,15 @@ Every child process Branch starts on Windows (the engine, shells, probes, git, P
 
 ## Pull requests and the merge gate
 
-- Branch from `origin/main` and use [Conventional Commits](https://www.conventionalcommits.org/) (`feat(window): …`, `fix(engine): …`, `docs: …`). Stage files by name. Don't add tool or AI attribution lines to commits or pull requests.
+- Branch from `origin/main` and use [Conventional Commits](https://www.conventionalcommits.org/) (`feat(window): …`, `fix(engine): …`, `docs: …`). Stage files by name. Don't add tool or AI attribution lines to commits or pull requests. Cloud-agent commits must end with exactly this last line so the platform does not append a personal-email co-author line:
+
+  ```
+  Co-authored-by: Taofik Bishi <189563683+stabrea@users.noreply.github.com>
+  ```
 - Open the pull request against `main`. Its body says what changed, why, and the exact test commands you ran with their pass counts. For a change with a visible effect, include screenshots of the changed flow (see [Self-testing a change](#self-testing-a-change)).
 - `main` is protected by the ruleset "main requires the merge gate": the only required check is `merge-gate`, and force-pushes and branch deletion are blocked. The other workflows are path-filtered, so `merge-gate` (`.github/workflows/merge-gate.yml`) waits for whichever of them started on the PR's head commit and fails if any of them failed.
 - After this lands, a second required check will replace it: `merge-gate-trusted` from `.github/workflows/merge-gate-trusted.yml`. That workflow is `pull_request_target`, so GitHub always runs **main's copy** and checks out the default branch (current main), never the PR's recorded base SHA or head. It never checks out or executes the pull request. Permissions are read-only (`contents`, `checks`, `actions`, `pull-requests`) and it uses no secrets. The job waits for the other checks with the same rules as `merge-gate`, fails if `merge-gate` is missing or unsuccessful, fails if a path-filtered core workflow never started, fails if any other workflow posts a check named `merge-gate-trusted`, and re-runs the changed-test-coverage and merge-command scripts from main against the PR file list fetched through the API. Reviewers see workflow, gate-script, and `package.json` changes in the job summary. **Two-step switch:** merge this workflow first and watch it on a few PRs, then the repo admin changes the required check from `merge-gate` to `merge-gate-trusted`. Until that switch, `merge-gate` remains the required check.
+- `gate-files-fresh` (`.github/workflows/gate-files-fresh.yml`) fails a PR that edits a merge-gate file but dropped a line main added since the PR forked; merge main in and keep main's version of this file.
 - After review, Branch PR Closer merges by hand with a merge commit (never squash or rebase), pinned to the reviewed head SHA so a new push blocks the merge:
 
   ```bash
@@ -97,7 +102,7 @@ Every child process Branch starts on Windows (the engine, shells, probes, git, P
 
 ## Releases and component updates
 
-Every push to `main` that touches `engine/`, `window/`, `desktop/` or the CI runner scripts runs `.github/workflows/component-release.yml`. It builds and smoke-tests each native target (Windows, macOS, Linux) and publishes a GitHub release with four components:
+`.github/workflows/component-release.yml` publishes a GitHub release on a 30-minute schedule at :07 and :37 past each hour, for a source-version tag, or from a manual run — not on each merge. Scheduled and manual runs skip when main has not moved since the last release or when a check on main's head has failed. A published release has four components:
 
 | Component | Asset |
 |---|---|
@@ -108,7 +113,7 @@ Every push to `main` that touches `engine/`, `window/`, `desktop/` or the CI run
 
 A release is published only from a commit on `main` that is newer than the current latest release, so updates never move backwards. Pull requests that change the release pipeline build and smoke every target without publishing.
 
-The installed desktop app checks GitHub for a newer release every hour, verifies and stages it, and applies it on the next restart. If the new engine fails its readiness check, the app rolls back to the previous engine automatically. Applying a staged update by itself when no Trunk is working is in progress.
+The installed desktop app checks GitHub for a newer release every hour, jumps straight to the newest one, verifies and stages it, and applies it on the next restart. If the new engine fails its readiness check, the app rolls back to the previous engine automatically. Applying a staged update by itself when no Trunk is working is in progress.
 
 The manual `Source builds` workflow and `Desktop checks` are described in the [README](README.md#source-builds-on-github).
 

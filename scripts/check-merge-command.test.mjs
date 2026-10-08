@@ -64,3 +64,39 @@ test('accepts file without merge commands', async () => {
   const result = await runChecker(content);
   assert.ok(result.passed, 'Should accept file without merge commands');
 });
+
+test('rejects REST API merge with squash', async () => {
+  const content = 'Use `PUT /repos/KeepOak/Branch-Agent/pulls/123/merge` with `{"merge_method": "squash", "sha": "abc123"}`.';
+  const result = await runChecker(content);
+  assert.ok(!result.passed, 'Should reject REST API with squash');
+});
+
+test('rejects REST API merge with rebase', async () => {
+  const content = 'Use `PUT /repos/KeepOak/Branch-Agent/pulls/123/merge` with `{"merge_method": "rebase", "sha": "abc123"}`.';
+  const result = await runChecker(content);
+  assert.ok(!result.passed, 'Should reject REST API with rebase');
+});
+
+test('rejects REST API merge without sha', async () => {
+  const content = 'Use `PUT /repos/KeepOak/Branch-Agent/pulls/123/merge` with `{"merge_method": "merge"}`.';
+  const result = await runChecker(content);
+  assert.ok(!result.passed, 'Should reject REST API without sha');
+});
+
+test('accepts correct REST API merge', async () => {
+  const content = 'Use `PUT /repos/KeepOak/Branch-Agent/pulls/123/merge` with `{"merge_method": "merge", "sha": "abc123"}`.';
+  const result = await runChecker(content);
+  assert.ok(result.passed, 'Should accept correct REST API merge');
+});
+
+test('rejects malformed merge_method even when merge appears nearby', async () => {
+  const content = 'Use `PUT /repos/KeepOak/Branch-Agent/pulls/123/merge` with `{"merge_method":"merg","sha":"abc"}. The required value is "merge".`';
+  const result = await runChecker(content);
+  assert.ok(!result.passed, 'Should reject malformed merge_method');
+});
+
+test('accepts valid REST merge followed by prose mentioning squash or rebase', async () => {
+  const content = 'Use `PUT /repos/KeepOak/Branch-Agent/pulls/123/merge` with `{"merge_method": "merge", "sha": "abc123"}`. Do not substitute "squash" or "rebase".';
+  const result = await runChecker(content);
+  assert.ok(result.passed, 'Should accept valid payload when prose mentions squash or rebase');
+});
