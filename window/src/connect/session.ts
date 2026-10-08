@@ -43,7 +43,8 @@ export type SessionSnapshot = {
   steered: SteeredNote[];
   /**
    * False until this conversation's transcript has been read. Empty history before that is still loading,
-   * not a new conversation, so the thread must not show the empty start screen.
+   * not a new conversation, so the thread must not show the empty start screen. A cached transcript with
+   * no messages is not that read.
    */
   historyReady: boolean;
 };
@@ -305,6 +306,8 @@ export class SaplingSession {
     if (!key || key === this.snapshot.sessionKey) {
       const echo = this.firstEcho.peek(key);
       if (echo && !this.snapshot.pendingUser && !this.snapshot.history.length && this.snapshot.historyReady !== false) this.seedFirstSend(key, echo.text, echo.runId);
+      // A failed read leaves the conversation unready. Opening it again, including the same row, tries the read once more.
+      if (key && key === this.snapshot.sessionKey && this.snapshot.historyReady === false && this.snapshot.error) await this.loadOpen();
       return;
     }
     this.wanted = key;
@@ -315,11 +318,11 @@ export class SaplingSession {
     this.ownSends.clear();
     const echo = this.firstEcho.peek(key);
     if (echo) this.ownSends.set(echo.runId, { text: echo.text, shown: true, attachments: 0 });
-    const known = this.historyCache.has(key);
+    const cached = this.cachedTranscript(key);
     this.set({
       sessionKey: key,
-      history: known ? this.historyCache.get(key)! : [],
-      historyReady: known,
+      history: cached.history,
+      historyReady: cached.historyReady,
       live: [],
       queued: [],
       doneAt: null,
@@ -331,6 +334,17 @@ export class SaplingSession {
       liveRunId: echo?.runId ?? null,
       liveStartedAt: echo ? Date.now() : null,
     });
+    await this.loadOpen();
+  }
+
+  /** The transcript this window can paint now. An empty cached read is not final: the first message may arrive later. */
+  private cachedTranscript(key: string): { history: Block[]; historyReady: boolean } {
+    const history = this.historyCache.get(key);
+    if (history && history.length > 0) return { history, historyReady: true };
+    return { history: [], historyReady: false };
+  }
+
+  private async loadOpen(): Promise<void> {
     try {
       await Promise.all([this.backfillApprovals().catch(() => undefined), this.loadHistory()]);
     } catch (error) {
@@ -428,10 +442,10 @@ export class SaplingSession {
       const echo = sessionKey ? this.firstEcho.peek(sessionKey) : null;
       if (echo) this.ownSends.set(echo.runId, { text: echo.text, shown: true, attachments: 0 });
       const switching = sessionKey !== this.snapshot.sessionKey;
-      const known = Boolean(switching && sessionKey && this.historyCache.has(sessionKey));
+      const cached = switching && sessionKey ? this.cachedTranscript(sessionKey) : null;
       this.set({
         sessionKey, mainKey, live: [], steered: [],
-        ...(switching ? { history: known ? this.historyCache.get(sessionKey!)! : [], historyReady: known } : {}),
+        ...(cached ? cached : {}),
         liveRunId: echo?.runId ?? null,
         liveStartedAt: echo ? Date.now() : null,
         pendingUser: echo?.text ?? null,
@@ -501,7 +515,6 @@ export class SaplingSession {
       return; // a newer read of this conversation, or a different engine, replaced this one
     }
     const h = rec(history);
-    this.readSession = { sessionKey, id: str(h.sessionId) };
     const inFlight = rec(h.inFlightRun);
     const inFlightId = str(inFlight.runId);
     // A run this window already saw end is history now, even if the engine still lists it while it tidies up.
@@ -512,6 +525,9 @@ export class SaplingSession {
     if (sessionKey !== this.snapshot.sessionKey || read !== this.historyReads) {
       return; // another conversation was opened, or a newer read started, while this one loaded
     }
+    // Only the open conversation's read may say whether that conversation existed. A late read of the one
+    // just left must not make a lost send in this one look like it went to a conversation that was never created.
+    this.readSession = { sessionKey, id: str(h.sessionId) };
     const staleNotice = this.readError;
     this.readError = null;
     const info = rec(h.sessionInfo);
@@ -905,7 +921,14 @@ export class SaplingSession {
     const at = this.snapshot.history.findIndex((b) => b.kind === "user" && b.meta?.entryId === entryId);
     if (at < 0) return;
     this.historyReads += 1;
-    this.set({ history: this.snapshot.history.slice(0, at) });
+    const history = this.snapshot.history.slice(0, at);
+    const sessionKey = this.snapshot.sessionKey;
+    if (sessionKey) {
+      // A read that started before the rewind must not put the dropped tail back into the cache.
+      this.historyReadGen.set(sessionKey, (this.historyReadGen.get(sessionKey) ?? 0) + 1);
+      this.historyCache.set(sessionKey, history);
+    }
+    this.set({ history });
   }
 
   /** Where a send goes, for its record if the connection goes before the engine answers: this engine, now, after the

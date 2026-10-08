@@ -330,7 +330,7 @@ export function Thread(props: Props) {
             </div>)}
           </div>)}
           {(props.earlierPages?.length || props.hasEarlierPages) ? <div className="stamp">New start · {props.currentStartedAt ? new Date(props.currentStartedAt).toLocaleDateString() : "Current"}</div> : null}
-          {empty ? <EmptyState onOpenSession={props.onOpenSession} onStart={props.onStart} /> : !historyReady && !history.length ? (
+          {empty ? <EmptyState onOpenSession={props.onOpenSession} onStart={props.onStart} /> : !historyReady && !history.length && !props.preparationError ? (
             <div className="stamp preparation-status" role="status" data-testid="thread-opening">
               <span className="preparation-spinner" aria-hidden="true" />
               Opening this conversation…
