@@ -34,6 +34,12 @@ import {
   workflowAppliesToChanges,
   workflowFromActionsRun,
 } from './merge-gate-trusted.mjs';
+import {
+  evaluateOrdinaryChecks,
+  fetchOrdinaryCheckRuns,
+  formatOrdinaryTimeout,
+  pollOrdinaryGate,
+} from './merge-gate-rate-limit.mjs';
 
 function ordinaryYaml() {
   return readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
@@ -511,13 +517,14 @@ test('two genuine trusted runs on the same SHA pass even when the earlier run wa
 for (const [reason, checkPatch, workflowPatch] of [
   ['mismatched suite', { check_suite: { id: 999 } }, {}],
   ['missing PR', {}, { pullRequests: [{ number: 628, base: BASE_REF }] }],
+  ['empty PR list', {}, { pullRequests: [] }],
   ['non-main base', {}, { pullRequests: [
     { number: PR_NUMBER, base: BASE_REF },
     { number: 628, base: 'old-base' },
   ] }],
   ['wrong head SHA', {}, { headSha: 'other-sha' }],
 ]) {
-  test(`earlier trusted run rejects ${reason}`, () => {
+  test(`earlier trusted run ignores ${reason} on pull_request_target`, () => {
     const earlier = {
       ...passCheckRuns[2],
       id: 104,
@@ -533,8 +540,8 @@ for (const [reason, checkPatch, workflowPatch] of [
       currentRunId: CURRENT_RUN_ID,
       ...prContext,
     });
-    assert.equal(result.ok, false);
-    assert.deepEqual(result.foreignTrusted.map((check) => check.id), [104]);
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.foreignTrusted, []);
   });
 }
 
@@ -584,7 +591,10 @@ test('older forged trusted checks cannot be hidden by name deduplication', () =>
   const forged = { ...passCheckRuns[2], id: 90, details_url: 'https://github.com/example/repo/actions/runs/304/job/90' };
   const result = evaluateTrustedGate({
     checkRuns: [forged, ...passCheckRuns],
-    workflowsByCheckId: { ...passWorkflows, 90: earlierTrustedWorkflow },
+    workflowsByCheckId: {
+      ...passWorkflows,
+      90: { path: '.github/workflows/foreign.yml', name: 'Foreign', id: 304, event: 'pull_request_target' },
+    },
     changedFiles: ['README.md'],
     coreWorkflows,
     currentRunId: CURRENT_RUN_ID,
@@ -592,6 +602,67 @@ test('older forged trusted checks cannot be hidden by name deduplication', () =>
   });
   assert.equal(result.ok, false);
   assert.equal(result.foreignTrusted[0].id, 90);
+});
+
+test('regression: #632 earlier same-workflow pull_request_target run is not forged', () => {
+  const earlier = {
+    id: 113100000001,
+    name: 'merge-gate-trusted',
+    status: 'completed',
+    conclusion: 'success',
+    check_suite: { id: 204 },
+    details_url: 'https://github.com/KeepOak/Branch-Agent/actions/runs/37724804984/job/113100000001',
+  };
+  const earlierWorkflow = {
+    path: TRUSTED_WORKFLOW_PATH,
+    name: 'Merge gate trusted',
+    id: 37724804984,
+    event: 'pull_request_target',
+    checkSuiteId: 204,
+    headSha: undefined,
+    pullRequests: [],
+  };
+  const foreign = findForeignTrustedChecks([...passCheckRuns, earlier], {
+    ...passWorkflows,
+    113100000001: earlierWorkflow,
+  }, { allowedRunId: CURRENT_RUN_ID, ...prContext });
+  assert.deepEqual(foreign, []);
+  const result = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, earlier],
+    workflowsByCheckId: { ...passWorkflows, 113100000001: earlierWorkflow },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.foreignTrusted, []);
+});
+
+test('concurrent same-workflow pull_request_target run is ignored', () => {
+  const concurrent = {
+    ...passCheckRuns[2],
+    id: 104,
+    status: 'in_progress',
+    conclusion: null,
+    check_suite: { id: 204 },
+    details_url: 'https://github.com/example/repo/actions/runs/304/job/104',
+  };
+  const foreign = findForeignTrustedChecks([...passCheckRuns, concurrent], {
+    ...passWorkflows,
+    104: earlierTrustedWorkflow,
+  }, { allowedRunId: CURRENT_RUN_ID, ...prContext });
+  assert.deepEqual(foreign, []);
+  const result = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, concurrent],
+    workflowsByCheckId: { ...passWorkflows, 104: earlierTrustedWorkflow },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.foreignTrusted, []);
 });
 
 for (const [reason, workflowPatch, checkPatch, contextPatch] of [
@@ -1237,4 +1308,52 @@ test('merge-gate recheck fires when Visual tour and Engine build complete', () =
   assert.match(yaml, /^\s+-\s+Visual tour\s*$/m);
   assert.match(yaml, /^\s+-\s+Engine build \(PR\)\s*$/m);
   assert.match(yaml, /^\s+-\s+Gate files fresh\s*$/m);
+});
+
+test('ordinary JS waiter additions stay aligned with the yaml jq filters', () => {
+  const yaml = ordinaryYaml();
+  assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs gh --/);
+  const pair = evaluateOrdinaryChecks(realBuildPair);
+  assert.equal(pair.failed.map((run) => `${run.name}: ${run.conclusion}`).join('\n'), 'build: failure');
+  const ignored = evaluateOrdinaryChecks(passCheckRuns);
+  assert.equal(ignored.others.some((run) => run.name === 'merge-gate-trusted'), false);
+  assert.equal(ignored.others.some((run) => run.name === 'merge-gate'), false);
+  const page1 = {
+    total_count: 101,
+    check_runs: Array.from({ length: 100 }, (_, index) => ({
+      id: index + 1,
+      name: index === 0 ? 'Analyze (actions)' : `ok-${index}`,
+      status: 'completed',
+      conclusion: 'success',
+    })),
+  };
+  const page2 = {
+    total_count: 101,
+    check_runs: [{
+      id: 101,
+      name: 'Named feature tests on ubuntu-latest (9/10)',
+      status: 'completed',
+      conclusion: 'failure',
+    }],
+  };
+  const ordinary = fetchOrdinaryCheckRuns('example/repo', SHA, 'unused', { mode: 'all' }, {
+    request: (requestPath) => (requestPath.endsWith('page=1') ? page1 : page2),
+  });
+  assert.equal(ordinary.length, 101);
+  assert.equal(evaluateOrdinaryChecks(ordinary).failed[0].conclusion, 'failure');
+  const ordinaryCode = pollOrdinaryGate({
+    repo: 'example/repo', sha: SHA, token: 'unused', initialWait: 0, waitBudgetSeconds: 30, maxPolls: 1,
+  }, {
+    fetchChecks: () => [
+      { ...passCheckRuns[1], status: 'in_progress', conclusion: null },
+      analyzeCheck,
+    ],
+    sleep: () => {},
+    now: () => 0,
+    log: () => {},
+    error: () => {},
+    resolveWorkflows: () => ({}),
+  });
+  assert.equal(ordinaryCode, 1);
+  assert.match(formatOrdinaryTimeout([{ name: 'build' }]), /Timed out waiting for: build/);
 });
