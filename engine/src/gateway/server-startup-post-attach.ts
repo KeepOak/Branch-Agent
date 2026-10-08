@@ -73,6 +73,9 @@ type Awaitable<T> = T | Promise<T>;
 const loadMainSessionRestartRecoveryModule = createLazyRuntimeModule(
   () => import("../agents/main-session-recovery/main-session-restart-recovery.js"),
 );
+const loadSessionHandoffLeaseOrphanRecoveryModule = createLazyRuntimeModule(
+  () => import("./session-handoff-lease-orphan-recovery.js"),
+);
 // Startup only needs orphan marking; keep resume and delivery runtime out of the pre-channel path.
 const loadMainSessionRestartRecoveryMarkingModule = createLazyRuntimeModule(
   () => import("../agents/main-session-recovery/main-session-restart-recovery-marking.js"),
@@ -976,6 +979,7 @@ export async function startGatewayPostAttachRuntime(
             ],
           ]);
           let mainSessionRecoverySidecar: GatewayPostReadySidecarHandle | undefined;
+          let handoffLeaseOrphanSidecar: GatewayPostReadySidecarHandle | undefined;
           await startupLog;
           if (params.isClosing?.()) {
             return pluginRegistry;
@@ -996,9 +1000,25 @@ export async function startGatewayPostAttachRuntime(
           } catch (err) {
             params.log.warn(`main-session restart recovery failed to schedule: ${String(err)}`);
           }
+          try {
+            if (params.isClosing?.() !== true) {
+              const { startSessionHandoffLeaseOrphanRecovery } =
+                await loadSessionHandoffLeaseOrphanRecoveryModule();
+              handoffLeaseOrphanSidecar = startSessionHandoffLeaseOrphanRecovery({
+                getConfig: params.getConfig,
+                log: params.log,
+                shouldContinue: () => params.isClosing?.() !== true,
+              });
+            }
+          } catch (err) {
+            params.log.warn(`handoff lease orphan recovery failed to schedule: ${String(err)}`);
+          }
           if (params.isClosing?.()) {
             if (mainSessionRecoverySidecar) {
               params.onGatewayLifetimeSidecars(mainSessionRecoverySidecar);
+            }
+            if (handoffLeaseOrphanSidecar) {
+              params.onGatewayLifetimeSidecars(handoffLeaseOrphanSidecar);
             }
             return pluginRegistry;
           }
@@ -1008,6 +1028,7 @@ export async function startGatewayPostAttachRuntime(
           const newGatewayLifetimeSidecars = [
             scheduleGatewayHandlerPrewarm(params),
             ...(mainSessionRecoverySidecar ? [mainSessionRecoverySidecar] : []),
+            ...(handoffLeaseOrphanSidecar ? [handoffLeaseOrphanSidecar] : []),
           ];
           const transcriptsConfig =
             params.pluginRuntimeClaim?.isCurrent() === false
