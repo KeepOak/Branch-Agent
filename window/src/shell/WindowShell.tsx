@@ -46,6 +46,7 @@ import { TopicRail } from "./TopicRail";
 import { historyToBlocks } from "../thread/history";
 import { topicLayoutFor, readTopicSettings, setContactTopicLayout, type TopicLayout } from "./topic-layout";
 import { patchTopicSession } from "./topic-session";
+import { topicSenderPrefix, topicSpeakerKeys } from "./topic-who";
 import { loadAllTopicTranscripts } from "./topic-all";
 import { useContactSegments } from "./useContactSegments";
 import { contactAlert, contactAlertTarget, notify, readMutedContacts, saveMutedContacts } from "./notify";
@@ -486,13 +487,13 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     if (!ready || !topicContact || !activeTopics.length) { setTopicWho({}); return; }
     let live = true;
     const contactName = topicContact.name;
-    void Promise.all(activeTopics.map(async (topic) => {
+    void Promise.all(topicSpeakerKeys(topicContact.threadKey, activeTopics).map(async (key) => {
       try {
-        const result = await request<{ messages?: unknown[] }>("chat.history", { sessionKey: topic.key, limit: 1 });
-        const blocks = historyToBlocks(Array.isArray(result.messages) ? result.messages : [], [], topic.key, null);
+        const result = await request<{ messages?: unknown[] }>("chat.history", { sessionKey: key, limit: 1 });
+        const blocks = historyToBlocks(Array.isArray(result.messages) ? result.messages : [], [], key, null);
         const last = blocks.findLast((block) => block.kind === "user" || block.kind === "text");
-        return [topic.key, last?.kind === "user" ? "You" : last?.kind === "text" ? contactName : ""] as const;
-      } catch { return [topic.key, ""] as const; }
+        return [key, topicSenderPrefix(last, contactName)] as const;
+      } catch { return [key, ""] as const; }
     })).then((entries) => { if (live) setTopicWho(Object.fromEntries(entries)); });
     return () => { live = false; };
   }, [request, ready, topicContact?.id, activeTopics]);
@@ -1296,7 +1297,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           contactName={topicContact.name}
           contactKey={topicContact.threadKey}
           generalPreview={topicMainRow?.preview ?? ""}
-          generalWho={s.history.findLast((block) => block.kind === "user" || block.kind === "text")?.kind === "user" ? "You" : topicMainRow?.preview ? topicContact.name : ""}
+          generalWho={topicWho[topicContact.threadKey] ?? ""}
           generalUpdatedAt={topicMainRow?.updatedAt ?? topicContact.lastActivityAt}
           currentKey={openKey}
           allSelected={showingAll}
