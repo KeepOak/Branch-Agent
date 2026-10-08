@@ -30,7 +30,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 5. **List new test files for CI** in `scripts/feature-batch-ci-named/<branch-name>.txt` (`engine:<path>` or `window:<path>`, one per line, sorted). For desktop tests, add a `node --test` step to `.github/workflows/desktop-checks.yml`.
 
-6. **Lint before pushing:** `cd window && pnpm lint` for window changes; `cd engine && pnpm lint` for engine changes (uses oxlint with strict rules). Fix all lint errors.
+6. **Lint before pushing:** `cd window && pnpm lint` for window changes; `cd engine && pnpm lint` for engine changes (uses oxlint with strict rules). Fix all lint errors. If engine lint reports raw-copy baseline drift, regenerate with `cd engine && pnpm ui:i18n:baseline` and commit `engine/ui/src/i18n/.i18n/raw-copy-baseline.json`. Do not commit `catalog-fallbacks.json` on a source PR; post-merge locale refresh owns that file.
 
 7. **Type-check before pushing:** `pnpm -C window typecheck` for window changes; `node scripts/strict-typecheck.mjs` for engine changes (about 6 GB).
 
@@ -38,9 +38,9 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 9. **Don't touch a running desktop app.** Test engines use their own free loopback ports and data folders, never `19031`/`19032` or the app's data folder. Stop processes by process id, never by name.
 
-10. **Self-test visible changes** in a scratch engine and window (browser or computer tools, or Playwright) and put screenshots in the PR.
+10. **Self-test visible changes** in a scratch engine and window (browser or computer tools, or Playwright) and put screenshots in the PR. The `check-ui-proof` gate enforces this for `window/**` changes.
 
-11. **Commits and PRs:** Conventional Commits, files staged by name (never `git add -A`), no tool or AI attribution lines, no force-push to `main`. PR body: what, why, exact test commands and pass counts.
+11. **Commits and PRs:** Conventional Commits, files staged by name (never `git add -A`), no tool or AI attribution lines, no force-push to `main`. Cloud-agent commits must end with exactly `Co-authored-by: Taofik Bishi <189563683+stabrea@users.noreply.github.com>` so the platform does not append a personal-email co-author line. PR body: what, why, exact test commands and pass counts.
 
 12. **Merging:** Merge with a merge commit (never squash or rebase), pinned to the reviewed head SHA so a new push blocks the merge. Two approved ways:
     - `gh pr merge <number> --auto --merge --match-head-commit <reviewed-sha>`
@@ -111,6 +111,12 @@ Open PRs and their current CI status: `gh pr list --json number,title,headRefNam
    - Or via REST API: `PUT /repos/KeepOak/Branch-Agent/pulls/<number>/merge` with `{"merge_method": "merge", "sha": "<reviewed-sha>"}`
 
 5. **Seamless handoff gate.** The `seamlessHandoff` flag stays off until #429 (real two-engine handoff test) is merged. After #429 lands, turn it on in its own one-line PR and test it live mid-conversation.
+
+6. **Never rebase or force-push an open PR.** Once a PR is open, never rebase or force-push it. To bring it up to date, merge main in, because any push needs a fresh review on the new head.
+
+7. **No personal paths in the repo.** Never put machine names, hostnames, personal paths, account emails, or local file paths from any bot's computer in the repo.
+
+8. **Model access for builder agents.** Builder agents (including Trunks) use the owner's subscription sign-ins for model access, never paid API keys.
 
 ### How GOD works
 
