@@ -46,9 +46,13 @@ describe("global model fallback note", () => {
     expect(notes()).toHaveLength(1);
     expect([...notes()[0].querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Scout", "Writer", "helper"]);
     const row = host.querySelector('[data-row="If the model fails"]')!;
-    expect(row.nextElementSibling?.textContent).toContain("do not use this setting for answers");
-    expect(row.nextElementSibling?.textContent).toContain("Advanced detail");
-    expect(row.nextElementSibling?.textContent).toContain("What it may do › Add a stand-in…");
+    expect(notes()[0].closest("[data-row]")).toBe(row);
+    const section = row.closest(".sec")!;
+    expect(section).not.toBeNull();
+    expect([...section.children].filter((child) => !child.matches("h2, p, .ctl"))).toHaveLength(0);
+    expect(row.textContent).toContain("do not use this setting for answers");
+    expect(row.textContent).toContain("Advanced detail");
+    expect(row.textContent).toContain("What it may do › Add a stand-in…");
   });
 
   it("also explains the Advanced fallback list", async () => {
