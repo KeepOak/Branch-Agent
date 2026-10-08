@@ -39,6 +39,7 @@ function textOf(content: unknown): string {
 function useMirrorWords(engine: WindowEngine): { user: string; reply: string } {
   const [msgs, setMsgs] = useState<RecordValue[]>([]);
   useEffect(() => {
+    setMsgs([]);
     if (!engine.sessionKey) return;
     let live = true;
     engine.request<RecordValue>("chat.history", { sessionKey: engine.sessionKey, limit: 20 }).then(
@@ -46,7 +47,7 @@ function useMirrorWords(engine: WindowEngine): { user: string; reply: string } {
       (e: unknown) => console.warn("The mirrors show no words: chat.history failed:", errorText(e)),
     );
     return () => { live = false; };
-  }, [engine]);
+  }, [engine, engine.sessionKey]);
   const last = (role: string) => textOf([...msgs].reverse().find((m) => m.role === role)?.content).replace(/\s+/g, " ").trim();
   return { user: last("user").slice(0, 60) || "Hello", reply: last("assistant").slice(0, 90) || "What should Branch do?" };
 }
