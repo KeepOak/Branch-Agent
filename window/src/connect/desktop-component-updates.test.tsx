@@ -48,6 +48,22 @@ it("actual native Check now and Download update use component bridge and never g
   expect(localStorage.getItem("branch-draft")).toBe("unfinished input");
 });
 
+it("Updates & about shows the running build and hides a leftover older staged shell", async () => {
+  const leftover = {
+    phase: "staged", currentVersion: "0.4.4-build-c27f2be23320", latestVersion: "4b72e314c692",
+    pendingVersion: "4b72e314c692", checkedAt: 123, error: null,
+  };
+  desktopWindow.branchDesktop = { gatewayUrl: engine.gatewayUrl, componentUpdates: {
+    status: async () => leftover, check: async () => leftover, stage: async () => leftover,
+  } };
+  await show();
+  expect(host.textContent).toContain("Branch 0.4.4 · build c27f2be2 on this computer");
+  expect(host.textContent).toContain("You have Branch 0.4.4 · build c27f2be2");
+  expect(host.textContent).toContain("Branch is up to date.");
+  expect(host.textContent).not.toContain("Update staged; waiting for a safe switch");
+  expect(host.textContent).not.toContain("A Branch update is ready; restart to finish");
+});
+
 it("Updates toggle is on by default and staged updates wait for Trunks in Settings and version popover", async () => {
   const staged = { ...state, phase: "staged", pendingVersion: "1.1" };
   const set = vi.fn(async (_name: string, on: boolean) => ({ keepWorking: true, keepAwake: false, trayUsage: false,
