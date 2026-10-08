@@ -41,6 +41,7 @@ export type ConversationMenuRun = {
   removeTrunk: () => void;
   search: () => void;
   sidePanel: () => void;
+  tower: () => void;
   list: () => void;
   theme: () => void;
   computer: () => void;
@@ -75,6 +76,7 @@ export type ConversationMenuContext = {
   ownWindowOff?: string | null;
   hasContactReturn?: boolean;
   hasContactConversations?: boolean;
+  towerVisible?: boolean;
   /** In a room, the room rows (rooms/room-menu.ts) in place of the Trunk rows; a room has no Move, Archive or Share this Trunk. */
   room?: MenuItem[] | null;
   run: ConversationMenuRun;
@@ -90,7 +92,6 @@ export const OFF_REASONS = {
   offline: "Offline: reload when it connects.",
   noReply: "There's no reply to look inside yet.",
   move: "Connect another computer before moving this conversation.",
-  tower: "The Control tower isn't available in this window yet.",
 } as const;
 
 const item = (label: string, icon: Parameters<typeof menuIcon>[0] | null, run: () => void, extra: Partial<Extract<MenuItem, { label: string; run: () => void }>> = {}): MenuItem => ({
@@ -163,7 +164,7 @@ export function conversationMenuItems(c: ConversationMenuContext): MenuItem[] {
     { kind: "head", label: "View" },
     item("Side panel", "panel", c.run.sidePanel, { hint: "Ctrl Shift K" }),
     c.hasContactConversations ? item("Conversations", "chat", c.run.conversations) : null,
-    off("Hide the Control tower", "panel", OFF_REASONS.tower),
+    item(c.towerVisible ? "Hide the Control tower" : "Show the Control tower", "panel", c.run.tower, { hint: "Ctrl Shift T" }),
     item("Hide or show the list", "list", c.run.list, { hint: "Ctrl B" }),
     item(c.besideOpen ? "Change the conversation beside" : "Open another conversation beside", "cols", c.run.beside),
     item("Split right", "cols", () => c.run.split("right")),

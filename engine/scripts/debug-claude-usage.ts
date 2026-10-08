@@ -6,6 +6,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { expectDefined } from "../packages/normalization-core/src/expect.js";
 import { normalizeOptionalString } from "../packages/normalization-core/src/string-coerce.js";
+import { redactSensitiveText } from "../src/logging/redact.js";
 import { requireOptionArgument } from "./lib/arg-utils.mts";
 import { readBoundedResponseText } from "./lib/bounded-response.mjs";
 import {
@@ -33,11 +34,20 @@ type AuthProfiles = {
 
 const DEFAULT_FETCH_TIMEOUT_MS = 30_000;
 const FETCH_RESPONSE_MAX_BYTES = 256 * 1024;
+const HIDDEN_EXEC_OPTIONS = {
+  encoding: "utf8" as const,
+  stdio: ["ignore", "pipe", "ignore"] as const,
+  timeout: 5000,
+  windowsHide: true,
+};
 
 const mask = (value: string) => {
   const visibleChars = value.trim().length >= 12 ? 6 : 4;
   return maskIdentifier(value, visibleChars, visibleChars);
 };
+
+const formatCredentialForLog = (value: string): string =>
+  redactSensitiveText(mask(value), { mode: "tools" });
 
 const parseArgs = (args = process.argv.slice(2)): Args => {
   let agentId = "main";
@@ -92,7 +102,7 @@ function printUsage(): void {
 Options:
   --agent <id>          Branch Agent agent id to inspect (default: main)
   --session-key <key>   Claude web session key override
-  --reveal              Print token/session values instead of masked identifiers
+  --reveal              Accepted for compatibility; credential values stay redacted
   --help, -h            Show this help message`);
 }
 
@@ -194,7 +204,7 @@ const readClaudeCliKeychain = (): {
     const raw = execFileSync(
       "security",
       ["find-generic-password", "-s", "Claude Code-credentials", "-w"],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 5000 },
+      HIDDEN_EXEC_OPTIONS,
     );
     const parsed = JSON.parse(raw.trim()) as Record<string, unknown>;
     const oauth = parsed?.claudeAiOauth as Record<string, unknown> | undefined;
@@ -232,11 +242,11 @@ const chromeServiceNameForPath = (cookiePath: string): string => {
 
 const readKeychainPassword = (service: string): string | null => {
   try {
-    const out = execFileSync("security", ["find-generic-password", "-w", "-s", service], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 5000,
-    });
+    const out = execFileSync(
+      "security",
+      ["find-generic-password", "-w", "-s", service],
+      HIDDEN_EXEC_OPTIONS,
+    );
     const pw = out.trim();
     return pw ? pw : null;
   } catch {
@@ -289,7 +299,7 @@ const queryChromeCookieDb = (cookieDb: string): string | null => {
           LIMIT 1;
         `,
       ],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 5000 },
+      HIDDEN_EXEC_OPTIONS,
     ).trim();
     if (!out) {
       return null;
@@ -325,7 +335,7 @@ const queryFirefoxCookieDb = (cookieDb: string): string | null => {
           LIMIT 1;
         `,
       ],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 5000 },
+      HIDDEN_EXEC_OPTIONS,
     ).trim();
     return out && out.startsWith("sk-ant-") ? out : null;
   } catch {
@@ -435,9 +445,8 @@ const main = async (argv = process.argv.slice(2)) => {
 
   const keychain = readClaudeCliKeychain();
   if (keychain) {
-    const keychainTokenChars = keychain.accessToken.length;
     console.log(
-      `Claude Code CLI keychain: accessToken=*** (${keychainTokenChars} chars) scopes=${keychain.scopes?.join(",") ?? "(unknown)"}`,
+      `Claude Code CLI keychain: accessToken=${redactSensitiveText(formatCredentialForLog(keychain.accessToken))} scopes=${keychain.scopes?.join(",") ?? "(unknown)"}`,
     );
     const oauth = await fetchAnthropicOAuthUsage(keychain.accessToken);
     console.log(
@@ -453,9 +462,8 @@ const main = async (argv = process.argv.slice(2)) => {
     console.log("Auth profiles: no Anthropic token profiles found");
   } else {
     for (const entry of anthropic) {
-      const profileTokenChars = entry.token.length;
       console.log(
-        `Auth profiles: ${entry.profileId} token=*** (${profileTokenChars} chars)`,
+        `Auth profiles: ${entry.profileId} token=${redactSensitiveText(formatCredentialForLog(entry.token))}`,
       );
       const oauth = await fetchAnthropicOAuthUsage(entry.token);
       console.log(
@@ -483,7 +491,7 @@ const main = async (argv = process.argv.slice(2)) => {
   }
 
   console.log(
-    `Claude web: sessionKey=${opts.reveal ? sessionKey : mask(sessionKey)} (source: ${source})`,
+    `Claude web: sessionKey=${redactSensitiveText(formatCredentialForLog(sessionKey))} (source: ${source})`,
   );
   const web = await fetchClaudeWebUsage(sessionKey);
   if (!web.ok) {
@@ -498,6 +506,7 @@ const main = async (argv = process.argv.slice(2)) => {
 export const testing = {
   CLAUDE_COOKIE_HOST_SQL,
   fetchAnthropicOAuthUsage,
+  formatCredentialForLog,
   parseArgs,
   resolveFetchTimeoutMs,
 };

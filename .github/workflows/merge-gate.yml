@@ -32,10 +32,16 @@ jobs:
           package-manager-cache: false
       - name: Test the coverage check
         run: node --test scripts/changed-test-coverage.test.mjs
+      - name: Test the trusted merge-gate helper
+        run: node --test scripts/merge-gate-trusted.test.mjs
       - name: Require every changed test to run in CI
         run: node scripts/changed-test-coverage.mjs
       - name: Check merge command patterns in documentation
         run: node scripts/check-merge-command.mjs
+      - name: Guard COPIED.csv and harvest lists
+        run: |
+          node --test scripts/check-copied-csv.test.mjs scripts/feature-batch-ci-shard.test.mjs
+          node scripts/check-copied-csv.mjs
 
   credential-logging-guard:
     runs-on: ubuntu-latest
@@ -79,10 +85,11 @@ jobs:
           set -euo pipefail
           # Give path-filtered workflows time to register their runs.
           sleep 30
-          for attempt in $(seq 1 190); do
+          for attempt in $(seq 1 64); do
             runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
-              --jq '[.check_runs[] | select(.name != "merge-gate")]')
-            pending=$(jq '[.[] | select(.status != "completed")] | length' <<<"$runs")
+              --jq '[.check_runs[] | select(.name != "merge-gate" and .name != "merge-gate-trusted")]')
+            # CodeQL default setup can register Analyze after all other checks finish.
+            pending=$(jq '([.[] | select(.status != "completed")] | length) + (if any(.[]; .name == "Analyze (actions)") then 0 else 1 end)' <<<"$runs")
             failed=$(jq -r '[.[] | select(.status == "completed" and (.conclusion | IN("success","skipped","neutral") | not)) | "\(.name): \(.conclusion)"] | .[]' <<<"$runs")
             if [ -n "$failed" ]; then
               echo "Failed checks:"; echo "$failed"; exit 1
@@ -91,6 +98,6 @@ jobs:
               echo "All $(jq length <<<"$runs") other checks passed."; exit 0
             fi
             echo "Waiting for $pending check(s)…"
-            sleep 10
+            if [ "$attempt" -lt 64 ]; then sleep 30; fi
           done
           echo "Timed out waiting for checks."; exit 1
