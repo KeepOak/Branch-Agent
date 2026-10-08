@@ -41,8 +41,14 @@ function row(partial: Partial<Conversation> & Pick<Conversation, "key">): Conver
 }
 
 describe("tower health (towerHtmlT5)", () => {
-  it("says everything is fine, then warns, then lockdown, then checking", () => {
-    expect(towerHealth(false, false, null)).toEqual({ tone: "ok", text: "Everything is running fine." });
+  it("says checking until a real result, then fine, warn, lockdown, or a failed check", () => {
+    expect(towerHealth(false, false, null)).toEqual({ tone: "", text: "Checking every account…" });
+    expect(towerHealth(false, false, null, true)).toEqual({ tone: "warn", text: "Couldn’t check accounts right now. Branch will try again." });
+    const ok = readLimits({
+      updatedAt: NOW,
+      providers: [{ provider: "openai-codex", displayName: "ChatGPT plan", windows: [{ label: "5h", usedPercent: 23 }] }],
+    }, NOW);
+    expect(towerHealth(false, false, ok)).toEqual({ tone: "ok", text: "Everything is running fine." });
     const low = readLimits({
       updatedAt: NOW,
       providers: [{ provider: "openai-codex", displayName: "ChatGPT plan", windows: [{ label: "5h", usedPercent: 88 }] }],
@@ -50,6 +56,7 @@ describe("tower health (towerHtmlT5)", () => {
     expect(towerHealth(false, false, low)).toEqual({ tone: "warn", text: "One account is nearly used up. Everything else is fine." });
     expect(towerHealth(true, false, low)).toEqual({ tone: "bad", text: "Lockdown is on. Trunks can only read." });
     expect(towerHealth(false, true, low)).toEqual({ tone: "", text: "Checking every account…" });
+    expect(towerHealth(false, false, ok, true)).toEqual({ tone: "warn", text: "Couldn’t check accounts right now. Branch will try again." });
   });
 });
 

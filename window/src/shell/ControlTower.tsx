@@ -45,6 +45,7 @@ function useTowerLive(engine: WindowEngine, rows: Conversation[]) {
   const [endedKeys, setEndedKeys] = useState<string[]>([]);
   const [locked, setLocked] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [usageFailed, setUsageFailed] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
   const [questions, setQuestions] = useState<Record<string, unknown>[]>([]);
   const [trunks, setTrunks] = useState<{ defaultId: string; list: { id: string; name: string }[]; ready: boolean }>({ defaultId: "", list: [], ready: false });
@@ -65,7 +66,11 @@ function useTowerLive(engine: WindowEngine, rows: Conversation[]) {
       engine.request("agents.list", {}).catch(() => ({})),
       engine.request("question.list", {}).catch(() => ({})),
     ]);
-    setLimits(readUsage(usage ?? {}));
+    if (usage == null) setUsageFailed(true);
+    else {
+      setUsageFailed(false);
+      setLimits(readUsage(usage));
+    }
     setJobs(readCronJobs(cron));
     setLocked(readLocked(cfg));
     setAudit(activity);
@@ -114,9 +119,11 @@ function useTowerLive(engine: WindowEngine, rows: Conversation[]) {
     try {
       await engine.request("models.authStatus", { refresh: true }).catch(() => undefined);
       const result = await engine.request("usage.status", { refresh: true });
+      setUsageFailed(false);
       setLimits(readUsage(result));
       window.dispatchEvent(new Event("branch:usage-checked"));
     } catch {
+      setUsageFailed(true);
       setCheckError("Couldn’t check accounts right now. Branch will try again.");
     } finally {
       setChecking(false);
@@ -128,7 +135,7 @@ function useTowerLive(engine: WindowEngine, rows: Conversation[]) {
     setQuestions((current) => current.filter((row) => str(row.id) !== id));
   }, []);
 
-  return { limits, jobs, audit, endedKeys, locked, checking, checkError, trunks, questions, dropQuestion, checkNow };
+  return { limits, jobs, audit, endedKeys, locked, checking, usageFailed, checkError, trunks, questions, dropQuestion, checkNow };
 }
 
 /** Live Control tower. The preview's sample approvals and jobs are never shown as real data. */
@@ -143,7 +150,7 @@ export function ControlTower({ engine, rows, needsCount, trunkName, onOpen, onIn
   const finished = towerFinished(rows, live.audit, Date.now(), live.endedKeys);
   const coming = towerComingUp(live.jobs);
   const accounts = towerAccounts(live.limits);
-  const health = towerHealth(live.locked, live.checking, live.limits);
+  const health = towerHealth(live.locked, live.checking, live.limits, live.usageFailed);
   const listed = needs.slice(0, 5);
   const total = Math.max(needsCount, needs.length);
   const [known, setKnown] = useState<{ at: MenuAnchor; items: MenuItem[] } | null>(null);

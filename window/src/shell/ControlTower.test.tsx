@@ -189,7 +189,37 @@ describe("Control tower live sections", () => {
     expect([...host.querySelectorAll("button")].find((button) => button.textContent === "Who it knows")?.disabled).toBe(false);
     await act(async () => { [...host.querySelectorAll("button")].find((button) => button.textContent === "Check now")?.click(); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    expect(host.textContent).toContain("Couldn’t check accounts right now. Branch will try again.");
+    expect(host.querySelector(".v23-tower-health")?.textContent).toBe("Couldn’t check accounts right now. Branch will try again.");
+    expect(host.querySelector(".v23-tower-health")?.textContent).not.toContain("Everything is running fine.");
+  });
+
+  it("does not say everything is running fine when usage.status has failed or not loaded yet", async () => {
+    let failUsage: (error: unknown) => void = () => undefined;
+    const pending = new Promise((_resolve, reject) => { failUsage = reject; });
+    const request = vi.fn(async (method: string) => {
+      if (method === "usage.status") return pending;
+      if (method === "cron.list") return live["cron.list"];
+      if (method === "config.get") return live["config.get"];
+      if (method === "agents.list") return live["agents.list"];
+      if (method === "audit.activity.list") return live["audit.activity.list"];
+      if (method === "exec.approval.list" || method === "plugin.approval.list" || method === "branch.approval.list") return [];
+      return {};
+    });
+    const session = { request, onEvent: () => () => undefined, sessionKey: "agent:ada:main", scopes: ["operator.admin"] } as unknown as WindowEngine;
+    const props = { engine: session, rows: [], needsCount: 0, trunkName: (id?: string) => id ?? "", onOpen: () => undefined, onInbox: () => undefined, onClose: () => undefined };
+    const host = await show(<ControlTower {...props} />);
+    expect(host.querySelector(".v23-tower-health")?.textContent).toBe("Checking every account…");
+    expect(host.textContent).not.toContain("Everything is running fine.");
+    await act(async () => { failUsage(new Error("offline")); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(host.querySelector(".v23-tower-health")?.textContent).toBe("Couldn’t check accounts right now. Branch will try again.");
+    expect(host.textContent).not.toContain("Everything is running fine.");
+
+    if (root) await act(async () => root?.unmount());
+    root = undefined;
+    document.body.replaceChildren();
+    const healthy = await show(<ControlTower engine={engine(live)} rows={[]} needsCount={0} trunkName={(id) => id ?? ""} onOpen={() => undefined} onInbox={() => undefined} onClose={() => undefined} />);
+    expect(healthy.querySelector(".v23-tower-health")?.textContent).toBe("Everything is running fine.");
   });
 
   it("shows a finished run in Just finished without a reload", async () => {
