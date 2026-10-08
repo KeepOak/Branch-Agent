@@ -89,13 +89,21 @@ test('opens, updates, or reopens a single tracking issue', () => {
   assert.equal(other.action, 'update');
   assert.equal(other.number, 12);
 
-  const closed = nextIssueAction({ ...existing, state: 'closed' }, landing, { repo });
-  assert.equal(closed.action, 'reopen-and-update');
-  assert.equal(closed.number, 12);
   assert.equal(findTrackingIssue([
     { title: 'other', number: 1 },
     { title: TRACKING_ISSUE_TITLE, number: 12 },
   ]).number, 12);
+});
+
+test('reopens a closed tracking issue only when appending a new SHA', () => {
+  const created = nextIssueAction(null, landing, { repo });
+  const closed = { number: 12, title: TRACKING_ISSUE_TITLE, state: 'closed', body: created.body };
+  assert.deepEqual(nextIssueAction(closed, landing, { repo }), { action: 'none', number: 12 });
+
+  const appended = nextIssueAction(closed, { ...landing, sha: 'cccccccccccccccccccccccccccccccccccccccc' }, { repo });
+  assert.equal(appended.action, 'reopen-and-update');
+  assert.equal(appended.number, 12);
+  assert.match(appended.body, /cccccccccccccccccccccccccccccccccccccccc/);
 });
 
 test('parseArgs reads dry-run, sha, and repo without using process state', () => {
@@ -119,6 +127,14 @@ test('disable-auto-merge workflow only writes pull requests and does not check o
   assert.doesNotMatch(disableWorkflow, /github\.event\.pull_request\.(title|body|head)/);
   assert.match(disableWorkflow, /github\.token/);
   assert.match(disableWorkflow, /PR Closer merges by hand as a merge commit/);
+});
+
+test('disable-auto-merge comments even when disable fails, then exits non-zero', () => {
+  const run = disableWorkflow.split(/run:\s*\|/)[1] ?? '';
+  assert.match(run, /if gh api graphql/);
+  assert.match(run, /then\s*\n\s*gh pr comment "\$PR_NUMBER" --body "\$COMMENT"/);
+  assert.match(run, /else\s*\n\s*gh pr comment "\$PR_NUMBER" --body "\$COMMENT_FAILED"\s*\n\s*exit 1/);
+  assert.match(disableWorkflow, /COMMENT_FAILED: Auto-merge could not be turned off/);
 });
 
 test('push-to-main workflow tracks one issue and never reverts', () => {

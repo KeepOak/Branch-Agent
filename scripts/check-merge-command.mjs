@@ -46,7 +46,7 @@ export function checkMergeCommands(rootDir = root, docs = docsToCheck) {
       failed = true;
     }
     
-    // Must not have --squash or --rebase
+    // Must not have --squash, --rebase, or --auto
     if (cmd.includes('--squash')) {
       console.error(`${doc}: merge command must not use --squash:`);
       console.error(`  ${cmd}`);
@@ -55,6 +55,12 @@ export function checkMergeCommands(rootDir = root, docs = docsToCheck) {
     
     if (cmd.includes('--rebase')) {
       console.error(`${doc}: merge command must not use --rebase:`);
+      console.error(`  ${cmd}`);
+      failed = true;
+    }
+
+    if (cmd.includes('--auto')) {
+      console.error(`${doc}: merge command must not use --auto:`);
       console.error(`  ${cmd}`);
       failed = true;
     }
@@ -85,7 +91,7 @@ export function checkMergeCommands(rootDir = root, docs = docsToCheck) {
 }
 
   if (failed) {
-    console.error('\nMerge commands must use: gh pr merge <n> --auto --merge --match-head-commit <sha>');
+    console.error('\nMerge commands must use: gh pr merge <n> --merge --match-head-commit <sha>');
     console.error('Or REST API: PUT /repos/KeepOak/Branch-Agent/pulls/<n>/merge with merge_method: "merge" and sha');
     return false;
   } else {

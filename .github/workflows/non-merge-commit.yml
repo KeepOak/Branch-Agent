@@ -11,6 +11,8 @@ on:
       - '.github/workflows/non-merge-commit.yml'
       - 'scripts/detect-non-merge-commit.mjs'
       - 'scripts/detect-non-merge-commit.test.mjs'
+      - 'scripts/check-merge-command.mjs'
+      - 'scripts/check-merge-command.test.mjs'
 
 permissions:
   contents: read
@@ -36,7 +38,7 @@ jobs:
           node-version: '24.19.0'
           package-manager-cache: false
       - name: Test non-merge-commit detection
-        run: node --test scripts/detect-non-merge-commit.test.mjs
+        run: node --test scripts/detect-non-merge-commit.test.mjs scripts/check-merge-command.test.mjs
 
   track:
     name: Track non-merge-commit landing

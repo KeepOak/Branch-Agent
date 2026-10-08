@@ -26,9 +26,15 @@ jobs:
           PR_ID: ${{ github.event.pull_request.node_id }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           COMMENT: Auto-merge is not allowed. The PR Closer merges by hand as a merge commit pinned to the reviewed head SHA after merge-gate is green and a MERGE verdict exists on that head.
+          COMMENT_FAILED: Auto-merge could not be turned off. The PR Closer must merge by hand as a merge commit pinned to the reviewed head SHA after merge-gate is green and a MERGE verdict exists on that head.
         run: |
           set -euo pipefail
-          gh api graphql \
+          if gh api graphql \
             -f query='mutation($id:ID!){disablePullRequestAutoMerge(input:{pullRequestId:$id}){pullRequest{id}}}' \
             -f id="$PR_ID"
-          gh pr comment "$PR_NUMBER" --body "$COMMENT"
+          then
+            gh pr comment "$PR_NUMBER" --body "$COMMENT"
+          else
+            gh pr comment "$PR_NUMBER" --body "$COMMENT_FAILED"
+            exit 1
+          fi

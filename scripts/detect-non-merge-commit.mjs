@@ -91,9 +91,9 @@ export function nextIssueAction(existing, landing, opts) {
     return { action: 'create', title: TRACKING_ISSUE_TITLE, body: buildIssueBody(landing, opts) };
   }
   const { body, changed } = upsertIssueBody(existing.body, landing, opts);
+  if (!changed) return { action: 'none', number: existing.number };
   const closed = String(existing.state || '').toLowerCase() === 'closed';
   if (closed) return { action: 'reopen-and-update', number: existing.number, body };
-  if (!changed) return { action: 'none', number: existing.number };
   return { action: 'update', number: existing.number, body };
 }
 
