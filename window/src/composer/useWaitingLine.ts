@@ -74,7 +74,7 @@ export function useWaitingLine(sessionKey: string | null, working: boolean, offl
     deliverRef.current(item, false);
   }, [line, working, offline, update, sessionKey]);
 
-  const add = useCallback((text: string, files: DraftFile[]) => update((l) => enqueue(l, { id: crypto.randomUUID(), text, files })), [update]);
+  const add = useCallback((text: string, files: DraftFile[]) => update((l) => enqueue(l, { id: crypto.randomUUID(), text, files, createdAt: Date.now() })), [update]);
   const steerNow = useCallback(
     (id: string) => {
       const item = line.find((i) => i.id === id);

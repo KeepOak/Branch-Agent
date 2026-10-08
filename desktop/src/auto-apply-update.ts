@@ -14,7 +14,7 @@ export function createAutoApplyUpdate(options: {
   pendingVersion(): Promise<string | null>;
   enabled(): boolean;
   activity(): Promise<UpdateActivity>;
-  restart(version: string): Promise<void>;
+  restart(version: string, handoffOnly: boolean): Promise<void>;
   /** A flagged standby can take over while the predecessor finishes admitted work. */
   seamlessHandoff?(): boolean;
   onApplied?(version: string): void | Promise<void>;
@@ -50,10 +50,10 @@ export function createAutoApplyUpdate(options: {
         return;
       }
       if (now() < retryAfter) return;
-      if (options.seamlessHandoff?.()) {
+      if (options.seamlessHandoff?.() && failedVersion !== version) {
         restarting = true;
         decision(`prepared handoff for ${version}`);
-        try { await options.restart(version); await options.onApplied?.(version); appliedVersion = version; restarting = false; }
+        try { await options.restart(version, true); await options.onApplied?.(version); appliedVersion = version; restarting = false; }
         catch (error) {
           restarting = false;
           retryAfter = now() + AUTO_APPLY_RETRY_MS;
@@ -82,7 +82,7 @@ export function createAutoApplyUpdate(options: {
       }
       restarting = true;
       decision(`restarting for ${version}`);
-      try { await options.restart(version); await options.onApplied?.(version); appliedVersion = version; restarting = false; }
+      try { await options.restart(version, false); await options.onApplied?.(version); appliedVersion = version; restarting = false; }
       catch (error) {
         restarting = false;
         retryAfter = now() + AUTO_APPLY_RETRY_MS;

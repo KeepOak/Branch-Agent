@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Conversation } from "../connect/conversations";
-import { conversationMenuItems, OFF_REASONS, type ConversationMenuContext, type ConversationMenuRun } from "./conversation-menu";
+import { conversationMenuItems, type ConversationMenuContext, type ConversationMenuRun } from "./conversation-menu";
 import type { MenuItem } from "./Menu";
 import { conversationLink, publicShareLink, readDetail } from "./ConversationMenu";
 import { readSharing } from "./ShareDialog";
@@ -73,8 +73,11 @@ describe("P54 conversation header menu", () => {
       found.run();
     }
     expect(calls).toEqual(["search", "sidePanel", "list", "ownWindow", "computer", "browser", "theme", "guide"]);
-    const tower = items.find((i) => i.kind !== "sub" && i.kind !== "sep" && i.kind !== "head" && i.kind !== "custom" && i.label === "Hide the Control tower") as Extract<MenuItem, { disabled?: string }>;
-    expect(tower.disabled).toBe(OFF_REASONS.tower);
+    const tower = items.find((i) => i.kind !== "sub" && i.kind !== "sep" && i.kind !== "head" && i.kind !== "custom" && i.label === "Show the Control tower") as Extract<MenuItem, { run: () => void }>;
+    expect(tower.disabled).toBeUndefined();
+    tower.run();
+    expect(calls.at(-1)).toBe("tower");
+    expect(shape(conversationMenuItems(ctx("regular", true, { towerVisible: true })))).toContain("Hide the Control tower");
   });
 });
 

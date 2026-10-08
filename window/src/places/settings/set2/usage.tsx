@@ -13,7 +13,7 @@ import { Ico } from "./icons";
 import { Logo } from "../set1/service";
 import { readLimits, resetWords as sharedResetWords, type LimitRow } from "../../../shell/status-data";
 import { ModelPrices } from "./usage-prices";
-import { CKPT_PREF, CKPT_SHOW, useCkptCanShow, useCkptOn } from "../../../shell/SaveProgress";
+import { CKPT_PREF, CKPT_SHOW, useCkptOn } from "../../../shell/SaveProgress";
 import { lookStore } from "../set1/appearance-store";
 import "./usage.css";
 import { DesktopCtl } from "../desktop-ctl";
@@ -789,10 +789,9 @@ const asNum = (v: string): number | undefined => (v.trim() === "" || !Number.isF
 /** The connection rows under the allowances: what the engine doesn't do yet is greyed with why. */
 function AllowanceRows({ engine }: { engine: WindowEngine }) {
   const ckptOn = useCkptOn(engine);
-  const ckptCanShow = useCkptCanShow();
   return (
     <>
-      <Ctl title="Offer to save progress at 95%" sub={<>It asks once per account window, never for an estimate. <button type="button" className="link-k" disabled={!ckptCanShow} onClick={() => window.dispatchEvent(new Event(CKPT_SHOW))}>Show me</button></>}><Switch label="Offer to save progress at 95%" checked={ckptOn} onChange={(on) => void lookStore(engine).set(CKPT_PREF, on)} /></Ctl>
+      <Ctl title="Offer to save progress at 95%" sub={<>It asks once per account window, never for an estimate. <button type="button" className="link-k" onClick={() => window.dispatchEvent(new Event(CKPT_SHOW))}>Show me</button></>}><Switch label="Offer to save progress at 95%" checked={ckptOn} onChange={(on) => void lookStore(engine).set(CKPT_PREF, on)} /></Ctl>
       <Ctl title="Asking a service what is left" off={NO_ASK}><Switch label="Asking a service what is left" checked onChange={() => undefined} /></Ctl>
       <DesktopCtl title="Show usage in the tray" sub="A small ring by the clock opens the same list." name="trayUsage" />
     </>
