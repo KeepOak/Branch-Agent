@@ -1068,10 +1068,62 @@ function idleWindow(runtime) {
   };
   return sent;
 }
-test("automatic flagged handoff keeps a busy run and shows one confirmed notice across reload", () => fixture(async ({ root, runtime, starts, offerStaged }) => {
+
+async function defaultHandoff(root) {
+  const file = join(root, "desktop.json");
+  const cfg = JSON.parse(await readFile(file, "utf8"));
+  delete cfg.seamlessHandoff;
+  await writeFile(file, JSON.stringify(cfg));
+}
+
+test("automatic default handoff without a standby applies after the idle drain hold", () => fixture(async ({ root, runtime, starts, offerStaged, clock }) => {
+  const sent = idleWindow(runtime), old = (await starts())[0];
+  assert.equal(Object.hasOwn(JSON.parse(await readFile(join(root, "desktop.json"), "utf8")), "seamlessHandoff"), false);
+  await stageFixtureUpdate(root); await writeFile(join(root, "release-ready"), "ready");
+  offerStaged();
+  await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"));
+  assert.equal(alive(old), true);
+  clock.skew = 61_000; offerStaged();
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("auto-apply: idle hold"));
+  assert.equal((await starts()).length, 1, "idle hold started a replacement early");
+  clock.skew = 122_000; offerStaged();
+  await eventually(() => sent.some(([channel]) => channel === "branch-desktop:update-applied"));
+  assert.equal(alive(old), false);
+  assert.equal((await starts()).length, 2);
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /engine swapped in place; /);
+}, false, false, false, "never", false, defaultHandoff));
+
+for (const refusal of ["refuse-deactivate", "no-handoff"]) {
+  test(`automatic ${refusal} falls back to drain without warming another standby`, () => fixture(async ({ root, runtime, starts, offerStaged, clock }) => {
+    const sent = idleWindow(runtime), old = (await starts())[0];
+    await stageFixtureUpdate(root); await writeFile(join(root, "release-ready"), "ready");
+    await writeFile(join(root, refusal), "1");
+    offerStaged();
+    await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"), 30_000);
+    const failedStarts = await starts();
+    assert.equal(alive(old), true);
+    await eventually(() => failedStarts.slice(1).every(pid => !alive(pid)));
+    clock.skew = 61_000; offerStaged();
+    await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("auto-apply: idle hold"));
+    assert.equal((await starts()).length, failedStarts.length);
+    clock.skew = 122_000; offerStaged();
+    await eventually(() => sent.some(([channel]) => channel === "branch-desktop:update-applied"), 30_000);
+    assert.equal(alive(old), false);
+    const launches = (await starts()).slice(failedStarts.length);
+    assert.equal(launches.length, 1);
+    assert.equal(JSON.parse(await readFile(join(root, `launch-${launches[0]}.json`), "utf8")).standby, false);
+  }, false, false, false, true, false, async root => {
+    await defaultHandoff(root);
+    process.env.BRANCH_DESKTOP_STEP_DOWN_TIMEOUT_MS = "100";
+    process.env.BRANCH_DESKTOP_ROLLBACK_TIMEOUT_MS = "100";
+  }));
+}
+test("automatic default handoff keeps a busy run and shows one confirmed notice across reload", () => fixture(async ({ root, runtime, starts, offerStaged }) => {
   const sent = idleWindow(runtime);
   const old = (await starts())[0];
   await writeFile(join(root, "busy-run"), "1");
+  await writeFile(join(root, "busy"), "1");
+  await writeFile(join(root, "transcript.txt"), "");
   await stageFixtureUpdate(root); await writeFile(join(root, "release-ready"), "ready");
   offerStaged();
   await eventually(() => sent.some(([channel]) => channel === "branch-desktop:update-applied"), 30_000);
@@ -1079,11 +1131,15 @@ test("automatic flagged handoff keeps a busy run and shows one confirmed notice 
   assert.equal(notice.version, "fixture-next");
   assert.ok(notice.expiresAt > Date.now());
   assert.equal(alive(old), true, "automatic update killed the busy predecessor");
+  assert.ok(existsSync(join(root, `released-${old}`)));
+  assert.equal(existsSync(join(root, `drained-${old}`)), false);
   assert.doesNotMatch(await readFile(join(root, "desktop.log"), "utf8"), /auto-apply: idle hold|old engine drained/);
   runtime.window.webContents.emit("did-finish-load");
   await eventually(() => sent.filter(([channel]) => channel === "branch-desktop:update-applied").length === 2);
   assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:update-applied").map(([, value]) => value), [notice, notice]);
-}, false, false, false, true, false, handoffOn()));
+  await eventually(async () => (await readFile(join(root, "transcript.txt"), "utf8")) === "old run final\n");
+  await eventually(() => !alive(old));
+}, false, false, false, true, false, defaultHandoff));
 
 test("failed automatic flagged standby postpones once without draining the serving engine", () => fixture(async ({ root, runtime, starts, offerStaged, clock }) => {
   const sent = idleWindow(runtime);
@@ -1095,6 +1151,8 @@ test("failed automatic flagged standby postpones once without draining the servi
   assert.equal(existsSync(join(root, `drained-${old}`)), false, "automatic failure drained the serving engine");
   assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-update-failed"), []);
   clock.skew = 61_000; offerStaged();
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("auto-apply: idle hold"));
+  clock.skew = 122_000; offerStaged();
   await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("failed 1 time(s)"), 30_000);
   assert.equal(sent.filter(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept").length, 1);
 }, false, false, false, true, false, handoffOn()));

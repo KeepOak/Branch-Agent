@@ -271,7 +271,7 @@ const engineServing = (): boolean => engineRunning() && gateway === readyGateway
  * engine's state lock means the standby can only bind and become ready after the old engine has released state.
  * A staged desktop app is never applied here; it waits for the next natural launch.
  */
-async function swapEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle): Promise<void> {
+async function swapEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle, handoffOnly = false): Promise<void> {
   // `held`: the caller (Undo) already holds the update lock and keeps it; otherwise the swap takes it.
   if (!gateway || !win || (held ? !updateLock.holds(held) : updateLock.held)) throw new Error("The desktop is not ready to update");
   // A crash restart always runs first: an update never cancels it, and never starts with no engine serving.
@@ -293,7 +293,7 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
     if (preparation.signal.aborted || !engineServing()) throw new Error("The serving engine exited during update preparation");
     await prepareUpdateStandby(label, explicit);
     if (preparation.signal.aborted || !engineServing()) throw new Error("The serving engine exited during standby warmup");
-    if (!explicit && seamlessHandoff() && (!standby || retiring.size > 0)) {
+    if (handoffOnly && (!standby || retiring.size > 0)) {
       throw new Error("A standby is needed to hand off without interrupting running work");
     }
     priorGateway.off("exit", priorExited);
@@ -305,7 +305,7 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
     if (standby && seamlessHandoff() && retiring.size > 0) log(`update ${label}: an old engine is still finishing its sessions; using the guarded swap`);
     const handoff = standby && seamlessHandoff() && retiring.size === 0
       ? await handOffToStandby(label, priorGateway, standby, resumeSupervision, attempt) : "drain";
-    if (!explicit && seamlessHandoff() && handoff === "drain") {
+    if (handoffOnly && handoff === "drain") {
       resumeSupervision();
       throw new Error("The previous engine could not hand off; it keeps serving until a retry");
     }
@@ -442,6 +442,8 @@ async function handOffToStandby(label: string, prior: ChildProcess, selected: Pr
   const stepped = await deactivateGateway(prior, STEP_DOWN_TIMEOUT_MS);
   if (quitting) throw new Error("Branch Agent is quitting");
   if (stepped !== "ok") {
+    // A warm child is not enough: an incompatible predecessor must not trigger another warmup every retry.
+    standbyFailures.set(label, STANDBY_ATTEMPTS);
     // Never told to take over, the standby never takes the state: stop it.
     standby = undefined;
     await killGatewayAndWait(selected.child);
@@ -460,7 +462,6 @@ async function handOffToStandby(label: string, prior: ChildProcess, selected: Pr
       resumeSupervision();
       throw new Error("the running engine could not step down for the update and kept serving");
     }
-    standbyFailures.set(label, STANDBY_ATTEMPTS);
     notServing(prior);
     resumeSupervision();
     throw new Error(`the running engine could not step down (${stepped}) and is not serving; Branch restarts it`);
@@ -632,8 +633,8 @@ const autoApply = createAutoApplyUpdate({
     return { activeRuns: Math.max(engine.activeRuns, engine.totalActive), pendingApprovals: window.pendingApprovals,
       streaming: engine.pendingReplies > 0 || window.streaming, unsavedDraftFiles: window.unsavedDraftFiles };
   },
-  restart: async version => {
-    await swapEngineInPlace(version, false);
+  restart: async (version, handoffOnly) => {
+    await swapEngineInPlace(version, false, undefined, handoffOnly);
     if ((await readComponentUpdateStatus(cfg)).currentVersion !== version) throw new Error("The new release was not confirmed");
   },
   onApplied: async version => {
