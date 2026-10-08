@@ -1,6 +1,6 @@
 // node --test scripts/detect-non-merge-commit.test.mjs
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   ISSUE_INTRO,
@@ -122,4 +122,10 @@ test('push-to-main workflow tracks one issue and never reverts', () => {
   assert.doesNotMatch(trackWorkflow, /git\s+(revert|reset|push)/);
   assert.doesNotMatch(detectorSource, /git\s+(revert|reset|push)/);
   assert.match(ISSUE_INTRO, /does not revert/);
+});
+
+test('does not restore a write-permission pull_request_target auto-merge workflow', () => {
+  assert.equal(existsSync(new URL('../.github/workflows/disable-auto-merge.yml', import.meta.url)), false);
+  assert.doesNotMatch(trackWorkflow, /pull_request_target/);
+  assert.doesNotMatch(trackWorkflow, /auto_merge_enabled/);
 });

@@ -1,5 +1,6 @@
 name: Non-merge-commit landing
 
+# Backup if repo settings ever allow squash, rebase, or auto-merge again.
 # On main, record squash or rebase PR landings. Never revert.
 # On pull requests that touch these guards, run the detector tests.
 on:
