@@ -11,6 +11,16 @@ import {
 } from './changed-test-coverage.mjs';
 import { checkMergeCommands, docsToCheck } from './check-merge-command.mjs';
 import { checkUIProof } from './check-ui-proof.mjs';
+import {
+  DEFAULT_WAIT_BUDGET_SECONDS,
+  GH_API_MAX_BUFFER,
+  execGhApi,
+  fetchGitHubRateLimit,
+  ghApiArgs,
+  isRateLimitError as rateLimitIsRateLimitError,
+  pollIntervalSeconds,
+  withRateLimitRetry,
+} from './merge-gate-rate-limit.mjs';
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const TRUSTED_JOB = 'merge-gate-trusted';
@@ -34,6 +44,8 @@ export const GATE_SCRIPTS = [
   'scripts/feature-batch-ci-targets.mjs',
   'scripts/feature-slice-ci-targets.mjs',
   'scripts/priority-capabilities-ci-targets.mjs',
+  'scripts/merge-gate-rate-limit.mjs',
+  'scripts/merge-gate-rate-limit.test.mjs',
 ];
 export const PACKAGE_JSON_FILES = [
   'package.json',
@@ -130,9 +142,6 @@ export function findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
   allowedWorkflowPath = TRUSTED_WORKFLOW_PATH,
   allowedRunId,
   allowedEvent = 'pull_request_target',
-  sha,
-  prNumber,
-  baseRef,
 } = {}) {
   const currentId = allowedRunId == null || allowedRunId === '' ? null : Number(allowedRunId);
   return checkRuns.filter((run) => run.name === jobName).filter((run) => {
@@ -148,15 +157,12 @@ export function findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
         || Number(run.check_suite.id) !== Number(workflow.checkSuiteId)) return true;
       return false;
     }
+    // Sibling or earlier runs of this workflow on pull_request_target are
+    // genuine. GitHub often omits pull_requests and can disagree on suite or
+    // head SHA for that event, which previously failed a second legitimate run.
     if (!workflow || workflow.id == null || workflow.id === '') return true;
     if (workflow.path !== allowedWorkflowPath) return true;
     if (workflow.event !== allowedEvent) return true;
-    if (workflow.checkSuiteId == null || run.check_suite?.id == null
-      || Number(run.check_suite.id) !== Number(workflow.checkSuiteId)) return true;
-    if (!sha || workflow.headSha !== sha) return true;
-    const prs = workflow.pullRequests ?? [];
-    if (!prNumber || !prs.some((pr) => Number(pr.number) === Number(prNumber))) return true;
-    if (!baseRef || prs.some((pr) => pr.base !== baseRef)) return true;
     return false;
   });
 }
@@ -419,11 +425,13 @@ export function coverageFromPrFiles(files, desktopWorkflow, extraNamed = [], han
 }
 
 export function isRateLimitError(error) {
+  return rateLimitIsRateLimitError(error);
   const text = `${error?.stderr ?? ''}\n${error?.message ?? ''}\n${error?.stdout ?? ''}`;
   return /rate limit exceeded/i.test(text);
 }
 
 export function ghApi(repo, token, requestPath, { paginate = false, retries = 6 } = {}) {
+  return ghApiWithRetry(repo, token, requestPath, { paginate, retries });
   const args = ['api', `repos/${repo}/${requestPath}`, '-H', 'Accept: application/vnd.github+json'];
   if (paginate) args.splice(1, 0, '--paginate');
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -442,6 +450,36 @@ export function ghApi(repo, token, requestPath, { paginate = false, retries = 6 
     }
   }
   return null;
+}
+
+export function ghApiWithRetry(repo, token, requestPath, {
+  paginate = false,
+  retries = Number.POSITIVE_INFINITY,
+  sleep = sleepSeconds,
+  now = Date.now,
+  fetchRateLimit,
+  startedAt,
+  budgetSeconds,
+  random,
+  log = console.log,
+  jq,
+  maxBuffer = GH_API_MAX_BUFFER,
+} = {}) {
+  const includeHeaders = !paginate && !jq;
+  const args = ghApiArgs(`repos/${repo}/${requestPath}`, { paginate, includeHeaders, jq });
+  return withRateLimitRetry(() => {
+    const parsed = execGhApi(args, { token, includeHeaders, maxBuffer });
+    return parsed.json;
+  }, {
+    sleep,
+    now,
+    fetchRateLimit: fetchRateLimit ?? (() => fetchGitHubRateLimit(token)),
+    startedAt,
+    budgetSeconds: budgetSeconds ?? Number(process.env.MERGE_GATE_WAIT_SECONDS ?? DEFAULT_WAIT_BUDGET_SECONDS),
+    maxRetries: retries,
+    random,
+    log,
+  });
 }
 
 export function normalizeCheckRunPages(payload) {
@@ -630,13 +668,19 @@ function runMergeCommandCheck(repo, sha, token) {
 export function pollTrustedGate({
   repo, sha, token, changedFiles, coreWorkflows, currentRunId, prNumber, baseRef,
   maxAttempts = 64, pollSeconds = 30,
+  waitBudgetSeconds = DEFAULT_WAIT_BUDGET_SECONDS, startedAt,
 }, {
   fetchChecks = fetchCheckRuns,
   resolveWorkflows = resolveWorkflowsForCheckRuns,
   sleep = sleepSeconds,
   log = console.log,
   error = console.error,
+  now = Date.now,
 } = {}) {
+  return pollTrustedGateWithBudget({
+    repo, sha, token, changedFiles, coreWorkflows, currentRunId, prNumber, baseRef,
+    maxAttempts, pollSeconds, waitBudgetSeconds, startedAt,
+  }, { fetchChecks, resolveWorkflows, sleep, log, error, now });
   const attributionCache = new Map();
   let last = { pending: [], others: [] };
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -669,6 +713,63 @@ export function pollTrustedGate({
   return 1;
 }
 
+export function pollTrustedGateWithBudget({
+  repo, sha, token, changedFiles, coreWorkflows, currentRunId, prNumber, baseRef,
+  maxAttempts = 64, pollSeconds, waitBudgetSeconds = DEFAULT_WAIT_BUDGET_SECONDS, startedAt,
+}, {
+  fetchChecks = fetchCheckRuns, resolveWorkflows = resolveWorkflowsForCheckRuns,
+  sleep = sleepSeconds, log = console.log, error = console.error, now = Date.now,
+} = {}) {
+  const attributionCache = new Map();
+  let last = { pending: [], others: [] };
+  const start = startedAt ?? now();
+  const remaining = () => waitBudgetSeconds - (now() - start) / 1000;
+  for (let attempt = 1; attempt <= maxAttempts; ) {
+    if (remaining() < 1) break;
+    let checkRuns;
+    try {
+      checkRuns = fetchChecks(repo, sha, token);
+    } catch (err) {
+      if (!isRateLimitError(err)) throw err;
+      if (remaining() < 1) break;
+      const wait = Math.min(pollSeconds ?? pollIntervalSeconds(0), remaining());
+      log(`GitHub API rate limited; retrying in ${Math.ceil(wait)}s…`);
+      sleep(wait);
+      continue;
+    }
+    const unresolved = checkRuns.filter((run) => run.status !== 'completed' || !attributionCache.has(run.id));
+    const workflowsByCheckId = {
+      ...Object.fromEntries(attributionCache),
+      ...resolveWorkflows(repo, token, unresolved, { attributionCache }),
+    };
+    const result = evaluateTrustedGate({
+      checkRuns, workflowsByCheckId, changedFiles, coreWorkflows, currentRunId,
+      sha, prNumber, baseRef,
+    });
+    last = result;
+    if (result.failed.length || result.foreignTrusted.length) {
+      for (const message of result.errors) error(message);
+      return 1;
+    }
+    if (result.ready) {
+      if (result.missingCore.length) {
+        for (const message of result.errors) error(message);
+        return 1;
+      }
+      log(`All ${result.others.length} other checks passed.`);
+      return 0;
+    }
+    log(`Waiting for checks (running: ${result.pending.length}, unresolved current claims: ${result.unresolvedCurrent.length}, including required Analyze)…`);
+    if (attempt >= maxAttempts || remaining() < 1) break;
+    sleep(Math.min(pollSeconds ?? pollIntervalSeconds(attempt - 1), remaining()));
+    attempt += 1;
+  }
+
+  const analyze = (last.others ?? []).find((run) => run.name === 'Analyze (actions)');
+  error(formatTimeoutMessage(last.pending, { missingAnalyze: !analyze }));
+  return 1;
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const repo = process.env.REPO;
   const sha = process.env.SHA;
@@ -677,6 +778,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const baseRef = process.env.BASE_REF;
   const maxAttempts = Number(process.env.MERGE_GATE_MAX_ATTEMPTS ?? 64);
   const pollSeconds = Number(process.env.MERGE_GATE_POLL_SECONDS ?? 30);
+  const waitBudgetSeconds = Number(process.env.MERGE_GATE_WAIT_SECONDS ?? DEFAULT_WAIT_BUDGET_SECONDS);
   const initialWait = Number(process.env.MERGE_GATE_INITIAL_WAIT ?? 30);
 
   if (!repo || !sha || !token || !prNumber || !baseRef) {
@@ -706,5 +808,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   process.exit(pollTrustedGate({
     repo, sha, token, changedFiles, coreWorkflows,
     currentRunId: process.env.GITHUB_RUN_ID, prNumber, baseRef, maxAttempts, pollSeconds,
+    waitBudgetSeconds,
   }));
 }
