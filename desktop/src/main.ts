@@ -933,8 +933,6 @@ async function start(): Promise<void> {
   win = createWindow();
   await win.loadURL(STARTING);
   log(`starting page shown after ${Date.now() - launchStarted} ms`);
-  const desktopVersion = await confirmDesktopUpdate(cfg);
-  if (desktopVersion) log(`desktop update ${desktopVersion} started; confirmed`);
   // Engines the last session started and left running (a crash mid-update): retire them before starting our own.
   await retireRecordedEngines(cfg.dataDir, log);
   for (const port of [cfg.gatewayPort, cfg.windowPort]) {
@@ -1014,6 +1012,7 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
     log(`Mac computer driver unavailable: ${String(error)}`);
     return undefined;
   });
+  if (!prepared) log("starting gateway");
   const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port, macComputerEndpoint);
   if (prepared?.child.pid !== undefined) writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prepared.child.pid));
   if (prepared) {
@@ -1029,6 +1028,10 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
 `);
   // Ready means listening on its own port and answering /readyz there; only then does the window follow it.
   await waitForReady({ ...cfg, gatewayPort: port }, child, options.readyTimeoutMs ?? READY_TIMEOUT_MS);
+  // App-code confirmation waits for a ready gateway so a startup crash (broken-link migration)
+  // rolls the desktop update back instead of looping on the new app at "window loaded".
+  const desktopVersion = await confirmDesktopUpdate(cfg);
+  if (desktopVersion) log(`desktop update ${desktopVersion} started; confirmed`);
   // Only a confirmed engine moves the live port: a rollback reboots on the port the window already uses.
   // A handoff's standby that is ready owns the state, channels and cron: a failed confirmation never rolls it back.
   if (confirmUpdate) {
