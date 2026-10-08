@@ -12,8 +12,9 @@
 // Budgets, measured from the click:
 // - Cached: 300ms, and one render step. The transcript was already read. The
 //   header, messages and composer change together on the click. No later frame
-//   before the refresh may show a different thread. Header back and forward
-//   use that same path.
+//   before the refresh may show a different thread. Releasing that refresh
+//   must keep the same header and messages. Header back and forward use that
+//   same path.
 // - Uncached: 1000ms. The mock holds the unread chat.history for 150ms, one
 //   engine round trip. The first message must be visible within 1000ms of the
 //   click. A multi-second wait on the empty start screen fails. Any sampled
