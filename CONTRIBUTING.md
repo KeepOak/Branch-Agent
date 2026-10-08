@@ -105,7 +105,7 @@ Every child process Branch starts on Windows (the engine, shells, probes, git, P
 
 ## Releases and component updates
 
-`.github/workflows/component-release.yml` publishes a GitHub release on a 30-minute schedule at :07 and :37 past each hour, for a source-version tag, or from a manual run — not on each merge. Scheduled and manual runs skip when main has not moved since the last release or when a check on main's head has failed. A published release has four components:
+`.github/workflows/component-release.yml` publishes a GitHub release on a 30-minute schedule at :07 and :37 past each hour, from a push to main when the latest release is more than 25 minutes old, for a source-version tag, or from a manual run — not on each merge. Scheduled, manual, and push-backup runs skip when main has not moved since the last release or when a check on main's head has failed. A published release has four components:
 
 | Component | Asset |
 |---|---|
