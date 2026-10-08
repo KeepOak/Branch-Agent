@@ -46,6 +46,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
     - `gh pr merge <number> --merge --match-head-commit <reviewed-sha>`
     - REST API: `PUT /repos/KeepOak/Branch-Agent/pulls/<number>/merge` with `{"merge_method": "merge", "sha": "<reviewed-sha>"}`
     The repository allows merge commits only and has auto-merge turned off. A workflow opens one tracking issue if anything lands on main as a squash or rebase.
+    Only the PR reviewer (Branch PR Closer) adds the `gate-change-reviewed: <full head SHA>` marker, after reviewing the workflow and gate-file changes on that exact head. Fixers and authors never add it.
 
 13. **CI has a hard 15-minute cap.** Every check job sets `timeout-minutes: 15` or less; the merge-gate job allows up to 35 because it waits for the others. A change that makes CI slower than the cap gets split, sharded or cut, never given a longer timeout.
 
