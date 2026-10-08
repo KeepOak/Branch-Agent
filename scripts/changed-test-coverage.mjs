@@ -42,6 +42,183 @@ export function workflowHasPullRequestTrigger(workflow) {
   return /^on:\s*$/m.test(text) && /^\s+pull_request\s*:/m.test(text);
 }
 
+export function hasYamlAnchorsOrAliases(workflow) {
+  const stripped = String(workflow ?? '').replace(/(^|[ \t])#.*$/gm, '$1');
+  return /(?:^|[\s,{:[|-])[&*][A-Za-z_][\w-]*|[ \t]<<:[ \t]*\*/.test(stripped);
+}
+
+const PLAIN_TEST_PATH = /^(?:[\w.-]+\/)*[\w.-]+\.test\.(?:ts|tsx|mjs|mts)$/;
+const ALLOWED_RUN = /^node --test(?: [\w./-]+\.test\.(?:ts|tsx|mjs|mts))+$/;
+
+export function isPlainDesktopTestPath(token) {
+  return typeof token === 'string' && !token.includes('..') && PLAIN_TEST_PATH.test(token);
+}
+
+export function isAllowlistedDesktopRun(command) {
+  const value = String(command ?? '').trim();
+  if (!ALLOWED_RUN.test(value)) return false;
+  return value.slice('node --test '.length).split(/\s+/).every(isPlainDesktopTestPath);
+}
+
+function parseNeedsValue(raw) {
+  const value = String(raw ?? '').trim();
+  if (!value) return null;
+  if (/^\[.*\]$/.test(value)) {
+    const inner = value.slice(1, -1).trim();
+    if (!inner) return [];
+    const ids = inner.split(',').map((item) => item.trim().replace(/^['"]|['"]$/g, ''));
+    return ids.every((id) => /^[A-Za-z_][\w-]*$/.test(id)) ? ids : null;
+  }
+  const id = value.replace(/^['"]|['"]$/g, '');
+  return /^[A-Za-z_][\w-]*$/.test(id) ? [id] : null;
+}
+
+function collectWorkflowJobs(workflow) {
+  const jobs = new Map();
+  const lines = String(workflow).split(/\r?\n/);
+  let index = 0;
+  while (index < lines.length && !/^jobs:\s*$/.test(lines[index])) index += 1;
+  if (index >= lines.length) return jobs;
+  index += 1;
+
+  let current = null;
+  let mode = 'job';
+  let step = null;
+
+  const finishStep = () => {
+    if (current && step) current.steps.push(step);
+    step = null;
+  };
+  const finishJob = () => {
+    finishStep();
+    if (current) jobs.set(current.id, current);
+    current = null;
+    mode = 'job';
+  };
+
+  for (; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.trim() === '' || /^\s*#/.test(line)) continue;
+    if (/^\S/.test(line)) {
+      finishJob();
+      break;
+    }
+
+    const jobMatch = /^  ([A-Za-z_][\w-]*):\s*$/.exec(line);
+    if (jobMatch) {
+      finishJob();
+      current = {
+        id: jobMatch[1],
+        hasIf: false,
+        hasMatrixIncludeOrExclude: false,
+        needs: [],
+        needsUnparseable: false,
+        steps: [],
+      };
+      mode = 'job';
+      continue;
+    }
+    if (!current) continue;
+
+    if (mode === 'needs-list') {
+      const item = /^      -\s+(\S+)/.exec(line);
+      if (item) {
+        const id = item[1].replace(/^['"]|['"]$/g, '');
+        if (/^[A-Za-z_][\w-]*$/.test(id)) current.needs.push(id);
+        else current.needsUnparseable = true;
+        continue;
+      }
+      mode = 'job';
+    }
+
+    if (mode === 'strategy') {
+      if (/^\s+(exclude|include):/.test(line)) {
+        current.hasMatrixIncludeOrExclude = true;
+        continue;
+      }
+      if (/^    [A-Za-z_][\w-]*:/.test(line)) mode = 'job';
+      else continue;
+    }
+
+    if (mode === 'steps' || /^    steps:\s*$/.test(line)) {
+      if (/^    steps:\s*$/.test(line)) {
+        mode = 'steps';
+        continue;
+      }
+      if (/^      - /.test(line)) {
+        finishStep();
+        step = { hasIf: false, run: null };
+        if (/^      - if:/.test(line)) step.hasIf = true;
+        const runSame = /^      - run:\s*(.*)$/.exec(line);
+        if (runSame) step.run = runSame[1];
+        continue;
+      }
+      if (step && /^        if:/.test(line)) {
+        step.hasIf = true;
+        continue;
+      }
+      if (step) {
+        const runIndented = /^        run:\s*(.*)$/.exec(line);
+        if (runIndented) {
+          step.run = runIndented[1];
+          continue;
+        }
+      }
+      if (step && /^        /.test(line)) continue;
+      if (/^    [A-Za-z_][\w-]*:/.test(line)) {
+        finishStep();
+        mode = 'job';
+      } else {
+        continue;
+      }
+    }
+
+    if (/^    if:/.test(line)) {
+      current.hasIf = true;
+      continue;
+    }
+    const needs = /^    needs:\s*(.*)$/.exec(line);
+    if (needs) {
+      const rest = needs[1].trim();
+      if (!rest || rest === '|' || rest === '>') {
+        mode = 'needs-list';
+        continue;
+      }
+      const parsed = parseNeedsValue(rest);
+      if (parsed == null) current.needsUnparseable = true;
+      else current.needs.push(...parsed);
+      continue;
+    }
+    if (/^    strategy:\s*$/.test(line)) {
+      mode = 'strategy';
+      continue;
+    }
+    if (/^    steps:\s*$/.test(line)) {
+      mode = 'steps';
+    }
+  }
+  finishJob();
+  return jobs;
+}
+
+export function allowlistedDesktopRunTargets(workflow) {
+  const targets = new Set();
+  if (!workflowHasPullRequestTrigger(workflow) || hasYamlAnchorsOrAliases(workflow)) return targets;
+  const jobs = collectWorkflowJobs(workflow);
+  for (const job of jobs.values()) {
+    if (job.hasIf || job.hasMatrixIncludeOrExclude || job.needsUnparseable) continue;
+    if (job.needs.some((id) => !jobs.has(id) || jobs.get(id).hasIf)) continue;
+    for (const step of job.steps) {
+      if (step.hasIf || !isAllowlistedDesktopRun(step.run)) continue;
+      for (const token of step.run.trim().slice('node --test '.length).split(/\s+/)) {
+        if (!isPlainDesktopTestPath(token)) continue;
+        targets.add(token.startsWith('desktop/') ? token : `desktop/${token}`);
+      }
+    }
+  }
+  return targets;
+}
+
 export function pullRequestDesktopRunTargets(workflow) {
   if (!workflowHasPullRequestTrigger(workflow)) return new Set();
   return desktopRunTargets(workflow);
