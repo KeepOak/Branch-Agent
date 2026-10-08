@@ -527,6 +527,21 @@ describe("browser config", () => {
       ).toEqual(expected);
     });
 
+    it("defaults local managed Chrome to headless when Auto/unset, even with a Linux display", () => {
+      const resolved = resolveBrowserConfig({});
+      const profile = resolveProfile(resolved, "branch")!;
+      expect(
+        resolveManagedBrowserHeadlessMode(resolved, profile, {
+          platform: "linux",
+          env: {
+            DISPLAY: ":0",
+            WAYLAND_DISPLAY: "wayland-0",
+            [BROWSER_HEADLESS_ENV_KEY]: undefined,
+          },
+        }),
+      ).toEqual({ headless: true, source: "default" });
+    });
+
     it("returns an actionable error only when headed mode is explicitly selected", () => {
       const defaultResolved = resolveBrowserConfig({});
       const defaultProfile = resolveProfile(defaultResolved, "branch")!;

@@ -231,9 +231,21 @@ export function DoneLine({ block, name, words }: { block: Of<"done">; name: stri
 /** Asks the window to open the Gateway popover (§4.9.3) from the thread ("Couldn't finish" › Check status). */
 export const CHECK_STATUS_EVENT = "branch:check-status";
 
+/** The real Settings switch named by the computer tool when no device is connected. */
+export const SCREEN_CONTROL_SWITCH = "See the screen and use the mouse";
+
+export function isScreenControlSetupError(message: string): boolean {
+  return message.includes(SCREEN_CONTROL_SWITCH);
+}
+
+function openScreenControlSwitch(): void {
+  window.dispatchEvent(new CustomEvent("branch:navigate-settings", { detail: { page: "computer" } }));
+}
+
 /** "Couldn't finish" (§4.2.2 Parity adds): the reason, a Details fold, Copy error, Check status and × Dismiss. */
 export function ErrorBlock({ block, onDismiss }: { block: Of<"error">; onDismiss: () => void }) {
   const { name, toast } = useThread();
+  const screenSwitch = isScreenControlSetupError(block.message);
   return (
     <div className="strip indent" data-testid="run-error" role="alert">
       <div className="strip-line">
@@ -256,6 +268,11 @@ export function ErrorBlock({ block, onDismiss }: { block: Of<"error">; onDismiss
         <button type="button" className="btn sm ghost" onClick={() => void copyText(block.message, toast)}>
           Copy error
         </button>
+        {screenSwitch ? (
+          <button type="button" className="btn sm" data-testid="open-screen-control" onClick={openScreenControlSwitch}>
+            Open that switch
+          </button>
+        ) : null}
         <button type="button" className="btn sm ghost" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); window.dispatchEvent(new CustomEvent(CHECK_STATUS_EVENT, { detail: { left: r.left, right: r.right, top: r.top } })); }}>
           Check status
         </button>

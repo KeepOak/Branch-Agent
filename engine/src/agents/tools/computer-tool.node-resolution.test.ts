@@ -656,7 +656,7 @@ describe("createComputerTool node resolution", () => {
         { nodeId: "phone", platform: "ios", connected: true, commands: [] },
       ],
       node: undefined,
-      error: /no connected computer-capable node/,
+      error: /no computer-control device is connected.*See the screen and use the mouse/,
     },
     ...["requested-desktop", "Requested-Desktop"].map((nodeId) => ({
       name: `ineligible id ${nodeId} takes precedence over an eligible display name`,

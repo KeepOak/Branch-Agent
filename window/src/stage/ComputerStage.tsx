@@ -9,6 +9,7 @@ import type { ProgressCard } from "../thread/PlanCard";
 import { Menu, type MenuAnchor, type MenuItem } from "../shell/Menu";
 import { SIcon } from "./stage-icons";
 import { useDesktopView, type DesktopView } from "./use-desktop";
+import { announceComputerControl, listenComputerControl } from "../thread/computer-card";
 import { describePlacement, listComputers, pickerLabel, placementComputer, planSteps, stagePill, type Computer, type Placement, type PlanStep } from "./computers";
 import { ComputerPicker } from "./ComputerPicker";
 import { AddComputer } from "./AddComputer";
@@ -171,6 +172,11 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
     window.addEventListener("branch:computers-changed", changed);
     return () => window.removeEventListener("branch:computers-changed", changed);
   }, []);
+  useEffect(() => {
+    announceComputerControl(control);
+  }, [control]);
+  useEffect(() => listenComputerControl((next) => setControl((cur) => (cur === next ? cur : next))), []);
+  useEffect(() => () => announceComputerControl(false), []);
   const current = placementComputer(where.placement);
   const screens = where.computers.filter((c) => c.desktop || c.id === current);
   const viewing = picked === "grid" ? null : picked ?? current;
