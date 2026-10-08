@@ -5,12 +5,14 @@ name: Engine handoff checks
 on:
   pull_request:
     paths:
+      - 'engine/src/agents/main-session-recovery/**'
       - 'engine/src/cli/gateway-cli/**'
       - 'engine/src/cli/run-main.ts'
       - 'engine/src/cron/store/receipt-authority-owner*'
       - 'engine/src/process/session-handoff-*'
       - 'engine/src/process/command-queue.ts'
       - 'engine/src/gateway/server-lifecycle*'
+      - 'engine/src/gateway/server-startup-session-migration.ts'
       - 'engine/src/gateway/server-cron*'
       - 'engine/src/gateway/server-handoff-error.ts'
       - 'engine/src/gateway/server/http-listen.ts'
@@ -30,12 +32,14 @@ on:
   push:
     branches: [main]
     paths:
+      - 'engine/src/agents/main-session-recovery/**'
       - 'engine/src/cli/gateway-cli/**'
       - 'engine/src/cli/run-main.ts'
       - 'engine/src/cron/store/receipt-authority-owner*'
       - 'engine/src/process/session-handoff-*'
       - 'engine/src/process/command-queue.ts'
       - 'engine/src/gateway/server-lifecycle*'
+      - 'engine/src/gateway/server-startup-session-migration.ts'
       - 'engine/src/gateway/server-cron*'
       - 'engine/src/gateway/server-handoff-error.ts'
       - 'engine/src/gateway/server/http-listen.ts'
@@ -53,12 +57,18 @@ on:
       - 'desktop/scripts/restart-engine.test.mjs'
       - '.github/workflows/engine-handoff-checks.yml'
   workflow_dispatch:
+    inputs:
+      windows_regressions_only:
+        description: Run the Windows lease-gate and held-drain lanes only
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: engine-handoff-${{ github.ref }}
+  # Independent manual proof runs must not replace each other's pending run.
+  group: engine-handoff-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'automatic' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -69,26 +79,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        shard:
-          - name: turn-order
-            pattern: 'hands the state to the standby'
-          - name: same-session
-            pattern: "queues B's turn on S"
-          - name: held-drain
-            pattern: 'keeps A alive on drain-stop'
-          - name: rollback-before
-            pattern: 'rolls back before the standby'
-          - name: channel-and-cron
-            pattern: 'starts the successor channel'
-          - name: desktop-before
-            pattern: 'takes the state back when the desktop'
-          - name: rollback-after
-            pattern: 'does not roll the old engine'
-          - name: desktop-after
-            pattern: 'finishes and stops the old engine'
-          - name: lease-gate
-            pattern: 'makes a session RPC'
+        os: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.windows_regressions_only && '["windows-latest"]' || '["ubuntu-latest","windows-latest"]') }}
+        shard: >-
+          ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.windows_regressions_only &&
+          '[{"name":"held-drain","pattern":"keeps A alive on drain-stop"},
+          {"name":"lease-gate","pattern":"makes a session RPC"}]' ||
+          '[{"name":"turn-order","pattern":"hands the state to the standby"},
+          {"name":"same-session","pattern":"queues B''s turn on S"},
+          {"name":"held-drain","pattern":"keeps A alive on drain-stop"},
+          {"name":"rollback-before","pattern":"rolls back before the standby"},
+          {"name":"channel-and-cron","pattern":"starts the successor channel"},
+          {"name":"desktop-before","pattern":"takes the state back when the desktop"},
+          {"name":"rollback-after","pattern":"does not roll the old engine"},
+          {"name":"desktop-after","pattern":"finishes and stops the old engine"},
+          {"name":"lease-gate","pattern":"makes a session RPC"}]') }}
     defaults:
       run:
         shell: bash

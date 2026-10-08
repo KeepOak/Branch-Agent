@@ -1,4 +1,5 @@
 import { buildAgentRunTerminalOutcome } from "../agents/agent-run-terminal-outcome.js";
+import { resolveSessionLane } from "../agents/embedded-agent-runner/lanes.js";
 import { hasSubagentSessionRecoveryOwner } from "../agents/subagents/registry/subagent-session-reconciliation.js";
 import { replaceSessionEntrySync } from "../config/sessions/session-accessor.js";
 import { readSessionEntryRow } from "../config/sessions/session-accessor.sqlite-entry-store.js";
@@ -15,6 +16,7 @@ import type { BranchConfig } from "../config/types.branch.js";
 import { readActiveGatewayLockIdentity } from "../infra/gateway-lock.js";
 import { readGatewayOwnerLease } from "../infra/gateway-owner-lease.js";
 import { hasActiveGatewayStateOwner } from "../infra/gateway-state-owner.js";
+import { isSessionLaneHeldByPredecessor } from "../process/session-handoff-lease-gate.js";
 import {
   isSubagentSessionKey,
   isIncognitoSessionKey,
@@ -127,6 +129,7 @@ async function reconcileStartupOrphans(
           current.startedAt === entry.startedAt &&
           isUnsettledPredecessor(current);
         const hasOwner = () =>
+          isSessionLaneHeldByPredecessor(resolveSessionLane(sessionKey)) ||
           hasSubagentSessionRecoveryOwner(identity) ||
           isSessionWorkAdmissionActive(connection.path, [sessionKey, entry.sessionId]);
         const assertOwnerless = () => {
