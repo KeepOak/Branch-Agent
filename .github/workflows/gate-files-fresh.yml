@@ -3,10 +3,9 @@ name: Gate files fresh
 # Runs from the default branch via pull_request_target. A pull request cannot change this
 # workflow, check out its own tree, or execute its own files. Permissions stay read-only.
 # The helper reads PR commits, compares, and file contents through the GitHub REST API.
-# `edited` retriggers a failed run after a rate-limit; merge-gate-recheck skips pull_request_target.
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
@@ -23,7 +22,7 @@ jobs:
       contents: read
       pull-requests: read
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - name: Check out the default branch only
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

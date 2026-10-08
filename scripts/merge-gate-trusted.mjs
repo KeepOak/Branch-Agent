@@ -17,12 +17,10 @@ import {
   execGhApi,
   fetchGitHubRateLimit,
   ghApiArgs,
-  isRateLimitError,
+  isRateLimitError as rateLimitIsRateLimitError,
   pollIntervalSeconds,
   withRateLimitRetry,
 } from './merge-gate-rate-limit.mjs';
-
-export { isRateLimitError };
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const TRUSTED_JOB = 'merge-gate-trusted';
@@ -426,7 +424,35 @@ export function coverageFromPrFiles(files, desktopWorkflow, extraNamed = [], han
   return { changed, uncovered };
 }
 
-export function ghApi(repo, token, requestPath, {
+export function isRateLimitError(error) {
+  return rateLimitIsRateLimitError(error);
+  const text = `${error?.stderr ?? ''}\n${error?.message ?? ''}\n${error?.stdout ?? ''}`;
+  return /rate limit exceeded/i.test(text);
+}
+
+export function ghApi(repo, token, requestPath, { paginate = false, retries = 6 } = {}) {
+  return ghApiWithRetry(repo, token, requestPath, { paginate, retries });
+  const args = ['api', `repos/${repo}/${requestPath}`, '-H', 'Accept: application/vnd.github+json'];
+  if (paginate) args.splice(1, 0, '--paginate');
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const result = execFileSync('gh', args, {
+        env: { ...process.env, GH_TOKEN: token },
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+      return result ? JSON.parse(result) : null;
+    } catch (error) {
+      if (!isRateLimitError(error) || attempt === retries) throw error;
+      const wait = Math.min(32, 2 ** (attempt + 2));
+      console.log(`GitHub API rate limited; retrying in ${wait}s…`);
+      sleepSeconds(wait);
+    }
+  }
+  return null;
+}
+
+export function ghApiWithRetry(repo, token, requestPath, {
   paginate = false,
   retries = Number.POSITIVE_INFINITY,
   sleep = sleepSeconds,
@@ -641,6 +667,54 @@ function runMergeCommandCheck(repo, sha, token) {
 
 export function pollTrustedGate({
   repo, sha, token, changedFiles, coreWorkflows, currentRunId, prNumber, baseRef,
+  maxAttempts = 64, pollSeconds = 30,
+  waitBudgetSeconds = DEFAULT_WAIT_BUDGET_SECONDS, startedAt,
+}, {
+  fetchChecks = fetchCheckRuns,
+  resolveWorkflows = resolveWorkflowsForCheckRuns,
+  sleep = sleepSeconds,
+  log = console.log,
+  error = console.error,
+  now = Date.now,
+} = {}) {
+  return pollTrustedGateWithBudget({
+    repo, sha, token, changedFiles, coreWorkflows, currentRunId, prNumber, baseRef,
+    maxAttempts, pollSeconds, waitBudgetSeconds, startedAt,
+  }, { fetchChecks, resolveWorkflows, sleep, log, error, now });
+  const attributionCache = new Map();
+  let last = { pending: [], others: [] };
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const checkRuns = fetchChecks(repo, sha, token);
+    const workflowsByCheckId = resolveWorkflows(repo, token, checkRuns, { attributionCache });
+    const result = evaluateTrustedGate({
+      checkRuns, workflowsByCheckId, changedFiles, coreWorkflows, currentRunId,
+      sha, prNumber, baseRef,
+    });
+    last = result;
+
+    if (result.failed.length || result.foreignTrusted.length) {
+      for (const message of result.errors) error(message);
+      return 1;
+    }
+    if (result.ready) {
+      if (result.missingCore.length) {
+        for (const message of result.errors) error(message);
+        return 1;
+      }
+      log(`All ${result.others.length} other checks passed.`);
+      return 0;
+    }
+    log(`Waiting for checks (running: ${result.pending.length}, unresolved current claims: ${result.unresolvedCurrent.length}, including required Analyze)…`);
+    if (attempt < maxAttempts) sleep(pollSeconds);
+  }
+
+  const analyze = (last.others ?? []).find((run) => run.name === 'Analyze (actions)');
+  error(formatTimeoutMessage(last.pending, { missingAnalyze: !analyze }));
+  return 1;
+}
+
+export function pollTrustedGateWithBudget({
+  repo, sha, token, changedFiles, coreWorkflows, currentRunId, prNumber, baseRef,
   maxAttempts = 64, pollSeconds, waitBudgetSeconds = DEFAULT_WAIT_BUDGET_SECONDS, startedAt,
 }, {
   fetchChecks = fetchCheckRuns, resolveWorkflows = resolveWorkflowsForCheckRuns,
@@ -703,9 +777,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const prNumber = process.env.PR_NUMBER;
   const baseRef = process.env.BASE_REF;
   const maxAttempts = Number(process.env.MERGE_GATE_MAX_ATTEMPTS ?? 64);
-  const pollSeconds = process.env.MERGE_GATE_POLL_SECONDS == null
-    ? undefined
-    : Number(process.env.MERGE_GATE_POLL_SECONDS);
+  const pollSeconds = Number(process.env.MERGE_GATE_POLL_SECONDS ?? 30);
   const waitBudgetSeconds = Number(process.env.MERGE_GATE_WAIT_SECONDS ?? DEFAULT_WAIT_BUDGET_SECONDS);
   const initialWait = Number(process.env.MERGE_GATE_INITIAL_WAIT ?? 30);
 

@@ -636,7 +636,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     });
     if (command === 'skip-edited') {
       if (skip) console.log('Skipping redundant edited merge-gate rerun for this SHA.');
-      process.exit(0);
+      process.exit(skip ? 0 : 1);
     }
     if (skip) {
       console.log('Skipping redundant edited merge-gate wait; another run for this SHA is in progress or succeeded.');

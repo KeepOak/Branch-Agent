@@ -138,6 +138,11 @@ export function formatReport(result) {
   return lines.join('\n');
 }
 
+export function fetchPrCommits(repo, prNumber, token) {
+  const payload = ghApi(repo, token, `pulls/${prNumber}/commits?per_page=100`, { paginate: true });
+  return Array.isArray(payload) ? payload : [];
+}
+
 export const COMPARE_FILE_PAGE_SIZE = 100;
 export const COMPARE_FILE_LIMIT = 300;
 export const COMPARE_SLIM_JQ = [
@@ -165,12 +170,12 @@ export function compareTooLargeMessage(base, head, {
   ].join(' ');
 }
 
-export function fetchPrCommits(repo, prNumber, token) {
-  const payload = ghApi(repo, token, `pulls/${prNumber}/commits?per_page=100`, { paginate: true });
-  return Array.isArray(payload) ? payload : [];
+export function fetchCompare(repo, token, base, head) {
+  return fetchComparePaged(repo, token, base, head, arguments[4] ?? {});
+  return ghApi(repo, token, `compare/${base}...${head}`) ?? {};
 }
 
-export function fetchCompare(repo, token, base, head, { api = ghApi, requireComplete = true } = {}) {
+export function fetchComparePaged(repo, token, base, head, { api = ghApi, requireComplete = true } = {}) {
   const firstPath = `compare/${base}...${head}?per_page=${COMPARE_FILE_PAGE_SIZE}&page=1`;
   const slim = api(repo, token, firstPath, { jq: COMPARE_SLIM_JQ }) ?? {};
   const files = [...(Array.isArray(slim.files) ? slim.files : [])];
@@ -240,7 +245,7 @@ export async function checkPullRequest({
   }
 
   const prCommits = api.fetchPrCommits(repo, prNumber, token);
-  const againstHead = api.fetchCompare(repo, token, mainRef, headSha, { requireComplete: false });
+  const againstHead = api.fetchCompare(repo, token, mainRef, headSha);
   const mergeBaseSha = againstHead.merge_base_commit?.sha ?? null;
   const forkPoint = forkPointSha({ commits: prCommits, mergeBaseSha });
   if (!forkPoint) {

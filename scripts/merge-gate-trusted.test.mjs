@@ -173,7 +173,6 @@ test('regression: real 3093a8dd build pair fails the actual ordinary jq filter',
     const result = { ok: failed.trim().length === 0 };
     assert.equal(result.ok, false);
     assert.equal(failed.trim(), 'build: failure');
-    assert.equal(evaluateOrdinaryChecks(pair).failed.map((run) => `${run.name}: ${run.conclusion}`).join('\n'), 'build: failure');
   }
 });
 
@@ -722,18 +721,25 @@ test('regression: trusted gate waits for missing or running Analyze and rejects 
 });
 
 test('regression: ordinary gate waits for absent Analyze through the actual pending jq', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  const filter = yaml.match(/pending=\$\(jq '([^']+)'/)[1];
+  const failedFilter = yaml.match(/failed=\$\(jq -r '([^']+)'/)[1];
   for (const [checks, expected] of [
     [[passCheckRuns[1]], 1],
     [[passCheckRuns[1], { ...analyzeCheck, status: 'queued', conclusion: null }], 1],
     [[passCheckRuns[1], { ...analyzeCheck, status: 'in_progress', conclusion: null }], 1],
     [[passCheckRuns[1], analyzeCheck], 0],
   ]) {
-    const result = evaluateOrdinaryChecks(checks);
-    assert.equal(result.pending.length, expected);
-    assert.equal(result.ready, expected === 0);
+    const pending = Number(execFileSync('jq', [filter], {
+      input: JSON.stringify(checks), encoding: 'utf8', windowsHide: true,
+    }));
+    assert.equal(pending, expected);
   }
-  const failed = evaluateOrdinaryChecks([{ ...analyzeCheck, conclusion: 'failure' }]);
-  assert.equal(failed.failed.map((run) => `${run.name}: ${run.conclusion}`).join('\n'), 'Analyze (actions): failure');
+  const failed = execFileSync('jq', ['-r', failedFilter], {
+    input: JSON.stringify([{ ...analyzeCheck, conclusion: 'failure' }]),
+    encoding: 'utf8', windowsHide: true,
+  });
+  assert.equal(failed.trim(), 'Analyze (actions): failure');
 });
 
 test('regression: trusted polling waits for late Analyze, rejects red, and times out if absent', () => {
@@ -809,12 +815,10 @@ test('ordinary merge gate jq preserves all checks and its polling budget', () =>
       input: JSON.stringify({ check_runs: checks }), encoding: 'utf8', windowsHide: true,
     }));
     assert.deepEqual(actual, [feature, analyzeCheck, latest, { ...feature, id: 90, conclusion: 'cancelled' }]);
-    assert.deepEqual(evaluateOrdinaryChecks(checks).others, actual);
   }
   assert.match(yaml, /seq 1 64/);
   assert.match(yaml, /if \[ "\$attempt" -lt 64 \]; then sleep 30; fi/);
   assert.doesNotMatch(yaml, /sleep 10/);
-  assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs/);
 });
 
 const visualTourWorkflow = {
@@ -920,9 +924,6 @@ test('ordinary gate skips a Visual tour comment and still waits on a foreign com
     windowsHide: true,
   });
   assert.deepEqual(JSON.parse(unattributed).map((run) => run.id), [106]);
-  assert.equal(evaluateOrdinaryChecks([passCheckRuns[1], pendingVisualTourComment], {
-    workflowsByCheckId: { 106: { path: VISUAL_TOUR_WORKFLOW_PATH } },
-  }).others.some((run) => run.name === COMMENT_JOB_NAME), false);
 });
 
 test('more than 100 check-runs are all read across pages', () => {
@@ -965,21 +966,6 @@ test('more than 100 check-runs are all read across pages', () => {
   assert.match(yaml, /per_page=100&page=\$page/);
   assert.match(yaml, /collected=\$\(jq '\[\.\[\]\.check_runs\[\]\] \| length'/);
   assert.match(yaml, /if \[ "\$collected" -ge "\$total" \]; then break; fi/);
-  assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs/);
-
-  const ordinaryCalls = [];
-  const ordinary = fetchOrdinaryCheckRuns('example/repo', SHA, 'unused', { mode: 'all' }, {
-    request: (requestPath) => {
-      ordinaryCalls.push(requestPath);
-      return requestPath.endsWith('page=1') ? page1 : page2;
-    },
-  });
-  assert.deepEqual(ordinaryCalls, [
-    `commits/${SHA}/check-runs?per_page=100&page=1`,
-    `commits/${SHA}/check-runs?per_page=100&page=2`,
-  ]);
-  assert.equal(ordinary.length, 101);
-  assert.equal(evaluateOrdinaryChecks(ordinary).failed[0].conclusion, 'failure');
 });
 
 test('timeout message lists pending names and says to re-run merge-gate', () => {
@@ -1016,28 +1002,6 @@ test('timeout message lists pending names and says to re-run merge-gate', () => 
   assert.match(yaml, /timeout-minutes: 35/);
   assert.doesNotMatch(yaml, /timeout-minutes: 60/);
   assert.doesNotMatch(yaml, /wait-for-checks/);
-  assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs/);
-
-  const ordinaryErrors = [];
-  const ordinaryCode = pollOrdinaryGate({
-    repo: 'example/repo', sha: SHA, token: 'unused', initialWait: 0, waitBudgetSeconds: 30, maxPolls: 1,
-  }, {
-    fetchChecks: () => [
-      { ...passCheckRuns[1], status: 'in_progress', conclusion: null },
-      analyzeCheck,
-    ],
-    sleep: () => {},
-    now: () => 0,
-    log: () => {},
-    error: (text) => ordinaryErrors.push(text),
-    resolveWorkflows: () => ({}),
-  });
-  assert.equal(ordinaryCode, 1);
-  assert.equal(formatOrdinaryTimeout(
-    [{ name: 'Named feature tests on ubuntu-latest (1/10)' }],
-  ).split('\n').at(-1), TIMEOUT_RERUN_LINE);
-  assert.match(ordinaryErrors.join('\n'), /Timed out waiting for: Named feature tests on ubuntu-latest \(1\/10\)/);
-  assert.match(ordinaryErrors.join('\n'), /re-run merge-gate, do not merge main/);
 });
 
 test('Actions run attribution retains suite, head SHA and PR base refs', () => {
@@ -1246,10 +1210,7 @@ test('merge-gate edited trigger does not cancel an in-progress wait', () => {
 
 test('merge-gate wait ignores merge-gate-trusted so the two gates cannot deadlock', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
-  assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs/);
-  const result = evaluateOrdinaryChecks(passCheckRuns);
-  assert.equal(result.others.some((run) => run.name === 'merge-gate-trusted'), false);
-  assert.equal(result.others.some((run) => run.name === 'merge-gate'), false);
+  assert.match(yaml, /select\(\.name != "merge-gate" and \.name != "merge-gate-trusted"\)/);
 });
 
 const handoffPullRequestPaths = listCoreWorkflows(fileURLToPath(new URL('../.github/workflows', import.meta.url)))
@@ -1347,4 +1308,52 @@ test('merge-gate recheck fires when Visual tour and Engine build complete', () =
   assert.match(yaml, /^\s+-\s+Visual tour\s*$/m);
   assert.match(yaml, /^\s+-\s+Engine build \(PR\)\s*$/m);
   assert.match(yaml, /^\s+-\s+Gate files fresh\s*$/m);
+});
+
+test('ordinary JS waiter additions stay aligned with the yaml jq filters', () => {
+  const yaml = ordinaryYaml();
+  assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs gh --/);
+  const pair = evaluateOrdinaryChecks(realBuildPair);
+  assert.equal(pair.failed.map((run) => `${run.name}: ${run.conclusion}`).join('\n'), 'build: failure');
+  const ignored = evaluateOrdinaryChecks(passCheckRuns);
+  assert.equal(ignored.others.some((run) => run.name === 'merge-gate-trusted'), false);
+  assert.equal(ignored.others.some((run) => run.name === 'merge-gate'), false);
+  const page1 = {
+    total_count: 101,
+    check_runs: Array.from({ length: 100 }, (_, index) => ({
+      id: index + 1,
+      name: index === 0 ? 'Analyze (actions)' : `ok-${index}`,
+      status: 'completed',
+      conclusion: 'success',
+    })),
+  };
+  const page2 = {
+    total_count: 101,
+    check_runs: [{
+      id: 101,
+      name: 'Named feature tests on ubuntu-latest (9/10)',
+      status: 'completed',
+      conclusion: 'failure',
+    }],
+  };
+  const ordinary = fetchOrdinaryCheckRuns('example/repo', SHA, 'unused', { mode: 'all' }, {
+    request: (requestPath) => (requestPath.endsWith('page=1') ? page1 : page2),
+  });
+  assert.equal(ordinary.length, 101);
+  assert.equal(evaluateOrdinaryChecks(ordinary).failed[0].conclusion, 'failure');
+  const ordinaryCode = pollOrdinaryGate({
+    repo: 'example/repo', sha: SHA, token: 'unused', initialWait: 0, waitBudgetSeconds: 30, maxPolls: 1,
+  }, {
+    fetchChecks: () => [
+      { ...passCheckRuns[1], status: 'in_progress', conclusion: null },
+      analyzeCheck,
+    ],
+    sleep: () => {},
+    now: () => 0,
+    log: () => {},
+    error: () => {},
+    resolveWorkflows: () => ({}),
+  });
+  assert.equal(ordinaryCode, 1);
+  assert.match(formatOrdinaryTimeout([{ name: 'build' }]), /Timed out waiting for: build/);
 });

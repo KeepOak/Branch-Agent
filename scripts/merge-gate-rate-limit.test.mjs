@@ -338,9 +338,11 @@ test('ordinary merge-gate workflow runs the rate-limit waiter from a checkout', 
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
   assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs/);
   assert.match(yaml, /MERGE_GATE_ACTION:/);
-  assert.match(yaml, /node --test scripts\/merge-gate-trusted\.test\.mjs scripts\/merge-gate-rate-limit\.test\.mjs/);
-  assert.match(yaml, /^ {10}node scripts\/merge-gate-rate-limit\.mjs$/m);
-  assert.match(yaml, /^ {10}exit \$\?$/m);
+  assert.match(yaml, /node --test scripts\/merge-gate-trusted\.test\.mjs/);
+  assert.match(yaml, /node --test scripts\/merge-gate-rate-limit\.test\.mjs scripts\/check-gate-files-fresh\.test\.mjs/);
+  assert.match(yaml, /seq 1 64/);
+  assert.match(yaml, /per_page=100&page=\$page/);
+  assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs gh --/);
   assert.doesNotMatch(yaml, /sleep 10/);
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-rate-limit.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-rate-limit.test.mjs'));
@@ -415,8 +417,8 @@ test('release readiness and gate-files-fresh use the shared gh retry helper', ()
   assert.match(readiness, /node scripts\/merge-gate-rate-limit\.mjs gh -- api/);
   assert.doesNotMatch(readiness, /^\s+gh api /m);
   const fresh = readFileSync(new URL('../.github/workflows/gate-files-fresh.yml', import.meta.url), 'utf8');
-  assert.match(fresh, /types:\s*\[opened, synchronize, reopened, edited\]/);
-  assert.match(fresh, /timeout-minutes:\s*10/);
+  assert.match(fresh, /types:\s*\[opened, synchronize, reopened\]/);
+  assert.match(fresh, /timeout-minutes:\s*5/);
   assert.match(fresh, /MERGE_GATE_WAIT_SECONDS/);
 });
 
