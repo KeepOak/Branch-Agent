@@ -1,10 +1,13 @@
 {
   "id": "cloudflare",
   "name": "Cloudflare",
-  "description": "Cloudflare R2 storage for named Branch Agent storage locations.",
+  "description": "Cloudflare R2 storage and Workers AI audio transcription.",
   "categories": ["infrastructure"],
   "activation": { "onStartup": false },
-  "contracts": { "storageProviders": ["r2"] },
+  "contracts": {
+    "storageProviders": ["r2"],
+    "mediaUnderstandingProviders": ["cloudflare"]
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
