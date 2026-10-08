@@ -474,7 +474,6 @@
   letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 .row-time {
   font-size: 11.5px;

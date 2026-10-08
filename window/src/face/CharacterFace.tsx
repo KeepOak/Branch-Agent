@@ -34,7 +34,7 @@ export function CharacterFace({ appearance, size, label, state = "idle", priorit
     return () => faceCap.release(id.current);
   }, [appearance.still, src, state, motion, priority, broken, longSleep]);
   const stop = () => { faceCap.release(id.current); setPlaying(false); };
-  return <span ref={box} className="character-face" style={{ width: size, height: size, background: appearance.colour ? `radial-gradient(circle, ${appearance.colour}55, transparent 72%)` : undefined }} role="img" aria-label={label} data-face-state={state}>
-    {playing ? <video ref={video} key={src} src={src} poster={appearance.still} muted autoPlay playsInline loop={state === "idle" || state === "sleep" || ACTION_STATES.includes(state)} onLoadedMetadata={(event) => { event.currentTarget.playbackRate = state === "sleep" ? 0.5 : 1; }} onPlaying={() => { if (ARRIVAL_STATES.includes(state)) arrived.current = true; }} onEnded={stop} onError={() => { setBroken(true); stop(); }} /> : <img src={appearance.still} alt="" draggable={false} />}
+  return <span ref={box} className={broken ? "character-face broken" : "character-face"} style={{ width: size, height: size, background: appearance.colour ? `radial-gradient(circle, ${appearance.colour}55, transparent 72%)` : undefined }} role="img" aria-label={label} data-face-state={state}>
+    {playing ? <video ref={video} key={src} src={src} poster={appearance.still} muted autoPlay playsInline loop={state === "idle" || state === "sleep" || ACTION_STATES.includes(state)} onLoadedMetadata={(event) => { event.currentTarget.playbackRate = state === "sleep" ? 0.5 : 1; }} onPlaying={() => { if (ARRIVAL_STATES.includes(state)) arrived.current = true; }} onEnded={stop} onError={() => { setBroken(true); stop(); }} /> : <img src={appearance.still} alt="" draggable={false} onError={() => setBroken(true)} />}
   </span>;
 }

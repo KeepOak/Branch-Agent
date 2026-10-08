@@ -91,6 +91,24 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.row-initial {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--fill-2);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-weight: 650;
+  font-size: 15px;
+  line-height: 1;
+  pointer-events: none;
+}
+.row-av:has(.pebble:not(.broken), .character-face:not(.broken), .emoji-pebble, .flat-pebble, .rm-stack) .row-initial {
+  display: none;
+}
 .cico {
   flex: none;
   display: inline-grid;

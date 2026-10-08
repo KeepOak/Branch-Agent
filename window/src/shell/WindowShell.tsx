@@ -38,6 +38,7 @@ import { colourHue, iconColourItem } from "./row-look";
 import { RowCard } from "./RowCard";
 import { MIN_PANE, NO_ROOM, PaneDivider, SplitPanes, TOO_NARROW, type Pane } from "./SplitPanes";
 import { useRowCard, useRowExtras, useSelection } from "./sidebar-state";
+import { sidebarRailForOpen } from "./sidebar-row";
 import { machineMenuItems, MachineSwitcher } from "./MachineMenu";
 import { BranchLinkDialog } from "./BranchLinkDialog";
 import { Menu, type MenuAnchor, type MenuItem } from "./Menu";
@@ -462,9 +463,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     window.addEventListener("storage", storage);
     return () => { window.removeEventListener("branch:topic-layout-changed", sync); window.removeEventListener("storage", storage); };
   }, [topicContact?.id]);
-  const [fullListFor, setFullListFor] = useState<string | null>(null);
-  const topicAutoRail = route.kind === "chat" && Boolean(topicContact && activeTopics.length) && innerWidth > 760 && (topicLayout === "column" || topicLayout === "rail") && fullListFor !== topicContact?.id;
-  const rail = layout.rail || (topicAutoRail && !layout.hidden);
+  const rail = sidebarRailForOpen(layout.rail);
   useEffect(() => {
     setAllTopics((value) => value && (!topicContact || value.contactId !== topicContact.id || openKey !== topicContact.threadKey) ? null : value);
   }, [openKey, topicContact?.id]);
@@ -971,7 +970,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const compact = isNarrow || layout.focus;
   const toggleList = () => {
     if (narrow()) { setSlideOpen((o) => !o); return; }
-    if (topicAutoRail && !layout.rail) { setFullListFor(topicContact?.id ?? null); return; }
     setLayout(toggleListLayout(layout));
   };
   const showMenu = (e: MouseEvent<HTMLElement>, id: string, items: MenuItem[], label: string, upward = false) => {
@@ -1056,7 +1054,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     savePrefs(p);
   };
   const focusSearch = () => {
-    if (topicAutoRail) setFullListFor(topicContact?.id ?? null);
     if (rail || layout.hidden) {
       setLayout({ rail: false, hidden: false });
     }
@@ -1582,7 +1579,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         }}
         onNew={(e) => showMenu(e, "new", [
           ...newMenuItems({ newWith: (id) => startNew(id), trunks: trunks.list, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }),
-          ...(rail ? [{ kind: "sep" as const }, { label: "Settings", run: () => openSettings("general") }, { label: "Show the full list", hint: "Ctrl B", run: () => { if (topicAutoRail && !layout.rail) setFullListFor(topicContact?.id ?? null); else setLayout({ rail: false }); } }] : []),
+          ...(rail ? [{ kind: "sep" as const }, { label: "Settings", run: () => openSettings("general") }, { label: "Show the full list", hint: "Ctrl B", run: () => setLayout({ rail: false }) }] : []),
         ], "New")}
         onMenu={rowMenu}
         onPin={(r) => { const contact = contacts.find((c) => c.threadKey === r.key); if (contact) toggleContactPin(contact); else void actions.pin(r); }}

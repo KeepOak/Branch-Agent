@@ -31,17 +31,28 @@ export const ROW_GLYPHS: { id: string; icon: IconName; name: string }[] = [
 ];
 const EMOJI = ["📌", "⭐", "🔥", "💡", "📚", "🧾", "✈️", "🏠", "🧪", "🛠️", "💬", "🎯"];
 
+/** A known glyph, one emoji, or an SVG. Anything else (a broken mark, a raw id) is not drawn. */
+export function visibleRowIcon(value: string | undefined): "glyph" | "svg" | "emoji" | null {
+  if (!value) return null;
+  if (ROW_GLYPHS.some((glyph) => glyph.id === value)) return "glyph";
+  if (value.startsWith("data:image/svg+xml")) return "svg";
+  const parts = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(value)];
+  if (parts.length === 1 && /\p{Extended_Pictographic}/u.test(value)) return "emoji";
+  return null;
+}
+
 /** The icon before a row's name: a glyph, an emoji or the SVG. */
 export function RowIcon({ value }: { value: string | undefined }) {
-  if (!value) return null;
-  const glyph = ROW_GLYPHS.find((g) => g.id === value);
-  if (glyph) {
-    return <span className="cico" aria-hidden="true"><Icon name={glyph.icon} size={14} /></span>;
+  const kind = visibleRowIcon(value);
+  if (kind === "glyph") {
+    const glyph = ROW_GLYPHS.find((item) => item.id === value);
+    return glyph ? <span className="cico" aria-hidden="true"><Icon name={glyph.icon} size={14} /></span> : null;
   }
-  if (value.startsWith("data:image/svg+xml")) {
+  if (kind === "svg" && value) {
     return <span className="cico" aria-hidden="true"><img src={value} alt="" width={14} height={14} /></span>;
   }
-  return <span className="cico emo" aria-hidden="true">{value}</span>;
+  if (kind === "emoji") return <span className="cico emo" aria-hidden="true">{value}</span>;
+  return null;
 }
 
 /** What "Use" sends for a custom icon: an SVG as a data URL, or one emoji; null with the reason when it can't be used. */

@@ -8,6 +8,7 @@ import { Icon } from "./icons";
 import { childrenOf, rowTime, shownChildren, type ListSection } from "./list-model";
 import { ProjectsSection, type Project } from "./Projects";
 import { useSidebarPointerDrag, type SidebarDrop } from "./sidebar-drag";
+import { archiveOffer, rowDisplayName } from "./sidebar-row";
 import "./contacts-layout.css";
 
 /** The default Trunk beside a page: its name, the keys that toggle it, whether it is open. */
@@ -100,6 +101,7 @@ type Kids = ReturnType<typeof useKids>;
 
 function Row({ p, row, kids, depth = 0, child = false }: { p: SidebarProps; row: Conversation; kids: Kids; depth?: number; child?: boolean }) {
   const mine = child || row.isMain || ["trunk", "group", "chatGroup", "outside"].includes(row.kind) ? [] : childrenOf(p.allRows ?? [], row.key);
+  const archive = archiveOffer(row, p.home?.key, child);
   const isOpen = kids.open.has(row.key);
   const shown = isOpen ? shownChildren(mine, kids.all.has(row.key), (c) => p.rowState(c).waiting) : [];
   return (
@@ -128,7 +130,9 @@ function Row({ p, row, kids, depth = 0, child = false }: { p: SidebarProps; row:
         }}
         onMenu={(e) => p.onMenu(row, e)}
         onPin={row.kind === "group" ? undefined : () => p.onPin(row)}
-        onArchive={row.isMain || row.kind === "trunk" ? undefined : () => p.onArchive(row)}
+        archive={archive.visible ? { disabled: archive.disabled, label: archive.label, title: archive.title } : undefined}
+        onArchive={archive.visible && !archive.disabled ? () => p.onArchive(row) : undefined}
+        rail={p.rail}
         onCard={p.onCard ? (el) => p.onCard?.(row, el) : undefined}
       />
       {shown.length ? (
@@ -153,20 +157,21 @@ function PinnedTile({ p, row }: { p: SidebarProps; row: Conversation }) {
   useEffect(() => { seenPinned.add(row.key); }, [row.key]);
   const state = p.rowState(row);
   const current = row.key === p.openKey && p.currentPlace === null;
+  const name = rowDisplayName(row.title, p.trunkName(row.agentId)) || "New conversation";
   const role = row.kind === "group" || row.kind === "chatGroup" ? "Group" : row.kind === "outside" ? "Grafted" : row.key === p.home?.key ? "Chief of Staff" : "Trunk";
   return <div className={fresh ? "pin-tile pin-new" : "pin-tile"} role="listitem" data-pin-key={row.key} data-drag-key={row.key} data-pin-fixed={row.key === p.home?.key ? "true" : undefined}>
     <button type="button" className="pin-open" aria-current={current ? "true" : undefined} aria-selected={p.selected?.has(row.key) || undefined}
-      aria-label={`${row.title}, ${role}${row.unread ? ", unread" : ""}${state.working ? ", working" : ""}`}
-      title={row.title} onClick={(e) => { if ((e.altKey || e.shiftKey) && p.onSelect?.(row, e)) return; p.onOpen(row.key); }}
+      aria-label={`${name}, ${role}${row.unread ? ", unread" : ""}${state.working ? ", working" : ""}`}
+      title={name} onClick={(e) => { if ((e.altKey || e.shiftKey) && p.onSelect?.(row, e)) return; p.onOpen(row.key); }}
       onContextMenu={(e) => { e.preventDefault(); p.onMenu(row, e); }}
       onKeyDown={(e) => { if (e.key === "F10" && e.shiftKey) { e.preventDefault(); p.onMenu(row, e as unknown as MouseEvent<HTMLElement>); } }}>
       <span className="pin-face">{row.roomPicks ? <RoomFaces picks={row.roomPicks} size={60} /> : <Pebble size={60} label={row.kind === "group" || row.kind === "chatGroup" || row.kind === "outside" ? row.title : p.trunkName(row.agentId)} state={state.waiting ? "wait" : state.working ? "work" : "idle"} priority={state.working || state.waiting ? 200 : 100} />}
         {row.unread && !current ? <i className="pin-unread" aria-label="Unread" /> : null}
         {state.waiting ? <i className="needs-you" aria-label="Waiting for you" /> : null}
       </span>
-      <b className="pin-name">{row.title}</b><span className="pin-role">{role}</span>
+      <b className="pin-name">{name}</b><span className="pin-role">{role}</span>
     </button>
-    <button type="button" className="pin-more" aria-label={`More for ${row.title}`} title={`More for ${row.title}`} onClick={(e) => p.onMenu(row, e)}><Icon name="more" small /></button>
+    <button type="button" className="pin-more" aria-label={`More for ${name}`} title={`More for ${name}`} onClick={(e) => p.onMenu(row, e)}><Icon name="more" small /></button>
   </div>;
 }
 
