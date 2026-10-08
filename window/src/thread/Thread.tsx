@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Children, cloneElement, Fragment, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { Face } from "../face/Face";
 import { agentState } from "../face/agentState";
@@ -16,6 +16,8 @@ import { HelpersChip } from "./Helpers";
 import { HoverBar } from "./HoverBar";
 import { Rail } from "./Rail";
 import { Icon, ICONS } from "./icons";
+import { ComputerActivityCard, type ComputerActivityProps } from "./ComputerActivityCard";
+import { isComputerStep } from "./computer-activity";
 import { layout, shownApprovalIds, type Item } from "./layout";
 import { PlanCard, planAnchor } from "./PlanCard";
 import { useConversationPrefs } from "./prefs";
@@ -94,7 +96,27 @@ type Props = {
   onLoadEarlier?: () => void;
 };
 
-/** Distance from the end that still counts as "at the end", and that shows "Scroll to latest" (§4.2.2). */
+/** Watch/Take over props from the shell's pinned card, so each in-turn card can open the stage. */
+function computerCardProps(node: ReactNode): ComputerActivityProps | undefined {
+  if (!isValidElement(node)) return undefined;
+  if (node.type === ComputerActivityCard) return node.props as ComputerActivityProps;
+  const children = (node.props as { children?: ReactNode }).children;
+  let found: ComputerActivityProps | undefined;
+  Children.forEach(children, (child) => {
+    found ??= computerCardProps(child);
+  });
+  return found;
+}
+
+/** Drops the conversation-wide computer card so it is not pinned under later replies. */
+function dropComputerCard(node: ReactNode): ReactNode {
+  if (!isValidElement(node)) return node;
+  if (node.type === ComputerActivityCard) return null;
+  const children = (node.props as { children?: ReactNode }).children;
+  if (children == null) return node;
+  return cloneElement(node as ReactElement<{ children?: ReactNode }>, undefined, Children.map(children, dropComputerCard));
+}
+
 /** The lastRunError the engine's restart recovery records when it could not carry a run on
  * (engine main-session-restart-recovery-store.ts tombstoneMainRestartRecoveryWithNotice). */
 const RESTART_NOT_RESUMED = "Interrupted by a restart. Continue?";
@@ -243,7 +265,9 @@ export function Thread(props: Props) {
       .find((node) => node.dataset.testid === `topic-card-${props.focusTopic?.key}`);
     target?.scrollIntoView({ block: "end" });
   }, [props.focusTopic, props.topicUpdates]);
-  const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser, showThinking: props.showThinking !== false, liveStartedAt: props.liveStartedAt ?? null, lockdown: props.lockdown, onOpenSession: props.onOpenSession };
+  const activity = computerCardProps(props.supplement);
+  const restSupplement = dropComputerCard(props.supplement);
+  const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser, showThinking: props.showThinking !== false, liveStartedAt: props.liveStartedAt ?? null, lockdown: props.lockdown, onOpenSession: props.onOpenSession, engine, onWatchComputer: activity?.onWatch ?? (() => undefined), gatewayUrl: activity?.gatewayUrl ?? engine?.gatewayUrl };
   const recoveryEntryId = history.findLast((block) =>
     (block.kind === "user" || block.kind === "text") && Boolean(block.meta?.entryId),
   );
@@ -323,7 +347,7 @@ export function Thread(props: Props) {
           {extras.filter((a) => !grouped.has(a.id)).map((a) => <ApprovalCard key={a.id} approval={a} details={details.get(a.id)} name={name} onAnswer={answer} disabled={props.lockdown} />)}
           {grouped.size === 2 ? <ApprovalGroup approvals={waitingTwo} details={details} name={name} onAnswer={answer} disabled={props.lockdown} /> : null}
           {helperNextUserAt < 0 ? helperChip : null}
-          {props.supplement}
+          {restSupplement}
           {suggestions.length ? <div className="suggestion-row" role="group" aria-label="Suggested replies" data-testid="suggestion-row">
             {suggestions.map((text) => <button key={text} type="button" onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}>{text}</button>)}
           </div> : null}
@@ -369,7 +393,24 @@ type View = {
   lastUser: number;
   showThinking: boolean;
   liveStartedAt: number | null;
+  engine?: WindowEngine;
+  onWatchComputer: (mode: "Computer" | "Browser", takeOver?: boolean) => void;
+  gatewayUrl?: string;
 };
+
+function ActivityCard({ steps, view }: { steps: Extract<Block, { kind: "step" }>[]; view: View }) {
+  if (!steps.some(isComputerStep)) return null;
+  return (
+    <ComputerActivityCard
+      blocks={steps}
+      running={view.running}
+      name={view.name}
+      engine={view.engine}
+      gatewayUrl={view.gatewayUrl}
+      onWatch={view.onWatchComputer}
+    />
+  );
+}
 
 /** A day stamp over the first message of each day that has a recorded time (§4.2.2 Stamp). */
 function dayStamps(history: readonly Block[]): Map<number, string> {
@@ -451,12 +492,23 @@ function ItemView(props: { item: Item; view: View; live: boolean }) {
 
 function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean }) {
   if (item.type === "steps") {
-    if (!item.face) return <StepsFold steps={item.steps} live={live} run={item.run} />;
+    const card = <ActivityCard steps={item.steps} view={view} />;
+    if (!item.face) {
+      return (
+        <>
+          <StepsFold steps={item.steps} live={live} run={item.run} />
+          {card}
+        </>
+      );
+    }
     return (
-      <div className="msg reply steps-turn">
-        <span className="gutter"><span className={view.running && live ? "gutter-face working-ring" : "gutter-face"}>{faceFor(view, live)}</span></span>
-        <StepsFold steps={item.steps} live={live} run={item.run} />
-      </div>
+      <>
+        <div className="msg reply steps-turn">
+          <span className="gutter"><span className={view.running && live ? "gutter-face working-ring" : "gutter-face"}>{faceFor(view, live)}</span></span>
+          <StepsFold steps={item.steps} live={live} run={item.run} />
+        </div>
+        {card}
+      </>
     );
   }
   const { block, index, firstReply, face } = item;

@@ -1,9 +1,16 @@
 // How the thread lays its blocks out: consecutive steps share one Steps fold, and each Trunk turn's first
 // item carries the gutter face, as the approved design draws it: the Steps fold when the turn starts with steps,
-// else the first reply.
+// else the first reply. A new user message or a new run always starts a new fold (preview stepsPB18 / threads.fixPB18).
 import type { Block } from "./model";
+import { stepRunId } from "./computer-activity";
 
 type Step = Extract<Block, { kind: "step" }>;
+
+function sameStepRun(a: Step, b: Step): boolean {
+  const left = stepRunId(a);
+  const right = stepRunId(b);
+  return !left || !right || left === right;
+}
 
 export type Item =
   | { type: "block"; block: Block; index: number; firstReply: boolean; face: boolean }
@@ -20,10 +27,13 @@ export function layout(blocks: readonly Block[], offset = 0): Item[] {
   let held: Item[] = [];
   let replied = false;
   let faced = false;
+  // A user message (or a later step from another run) must not join the fold that just closed.
+  let sealSteps = false;
   blocks.forEach((block, i) => {
     if (block.kind === "user") {
       replied = false;
       faced = false;
+      sealSteps = true;
     }
     if (block.kind === "steer" && items.at(-1)?.type === "steps") {
       held.push({ type: "block", block, index: offset + i, firstReply: false, face: false });
@@ -35,12 +45,14 @@ export function layout(blocks: readonly Block[], offset = 0): Item[] {
     }
     if (block.kind === "step") {
       const last = items[items.length - 1];
-      if (last?.type === "steps") {
+      const canMerge = last?.type === "steps" && !sealSteps && sameStepRun(last.steps[0], block);
+      if (canMerge) {
         last.steps.push(block);
       } else {
         items.push({ type: "steps", key: `steps:${block.key}`, steps: [block], face: !faced, run: runLine(blocks, i) });
         faced = true;
       }
+      sealSteps = false;
       return;
     }
     const firstReply = block.kind === "text" && !replied;

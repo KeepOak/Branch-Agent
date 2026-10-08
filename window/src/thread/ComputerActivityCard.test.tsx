@@ -29,6 +29,23 @@ describe("computer card in the conversation", () => {
     await act(async () => container.querySelector<HTMLButtonElement>(".acts-head-st")!.click());
     expect(container.querySelectorAll(".acts-list-st li")).toHaveLength(2);
   });
+  it("does not merge browser and computer actions from two turns into one card", async () => {
+    const blocks: Block[] = [
+      { kind: "user", key: "u1", text: "Open the garden site" },
+      { kind: "step", key: "b1", outputKey: "run-a:b1", tool: "browser", title: "Opened the garden site", detail: "", status: "ok" },
+      { kind: "text", key: "t1", text: "The garden site is open.", streaming: false },
+      { kind: "user", key: "u2", text: "Use this computer" },
+      { kind: "step", key: "c1", outputKey: "run-b:c1", tool: "computer", title: "Clicked Sign in", detail: "", status: "ok" },
+      { kind: "step", key: "c2", outputKey: "run-b:c2", tool: "computer", title: "Opened the inbox", detail: "", status: "ok" },
+      { kind: "text", key: "t2", text: "Signed in.", streaming: false },
+    ];
+    await render(blocks, false);
+    const cards = container.querySelectorAll('[data-testid="computer-activity"]');
+    expect(cards).toHaveLength(2);
+    expect(cards[0].textContent).toContain("1 action");
+    expect(cards[1].textContent).toContain("2 actions");
+    expect(container.textContent).not.toContain("3 actions");
+  });
   it("shows the live card while a computer step runs, with Watch full size", async () => {
     const onWatch = await render([step("a", "Searching the inbox", "running")], true);
     expect(container.textContent).toContain("Working");
