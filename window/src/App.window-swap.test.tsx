@@ -108,14 +108,18 @@ it("keeps the resident window after a local engine handoff and reload", async ()
   const successor = fake.gateways[1]!;
   expect(successor.options.url).toBe(otherUrl);
   await act(async () => successor.options.onStatus({ phase: "connected", hello } as unknown as GatewayStatus));
+  expect(sessionStorage.getItem(marker)).toBe(otherUrl);
   expect(host.querySelector('[data-testid="resident-window"]')).not.toBeNull();
 
   await act(async () => root?.unmount());
   root = undefined;
   vi.resetModules();
+  (window as { branchDesktop?: unknown }).branchDesktop = {
+    gatewayUrl: currentUrl, getGatewayUrl: () => currentUrl, gatewayToken: "test-token",
+  };
   const reloaded = await mount();
   expect(fake.gateways).toHaveLength(3);
-  expect(fake.gateways[2]!.options.url).toBe(url);
+  expect(fake.gateways[2]!.options.url).toBe(otherUrl);
   expect(reloaded.querySelector('[data-testid="resident-window"]')).not.toBeNull();
   expect(reloaded.textContent).not.toContain("Starting Branch");
 });
