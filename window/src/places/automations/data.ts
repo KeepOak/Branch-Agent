@@ -8,7 +8,7 @@ export type Scheduled = { jobs: Row[]; status: Row; trunks: Trunk[]; defaultId: 
 
 export async function loadTrunks(engine: WindowEngine): Promise<{ trunks: Trunk[]; defaultId: string }> {
   const r = rec(await engine.request("agents.list", {}));
-  const trunks = rows(r.agents).map(a => ({ id: str(a.id), name: str(rec(a.identity).name) || str(a.name) || str(a.id) })).filter(t => t.id);
+  const trunks = rows(r.agents).filter(a => a.hidden !== true).map(a => ({ id: str(a.id), name: str(rec(a.identity).name) || str(a.name) || str(a.id) })).filter(t => t.id);
   return { trunks, defaultId: str(r.defaultId) || trunks[0]?.id || "" };
 }
 

@@ -29,7 +29,7 @@ export const JOBS = [
   { name: "Inbox Manager", line: "Clears your inbox and drafts replies in your voice", colour: "#4F6FA8" },
   { name: "Expense Manager", line: "Files receipts and builds monthly reports", colour: "#1785AF" },
   { name: "Researcher", line: "Reads the web and writes short briefs with sources", colour: "#2F8C86" },
-  { name: "Chief of Staff", line: "Plans your week and chases loose ends", colour: "#56616B" },
+  { name: "Chief of Staff", line: "Coordinates specialist Trunks and reviews their work", colour: "#56616B" },
   { name: "Bug Reproduction", line: "Turns a bug report into exact steps", colour: "#B84A6B" },
   { name: "Trip Planner", line: "Finds and books refundable travel", colour: "#8A5AA8" },
 ] as const;

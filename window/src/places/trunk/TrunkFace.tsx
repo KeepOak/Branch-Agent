@@ -13,7 +13,7 @@ export function TrunkFace({ name, look, emoji, size, draft, pebbleLook }: Props)
   if (appearance) return <CharacterFace appearance={appearance} size={size} label={name} />;
   if (emoji) {
     const style = { width: size, height: size, fontSize: Math.round(size * 0.56) } as CSSProperties;
-    return <span className="tk-emoji-face" style={style} role="img" aria-label={name}><i>{emoji}</i></span>;
+    return <span className="tk-emoji-face" style={{ ...style, background: pebbleLook?.colour || undefined }} role="img" aria-label={name}><i>{emoji}</i></span>;
   }
   return draft ? <span role="img" aria-label={name} className="tk-face-wrap"><Face size={size} pebbleLook={pebbleLook} /></span> : <Face size={size} label={name} pebbleLook={pebbleLook} />;
 }

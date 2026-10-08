@@ -71,6 +71,7 @@ describe("new Trunk runtime availability", () => {
       if (method === "agents.create") return Promise.resolve({ ok: true, agentId: id });
       if (method === "agents.list") return Promise.resolve({ agents: ++rosterReads > 1 ? [{ id }] : [{ id: "dev" }] });
       if (method === "agents.files.get") return Promise.resolve({ file: { content: "# Existing rules", hash: "source-hash" } });
+      if (method === "config.get") return Promise.resolve({ hash: "cfg", valid: true, config: {} });
       return Promise.resolve({ ok: true });
     });
     const creation = createJob(engine(request), job);

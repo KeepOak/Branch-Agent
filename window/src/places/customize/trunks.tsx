@@ -14,7 +14,7 @@ import type { PlaceProps } from "../../places-nav/PlaceFrame";
 import type { useResource, Trunks } from "../library/data";
 import { Status } from "../library/ui";
 import { RequestGeneration } from "../library/data";
-import { createReadyTrunk, defaultBlock, makeDefault } from "../trunk/api";
+import { createReadyTrunk, defaultBlock, makeDefault, setTrunkHidden } from "../trunk/api";
 import { NewTrunkPreview, type TrunkChoice } from "../trunk/NewTrunkPreview";
 import { canWrite, WRITE_WHY } from "../trunk/data";
 import { creationProblem, errorText, readRoster, type Roster, type TrunkRow } from "../trunk/model";
@@ -125,6 +125,7 @@ function rowMenu(p: Props, roster: Roster, row: TrunkRow, setOpen: (o: Open) => 
   return [
     row.id === roster.defaultId ? { kind: "info", label: `${row.name} is your default Trunk.` } : { label: "Make default", run: () => void toDefault(), disabled: block || (write ? undefined : WRITE_WHY) },
     { kind: "sep" },
+    { label: row.hidden ? `Show ${row.name}` : `Hide ${row.name}`, run: () => void setTrunkHidden(p.engine, row.id, !row.hidden).then(() => { notify(`${row.name} is ${row.hidden ? "shown" : "hidden"}.`); p.trunks.reload(); }, (e: unknown) => setError(errorText(e))), disabled: write ? undefined : WRITE_WHY },
     { label: `Remove ${row.name}…`, danger: true, run: () => setOpen({ kind: "remove", id: row.id }), disabled: row.id === roster.defaultId ? "The default Trunk cannot be removed." : last ? "Branch needs at least one Trunk." : write ? undefined : WRITE_WHY },
   ];
 }

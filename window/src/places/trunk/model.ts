@@ -13,6 +13,7 @@ export type TrunkRow = {
   id: string;
   name: string;
   theme: string;
+  hidden: boolean;
   emoji: string;
   avatar: string;
   colour: string;
@@ -32,6 +33,7 @@ function readRow(a: Rec): TrunkRow {
     id: str(a.id),
     name: str(identity.name) || str(a.name) || str(a.id),
     theme: str(identity.theme),
+    hidden: a.hidden === true,
     emoji: str(identity.emoji),
     avatar: str(identity.avatar),
     colour: str(identity.colour),

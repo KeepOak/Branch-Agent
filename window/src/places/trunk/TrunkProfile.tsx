@@ -20,6 +20,7 @@ import { RemoveTrunkDialog } from "./RemoveTrunk";
 import { TrunkFace } from "./TrunkFace";
 import { LineIcon } from "./TrunkFace";
 import { TrunkFiles } from "./TrunkFiles";
+import { makeChiefOfStaff } from "./chief-of-staff";
 import { Layer } from "./layer";
 import "./trunk.css";
 
@@ -49,7 +50,7 @@ function Head({ row, data, isDefault, level }: { row: TrunkRow; data: ProfileDat
   const copy = () => navigator.clipboard?.writeText(row.id).then(() => notify(`Copied ${row.name}’s ID.`), (e: unknown) => notify(`Couldn’t copy: ${errorText(e)}`, { tone: "bad" }));
   return <>
     <div className="tk-pf-head">
-      <div className="tk-pf-face"><TrunkFace name={row.name} look={lookOf(row.avatar, row.name)} emoji={row.emoji} size={84} /></div>
+      <div className="tk-pf-face"><TrunkFace name={row.name} look={lookOf(row.avatar, row.name)} emoji={row.emoji} pebbleLook={row} size={84} /></div>
       <div className="tk-pf-who">
         <b>{row.name}{isDefault && <span className="tk-pill">Default</span>}</b>
         {row.theme && <span>{row.theme}</span>}
@@ -115,13 +116,21 @@ export function TrunkProfile(props: TrunkProfileProps) {
 type BodyProps = TrunkProfileProps & { data: ProfileData; row: TrunkRow; reload: () => void; edit: (t: EditorTab) => void; remove: () => void; files: boolean; setFiles: (v: boolean) => void };
 function ProfileBody({ engine, level, onClose, openPlace, data, row, reload, edit, remove, files, setFiles }: BodyProps) {
   const [error, setError] = useState<string | null>(null);
+  const [roleBusy, setRoleBusy] = useState(false);
   const isDefault = data.roster.defaultId === row.id;
   const block = defaultBlock(data.roster, row.id), write = canWrite(engine);
   const toDefault = () => makeDefault(engine, data.roster, row.id).then(() => { notify(`${row.name} is now your default Trunk. Unrouted chats go to it.`); reload(); }, (e: unknown) => setError(errorText(e)));
+  const makeChief = async () => {
+    setRoleBusy(true); setError(null);
+    try { await makeChiefOfStaff(engine, row.id); notify(`${row.name} is your Chief of Staff.`); reload(); }
+    catch (e) { setError(errorText(e)); }
+    finally { setRoleBusy(false); }
+  };
   const footer = <>
     <button type="button" className="btn ghost tk-pf-pause" disabled title={shownWhy(PAUSE_WHY)}>Pause {row.name}</button>
     {!isDefault && <button type="button" className="btn ghost" disabled={!!block || !write} title={block || (write ? undefined : WRITE_WHY)} onClick={() => void toDefault()}>Make default</button>}
     {!isDefault && <button type="button" className="btn ghost" disabled={!write} title={write ? undefined : WRITE_WHY} onClick={remove}>Remove {row.name}…</button>}
+    <button type="button" className="btn ghost" disabled={roleBusy || !write} title={write ? undefined : WRITE_WHY} onClick={() => void makeChief()}>Make this my Chief of Staff</button>
     <button type="button" className="btn pri" onClick={() => edit("look")}>Edit {row.name}</button>
   </>;
   return (

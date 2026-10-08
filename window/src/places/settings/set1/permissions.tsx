@@ -35,7 +35,7 @@ export function PermissionsPage(props: SettingsPageProps) {
   const [approvals, setApprovals] = useState(false);
   const x: Ctx = {
     engine: props.engine, cfg, ap, openApprovals: () => setApprovals(true),
-    trunks: list(agents.data?.agents), nodes: list(nodes.data?.nodes),
+    trunks: list(agents.data?.agents).filter((agent) => agent.hidden !== true), nodes: list(nodes.data?.nodes),
     rulesFor, setRulesFor, agents: agents.data, reloadAgents: agents.reload,
   };
   return (

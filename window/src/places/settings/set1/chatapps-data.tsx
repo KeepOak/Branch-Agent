@@ -100,6 +100,6 @@ export function connectedApps(s: ChannelsStatus | undefined): App[] {
 /** The Trunks, as Seg/Pick options (agents.list). */
 export type Trunk = { id: string; name: string };
 export function trunksOf(data: RecordValue | undefined): { trunks: Trunk[]; defaultId: string } {
-  const trunks = list(data?.agents).map((a) => ({ id: text(a.id), name: visible(record(a.identity).name ?? a.name ?? a.id) }));
+  const trunks = list(data?.agents).filter((a) => a.hidden !== true).map((a) => ({ id: text(a.id), name: visible(record(a.identity).name ?? a.name ?? a.id) }));
   return { trunks, defaultId: text(data?.defaultId ?? trunks[0]?.id ?? "") };
 }

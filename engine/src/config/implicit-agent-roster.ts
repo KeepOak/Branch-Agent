@@ -15,5 +15,5 @@ export function applyImplicitAgentRosterDefaults(raw: unknown): unknown {
     return raw;
   }
   const { list: _emptyList, ...defaults } = agents;
-  return { ...raw, agents: { ...defaults, entries: { main: {} } } };
+  return { ...raw, agents: { ...defaults, entries: { main: { name: "Branch Agent", identity: { name: "Branch Agent" } } } } };
 }

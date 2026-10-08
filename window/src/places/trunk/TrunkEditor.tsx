@@ -13,13 +13,15 @@ import { canWrite, loadTrunkData, useLoad, WRITE_WHY, type TrunkData } from "./d
 import { COLOURS, EYES, LookTab, SHAPES } from "./LookTab";
 import { readMay } from "./may";
 import { MayTab } from "./MayTab";
-import { errorText, lookOf, LOOKS } from "./model";
+import { entryOf, errorText, lookOf, LOOKS, str } from "./model";
 import { TrunkFace } from "./TrunkFace";
 import { Layer } from "./layer";
+import { TrunkFiles } from "./TrunkFiles";
+import { makeChiefOfStaff } from "./chief-of-staff";
 import "./trunk.css";
 
-export type EditorTab = "look" | "may" | "computers" | "accounts";
-const TABS: [EditorTab, string][] = [["look", "Look"], ["may", "What it may do"], ["computers", "Its computers"], ["accounts", "Accounts"]];
+export type EditorTab = "look" | "may" | "computers" | "accounts" | "instructions";
+const TABS: [EditorTab, string][] = [["look", "Look"], ["may", "What it may do"], ["computers", "Its computers"], ["accounts", "Accounts"], ["instructions", "Instructions"]];
 
 export type TrunkEditorProps = {
   engine: WindowEngine;
@@ -35,7 +37,7 @@ export type TrunkEditorProps = {
 function draftOf(data: TrunkData, id: string): Draft | null {
   const row = data.roster.agents.find((a) => a.id === id);
   if (!row) return null;
-  return { name: row.name, theme: row.theme, look: lookOf(row.avatar, row.name), emoji: row.emoji, colour: row.colour || COLOURS[0], shape: row.shape || SHAPES[0], eyes: row.eyes || EYES[0], model: row.model, may: readMay(data.snap, id) };
+  return { name: row.name, theme: row.theme, description: str(entryOf(data.snap, id).description), look: lookOf(row.avatar, row.name), emoji: row.emoji, colour: row.colour || COLOURS[0], shape: row.shape || SHAPES[0], eyes: row.eyes || EYES[0], model: row.model, may: readMay(data.snap, id) };
 }
 
 function TabRow({ tab, setTab }: { tab: EditorTab; setTab: (t: EditorTab) => void }) {
@@ -70,6 +72,7 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
   const [tab, setTab] = useState<EditorTab>(first ?? "look");
   const [draft, setDraft] = useState(initial);
   const [busy, setBusy] = useState(false);
+  const [roleVersion, setRoleVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   // The preview's editor redraws itself as it opens, so focus ends on the dialog, not on a control: nothing shows a
   // ring and the body stays at its top (the shared dialog's first focus would scroll a narrow window down to Name).
@@ -102,6 +105,12 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
     catch (e) { setError(errorText(e)); }
     finally { setBusy(false); }
   };
+  const makeChief = async () => {
+    setBusy(true); setError(null);
+    try { await makeChiefOfStaff(engine, agentId); setRoleVersion((v) => v + 1); notify(`${initial.name} is your Chief of Staff.`); onSaved?.(); }
+    catch (e) { setError(errorText(e)); }
+    finally { setBusy(false); }
+  };
   const write = canWrite(engine);
   const footer = <>
     <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
@@ -120,6 +129,7 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
             {tab === "look" && <LookTab draft={draft} set={set} />}
             {tab === "may" && <MayTab engine={engine} agentId={agentId} name={initial.name} draft={draft} models={data.models} level={level} set={set} openSettings={openSettings} />}
             {tab === "computers" && <ComputersTab name={initial.name} draft={draft} computers={data.computers} set={set} openSettings={openSettings} />}
+            {tab === "instructions" && <><button type="button" className="btn" disabled={busy || !write} title={write ? undefined : WRITE_WHY} onClick={() => void makeChief()}>Make this my Chief of Staff</button><TrunkFiles key={roleVersion} engine={engine} agentId={agentId} /></>}
             {tab === "accounts" && <AccountsTab engine={engine} agentId={agentId} />}
           </div>
           {data.partial.map((p) => <p key={p} className="tk-hint" role="status">{p}</p>)}

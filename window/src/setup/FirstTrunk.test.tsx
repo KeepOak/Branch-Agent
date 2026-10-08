@@ -182,7 +182,8 @@ it.each(["agents.create", "agents.list", "config.get", "config.patch"])("blocks 
   const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
   await act(async () => root!.render(<FirstTrunk engine={engine} onCreated={onCreated} onBack={() => {}} onSkip={() => {}} />));
   const input = host.querySelector("input")!;
-  expect((host.querySelector("button[data-testid=first-trunk-create]") as HTMLButtonElement).disabled).toBe(true);
+  expect(input.value).toBe("Branch Agent");
+  expect((host.querySelector("button[data-testid=first-trunk-create]") as HTMLButtonElement).disabled).toBe(false);
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, " Fern "); input.dispatchEvent(new Event("input", { bubbles: true })); });
   const click = async () => { await act(async () => (host.querySelector('[data-testid="first-trunk-create"]') as HTMLButtonElement).click()); };
   await click();

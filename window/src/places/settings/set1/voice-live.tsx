@@ -55,7 +55,7 @@ export function LiveMore({ cfg, catalog, agents }: Shared & { agents: Kept<Recor
       </Ctl>
       <Ctl title="Who answers live voice" sub="For live voice started by the wake word or the phone’s Talk button." help="For live voice started by the wake word or the phone’s Talk button. A call started from a conversation is always with that conversation’s Trunk.">
         <Pick label="Who answers live voice" value={str("talk.agentId")} disabled={cfg.loading} onChange={set("talk.agentId")}
-          options={[{ id: "", label: "The default Trunk" }, ...list(agents.data?.agents).map((a) => ({ id: text(a.id), label: visible(record(a.identity).name ?? a.name ?? a.id) }))]} />
+          options={[{ id: "", label: "The default Trunk" }, ...list(agents.data?.agents).filter((a) => a.hidden !== true).map((a) => ({ id: text(a.id), label: visible(record(a.identity).name ?? a.name ?? a.id) }))]} />
       </Ctl>
       <TextRow cfg={cfg} path="talk.realtime.instructions" title="How it talks in live voice" ph="Speak warmly and keep answers brief." sub="Add pace and tone to live-voice instructions." help="Style for the voice service, such as pace and tone. Added to Branch’s own live-voice instructions, never replacing them." />
       <Greyed why={APP} rows={LIVE_APP} />

@@ -9,9 +9,11 @@ import { Jobs } from "../customize/jobs";
 import { TrunkEditor } from "./TrunkEditor";
 import { TrunkProfile } from "./TrunkProfile";
 import { TrunkStudio } from "./TrunkStudio";
-import { removeTrunk, updateParams } from "./api";
+import { CHIEF_OF_STAFF_INSTRUCTIONS, makeChiefOfStaff } from "./chief-of-staff";
+import { createJob, JOBS } from "../customize/jobs-data";
+import { removeTrunk, setTrunkHidden, updateParams } from "./api";
 import { readMay } from "./may";
-import { LOOKS, creationProblem, lookOf, readConfig } from "./model";
+import { LOOKS, creationProblem, lookOf, readConfig, readRoster } from "./model";
 import { readFacts, scheduleText } from "./profile-data";
 
 vi.mock("../../face/Face", () => ({ Face: ({ label, size }: { label?: string; size: number }) => <span role="img" aria-label={label} data-face-size={size} /> }));
@@ -65,7 +67,7 @@ describe("Trunk data", () => {
   });
   it("names a new Trunk with a free name and sends only changed identity fields", () => {
     const may = readMay(readConfig(CONFIG), "birch");
-    const was = { name: "Birch", theme: "", look: "ember", emoji: "", colour: "#2F8C86", shape: "Circle", eyes: "Round", model: "p/one", may };
+    const was = { name: "Birch", theme: "", description: "", look: "ember", emoji: "", colour: "#2F8C86", shape: "Circle", eyes: "Round", model: "p/one", may };
     expect(updateParams("birch", was, was)).toBeNull();
     expect(updateParams("birch", was, { ...was, look: "classic", emoji: "🦉" })).toEqual({ agentId: "birch", avatar: "classic", emoji: "🦉" });
     expect(scheduleText({ kind: "cron", expr: "0 8 * * *" })).toBe("Every day at 8:00 AM");
@@ -77,6 +79,33 @@ describe("Trunk data", () => {
 });
 
 describe("Trunk editor", () => {
+  it("makes an existing Trunk Chief of Staff from its editor and saves instructions plus A2A permissions", async () => {
+    const request = fake({ "agents.files.get": { file: { name: "SOUL.md", content: "# TK\n", hash: "old" } } });
+    await mount(<TrunkEditor engine={engine(request)} agentId="oak" level="regular" onClose={() => {}} />);
+    await click(byText("Instructions"));
+    await click(byText("Make this my Chief of Staff"));
+    expect(request).toHaveBeenCalledWith("agents.files.set", expect.objectContaining({ agentId: "oak", expectedHash: "old", content: expect.stringContaining(CHIEF_OF_STAFF_INSTRUCTIONS) }));
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { oak: { agentToAgent: { allow: ["*"], deny: [] } } } } }) });
+  });
+  it("saves the default Trunk's name, character, colour, title and description", async () => {
+    const request = fake();
+    await mount(<TrunkEditor engine={engine(request)} agentId="oak" level="regular" onClose={() => {}} />);
+    await type(document.querySelectorAll<HTMLInputElement>(".tk-split input")[0], "TK");
+    await type(document.querySelectorAll<HTMLInputElement>(".tk-split input")[1], "Builder lead");
+    await act(async () => { const box = document.querySelector<HTMLTextAreaElement>(".tk-look-tab textarea")!; Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(box, "Coordinates builders"); box.dispatchEvent(new Event("input", { bubbles: true })); });
+    await click(document.querySelector('[aria-label="Tock"]'));
+    await click(document.querySelector('[aria-label="Colour #56616B"]'));
+    await click(byText("Save"));
+    expect(request).toHaveBeenCalledWith("agents.update", { agentId: "oak", name: "TK", avatar: "branch:tock", colour: "#56616B" });
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { oak: { identity: { theme: "Builder lead" }, description: "Coordinates builders" } } } }) });
+  });
+  it("opens the default Trunk's instruction files from its editor", async () => {
+    const request = fake({ "agents.files.get": { file: { name: "SOUL.md", content: "# TK", hash: "s1" } } });
+    await mount(<TrunkEditor engine={engine(request)} agentId="oak" level="regular" onClose={() => {}} />);
+    await click(byText("Instructions"));
+    expect(request).toHaveBeenCalledWith("agents.files.get", { agentId: "oak", name: "SOUL.md" });
+    expect(document.querySelector<HTMLTextAreaElement>(".tk-files textarea")?.value).toContain("# TK");
+  });
   it("enables colour, shape, eyes and Shuffle on the Look tab", async () => {
     await mount(<TrunkEditor engine={engine(fake())} agentId="birch" level="regular" onClose={() => {}} />);
     await click(document.querySelector('[aria-label^="Classic pebble"]'));
@@ -214,6 +243,14 @@ describe("Customize › Trunks", () => {
     await act(async () => { document.querySelectorAll(".tk-row")[1].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })); });
     expect(byText("Make default").disabled).toBe(false);
   });
+  it("hides and shows even the default while retaining its routing target", async () => {
+    const request = fake();
+    await setTrunkHidden(engine(request), "oak", true);
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { oak: { hidden: true } } } }) });
+    await setTrunkHidden(engine(request), "oak", false);
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { oak: { hidden: false } } } }) });
+    expect(readRoster({ ...ROSTER, agents: [{ ...ROSTER.agents[0], hidden: true }] }).defaultId).toBe("oak");
+  });
   it("shows Defaults for every Trunk only at Technical and patches a number", async () => {
     const request = fake();
     await mount(tab(request));
@@ -270,6 +307,35 @@ describe("Trunk profile and studio", () => {
     expect(document.querySelector('[data-testid="trunk-remove"]')).toBeTruthy();
     await click(document.querySelector('[data-testid="trunk-remove"] .btn.bad'));
     expect(request).toHaveBeenCalledWith("agents.delete", { agentId: "birch" });
+  });
+  it("offers Chief of Staff from the profile", async () => {
+    const request = fake({ "agents.files.get": { file: { name: "SOUL.md", missing: true } }, "sessions.list": { sessions: [] } });
+    await mount(<TrunkProfile engine={engine(request)} agentId="oak" level="regular" onClose={() => {}} />);
+    await click(byText("Make this my Chief of Staff"));
+    expect(request).toHaveBeenCalledWith("agents.files.set", expect.objectContaining({ agentId: "oak", expectedMissing: true }));
+  });
+  it("creates the Chief of Staff job tile with its instructions and permissions", async () => {
+    const request = fake({ "agents.create": { ok: true, agentId: "chief-of-staff" }, "agents.files.get": { file: { name: "SOUL.md", missing: true } } });
+    await createJob(engine(request), JOBS.find((job) => job.name === "Chief of Staff")!);
+    expect(request).toHaveBeenCalledWith("agents.create", { name: "Chief of Staff" });
+    expect(request).toHaveBeenCalledWith("agents.files.set", expect.objectContaining({ agentId: "chief-of-staff", content: expect.stringContaining("sessions_send") }));
+    expect(request).toHaveBeenCalledWith("config.patch", expect.objectContaining({ baseHash: "h1" }));
+  });
+  it("keeps the new Trunk preview's name and character for the Chief of Staff job", async () => {
+    const request = fake({ "agents.create": { ok: true, agentId: "chief-of-staff" }, "agents.files.get": { file: { name: "SOUL.md", missing: true } } });
+    await createJob(engine(request), JOBS.find((job) => job.name === "Chief of Staff")!, () => true, "branch:tock", "Coordinator");
+    expect(request).toHaveBeenCalledWith("agents.create", { name: "Coordinator", avatar: "branch:tock" });
+  });
+  it("opens blocked A2A paths for Chief of Staff without opening every inbound target", async () => {
+    const request = fake({
+      "agents.files.get": { file: { name: "SOUL.md", missing: true } },
+      "config.get": { hash: "h2", valid: true, config: { tools: { agentToAgent: { enabled: false, allow: ["birch"] } }, agents: { entries: { oak: {}, birch: { agentToAgent: { deny: ["*"], allow: ["*"] } } } } } },
+    });
+    await makeChiefOfStaff(engine(request), "oak");
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h2", raw: JSON.stringify({
+      tools: { agentToAgent: { enabled: true, allow: ["birch", "oak"] } },
+      agents: { entries: { oak: { agentToAgent: { allow: ["*"], deny: [] } }, birch: { agentToAgent: { allow: ["oak"], deny: [] } } } },
+    }) });
   });
   it("lists its automations from cron.list, toggles one, and shows the ID only at Technical", async () => {
     const request = fake({ "cron.list": { jobs: [{ id: "j1", name: "Morning", agentId: "birch", enabled: true, schedule: { kind: "every", everyMs: 1800000 } }] }, "sessions.list": { sessions: [] } });

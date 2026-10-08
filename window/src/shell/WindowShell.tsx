@@ -55,6 +55,7 @@ import { createReadyTrunk } from "../places/trunk/api";
 import { RemoveTrunkDialog, TRUNK_REMOVED_EVENT } from "../places/trunk/RemoveTrunk";
 import { NewTrunkPreview, type TrunkChoice } from "../places/trunk/NewTrunkPreview";
 import type { Roster } from "../places/trunk/model";
+import { createChiefOfStaff } from "../places/trunk/chief-of-staff";
 import { creationProblem, readRoster } from "../places/trunk/model";
 import { COMPOSE_EVENT } from "../composer/Composer";
 import { PairDialog } from "../places/customize/pairing";
@@ -782,6 +783,15 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       setMakingTrunk(false);
     }
   };
+  const newChiefOfStaff = useCallback(async () => {
+    try {
+      const agentId = await createChiefOfStaff(session.engine);
+      const key = await actions.create(agentId);
+      if (key) openConversation(key);
+    } catch (e) {
+      notify(`Couldn't make the Chief of Staff: ${e instanceof Error ? e.message : String(e)}`, { tone: "bad" });
+    }
+  }, [session, actions, openConversation]);
 
   const contacts = projectContact([...contactRows.map((contact) => contact.kind === "outside" && groupRooms.peerOnline.has(contact.id.slice(4)) ? { ...contact, offline: groupRooms.peerOnline.get(contact.id.slice(4)) === false } : contact), ...groupRooms.rooms.map((room) => roomContact(room, contactRows)).filter((c): c is NonNullable<typeof c> => Boolean(c))], lists.rows);
   const roomNotices = useRoomNotices(session, openKey, contacts);
@@ -809,8 +819,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     const row = lists.rows.find((candidate) => candidate.key === topic.key);
     return { topic, updatedAt: row?.updatedAt ?? topic.anchor?.at ?? 0, preview: row?.preview ?? "", projectName: projects.projects.find((project) => project.id === topic.projectId)?.name };
   });
-  const home = contacts.find((c) => c.isDefault) ? contactRow(contacts.find((c) => c.isDefault)!) : homeRow(lists.rows, s.mainKey, defaultName);
-  const sections = buildContactSections(contacts, prefs, now);
+  const hiddenTrunkIds = new Set(trunks.list.filter((t) => t.hidden).map((t) => t.id));
+  const visibleTrunks = trunks.list.filter((t) => !t.hidden);
+  const visibleContacts = contacts.filter((c) => c.kind !== "trunk" || !hiddenTrunkIds.has(c.id.slice(6)));
+  const home = hiddenTrunkIds.has(trunks.defaultId ?? "") ? null : visibleContacts.find((c) => c.isDefault) ? contactRow(visibleContacts.find((c) => c.isDefault)!) : homeRow(lists.rows, s.mainKey, defaultName);
+  const sections = buildContactSections(visibleContacts, prefs, now);
   const pinnedSection = sections.find((section) => section.id === "pinned");
   if (pinnedSection) pinnedSection.rows.sort((a, b) => {
     if (a.key === b.key) return 0;
@@ -1424,7 +1437,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           openConversation(key);
         }}
         onNew={(e) => showMenu(e, "new", [
-          ...newMenuItems({ newWith: (id) => startNew(id), trunks: trunks.list, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }),
+          ...newMenuItems({ newWith: (id) => startNew(id), trunks: visibleTrunks, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), newChiefOfStaff: () => void newChiefOfStaff(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }),
           ...(rail ? [{ kind: "sep" as const }, { label: "Settings", run: () => openSettings("general") }, { label: "Show the full list", hint: "Ctrl B", run: () => setLayout({ rail: false }) }] : []),
         ], "New")}
         onMenu={rowMenu}
@@ -1536,7 +1549,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           at={overlay.at}
           prefs={prefs}
           facts={{
-            trunks: trunks.list,
+            trunks: visibleTrunks,
             people,
             owners: owners(lists.rows).length,
             folders: hasFolders(lists.rows),
@@ -1583,8 +1596,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onOpenMessage={openSearchMessage}
           onClose={() => setOverlay(null)}
           rows={paletteRows({
-            conversations: [...contacts.map(contactRow), ...lists.rows.filter((r) => !r.isMain && !r.archived)],
-            trunks: trunks.list,
+            conversations: [...visibleContacts.map(contactRow), ...lists.rows.filter((r) => !r.isMain && !r.archived && !hiddenTrunkIds.has(r.agentId ?? ""))],
+            trunks: visibleTrunks,
             trunkName,
             newConversation: () => void startNew(),
             newTrunk: () => void newTrunk(),
@@ -1604,7 +1617,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       ) : null}
       {overlay?.kind === "ask" ? (
         <QuickAsk
-          trunks={trunks.list}
+          trunks={visibleTrunks}
           defaultId={trunks.defaultId}
           onClose={() => setOverlay(null)}
           onSend={(text, agentId) => {
