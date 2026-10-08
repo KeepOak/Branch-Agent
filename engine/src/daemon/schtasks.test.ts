@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/daemon/schtasks.test.ts (atlas OPS-0002). Changed for Branch: keep the custom task fixture bound to its registered name after DECISIONS.md item 133 rebranding.
 // Windows schtasks tests cover scheduled task service lifecycle behavior.
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -152,7 +153,7 @@ describe("readScheduledTaskCommand", () => {
                 ? [
                     "@echo off",
                     'set "BRANCH_PROFILE=default"',
-                    'set "BRANCH_WINDOWS_TASK_NAME=Branch Gateway Backup"',
+                    `set "BRANCH_WINDOWS_TASK_NAME=${taskName.replace(/^\\/, "")}"`,
                     'set "BRANCH_STATE_DIR=C:\\Services\\Backup"',
                     'set "BRANCH_CONFIG_PATH=C:\\Services\\Backup\\branch.json"',
                     'cd /d "C:\\Services\\Backup"',

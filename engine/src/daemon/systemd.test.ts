@@ -1,3 +1,4 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/daemon/systemd.test.ts (atlas OPS-0005). Changed for Branch: preserve newer upstream lifecycle assertions and align fixture descriptions through the rename map for DECISIONS.md item 133.
 import type { ExecFileOptionsWithStringEncoding } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -2083,7 +2084,7 @@ describe("systemd service install and uninstall", () => {
 
     const unit = await fs.readFile(unitPath, "utf8");
     expect(unitPath).toMatch(/branch-node\.service$/);
-    expect(unit).toContain("Description=Branch Node Host");
+    expect(unit).toContain("Description=Branch Agent Node Host");
     expect(unit).toContain("branch node run");
     expect(unit).not.toContain("BRANCH_SERVICE_VERSION");
     expect(execFileMock).toHaveBeenCalledTimes(3);
@@ -2270,7 +2271,7 @@ describe("systemd service install and uninstall", () => {
     "Unit unrelated.service is not active.",
   ])("refuses to remove the unit when systemctl disable fails: %s", async (detail) => {
     const { env, unitPath, nodeEnvFilePath } = await createSystemdFixture("node");
-    await writeUnitFixture(unitPath, "[Unit]\nDescription=Branch Node\n");
+    await writeUnitFixture(unitPath, "[Unit]\nDescription=Branch Agent Node\n");
     await fs.writeFile(nodeEnvFilePath, "BRANCH_GATEWAY_TOKEN=preserved-token\n", {
       encoding: "utf8",
       mode: 0o600,
@@ -2321,9 +2322,12 @@ describe("systemd service install and uninstall", () => {
     "uninstalls the selected node unit and cleans credentials only after removal: %s",
     async (scenario) => {
       const { env, unitPath, nodeEnvFilePath } = await createSystemdFixture("node");
-      await writeUnitFixture(unitPath, "[Unit]\nDescription=Branch Node\n");
+      await writeUnitFixture(unitPath, "[Unit]\nDescription=Branch Agent Node\n");
       if (scenario !== "password-only") {
-        await writeUnitFixture(`${unitPath}.bak`, "[Unit]\nDescription=Previous Branch Agent Node\n");
+        await writeUnitFixture(
+          `${unitPath}.bak`,
+          "[Unit]\nDescription=Previous Branch Agent Node\n",
+        );
       }
       const retained =
         [

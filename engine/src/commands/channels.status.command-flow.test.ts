@@ -1,3 +1,4 @@
+// From openclaw/openclaw@3d23bf9dd463f6cec1928cc65a7297c885a4529e:src/commands/channels.status.command-flow.test.ts (atlas OBSERVABILITY-0085). Changed for Branch: retain current upstream fallback wording and Branch rebranding.
 // Channels status command-flow tests cover gateway calls, config fallback, and timeout validation.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { retainGatewayResponsePayload } from "../../packages/gateway-client/src/protocol-request.js";

@@ -1,3 +1,4 @@
+// From openclaw/openclaw@3d23bf9dd463f6cec1928cc65a7297c885a4529e:src/logging/diagnostic-heap-profile.test.ts (atlas OBSERVABILITY-0098). Changed for Branch: retain current upstream sampling API and warm native allocation sites without changing assertions.
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DiagnosticsHeapProfileParams } from "../../packages/gateway-protocol/src/schema/diagnostics.js";
@@ -456,6 +457,10 @@ assert.equal(url(), undefined);
 console.log(JSON.stringify({ functionName: 'allocateHeapProfileWorkload', selfBytes, count, resultBytes, durationMs: result.durationMs, samplingIntervalBytes: result.samplingIntervalBytes, heapUsedBefore: result.heapUsedBefore, heapUsedAfter: result.heapUsedAfter, rssBefore: result.rssBefore, rssAfter: result.rssAfter, truncated: result.truncated, unattributedSampleCount: result.unattributedSampleCount, unattributedSampleBytes: result.unattributedSampleBytes, listener: false }));
 assert.ok(retained.length > 0);
 retained = undefined;
+// Initialize V8's retained feedback and allocation sites outside the sampled window.
+for (let pass = 0; pass < 2; pass++) {
+  allocateDroppedHeapProfileWorkload(10);
+}
 timers.setTimeout = async () => {
   allocateDroppedHeapProfileWorkload();
   await globalThis.gc({ type: "major", execution: "async" });

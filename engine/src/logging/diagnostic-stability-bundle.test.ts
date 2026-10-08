@@ -1,3 +1,4 @@
+// From openclaw/openclaw@3d23bf9dd463f6cec1928cc65a7297c885a4529e:src/logging/diagnostic-stability-bundle.test.ts (atlas OBSERVABILITY-0090). Changed for Branch: retain current upstream failure-bundle API and evidence assertions.
 // Diagnostic stability bundle tests cover stable diagnostic bundle generation.
 import fs from "node:fs";
 import os from "node:os";

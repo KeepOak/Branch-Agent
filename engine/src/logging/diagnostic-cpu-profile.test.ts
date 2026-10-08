@@ -1,3 +1,4 @@
+// From openclaw/openclaw@3d23bf9dd463f6cec1928cc65a7297c885a4529e:src/logging/diagnostic-cpu-profile.test.ts (atlas OBSERVABILITY-0098). Changed for Branch: retain current upstream profile attribution and native worker coverage.
 import type { Profiler } from "node:inspector";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

@@ -1,3 +1,4 @@
+// From openclaw/openclaw@3d23bf9dd463f6cec1928cc65a7297c885a4529e:src/daemon/launchd.test.ts (atlas OPS-0004). Changed for Branch: retain current upstream lifecycle and rollback assertions.
 await vi.hoisted(() => import("./launchd-ancestry.test-support.js"));
 import "./launchd-fs.mocks.test-support.js";
 // Launchd tests cover macOS service plist generation and command handling.
