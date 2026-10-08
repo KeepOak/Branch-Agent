@@ -23,7 +23,7 @@ function items() {
 
 let root: Root | undefined;
 afterEach(async () => {
-  if (root) await act(async () => root.unmount());
+  if (root) await act(async () => root?.unmount());
   root = undefined;
   document.body.innerHTML = "";
 });
