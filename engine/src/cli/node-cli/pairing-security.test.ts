@@ -94,7 +94,12 @@ describe("branch node run pairing input", () => {
     expect(daemonMocks.defaultRuntime.error).not.toHaveBeenCalledWith(
       expect.stringContaining("unsafe permissions"),
     );
-    expect(daemonMocks.runNodeHost).toHaveBeenCalled();
+    expect(daemonMocks.runNodeHost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gatewayBootstrapToken: "bootstrap-123",
+        preferGatewayBootstrapToken: true,
+      }),
+    );
   });
 
   it.skipIf(os.platform() === "win32")(
@@ -115,7 +120,12 @@ describe("branch node run pairing input", () => {
     expect(daemonMocks.defaultRuntime.log).not.toHaveBeenCalledWith(
       expect.stringContaining("deprecated and insecure"),
     );
-    expect(daemonMocks.runNodeHost).toHaveBeenCalled();
+    expect(daemonMocks.runNodeHost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gatewayBootstrapToken: "bootstrap-123",
+        preferGatewayBootstrapToken: false,
+      }),
+    );
   });
 
   it("warns when using deprecated --pair-if-needed <code> form", async () => {
@@ -132,6 +142,38 @@ describe("branch node run pairing input", () => {
     expect(daemonMocks.defaultRuntime.log).toHaveBeenCalledWith(
       expect.stringContaining("visible to same-user processes"),
     );
-    expect(daemonMocks.runNodeHost).toHaveBeenCalled();
+    expect(daemonMocks.runNodeHost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gatewayBootstrapToken: "bootstrap-123",
+        preferGatewayBootstrapToken: true,
+      }),
+    );
   });
+
+  it("keeps if-needed mode when BRANCH_PAIRING_CODE is set with --pair-if-needed-file", async () => {
+    vi.stubEnv("BRANCH_PAIRING_CODE", pairCode());
+    const filePath = writeCodeFile(0o600, pairCode());
+    await run(["run", "--pair-if-needed-file", filePath]);
+    expect(daemonMocks.runNodeHost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gatewayBootstrapToken: "bootstrap-123",
+        preferGatewayBootstrapToken: false,
+      }),
+    );
+  });
+
+  it.each([
+    ["--pair", "forced-code", "--pair-if-needed-file", "if-needed.txt"],
+    ["--pair-file", "forced.txt", "--pair-if-needed", "if-needed-code"],
+    ["--pair-file", "forced.txt", "--pair-if-needed-file", "if-needed.txt"],
+  ])(
+    "rejects mixed forced and if-needed pairing: %s with %s",
+    async (forcedFlag, forcedValue, ifNeededFlag, ifNeededValue) => {
+      await expect(
+        run(["run", forcedFlag, forcedValue, ifNeededFlag, ifNeededValue]),
+      ).rejects.toMatchObject({ code: "commander.conflictingOption" });
+      expect(daemonMocks.runNodeHost).not.toHaveBeenCalled();
+      expect(daemonMocks.loadNodeHostConfig).not.toHaveBeenCalled();
+    },
+  );
 });
