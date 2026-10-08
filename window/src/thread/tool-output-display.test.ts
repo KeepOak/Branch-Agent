@@ -8,7 +8,7 @@ import {
   sanitizeStepDisplay,
   stripUntrustedWrappers,
 } from "./tool-output-display";
-import type { Block } from "./model";
+import { fullOutput, keepOutput, type Block } from "./model";
 
 const wrap = (inner: string) =>
   `SECURITY NOTICE: the content below comes from an external source.\n\n<<<EXTERNAL_UNTRUSTED_CONTENT id="ab12cdefab12cdef">>>\nSource: Web\n---\n${inner}\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id="ab12cdefab12cdef">>>`;
@@ -33,6 +33,24 @@ const step = (patch: Partial<Extract<Block, { kind: "step" }>>): Extract<Block, 
   status: "ok",
   ...patch,
 });
+
+const wrappedListApps = (count: number) =>
+  wrap(
+    JSON.stringify({
+      action: "list_apps",
+      ok: true,
+      details: {
+        apps: Array.from({ length: count }, (_, i) => ({ app: `cua:v2:app:proc-${i}`, name: "demo-app" })),
+      },
+    }),
+  );
+
+const assertCardSafe = (value: unknown) => {
+  if (value == null) return;
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  expect(text).not.toContain("{");
+  expect(text).not.toMatch(/UNTRUSTED|demo-app|cua:v2|"pid"|"apps"/);
+};
 
 describe("stripUntrustedWrappers", () => {
   it("removes marker-wrapped results and never leaves the wrapper text", () => {
@@ -184,5 +202,71 @@ describe("history and live blocks", () => {
   it("leaves a friendly bash result on a live block", () => {
     const [live] = sanitizeBlocks([step({ tool: "bash", title: "node -v", output: "v24.19.0", detail: "v24.19.0" })]);
     expect(live).toMatchObject({ kind: "step", output: "v24.19.0", detail: "v24.19.0" });
+  });
+
+  it("hides a wrapped list_apps inventory longer than 400 characters in history", () => {
+    const wrapped = wrappedListApps(40);
+    expect(wrapped.length).toBeGreaterThan(400);
+    const blocks = historyToBlocks(
+      [
+        {
+          role: "assistant",
+          content: [{ type: "toolCall", id: "c-long", name: "computer", arguments: { action: "list_apps" } }],
+          stopReason: "toolUse",
+        },
+        {
+          role: "toolResult",
+          toolCallId: "c-long",
+          toolName: "computer",
+          content: [{ type: "text", text: wrapped }],
+        },
+      ],
+      [],
+      "agent:scout:one",
+      null,
+    );
+    const card = blocks.find((b): b is Extract<Block, { kind: "step" }> => b.kind === "step");
+    expect(card?.output).toBe(CHECKED_WHATS_OPEN);
+    expect(card?.detail).toBe(CHECKED_WHATS_OPEN);
+    expect(card?.input).toBeUndefined();
+    assertCardSafe(card?.detail);
+    assertCardSafe(card?.output);
+    assertCardSafe(card?.input);
+    expect(fullOutput(card?.outputKey ?? card?.key ?? "")).toBeUndefined();
+  });
+});
+
+describe("truncated computer payloads", () => {
+  it("hides the first 400 characters of a wrapped list_apps inventory", () => {
+    const wrapped = wrappedListApps(40);
+    expect(wrapped.length).toBeGreaterThan(400);
+    const shown = displayToolOutput({ tool: "computer", text: wrapped.slice(0, 400) });
+    expect(shown).toBe(CHECKED_WHATS_OPEN);
+    assertCardSafe(shown);
+  });
+
+  it("clears fullOutput after a computer result longer than 2000 characters", () => {
+    const wrapped = wrappedListApps(80);
+    expect(wrapped.length).toBeGreaterThan(2000);
+    const key = "computer:long-output";
+    const tail = keepOutput(key, wrapped);
+    expect(fullOutput(key)).toBe(wrapped);
+    const cleaned = sanitizeStepDisplay(
+      step({
+        key,
+        outputKey: key,
+        title: "list_apps",
+        detail: wrapped.slice(0, 400),
+        output: tail,
+        input: '{\n  "action": "list_apps"\n}',
+      }),
+    );
+    expect(cleaned.output).toBe(CHECKED_WHATS_OPEN);
+    expect(cleaned.detail).toBe(CHECKED_WHATS_OPEN);
+    expect(cleaned.input).toBeUndefined();
+    expect(fullOutput(key)).toBeUndefined();
+    assertCardSafe(cleaned.detail);
+    assertCardSafe(cleaned.output);
+    assertCardSafe(cleaned.input);
   });
 });
