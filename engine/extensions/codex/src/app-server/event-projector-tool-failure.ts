@@ -71,6 +71,7 @@ export function summarizeUnmentionedCodexToolFailures(
     );
     if (
       !reason ||
+      /^codex native tool (?:failed|blocked)$/iu.test(reason) ||
       mentionedTexts.some(
         (text) =>
           text.includes(reason.toLowerCase()) ||
@@ -91,8 +92,13 @@ export function summarizeUnmentionedCodexToolFailures(
     }
     return [`${message.toolName} — ${reason}`];
   });
-  return failures.length
-    ? `${failures.length} ${failures.length === 1 ? "step" : "steps"} failed: ${failures.join("; ")}`
+  const uniqueFailures = [...new Set(failures)];
+  const listedFailures = uniqueFailures.slice(0, 3);
+  if (uniqueFailures.length > listedFailures.length) {
+    listedFailures.push(`and ${uniqueFailures.length - listedFailures.length} more`);
+  }
+  return uniqueFailures.length
+    ? `${uniqueFailures.length} ${uniqueFailures.length === 1 ? "step" : "steps"} failed: ${listedFailures.join("; ")}`
     : undefined;
 }
 

@@ -103,14 +103,85 @@ it("only lists unmentioned failures when multiple steps failed", async () => {
   ]);
 });
 
-it("replaces a silent token with the failure summary", async () => {
+it("preserves a silent token and keeps the failure reason on the step", async () => {
   const projector = await createProjector();
   recordStep(projector);
   const result = await finish(projector, "NO_REPLY");
-  expect(result.assistantTexts).toEqual(["1 step failed: browser — Connection refused"]);
+  expect(result.assistantTexts).toEqual(["NO_REPLY"]);
   expect(result.currentAttemptAssistant?.content).toEqual([
-    { type: "text", text: "1 step failed: browser — Connection refused" },
+    { type: "text", text: "NO_REPLY" },
   ]);
+  expect(result.lastAssistant?.content).toEqual([{ type: "text", text: "NO_REPLY" }]);
+  expect(result.messagesSnapshot.at(-1)?.content).toEqual([{ type: "text", text: "NO_REPLY" }]);
+  expect(result.messagesSnapshot.find((message) => message.role === "toolResult")).toMatchObject({
+    isError: true,
+    details: { failureReason: "Connection refused" },
+  });
+});
+
+it("lists at most three of five distinct failures", async () => {
+  const projector = await createProjector();
+  for (let index = 1; index <= 5; index++) {
+    recordStep(projector, false, `Failure ${index}`, `step-${index}`);
+  }
+  expect((await finish(projector)).assistantTexts).toEqual([
+    "Done\n\n5 steps failed: browser — Failure 1; browser — Failure 2; browser — Failure 3; and 2 more",
+  ]);
+});
+
+it("collapses repeated tool and reason pairs before counting and capping", async () => {
+  const projector = await createProjector();
+  for (let index = 1; index <= 5; index++) {
+    recordStep(projector, false, "Connection refused", `step-${index}`);
+  }
+  expect((await finish(projector)).assistantTexts).toEqual([
+    "Done\n\n1 step failed: browser — Connection refused",
+  ]);
+  const mixed = await createProjector();
+  for (let index = 1; index <= 5; index++) {
+    recordStep(mixed, false, `Failure ${index}`, `step-${index}`);
+  }
+  recordStep(mixed, false, "Failure 1", "repeat");
+  expect((await finish(mixed)).assistantTexts).toEqual([
+    "Done\n\n5 steps failed: browser — Failure 1; browser — Failure 2; browser — Failure 3; and 2 more",
+  ]);
+});
+
+it.each(["failed", "blocked"])("omits a generic native tool %s reason", async (status) => {
+  const projector = await createProjector();
+  recordStep(projector, false, `codex native tool ${status}`);
+  const result = await finish(projector);
+  expect(result.assistantTexts).toEqual(["Done"]);
+  expect(result.messagesSnapshot.find((message) => message.role === "toolResult")).toMatchObject({
+    isError: true,
+    details: { failureReason: `codex native tool ${status}` },
+  });
+});
+
+it("does not summarize an empty-output native command exiting with code 1", async () => {
+  const projector = await createProjector();
+  await projector.handleNotification(
+    forCurrentTurn("item/completed", {
+      item: {
+        id: "command",
+        type: "commandExecution",
+        command: "rg missing file.txt",
+        cwd: "/workspace",
+        processId: null,
+        source: "agent",
+        commandActions: [],
+        status: "failed",
+        aggregatedOutput: "",
+        exitCode: 1,
+        durationMs: 1,
+      },
+    }),
+  );
+  const result = await finish(projector);
+  expect(result.assistantTexts).toEqual(["Done"]);
+  expect(result.messagesSnapshot.find((message) => message.role === "toolResult")).toMatchObject({
+    isError: true,
+  });
 });
 
 it.each([true, false])(

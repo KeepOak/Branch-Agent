@@ -246,6 +246,7 @@ export abstract class CodexTurnProjection {
       !providerRefusal &&
       !aborted &&
       !yieldDetected &&
+      !isSilentReplyPayloadText(assistantTexts.at(-1) ?? "") &&
       completedTurn?.status === "completed" &&
       !initialPromptError
         ? this.toolTranscriptProjection.unmentionedFailureSummary([
@@ -257,9 +258,7 @@ export abstract class CodexTurnProjection {
       const lastIndex = assistantTexts.length - 1;
       const lastText = assistantTexts[lastIndex];
       if (lastText !== undefined) {
-        assistantTexts[lastIndex] = isSilentReplyPayloadText(lastText)
-          ? failureSummary
-          : `${lastText}\n\n${failureSummary}`;
+        assistantTexts[lastIndex] = `${lastText}\n\n${failureSummary}`;
       } else {
         assistantTexts.push(failureSummary);
       }
