@@ -11,7 +11,7 @@ import { resetFreshMarks, useFreshClass } from "../thread/fresh";
 const rootDir = join(process.cwd(), "src");
 const threadCss = readFileSync(join(rootDir, "thread/thread.css"), "utf8");
 const frameCss = readFileSync(join(rootDir, "shell/frame.css"), "utf8");
-const motionCss = readFileSync(join(rootDir, "theme/motion.css"), "utf8");
+const contactsCss = readFileSync(join(rootDir, "shell/contacts-layout.css"), "utf8");
 const tokensCss = readFileSync(join(rootDir, "theme/tokens.css"), "utf8");
 const placeView = readFileSync(join(rootDir, "places-nav/PlaceView.tsx"), "utf8");
 const mainTsx = readFileSync(join(rootDir, "main.tsx"), "utf8");
@@ -42,16 +42,14 @@ describe("motion pass (preview rise, sugIn, enter11, pinIn)", () => {
     expect(frameCss).toMatch(/:root\[data-still\] \.enter11 > \*/);
     expect(placeView).toMatch(/className="enter11"/);
     expect(placeView).toMatch(/key=\{place\}/);
+    expect(placeView).toMatch(/<div className="enter11" key=\{place\}>[\s\S]*<\/div>\s*<TrunkHost/);
   });
 
-  it("fades a newly pinned tile once, with tokens and still guards", () => {
-    expect(motionCss).toMatch(/@keyframes pin-in\s*\{/);
-    expect(motionCss).toMatch(/\.side \.pin-tile\.pin-new/);
-    expect(motionCss).toMatch(/animation:\s*pin-in var\(--t-enter\) var\(--ease-enter\) both/);
-    expect(motionCss).toMatch(/from\s*\{\s*opacity:\s*0;\s*transform:\s*scale\(0\.94\)/);
-    expect(motionCss).toMatch(/prefers-reduced-motion:\s*reduce[\s\S]*\.pin-new[\s\S]*animation:\s*none/);
-    expect(motionCss).toMatch(/:root\[data-still\] \.side \.pin-tile\.pin-new/);
-    expect(mainTsx).toMatch(/import "\.\/theme\/motion\.css"/);
+  it("keeps the preview pin-in timing of 250ms ease", () => {
+    expect(contactsCss).toMatch(/\.pin-new\s*\{\s*animation:\s*pin-in 250ms ease both/);
+    expect(contactsCss).toMatch(/@keyframes pin-in\s*\{\s*from\s*\{\s*opacity:\s*0;\s*transform:\s*scale\(\.94\)/);
+    expect(contactsCss).toMatch(/prefers-reduced-motion:\s*reduce[\s\S]*\.pin-new[\s\S]*animation:\s*none/);
+    expect(mainTsx).not.toMatch(/motion\.css/);
   });
 });
 
