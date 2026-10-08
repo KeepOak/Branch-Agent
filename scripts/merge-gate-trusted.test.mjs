@@ -908,6 +908,11 @@ test('old-base PR still runs the trusted check from the default branch', () => {
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-trusted.test.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/check-commit-emails.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/check-commit-emails.test.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.test.mjs'));
+  const trustedSource = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
+  assert.match(trustedSource, /from '\.\/check-ui-proof\.mjs'/);
+  assert.match(trustedSource, /runUiProofFromPr\(/);
 });
 
 test('trusted gate runs the commit email checker on pull request commits', () => {
@@ -918,10 +923,21 @@ test('trusted gate runs the commit email checker on pull request commits', () =>
   assert.doesNotMatch(yaml, /ref:\s*\$\{\{\s*github\.event\.pull_request\.head\.(?:sha|ref)/);
 });
 
+test('trusted gate re-runs the UI screenshot proof check from main', () => {
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.test.mjs'));
+});
+
 test('merge-gate does not retrigger on ready_for_review and cancel its waiting run', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
   assert.match(yaml, /^  pull_request:\s*$/m);
   assert.doesNotMatch(yaml, /^\s+types:.*ready_for_review/m);
+});
+
+test('merge-gate edited trigger does not cancel an in-progress wait', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /types:\s*\[[^\]]*edited[^\]]*\]/);
+  assert.match(yaml, /cancel-in-progress:\s*\$\{\{\s*github\.event\.action\s*!=\s*'edited'\s*\}\}/);
 });
 
 test('merge-gate wait ignores merge-gate-trusted so the two gates cannot deadlock', () => {

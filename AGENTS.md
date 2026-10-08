@@ -30,7 +30,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 5. **List new test files for CI** in `scripts/feature-batch-ci-named/<branch-name>.txt` (`engine:<path>` or `window:<path>`, one per line, sorted). For desktop tests, add a `node --test` step to `.github/workflows/desktop-checks.yml`.
 
-6. **Lint before pushing:** `cd window && pnpm lint` for window changes; `cd engine && pnpm lint` for engine changes (uses oxlint with strict rules). Fix all lint errors.
+6. **Lint before pushing:** `cd window && pnpm lint` for window changes; `cd engine && pnpm lint` for engine changes (uses oxlint with strict rules). Fix all lint errors. If engine lint reports raw-copy baseline drift, regenerate with `cd engine && pnpm ui:i18n:baseline` and commit `engine/ui/src/i18n/.i18n/raw-copy-baseline.json`. Do not commit `catalog-fallbacks.json` on a source PR; post-merge locale refresh owns that file.
 
 7. **Type-check before pushing:** `pnpm -C window typecheck` for window changes; `node scripts/strict-typecheck.mjs` for engine changes (about 6 GB).
 
@@ -38,7 +38,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 9. **Don't touch a running desktop app.** Test engines use their own free loopback ports and data folders, never `19031`/`19032` or the app's data folder. Stop processes by process id, never by name.
 
-10. **Self-test visible changes** in a scratch engine and window (browser or computer tools, or Playwright) and put screenshots in the PR.
+10. **Self-test visible changes** in a scratch engine and window (browser or computer tools, or Playwright) and put screenshots in the PR. The `check-ui-proof` gate enforces this for `window/**` changes.
 
 11. **Commits and PRs:** Conventional Commits, files staged by name (never `git add -A`), no tool or AI attribution lines, no force-push to `main`. Cloud-agent commits must end with exactly `Co-authored-by: Taofik Bishi <189563683+stabrea@users.noreply.github.com>` so the platform does not append a personal-email co-author line. PR body: what, why, exact test commands and pass counts.
 

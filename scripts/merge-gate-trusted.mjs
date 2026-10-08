@@ -10,6 +10,7 @@ import {
   uncoveredTests,
 } from './changed-test-coverage.mjs';
 import { checkMergeCommands, docsToCheck } from './check-merge-command.mjs';
+import { checkUIProof } from './check-ui-proof.mjs';
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const TRUSTED_JOB = 'merge-gate-trusted';
@@ -27,6 +28,8 @@ export const GATE_SCRIPTS = [
   'scripts/check-merge-command.test.mjs',
   'scripts/check-commit-emails.mjs',
   'scripts/check-commit-emails.test.mjs',
+  'scripts/check-ui-proof.mjs',
+  'scripts/check-ui-proof.test.mjs',
   'scripts/feature-batch-ci-targets.mjs',
   'scripts/feature-slice-ci-targets.mjs',
   'scripts/priority-capabilities-ci-targets.mjs',
@@ -440,6 +443,18 @@ export function fetchPrFiles(repo, prNumber, token) {
   return Array.isArray(payload) ? payload : [];
 }
 
+export function fetchPrBody(repo, prNumber, token) {
+  const payload = ghApi(repo, token, `pulls/${prNumber}`);
+  return typeof payload?.body === 'string' ? payload.body : '';
+}
+
+export function runUiProofFromPr(files, prBody) {
+  const result = checkUIProof(files.map((file) => file.filename ?? file), prBody ?? '');
+  if (result.exitCode) console.error(result.message);
+  else console.log(result.message);
+  return result.exitCode === 0;
+}
+
 export function fetchFileText(repo, sha, token, filePath) {
   try {
     const payload = ghApi(repo, token, `contents/${filePath}?ref=${sha}`);
@@ -621,6 +636,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exit(1);
   }
   console.log('Merge-command check passed.');
+  if (!runUiProofFromPr(files, fetchPrBody(repo, prNumber, token))) process.exit(1);
 
   if (initialWait > 0) sleepSeconds(initialWait);
 

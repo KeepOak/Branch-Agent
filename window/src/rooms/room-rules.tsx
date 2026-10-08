@@ -1,7 +1,11 @@
 // Room rules (DESIGN-SPEC §4.2.4 "Room rules", the preview's rr17c popover), drawn as a glass menu:
 // "Who answers": "A lead Trunk decides", "Everyone, every time", "Only those you @mention"; then "How the Trunks work
-// together here". In a chat-app group, Everyone and @mention set the engine's groupActivation ("always" / "mention");
-// the rest has no engine method yet and is greyed with the reason.
+// together here". In a Branch group, lead calls rooms.rule.set; Everyone and @mention stay greyed until rooms.send
+// starts every enabled member or the mentioned members instead of always the lead. In a chat-app group,
+// Everyone and @mention set the engine's groupActivation ("always" / "mention"); lead stays greyed. The
+// working-together patterns have no engine method yet and stay greyed with the reason. A participant room that is
+// neither a Branch group nor a chat-app group keeps Who answers greyed: lead has no method there, and Everyone /
+// @mention only write groupActivation on chat-app sessions.
 import type { MenuItem } from "../shell/Menu";
 import { ROOM_REASONS } from "./room-menu";
 import type { Rule } from "./useRoom";
@@ -21,12 +25,17 @@ const PATTERNS: [string, string][] = [
 ];
 
 /** The words the toast uses after a change: "<rule>, in <room> from now on." */
-export const ruleToast = (rule: Rule, room: string) => `${rule === "always" ? "Everyone, every time" : "Only those you @mention"}, in ${room} from now on.`;
+export const ruleToast = (rule: Rule | "lead", room: string) => {
+  const text = rule === "lead" ? "A lead Trunk decides" : rule === "always" ? "Everyone, every time" : "Only those you @mention";
+  return `${text}, in ${room} from now on.`;
+};
 
-export function roomRulesItems(p: { chatApp: boolean; rule: Rule | null; choose: (rule: Rule) => void }): MenuItem[] {
+export function roomRulesItems(p: { chatApp: boolean; branchGroup?: boolean; rule: Rule | "lead" | null; choose: (rule: Rule | "lead") => void }): MenuItem[] {
   const who = WHO.map(([v, label, sub]): MenuItem => {
-    const reason = v === "lead" ? ROOM_REASONS.lead : p.chatApp ? undefined : ROOM_REASONS.whoAnswers;
-    return { label, sub, checked: p.rule === v, run: () => v !== "lead" && p.choose(v), ...(reason ? { disabled: reason } : {}) };
+    const reason = p.branchGroup
+      ? (v === "lead" ? undefined : v === "always" ? ROOM_REASONS.everyone : ROOM_REASONS.mentions)
+      : v === "lead" ? ROOM_REASONS.lead : p.chatApp ? undefined : ROOM_REASONS.whoAnswers;
+    return { label, sub, checked: p.rule === v, run: () => { if (!reason) p.choose(v); }, ...(reason ? { disabled: reason } : {}) };
   });
   return [
     { kind: "custom", node: <div className="pt">Group rules</div> },
