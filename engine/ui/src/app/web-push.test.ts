@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:ui/src/app/web-push.test.ts (atlas UI-MOBILE-WEB-0077). Changed for Branch: retained current upstream regression coverage and existing rebranding.
 /* @vitest-environment jsdom */
 
 import { nothing, render } from "lit";
