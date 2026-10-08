@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/agents/local-model-lean.test.ts (atlas MODELS-ACCOUNTS-0136). Changed for Branch: canonical rename map; retain current upstream explicit agent ownership assertions.
 /**
  * Regression coverage for local-model lean tool filtering.
  * Verifies agent scope, default flags, preserve lists, and message-tool overrides.

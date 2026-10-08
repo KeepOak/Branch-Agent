@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/agents/tools/sessions-spawn-tool.test.ts (atlas MULTI-AGENT-0001). Changed for Branch: canonical rename map; retain current upstream managed-worktree spawning and generation-aware descendant cancellation assertions.
 import "./sessions-spawn-tool.mocks.test-support.js";
 import path from "node:path";
 import { createRequireRecord } from "branch/plugin-sdk/test-fixtures";

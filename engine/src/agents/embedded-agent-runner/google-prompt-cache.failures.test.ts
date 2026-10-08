@@ -1,11 +1,13 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/agents/embedded-agent-runner/google-prompt-cache.failures.test.ts (atlas MODELS-ACCOUNTS-0129). Changed for Branch: canonical rename map; retain current upstream keyed agent configuration and cache transport fixtures.
 import crypto from "node:crypto";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { SYSTEM_PROMPT_CACHE_BOUNDARY } from "@branch/ai/internal/shared";
 import type { StreamFn } from "branch/plugin-sdk/agent-core";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { SessionTranscriptWriterClaimReboundError } from "../../config/sessions/transcript-write-context.js";
 import { attachModelProviderRequestTransport } from "../provider-request-config.js";
+import { closeProviderTransportDispatcherPool } from "../provider-transport-dispatcher-pool.js";
 import { buildGuardedModelFetch } from "../provider-transport-fetch.js";
 import {
   createCacheFetchMock,
@@ -76,6 +78,10 @@ function readyEntry(params: {
 }
 
 describe("google prompt cache failure handling", () => {
+  afterAll(async () => {
+    await closeProviderTransportDispatcherPool();
+  });
+
   it.each([
     ["malformed JSON", () => new Response("not-json{{{", { status: 200 })],
     [
@@ -466,13 +472,20 @@ describe("google prompt cache failure handling", () => {
     const server = createServer((request, response) => {
       requests.push(request.url ?? "");
       if (request.url?.endsWith("/cachedContents")) {
-        response.writeHead(200, { "content-type": "application/json" });
+        response.writeHead(200, {
+          "content-type": "application/json",
+          connection: "close",
+        });
         response.end("not-json{{{");
         return;
       }
-      response.writeHead(200, { "content-type": "text/plain" });
+      response.writeHead(200, {
+        "content-type": "text/plain",
+        connection: "close",
+      });
       response.end("visible-generation-output");
     });
+    server.keepAliveTimeout = 0;
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
 
@@ -508,8 +521,11 @@ describe("google prompt cache failure handling", () => {
       ]);
       expect(entries.at(-1)?.data).toMatchObject({ status: "failed" });
     } finally {
-      server.close();
-      await once(server, "close");
+      await closeProviderTransportDispatcherPool();
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
     }
   });
 });

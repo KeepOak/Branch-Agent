@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/agents/auth-profiles/usage-state.test.ts (atlas MODELS-ACCOUNTS-0054). Changed for Branch: canonical rename map; retain upstream usage lifecycle tests and additional model-scoped account block regressions.
 import { MAX_DATE_TIMESTAMP_MS } from "@branch/normalization-core/number-coercion";
 import { describe, expect, it, vi } from "vitest";
 import { createAuthProfileUsageStore as makeStore } from "./credential-fixtures.test-support.js";

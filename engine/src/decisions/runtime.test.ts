@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/decisions/runtime.test.ts (atlas MODELS-ACCOUNTS-0112). Changed for Branch: canonical rename map; retain current upstream keyed agent configuration and extracted decision test helpers.
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createAdmittedRunOperatorAuthority } from "../agents/admitted-run-context.js";
 import { prepareOperatorModelPolicy } from "../agents/operator-model-policy.js";
