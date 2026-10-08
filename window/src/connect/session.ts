@@ -41,6 +41,11 @@ export type SessionSnapshot = {
   ended: RunEnd | null;
   /** What you told the Trunk while it worked (sent with queueMode "steer"), until the turn ends (§4.2.2 Steered note). */
   steered: SteeredNote[];
+  /**
+   * False until this conversation's transcript has been read. Empty history before that is still loading,
+   * not a new conversation, so the thread must not show the empty start screen.
+   */
+  historyReady: boolean;
 };
 
 /** `absorbed`: the engine took your message into another turn ("ok"); that turn's own end is what counts. */
@@ -131,6 +136,16 @@ export class SaplingSession {
   private liveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   /** Only the newest `chat.history` read may land; an older one resolving later would bring back stale history. */
   private historyReads = 0;
+  /** Transcripts already read, keyed by conversation, so a click paints messages before the next engine read. */
+  private readonly historyCache = new Map<string, Block[]>();
+  /** One full `chat.history` read per conversation, shared by opening it and by warming the sidebar. */
+  private readonly transcriptFlight = new Map<string, Promise<unknown>>();
+  /** Newest read per conversation, so a slower older read cannot replace a newer transcript. */
+  private readonly historyReadGen = new Map<string, number>();
+  private warmQueue: string[] = [];
+  private warmRunning = 0;
+  /** Bumped when the engine changes, so a read from the previous engine cannot fill the cache. */
+  private historyEpoch = 0;
   /** The last history read's failure, while its notice may still show. */
   private readError: string | null = null;
   /** The newest `chat.history` read, so a finishing run can wait for the one that really lands. */
@@ -168,6 +183,7 @@ export class SaplingSession {
       error: null,
       steered: [],
       ended: null,
+      historyReady: false,
     };
     this.gateway = this.createGateway(url, sharedToken);
   }
@@ -191,6 +207,8 @@ export class SaplingSession {
   stop(): void {
     if (this.liveRefreshTimer) clearTimeout(this.liveRefreshTimer);
     this.stopped = true;
+    this.warmQueue = [];
+    this.historyEpoch += 1;
     this.unconfirmed.stop();
     if (this.preparationRetry) clearTimeout(this.preparationRetry);
     this.preparationRetry = null;
@@ -209,6 +227,11 @@ export class SaplingSession {
   /** Move new requests to a ready successor without unmounting the composer or losing O's live events. */
   handoff(url: string, sharedToken = this.sharedToken): void {
     if (url === this.gatewayUrl) { this.reconnectNow(); return; }
+    this.historyEpoch += 1;
+    this.historyReads += 1;
+    this.historyCache.clear();
+    this.transcriptFlight.clear();
+    this.warmQueue = [];
     this.retiringGateway?.stop();
     this.retiringRunId = this.snapshot.liveRunId;
     this.retiringGateway = this.retiringRunId || this.snapshot.pendingUser !== null ? this.gateway : null;
@@ -277,11 +300,11 @@ export class SaplingSession {
     return runId;
   }
 
-  /** Opens another conversation in the thread; its history is read from the engine. */
+  /** Opens another conversation. A transcript already read paints at once; one still loading does not look empty. */
   async open(key: string): Promise<void> {
     if (!key || key === this.snapshot.sessionKey) {
       const echo = this.firstEcho.peek(key);
-      if (echo && !this.snapshot.pendingUser && !this.snapshot.history.length) this.seedFirstSend(key, echo.text, echo.runId);
+      if (echo && !this.snapshot.pendingUser && !this.snapshot.history.length && this.snapshot.historyReady !== false) this.seedFirstSend(key, echo.text, echo.runId);
       return;
     }
     this.wanted = key;
@@ -292,18 +315,73 @@ export class SaplingSession {
     this.ownSends.clear();
     const echo = this.firstEcho.peek(key);
     if (echo) this.ownSends.set(echo.runId, { text: echo.text, shown: true, attachments: 0 });
+    const known = this.historyCache.has(key);
     this.set({
-      sessionKey: key, history: [], live: [], queued: [], doneAt: null, lastActivityAt: null, error: null, steered: [], ended: null,
+      sessionKey: key,
+      history: known ? this.historyCache.get(key)! : [],
+      historyReady: known,
+      live: [],
+      queued: [],
+      doneAt: null,
+      lastActivityAt: null,
+      error: null,
+      steered: [],
+      ended: null,
       pendingUser: echo?.text ?? null,
       liveRunId: echo?.runId ?? null,
       liveStartedAt: echo ? Date.now() : null,
     });
     try {
-      await this.backfillApprovals();
-      await this.loadHistory();
+      await Promise.all([this.backfillApprovals().catch(() => undefined), this.loadHistory()]);
     } catch (error) {
       this.set({ error: error instanceof Error ? error.message : String(error) });
     }
+  }
+
+  /**
+   * Reads transcripts for sidebar rows before a click, a few at a time. Opening one of them can then
+   * paint from memory instead of waiting on `chat.history`.
+   */
+  warmHistories(keys: readonly string[]): void {
+    if (this.stopped) return;
+    for (const key of keys) {
+      if (this.warmQueue.length >= 8) break;
+      if (!key || this.historyCache.has(key) || this.warmQueue.includes(key) || this.transcriptFlight.has(key)) continue;
+      this.warmQueue.push(key);
+    }
+    this.pumpWarm();
+  }
+
+  private pumpWarm(): void {
+    if (this.stopped) {
+      this.warmQueue = [];
+      return;
+    }
+    while (this.warmRunning < 2 && this.warmQueue.length) {
+      const key = this.warmQueue.shift();
+      if (!key || this.historyCache.has(key)) continue;
+      const epoch = this.historyEpoch;
+      this.warmRunning += 1;
+      void this.chatHistory(key).then((history) => {
+        if (this.stopped || epoch !== this.historyEpoch || this.historyCache.has(key)) return;
+        const messages = rec(history).messages;
+        this.historyCache.set(key, historyToBlocks(Array.isArray(messages) ? messages : [], [], key, null));
+      }, () => undefined).finally(() => {
+        this.warmRunning -= 1;
+        this.pumpWarm();
+      });
+    }
+  }
+
+  /** The full transcript read. A click and a sidebar warm share one request while it is in flight. */
+  private chatHistory(sessionKey: string): Promise<unknown> {
+    const existing = this.transcriptFlight.get(sessionKey);
+    if (existing) return existing;
+    const flight = this.gateway.request("chat.history", { sessionKey }).finally(() => {
+      if (this.transcriptFlight.get(sessionKey) === flight) this.transcriptFlight.delete(sessionKey);
+    });
+    this.transcriptFlight.set(sessionKey, flight);
+    return flight;
   }
 
   private set(patch: Partial<SessionSnapshot>): void {
@@ -349,8 +427,11 @@ export class SaplingSession {
       this.liveSeen = false;
       const echo = sessionKey ? this.firstEcho.peek(sessionKey) : null;
       if (echo) this.ownSends.set(echo.runId, { text: echo.text, shown: true, attachments: 0 });
+      const switching = sessionKey !== this.snapshot.sessionKey;
+      const known = Boolean(switching && sessionKey && this.historyCache.has(sessionKey));
       this.set({
         sessionKey, mainKey, live: [], steered: [],
+        ...(switching ? { history: known ? this.historyCache.get(sessionKey!)! : [], historyReady: known } : {}),
         liveRunId: echo?.runId ?? null,
         liveStartedAt: echo ? Date.now() : null,
         pendingUser: echo?.text ?? null,
@@ -372,8 +453,7 @@ export class SaplingSession {
         this.gateway.request("sessions.subscribe", { limit: 20 }),
       ]);
       this.set({ name: readAgentName(agents) });
-      await this.backfillApprovals();
-      await this.loadHistory();
+      await Promise.all([this.backfillApprovals().catch(() => undefined), this.loadHistory()]);
       this.set({ status, error: null });
       if (this.engineKey) this.unconfirmed.connected(this.engineKey);
     } catch (error) {
@@ -408,14 +488,17 @@ export class SaplingSession {
       return;
     }
     const read = ++this.historyReads;
+    const gen = (this.historyReadGen.get(sessionKey) ?? 0) + 1;
+    this.historyReadGen.set(sessionKey, gen);
+    const epoch = this.historyEpoch;
     // The approval ledger only dresses the steps; when it fails (right after a rewind it answered "approval not
     // found") the history still shows, without a raw notice that never clears.
     const [history, ledger] = await Promise.all([
-      this.gateway.request("chat.history", { sessionKey }),
+      this.chatHistory(sessionKey),
       this.gateway.request("approval.history", { limit: 100, kind: "exec" }).catch(() => null),
     ]);
-    if (sessionKey !== this.snapshot.sessionKey || read !== this.historyReads) {
-      return; // another conversation was opened, or a newer read started, while this one loaded
+    if (epoch !== this.historyEpoch || this.historyReadGen.get(sessionKey) !== gen) {
+      return; // a newer read of this conversation, or a different engine, replaced this one
     }
     const h = rec(history);
     this.readSession = { sessionKey, id: str(h.sessionId) };
@@ -424,15 +507,20 @@ export class SaplingSession {
     // A run this window already saw end is history now, even if the engine still lists it while it tidies up.
     const inFlightRunId = inFlightId && !this.finished.has(inFlightId) ? inFlightId : null;
     const messages = Array.isArray(h.messages) ? h.messages : [];
+    const blocks = markStopped(historyToBlocks(messages, readApprovalRecords(ledger), sessionKey, inFlightRunId), this.stoppedRuns);
+    this.historyCache.set(sessionKey, blocks);
+    if (sessionKey !== this.snapshot.sessionKey || read !== this.historyReads) {
+      return; // another conversation was opened, or a newer read started, while this one loaded
+    }
     const staleNotice = this.readError;
     this.readError = null;
-    const blocks = markStopped(historyToBlocks(messages, readApprovalRecords(ledger), sessionKey, inFlightRunId), this.stoppedRuns);
     const info = rec(h.sessionInfo);
     const echo = this.firstEcho.peek(sessionKey);
     const historyHasEcho = Boolean(echo && keptInHistory(blocks, echo.runId, echo.text));
     if (historyHasEcho && echo) this.firstEcho.clear(echo.runId);
     this.set({
       history: blocks,
+      historyReady: true,
       // The notice a failed read left goes once a read works; any other notice (a refused steer, an approval) stays.
       ...(staleNotice && this.snapshot.error === staleNotice ? { error: null } : {}),
       queued: mergeQueued(this.snapshot.queued, h.pendingInputs, sessionKey, true, this.shownRuns()),
@@ -748,7 +836,7 @@ export class SaplingSession {
     if (!busy) {
       this.runs.clear();
       this.liveSeen = false;
-      if (!this.snapshot.history.length) this.seedFirstSend(sessionKey, text, runId);
+      if (this.snapshot.historyReady !== false && !this.snapshot.history.length) this.seedFirstSend(sessionKey, text, runId);
       this.set({ pendingUser: text, liveRunId: runId, liveStartedAt: Date.now(), live: [], doneAt: null, error: null });
     } else if (steer) {
       this.set({ steered: [...this.snapshot.steered, { runId, text, target: this.snapshot.liveRunId ?? "" }] });
