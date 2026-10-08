@@ -81,6 +81,23 @@ test('a [bot] noreply address passes', () => {
   assert.deepEqual(failures, []);
 });
 
+test('cursoragent and github noreply addresses pass', () => {
+  assert.deepEqual(evaluateCommits([githubCommit({
+    authorEmail: 'cursoragent@cursor.com',
+    committerEmail: 'noreply@github.com',
+  })]), []);
+});
+
+test('a personal committer email fails', () => {
+  const failures = evaluateCommits([githubCommit({
+    sha: 'ffffffffffffffffffffffffffffffffffffffff',
+    committerEmail: PERSONAL,
+  })]);
+  assert.deepEqual(failures, [
+    { sha: 'fffffff', field: 'committer', hint: '***@example.com' },
+  ]);
+});
+
 test('a lowercase co-authored-by trailer is still checked', () => {
   const failures = evaluateCommits([githubCommit({
     sha: 'dddddddddddddddddddddddddddddddddddddddd',

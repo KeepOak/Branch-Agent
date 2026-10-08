@@ -25,6 +25,8 @@ export const GATE_SCRIPTS = [
   'scripts/changed-test-coverage.test.mjs',
   'scripts/check-merge-command.mjs',
   'scripts/check-merge-command.test.mjs',
+  'scripts/check-commit-emails.mjs',
+  'scripts/check-commit-emails.test.mjs',
   'scripts/feature-batch-ci-targets.mjs',
   'scripts/feature-slice-ci-targets.mjs',
   'scripts/priority-capabilities-ci-targets.mjs',

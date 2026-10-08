@@ -906,6 +906,16 @@ test('old-base PR still runs the trusted check from the default branch', () => {
   ]);
   assert.equal(filesAtOldBase.has('scripts/merge-gate-trusted.test.mjs'), false);
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-trusted.test.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-commit-emails.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-commit-emails.test.mjs'));
+});
+
+test('trusted gate runs the commit email checker on pull request commits', () => {
+  const yaml = readFileSync(new URL(`../${TRUSTED_WORKFLOW_PATH}`, import.meta.url), 'utf8');
+  assert.match(yaml, /node --test scripts\/merge-gate-trusted\.test\.mjs scripts\/check-commit-emails\.test\.mjs/);
+  assert.match(yaml, /^\s+run:\s*node scripts\/check-commit-emails\.mjs\s*$/m);
+  assert.match(yaml, /PR_NUMBER:\s*\$\{\{\s*github\.event\.pull_request\.number\s*\}\}/);
+  assert.doesNotMatch(yaml, /ref:\s*\$\{\{\s*github\.event\.pull_request\.head\.(?:sha|ref)/);
 });
 
 test('merge-gate does not retrigger on ready_for_review and cancel its waiting run', () => {
