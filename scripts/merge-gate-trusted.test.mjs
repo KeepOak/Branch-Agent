@@ -5,12 +5,14 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
   GATE_SCRIPTS,
+  HANDOFF_WORKFLOW_PATH,
   TRUSTED_CHECKOUT_REF,
   TRUSTED_WORKFLOW_PATH,
   coverageFromPrFiles,
   evaluateOtherChecks,
   evaluateTrustedGate,
   findForeignTrustedChecks,
+  isPassingHandoffE2e,
   parseNamedTestList,
   formatGateChangeSummary,
   listCoreWorkflows,
@@ -709,6 +711,10 @@ test('listCoreWorkflows reads main workflow path filters and skips the trusted g
   assert.ok(workflows.some((item) =>
     item.path === '.github/workflows/visual-tour.yml'
     && item.pullRequestPaths?.includes('window/**')));
+  assert.ok(workflows.some((item) =>
+    item.path === HANDOFF_WORKFLOW_PATH
+    && item.pullRequestPaths?.includes('engine/test/gateway-desktop-handoff.e2e.test.ts')
+    && item.pullRequestPaths?.includes('desktop/src/main.ts')));
   assert.ok(!workflows.some((item) => item.path === TRUSTED_WORKFLOW_PATH));
 });
 
@@ -760,6 +766,96 @@ test('merge-gate does not retrigger on ready_for_review and cancel its waiting r
 test('merge-gate wait ignores merge-gate-trusted so the two gates cannot deadlock', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
   assert.match(yaml, /select\(\.name != "merge-gate" and \.name != "merge-gate-trusted"\)/);
+});
+
+const handoffPullRequestPaths = listCoreWorkflows(fileURLToPath(new URL('../.github/workflows', import.meta.url)))
+  .find((item) => item.path === HANDOFF_WORKFLOW_PATH)?.pullRequestPaths;
+if (!handoffPullRequestPaths?.length) {
+  throw new Error(`${HANDOFF_WORKFLOW_PATH} must declare pull_request paths`);
+}
+const handoffCoreWorkflows = [
+  ...coreWorkflows,
+  { path: HANDOFF_WORKFLOW_PATH, pullRequestPaths: handoffPullRequestPaths },
+];
+const handoffWorkflow = {
+  path: HANDOFF_WORKFLOW_PATH,
+  name: 'Engine handoff checks',
+  id: 401,
+  event: 'pull_request',
+};
+const handoffCheck = {
+  id: 201,
+  app: { id: 15368 },
+  name: 'Real-engine handoff turn-order on ubuntu-latest',
+  status: 'completed',
+  conclusion: 'success',
+  check_suite: { id: 401 },
+  details_url: 'https://github.com/example/repo/actions/runs/401/job/201',
+};
+const handoffRelevantFiles = ['desktop/src/main.ts', 'engine/src/process/session-handoff-lease-gate.ts'];
+
+test('hand-over-relevant PR without a passing real-engine handoff run fails the trusted gate', () => {
+  for (const handoff of [null, { ...handoffCheck, conclusion: 'skipped' }, {
+    ...handoffCheck, name: 'build', conclusion: 'success',
+  }]) {
+    const checkRuns = [...passCheckRuns, ...(handoff ? [handoff] : [])];
+    const result = evaluateTrustedGate({
+      checkRuns,
+      workflowsByCheckId: { ...passWorkflows, ...(handoff ? { 201: handoffWorkflow } : {}) },
+      changedFiles: handoffRelevantFiles,
+      coreWorkflows: handoffCoreWorkflows,
+      currentRunId: CURRENT_RUN_ID,
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.errors.join('\n'), /engine-handoff-checks\.yml/);
+    assert.equal(handoff ? isPassingHandoffE2e(handoff) : false, false);
+  }
+});
+
+test('hand-over-relevant PR with a passing real-engine handoff run passes the trusted gate', () => {
+  const result = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, handoffCheck],
+    workflowsByCheckId: { ...passWorkflows, 201: handoffWorkflow },
+    changedFiles: handoffRelevantFiles,
+    coreWorkflows: handoffCoreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.missingCore.length, 0);
+  assert.equal(isPassingHandoffE2e(handoffCheck), true);
+});
+
+test('unrelated PR is unaffected when the real-engine handoff run is absent', () => {
+  const result = evaluateTrustedGate({
+    checkRuns: passCheckRuns,
+    workflowsByCheckId: passWorkflows,
+    changedFiles: ['README.md'],
+    coreWorkflows: handoffCoreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.missingCore.length, 0);
+  assert.equal(missingCoreWorkflows({
+    checkRuns: passCheckRuns,
+    workflowsByCheckId: passWorkflows,
+    changedFiles: ['README.md'],
+    coreWorkflows: handoffCoreWorkflows,
+  }).length, 0);
+});
+
+test('trusted coverage counts the real-engine handoff e2e from engine-handoff-checks', () => {
+  const files = [{ filename: 'engine/test/gateway-desktop-handoff.e2e.test.ts', status: 'modified' }];
+  const desktop = readFileSync(new URL('../.github/workflows/desktop-checks.yml', import.meta.url), 'utf8');
+  const without = coverageFromPrFiles(files, desktop);
+  assert.ok(without.uncovered.includes('engine/test/gateway-desktop-handoff.e2e.test.ts'));
+  const withHandoff = coverageFromPrFiles(
+    files,
+    desktop,
+    [],
+    readFileSync(new URL(`../${HANDOFF_WORKFLOW_PATH}`, import.meta.url), 'utf8'),
+    readFileSync(new URL('../engine/test/vitest/vitest.desktop-handoff.config.ts', import.meta.url), 'utf8'),
+  );
+  assert.ok(!withHandoff.uncovered.includes('engine/test/gateway-desktop-handoff.e2e.test.ts'));
 });
 
 test('merge-gate recheck fires when Visual tour and Engine build complete', () => {
