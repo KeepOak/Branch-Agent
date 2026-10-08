@@ -99,5 +99,7 @@ test("desktop window, tray, shortcuts and packager use the approved icon; update
   const helper = text("src/desktop-update-helper.ts");
   assert.match(helper, /ie4uinit\.exe/);
   assert.match(helper, /windowsHide: true/);
-  assert.match(helper, /IconLocation=/);
+  assert.match(helper + text("src/install-folder-holders.ts"), /IconLocation=/);
+  assert.match(shortcuts, /WorkingDirectory = \$dataDirectory/);
+  assert.doesNotMatch(shortcuts, /WorkingDirectory = Split-Path -Parent \$executable/);
 });

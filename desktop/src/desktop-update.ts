@@ -194,6 +194,8 @@ export async function handOffDesktopUpdate(cfg: DesktopConfig, install: DesktopI
   const helper = join(work, "desktop-update-helper.js");
   // Read, not copied: the source sits inside app.asar, which only Electron's own fs can read.
   await writeFile(helper, await readFile(helperSource));
+  // The helper runs from this copy, outside the folder it renames, so its sibling has to be copied with it.
+  await writeFile(join(work, "install-folder-holders.js"), await readFile(join(dirname(helperSource), "install-folder-holders.js")));
   // A whole-folder swap must not run the helper from inside the folder it renames.
   const node = journal.kind === "runtime" ? join(work, basename(install.nodePath)) : install.nodePath;
   if (journal.kind === "runtime") await copyFile(install.nodePath, node);
