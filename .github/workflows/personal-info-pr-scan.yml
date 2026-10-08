@@ -1,0 +1,72 @@
+name: Personal info PR scan
+
+# Title and body come from the event payload. Added lines come from the Files API.
+# The scan job is pull_request_target: it checks out the default branch only and
+# never checks out or executes pull-request code. Editing the description re-runs
+# the scan on the same head. Matcher unit tests run from the pull request.
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    paths:
+      - 'scripts/check-personal-info.mjs'
+      - 'scripts/check-personal-info.test.mjs'
+      - '.github/workflows/personal-info-pr-scan.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: personal-info-${{ github.event.pull_request.number }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  personal-info-matcher:
+    if: github.event_name == 'pull_request'
+    name: Personal info matcher
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up reviewed Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Test the personal-info matcher
+        run: node --test scripts/check-personal-info.test.mjs
+
+  personal-info-pr-scan:
+    if: github.event_name == 'pull_request_target'
+    name: Personal info PR scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out the default branch only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up reviewed Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Test the personal-info matcher from the default branch
+        run: node --test scripts/check-personal-info.test.mjs
+      - name: Scan the PR title, body, and added diff lines
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: node scripts/check-personal-info.mjs

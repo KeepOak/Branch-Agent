@@ -52,6 +52,8 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 15. **Stop processes you start.** Any test, self-test or proof script that starts a process (MCP servers, mcporter, node, browsers) must stop it and its children before finishing. Leftover processes lock the app install folder and block updates.
 
+16. **No personal machine details.** Never put machine names, hostnames, personal paths, account emails or secrets in the public repo, its pull requests or issues. The personal-info PR scan fails when the title, body or added lines include them; editing the description re-runs it.
+
 ## Common tasks
 
 ### Install dependencies
