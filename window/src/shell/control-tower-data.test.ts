@@ -12,6 +12,7 @@ import {
   towerComingUp,
   towerFinished,
   towerHealth,
+  towerNeeds,
   trunkList,
 } from "./control-tower-data";
 import { readLimits } from "./status-data";
@@ -170,6 +171,30 @@ describe("Just finished and chatter", () => {
   it("reads a percent from a job headline", () => {
     expect(jobProgress("Copying the code · 42%")).toBe(42);
     expect(jobProgress("Working")).toBeNull();
+  });
+});
+
+describe("Needs you", () => {
+  it("lists real approvals, pending questions and needsYou rows, and never invents extras", () => {
+    const name = (id?: string) => (id === "ada" ? "Ada" : id === "ledger" ? "Ledger" : id ?? "");
+    const items = towerNeeds(
+      [
+        row({ key: "agent:ada:wait", title: "Tidy the Downloads folder", agentId: "ada", needsYou: true, headline: "Which folder first?" }),
+        row({ key: "agent:ledger:ask", title: "September expense report", agentId: "ledger", needsYou: true, preview: "Send Dana the report?" }),
+        row({ key: "agent:ada:idle", title: "Idle", agentId: "ada" }),
+      ],
+      [{ id: "ex1", kind: "exec", request: { title: "Run tidy.sh", agentId: "ada", sessionKey: "agent:ada:wait", description: "exec" } }],
+      [{ id: "q1", status: "pending", agentId: "ledger", sessionKey: "agent:ledger:ask", questions: [{ questionId: "send", question: "Send Dana the report?", header: "Email" }] }],
+      name,
+    );
+    expect(items.map((item) => [item.kind, item.title, item.who])).toEqual([
+      ["approval", "Run tidy.sh", "Ada"],
+      ["question", "Send Dana the report?", "Ledger"],
+    ]);
+    expect(towerNeeds([row({ key: "agent:ada:wait", agentId: "ada", needsYou: true, headline: "Which folder first?" })], [], [], name)).toEqual([
+      expect.objectContaining({ id: "waiting:agent:ada:wait", kind: "waiting", title: "Which folder first?", who: "Ada" }),
+    ]);
+    expect(towerNeeds([row({ key: "agent:ada:idle", agentId: "ada" })], [], [], name)).toEqual([]);
   });
 });
 

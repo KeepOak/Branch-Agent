@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react
 import type { Conversation } from "../connect/conversations";
 import type { WindowEngine } from "../connect/engine";
 import { Face } from "../face/Face";
-import { approvals, canApprove, rec, resolveApproval, str, usePlaceData } from "../places/inbox/data";
-import { approvalTitle } from "../places/inbox/NeedsYou";
+import { approvals, canApprove, rec, resolveApproval, rows as listRows, str, usePlaceData } from "../places/inbox/data";
 import { Menu, type MenuAnchor, type MenuItem } from "./Menu";
 import {
   checkedLine,
@@ -20,8 +19,11 @@ import {
   towerComingUp,
   towerFinished,
   towerHealth,
+  towerNeeds,
   trunkList,
+  type TowerNeed,
 } from "./control-tower-data";
+import { syncWaitingNotices } from "./notify";
 import type { Limits } from "./status-data";
 import { whoItKnowsItems } from "./who-it-knows-menu";
 import "./v23-layout.css";
@@ -44,6 +46,7 @@ function useTowerLive(engine: WindowEngine, rows: Conversation[]) {
   const [locked, setLocked] = useState(false);
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
+  const [questions, setQuestions] = useState<Record<string, unknown>[]>([]);
   const [trunks, setTrunks] = useState<{ defaultId: string; list: { id: string; name: string }[]; ready: boolean }>({ defaultId: "", list: [], ready: false });
   const workingKeys = useRef<string[]>([]);
 
@@ -53,19 +56,21 @@ function useTowerLive(engine: WindowEngine, rows: Conversation[]) {
   }, []);
 
   const load = useCallback(async () => {
-    const [usage, cron, cfg, activity, listed] = await Promise.all([
+    const [usage, cron, cfg, activity, listed, asked] = await Promise.all([
       engine.request("usage.status", {}).catch(() => null),
       engine.request("cron.list", { limit: 200 }).catch(() => ({})),
       engine.request("config.get", {}).catch(() => ({})),
       engine.request("audit.activity.list", { kind: "agent_run", limit: 200 }).catch(() =>
         engine.request("audit.list", { kind: "agent_run", limit: 200 }).catch(() => ({}))),
       engine.request("agents.list", {}).catch(() => ({})),
+      engine.request("question.list", {}).catch(() => ({})),
     ]);
     setLimits(readUsage(usage ?? {}));
     setJobs(readCronJobs(cron));
     setLocked(readLocked(cfg));
     setAudit(activity);
     setTrunks({ ...trunkList(listed), ready: true });
+    setQuestions(listRows(rec(asked).questions).filter((item) => !str(item.status) || str(item.status) === "pending"));
   }, [engine]);
 
   useEffect(() => {
@@ -78,6 +83,16 @@ function useTowerLive(engine: WindowEngine, rows: Conversation[]) {
     void load();
     const off = engine.onEvent(({ event, payload }) => {
       if (event === "cron" || event === "config.changed" || event === "sessions.changed" || event === "rooms.changed") void load();
+      if (event === "question.requested") {
+        const item = rec(payload);
+        if (str(item.id) && (!str(item.status) || str(item.status) === "pending")) {
+          setQuestions((current) => [...current.filter((row) => str(row.id) !== str(item.id)), item]);
+        }
+      }
+      if (event === "question.resolved") {
+        const id = str(rec(payload).id);
+        if (id) setQuestions((current) => current.filter((row) => str(row.id) !== id));
+      }
       if (event === "chat") {
         const body = rec(payload);
         if (["final", "error", "aborted"].includes(str(body.state))) {
@@ -108,7 +123,12 @@ function useTowerLive(engine: WindowEngine, rows: Conversation[]) {
     }
   }, [checking, engine]);
 
-  return { limits, jobs, audit, endedKeys, locked, checking, checkError, trunks, checkNow };
+  const dropQuestion = useCallback((id: string) => {
+    if (!id) return;
+    setQuestions((current) => current.filter((row) => str(row.id) !== id));
+  }, []);
+
+  return { limits, jobs, audit, endedKeys, locked, checking, checkError, trunks, questions, dropQuestion, checkNow };
 }
 
 /** Live Control tower. The preview's sample approvals and jobs are never shown as real data. */
@@ -116,6 +136,7 @@ export function ControlTower({ engine, rows, needsCount, trunkName, onOpen, onIn
   const queue = usePlaceData(engine, approvals);
   const live = useTowerLive(engine, rows);
   const pending = queue.data?.items ?? [];
+  const needs = towerNeeds(rows, pending, live.questions, trunkName);
   const working = rows.filter((row) => row.working && !row.archived && !row.helper && !row.system);
   const jobs = rows.filter((row) => row.working && !row.archived && row.helper && !row.system);
   const chatter = towerChatter(rows);
@@ -123,8 +144,29 @@ export function ControlTower({ engine, rows, needsCount, trunkName, onOpen, onIn
   const coming = towerComingUp(live.jobs);
   const accounts = towerAccounts(live.limits);
   const health = towerHealth(live.locked, live.checking, live.limits);
+  const listed = needs.slice(0, 5);
+  const total = Math.max(needsCount, needs.length);
   const [known, setKnown] = useState<{ at: MenuAnchor; items: MenuItem[] } | null>(null);
   const decide = (item: Record<string, unknown>, decision: "allow-once" | "deny") => void queue.act(() => resolveApproval(engine, item, decision), decision === "deny" ? "Said no." : "Allowed once.");
+  const answer = (need: TowerNeed, allow: boolean) => {
+    const item = need.item;
+    if (!item) { if (need.sessionKey) onOpen(need.sessionKey); return; }
+    if (need.kind === "approval") { decide(item, allow ? "allow-once" : "deny"); return; }
+    const first = rec(listRows(item.questions)[0]);
+    const options = listRows(first.options);
+    const simple = listRows(item.questions).length === 1 && options.length > 0 && first.multiSelect !== true && first.isSecret !== true && first.isOther !== true && !first.secretStore;
+    if (allow && !simple) { if (need.sessionKey) onOpen(need.sessionKey); return; }
+    void queue.act(async () => {
+      const result = await engine.request("question.resolve", allow
+        ? { id: str(item.id), answers: { answers: { [str(first.questionId)]: [str(options[options.length - 1]?.label)] } } }
+        : { id: str(item.id), cancel: true });
+      live.dropQuestion(str(item.id));
+      return result;
+    }, allow ? "Answered." : "Skipped. The Trunk carries on without an answer.");
+  };
+  useEffect(() => {
+    syncWaitingNotices(needs.map((need) => ({ id: need.id, who: need.who })));
+  }, [needs]);
   const knownWhy = !live.trunks.ready ? "Still loading Trunks." : !live.trunks.list.length ? "No Trunks yet." : undefined;
   const openKnown = async (event: MouseEvent<HTMLButtonElement>) => {
     if (knownWhy) return;
@@ -137,20 +179,25 @@ export function ControlTower({ engine, rows, needsCount, trunkName, onOpen, onIn
   return <aside className="v23-tower" aria-label="Control tower">
     <header><b>Control tower</b><button type="button" className="ib" aria-label="Hide the control tower" onClick={onClose}>×</button></header>
     <div className={`v23-tower-health ${health.tone}`.trim()}><i /><span>{health.text}</span></div>
-    <section><h3>Needs you {needsCount ? <span>{needsCount}</span> : null}</h3>
+    <section><h3>Needs you {total ? <span>{total}</span> : null}</h3>
       {queue.error ? <p role="alert">{queue.error}</p> : null}
-      {!pending.length && !needsCount ? <p>Nothing is waiting for you.</p> : null}
-      {pending.slice(0, 5).map((item) => {
-        const request = rec(item.request), decisions = Array.isArray(request.allowedDecisions) ? request.allowedDecisions : ["allow-once", "deny"];
+      {!needs.length && !needsCount ? <p>Nothing is waiting for you.</p> : null}
+      {listed.map((need) => {
+        const item = need.item ?? {};
+        const request = rec(item.request);
+        const decisions = Array.isArray(request.allowedDecisions) ? request.allowedDecisions : ["allow-once", "deny"];
         const expired = typeof item.expiresAtMs === "number" && item.expiresAtMs <= Date.now();
-        const key = str(request.sessionKey), who = trunkName(str(request.agentId));
-        return <div className="v23-tower-row" key={`${str(item.kind)}:${str(item.id)}`}>
-          <Face size={26} label={who} /><button type="button" className="v23-tower-row-text" disabled={!key} onClick={() => onOpen(key)}><b>{approvalTitle(item)}</b><small>{who} · {str(request.description) || str(item.kind)}</small></button>
-          <button type="button" className="v23-allow" disabled={!canApprove(engine) || queue.busy || expired || !decisions.includes("allow-once")} onClick={() => decide(item, "allow-once")}>Allow</button>
-          <button type="button" className="v23-deny" aria-label={`Don't allow ${approvalTitle(item)}`} disabled={!canApprove(engine) || queue.busy || expired || !decisions.includes("deny")} onClick={() => decide(item, "deny")}>×</button>
+        const approval = need.kind === "approval";
+        const canDecide = approval ? canApprove(engine) && !queue.busy && !expired : !queue.busy;
+        return <div className="v23-tower-row" key={need.id}>
+          <Face size={26} label={need.who} /><button type="button" className="v23-tower-row-text" disabled={!need.sessionKey} onClick={() => onOpen(need.sessionKey)}><b>{need.title}</b><small>{need.sub}</small></button>
+          {need.kind === "waiting" ? <button type="button" className="v23-allow" onClick={() => onInbox()}>Open</button> : <>
+            <button type="button" className="v23-allow" disabled={!canDecide || (approval && !decisions.includes("allow-once"))} onClick={() => answer(need, true)}>Allow</button>
+            <button type="button" className="v23-deny" aria-label={`Don't allow ${need.title}`} disabled={!canDecide || (approval && !decisions.includes("deny"))} onClick={() => answer(need, false)}>×</button>
+          </>}
         </div>;
       })}
-      {needsCount > pending.slice(0, 5).length ? <button type="button" className="v23-link" onClick={onInbox}>{needsCount - pending.slice(0, 5).length} more in the Inbox</button> : null}
+      {total > listed.length ? <button type="button" className="v23-link" onClick={onInbox}>{total - listed.length} more in the Inbox</button> : null}
     </section>
     <section><h3>Working now <span>{working.length + jobs.length}</span></h3>
       {working.length || jobs.length ? <>
