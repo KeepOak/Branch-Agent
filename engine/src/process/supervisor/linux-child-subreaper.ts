@@ -65,7 +65,19 @@ function childPidsFromParentIdentity(): number[] {
       }
       throw error;
     }
-    if (parentPidFromStat(stat) === process.pid) {
+    let ppid = parentPidFromStat(stat);
+    if (ppid === null) {
+      try {
+        const status = readFileSync(`/proc/${name}/status`, "utf8");
+        const match = /^PPid:\s+(\d+)\s*$/mu.exec(status);
+        ppid = match ? Number(match[1]) : null;
+      } catch (error) {
+        if (!isAbsentProcEntry(error)) {
+          throw error;
+        }
+      }
+    }
+    if (ppid === process.pid) {
       children.push(Number(name));
     }
   }
@@ -120,6 +132,16 @@ export function acquireLinuxChildSubreaper() {
   // Linux permits a null siginfo pointer. WNOWAIT checks wait ownership without
   // consuming libuv's direct-child status or releasing an adopted child's PID.
   const waitid = libc.func("int waitid(int, unsigned int, void *, int)");
+  const SigInfo = koffi.struct("siginfo_waitid", {
+    si_signo: "int",
+    si_errno: "int",
+    si_code: "int",
+    __pad0: "int",
+    si_pid: "int",
+    si_uid: "uint32",
+    si_status: "int",
+  });
+  const waitidInfo = libc.func("int waitid(int, unsigned int, _Out_ siginfo_waitid *, int)");
   const waitpid = libc.func("int waitpid(int, int *, int)");
   const fail = (operation: string, errno = koffi.errno()): never => {
     throw new Error("Linux child ownership " + operation + " failed (errno " + errno + ")");
@@ -168,12 +190,10 @@ export function acquireLinuxChildSubreaper() {
   };
   /** When task children files and /proc PPID scans miss a descendant, waitid still names one. */
   const childPidsFromWaitOwnership = (): number[] => {
-    const info = Buffer.alloc(128);
     for (;;) {
-      info.fill(0);
-      if (waitid(P_ALL, 0, info, WEXITED | WNOHANG | WNOWAIT | WALL) === 0) {
-        // Generic Linux siginfo_t: si_pid sits at offset 16 after the 16-byte preamble.
-        const pid = info.readInt32LE(16);
+      const info = { si_signo: 0, si_errno: 0, si_code: 0, __pad0: 0, si_pid: 0, si_uid: 0, si_status: 0 };
+      if (waitidInfo(P_ALL, 0, info, WEXITED | WNOHANG | WNOWAIT | WALL) === 0) {
+        const pid = info.si_pid;
         return Number.isSafeInteger(pid) && pid > 0 ? [pid] : [];
       }
       const errno = koffi.errno();
