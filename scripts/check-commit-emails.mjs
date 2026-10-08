@@ -3,6 +3,7 @@
 // The report never prints a full personal email; only a short SHA, field, and masked domain.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ghApi } from './merge-gate-trusted.mjs';
 
 export const CUTOFF_ISO = '2026-10-08T04:05:00Z';
 export const CUTOFF_MS = Date.parse(CUTOFF_ISO);
@@ -79,13 +80,34 @@ export function nextLink(linkHeader) {
   return match?.[1] ?? null;
 }
 
+export function commitsFromGhPages(payload) {
+  if (!Array.isArray(payload)) return [];
+  if (payload.every((item) => item && typeof item.sha === 'string')) return payload;
+  return payload.flatMap((page) => (Array.isArray(page) ? page : []));
+}
+
+export function fetchPrCommitsWithApi({
+  repo,
+  prNumber,
+  token,
+  api = ghApi,
+  perPage = 100,
+} = {}) {
+  const payload = api(repo, token, `pulls/${prNumber}/commits?per_page=${perPage}`, { paginate: true });
+  return commitsFromGhPages(payload);
+}
+
 export async function fetchPrCommits({
   repo,
   prNumber,
   token,
+  api,
   fetchImpl = globalThis.fetch,
   perPage = 100,
 } = {}) {
+  if (typeof api === 'function') {
+    return fetchPrCommitsWithApi({ repo, prNumber, token, api, perPage });
+  }
   const commits = [];
   let url = `https://api.github.com/repos/${repo}/pulls/${prNumber}/commits?per_page=${perPage}`;
   while (url) {
@@ -138,7 +160,7 @@ async function main() {
     process.exitCode = 2;
     return;
   }
-  const commits = await fetchPrCommits({ repo, prNumber, token });
+  const commits = fetchPrCommitsWithApi({ repo, prNumber, token });
   const failures = evaluateCommits(commits);
   if (failures.length === 0) {
     console.log(`Checked ${commits.length} commit(s); all in-scope addresses are allowed.`);

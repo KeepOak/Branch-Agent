@@ -42,7 +42,11 @@ jobs:
           node-version: '24.19.0'
           package-manager-cache: false
       - name: Test the trusted gate helper
-        run: node --test scripts/merge-gate-trusted.test.mjs scripts/check-commit-emails.test.mjs
+        run: node --test scripts/merge-gate-trusted.test.mjs
+      - name: Test the rate-limit wait helper
+        run: node --test scripts/merge-gate-rate-limit.test.mjs scripts/check-gate-files-fresh.test.mjs
+      - name: Test the commit email checker
+        run: node --test scripts/check-commit-emails.test.mjs
       - name: Check pull request commit emails
         env:
           GITHUB_TOKEN: ${{ github.token }}

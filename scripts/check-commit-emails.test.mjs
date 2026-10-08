@@ -5,6 +5,7 @@ import {
   CUTOFF_ISO,
   evaluateCommits,
   fetchPrCommits,
+  fetchPrCommitsWithApi,
   formatReport,
 } from './check-commit-emails.mjs';
 
@@ -158,4 +159,28 @@ test('reads every page of pull request commits', async () => {
     '2222222222222222222222222222222222222222',
   ]);
   assert.deepEqual(seen, [...pages.keys()]);
+});
+
+test('reads every page of pull request commits through the rate-limit wrapper', () => {
+  const page1 = githubCommit({ sha: '1111111111111111111111111111111111111111' });
+  const page2 = githubCommit({ sha: '2222222222222222222222222222222222222222' });
+  const calls = [];
+  const api = (_repo, _token, requestPath, options) => {
+    calls.push({ requestPath, paginate: options.paginate });
+    return [page1, page2];
+  };
+  const commits = fetchPrCommitsWithApi({
+    repo: 'KeepOak/Branch-Agent',
+    prNumber: '1',
+    token: 'token',
+    api,
+  });
+  assert.deepEqual(calls, [{
+    requestPath: 'pulls/1/commits?per_page=100',
+    paginate: true,
+  }]);
+  assert.deepEqual(commits.map((commit) => commit.sha), [
+    '1111111111111111111111111111111111111111',
+    '2222222222222222222222222222222222222222',
+  ]);
 });
