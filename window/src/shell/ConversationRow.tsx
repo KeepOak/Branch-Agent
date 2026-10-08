@@ -2,6 +2,8 @@ import type { MouseEvent, ReactNode } from "react";
 import type { Conversation, RunMark } from "../connect/conversations";
 import { Pebble } from "../face/Pebble";
 import { RoomFaces } from "../rooms/RoomFaces";
+import { WhoTyping } from "../rooms/WhoTyping";
+import { whoTypingName } from "../rooms/who-typing";
 import { Icon, type IconName } from "./icons";
 import { colourHue, RowIcon } from "./row-look";
 import "./rows.css";
@@ -73,23 +75,39 @@ export function badgeList(row: Conversation, x: RowExtras | undefined): { icon: 
   return out;
 }
 
+type Line = { text: string; word: string; tone: string; typing?: boolean; who?: string };
+
+/** Preview typingRowsT5: dots and "typing…" while a reply is written (no live headline yet). */
+function replyTyping(row: Conversation, x: RowExtras | undefined): boolean {
+  if (x?.liveInList !== false && x?.headlines !== false) return !row.headline;
+  return row.preview.trim() === "…" || row.preview.trim() === "";
+}
+
+function typingLine(row: Conversation, trunkName: string): Line {
+  return { text: "typing…", word: "", tone: "", typing: true, who: whoTypingName(row, trunkName) };
+}
+
 /** A working row's second line: what it is doing now, unless the owner turned headlines or live activity in the list off. */
 function workingText(row: Conversation, x: RowExtras | undefined): string {
   if (x?.liveInList !== false && x?.headlines !== false) return row.headline || "Thinking";
   return row.preview.trim() === "…" ? "Thinking" : row.preview;
 }
 
-/** The second line (§4.1.1.1): while working, its headline and a health word; failed shows why. */
-function secondLine(row: Conversation, state: RowState, x: RowExtras | undefined): { text: string; word: string; tone: string } | null {
+function workingLine(row: Conversation, x: RowExtras | undefined, trunkName: string): Line {
+  return replyTyping(row, x) ? typingLine(row, trunkName) : { text: workingText(row, x), word: "", tone: "" };
+}
+
+/** The second line (§4.1.1.1): while a reply is written, typingRowsT5; else its headline; failed shows why. */
+function secondLine(row: Conversation, state: RowState, x: RowExtras | undefined, trunkName: string): Line | null {
   if (["trunk", "chatGroup", "outside"].includes(row.kind)) {
     if (state.waiting) return { text: "Waiting on you", word: "", tone: "attn" };
-    if (state.working) return { text: workingText(row, x), word: "", tone: "" };
+    if (state.working) return workingLine(row, x, trunkName);
     return null;
   }
   const mark = row.runMark ? MARKS[row.runMark] : null;
   if (state.waiting) return { text: "Waiting on you", word: "", tone: "attn" };
   if (mark?.bad) return { text: row.preview, word: mark.word, tone: "bad" };
-  if (state.working) return { text: workingText(row, x), word: "", tone: "" };
+  if (state.working) return workingLine(row, x, trunkName);
   return null;
 }
 
@@ -120,7 +138,7 @@ export function ConversationRow(p: Props) {
   const { row, current, state } = p;
   const name = row.title || "New conversation";
   const mark = row.runMark ? MARKS[row.runMark] : null;
-  const line = secondLine(row, state, p.extras);
+  const line = secondLine(row, state, p.extras, p.trunkName);
   // One line unless previews are on, or it waits for you or failed (the preview's rowPA18).
   const twoLine = ["trunk", "group", "chatGroup", "outside"].includes(row.kind) || p.showPreview || state.working || Boolean(line && (line.tone === "attn" || line.tone === "bad"));
   const text = line ?? (twoLine ? { text: row.preview || p.fallbackLine || "", word: "", tone: "" } : null);
@@ -181,7 +199,16 @@ export function ConversationRow(p: Props) {
   );
 }
 
-function SecondLine({ line }: { line: { text: string; word: string; tone: string } }) {
+function SecondLine({ line }: { line: Line }) {
+  if (line.typing) {
+    return (
+      <p className="row-preview" data-testid="row-typing">
+        <span className="rowTypT5" aria-label="typing"><i /><i /><i /></span>
+        {" "}typing…
+        {line.who ? <WhoTyping name={line.who} /> : null}
+      </p>
+    );
+  }
   return (
     <p className={line.tone === "attn" ? "row-preview waiting" : "row-preview"}>
       <span className="hl">{line.text}</span>

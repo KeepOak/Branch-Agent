@@ -308,3 +308,10 @@
   font-size: 12.5px;
   color: var(--bad);
 }
+
+/* #31 whoTypT5 — design/spec-v23: "<name> is typing…" under the dots in a group */
+.whoTypT5 {
+  margin-left: 8px;
+  color: var(--ink-3);
+  font-size: 12px;
+}
