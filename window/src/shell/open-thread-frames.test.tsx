@@ -10,13 +10,15 @@
 // file because it is listed in scripts/feature-batch-ci-named.
 //
 // Budgets, measured from the click:
-// - Cached: 300ms. The transcript was already read. The first message must be
-//   visible within 300ms while a refresh of chat.history is still held.
+// - Cached: 300ms, and one render step. The transcript was already read. The
+//   header, messages and composer change together on the click. No later frame
+//   before the refresh may show a different thread. Header back and forward
+//   use that same path.
 // - Uncached: 1000ms. The mock holds the unread chat.history for 150ms, one
 //   engine round trip. The first message must be visible within 1000ms of the
 //   click. A multi-second wait on the empty start screen fails. Any sampled
 //   frame that shows "What should … do?" or its suggestion chips fails at once.
-import { act } from "react";
+import { Profiler, act, type ProfilerOnRenderCallback } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -126,9 +128,9 @@ import { WindowShell } from "./WindowShell";
 
 function sessionRows() {
   return [
-    { key: fake.MAIN, agentId: "researcher", isMain: true, sessionId: "s-main", updatedAt: 30, lastMessagePreview: "General hello" },
-    { key: fake.PONG, agentId: "researcher", parentSessionKey: fake.MAIN, sessionId: "s-pong", updatedAt: 20, lastMessagePreview: "Earlier pong line" },
-    { key: fake.EMPTY, agentId: "researcher", parentSessionKey: fake.MAIN, sessionId: "s-empty", updatedAt: 10, lastMessagePreview: "" },
+    { key: fake.MAIN, agentId: "researcher", isMain: true, sessionId: "s-main", updatedAt: 30, lastMessagePreview: "General hello", derivedTitle: "General" },
+    { key: fake.PONG, agentId: "researcher", parentSessionKey: fake.MAIN, sessionId: "s-pong", updatedAt: 20, lastMessagePreview: "Earlier pong line", derivedTitle: "Pong-check-1842" },
+    { key: fake.EMPTY, agentId: "researcher", parentSessionKey: fake.MAIN, sessionId: "s-empty", updatedAt: 10, lastMessagePreview: "", derivedTitle: "empty-note" },
   ];
 }
 
@@ -138,6 +140,38 @@ const hello = { snapshot: { sessionDefaults: { mainSessionKey: fake.MAIN } }, au
 
 let root: Root | undefined;
 let session: SaplingSession | undefined;
+let recording = false;
+const paints: View[] = [];
+
+type View = {
+  head: string;
+  messages: string;
+  composer: boolean;
+  empty: boolean;
+  recent: boolean;
+  chips: boolean;
+  where: boolean;
+  opening: boolean;
+};
+
+function readView(): View {
+  const thread = document.querySelector(".thread");
+  const threadText = thread?.textContent ?? "";
+  return {
+    head: document.querySelector(".head-row .head-name")?.textContent ?? "",
+    messages: [...(thread?.querySelectorAll('[data-testid="message"]') ?? [])].map((node) => node.textContent ?? "").join("\n"),
+    composer: Boolean(document.querySelector('[data-testid="composer"]')),
+    empty: Boolean(thread?.querySelector('[data-testid="empty-state"]')) || /What should .+ do\?/.test(threadText),
+    recent: [...(thread?.querySelectorAll(".section-label") ?? [])].some((node) => node.textContent === "Recent"),
+    chips: Boolean(thread?.querySelector(".starters, .chipb")),
+    where: Boolean(document.querySelector('[data-testid="where-chips"]')),
+    opening: Boolean(document.querySelector('[data-testid="thread-opening"]')),
+  };
+}
+
+const onRender: ProfilerOnRenderCallback = () => {
+  if (recording) paints.push(readView());
+};
 
 beforeEach(() => {
   vi.stubGlobal("matchMedia", (query: string) => ({
@@ -234,7 +268,7 @@ async function showResearcher(): Promise<void> {
   fake.options?.onStatus({ phase: "connected", hello });
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
-  await act(async () => { root!.render(<WindowShell session={session!} url="ws://127.0.0.1:19671" />); });
+  await act(async () => { root!.render(<Profiler id="shell" onRender={onRender}><WindowShell session={session!} url="ws://127.0.0.1:19671" /></Profiler>); });
   await vi.waitFor(() => {
     expect(topicButton("pong-check-1842")).toBeTruthy();
     expect(topicButton("General")).toBeTruthy();
@@ -304,4 +338,70 @@ it("shows the start screen for a conversation that is actually empty, and not wh
   clearInterval(timer);
   expect(document.querySelector('[data-testid="empty-state"]')).toBeTruthy();
   expect(document.body.textContent).toMatch(/What should Researcher do\?/);
+});
+
+function distinctSteps(frames: View[]): View[] {
+  return frames.filter((frame, index) => index === 0 || JSON.stringify(frame) !== JSON.stringify(frames[index - 1]));
+}
+
+/** Header, messages and composer from a warm cache, with the refresh still held. One visual step, no start screen. */
+async function assertCachedStep(go: () => void, settled: { head: string; message: string }): Promise<void> {
+  paints.length = 0;
+  recording = true;
+  await act(async () => {
+    go();
+    // history.back/forward queue two traversal tasks before popstate.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  recording = false;
+  const steps = distinctSteps(paints);
+  expect(steps, JSON.stringify(steps, null, 2)).toHaveLength(1);
+  const view = steps[0]!;
+  expect(view.empty).toBe(false);
+  expect(view.recent).toBe(false);
+  expect(view.chips).toBe(false);
+  expect(view.where).toBe(false);
+  expect(view.opening).toBe(false);
+  expect(view.composer).toBe(true);
+  expect(view.head).toBe(settled.head);
+  expect(view.messages).toContain(settled.message);
+}
+
+function headerButton(label: "Back" | "Forward"): HTMLButtonElement {
+  const button = document.querySelector(`.head-row [aria-label="${label}"]`);
+  if (!(button instanceof HTMLButtonElement)) throw new Error(`No header ${label} button`);
+  return button;
+}
+
+it("paints a warm conversation in one step, and header back and forward do the same", async () => {
+  await showResearcher();
+  await act(() => { topicButton("pong-check-1842").click(); });
+  await vi.waitFor(() => expect(document.body.textContent).toContain("Serve the pong"));
+  await act(() => { topicButton("General").click(); });
+  await vi.waitFor(() => expect(document.body.textContent).toContain("General hello"));
+  expect(document.querySelector(".head-row .head-name")?.textContent).toBe("Researcher");
+
+  fake.arm(fake.PONG);
+  fake.arm(fake.MAIN);
+  await assertCachedStep(() => topicButton("pong-check-1842").click(), { head: "Pong-check-1842", message: "Serve the pong" });
+  expect(fake.holds.has(fake.PONG)).toBe(true);
+  expect(document.body.textContent).toContain("pong reply is here");
+
+  paints.length = 0;
+  recording = true;
+  fake.release(fake.PONG);
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 32)); });
+  recording = false;
+  for (const paint of paints) {
+    expect(paint.head).toBe("Pong-check-1842");
+    expect(paint.messages).toContain("Serve the pong");
+    expect(paint.empty || paint.recent || paint.chips || paint.where || paint.opening).toBe(false);
+  }
+
+  await assertCachedStep(() => headerButton("Back").click(), { head: "Researcher", message: "General hello" });
+  expect(fake.holds.has(fake.MAIN)).toBe(true);
+
+  await assertCachedStep(() => headerButton("Forward").click(), { head: "Pong-check-1842", message: "Serve the pong" });
+  fake.releaseAll();
 });
