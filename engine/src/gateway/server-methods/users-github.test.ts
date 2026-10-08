@@ -65,7 +65,11 @@ vi.mock("../../agents/github-oauth-client.js", () => ({
   refreshGitHubOAuthToken: network.refresh,
   verifyGitHubCredential: network.verify,
 }));
-vi.mock("../../process/exec.js", () => ({ runCommandBuffered: network.command }));
+vi.mock("../../process/exec.js", async (importOriginal) => ({
+  runCommandBuffered: network.command,
+  // Windows profile folders are hardened with icacls when written.
+  runExec: (await importOriginal<typeof import("../../process/exec.js")>()).runExec,
+}));
 vi.mock("../github-cli-preflight.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../github-cli-preflight.js")>();
   return { ...actual, assertGitHubCliAvailable: network.assertCli };

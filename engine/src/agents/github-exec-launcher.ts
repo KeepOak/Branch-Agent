@@ -1,3 +1,4 @@
+import { WindowsAclViolationError } from "../security/windows-acl.js";
 import {
   GITHUB_EXEC_CREDENTIAL_UNAVAILABLE,
   readGitHubExecToken,
@@ -10,13 +11,16 @@ async function resolveCredential() {
   process.stdout.write(token);
 }
 
-function credentialUnavailable() {
+function credentialUnavailable(error?: unknown) {
   process.exitCode = 1;
-  process.stderr.write(`${GITHUB_EXEC_CREDENTIAL_UNAVAILABLE}\n`);
+  // An insecure folder ACL names its culprit and repair; every other cause stays generic.
+  const message =
+    error instanceof WindowsAclViolationError ? error.message : GITHUB_EXEC_CREDENTIAL_UNAVAILABLE;
+  process.stderr.write(`${message}\n`);
 }
 
 // A cancelled private pipe must not turn a credential error into an uncaught stream stack.
-process.stdout.on("error", credentialUnavailable);
+process.stdout.on("error", () => credentialUnavailable());
 process.stderr.on("error", () => {
   process.exitCode = 1;
 });

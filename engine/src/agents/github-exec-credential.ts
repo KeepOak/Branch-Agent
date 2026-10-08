@@ -4,6 +4,11 @@ import { inspectPathPermissions } from "@openclaw/fs-safe/permissions";
 import { isRecord } from "@branch/normalization-core/record-coerce";
 import { parseDocument } from "yaml";
 import { readSecureFile } from "../infra/fs-safe.js";
+import {
+  createWindowsAclViolationError,
+  isOwnerOnlyWindowsAcl,
+  WindowsAclViolationError,
+} from "../security/windows-acl.js";
 
 export const GITHUB_EXEC_CREDENTIAL_UNAVAILABLE =
   "GitHub Identity credential is unavailable or insecure. Reconnect or change GitHub Identity, then retry.";
@@ -16,21 +21,27 @@ async function privateProfileStat(profileDir: string) {
   if (process.platform === "win32") {
     // Windows mode bits do not establish privacy; require verified owner-only ACL access.
     const permissions = await inspectPathPermissions(profileDir);
-    if (
-      !permissions.ok ||
-      permissions.source !== "windows-acl" ||
-      permissions.ownerTrusted !== true ||
-      permissions.groupReadable ||
-      permissions.worldReadable ||
-      permissions.groupWritable ||
-      permissions.worldWritable
-    ) {
-      throw new Error(GITHUB_EXEC_CREDENTIAL_UNAVAILABLE);
+    if (!isOwnerOnlyWindowsAcl(permissions)) {
+      // Name the offending ACL entry and its repair; the folder holds no secret in its name.
+      throw await createWindowsAclViolationError({
+        directory: profileDir,
+        permissions,
+        subject: "The GitHub Identity credential folder",
+        alternative: "reconnect GitHub Identity, then retry",
+      });
     }
   } else if ((stat.mode & 0o077) !== 0 || stat.uid !== process.getuid?.()) {
     throw new Error(GITHUB_EXEC_CREDENTIAL_UNAVAILABLE);
   }
   return stat;
+}
+
+function credentialFailure(error: unknown): Error {
+  // ACL errors are built only from ACL facts and the folder path. Never retain any other
+  // filesystem/YAML cause: it may contain the credential or private paths.
+  return error instanceof WindowsAclViolationError
+    ? error
+    : new Error(GITHUB_EXEC_CREDENTIAL_UNAVAILABLE);
 }
 
 /** Called only inside the local launcher, never by the Gateway or its supervision pipeline. */
@@ -75,8 +86,7 @@ export async function readGitHubExecToken(profileDir: string): Promise<string> {
     } finally {
       snapshot.buffer.fill(0);
     }
-  } catch {
-    // Never retain a filesystem/YAML cause: it may contain the credential or private paths.
-    throw new Error(GITHUB_EXEC_CREDENTIAL_UNAVAILABLE);
+  } catch (error) {
+    throw credentialFailure(error);
   }
 }

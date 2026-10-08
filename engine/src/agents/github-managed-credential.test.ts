@@ -16,7 +16,11 @@ import {
 } from "./github-oauth-client.js";
 
 const commands = vi.hoisted(() => ({ run: vi.fn() }));
-vi.mock("../process/exec.js", () => ({ runCommandBuffered: commands.run }));
+vi.mock("../process/exec.js", async (importOriginal) => ({
+  runCommandBuffered: commands.run,
+  // Windows profile folders are hardened with icacls when written.
+  runExec: (await importOriginal<typeof import("../process/exec.js")>()).runExec,
+}));
 vi.mock("./github-oauth-records.js", () => ({
   inspectGitHubOAuthRecord: () => ({ state: "missing" }),
 }));

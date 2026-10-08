@@ -54,7 +54,11 @@ vi.mock("../../state/session-repository-workspaces.js", () => ({
     }),
   }),
 }));
-vi.mock("../../process/exec.js", () => ({ runCommandBuffered: mocks.nativeToken }));
+vi.mock("../../process/exec.js", async (importOriginal) => ({
+  runCommandBuffered: mocks.nativeToken,
+  // Windows profile folders are hardened with icacls when written.
+  runExec: (await importOriginal<typeof import("../../process/exec.js")>()).runExec,
+}));
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 const profileId = "ghp_11111111111111111111111111111111";

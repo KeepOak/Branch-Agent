@@ -9,9 +9,14 @@ import {
   prepareWorkerGitHubEnvironment,
 } from "./github-binding.runtime.js";
 
-const { warn, inspectPathPermissions } = vi.hoisted(() => ({
+const { warn, inspectPathPermissions, inspectWindowsAcl } = vi.hoisted(() => ({
   warn: vi.fn(),
   inspectPathPermissions: vi.fn(),
+  inspectWindowsAcl: vi.fn(),
+}));
+vi.mock("@openclaw/fs-safe/advanced", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@openclaw/fs-safe/advanced")>()),
+  inspectWindowsAcl,
 }));
 vi.mock("@openclaw/fs-safe/permissions", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@openclaw/fs-safe/permissions")>();
@@ -219,14 +224,38 @@ describe("prepareWorkerGitHubEnvironment", () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("GitHub checkout binding failed"));
   });
 
-  it("disables the binding before any token use when a Windows profile is not owner-only", async () => {
+  it("disables the binding before any token use and names the ACL culprit", async () => {
     const remoteHead = await publishEarlierTurn();
     const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
     Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    // Profile creation hardens the folder; the fixture reports that the reset did not hold.
+    const runExec = exec.runExec;
+    const icacls = vi.fn(async (_command: string, _args: string[]) => ({ stdout: "", stderr: "" }));
+    vi.spyOn(exec, "runExec").mockImplementation(async (command, args, options) =>
+      /icacls\.exe$/iu.test(command)
+        ? await icacls(command, args)
+        : await runExec(command, args, options),
+    );
+    const sid = "s-1-5-21-1000-2000-3000-4001";
+    const entry = {
+      principal: sid,
+      sid,
+      rights: ["RD"],
+      rawRights: "(RD)",
+      canRead: true,
+      canWrite: false,
+    };
+    inspectWindowsAcl.mockResolvedValueOnce({
+      ok: true,
+      entries: [entry],
+      trusted: [],
+      untrustedWorld: [],
+      untrustedGroup: [entry],
+    });
     inspectPathPermissions.mockResolvedValueOnce({
       ok: true,
       source: "windows-acl",
-      ownerTrusted: false,
+      ownerTrusted: true,
       groupReadable: true,
       worldReadable: false,
       groupWritable: false,
@@ -238,10 +267,19 @@ describe("prepareWorkerGitHubEnvironment", () => {
       Object.defineProperty(process, "platform", platform);
     }
 
+    expect(icacls).toHaveBeenCalledOnce();
+    expect(icacls.mock.calls[0]?.[1]).toEqual(
+      expect.arrayContaining(["/inheritance:r", "*S-1-5-18:(OI)(CI)F"]),
+    );
     expect((await git(cwd, "rev-parse", "HEAD")).trim()).toBe(initialHead);
     expect(remoteHead).not.toBe(initialHead);
     await expect(git(cwd, "rev-parse", "--verify", "FETCH_HEAD")).rejects.toThrow();
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("profile is not owner-only"));
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining("profile is not owner-only"),
+    );
+    expect(warn.mock.lastCall?.[0]).toContain("S-1-5-21-1000-2000-3000-4001 can read (RD)");
+    expect(warn.mock.lastCall?.[0]).toContain("Fix it by running:");
+    expect(warn.mock.lastCall?.[0]).not.toContain(binding.token);
   });
 
   it("never fetches or fast-forwards without a verified GitHub origin", async () => {

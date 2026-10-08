@@ -10,6 +10,7 @@ import { sha256HexPrefixCore } from "../infra/crypto-digest.js";
 import { executeGitCommand } from "../infra/git-exec.js";
 import { registerSecretValueForRedaction } from "../logging/secret-redaction-registry.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { createWindowsAclViolationError, isOwnerOnlyWindowsAcl } from "../security/windows-acl.js";
 import type { WorkerGitHubLaunchBinding } from "./launch-descriptor.js";
 
 const log = createSubsystemLogger("worker/github");
@@ -134,16 +135,13 @@ export async function prepareWorkerGitHubEnvironment(params: {
   });
   if (process.platform === "win32") {
     const permissions = await inspectPathPermissions(profileDir);
-    if (
-      !permissions.ok ||
-      permissions.source !== "windows-acl" ||
-      permissions.ownerTrusted !== true ||
-      permissions.groupReadable ||
-      permissions.worldReadable ||
-      permissions.groupWritable ||
-      permissions.worldWritable
-    ) {
-      log.warn(`GitHub binding skipped: profile is not owner-only: ${profileDir}`);
+    if (!isOwnerOnlyWindowsAcl(permissions)) {
+      const violation = await createWindowsAclViolationError({
+        directory: profileDir,
+        permissions,
+        subject: "The worker GitHub profile",
+      });
+      log.warn(`GitHub binding skipped: profile is not owner-only: ${violation.message}`);
       return undefined;
     }
   }

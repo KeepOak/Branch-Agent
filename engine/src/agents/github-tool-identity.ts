@@ -16,7 +16,9 @@ import type { BranchConfig } from "../config/types.branch.js";
 import { isSecretRef, isValidEnvSecretRefId } from "../config/types.secrets.js";
 import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
 import { hasErrnoCode } from "../infra/errno.js";
+import { runExec } from "../process/exec.js";
 import { normalizeAgentId } from "../routing/session-key.js";
+import { hardenWindowsOwnerOnlyDirectory } from "../security/windows-acl.js";
 import { resolveAgentConfig, resolveAgentWorkspaceDir } from "./agent-scope.js";
 import {
   CLEARED_GITHUB_CREDENTIALS,
@@ -666,6 +668,8 @@ export async function writeManagedGitHubProfileFiles(
 ): Promise<void> {
   await fs.mkdir(profileDir, { recursive: true, mode: 0o700 });
   await fs.chmod(profileDir, 0o700);
+  // Windows folders inherit their parent's ACL; reset to owner + SYSTEM before writing.
+  await hardenWindowsOwnerOnlyDirectory(profileDir, { exec: runExec });
   const profile = await fsRoot(profileDir, { mode: 0o600, mkdir: false, durable: false });
   await profile.write("config.yml", stringifyYaml({ version: "1" }));
   await profile.write("hosts.yml", managedGitHubHosts(identity));
@@ -691,6 +695,8 @@ export async function refreshManagedGitHubProfile(params: {
   if (!targetStat.isFile() || targetStat.isSymbolicLink()) {
     throw new Error("The configured GitHub identity profile is unavailable.");
   }
+  // Repair a profile created before folders were hardened, or whose ACL drifted.
+  await hardenWindowsOwnerOnlyDirectory(params.profileDir, { exec: runExec });
   const profile = await fsRoot(params.profileDir);
   await profile.write(
     "hosts.yml",

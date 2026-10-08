@@ -10,7 +10,11 @@ import { clearGitHubCredentialVerificationCache } from "./github-oauth-client.js
 const processMocks = vi.hoisted(() => ({ runCommandBuffered: vi.fn() }));
 const oauthMocks = vi.hoisted(() => ({ inspect: vi.fn() }));
 
-vi.mock("../process/exec.js", () => ({ runCommandBuffered: processMocks.runCommandBuffered }));
+vi.mock("../process/exec.js", async (importOriginal) => ({
+  runCommandBuffered: processMocks.runCommandBuffered,
+  // Windows profile folders are hardened with icacls when written.
+  runExec: (await importOriginal<typeof import("../process/exec.js")>()).runExec,
+}));
 vi.mock("./github-oauth-records.js", () => ({ inspectGitHubOAuthRecord: oauthMocks.inspect }));
 
 import {

@@ -22,7 +22,11 @@ import {
 } from "./sessions-github-read.test-support.js";
 
 const mocks = vi.hoisted(() => ({ runCommandBuffered: vi.fn() }));
-vi.mock("../../process/exec.js", () => ({ runCommandBuffered: mocks.runCommandBuffered }));
+vi.mock("../../process/exec.js", async (importOriginal) => ({
+  runCommandBuffered: mocks.runCommandBuffered,
+  // Windows profile folders are hardened with icacls when written.
+  runExec: (await importOriginal<typeof import("../../process/exec.js")>()).runExec,
+}));
 vi.mock("../../agents/tools/gateway-caller-context.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../agents/tools/gateway-caller-context.js")>()),
   getGatewayToolCallerIdentity: () => undefined,
