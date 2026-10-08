@@ -42,6 +42,7 @@ import { dayStamp, formatDuration, fullTime, messageTime, modelName, stepLabel }
 import { TopicCard, TopicOrigin, topicPosition, type TopicUpdate } from "./TopicCard";
 import { suggestionsFor } from "./suggestions";
 import type { EarlierPage } from "../shell/useContactSegments";
+import { useScrollMemory } from "../places-nav/scroll-memory";
 
 type Props = {
   lockdown?: boolean;
@@ -132,6 +133,7 @@ function useFollow(signature: string, sent: readonly (string | null | undefined)
   const distance = useRef(0);
   const [showLatest, setShowLatest] = useState(false);
   const atEnd = useRef(true);
+  useScrollMemory(scroller, { atEnd });
   const lastSent = useRef(sent);
   const sentKey = sent.join("\u0000");
   useEffect(() => {

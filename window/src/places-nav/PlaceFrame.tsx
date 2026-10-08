@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
 import type { Level } from "./level";
 import type { PlaceId } from "./routes";
+import { useScrollMemory } from "./scroll-memory";
 
 /** What the shell hands every place (§4.6). Places add what they need; the shell keeps these working. */
 export type PlaceProps = {
@@ -19,12 +20,23 @@ export type PlaceProps = {
   level: Level;
 };
 
+/** The shared overflow for every place, including Library and Canopy which draw their own head. */
+export function PlaceScroll({ children }: { children?: ReactNode }) {
+  const scroller = useRef<HTMLDivElement>(null);
+  useScrollMemory(scroller);
+  return (
+    <div className="place-scroll" data-testid="place" ref={scroller}>
+      {children}
+    </div>
+  );
+}
+
 /** The shared place frame (DESIGN-SPEC §4.6.0): one h1, one lede, then the place's own content. `top` spans the
  *  whole area above the place column (Overview's "Finish setting up", as the preview puts it at the top of main). */
 /*  `before` sits inside the place column above the h1 (the recommendation bar on Overview and Inbox). */
 export function PlaceFrame({ title, lede, wide, children, top, before }: { title: string; lede: string; wide?: "overview" | "tools"; children?: ReactNode; top?: ReactNode; before?: ReactNode }) {
   return (
-    <div className="place-scroll" data-testid="place">
+    <PlaceScroll>
       {top}
       <div className={wide ? `place wide-${wide}` : "place"}>
         {before}
@@ -32,7 +44,7 @@ export function PlaceFrame({ title, lede, wide, children, top, before }: { title
         <p className="lede">{lede}</p>
         {children}
       </div>
-    </div>
+    </PlaceScroll>
   );
 }
 
