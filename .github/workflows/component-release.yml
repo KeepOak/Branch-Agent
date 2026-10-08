@@ -12,7 +12,7 @@ on:
       - '.github/workflows/component-release.yml'
   # Release-pipeline changes build and smoke every native target before merge; publish stays main-only.
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - 'desktop/scripts/release-*'
       - 'desktop/scripts/make-component-release.mjs'

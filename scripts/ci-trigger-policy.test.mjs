@@ -67,13 +67,18 @@ function checkWorkflows() {
   return workflowFiles().filter((name) => name !== 'merge-gate.yml' && hasPullRequestTrigger(readWorkflow(name)));
 }
 
-test('PR-triggered check workflows list ready_for_review and skip every job on drafts', () => {
+const requiredPullRequestTypes = ['ready_for_review', 'converted_to_draft'];
+
+test('PR-triggered check workflows list ready_for_review and converted_to_draft and skip every job on drafts', () => {
   const names = checkWorkflows();
   assert.ok(names.length > 0, 'expected at least one PR-triggered check workflow');
   for (const name of names) {
     const content = readWorkflow(name);
-    assert.ok(pullRequestTypes(content).includes('ready_for_review'),
-      `${name} pull_request types must include ready_for_review`);
+    const types = pullRequestTypes(content);
+    for (const required of requiredPullRequestTypes) {
+      assert.ok(types.includes(required),
+        `${name} pull_request types must include ${required}`);
+    }
     const defined = jobs(content);
     assert.ok(defined.length > 0, `${name} must define jobs`);
     for (const job of defined) {
@@ -83,10 +88,12 @@ test('PR-triggered check workflows list ready_for_review and skip every job on d
   }
 });
 
-test('merge-gate lists ready_for_review', () => {
+test('merge-gate lists ready_for_review and converted_to_draft', () => {
   const types = pullRequestTypes(readWorkflow('merge-gate.yml'));
-  assert.ok(types.includes('ready_for_review'),
-    'merge-gate pull_request types must include ready_for_review');
+  for (const required of requiredPullRequestTypes) {
+    assert.ok(types.includes(required),
+      `merge-gate pull_request types must include ${required}`);
+  }
 });
 
 test("component-release concurrency never cancels pushes", () => {

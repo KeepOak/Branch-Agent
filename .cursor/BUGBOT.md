@@ -36,7 +36,7 @@ Conventions and common failure modes for this repository. Bugbot should check th
 
 ### Draft PR CI
 - **Wrong:** Adding a new PR-triggered check workflow that runs on draft PRs or omits the draft skip.
-- **Right:** PR check workflows list `ready_for_review` and skip drafts with `if: github.event_name != 'pull_request' || github.event.pull_request.draft == false`.
+- **Right:** PR check workflows list `ready_for_review` and `converted_to_draft` and skip drafts with `if: github.event_name != 'pull_request' || github.event.pull_request.draft == false`.
 - **Check:** `scripts/ci-trigger-policy.test.mjs` enforces this.
 
 ### Unnecessary merge-from-main
@@ -84,7 +84,7 @@ Every merge to `main` that touches `engine/`, `window/`, or `desktop/` triggers 
 - [ ] Tests use isolated ports and data folders.
 - [ ] Windows spawns include `windowsHide: true`.
 - [ ] New test files are listed in CI.
-- [ ] New PR-triggered workflows skip drafts and list `ready_for_review`.
+- [ ] New PR-triggered workflows skip drafts and list `ready_for_review` and `converted_to_draft`.
 - [ ] Recent commits are not only "Merge main" commits with no conflict resolution.
 - [ ] No CI job exceeds 15 minutes (except merge-gate).
 - [ ] Lint and typecheck pass.

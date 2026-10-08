@@ -4,6 +4,7 @@ name: Engine handoff checks
 # Each job builds once and runs only its named real-engine cases, below the 15-minute CI job cap.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - 'engine/src/agents/main-session-recovery/**'
       - 'engine/src/cli/gateway-cli/**'
@@ -74,6 +75,7 @@ concurrency:
 jobs:
   handoff:
     name: Real-engine handoff ${{ matrix.shard.name }} on ${{ matrix.os }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:

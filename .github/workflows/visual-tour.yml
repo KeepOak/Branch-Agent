@@ -2,7 +2,7 @@ name: Visual tour
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths: ['window/**', 'engine/**', 'desktop/**', 'scripts/visual-tour/**', 'design/spec-v23/**', '.github/workflows/visual-tour.yml']
   workflow_dispatch:
     inputs:
