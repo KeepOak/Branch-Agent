@@ -8,7 +8,7 @@ import { isAdmin, num, rec, str, type SendExtras, type WindowEngine } from "./en
 import { Icon, StopMark } from "./icons";
 import { replaceToken } from "./mention";
 import { isEngineMode, modeName, nextMode, type EngineMode } from "./mode";
-import { chipLabel, currentModelRef, currentThinking } from "./model";
+import { composerChipLabel, currentModelRef, currentThinking } from "./model";
 import { ModelMenu } from "./ModelMenu";
 import { Popover } from "./Popover";
 import { serviceName } from "../places/settings/set1/service";
@@ -139,6 +139,8 @@ export function Composer(props: Props) {
   const modelAccount = currentModelAccount(modelAccounts, current?.provider ?? currentRef.split("/")[0] ?? "", row);
   const accountEmail = shortAccountEmail(modelAccount);
   const thinking = currentThinking(row, conv.defaults);
+  const chip = composerChipLabel(current, thinking, conv.modelsLoaded);
+  const chipName = composerChipLabel(current, "", conv.modelsLoaded);
   // No model set up: the engine names a default model but none is connected (models.list has none usable), or none at all.
   const noModel = hasNoModel(conv, currentRef);
   const admin = isAdmin(engine?.scopes ?? []);
@@ -530,8 +532,8 @@ export function Composer(props: Props) {
         </span>
         {engine ? (
           <button ref={anchors.tune} type="button" className={`c-btn c-tune-button${props.lockdown ? " lockdown" : (mode ?? asSet) === "full" ? " full" : ""}`} data-testid="tune-button" aria-haspopup="dialog" aria-expanded={menu === "tune"}
-            aria-label={`Model, access and usage: ${chipLabel(current?.name ?? currentRef.split("/").pop() ?? "", thinking)} · ${props.lockdown ? "Lockdown" : modeName(mode ?? asSet) || "As set"}${cost !== undefined ? ` · $${cost.toFixed(2)} so far` : ""}`}
-            title={`${current?.name ?? currentRef} · ${props.lockdown ? "Lockdown" : modeName(mode ?? asSet) || "As set"}${accountEmail ? ` · ${accountEmail}` : ""}`}
+            aria-label={`Model, access and usage: ${chip} · ${props.lockdown ? "Lockdown" : modeName(mode ?? asSet) || "As set"}${cost !== undefined ? ` · $${cost.toFixed(2)} so far` : ""}`}
+            title={`${chipName} · ${props.lockdown ? "Lockdown" : modeName(mode ?? asSet) || "As set"}${accountEmail ? ` · ${accountEmail}` : ""}`}
             onClick={() => setMenu(menu === "tune" ? null : "tune")}>
             <Icon name={props.lockdown ? "lock" : "sliders"} />
             {props.lockdown ? <span>Lockdown</span> : (mode ?? asSet) === "full" ? <Icon name="lock" size={10} /> : null}

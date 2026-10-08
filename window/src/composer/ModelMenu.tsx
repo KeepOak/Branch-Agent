@@ -117,7 +117,14 @@ export function ModelMenu(p: Props) {
             {p.error} <button type="button" className="c-link" onClick={p.onRetry}>Try again</button>
           </p>
         ) : null}
-        {!p.loading && !p.error && p.models.length === 0 ? <p className="c-pp">No models are allowed here.</p> : null}
+        {!p.loading && !p.error && p.models.length === 0 ? (
+          allAccounts.length > 0 ? <p className="c-pp">No models are allowed here.</p> : (
+            <p className="c-pp">
+              No model account connected yet.{" "}
+              <button type="button" className="c-link" disabled={!p.onOpen} title={p.onOpen ? undefined : NO_ROUTE} onClick={() => open("settings/accounts/add")}>Add an account</button>
+            </p>
+          )
+        ) : null}
         {p.models.length > 0 && groups.length === 0 ? <p className="c-pp">No models match.</p> : null}
         <div className="c-scroll">
           {groups.map((g) => (
@@ -193,18 +200,22 @@ function ModelSettings(p: Props & { levels: { id: string; label: string }[]; spe
           />
         </div>
       ) : null}
+      {p.current ? (
+        <>
       <div className="c-row">
         <span>Speed</span>
         <Segmented
           label="Speed"
           items={p.speeds}
           value={speedOf(p.row)}
-          disabled={!p.current?.supportsFastMode}
-          reason={p.current?.supportsFastMode ? undefined : "This model has one speed."}
+          disabled={!p.current.supportsFastMode}
+          reason={p.current.supportsFastMode ? undefined : "This model has one speed."}
           onPick={(id) => void p.patch({ fastMode: id === "standard" ? false : id === "fast" ? true : "ultrafast" })}
         />
       </div>
-      <p className="c-pp c-pp-note">{p.current?.supportsFastMode ? "Faster answers use your plan’s limits faster." : "This model has one speed."}</p>
+      <p className="c-pp c-pp-note">{p.current.supportsFastMode ? "Faster answers use your plan’s limits faster." : "This model has one speed."}</p>
+        </>
+      ) : null}
       {p.advanced && ctx.length > 1 ? (
         <div className="c-row">
           <span>Context to plan for</span>

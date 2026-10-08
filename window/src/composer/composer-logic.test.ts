@@ -3,7 +3,7 @@ import { formatSize, pastedTitle, preparingLine, sizeProblem, toChatAttachments,
 import { caretOnEdge, step, userTexts } from "./drafts";
 import { replaceToken, skillTokenAt, tokenAt } from "./mention";
 import { blockedReason, FULL_ACCESS_BLOCKED, MODE_ROWS, nextMode } from "./mode";
-import { chipLabel, currentModelRef, currentThinking, groupModels, readModels } from "./model";
+import { chipLabel, composerChipLabel, currentModelRef, currentThinking, groupModels, readModels } from "./model";
 import { chipWords, enqueue, moveUp, nextToSend, mark, remove, reword, type QueueItem } from "./queue";
 import { buildExtras, planSend, sendTooltip } from "./sending";
 import { argQuery, filterCommands, readCommands, slashQuery } from "./slash";
@@ -45,6 +45,13 @@ describe("model chip", () => {
   it("labels the chip with the model and its thinking level in lower case", () => {
     expect(chipLabel("GPT-6.1 Sol", "Medium")).toBe("GPT-6.1 Sol · medium");
     expect(chipLabel("", "low")).toBe("");
+  });
+  it("does not name a configured default that is not a usable models.list row", () => {
+    const connected = readModels({ models: [{ id: "gpt-6-astra", name: "gpt-6-astra", provider: "openai", available: true }] })[0];
+    expect(composerChipLabel(connected, "medium", true)).toBe("GPT-6 Astra · medium");
+    expect(composerChipLabel(undefined, "medium", true)).toBe("No model");
+    expect(composerChipLabel(undefined, "medium", false)).toBe("");
+    expect(composerChipLabel({ ...connected, available: false }, "medium", true)).toBe("No model");
   });
   it("uses the session's model, else the engine's default; never an invented one", () => {
     expect(currentModelRef({ model: "m", modelProvider: "p" }, {})).toBe("p/m");
