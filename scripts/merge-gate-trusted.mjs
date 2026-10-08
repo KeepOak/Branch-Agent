@@ -88,20 +88,23 @@ export function nameStatusFromPrFiles(files) {
   }).join('\n');
 }
 
+export const COLLAPSIBLE_CHECK_EVENTS = ['pull_request', 'pull_request_target'];
+
 export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}, { sha, prNumber, baseRef } = {}) {
   const newest = new Map();
   for (const run of checkRuns) {
     const workflow = lookupWorkflow(workflowsByCheckId, run.id);
-    // Only this PR's pull_request runs can supersede each other on reopen.
+    // Same app, workflow path, event, and job on this PR's head supersede older runs.
     const prs = workflow?.pullRequests ?? [];
-    const bound = run.app?.id != null && workflow?.path && workflow.event === 'pull_request'
+    const bound = run.app?.id != null && workflow?.path
+      && COLLAPSIBLE_CHECK_EVENTS.includes(workflow.event)
       && sha && workflow.headSha === sha
       && workflow.checkSuiteId != null && run.check_suite?.id != null
       && Number(run.check_suite.id) === Number(workflow.checkSuiteId)
       && prNumber && prs.some((pr) => Number(pr.number) === Number(prNumber))
       && baseRef && prs.every((pr) => pr.base === baseRef);
     const key = bound
-      ? JSON.stringify([run.app.id, workflow.path, run.name]) : Symbol();
+      ? JSON.stringify([run.app.id, workflow.path, workflow.event, run.name]) : Symbol();
     const previous = newest.get(key);
     // IDs increase with check creation, including queued checks without started_at.
     if (!previous || Number(run.id) > Number(previous.id)) newest.set(key, run);

@@ -28,6 +28,8 @@ import {
   pollOrdinaryGate,
   rateLimitSleepSeconds,
   resetEpochFromRateLimit,
+  resolveOrdinaryWorkflow,
+  resolveOrdinaryWorkflows,
   runGhWithRetry,
   shouldSkipEditedRerun,
   withIncludeFlag,
@@ -201,12 +203,273 @@ test('evaluateOrdinaryChecks waits for Analyze, ignores gate jobs, and fails red
   assert.equal(failed.failed.map((run) => `${run.name}: ${run.conclusion}`).join('\n'), 'Analyze (actions): failure');
 });
 
-test('ordinary gate keeps every non-gate check including a failed older duplicate', () => {
-  const latest = { ...feature, id: 110, status: 'completed', conclusion: 'failure' };
-  const cancelled = { ...feature, id: 90, conclusion: 'cancelled' };
-  const result = evaluateOrdinaryChecks([mergeGate, feature, trusted, analyze, latest, cancelled]);
-  assert.deepEqual(result.others.map((run) => run.id), [feature.id, analyze.id, latest.id, cancelled.id]);
-  assert.deepEqual(result.failed.map((run) => run.id), [latest.id, cancelled.id]);
+const HEAD_SHA = 'head-sha';
+const PR_NUMBER = 436;
+const BASE_REF = 'main';
+const ACTIONS_APP = { id: 15368 };
+
+function desktopJob(id, suite, patch = {}) {
+  return {
+    id,
+    app: ACTIONS_APP,
+    name: 'Desktop on windows-latest',
+    status: 'completed',
+    conclusion: 'success',
+    check_suite: { id: suite },
+    ...patch,
+  };
+}
+
+function desktopWorkflow(suite, patch = {}) {
+  return {
+    path: '.github/workflows/desktop-checks.yml',
+    event: 'pull_request',
+    headSha: HEAD_SHA,
+    checkSuiteId: suite,
+    pullRequests: [{ number: PR_NUMBER, base: BASE_REF }],
+    ...patch,
+  };
+}
+
+function ordinaryContext(workflowsByCheckId, context = {}) {
+  return {
+    workflowsByCheckId,
+    sha: HEAD_SHA,
+    prNumber: PR_NUMBER,
+    baseRef: BASE_REF,
+    ...context,
+  };
+}
+
+test('ordinary gate supersedes an older same-workflow failure with a newer green run', () => {
+  const olderSuite = 490;
+  const newerSuite = 501;
+  for (const conclusion of ['failure', 'cancelled', 'timed_out']) {
+    const older = desktopJob(90, olderSuite, { conclusion });
+    const newer = desktopJob(110, newerSuite);
+    const workflowsByCheckId = {
+      90: desktopWorkflow(olderSuite),
+      110: desktopWorkflow(newerSuite),
+    };
+    for (const checkRuns of [
+      [mergeGate, older, trusted, analyze, newer],
+      [newer, analyze, older, mergeGate, trusted],
+    ]) {
+      const result = evaluateOrdinaryChecks(checkRuns, ordinaryContext(workflowsByCheckId));
+      assert.equal(result.ready, true);
+      assert.deepEqual(result.failed, []);
+      assert.deepEqual(result.others.map((run) => run.id).sort((a, b) => a - b), [analyze.id, newer.id]);
+    }
+  }
+
+  const olderSuccess = desktopJob(90, olderSuite);
+  const newerFailure = desktopJob(110, newerSuite, { conclusion: 'failure' });
+  const keptFailure = evaluateOrdinaryChecks(
+    [olderSuccess, newerFailure, analyze],
+    ordinaryContext({
+      90: desktopWorkflow(olderSuite),
+      110: desktopWorkflow(newerSuite),
+    }),
+  );
+  assert.equal(keptFailure.ready, false);
+  assert.deepEqual(keptFailure.failed.map((run) => run.id), [newerFailure.id]);
+
+  const newerPending = desktopJob(110, newerSuite, { status: 'queued', conclusion: null });
+  const waiting = evaluateOrdinaryChecks(
+    [desktopJob(90, olderSuite, { conclusion: 'failure' }), newerPending, analyze],
+    ordinaryContext({
+      90: desktopWorkflow(olderSuite),
+      110: desktopWorkflow(newerSuite),
+    }),
+  );
+  assert.equal(waiting.ready, false);
+  assert.equal(isPassableCheckSnapshot(waiting), false);
+  assert.deepEqual(waiting.failed, []);
+  assert.deepEqual(waiting.pending.map((run) => run.id), [newerPending.id]);
+
+  const target = evaluateOrdinaryChecks(
+    [desktopJob(90, olderSuite, { conclusion: 'failure' }), desktopJob(110, newerSuite), analyze],
+    ordinaryContext({
+      90: desktopWorkflow(olderSuite, { event: 'pull_request_target' }),
+      110: desktopWorkflow(newerSuite, { event: 'pull_request_target' }),
+    }),
+  );
+  assert.equal(target.ready, true);
+  assert.deepEqual(target.failed, []);
+
+  const errors = [];
+  const code = pollOrdinaryGate({
+    repo: 'example/repo',
+    sha: HEAD_SHA,
+    token: 'unused',
+    prNumber: PR_NUMBER,
+    baseRef: BASE_REF,
+    initialWait: 0,
+    waitBudgetSeconds: 600,
+  }, {
+    fetchChecks: () => [
+      desktopJob(90, olderSuite, { conclusion: 'failure' }),
+      desktopJob(110, newerSuite),
+      analyze,
+    ],
+    resolveWorkflows: () => ({
+      90: desktopWorkflow(olderSuite),
+      110: desktopWorkflow(newerSuite),
+    }),
+    sleep: () => {},
+    now: () => 0,
+    log: () => {},
+    error: (text) => errors.push(text),
+  });
+  assert.equal(code, 0, errors.join('\n'));
+});
+
+test('ordinary gate still fails an older failure from another workflow or with no attribution', () => {
+  const older = desktopJob(90, 490, { conclusion: 'failure' });
+  const newer = desktopJob(110, 501);
+  const same = {
+    90: desktopWorkflow(490),
+    110: desktopWorkflow(501),
+  };
+  const cases = [
+    ['different workflow path', {
+      90: desktopWorkflow(490, { path: '.github/workflows/engine-handoff-checks.yml' }),
+      110: desktopWorkflow(501),
+    }],
+    ['unattributed older run', { 110: same[110] }],
+    ['unattributed newer run', { 90: same[90] }],
+    ['no attribution', {}],
+    ['workflow_dispatch', {
+      90: same[90],
+      110: desktopWorkflow(501, { event: 'workflow_dispatch' }),
+    }],
+    ['wrong SHA', {
+      90: same[90],
+      110: desktopWorkflow(501, { headSha: 'other-sha' }),
+    }],
+    ['wrong suite', {
+      90: same[90],
+      110: desktopWorkflow(501, { checkSuiteId: 999 }),
+    }],
+    ['another PR', {
+      90: same[90],
+      110: desktopWorkflow(501, { pullRequests: [{ number: 900, base: BASE_REF }] }),
+    }],
+    ['non-main base', {
+      90: same[90],
+      110: desktopWorkflow(501, {
+        pullRequests: [
+          { number: PR_NUMBER, base: BASE_REF },
+          { number: 700, base: 'release' },
+        ],
+      }),
+    }],
+    ['pull_request_target cannot hide a pull_request failure', {
+      90: same[90],
+      110: desktopWorkflow(501, { event: 'pull_request_target' }),
+    }],
+    ['missing app', {
+      90: same[90],
+      110: same[110],
+    }, desktopJob(110, 501, { app: undefined })],
+  ];
+  for (const [reason, workflowsByCheckId, newerRun = newer] of cases) {
+    const result = evaluateOrdinaryChecks(
+      [older, newerRun, analyze],
+      ordinaryContext(workflowsByCheckId),
+    );
+    assert.equal(result.ready, false, reason);
+    assert.deepEqual(result.failed.map((run) => run.id), [older.id], reason);
+  }
+
+  const missingContext = evaluateOrdinaryChecks(
+    [older, newer, analyze],
+    { workflowsByCheckId: same },
+  );
+  assert.deepEqual(missingContext.failed.map((run) => run.id), [older.id]);
+  assert.deepEqual(
+    missingContext.others.map((run) => run.id).sort((a, b) => a - b),
+    [older.id, analyze.id, newer.id].sort((a, b) => a - b),
+  );
+
+  const pendingErrors = [];
+  const pendingCode = pollOrdinaryGate({
+    repo: 'example/repo',
+    sha: HEAD_SHA,
+    token: 'unused',
+    prNumber: PR_NUMBER,
+    baseRef: BASE_REF,
+    initialWait: 0,
+    waitBudgetSeconds: 30,
+    maxPolls: 1,
+  }, {
+    fetchChecks: () => [older, desktopJob(110, 501, { status: 'queued', conclusion: null }), analyze],
+    resolveWorkflows: () => same,
+    sleep: () => {},
+    now: () => 0,
+    log: () => {},
+    error: (text) => pendingErrors.push(text),
+  });
+  assert.equal(pendingCode, 1);
+  assert.match(pendingErrors.join('\n'), /Timed out waiting for/);
+  assert.doesNotMatch(pendingErrors.join('\n'), /Failed checks/);
+});
+
+test('resolveOrdinaryWorkflow reads run identity and does not fetch without a run url', () => {
+  let calls = 0;
+  assert.equal(resolveOrdinaryWorkflow('example/repo', 'unused', { id: 1, name: 'build' }, {
+    request: () => {
+      calls += 1;
+      return null;
+    },
+  }), null);
+  assert.equal(calls, 0);
+  const workflow = resolveOrdinaryWorkflow('example/repo', 'unused', {
+    id: 2,
+    details_url: 'https://github.com/example/repo/actions/runs/410/job/2',
+  }, {
+    request: (requestPath) => {
+      calls += 1;
+      assert.equal(requestPath, 'actions/runs/410');
+      return {
+        path: '.github/workflows/desktop-checks.yml',
+        name: 'Desktop',
+        id: 410,
+        event: 'pull_request',
+        check_suite_id: 501,
+        head_sha: HEAD_SHA,
+        pull_requests: [{ number: PR_NUMBER, base: { ref: BASE_REF } }],
+      };
+    },
+  });
+  assert.equal(workflow.path, '.github/workflows/desktop-checks.yml');
+  assert.equal(workflow.event, 'pull_request');
+  assert.equal(workflow.headSha, HEAD_SHA);
+  assert.equal(workflow.checkSuiteId, 501);
+  assert.deepEqual(workflow.pullRequests, [{ number: PR_NUMBER, base: BASE_REF }]);
+  assert.equal(calls, 1);
+
+  const cache = new Map();
+  const check = {
+    id: 3,
+    check_suite: { id: 77 },
+  };
+  let lookups = 0;
+  const resolveWorkflow = () => {
+    lookups += 1;
+    if (lookups === 1) throw new Error('API 503');
+    return { path: '.github/workflows/desktop-checks.yml', event: 'pull_request' };
+  };
+  assert.deepEqual(resolveOrdinaryWorkflows('example/repo', 'unused', [check], {
+    resolveWorkflow,
+    cache,
+  }), {});
+  assert.equal(resolveOrdinaryWorkflows('example/repo', 'unused', [check], {
+    resolveWorkflow,
+    cache,
+  })[3].path, '.github/workflows/desktop-checks.yml');
+  resolveOrdinaryWorkflows('example/repo', 'unused', [check], { resolveWorkflow, cache });
+  assert.equal(lookups, 2);
 });
 
 test('withRateLimitRetry retries rate limits and throws other HTTP errors', () => {
