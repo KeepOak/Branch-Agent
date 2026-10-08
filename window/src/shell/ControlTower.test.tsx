@@ -42,7 +42,7 @@ function conv(partial: Partial<Conversation> & Pick<Conversation, "key">): Conve
   };
 }
 
-function engine(answers: Record<string, unknown>): WindowEngine {
+function engine(answers: Record<string, unknown>, onEvent: WindowEngine["onEvent"] = () => () => undefined): WindowEngine {
   const request = vi.fn(async (method: string) => {
     if (method in answers) return answers[method];
     if (method === "exec.approval.list" || method === "plugin.approval.list" || method === "branch.approval.list") return [];
@@ -50,7 +50,7 @@ function engine(answers: Record<string, unknown>): WindowEngine {
   });
   return {
     request,
-    onEvent: () => () => undefined,
+    onEvent,
     sessionKey: "agent:ada:main",
     scopes: ["operator.admin"],
   } as unknown as WindowEngine;
@@ -188,5 +188,43 @@ describe("Control tower live sections", () => {
     await act(async () => { [...host.querySelectorAll("button")].find((button) => button.textContent === "Check now")?.click(); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     expect(host.textContent).toContain("Couldn’t check accounts right now. Branch will try again.");
+  });
+
+  it("shows a finished run in Just finished without a reload", async () => {
+    const listeners: Array<(event: { event: string; payload?: unknown }) => void> = [];
+    const answers: Record<string, unknown> = { ...live, "audit.activity.list": { events: [] } };
+    const session = engine(answers, (fn) => {
+      listeners.push(fn);
+      return () => undefined;
+    });
+    const props = {
+      engine: session,
+      needsCount: 0,
+      trunkName: (id?: string) => (id === "ada" ? "Ada" : id ?? ""),
+      onOpen: () => undefined,
+      onInbox: () => undefined,
+      onClose: () => undefined,
+    };
+    const working = conv({ key: "agent:ada:task", title: "Tidy the Downloads folder", agentId: "ada", working: true });
+    const host = await show(<ControlTower {...props} rows={[working]} />);
+    expect(host.textContent).toContain("Nothing finished yet");
+    expect(host.textContent).toContain("Tidy the Downloads folder");
+
+    answers["audit.activity.list"] = {
+      events: [
+        { kind: "agent_run", runId: "r2", sessionKey: "agent:ada:task", agentId: "ada", action: "agent.run.started", occurredAt: NOW - 32_000 },
+        { kind: "agent_run", runId: "r2", sessionKey: "agent:ada:task", agentId: "ada", action: "agent.run.finished", occurredAt: NOW, status: "ok" },
+      ],
+    };
+    const finished = conv({ key: "agent:ada:task", title: "Tidy the Downloads folder", agentId: "ada", working: false, updatedAt: NOW });
+    await act(async () => {
+      root?.render(<ControlTower {...props} rows={[finished]} />);
+      for (const fn of listeners) fn({ event: "chat", payload: { state: "final", sessionKey: "agent:ada:task", runId: "r2" } });
+    });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(host.textContent).not.toContain("Nothing finished yet");
+    expect(host.textContent).toContain("Tidy the Downloads folder");
+    expect(host.textContent).toContain("32s");
   });
 });

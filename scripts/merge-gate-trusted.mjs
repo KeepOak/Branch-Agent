@@ -91,25 +91,54 @@ export function nameStatusFromPrFiles(files) {
   }).join('\n');
 }
 
+export const COLLAPSIBLE_CHECK_EVENTS = ['pull_request', 'pull_request_target'];
+
+function suiteNumber(run) {
+  return Number(run?.check_suite?.id);
+}
+
+function newestSuiteSupersedes(runs) {
+  // A still-running suite waits. Only success replaces an earlier non-pass.
+  return runs.every((run) => run.status !== 'completed' || run.conclusion === 'success');
+}
+
+function keepNewestSuite(runs) {
+  let newestSuite = suiteNumber(runs[0]);
+  for (const run of runs) {
+    const suite = suiteNumber(run);
+    if (suite > newestSuite) newestSuite = suite;
+  }
+  const inNewest = runs.filter((run) => suiteNumber(run) === newestSuite);
+  return newestSuiteSupersedes(inNewest) ? inNewest : runs;
+}
+
 export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}, { sha, prNumber, baseRef } = {}) {
-  const newest = new Map();
+  const drop = new Set();
+  const groups = new Map();
   for (const run of checkRuns) {
     const workflow = lookupWorkflow(workflowsByCheckId, run.id);
-    // Only this PR's pull_request runs can supersede each other on reopen.
+    // Same app, workflow path, event, and job can supersede older suites only.
     const prs = workflow?.pullRequests ?? [];
-    const bound = run.app?.id != null && workflow?.path && workflow.event === 'pull_request'
+    const bound = run.app?.id != null && workflow?.path
+      && COLLAPSIBLE_CHECK_EVENTS.includes(workflow.event)
       && sha && workflow.headSha === sha
       && workflow.checkSuiteId != null && run.check_suite?.id != null
       && Number(run.check_suite.id) === Number(workflow.checkSuiteId)
       && prNumber && prs.some((pr) => Number(pr.number) === Number(prNumber))
       && baseRef && prs.every((pr) => pr.base === baseRef);
-    const key = bound
-      ? JSON.stringify([run.app.id, workflow.path, run.name]) : Symbol();
-    const previous = newest.get(key);
-    // IDs increase with check creation, including queued checks without started_at.
-    if (!previous || Number(run.id) > Number(previous.id)) newest.set(key, run);
+    if (!bound) continue;
+    const key = JSON.stringify([run.app.id, workflow.path, workflow.event, run.name]);
+    const group = groups.get(key);
+    if (group) group.push(run);
+    else groups.set(key, [run]);
   }
-  return [...newest.values()];
+  for (const runs of groups.values()) {
+    const kept = new Set(keepNewestSuite(runs));
+    for (const run of runs) {
+      if (!kept.has(run)) drop.add(run);
+    }
+  }
+  return checkRuns.filter((run) => !drop.has(run));
 }
 
 export function isVisualTourWorkflow(workflow) {

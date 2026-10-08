@@ -3,6 +3,7 @@ import type { Conversation } from "../connect/conversations";
 import {
   checkedLine,
   jobProgress,
+  justEndedKeys,
   readCronJobs,
   readLocked,
   towerAccounts,
@@ -132,6 +133,25 @@ describe("Just finished and chatter", () => {
     expect(finished[0]).toMatchObject({ title: "September expense report", duration: "2m 10s" });
     expect(finished[0]?.when).toBeTruthy();
     expect(towerClock(NOW, NOW)).toBe("12 PM");
+  });
+
+  it("lists a finished run that was never marked done", () => {
+    const rows = [
+      row({ key: "agent:ada:task", title: "Tidy the Downloads folder", agentId: "ada", working: false, updatedAt: NOW }),
+      row({ key: "agent:scout:idle", title: "Always idle", agentId: "scout", working: false }),
+    ];
+    const audit = {
+      events: [
+        { kind: "agent_run", runId: "r2", sessionKey: "agent:ada:task", agentId: "ada", action: "agent.run.started", occurredAt: NOW - 32_000 },
+        { kind: "agent_run", runId: "r2", sessionKey: "agent:ada:task", agentId: "ada", action: "agent.run.finished", occurredAt: NOW, status: "ok" },
+      ],
+    };
+    expect(towerFinished(rows, audit, NOW).map((item) => item.title)).toEqual(["Tidy the Downloads folder"]);
+    expect(towerFinished(rows, audit, NOW)[0]).toMatchObject({ duration: "32s" });
+    expect(towerFinished(rows, {}, NOW)).toEqual([]);
+    expect(justEndedKeys(["agent:ada:task"], rows)).toEqual(["agent:ada:task"]);
+    expect(justEndedKeys([], rows)).toEqual([]);
+    expect(towerFinished(rows, {}, NOW, ["agent:ada:task"])[0]).toMatchObject({ title: "Tidy the Downloads folder" });
   });
 
   it("keeps group previews without inventing who spoke", () => {
