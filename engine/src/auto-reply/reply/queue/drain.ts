@@ -102,10 +102,15 @@ function clearStaleExpiredReplyOwner(key: string): void {
   }
 }
 
-function dropStaleExpiredFollowupOwner(key: string): void {
+function dropStaleExpiredFollowupOwner(key: string): boolean {
+  const operation = replyRunState.activeRunsByKey.get(key);
+  if (isLiveReplyOperation(operation)) {
+    return false;
+  }
   clearStaleExpiredReplyOwner(key);
   clearFollowupQueue(key);
   clearFollowupDrainCallback(key);
+  return true;
 }
 
 function bindFollowupRestartDrainSignal(): void {
@@ -1275,10 +1280,11 @@ export function scheduleFollowupDrain(
           queue.staleExpiryDrainAttempts = (queue.staleExpiryDrainAttempts ?? 0) + 1;
           clearStaleExpiredReplyOwner(key);
           if (queue.staleExpiryDrainAttempts >= MAX_STALE_EXPIRED_FOLLOWUP_DRAIN_ATTEMPTS) {
-            defaultRuntime.error?.(
-              `followup queue drain dropped stale-expired owner for ${key}`,
-            );
-            dropStaleExpiredFollowupOwner(key);
+            if (dropStaleExpiredFollowupOwner(key)) {
+              defaultRuntime.error?.(
+                `followup queue drain dropped stale-expired owner for ${key}`,
+              );
+            }
           }
         } else {
           defaultRuntime.error?.(`followup queue drain failed for ${key}: ${String(err)}`);

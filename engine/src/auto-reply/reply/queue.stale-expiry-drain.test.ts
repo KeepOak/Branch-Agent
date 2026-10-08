@@ -72,4 +72,62 @@ describe("followup queue drain stale-expired owner", () => {
       forceClearReplyOperation(operation);
     }
   });
+
+  it("keeps the follow-up queue when a live successor owns the key", async () => {
+    key = "agent:main:stale-expiry-successor";
+    const operation = createTestReplyOperation({
+      sessionKey: key,
+      sessionId: "session-stale-expiry-predecessor",
+    });
+    operation.setPhase("running");
+    operation.attachBackend({
+      kind: "embedded",
+      cancel: () => {},
+      isStreaming: () => true,
+    });
+    expect(expireStaleReplyOperation(operation, "no_activity")).toBe(false);
+    expect(replyRunRegistry.get(key)).toBe(operation);
+
+    const errors: string[] = [];
+    const previousError = defaultRuntime.error;
+    defaultRuntime.error = ((message?: unknown) => {
+      errors.push(String(message));
+    }) as typeof defaultRuntime.error;
+    let attempts = 0;
+    let successor: ReturnType<typeof createTestReplyOperation> | undefined;
+    try {
+      enqueueFollowupRun(key, createRun({ prompt: "keep successor queue" }), defaults);
+      scheduleFollowupDrain(key, async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw createAbortError(STALE_EXPIRED);
+        }
+        if (!successor) {
+          successor = createTestReplyOperation({
+            sessionKey: key,
+            sessionId: "session-stale-expiry-successor",
+          });
+          successor.setPhase("running");
+        }
+        if (attempts === 2) {
+          throw createAbortError(STALE_EXPIRED);
+        }
+      });
+
+      await vi.waitFor(() => expect(attempts).toBeGreaterThanOrEqual(3), {
+        timeout: 2_000,
+      });
+      await vi.waitFor(() => expect(getExistingFollowupQueue(key)).toBeUndefined(), {
+        timeout: 2_000,
+      });
+      expect(errors.filter((line) => line.includes("dropped stale-expired owner"))).toHaveLength(0);
+      expect(replyRunRegistry.get(key)).toBe(successor);
+    } finally {
+      defaultRuntime.error = previousError;
+      forceClearReplyOperation(operation);
+      if (successor) {
+        forceClearReplyOperation(successor);
+      }
+    }
+  });
 });

@@ -112,15 +112,54 @@ describe("gateway active-work live reply counts", () => {
   });
 
   it("does not count a leftover pending-reply reservation with no live owner", () => {
-    activeDispatcher = createReplyDispatcher({ deliver: async () => {} });
+    const sessionKey = "agent:main:update-idle-reservation";
+    activeDispatcher = createReplyDispatcher({
+      deliver: async () => {},
+      silentReplyContext: { sessionKey },
+    });
     const operation = createTestReplyOperation({
-      sessionKey: "agent:main:update-idle-reservation",
+      sessionKey,
       sessionId: "session-update-idle-reservation",
     });
     operation.setPhase("running");
     operation.attachBackend(retainedBackend());
     expect(expireStaleReplyOperation(operation, "no_activity")).toBe(false);
 
+    expect(getTotalPendingReplies()).toBe(0);
+    expect(snapshotActivity().counts.pendingReplies).toBe(0);
+  });
+
+  it("still counts a new reservation beside a retained dead slot", () => {
+    const dead = createTestReplyOperation({
+      sessionKey: "agent:main:update-idle-dead-slot",
+      sessionId: "session-update-idle-dead-slot",
+    });
+    dead.setPhase("running");
+    dead.attachBackend(retainedBackend());
+    expect(expireStaleReplyOperation(dead, "no_activity")).toBe(false);
+
+    activeDispatcher = createReplyDispatcher({ deliver: async () => {} });
+    expect(getTotalPendingReplies()).toBe(1);
+    expect(snapshotActivity().counts.pendingReplies).toBe(1);
+  });
+
+  it("does not count leftover pending after enqueue when the owner is dead", async () => {
+    const sessionKey = "agent:main:update-idle-after-enqueue";
+    activeDispatcher = createReplyDispatcher({
+      deliver: async () => {},
+      silentReplyContext: { sessionKey },
+    });
+    const operation = createTestReplyOperation({
+      sessionKey,
+      sessionId: "session-update-idle-after-enqueue",
+    });
+    operation.setPhase("running");
+    operation.attachBackend(retainedBackend());
+    expect(activeDispatcher.sendFinalReply({ text: "done" })).toBe(true);
+    await activeDispatcher.waitForIdle();
+    expect(getTotalPendingReplies()).toBe(1);
+
+    expect(expireStaleReplyOperation(operation, "no_activity")).toBe(false);
     expect(getTotalPendingReplies()).toBe(0);
     expect(snapshotActivity().counts.pendingReplies).toBe(0);
   });
