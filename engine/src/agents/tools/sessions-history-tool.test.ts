@@ -2,7 +2,6 @@
 // sessions_history tool tests cover recall redaction and input validation for
 // session transcript history returned to models.
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { Value } from "typebox/value";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -14,6 +13,7 @@ import { replaceSessionEntrySync } from "../../config/sessions/session-accessor.
 import type { BranchConfig } from "../../config/types.branch.js";
 import { createSessionVisibilityChecker } from "../../plugin-sdk/session-visibility.js";
 import { deleteTestEnvValue, setTestEnvValue } from "../../test-utils/env.js";
+import { useSessionStoreTempDirs } from "../../test-utils/session-state-cleanup.js";
 import { describeSessionLinkRule } from "../tool-description-presets.js";
 import { compactToolOutputHint } from "../tool-schema-hints.js";
 import {
@@ -91,9 +91,11 @@ function readMessageSeq(message: unknown): number | undefined {
 }
 
 describe("sessions_history redaction", () => {
+  const sessionDirs = useSessionStoreTempDirs(afterAll, "branch-sessions-history-redact-");
+
   beforeAll(async () => {
     previousConfigPath = process.env.BRANCH_CONFIG_PATH;
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "branch-sessions-history-redact-"));
+    tempDir = sessionDirs.make();
     useLoggingConfig("redaction-off.json", { redactSensitive: "off" });
     ({ createSessionsHistoryTool } = await import("./sessions-history-tool.js"));
   });
@@ -103,9 +105,6 @@ describe("sessions_history redaction", () => {
       deleteTestEnvValue("BRANCH_CONFIG_PATH");
     } else {
       setTestEnvValue("BRANCH_CONFIG_PATH", previousConfigPath);
-    }
-    if (tempDir) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
 
