@@ -16,7 +16,8 @@ const originalLoad = Module._load, originalFetch = globalThis.fetch;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const servingOn = async (port) => (await originalFetch(`http://127.0.0.1:${port}/readyz`).then(response => response.status, () => 0)) === 200;
-async function eventually(predicate, timeout = 8000) {
+const EVENTUALLY_DEFAULT_MS = 8000;
+async function eventually(predicate, timeout = EVENTUALLY_DEFAULT_MS) {
   const end = Date.now() + timeout;
   while (!await predicate()) { if (Date.now() > end) throw Error("Fixture deadline"); await pause(20); }
 }
@@ -271,11 +272,14 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
   const dist = resolve(process.env.BRANCH_DESKTOP_TEST_DIST).replaceAll("\\", "/").toLowerCase();
   for (const file of Object.keys(require.cache)) if (file.replaceAll("\\", "/").toLowerCase().startsWith(dist)) delete require.cache[file];
   const restart = () => runtime.ipcMain.emit("branch-desktop:restart-engine", { sender: runtime.window.webContents, senderFrame: runtime.window.webContents.mainFrame });
+  let runError, quitSurvivors = [];
   try {
     require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "main.js"));
     if (!holdStartup) await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway ready"), 30_000);
     await run({ root, runtime, starts, restart, offerStaged: () => onStaged(), withdraw: version => onWithdrawal(version),
       pendingVersion: () => pendingVersion(), swapGuard: (work) => swapGuard(work), engineWatchTick: () => engineWatchTick(), clock });
+  } catch (error) {
+    runError = error;
   } finally {
     // Cleanup must finish after a failure: a throw here used to skip SIGKILL and leave
     // IPC, the window server, and poll timers holding `node --test` open until CI cancelled.
@@ -290,9 +294,12 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     try { await writeFile(join(root, "release-candidate"), "1"); } catch { /* root already gone */ }
     await pause(600);
     try { runtime.app.emit("will-quit"); } catch { /* already quitting */ }
-    const gracefulEnd = Date.now() + 2_000;
+    // Same default deadline as eventually(): quitting must stop engines, but a throw
+    // here must not skip the kills that keep node --test from hanging.
+    const gracefulEnd = Date.now() + EVENTUALLY_DEFAULT_MS;
     try {
       while (Date.now() < gracefulEnd && (await starts()).some(pid => alive(pid))) await pause(20);
+      quitSurvivors = (await starts()).filter(pid => Number.isInteger(pid) && alive(pid));
     } catch { /* starts.json mid-write or gone */ }
     try { stopWatching?.(); } catch { /* already stopped */ }
     try { stopEngineWatch?.(); } catch { /* already stopped */ }
@@ -307,6 +314,15 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     for (const name of ["READY", "STEP_DOWN", "TAKE_OVER", "STANDBY_READY", "ROLLBACK"]) delete process.env[`BRANCH_DESKTOP_${name}_TIMEOUT_MS`];
     delete process.env.BRANCH_DESKTOP_RETIRE_KILL_AFTER_MS;
     try { await rm(root, { recursive: true, force: true }); } catch { /* locked or already gone */ }
+  }
+  if (runError) throw runError;
+  if (quitSurvivors.length) {
+    throw new assert.AssertionError({
+      message: `will-quit left engines running: ${quitSurvivors.join(", ")}`,
+      actual: quitSurvivors,
+      expected: [],
+      operator: "deepStrictEqual",
+    });
   }
 }
 /** Explicitly enables the default-on P45 handoff, overriding drain-first fixtures, with shorter deadlines from `env`. */
