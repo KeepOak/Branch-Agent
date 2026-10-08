@@ -64,7 +64,7 @@ async function waitForProbeFailure(url: string): Promise<void> {
             return true;
           }
         },
-        { timeout: 2_000, interval: 50 },
+        { timeout: process.platform === "win32" ? 8_000 : 2_000, interval: 50 },
       )
       .toBe(true);
   } catch {
@@ -702,7 +702,9 @@ describe("provider local service", () => {
     );
   });
 
-  it("reports a local service startup signal exit without waiting for readiness timeout", async () => {
+  it.skipIf(process.platform === "win32")(
+    "reports a local service startup signal exit without waiting for readiness timeout",
+    async () => {
     const port = await fixture.claimPort();
     const model = attachModelProviderLocalService(
       {

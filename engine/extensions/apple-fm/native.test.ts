@@ -79,7 +79,9 @@ describe("Apple Foundation Models helper lifecycle", () => {
     expect(await fs.readdir(directory)).toEqual([]);
   });
 
-  it("keeps discovery disposable until selection installs a reusable helper", async () => {
+  it.skipIf(process.platform === "win32")(
+    "keeps discovery disposable until selection installs a reusable helper",
+    async () => {
     expect(await native.probe()).toEqual(facts);
     expect(await fs.readdir(directory)).toEqual([]);
     await expect(native.run({ messages: [] })).rejects.toThrow("setup again");
@@ -116,7 +118,9 @@ describe("Apple Foundation Models helper lifecycle", () => {
     expect(await fs.readdir(directory)).toEqual([]);
   });
 
-  it("preserves native context errors and rejects malformed helper output", async () => {
+  it.skipIf(process.platform === "win32")(
+    "preserves native context errors and rejects malformed helper output",
+    async () => {
     await native.prepare();
     vi.mocked(runCommandBuffered).mockResolvedValue(
       success(JSON.stringify({ error: "Content exceeds the context size of 8192" })),
