@@ -278,7 +278,7 @@ async function resolveRealtimeVoiceAgentConsultSessionEntry(params: {
     : {};
   const shouldFork =
     params.contextMode === "fork" &&
-    Boolean(requesterSessionKey) &&
+    requesterSessionKey &&
     Boolean(requesterEntry?.sessionId?.trim()) &&
     (!requesterAgentId || requesterAgentId === params.agentId);
   let forkDecisionWarning: string | undefined;
