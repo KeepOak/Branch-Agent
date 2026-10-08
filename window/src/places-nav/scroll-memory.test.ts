@@ -294,6 +294,21 @@ describe("chat scroll memory", () => {
     expect(late.scrollTop).toBe(600);
   });
 
+  it("does not overwrite a saved place when the scroller has already moved on", async () => {
+    push(1, chatA);
+    const first = await mount(createElement(FollowChat, { signature: "1", sent: [null] }));
+    const scroller = first.querySelector<HTMLElement>("[data-testid=thread-scroll]")!;
+    await saveScroll(scroller, 600);
+    scroller.scrollTop = 12;
+    push(2, chatB);
+    await act(async () => first && root?.render(createElement(FollowChat, { signature: "1", sent: [null] })));
+    popTo(1, chatA);
+    await act(async () => first && root?.render(createElement(FollowChat, { signature: "1", sent: [null] })));
+    await flushFrame();
+    await waitMs(170);
+    expect(scroller.scrollTop).toBe(600);
+  });
+
   it("a mounted chat restores mid-thread on popstate without remounting", async () => {
     push(1, chatA);
     const first = await mount(createElement(FollowChat, { signature: "1", sent: [null] }));

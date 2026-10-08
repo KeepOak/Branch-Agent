@@ -127,7 +127,8 @@ export function useScrollMemory(ref: RefObject<HTMLElement | null>, opts?: Scrol
     return () => {
       el.removeEventListener("scroll", onScroll);
       if (raf) cancelAnimationFrame(raf);
-      remember(el, key, atEndRef.current);
+      // After Back/Forward the scroller already belongs to the next place; keep the last scroll save.
+      if (historyEntryKey() === key) remember(el, key, atEndRef.current);
     };
   }, [key, ref]);
 }
