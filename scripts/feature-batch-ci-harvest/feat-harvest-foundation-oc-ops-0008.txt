@@ -1,3 +1,0 @@
-engine:src/daemon/service-audit.definition-facts.test.ts
-engine:src/infra/github-issue.test.ts
-engine:src/infra/update-check.test.ts
