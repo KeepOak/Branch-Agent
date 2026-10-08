@@ -220,6 +220,15 @@ function armManagedChromeIdleTimeout(
   });
 }
 
+export function refreshManagedChromeIdleWatches(state: BrowserServerState): void {
+  for (const runtime of state.profiles.values()) {
+    if (getProfileLifecycle(runtime).terminal) {
+      continue;
+    }
+    armManagedChromeIdleTimeout(state, runtime);
+  }
+}
+
 function createLease(actor: ProfileLifecycleActor): () => void {
   const { promise: settled, resolve: release } = createDeferred<void>();
   actor.leases.add(settled);

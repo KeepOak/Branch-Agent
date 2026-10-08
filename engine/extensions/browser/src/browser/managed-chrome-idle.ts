@@ -61,6 +61,7 @@ export function armManagedChromeIdleWatch(target: ManagedChromeIdleWatch): void 
     return;
   }
   const handle = running;
+  const armedTimeoutMs = timeoutMs;
   const timer = setTimeout(() => {
     idleWatches.delete(target.runtime);
     if (target.getBusy()) {
@@ -70,6 +71,14 @@ export function armManagedChromeIdleWatch(target: ManagedChromeIdleWatch): void 
       return;
     }
     if (!isIdleEligibleManagedChrome(target.runtime, handle)) {
+      return;
+    }
+    const currentTimeoutMs = target.getTimeoutMs();
+    if (currentTimeoutMs <= 0) {
+      return;
+    }
+    if (currentTimeoutMs !== armedTimeoutMs) {
+      armManagedChromeIdleWatch(target);
       return;
     }
     void Promise.resolve(target.close()).catch(() => {

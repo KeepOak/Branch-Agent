@@ -9,7 +9,11 @@ import {
   resolveManagedChromeIdleTimeoutMs,
 } from "./managed-chrome-idle.js";
 import { createBrowserRouteContext } from "./server-context.js";
-import { getProfileLifecycle, withProfileOperationLease } from "./server-context.lifecycle.js";
+import {
+  getProfileLifecycle,
+  refreshManagedChromeIdleWatches,
+  withProfileOperationLease,
+} from "./server-context.lifecycle.js";
 import {
   makeBrowserProfile,
   makeBrowserServerState,
@@ -188,6 +192,33 @@ describe("managed Chrome idle timeout", () => {
     await vi.advanceTimersByTimeAsync(IDLE_MS * 3);
     expect(harness.stopBranchChrome).not.toHaveBeenCalled();
     expect(harness.state.profiles.get("branch")?.running).not.toBeNull();
+  });
+
+  it("does not close after a live reload disables the idle timeout", async () => {
+    const harness = setupIdleHarness();
+    const running = await launchHeadlessChrome(harness, 709);
+
+    await vi.advanceTimersByTimeAsync(IDLE_MS - 1_000);
+    expect(harness.stopBranchChrome).not.toHaveBeenCalled();
+
+    harness.state.resolved = { ...harness.state.resolved, idleTimeoutMinutes: 0 };
+    refreshManagedChromeIdleWatches(harness.state);
+
+    await vi.advanceTimersByTimeAsync(IDLE_MS * 2);
+    expect(harness.stopBranchChrome).not.toHaveBeenCalled();
+    expect(harness.state.profiles.get("branch")?.running).toBe(running);
+  });
+
+  it("does not close when a pending timer sees the timeout disabled", async () => {
+    const harness = setupIdleHarness();
+    const running = await launchHeadlessChrome(harness, 710);
+
+    await vi.advanceTimersByTimeAsync(IDLE_MS - 1_000);
+    harness.state.resolved = { ...harness.state.resolved, idleTimeoutMinutes: 0 };
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(harness.stopBranchChrome).not.toHaveBeenCalled();
+    expect(harness.state.profiles.get("branch")?.running).toBe(running);
   });
 
   it("treats only engine-launched headless Chrome as idle-eligible", () => {
