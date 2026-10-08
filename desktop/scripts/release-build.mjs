@@ -158,10 +158,10 @@ export async function buildRelease(mode, output, windowDirectory) {
   await mkdir(output, { recursive: true });
   if (mode === "engine") {
     await prepareEngine(pnpm);
-    await buildEnginePackage(pnpm, identity);
+    const deployment = await deployEngine(pnpm, scratch, identity);
     await run(process.execPath, ["--input-type=module", "-e",
       'import { cp } from "node:fs/promises"; await cp(process.argv[1], process.argv[2], { recursive: true });',
-      join(engineRoot, "dist"), output]);
+      deployment, output]);
   } else if (mode === "window") {
     await prepareWindow(pnpm);
     await writeFile(join(windowRoot, "dist/branch-build.txt"), `${identity.version}\n`);
@@ -169,8 +169,15 @@ export async function buildRelease(mode, output, windowDirectory) {
   } else {
     assert(windowDirectory, "Components require the shared tested renderer build");
     // The named feature suites already gate every pull request and main push (feature-batch-checks.yml).
-    await prepareEngine(pnpm);
-    const engine = await deployEngine(pnpm, scratch, identity);
+    const prebuilt = process.env.BRANCH_RELEASE_ENGINE_DEPLOYMENT;
+    let engine;
+    if (prebuilt) {
+      assert.equal(JSON.parse(await readFile(join(prebuilt, "dist/build-info.json"), "utf8")).commit, identity.commit, "Shared engine deployment differs from source freeze");
+      engine = prebuilt;
+    } else {
+      await prepareEngine(pnpm);
+      engine = await deployEngine(pnpm, scratch, identity);
+    }
     // Packaged first, so the manifest's desktop component is the same app.asar as the bootstrap package.
     const { nodePath, desktop, ...runtime } = await packageDesktop(scratch, output, identity);
     await waitForSharedWindow();

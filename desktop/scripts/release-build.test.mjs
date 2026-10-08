@@ -25,14 +25,14 @@ test("adoptSharedEngineDist copies a matching prebuilt dist and rejects a differ
   });
 });
 
-test("component-release archives the shared engine dist as a tarball before upload", async () => {
+test("component-release splits the macOS engine compile from package and sign", async () => {
   const workflow = await readFile(resolve(import.meta.dirname, "../../.github/workflows/component-release.yml"), "utf8");
-  assert.match(workflow, /tar -C "\$\{\{ runner\.temp \}\}\/shared-engine" -h -czf "\$\{\{ runner\.temp \}\}\/shared-engine\.tar\.gz" \./);
-  assert.match(workflow, /test -f shared-engine\/postinstall-inventory\.json/);
-  assert.match(workflow, /needs: \[identity, engine, window\]/);
+  assert.match(workflow, /macos-engine:/);
+  assert.match(workflow, /macos-package:/);
+  assert.match(workflow, /needs: \[identity, window, macos-engine\]/);
+  assert.match(workflow, /needs: \[identity, native, macos-package\]/);
+  assert.match(workflow, /BRANCH_RELEASE_ENGINE_DEPLOYMENT/);
+  assert.match(workflow, /tar -C "\$\{\{ runner\.temp \}\}\/macos-engine" -czf "\$\{\{ runner\.temp \}\}\/macos-engine\.tar\.gz" \./);
   assert.doesNotMatch(workflow, /artifacts\/\$artifact\/zip/);
-  assert.match(workflow, /cd "\$RUNNER_TEMP"/);
-  assert.match(workflow, /tar -xzf shared-engine\.tar\.gz -C shared-engine/);
-  assert.match(workflow, /test -f shared-engine\/build-info\.json/);
-  assert.match(workflow, /shared-engine\.tar\.gz/);
+  assert.doesNotMatch(workflow, /os: macos-15\n            target: darwin-arm64/);
 });

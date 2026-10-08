@@ -66,37 +66,6 @@ jobs:
             version="$base"
           fi
           printf 'commit=%s\nversion=%s\n' "$commit" "$version" >> "$GITHUB_OUTPUT"
-  engine:
-    needs: identity
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      BRANCH_RELEASE_COMMIT: ${{ needs.identity.outputs.commit }}
-      BRANCH_RELEASE_VERSION: ${{ needs.identity.outputs.version }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ needs.identity.outputs.commit }}
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: '24.19.0'
-          package-manager-cache: false
-      - name: Build one shared engine package from frozen source
-        run: |
-          set -euo pipefail
-          node desktop/scripts/release-build.mjs engine "${{ runner.temp }}/shared-engine"
-          test -f "${{ runner.temp }}/shared-engine/build-info.json"
-          test -f "${{ runner.temp }}/shared-engine/index.js"
-          test -f "${{ runner.temp }}/shared-engine/postinstall-inventory.json"
-          # Follow pnpm symlinks so Windows can extract a real-file tree.
-          tar -C "${{ runner.temp }}/shared-engine" -h -czf "${{ runner.temp }}/shared-engine.tar.gz" .
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: release-shared-engine
-          path: ${{ runner.temp }}/shared-engine.tar.gz
-          if-no-files-found: error
-          retention-days: 3
   window:
     needs: identity
     runs-on: ubuntu-latest
@@ -121,10 +90,11 @@ jobs:
           path: ${{ runner.temp }}/shared-window/
           if-no-files-found: error
           retention-days: 3
-  # Native targets consume the Ubuntu-built engine package (the macOS tsdown compile was the
-  # 15-minute risk) and the shared renderer. Both artifacts are downloaded; no Actions API poll.
+  # Windows and Linux compile and package in one job. macOS splits compile (tsdown) from
+  # package/sign so each job stays well under the 15-minute cap. The renderer is downloaded;
+  # no Actions API poll.
   native:
-    needs: [identity, engine, window]
+    needs: [identity, window]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     permissions:
@@ -136,8 +106,6 @@ jobs:
         include:
           - os: windows-latest
             target: win32-x64
-          - os: macos-15
-            target: darwin-arm64
           - os: ubuntu-latest
             target: linux-x64
     env:
@@ -156,44 +124,8 @@ jobs:
           package-manager-cache: false
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
-          name: release-shared-engine
-          path: ${{ runner.temp }}
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
-        with:
           name: release-shared-window
           path: ${{ runner.temp }}/shared-window
-      - name: Extract shared engine package
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$RUNNER_TEMP"
-          mkdir -p shared-engine
-          tar -xzf shared-engine.tar.gz -C shared-engine
-          test -f shared-engine/build-info.json
-          test -f shared-engine/index.js
-          test -f shared-engine/postinstall-inventory.json
-      - name: Prepare stable macOS release signing identity
-        if: matrix.target == 'darwin-arm64'
-        shell: bash
-        env:
-          BRANCH_MACOS_SIGNING_P12: ${{ secrets.BRANCH_MACOS_SIGNING_P12 }}
-          BRANCH_MACOS_SIGNING_PASSWORD: ${{ secrets.BRANCH_MACOS_SIGNING_PASSWORD }}
-        run: |
-          set -euo pipefail
-          test -n "$BRANCH_MACOS_SIGNING_P12"
-          test -n "$BRANCH_MACOS_SIGNING_PASSWORD"
-          p12="$RUNNER_TEMP/branch-release-signing.p12"
-          password="$RUNNER_TEMP/branch-release-signing-password"
-          printf '%s' "$BRANCH_MACOS_SIGNING_P12" | base64 --decode > "$p12"
-          printf '%s' "$BRANCH_MACOS_SIGNING_PASSWORD" > "$password"
-          chmod 600 "$p12" "$password"
-          archive="$RUNNER_TEMP/apple-codesign-0.29.0-aarch64-apple-darwin.tar.gz"
-          curl -fsSL 'https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.29.0/apple-codesign-0.29.0-aarch64-apple-darwin.tar.gz' -o "$archive"
-          echo "d1a532150adaf90048260d76359261aa716abafc45c53c5dc18845029184334a  $archive" | shasum -a 256 -c -
-          tar -xzf "$archive" -C "$RUNNER_TEMP"
-          echo "BRANCH_MACOS_SIGNING_P12_FILE=$p12" >> "$GITHUB_ENV"
-          echo "BRANCH_MACOS_SIGNING_PASSWORD_FILE=$password" >> "$GITHUB_ENV"
-          echo "BRANCH_MACOS_RCODESIGN=$RUNNER_TEMP/apple-codesign-0.29.0-aarch64-apple-darwin/rcodesign" >> "$GITHUB_ENV"
       - name: Check release inventory regressions
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
@@ -206,7 +138,6 @@ jobs:
         env:
           RELEASE_ASSETS: ${{ runner.temp }}/release-assets
           SHARED_WINDOW: ${{ runner.temp }}/shared-window
-          BRANCH_RELEASE_ENGINE_DIST: ${{ runner.temp }}/shared-engine
         run: node desktop/scripts/release-build.mjs components "$RELEASE_ASSETS" "$SHARED_WINDOW"
       - name: Verify extracted macOS app signature
         if: matrix.target == 'darwin-arm64'
@@ -241,8 +172,161 @@ jobs:
           path: ${{ runner.temp }}/release-assets/
           if-no-files-found: error
           retention-days: 3
+  macos-engine:
+    needs: identity
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      BRANCH_RELEASE_COMMIT: ${{ needs.identity.outputs.commit }}
+      BRANCH_RELEASE_VERSION: ${{ needs.identity.outputs.version }}
+      BRANCH_RELEASE_TARGET: darwin-arm64
+      BRANCH_MACOS_SIGNING_IDENTITY: 30BBF0B68236AE05E063465C39DEA6C5B396B11C
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.identity.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Prepare stable macOS release signing identity
+        shell: bash
+        env:
+          BRANCH_MACOS_SIGNING_P12: ${{ secrets.BRANCH_MACOS_SIGNING_P12 }}
+          BRANCH_MACOS_SIGNING_PASSWORD: ${{ secrets.BRANCH_MACOS_SIGNING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$BRANCH_MACOS_SIGNING_P12"
+          test -n "$BRANCH_MACOS_SIGNING_PASSWORD"
+          p12="$RUNNER_TEMP/branch-release-signing.p12"
+          password="$RUNNER_TEMP/branch-release-signing-password"
+          printf '%s' "$BRANCH_MACOS_SIGNING_P12" | base64 --decode > "$p12"
+          printf '%s' "$BRANCH_MACOS_SIGNING_PASSWORD" > "$password"
+          chmod 600 "$p12" "$password"
+          archive="$RUNNER_TEMP/apple-codesign-0.29.0-aarch64-apple-darwin.tar.gz"
+          curl -fsSL 'https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.29.0/apple-codesign-0.29.0-aarch64-apple-darwin.tar.gz' -o "$archive"
+          echo "d1a532150adaf90048260d76359261aa716abafc45c53c5dc18845029184334a  $archive" | shasum -a 256 -c -
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          echo "BRANCH_MACOS_SIGNING_P12_FILE=$p12" >> "$GITHUB_ENV"
+          echo "BRANCH_MACOS_SIGNING_PASSWORD_FILE=$password" >> "$GITHUB_ENV"
+          echo "BRANCH_MACOS_RCODESIGN=$RUNNER_TEMP/apple-codesign-0.29.0-aarch64-apple-darwin/rcodesign" >> "$GITHUB_ENV"
+      - name: Build and deploy the macOS production engine
+        run: |
+          set -euo pipefail
+          node desktop/scripts/release-build.mjs engine "${{ runner.temp }}/macos-engine"
+          test -f "${{ runner.temp }}/macos-engine/dist/build-info.json"
+          tar -C "${{ runner.temp }}/macos-engine" -czf "${{ runner.temp }}/macos-engine.tar.gz" .
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-macos-engine
+          path: ${{ runner.temp }}/macos-engine.tar.gz
+          if-no-files-found: error
+          retention-days: 3
+  macos-package:
+    needs: [identity, window, macos-engine]
+    runs-on: macos-15
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    env:
+      BRANCH_RELEASE_COMMIT: ${{ needs.identity.outputs.commit }}
+      BRANCH_RELEASE_VERSION: ${{ needs.identity.outputs.version }}
+      BRANCH_RELEASE_TARGET: darwin-arm64
+      BRANCH_MACOS_SIGNING_IDENTITY: 30BBF0B68236AE05E063465C39DEA6C5B396B11C
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.identity.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: release-macos-engine
+          path: ${{ runner.temp }}
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: release-shared-window
+          path: ${{ runner.temp }}/shared-window
+      - name: Extract the macOS production engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          mkdir -p macos-engine
+          tar -xzf macos-engine.tar.gz -C macos-engine
+          test -f macos-engine/dist/build-info.json
+      - name: Prepare stable macOS release signing identity
+        shell: bash
+        env:
+          BRANCH_MACOS_SIGNING_P12: ${{ secrets.BRANCH_MACOS_SIGNING_P12 }}
+          BRANCH_MACOS_SIGNING_PASSWORD: ${{ secrets.BRANCH_MACOS_SIGNING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$BRANCH_MACOS_SIGNING_P12"
+          test -n "$BRANCH_MACOS_SIGNING_PASSWORD"
+          p12="$RUNNER_TEMP/branch-release-signing.p12"
+          password="$RUNNER_TEMP/branch-release-signing-password"
+          printf '%s' "$BRANCH_MACOS_SIGNING_P12" | base64 --decode > "$p12"
+          printf '%s' "$BRANCH_MACOS_SIGNING_PASSWORD" > "$password"
+          chmod 600 "$p12" "$password"
+          archive="$RUNNER_TEMP/apple-codesign-0.29.0-aarch64-apple-darwin.tar.gz"
+          curl -fsSL 'https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.29.0/apple-codesign-0.29.0-aarch64-apple-darwin.tar.gz' -o "$archive"
+          echo "d1a532150adaf90048260d76359261aa716abafc45c53c5dc18845029184334a  $archive" | shasum -a 256 -c -
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          echo "BRANCH_MACOS_SIGNING_P12_FILE=$p12" >> "$GITHUB_ENV"
+          echo "BRANCH_MACOS_SIGNING_PASSWORD_FILE=$password" >> "$GITHUB_ENV"
+          echo "BRANCH_MACOS_RCODESIGN=$RUNNER_TEMP/apple-codesign-0.29.0-aarch64-apple-darwin/rcodesign" >> "$GITHUB_ENV"
+      - name: Check release inventory regressions
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+          BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
+        run: |
+          node "${{ github.workspace }}/desktop/scripts/prepare-release-layout-tests.mjs"
+          node --test desktop/scripts/release-inventory.test.mjs desktop/scripts/production-engine-smoke.test.mjs desktop/scripts/release-source-freeze.test.mjs desktop/scripts/release-production-layout.test.mjs desktop/scripts/release-build.test.mjs
+      - name: Package and sign macOS production components
+        env:
+          RELEASE_ASSETS: ${{ runner.temp }}/release-assets
+          SHARED_WINDOW: ${{ runner.temp }}/shared-window
+          BRANCH_RELEASE_ENGINE_DEPLOYMENT: ${{ runner.temp }}/macos-engine
+        run: node desktop/scripts/release-build.mjs components "$RELEASE_ASSETS" "$SHARED_WINDOW"
+      - name: Verify extracted macOS app signature
+        shell: bash
+        env:
+          RELEASE_ASSETS: ${{ runner.temp }}/release-assets
+        run: |
+          set -euo pipefail
+          extracted="$RUNNER_TEMP/verified-macos-app"
+          mkdir -p "$extracted"
+          tar -xzf "$RELEASE_ASSETS/branch-desktop-${BRANCH_RELEASE_VERSION}-darwin-arm64.tar.gz" -C "$extracted"
+          app="$extracted/Branch Agent.app"
+          test -f "$app/Contents/_CodeSignature/CodeResources"
+          test -L "$app/Contents/Frameworks/Electron Framework.framework/Versions/Current"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          node_hash="$(shasum -a 256 "$app/Contents/Resources/node/node" | cut -d' ' -f1)"
+          recorded_node_hash="$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).runtime.node.sha256' "$RELEASE_ASSETS/release-proof-darwin-arm64.json")"
+          test "$node_hash" = "$recorded_node_hash"
+          (cd "$extracted" && codesign -d --extract-certificates "$app" 2>/dev/null)
+          fingerprint="$(openssl x509 -inform DER -in "$extracted/codesign0" -noout -fingerprint -sha1 | cut -d= -f2 | tr -d :)"
+          test "$fingerprint" = "$BRANCH_MACOS_SIGNING_IDENTITY"
+          codesign -dr - "$app" 2>&1 | grep -Fx 'designated => identifier "com.electron.branch-agent" and certificate root = H"30bbf0b68236ae05e063465c39dea6c5b396b11c"'
+          spctl -a -vv "$app" || true
+      - name: Check compiled startup and update rollback
+        env:
+          BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
+        run: node --max-old-space-size=96 --test desktop/scripts/component-update.test.mjs desktop/scripts/desktop-update.test.mjs desktop/scripts/gateway-ready.test.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-native-darwin-arm64
+          path: ${{ runner.temp }}/release-assets/
+          if-no-files-found: error
+          retention-days: 3
   publish:
-    needs: [identity, native]
+    needs: [identity, native, macos-package]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
