@@ -1,3 +1,4 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/infra/update-failure-report-receipt-store.ts (atlas OPS-0056). Changed for Branch: preserve canonical external GitHub API and validator paths through the rename map.
 import type { DatabaseSync } from "node:sqlite";
 import { safeParseJson } from "@branch/normalization-core";
 import { isRecord as isPlainRecord } from "@branch/normalization-core/record-coerce";
@@ -74,14 +75,14 @@ function isValidTerminalReceipt(receipt: UpdateFailureReportReceipt): boolean {
     return (
       receipt.cleanup === "pending" &&
       receipt.fallbackUrl === undefined &&
-      isCanonicalGithubUrl(receipt.url, /^\/branch\/branch\/issues\/\d+$/u, false)
+      isCanonicalGithubUrl(receipt.url, /^\/openclaw\/openclaw\/issues\/\d+$/u, false)
     );
   }
   if (receipt.status === "fallback") {
     return (
       receipt.cleanup === undefined &&
       receipt.url === undefined &&
-      isCanonicalGithubUrl(receipt.fallbackUrl, /^\/branch\/branch\/issues\/new$/u, true)
+      isCanonicalGithubUrl(receipt.fallbackUrl, /^\/openclaw\/openclaw\/issues\/new$/u, true)
     );
   }
   return (
@@ -133,9 +134,9 @@ function parseReceipt(sentinel: RestartSentinel | null): UpdateFailureReportRece
       (typeof value.sweepSinceMs !== "number" || !Number.isFinite(value.sweepSinceMs))) ||
     (value.sweepOwnerId !== undefined && value.artifactSweep !== "pending") ||
     (value.status === "created" &&
-      !isCanonicalGithubUrl(value.url, /^\/branch\/branch\/issues\/\d+$/u, false)) ||
+      !isCanonicalGithubUrl(value.url, /^\/openclaw\/openclaw\/issues\/\d+$/u, false)) ||
     (value.status === "fallback" &&
-      !isCanonicalGithubUrl(value.fallbackUrl, /^\/branch\/branch\/issues\/new$/u, true)) ||
+      !isCanonicalGithubUrl(value.fallbackUrl, /^\/openclaw\/openclaw\/issues\/new$/u, true)) ||
     (value.cleanup !== undefined && value.status !== "created" && value.status !== "retryable") ||
     (value.status !== "created" && value.url !== undefined) ||
     (value.status !== "fallback" && value.fallbackUrl !== undefined)
