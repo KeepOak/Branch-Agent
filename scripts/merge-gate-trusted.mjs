@@ -19,6 +19,9 @@ export const HANDOFF_WORKFLOW_PATH = '.github/workflows/engine-handoff-checks.ym
 export const TRUSTED_CHECKOUT_REF = '${{ github.event.repository.default_branch }}';
 export const REQUIRED_JOBS = ['merge-gate', 'Analyze (actions)'];
 export const PASS_CONCLUSIONS = new Set(['success', 'skipped', 'neutral']);
+export const COMMENT_JOB_NAME = 'comment';
+export const VISUAL_TOUR_WORKFLOW_PATH = '.github/workflows/visual-tour.yml';
+export const TIMEOUT_RERUN_LINE = 're-run merge-gate, do not merge main';
 export const GATE_SCRIPTS = [
   'scripts/merge-gate-trusted.mjs',
   'scripts/merge-gate-trusted.test.mjs',
@@ -96,8 +99,19 @@ export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}, { sha
   return [...newest.values()];
 }
 
+export function isVisualTourWorkflow(workflow) {
+  return Boolean(workflow) && workflow.path === VISUAL_TOUR_WORKFLOW_PATH;
+}
+
+export function isSkippableVisualTourComment(run, workflow) {
+  return run?.name === COMMENT_JOB_NAME && isVisualTourWorkflow(workflow);
+}
+
 export function evaluateOtherChecks(checkRuns, workflowsByCheckId = {}, ignoreName = TRUSTED_JOB, context = {}) {
-  const others = newestChecksByIdentity(checkRuns, workflowsByCheckId, context).filter((run) => run.name !== ignoreName);
+  const others = newestChecksByIdentity(checkRuns, workflowsByCheckId, context).filter((run) => {
+    if (run.name === ignoreName) return false;
+    return !isSkippableVisualTourComment(run, lookupWorkflow(workflowsByCheckId, run.id));
+  });
   const pending = others.filter((run) => run.status !== 'completed');
   const failed = others.filter((run) =>
     run.status === 'completed' && !PASS_CONCLUSIONS.has(run.conclusion));
@@ -432,10 +446,57 @@ export function ghApi(repo, token, requestPath, { paginate = false, retries = 6 
   return null;
 }
 
-export function fetchCheckRuns(repo, sha, token) {
-  const payload = ghApi(repo, token, `commits/${sha}/check-runs?per_page=100`, { paginate: true });
-  if (Array.isArray(payload)) return payload.flatMap((page) => page.check_runs ?? []);
-  return payload?.check_runs ?? [];
+export function normalizeCheckRunPages(payload) {
+  if (payload == null) return [];
+  if (Array.isArray(payload)) {
+    if (payload.length === 0) return payload;
+    if (payload.every((item) => item && (Array.isArray(item.check_runs) || Number.isInteger(item.total_count)))) {
+      return payload;
+    }
+    if (payload.every((item) => item && typeof item.name === 'string')) {
+      return [{ check_runs: payload, total_count: payload.length }];
+    }
+    return payload;
+  }
+  if (payload.check_runs || Number.isInteger(payload.total_count)) return [payload];
+  throw new Error('expected check-runs pages, { check_runs, total_count }, or a check-run array');
+}
+
+export function mergeCheckRunPages(payload) {
+  const pages = normalizeCheckRunPages(payload);
+  const checkRuns = pages.flatMap((page) => {
+    if (Array.isArray(page)) return page;
+    return page?.check_runs ?? [];
+  });
+  const reported = pages
+    .map((page) => (page && !Array.isArray(page) ? page.total_count : null))
+    .find((value) => Number.isInteger(value));
+  const totalCount = reported ?? checkRuns.length;
+  return {
+    checkRuns,
+    totalCount,
+    complete: checkRuns.length >= totalCount,
+  };
+}
+
+export function fetchCheckRuns(repo, sha, token, api = ghApi) {
+  const pages = [];
+  for (let page = 1; ; page += 1) {
+    const payload = api(repo, token, `commits/${sha}/check-runs?per_page=100&page=${page}`);
+    pages.push(payload);
+    const merged = mergeCheckRunPages(pages);
+    if (merged.complete) return merged.checkRuns;
+    const pageLen = Array.isArray(payload?.check_runs) ? payload.check_runs.length : 0;
+    if (pageLen === 0) return merged.checkRuns;
+  }
+}
+
+export function formatTimeoutMessage(pending, { missingAnalyze = false } = {}) {
+  const names = [...new Set((pending ?? []).map((run) => run.name).filter(Boolean))];
+  if (missingAnalyze && !names.includes('Analyze (actions)')) names.push('Analyze (actions)');
+  names.sort();
+  const waitingOn = names.length ? names.join(', ') : '(no named pending check)';
+  return `Timed out waiting for: ${waitingOn}\n${TIMEOUT_RERUN_LINE}`;
 }
 
 export function fetchPrFiles(repo, prNumber, token) {
@@ -579,6 +640,7 @@ export function pollTrustedGate({
   error = console.error,
 } = {}) {
   const attributionCache = new Map();
+  let last = { pending: [], others: [] };
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const checkRuns = fetchChecks(repo, sha, token);
     const workflowsByCheckId = resolveWorkflows(repo, token, checkRuns, { attributionCache });
@@ -586,6 +648,7 @@ export function pollTrustedGate({
       checkRuns, workflowsByCheckId, changedFiles, coreWorkflows, currentRunId,
       sha, prNumber, baseRef,
     });
+    last = result;
 
     if (result.failed.length || result.foreignTrusted.length) {
       for (const message of result.errors) error(message);
@@ -603,7 +666,8 @@ export function pollTrustedGate({
     if (attempt < maxAttempts) sleep(pollSeconds);
   }
 
-  error('Timed out waiting for checks.');
+  const analyze = (last.others ?? []).find((run) => run.name === 'Analyze (actions)');
+  error(formatTimeoutMessage(last.pending, { missingAnalyze: !analyze }));
   return 1;
 }
 

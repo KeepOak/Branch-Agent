@@ -148,6 +148,8 @@ test('listed gate files include the merge-gate workflows and GATE_SCRIPTS', () =
   for (const file of [...GATE_WORKFLOW_FILES, ...GATE_SCRIPTS]) {
     assert.ok(listed.includes(file), file);
   }
+  assert.ok(listed.includes('.github/workflows/gate-files-fresh.yml'));
+  assert.ok(listed.includes('scripts/check-gate-files-fresh.mjs'));
 });
 
 test('gate-files-fresh workflow checks out the default branch read-only', () => {
