@@ -42,9 +42,12 @@ concurrency:
 
 jobs:
   readiness:
-    if: github.repository == 'KeepOak/Branch-Agent'
+    if: github.repository == 'KeepOak/Branch-Agent' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
       commit: ${{ steps.check.outputs.commit }}
@@ -59,7 +62,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           MERGE_GATE_WAIT_SECONDS: '240'
-        run: |
+        run: &component-release-readiness-check |
           set -euo pipefail
           note() {
             printf '%s\n' "$1" >&2
@@ -99,8 +102,9 @@ jobs:
               fi
             fi
             # Skip only when a check on main's head actually failed. Missing or pending checks do not block.
-            failed_checks=$(node scripts/merge-gate-rate-limit.mjs gh -- api --paginate "repos/KeepOak/Branch-Agent/commits/$main_commit/check-runs" \
-              --jq '[.check_runs[] | select(.conclusion == "failure")] | length' | awk '{s+=$1} END {print s+0}')
+            # One rerun of failed jobs first; skip only if a check is still failing after that.
+            failed_decision="$(node desktop/scripts/component-release-readiness.mjs resolve-failed-checks --sha "$main_commit")"
+            failed_checks="$(node -p 'JSON.parse(process.argv[1]).failedCount' "$failed_decision")"
             if [[ "$failed_checks" != "0" ]]; then
               note "Main has $failed_checks failed check(s) at $main_commit; skipping release"
               printf '%s %s %s\n' false "$main_commit" failed-checks
@@ -132,10 +136,35 @@ jobs:
             skip_reason=""
           fi
           printf 'should_release=%s\ncommit=%s\nskip_reason=%s\n' "$should_release" "$commit" "$skip_reason" >> "$GITHUB_OUTPUT"
-  
+
+  # jobs.<id>.permissions only accepts read/write/none, not expressions, so PR
+  # rehearsal cannot share the write job. It checks out PR code and only counts.
+  readiness-rehearsal:
+    if: github.repository == 'KeepOak/Branch-Agent' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      commit: ${{ steps.check.outputs.commit }}
+      skip_reason: ${{ steps.check.outputs.skip_reason }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Check if a release is needed
+        id: check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_GATE_WAIT_SECONDS: '240'
+        run: *component-release-readiness-check
+
   identity:
-    needs: readiness
-    if: needs.readiness.outputs.should_release == 'true'
+    needs: [readiness, readiness-rehearsal]
+    if: always() && !cancelled() && ((needs.readiness.result == 'success' && needs.readiness.outputs.should_release == 'true') || (needs.readiness-rehearsal.result == 'success' && needs.readiness-rehearsal.outputs.should_release == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -144,7 +173,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ needs.readiness.outputs.commit }}
+          ref: ${{ needs.readiness.outputs.commit || needs.readiness-rehearsal.outputs.commit }}
           persist-credentials: false
       - name: Freeze exact source and release identity
         id: identity
@@ -166,8 +195,8 @@ jobs:
           fi
           printf 'commit=%s\nversion=%s\n' "$commit" "$version" >> "$GITHUB_OUTPUT"
   window:
-    needs: [readiness, identity]
-    if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+    needs: [readiness, readiness-rehearsal, identity]
+    if: always() && !cancelled() && needs.identity.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -193,8 +222,8 @@ jobs:
   # Wait for the shared renderer artifact before starting natives. Starting them in parallel
   # burns the 35-minute clock while window is still queued, and the 10-minute poll then fails.
   native:
-    needs: [readiness, identity, window]
-    if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+    needs: [readiness, readiness-rehearsal, identity, window]
+    if: always() && !cancelled() && needs.identity.result == 'success' && needs.window.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 35
     permissions:
@@ -330,8 +359,8 @@ jobs:
           echo "identity=${IDENTITY_RESULT}"
           echo "publish skipped"
   publish:
-    needs: [readiness, identity, native]
-    if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+    needs: [readiness, readiness-rehearsal, identity, native]
+    if: always() && !cancelled() && needs.identity.result == 'success' && needs.native.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
