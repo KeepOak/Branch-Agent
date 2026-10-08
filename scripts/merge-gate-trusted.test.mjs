@@ -745,7 +745,7 @@ function assertOrdinaryAgreesWithYaml(runs, workflows) {
     input: JSON.stringify(collapsed),
     encoding: 'utf8',
     windowsHide: true,
-  }).trim().split('\n').filter(Boolean).sort();
+  }).trim().split(/\r?\n/).filter(Boolean).sort();
   assert.deepEqual(failed, ordinary.failed.map((run) => `${run.name}: ${run.conclusion}`).sort());
   return ordinary;
 }
@@ -1992,6 +1992,41 @@ test('trusted gate re-runs the UI screenshot proof check from main', () => {
   assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.test.mjs'));
 });
 
+test('trusted gate includes and runs the SELF-CHECK body check from main', () => {
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-self-check.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-self-check.test.mjs'));
+  const source = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
+  assert.match(source, /from '\.\/check-self-check\.mjs'/);
+  assert.match(source, /if \(!runSelfCheckFromPr\(process\.env\.HEAD_BRANCH, body\)\) process\.exit\(1\)/);
+  assert.match(source, /if \([^\n]*!process\.env\.HEAD_BRANCH\)/);
+  assert.match(source, /Missing required environment variables:[^\n]*HEAD_BRANCH/);
+});
+
+test('trusted SELF-CHECK runner rejects missing trunk block and skips other branches', () => {
+  assert.equal(gate.runSelfCheckFromPr('trunk/x', 'no block'), false);
+  assert.equal(gate.runSelfCheckFromPr('cursor/x', ''), true);
+});
+
+test('SELF-CHECK workflow wiring reruns edits and never interpolates body or branch into shell', () => {
+  const ordinary = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  const trusted = readFileSync(new URL(`../${TRUSTED_WORKFLOW_PATH}`, import.meta.url), 'utf8');
+  assert.match(trusted, /HEAD_BRANCH:\s*\$\{\{\s*github\.event\.pull_request\.head\.ref\s*\}\}/);
+  assert.match(ordinary, /^\s+run:\s*node --test scripts\/check-self-check\.test\.mjs\s*$/m);
+  assert.match(ordinary, /^\s+run:\s*node scripts\/check-self-check\.mjs\s*$/m);
+  for (const yaml of [ordinary, trusted]) {
+    assert.match(yaml, /^\s+types:.*\bedited\b/m);
+    assert.doesNotMatch(yaml, /^\s+run:.*github\.event\.pull_request\.(?:body|head\.ref)/m);
+    const lines = yaml.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i += 1) {
+      if (!/^\s+run:\s*[|>]/.test(lines[i])) continue;
+      const indent = lines[i].match(/^ */)[0].length;
+      for (let j = i + 1; j < lines.length && (!lines[j].trim() || lines[j].match(/^ */)[0].length > indent); j += 1) {
+        assert.doesNotMatch(lines[j], /github\.event\.pull_request\.(?:body|head\.ref)/);
+      }
+    }
+  }
+});
+
 test('merge-gate does not retrigger on ready_for_review and cancel its waiting run', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
   assert.match(yaml, /^  pull_request:\s*$/m);
@@ -2182,7 +2217,7 @@ test('ordinary JS waiter additions stay aligned with the yaml jq filters', () =>
       input: JSON.stringify(collapsed),
       encoding: 'utf8',
       windowsHide: true,
-    }).trim().split('\n').filter(Boolean).sort();
+    }).trim().split(/\r?\n/).filter(Boolean).sort();
     assert.deepEqual(failed, js.failed.map((run) => `${run.name}: ${run.conclusion}`).sort());
     const pending = Number(execFileSync('jq', [pendingFilter], {
       input: JSON.stringify(collapsed),
