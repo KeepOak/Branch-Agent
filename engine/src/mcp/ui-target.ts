@@ -158,7 +158,7 @@ export function scratchEngineEnv(scratch: string, port: number, token: string, e
 
 async function waitForGateway(port: number, child: ChildProcess, deadline: number): Promise<void> {
   while (Date.now() < deadline) {
-    if (child.exitCode !== null)
+    if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null)
       throw new Error(`The test Branch engine exited with code ${child.exitCode}`);
     const ok = await fetch(`http://127.0.0.1:${port}/readyz`)
       .then((r) => r.ok)
@@ -185,13 +185,24 @@ export async function launchBrowser(
   });
 }
 
-function stopChild(child: ChildProcess): void {
-  if (child.pid === undefined || child.exitCode !== null) return;
-  try {
-    process.kill(child.pid);
-  } catch {
-    // Already gone.
-  }
+async function stopChild(child: ChildProcess): Promise<void> {
+  if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
+  await new Promise<void>((resolve, reject) => {
+    const done = (error?: Error) => {
+      clearTimeout(timer);
+      child.removeListener("exit", onExit);
+      child.removeListener("error", onError);
+      if (error) reject(error);
+      else resolve();
+    };
+    const onExit = () => done();
+    const onError = (error: Error) => done(error);
+    // Give graceful shutdown time to flush state, then stop a stuck scratch engine.
+    const timer = setTimeout(() => child.kill("SIGKILL"), 5_000);
+    child.once("exit", onExit);
+    child.once("error", onError);
+    child.kill("SIGTERM");
+  });
 }
 
 /** A test Branch opens on its window, not on first-run setup, unless asked (setup-model.ts setupDone reads
@@ -211,7 +222,7 @@ export type ScratchEngine = {
   url: string;
   token: string;
   pid: number;
-  stop: () => void;
+  stop: () => Promise<void>;
 };
 
 /** A scratch Branch engine on a free loopback port with its own home, profile and state (setup done unless
@@ -223,33 +234,44 @@ export async function startScratchEngine(
   const scratch = fs.mkdtempSync(
     path.join(env.BRANCH_UI_TEST_ROOT ?? os.tmpdir(), "branch-ui-test-"),
   );
-  if (!opts.firstRun) markSetupDone(scratch);
-  const port = await freePort();
-  const token = randomBytes(24).toString("hex");
-  const log = () => fs.openSync(path.join(scratch, "gateway.log"), "a");
-  const engine = spawn(
-    process.execPath,
-    ["branch.mjs", "gateway", "--dev", "--port", String(port)],
-    {
-      cwd: engineDirectory(env),
-      env: scratchEngineEnv(scratch, port, token, env),
-      windowsHide: true,
-      stdio: ["ignore", log(), log()],
-    },
-  );
+  let engine: ChildProcess | undefined;
+  let stopping: Promise<void> | undefined;
+  const stop = () =>
+    (stopping ??= (async () => {
+      if (engine) await stopChild(engine);
+      // Keep the full state and browser profile only when explicitly debugging.
+      if (env.BRANCH_UI_TEST_KEEP !== "1") fs.rmSync(scratch, { recursive: true, force: true });
+    })());
   try {
+    if (!opts.firstRun) markSetupDone(scratch);
+    const port = await freePort();
+    const token = randomBytes(24).toString("hex");
+    const log = fs.openSync(path.join(scratch, "gateway.log"), "a");
+    try {
+      engine = spawn(process.execPath, ["branch.mjs", "gateway", "--dev", "--port", String(port)], {
+        cwd: engineDirectory(env),
+        env: scratchEngineEnv(scratch, port, token, env),
+        windowsHide: true,
+        stdio: ["ignore", log, log],
+      });
+    } finally {
+      // The child owns duplicated handles; do not retain a parent handle on Windows.
+      fs.closeSync(log);
+    }
+    // A failed spawn emits error before waitForGateway observes the missing pid.
+    engine.on("error", () => undefined);
     await waitForGateway(port, engine, Date.now() + READY_TIMEOUT_MS);
+    return {
+      scratch,
+      url: `ws://127.0.0.1:${port}`,
+      token,
+      pid: engine.pid ?? 0,
+      stop,
+    };
   } catch (error) {
-    stopChild(engine);
+    await stop();
     throw error;
   }
-  return {
-    scratch,
-    url: `ws://127.0.0.1:${port}`,
-    token,
-    pid: engine.pid ?? 0,
-    stop: () => stopChild(engine),
-  };
 }
 
 /** Start the test Branch: scratch engine, window server and a browser page with the desktop bridge. */
@@ -284,13 +306,13 @@ export async function openTestInstance(
         await opened.context.close().catch(() => undefined);
         opened.server.closeAllConnections();
         opened.server.close();
-        engine.stop();
+        await engine.stop();
       },
     };
   } catch (error) {
     await context?.close().catch(() => undefined);
     server?.close();
-    engine.stop();
+    await engine.stop();
     throw error;
   }
 }
