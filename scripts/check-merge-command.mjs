@@ -14,6 +14,16 @@ export const docsToCheck = [
   'docs/CHECKPOINT.md',
 ];
 
+// Read the quoted value assigned to a JSON-like field in a lookahead window.
+// Matches merge_method: "merge" and "merge_method":"merge", not a nearby mention.
+export function assignedFieldValue(context, field) {
+  const pattern = new RegExp(
+    String.raw`["']?${field}["']?\s*[:=]\s*["']([^"']+)["']`,
+  );
+  const match = context.match(pattern);
+  return match ? match[1] : null;
+}
+
 export function checkMergeCommands(rootDir = root, docs = docsToCheck) {
   let failed = false;
 
@@ -70,28 +80,23 @@ export function checkMergeCommands(rootDir = root, docs = docsToCheck) {
     const contextEnd = Math.min(contextStart + 300, content.length);
     const context = content.slice(contextStart, contextEnd);
     
-    // Must specify merge_method: "merge"
-    if (!context.includes('merge_method') || !context.includes('"merge"')) {
+    const mergeMethod = assignedFieldValue(context, 'merge_method');
+    if (mergeMethod === 'squash') {
+      console.error(`${doc}: REST API merge call must not use merge_method: "squash":`);
+      console.error(`  ${call}`);
+      failed = true;
+    } else if (mergeMethod === 'rebase') {
+      console.error(`${doc}: REST API merge call must not use merge_method: "rebase":`);
+      console.error(`  ${call}`);
+      failed = true;
+    } else if (mergeMethod !== 'merge') {
       console.error(`${doc}: REST API merge call must specify merge_method: "merge":`);
       console.error(`  ${call}`);
       failed = true;
     }
-    
-    // Must not use squash or rebase
-    if (context.includes('"squash"')) {
-      console.error(`${doc}: REST API merge call must not use merge_method: "squash":`);
-      console.error(`  ${call}`);
-      failed = true;
-    }
-    
-    if (context.includes('"rebase"')) {
-      console.error(`${doc}: REST API merge call must not use merge_method: "rebase":`);
-      console.error(`  ${call}`);
-      failed = true;
-    }
-    
-    // Must specify sha
-    if (!context.includes('sha')) {
+
+    // Must specify sha as an assigned field, not just the word nearby
+    if (!assignedFieldValue(context, 'sha')) {
       console.error(`${doc}: REST API merge call must specify sha parameter:`);
       console.error(`  ${call}`);
       failed = true;
