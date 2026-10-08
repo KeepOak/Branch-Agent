@@ -128,7 +128,9 @@ function Running({ engine, lv }: Ctx) {
   return (
     <>
       {health.error ? <Status tone="bad" title="The engine isn’t answering">{health.error}</Status>
-        : health.data ? <Status title={`Running${up ? ` · up ${up}` : ""}`}>{facts.length ? `${facts.join(" · ")}. ` : ""}The gateway watches the engine and starts it again if it stops.</Status> : null}
+        : rec(health.data).ok === false ? <Status tone="bad" title="The engine needs attention">The engine answered, but its health check failed.</Status>
+        : rec(health.data).ok === true ? <Status title={`Running${up ? ` · up ${up}` : ""}`}>{facts.length ? `${facts.join(" · ")}. ` : ""}The gateway watches the engine and starts it again if it stops.</Status>
+        : <Status tone="idle" title="Engine health not reported">Waiting for a health result from the engine.</Status>}
       <Acts>
         <Btn onClick={() => setCheck("fix")}><Icon name="check" small />Check and fix</Btn>
         {lv >= 1 ? <Btn ghost onClick={() => setCheck("only")}>Check only</Btn> : null}
@@ -154,9 +156,9 @@ function CheckDialog({ engine, only, onClose }: Pick<SettingsPageProps, "engine"
     <Dialog title={only ? "Check only" : "Check and fix"} wide onClose={onClose}>
       {health.loading && !health.data ? <p>Checking…</p> : null}
       <ol className="s2-tl">
-        <li className={health.error ? "bad" : "ok"}><span>The engine<small>{health.error ?? (typeof h.durationMs === "number" ? `Answered in ${h.durationMs} ms` : "Answered")}</small></span></li>
-        {channels.map(([name, c]) => <li key={name} className={c.lastError ? "bad" : "ok"}><span>{name}<small>{c.lastError ? str(c.lastError) : c.connected === true ? "Working" : c.configured === false ? "Not set up" : "Not connected"}</small></span></li>)}
-        {memory.data ? <li className={embed.ok === false ? "bad" : "ok"}><span>Memory search<small>{embed.ok === false ? str(embed.error) : "Working"}</small></span></li> : null}
+        <li className={health.error || h.ok === false ? "bad" : h.ok === true ? "ok" : undefined}><span>The engine<small>{health.error ?? (h.ok === false ? "Health check failed" : h.ok === true ? (typeof h.durationMs === "number" ? `Answered in ${h.durationMs} ms` : "Answered") : health.loading ? "Checking…" : "Health not reported")}</small></span></li>
+        {channels.map(([name, c]) => <li key={name} className={c.lastError ? "bad" : c.connected === true ? "ok" : undefined}><span>{name}<small>{c.lastError ? str(c.lastError) : c.connected === true ? "Working" : c.configured === false ? "Not set up" : "Not connected"}</small></span></li>)}
+        <li className={memory.error ? "bad" : embed.checked === false ? undefined : embed.ok === false ? "bad" : embed.ok === true ? "ok" : undefined}><span>Memory search<small>{memory.error ?? (embed.checked === false ? "Not checked" : embed.ok === false ? str(embed.error) || "Health check failed" : embed.ok === true ? "Working" : memory.loading ? "Checking…" : "Health not reported")}</small></span></li>
       </ol>
       <p className="hint">{only ? "The full check runs on the Gateway’s computer and changes nothing:" : "The full check, with fixes, runs on the Gateway’s computer:"}</p>
       {only ? <CodeRow title="Check everything" code="branch doctor" /> : <CodeRow title="Check and fix everything" code="branch doctor --fix" />}
