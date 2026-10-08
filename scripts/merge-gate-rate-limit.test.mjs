@@ -4,14 +4,21 @@ import test from 'node:test';
 import { GATE_SCRIPTS } from './merge-gate-trusted.mjs';
 import {
   DEFAULT_WAIT_BUDGET_SECONDS,
+  GH_API_MAX_BUFFER,
   IGNORE_CHECK_NAMES,
   MAX_RATE_LIMIT_SLEEP_SECONDS,
   POLL_INTERVAL_SECONDS,
+  VISUAL_TOUR_WORKFLOW_PATH,
   backoffSeconds,
   evaluateOrdinaryChecks,
+  execGhApi,
+  fetchOrdinaryCheckRuns,
+  ghApiArgs,
+  isPassableCheckSnapshot,
   isRateLimitError,
   mergeCheckSnapshots,
   nextCheckRefresh,
+  parseGhApiIncludeOutput,
   parseRateLimitHeaders,
   pollIntervalSeconds,
   pollOrdinaryGate,
@@ -56,8 +63,25 @@ function rateLimitError(message) {
 test('isRateLimitError matches installation, 403/429, and secondary limits', () => {
   assert.equal(isRateLimitError(rateLimitError('gh: API rate limit exceeded for installation (HTTP 403)')), true);
   assert.equal(isRateLimitError({ stderr: 'HTTP 429', message: 'API rate limit exceeded' }), true);
+  assert.equal(isRateLimitError({ httpStatus: 429, stderr: 'HTTP 429' }), true);
   assert.equal(isRateLimitError('You have exceeded a secondary rate limit'), true);
+  assert.equal(isRateLimitError({
+    httpStatus: 403,
+    headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '99' },
+    body: '{"message":"API rate limit exceeded"}',
+  }), true);
+  assert.equal(isRateLimitError({
+    httpStatus: 403,
+    headers: { 'retry-after': '12' },
+    body: '{"message":"You have exceeded a secondary rate limit"}',
+  }), true);
   assert.equal(isRateLimitError({ message: 'HTTP 403 Forbidden' }), false);
+  assert.equal(isRateLimitError({
+    httpStatus: 403,
+    headers: { 'x-ratelimit-remaining': '12' },
+    body: '{"message":"Resource not accessible by integration"}',
+    message: 'HTTP 403 Forbidden',
+  }), false);
   assert.equal(isRateLimitError({ message: 'HTTP 500 Internal Server Error' }), false);
   assert.equal(isRateLimitError({ message: 'Failed checks: build: failure' }), false);
 });
@@ -93,6 +117,16 @@ test('parseRateLimitHeaders and resetEpochFromRateLimit read GitHub fields', () 
   assert.deepEqual(parseRateLimitHeaders('HTTP/2 403\nRetry-After: 30\nX-RateLimit-Reset: 99\n'), {
     retryAfter: 30,
     resetEpoch: 99,
+    remaining: null,
+  });
+  assert.deepEqual(parseRateLimitHeaders({
+    'Retry-After': '15',
+    'X-RateLimit-Reset': '1100',
+    'X-RateLimit-Remaining': '0',
+  }), {
+    retryAfter: 15,
+    resetEpoch: 1100,
+    remaining: 0,
   });
   assert.equal(resetEpochFromRateLimit({
     resources: {
@@ -101,6 +135,17 @@ test('parseRateLimitHeaders and resetEpochFromRateLimit read GitHub fields', () 
     },
   }), 20);
   assert.equal(resetEpochFromRateLimit({ rate: { reset: 77 } }), 77);
+  const included = parseGhApiIncludeOutput([
+    'HTTP/2.0 429 Too Many Requests',
+    'Retry-After: 9',
+    'X-RateLimit-Reset: 123',
+    '',
+    '{"message":"API rate limit exceeded"}',
+  ].join('\n'));
+  assert.equal(included.status, 429);
+  assert.equal(included.headers['retry-after'], '9');
+  assert.equal(included.headers['x-ratelimit-reset'], '123');
+  assert.equal(included.json.message, 'API rate limit exceeded');
 });
 
 test('backoff and poll intervals stay capped and increase 30/60/90', () => {
@@ -110,6 +155,7 @@ test('backoff and poll intervals stay capped and increase 30/60/90', () => {
   assert.deepEqual([0, 1, 2, 3].map((index) => pollIntervalSeconds(index)), [30, 60, 90, 90]);
   assert.equal(DEFAULT_WAIT_BUDGET_SECONDS, 64 * 30);
   assert.equal(MAX_RATE_LIMIT_SLEEP_SECONDS, 120);
+  assert.equal(GH_API_MAX_BUFFER, 64 * 1024 * 1024);
 });
 
 test('nextCheckRefresh uses one check-runs list call every poll', () => {
@@ -316,6 +362,34 @@ test('shouldSkipEditedRerun keeps a failed SHA live and skips in-progress or gre
   assert.equal(shouldSkipEditedRerun([current], { runId: 9, sha: 'abc' }), false);
 });
 
+test('execGhApi and ghApiArgs read HTTP headers and cap the process buffer', () => {
+  const args = ghApiArgs('repos/example/compare/a...b?page=1', {
+    jq: '[.files[].filename]',
+    includeHeaders: true,
+  });
+  assert.deepEqual(args.slice(0, 2), ['api', 'repos/example/compare/a...b?page=1']);
+  assert.ok(args.includes('--jq'));
+  assert.equal(args.includes('-i'), false);
+
+  let maxBuffer;
+  const parsed = execGhApi(['api', '-i', 'rate_limit'], {
+    exec: (_cmd, _args, options) => {
+      maxBuffer = options.maxBuffer;
+      return [
+        'HTTP/2.0 200 OK',
+        'Retry-After: 4',
+        'X-RateLimit-Reset: 88',
+        '',
+        '{"ok":true}',
+      ].join('\n');
+    },
+  });
+  assert.equal(maxBuffer, GH_API_MAX_BUFFER);
+  assert.equal(parsed.status, 200);
+  assert.equal(parsed.headers['retry-after'], '4');
+  assert.deepEqual(parsed.json, { ok: true });
+});
+
 test('runGhWithRetry retries rate limits then returns stdout', () => {
   const calls = [];
   const out = runGhWithRetry(['api', 'rate_limit'], {
@@ -343,4 +417,147 @@ test('release readiness and gate-files-fresh use the shared gh retry helper', ()
   assert.match(fresh, /types:\s*\[opened, synchronize, reopened, edited\]/);
   assert.match(fresh, /timeout-minutes:\s*10/);
   assert.match(fresh, /MERGE_GATE_WAIT_SECONDS/);
+});
+
+test('an all-pending check snapshot never passes the ordinary gate', () => {
+  const pending = [
+    { id: 1, name: 'build', status: 'queued', conclusion: null },
+    { id: 2, name: 'Analyze (actions)', status: 'in_progress', conclusion: null },
+  ];
+  const snapshot = evaluateOrdinaryChecks(pending);
+  assert.equal(snapshot.allPending, true);
+  assert.equal(snapshot.ready, false);
+  assert.equal(isPassableCheckSnapshot(snapshot), false);
+
+  const errors = [];
+  const code = pollOrdinaryGate({
+    repo: 'example/repo', sha: 'abc', token: 'unused', initialWait: 0, waitBudgetSeconds: 30, maxPolls: 1,
+  }, {
+    fetchChecks: () => pending,
+    sleep: () => {},
+    now: () => 0,
+    log: () => {},
+    error: (text) => errors.push(text),
+    resolveWorkflows: () => ({}),
+  });
+  assert.equal(code, 1);
+  assert.match(errors.join('\n'), /Timed out waiting for/);
+});
+
+test('a multi-page check list with a red check on page 2 fails', () => {
+  const page1 = {
+    total_count: 101,
+    check_runs: Array.from({ length: 100 }, (_, index) => ({
+      id: index + 1,
+      name: index === 0 ? 'Analyze (actions)' : `ok-${index}`,
+      status: 'completed',
+      conclusion: 'success',
+    })),
+  };
+  const page2 = {
+    total_count: 101,
+    check_runs: [{
+      id: 101,
+      name: 'Named feature tests on ubuntu-latest (9/10)',
+      status: 'completed',
+      conclusion: 'failure',
+    }],
+  };
+  const calls = [];
+  const runs = fetchOrdinaryCheckRuns('example/repo', 'abc', 'unused', { mode: 'all' }, {
+    request: (requestPath) => {
+      calls.push(requestPath);
+      return requestPath.endsWith('page=1') ? page1 : page2;
+    },
+  });
+  assert.deepEqual(calls, [
+    'commits/abc/check-runs?per_page=100&page=1',
+    'commits/abc/check-runs?per_page=100&page=2',
+  ]);
+  assert.equal(runs.length, 101);
+  assert.equal(evaluateOrdinaryChecks(runs).failed[0].conclusion, 'failure');
+
+  const code = pollOrdinaryGate({
+    repo: 'example/repo', sha: 'abc', token: 'unused', initialWait: 0, waitBudgetSeconds: 600,
+  }, {
+    fetchChecks: () => runs,
+    sleep: () => {},
+    now: () => 0,
+    log: () => {},
+    error: () => {},
+    resolveWorkflows: () => ({}),
+  });
+  assert.equal(code, 1);
+});
+
+test('a generic 403 fails closed and a 429 with Retry-After retries', () => {
+  const generic = Object.assign(new Error('HTTP 403 Forbidden'), {
+    httpStatus: 403,
+    headers: { 'x-ratelimit-remaining': '12' },
+    body: '{"message":"Resource not accessible by integration"}',
+  });
+  assert.equal(isRateLimitError(generic), false);
+  assert.throws(() => withRateLimitRetry(() => {
+    throw generic;
+  }, { sleep: () => {}, now: () => 0, startedAt: 0, budgetSeconds: 60 }), /HTTP 403/);
+
+  const genericPoll = pollOrdinaryGate({
+    repo: 'example/repo', sha: 'abc', token: 'unused', initialWait: 0, waitBudgetSeconds: 600,
+  }, {
+    fetchChecks: () => {
+      throw generic;
+    },
+    sleep: () => {},
+    now: () => 0,
+    log: () => {},
+    error: () => {},
+  });
+  assert.equal(genericPoll, 1);
+
+  const sleeps = [];
+  let calls = 0;
+  const limited = Object.assign(new Error('HTTP 429'), {
+    httpStatus: 429,
+    headers: { 'retry-after': '9', 'x-ratelimit-reset': '1009' },
+    body: '{"message":"API rate limit exceeded"}',
+  });
+  const value = withRateLimitRetry(() => {
+    calls += 1;
+    if (calls === 1) throw limited;
+    return 'ok';
+  }, {
+    sleep: (seconds) => sleeps.push(seconds),
+    now: () => 0,
+    startedAt: 0,
+    budgetSeconds: 60,
+  });
+  assert.equal(value, 'ok');
+  assert.deepEqual(sleeps, [9]);
+  assert.equal(rateLimitSleepSeconds({
+    error: limited,
+    nowSeconds: 1_000,
+  }), 9);
+});
+
+test('ordinary waiter skips only a Visual tour comment proven by workflow path', () => {
+  const comment = {
+    id: 106,
+    name: 'comment',
+    status: 'in_progress',
+    conclusion: null,
+  };
+  const skipped = evaluateOrdinaryChecks([feature, analyze, comment], {
+    workflowsByCheckId: { 106: { path: VISUAL_TOUR_WORKFLOW_PATH } },
+  });
+  assert.equal(skipped.ready, true);
+  assert.equal(skipped.others.some((run) => run.name === 'comment'), false);
+
+  const foreign = evaluateOrdinaryChecks([feature, analyze, comment], {
+    workflowsByCheckId: { 106: { path: '.github/workflows/other.yml' } },
+  });
+  assert.equal(foreign.ready, false);
+  assert.deepEqual(foreign.pending.map((run) => run.id), [106]);
+
+  const unattributed = evaluateOrdinaryChecks([feature, analyze, comment]);
+  assert.equal(unattributed.ready, false);
 });

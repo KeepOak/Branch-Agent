@@ -4,15 +4,22 @@ import test from 'node:test';
 import * as gate from './merge-gate-trusted.mjs';
 import { fileURLToPath } from 'node:url';
 import {
+  COMMENT_JOB_NAME,
   GATE_SCRIPTS,
   HANDOFF_WORKFLOW_PATH,
+  TIMEOUT_RERUN_LINE,
   TRUSTED_CHECKOUT_REF,
   TRUSTED_WORKFLOW_PATH,
+  VISUAL_TOUR_WORKFLOW_PATH,
   coverageFromPrFiles,
   evaluateOtherChecks,
   evaluateTrustedGate,
+  fetchCheckRuns,
   findForeignTrustedChecks,
+  formatTimeoutMessage,
   isPassingHandoffE2e,
+  isSkippableVisualTourComment,
+  mergeCheckRunPages,
   parseNamedTestList,
   formatGateChangeSummary,
   listCoreWorkflows,
@@ -26,7 +33,16 @@ import {
   workflowAppliesToChanges,
   workflowFromActionsRun,
 } from './merge-gate-trusted.mjs';
-import { evaluateOrdinaryChecks } from './merge-gate-rate-limit.mjs';
+import {
+  evaluateOrdinaryChecks,
+  fetchOrdinaryCheckRuns,
+  formatOrdinaryTimeout,
+  pollOrdinaryGate,
+} from './merge-gate-rate-limit.mjs';
+
+function ordinaryYaml() {
+  return readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+}
 
 const CURRENT_RUN_ID = 303;
 const SHA = 'abc123';
@@ -478,13 +494,14 @@ test('two genuine trusted runs on the same SHA pass even when the earlier run wa
 for (const [reason, checkPatch, workflowPatch] of [
   ['mismatched suite', { check_suite: { id: 999 } }, {}],
   ['missing PR', {}, { pullRequests: [{ number: 628, base: BASE_REF }] }],
+  ['empty PR list', {}, { pullRequests: [] }],
   ['non-main base', {}, { pullRequests: [
     { number: PR_NUMBER, base: BASE_REF },
     { number: 628, base: 'old-base' },
   ] }],
   ['wrong head SHA', {}, { headSha: 'other-sha' }],
 ]) {
-  test(`earlier trusted run rejects ${reason}`, () => {
+  test(`earlier trusted run ignores ${reason} on pull_request_target`, () => {
     const earlier = {
       ...passCheckRuns[2],
       id: 104,
@@ -500,8 +517,8 @@ for (const [reason, checkPatch, workflowPatch] of [
       currentRunId: CURRENT_RUN_ID,
       ...prContext,
     });
-    assert.equal(result.ok, false);
-    assert.deepEqual(result.foreignTrusted.map((check) => check.id), [104]);
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.foreignTrusted, []);
   });
 }
 
@@ -551,7 +568,10 @@ test('older forged trusted checks cannot be hidden by name deduplication', () =>
   const forged = { ...passCheckRuns[2], id: 90, details_url: 'https://github.com/example/repo/actions/runs/304/job/90' };
   const result = evaluateTrustedGate({
     checkRuns: [forged, ...passCheckRuns],
-    workflowsByCheckId: { ...passWorkflows, 90: earlierTrustedWorkflow },
+    workflowsByCheckId: {
+      ...passWorkflows,
+      90: { path: '.github/workflows/foreign.yml', name: 'Foreign', id: 304, event: 'pull_request_target' },
+    },
     changedFiles: ['README.md'],
     coreWorkflows,
     currentRunId: CURRENT_RUN_ID,
@@ -559,6 +579,67 @@ test('older forged trusted checks cannot be hidden by name deduplication', () =>
   });
   assert.equal(result.ok, false);
   assert.equal(result.foreignTrusted[0].id, 90);
+});
+
+test('regression: #632 earlier same-workflow pull_request_target run is not forged', () => {
+  const earlier = {
+    id: 113100000001,
+    name: 'merge-gate-trusted',
+    status: 'completed',
+    conclusion: 'success',
+    check_suite: { id: 204 },
+    details_url: 'https://github.com/KeepOak/Branch-Agent/actions/runs/37724804984/job/113100000001',
+  };
+  const earlierWorkflow = {
+    path: TRUSTED_WORKFLOW_PATH,
+    name: 'Merge gate trusted',
+    id: 37724804984,
+    event: 'pull_request_target',
+    checkSuiteId: 204,
+    headSha: undefined,
+    pullRequests: [],
+  };
+  const foreign = findForeignTrustedChecks([...passCheckRuns, earlier], {
+    ...passWorkflows,
+    113100000001: earlierWorkflow,
+  }, { allowedRunId: CURRENT_RUN_ID, ...prContext });
+  assert.deepEqual(foreign, []);
+  const result = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, earlier],
+    workflowsByCheckId: { ...passWorkflows, 113100000001: earlierWorkflow },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.foreignTrusted, []);
+});
+
+test('concurrent same-workflow pull_request_target run is ignored', () => {
+  const concurrent = {
+    ...passCheckRuns[2],
+    id: 104,
+    status: 'in_progress',
+    conclusion: null,
+    check_suite: { id: 204 },
+    details_url: 'https://github.com/example/repo/actions/runs/304/job/104',
+  };
+  const foreign = findForeignTrustedChecks([...passCheckRuns, concurrent], {
+    ...passWorkflows,
+    104: earlierTrustedWorkflow,
+  }, { allowedRunId: CURRENT_RUN_ID, ...prContext });
+  assert.deepEqual(foreign, []);
+  const result = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, concurrent],
+    workflowsByCheckId: { ...passWorkflows, 104: earlierTrustedWorkflow },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.foreignTrusted, []);
 });
 
 for (const [reason, workflowPatch, checkPatch, contextPatch] of [
@@ -691,7 +772,7 @@ test('regression: unresolved current claims retry, reject a resolved forgery, or
 });
 
 test('ordinary merge gate jq preserves all checks and its polling budget', () => {
-  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  const yaml = ordinaryYaml();
   const feature = passCheckRuns[1];
   for (const latest of [
     feature,
@@ -704,6 +785,207 @@ test('ordinary merge gate jq preserves all checks and its polling budget', () =>
   }
   assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs/);
   assert.doesNotMatch(yaml, /sleep 10/);
+});
+
+const visualTourWorkflow = {
+  path: VISUAL_TOUR_WORKFLOW_PATH,
+  name: 'Visual tour',
+  id: 306,
+  event: 'pull_request',
+};
+const otherCommentWorkflow = {
+  path: '.github/workflows/other.yml',
+  name: 'Other',
+  id: 307,
+  event: 'pull_request',
+};
+const pendingVisualTourComment = {
+  id: 106,
+  name: COMMENT_JOB_NAME,
+  status: 'in_progress',
+  conclusion: null,
+  check_suite: { id: 206 },
+  details_url: 'https://github.com/example/repo/actions/runs/306/job/106',
+};
+const pendingForeignComment = {
+  ...pendingVisualTourComment,
+  id: 107,
+  check_suite: { id: 207 },
+  details_url: 'https://github.com/example/repo/actions/runs/307/job/107',
+};
+
+test('visual-tour comment pending does not block the trusted gate', () => {
+  const result = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, pendingVisualTourComment],
+    workflowsByCheckId: { ...passWorkflows, 106: visualTourWorkflow },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(isSkippableVisualTourComment(pendingVisualTourComment, visualTourWorkflow), true);
+  assert.equal(result.ok, true);
+  assert.equal(result.ready, true);
+  assert.equal(result.pending.length, 0);
+  assert.equal(result.others.some((run) => run.name === COMMENT_JOB_NAME), false);
+});
+
+test('comment from another workflow still blocks the trusted gate', () => {
+  const result = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, pendingForeignComment],
+    workflowsByCheckId: { ...passWorkflows, 107: otherCommentWorkflow },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(isSkippableVisualTourComment(pendingForeignComment, otherCommentWorkflow), false);
+  assert.equal(isSkippableVisualTourComment(pendingForeignComment, null), false);
+  assert.equal(result.ready, false);
+  assert.deepEqual(result.pending.map((run) => run.name), [COMMENT_JOB_NAME]);
+});
+
+test('unattributed comment is not skipped (fail closed)', () => {
+  const result = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, pendingVisualTourComment],
+    workflowsByCheckId: passWorkflows,
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(result.ready, false);
+  assert.deepEqual(result.pending.map((run) => run.id), [106]);
+});
+
+test('ordinary gate skips a Visual tour comment and still waits on a foreign comment', () => {
+  const yaml = ordinaryYaml();
+  assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs/);
+
+  const visual = evaluateOrdinaryChecks([passCheckRuns[1], pendingVisualTourComment], {
+    workflowsByCheckId: { 106: { path: VISUAL_TOUR_WORKFLOW_PATH } },
+  });
+  assert.deepEqual(visual.others.map((run) => run.name), [passCheckRuns[1].name]);
+  assert.equal(visual.others.some((run) => run.name === COMMENT_JOB_NAME), false);
+
+  const foreign = evaluateOrdinaryChecks([pendingForeignComment], {
+    workflowsByCheckId: { 107: { path: otherCommentWorkflow.path } },
+  });
+  assert.deepEqual(foreign.others.map((run) => run.name), [COMMENT_JOB_NAME]);
+  assert.equal(foreign.ready, false);
+
+  const unattributed = evaluateOrdinaryChecks([pendingVisualTourComment], {
+    workflowsByCheckId: {},
+  });
+  assert.deepEqual(unattributed.others.map((run) => run.id), [106]);
+  assert.equal(unattributed.ready, false);
+});
+
+test('more than 100 check-runs are all read across pages', () => {
+  const page1 = {
+    total_count: 101,
+    check_runs: Array.from({ length: 100 }, (_, index) => ({
+      id: index + 1,
+      name: `ok-${index}`,
+      status: 'completed',
+      conclusion: 'success',
+    })),
+  };
+  const page2 = {
+    total_count: 101,
+    check_runs: [{
+      id: 101,
+      name: 'Named feature tests on ubuntu-latest (9/10)',
+      status: 'completed',
+      conclusion: 'failure',
+    }],
+  };
+  const merged = mergeCheckRunPages([page1, page2]);
+  assert.equal(merged.checkRuns.length, 101);
+  assert.equal(merged.complete, true);
+  assert.equal(merged.checkRuns[100].conclusion, 'failure');
+
+  const calls = [];
+  const fetched = fetchCheckRuns('example/repo', SHA, 'unused', (_repo, _token, requestPath) => {
+    calls.push(requestPath);
+    return requestPath.endsWith('page=1') ? page1 : page2;
+  });
+  assert.deepEqual(calls, [
+    `commits/${SHA}/check-runs?per_page=100&page=1`,
+    `commits/${SHA}/check-runs?per_page=100&page=2`,
+  ]);
+  assert.equal(fetched.length, 101);
+  assert.equal(fetched[100].name, 'Named feature tests on ubuntu-latest (9/10)');
+
+  const yaml = ordinaryYaml();
+  assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs/);
+
+  const ordinaryCalls = [];
+  const ordinary = fetchOrdinaryCheckRuns('example/repo', SHA, 'unused', { mode: 'all' }, {
+    request: (requestPath) => {
+      ordinaryCalls.push(requestPath);
+      return requestPath.endsWith('page=1') ? page1 : page2;
+    },
+  });
+  assert.deepEqual(ordinaryCalls, [
+    `commits/${SHA}/check-runs?per_page=100&page=1`,
+    `commits/${SHA}/check-runs?per_page=100&page=2`,
+  ]);
+  assert.equal(ordinary.length, 101);
+  assert.equal(evaluateOrdinaryChecks(ordinary).failed[0].conclusion, 'failure');
+});
+
+test('timeout message lists pending names and says to re-run merge-gate', () => {
+  const message = formatTimeoutMessage([
+    { name: 'tour', status: 'in_progress' },
+    { name: 'Desktop on ubuntu-latest', status: 'queued' },
+  ]);
+  assert.match(message, /Timed out waiting for: Desktop on ubuntu-latest, tour/);
+  assert.match(message, new RegExp(`^${TIMEOUT_RERUN_LINE}$`, 'm'));
+  assert.equal(message.split('\n').at(-1), TIMEOUT_RERUN_LINE);
+
+  const errors = [];
+  const code = gate.pollTrustedGate({
+    repo: 'example/repo', token: 'unused', ...prContext, changedFiles: ['README.md'],
+    coreWorkflows, currentRunId: CURRENT_RUN_ID, maxAttempts: 1, pollSeconds: 30,
+  }, {
+    fetchChecks: () => [
+      passCheckRuns[0],
+      { ...passCheckRuns[1], status: 'in_progress', conclusion: null },
+      analyzeCheck,
+    ],
+    resolveWorkflows: () => passWorkflows,
+    sleep: () => {},
+    log: () => {},
+    error: (text) => errors.push(text),
+  });
+  assert.equal(code, 1);
+  assert.match(errors.join('\n'), /Timed out waiting for: Named feature tests on ubuntu-latest \(1\/10\)/);
+  assert.match(errors.join('\n'), /re-run merge-gate, do not merge main/);
+
+  const yaml = ordinaryYaml();
+  assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs/);
+  assert.match(yaml, /timeout-minutes: 35/);
+  assert.doesNotMatch(yaml, /timeout-minutes: 60/);
+  assert.doesNotMatch(yaml, /wait-for-checks/);
+
+  const ordinaryErrors = [];
+  const ordinaryCode = pollOrdinaryGate({
+    repo: 'example/repo', sha: SHA, token: 'unused', initialWait: 0, waitBudgetSeconds: 30, maxPolls: 1,
+  }, {
+    fetchChecks: () => [
+      { ...passCheckRuns[1], status: 'in_progress', conclusion: null },
+      analyzeCheck,
+    ],
+    sleep: () => {},
+    now: () => 0,
+    log: () => {},
+    error: (text) => ordinaryErrors.push(text),
+    resolveWorkflows: () => ({}),
+  });
+  assert.equal(ordinaryCode, 1);
+  assert.equal(formatOrdinaryTimeout(
+    [{ name: 'Named feature tests on ubuntu-latest (1/10)' }],
+  ).split('\n').at(-1), TIMEOUT_RERUN_LINE);
+  assert.match(ordinaryErrors.join('\n'), /Timed out waiting for: Named feature tests on ubuntu-latest \(1\/10\)/);
+  assert.match(ordinaryErrors.join('\n'), /re-run merge-gate, do not merge main/);
 });
 
 test('Actions run attribution retains suite, head SHA and PR base refs', () => {

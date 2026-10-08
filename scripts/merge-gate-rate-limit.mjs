@@ -5,34 +5,136 @@ import { fileURLToPath } from 'node:url';
 
 export const MAX_RATE_LIMIT_SLEEP_SECONDS = 120;
 export const DEFAULT_WAIT_BUDGET_SECONDS = 32 * 60;
+export const GH_API_MAX_BUFFER = 64 * 1024 * 1024;
 export const POLL_INTERVAL_SECONDS = [30, 60, 90];
 export const IGNORE_CHECK_NAMES = new Set(['merge-gate', 'merge-gate-trusted']);
 export const REQUIRED_ORDINARY_CHECKS = ['Analyze (actions)'];
 export const PASS_CONCLUSIONS = new Set(['success', 'skipped', 'neutral']);
+export const COMMENT_JOB_NAME = 'comment';
+export const VISUAL_TOUR_WORKFLOW_PATH = '.github/workflows/visual-tour.yml';
+export const TIMEOUT_RERUN_LINE = 're-run merge-gate, do not merge main';
 
 export function errorText(error) {
   if (error == null) return '';
   if (typeof error === 'string') return error;
-  return [error.stderr, error.message, error.stdout]
+  return [error.stderr, error.message, error.stdout, error.body]
     .filter((part) => part != null && String(part).length > 0)
     .join('\n');
 }
 
-export function isRateLimitError(error) {
-  const text = errorText(error);
-  const lower = text.toLowerCase();
-  if (lower.includes('secondary rate limit')) return true;
-  if (!lower.includes('rate limit')) return false;
-  return /rate limit exceeded/i.test(text) || /\b403\b/.test(text) || /\b429\b/.test(text);
+function headerMap(headers) {
+  if (headers == null || typeof headers !== 'object' || Array.isArray(headers)) return {};
+  const normalized = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (value == null) continue;
+    normalized[String(key).toLowerCase()] = String(value);
+  }
+  return normalized;
 }
 
-export function parseRateLimitHeaders(text) {
+function headerNumber(headers, name) {
+  const value = headerMap(headers)[name];
+  if (value == null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+export function parseGhApiIncludeOutput(text) {
   const src = String(text ?? '');
+  const blocks = [...src.matchAll(/^HTTP\/\S+\s+(\d{3})[^\n]*\r?\n/gm)];
+  if (blocks.length === 0) {
+    let json = null;
+    try {
+      json = src.trim() ? JSON.parse(src) : null;
+    } catch {
+      json = null;
+    }
+    return { status: null, headers: {}, body: src, json };
+  }
+  const last = blocks[blocks.length - 1];
+  const headerStart = last.index + last[0].length;
+  const rest = src.slice(headerStart);
+  const split = rest.search(/\r?\n\r?\n/);
+  const headerBlock = split === -1 ? rest : rest.slice(0, split);
+  const body = split === -1 ? '' : rest.slice(split).replace(/^\r?\n\r?\n/, '');
+  const headers = {};
+  for (const line of headerBlock.split(/\r?\n/)) {
+    const idx = line.indexOf(':');
+    if (idx === -1) continue;
+    headers[line.slice(0, idx).trim().toLowerCase()] = line.slice(idx + 1).trim();
+  }
+  let json = null;
+  try {
+    json = body.trim() ? JSON.parse(body) : null;
+  } catch {
+    json = null;
+  }
+  return { status: Number(last[1]), headers, body, json };
+}
+
+export function httpStatusOf(error) {
+  if (error == null || typeof error === 'string') {
+    const text = errorText(error);
+    const match = text.match(/\bHTTP\/\S+\s+(\d{3})\b/i)
+      || text.match(/\((?:HTTP\s+)?(\d{3})\)/)
+      || text.match(/\bHTTP\s+(\d{3})\b/i);
+    return match ? Number(match[1]) : null;
+  }
+  if (Number.isFinite(error.httpStatus)) return Number(error.httpStatus);
+  if (Number.isFinite(error.statusCode)) return Number(error.statusCode);
+  const text = errorText(error);
+  const match = text.match(/\bHTTP\/\S+\s+(\d{3})\b/i)
+    || text.match(/\((?:HTTP\s+)?(\d{3})\)/)
+    || text.match(/\bHTTP\s+(\d{3})\b/i);
+  return match ? Number(match[1]) : null;
+}
+
+export function isRateLimitError(error) {
+  const status = httpStatusOf(error);
+  const text = errorText(error);
+  const body = String(error?.body ?? '');
+  const combined = `${text}\n${body}`;
+  const lower = combined.toLowerCase();
+  const headers = headerMap(error?.headers);
+  const remaining = headers['x-ratelimit-remaining'];
+  const retryAfter = headers['retry-after'];
+
+  if (status === 429 || /\b429\b/.test(combined)) return true;
+
+  const secondary = lower.includes('secondary rate limit');
+  const primary = /rate limit exceeded/i.test(combined) || lower.includes('api rate limit');
+  const remainingZero = remaining === '0';
+  const retryAfterPresent = retryAfter != null && retryAfter !== '';
+
+  if (status === 403 || /\b403\b/.test(combined)) {
+    // Primary: body or X-RateLimit-Remaining: 0. Secondary: body or Retry-After.
+    return secondary || primary || remainingZero || retryAfterPresent;
+  }
+  return secondary || primary;
+}
+
+export function parseRateLimitHeaders(source) {
+  if (source && typeof source === 'object' && !Array.isArray(source)) {
+    const headers = source.headers ?? source;
+    if (headers && typeof headers === 'object' && !Array.isArray(headers)
+      && (headers['retry-after'] != null || headers['Retry-After'] != null
+        || headers['x-ratelimit-reset'] != null || headers['X-RateLimit-Reset'] != null
+        || headers.retryAfter != null || headers.resetEpoch != null)) {
+      return {
+        retryAfter: headerNumber(headers, 'retry-after') ?? (Number.isFinite(headers.retryAfter) ? headers.retryAfter : null),
+        resetEpoch: headerNumber(headers, 'x-ratelimit-reset') ?? (Number.isFinite(headers.resetEpoch) ? headers.resetEpoch : null),
+        remaining: headerNumber(headers, 'x-ratelimit-remaining'),
+      };
+    }
+  }
+  const src = String(source ?? '');
   const retryAfter = src.match(/retry-after:\s*(\d+)/i);
   const reset = src.match(/x-ratelimit-reset:\s*(\d+)/i);
+  const remaining = src.match(/x-ratelimit-remaining:\s*(\d+)/i);
   return {
     retryAfter: retryAfter ? Number(retryAfter[1]) : null,
     resetEpoch: reset ? Number(reset[1]) : null,
+    remaining: remaining ? Number(remaining[1]) : null,
   };
 }
 
@@ -65,15 +167,18 @@ export function rateLimitSleepSeconds({
   maxSleep = MAX_RATE_LIMIT_SLEEP_SECONDS,
   random = Math.random,
 } = {}) {
-  const headers = parseRateLimitHeaders(errorText(error));
+  const fromObject = parseRateLimitHeaders(error?.headers ?? error);
+  const fromText = parseRateLimitHeaders(errorText(error));
+  const retryAfter = fromObject.retryAfter ?? fromText.retryAfter;
+  const resetEpoch = fromObject.resetEpoch ?? fromText.resetEpoch;
   let seconds = null;
-  if (Number.isFinite(headers.retryAfter)) seconds = headers.retryAfter;
-  else if (Number.isFinite(headers.resetEpoch) && Number.isFinite(nowSeconds)) {
-    seconds = headers.resetEpoch - nowSeconds;
+  if (Number.isFinite(retryAfter)) seconds = retryAfter;
+  else if (Number.isFinite(resetEpoch) && Number.isFinite(nowSeconds)) {
+    seconds = resetEpoch - nowSeconds;
   } else {
-    const resetEpoch = resetEpochFromRateLimit(rateLimit);
-    if (Number.isFinite(resetEpoch) && Number.isFinite(nowSeconds)) {
-      seconds = resetEpoch - nowSeconds;
+    const resetFromPayload = resetEpochFromRateLimit(rateLimit);
+    if (Number.isFinite(resetFromPayload) && Number.isFinite(nowSeconds)) {
+      seconds = resetFromPayload - nowSeconds;
     }
   }
   if (seconds == null || seconds <= 0) {
@@ -88,8 +193,8 @@ export function pollIntervalSeconds(pollIndex) {
 }
 
 export function nextCheckRefresh(_state = {}) {
-  // One list call per poll. Per-id refreshes cost more than repos/.../check-runs
-  // once two checks are still running, and they miss newly registered jobs.
+  // One paginated list call per poll. Per-id refreshes miss later pages and
+  // newly registered jobs.
   return { mode: 'all' };
 }
 
@@ -108,12 +213,38 @@ export function mergeCheckSnapshots(previousCompleted, fetched, plan = { mode: '
   return { completed, pending };
 }
 
+export function mergeCheckRunPages(payload) {
+  const pages = Array.isArray(payload) ? payload : payload == null ? [] : [payload];
+  const checkRuns = pages.flatMap((page) => {
+    if (Array.isArray(page)) return page;
+    return page?.check_runs ?? [];
+  });
+  const reported = pages
+    .map((page) => (page && !Array.isArray(page) ? page.total_count : null))
+    .find((value) => Number.isInteger(value));
+  const totalCount = reported ?? checkRuns.length;
+  return {
+    checkRuns,
+    totalCount,
+    complete: checkRuns.length >= totalCount,
+  };
+}
+
 export function evaluateOrdinaryChecks(checkRuns, {
   ignoreNames = IGNORE_CHECK_NAMES,
   requiredNames = REQUIRED_ORDINARY_CHECKS,
   passConclusions = PASS_CONCLUSIONS,
+  workflowsByCheckId = {},
+  skipCommentWorkflowPath = VISUAL_TOUR_WORKFLOW_PATH,
 } = {}) {
-  const others = (checkRuns ?? []).filter((run) => !ignoreNames.has(run.name));
+  const others = (checkRuns ?? []).filter((run) => {
+    if (ignoreNames.has(run.name)) return false;
+    if (run.name === COMMENT_JOB_NAME) {
+      const workflow = workflowsByCheckId[run.id] ?? workflowsByCheckId[String(run.id)];
+      if (workflow?.path === skipCommentWorkflowPath) return false;
+    }
+    return true;
+  });
   const incomplete = others.filter((run) => run.status !== 'completed');
   const failed = others.filter((run) =>
     run.status === 'completed' && !passConclusions.has(run.conclusion));
@@ -121,21 +252,92 @@ export function evaluateOrdinaryChecks(checkRuns, {
     .filter((name) => !others.some((run) => run.name === name))
     .map((name) => ({ name, status: 'missing', conclusion: null }));
   const pending = [...incomplete, ...missingRequired];
+  const completed = others.filter((run) => run.status === 'completed');
+  const allPending = others.length > 0 && completed.length === 0;
   return {
     others,
     pending,
     failed,
-    ready: pending.length === 0 && failed.length === 0,
+    allPending,
+    ready: pending.length === 0 && failed.length === 0 && !allPending,
   };
 }
 
+export function isPassableCheckSnapshot(result) {
+  if (!result) return false;
+  if (result.failed?.length) return false;
+  if (result.pending?.length) return false;
+  if (result.allPending) return false;
+  if (!result.ready) return false;
+  return (result.others ?? []).some((run) => run.status === 'completed');
+}
+
+export function formatOrdinaryTimeout(pending, { missingAnalyze = false } = {}) {
+  const names = [...new Set((pending ?? []).map((run) => run.name).filter(Boolean))];
+  if (missingAnalyze && !names.includes('Analyze (actions)')) names.push('Analyze (actions)');
+  names.sort();
+  const waitingOn = names.length ? names.join(', ') : '(no named pending check)';
+  return `Timed out waiting for: ${waitingOn}\n${TIMEOUT_RERUN_LINE}`;
+}
+
 export function fetchGitHubRateLimit(token, { exec = execFileSync } = {}) {
-  const raw = exec('gh', ['api', 'rate_limit', '-H', 'Accept: application/vnd.github+json'], {
-    env: { ...process.env, GH_TOKEN: token },
-    encoding: 'utf8',
-    windowsHide: true,
+  const parsed = execGhApi(['api', 'rate_limit', '-H', 'Accept: application/vnd.github+json'], {
+    token,
+    exec,
+    includeHeaders: false,
   });
-  return raw ? JSON.parse(raw) : null;
+  return parsed.json;
+}
+
+export function attachGhApiError(error, stdout) {
+  const parsed = parseGhApiIncludeOutput(stdout ?? error?.stdout ?? '');
+  if (parsed.status != null) error.httpStatus = parsed.status;
+  if (Object.keys(parsed.headers).length) error.headers = { ...headerMap(error.headers), ...parsed.headers };
+  if (parsed.body) error.body = parsed.body;
+  return error;
+}
+
+export function execGhApi(args, {
+  token = process.env.GH_TOKEN,
+  exec = execFileSync,
+  includeHeaders = args.includes('-i') || args.includes('--include'),
+  maxBuffer = GH_API_MAX_BUFFER,
+} = {}) {
+  try {
+    const raw = exec('gh', args, {
+      env: { ...process.env, GH_TOKEN: token ?? process.env.GH_TOKEN },
+      encoding: 'utf8',
+      windowsHide: true,
+      maxBuffer,
+    });
+    if (!includeHeaders) {
+      let json = null;
+      try {
+        json = raw?.trim() ? JSON.parse(raw) : null;
+      } catch {
+        json = null;
+      }
+      return { status: 200, headers: {}, body: raw ?? '', json, raw };
+    }
+    const parsed = parseGhApiIncludeOutput(raw);
+    return { ...parsed, raw };
+  } catch (error) {
+    attachGhApiError(error, error.stdout);
+    throw error;
+  }
+}
+
+export function ghApiArgs(requestPath, {
+  paginate = false,
+  includeHeaders = !paginate,
+  jq,
+} = {}) {
+  const args = ['api'];
+  if (paginate) args.push('--paginate');
+  else if (includeHeaders && !jq) args.push('-i');
+  args.push(requestPath, '-H', 'Accept: application/vnd.github+json');
+  if (jq) args.push('--jq', jq);
+  return args;
 }
 
 export function withRateLimitRetry(fn, {
@@ -193,6 +395,13 @@ export function waitOptionsFromEnv(env = process.env) {
   };
 }
 
+function withIncludeFlag(args) {
+  if (!Array.isArray(args) || args[0] !== 'api') return { args, includeHeaders: false };
+  if (args.includes('--paginate')) return { args, includeHeaders: false };
+  if (args.includes('-i') || args.includes('--include')) return { args, includeHeaders: true };
+  return { args: ['api', '-i', ...args.slice(1)], includeHeaders: true };
+}
+
 export function runGhWithRetry(args, {
   token = process.env.GH_TOKEN,
   exec = execFileSync,
@@ -206,10 +415,11 @@ export function runGhWithRetry(args, {
   log = console.error,
 } = {}) {
   const wait = waitOptionsFromEnv();
-  return withRateLimitRetry(() => exec('gh', args, {
-    env: { ...process.env, GH_TOKEN: token ?? process.env.GH_TOKEN },
-    encoding: 'utf8',
-    windowsHide: true,
+  const prepared = withIncludeFlag(args);
+  const parsed = withRateLimitRetry(() => execGhApi(prepared.args, {
+    token,
+    exec,
+    includeHeaders: prepared.includeHeaders,
   }), {
     sleep,
     now,
@@ -220,6 +430,7 @@ export function runGhWithRetry(args, {
     random,
     log,
   });
+  return prepared.includeHeaders ? (parsed.body || parsed.raw || '') : (parsed.raw ?? parsed.body ?? '');
 }
 
 export function shouldSkipEditedRerun(runs, { runId, sha } = {}) {
@@ -255,22 +466,59 @@ export function skipEditedMergeGate({
   return skip;
 }
 
+function defaultRequest(repo, token, requestPath, { exec = execFileSync } = {}) {
+  const parsed = execGhApi(ghApiArgs(`repos/${repo}/${requestPath}`), { token, exec, includeHeaders: true });
+  return parsed.json;
+}
+
+export function resolveCommentWorkflow(repo, token, checkRun, {
+  exec = execFileSync,
+  request,
+} = {}) {
+  const get = request ?? ((requestPath) => defaultRequest(repo, token, requestPath, { exec }));
+  const fromUrl = String(checkRun?.details_url ?? checkRun?.html_url ?? '').match(/\/actions\/runs\/(\d+)/);
+  if (fromUrl) {
+    const run = get(`actions/runs/${fromUrl[1]}`);
+    return run?.path ? { path: run.path } : null;
+  }
+  const suiteId = checkRun?.check_suite?.id;
+  if (!suiteId) return null;
+  const payload = get(`actions/runs?check_suite_id=${suiteId}&per_page=1`);
+  const pathName = payload?.workflow_runs?.[0]?.path;
+  return pathName ? { path: pathName } : null;
+}
+
+export function resolveCommentWorkflows(repo, token, checkRuns, {
+  exec = execFileSync,
+  request,
+  resolveWorkflow = resolveCommentWorkflow,
+} = {}) {
+  const workflowsByCheckId = {};
+  for (const run of checkRuns ?? []) {
+    if (run?.name !== COMMENT_JOB_NAME) continue;
+    const workflow = resolveWorkflow(repo, token, run, { exec, request });
+    if (workflow) workflowsByCheckId[run.id] = workflow;
+  }
+  return workflowsByCheckId;
+}
+
 export function fetchOrdinaryCheckRuns(repo, sha, token, plan = { mode: 'all' }, {
   exec = execFileSync,
+  request,
 } = {}) {
-  const api = (requestPath) => {
-    const raw = exec('gh', ['api', `repos/${repo}/${requestPath}`, '-H', 'Accept: application/vnd.github+json'], {
-      env: { ...process.env, GH_TOKEN: token },
-      encoding: 'utf8',
-      windowsHide: true,
-    });
-    return raw ? JSON.parse(raw) : null;
-  };
+  const get = request ?? ((requestPath) => defaultRequest(repo, token, requestPath, { exec }));
   if (plan.mode === 'pending') {
-    return (plan.ids ?? []).map((id) => api(`check-runs/${id}`));
+    return (plan.ids ?? []).map((id) => get(`check-runs/${id}`));
   }
-  const payload = api(`commits/${sha}/check-runs?per_page=100`);
-  return payload?.check_runs ?? [];
+  const pages = [];
+  for (let page = 1; ; page += 1) {
+    const payload = get(`commits/${sha}/check-runs?per_page=100&page=${page}`);
+    pages.push(payload);
+    const merged = mergeCheckRunPages(pages);
+    if (merged.complete) return merged.checkRuns;
+    const pageLen = Array.isArray(payload?.check_runs) ? payload.check_runs.length : 0;
+    if (pageLen === 0) return merged.checkRuns;
+  }
 }
 
 export function pollOrdinaryGate({
@@ -288,24 +536,25 @@ export function pollOrdinaryGate({
   log = console.log,
   error = console.error,
   random = Math.random,
+  resolveWorkflows = resolveCommentWorkflows,
 } = {}) {
   const startedAt = now();
   if (initialWait > 0) {
     sleep(Math.min(initialWait, waitBudgetSeconds));
   }
 
-  const completed = new Map();
-  let pendingIds = null;
+  let last = { pending: [], others: [] };
   let polls = 0;
 
   while (true) {
     const elapsed = (now() - startedAt) / 1000;
     if (elapsed >= waitBudgetSeconds) {
-      error('Timed out waiting for checks.');
+      const missingAnalyze = !(last.others ?? []).some((run) => run.name === 'Analyze (actions)');
+      error(formatOrdinaryTimeout(last.pending, { missingAnalyze }));
       return 1;
     }
 
-    const plan = nextCheckRefresh({ pendingIds, pollIndex: polls });
+    const plan = nextCheckRefresh({ pollIndex: polls });
     let fetched;
     try {
       fetched = withRateLimitRetry(
@@ -321,26 +570,24 @@ export function pollOrdinaryGate({
         },
       );
     } catch (err) {
-      if (isRateLimitError(err)) {
-        error('Timed out waiting for checks.');
+      if (isRateLimitError(err) || /HTTP\s*5\d\d/i.test(errorText(err))) {
+        const missingAnalyze = !(last.others ?? []).some((run) => run.name === 'Analyze (actions)');
+        error(formatOrdinaryTimeout(last.pending, { missingAnalyze }));
         return 1;
       }
       error(errorText(err) || String(err));
       return 1;
     }
 
-    const merged = mergeCheckSnapshots(completed, fetched, plan);
-    completed.clear();
-    for (const [id, run] of merged.completed) completed.set(id, run);
-    pendingIds = merged.pending.map((run) => run.id);
-
-    const result = evaluateOrdinaryChecks([...completed.values(), ...merged.pending]);
+    const workflowsByCheckId = resolveWorkflows(repo, token, fetched);
+    const result = evaluateOrdinaryChecks(fetched, { workflowsByCheckId });
+    last = result;
     if (result.failed.length) {
       error('Failed checks:');
       for (const run of result.failed) error(`${run.name}: ${run.conclusion}`);
       return 1;
     }
-    if (result.ready) {
+    if (isPassableCheckSnapshot(result)) {
       log(`All ${result.others.length} other checks passed.`);
       return 0;
     }
@@ -348,7 +595,8 @@ export function pollOrdinaryGate({
     polls += 1;
     const remaining = waitBudgetSeconds - (now() - startedAt) / 1000;
     if (polls >= maxPolls || remaining < 1) {
-      error('Timed out waiting for checks.');
+      const missingAnalyze = !(result.others ?? []).some((run) => run.name === 'Analyze (actions)');
+      error(formatOrdinaryTimeout(result.pending, { missingAnalyze }));
       return 1;
     }
     log(`Waiting for ${result.pending.length} check(s)…`);
