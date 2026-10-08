@@ -5,7 +5,9 @@ import test from 'node:test';
 import * as gate from './merge-gate-trusted.mjs';
 import { fileURLToPath } from 'node:url';
 import {
+  COLLAPSIBLE_CHECK_EVENTS,
   COMMENT_JOB_NAME,
+  PASS_CONCLUSIONS,
   GATE_SCRIPTS,
   HANDOFF_WORKFLOW_PATH,
   TIMEOUT_RERUN_LINE,
@@ -35,6 +37,7 @@ import {
   workflowFromActionsRun,
 } from './merge-gate-trusted.mjs';
 import {
+  PASS_CONCLUSIONS as ORDINARY_PASS_CONCLUSIONS,
   evaluateOrdinaryChecks,
   fetchOrdinaryCheckRuns,
   formatOrdinaryTimeout,
@@ -56,6 +59,48 @@ function ordinaryCommentSkipFilter(yaml) {
   const match = yaml.match(/jq --argjson paths "\$comment_paths" --arg tour '[^']+' '\s*([^']+?)\s*'/);
   if (!match) throw new Error('ordinary merge-gate visual-tour comment filter not found');
   return match[1];
+}
+
+function ordinaryIdentityFilter(yaml) {
+  const match = yaml.match(/identity_filter='([^']+)'/);
+  if (!match) throw new Error('ordinary identity filter not found');
+  return match[1];
+}
+
+function ordinaryDuplicateIdsFilter(yaml) {
+  const match = yaml.match(/dup_ids=\$\(jq -c '([^']+)'/);
+  if (!match) throw new Error('ordinary duplicate id filter not found');
+  return match[1];
+}
+
+function ordinaryCollapseFilter(yaml) {
+  const match = yaml.match(/jq --argjson attrs "\$attrs" --arg sha "\$SHA" --arg pr "\$PR_NUMBER" --arg base "\$BASE_REF" '\n([\s\S]*?)\n\s*' <<<"\$runs"/);
+  if (!match) throw new Error('ordinary collapse filter not found');
+  return match[1];
+}
+
+function jqProgram(filter, input, args = []) {
+  return execFileSync('jq', [...args, filter], {
+    input: JSON.stringify(input),
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+}
+
+function collapsedByYaml(runs, workflows, context) {
+  const yaml = ordinaryYaml();
+  const named = JSON.parse(jqProgram(ordinaryCheckRunsFilter(yaml), { check_runs: runs }));
+  return JSON.parse(execFileSync('jq', [
+    '--argjson', 'attrs', JSON.stringify(workflows),
+    '--arg', 'sha', context.sha ?? '',
+    '--arg', 'pr', context.prNumber == null ? '' : String(context.prNumber),
+    '--arg', 'base', context.baseRef ?? '',
+    ordinaryCollapseFilter(yaml),
+  ], {
+    input: JSON.stringify(named),
+    encoding: 'utf8',
+    windowsHide: true,
+  }));
 }
 
 const CURRENT_RUN_ID = 303;
@@ -585,6 +630,193 @@ test('reopened same SHA keeps newest check per App workflow and name over old ca
   });
   assert.equal(pending.ready, false);
   assert.equal(pending.pending[0].id, 110);
+});
+
+test('reopened same SHA keeps a newer green run over an older failure from the same workflow', () => {
+  const oldFeature = {
+    ...passCheckRuns[1],
+    id: 91,
+    conclusion: 'failure',
+    check_suite: { id: 191 },
+  };
+  for (const event of COLLAPSIBLE_CHECK_EVENTS) {
+    for (const checkRuns of [
+      [oldFeature, ...passCheckRuns],
+      [...passCheckRuns, oldFeature],
+    ]) {
+      const result = evaluateTrustedGate({
+        checkRuns,
+        workflowsByCheckId: {
+          ...passWorkflows,
+          91: { ...featureBatchWorkflow, id: 291, checkSuiteId: 191, event },
+          102: { ...featureBatchWorkflow, event },
+        },
+        changedFiles: ['engine/src/gateway/contacts.ts'],
+        coreWorkflows,
+        currentRunId: CURRENT_RUN_ID,
+        ...prContext,
+      });
+      assert.equal(result.ok, true, event);
+      assert.equal(result.failed.some((check) => check.id === 91), false);
+      assert.ok(result.others.some((check) => check.id === 102));
+    }
+  }
+});
+
+test('regression: fully attributed 3093a8dd build pair still fails both gates', () => {
+  const fullWorkflows = {
+    112992933987: {
+      path: '.github/workflows/visual-tour.yml',
+      event: 'pull_request',
+      headSha: SHA,
+      checkSuiteId: 102080051817,
+      pullRequests: [{ number: PR_NUMBER, base: BASE_REF }],
+    },
+    113023525061: {
+      path: '.github/workflows/engine-build-pr.yml',
+      event: 'pull_request',
+      headSha: SHA,
+      checkSuiteId: 102080051207,
+      pullRequests: [{ number: PR_NUMBER, base: BASE_REF }],
+    },
+  };
+  for (const pair of [realBuildPair, [...realBuildPair].reverse()]) {
+    const trustedResult = evaluateTrustedGate({
+      checkRuns: [passCheckRuns[0], passCheckRuns[2], analyzeCheck, ...pair],
+      workflowsByCheckId: { ...passWorkflows, ...fullWorkflows },
+      changedFiles: ['README.md'],
+      coreWorkflows,
+      currentRunId: CURRENT_RUN_ID,
+      ...prContext,
+    });
+    assert.equal(trustedResult.ok, false);
+    assert.deepEqual(trustedResult.failed.map((check) => check.id), [112992933987]);
+
+    const ordinary = evaluateOrdinaryChecks(pair, {
+      workflowsByCheckId: fullWorkflows,
+      ...prContext,
+    });
+    assert.deepEqual(ordinary.failed.map((check) => check.id), [112992933987]);
+  }
+});
+
+function desktopIdentityRun(id, suite, patch = {}) {
+  return {
+    id,
+    app: { id: 15368 },
+    name: 'Desktop on windows-latest',
+    status: 'completed',
+    conclusion: 'success',
+    check_suite: { id: suite },
+    ...patch,
+  };
+}
+
+function desktopIdentityWorkflow(suite) {
+  return {
+    path: '.github/workflows/desktop-checks.yml',
+    event: 'pull_request',
+    headSha: SHA,
+    checkSuiteId: suite,
+    pullRequests: [{ number: PR_NUMBER, base: BASE_REF }],
+  };
+}
+
+function assertOrdinaryAgreesWithYaml(runs, workflows) {
+  const ordinary = evaluateOrdinaryChecks(runs, { workflowsByCheckId: workflows, ...prContext });
+  const collapsed = collapsedByYaml(runs, workflows, prContext);
+  const ids = (items) => items.map((run) => run.id).sort((left, right) => left - right);
+  assert.deepEqual(ids(collapsed), ids(ordinary.others));
+  const failedFilter = ordinaryYaml().match(/failed=\$\(jq -r '([^']+)'/)[1];
+  const failed = execFileSync('jq', ['-r', failedFilter], {
+    input: JSON.stringify(collapsed),
+    encoding: 'utf8',
+    windowsHide: true,
+  }).trim().split('\n').filter(Boolean).sort();
+  assert.deepEqual(failed, ordinary.failed.map((run) => `${run.name}: ${run.conclusion}`).sort());
+  return ordinary;
+}
+
+test('same-suite failed and success stay together and the gate is not ready', () => {
+  const failed = desktopIdentityRun(90, 501, { conclusion: 'failure' });
+  const success = desktopIdentityRun(110, 501);
+  const workflows = { 90: desktopIdentityWorkflow(501), 110: desktopIdentityWorkflow(501) };
+  const runs = [failed, success, analyzeCheck];
+  const ordinary = assertOrdinaryAgreesWithYaml(runs, workflows);
+  assert.equal(ordinary.ready, false);
+  assert.deepEqual(ordinary.failed.map((run) => run.id), [failed.id]);
+  assert.deepEqual(ordinary.others.map((run) => run.id).sort((left, right) => left - right), [failed.id, analyzeCheck.id, success.id].sort((left, right) => left - right));
+  const trustedResult = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, failed, success],
+    workflowsByCheckId: { ...passWorkflows, ...workflows },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(trustedResult.ok, false);
+  assert.deepEqual(trustedResult.failed.map((check) => check.id), [failed.id]);
+});
+
+test('same-suite in_progress and success stay pending', () => {
+  const running = desktopIdentityRun(90, 501, { status: 'in_progress', conclusion: null });
+  const success = desktopIdentityRun(110, 501);
+  const workflows = { 90: desktopIdentityWorkflow(501), 110: desktopIdentityWorkflow(501) };
+  const ordinary = assertOrdinaryAgreesWithYaml([running, success, analyzeCheck], workflows);
+  assert.equal(ordinary.ready, false);
+  assert.deepEqual(ordinary.failed, []);
+  assert.deepEqual(ordinary.pending.map((run) => run.id), [running.id]);
+  const trustedResult = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, running, success],
+    workflowsByCheckId: { ...passWorkflows, ...workflows },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(trustedResult.ready, false);
+  assert.equal(trustedResult.ok, false);
+  assert.deepEqual(trustedResult.pending.map((check) => check.id), [running.id]);
+});
+
+test('newer skipped run does not hide an older failure', () => {
+  const failed = desktopIdentityRun(90, 490, { conclusion: 'failure' });
+  const skipped = desktopIdentityRun(110, 501, { conclusion: 'skipped' });
+  const workflows = { 90: desktopIdentityWorkflow(490), 110: desktopIdentityWorkflow(501) };
+  const ordinary = assertOrdinaryAgreesWithYaml([failed, skipped, analyzeCheck], workflows);
+  assert.equal(ordinary.ready, false);
+  assert.deepEqual(ordinary.failed.map((run) => run.id), [failed.id]);
+  assert.equal(ordinary.others.some((run) => run.id === skipped.id), true);
+  const trustedResult = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, failed, skipped],
+    workflowsByCheckId: { ...passWorkflows, ...workflows },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(trustedResult.ok, false);
+  assert.deepEqual(trustedResult.failed.map((check) => check.id), [failed.id]);
+});
+
+test('newer neutral run does not hide an older failure', () => {
+  const failed = desktopIdentityRun(90, 490, { conclusion: 'failure' });
+  const neutral = desktopIdentityRun(110, 501, { conclusion: 'neutral' });
+  const workflows = { 90: desktopIdentityWorkflow(490), 110: desktopIdentityWorkflow(501) };
+  const ordinary = assertOrdinaryAgreesWithYaml([failed, neutral, analyzeCheck], workflows);
+  assert.equal(ordinary.ready, false);
+  assert.deepEqual(ordinary.failed.map((run) => run.id), [failed.id]);
+  assert.equal(ordinary.others.some((run) => run.id === neutral.id), true);
+  const trustedResult = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, failed, neutral],
+    workflowsByCheckId: { ...passWorkflows, ...workflows },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(trustedResult.ok, false);
+  assert.deepEqual(trustedResult.failed.map((check) => check.id), [failed.id]);
 });
 
 test('older forged trusted checks cannot be hidden by name deduplication', () => {
@@ -1313,6 +1545,177 @@ test('merge-gate recheck fires when Visual tour and Engine build complete', () =
 test('ordinary JS waiter additions stay aligned with the yaml jq filters', () => {
   const yaml = ordinaryYaml();
   assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs gh --/);
+  assert.match(yaml, /PR_NUMBER:/);
+  assert.match(yaml, /BASE_REF:/);
+  assert.deepEqual(COLLAPSIBLE_CHECK_EVENTS, ['pull_request', 'pull_request_target']);
+  const collapse = ordinaryCollapseFilter(yaml);
+  for (const event of COLLAPSIBLE_CHECK_EVENTS) assert.match(collapse, new RegExp(event));
+  const identity = JSON.parse(jqProgram(ordinaryIdentityFilter(yaml), {
+    path: '.github/workflows/desktop-checks.yml',
+    name: 'Desktop',
+    id: 410,
+    event: 'pull_request',
+    check_suite_id: 501,
+    head_sha: SHA,
+    pull_requests: [
+      { number: PR_NUMBER, base: { ref: BASE_REF, sha: 'base-sha' } },
+      { number: 12 },
+    ],
+  }));
+  const mapped = workflowFromActionsRun({
+    path: '.github/workflows/desktop-checks.yml',
+    name: 'Desktop',
+    id: 410,
+    event: 'pull_request',
+    check_suite_id: 501,
+    head_sha: SHA,
+    pull_requests: [
+      { number: PR_NUMBER, base: { ref: BASE_REF, sha: 'base-sha' } },
+      { number: 12 },
+    ],
+  });
+  assert.equal(identity.path, mapped.path);
+  assert.equal(identity.event, mapped.event);
+  assert.equal(identity.headSha, mapped.headSha);
+  assert.equal(identity.checkSuiteId, mapped.checkSuiteId);
+  assert.deepEqual(identity.pullRequests, mapped.pullRequests.map((pr) => ({
+    number: pr.number,
+    base: pr.base ?? null,
+  })));
+  assert.equal(jqProgram(ordinaryIdentityFilter(yaml), { name: 'no-path' }).trim(), 'null');
+  assert.deepEqual(JSON.parse(jqProgram(ordinaryDuplicateIdsFilter(yaml), [
+    { id: 1, name: 'build' },
+    { id: 2, name: 'test' },
+    { id: 3, name: 'build' },
+  ])).sort((a, b) => a - b), [1, 3]);
+
+  const nameFilter = ordinaryCheckRunsFilter(yaml);
+  const failedFilter = yaml.match(/failed=\$\(jq -r '([^']+)'/)[1];
+  const pendingFilter = yaml.match(/pending=\$\(jq '([^']+)'/)[1];
+  const passList = failedFilter.match(/IN\(([^)]*)\)/)[1]
+    .split(',')
+    .map((item) => item.trim().replaceAll('"', ''))
+    .sort();
+  assert.deepEqual([...PASS_CONCLUSIONS].sort(), passList);
+  assert.deepEqual([...ORDINARY_PASS_CONCLUSIONS].sort(), passList);
+  const align = (runs, workflowsByCheckId, context = prContext) => {
+    const js = evaluateOrdinaryChecks(runs, { workflowsByCheckId, ...context });
+    const named = JSON.parse(jqProgram(nameFilter, { check_runs: runs }));
+    const collapsed = JSON.parse(execFileSync('jq', [
+      '--argjson', 'attrs', JSON.stringify(workflowsByCheckId),
+      '--arg', 'sha', context.sha ?? '',
+      '--arg', 'pr', context.prNumber == null ? '' : String(context.prNumber),
+      '--arg', 'base', context.baseRef ?? '',
+      collapse,
+    ], {
+      input: JSON.stringify(named),
+      encoding: 'utf8',
+      windowsHide: true,
+    }));
+    const sortIds = (items) => items.map((run) => run.id).sort((a, b) => a - b);
+    assert.deepEqual(sortIds(collapsed), sortIds(js.others));
+    const failed = execFileSync('jq', ['-r', failedFilter], {
+      input: JSON.stringify(collapsed),
+      encoding: 'utf8',
+      windowsHide: true,
+    }).trim().split('\n').filter(Boolean).sort();
+    assert.deepEqual(failed, js.failed.map((run) => `${run.name}: ${run.conclusion}`).sort());
+    const pending = Number(execFileSync('jq', [pendingFilter], {
+      input: JSON.stringify(collapsed),
+      encoding: 'utf8',
+      windowsHide: true,
+    }));
+    assert.equal(pending, js.pending.length);
+  };
+  const desktop = (id, suite, patch = {}) => ({
+    id,
+    app: { id: 15368 },
+    name: 'Desktop on windows-latest',
+    status: 'completed',
+    conclusion: 'success',
+    check_suite: { id: suite },
+    ...patch,
+  });
+  const desktopWorkflow = (suite, patch = {}) => ({
+    path: '.github/workflows/desktop-checks.yml',
+    event: 'pull_request',
+    headSha: SHA,
+    checkSuiteId: suite,
+    pullRequests: [{ number: PR_NUMBER, base: BASE_REF }],
+    ...patch,
+  });
+  const older = desktop(90, 490, { conclusion: 'failure' });
+  const newer = desktop(110, 501);
+  align(
+    [passCheckRuns[0], older, newer, analyzeCheck],
+    { 90: desktopWorkflow(490), 110: desktopWorkflow(501) },
+  );
+  align(
+    [newer, older, analyzeCheck],
+    {
+      90: desktopWorkflow(490, { path: '.github/workflows/engine-handoff-checks.yml' }),
+      110: desktopWorkflow(501),
+    },
+  );
+  align([older, newer, analyzeCheck], { 110: desktopWorkflow(501) });
+  align([older, newer, analyzeCheck], {});
+  align(
+    [older, { ...newer, status: 'queued', conclusion: null }, analyzeCheck],
+    { 90: desktopWorkflow(490), 110: desktopWorkflow(501) },
+  );
+  align(
+    [desktop(90, 501, { conclusion: 'failure' }), desktop(110, 501), analyzeCheck],
+    { 90: desktopWorkflow(501), 110: desktopWorkflow(501) },
+  );
+  align(
+    [desktop(90, 501, { status: 'in_progress', conclusion: null }), desktop(110, 501), analyzeCheck],
+    { 90: desktopWorkflow(501), 110: desktopWorkflow(501) },
+  );
+  align(
+    [older, desktop(110, 501, { conclusion: 'skipped' }), analyzeCheck],
+    { 90: desktopWorkflow(490), 110: desktopWorkflow(501) },
+  );
+  align(
+    [older, desktop(110, 501, { conclusion: 'neutral' }), analyzeCheck],
+    { 90: desktopWorkflow(490), 110: desktopWorkflow(501) },
+  );
+  align(
+    [older, newer, analyzeCheck],
+    { 90: desktopWorkflow(490), 110: desktopWorkflow(501, { event: 'workflow_dispatch' }) },
+  );
+  align(
+    [older, newer, analyzeCheck],
+    { 90: desktopWorkflow(490), 110: desktopWorkflow(501, { headSha: 'other-sha' }) },
+  );
+  align(
+    [older, newer, analyzeCheck],
+    { 90: desktopWorkflow(490), 110: desktopWorkflow(501, { checkSuiteId: 999 }) },
+  );
+  align(
+    [older, newer, analyzeCheck],
+    { 90: desktopWorkflow(490), 110: desktopWorkflow(501, { pullRequests: [{ number: 900, base: BASE_REF }] }) },
+  );
+  align(realBuildPair, {
+    112992933987: {
+      path: '.github/workflows/visual-tour.yml',
+      event: 'pull_request',
+      headSha: SHA,
+      checkSuiteId: 102080051817,
+      pullRequests: [{ number: PR_NUMBER, base: BASE_REF }],
+    },
+    113023525061: {
+      path: '.github/workflows/engine-build-pr.yml',
+      event: 'pull_request',
+      headSha: SHA,
+      checkSuiteId: 102080051207,
+      pullRequests: [{ number: PR_NUMBER, base: BASE_REF }],
+    },
+  });
+  align([older, newer, analyzeCheck], {
+    90: desktopWorkflow(490),
+    110: desktopWorkflow(501),
+  }, {});
+
   const pair = evaluateOrdinaryChecks(realBuildPair);
   assert.equal(pair.failed.map((run) => `${run.name}: ${run.conclusion}`).join('\n'), 'build: failure');
   const ignored = evaluateOrdinaryChecks(passCheckRuns);
