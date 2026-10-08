@@ -18,7 +18,7 @@ async function runChecker(content, filename = 'AGENTS.md') {
 }
 
 test('accepts correct gh pr merge command', async () => {
-  const content = 'Merge with `gh pr merge 123 --auto --merge --match-head-commit abc123`.';
+  const content = 'Merge with `gh pr merge 123 --merge --match-head-commit abc123`.';
   const result = await runChecker(content);
   assert.ok(result.passed, 'Should accept correct command');
 });
@@ -30,27 +30,33 @@ test('accepts REST API merge with merge_method and sha', async () => {
 });
 
 test('rejects gh pr merge without --merge', async () => {
-  const content = 'Use `gh pr merge 123 --auto --match-head-commit abc123`.';
+  const content = 'Use `gh pr merge 123 --match-head-commit abc123`.';
   const result = await runChecker(content);
   assert.ok(!result.passed, 'Should reject command without --merge');
 });
 
 test('rejects gh pr merge without --match-head-commit', async () => {
-  const content = 'Use `gh pr merge 123 --auto --merge`.';
+  const content = 'Use `gh pr merge 123 --merge`.';
   const result = await runChecker(content);
   assert.ok(!result.passed, 'Should reject command without --match-head-commit');
 });
 
 test('rejects gh pr merge with --squash', async () => {
-  const content = 'Use `gh pr merge 123 --auto --squash --match-head-commit abc123`.';
+  const content = 'Use `gh pr merge 123 --squash --match-head-commit abc123`.';
   const result = await runChecker(content);
   assert.ok(!result.passed, 'Should reject --squash');
 });
 
 test('rejects gh pr merge with --rebase', async () => {
-  const content = 'Use `gh pr merge 123 --auto --rebase --match-head-commit abc123`.';
+  const content = 'Use `gh pr merge 123 --rebase --match-head-commit abc123`.';
   const result = await runChecker(content);
   assert.ok(!result.passed, 'Should reject --rebase');
+});
+
+test('rejects gh pr merge with --auto', async () => {
+  const content = 'Use `gh pr merge 123 --auto --merge --match-head-commit abc123`.';
+  const result = await runChecker(content);
+  assert.ok(!result.passed, 'Should reject --auto');
 });
 
 test('accepts file without merge commands', async () => {
