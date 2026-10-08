@@ -41,7 +41,7 @@ const NODE_IMAGE = "node:24.21.0-slim";
 const SCREEN_DRIVER = "Needs the screen driver to report this.";
 
 const ON_COMPUTER: SecSpec = { t: "On a computer", lv: 0, rows: [
-  { t: "See the screen and use the mouse", k: "sw", key: "plugins.entries.cua-computer.enabled", def: false, sub: "Needed for apps without a connection. Turn it on to let Trunks use this screen and mouse. You can always take over." },
+  { t: "See the screen and use the mouse", k: "sw", key: "plugins.entries.cua-computer.enabled", def: false, sub: "Needed for apps without a connection. Turn it on to let Trunks use this screen and mouse. Full access does not turn this on. You can always take over." },
   { t: "Ask before opening an app it hasn’t used", sub: "Once per app, per Trunk. Off until you choose: apps open without asking each one.", k: "sw", off: "Needs the engine to keep the apps each Trunk has opened." },
   { t: "Use the camera", k: "cmd", cmds: ["camera.snap", "camera.clip"], danger: true, sub: "A Trunk can take a photo or a short clip with a computer’s camera. Applies to every paired computer and phone." },
   { t: "Cameras", sub: "Each camera on this computer, and what it can do.", k: "btn", lv: 1, btn: "See", off: "Needs the engine to list this computer’s cameras." },

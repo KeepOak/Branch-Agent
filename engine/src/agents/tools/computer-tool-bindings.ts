@@ -37,8 +37,10 @@ export type ComputerBinding = {
   ) => Promise<unknown>;
 };
 
-export const NOT_COMPUTER_CAPABLE_HINT =
-  "enable Computer Control in the Branch Agent app and approve the pairing update";
+/** The real Settings switch. There is no "Computer Control" toggle or pairing update in the app. */
+export const SCREEN_CONTROL_SWITCH_PATH =
+  "Settings › Computer & browser › See the screen and use the mouse";
+export const NOT_COMPUTER_CAPABLE_HINT = `Turn on ${SCREEN_CONTROL_SWITCH_PATH}. Full access does not include this`;
 const COMPUTER_NODE_MESSAGES: EligibleNodeMessages<NodeListNode> = {
   ineligibleExact: (query, eligibleIds) =>
     `node "${query}" is not computer-capable (needs a connected node advertising ${COMPUTER_ACT_COMMAND} and ${SCREEN_SNAPSHOT_COMMAND}; ${NOT_COMPUTER_CAPABLE_HINT}; ` +
@@ -46,7 +48,7 @@ const COMPUTER_NODE_MESSAGES: EligibleNodeMessages<NodeListNode> = {
   nameResolveFailed: (reason, eligibleIds) =>
     `${reason} (eligible computer-capable node ids: ${eligibleIds})`,
   noneEligible: () =>
-    `no connected computer-capable node (a node must advertise ${COMPUTER_ACT_COMMAND} and ${SCREEN_SNAPSHOT_COMMAND}; ${NOT_COMPUTER_CAPABLE_HINT})`,
+    `no computer-control device is connected. ${NOT_COMPUTER_CAPABLE_HINT}`,
   multipleEligible: (eligible) =>
     `multiple computer-capable nodes connected; pass node explicitly: ${eligible
       .map((node) => node.nodeId)
