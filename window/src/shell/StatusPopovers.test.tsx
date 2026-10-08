@@ -50,17 +50,18 @@ describe("status popovers", () => {
     await act(async () => button(host, "Restart the engine").click());
     expect(restart).toHaveBeenCalled();
   });
-  it("Usage: rows, refreshed limits, and this month from usage.cost", async () => {
+  it("Usage: a flat Every account row with left · reset and this week used", async () => {
     const request = vi.fn(async (method: string) => method === "usage.status"
-      ? { updatedAt: Date.now(), providers: [{ provider: "openai", displayName: "Plan", windows: [{ label: "Today", usedPercent: 60 }] }] }
-      : { totals: { totalCost: 3.5 } });
-    const limits = { updatedAt: Date.now(), refreshing: false, rows: [{ id: "a", name: "Plan", account: "", pill: "Measured" as const, windows: [{ name: "Today", left: 40, reset: "", low: false }], line: "as of just now" }] };
+      ? { updatedAt: Date.now(), providers: [{ provider: "openai", displayName: "ChatGPT", accountEmail: "you@example.com", plan: "Plus", windows: [{ label: "5h", usedPercent: 60 }, { label: "Week", usedPercent: 30 }] }] }
+      : {});
+    const limits = { updatedAt: Date.now(), refreshing: false, rows: [{ id: "a", name: "ChatGPT · Account 1", email: "you@example.com", plan: "Plus", account: "you@example.com · Plus", pill: "Measured" as const, windows: [{ name: "This 5-hour window", left: 40, reset: "resets 6 PM", low: false }, { name: "This week", left: 70, reset: "", low: false }], line: "as of just now" }] };
     const host = await show(<UsagePopover above={above} onClose={() => {}} limits={limits} request={request as never} onOpenUsage={() => {}} />);
     expect(request).toHaveBeenCalledWith("usage.status", { refresh: true });
-    expect(request).toHaveBeenCalledWith("usage.cost", expect.objectContaining({ agentScope: "all" }));
-    expect(host.textContent).toContain("40% left");
-    expect(host.textContent).toContain("Checked just now");
-    expect(host.textContent).toContain("This month: $3.50");
+    expect(host.querySelector(".sp-provider")).toBeNull();
+    expect(host.textContent).toContain("you@example.com");
+    expect(host.textContent).toContain("40% left · resets 6 PM");
+    expect(host.textContent).toContain("ChatGPT · Account 1 · Plus · this week 30% used");
+    expect(host.querySelector(".meterT5 i")?.getAttribute("style")).toContain("60%");
   });
   it("Version: up to date has no install item", async () => {
     const host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "1.0.0", latest: null, notes: [], installing: false, waiting: null }} version="1.0.0" onWhatsNew={() => {}} onInstall={() => {}} onRemind={() => {}} />);

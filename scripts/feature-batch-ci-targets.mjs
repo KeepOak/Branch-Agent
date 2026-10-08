@@ -320,7 +320,6 @@ export const windowStrictFiles = [
   'src/thread/PlanCard.tsx',
   'src/thread/PlanCard.test.ts',
   'src/thread/PlanCard.note-only.test.tsx',
-  'src/thread/UsageBar.tsx',
   'src/thread/Helpers.tsx',
   'src/thread/Thread.tsx',
   'src/thread/useEngineData.ts',

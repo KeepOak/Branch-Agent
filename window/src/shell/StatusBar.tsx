@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import type { RingReading } from "./status-data";
 import { branchVersionDetail, branchVersionLabel } from "../connect/branch-version";
+import "./status.css";
 
 export type ConnectionPhase = "connected" | "connecting" | "offline";
 /** The gateway's own state (§4.9.1 item 2): its dot is green only while its health check answers. */
@@ -41,7 +42,21 @@ export function roomColour(used: number): string {
 }
 
 const WORDS: Record<ConnectionPhase, string> = { connected: "", connecting: "Connecting", offline: "Offline" };
-const RING = 2 * Math.PI * 9;
+/** Preview GLYPH_T5.ringUse: 16px viewBox, r=6, stroke 2, arc 37.7. */
+export const USAGE_RING_ARC = 37.7;
+export function usageRingDash(left: number): string {
+  return `${((Math.max(0, Math.min(100, left)) / 100) * USAGE_RING_ARC).toFixed(1)} 40`;
+}
+/** Preview colour: <15% left bad, <35% warn, else ok. */
+export function usageRingColour(left: number | null): string {
+  if (left === null) {
+    return "var(--line-2)";
+  }
+  if (left < 15) {
+    return "var(--bad)";
+  }
+  return left < 35 ? "var(--warn)" : "var(--ok)";
+}
 
 type Glyph = "computer" | "gateway" | "context" | "running" | "update";
 function StatusGlyph({ kind, colour = "currentColor", value = 0 }: { kind: Glyph; colour?: string; value?: number }) {
@@ -53,13 +68,13 @@ function StatusGlyph({ kind, colour = "currentColor", value = 0 }: { kind: Glyph
   return <svg {...common}><path d="M5.2 14.6V3.6M5.2 9.6c0-2.6 5.6-1.8 5.6-5.4"/><circle cx="5.2" cy="2.6" r="1.1"/><circle cx="10.8" cy="3.2" r="1.1"/></svg>;
 }
 
-/** The 16 px usage ring (§4.9.4): % left of the window used next, amber under 15%. */
-export function UsageRing({ left, low }: { left: number | null; low: boolean }) {
-  const colour = left === null ? "var(--line-2)" : low ? "var(--bad)" : left < 35 ? "var(--warn)" : "var(--ok)";
+/** Preview GLYPH_T5.ringUse: 16px viewBox, r=6, stroke-width 2. */
+export function UsageRing({ left }: { left: number | null }) {
+  const colour = usageRingColour(left);
   return (
-    <svg width="16" height="16" viewBox="0 0 22 22" aria-hidden="true" className="ring-sb">
-      <circle cx="11" cy="11" r="9" fill="none" stroke="var(--line-2)" strokeWidth="3" />
-      {left === null ? null : <circle cx="11" cy="11" r="9" fill="none" stroke={colour} strokeWidth="3" strokeLinecap="round" strokeDasharray={RING} strokeDashoffset={RING * (1 - Math.max(0, Math.min(100, left)) / 100)} transform="rotate(-90 11 11)" />}
+    <svg className="gT5" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="6" stroke="var(--line-2)" fill="none" strokeWidth="2" />
+      {left === null ? null : <circle cx="8" cy="8" r="6" fill="none" stroke={colour} strokeWidth="2" strokeDasharray={usageRingDash(left)} transform="rotate(-90 8 8)" strokeLinecap="round" />}
     </svg>
   );
 }
@@ -94,6 +109,19 @@ export function StatusBar(p: Props) {
   const connectionColour = p.connection === "connected" ? "var(--ok)" : p.connection === "connecting" ? "var(--warn)" : "var(--bad)";
   const left = p.roomUsed === null ? null : Math.max(0, Math.round((1 - p.roomUsed) * 100));
   const item = (id: StatusItem) => ({ "aria-expanded": p.open === id, "aria-haspopup": "dialog" as const, onClick: (e: MouseEvent<HTMLElement>) => p.onItem(id, e) });
+  const usageLine = p.usage ? `${p.usage.name} · ${p.usage.left}% left${p.usage.reset ? ` · ${p.usage.reset}` : ""}` : "Usage";
+  const usageLabel = p.usage ? `${usageLine}. Enter opens every account.` : "Usage · no account limits yet. Enter opens every account.";
+  const openUsage = (e: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => {
+    setUsageExpanded(true);
+    p.onItem("usage", e as MouseEvent<HTMLElement>);
+  };
+  const onUsageClick = (e: MouseEvent<HTMLElement>) => {
+    if (!usageExpanded) {
+      setUsageExpanded(true);
+      return;
+    }
+    openUsage(e);
+  };
   return (
     <footer className="statusbar" data-testid="statusbar">
       <button type="button" className="sb status-symbol" title={`${p.machineName} · ${connectionWord}`} aria-label={`${p.machineName} · ${connectionWord}`} data-testid="sb-connection" data-state={p.connection} {...item("connection")}>
@@ -115,11 +143,9 @@ export function StatusBar(p: Props) {
       <span className="sb-spacer" />
       {p.extras?.gfx}
       {p.usageShown === false ? null : (
-        <button ref={usageRef} type="button" className={p.usage?.low ? "sb usage low status-ring" : "sb usage status-ring"} title="Click for every account" aria-label={p.usage ? `${p.usage.name} · ${p.usage.left}% left${p.usage.reset ? ` · ${p.usage.reset}` : ""}. Click for every account.` : "Usage · no account limits yet. Click for every account."} data-testid="sb-usage" data-hide="usage" onPointerEnter={() => setUsageExpanded(true)} {...item("usage")}>
-          <UsageRing left={p.usage?.left ?? null} low={p.usage?.low ?? false} />
-          <span className={usageExpanded ? "status-ring-label" : "status-ring-label collapsed"}>
-            {p.usage ? `${p.usage.name} · ${p.usage.left}% left${p.usage.reset ? ` · ${p.usage.reset}` : ""}` : "Usage"}
-          </span>
+        <button ref={usageRef} type="button" className={`sb usage status-ring useT5 glyphT5${p.usage?.low ? " low" : ""}${usageExpanded ? "" : " collapsedT5"}`} title="Click for every account" aria-label={usageLabel} aria-expanded={p.open === "usage"} aria-haspopup="dialog" data-testid="sb-usage" data-hide="usage" onPointerEnter={() => setUsageExpanded(true)} onClick={onUsageClick} onKeyDown={(e) => { if (e.key !== "Enter") return; e.preventDefault(); e.stopPropagation(); openUsage(e); }}>
+          <UsageRing left={p.usage?.left ?? null} />
+          <span className="useTxtT5 status-ring-label">{usageLine}</span>
         </button>
       )}
       {p.version ? (
