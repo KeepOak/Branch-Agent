@@ -33,6 +33,8 @@ function metricsOf(el: HTMLElement): Metrics {
   return row;
 }
 
+const resizeObservers: Array<{ cb: () => void; disconnect: () => void }> = [];
+
 function installScrollMetrics(): void {
   Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get() { return metricsOf(this as HTMLElement).view; } });
   Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get() { return metricsOf(this as HTMLElement).height; } });
@@ -44,6 +46,27 @@ function installScrollMetrics(): void {
       row.top = Math.max(0, Math.min(Number(value), Math.max(0, row.height - row.view)));
     },
   });
+  Object.defineProperty(window, "ResizeObserver", {
+    configurable: true,
+    writable: true,
+    value: class {
+      cb: () => void;
+      constructor(cb: ResizeObserverCallback) {
+        this.cb = () => cb([] as unknown as ResizeObserverEntry[], this as unknown as ResizeObserver);
+        resizeObservers.push({ cb: this.cb, disconnect: () => {} });
+      }
+      observe(): void { /* test double: tests call fireResize() */ }
+      disconnect(): void {
+        const i = resizeObservers.findIndex((row) => row.cb === this.cb);
+        if (i >= 0) resizeObservers.splice(i, 1);
+      }
+      unobserve(): void { this.disconnect(); }
+    },
+  });
+}
+
+function fireResize(): void {
+  for (const row of [...resizeObservers]) row.cb();
 }
 
 let root: Root | undefined;
@@ -51,6 +74,7 @@ let host: HTMLDivElement | undefined;
 
 beforeEach(() => {
   resetScrollMemoryForTests();
+  resizeObservers.length = 0;
   installScrollMetrics();
 });
 
@@ -247,6 +271,26 @@ describe("chat scroll memory", () => {
     await flushFrame();
     metricsOf(late).height = 2000;
     await waitMs(430);
+    expect(late.scrollTop).toBe(600);
+  });
+
+  it("a chat saved mid-thread restores when history mounts after the 420 ms retry", async () => {
+    push(1, chatA);
+    const first = await mount(createElement(FollowChat, { signature: "1", sent: [null] }));
+    const scroller = first.querySelector<HTMLElement>("[data-testid=thread-scroll]")!;
+    await saveScroll(scroller, 600);
+    push(2, chatB);
+    await remount(createElement(FollowChat, { signature: "1", sent: [null] }));
+    popTo(1, chatA);
+    const again = await remount(createElement(FollowChat, { signature: "1", sent: [null] }));
+    const late = again.querySelector<HTMLElement>("[data-testid=thread-scroll]")!;
+    metricsOf(late).height = 400;
+    metricsOf(late).top = 0;
+    late.dispatchEvent(new Event("scroll"));
+    await waitMs(450);
+    expect(late.scrollTop).toBe(0);
+    metricsOf(late).height = 2000;
+    await act(async () => fireResize());
     expect(late.scrollTop).toBe(600);
   });
 

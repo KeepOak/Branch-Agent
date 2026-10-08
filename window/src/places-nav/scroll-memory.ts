@@ -72,6 +72,7 @@ export function useScrollMemory(ref: RefObject<HTMLElement | null>, opts?: Scrol
   useLayoutEffect(() => {
     const popped = takePop();
     const timers: number[] = [];
+    let stopWatch: (() => void) | undefined;
     const flag = atEndRef.current;
     if (popped) {
       const entry = saved.get(key);
@@ -80,13 +81,24 @@ export function useScrollMemory(ref: RefObject<HTMLElement | null>, opts?: Scrol
         const put = () => {
           const el = ref.current;
           // A chat left at the end keeps following; pinning the old y would fight new tokens.
-          if (!el || entry.atEnd) return;
+          if (!el || entry.atEnd) return false;
           el.scrollTop = entry.y;
           // Setting scrollTop can fire `scroll` and mark a still-short scroller as at the end.
           if (flag) flag.current = entry.atEnd;
+          return el.scrollHeight - el.clientHeight >= entry.y;
         };
         requestAnimationFrame(put);
         for (const ms of RESTORE_MS) timers.push(window.setTimeout(put, ms));
+        // Chat history can arrive after 420 ms; put again when the scroller grows.
+        const scroller = ref.current;
+        if (scroller && typeof ResizeObserver !== "undefined") {
+          const ro = new ResizeObserver(() => {
+            if (put()) ro.disconnect();
+          });
+          ro.observe(scroller);
+          stopWatch = () => ro.disconnect();
+          timers.push(window.setTimeout(stopWatch, 2000));
+        }
       }
     } else if (flag) {
       // Thread stays mounted across chats; a fresh open must follow the end again.
@@ -94,6 +106,7 @@ export function useScrollMemory(ref: RefObject<HTMLElement | null>, opts?: Scrol
     }
     return () => {
       for (const id of timers) window.clearTimeout(id);
+      stopWatch?.();
       // Strict Mode remounts with the same entry; a real navigation already changed history.state.
       if (popped && historyEntryKey() === key) nextIsPop = true;
     };
