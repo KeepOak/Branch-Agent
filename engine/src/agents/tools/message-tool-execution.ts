@@ -2,19 +2,13 @@ import {
   normalizeOptionalLowercaseString,
   normalizeOptionalString,
 } from "@branch/normalization-core/string-coerce";
-import type { SourceReplyDeliveryMode } from "../../auto-reply/get-reply-options.types.js";
 import { resolveActiveReplyOperationForSessionId } from "../../auto-reply/reply/reply-run-registry.js";
-import type { ChatType } from "../../channels/chat-type.js";
-import type { InboundEventKind } from "../../channels/inbound-event/kind.js";
-import type { ConversationReadInvocationOrigin } from "../../channels/plugins/conversation-read-origin.js";
-import type { PreparedMessageToolCatalog } from "../../channels/plugins/message-action-discovery.js";
 import { isScheduledMessageWriteAction } from "../../channels/plugins/message-action-dispatch.js";
 import type { ChannelMessageActionName } from "../../channels/plugins/types.public.js";
 import { resolveCommandSecretRefsViaGateway } from "../../cli/command-secret-gateway.js";
 import { getScopedChannelsCommandSecretTargets } from "../../cli/command-secret-targets.js";
 import { resolveMessageSecretScope } from "../../cli/message-secret-scope.js";
 import { getRuntimeConfig } from "../../config/config.js";
-import type { BranchConfig } from "../../config/types.branch.js";
 import * as messageActionTurnCapability from "../../gateway/message-action-turn-capability.js";
 import type { MessageActionAuthorization } from "../../gateway/message-action-turn-capability.js";
 import { resolveMessageChannelSelection } from "../../infra/outbound/channel-selection.js";
@@ -26,22 +20,18 @@ import type { MessageActionResult } from "../../infra/outbound/message-action-co
 import { projectGatewayQueuedDeliveryResult } from "../../infra/outbound/message-action-execution.js";
 import { hasAcceptedMessageActionResult } from "../../infra/outbound/message-action-result-acceptance.js";
 import { getToolResult, runMessageAction } from "../../infra/outbound/message-action-runner.js";
-import { enforceMessageActionAllowlist } from "../../infra/outbound/outbound-policy.js";
 import { isDeliveredCurrentSourceReplyAsync } from "../../infra/outbound/source-reply-mirror.js";
 import { readBooleanParam } from "../../plugin-sdk/boolean-param.js";
 import { stringifyRouteThreadId } from "../../plugin-sdk/channel-route.js";
 import { createAgentToAgentPolicy } from "../../plugin-sdk/session-visibility.js";
 import { getPreparedMessageToolCatalog } from "../../plugins/prepared-message-tool-catalog.js";
-import { buildRunUserTurnIdempotencyKey } from "../../sessions/user-turn-transcript.metadata.js";
 import { withPreparedChannelReadAuthority } from "../../shared/channel-read-authority.js";
-import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import * as embeddedMessageDelivery from "../embedded-agent-message-delivery.js";
 import { createSandboxBridgeReadFile } from "../sandbox-media-paths.js";
-import type { SandboxFsBridge } from "../sandbox/fs-bridge.js";
 import { type AnyAgentTool, jsonResult, readToolStringParam } from "./common.js";
 import { captureGatewayToolCallerAssertion } from "./gateway-caller-context.js";
-import { getInProcessGatewayToolContext } from "./in-process-gateway.js";
+import { executeInAppReaction } from "./message-tool-app-reaction.js";
 import {
   createMessageToolDecisionRecorder,
   resolveTrustedDecisionChannel,
@@ -50,6 +40,7 @@ import {
   buildMessageToolDescription,
   buildMessageToolSchema,
   type MessageToolDiscoveryParams,
+  type MessageToolOptions,
   resolveAgentAccountId,
   resolveEffectiveCurrentChannelContext,
   resolveMessageToolActionSchemaActions,
@@ -90,49 +81,6 @@ const recentPollVoteBySession = new Map<
   string,
   { option: string; route: string; recordedAt: number }
 >();
-
-type MessageToolOptions = {
-  agentAccountId?: string;
-  agentSessionKey?: string;
-  runSessionKey?: string;
-  runId?: string;
-  sessionId?: string;
-  agentId?: string;
-  config?: BranchConfig;
-  preparedMessageToolCatalog?: PreparedMessageToolCatalog;
-  getRuntimeConfig?: () => BranchConfig;
-  admitScheduledInvocation?: () => BranchConfig;
-  getScopedChannelsCommandSecretTargets?: typeof getScopedChannelsCommandSecretTargets;
-  resolveCommandSecretRefsViaGateway?: typeof resolveCommandSecretRefsViaGateway;
-  runMessageAction?: typeof runMessageAction;
-  currentChannelId?: string;
-  currentChatType?: ChatType;
-  currentMessagingTarget?: string;
-  messageActionTurnCapability?: string;
-  currentChannelProvider?: string;
-  currentThreadTs?: string;
-  agentThreadId?: string | number;
-  currentMessageId?: string | number;
-  currentInboundAudio?: boolean;
-  hasCurrentInboundAudio?: () => boolean;
-  replyToMode?: "off" | "first" | "all" | "batched";
-  hasRepliedRef?: { value: boolean };
-  sameChannelThreadRequired?: boolean;
-  sandboxRoot?: string;
-  sandboxContainerWorkdir?: string;
-  sandboxFsBridge?: SandboxFsBridge;
-  sandboxReadOnlyResourceMounts?: readonly { hostPath: string; containerPath: string }[];
-  sandboxWorkspaceMediaReadAllowed?: boolean;
-  requireExplicitTarget?: boolean;
-  sourceReplyDeliveryMode?: SourceReplyDeliveryMode;
-  /** Process-local completion authority: send only to the current source route. */
-  sourceReplyOnly?: boolean;
-  inboundEventKind?: InboundEventKind;
-  requesterSenderId?: string;
-  senderIsOwner?: boolean;
-  conversationReadOrigin?: ConversationReadInvocationOrigin;
-  workspaceDir?: string;
-};
 
 export function createMessageTool(options?: MessageToolOptions): AnyAgentTool {
   const loadConfigForTool = options?.getRuntimeConfig ?? getRuntimeConfig;
@@ -352,57 +300,18 @@ export function createMessageTool(options?: MessageToolOptions): AnyAgentTool {
         decisions.runBoundary(() => explicitTargetGuard.require(params, action));
       }
 
-      if (
-        action === "react" &&
-        normalizeOptionalLowercaseString(effectiveCurrentChannel.currentChannelProvider) ===
-          INTERNAL_MESSAGE_CHANNEL &&
-        (!normalizeOptionalString(params.channel) ||
-          normalizeOptionalLowercaseString(params.channel) === INTERNAL_MESSAGE_CHANNEL) &&
-        ![params.target, params.to, params.channelId, params.threadId].some(
-          normalizeOptionalString,
-        ) &&
-        !(Array.isArray(params.targets) && params.targets.length > 0)
-      ) {
-        enforceMessageActionAllowlist({ cfg: rawConfig, agentId: resolvedAgentId, action });
-        const context = getInProcessGatewayToolContext();
-        if (!context || !options?.agentSessionKey || !options.sessionId || !resolvedAgentId) {
-          throw new Error("In-app reactions require the active Gateway and session.");
-        }
-        const requestedMessageId =
-          readToolStringParam(params, "messageId") ?? readToolStringParam(params, "message_id");
-        const currentMessageId =
-          options.currentMessageId != null ? String(options.currentMessageId) : undefined;
-        // WebChat's inbound MessageSid is the client run id, not the transcript row id.
-        const sourceTurnId =
-          !requestedMessageId || requestedMessageId === currentMessageId
-            ? (normalizeOptionalString(trustedTurnContext?.toolContext?.currentSourceTurnId) ??
-              (currentMessageId ? buildRunUserTurnIdempotencyKey(currentMessageId) : undefined))
-            : undefined;
-        const messageId = requestedMessageId;
-        if (!messageId && !sourceTurnId) {
-          throw new Error("In-app reactions require a messageId.");
-        }
-        const { setAgentSessionReaction } =
-          await import("../../gateway/server-methods/sessions-reactions.js");
-        const result = await setAgentSessionReaction({
-          context,
-          cfg: rawConfig,
-          agentId: resolvedAgentId,
-          sessionKey: options.agentSessionKey,
-          sessionId: options.sessionId,
-          messageId,
-          sourceTurnId,
-          emoji: readToolStringParam(params, "emoji", { required: true }),
-          remove: readBooleanParam(params, "remove") === true,
-          dryRun: readBooleanParam(params, "dryRun") === true,
-          assertCurrent: () => {
-            assertActionCurrent();
-            if (getInProcessGatewayToolContext() !== context) {
-              throw new Error("In-app reaction Gateway changed.");
-            }
-          },
-        });
-        return jsonResult(result);
+      const appReaction = await executeInAppReaction({
+        action,
+        params,
+        options,
+        cfg: rawConfig,
+        agentId: resolvedAgentId,
+        currentChannelProvider: effectiveCurrentChannel.currentChannelProvider,
+        currentSourceTurnId: trustedTurnContext?.toolContext?.currentSourceTurnId,
+        assertCurrent: assertActionCurrent,
+      });
+      if (appReaction) {
+        return appReaction;
       }
 
       const gatewayContext = { ...options, messageActionTurnCapability: gatewayTurnCapability };
