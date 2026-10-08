@@ -178,19 +178,23 @@ function ProfilesDialog({ c, onClose }: { c: Ctx; onClose: () => void }) {
   const cfg = useConfig(c.engine);
   const res = useLive<RecordValue>(c.engine, "browser.request", { method: "GET", path: "/profiles" }, []);
   const profiles = list(rec(res.data).profiles);
+  const savedDefault = cfg.get("browser.defaultProfile");
   return (
     <Dialog title="Browser profiles" wide onClose={onClose}>
       {res.error ? <p className="hint s2-err" role="alert">{res.error}</p> : null}
       {res.loading && !res.data ? <p>Reading the profiles…</p> : null}
       {res.data && !profiles.length ? <p className="hint">No browser profiles yet.</p> : null}
       <div className="rows">
-        {profiles.map((p) => (
+        {profiles.map((p) => {
+          const isDefault = typeof savedDefault === "string" ? savedDefault === str(p.name) : p.isDefault === true;
+          const tabs = typeof p.tabCount === "number" && Number.isInteger(p.tabCount) && p.tabCount >= 0 ? `${p.tabCount} tabs open` : "Running";
+          return (
           <div key={str(p.name)} className="prow" data-row={str(p.name)}>
             <span className="s2cm-swatch" style={{ background: str(p.color) || undefined }} />
-            <span className="grow"><b>{str(p.name)}</b><small>{[DRIVER[str(p.driver)] ?? str(p.driver), p.running === true ? `${Number(p.tabCount) || 0} tabs open` : "Not running", p.isRemote === true ? "Remote" : ""].filter(Boolean).join(" · ")}</small></span>
-            {p.isDefault === true ? <Pill tone="ok">Default</Pill> : <Btn sm ghost disabled={cfg.loading} onClick={() => void cfg.set("browser.defaultProfile", str(p.name))}>Make it the default</Btn>}
+            <span className="grow"><b>{str(p.name)}</b><small>{[DRIVER[str(p.driver)] ?? str(p.driver), p.running === true ? tabs : p.running === false ? "Not running" : "", p.isRemote === true ? "Remote" : ""].filter(Boolean).join(" · ")}</small></span>
+            {isDefault ? <Pill tone="ok">Default</Pill> : <Btn sm ghost disabled={cfg.loading} onClick={() => void cfg.set("browser.defaultProfile", str(p.name))}>Make it the default</Btn>}
           </div>
-        ))}
+        ); })}
       </div>
     </Dialog>
   );
