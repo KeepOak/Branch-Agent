@@ -8,6 +8,8 @@ import { Menu, type MenuAnchor, type MenuItem } from "../shell/Menu";
 import { BrowserScreencastClient, type BrowserScreencastFrame } from "./browser-screencast-client";
 import { browserCall, readTabs, recordedBrowserTabs, routeKey, routeOf, scopedBrowserRequest, type BrowserRoute, type LiveTab } from "./browser-route";
 import { BrowserTools } from "./BrowserTools";
+import { BrowserDrivingTag, BrowserFirstUseBanner, BrowserModeStrip, BrowserWatchBanner } from "./BrowserChrome";
+import { driveMode, readStageNoteSeen, saveStageNoteSeen } from "./browser-chrome";
 import { SIcon } from "./stage-icons";
 
 export { recordedBrowserTabs, scopedBrowserRequest } from "./browser-route";
@@ -29,10 +31,6 @@ export function browserRemotePoint(
 }
 
 export type BrowserPhase = "loading" | "empty" | "connected" | "error";
-const NO_READS = "Choosing how it reads pages isn't wired in this window yet.";
-const NO_NUMBERS = "The engine can't show its numbers on the live page yet.";
-const NO_COMMENT = "The engine can't take comments pinned to a page yet.";
-const NO_RECORD = "The engine can't record what you do in the browser yet.";
 export const NO_MARKUP = "Marking up a page needs a way to send the drawing to the chat, which the window doesn't have yet.";
 
 type Browser = { key: string; phase: "none" | "loading" | "stopped" | "ready" | "error"; tabs: LiveTab[]; error?: string };
@@ -297,6 +295,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   const [menu, setMenu] = useState<{ at: MenuAnchor; items: MenuItem[] } | null>(null);
   const [note, setNote] = useState("");
   const [find, setFind] = useState<string | null>(null);
+  const [noteSeen, setNoteSeen] = useState(readStageNoteSeen);
   const [view, setView] = useState<{ url?: string; title?: string; phase: BrowserPhase }>({ phase: "empty" });
   const recordedNewest = entries.at(-1)?.tab.targetId;
   const tab = browser.tabs.find((t) => t.targetId === picked) ?? browser.tabs.find((t) => t.targetId === recordedNewest) ?? browser.tabs[0];
@@ -371,7 +370,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
       fail,
     );
   };
-  const working = running && !control;
+  const drive = driveMode(running, control);
   let page: ReactNode;
   if (browser.phase === "none") page = <Blank title="Nothing open" text={`${name} hasn't opened a page in this conversation.`} />;
   else if (browser.phase === "loading" && !browser.tabs.length) page = <Blank title="Connecting to the browser…" text="Reading this conversation's tabs." />;
@@ -389,51 +388,16 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   const showChrome = browser.phase === "ready" || (browser.phase === "loading" && browser.tabs.length > 0);
   return (
     <div className="browser-st">
-      {route ? (
-        <div className="bar-br" role="toolbar" aria-label="Browser tools">
-          <span className="lbl-br">Reads</span>
-          <span className="seg-br" role="group" aria-label="How it reads the page" title={NO_READS}>
-            {["Page", "Picture", "Both"].map((m) => (
-              <button key={m} type="button" disabled aria-pressed={false}>
-                {m}
-              </button>
-            ))}
-          </span>
-          <button type="button" className="btn ghost sm tb-br" disabled title={NO_NUMBERS}>
-            <SIcon name="hash" small />
-            <span>Numbers</span>
-          </button>
-          <button type="button" className="btn ghost sm tb-br" disabled title={NO_COMMENT}>
-            <SIcon name="comment" small />
-            <span>Comment</span>
-          </button>
-          <button type="button" className="btn ghost sm tb-br" disabled title={NO_RECORD}>
-            <SIcon name="record" small />
-            <span>Record</span>
-          </button>
-          <button type="button" className="btn ghost sm tb-br" aria-haspopup="menu" disabled={!showChrome} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); pageMenu({ x: r.left, y: r.bottom + 6 }); }}>
-            <SIcon name="doc" small />
-            <span>Page</span>
-            <SIcon name="down" small />
-          </button>
-          <span className="tb-grow" />
-          <button type="button" className="btn ghost sm tb-br" aria-pressed={drawer} disabled={!tab} onClick={() => setDrawer((v) => !v)}>
-            <SIcon name="tools" small />
-            <span>Tools</span>
-          </button>
-        </div>
-      ) : null}
-      {working && view.phase === "connected" ? (
-        <div className="bn-br" role="note">
-          <i className="dot-br" />
-          <span className="grow">
-            <b>{name} is using this page.</b> Your clicks and typing wait while it acts.
-          </span>
-          <button type="button" className="btn pri sm" onClick={() => onControl?.(true)}>
-            Take over
-          </button>
-        </div>
-      ) : null}
+      <BrowserModeStrip drawer={drawer} pageEnabled={showChrome} toolsEnabled={Boolean(tab)} onPageMenu={pageMenu} onTools={() => setDrawer((v) => !v)} />
+      {noteSeen ? null : (
+        <BrowserFirstUseBanner
+          onDismiss={() => {
+            saveStageNoteSeen();
+            setNoteSeen(true);
+          }}
+        />
+      )}
+      {drive === "watch" && view.phase === "connected" ? <BrowserWatchBanner name={name} onTakeOver={() => onControl?.(true)} /> : null}
       {find !== null ? (
         <form className="find-br" onSubmit={(e) => { e.preventDefault(); findText(find); }}>
           <input className="inp" autoFocus value={find} onChange={(e) => setFind(e.target.value)} placeholder="Find on this page" aria-label="Find on this page" />
@@ -491,7 +455,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
                 </div>
               ) : null}
               {page}
-              {control && view.phase === "connected" ? <span className="drive-st">You're driving</span> : null}
+              {drive === "drive" && view.phase === "connected" ? <BrowserDrivingTag name={name} /> : null}
             </div>
           </div>
           {drawer && route && tab ? (
