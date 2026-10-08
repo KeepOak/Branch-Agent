@@ -24,7 +24,7 @@ import {
   type TowerNeed,
 } from "./control-tower-data";
 import { syncWaitingNotices } from "./notify";
-import type { Limits } from "./status-data";
+import { usagePollResult, type Limits } from "./status-data";
 import { whoItKnowsItems } from "./who-it-knows-menu";
 import "./v23-layout.css";
 
@@ -107,7 +107,16 @@ function useTowerLive(engine: WindowEngine, rows: Conversation[]) {
         }
       }
     });
-    const onUsage = () => { void load(); };
+    const onUsage = (event: Event) => {
+      const polled = usagePollResult(event);
+      if (polled) {
+        setUsageFailed(false);
+        setLimits(polled);
+        setCheckError(null);
+        return;
+      }
+      void load();
+    };
     window.addEventListener("branch:usage-checked", onUsage);
     return () => { off(); window.removeEventListener("branch:usage-checked", onUsage); };
   }, [engine, load, rememberEnded]);
@@ -119,9 +128,10 @@ function useTowerLive(engine: WindowEngine, rows: Conversation[]) {
     try {
       await engine.request("models.authStatus", { refresh: true }).catch(() => undefined);
       const result = await engine.request("usage.status", { refresh: true });
+      const next = readUsage(result);
       setUsageFailed(false);
-      setLimits(readUsage(result));
-      window.dispatchEvent(new Event("branch:usage-checked"));
+      setLimits(next);
+      window.dispatchEvent(new CustomEvent("branch:usage-checked", { detail: next }));
     } catch {
       setUsageFailed(true);
       setCheckError("Couldn’t check accounts right now. Branch will try again.");
