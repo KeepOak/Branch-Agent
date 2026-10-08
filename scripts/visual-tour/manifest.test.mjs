@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readScreens, loadScreens } from './manifest.mjs';
-import { previewState } from './preview.mjs';
+import { previewScreenPatch, previewState } from './preview.mjs';
 
 test('screens loader accepts the committed tour and rejects unasserted clicks', async () => {
   const screens = await readScreens(new URL('./screens.json', import.meta.url));
@@ -31,4 +31,5 @@ test('screens loader accepts the committed tour and rejects unasserted clicks', 
   assert.equal(previewState('browser-stage').stage, 'browser');
   assert.equal(previewState('pane-memory').pane, 'memory');
   assert.equal(previewState('row-menu').kind, 'row-menu');
+  assert.deepEqual(previewScreenPatch(previewState('canopy-now')), { view: 'canopy', tabs: { canopy: 'now' } });
 });
