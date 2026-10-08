@@ -8,6 +8,7 @@ import { PUSH_BACKUP_MIN_AGE_MS, pushBackupShouldRelease } from "./component-rel
 
 const here = dirname(fileURLToPath(import.meta.url));
 const workflow = readFileSync(join(here, "../../.github/workflows/component-release.yml"), "utf8").replace(/\r\n/g, "\n");
+const desktopChecks = readFileSync(join(here, "../../.github/workflows/desktop-checks.yml"), "utf8").replace(/\r\n/g, "\n");
 const helper = join(here, "component-release-readiness.mjs");
 
 test("push backup releases when there is no previous publication time", () => {
@@ -50,4 +51,15 @@ test("component-release workflow keeps the schedule and uses push as a 25-minute
   assert.match(workflow, /GITHUB_EVENT_NAME" == "push"/);
   assert.match(workflow, /decide_scheduled >\/dev\/null \|\| echo "scheduled rehearsal could not finish"/);
   assert.match(workflow, /node scripts\/merge-gate-rate-limit\.mjs gh -- api/);
+});
+
+test("desktop-checks runs readiness as its own node --test step after the desktop build", () => {
+  const buildAt = desktopChecks.indexOf("run: npm run build");
+  const stepAt = desktopChecks.indexOf("run: node --test scripts/component-release-readiness.test.mjs");
+  assert.match(desktopChecks, /^\s+run: node --test scripts\/component-release-readiness\.test\.mjs\s*$/m);
+  assert.ok(buildAt >= 0 && stepAt > buildAt);
+  assert.doesNotMatch(
+    desktopChecks,
+    /release-production-layout\.test\.mjs scripts\/component-release-readiness\.test\.mjs/,
+  );
 });

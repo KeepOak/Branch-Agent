@@ -57,6 +57,8 @@ jobs:
         env:
           NODE_OPTIONS: '--max-old-space-size=256'
         run: npm run build
+      - name: Check component release readiness
+        run: node --test scripts/component-release-readiness.test.mjs
       - name: Check updates, startup and owned process cleanup
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
@@ -74,7 +76,7 @@ jobs:
       - name: Check immutable release inventory and bootstrap targets
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
-        run: node --test scripts/brand-icons.test.mjs scripts/linux-launcher.test.mjs scripts/release-inventory.test.mjs scripts/production-engine-smoke.test.mjs scripts/release-source-freeze.test.mjs scripts/release-production-layout.test.mjs scripts/component-release-readiness.test.mjs
+        run: node --test scripts/brand-icons.test.mjs scripts/linux-launcher.test.mjs scripts/release-inventory.test.mjs scripts/production-engine-smoke.test.mjs scripts/release-source-freeze.test.mjs scripts/release-production-layout.test.mjs
       - name: Check documentation merge command patterns
         working-directory: ${{ github.workspace }}
         run: node --test scripts/check-merge-command.test.mjs
