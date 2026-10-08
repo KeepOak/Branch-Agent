@@ -338,6 +338,7 @@ try {
 }
 
 export async function listFolderLockers(folder: string): Promise<FolderLocker[]> {
+  // Same-session processes plus Restart Manager holders, keyed by pid.
   const listed = await listFolderProcesses(folder);
   if (process.platform !== "win32") return listed;
   const byPid = new Map<number, FolderLocker>();
