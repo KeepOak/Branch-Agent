@@ -5,7 +5,8 @@ import { useState } from "react";
 import { shownWhy } from "../../../shell/shown-why";
 import { record, text, visible } from "../adapter";
 import { useResource } from "../hooks";
-import { Btn, Ctl, Empty, Hint, Pick, Sec, Seg, Switch, useSaveRunner, type Opt } from "../kit";
+import { Btn, Ctl, Empty, Hint, LinkBtn, Pick, Sec, Seg, Switch, useSaveRunner, type Opt } from "../kit";
+import { openPlace } from "../set2/common";
 import { Logo } from "./service";
 import { connectionsOf, fallbacksOf, modelOpts, refOf, type Connection, type ModelsCtx } from "./models-data";
 
@@ -73,6 +74,7 @@ function WhoAnswers({ m, conns, defaultOf }: { m: ModelsCtx; conns: Connection[]
       <Ctl title="If the model fails" sub="When the default model can’t answer, try this one." help="When the default model can’t answer, try this one. Your next account is tried first.">
         <Pick label="If the model fails" value={fallbacks[0] ?? ""} options={[{ id: "", label: "Don’t switch" }, ...others]} onChange={(v) => void m.cfg.set(m.own("model", "fallbacks"), v ? [v, ...fallbacks.filter((f) => f !== v)] : fallbacks.slice(1))} />
       </Ctl>
+      <TrunkFallbackNote m={m} />
     </Sec>
   );
 }
@@ -115,10 +117,32 @@ export function NewConversations({ m }: { m: ModelsCtx }) {
   );
 }
 
+/** Trunks with their own model do not inherit the household's answer fallbacks. */
+function TrunkFallbackNote({ m }: { m: ModelsCtx }) {
+  if (m.scope) return null;
+  const trunks = Object.entries(record(m.cfg.get(["agents", "entries"])))
+    .filter(([, entry]) => refOf(record(entry).model).trim());
+  if (!trunks.length) return null;
+  return (
+    <div>
+      <Hint>These Trunks have their own model and do not use this setting for answers. Open a Trunk’s settings, choose Advanced detail, then What it may do › Add a stand-in… to set its own stand-ins.</Hint>
+      <ul aria-label="Trunks with their own model">
+        {trunks.map(([id, entry]) => (
+          <li key={id}><LinkBtn onClick={() => {
+            openPlace("people");
+            window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId: id, view: "edit" } }));
+          }}>{visible(record(record(entry).identity).name || record(entry).name || id)}</LinkBtn></li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** If the model fails: the ordered fallback lists for answers and for reading pictures. */
 export function FallbackLists({ m }: { m: ModelsCtx }) {
   return (
     <Sec title="If the model fails" hint="Tries fallback models in order when the first fails." help="Tried in order when the model a conversation uses fails: sign-in trouble, limits or time-outs. Your other accounts with the same service are tried first (Accounts).">
+      <TrunkFallbackNote m={m} />
       <FallbackList m={m} title="For answers" keys={["model"]} own />
       <FallbackList m={m} title="For reading pictures" keys={["imageModel"]} images />
     </Sec>
