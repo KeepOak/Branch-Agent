@@ -5,6 +5,8 @@ metadata:
   { "branch": { "emoji": "🔍", "requires": { "config": ["plugins.entries.tavily.enabled"] } } }
 ---
 
+<!-- From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/tavily/skills/tavily/SKILL.md (atlas RESEARCH-0003). Changed for Branch: document Mastra crawl/map ports. -->
+
 # Tavily Tools
 
 ## When to use which tool
@@ -92,3 +94,16 @@ Follow this escalation pattern — start simple, escalate only when needed:
 3. **`tavily_extract`** — Have specific URLs, need their full content or targeted chunks.
 
 Combine search + extract when you need to find pages first, then get their full content.
+
+## tavily_crawl and tavily_map
+
+Use `tavily_crawl` to discover pages and extract their content. Use `tavily_map`
+to discover URLs without extracting content, then extract selected pages.
+Both use the connected Tavily account and the conversation's normal tool permissions.
+
+Both accept `url` and optional `maxDepth`, `maxBreadth`, `limit`, `instructions`,
+`selectPaths`, `selectDomains`, `excludePaths`, `excludeDomains`, and `allowExternal`.
+The select/exclude arrays contain regex patterns. Omitted options use Tavily's defaults.
+Crawl also accepts `extractDepth` (`basic` or `advanced`), `includeImages`, and
+`format` (`markdown` or `text`). Limits retain the provider's defaults; the tools
+add no smaller page or link cap.

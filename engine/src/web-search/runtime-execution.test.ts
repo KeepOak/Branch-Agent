@@ -1,3 +1,4 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/web-search/runtime-execution.test.ts (atlas RESEARCH-0001). Changed for Branch: retain newer upstream tests for the existing Branch sync; all assertions preserved.
 import { describe, expect, it, vi } from "vitest";
 import { ToolAuthorizationError } from "../agents/tool-input-error.js";
 import type { WebSearchProviderToolDefinition } from "../plugins/web-provider-types.js";

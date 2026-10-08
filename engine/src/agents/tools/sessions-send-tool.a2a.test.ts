@@ -1,3 +1,4 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/agents/tools/sessions-send-tool.a2a.test.ts (atlas SESSIONS-0026). Changed for Branch: retain newer upstream tests and existing Branch requester ownership fixtures; all assertions preserved.
 // sessions_send A2A tests cover reply delivery, same-session replies, delayed
 // run-owned replies, and channel target/account routing.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

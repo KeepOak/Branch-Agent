@@ -1,12 +1,13 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/agents/tools/sessions-search-tool.test.ts (atlas SESSIONS-0025). Changed for Branch: retain newer upstream tests for the existing Branch sync; all assertions preserved.
 /** sessions_search visibility, bounds, redaction, and input tests. */
 import path from "node:path";
 import { Value } from "typebox/value";
 import { afterEach, describe, expect, it } from "vitest";
-import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { replaceSessionEntrySync } from "../../config/sessions/session-accessor.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import type { callGateway as gatewayCall } from "../../gateway/call.js";
 import { createSessionVisibilityChecker } from "../../plugin-sdk/session-visibility.js";
+import { useSessionStoreTempDirs } from "../../test-utils/session-state-cleanup.js";
 import { normalizeToolParameters } from "../agent-tools.schema.js";
 import { describeSessionLinkRule } from "../tool-description-presets.js";
 import { compactToolOutputHint } from "../tool-schema-hints.js";
@@ -103,7 +104,7 @@ function createTool(params: {
 }
 
 describe("sessions_search tool", () => {
-  const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+  const sessionDirs = useSessionStoreTempDirs(afterEach, "branch-sessions-search-");
 
   it("rejects a literal global target owned by another fixed-store agent when agent-to-agent is disabled", async () => {
     const requests: CallGatewayRequest[] = [];
@@ -504,7 +505,7 @@ describe("sessions_search tool", () => {
     const requesterSessionKey = "agent:main:clickclack:discussion-race";
     const targetSessionKey = "agent:main:main";
     const expectedSessionId = "old-incarnation";
-    const storePath = path.join(tempDirs.make("branch-sessions-search-"), "sessions.sqlite");
+    const storePath = path.join(sessionDirs.make(), "sessions.sqlite");
     replaceSessionEntrySync(
       { storePath, sessionKey: targetSessionKey },
       { sessionId: expectedSessionId, updatedAt: 1 },
