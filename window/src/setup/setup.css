@@ -144,11 +144,16 @@
   pointer-events: none;
 }
 .ob-stage11 {
-  width: 190px;
-  height: 190px;
-  margin: -6px 0 18px -10px;
-  display: grid;
-  place-items: center;
+  width: auto;
+  height: auto;
+  margin: 0 0 var(--sp-24);
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  color: var(--ink);
+}
+.ob-stage11 svg {
+  display: block;
 }
 .ob-art11 {
   width: 180px;
@@ -177,42 +182,70 @@
 }
 
 /* Welcome */
+.ob-stage11 + h2,
+.ob-stage11 + h2 + p {
+  padding-right: 0;
+}
+.ob-stage11 + h2 {
+  font-size: var(--fs-26);
+  margin: 0 0 var(--sp-8);
+}
+.ob-stage11 + h2 + p {
+  margin: 0 0 var(--sp-24);
+  font-size: var(--fs-15);
+}
 .ob-trust {
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 16px;
+  border: 1px solid var(--hair17);
+  border-radius: var(--r4-17);
+  padding: var(--sp-16) var(--sp-16) var(--sp-12);
   background: var(--raise);
+  box-shadow: var(--sh1-17);
   display: grid;
-  gap: 10px;
+  gap: var(--sp-16);
+}
+.ob-trust > b {
+  font-size: var(--fs-15);
+  color: var(--ink);
 }
 .may6 {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 6px;
-  font-size: 13px;
+  gap: var(--sp-10);
+  font-size: var(--fs-14);
   color: var(--ink-2);
 }
 .may6 li {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-10);
   align-items: flex-start;
 }
 .may6 .i {
+  width: var(--sp-24);
+  height: var(--sp-24);
+  border-radius: var(--r-pill);
+  background: var(--ok-tint);
   color: var(--ok);
   flex: none;
-  margin-top: 2px;
+  margin-top: 0;
   display: grid;
+  place-items: center;
 }
-.ob9 .chk {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--ink-2);
+.ob-trust .chk {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-10);
+  padding: var(--sp-12) 0 0;
+  border-top: 1px solid var(--hair17);
+  font-size: var(--fs-14);
+  color: var(--ink);
 }
-.ob9 .chk input {
+.ob-trust .chk input {
+  width: var(--sp-16);
+  height: var(--sp-16);
+  margin: var(--sp-2) 0 0;
+  flex: none;
   accent-color: var(--accent);
 }
 
