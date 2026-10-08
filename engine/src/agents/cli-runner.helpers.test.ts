@@ -209,7 +209,7 @@ describe("writeCliImages", () => {
       expect(first.imagePaths).toStrictEqual([
         expect.stringMatching(
           new RegExp(
-            `^${escapeRegExp(`${resolvePreferredBranchTmpDir()}/branch-cli-images/`)}.*\\.png$`,
+            `^${escapeRegExp(path.join(resolvePreferredBranchTmpDir(), "branch-cli-images") + path.sep)}.*\\.png$`,
           ),
         ),
       ]);
