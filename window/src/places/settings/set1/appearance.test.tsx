@@ -62,14 +62,20 @@ describe("Settings › Appearance", () => {
     expect(document.querySelector(".kit-help-pop")?.textContent).toContain("Off until you turn it on.");
   });
 
-  it("shows right-click guidance once in help and uses the specified stillness copy", async () => {
+  it("shows hide guidance on hideable What’s shown rows and uses the specified stillness copy", async () => {
     const { engine } = engineOf();
     await render(engine);
-    expect(host.textContent).not.toContain("Right-click it anywhere to hide it too.");
-    expect(host.querySelector('[data-row="Keep things still"] small')?.textContent).toBe("Stops the pet, the working ring and face animations.");
+    const hide = "Right-click it anywhere to hide it too.";
+    for (const title of ["The usage ring", "The gateway in the status bar", "Graphics and memory", "Projects in the list"]) {
+      expect(host.querySelector(`[data-row="${title}"]`)?.textContent).toContain(hide);
+    }
+    for (const title of ["The pet", "What a working Trunk is doing, in the list", "The whole status bar", "Keep things still", "Scenery behind the list"]) {
+      expect(host.querySelector(`[data-row="${title}"]`)?.textContent).not.toContain(hide);
+    }
+    expect(host.querySelector('[data-row="Keep things still"] small')?.textContent).toBe("Stops the pet moving, the working ring and the logo’s float.");
     await act(async () => window.dispatchEvent(new Event("branch-settings-help")));
     const entry = [...document.querySelectorAll(".kit-help-body > div")].find((item) => item.querySelector("strong")?.textContent === "What’s shown");
-    expect(entry?.querySelector("p")?.textContent).toBe("Right-click it anywhere to hide it too.");
+    expect(entry).toBeUndefined();
     expect(document.querySelector(".kit-help-body > div > strong")?.textContent).not.toBe("Appearance");
   });
 

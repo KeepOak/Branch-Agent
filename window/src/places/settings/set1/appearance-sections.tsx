@@ -149,7 +149,7 @@ export function ReadingSec({ look }: { look: Look }) {
 }
 
 export function ShownSec({ look }: { look: Look }) {
-  return <Sec title="What’s shown" help="Right-click it anywhere to hide it too.">{rowsOf("What’s shown").map((r) => <SpecRow key={r.key} r={r} look={look} />)}</Sec>;
+  return <Sec title="What’s shown">{rowsOf("What’s shown").map((r) => <SpecRow key={r.key} r={r} look={look} />)}</Sec>;
 }
 
 const LANGS: Opt[] = [{ id: "en", label: "English" }, ...["Français", "Español", "Deutsch", "Yorùbá"].map((l) => ({ id: l, label: l, off: "Other languages come with the Branch app." }))];
