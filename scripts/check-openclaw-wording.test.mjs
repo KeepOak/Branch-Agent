@@ -96,6 +96,11 @@ test('upstream image refs pass and docs.openclaw.ai still fails', () => {
     '.option("--image <ref>", "Container image", "ghcr.io/openclaw/openclaw:1.2.3")',
   )), []);
   assert.deepEqual(checkAddedDiff(added(
+    'engine/docs/help/testing/qa-runners.md',
+    31,
+    '`ghcr.io/openclaw/openclaw-live-media-runner:ubuntu-24.04`',
+  )), []);
+  assert.deepEqual(checkAddedDiff(added(
     'engine/docs/install/docker.md',
     47,
     'Use `ghcr.io/openclaw/openclaw` or `openclaw/openclaw` and avoid unofficial mirrors.',
