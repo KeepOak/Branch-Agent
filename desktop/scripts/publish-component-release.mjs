@@ -19,9 +19,10 @@ async function compareStatus(base, head, request) {
 }
 
 /**
- * A release must be built from a commit on main and must be newer than GitHub latest. Main may advance
- * while a release builds (many lanes merge), so an older in-flight build still publishes unless a build
- * of a later main commit already did: newest wins and latest never moves backwards.
+ * A release must be built from a commit on main and must be newer than GitHub latest.
+ * compare(commit...main) is "identical" or "ahead" when commit is main or an ancestor of main,
+ * so main may move during a 10–15 minute batched build without aborting.
+ * Only a newer already-published latest (or a commit that left main) refuses publication.
  */
 async function assertPublishableMainCommit(commit, request) {
   assert(["identical", "ahead"].includes(await compareStatus(commit, "main", request)), "Release source is not a commit on main");
