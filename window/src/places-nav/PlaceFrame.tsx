@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
 import type { Level } from "./level";
 import type { PlaceId } from "./routes";
+import { useScrollMemory } from "./scroll-memory";
 
 /** What the shell hands every place (§4.6). Places add what they need; the shell keeps these working. */
 export type PlaceProps = {
@@ -23,8 +24,10 @@ export type PlaceProps = {
  *  whole area above the place column (Overview's "Finish setting up", as the preview puts it at the top of main). */
 /*  `before` sits inside the place column above the h1 (the recommendation bar on Overview and Inbox). */
 export function PlaceFrame({ title, lede, wide, children, top, before }: { title: string; lede: string; wide?: "overview" | "tools"; children?: ReactNode; top?: ReactNode; before?: ReactNode }) {
+  const scroller = useRef<HTMLDivElement>(null);
+  useScrollMemory(scroller);
   return (
-    <div className="place-scroll" data-testid="place">
+    <div className="place-scroll" data-testid="place" ref={scroller}>
       {top}
       <div className={wide ? `place wide-${wide}` : "place"}>
         {before}
