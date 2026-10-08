@@ -18,6 +18,8 @@ describe("device pairing dialog", () => {
       href: "https://docs.openclaw.ai/gateway/pairing#one-paste-node-pairing",
     },
   ])("links $access setup help to the matching workflow", ({ access, href }) => {
+    // Light DOM is enough: awaiting branch-modal-dialog updateComplete hung
+    // Windows jsdom for 120s while Web Awesome opened the dialog.
     const container = document.createElement("div");
 
     render(
