@@ -231,6 +231,44 @@ describe("chat scroll memory", () => {
     expect(restored.scrollTop).toBe(restored.scrollHeight - restored.clientHeight);
   });
 
+  it("a chat saved mid-thread restores after Back even when the scroller is short then grows", async () => {
+    push(1, chatA);
+    const first = await mount(createElement(FollowChat, { signature: "1", sent: [null] }));
+    const scroller = first.querySelector<HTMLElement>("[data-testid=thread-scroll]")!;
+    await saveScroll(scroller, 600);
+    push(2, chatB);
+    await remount(createElement(FollowChat, { signature: "1", sent: [null] }));
+    popTo(1, chatA);
+    const again = await remount(createElement(FollowChat, { signature: "1", sent: [null] }));
+    const late = again.querySelector<HTMLElement>("[data-testid=thread-scroll]")!;
+    metricsOf(late).height = 400;
+    metricsOf(late).top = 0;
+    late.dispatchEvent(new Event("scroll"));
+    await flushFrame();
+    metricsOf(late).height = 2000;
+    await waitMs(430);
+    expect(late.scrollTop).toBe(600);
+  });
+
+  it("a mounted chat restores mid-thread on popstate without remounting", async () => {
+    push(1, chatA);
+    const first = await mount(createElement(FollowChat, { signature: "1", sent: [null] }));
+    const scroller = first.querySelector<HTMLElement>("[data-testid=thread-scroll]")!;
+    await saveScroll(scroller, 600);
+    push(2, chatB);
+    await act(async () => first && root?.render(createElement(FollowChat, { signature: "1", sent: [null] })));
+    await flushFrame();
+    popTo(1, chatA);
+    await act(async () => first && root?.render(createElement(FollowChat, { signature: "1", sent: [null] })));
+    await flushFrame();
+    await waitMs(170);
+    expect(scroller.scrollTop).toBe(600);
+    await act(async () => first && root?.render(createElement(FollowChat, { signature: "2:token", sent: [null] })));
+    await flushFrame();
+    await waitMs(270);
+    expect(scroller.scrollTop).toBe(600);
+  });
+
   it("a chat saved mid-thread restores its position after Back and does not jump when a token arrives", async () => {
     push(1, chatA);
     const first = await mount(createElement(FollowChat, { signature: "1", sent: [null] }));

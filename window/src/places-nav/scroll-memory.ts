@@ -72,20 +72,25 @@ export function useScrollMemory(ref: RefObject<HTMLElement | null>, opts?: Scrol
   useLayoutEffect(() => {
     const popped = takePop();
     const timers: number[] = [];
+    const flag = atEndRef.current;
     if (popped) {
       const entry = saved.get(key);
       if (entry) {
-        const flag = atEndRef.current;
         if (flag) flag.current = entry.atEnd;
         const put = () => {
           const el = ref.current;
           // A chat left at the end keeps following; pinning the old y would fight new tokens.
-          if (!el || flag?.current) return;
+          if (!el || entry.atEnd) return;
           el.scrollTop = entry.y;
+          // Setting scrollTop can fire `scroll` and mark a still-short scroller as at the end.
+          if (flag) flag.current = entry.atEnd;
         };
         requestAnimationFrame(put);
         for (const ms of RESTORE_MS) timers.push(window.setTimeout(put, ms));
       }
+    } else if (flag) {
+      // Thread stays mounted across chats; a fresh open must follow the end again.
+      flag.current = true;
     }
     return () => {
       for (const id of timers) window.clearTimeout(id);
