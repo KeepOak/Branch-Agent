@@ -3,6 +3,8 @@
 // saves through agents.update; the small model line reads agents.defaults.utilityModel.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../../connect/engine";
+import { useEffect, useState } from "react";
+import { readTopicSettings, setDefaultTopicLayout, topicLayoutNames, type TopicLayout } from "../../../shell/topic-layout";
 import { trunkAppearance } from "../../../face/appearance";
 import { askBeforeDelete } from "../../../shell/ConfirmDelete";
 import { list, record, visible, type RecordValue } from "../adapter";
@@ -17,9 +19,10 @@ type MoreProps = { engine: WindowEngine; look: Look; trunk: Trunk; openSettings?
 
 export function AppearanceMore(p: MoreProps) {
   const level = useLevel();
-  if (level < 1) return null;
   return (
     <>
+      <TopicLayoutSec />
+      {level >= 1 ? <>
       <CharactersSec {...p} />
       <PicturesSec />
       {level >= 2 ? (
@@ -28,6 +31,7 @@ export function AppearanceMore(p: MoreProps) {
         </Sec>
       ) : null}
       <ListSec {...p} />
+      </> : null}
     </>
   );
 }
@@ -98,6 +102,20 @@ function PicturesSec() {
       </div>
     </Sec>
   );
+}
+
+function TopicLayoutSec() {
+  const [threadLayout, setThreadLayout] = useState(() => readTopicSettings().layout);
+  useEffect(() => {
+    const sync = () => setThreadLayout(readTopicSettings().layout);
+    window.addEventListener("branch:topic-layout-changed", sync);
+    const storage = (event: StorageEvent) => { if (event.key === "branch-topics-t5") sync(); };
+    window.addEventListener("storage", storage);
+    return () => { window.removeEventListener("branch:topic-layout-changed", sync); window.removeEventListener("storage", storage); };
+  }, []);
+  return <Sec title="Threads show as" group="Status bar and list"><Ctl title="Threads show as" sub="How a contact’s threads show beside its chat. A contact’s ⋯ › View can differ.">
+    <Seg label="Threads show as" value={threadLayout} options={(Object.entries(topicLayoutNames) as [TopicLayout, string][]).map(([id, label]) => ({ id, label: label === "Tabs above the chat" ? "Tabs" : label }))} onChange={(next) => { setDefaultTopicLayout(next as TopicLayout); setThreadLayout(next as TopicLayout); }} />
+  </Ctl></Sec>;
 }
 
 function ListSec({ engine, look, openSettings }: MoreProps) {
