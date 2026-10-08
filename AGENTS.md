@@ -112,6 +112,12 @@ Open PRs and their current CI status: `gh pr list --json number,title,headRefNam
 
 5. **Seamless handoff gate.** The `seamlessHandoff` flag stays off until #429 (real two-engine handoff test) is merged. After #429 lands, turn it on in its own one-line PR and test it live mid-conversation.
 
+6. **Never rebase or force-push an open PR.** Once a PR is open, never rebase or force-push it. To bring it up to date, merge main in, because any push needs a fresh review on the new head.
+
+7. **No personal paths in the repo.** Never put machine names, hostnames, personal paths, account emails, or local file paths from any bot's computer in the repo.
+
+8. **Model access for builder agents.** Builder agents (including Trunks) use the owner's subscription sign-ins for model access, never paid API keys.
+
 ### How GOD works
 
 GOD is a Claude Code session (Opus) acting as the owner's coordinator. It spends its own effort on routing, review and judgment, and leaves the hands-on work to builders.
