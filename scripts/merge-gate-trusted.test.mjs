@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import * as gate from './merge-gate-trusted.mjs';
@@ -42,6 +43,19 @@ import {
 
 function ordinaryYaml() {
   return readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+}
+
+function ordinaryCheckRunsFilter(yaml) {
+  const match = yaml.match(/--jq '(\[.check_runs\[\][^\']*)'/)
+    ?? yaml.match(/jq '(\[.check_runs\[\][^\']*)'/);
+  if (!match) throw new Error('ordinary merge-gate name filter not found');
+  return match[1];
+}
+
+function ordinaryCommentSkipFilter(yaml) {
+  const match = yaml.match(/jq --argjson paths "\$comment_paths" --arg tour '[^']+' '\s*([^']+?)\s*'/);
+  if (!match) throw new Error('ordinary merge-gate visual-tour comment filter not found');
+  return match[1];
 }
 
 const CURRENT_RUN_ID = 303;
@@ -146,10 +160,20 @@ test('regression: real 3093a8dd build pair fails the trusted gate in both orders
 });
 
 test('regression: real 3093a8dd build pair fails the actual ordinary jq filter', () => {
+  const yaml = ordinaryYaml();
+  const filter = ordinaryCheckRunsFilter(yaml);
+  const failedFilter = yaml.match(/failed=\$\(jq -r '([^']+)'/)[1];
   for (const pair of [realBuildPair, [...realBuildPair].reverse()]) {
-    const result = evaluateOrdinaryChecks(pair);
-    assert.equal(result.failed.length > 0, true);
-    assert.equal(result.failed.map((run) => `${run.name}: ${run.conclusion}`).join('\n'), 'build: failure');
+    const runs = execFileSync('jq', [filter], {
+      input: JSON.stringify({ check_runs: pair }), encoding: 'utf8', windowsHide: true,
+    });
+    const failed = execFileSync('jq', ['-r', failedFilter], {
+      input: runs, encoding: 'utf8', windowsHide: true,
+    });
+    const result = { ok: failed.trim().length === 0 };
+    assert.equal(result.ok, false);
+    assert.equal(failed.trim(), 'build: failure');
+    assert.equal(evaluateOrdinaryChecks(pair).failed.map((run) => `${run.name}: ${run.conclusion}`).join('\n'), 'build: failure');
   }
 });
 
@@ -773,6 +797,7 @@ test('regression: unresolved current claims retry, reject a resolved forgery, or
 
 test('ordinary merge gate jq preserves all checks and its polling budget', () => {
   const yaml = ordinaryYaml();
+  const filter = ordinaryCheckRunsFilter(yaml);
   const feature = passCheckRuns[1];
   for (const latest of [
     feature,
@@ -780,11 +805,16 @@ test('ordinary merge gate jq preserves all checks and its polling budget', () =>
     { ...feature, id: 110, status: 'completed', conclusion: 'failure' },
   ]) {
     const checks = [...passCheckRuns, latest, { ...feature, id: 90, conclusion: 'cancelled' }];
-    const actual = evaluateOrdinaryChecks(checks).others;
+    const actual = JSON.parse(execFileSync('jq', [filter], {
+      input: JSON.stringify({ check_runs: checks }), encoding: 'utf8', windowsHide: true,
+    }));
     assert.deepEqual(actual, [feature, analyzeCheck, latest, { ...feature, id: 90, conclusion: 'cancelled' }]);
+    assert.deepEqual(evaluateOrdinaryChecks(checks).others, actual);
   }
-  assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs/);
+  assert.match(yaml, /seq 1 64/);
+  assert.match(yaml, /if \[ "\$attempt" -lt 64 \]; then sleep 30; fi/);
   assert.doesNotMatch(yaml, /sleep 10/);
+  assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs/);
 });
 
 const visualTourWorkflow = {
@@ -857,25 +887,42 @@ test('unattributed comment is not skipped (fail closed)', () => {
 
 test('ordinary gate skips a Visual tour comment and still waits on a foreign comment', () => {
   const yaml = ordinaryYaml();
-  assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs/);
+  const skip = ordinaryCommentSkipFilter(yaml);
+  const visual = execFileSync('jq', [
+    '--argjson', 'paths', JSON.stringify({ 106: VISUAL_TOUR_WORKFLOW_PATH }),
+    '--arg', 'tour', VISUAL_TOUR_WORKFLOW_PATH,
+    skip,
+  ], {
+    input: JSON.stringify([passCheckRuns[1], pendingVisualTourComment]),
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  assert.deepEqual(JSON.parse(visual).map((run) => run.name), [passCheckRuns[1].name]);
 
-  const visual = evaluateOrdinaryChecks([passCheckRuns[1], pendingVisualTourComment], {
+  const foreign = execFileSync('jq', [
+    '--argjson', 'paths', JSON.stringify({ 107: otherCommentWorkflow.path }),
+    '--arg', 'tour', VISUAL_TOUR_WORKFLOW_PATH,
+    skip,
+  ], {
+    input: JSON.stringify([pendingForeignComment]),
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  assert.deepEqual(JSON.parse(foreign).map((run) => run.name), [COMMENT_JOB_NAME]);
+
+  const unattributed = execFileSync('jq', [
+    '--argjson', 'paths', JSON.stringify({}),
+    '--arg', 'tour', VISUAL_TOUR_WORKFLOW_PATH,
+    skip,
+  ], {
+    input: JSON.stringify([pendingVisualTourComment]),
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  assert.deepEqual(JSON.parse(unattributed).map((run) => run.id), [106]);
+  assert.equal(evaluateOrdinaryChecks([passCheckRuns[1], pendingVisualTourComment], {
     workflowsByCheckId: { 106: { path: VISUAL_TOUR_WORKFLOW_PATH } },
-  });
-  assert.deepEqual(visual.others.map((run) => run.name), [passCheckRuns[1].name]);
-  assert.equal(visual.others.some((run) => run.name === COMMENT_JOB_NAME), false);
-
-  const foreign = evaluateOrdinaryChecks([pendingForeignComment], {
-    workflowsByCheckId: { 107: { path: otherCommentWorkflow.path } },
-  });
-  assert.deepEqual(foreign.others.map((run) => run.name), [COMMENT_JOB_NAME]);
-  assert.equal(foreign.ready, false);
-
-  const unattributed = evaluateOrdinaryChecks([pendingVisualTourComment], {
-    workflowsByCheckId: {},
-  });
-  assert.deepEqual(unattributed.others.map((run) => run.id), [106]);
-  assert.equal(unattributed.ready, false);
+  }).others.some((run) => run.name === COMMENT_JOB_NAME), false);
 });
 
 test('more than 100 check-runs are all read across pages', () => {
@@ -915,6 +962,9 @@ test('more than 100 check-runs are all read across pages', () => {
   assert.equal(fetched[100].name, 'Named feature tests on ubuntu-latest (9/10)');
 
   const yaml = ordinaryYaml();
+  assert.match(yaml, /per_page=100&page=\$page/);
+  assert.match(yaml, /collected=\$\(jq '\[\.\[\]\.check_runs\[\]\] \| length'/);
+  assert.match(yaml, /if \[ "\$collected" -ge "\$total" \]; then break; fi/);
   assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs/);
 
   const ordinaryCalls = [];
@@ -961,10 +1011,12 @@ test('timeout message lists pending names and says to re-run merge-gate', () => 
   assert.match(errors.join('\n'), /re-run merge-gate, do not merge main/);
 
   const yaml = ordinaryYaml();
-  assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs/);
+  assert.match(yaml, /Timed out waiting for: \$pending_names/);
+  assert.match(yaml, /^ {10}echo "re-run merge-gate, do not merge main"$/m);
   assert.match(yaml, /timeout-minutes: 35/);
   assert.doesNotMatch(yaml, /timeout-minutes: 60/);
   assert.doesNotMatch(yaml, /wait-for-checks/);
+  assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs/);
 
   const ordinaryErrors = [];
   const ordinaryCode = pollOrdinaryGate({

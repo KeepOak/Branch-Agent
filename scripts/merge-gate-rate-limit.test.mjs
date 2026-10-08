@@ -339,7 +339,8 @@ test('ordinary merge-gate workflow runs the rate-limit waiter from a checkout', 
   assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs/);
   assert.match(yaml, /MERGE_GATE_ACTION:/);
   assert.match(yaml, /node --test scripts\/merge-gate-trusted\.test\.mjs scripts\/merge-gate-rate-limit\.test\.mjs/);
-  assert.doesNotMatch(yaml, /seq 1 64/);
+  assert.match(yaml, /^ {10}node scripts\/merge-gate-rate-limit\.mjs$/m);
+  assert.match(yaml, /^ {10}exit \$\?$/m);
   assert.doesNotMatch(yaml, /sleep 10/);
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-rate-limit.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-rate-limit.test.mjs'));
