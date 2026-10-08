@@ -1,11 +1,12 @@
-// Runs by itself under plain Node (copied out of app.asar): only Node built-ins, no other desktop modules.
+// Runs by itself under plain Node, copied out of app.asar with install-folder-holders.js beside it.
 // Waits for the desktop app to exit, swaps the staged copy in, relaunches it and waits for the new app to confirm
 // its start (it removes the journal). No confirmation in time: stop the new app by its PID, put the previous copy
 // back, remember the release as rejected and relaunch the previous app.
 import { spawn, execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { readdir, rename, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
+import { BESIDE_MARKER, besideInstallDir, createHolderDeps, installDirFor, placeAppShell, shortcutRepairScript, stableShortcutDirectory, writeBesideMarker } from "./install-folder-holders";
 
 export interface HelperPlan {
   journal: string;
@@ -54,15 +55,20 @@ function launch(plan: HelperPlan): number | undefined {
   return child.pid;
 }
 
+/** Points Start in outside the shell folder for shortcuts that already target this executable. */
+function repairWindowsShortcuts(exe: string, dataDir: string, log: (line: string) => void): void {
+  if (process.platform !== "win32" || process.env.BRANCH_DESKTOP_TEST_DIST) return;
+  const work = stableShortcutDirectory(dirname(exe), dataDir);
+  const script = shortcutRepairScript(exe, work);
+  try { execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")], { windowsHide: true, stdio: "ignore", timeout: 15_000 }); }
+  catch (error) { log(`desktop update: could not repair shortcut working directories (${String(error)})`); }
+}
+
 /** Windows caches executable icons by shortcut. Re-save only links that already target this app. */
 function refreshWindowsIcon(plan: HelperPlan, log: (line: string) => void): void {
   if (process.platform !== "win32" || process.env.BRANCH_DESKTOP_TEST_DIST) return;
-  const exe = plan.relaunch.command;
-  const quoted = exe.replaceAll("'", "''");
-  const script = `$exe='${quoted}'; $shell=New-Object -ComObject WScript.Shell; foreach($dir in @([Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'))) { if(!$dir) { continue }; $path=Join-Path $dir 'Branch Agent.lnk'; if(!(Test-Path -LiteralPath $path)) { continue }; $link=$shell.CreateShortcut($path); if($link.TargetPath -ieq $exe) { $link.IconLocation="$exe,0"; $link.Save() } }`;
+  repairWindowsShortcuts(plan.relaunch.command, dirname(plan.journal), log);
   const errors: string[] = [];
-  try { execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")], { windowsHide: true, stdio: "ignore", timeout: 15_000 }); }
-  catch (error) { errors.push(`shortcuts: ${String(error)}`); }
   try { execFileSync("ie4uinit.exe", ["-show"], { windowsHide: true, stdio: "ignore", timeout: 15_000 }); }
   catch (error) { errors.push(`cache: ${String(error)}`); }
   if (errors.length) log(`desktop icon refresh failed (${errors.join("; ")})`);
@@ -86,20 +92,35 @@ async function restoreAsarNames(folder: string): Promise<void> {
   }
 }
 
+/** Set when the in-place rename could not move the install and the new shell was placed beside it. */
+let sideBySide: { directory: string; blockers: string[] } | undefined;
+
 /** Old copy aside, new copy in. On failure the old copy is put back and the update stays staged. */
 async function swap(plan: HelperPlan, journal: Journal, previous: string, log: (line: string) => void): Promise<boolean> {
+  sideBySide = undefined;
   await rm(previous, { recursive: true, force: true });
   if (journal.kind === "runtime") await restoreAsarNames(journal.staged);
   await writeJournal(plan.journal, { ...journal, phase: "applying" });
-  try { await move(journal.target, previous); } catch (error) {
+  repairWindowsShortcuts(plan.relaunch.command, dirname(plan.journal), log);
+  const installDir = installDirFor(journal.kind, journal.target);
+  const besideDir = besideInstallDir(installDir);
+  try {
+    const placed = await placeAppShell({
+      installDir, target: journal.target, staged: journal.staged, previous, besideDir, kind: journal.kind,
+      targetRelative: journal.kind === "asar" ? relative(installDir, journal.target) : "",
+      relaunchCommand: plan.relaunch.command, excludePids: [process.pid, plan.waitPid],
+      deps: createHolderDeps(log),
+    });
+    if (placed.result === "beside") {
+      sideBySide = { directory: besideDir, blockers: placed.blockers };
+      plan.relaunch = { ...plan.relaunch, command: placed.relaunch, fallback: plan.relaunch.command };
+      try { await writeBesideMarker(dirname(plan.journal), placed.relaunch, placed.blockers); }
+      catch (error) { log(`desktop update: could not record the side-by-side install (${String(error)})`); }
+      log(`desktop update ${journal.version}: installed side by side at ${besideDir}; in-place swap blocked by ${placed.blockers.join("; ") || "a file lock"}`);
+    }
+  } catch (error) {
     await writeJournal(plan.journal, { ...journal, phase: "staged", heldUntil: Date.now() + RETRY_AFTER_MS });
     log(`desktop update ${journal.version}: the app is still in use (${String(error)}); kept staged for the next start`);
-    return false;
-  }
-  try { await move(journal.staged, journal.target); } catch (error) {
-    await move(previous, journal.target);
-    await writeJournal(plan.journal, { ...journal, phase: "staged", heldUntil: Date.now() + RETRY_AFTER_MS });
-    log(`desktop update ${journal.version}: could not place the new copy (${String(error)}); kept staged`);
     return false;
   }
   const { heldUntil: _retry, ...applied } = journal;
@@ -109,6 +130,16 @@ async function swap(plan: HelperPlan, journal: Journal, previous: string, log: (
 
 async function rollback(plan: HelperPlan, journal: Journal, previous: string, pid: number | undefined): Promise<void> {
   if (pid !== undefined) await stop(pid);
+  if (sideBySide) {
+    const note = sideBySide.blockers.join("; ") || "a file lock";
+    const directory = sideBySide.directory;
+    sideBySide = undefined;
+    await rm(directory, { recursive: true, force: true });
+    await rm(join(dirname(plan.journal), BESIDE_MARKER), { force: true });
+    await writeJournal(plan.journal, { ...journal, phase: "staged", heldUntil: Date.now() + RETRY_AFTER_MS });
+    try { appendFileSync(plan.log, `${new Date().toISOString()} desktop update ${journal.version}: side-by-side install did not confirm (${note}); the current install was left in place\n`); } catch { /* a log failure must not skip the relaunch */ }
+    return;
+  }
   await move(journal.target, `${journal.staged}-failed`);
   await move(previous, journal.target);
   await writeFile(plan.rejectedFile, JSON.stringify({ version: journal.version, sha256: journal.sha256 }));

@@ -8,6 +8,7 @@ import { join } from "node:path";
 import type { DesktopConfig } from "./config";
 import { prepareNormalProfile, readPreparedNormalProfile } from "./profile-migration";
 import { recordEngine } from "./engine-records";
+import { nodeOutsideSwappedFolder } from "./install-folder-holders";
 import { HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
 
 export function readToken(cfg: DesktopConfig): string {
@@ -90,7 +91,9 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
     ...testProfile(),
   };
   const args = ["branch.mjs", "gateway", ...(profile.legacyDevMode ? ["--dev"] : []), "--port", String(port)];
-  const child = spawn(cfg.nodePath, args, {
+  // resources/node/node.exe lives in the shell folder the updater renames. Run a copy from the data folder.
+  const nodePath = nodeOutsideSwappedFolder(cfg.nodePath, cfg.dataDir);
+  const child = spawn(nodePath, args, {
     cwd: engineDir,
     env,
     windowsHide: true,
@@ -98,7 +101,7 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
     stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
   // Record the spawn before querying its start time, so a crash cannot lose the engine.
-  recordEngine(cfg.dataDir, child, port, standby ? "standby" : "engine", cfg.nodePath);
+  recordEngine(cfg.dataDir, child, port, standby ? "standby" : "engine", nodePath);
   child.stdout?.pipe(log);
   child.stderr?.pipe(log);
   if (!standby && child.pid !== undefined) {

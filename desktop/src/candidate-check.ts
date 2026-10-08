@@ -8,6 +8,7 @@ import { join } from "node:path";
 import type { DesktopConfig } from "./config";
 import { freeLoopbackPort, setEnginePriority, stopGateway, waitForReady } from "./gateway";
 import { recordEngine } from "./engine-records";
+import { nodeOutsideSwappedFolder } from "./install-folder-holders";
 
 export type CandidateResult = "ready" | "exited" | "slow";
 
@@ -23,7 +24,8 @@ function startCandidate(cfg: DesktopConfig, engineDir: string, token: string, po
   const env = { ...process.env, BRANCH_PROFILE: "dev", BRANCH_HOME: join(root, "home"), BRANCH_SKIP_CHANNELS: "1",
     BRANCH_GATEWAY_PORT: String(port), BRANCH_GATEWAY_TOKEN: token,
     USERPROFILE: profile, HOME: profile, LOCALAPPDATA: join(profile, "AppData", "Local"), APPDATA: join(profile, "AppData", "Roaming") };
-  return spawn(cfg.nodePath, ["branch.mjs", "gateway", "--dev", "--port", String(port)], {
+  const nodePath = nodeOutsideSwappedFolder(cfg.nodePath, cfg.dataDir);
+  return spawn(nodePath, ["branch.mjs", "gateway", "--dev", "--port", String(port)], {
     cwd: engineDir, env, windowsHide: true, detached: process.platform !== "win32", stdio: ["ignore", "ignore", "ignore", "ipc"],
   });
 }
@@ -32,7 +34,7 @@ function startCandidate(cfg: DesktopConfig, engineDir: string, token: string, po
 export async function checkCandidateBeside(cfg: DesktopConfig, engineDir: string, token: string, timeoutMs: number): Promise<CandidateResult> {
   const port = await freeLoopbackPort();
   const child = startCandidate(cfg, engineDir, token, port);
-  recordEngine(cfg.dataDir, child, port, "candidate", cfg.nodePath);
+  recordEngine(cfg.dataDir, child, port, "candidate", nodeOutsideSwappedFolder(cfg.nodePath, cfg.dataDir));
   setEnginePriority(child, true);
   running = child;
   try {
