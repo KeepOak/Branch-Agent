@@ -10,6 +10,7 @@ import { formatDuration, shortReason, stepLabel, stepsSummary } from "./format";
 import { Icon, ICONS } from "./icons";
 import { Markdown } from "./markdown";
 import { fullOutput, type Block } from "./model";
+import { readTextToolCall, stepFromTextToolCall } from "./text-tool-call";
 import { withMentions } from "../rooms/RoomMessage";
 
 type Of<K extends Block["kind"]> = Extract<Block, { kind: K }>;
@@ -73,13 +74,21 @@ export function NotSent({ text, reason, onRetry, onDiscard }: { text: string; re
 
 /** A Trunk's reply. `face` is the gutter character, shown only on the first block of a run (§4.2.2 gutter rule). */
 export function Reply({ block, face, from, working, children }: { block: Of<"text">; face?: ReactNode; from?: string; working?: boolean; children?: ReactNode }) {
+  const call = readTextToolCall(block.text);
+  const step = call ? stepFromTextToolCall(call, block.key) : null;
   return (
     <div className={`msg reply${block.meta?.excluded ? " left-out" : ""}`} data-entry={block.meta?.entryId}>
       {children}
       <span className="gutter">{face ? <span className={working ? "gutter-face working-ring" : "gutter-face"}>{face}</span> : null}</span>
       <div className="reply-text" data-testid="message" data-role="assistant">
         {from ? <div className="reply-from">{from}</div> : null}
-        {block.text ? <Markdown text={block.text} /> : null}
+        {step ? (
+          <ol className="step-list">
+            <StepRow step={step} />
+          </ol>
+        ) : block.text ? (
+          <Markdown text={block.text} />
+        ) : null}
         {block.attachments?.length ? <Attachments items={block.attachments} /> : null}
       </div>
     </div>

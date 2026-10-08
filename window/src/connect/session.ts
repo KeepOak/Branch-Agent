@@ -9,6 +9,7 @@ import { storedOperatorToken } from "./device-token-store";
 import { withOwner } from "./agent-owner";
 import { projectRun, type Approval, type Block } from "../thread/model";
 import { historyToBlocks, markStopped, readApprovalRecords } from "../thread/history";
+import { sanitizeBlocks } from "../thread/tool-output-display";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "./preparation-status";
 import { addNotSent, healNotSent } from "../composer/queue";
 import { droppedFiles, engineKeyOf, heldRuns, UnconfirmedSends } from "./unconfirmed";
@@ -244,6 +245,14 @@ export class SaplingSession {
   /** Any engine method, for the parts of the window that call the engine themselves. */
   request<T = unknown>(method: string, params?: unknown): Promise<T> {
     return this.gateway.request<T>(method, params);
+  }
+
+  requestScopeUpgrade(options?: { onPending?: (requestId: string) => void }) {
+    return this.gateway.requestScopeUpgrade(options);
+  }
+
+  cancelScopeUpgrade(): void {
+    this.gateway.cancelScopeUpgrade();
   }
 
   /** Every event the engine pushes, raw (`event`, `payload`). */
@@ -580,7 +589,7 @@ export class SaplingSession {
     if (this.liveRefreshTimer) clearTimeout(this.liveRefreshTimer);
     this.liveRefreshTimer = null;
     const runId = this.snapshot.liveRunId;
-    this.set({ live: runId ? withWaitingApprovals(projectRun(this.runs.events(runId), this.approvals), this.approvals, runId) : [] });
+    this.set({ live: runId ? withWaitingApprovals(sanitizeBlocks(projectRun(this.runs.events(runId), this.approvals)), this.approvals, runId) : [] });
   }
 
   private scheduleLiveRefresh(): void {
@@ -828,6 +837,8 @@ function buildEngine(session: SaplingSession, sessionKey: string | null, hello: 
     send: (text) => session.send(text),
     rewound: (entryId) => session.rewound(entryId),
     scopes: hello ? [...hello.auth.scopes] : [],
+    requestScopeUpgrade: (options) => session.requestScopeUpgrade(options),
+    cancelScopeUpgrade: () => session.cancelScopeUpgrade(),
     ...(attachments ? { attachmentPolicy: { maxBytes: attachments.maxBytes, maxImageBytes: attachments.maxImageBytes } } : {}),
   };
 }

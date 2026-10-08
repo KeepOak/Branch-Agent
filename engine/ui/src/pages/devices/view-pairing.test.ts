@@ -1,7 +1,11 @@
 /* @vitest-environment jsdom */
 import { render } from "lit";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderDevicePairSetup } from "./view-pairing.runtime.ts";
+
+afterEach(() => {
+  document.body.replaceChildren();
+});
 
 describe("device pairing dialog", () => {
   it.each([
@@ -14,6 +18,8 @@ describe("device pairing dialog", () => {
       href: "https://docs.openclaw.ai/gateway/pairing#one-paste-node-pairing",
     },
   ])("links $access setup help to the matching workflow", ({ access, href }) => {
+    // Light DOM is enough: awaiting branch-modal-dialog updateComplete hung
+    // Windows jsdom for 120s while Web Awesome opened the dialog.
     const container = document.createElement("div");
 
     render(
@@ -42,7 +48,6 @@ describe("device pairing dialog", () => {
 
   it("renders the node one-paste command and quiet expiry countdown", () => {
     const container = document.createElement("div");
-    document.body.append(container);
 
     render(
       renderDevicePairSetup({
@@ -72,9 +77,11 @@ describe("device pairing dialog", () => {
     );
 
     expect(container.querySelectorAll('input[name="device-pair-access"]')).toHaveLength(3);
-    expect(container.querySelector(".device-pair-setup__command code")?.textContent).toBe(
-      'branch node run --pair "oc-pair://AbC_123"',
-    );
+    const commandText = container.querySelector(".device-pair-setup__command code")?.textContent;
+    expect(commandText).toBe("branch node run --pair -");
+    expect(commandText).not.toContain("AbC_123");
+    expect(container.textContent).toContain("oc-pair://AbC_123");
+    expect(container.textContent).toContain("When prompted, paste this setup code:");
     expect(container.querySelector('[role="timer"]')?.textContent?.trim()).toBe(
       "This setup link expires in 1:00.",
     );

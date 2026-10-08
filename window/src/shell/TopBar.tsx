@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { Pebble } from "../face/Pebble";
-import type { AgentState } from "../face/agentState";
+import { STATE_LABEL, type AgentState } from "../face/agentState";
 import { useTrunkAppearance } from "../face/appearance";
 import { Icon } from "./icons";
 import { syncTitleBar } from "../connect/title-bar";
@@ -50,7 +50,9 @@ export function stateWords(h: Pick<HeaderInfo, "state" | "paused" | "isDefaultTr
   if (h.room) return h.room.line;
   if (h.paused) return "Paused · won’t start anything new";
   if (h.state === "wait") return "Waiting for you";
-  if (["think", "work", "search", "read"].includes(h.state)) return "Working · using the computer";
+  // The face state does not distinguish screen control from other tools.
+  // Use the preview's state label rather than imply control of the computer.
+  if (["think", "work", "search", "read"].includes(h.state)) return STATE_LABEL[h.state];
   const role = h.role || (h.isDefaultTrunk ? "Your Trunk on this computer" : h.trunkName);
   return `${role} · ready`;
 }
