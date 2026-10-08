@@ -122,7 +122,7 @@ async function packageDesktop(scratch, output, identity) {
     nodePath: join(resources, "node", identity.platform === "win32" ? "node.exe" : "node") };
 }
 
-/** CI starts the native build before the shared renderer exists; packaging waits for its ready file. */
+/** CI waits for the shared renderer artifact, then packaging waits for its ready file. */
 async function waitForSharedWindow() {
   const ready = process.env.BRANCH_RELEASE_WINDOW_READY;
   if (!ready) return;
