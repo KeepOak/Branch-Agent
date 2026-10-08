@@ -5,7 +5,12 @@ import {
   createBundleMcpTempHarness,
   createBundleProbePlugin,
 } from "../../plugins/bundle-mcp.test-support.js";
-import { captureEnv, setTestEnvValue, withEnvAsync } from "../../test-utils/env.js";
+import {
+  captureEnv,
+  createPathResolutionEnv,
+  setTestEnvValue,
+  withEnvAsync,
+} from "../../test-utils/env.js";
 import { disposeAllSessionMcpRuntimes } from "../agent-bundle-mcp-manager-api.js";
 import { resolveConversationCapabilityProfile } from "../conversation-capability-profile.js";
 import { prepareCliBundleMcpConfig } from "./bundle-mcp.js";
@@ -168,8 +173,8 @@ export async function prepareBundleProbeCliConfig(params?: {
   additionalConfig?: Parameters<typeof prepareCliBundleMcpConfig>[0]["additionalConfig"];
   env?: Parameters<typeof prepareCliBundleMcpConfig>[0]["env"];
 }) {
-  // Bundle discovery reads HOME for per-user plugin roots.
-  return await withEnvAsync({ HOME: bundleProbeHomeDir }, async () => {
+  // Bundle discovery reads HOME / USERPROFILE for per-user plugin roots.
+  return await withEnvAsync(createPathResolutionEnv(bundleProbeHomeDir), async () => {
     return await prepareCliBundleMcpConfig({
       enabled: true,
       mode: "claude-config-file",

@@ -1,5 +1,6 @@
 // From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/agents/cli-runner/bundle-mcp.test.ts (atlas MODELS-ACCOUNTS-0032). Changed for Branch: retain exact sorted MCP names after repository rebranding.
 /** Tests Claude-style bundle-MCP config-file overlays for CLI backends. */
+import { realpathSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -10,7 +11,7 @@ import {
   writeClaudeBundleManifest,
 } from "../../plugins/bundle-mcp.test-support.js";
 import { clearPluginMetadataLifecycleCaches } from "../../plugins/plugin-metadata-lifecycle.js";
-import { withEnvAsync } from "../../test-utils/env.js";
+import { createPathResolutionEnv, withEnvAsync } from "../../test-utils/env.js";
 import { prepareCliBundleMcpCaptureAttempt, prepareCliBundleMcpConfig } from "./bundle-mcp.js";
 import {
   cliBundleMcpHarness,
@@ -22,6 +23,21 @@ import {
 } from "./bundle-mcp.test-support.js";
 
 setupCliBundleMcpTestHarness();
+
+function canonicalizeExistingPath(target: string): string {
+  try {
+    return realpathSync.native(target);
+  } catch {
+    return path.normalize(target);
+  }
+}
+
+function expectResolvedPath(actual: string | undefined, expected: string): void {
+  expect(actual).toEqual(expect.any(String));
+  expect(canonicalizeExistingPath(actual!).toLowerCase()).toBe(
+    canonicalizeExistingPath(expected).toLowerCase(),
+  );
+}
 
 type CliMcpParams = Parameters<typeof prepareCliBundleMcpConfig>[0];
 
@@ -117,7 +133,7 @@ describe("prepareCliBundleMcpConfig", () => {
     clearPluginMetadataLifecycleCaches();
 
     const prepared = await withEnvAsync(
-      { HOME: cliBundleMcpHarness.bundleProbeHomeDir },
+      createPathResolutionEnv(cliBundleMcpHarness.bundleProbeHomeDir),
       async () =>
         await prepareCliBundleMcpConfig({
           enabled: true,
@@ -560,7 +576,7 @@ describe("prepareCliBundleMcpConfig", () => {
     const raw = JSON.parse(await fs.readFile(generatedConfigPath, "utf-8")) as {
       mcpServers?: Record<string, { args?: string[] }>;
     };
-    expect(raw.mcpServers?.workspaceProbe?.args).toEqual([await fs.realpath(serverPath)]);
+    expectResolvedPath(raw.mcpServers?.workspaceProbe?.args?.[0], await fs.realpath(serverPath));
 
     await prepared.cleanup?.();
   });
@@ -601,9 +617,10 @@ describe("prepareCliBundleMcpConfig", () => {
       >;
     };
     expect(prepared.backend.args).toContain("--strict-mcp-config");
-    expect(raw.mcpServers?.bundleProbe?.args).toEqual([
+    expectResolvedPath(
+      raw.mcpServers?.bundleProbe?.args?.[0],
       await fs.realpath(cliBundleMcpHarness.bundleProbeServerPath),
-    ]);
+    );
     expect(prepared.mcpConfigHash).toMatch(/^[0-9a-f]{64}$/);
     expect(prepared.mcpResumeHash).toMatch(/^[0-9a-f]{64}$/);
     expect(Object.keys(raw.mcpServers ?? {}).toSorted()).toEqual(["branch", "bundleProbe"]);

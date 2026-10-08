@@ -41,6 +41,28 @@ function firstMockCall(mock: MockWithCalls, label: string): unknown[] {
   return call;
 }
 
+function canonicalizeTempPath(target: string): string {
+  let current = path.resolve(target);
+  const missing: string[] = [];
+  while (!existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return path.resolve(target);
+    }
+    missing.unshift(path.basename(current));
+    current = parent;
+  }
+  const real = realpathSync.native(current);
+  return missing.length > 0 ? path.join(real, ...missing) : real;
+}
+
+function expectPathPrefixed(full: string | undefined, prefix: string): void {
+  expect(full).toEqual(expect.any(String));
+  expect(canonicalizeTempPath(full!).toLowerCase().startsWith(canonicalizeTempPath(prefix).toLowerCase())).toBe(
+    true,
+  );
+}
+
 describe("transcodeAudioBufferToOpus", () => {
   afterEach(() => {
     runFfmpegMock.mockReset();
@@ -99,7 +121,7 @@ describe("transcodeAudioBufferToOpus", () => {
       { timeoutMs: 1234 },
     ]);
     const tempRoot = realpathSync(resolvePreferredBranchTmpDir());
-    expect(capturedInputPath?.startsWith(path.join(tempRoot, "tts-test-"))).toBe(true);
+    expectPathPrefixed(capturedInputPath, path.join(tempRoot, "tts-test-"));
     expect(capturedInputPath ? existsSync(capturedInputPath) : true).toBe(false);
     expect(capturedOutputPath ? existsSync(capturedOutputPath) : true).toBe(false);
   });
@@ -167,7 +189,7 @@ describe("transcodeAudioBufferToOpus", () => {
     });
 
     const tempRoot = realpathSync(resolvePreferredBranchTmpDir());
-    expect(capturedInputPath?.startsWith(tempRoot)).toBe(true);
+    expectPathPrefixed(capturedInputPath, tempRoot);
     expect(capturedOutputPath ? existsSync(capturedOutputPath) : true).toBe(false);
   });
 
