@@ -14,6 +14,7 @@ import { checkMergeCommands, docsToCheck } from './check-merge-command.mjs';
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const TRUSTED_JOB = 'merge-gate-trusted';
 export const TRUSTED_WORKFLOW_PATH = '.github/workflows/merge-gate-trusted.yml';
+export const HANDOFF_WORKFLOW_PATH = '.github/workflows/engine-handoff-checks.yml';
 export const TRUSTED_CHECKOUT_REF = '${{ github.event.repository.default_branch }}';
 export const REQUIRED_JOBS = ['merge-gate', 'Analyze (actions)'];
 export const PASS_CONCLUSIONS = new Set(['success', 'skipped', 'neutral']);
@@ -158,6 +159,12 @@ export function workflowAppliesToChanges(changedFiles, pullRequestPaths) {
     pullRequestPaths.some((pattern) => pathFilterMatches(file, pattern)));
 }
 
+export function isPassingHandoffE2e(run) {
+  return run.status === 'completed'
+    && run.conclusion === 'success'
+    && /^Real-engine handoff /.test(run.name);
+}
+
 export function parsePullRequestTrigger(yaml) {
   const lines = yaml.split(/\r?\n/);
   let inOn = false;
@@ -280,8 +287,11 @@ export function missingCoreWorkflows({
       && checkRuns.some((run) => run.name === 'merge-gate')) {
       continue;
     }
-    const ran = checkRuns.some((run) => lookupWorkflow(workflowsByCheckId, run.id)?.path === workflow.path);
-    if (!ran) missing.push(`${workflow.path} (path filter matched, no check run)`);
+    const runs = checkRuns.filter((run) => lookupWorkflow(workflowsByCheckId, run.id)?.path === workflow.path);
+    if (!runs.length) missing.push(`${workflow.path} (path filter matched, no check run)`);
+    else if (workflow.path === HANDOFF_WORKFLOW_PATH && !runs.some(isPassingHandoffE2e)) {
+      missing.push(`${workflow.path} (hand-over paths changed, no passing real-engine handoff run)`);
+    }
   }
 
   return missing;
@@ -383,9 +393,9 @@ export function parseNamedTestList(text, source = 'scripts/feature-batch-ci-name
   return files;
 }
 
-export function coverageFromPrFiles(files, desktopWorkflow, extraNamed = []) {
+export function coverageFromPrFiles(files, desktopWorkflow, extraNamed = [], handoffWorkflow = '', handoffConfig = '') {
   const changed = changedTestPaths(nameStatusFromPrFiles(files));
-  const covered = coverageTargets(desktopWorkflow);
+  const covered = coverageTargets(desktopWorkflow, handoffWorkflow, handoffConfig);
   for (const entry of extraNamed) covered.add(`${entry.lane}/${entry.file}`);
   const uncovered = uncoveredTests(changed, covered);
   return { changed, uncovered };
@@ -516,7 +526,9 @@ export function fetchNamedTestLists(repo, sha, token) {
 
 function runCoverage(files, extraNamed) {
   const workflow = readFileSync(path.join(root, '.github/workflows/desktop-checks.yml'), 'utf8');
-  const { changed, uncovered } = coverageFromPrFiles(files, workflow, extraNamed);
+  const handoffWorkflow = readFileSync(path.join(root, HANDOFF_WORKFLOW_PATH), 'utf8');
+  const handoffConfig = readFileSync(path.join(root, 'engine/test/vitest/vitest.desktop-handoff.config.ts'), 'utf8');
+  const { changed, uncovered } = coverageFromPrFiles(files, workflow, extraNamed, handoffWorkflow, handoffConfig);
   if (uncovered.length) {
     for (const file of uncovered) {
       console.error(`Uncovered changed test: ${file}\n  Add: ${additionFor(file)}`);
