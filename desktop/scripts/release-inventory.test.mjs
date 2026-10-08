@@ -24,7 +24,7 @@ async function fixture(body) {
     await mkdir(asar); await mkdir(join(app, "resources"), { recursive: true });
     await writeFile(join(asar, "app.asar"), "offline fixture asar");
     await writeFile(join(app, "Branch Agent.exe"), "offline fixture app"); await writeFile(join(app, "resources/app.asar"), "offline fixture asar");
-    const macApp = join(app, "Branch Agent.app", "Contents");
+    const macApp = join(app, "Branch.app", "Contents");
     await mkdir(join(macApp, "Resources"), { recursive: true });
     await mkdir(join(macApp, "MacOS"), { recursive: true });
     await writeFile(join(macApp, "Resources/app.asar"), "offline fixture asar");

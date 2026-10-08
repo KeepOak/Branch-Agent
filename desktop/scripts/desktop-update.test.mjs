@@ -38,14 +38,14 @@ async function fixture(run, { runtime = false, iconRuntime = false, macBundle = 
   await writeFile(join(cfg.windowDir, "index.html"), "old window"); await writeFile(join(dataDir, "engine-current.txt"), cfg.engineDir + "\n");
   await writeFile(join(installed, "Branch Agent.exe"), "old runtime"); await writeFile(join(installed, "resources/app.asar"), "old desktop asar");
   if (macBundle || process.platform === "darwin" && (runtime || iconRuntime)) {
-    for (const bundle of [join(app, "Branch Agent.app"), join(installed, "Branch Agent.app")]) {
+    for (const bundle of [join(app, "Branch.app"), join(installed, "Branch.app")]) {
       await mkdir(join(bundle, "Contents/MacOS"), { recursive: true });
       await mkdir(join(bundle, "Contents/Resources"), { recursive: true });
     }
-    await writeFile(join(app, "Branch Agent.app/Contents/MacOS/Branch Agent"), "new runtime");
-    await writeFile(join(app, "Branch Agent.app/Contents/Resources/app.asar"), "new desktop asar");
-    await writeFile(join(installed, "Branch Agent.app/Contents/MacOS/Branch Agent"), "old runtime");
-    await writeFile(join(installed, "Branch Agent.app/Contents/Resources/app.asar"), "old desktop asar");
+    await writeFile(join(app, "Branch.app/Contents/MacOS/Branch Agent"), "new runtime");
+    await writeFile(join(app, "Branch.app/Contents/Resources/app.asar"), "new desktop asar");
+    await writeFile(join(installed, "Branch.app/Contents/MacOS/Branch Agent"), "old runtime");
+    await writeFile(join(installed, "Branch.app/Contents/Resources/app.asar"), "old desktop asar");
   }
   const desktop = { app: asar, electronVersion: runtime ? "45.0.0" : ELECTRON, ...(runtime || iconRuntime || macBundle ? { runtime: app } : {}) };
   const release = await makeComponentRelease({ version: "0.4.5", tag: "v0.4.5", engine, window, desktop, output: join(root, "release") });
@@ -59,7 +59,7 @@ async function fixture(run, { runtime = false, iconRuntime = false, macBundle = 
     const response = await fetch(`http://127.0.0.1:${server.address().port}/${new URL(url).pathname.split("/").at(-1)}`, options);
     return new Response(response.body, { status: response.status, headers: response.headers });
   };
-  const installedApp = macBundle ? join(installed, "Branch Agent.app") : installed;
+  const installedApp = macBundle ? join(installed, "Branch.app") : installed;
   const install = { appDir: installedApp, resourcesDir: join(installedApp, macBundle ? "Contents/Resources" : "resources"),
     executable: join(installedApp, macBundle ? "Contents/MacOS/Branch Agent" : "Branch Agent.exe"),
     electronVersion: ELECTRON, nodePath: process.execPath };
