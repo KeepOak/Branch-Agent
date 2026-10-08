@@ -917,6 +917,15 @@ async function start(): Promise<void> {
   ipcMain.on("branch-desktop:dismiss-update-notice", e => {
     if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) updateNotice = undefined;
   });
+  ipcMain.on("branch-desktop:update-notice", (e, event: unknown, notice: unknown) => {
+    if (!isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) return;
+    if (event !== "shown" && event !== "dismissed" && event !== "expired" && event !== "undo") return;
+    const rec = notice && typeof notice === "object" ? notice as { version?: unknown; canUndo?: unknown } : {};
+    const version = typeof rec.version === "string" ? rec.version : "";
+    if (event === "shown") log(`update notice shown version=${version} canUndo=${rec.canUndo === true}`);
+    else log(`update notice ${event}`);
+    if (event === "dismissed" || event === "expired") updateNotice = undefined;
+  });
   ipcMain.on("branch-desktop:undo-update", e => {
     if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) void undoLastUpdate();
   });
