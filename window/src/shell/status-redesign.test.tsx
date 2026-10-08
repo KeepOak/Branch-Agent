@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
+import { BRANCH_VERSION_TIP } from "../connect/branch-version";
 import { StatusBar, type StatusItem } from "./StatusBar";
 import { GatewayPopover, RunningPopover, UsagePopover, VersionPopover } from "./StatusPopovers";
 import { machineMenuItems } from "./MachineMenu";
@@ -40,7 +41,8 @@ it("status glyphs open all six popovers from live facts", async () => {
   expect(host.querySelector("[data-testid=sb-connection]")?.getAttribute("aria-label")).toBe("Studio Mac · Online");
   expect(host.querySelector("[data-testid=sb-room]")?.getAttribute("aria-label")).toBe("Context left · 86%");
   expect(host.querySelector("[data-testid=sb-running]")?.getAttribute("aria-label")).toBe("3 running");
-  expect(host.querySelector("[data-testid=sb-version]")?.getAttribute("title")).toBe("Branch 0.19.5 · 0.20.0 ready");
+  expect(host.querySelector("[data-testid=sb-version]")?.textContent).toContain("Branch 0.19.5");
+  expect(host.querySelector("[data-testid=sb-version]")?.getAttribute("title")).toBe(BRANCH_VERSION_TIP);
   expect(host.querySelector("[data-testid=sb-usage]")?.getAttribute("aria-label")).toContain("ChatGPT · Account 1 · 77% left");
 });
 

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useDesktopComponentStatus } from "./desktop-component-updates";
 
 const BRANCH_VERSION = /^\d+\.\d+\.\d+(?:-build-[a-zA-Z0-9]+)?$/;
+/** Preview T0 (`versionT5`): tip on the status-bar version. */
+export const BRANCH_VERSION_TIP = "Branch’s own version. Updates apply in place.";
 
 /** The shipped window stamp is written by the component release, not by the engine. */
 export function useBranchVersion(gatewayUrl?: string): string {

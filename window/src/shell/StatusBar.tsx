@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import type { RingReading } from "./status-data";
-import { branchVersionDetail, branchVersionLabel } from "../connect/branch-version";
+import { BRANCH_VERSION_TIP, branchVersionDetail, branchVersionLabel } from "../connect/branch-version";
+import { useDesktopAppliedUpdateNotice } from "../connect/desktop-component-updates";
 
 export type ConnectionPhase = "connected" | "connecting" | "offline";
 /** The gateway's own state (§4.9.1 item 2): its dot is green only while its health check answers. */
@@ -80,6 +81,7 @@ function GatewayStatus(p: Pick<Props, "gateway" | "open" | "onItem">) {
 
 /** The status bar (DESIGN-SPEC §4.9.1): connection, gateway, room left, running, then the usage ring and version. */
 export function StatusBar(p: Props) {
+  useDesktopAppliedUpdateNotice();
   const [usageExpanded, setUsageExpanded] = useState(true);
   const usageRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -123,8 +125,9 @@ export function StatusBar(p: Props) {
         </button>
       )}
       {p.version ? (
-        <button type="button" className="sb status-symbol" title={`${branchVersionLabel(p.version)}${p.readyVersion ? ` · ${branchVersionDetail(p.readyVersion)} ready` : ""}${p.version.includes("-build-") ? ` · ${branchVersionDetail(p.version)}` : ""}`} aria-label={`${branchVersionLabel(p.version)}${p.readyVersion ? ` · ${branchVersionDetail(p.readyVersion)} ready` : ""}`} data-testid="sb-version" {...item("version")}>
+        <button type="button" className="sb status-symbol" title={BRANCH_VERSION_TIP} aria-label={`${branchVersionLabel(p.version)}${p.readyVersion ? ` · ${branchVersionDetail(p.readyVersion)} ready` : ""}`} data-testid="sb-version" {...item("version")}>
           <StatusGlyph kind="update" />
+          <span className="status-label">{branchVersionLabel(p.version)}</span>
         </button>
       ) : null}
     </footer>

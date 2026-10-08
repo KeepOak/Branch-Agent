@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getToasts, notify, subscribeToasts } from "../shell/notify";
 import type { WindowEngine } from "./engine";
 
 export type ComponentUpdateStatus = {
@@ -11,8 +12,16 @@ export type ComponentUpdates = {
   check(): Promise<ComponentUpdateStatus>;
   stage(): Promise<ComponentUpdateStatus>;
 };
+export type AppliedUpdateNotice = { version: string; canUndo: boolean; expiresAt: number };
+export type UpdateNoticeEvent = "shown" | "dismissed" | "expired" | "undo";
+/** Preview T0 (`updT5` in design/spec-v23/index.html): a normal toast after an in-place update. */
+export const UPDATED_IN_PLACE = "Updated in place. Nothing restarted.";
+/** Preview T0 (`updT5`): wait this long and try again while setup (`.ob-main, .ob9`) is on screen. */
+export const UPDATE_TOAST_SETUP_WAIT_MS = 5000;
 type Desktop = { gatewayUrl?: string; getGatewayUrl?: () => string; componentUpdates?: ComponentUpdates; unavailableReason?: string;
-  onAutoApplyProbe?: (listener: () => Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean }>) => () => void };
+  onAutoApplyProbe?: (listener: () => Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean }>) => () => void;
+  onUpdateApplied?: (listener: (notice: AppliedUpdateNotice) => void) => () => void;
+  reportUpdateNotice?: (event: UpdateNoticeEvent, notice: AppliedUpdateNotice) => void };
 /** An older Branch Agent app has no Check now bridge, but it still checks every hour and stages updates itself. */
 export const MANUAL_UPDATE_UNSUPPORTED = "Update the Branch app to check by hand.";
 export const DESKTOP_CHECKS_HOURLY = "Branch checks for updates every 10 minutes and lets you know when one is ready to apply.";
@@ -64,4 +73,45 @@ export function useDesktopComponentStatus(gatewayUrl?: string): {
     return () => { live = false; clearInterval(timer); };
   }, [bridge]);
   return { status, error, setStatus: value => { setStatus(value); setError(value.error); } };
+}
+
+function desktopBridge(): Desktop | undefined {
+  return (window as unknown as { branchDesktop?: Desktop }).branchDesktop;
+}
+
+function reportUpdateNotice(event: UpdateNoticeEvent, notice: AppliedUpdateNotice): void {
+  desktopBridge()?.reportUpdateNotice?.(event, notice);
+}
+
+/** Preview T0: `if (document.querySelector('.ob-main, .ob9')) return setTimeout(updT5, 5000)`. */
+export function setupBlocksUpdateToast(root: ParentNode = document): boolean {
+  return Boolean(root.querySelector(".ob-main, .ob9"));
+}
+
+/** Show the preview in-place toast through `notify`, after setup closes, and log shown/dismissed. */
+export function showAppliedUpdateToast(notice: AppliedUpdateNotice): void {
+  if (!notice.version) return;
+  const show = () => {
+    if (notice.expiresAt <= Date.now()) {
+      reportUpdateNotice("expired", notice);
+      return;
+    }
+    if (setupBlocksUpdateToast()) {
+      window.setTimeout(show, UPDATE_TOAST_SETUP_WAIT_MS);
+      return;
+    }
+    const id = notify(UPDATED_IN_PLACE);
+    reportUpdateNotice("shown", notice);
+    const unsub = subscribeToasts(() => {
+      if (getToasts().some((toast) => toast.id === id)) return;
+      unsub();
+      reportUpdateNotice("dismissed", notice);
+    });
+  };
+  show();
+}
+
+/** The desktop preload forwards `branch-desktop:update-applied` here instead of injecting its own notice. */
+export function useDesktopAppliedUpdateNotice(): void {
+  useEffect(() => desktopBridge()?.onUpdateApplied?.(showAppliedUpdateToast), []);
 }
