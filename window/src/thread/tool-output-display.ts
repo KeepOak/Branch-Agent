@@ -167,7 +167,7 @@ export function displayToolInput(tool: string, input: string | undefined): strin
 }
 
 /** One step with display-safe output, detail and input. Always replaces or clears fullOutput. */
-export function sanitizeStepDisplay(step: Step): Step {
+export function sanitizeStepDisplay(step: Step, options?: { wholeOutput?: boolean }): Step {
   const key = step.outputKey ?? step.key;
   const stored = fullOutput(key);
   const source = stored ?? step.output ?? "";
@@ -176,11 +176,12 @@ export function sanitizeStepDisplay(step: Step): Step {
     ? step.detail
     : displayToolOutput({ tool: step.tool, text: stored ?? step.detail, title: step.title });
   const input = displayToolInput(step.tool, step.input);
-  const output = keepOutput(key, shown);
+  keepOutput(key, shown);
+  const output = options?.wholeOutput ? shown : keepOutput(key, shown);
   return { ...step, output: output || undefined, detail, input };
 }
 
 /** History and live blocks: only steps change. */
-export function sanitizeBlocks(blocks: readonly Block[]): Block[] {
-  return blocks.map((block) => (block.kind === "step" ? sanitizeStepDisplay(block) : block));
+export function sanitizeBlocks(blocks: readonly Block[], options?: { wholeOutput?: boolean }): Block[] {
+  return blocks.map((block) => (block.kind === "step" ? sanitizeStepDisplay(block, options) : block));
 }

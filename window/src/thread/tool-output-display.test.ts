@@ -245,6 +245,31 @@ describe("truncated computer payloads", () => {
     assertCardSafe(shown);
   });
 
+  it("leaves a long bash result whole when history asks for wholeOutput", () => {
+    const output = "x".repeat(5_000);
+    const messages = [
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "bash-big", name: "bash", arguments: { command: "cat big" } }],
+        stopReason: "toolUse",
+      },
+      {
+        role: "toolResult",
+        toolCallId: "bash-big",
+        toolName: "bash",
+        content: [{ type: "text", text: output }],
+      },
+    ];
+    const whole = historyToBlocks(messages, [], "agent:scout:one", null, { wholeOutput: true }).find(
+      (b): b is Extract<Block, { kind: "step" }> => b.kind === "step",
+    );
+    const shown = historyToBlocks(messages, [], "agent:scout:one", null).find(
+      (b): b is Extract<Block, { kind: "step" }> => b.kind === "step",
+    );
+    expect(whole?.output).toBe(output);
+    expect(shown?.output?.length ?? 0).toBeLessThan(2_100);
+  });
+
   it("clears fullOutput after a computer result longer than 2000 characters", () => {
     const wrapped = wrappedListApps(80);
     expect(wrapped.length).toBeGreaterThan(2000);
