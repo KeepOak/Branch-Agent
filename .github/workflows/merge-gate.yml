@@ -77,8 +77,41 @@ jobs:
           # Give path-filtered workflows time to register their runs.
           sleep 30
           for attempt in $(seq 1 64); do
-            runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
-              --jq '[.check_runs[] | select(.name != "merge-gate" and .name != "merge-gate-trusted")]')
+            # Read every check-run page. One response is capped at 100.
+            page=1
+            pages='[]'
+            while :; do
+              page_json=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100&page=$page")
+              pages=$(jq -s '.[0] + [.[1]]' <<<"$pages"$'\n'"$page_json")
+              collected=$(jq '[.[].check_runs[]] | length' <<<"$pages")
+              total=$(jq '.[-1].total_count // 0' <<<"$pages")
+              if [ "$collected" -ge "$total" ]; then break; fi
+              page=$((page + 1))
+            done
+            combined=$(jq '{check_runs: [.[].check_runs[]]}' <<<"$pages")
+            runs=$(jq '[.check_runs[] | select(.name != "merge-gate" and .name != "merge-gate-trusted")]' <<<"$combined")
+            # Skip Visual tour's continue-on-error `comment` job only when
+            # check-suite or workflow-run attribution proves visual-tour.yml.
+            # A `comment` check from any other workflow is still waited on.
+            comment_paths='{}'
+            while IFS= read -r check; do
+              [ -z "$check" ] && continue
+              id=$(jq -r '.id' <<<"$check")
+              path=""
+              run_id=$(jq -r '(.details_url // .html_url // "") | capture("/actions/runs/(?<id>[0-9]+)")? | .id // empty' <<<"$check")
+              if [ -n "$run_id" ]; then
+                path=$(gh api "repos/$REPO/actions/runs/$run_id" | jq -r '.path // empty') || path=""
+              else
+                suite=$(jq -r '.check_suite.id // empty' <<<"$check")
+                if [ -n "$suite" ]; then
+                  path=$(gh api "repos/$REPO/actions/runs?check_suite_id=$suite&per_page=1" | jq -r '.workflow_runs[0].path // empty') || path=""
+                fi
+              fi
+              comment_paths=$(jq --arg id "$id" --arg path "$path" '. + {($id): $path}' <<<"$comment_paths")
+            done < <(jq -c '.[] | select(.name == "comment")' <<<"$runs")
+            runs=$(jq --argjson paths "$comment_paths" --arg tour '.github/workflows/visual-tour.yml' '
+              map(select(.name != "comment" or (($paths[.id | tostring] // "") != $tour)))
+            ' <<<"$runs")
             # CodeQL default setup can register Analyze after all other checks finish.
             pending=$(jq '([.[] | select(.status != "completed")] | length) + (if any(.[]; .name == "Analyze (actions)") then 0 else 1 end)' <<<"$runs")
             failed=$(jq -r '[.[] | select(.status == "completed" and (.conclusion | IN("success","skipped","neutral") | not)) | "\(.name): \(.conclusion)"] | .[]' <<<"$runs")
@@ -91,4 +124,7 @@ jobs:
             echo "Waiting for $pending check(s)…"
             if [ "$attempt" -lt 64 ]; then sleep 30; fi
           done
-          echo "Timed out waiting for checks."; exit 1
+          pending_names=$(jq -r '[.[] | select(.status != "completed") | .name] + (if any(.[]; .name == "Analyze (actions)") then [] else ["Analyze (actions)"] end) | unique | sort | join(", ")' <<<"$runs")
+          echo "Timed out waiting for: $pending_names"
+          echo "re-run merge-gate, do not merge main"
+          exit 1
