@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { changedTestPaths, coverageTargets, desktopRunTargets, uncoveredTests } from './changed-test-coverage.mjs';
+import { changedTestPaths, coverageTargets, desktopRunTargets, handoffRunTargets, uncoveredTests } from './changed-test-coverage.mjs';
 
 test('covered and uncovered changed tests are distinguished; deleted tests are ignored', () => {
   const changed = changedTestPaths('M\tengine/src/covered.test.ts\nA\twindow/src/missing.test.tsx\n' +
@@ -20,6 +20,14 @@ test('desktop coverage requires an executable --test argument', () => {
     'desktop/smoke.test.mts']);
   assert.deepEqual(uncoveredTests(['desktop/scripts/part-one.test.mjs', 'desktop/scripts/other.test.mjs'], targets),
     ['desktop/scripts/other.test.mjs']);
+});
+
+test('real-engine handoff coverage requires the executable sharded Vitest command and configured file', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/engine-handoff-checks.yml', import.meta.url), 'utf8');
+  const config = readFileSync(new URL('../engine/test/vitest/vitest.desktop-handoff.config.ts', import.meta.url), 'utf8');
+  assert.deepEqual([...handoffRunTargets(workflow, config)], ['engine/test/gateway-desktop-handoff.e2e.test.ts']);
+  assert.deepEqual([...handoffRunTargets('run: node scripts/run-vitest.mjs run', config)], []);
+  assert.deepEqual([...handoffRunTargets(workflow, 'include: []')], []);
 });
 
 test('coverage includes actual slice, priority, Harvest and desktop CI targets', () => {

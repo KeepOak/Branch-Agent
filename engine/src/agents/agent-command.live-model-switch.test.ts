@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/agent-command.live-model-switch.test.ts (atlas AGENT-LOOP-0001). Changed for Branch: preserve native suite assertions and extend partial fixtures with native scope/cache/plugin metadata exports used by delivery bootstrap and use a canonical scratch session for strict delivery.
 import fs from "node:fs/promises";
 /** Tests live model switching behavior in active agent command sessions. */
 import os from "node:os";
@@ -400,11 +401,10 @@ vi.mock("./agent-runtime-config.js", () => ({
 }));
 
 vi.mock("../plugins/plugin-metadata-snapshot.js", async (importOriginal) => {
-  const { rebasePluginMetadataSnapshotManifestRegistry } =
-    await importOriginal<typeof import("../plugins/plugin-metadata-snapshot.js")>();
+  const actual = await importOriginal<typeof import("../plugins/plugin-metadata-snapshot.js")>();
   return {
+    ...actual,
     isPluginMetadataSnapshotCompatible: () => false,
-    rebasePluginMetadataSnapshotManifestRegistry,
     resolvePluginMetadataSnapshot: (...args: unknown[]) =>
       state.resolvePluginMetadataSnapshotMock(...args),
     resolvePluginMetadataSnapshotAsync: async (...args: unknown[]) =>
@@ -421,11 +421,11 @@ vi.mock("../skills/discovery/chat-commands.runtime.js", () => ({
 }));
 
 vi.mock("../config/runtime-snapshot.js", async () => {
-  const { hashRuntimeConfigValue } = await vi.importActual<
-    typeof import("../config/runtime-snapshot.js")
-  >("../config/runtime-snapshot.js");
+  const actual = await vi.importActual<typeof import("../config/runtime-snapshot.js")>(
+    "../config/runtime-snapshot.js",
+  );
   return {
-    hashRuntimeConfigValue,
+    ...actual,
     getRuntimeConfigSnapshot: () => state.runtimeConfigMock ?? state.defaultRuntimeConfig,
     // No source snapshot: runtime-source projection no-ops and resolvers read the
     // provided config directly, matching this suite's pre-projection world.
@@ -594,13 +594,12 @@ vi.mock("../utils/message-channel.js", () => ({
 }));
 
 vi.mock("./agent-scope.js", async () => {
-  const { resolveAgentModelFallbacksOverride, resolveSubagentSpawnModelFallbacksOverride } =
-    await vi.importActual<typeof import("./agent-scope.js")>("./agent-scope.js");
+  const actual = await vi.importActual<typeof import("./agent-scope.js")>("./agent-scope.js");
   const { createTestAgentScope } = await import("./agent-command.live-model-switch.test-mocks.js");
-  return createTestAgentScope(state, {
-    resolveAgentModelFallbacksOverride,
-    resolveSubagentSpawnModelFallbacksOverride,
-  });
+  return { ...actual, ...createTestAgentScope(state, {
+    resolveAgentModelFallbacksOverride: actual.resolveAgentModelFallbacksOverride,
+    resolveSubagentSpawnModelFallbacksOverride: actual.resolveSubagentSpawnModelFallbacksOverride,
+  }) };
 });
 
 vi.mock("./auth-profiles.js", async () => {
@@ -1752,7 +1751,12 @@ describe("agentCommand – LiveSessionModelSwitchError retry", () => {
       throw new Error("strict delivery failed");
     });
 
-    await expect(runDiscordDelivery()).rejects.toThrow("strict delivery failed");
+    await withStoredAgentCommandRecoverySession(
+      getAgentCommandRecoveryFixture(),
+      async ({ sessionKey }) => {
+        await expect(runDiscordDelivery({ sessionKey })).rejects.toThrow("strict delivery failed");
+      },
+    );
 
     const lifecycleError = state.emitAgentEventMock.mock.calls
       .map((call) => call[0] as { stream?: string; data?: Record<string, unknown> })
