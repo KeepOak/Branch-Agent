@@ -1,4 +1,8 @@
+import { stepRunId } from "./layout";
 import type { Block, StepStatus } from "./model";
+
+type Step = Extract<Block, { kind: "step" }>;
+type Done = Extract<Block, { kind: "done" }>;
 
 /** The four states of the preview's `computerCard` (design/spec-v23). */
 export type ComputerCardState = "working" | "yours" | "stopped" | "done";
@@ -11,9 +15,7 @@ export function computerCardState(input: {
   stopped: boolean;
 }): ComputerCardState {
   if (input.stopped || input.status === "failed" || input.status === "denied") return "stopped";
-  if (!input.running) return "done";
-  if (input.controlling) return "yours";
-  if (input.status === "running") return "working";
+  if (input.status === "running" && input.running) return input.controlling ? "yours" : "working";
   return "done";
 }
 
@@ -35,7 +37,27 @@ export function listenComputerControl(onControl: (controlling: boolean) => void)
   return () => window.removeEventListener(COMPUTER_CONTROL_EVENT, handler);
 }
 
-/** A turn the person or the engine stopped (the thread's Done line carries `stopped`). */
+/** Done lines that belong to these steps' run (Thread passes steps only; pair them here). */
+export function turnDoneLines(steps: readonly Block[], all: readonly Block[]): Done[] {
+  const ids = new Set(
+    steps
+      .filter((block): block is Step => block.kind === "step")
+      .map((step) => stepRunId(step))
+      .filter((id): id is string => Boolean(id)),
+  );
+  if (!ids.size) return [];
+  return all.filter((block): block is Done => block.kind === "done" && Boolean(block.runId) && ids.has(block.runId));
+}
+
+/** A turn the person or the engine stopped (that turn's own Done line, not an earlier one). */
 export function runWasStopped(blocks: readonly Block[]): boolean {
-  return blocks.some((block) => block.kind === "done" && block.stopped === true);
+  const stepIds = new Set(
+    blocks
+      .filter((block): block is Step => block.kind === "step")
+      .map((step) => stepRunId(step))
+      .filter((id): id is string => Boolean(id)),
+  );
+  const dones = blocks.filter((block): block is Done => block.kind === "done");
+  if (stepIds.size) return dones.some((done) => done.stopped === true && Boolean(done.runId) && stepIds.has(done.runId));
+  return dones.at(-1)?.stopped === true;
 }

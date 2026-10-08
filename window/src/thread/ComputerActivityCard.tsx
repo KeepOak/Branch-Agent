@@ -121,10 +121,13 @@ export function ComputerActivityCard({
 }) {
   const [open, setOpen] = useState(false);
   const [takeOver, setTakeOver] = useState(false);
-  useEffect(() => listenComputerControl(setTakeOver), []);
   const steps = blocks.filter(isComputer);
-  const computer = useComputerName(steps.length ? engine : undefined);
   const latest = steps.at(-1);
+  useEffect(() => {
+    if (latest?.status !== "running") return;
+    return listenComputerControl(setTakeOver);
+  }, [latest?.status]);
+  const computer = useComputerName(steps.length ? engine : undefined);
   if (!latest) return null;
   const mode: Mode = /browser/i.test(latest.tool) ? "Browser" : "Computer";
   const where = mode === "Browser" ? `${name}'s browser` : computer.name || `${name}'s computer`;

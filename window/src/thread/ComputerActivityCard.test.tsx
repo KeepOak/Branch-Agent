@@ -95,7 +95,7 @@ describe("computer card in the conversation", () => {
   it("shows Stopped and Carry on when the run was stopped", async () => {
     const send = vi.fn(async () => undefined);
     await render(
-      [step("a", "Opened mail", "ok"), { kind: "done", key: "d", runId: "r", stopped: true }],
+      [{ ...step("a", "Opened mail", "ok"), outputKey: "r:a" }, { kind: "done", key: "d", runId: "r", stopped: true }],
       false,
       vi.fn(),
       engineWith(send),
@@ -153,6 +153,79 @@ describe("computer card in the conversation", () => {
     await act(async () => announceComputerControl(false));
     expect(container.querySelector("[data-state='yours']")).toBeNull();
     expect(container.textContent).toContain("Working");
+  });
+  it("shows two finished turns as two Used folds, each with a Done pill", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () =>
+      root!.render(
+        <>
+          <ComputerActivityCard blocks={[step("a", "Opened the garden site", "ok")]} running={true} name="Ada" onWatch={vi.fn()} />
+          <ComputerActivityCard
+            blocks={[step("b", "Clicked Sign in", "ok"), step("c", "Typed the email", "ok")]}
+            running={true}
+            name="Ada"
+            onWatch={vi.fn()}
+          />
+        </>,
+      ),
+    );
+    const cards = [...container.querySelectorAll(".acts-card-st, .comp-card-st")];
+    expect(cards).toHaveLength(2);
+    expect(cards[0]?.textContent).toContain("Used Ada's computer · 1 action");
+    expect(cards[0]?.textContent).toContain("Done");
+    expect(cards[1]?.textContent).toContain("Used Ada's computer · 2 actions");
+    expect(cards[1]?.textContent).toContain("Done");
+  });
+  it("leaves an earlier Done fold as Done when you take over the live card", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () =>
+      root!.render(
+        <>
+          <ComputerActivityCard blocks={[step("a", "Opened mail", "ok")]} running={true} name="Ada" onWatch={vi.fn()} />
+          <ComputerActivityCard blocks={[step("b", "Searching the inbox", "running")]} running={true} name="Ada" onWatch={vi.fn()} />
+        </>,
+      ),
+    );
+    expect(container.querySelectorAll("[data-state='done']")).toHaveLength(1);
+    await click("Take over");
+    expect(container.querySelector("[data-state='done']")?.textContent).toContain("Done");
+    expect(container.querySelector("[data-state='yours']")?.textContent).toContain("You have control");
+    expect(container.querySelectorAll("[data-state='yours']")).toHaveLength(1);
+  });
+  it("does not force a later live card to Stopped because an earlier turn was stopped", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    const send = vi.fn(async () => undefined);
+    await act(async () =>
+      root!.render(
+        <>
+          <ComputerActivityCard
+            blocks={[{ ...step("old", "Opened mail", "ok"), outputKey: "run-old:old" }, { kind: "done", key: "d1", runId: "run-old", stopped: true }]}
+            running={true}
+            name="Ada"
+            onWatch={vi.fn()}
+            engine={engineWith(send)}
+          />
+          <ComputerActivityCard
+            blocks={[{ ...step("now", "Searching the inbox", "running"), outputKey: "run-now:now" }]}
+            running={true}
+            name="Ada"
+            onWatch={vi.fn()}
+          />
+        </>,
+      ),
+    );
+    const cards = [...container.querySelectorAll(".acts-card-st, .comp-card-st")];
+    expect(cards).toHaveLength(2);
+    expect(cards[0]?.textContent).toContain("Stopped");
+    expect(cards[0]?.textContent).toContain("Carry on");
+    expect(cards[1]?.textContent).toContain("Working");
+    expect(cards[1]?.textContent).not.toContain("Stopped");
   });
   it("shows a live thumbnail and Take over for the browser", async () => {
     const onWatch = await render([step("a", "Opened the inbox", "running", "browser")], true, vi.fn(), engineWith());
