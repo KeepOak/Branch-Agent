@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import type { Conversation } from "../connect/conversations";
 import type { WindowEngine } from "../connect/engine";
 import { Face } from "../face/Face";
@@ -8,6 +8,7 @@ import { Menu, type MenuAnchor, type MenuItem } from "./Menu";
 import {
   checkedLine,
   jobProgress,
+  justEndedKeys,
   openTowerPlace,
   openTowerSettings,
   readCronJobs,
@@ -35,14 +36,21 @@ type Props = {
   onClose: () => void;
 };
 
-function useTowerLive(engine: WindowEngine) {
+function useTowerLive(engine: WindowEngine, rows: Conversation[]) {
   const [limits, setLimits] = useState<Limits | null>(null);
   const [jobs, setJobs] = useState<unknown[]>([]);
   const [audit, setAudit] = useState<unknown>({});
+  const [endedKeys, setEndedKeys] = useState<string[]>([]);
   const [locked, setLocked] = useState(false);
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
   const [trunks, setTrunks] = useState<{ defaultId: string; list: { id: string; name: string }[]; ready: boolean }>({ defaultId: "", list: [], ready: false });
+  const workingKeys = useRef<string[]>([]);
+
+  const rememberEnded = useCallback((keys: string[]) => {
+    if (!keys.length) return;
+    setEndedKeys((prev) => [...keys, ...prev.filter((key) => !keys.includes(key))].slice(0, 4));
+  }, []);
 
   const load = useCallback(async () => {
     const [usage, cron, cfg, activity, listed] = await Promise.all([
@@ -61,14 +69,28 @@ function useTowerLive(engine: WindowEngine) {
   }, [engine]);
 
   useEffect(() => {
+    const ended = justEndedKeys(workingKeys.current, rows);
+    workingKeys.current = rows.filter((row) => row.working && !row.archived && !row.helper && !row.system).map((row) => row.key);
+    rememberEnded(ended);
+  }, [rows, rememberEnded]);
+
+  useEffect(() => {
     void load();
-    const off = engine.onEvent(({ event }) => {
+    const off = engine.onEvent(({ event, payload }) => {
       if (event === "cron" || event === "config.changed" || event === "sessions.changed" || event === "rooms.changed") void load();
+      if (event === "chat") {
+        const body = rec(payload);
+        if (["final", "error", "aborted"].includes(str(body.state))) {
+          const key = str(body.sessionKey);
+          if (key) rememberEnded([key]);
+          void load();
+        }
+      }
     });
     const onUsage = () => { void load(); };
     window.addEventListener("branch:usage-checked", onUsage);
     return () => { off(); window.removeEventListener("branch:usage-checked", onUsage); };
-  }, [engine, load]);
+  }, [engine, load, rememberEnded]);
 
   const checkNow = useCallback(async () => {
     if (checking) return;
@@ -86,18 +108,18 @@ function useTowerLive(engine: WindowEngine) {
     }
   }, [checking, engine]);
 
-  return { limits, jobs, audit, locked, checking, checkError, trunks, checkNow };
+  return { limits, jobs, audit, endedKeys, locked, checking, checkError, trunks, checkNow };
 }
 
 /** Live Control tower. The preview's sample approvals and jobs are never shown as real data. */
 export function ControlTower({ engine, rows, needsCount, trunkName, onOpen, onInbox, onClose }: Props) {
   const queue = usePlaceData(engine, approvals);
-  const live = useTowerLive(engine);
+  const live = useTowerLive(engine, rows);
   const pending = queue.data?.items ?? [];
   const working = rows.filter((row) => row.working && !row.archived && !row.helper && !row.system);
   const jobs = rows.filter((row) => row.working && !row.archived && row.helper && !row.system);
   const chatter = towerChatter(rows);
-  const finished = towerFinished(rows, live.audit);
+  const finished = towerFinished(rows, live.audit, Date.now(), live.endedKeys);
   const coming = towerComingUp(live.jobs);
   const accounts = towerAccounts(live.limits);
   const health = towerHealth(live.locked, live.checking, live.limits);
