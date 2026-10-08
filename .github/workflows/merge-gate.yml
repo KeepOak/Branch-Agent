@@ -5,6 +5,7 @@ name: Merge gate
 # commit and fails if any of them failed. `main` requires only this check.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
@@ -12,8 +13,9 @@ permissions:
   actions: read
 
 concurrency:
+  # Body edits keep the same SHA; do not cancel the wait already running for this PR.
   group: merge-gate-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event.action != 'edited' }}
 
 jobs:
   changed-test-coverage:
@@ -42,6 +44,12 @@ jobs:
         run: |
           node --test scripts/check-copied-csv.test.mjs scripts/feature-batch-ci-shard.test.mjs
           node scripts/check-copied-csv.mjs
+      - name: Test UI screenshot proof check
+        run: node --test scripts/check-ui-proof.test.mjs
+      - name: Require screenshots for window UI changes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/check-ui-proof.mjs
 
   merge-gate:
     needs: changed-test-coverage
@@ -65,7 +73,8 @@ jobs:
           for attempt in $(seq 1 64); do
             runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
               --jq '[.check_runs[] | select(.name != "merge-gate" and .name != "merge-gate-trusted")]')
-            pending=$(jq '[.[] | select(.status != "completed")] | length' <<<"$runs")
+            # CodeQL default setup can register Analyze after all other checks finish.
+            pending=$(jq '([.[] | select(.status != "completed")] | length) + (if any(.[]; .name == "Analyze (actions)") then 0 else 1 end)' <<<"$runs")
             failed=$(jq -r '[.[] | select(.status == "completed" and (.conclusion | IN("success","skipped","neutral") | not)) | "\(.name): \(.conclusion)"] | .[]' <<<"$runs")
             if [ -n "$failed" ]; then
               echo "Failed checks:"; echo "$failed"; exit 1

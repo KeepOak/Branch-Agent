@@ -10,12 +10,14 @@ import {
   uncoveredTests,
 } from './changed-test-coverage.mjs';
 import { checkMergeCommands, docsToCheck } from './check-merge-command.mjs';
+import { checkUIProof } from './check-ui-proof.mjs';
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const TRUSTED_JOB = 'merge-gate-trusted';
 export const TRUSTED_WORKFLOW_PATH = '.github/workflows/merge-gate-trusted.yml';
+export const HANDOFF_WORKFLOW_PATH = '.github/workflows/engine-handoff-checks.yml';
 export const TRUSTED_CHECKOUT_REF = '${{ github.event.repository.default_branch }}';
-export const REQUIRED_JOBS = ['merge-gate'];
+export const REQUIRED_JOBS = ['merge-gate', 'Analyze (actions)'];
 export const PASS_CONCLUSIONS = new Set(['success', 'skipped', 'neutral']);
 export const GATE_SCRIPTS = [
   'scripts/merge-gate-trusted.mjs',
@@ -24,6 +26,8 @@ export const GATE_SCRIPTS = [
   'scripts/changed-test-coverage.test.mjs',
   'scripts/check-merge-command.mjs',
   'scripts/check-merge-command.test.mjs',
+  'scripts/check-ui-proof.mjs',
+  'scripts/check-ui-proof.test.mjs',
   'scripts/feature-batch-ci-targets.mjs',
   'scripts/feature-slice-ci-targets.mjs',
   'scripts/priority-capabilities-ci-targets.mjs',
@@ -69,12 +73,19 @@ export function nameStatusFromPrFiles(files) {
   }).join('\n');
 }
 
-export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}) {
+export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}, { sha, prNumber, baseRef } = {}) {
   const newest = new Map();
   for (const run of checkRuns) {
     const workflow = lookupWorkflow(workflowsByCheckId, run.id);
-    // Missing App or workflow identity must never collapse unrelated checks.
-    const key = run.app?.id != null && workflow?.path
+    // Only this PR's pull_request runs can supersede each other on reopen.
+    const prs = workflow?.pullRequests ?? [];
+    const bound = run.app?.id != null && workflow?.path && workflow.event === 'pull_request'
+      && sha && workflow.headSha === sha
+      && workflow.checkSuiteId != null && run.check_suite?.id != null
+      && Number(run.check_suite.id) === Number(workflow.checkSuiteId)
+      && prNumber && prs.some((pr) => Number(pr.number) === Number(prNumber))
+      && baseRef && prs.every((pr) => pr.base === baseRef);
+    const key = bound
       ? JSON.stringify([run.app.id, workflow.path, run.name]) : Symbol();
     const previous = newest.get(key);
     // IDs increase with check creation, including queued checks without started_at.
@@ -83,8 +94,8 @@ export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}) {
   return [...newest.values()];
 }
 
-export function evaluateOtherChecks(checkRuns, workflowsByCheckId = {}, ignoreName = TRUSTED_JOB) {
-  const others = newestChecksByIdentity(checkRuns, workflowsByCheckId).filter((run) => run.name !== ignoreName);
+export function evaluateOtherChecks(checkRuns, workflowsByCheckId = {}, ignoreName = TRUSTED_JOB, context = {}) {
+  const others = newestChecksByIdentity(checkRuns, workflowsByCheckId, context).filter((run) => run.name !== ignoreName);
   const pending = others.filter((run) => run.status !== 'completed');
   const failed = others.filter((run) =>
     run.status === 'completed' && !PASS_CONCLUSIONS.has(run.conclusion));
@@ -114,7 +125,9 @@ export function findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
     const urlRunId = actionsRunIdFromCheckRun(run);
     const workflow = lookupWorkflow(workflowsByCheckId, run.id);
     if (currentId != null && Number.isFinite(currentId) && urlRunId === currentId) {
-      if (!workflow || workflow.id == null || workflow.id === ''
+      // API outages are pending, never self-attributed or accepted as genuine.
+      if (!workflow) return false;
+      if (workflow.id == null || workflow.id === ''
         || Number(workflow.id) !== currentId) return true;
       if (workflow.path !== allowedWorkflowPath || workflow.event !== allowedEvent) return true;
       if (workflow.checkSuiteId == null || run.check_suite?.id == null
@@ -147,6 +160,12 @@ export function workflowAppliesToChanges(changedFiles, pullRequestPaths) {
   if (!pullRequestPaths) return true;
   return changedFiles.some((file) =>
     pullRequestPaths.some((pattern) => pathFilterMatches(file, pattern)));
+}
+
+export function isPassingHandoffE2e(run) {
+  return run.status === 'completed'
+    && run.conclusion === 'success'
+    && /^Real-engine handoff /.test(run.name);
 }
 
 export function parsePullRequestTrigger(yaml) {
@@ -249,8 +268,11 @@ export function missingCoreWorkflows({
   changedFiles,
   coreWorkflows,
   requiredJobs = REQUIRED_JOBS,
+  sha,
+  prNumber,
+  baseRef,
 }) {
-  checkRuns = newestChecksByIdentity(checkRuns, workflowsByCheckId);
+  checkRuns = newestChecksByIdentity(checkRuns, workflowsByCheckId, { sha, prNumber, baseRef });
   const missing = [];
 
   for (const job of requiredJobs) {
@@ -268,8 +290,11 @@ export function missingCoreWorkflows({
       && checkRuns.some((run) => run.name === 'merge-gate')) {
       continue;
     }
-    const ran = checkRuns.some((run) => lookupWorkflow(workflowsByCheckId, run.id)?.path === workflow.path);
-    if (!ran) missing.push(`${workflow.path} (path filter matched, no check run)`);
+    const runs = checkRuns.filter((run) => lookupWorkflow(workflowsByCheckId, run.id)?.path === workflow.path);
+    if (!runs.length) missing.push(`${workflow.path} (path filter matched, no check run)`);
+    else if (workflow.path === HANDOFF_WORKFLOW_PATH && !runs.some(isPassingHandoffE2e)) {
+      missing.push(`${workflow.path} (hand-over paths changed, no passing real-engine handoff run)`);
+    }
   }
 
   return missing;
@@ -285,7 +310,13 @@ export function evaluateTrustedGate({
   prNumber,
   baseRef,
 }) {
-  const { others, pending, failed } = evaluateOtherChecks(checkRuns, workflowsByCheckId);
+  const context = { sha, prNumber, baseRef };
+  const { others, pending, failed } = evaluateOtherChecks(checkRuns, workflowsByCheckId, TRUSTED_JOB, context);
+  const unresolvedCurrent = checkRuns.filter((run) => run.name === TRUSTED_JOB
+    && currentRunId != null && currentRunId !== '' && Number.isFinite(Number(currentRunId))
+    && actionsRunIdFromCheckRun(run) === Number(currentRunId)
+    && !lookupWorkflow(workflowsByCheckId, run.id));
+  const missingAnalyze = !others.some((run) => run.name === 'Analyze (actions)');
   const foreignTrusted = findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
     allowedRunId: currentRunId,
     sha,
@@ -297,6 +328,7 @@ export function evaluateTrustedGate({
     workflowsByCheckId,
     changedFiles,
     coreWorkflows,
+    ...context,
   });
 
   const errors = [];
@@ -323,8 +355,9 @@ export function evaluateTrustedGate({
     failed,
     foreignTrusted,
     missingCore,
-    ready: pending.length === 0,
-    ok: errors.length === 0 && pending.length === 0,
+    unresolvedCurrent,
+    ready: pending.length === 0 && unresolvedCurrent.length === 0 && !missingAnalyze,
+    ok: errors.length === 0 && pending.length === 0 && unresolvedCurrent.length === 0 && !missingAnalyze,
     errors,
   };
 }
@@ -363,9 +396,9 @@ export function parseNamedTestList(text, source = 'scripts/feature-batch-ci-name
   return files;
 }
 
-export function coverageFromPrFiles(files, desktopWorkflow, extraNamed = []) {
+export function coverageFromPrFiles(files, desktopWorkflow, extraNamed = [], handoffWorkflow = '', handoffConfig = '') {
   const changed = changedTestPaths(nameStatusFromPrFiles(files));
-  const covered = coverageTargets(desktopWorkflow);
+  const covered = coverageTargets(desktopWorkflow, handoffWorkflow, handoffConfig);
   for (const entry of extraNamed) covered.add(`${entry.lane}/${entry.file}`);
   const uncovered = uncoveredTests(changed, covered);
   return { changed, uncovered };
@@ -406,6 +439,18 @@ export function fetchCheckRuns(repo, sha, token) {
 export function fetchPrFiles(repo, prNumber, token) {
   const payload = ghApi(repo, token, `pulls/${prNumber}/files?per_page=100`, { paginate: true });
   return Array.isArray(payload) ? payload : [];
+}
+
+export function fetchPrBody(repo, prNumber, token) {
+  const payload = ghApi(repo, token, `pulls/${prNumber}`);
+  return typeof payload?.body === 'string' ? payload.body : '';
+}
+
+export function runUiProofFromPr(files, prBody) {
+  const result = checkUIProof(files.map((file) => file.filename ?? file), prBody ?? '');
+  if (result.exitCode) console.error(result.message);
+  else console.log(result.message);
+  return result.exitCode === 0;
 }
 
 export function fetchFileText(repo, sha, token, filePath) {
@@ -496,7 +541,9 @@ export function fetchNamedTestLists(repo, sha, token) {
 
 function runCoverage(files, extraNamed) {
   const workflow = readFileSync(path.join(root, '.github/workflows/desktop-checks.yml'), 'utf8');
-  const { changed, uncovered } = coverageFromPrFiles(files, workflow, extraNamed);
+  const handoffWorkflow = readFileSync(path.join(root, HANDOFF_WORKFLOW_PATH), 'utf8');
+  const handoffConfig = readFileSync(path.join(root, 'engine/test/vitest/vitest.desktop-handoff.config.ts'), 'utf8');
+  const { changed, uncovered } = coverageFromPrFiles(files, workflow, extraNamed, handoffWorkflow, handoffConfig);
   if (uncovered.length) {
     for (const file of uncovered) {
       console.error(`Uncovered changed test: ${file}\n  Add: ${additionFor(file)}`);
@@ -517,6 +564,45 @@ function runMergeCommandCheck(repo, sha, token) {
     writeFileSync(dest, text);
   }
   return checkMergeCommands(dir, docsToCheck);
+}
+
+export function pollTrustedGate({
+  repo, sha, token, changedFiles, coreWorkflows, currentRunId, prNumber, baseRef,
+  maxAttempts = 64, pollSeconds = 30,
+}, {
+  fetchChecks = fetchCheckRuns,
+  resolveWorkflows = resolveWorkflowsForCheckRuns,
+  sleep = sleepSeconds,
+  log = console.log,
+  error = console.error,
+} = {}) {
+  const attributionCache = new Map();
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const checkRuns = fetchChecks(repo, sha, token);
+    const workflowsByCheckId = resolveWorkflows(repo, token, checkRuns, { attributionCache });
+    const result = evaluateTrustedGate({
+      checkRuns, workflowsByCheckId, changedFiles, coreWorkflows, currentRunId,
+      sha, prNumber, baseRef,
+    });
+
+    if (result.failed.length || result.foreignTrusted.length) {
+      for (const message of result.errors) error(message);
+      return 1;
+    }
+    if (result.ready) {
+      if (result.missingCore.length) {
+        for (const message of result.errors) error(message);
+        return 1;
+      }
+      log(`All ${result.others.length} other checks passed.`);
+      return 0;
+    }
+    log(`Waiting for checks (running: ${result.pending.length}, unresolved current claims: ${result.unresolvedCurrent.length}, including required Analyze)…`);
+    if (attempt < maxAttempts) sleep(pollSeconds);
+  }
+
+  error('Timed out waiting for checks.');
+  return 1;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -548,41 +634,13 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exit(1);
   }
   console.log('Merge-command check passed.');
+  if (!runUiProofFromPr(files, fetchPrBody(repo, prNumber, token))) process.exit(1);
 
   if (initialWait > 0) sleepSeconds(initialWait);
 
   const coreWorkflows = listCoreWorkflows(path.join(root, '.github/workflows'));
-  const attributionCache = new Map();
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const checkRuns = fetchCheckRuns(repo, sha, token);
-    const workflowsByCheckId = resolveWorkflowsForCheckRuns(repo, token, checkRuns, { attributionCache });
-    const result = evaluateTrustedGate({
-      checkRuns,
-      workflowsByCheckId,
-      changedFiles,
-      coreWorkflows,
-      currentRunId: process.env.GITHUB_RUN_ID,
-      sha,
-      prNumber,
-      baseRef,
-    });
-
-    if (result.failed.length || result.foreignTrusted.length) {
-      for (const error of result.errors) console.error(error);
-      process.exit(1);
-    }
-    if (result.ready) {
-      if (result.missingCore.length) {
-        for (const error of result.errors) console.error(error);
-        process.exit(1);
-      }
-      console.log(`All ${result.others.length} other checks passed.`);
-      process.exit(0);
-    }
-    console.log(`Waiting for ${result.pending.length} check(s)…`);
-    if (attempt < maxAttempts) sleepSeconds(pollSeconds);
-  }
-
-  console.error('Timed out waiting for checks.');
-  process.exit(1);
+  process.exit(pollTrustedGate({
+    repo, sha, token, changedFiles, coreWorkflows,
+    currentRunId: process.env.GITHUB_RUN_ID, prNumber, baseRef, maxAttempts, pollSeconds,
+  }));
 }
