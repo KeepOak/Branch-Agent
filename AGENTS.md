@@ -49,7 +49,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 13. **CI has a hard 15-minute cap.** Every check job sets `timeout-minutes: 15` or less; the merge-gate job allows up to 35 because it waits for the others. A change that makes CI slower than the cap gets split, sharded or cut, never given a longer timeout.
 
-14. **Releases are batched.** A merge touching `engine/`, `window/` or `desktop/` is built in CI but only published in scheduled 30-minute batches when at least one commit landed since the last release and no check run on main's head has failed. Installed apps pick up the batched release within the hour and apply on restart. Treat every merge as potentially shipping in the next batch.
+14. **Releases are batched.** A merge touching `engine/`, `window/` or `desktop/` is built in CI and published in 30-minute batches: the schedule at :07 and :37, or a push to main when the latest release is more than 25 minutes old (backup if GitHub drops a cron slot). A batch publishes when at least one commit landed since the last release and no check run on main's head has failed. Installed apps pick up the batched release within the hour and apply on restart. Treat every merge as potentially shipping in the next batch.
 
 15. **Stop processes you start.** Any test, self-test or proof script that starts a process (MCP servers, mcporter, node, browsers) must stop it and its children before finishing. Leftover processes lock the app install folder and block updates.
 
