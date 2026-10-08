@@ -55,6 +55,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 15. **Stop processes you start.** Any test, self-test or proof script that starts a process (MCP servers, mcporter, node, browsers) must stop it and its children before finishing. Leftover processes lock the app install folder and block updates.
 
 16. **No new OpenClaw wording.** `scripts/check-openclaw-wording.mjs` fails a PR that adds user-visible OpenClaw names or openclaw.ai / docs.openclaw.ai / github.com/openclaw links; write Branch Agent and Branch links instead.
+17. **Trunk pull requests carry a SELF-CHECK.** A pull request from a `trunk/` branch has the SELF-CHECK block from [`docs/SELF-CHECK.md`](docs/SELF-CHECK.md) in its description, with real test counts. `merge-gate` fails without it; fix it by editing the description (no new commit needed).
 
 ## Common tasks
 
