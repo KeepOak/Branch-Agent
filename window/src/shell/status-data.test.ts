@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { comingUp, dueWords, readLimits, readRoom, readRounds, resetWords, ringReading, sizeWords, uptimeWords, windowName } from "./status-data";
+import { comingUp, dueWords, readLimits, readRoom, readRounds, resetWords, ringReading, sizeWords, uptimeWords, usagePollResult, windowName } from "./status-data";
 
 const NOW = new Date(2026, 9, 2, 12, 0).getTime();
 
@@ -38,6 +38,9 @@ describe("usage.status (§4.9.4)", () => {
     expect(ringReading(readLimits(usedNext, NOW))).toEqual({ name: "Claude", left: 60, reset: "resets 3 PM", low: false });
     expect(ringReading(readLimits({ providers: [] }, NOW))).toBeNull();
     expect(ringReading(null)).toBeNull();
+    const empty = readLimits({ providers: [] }, NOW);
+    expect(usagePollResult(new CustomEvent("branch:usage-checked", { detail: empty }))).toEqual(empty);
+    expect(usagePollResult(new Event("branch:usage-checked"))).toBeNull();
   });
   it("window names and resets", () => {
     expect(windowName("3h")).toBe("This 3-hour window");

@@ -6,6 +6,7 @@ import type { Conversation } from "../connect/conversations";
 import type { WindowEngine } from "../connect/engine";
 import { ControlTower } from "./ControlTower";
 import { resetWaitingNotices } from "./notify";
+import { readLimits } from "./status-data";
 
 vi.mock("../face/Face", () => ({ Face: ({ label }: { label?: string }) => <span data-face={label} /> }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -220,6 +221,35 @@ describe("Control tower live sections", () => {
     document.body.replaceChildren();
     const healthy = await show(<ControlTower engine={engine(live)} rows={[]} needsCount={0} trunkName={(id) => id ?? ""} onOpen={() => undefined} onInbox={() => undefined} onClose={() => undefined} />);
     expect(healthy.querySelector(".v23-tower-health")?.textContent).toBe("Everything is running fine.");
+  });
+
+  it("updates the health line when a later usage poll succeeds after a failed check", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "usage.status") throw new Error("offline");
+      if (method === "cron.list") return live["cron.list"];
+      if (method === "config.get") return live["config.get"];
+      if (method === "agents.list") return live["agents.list"];
+      if (method === "audit.activity.list") return live["audit.activity.list"];
+      if (method === "exec.approval.list" || method === "plugin.approval.list" || method === "branch.approval.list") return [];
+      return {};
+    });
+    const session = { request, onEvent: () => () => undefined, sessionKey: "agent:ada:main", scopes: ["operator.admin"] } as unknown as WindowEngine;
+    const host = await show(<ControlTower engine={session} rows={[]} needsCount={0} trunkName={(id) => id ?? ""} onOpen={() => undefined} onInbox={() => undefined} onClose={() => undefined} />);
+    expect(host.querySelector(".v23-tower-health")?.textContent).toBe("Couldn’t check accounts right now. Branch will try again.");
+
+    const polled = readLimits(usage, NOW);
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("branch:usage-checked", { detail: polled }));
+    });
+    expect(host.querySelector(".v23-tower-health")?.textContent).toBe("Everything is running fine.");
+    expect(host.textContent).not.toContain("Couldn’t check accounts right now");
+  });
+
+  it("does not say everything is running fine when no accounts are connected", async () => {
+    const answers = { ...live, "usage.status": { updatedAt: NOW, providers: [] } };
+    const host = await show(<ControlTower engine={engine(answers)} rows={[]} needsCount={0} trunkName={(id) => id ?? ""} onOpen={() => undefined} onInbox={() => undefined} onClose={() => undefined} />);
+    expect(host.querySelector(".v23-tower-health")?.textContent).toBe("No accounts connected yet.");
+    expect(host.textContent).not.toContain("Everything is running fine.");
   });
 
   it("shows a finished run in Just finished without a reload", async () => {
