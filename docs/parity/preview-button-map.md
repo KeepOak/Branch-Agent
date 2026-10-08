@@ -4,11 +4,11 @@ Unique clickable controls in `design/spec-v23` (the design preview) and where th
 This is the expected-destination list for a click-every-button tester.
 
 Each JSON entry has `id`, `screen`, `label`, `previewAction`, `appFile`, `appComponent`, `appAction`, `status`.
-Statuses: `same` (app matches the preview), `different` (exists but destination or behaviour differs), `missing` (no such control in the app), `dead` (app control does nothing / only a toast), `unknown` (could not determine statically).
+Statuses: `same` (app matches the preview), `different` (exists but destination or behaviour differs), `missing` (preview control the app lacks), `app-extra` (app control the early preview does not have), `dead` (app control does nothing / only a toast), `unknown` (could not determine statically).
 
 Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Later-pass interpolated `data-act` keys that are not distinct product destinations are omitted; `scripts/parity/extract-preview-acts.mjs` lists raw act keys.
 
-**379 controls.** Totals: same 263, different 102, missing 9, dead 0, unknown 5.
+**379 controls.** Totals: same 263, different 102, missing 1, app-extra 8, dead 0, unknown 5.
 
 ## Non-`same` entries
 
@@ -40,8 +40,8 @@ Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Lat
 | `chat-header-name` | Conversation name | different | Shows the name; rename replaces it with an input (Enter saves, Esc cancels). | Click opens the Trunk profile. Rename uses the same in-header field. |
 | `chat-computer-view` | Computer view | different | Toggles the side panel on the Computer tab. | Opens Computer full-size / the Computer pane, not only a pressed icon in the header. |
 | `chat-side-panel` | Side panel | different | Toggles the side panel on Activity (or closes it if already a non-computer pane). | Toggles the side panel (Ctrl Shift K). Header uses conversation ⋯ › Side panel more than a dedicated icon. |
-| `chat-back` | Back | missing | Not in the early preview header. | History back. Preview has no back/forward in the chat header. |
-| `chat-forward` | Forward | missing | Not in the early preview header. | History forward. |
+| `chat-back` | Back | app-extra | Not in the early preview header. | History back. Preview has no back/forward in the chat header. |
+| `chat-forward` | Forward | app-extra | Not in the early preview header. | History forward. |
 | `teach-stop` | I'm done, save it | different | Stops teach mode and saves a procedure under Automations › Procedures. | Show it how, once is listed and greyed: needs an engine method. |
 | `call-mute` | Mute | different | Toasts that the Trunk can't hear you. | Live call has real mute/camera controls, not a toast-only Mute on a header bar. |
 | `call-pause` | Pause | missing | Toasts Paused. | No header call Pause button. Live voice is a composer overlay. |
@@ -67,8 +67,8 @@ Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Lat
 | `plus-think-normal` | Normal | different | Sets thinking to Normal. | Thinking is on the model chip. |
 | `plus-think-deep` | Deep | different | Sets thinking to Deep. | Thinking is on the model chip. |
 | `plus-who-answers` | Whoever fits | different | In a room, picks who answers (Whoever fits / Scout / Ledger). | Who answers here lists Trunks; the conversation's Trunk is often fixed after the first message. |
-| `plus-google-drive` | From Google Drive | missing | Not in the early + menu. | Listed and greyed: Google's picker opens in the desktop app. |
-| `plus-onedrive` | From OneDrive or SharePoint | missing | Not in the early + menu. | Listed and greyed. |
+| `plus-google-drive` | From Google Drive | app-extra | Not in the early + menu. | Listed and greyed: Google's picker opens in the desktop app. |
+| `plus-onedrive` | From OneDrive or SharePoint | app-extra | Not in the early + menu. | Listed and greyed. |
 | `plus-saved-prompts` | Saved prompts | different | Later preview has a prompts picker. | Greyed: engine keeps no saved prompts. |
 | `plus-office-doc` | Write a document, spreadsheet or slides | different | Later preview office-make row. | Greyed: no document command. |
 | `plus-gif` | Find a GIF… | different | Later preview GIF search. | Greyed: no GIF search. |
@@ -164,7 +164,7 @@ Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Lat
 
 | id | label | status | preview | app |
 |---|---|---|---|---|
-| `inbox-tab-later` | Later | missing | Not in the early preview inbox tabs. | Shows Later (snoozed). |
+| `inbox-tab-later` | Later | app-extra | Not in the early preview inbox tabs. | Shows Later (snoozed). |
 | `inbox-watch-again` | Watch again | different | Toasts: Plays the task back step by step. | Replay/open the run when the engine has it; not a toast-only stub. |
 
 ### automations
@@ -178,8 +178,8 @@ Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Lat
 
 | id | label | status | preview | app |
 |---|---|---|---|---|
-| `lib-tab-meetings` | Meetings | missing | Not in the early preview library tabs. | Shows Meetings. |
-| `lib-tab-logbook` | Logbook | missing | Not in the early preview library tabs. | Shows Logbook. |
+| `lib-tab-meetings` | Meetings | app-extra | Not in the early preview library tabs. | Shows Meetings. |
+| `lib-tab-logbook` | Logbook | app-extra | Not in the early preview library tabs. | Shows Logbook. |
 | `lib-write` | Write a new document | different | Toasts: Opens a blank document a Trunk can help write. | Head actions Canvas / Translate / Make pictures are greyed (engine gaps). No toast-only Write button. |
 | `lib-open` | Open | different | Toasts: Opens in its own app. | Opens the document when the engine can; not a toast-only stub. |
 | `lib-canvas` | Canvas | different | Later preview Clearings/canvas. | Greyed: needs an engine method that lists Clearings. |
@@ -200,7 +200,7 @@ Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Lat
 
 | id | label | status | preview | app |
 |---|---|---|---|---|
-| `set-nav-seasons` | Seasons | missing | Not in the preview SET_NAV. | Opens Settings › Seasons. Preview has no Seasons page. |
+| `set-nav-seasons` | Seasons | app-extra | Not in the preview SET_NAV. | Opens Settings › Seasons. Preview has no Seasons page. |
 | `set-show-everything` | Show everything | different | Toggles extra pages (Advanced, Developer). Off drops those pages back to General. | Level control is a three-way Regular / Advanced / Technical segmented control, not a single checkbox. |
 
 ### settings-general

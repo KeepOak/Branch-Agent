@@ -212,7 +212,7 @@ add("chat-header-name", "chat-header", "Conversation name",
     "different")
 add("chat-computer-view", "chat-header", "Computer view",
     "Toggles the side panel on the Computer tab.",
-    "window/src/shell/header-tools.ts", "conversation header tools",
+    "window/src/shell/WindowShell.tsx", "conversationTools",
     "Opens Computer full-size / the Computer pane, not only a pressed icon in the header.",
     "different")
 add("chat-side-panel", "chat-header", "Side panel",
@@ -229,12 +229,12 @@ add("chat-back", "chat-header", "Back",
     "Not in the early preview header.",
     "window/src/shell/TopBar.tsx", "TopBar",
     "History back. Preview has no back/forward in the chat header.",
-    "missing")
+    "app-extra")
 add("chat-forward", "chat-header", "Forward",
     "Not in the early preview header.",
     "window/src/shell/TopBar.tsx", "TopBar",
     "History forward.",
-    "missing")
+    "app-extra")
 add("lock-banner-off", "chat-header", "Turn it off",
     "Turns Lockdown off from the red banner.",
     "window/src/shell/LockdownBanner.tsx", "LockdownBanner",
@@ -252,8 +252,8 @@ add("call-mute", "chat-header", "Mute",
     "different")
 add("call-pause", "chat-header", "Pause",
     "Toasts Paused.",
-    "",
-    "",
+    "window/src/composer/VoiceParts.tsx",
+    "VoiceScreen",
     "No header call Pause button. Live voice is a composer overlay.",
     "missing")
 add("call-end", "chat-header", "End",
@@ -404,12 +404,12 @@ add("plus-google-drive", "plus-menu", "From Google Drive",
     "Not in the early + menu.",
     "window/src/composer/PlusMenu.tsx", "PlusMenu",
     "Listed and greyed: Google's picker opens in the desktop app.",
-    "missing")
+    "app-extra")
 add("plus-onedrive", "plus-menu", "From OneDrive or SharePoint",
     "Not in the early + menu.",
     "window/src/composer/PlusMenu.tsx", "PlusMenu",
     "Listed and greyed.",
-    "missing")
+    "app-extra")
 add("plus-photo", "plus-menu", "Take a photo",
     "Later preview adds a photo capture row.",
     "window/src/composer/PlusMenu.tsx", "PlusMenu",
@@ -1087,7 +1087,7 @@ add("inbox-tab-later", "inbox", "Later",
     "Not in the early preview inbox tabs.",
     "window/src/places/inbox/index.tsx", "InboxPlace",
     "Shows Later (snoozed).",
-    "missing")
+    "app-extra")
 add("inbox-allow-all", "inbox", "Allow all N…",
     "Opens a confirm dialog then allows every pending item.",
     "window/src/places/inbox/NeedsYou.tsx", "NeedsYou",
@@ -1206,12 +1206,12 @@ add("lib-tab-meetings", "library", "Meetings",
     "Not in the early preview library tabs.",
     "window/src/places/library/index.tsx", "LibraryPlace",
     "Shows Meetings.",
-    "missing")
+    "app-extra")
 add("lib-tab-logbook", "library", "Logbook",
     "Not in the early preview library tabs.",
     "window/src/places/library/index.tsx", "LibraryPlace",
     "Shows Logbook.",
-    "missing")
+    "app-extra")
 add("lib-forget", "library", "Forget",
     "Removes a memory with Undo toast.",
     "window/src/places/library/memory.tsx", "MemoryTab",
@@ -1415,7 +1415,7 @@ add("set-nav-seasons", "settings", "Seasons",
     "Not in the preview SET_NAV.",
     "window/src/places-nav/settings-nav.ts", "settingsGroups",
     "Opens Settings › Seasons. Preview has no Seasons page.",
-    "missing")
+    "app-extra")
 add("set-nav-advanced", "settings", "Advanced",
     "Shown when Show everything / level is on.",
     "window/src/places-nav/SettingsFrame.tsx", "SettingsFrame",
@@ -1767,7 +1767,7 @@ add("pair-cancel", "dialogs", "Cancel",
     "same")
 add("edit-trunk-shuffle", "dialogs", "Shuffle",
     "Randomizes colour, shape, and eyes.",
-    "window/src/face/appearance.ts", "Trunk editor",
+    "window/src/face/appearance.tsx", "Trunk editor",
     "Shuffle exists on the look editor when that UI is ported.",
     "unknown")
 add("edit-trunk-save", "dialogs", "Save",
@@ -1939,14 +1939,17 @@ def main() -> None:
     dup = [i for i, n in Counter(ids).items() if n > 1]
     if dup:
         raise SystemExit(f"duplicate ids: {dup}")
-    allowed = {"same", "different", "missing", "dead", "unknown"}
+    allowed = {"same", "different", "missing", "app-extra", "dead", "unknown"}
     bad = [e["id"] for e in E if e["status"] not in allowed]
     if bad:
         raise SystemExit(f"bad status: {bad}")
+    missing_files = sorted({e["appFile"] for e in E if e["appFile"] and not (ROOT / e["appFile"]).is_file()})
+    if missing_files:
+        raise SystemExit("appFile path does not exist: " + ", ".join(missing_files))
     OUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     OUT_JSON.write_text(json.dumps(E, indent=2) + "\n", encoding="utf-8")
     counts = Counter(e["status"] for e in E)
-    order = ["same", "different", "missing", "dead", "unknown"]
+    order = ["same", "different", "missing", "app-extra", "dead", "unknown"]
     lines = [
         "# Preview button map",
         "",
@@ -1954,7 +1957,7 @@ def main() -> None:
         "This is the expected-destination list for a click-every-button tester.",
         "",
         "Each JSON entry has `id`, `screen`, `label`, `previewAction`, `appFile`, `appComponent`, `appAction`, `status`.",
-        "Statuses: `same` (app matches the preview), `different` (exists but destination or behaviour differs), `missing` (no such control in the app), `dead` (app control does nothing / only a toast), `unknown` (could not determine statically).",
+        "Statuses: `same` (app matches the preview), `different` (exists but destination or behaviour differs), `missing` (preview control the app lacks), `app-extra` (app control the early preview does not have), `dead` (app control does nothing / only a toast), `unknown` (could not determine statically).",
         "",
         "Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Later-pass interpolated `data-act` keys that are not distinct product destinations are omitted; `scripts/parity/extract-preview-acts.mjs` lists raw act keys.",
         "",
