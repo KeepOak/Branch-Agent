@@ -5,9 +5,10 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { copyFile, mkdir, mkdtemp, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import test from "node:test";
+import nodeTest from "node:test";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw Error("Compile the exact desktop source before testing");
 const require = createRequire(import.meta.url), Module = require("node:module");
@@ -15,7 +16,8 @@ const originalLoad = Module._load, originalFetch = globalThis.fetch;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const servingOn = async (port) => (await originalFetch(`http://127.0.0.1:${port}/readyz`).then(response => response.status, () => 0)) === 200;
-async function eventually(predicate, timeout = 8000) {
+const EVENTUALLY_DEFAULT_MS = 8000;
+async function eventually(predicate, timeout = EVENTUALLY_DEFAULT_MS) {
   const end = Date.now() + timeout;
   while (!await predicate()) { if (Date.now() > end) throw Error("Fixture deadline"); await pause(20); }
 }
@@ -23,6 +25,56 @@ async function freePort() {
   const server = createServer(); await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   const port = server.address().port; await new Promise(resolve => server.close(resolve)); return port;
 }
+
+// A failed test used to leave engines, IPC, poll timers or the window server open.
+// node --test then never exited (PR #637: 8.5 minutes of silence until the 15-minute job cap).
+// Per-test budget is above the longest in-file wait (30s ready + 70s drain/swap) on slow runners.
+const TEST_TIMEOUT_MS = 120_000;
+let failedTests = 0;
+function test(name, options, fn) {
+  if (typeof options === "function") {
+    fn = options;
+    options = {};
+  }
+  return nodeTest(name, { timeout: TEST_TIMEOUT_MS, ...options }, async (t) => {
+    try { return await fn(t); }
+    catch (error) { failedTests += 1; throw error; }
+  });
+}
+function killTree(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  try {
+    if (process.platform === "win32") {
+      execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 10_000 });
+      return;
+    }
+    try { process.kill(-pid, "SIGKILL"); } catch { /* not a group leader, or already gone */ }
+    try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+  } catch { /* taskkill: already gone */ }
+}
+function stopChild(child) {
+  if (!child) return;
+  killTree(child.pid);
+  try { child.kill("SIGKILL"); } catch { /* already gone */ }
+  try { child.disconnect?.(); } catch { /* no IPC */ }
+  try { child.unref?.(); } catch { /* already unref'd */ }
+}
+async function closeListening(server, ms = 1_000) {
+  if (!server) return;
+  try { server.closeAllConnections?.(); } catch { /* already closing */ }
+  await Promise.race([
+    new Promise(resolve => { try { server.close(() => resolve()); } catch { resolve(); } }),
+    pause(ms),
+  ]);
+}
+nodeTest.after(() => {
+  const watchdog = setTimeout(() => {
+    const leftover = typeof process.getActiveResourcesInfo === "function" ? process.getActiveResourcesInfo() : [];
+    console.error(`restart-engine.test leftover handles after tests: ${leftover.join(", ") || "(none reported)"}`);
+    process.exit(failedTests > 0 || process.exitCode ? (Number(process.exitCode) || 1) : 0);
+  }, 5_000);
+  watchdog.unref();
+});
 function electronFixture() {
   let window; const windows = [], handlers = new Map(), app = new EventEmitter(), ipcMain = new EventEmitter(), errors = [];
   Object.assign(app, { getVersion: () => "fixture", setPath() {}, setAppUserModelId() {},
@@ -220,32 +272,57 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
   const dist = resolve(process.env.BRANCH_DESKTOP_TEST_DIST).replaceAll("\\", "/").toLowerCase();
   for (const file of Object.keys(require.cache)) if (file.replaceAll("\\", "/").toLowerCase().startsWith(dist)) delete require.cache[file];
   const restart = () => runtime.ipcMain.emit("branch-desktop:restart-engine", { sender: runtime.window.webContents, senderFrame: runtime.window.webContents.mainFrame });
+  let runError, quitSurvivors = [];
   try {
     require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "main.js"));
     if (!holdStartup) await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway ready"), 30_000);
     await run({ root, runtime, starts, restart, offerStaged: () => onStaged(), withdraw: version => onWithdrawal(version),
       pendingVersion: () => pendingVersion(), swapGuard: (work) => swapGuard(work), engineWatchTick: () => engineWatchTick(), clock });
+  } catch (error) {
+    runError = error;
   } finally {
-    await writeFile(join(root, "release-ready"), "ready");
-    if (holdUndo) await writeFile(join(root, "release-undo"), "release");
-    await writeFile(join(root, "release-start-continuation"), "1");
-    await writeFile(join(root, "release-candidate"), "1");
+    // Cleanup must finish after a failure: a throw here used to skip SIGKILL and leave
+    // IPC, the window server, and poll timers holding `node --test` open until CI cancelled.
+    const pids = new Set();
+    const remember = async () => {
+      try { for (const pid of await starts()) if (Number.isInteger(pid)) pids.add(pid); } catch { /* mid-write or gone */ }
+    };
+    await remember();
+    try { await writeFile(join(root, "release-ready"), "ready"); } catch { /* root already gone */ }
+    if (holdUndo) try { await writeFile(join(root, "release-undo"), "release"); } catch { /* root already gone */ }
+    try { await writeFile(join(root, "release-start-continuation"), "1"); } catch { /* root already gone */ }
+    try { await writeFile(join(root, "release-candidate"), "1"); } catch { /* root already gone */ }
     await pause(600);
-    runtime.app.emit("will-quit");
-    await eventually(async () => (await starts()).every(pid => !alive(pid)));
-    stopWatching?.();
-    stopEngineWatch?.();
-    stopWindowWatch?.();
-    stopAutoApply?.();
-    windowServer?.closeAllConnections?.();
-    await new Promise(resolve => windowServer ? windowServer.close(() => resolve()) : resolve());
-    for (const pid of await starts()) try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+    try { runtime.app.emit("will-quit"); } catch { /* already quitting */ }
+    // Same default deadline as eventually(): quitting must stop engines, but a throw
+    // here must not skip the kills that keep node --test from hanging.
+    const gracefulEnd = Date.now() + EVENTUALLY_DEFAULT_MS;
+    try {
+      while (Date.now() < gracefulEnd && (await starts()).some(pid => alive(pid))) await pause(20);
+      quitSurvivors = (await starts()).filter(pid => Number.isInteger(pid) && alive(pid));
+    } catch { /* starts.json mid-write or gone */ }
+    try { stopWatching?.(); } catch { /* already stopped */ }
+    try { stopEngineWatch?.(); } catch { /* already stopped */ }
+    try { stopWindowWatch?.(); } catch { /* already stopped */ }
+    try { stopAutoApply?.(); } catch { /* already stopped */ }
+    try { await closeListening(windowServer); } catch { /* already closed */ }
+    await remember();
+    for (const pid of pids) killTree(pid);
     Module._load = originalLoad; globalThis.fetch = originalFetch;
     previous === undefined ? delete process.env.BRANCH_DESKTOP_DATA : process.env.BRANCH_DESKTOP_DATA = previous;
     previousCandidateMin === undefined ? delete process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB : process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB = previousCandidateMin;
     for (const name of ["READY", "STEP_DOWN", "TAKE_OVER", "STANDBY_READY", "ROLLBACK"]) delete process.env[`BRANCH_DESKTOP_${name}_TIMEOUT_MS`];
     delete process.env.BRANCH_DESKTOP_RETIRE_KILL_AFTER_MS;
-    await rm(root, { recursive: true, force: true });
+    try { await rm(root, { recursive: true, force: true }); } catch { /* locked or already gone */ }
+  }
+  if (runError) throw runError;
+  if (quitSurvivors.length) {
+    throw new assert.AssertionError({
+      message: `will-quit left engines running: ${quitSurvivors.join(", ")}`,
+      actual: quitSurvivors,
+      expected: [],
+      operator: "deepStrictEqual",
+    });
   }
 }
 /** Explicitly enables the default-on P45 handoff, overriding drain-first fixtures, with shorter deadlines from `env`. */
@@ -595,7 +672,7 @@ test("a handoff whose standby port was taken gives control back without rejectin
   try {
     await unlink(join(root, "hold-standby"));
     await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"), 40_000);
-  } finally { await new Promise(resolve => squatter.close(resolve)); }
+  } finally { await closeListening(squatter); }
   const old = (await starts())[0];
   assert.equal(alive(old), true); assert.equal(await servingOn(gatewayPort), true);
   assert.equal(existsSync(join(root, "component-update-rejected.json")), false, "a healthy release was rejected for a port clash");
@@ -830,7 +907,7 @@ test("a standby port taken before the engine binds it falls back to the live por
   try {
     await unlink(join(root, "hold-standby"));
     await eventually(() => swapped(root), 70_000);
-  } finally { await new Promise(resolve => squatter.close(resolve)); }
+  } finally { await closeListening(squatter); }
   assert.equal(alive(standby), false);
   const launched = await starts();
   assert.equal(launched.length, 3);
@@ -969,17 +1046,21 @@ test("quitting while the new engine boots never rejects the release or starts an
   assert.equal(existsSync(join(root, "component-update-rejected.json")), false, "a healthy release was rejected for a quit");
   assert.doesNotMatch(await readFile(join(root, "desktop.log"), "utf8"), /restored prior components|Updated engine failure/);
 }));
-test("launch retires the engines the last session recorded and left holding their ports, and nothing else", async () => {
+test("launch retires the engines the last session recorded and left holding their ports, and nothing else", async (t) => {
   const { spawn } = await import("node:child_process");
   const { engineProcessIdentity } = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "engine-records.js"));
   const holdPort = "const s=require('net').createServer().listen(0,'127.0.0.1',()=>process.send(s.address().port));setInterval(()=>{},1000)";
   const orphan = spawn(process.execPath, ["-e", holdPort], { stdio: ["ignore", "ignore", "ignore", "ipc"], detached: process.platform !== "win32", windowsHide: true });
-  const orphanSpawnedAt = Date.now();
-  const orphanPort = await new Promise(resolve => orphan.once("message", resolve));
   const unverifiable = spawn(process.execPath, ["-e", holdPort], { stdio: ["ignore", "ignore", "ignore", "ipc"], detached: process.platform !== "win32", windowsHide: true });
-  const unverifiablePort = await new Promise(resolve => unverifiable.once("message", resolve));
-  // A reused PID on an occupied port, or a matching process that does not own that port, is never touched.
   const bystander = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { stdio: "ignore", windowsHide: true });
+  t.after(() => { stopChild(orphan); stopChild(unverifiable); stopChild(bystander); });
+  const orphanSpawnedAt = Date.now();
+  const announced = (child, label) => Promise.race([
+    new Promise(resolve => child.once("message", resolve)),
+    pause(10_000).then(() => { throw new Error(`${label} did not announce its port`); }),
+  ]);
+  const orphanPort = await announced(orphan, "orphan");
+  const unverifiablePort = await announced(unverifiable, "unverifiable");
   try {
     await fixture(async ({ root, starts }) => {
       await eventually(() => !alive(orphan.pid), 10_000).catch(async error => {
@@ -1006,14 +1087,15 @@ test("launch retires the engines the last session recorded and left holding thei
       ]));
     });
   } finally {
-    orphan.kill(); unverifiable.kill(); bystander.kill();
+    stopChild(orphan); stopChild(unverifiable); stopChild(bystander);
   }
 });
-test("a spawned engine has a recovery record before its start-time query finishes", async () => {
+test("a spawned engine has a recovery record before its start-time query finishes", async (t) => {
   const { spawn } = await import("node:child_process");
   const { recordEngine } = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "engine-records.js"));
   const root = await mkdtemp(join(tmpdir(), "branch-record-spawn-"));
   const child = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { stdio: "ignore", windowsHide: true });
+  t.after(() => { stopChild(child); void rm(root, { recursive: true, force: true }); });
   try {
     recordEngine(root, child, 12345, "engine", process.execPath);
     const records = JSON.parse(readFileSync(join(root, "gateway-engines.json"), "utf8"));
@@ -1021,14 +1103,15 @@ test("a spawned engine has a recovery record before its start-time query finishe
       [{ pid: child.pid, port: 12345, role: "engine", started: undefined }]);
     assert.ok(Math.abs(records[0].spawnedAt - Date.now()) < 5_000, "spawn time was not recorded synchronously");
   } finally {
-    child.kill();
+    stopChild(child);
     await rm(root, { recursive: true, force: true });
   }
 });
-test("launch refuses plainly when the last session's engine still runs on a moved port", async () => {
+test("launch refuses plainly when the last session's engine still runs on a moved port", async (t) => {
   const squatter = createServer(); await new Promise(resolve => squatter.listen(0, "127.0.0.1", resolve));
   const { spawn } = await import("node:child_process");
-  const orphan = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { stdio: "ignore" });
+  const orphan = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { stdio: "ignore", windowsHide: true });
+  t.after(() => { stopChild(orphan); void closeListening(squatter); });
   try {
     await fixture(async ({ runtime }) => {
       await eventually(() => runtime.errors.length === 1);
@@ -1039,7 +1122,7 @@ test("launch refuses plainly when the last session's engine still runs on a move
       await writeFile(join(root, "gateway.pid"), String(orphan.pid));
     });
   } finally {
-    orphan.kill(); await new Promise(resolve => squatter.close(resolve));
+    stopChild(orphan); await closeListening(squatter);
   }
 });
 test("a standby that fails after the old engine drained brings the previous build back", () => fixture(async ({ root, runtime, starts, restart }) => {
