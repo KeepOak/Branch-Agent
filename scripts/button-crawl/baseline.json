@@ -103,9 +103,6 @@
     "settings:accounts :: Check again": [
       "dead"
     ],
-    "settings:accounts :: Connect GitHub": [
-      "error"
-    ],
     "settings:accounts :: Refresh": [
       "dead"
     ],
