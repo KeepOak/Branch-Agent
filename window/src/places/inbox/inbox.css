@@ -157,3 +157,4 @@ button.ib-nt-t:hover { text-decoration:underline; }
 .ib-grow-x { flex:1; }
 .ib-nt-link { border:0; background:none; padding:0; font:inherit; font-size:13px; color:var(--ink); text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
 .ib-nt-link:disabled { color:var(--ink-3); text-decoration:none; cursor:default; }
+@media (max-width:560px) { .ib-rec span { display:none; } }
