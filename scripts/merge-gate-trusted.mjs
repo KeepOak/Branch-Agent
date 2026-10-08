@@ -69,18 +69,22 @@ export function nameStatusFromPrFiles(files) {
   }).join('\n');
 }
 
-export function newestChecksByName(checkRuns) {
+export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}) {
   const newest = new Map();
   for (const run of checkRuns) {
-    const previous = newest.get(run.name);
+    const workflow = lookupWorkflow(workflowsByCheckId, run.id);
+    // Missing App or workflow identity must never collapse unrelated checks.
+    const key = run.app?.id != null && workflow?.path
+      ? JSON.stringify([run.app.id, workflow.path, run.name]) : Symbol();
+    const previous = newest.get(key);
     // IDs increase with check creation, including queued checks without started_at.
-    if (!previous || Number(run.id) > Number(previous.id)) newest.set(run.name, run);
+    if (!previous || Number(run.id) > Number(previous.id)) newest.set(key, run);
   }
   return [...newest.values()];
 }
 
-export function evaluateOtherChecks(checkRuns, ignoreName = TRUSTED_JOB) {
-  const others = newestChecksByName(checkRuns).filter((run) => run.name !== ignoreName);
+export function evaluateOtherChecks(checkRuns, workflowsByCheckId = {}, ignoreName = TRUSTED_JOB) {
+  const others = newestChecksByIdentity(checkRuns, workflowsByCheckId).filter((run) => run.name !== ignoreName);
   const pending = others.filter((run) => run.status !== 'completed');
   const failed = others.filter((run) =>
     run.status === 'completed' && !PASS_CONCLUSIONS.has(run.conclusion));
@@ -110,10 +114,11 @@ export function findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
     const urlRunId = actionsRunIdFromCheckRun(run);
     const workflow = lookupWorkflow(workflowsByCheckId, run.id);
     if (currentId != null && Number.isFinite(currentId) && urlRunId === currentId) {
-      if (!workflow) return false;
-      if (workflow.id != null && workflow.id !== '' && Number(workflow.id) !== currentId) return true;
-      if (workflow.path && workflow.path !== allowedWorkflowPath) return true;
-      if (workflow.event && workflow.event !== allowedEvent) return true;
+      if (!workflow || workflow.id == null || workflow.id === ''
+        || Number(workflow.id) !== currentId) return true;
+      if (workflow.path !== allowedWorkflowPath || workflow.event !== allowedEvent) return true;
+      if (workflow.checkSuiteId == null || run.check_suite?.id == null
+        || Number(run.check_suite.id) !== Number(workflow.checkSuiteId)) return true;
       return false;
     }
     if (!workflow || workflow.id == null || workflow.id === '') return true;
@@ -245,13 +250,14 @@ export function missingCoreWorkflows({
   coreWorkflows,
   requiredJobs = REQUIRED_JOBS,
 }) {
-  checkRuns = newestChecksByName(checkRuns);
+  checkRuns = newestChecksByIdentity(checkRuns, workflowsByCheckId);
   const missing = [];
 
   for (const job of requiredJobs) {
-    const run = checkRuns.find((item) => item.name === job);
-    if (!run) missing.push(`${job} (not present)`);
-    else if (run.status !== 'completed' || run.conclusion !== 'success') {
+    const runs = checkRuns.filter((item) => item.name === job);
+    if (!runs.length) missing.push(`${job} (not present)`);
+    for (const run of runs) {
+      if (run.status === 'completed' && run.conclusion === 'success') continue;
       missing.push(`${job} (status: ${run.status}, conclusion: ${run.conclusion})`);
     }
   }
@@ -279,7 +285,7 @@ export function evaluateTrustedGate({
   prNumber,
   baseRef,
 }) {
-  const { others, pending, failed } = evaluateOtherChecks(checkRuns);
+  const { others, pending, failed } = evaluateOtherChecks(checkRuns, workflowsByCheckId);
   const foreignTrusted = findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
     allowedRunId: currentRunId,
     sha,
@@ -437,23 +443,11 @@ export function resolveWorkflowForCheckRun(repo, token, checkRun) {
 }
 
 export function resolveWorkflowsForCheckRuns(repo, token, checkRuns, {
-  currentRunId = process.env.GITHUB_RUN_ID,
   attributionCache = new Map(),
   resolveWorkflow = resolveWorkflowForCheckRun,
 } = {}) {
   const workflowsByCheckId = {};
-  const currentId = currentRunId == null || currentRunId === '' ? null : Number(currentRunId);
   for (const run of checkRuns) {
-    const urlRunId = actionsRunIdFromCheckRun(run);
-    if (currentId != null && Number.isFinite(currentId) && urlRunId === currentId) {
-      workflowsByCheckId[run.id] = {
-        path: TRUSTED_WORKFLOW_PATH,
-        name: 'Merge gate trusted',
-        id: currentId,
-        event: 'pull_request_target',
-      };
-      continue;
-    }
     if (attributionCache.has(run.id)) {
       workflowsByCheckId[run.id] = attributionCache.get(run.id);
       continue;

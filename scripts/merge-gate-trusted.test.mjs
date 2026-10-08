@@ -35,6 +35,7 @@ const trustedWorkflow = {
   name: 'Merge gate trusted',
   id: CURRENT_RUN_ID,
   event: 'pull_request_target',
+  checkSuiteId: 203,
 };
 const mergeGateWorkflow = { path: '.github/workflows/merge-gate.yml', name: 'Merge gate', id: 301, event: 'pull_request' };
 const earlierTrustedWorkflow = {
@@ -54,6 +55,7 @@ const featureBatchWorkflow = {
 const passCheckRuns = [
   {
     id: 101,
+    app: { id: 15368 },
     name: 'merge-gate',
     status: 'completed',
     conclusion: 'success',
@@ -62,6 +64,7 @@ const passCheckRuns = [
   },
   {
     id: 102,
+    app: { id: 15368 },
     name: 'Named feature tests on ubuntu-latest (1/10)',
     status: 'completed',
     conclusion: 'success',
@@ -88,6 +91,113 @@ const coreWorkflows = [
   { path: '.github/workflows/merge-gate.yml', pullRequestPaths: null },
   { path: '.github/workflows/feature-batch-checks.yml', pullRequestPaths: ['engine/**', 'window/**'] },
 ];
+
+// API-recorded pair on PR #492, SHA 3093a8dd6ebf421c9cfddb34e35ba44d6ae22aea.
+const realBuildPair = [
+  { id: 112992933987, name: 'build', status: 'completed', conclusion: 'failure',
+    app: { id: 15368 }, check_suite: { id: 102080051817 },
+    details_url: 'https://github.com/KeepOak/Branch-Agent/actions/runs/37679904411/job/112992933987' },
+  { id: 113023525061, name: 'build', status: 'completed', conclusion: 'success',
+    app: { id: 15368 }, check_suite: { id: 102080051207 },
+    details_url: 'https://github.com/KeepOak/Branch-Agent/actions/runs/37679904183/job/113023525061' },
+];
+const realBuildWorkflows = {
+  112992933987: { path: '.github/workflows/visual-tour.yml', id: 37679904411 },
+  113023525061: { path: '.github/workflows/engine-build-pr.yml', id: 37679904183 },
+};
+
+test('regression: real 3093a8dd build pair fails the trusted gate in both orders', () => {
+  for (const pair of [realBuildPair, [...realBuildPair].reverse()]) {
+    const result = evaluateTrustedGate({
+      checkRuns: [passCheckRuns[0], ...pair],
+      workflowsByCheckId: { ...passWorkflows, ...realBuildWorkflows },
+      changedFiles: ['README.md'], coreWorkflows, currentRunId: CURRENT_RUN_ID,
+    });
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.failed.map((check) => check.id), [112992933987]);
+  }
+});
+
+test('regression: real 3093a8dd build pair fails the actual ordinary jq filter', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  const filter = yaml.match(/--jq '([^']+)'/)[1];
+  const failedFilter = yaml.match(/failed=\$\(jq -r '([^']+)'/)[1];
+  for (const pair of [realBuildPair, [...realBuildPair].reverse()]) {
+    const runs = execFileSync('jq', [filter], {
+      input: JSON.stringify({ check_runs: pair }), encoding: 'utf8', windowsHide: true,
+    });
+    const failed = execFileSync('jq', ['-r', failedFilter], {
+      input: runs, encoding: 'utf8', windowsHide: true,
+    });
+    const result = { ok: failed.trim().length === 0 };
+    assert.equal(result.ok, false);
+    assert.equal(failed.trim(), 'build: failure');
+  }
+});
+
+test('regression: newer forged merge-gate success cannot hide a genuine failure', () => {
+  const genuine = { ...passCheckRuns[0], app: { id: 15368 }, conclusion: 'failure' };
+  const forged = { ...genuine, id: 160, app: { id: 999 },
+    conclusion: 'success', check_suite: { id: 999 }, details_url: genuine.details_url };
+  for (const attribution of [{}, { 160: mergeGateWorkflow },
+    { 160: { ...mergeGateWorkflow, path: '.github/workflows/foreign.yml' } }]) {
+    const result = evaluateTrustedGate({
+      checkRuns: [genuine, forged], workflowsByCheckId: { 101: mergeGateWorkflow, ...attribution },
+      changedFiles: ['README.md'], coreWorkflows, currentRunId: CURRENT_RUN_ID,
+    });
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.failed.map((check) => check.id), [101]);
+  }
+});
+
+test('regression: current-run URL spoof must match the API current check suite', () => {
+  const forged = { ...passCheckRuns[2], id: 160, check_suite: { id: 999 } };
+  const checks = [passCheckRuns[0], passCheckRuns[2], forged];
+  const workflowsByCheckId = resolveWorkflowsForCheckRuns('example/repo', 'unused', checks, {
+    currentRunId: CURRENT_RUN_ID,
+    resolveWorkflow: (_repo, _token, check) => check.id === 101
+      ? mergeGateWorkflow : { ...trustedWorkflow, checkSuiteId: 203 },
+  });
+  const result = evaluateTrustedGate({
+    checkRuns: checks, workflowsByCheckId, changedFiles: ['README.md'],
+    coreWorkflows, currentRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.foreignTrusted.map((check) => check.id), [160]);
+});
+
+test('unidentified checks never collapse even with the same name and newer success', () => {
+  const failed = { ...passCheckRuns[0], conclusion: 'failure' };
+  const success = { ...failed, id: 160, conclusion: 'success' };
+  for (const [checks, workflows] of [
+    [[failed, success], {}],
+    [[{ ...failed, app: undefined }, { ...success, app: undefined }],
+      { 101: mergeGateWorkflow, 160: mergeGateWorkflow }],
+  ]) {
+    const result = evaluateTrustedGate({
+      checkRuns: checks, workflowsByCheckId: workflows, changedFiles: ['README.md'], coreWorkflows,
+    });
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.others.map((check) => check.id), [101, 160]);
+    assert.ok(result.missingCore.some((item) => item.includes('merge-gate (status: completed, conclusion: failure)')));
+  }
+});
+
+test('current trusted run fails closed for missing suite or incomplete API identity', () => {
+  for (const workflow of [
+    { ...trustedWorkflow, checkSuiteId: null },
+    { ...trustedWorkflow, id: null },
+    { ...trustedWorkflow, path: null },
+    { ...trustedWorkflow, event: null },
+  ]) {
+    assert.deepEqual(findForeignTrustedChecks([passCheckRuns[2]], { 103: workflow }, {
+      allowedRunId: CURRENT_RUN_ID,
+    }).map((check) => check.id), [103]);
+  }
+  assert.equal(findForeignTrustedChecks([{ ...passCheckRuns[2], check_suite: undefined }], passWorkflows, {
+    allowedRunId: CURRENT_RUN_ID,
+  }).length, 1);
+});
 
 test('pass case: recorded check runs all succeed and core workflows are present', () => {
   const result = evaluateTrustedGate({
@@ -292,7 +402,7 @@ test('unattributed merge-gate-trusted check fails closed', () => {
   assert.match(result.errors.join('\n'), /unattributed/);
 });
 
-test('rate-limited current trusted check is accepted from its actions run URL', () => {
+test('rate-limited current trusted check fails closed without API suite attribution', () => {
   const workflowsByCheckId = {
     101: mergeGateWorkflow,
   };
@@ -300,7 +410,7 @@ test('rate-limited current trusted check is accepted from its actions run URL', 
   const foreign = findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
     allowedRunId: CURRENT_RUN_ID,
   });
-  assert.deepEqual(foreign, []);
+  assert.deepEqual(foreign.map((check) => check.id), [103]);
   const result = evaluateTrustedGate({
     checkRuns,
     workflowsByCheckId,
@@ -308,8 +418,8 @@ test('rate-limited current trusted check is accepted from its actions run URL', 
     coreWorkflows,
     currentRunId: CURRENT_RUN_ID,
   });
-  assert.equal(result.ok, true);
-  assert.equal(result.foreignTrusted.length, 0);
+  assert.equal(result.ok, false);
+  assert.equal(result.foreignTrusted.length, 1);
   assert.equal(result.missingCore.length, 0);
 });
 
@@ -392,7 +502,7 @@ for (const [reason, checkPatch, workflowPatch] of [
   });
 }
 
-test('reopened same SHA keeps newest check per name over old cancelled checks', () => {
+test('reopened same SHA keeps newest check per App workflow and name over old cancelled checks', () => {
   const oldGate = { ...passCheckRuns[0], id: 90, conclusion: 'cancelled' };
   const oldFeature = { ...passCheckRuns[1], id: 91, conclusion: 'cancelled' };
   for (const checkRuns of [
@@ -401,7 +511,7 @@ test('reopened same SHA keeps newest check per name over old cancelled checks', 
   ]) {
     const result = evaluateTrustedGate({
       checkRuns,
-      workflowsByCheckId: passWorkflows,
+      workflowsByCheckId: { ...passWorkflows, 90: mergeGateWorkflow, 91: featureBatchWorkflow },
       changedFiles: ['engine/src/gateway/contacts.ts'],
       coreWorkflows,
       currentRunId: CURRENT_RUN_ID,
@@ -411,7 +521,7 @@ test('reopened same SHA keeps newest check per name over old cancelled checks', 
   }
   const result = evaluateTrustedGate({
     checkRuns: [...passCheckRuns, { ...passCheckRuns[0], id: 110, conclusion: 'cancelled' }],
-    workflowsByCheckId: passWorkflows,
+    workflowsByCheckId: { ...passWorkflows, 110: mergeGateWorkflow },
     changedFiles: ['README.md'],
     coreWorkflows,
     currentRunId: CURRENT_RUN_ID,
@@ -420,7 +530,7 @@ test('reopened same SHA keeps newest check per name over old cancelled checks', 
   assert.equal(result.failed[0].id, 110);
   const pending = evaluateTrustedGate({
     checkRuns: [...passCheckRuns, { ...passCheckRuns[0], id: 110, status: 'queued', conclusion: null }],
-    workflowsByCheckId: passWorkflows,
+    workflowsByCheckId: { ...passWorkflows, 110: mergeGateWorkflow },
     changedFiles: ['README.md'],
     coreWorkflows,
     currentRunId: CURRENT_RUN_ID,
@@ -443,7 +553,7 @@ test('older forged trusted checks cannot be hidden by name deduplication', () =>
   assert.equal(result.foreignTrusted[0].id, 90);
 });
 
-test('ordinary merge gate jq keeps newest checks and preserves its polling budget', () => {
+test('ordinary merge gate jq preserves all checks and its polling budget', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
   const filter = yaml.match(/--jq '([^']+)'/)[1];
   const feature = passCheckRuns[1];
@@ -456,7 +566,7 @@ test('ordinary merge gate jq keeps newest checks and preserves its polling budge
     const actual = JSON.parse(execFileSync('jq', [filter], {
       input: JSON.stringify({ check_runs: checks }), encoding: 'utf8', windowsHide: true,
     }));
-    assert.deepEqual(actual, [latest]);
+    assert.deepEqual(actual, [feature, latest, { ...feature, id: 90, conclusion: 'cancelled' }]);
   }
   assert.match(yaml, /seq 1 64/);
   assert.match(yaml, /if \[ "\$attempt" -lt 64 \]; then sleep 30; fi/);
@@ -533,13 +643,19 @@ test('failed or missing workflow lookups are retried instead of cached as unattr
   }
 });
 
-test('current trusted run self-attribution does not require an API lookup', () => {
+test('current trusted run requires API suite attribution and caches it across polls', () => {
+  let calls = 0;
+  const options = {
+    attributionCache: new Map(),
+    resolveWorkflow: () => { calls += 1; return trustedWorkflow; },
+  };
   const result = resolveWorkflowsForCheckRuns('example/repo', 'unused', [passCheckRuns[2]], {
     currentRunId: CURRENT_RUN_ID,
-    attributionCache: new Map(),
-    resolveWorkflow: () => assert.fail('current trusted run must not query the API'),
+    ...options,
   });
   assert.deepEqual(result[103], trustedWorkflow);
+  assert.deepEqual(resolveWorkflowsForCheckRuns('example/repo', 'unused', [passCheckRuns[2]], options), result);
+  assert.equal(calls, 1);
 });
 
 test('PR-only named list entry covers a changed test', () => {
