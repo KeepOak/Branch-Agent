@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -21,9 +22,14 @@ import {
   summarizeGateFileChanges,
   trustedCheckoutRef,
   workflowAppliesToChanges,
+  workflowFromActionsRun,
 } from './merge-gate-trusted.mjs';
 
 const CURRENT_RUN_ID = 303;
+const SHA = 'abc123';
+const PR_NUMBER = 627;
+const BASE_REF = 'main';
+const prContext = { sha: SHA, prNumber: PR_NUMBER, baseRef: BASE_REF };
 const trustedWorkflow = {
   path: TRUSTED_WORKFLOW_PATH,
   name: 'Merge gate trusted',
@@ -31,6 +37,13 @@ const trustedWorkflow = {
   event: 'pull_request_target',
 };
 const mergeGateWorkflow = { path: '.github/workflows/merge-gate.yml', name: 'Merge gate', id: 301, event: 'pull_request' };
+const earlierTrustedWorkflow = {
+  ...trustedWorkflow,
+  id: 304,
+  checkSuiteId: 204,
+  headSha: SHA,
+  pullRequests: [{ number: PR_NUMBER, base: BASE_REF }],
+};
 const featureBatchWorkflow = {
   path: '.github/workflows/feature-batch-checks.yml',
   name: 'Feature batch checks',
@@ -334,17 +347,132 @@ test('two genuine trusted runs on the same SHA pass even when the earlier run wa
     id: 104,
     status: 'completed',
     conclusion: 'cancelled',
+    check_suite: { id: 204 },
     details_url: 'https://github.com/example/repo/actions/runs/304/job/104',
   };
   const result = evaluateTrustedGate({
     checkRuns: [...passCheckRuns, earlier],
-    workflowsByCheckId: { ...passWorkflows, 104: { ...trustedWorkflow, id: 304 } },
+    workflowsByCheckId: { ...passWorkflows, 104: earlierTrustedWorkflow },
+    ...prContext,
     changedFiles: ['README.md'],
     coreWorkflows,
     currentRunId: CURRENT_RUN_ID,
   });
   assert.equal(result.ok, true);
   assert.deepEqual(result.foreignTrusted, []);
+});
+
+for (const [reason, checkPatch, workflowPatch] of [
+  ['mismatched suite', { check_suite: { id: 999 } }, {}],
+  ['missing PR', {}, { pullRequests: [{ number: 628, base: BASE_REF }] }],
+  ['non-main base', {}, { pullRequests: [
+    { number: PR_NUMBER, base: BASE_REF },
+    { number: 628, base: 'old-base' },
+  ] }],
+  ['wrong head SHA', {}, { headSha: 'other-sha' }],
+]) {
+  test(`earlier trusted run rejects ${reason}`, () => {
+    const earlier = {
+      ...passCheckRuns[2],
+      id: 104,
+      check_suite: { id: 204 },
+      details_url: 'https://github.com/example/repo/actions/runs/304/job/104',
+      ...checkPatch,
+    };
+    const result = evaluateTrustedGate({
+      checkRuns: [...passCheckRuns, earlier],
+      workflowsByCheckId: { ...passWorkflows, 104: { ...earlierTrustedWorkflow, ...workflowPatch } },
+      changedFiles: ['README.md'],
+      coreWorkflows,
+      currentRunId: CURRENT_RUN_ID,
+      ...prContext,
+    });
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.foreignTrusted.map((check) => check.id), [104]);
+  });
+}
+
+test('reopened same SHA keeps newest check per name over old cancelled checks', () => {
+  const oldGate = { ...passCheckRuns[0], id: 90, conclusion: 'cancelled' };
+  const oldFeature = { ...passCheckRuns[1], id: 91, conclusion: 'cancelled' };
+  for (const checkRuns of [
+    [oldGate, oldFeature, ...passCheckRuns],
+    [...passCheckRuns, oldFeature, oldGate],
+  ]) {
+    const result = evaluateTrustedGate({
+      checkRuns,
+      workflowsByCheckId: passWorkflows,
+      changedFiles: ['engine/src/gateway/contacts.ts'],
+      coreWorkflows,
+      currentRunId: CURRENT_RUN_ID,
+    });
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.others.map((check) => check.id).sort(), [101, 102]);
+  }
+  const result = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, { ...passCheckRuns[0], id: 110, conclusion: 'cancelled' }],
+    workflowsByCheckId: passWorkflows,
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.failed[0].id, 110);
+  const pending = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, { ...passCheckRuns[0], id: 110, status: 'queued', conclusion: null }],
+    workflowsByCheckId: passWorkflows,
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(pending.ready, false);
+  assert.equal(pending.pending[0].id, 110);
+});
+
+test('older forged trusted checks cannot be hidden by name deduplication', () => {
+  const forged = { ...passCheckRuns[2], id: 90, details_url: 'https://github.com/example/repo/actions/runs/304/job/90' };
+  const result = evaluateTrustedGate({
+    checkRuns: [forged, ...passCheckRuns],
+    workflowsByCheckId: { ...passWorkflows, 90: earlierTrustedWorkflow },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.foreignTrusted[0].id, 90);
+});
+
+test('ordinary merge gate jq keeps newest checks and preserves its polling budget', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  const filter = yaml.match(/--jq '([^']+)'/)[1];
+  const feature = passCheckRuns[1];
+  for (const latest of [
+    feature,
+    { ...feature, id: 110, status: 'queued', conclusion: null },
+    { ...feature, id: 110, status: 'completed', conclusion: 'failure' },
+  ]) {
+    const checks = [...passCheckRuns, latest, { ...feature, id: 90, conclusion: 'cancelled' }];
+    const actual = JSON.parse(execFileSync('jq', [filter], {
+      input: JSON.stringify({ check_runs: checks }), encoding: 'utf8', windowsHide: true,
+    }));
+    assert.deepEqual(actual, [latest]);
+  }
+  assert.match(yaml, /seq 1 64/);
+  assert.match(yaml, /if \[ "\$attempt" -lt 64 \]; then sleep 30; fi/);
+  assert.doesNotMatch(yaml, /sleep 10/);
+});
+
+test('Actions run attribution retains suite, head SHA and PR base refs', () => {
+  assert.deepEqual(workflowFromActionsRun({
+    path: TRUSTED_WORKFLOW_PATH,
+    name: 'Merge gate trusted',
+    id: 304,
+    event: 'pull_request_target',
+    check_suite_id: 204,
+    head_sha: SHA,
+    pull_requests: [{ number: PR_NUMBER, base: { ref: BASE_REF, sha: 'base-sha' } }],
+  }), earlierTrustedWorkflow);
 });
 
 test('successful workflow attribution is cached across polls while new checks are resolved', () => {
@@ -383,7 +511,7 @@ test('successful workflow attribution is cached across polls while new checks ar
 test('failed or missing workflow lookups are retried instead of cached as unattributed', () => {
   for (const unavailable of [null, new Error('API rate limit exceeded for installation')]) {
     let calls = 0;
-    const checks = [{ id: 501, name: 'merge-gate-trusted' }];
+    const checks = [{ id: 501, name: 'merge-gate-trusted', check_suite: { id: 204 } }];
     const options = {
       currentRunId: CURRENT_RUN_ID,
       attributionCache: new Map(),
@@ -393,14 +521,14 @@ test('failed or missing workflow lookups are retried instead of cached as unattr
           if (unavailable instanceof Error) throw unavailable;
           return unavailable;
         }
-        return { ...trustedWorkflow, id: 304 };
+        return earlierTrustedWorkflow;
       },
     };
     const first = resolveWorkflowsForCheckRuns('example/repo', 'unused', checks, options);
     assert.equal(findForeignTrustedChecks(checks, first, { allowedRunId: CURRENT_RUN_ID }).length, 1);
     const second = resolveWorkflowsForCheckRuns('example/repo', 'unused', checks, options);
-    assert.deepEqual(second, { 501: { ...trustedWorkflow, id: 304 } });
-    assert.equal(findForeignTrustedChecks(checks, second, { allowedRunId: CURRENT_RUN_ID }).length, 0);
+    assert.deepEqual(second, { 501: earlierTrustedWorkflow });
+    assert.equal(findForeignTrustedChecks(checks, second, { allowedRunId: CURRENT_RUN_ID, ...prContext }).length, 0);
     assert.equal(calls, 2);
   }
 });

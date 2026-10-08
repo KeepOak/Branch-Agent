@@ -69,8 +69,18 @@ export function nameStatusFromPrFiles(files) {
   }).join('\n');
 }
 
+export function newestChecksByName(checkRuns) {
+  const newest = new Map();
+  for (const run of checkRuns) {
+    const previous = newest.get(run.name);
+    // IDs increase with check creation, including queued checks without started_at.
+    if (!previous || Number(run.id) > Number(previous.id)) newest.set(run.name, run);
+  }
+  return [...newest.values()];
+}
+
 export function evaluateOtherChecks(checkRuns, ignoreName = TRUSTED_JOB) {
-  const others = checkRuns.filter((run) => run.name !== ignoreName);
+  const others = newestChecksByName(checkRuns).filter((run) => run.name !== ignoreName);
   const pending = others.filter((run) => run.status !== 'completed');
   const failed = others.filter((run) =>
     run.status === 'completed' && !PASS_CONCLUSIONS.has(run.conclusion));
@@ -91,6 +101,9 @@ export function findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
   allowedWorkflowPath = TRUSTED_WORKFLOW_PATH,
   allowedRunId,
   allowedEvent = 'pull_request_target',
+  sha,
+  prNumber,
+  baseRef,
 } = {}) {
   const currentId = allowedRunId == null || allowedRunId === '' ? null : Number(allowedRunId);
   return checkRuns.filter((run) => run.name === jobName).filter((run) => {
@@ -106,6 +119,12 @@ export function findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
     if (!workflow || workflow.id == null || workflow.id === '') return true;
     if (workflow.path !== allowedWorkflowPath) return true;
     if (workflow.event !== allowedEvent) return true;
+    if (workflow.checkSuiteId == null || run.check_suite?.id == null
+      || Number(run.check_suite.id) !== Number(workflow.checkSuiteId)) return true;
+    if (!sha || workflow.headSha !== sha) return true;
+    const prs = workflow.pullRequests ?? [];
+    if (!prNumber || !prs.some((pr) => Number(pr.number) === Number(prNumber))) return true;
+    if (!baseRef || prs.some((pr) => pr.base !== baseRef)) return true;
     return false;
   });
 }
@@ -226,6 +245,7 @@ export function missingCoreWorkflows({
   coreWorkflows,
   requiredJobs = REQUIRED_JOBS,
 }) {
+  checkRuns = newestChecksByName(checkRuns);
   const missing = [];
 
   for (const job of requiredJobs) {
@@ -255,10 +275,16 @@ export function evaluateTrustedGate({
   changedFiles,
   coreWorkflows,
   currentRunId,
+  sha,
+  prNumber,
+  baseRef,
 }) {
   const { others, pending, failed } = evaluateOtherChecks(checkRuns);
   const foreignTrusted = findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
     allowedRunId: currentRunId,
+    sha,
+    prNumber,
+    baseRef,
   });
   const missingCore = missingCoreWorkflows({
     checkRuns,
@@ -393,6 +419,9 @@ export function workflowFromActionsRun(run) {
     name: run.name ?? null,
     id: run.id ?? null,
     event: run.event ?? null,
+    checkSuiteId: run.check_suite_id ?? null,
+    headSha: run.head_sha ?? null,
+    pullRequests: (run.pull_requests ?? []).map((pr) => ({ number: pr.number, base: pr.base?.ref })),
   };
 }
 
@@ -501,12 +530,13 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const sha = process.env.SHA;
   const token = process.env.GH_TOKEN;
   const prNumber = process.env.PR_NUMBER;
+  const baseRef = process.env.BASE_REF;
   const maxAttempts = Number(process.env.MERGE_GATE_MAX_ATTEMPTS ?? 64);
   const pollSeconds = Number(process.env.MERGE_GATE_POLL_SECONDS ?? 30);
   const initialWait = Number(process.env.MERGE_GATE_INITIAL_WAIT ?? 30);
 
-  if (!repo || !sha || !token || !prNumber) {
-    console.error('Missing required environment variables: REPO, SHA, GH_TOKEN, PR_NUMBER');
+  if (!repo || !sha || !token || !prNumber || !baseRef) {
+    console.error('Missing required environment variables: REPO, SHA, GH_TOKEN, PR_NUMBER, BASE_REF');
     process.exit(1);
   }
 
@@ -538,6 +568,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       changedFiles,
       coreWorkflows,
       currentRunId: process.env.GITHUB_RUN_ID,
+      sha,
+      prNumber,
+      baseRef,
     });
 
     if (result.failed.length || result.foreignTrusted.length) {
