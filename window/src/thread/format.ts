@@ -1,6 +1,7 @@
 // Words and numbers the thread shows (DESIGN-SPEC §4.2, §7.1 rule 9).
 import type { Block } from "./model";
 import { displayModelName } from "../composer/model-display";
+import { computerStepWords, isComputerToolName, isScreenToolName, screenStepWords } from "./computer-action-label";
 
 export function formatDuration(ms?: number): string {
   if (!ms || ms < 0) {
@@ -42,6 +43,23 @@ type Words = { now: string; done: string };
 /** Tools that run a shell command, and tools that change files (Codex reports its kinds "command" and "patch"). */
 const COMMAND_TOOLS = new Set(["exec", "process", "bash", "command", "shell", "terminal", "gateway_process"]);
 const EDIT_TOOLS = new Set(["apply_patch", "patch", "edit", "write", "file_change"]);
+/** Preview STEP_IC_PB18 kinds (spec-v23 ~18834): one icon family per tool class. */
+const READ_TOOLS = new Set(["read", "skills_read", "sessions_history", "memory_get", "pdf", "view_image", "image"]);
+const SEARCH_TOOLS = new Set(["web_search", "search", "memory_search", "sessions_search", "skills_search"]);
+const FETCH_TOOLS = new Set(["web_fetch", "fetch"]);
+
+/** Preview STEP_IC_PB18 keys: read, edit, run, search, fetch. */
+export type StepKind = "read" | "edit" | "run" | "search" | "fetch";
+
+/** Map a tool id onto the preview's step-icon kind. Unknown tools have no kind (check mark). */
+export function stepKind(tool: string): StepKind | undefined {
+  if (COMMAND_TOOLS.has(tool)) return "run";
+  if (EDIT_TOOLS.has(tool)) return "edit";
+  if (READ_TOOLS.has(tool)) return "read";
+  if (SEARCH_TOOLS.has(tool)) return "search";
+  if (FETCH_TOOLS.has(tool)) return "fetch";
+  return undefined;
+}
 
 /** Plain words for the other tools a Trunk uses; ids never show (P7: "Used apply_patch" was the bug). */
 const TOOL_WORDS: Record<string, Words> = {
@@ -86,6 +104,8 @@ function stepWords(step: Step): Words {
     const n = editedFiles(step);
     return n === 1 ? { now: "Editing a file", done: "Edited a file" } : { now: `Editing ${n} files`, done: `Edited ${n} files` };
   }
+  if (isScreenToolName(step.tool)) return screenStepWords(step);
+  if (isComputerToolName(step.tool)) return computerStepWords(step);
   const name = plainToolName(step.tool);
   return TOOL_WORDS[step.tool] ?? { now: `Using ${name}`, done: `Used ${name}` };
 }
@@ -95,6 +115,88 @@ export function stepLabel(step: Step): string {
   if (step.status === "denied") return COMMAND_TOOLS.has(step.tool) ? "Command not run" : `Not allowed: ${stepWords(step).now.toLowerCase()}`;
   const words = stepWords(step);
   return step.status === "running" ? words.now : words.done;
+}
+
+function formatInputValue(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    if (value.every((item) => item === null || typeof item !== "object")) return value.map(formatInputValue).join(", ");
+    return value.map((item, i) => `${i}: ${formatInputValue(item)}`).join(", ");
+  }
+  if (typeof value === "object") {
+    return Object.entries(value).map(([key, item]) => `${key}: ${formatInputValue(item)}`).join(", ");
+  }
+  return "";
+}
+
+function flattenInput(value: unknown, prefix = ""): string[] {
+  if (value === null || typeof value !== "object") {
+    return prefix ? [`${prefix}: ${formatInputValue(value)}`] : [];
+  }
+  if (Array.isArray(value)) {
+    if (!value.length) return prefix ? [`${prefix}:`] : [];
+    if (value.every((item) => item === null || typeof item !== "object")) {
+      return [`${prefix ? `${prefix}: ` : ""}${value.map(formatInputValue).join(", ")}`];
+    }
+    return value.flatMap((item, i) => flattenInput(item, prefix ? `${prefix}.${i}` : String(i)));
+  }
+  const entries = Object.entries(value);
+  if (!entries.length) return prefix ? [`${prefix}:`] : [];
+  return entries.flatMap(([key, item]) => flattenInput(item, prefix ? `${prefix}.${key}` : key));
+}
+
+/** Expanded-step input as plain "key: value" lines. Never returns JSON braces. */
+export function stepInputLines(input: string): string[] {
+  const body = input.trim();
+  if (!body) return [];
+  try {
+    return flattenInput(JSON.parse(body) as unknown).filter((line) => !/[{}]/.test(line));
+  } catch {
+    return body
+      .split("\n")
+      .map((line) => line.replace(/^\s*[{[]\s*|\s*[}\]]\s*,?\s*$/g, "").replace(/,$/, "").replace(/^"([^"]+)"\s*:/, "$1:").trim())
+      .filter((line) => line.length > 0 && !/^[{\[\}\]]+$/.test(line));
+  }
+}
+
+/** Preview stepOutPB18: last 4 lines of the kept output. */
+export function stepOutputTail(output: string, n = 4): string {
+  const lines = output.replace(/\s+$/u, "").split("\n");
+  return lines.slice(-n).join("\n");
+}
+
+/** Preview treats a zero exit as "finished" (no pill). `Exit 1` from the engine is a failure. */
+export function stepExitCode(detail: string): number | undefined {
+  const match = /^Exit (\d+)\b/.exec(detail);
+  if (!match) return undefined;
+  const code = Number(match[1]);
+  return code > 0 ? code : undefined;
+}
+
+/** Preview outPB18 save name: "<title>-output.txt". */
+export function stepOutputFilename(title: string): string {
+  const stem = title.replace(/[^\w ]+/g, "").trim().toLowerCase().replace(/\s+/g, "-") || "step";
+  return `${stem}-output.txt`;
+}
+
+export type DiffMark = "+" | "-" | " ";
+export type DiffLine = { mark: DiffMark; text: string };
+
+/** Unified-diff text → preview fileChangesPB18 rows (`[' ', t]`, `['+', t]`, `['-', t]`). */
+export function parseDiffLines(diff: string): DiffLine[] {
+  return diff.split("\n").flatMap((line) => {
+    if (!line || /^(?:@@|diff |index |--- |\+\+\+ )/.test(line)) return [];
+    const mark = line[0];
+    if (mark === "+" || mark === "-" || mark === " ") return [{ mark, text: line.slice(1) }];
+    return [{ mark: " " as const, text: line }];
+  });
+}
+
+/** Preview Raw tab: every non-deleted line, without the +/- prefix. */
+export function rawDiffText(lines: readonly DiffLine[]): string {
+  return lines.filter((line) => line.mark !== "-").map((line) => line.text).join("\n");
 }
 
 function counted(n: number, one: string, many: string): string {

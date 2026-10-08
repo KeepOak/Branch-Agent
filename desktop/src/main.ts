@@ -22,10 +22,10 @@ import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate } from "./auto-apply-update";
+import { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes } from "./available-memory";
 import { checkCandidateBeside, stopCandidate } from "./candidate-check";
 import { clearEngineRecords, retireRecordedEngines } from "./engine-records";
 import { createUpdateLock, type UpdateLockHandle } from "./update-lock";
-import { freemem } from "node:os";
 import { createHash } from "node:crypto";
 import type { Tray } from "electron";
 import { MacComputerDriver, macScreenControlEnabled } from "./mac-computer-driver";
@@ -61,8 +61,7 @@ const PRIOR_READY_CHECK_MS = 10_000;
 const STANDBY_WARM_TIMEOUT_MS = 120_000;
 /** Failed standbys per update before the guarded stop/start swap takes over, so an update never becomes impossible. */
 const STANDBY_ATTEMPTS = 2;
-/** Free memory a candidate check needs (6 GB, the shared load rule); tests lower it with BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB. */
-const CANDIDATE_MIN_FREE_BYTES = Number(process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB ?? 6144) * 2 ** 20;
+/** Free memory a candidate check needs (6 GB, or a quarter of RAM); tests lower it with BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB. */
 const cfg: DesktopConfig = loadConfig();
 /** The packaged app this process runs from; development runs (`electron .`) never update themselves. */
 const install: DesktopInstall | undefined = app.isPackaged ? {
@@ -533,7 +532,7 @@ async function prepareUpdateStandby(label: string, explicit: boolean): Promise<v
   // A warmed child cannot be given a fresh Electron-owned driver lease on promotion.
   // Preserve computer control by using the guarded stop/start path for this case.
   if (macComputerDriver && screenControlEnabled()) return;
-  if (freemem() < CANDIDATE_MIN_FREE_BYTES || !standbyProfileReady()) return;
+  if (availableMemory().bytes < candidateMinFreeBytes() || !standbyProfileReady()) return;
   const failures = standbyFailures.get(label) ?? 0;
   // Automatic updates never wait for a click that may not be offered: one failed standby is enough to fall back.
   if (failures >= STANDBY_ATTEMPTS || (!explicit && failures > 0)) {
@@ -600,7 +599,8 @@ async function candidatePassed(label: string, explicit: boolean, signal?: AbortS
   const version = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
   if (!version || candidateCheckedFor === version) return true;
   // The machine-load rule: a second engine only when there is room for it; otherwise the plain swap with its rollback.
-  if (freemem() < CANDIDATE_MIN_FREE_BYTES) { log(`update ${label}: candidate check skipped; ${Math.round(freemem() / 2 ** 20)} MB free`); return true; }
+  const { bytes: available, measure } = availableMemory();
+  if (available < candidateMinFreeBytes()) { log(`update ${label}: ${candidateCheckSkippedLine(available, measure)}`); return true; }
   const candidate = resolveEngineDir(cfg);
   if (explicit) sendToBranchWindows("branch-desktop:engine-update", "preparing");
   const started = Date.now();
@@ -916,6 +916,15 @@ async function start(): Promise<void> {
   ipcMain.on("branch-desktop:restart-engine", e => { if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) void restartEngine(); });
   ipcMain.on("branch-desktop:dismiss-update-notice", e => {
     if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) updateNotice = undefined;
+  });
+  ipcMain.on("branch-desktop:update-notice", (e, event: unknown, notice: unknown) => {
+    if (!isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) return;
+    if (event !== "shown" && event !== "dismissed" && event !== "expired" && event !== "undo") return;
+    const rec = notice && typeof notice === "object" ? notice as { version?: unknown; canUndo?: unknown } : {};
+    const version = typeof rec.version === "string" ? rec.version : "";
+    if (event === "shown") log(`update notice shown version=${version} canUndo=${rec.canUndo === true}`);
+    else log(`update notice ${event}`);
+    if (event === "dismissed" || event === "expired") updateNotice = undefined;
   });
   ipcMain.on("branch-desktop:undo-update", e => {
     if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) void undoLastUpdate();

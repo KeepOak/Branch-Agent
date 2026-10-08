@@ -73,23 +73,37 @@ export function badgeList(row: Conversation, x: RowExtras | undefined): { icon: 
   return out;
 }
 
+type Line = { text: string; word: string; tone: string; typing?: boolean };
+
+/** Preview typingRowsT5: dots and "typing…" while a reply is written (no live headline yet). */
+function replyTyping(row: Conversation, x: RowExtras | undefined): boolean {
+  if (x?.liveInList !== false && x?.headlines !== false) return !row.headline;
+  return row.preview.trim() === "…" || row.preview.trim() === "";
+}
+
+const TYPING_LINE: Line = { text: "typing…", word: "", tone: "", typing: true };
+
 /** A working row's second line: what it is doing now, unless the owner turned headlines or live activity in the list off. */
 function workingText(row: Conversation, x: RowExtras | undefined): string {
   if (x?.liveInList !== false && x?.headlines !== false) return row.headline || "Thinking";
   return row.preview.trim() === "…" ? "Thinking" : row.preview;
 }
 
-/** The second line (§4.1.1.1): while working, its headline and a health word; failed shows why. */
-function secondLine(row: Conversation, state: RowState, x: RowExtras | undefined): { text: string; word: string; tone: string } | null {
+function workingLine(row: Conversation, x: RowExtras | undefined): Line {
+  return replyTyping(row, x) ? TYPING_LINE : { text: workingText(row, x), word: "", tone: "" };
+}
+
+/** The second line (§4.1.1.1): while a reply is written, typingRowsT5; else its headline; failed shows why. */
+function secondLine(row: Conversation, state: RowState, x: RowExtras | undefined): Line | null {
   if (["trunk", "chatGroup", "outside"].includes(row.kind)) {
     if (state.waiting) return { text: "Waiting on you", word: "", tone: "attn" };
-    if (state.working) return { text: workingText(row, x), word: "", tone: "" };
+    if (state.working) return workingLine(row, x);
     return null;
   }
   const mark = row.runMark ? MARKS[row.runMark] : null;
   if (state.waiting) return { text: "Waiting on you", word: "", tone: "attn" };
   if (mark?.bad) return { text: row.preview, word: mark.word, tone: "bad" };
-  if (state.working) return { text: workingText(row, x), word: "", tone: "" };
+  if (state.working) return workingLine(row, x);
   return null;
 }
 
@@ -181,7 +195,15 @@ export function ConversationRow(p: Props) {
   );
 }
 
-function SecondLine({ line }: { line: { text: string; word: string; tone: string } }) {
+function SecondLine({ line }: { line: Line }) {
+  if (line.typing) {
+    return (
+      <p className="row-preview" data-testid="row-typing">
+        <span className="rowTypT5" aria-label="typing"><i /><i /><i /></span>
+        {" "}typing…
+      </p>
+    );
+  }
   return (
     <p className={line.tone === "attn" ? "row-preview waiting" : "row-preview"}>
       <span className="hl">{line.text}</span>

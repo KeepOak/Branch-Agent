@@ -232,6 +232,16 @@ async function freePortOtherThan(port: number): Promise<number> {
   }
 }
 
+/** After the old engine has exited, the successor must also answer /readyz on the configured port. */
+async function expectConfiguredPortReady(
+  configuredPort: number,
+  livePort: number,
+  successor: HandoffEngine,
+): Promise<void> {
+  expect(await probeReadyz(livePort), `successor still serves on ${livePort}`).toBe(200);
+  await waitForReadyz(configuredPort, 200, 30_000, successor);
+}
+
 /**
  * A runs on its port with a turn on S held at the model; B is a warm standby on its own port; A has stepped down
  * (deactivate-result ok) and B has taken over on the desktop's word. Returns both engines and a client on B.
@@ -306,7 +316,7 @@ describe("in-place engine handoff between real engines", () => {
     { timeout: 420_000 },
     async ({ signal }) => {
       const current = await startScenario(signal);
-      const { a, portB, clientA, clientB, noAdmissionGapMs } = await handOverWithRunInFlight(current, signal);
+      const { a, b, portA, portB, clientA, clientB, noAdmissionGapMs } = await handOverWithRunInFlight(current, signal);
       expect(noAdmissionGapMs).toBeGreaterThan(0);
 
       // Another session runs on B at once, while A still holds S.
@@ -376,7 +386,7 @@ describe("in-place engine handoff between real engines", () => {
       await sendDesktopRequest(a, DESKTOP_DRAIN_STOP, DESKTOP_REQUEST_MS);
       await withTimeout(a.exited, 60_000, `A exits after drain-stop\n${engineLog(a)}`);
       expect(listLeasedLanes(a.env)).toEqual([]);
-      expect(await probeReadyz(portB)).toBe(200);
+      await expectConfiguredPortReady(portA, portB, b);
     },
   );
 
@@ -410,7 +420,7 @@ describe("in-place engine handoff between real engines", () => {
     { timeout: 420_000 },
     async ({ signal }) => {
       const current = await startScenario(signal);
-      const { a, portB, clientB } = await handOverWithRunInFlight(current, signal);
+      const { a, b, portA, portB, clientB } = await handOverWithRunInFlight(current, signal);
       await sendDesktopRequest(a, DESKTOP_DRAIN_STOP, DESKTOP_REQUEST_MS);
       await new Promise((resolve) => setTimeout(resolve, 3_000));
       expect(a.hasExited()).toBe(false);
@@ -420,7 +430,7 @@ describe("in-place engine handoff between real engines", () => {
       await waitUntil(async () =>
         JSON.stringify(await clientB.request("chat.history", { sessionKey: SESSION_S })).includes("REPLY_A"),
       90_000, "A's reply is visible from B");
-      expect(await probeReadyz(portB)).toBe(200);
+      await expectConfiguredPortReady(portA, portB, b);
     },
   );
 
@@ -464,7 +474,7 @@ describe("in-place engine handoff between real engines", () => {
       const channel = current.channel!;
       let jobId = "";
       let cronDueAt = 0;
-      const { a, b, clientB } = await handOverWithRunInFlight(
+      const { a, b, portA, portB, clientB } = await handOverWithRunInFlight(
         current,
         signal,
         async (clientA, oldEngine) => {
@@ -537,6 +547,7 @@ describe("in-place engine handoff between real engines", () => {
       await waitUntil(() => listLeasedLanes(a.env).length === 0, 60_000, "A releases S");
       await sendDesktopRequest(a, DESKTOP_DRAIN_STOP, DESKTOP_REQUEST_MS);
       await withTimeout(a.exited, 60_000, `A exits after channel/cron handoff\n${engineLog(a)}`);
+      await expectConfiguredPortReady(portA, portB, b);
     },
   );
 
@@ -569,7 +580,7 @@ describe("in-place engine handoff between real engines", () => {
     { timeout: 420_000 },
     async ({ signal }) => {
       const current = await startScenario(signal);
-      const { a, b, portB, clientB } = await handOverWithRunInFlight(current, signal);
+      const { a, b, portA, portB, clientB } = await handOverWithRunInFlight(current, signal);
 
       const rolledBack = await sendDesktopRequest(a, DESKTOP_ROLLBACK, DESKTOP_REQUEST_MS);
       expect(rolledBack.ok, engineLog(a)).toBe(false);
@@ -587,7 +598,7 @@ describe("in-place engine handoff between real engines", () => {
       const t = await sendTurn(clientB, SESSION_T, "MARK_R: run on B after failed rollback.");
       await clientB.request("agent.wait", { runId: t.runId, timeoutMs: 60_000 });
       expect(current.provider.answered).toContain("R");
-      expect(await probeReadyz(portB)).toBe(200);
+      await expectConfiguredPortReady(portA, portB, b);
     },
   );
 
@@ -596,7 +607,7 @@ describe("in-place engine handoff between real engines", () => {
     { timeout: 420_000 },
     async ({ signal }) => {
       const current = await startScenario(signal);
-      const { a, b, portB } = await handOverWithRunInFlight(current, signal);
+      const { a, b, portA, portB } = await handOverWithRunInFlight(current, signal);
       step("the desktop crashes after take-over");
       a.child.disconnect();
       b.child.disconnect();
@@ -605,7 +616,7 @@ describe("in-place engine handoff between real engines", () => {
       await withTimeout(a.exited, 120_000, `A stops after its run\n${engineLog(a)}`);
       expect(listLeasedLanes(b.env)).toEqual([]);
       expect(b.hasExited()).toBe(false);
-      expect(await probeReadyz(portB)).toBe(200);
+      await expectConfiguredPortReady(portA, portB, b);
     },
   );
 

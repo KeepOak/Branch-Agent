@@ -29,6 +29,7 @@ import {
   verifyGeneration,
   type CuaFrameState,
 } from "./frame.js";
+import { FOCUSED_INPUT_NOTICE, resolveWindowInputDelivery } from "./input-routing.js";
 import { handleRecordingAct } from "./recording-actions.js";
 
 const CUA_WIRE_ACTION_NAMES = COMPUTER_USE_V2_ACTION_NAMES.slice(1, 14);
@@ -50,12 +51,17 @@ async function handleTargetedAct(
   platform: NodeJS.Platform,
   driver: CuaDriverSession,
   state: CuaFrameState,
+  execution: CuaExecutionState,
   params: CuaComputerActParams,
   signal?: AbortSignal,
 ): Promise<string> {
   const { ref: windowRef, target } = requireWindowTarget(driver, state, params);
   const base = { pid: target.pid, window_id: target.windowId };
-  const delivery = params.deliveryMode ? { delivery_mode: params.deliveryMode } : {};
+  const routed = resolveWindowInputDelivery({
+    backends: execution.inputBackends,
+    requested: params.deliveryMode,
+  });
+  const delivery = routed.deliveryMode ? { delivery_mode: routed.deliveryMode } : {};
   const element = elementArgs(state, params, windowRef);
   let tool: string;
   let args: Record<string, unknown>;
@@ -205,7 +211,14 @@ async function handleTargetedAct(
   }
 
   const result = await callWindowTool(driver, state, tool, args, signal);
-  return JSON.stringify(actionEnvelope(result));
+  const notice =
+    routed.focusedBecauseNoFocusFree && !execution.focusedInputNoticeSent
+      ? FOCUSED_INPUT_NOTICE
+      : undefined;
+  if (notice) {
+    execution.focusedInputNoticeSent = true;
+  }
+  return JSON.stringify(actionEnvelope(result, notice ? { notice } : undefined));
 }
 
 /// Entry point for `computer.act` on the CUA driver. Owns every window- and
@@ -231,7 +244,7 @@ export async function handleWindowAct(
     CUA_TARGETED_ACTION_NAMES.has(input.action as never) &&
     (input.windowRef || input.elementRef)
   ) {
-    return await handleTargetedAct(platform, driver, state, input, signal);
+    return await handleTargetedAct(platform, driver, state, execution, input, signal);
   }
   if ((CUA_WIRE_ACTION_NAMES as readonly string[]).includes(input.action)) {
     return await handleDesktop(platform, driver, state, params, signal);

@@ -30,7 +30,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 5. **List new test files for CI** in `scripts/feature-batch-ci-named/<branch-name>.txt` (`engine:<path>` or `window:<path>`, one per line, sorted). For desktop tests, add a `node --test` step to `.github/workflows/desktop-checks.yml`.
 
-6. **Lint before pushing:** `cd window && pnpm lint` for window changes; `cd engine && pnpm lint` for engine changes (uses oxlint with strict rules). Fix all lint errors.
+6. **Lint before pushing:** `cd window && pnpm lint` for window changes; `cd engine && pnpm lint` for engine changes (uses oxlint with strict rules). Fix all lint errors. If engine lint reports raw-copy baseline drift, regenerate with `cd engine && pnpm ui:i18n:baseline` and commit `engine/ui/src/i18n/.i18n/raw-copy-baseline.json`. Do not commit `catalog-fallbacks.json` on a source PR; post-merge locale refresh owns that file.
 
 7. **Type-check before pushing:** `pnpm -C window typecheck` for window changes; `node scripts/strict-typecheck.mjs` for engine changes (about 6 GB).
 
@@ -38,19 +38,23 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 9. **Don't touch a running desktop app.** Test engines use their own free loopback ports and data folders, never `19031`/`19032` or the app's data folder. Stop processes by process id, never by name.
 
-10. **Self-test visible changes** in a scratch engine and window (browser or computer tools, or Playwright) and put screenshots in the PR.
+10. **Self-test visible changes** in a scratch engine and window (browser or computer tools, or Playwright) and put screenshots in the PR. The `check-ui-proof` gate enforces this for `window/**` changes.
 
-11. **Commits and PRs:** Conventional Commits, files staged by name (never `git add -A`), no tool or AI attribution lines, no force-push to `main`. Cloud-agent commits must end with exactly `Co-authored-by: Taofik Bishi <189563683+stabrea@users.noreply.github.com>` so the platform does not append a personal-email co-author line. PR body: what, why, exact test commands and pass counts.
+11. **Commits and PRs:** Conventional Commits, files staged by name (never `git add -A`), no tool or AI attribution lines, no force-push to `main`. Cloud-agent commits must end with exactly `Co-authored-by: Taofik Bishi <189563683+stabrea@users.noreply.github.com>` so the platform does not append a personal-email co-author line. Never force-push or rewrite pushed history on any branch, not even to change a commit message. GitHub ruleset 'No force-push on any branch' (all branches, no bypass) refuses it. Fix a bad commit with a new commit, or for a commit with a personal email, redo the work on a fresh branch from main as a new PR that supersedes the old one. PR body: what, why, exact test commands and pass counts.
 
-12. **Merging:** Merge with a merge commit (never squash or rebase), pinned to the reviewed head SHA so a new push blocks the merge. Two approved ways:
-    - `gh pr merge <number> --auto --merge --match-head-commit <reviewed-sha>`
+12. **Merging:** Branch PR Closer merges by hand with a merge commit (never squash or rebase), pinned to the reviewed head SHA so a new push blocks the merge:
+    - `gh pr merge <number> --merge --match-head-commit <reviewed-sha>`
     - REST API: `PUT /repos/KeepOak/Branch-Agent/pulls/<number>/merge` with `{"merge_method": "merge", "sha": "<reviewed-sha>"}`
+    The repository allows merge commits only and has auto-merge turned off. A workflow opens one tracking issue if anything lands on main as a squash or rebase.
+    Only the PR reviewer (Branch PR Closer) adds the `gate-change-reviewed: <full head SHA>` marker, after reviewing the workflow and gate-file changes on that exact head. Fixers and authors never add it.
 
 13. **CI has a hard 15-minute cap.** Every check job sets `timeout-minutes: 15` or less; the merge-gate job allows up to 35 because it waits for the others. A change that makes CI slower than the cap gets split, sharded or cut, never given a longer timeout.
 
-14. **Releases are batched.** A merge touching `engine/`, `window/` or `desktop/` is built in CI but only published in scheduled 30-minute batches when at least one commit landed since the last release and no check run on main's head has failed. Installed apps pick up the batched release within the hour and apply on restart. Treat every merge as potentially shipping in the next batch.
+14. **Releases are batched.** A merge touching `engine/`, `window/` or `desktop/` is built in CI and published in 30-minute batches: the schedule at :07 and :37, or a push to main when the latest release is more than 25 minutes old (backup if GitHub drops a cron slot). A batch publishes when at least one commit landed since the last release and no check run on main's head has failed. Installed apps pick up the batched release within the hour and apply on restart. Treat every merge as potentially shipping in the next batch.
 
 15. **Stop processes you start.** Any test, self-test or proof script that starts a process (MCP servers, mcporter, node, browsers) must stop it and its children before finishing. Leftover processes lock the app install folder and block updates.
+
+16. **No new OpenClaw wording.** `scripts/check-openclaw-wording.mjs` fails a PR that adds user-visible OpenClaw names or openclaw.ai / docs.openclaw.ai / github.com/openclaw links; write Branch Agent and Branch links instead.
 
 ## Common tasks
 
@@ -98,7 +102,9 @@ cd desktop && node --test scripts/file.test.mjs
 
 Open PRs and their current CI status: `gh pr list --json number,title,headRefName,statusCheckRollup` or <https://github.com/KeepOak/Branch-Agent/pulls>.
 
-**Priority order:** (1) fix what's broken, (2) seamless updates, (3) proactive agents, (4) the real app matching the newest Branch App Preview 1:1 in both look and logic, ported from the preview's code, (5) logic testing of the app, (6) new features.
+**Priority order:** (1) fix what's broken, (2) seamless updates, (3) proactive agents, (4) every screen and control logical, beautiful and smooth, with every preview feature present and working, (5) logic testing of the app, (6) new features.
+
+The preview (`design/spec-v23/index.html` plus Taofik's newer Branch App Preview) is a map of the features and the look to aim for, not something to copy pixel for pixel. The bar is that every screen and control is logical, beautiful and smooth: no empty-screen flash, no slow open, no leftover OpenClaw names (`scripts/check-openclaw-wording.mjs`), nothing off-theme. Every feature in the preview should exist and work in the app.
 
 1. **Roles.** GOD is the coordinator. Branch PR Closer holds delegated merge authority: it may merge when the merge gate is green AND there is a MERGE review verdict on the PR's current head commit. Builder agents work on assigned tasks. Reviewer agents only review.
 
@@ -106,11 +112,12 @@ Open PRs and their current CI status: `gh pr list --json number,title,headRefNam
 
 3. **Review before merge.** Every head gets an adversarial read-only review: a MERGE or FIX verdict, `file:line` evidence, and CI log lines proving the changed tests actually ran on macOS, Ubuntu and Windows. A green check alone is not proof. A new push needs a new review.
 
-4. **Merging.** Branch PR Closer may merge a PR when both conditions hold: (1) the merge-gate check is green on the current head, and (2) a review gave a MERGE verdict for that exact commit SHA. Always merge with a merge commit, pinned to the reviewed SHA:
-   - `gh pr merge <number> --auto --merge --match-head-commit <reviewed-sha>`
+4. **Merging.** Branch PR Closer may merge a PR when both conditions hold: (1) the merge-gate check is green on the current head, and (2) a review gave a MERGE verdict for that exact commit SHA. Branch PR Closer merges by hand with a merge commit, pinned to the reviewed SHA:
+   - `gh pr merge <number> --merge --match-head-commit <reviewed-sha>`
    - Or via REST API: `PUT /repos/KeepOak/Branch-Agent/pulls/<number>/merge` with `{"merge_method": "merge", "sha": "<reviewed-sha>"}`
+   The repository allows merge commits only and has auto-merge turned off. A workflow opens one tracking issue if anything lands on main as a squash or rebase.
 
-5. **Seamless handoff gate.** The `seamlessHandoff` flag stays off until #429 (real two-engine handoff test) is merged. After #429 lands, turn it on in its own one-line PR and test it live mid-conversation.
+5. **Seamless handoff.** The hand-over is on by default (turned on by #628). Setting `"seamlessHandoff": false` in `desktop.json` turns it off; an automatic update that cannot hand over falls back to waiting for idle and draining.
 
 6. **Never rebase or force-push an open PR.** Once a PR is open, never rebase or force-push it. To bring it up to date, merge main in, because any push needs a fresh review on the new head.
 

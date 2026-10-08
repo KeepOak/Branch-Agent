@@ -346,7 +346,14 @@ scoped device. It uses the same setup-code pairing a phone uses.
    (`plugins.entries.bonjour.enabled`; on by default only on macOS), the other
    Branch finds the host with `branch gateway discover`. On Windows it browses
    with its own mDNS query, since Windows has no `dns-sd` or `avahi-browse`.
-3. On the joining Branch, run `branch graft join <setup-code> --name "Studio Laptop"`.
+3. On the joining Branch, pass the setup code securely (stdin or file) to avoid
+   exposing it in shell history or process lists:
+   ```bash
+   branch graft join --name "Studio Laptop"
+   # Setup code: [paste when prompted, hidden input]
+   # or with a file:
+   branch graft join --code-file /path/to/code.txt --name "Studio Laptop"
+   ```
    It connects with the joining Branch's own device identity and asks for
    `operator.read` and `operator.write` only. It never asks for admin, approvals
    or pairing. Plain `ws://` to a LAN address needs a TLS gateway (`wss://`), or

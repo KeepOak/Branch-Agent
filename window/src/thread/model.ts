@@ -1,3 +1,4 @@
+import { computerActionLabel, isComputerToolName, isScreenToolName, screenActionLabel } from "./computer-action-label";
 import { readBrowserPresentation, type BrowserPresentation } from "./browser-presentation";
 // The thread's blocks, built from a live run's `agent` events (in seq order) and from `chat.history`.
 import type { RunEvent } from "../connect/stream-order";
@@ -90,7 +91,7 @@ export type Block =
   /** The end of a turn. `stopped`: you (or the engine) stopped it; the thread says so instead of "Done in". */
   | { kind: "done"; key: string; runId: string; durationMs?: number; stopped?: boolean }
   | { kind: "error"; key: string; runId?: string; message: string }
-  | { kind: "notice"; key: string; text: string; at?: number }
+  | { kind: "notice"; key: string; text: string; at?: number; topicKey?: string }
   | { kind: "status"; key: string; phase: string; attempt?: number; maxAttempts?: number };
 
 const record = (value: unknown): Record<string, unknown> =>
@@ -106,6 +107,12 @@ export function recordedAt(value: unknown): { at?: number } {
 export function describeToolCall(_name: string, args: unknown): string {
   const a = record(args);
   const nested = record(a.args);
+  if (isComputerToolName(_name)) {
+    return computerActionLabel(str(a.action) || str(nested.action));
+  }
+  if (isScreenToolName(_name)) {
+    return screenActionLabel(str(a.action) || str(nested.action));
+  }
   const command = str(a.command) || str(nested.command);
   if (command) {
     return command;

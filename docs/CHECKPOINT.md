@@ -26,7 +26,9 @@ See [`AGENTS.md`](../AGENTS.md) for the full workflow.
 
 ## Durable priorities
 
-**Priority order:** (1) fix what's broken, (2) seamless updates, (3) proactive agents, (4) the real app matching the newest Branch App Preview 1:1 in both look and logic, ported from the preview's code, (5) logic testing of the app, (6) new features.
+**Priority order:** (1) fix what's broken, (2) seamless updates, (3) proactive agents, (4) every screen and control logical, beautiful and smooth, with every preview feature present and working, (5) logic testing of the app, (6) new features.
+
+The preview (`design/spec-v23/index.html` plus Taofik's newer Branch App Preview) is a map of the features and the look to aim for, not something to copy pixel for pixel. The bar is that every screen and control is logical, beautiful and smooth: no empty-screen flash, no slow open, no leftover product names, nothing off-theme. Every feature in the preview should exist and work in the app. [`AGENTS.md`](../AGENTS.md) states the same bar.
 
 ### Seamless handoff
 

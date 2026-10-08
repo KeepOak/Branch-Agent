@@ -42,12 +42,14 @@ Conventions and common failure modes for this repository. Bugbot should check th
 ### Lint and type errors
 - **Wrong:** Pushing code with oxlint errors or TypeScript strict errors.
 - **Right:** Run `pnpm lint` in engine or window, and the appropriate typecheck (`pnpm -C window typecheck` or `node scripts/strict-typecheck.mjs`) before pushing.
+- **I18n baselines:** Flag PRs that add Control UI copy or i18n strings without updating `engine/ui/src/i18n/.i18n/raw-copy-baseline.json`. Do not require `catalog-fallbacks.json` on source PRs; post-merge locale refresh owns that file.
 
 ### Merge commands
 - **Wrong:** Merging without pinning to the reviewed head SHA, or using squash/rebase.
-- **Right:** Always merge with a merge commit, pinned to the reviewed SHA:
-  - `gh pr merge <number> --auto --merge --match-head-commit <reviewed-sha>`
+- **Right:** Branch PR Closer merges by hand with a merge commit, pinned to the reviewed SHA:
+  - `gh pr merge <number> --merge --match-head-commit <reviewed-sha>`
   - Or REST API: `PUT /repos/KeepOak/Branch-Agent/pulls/<number>/merge` with `{"merge_method": "merge", "sha": "<reviewed-sha>"}`
+  The repository allows merge commits only and has auto-merge turned off. A workflow opens one tracking issue if anything lands on main as a squash or rebase.
 - **Why:** A new push after review must block the merge until re-reviewed. Merge commits preserve the full history.
 
 ## Code style
@@ -79,4 +81,7 @@ Merges to `main` that touch `engine/`, `window/`, or `desktop/` ship in the next
 - [ ] No placeholder implementations or skipped tests.
 - [ ] Visual changes include screenshots.
 - [ ] Tests prove the fix (failing on old head, passing on new).
+- [ ] A window PR includes real app screenshots (preview vs app when it is a parity change).
+- [ ] A claim that a test "fails on the old head" includes the CI or log line from running it against the old head's code; a brand-new test file proves nothing on its own.
+- [ ] A change to `.github/workflows/**` or to scripts that `merge-gate` runs gets a FIX verdict unless the PR body clearly explains why; merge-gate runs the PR's own copy of the workflow, so a PR could weaken its own gate.
 - [ ] FIX any PR that edits `merge-gate-trusted.yml` or the scripts it runs unless the PR body explains why.

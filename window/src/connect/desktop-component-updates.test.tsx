@@ -4,7 +4,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { WindowEngine } from "./engine";
 import { UpdatesPage } from "../places/settings/set2/updates";
-import { componentDesktop, stageWindowUpdate } from "./desktop-component-updates";
+import { dismiss, getToasts } from "../shell/notify";
+import { Toasts } from "../shell/Toasts";
+import {
+  componentDesktop, createUpdateNoticeHub, setupBlocksUpdateToast, showAppliedUpdateToast, stageWindowUpdate,
+  UPDATED_IN_PLACE, UPDATE_TOAST_SETUP_WAIT_MS, useDesktopAppliedUpdateNotice,
+} from "./desktop-component-updates";
 import { StatusPopover, type StatusContext } from "../shell/StatusLayer";
 import { useUpdate } from "../shell/use-status";
 import type { SaplingSession } from "./session";
@@ -20,7 +25,11 @@ beforeEach(() => {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   request.mockClear(); localStorage.setItem("branch-draft", "unfinished input");
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); delete desktopWindow.branchDesktop; vi.restoreAllMocks(); });
+afterEach(async () => {
+  await act(async () => root.unmount()); host.remove(); delete desktopWindow.branchDesktop; vi.restoreAllMocks(); vi.useRealTimers();
+  document.querySelectorAll(".ob-main, .ob9").forEach((node) => node.remove());
+  getToasts().forEach((toast) => dismiss(toast.id));
+});
 async function show() { await act(async () => root.render(<UpdatesPage page="updates" title="Updates & about" level="regular" engine={engine} />)); }
 async function click(text: string) {
   const button = [...host.querySelectorAll("button")].find(row => row.textContent === text);
@@ -37,6 +46,22 @@ it("actual native Check now and Download update use component bridge and never g
   expect(request).not.toHaveBeenCalled();
   expect(host.textContent).toContain("Update staged; waiting for a safe switch");
   expect(localStorage.getItem("branch-draft")).toBe("unfinished input");
+});
+
+it("Updates & about shows the running build and hides a leftover older staged shell", async () => {
+  const leftover = {
+    phase: "staged", currentVersion: "0.4.4-build-c27f2be23320", latestVersion: "4b72e314c692",
+    pendingVersion: "4b72e314c692", checkedAt: 123, error: null,
+  };
+  desktopWindow.branchDesktop = { gatewayUrl: engine.gatewayUrl, componentUpdates: {
+    status: async () => leftover, check: async () => leftover, stage: async () => leftover,
+  } };
+  await show();
+  expect(host.textContent).toContain("Branch 0.4.4 · build c27f2be2 on this computer");
+  expect(host.textContent).toContain("You have Branch 0.4.4 · build c27f2be2");
+  expect(host.textContent).toContain("Branch is up to date.");
+  expect(host.textContent).not.toContain("Update staged; waiting for a safe switch");
+  expect(host.textContent).not.toContain("A Branch update is ready; restart to finish");
 });
 
 it("Updates toggle is on by default and staged updates wait for Trunks in Settings and version popover", async () => {
@@ -161,4 +186,86 @@ it("keeps native update controls scoped to the live handoff target", () => {
   desktopWindow.branchDesktop = native;
   expect(componentDesktop("ws://127.0.0.1:2")).toBe(native);
   expect(componentDesktop("ws://127.0.0.1:1")).toBeUndefined();
+});
+
+const applied = { version: "0.4.4", canUndo: true, expiresAt: Date.now() + 10 * 60_000 };
+
+it("shows the preview in-place toast from update-applied and logs shown then dismissed", async () => {
+  const report = vi.fn();
+  let listener: ((notice: typeof applied) => void) | undefined;
+  desktopWindow.branchDesktop = {
+    onUpdateApplied: (fn: (notice: typeof applied) => void) => { listener = fn; return () => { listener = undefined; }; },
+    reportUpdateNotice: report,
+  };
+  function Probe() { useDesktopAppliedUpdateNotice(); return <Toasts />; }
+  await act(async () => root.render(<Probe />));
+  expect(listener).toEqual(expect.any(Function));
+  await act(async () => listener?.(applied));
+  expect(host.querySelector("[data-testid=toast]")?.textContent).toContain(UPDATED_IN_PLACE);
+  expect(report).toHaveBeenCalledWith("shown", applied);
+  await act(async () => host.querySelector<HTMLButtonElement>(".toast-x")!.click());
+  expect(host.querySelector("[data-testid=toast]")).toBeNull();
+  expect(report).toHaveBeenCalledWith("dismissed", applied);
+});
+
+it("waits while setup is on screen before showing the in-place toast", async () => {
+  vi.useFakeTimers();
+  const report = vi.fn();
+  desktopWindow.branchDesktop = { reportUpdateNotice: report };
+  const setup = document.body.appendChild(document.createElement("div"));
+  setup.className = "ob9";
+  expect(setupBlocksUpdateToast()).toBe(true);
+  showAppliedUpdateToast(applied);
+  expect(getToasts()).toEqual([]);
+  expect(report).not.toHaveBeenCalled();
+  setup.remove();
+  await act(async () => { vi.advanceTimersByTime(UPDATE_TOAST_SETUP_WAIT_MS); });
+  expect(getToasts().map((toast) => toast.text)).toEqual([UPDATED_IN_PLACE]);
+  expect(report).toHaveBeenCalledWith("shown", applied);
+});
+
+it("logs expired when setup outlasts the update notice", async () => {
+  vi.useFakeTimers();
+  const report = vi.fn();
+  desktopWindow.branchDesktop = { reportUpdateNotice: report };
+  const setup = document.body.appendChild(document.createElement("div"));
+  setup.className = "ob-main";
+  const stale = { ...applied, expiresAt: Date.now() + UPDATE_TOAST_SETUP_WAIT_MS - 1 };
+  showAppliedUpdateToast(stale);
+  await act(async () => { vi.advanceTimersByTime(UPDATE_TOAST_SETUP_WAIT_MS); });
+  expect(getToasts()).toEqual([]);
+  expect(report).toHaveBeenCalledWith("expired", stale);
+});
+
+it("shows the in-place toast when update-applied arrives before subscribe and the status bar is hidden", async () => {
+  const report = vi.fn();
+  const hub = createUpdateNoticeHub();
+  desktopWindow.branchDesktop = { ...hub, reportUpdateNotice: report };
+  hub.pushApplied(applied);
+  await act(async () => root.render(<Toasts />));
+  expect(host.querySelector("[data-testid=toast]")?.textContent).toContain(UPDATED_IN_PLACE);
+  expect(report).toHaveBeenCalledWith("shown", applied);
+  expect(report.mock.calls.filter((call) => call[0] === "shown")).toHaveLength(1);
+});
+
+it("dedupes the same update version across live delivery and subscribe replay", async () => {
+  const report = vi.fn();
+  const hub = createUpdateNoticeHub();
+  desktopWindow.branchDesktop = { ...hub, reportUpdateNotice: report };
+  await act(async () => root.render(<Toasts />));
+  await act(async () => hub.pushApplied(applied));
+  await act(async () => hub.pushApplied(applied));
+  expect(host.querySelectorAll("[data-testid=toast]")).toHaveLength(1);
+  expect(report.mock.calls.filter((call) => call[0] === "shown")).toHaveLength(1);
+});
+
+it("dismisses the in-place toast when update-undone arrives through the new path", async () => {
+  const report = vi.fn();
+  const hub = createUpdateNoticeHub();
+  desktopWindow.branchDesktop = { ...hub, reportUpdateNotice: report };
+  await act(async () => root.render(<Toasts />));
+  await act(async () => hub.pushApplied(applied));
+  expect(host.querySelector("[data-testid=toast]")?.textContent).toContain(UPDATED_IN_PLACE);
+  await act(async () => hub.pushUndone());
+  expect(host.querySelector("[data-testid=toast]")).toBeNull();
 });
