@@ -52,6 +52,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/check-ui-proof.mjs
+      - name: Test the window cleanliness check
+        run: node --test scripts/check-window-clean.test.mjs
+      - name: Fail new window cleanliness violations
+        run: node scripts/check-window-clean.mjs
 
   merge-gate:
     needs: changed-test-coverage
