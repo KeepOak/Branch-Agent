@@ -1,0 +1,20 @@
+# Tests for feat/harvest-pack1-oc-voice-0025 run from scripts/feature-batch-ci-named/feat-harvest-pack1-oc-voice-0025.txt.
+# Left out of Harvest so harvestTests() and namedTests() stay disjoint.
+# merge-gate-trusted coverage reads only named lists from the PR head.
+# VOICE-0025: verified pinned tests after the repository rename; current upstream tests used for newer code. Product code preserved.
+# VOICE-0026: verified pinned tests after the repository rename; current upstream tests used for newer code. Product code preserved.
+# VOICE-0049 blocked: needs macOS on Apple silicon: MLXAudio/MLX speech helper and native TalkMLXSpeechSynthesizer are absent from Branch; Linux has no Swift/AppKit/AVFoundation or Metal runtime.
+# Upstream 57e0aaa1c190f1abe16e597008fbcc14f5e609e3: apps/macos-mlx-tts/Tests/OpenClawMLXTTSRuntimeTests/MLXTTSHelperServiceTests.swift.
+# VOICE-0059: verified pinned tests after the repository rename; current upstream tests used for newer code. Product code preserved.
+# VOICE-0064: verified pinned tests after the repository rename; current upstream tests used for newer code. Product code preserved.
+# VOICE-0068: Branch behavior tests verify automatic modes and text fallback; ported AstrBot probability and exposed existing upstream modes through authorized global/chat commands.
+# VOICE-0075 blocked: needs macOS: native VoicePushToTalk and VoiceSessionCoordinator are absent from Branch; AppKit global NSEvent Right Option monitoring and Speech/AVFoundation are unavailable on Linux.
+# Upstream 57e0aaa1c190f1abe16e597008fbcc14f5e609e3: no tests recorded; native behavior test cannot run without the macOS application target.
+# VOICE-0077 blocked: needs macOS: native TalkModeRuntime/SwiftUI overlay/audio capture and their native test targets are absent from Branch; AppKit/AVFoundation/WebRTC capture cannot run on Linux; phone clients belong to pack 7.
+# Upstream 57e0aaa1c190f1abe16e597008fbcc14f5e609e3: apps/macos/Tests/OpenClawIPCTests/TalkModeRuntimeSpeechTests.swift; apps/macos/Tests/OpenClawIPCTests/TalkModeControllerPublishingTests.swift; apps/macos/Tests/OpenClawIPCTests/MacRealtimeTalkAudioCaptureTests.swift.
+# VOICE-0085: verified pinned tests after the repository rename; current upstream tests used for newer code. Product code preserved.
+# VOICE-0086 blocked: needs macOS 26: native VoiceWakeRuntime/overlay/chime/tester targets are absent from Branch; on-device Speech/AppKit recognition and overlay tests cannot run on Linux.
+# Upstream 57e0aaa1c190f1abe16e597008fbcc14f5e609e3: apps/macos/Tests/OpenClawIPCTests/VoiceWakeRuntimeTests.swift; apps/macos/Tests/OpenClawIPCTests/VoiceWakeOverlayControllerTests.swift; apps/macos/Tests/OpenClawIPCTests/VoiceWakeTesterTests.swift.
+# VOICE-0088 blocked: needs macOS 26: Swabble daemon/CLI and native test targets are absent from Branch; SpeechAnalyzer/AVFoundation capture and ServeCommand tests cannot run on Linux.
+# Upstream 57e0aaa1c190f1abe16e597008fbcc14f5e609e3: apps/swabble/Tests/SwabbleKitTests/WakeWordGateTests.swift; apps/swabble/Tests/swabbleTests/ServeCommandTests.swift.
+# VOICE-0089: verified pinned tests after the repository rename; current upstream tests used for newer code. Product code preserved.

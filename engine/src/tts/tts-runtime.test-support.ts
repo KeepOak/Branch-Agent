@@ -204,7 +204,10 @@ export function installSpeechProviders(providers: SpeechProviderPlugin[]): void 
 
 // macOS os.tmpdir() is a /var -> /private/var symlink and fs-safe rejects
 // symlinked store roots; resolve the canonical dir before writing prefs.
-const PREFS_TMP_DIR = realpathSync(os.tmpdir());
+// Own a subdirectory so privateFileStoreSync can chmod it. Chmod on the
+// shared tmp root fails with EPERM on GitHub-hosted runners.
+const PREFS_TMP_DIR = path.join(realpathSync(os.tmpdir()), `branch-speech-core-${process.pid}`);
+mkdirSync(PREFS_TMP_DIR, { recursive: true });
 
 async function persistTestTtsAudio({
   audioBuffer,

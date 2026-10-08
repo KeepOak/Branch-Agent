@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/tts/tts-settings.ts (atlas VOICE-0068). Changed for Branch: resolve AstrBot trigger probability through existing scoped TTS settings; retain Branch persona and provider normalization.
 // Lightweight TTS settings resolution shared by agent prompts, status, and speech runtime.
 import { asNonArrayRecord, isRecord } from "../../packages/normalization-core/src/record-coerce.js";
 import {
@@ -30,6 +31,7 @@ import {
   type TtsUserPrefs,
 } from "./tts-config.js";
 import type { PreparedTtsPreferences } from "./tts-preferences.js";
+import { normalizeTtsTriggerProbability } from "./tts-trigger-probability.js";
 import type { ResolvedTtsConfig, ResolvedTtsModelOverrides } from "./tts-types.js";
 
 export type { ResolvedTtsConfig, ResolvedTtsModelOverrides };
@@ -125,6 +127,7 @@ function collectTtsPersonas(raw: TtsConfig): Record<string, ResolvedTtsPersona> 
 
 const TTS_CONFIG_RESERVED_KEYS = new Set([
   "auto",
+  "triggerProbability",
   "enabled",
   "maxTextLength",
   "mode",
@@ -168,6 +171,7 @@ export function resolveTtsConfig(
   const timeoutMsSource = raw.timeoutMs === undefined ? "default" : "config";
   return {
     auto: normalizeTtsAutoMode(raw.auto) ?? (raw.enabled ? "always" : "off"),
+    triggerProbability: normalizeTtsTriggerProbability(raw.triggerProbability),
     mode: raw.mode ?? "final",
     provider: normalizeConfiguredSpeechProviderId(raw.provider) ?? "",
     providerSource,

@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/tts/tts-payload.ts (atlas VOICE-0068). Changed for Branch: apply AstrBot probability to automatic replies before synthesis; retain explicit speech and Branch final-mode fallback.
 import {
   getReplyPayloadMetadata,
   markReplyPayloadAsTtsSupplement,
@@ -32,6 +33,7 @@ import {
   type ResolvedTtsConfig,
 } from "./tts-settings.js";
 import { textToSpeechCore, type TtsAudioPersistence } from "./tts-synthesis.js";
+import { shouldTriggerAutomaticTts } from "./tts-trigger-probability.js";
 
 let lastTtsAttempt: TtsStatusEntry | undefined;
 
@@ -194,6 +196,10 @@ export async function maybeApplyTtsToPayloadCore(
   }
   if (!explicitTtsText && ttsText.length < 10) {
     return nextPayload;
+  }
+
+  if (!explicitTts && !shouldTriggerAutomaticTts(config.triggerProbability)) {
+    return applyExplicitSpeechVisibleFallback(nextPayload, params.channel, explicitTtsText);
   }
 
   const maxLength = getTtsMaxLength(prefsPath);
