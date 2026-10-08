@@ -10,8 +10,7 @@ import { Sidebar, type SidebarProps } from "./Sidebar";
 import { buildContactSections, projectContact } from "./contacts-model";
 import { readPrefs } from "./FilterSort";
 import { rowMenuItems } from "./row-menu";
-import { NEW_GROUP_EVENT } from "../rooms/NewGroupChat";
-import { GroupDropPopover, createDroppedGroup, groupChatPrefill, groupHint, groupPlan, mergeRoomNotices, moveContactToProject, roomContact, useRoomNotices, type GroupContact, type GroupRoom } from "./group-drop";
+import { GroupDropPopover, createDroppedGroup, groupHint, groupPlan, mergeRoomNotices, moveContactToProject, roomContact, useRoomNotices, type GroupContact, type GroupRoom } from "./group-drop";
 import type { SidebarDrop } from "./sidebar-drag";
 
 vi.mock("../face/Face", () => ({ Face: ({ size }: { size: number }) => <span style={{ width: size, height: size }} /> }));
@@ -119,19 +118,36 @@ describe("drag to group", () => {
     await moveContactToProject(session, scout.threadKey, "branch");
     expect(request).toHaveBeenCalledWith("sessions.patch", { key: scout.threadKey, projectId: "branch" });
   });
-  it("offers a confirm then opens New group chat prefilled with both chats", async () => {
-    const opened: Event[] = [];
-    const onEvent = (event: Event) => opened.push(event);
-    window.addEventListener(NEW_GROUP_EVENT, onEvent);
+  it("keeps the standalone new-group popover and typed name across a sidebar redraw, then creates on Enter", async () => {
     const rendered = await show();
-    expect(rendered.host.textContent).toContain("Start a group chat with Scout and Ledger?");
-    expect(groupChatPrefill(scout, ledger, "scout")).toEqual({ name: "Scout and Ledger", trunk: "scout", people: [] });
+    const input = rendered.host.querySelector<HTMLInputElement>("input")!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Hartwell check"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => root!.render(<GroupDropPopover {...rendered.values} />));
+    expect(rendered.host.querySelector<HTMLInputElement>("input")?.value).toBe("Hartwell check");
+    await act(async () => rendered.host.querySelector<HTMLInputElement>("input")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(rendered.request).toHaveBeenCalledWith("rooms.create", expect.objectContaining({ name: "Hartwell check" }));
+    expect(rendered.onOpen).toHaveBeenCalledWith("agent:scout:room:new");
+  });
+  it("puts both dropped chats in the rooms.create group after confirming a new pair", async () => {
+    expect(groupPlan(drop(scout, ledger), contacts, [room])).toBe("new");
+    const rendered = await show();
     await act(async () => rendered.host.querySelector<HTMLButtonElement>("[data-testid=start-group-with-these]")!.click());
-    expect(rendered.request).not.toHaveBeenCalled();
-    expect(rendered.onClose).toHaveBeenCalled();
-    expect(opened).toHaveLength(1);
-    expect((opened[0] as CustomEvent).detail).toEqual({ name: "Scout and Ledger", trunk: "scout", people: [] });
-    window.removeEventListener(NEW_GROUP_EVENT, onEvent);
+    const created = rendered.request.mock.calls.find(([method]) => method === "rooms.create");
+    expect(created).toBeTruthy();
+    const members = (created![1] as { members: { kind: string; id: string }[] }).members;
+    expect(members.map((member) => `${member.kind}:${member.id}`)).toEqual(["trunk:scout", "a2a:ledger"]);
+    expect(rendered.onOpen).toHaveBeenCalledWith("agent:scout:room:new");
+  });
+  it("offers Add both to… on a new-group confirm and adds the missing members", async () => {
+    const other: GroupRoom = { roomId: "r2", name: "Week plan", lead: "scout", createdAt: 4, members: [{ kind: "trunk", id: "scout" }] };
+    const rendered = await show({ rooms: [other] });
+    expect(rendered.host.textContent).toContain("Add both to…");
+    expect(rendered.host.textContent).toContain("Week plan");
+    const button = [...rendered.host.querySelectorAll("button.mi")].find((el) => el.textContent === "Week plan");
+    await act(async () => button!.click());
+    expect(rendered.request).toHaveBeenCalledWith("rooms.members.add", { roomId: "r2", kind: "a2a", id: "ledger" });
+    expect(rendered.request).not.toHaveBeenCalledWith("rooms.members.add", expect.objectContaining({ id: "scout" }));
+    expect(rendered.onOpen).toHaveBeenCalledWith("agent:scout:room:r2");
   });
   it("asks before adding a grafted contact, notes it is offline, and calls rooms.members.add", async () => {
     const rendered = await show({ drop: { kind: "add", source: hermes.threadKey, target: contacts[3]!.threadKey, anchor } });

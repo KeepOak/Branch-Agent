@@ -4,7 +4,7 @@ import type { SaplingSession } from "../connect/session";
 import type { Block } from "../thread/model";
 import type { RoomPick } from "../rooms/RoomFaces";
 import { RoomFaces } from "../rooms/RoomFaces";
-import { openNewGroupChat, type NewGroupPrefill } from "../rooms/NewGroupChat";
+import { openNewGroupChat } from "../rooms/NewGroupChat";
 import type { SidebarDrop } from "./sidebar-drag";
 import "./group-drop.css";
 
@@ -29,13 +29,6 @@ export function groupPlan(drop: SidebarDrop, contacts: readonly GroupContact[], 
   if (source.roomId && target.roomId) return null;
   if (room) return !memberOf(person) ? null : hasMember(room, person) ? "duplicate" : "add";
   return memberOf(source) && memberOf(target) ? "new" : null;
-}
-/** Map two dropped chats onto the New group chat dialog: a Trunk plus any people, and both names. */
-export function groupChatPrefill(source: GroupContact, target: GroupContact, defaultTrunk: string): NewGroupPrefill {
-  const members = [source, target].map(memberOf).filter((member): member is GroupMember => Boolean(member));
-  const trunks = members.filter((member) => member.kind === "trunk").map((member) => member.id);
-  const people = members.filter((member) => member.kind === "person").map((member) => member.id);
-  return { name: `${source.name} and ${target.name}`, trunk: trunks[0] ?? defaultTrunk, people };
 }
 
 export function groupHint(drop: SidebarDrop, contacts: readonly GroupContact[], rooms: readonly GroupRoom[]): string {
@@ -163,12 +156,16 @@ export function GroupDropPopover({ drop, contacts, rooms, defaultTrunk, session,
   const target = contacts.find((c) => c.threadKey === drop.target);
   const room = rooms.find((r) => r.roomId === drop.roomId || r.roomId === target?.roomId || r.roomId === source?.roomId);
   const person = target?.roomId || (drop.kind === "add" && !target) ? source : target;
+  const ids = [drop.source, drop.target].filter((id): id is string => Boolean(id));
+  const names = ids.map((id) => contacts.find((c) => c.threadKey === id)?.name ?? "");
+  const [name, setName] = useState(names.join(" and "));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
   const starting = useRef(false);
   const added = useRef(new Set<string>());
-  useEffect(() => { ref.current?.querySelector<HTMLButtonElement>(".btn.pri, button")?.focus(); }, [drop]);
+  useEffect(() => { (input.current ?? ref.current?.querySelector<HTMLButtonElement>("button"))?.focus(); input.current?.select(); }, [drop]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-drag-key="${CSS.escape(drop.source)}"] .pin-open, [data-drag-key="${CSS.escape(drop.source)}"] .row-open`)?.focus({ preventScroll: true })); } };
     const away = (event: PointerEvent) => { if (!ref.current?.contains(event.target as Node)) onClose(); };
@@ -189,9 +186,19 @@ export function GroupDropPopover({ drop, contacts, rooms, defaultTrunk, session,
     } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); setBusy(false); }
     finally { starting.current = false; }
   };
+  const create = async (a: string, b: string) => {
+    if (starting.current) return;
+    starting.current = true;
+    setBusy(true); setError("");
+    try {
+      const made = await createDroppedGroup(session, contacts, [a, b], name || names.join(" and "), defaultTrunk);
+      onClose(); onOpen(`agent:${made.lead}:room:${made.roomId}`);
+    } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); setBusy(false); }
+    finally { starting.current = false; }
+  };
   const rect = drop.anchor;
   const people = contacts.filter((candidate) => !candidate.roomId && candidate.threadKey !== drop.source && memberOf(candidate) && !candidate.archivedAt);
-  return <div ref={ref} id="group-drop-popover" className="pop group-drop-popover" role="dialog" aria-label={drop.kind === "add" ? "Add to group" : drop.kind === "pick" ? "Move to group" : "New group chat"}
+  return <div ref={ref} id="group-drop-popover" className="pop group-drop-popover" role="dialog" aria-label={drop.kind === "add" ? "Add to group" : drop.kind === "pick" ? "Move to group" : "New group"}
     style={{ left: Math.max(8, Math.min(rect.left, innerWidth - 300)), top: Math.max(8, Math.min(rect.bottom + 6, innerHeight - 390)) }}>
     {drop.kind === "pick" ? <>
       {rooms.length ? <><div className="ph">Add {source?.name} to</div>{rooms.map((candidate) => <button key={candidate.roomId} type="button" className="mi" disabled={busy || !source || hasMember(candidate, source)} onClick={() => onPick?.({ kind: "add", source: drop.source, roomId: candidate.roomId, anchor: rect })}>{candidate.name}{source && hasMember(candidate, source) ? " · Already in this group" : ""}</button>)}<hr /></> : null}
@@ -202,13 +209,12 @@ export function GroupDropPopover({ drop, contacts, rooms, defaultTrunk, session,
       {person.offline ? <p className="group-drop-note">{person.name} is offline. It joins when it’s back.</p> : null}
       <div className="group-drop-actions"><button type="button" className="btn ghost" onClick={onClose}>Cancel</button><button type="button" className="btn pri" disabled={busy} onClick={() => void add(room, [person])}>Add</button></div>
     </> : drop.kind === "new" && source && target ? <>
-      <div className="group-drop-head"><RoomFaces picks={[source, target].map((contact) => contact.kind === "trunk" ? { kind: "trunk", name: contact.name } : { kind: "person", id: contact.id, name: contact.name })} size={28} /><b>New group chat</b></div>
-      <p className="group-drop-question">Start a group chat with <b>{source.name}</b> and <b>{target.name}</b>?</p>
+      <div className="group-drop-head"><RoomFaces picks={[source, target].map((contact) => contact.kind === "trunk" ? { kind: "trunk", name: contact.name } : { kind: "person", id: contact.id, name: contact.name })} size={28} /><b>New group</b></div>
+      <label className="group-drop-field">Name <input ref={input} className="inp" maxLength={60} value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void create(drop.source, drop.target!); } }} /></label>
+      <button type="button" className="btn pri" data-testid="start-group-with-these" disabled={busy || !name.trim()} onClick={() => void create(drop.source, drop.target!)}>New group with {source.name} and {target.name}</button>
       {[source, target].filter((c) => c.offline).map((c) => <p key={c.id} className="group-drop-note">{c.name} is offline. It joins when it’s back.</p>)}
-      <div className="group-drop-actions">
-        <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-        <button type="button" className="btn pri" data-testid="start-group-with-these" onClick={() => { onClose(); openNewGroupChat(groupChatPrefill(source, target, defaultTrunk)); }}>Start a group chat with these</button>
-      </div>
+      {rooms.length ? <><hr /><div className="ph">Add both to…</div>{rooms.map((candidate) => <button key={candidate.roomId} type="button" className="mi" disabled={busy || [source, target].every((c) => hasMember(candidate, c))} onClick={() => void add(candidate, [source, target])}>{candidate.name}{[source, target].every((c) => hasMember(candidate, c)) ? " · Already in this group" : ""}</button>)}</> : null}
+      <hr /><button type="button" className="mi" onClick={onClose}>Cancel <kbd>Esc</kbd></button>
     </> : null}
     {error ? <p role="alert" className="group-drop-error">{error}</p> : null}
   </div>;
