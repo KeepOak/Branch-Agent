@@ -63,6 +63,7 @@ import type { Roster } from "../places/trunk/model";
 import { creationProblem, readRoster } from "../places/trunk/model";
 import { COMPOSE_EVENT } from "../composer/Composer";
 import { PairDialog } from "../places/customize/pairing";
+import { guideLinkItems } from "./guide-links";
 import { Palette } from "./Palette";
 import { paletteRows } from "./palette-rows";
 import { PersonMenu, usePersonName } from "./PersonMenu";
@@ -98,6 +99,8 @@ import { PlanCard, usePlanDismiss, usePlanRefresh, useProgressCard } from "../th
 import { ComputerStage, type PipTarget, type StageMode } from "../stage/ComputerStage";
 import { StageConversation } from "../stage/StageConversation";
 import { SidePane, type PaneTab } from "../stage/SidePane";
+import { ThreadColumn } from "./ThreadColumn";
+import { ControlTower } from "./ControlTower";
 import { StagePip } from "../stage/StagePip";
 import { AddComputer } from "../stage/AddComputer";
 import { computersChanged } from "../stage/computers";
@@ -374,6 +377,22 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const [replyTo, setReplyTo] = useState<{ entryId: string; name: string; text: string } | null>(null);
   const [stage, setStage] = useState<StageMode | null>(null);
   const [pane, setPane] = useState<PaneTab | null>(null);
+  const [towerOn, setTowerOn] = useState(() => {
+    try { return localStorage.getItem("branch.controlTower") !== "hidden"; }
+    catch { return true; }
+  });
+  useEffect(() => {
+    const toggle = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || event.key.toLowerCase() !== "t") return;
+      event.preventDefault();
+      setTowerOn((on) => {
+        try { localStorage.setItem("branch.controlTower", on ? "hidden" : "shown"); } catch { /* current window only */ }
+        return !on;
+      });
+    };
+    window.addEventListener("keydown", toggle);
+    return () => window.removeEventListener("keydown", toggle);
+  }, []);
   const [focusHelpers, setFocusHelpers] = useState(0);
   const [pip, setPip] = useState<PipTarget | null>(null);
   const [stageComputer, setStageComputer] = useState<string | null>(null);
@@ -874,6 +893,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   }, [showingAll, topicContact?.id, session, activeTopics, lists.rows, ready]);
   const home = contacts.find((c) => c.isDefault) ? contactRow(contacts.find((c) => c.isDefault)!) : homeRow(lists.rows, s.mainKey, defaultName);
   const sections = buildContactSections(contacts, prefs, now);
+  // The main conversation is still navigable while contacts.list is loading (or unavailable).
+  if (!contacts.length && home && !prefs.trunk && prefs.status === "active") {
+    sections.find((section) => section.id === "recent")?.rows.push(home);
+  }
   const pinnedSection = sections.find((section) => section.id === "pinned");
   if (pinnedSection) pinnedSection.rows.sort((a, b) => {
     if (a.key === b.key) return 0;
@@ -958,9 +981,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     { label: "Set up Branch", hint: "3 min", run: () => firstRun.open(0), testid: "guide-setup" },
     { label: "Take the walkthrough", hint: "2 min", run: () => (setOverlay(null), setGuide("tour")), testid: "guide-tour" },
     { kind: "sep" },
-    { label: "Docs", run: () => undefined, disabled: "The docs address isn't configured." },
-    { label: "Get help", run: () => undefined, disabled: "The help address isn't configured." },
-    { label: "Community", run: () => undefined, disabled: "The community address isn't configured." },
+    ...guideLinkItems((url) => { window.open(url, "_blank", "noopener"); }),
     { label: "What Branch can do", run: () => setOverlay({ kind: "cando" }), testid: "guide-cando" },
   ];
   const [, setReminded] = useState(0); // "Remind me tomorrow" redraws the person menu's update line
@@ -1014,6 +1035,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       copyMarkdown: (r) => void copyMarkdown(session.engine, r.key, rowName(r.key)),
       copyText: (text) => void copyText(text),
       copyLink: (r) => void copyText(conversationLink(r.key)),
+      copyConversation: (r) => void actions.copyConversation(r, openConversation),
       lookItem: iconColourItem(row, (change) => actions.setLook(row, change)),
     }), "Conversation", e.type === "contextmenu"); // a right-click opens it above the row, at its left edge, as the artifact does
   const changeTheme = (t: ThemeChoice) => setTheme(setThemeChoice(t));
@@ -1170,6 +1192,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     onTalk: () => window.dispatchEvent(new Event(TALK_EVENT)),
     onSearch: () => window.dispatchEvent(new Event(FIND_EVENT)),
     onSidePanel: () => setPane((value) => value ? null : "Activity"),
+    onTower: () => setTowerOn((on) => { try { localStorage.setItem("branch.controlTower", on ? "hidden" : "shown"); } catch { /* current window only */ } return !on; }),
+    towerVisible: towerOn,
     onList: toggleList,
     onTheme: () => setTheme(toggleTheme(theme)),
     onComputer: () => setStage("Computer"),
@@ -1243,7 +1267,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     };
     main = draftTopic ? (
       <div className="conversation-column" data-testid="new-topic-draft" ref={setConversationColumn}>
-        {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} /> : null}
+        {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} onList={toggleList} onBack={() => window.history.back()} onForward={() => window.history.forward()} tools={conversationTools} /> : null}
         <div className="conversation-empty" style={{ flex: 1 }} />
         <div className={pet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={pet} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={null} /></div>
         <Composer
@@ -1266,7 +1290,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       <>
         <StageConversation
         columnRef={setConversationColumn}
-        header={compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} /> : null}
+        header={compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} onList={toggleList} onBack={() => window.history.back()} onForward={() => window.history.forward()} tools={conversationTools} /> : null}
         topics={topicContact && activeTopics.length ? <TopicRail
           contactId={topicContact.id}
           contactName={topicContact.name}
@@ -1392,7 +1416,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   } else if (route.kind === "place") {
     main = (
       <>
-        {isNarrow ? <PlaceHead onList={toggleList} onSettings={() => openSettings("general")} /> : null}
+        {isNarrow ? <PlaceHead onList={toggleList} onSettings={() => openSettings("general")} onBack={() => window.history.back()} onForward={() => window.history.forward()} /> : null}
         <PlaceView place={route.place} engine={session.engine} facts={{ running, waiting: waitingTotal }} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} startConversation={(agentId) => void startNew(agentId)} createTrunk={() => void newTrunk()} />
       </>
     );
@@ -1424,7 +1448,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       </>
     );
   }
-  const mainClass = route.kind === "chat" ? (pane ? "main with-pane" : "main") : talkShown ? (talk.dock === "bottom" ? "main with-talk talk-bottom" : "main with-talk") : "main";
+  const threadGeneralKey = topicContact?.threadKey ?? (openRow?.isMain ? openKey : null);
+  const showThreadColumn = route.kind === "chat" && !layout.focus && !stage && !draftTopic && Boolean(threadGeneralKey);
+  const showTower = route.kind === "chat" && ready && towerOn && !pane && !layout.focus && !stage && !draftTopic && firstRun.step === null;
+  const mainClass = route.kind === "chat" ? `main${pane ? " with-pane" : ""}${showThreadColumn || showTower ? " v23-layout" : ""}` : talkShown ? (talk.dock === "bottom" ? "main with-talk talk-bottom" : "main with-talk") : "main";
 
   return (
     <TrunkAppearances.Provider value={appearances}>
@@ -1442,6 +1469,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         listHidden={isNarrow ? !slideOpen : rail || layout.hidden}
         onTheme={() => setTheme(toggleTheme(theme))}
         onToggleList={toggleList}
+        onBack={() => window.history.back()}
+        onForward={() => window.history.forward()}
         onCharacter={() => setCharacterShown((v) => !v)}
         onGuide={(e) => showMenu(e, "guide", guideItems(), "Guide")}
         conversationTools={conversationTools}
@@ -1579,7 +1608,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             Leave focus mode · Ctrl+.
           </button>
         ) : null}
+        {showThreadColumn && threadGeneralKey ? <ThreadColumn key={topicContact?.id ?? threadGeneralKey} name={topicContact?.name ?? defaultName} generalKey={threadGeneralKey} openKey={openKey} items={topicItems} onOpen={(key) => key === threadGeneralKey ? openConversation(key) : openTopic(key)} /> : null}
         {main}
+        {showTower ? <ControlTower engine={session.engine} rows={lists.rows} needsCount={needsYou} trunkName={trunkName} onOpen={openConversation} onInbox={() => openPlace("inbox")} onClose={() => { setTowerOn(false); try { localStorage.setItem("branch.controlTower", "hidden"); } catch { /* current window only */ } }} /> : null}
       </main>
       {addingComputer && ready ? <AddComputer engine={session.engine} onClose={() => setAddingComputer(false)} onAdded={computersChanged} /> : null}
       {linkingBranch && ready ? <BranchLinkDialog engine={session.engine} onClose={() => setLinkingBranch(false)} onOpenGatewaySettings={() => { setLinkingBranch(false); openSettings("gateway"); }} /> : null}

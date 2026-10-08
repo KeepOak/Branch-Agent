@@ -71,6 +71,12 @@ describe("contacts layout", () => {
     await drag(68, 320);
     expect(commits.at(-1)).toEqual({ sideW: 320, rail: false });
   });
+  it("defaults to a full contact list outside the mid-width rail band", () => {
+    const originalMatchMedia = globalThis.matchMedia;
+    globalThis.matchMedia = vi.fn(() => ({ matches: false })) as unknown as typeof matchMedia;
+    expect(readLayout()).toMatchObject({ rail: false });
+    globalThis.matchMedia = originalMatchMedia;
+  });
   it("reload keeps both the saved full width and rail state", () => {
     const originalMatchMedia = globalThis.matchMedia;
     globalThis.matchMedia = vi.fn(() => ({ matches: true })) as unknown as typeof matchMedia;
@@ -79,6 +85,14 @@ describe("contacts layout", () => {
     expect(readLayout()).toMatchObject({ sideW: 320, rail: false });
     localStorage.setItem("branch.layout", JSON.stringify({ sideW: 320, rail: true }));
     expect(readLayout()).toMatchObject({ sideW: 320, rail: true });
+    globalThis.matchMedia = originalMatchMedia;
+  });
+  it("starts in the face rail at 1280 px and keeps the full list at 700 px", () => {
+    const originalMatchMedia = globalThis.matchMedia;
+    globalThis.matchMedia = vi.fn((query: string) => ({ matches: query.includes("min-width: 761px") })) as unknown as typeof matchMedia;
+    expect(readLayout().rail).toBe(true);
+    globalThis.matchMedia = vi.fn(() => ({ matches: false })) as unknown as typeof matchMedia;
+    expect(readLayout().rail).toBe(false);
     globalThis.matchMedia = originalMatchMedia;
   });
   it("Ctrl+B collapses to the rail, expands it, and restores a hidden list at full width", async () => {

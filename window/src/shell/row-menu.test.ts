@@ -25,7 +25,7 @@ function menu(target: Conversation, current?: Contact) {
   const items = rowMenuItems(target, {
     actions: actions as never, now: 100, trunkName: "Oak", open: vi.fn(), ownWindow, rename, confirmDelete,
     level: "regular", ask: vi.fn(), editTrunk: vi.fn(), tidy: vi.fn(),
-    copyMarkdown: vi.fn(), copyText: vi.fn(), copyLink: vi.fn(), profile, contact: current,
+    copyMarkdown: vi.fn(), copyText: vi.fn(), copyLink: vi.fn(), copyConversation: vi.fn(), profile, contact: current,
     markContactRead: vi.fn(), pinContact: vi.fn(), whoItKnows: vi.fn(), toggleMute, removeTrunk,
   });
   const run = (id: string) => {
@@ -54,7 +54,7 @@ describe("contact and topic row menus", () => {
       actions: {} as never, now: 100, trunkName: "Oak", open: vi.fn(), ownWindow,
       ownWindowOpen: (key) => key === thread.key,
       rename: vi.fn(), confirmDelete: vi.fn(), level: "regular", ask: vi.fn(), editTrunk: vi.fn(),
-      tidy: vi.fn(), copyMarkdown: vi.fn(), copyText: vi.fn(), copyLink: vi.fn(),
+      tidy: vi.fn(), copyMarkdown: vi.fn(), copyText: vi.fn(), copyLink: vi.fn(), copyConversation: vi.fn(),
     });
     const item = items.find((candidate) => "testid" in candidate && candidate.testid === "menu-own-window");
     expect(item).toMatchObject({ label: "Show its window" });
