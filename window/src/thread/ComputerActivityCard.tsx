@@ -4,10 +4,11 @@ import type { WindowEngine } from "../connect/engine";
 import { SIcon } from "../stage/stage-icons";
 import { useDesktopView } from "../stage/use-desktop";
 import { describePlacement, placementComputer } from "../stage/computers";
-import { computerActivityTurns, isComputerStep } from "./computer-activity";
 import "../stage/stage.css";
 
-export type ComputerMode = "Computer" | "Browser";
+type Mode = "Computer" | "Browser";
+type Step = Extract<Block, { kind: "step" }>;
+const isComputer = (b: Block): b is Step => b.kind === "step" && /browser|computer|screen|desktop/i.test(b.tool);
 
 /** The conversation's computer: its own label from the engine, or This computer for the host. */
 function useComputerName(engine: WindowEngine | undefined): { id: string | null; name: string } {
@@ -40,51 +41,36 @@ function Thumb({ engine, gatewayUrl, id, onOpen }: { engine: WindowEngine; gatew
   );
 }
 
-export type ComputerActivityProps = {
-  blocks: readonly Block[];
-  running: boolean;
-  name: string;
-  onWatch: (mode: ComputerMode, takeOver?: boolean) => void;
-  engine?: WindowEngine;
-  gatewayUrl?: string;
-};
-
 /**
  * The computer or browser in the conversation: while it works, a live card (picture, Watch full size, Take over);
- * after, "Used <computer> · N actions" with each action it took. One card per turn (preview `actsCuR218`).
+ * after, "Used <computer> · N actions" with each action it took.
  */
-export function ComputerActivityCard(props: ComputerActivityProps) {
-  const turns = computerActivityTurns(props.blocks);
-  if (!turns.length) return null;
-  if (turns.length === 1) return <TurnCard {...props} blocks={turns[0]} />;
-  return (
-    <>
-      {turns.map((steps) => (
-        <TurnCard key={steps[0].key} {...props} blocks={steps} />
-      ))}
-    </>
-  );
-}
-
-function TurnCard({
+export function ComputerActivityCard({
   blocks,
   running,
   name,
   onWatch,
   engine,
   gatewayUrl,
-}: ComputerActivityProps) {
+}: {
+  blocks: Block[];
+  running: boolean;
+  name: string;
+  onWatch: (mode: Mode, takeOver?: boolean) => void;
+  engine?: WindowEngine;
+  gatewayUrl?: string;
+}) {
   const [open, setOpen] = useState(false);
-  const steps = blocks.filter(isComputerStep);
+  const steps = blocks.filter(isComputer);
   const computer = useComputerName(steps.length ? engine : undefined);
   const latest = steps.at(-1);
   if (!latest) return null;
-  const mode: ComputerMode = /browser/i.test(latest.tool) ? "Browser" : "Computer";
+  const mode: Mode = /browser/i.test(latest.tool) ? "Browser" : "Computer";
   const where = mode === "Browser" ? `${name}'s browser` : computer.name || `${name}'s computer`;
   const live = running && latest.status === "running";
   if (live)
     return (
-      <section className="card-st comp-card-st" aria-label={`${mode} activity`} data-testid="computer-activity">
+      <section className="card-st comp-card-st" aria-label={`${mode} activity`}>
         <div className="card-h-st">
           <b>
             <SIcon name={mode === "Browser" ? "globe" : "monitor"} small />
@@ -116,7 +102,7 @@ function TurnCard({
     .map((s) => s.title)
     .join(", ");
   return (
-    <section className="card-st acts-card-st" aria-label={`${mode} activity`} data-testid="computer-activity">
+    <section className="card-st acts-card-st" aria-label={`${mode} activity`}>
       <button type="button" className="acts-head-st" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         <SIcon name={mode === "Browser" ? "globe" : "monitor"} small />
         <span className="grow">

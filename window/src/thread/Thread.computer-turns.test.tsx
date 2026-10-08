@@ -81,14 +81,14 @@ describe("computer cards stay on their own turn", () => {
       ),
     );
 
-    const cards = [...container.querySelectorAll('[data-testid="computer-activity"]')];
+    const cards = [...container.querySelectorAll(".acts-card-st, .comp-card-st")];
     expect(cards).toHaveLength(2);
     expect(cards[0].textContent).toContain("1 action");
     expect(cards[1].textContent).toContain("2 actions");
     expect(container.textContent).not.toContain("3 actions");
     expect(container.textContent).not.toContain("7 actions");
 
-    const threadItems = [...container.querySelectorAll('[data-testid="message"], [data-testid="computer-activity"]')];
+    const threadItems = [...container.querySelectorAll('[data-testid="message"], .acts-card-st, .comp-card-st')];
     const last = threadItems.at(-1);
     expect(last?.getAttribute("data-testid")).toBe("message");
     expect(last?.getAttribute("data-role")).toBe("assistant");

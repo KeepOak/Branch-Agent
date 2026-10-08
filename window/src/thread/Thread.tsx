@@ -1,4 +1,4 @@
-import { Children, cloneElement, Fragment, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { Children, cloneElement, Fragment, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactElement, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { Face } from "../face/Face";
 import { agentState } from "../face/agentState";
@@ -16,9 +16,8 @@ import { HelpersChip } from "./Helpers";
 import { HoverBar } from "./HoverBar";
 import { Rail } from "./Rail";
 import { Icon, ICONS } from "./icons";
-import { ComputerActivityCard, type ComputerActivityProps } from "./ComputerActivityCard";
-import { isComputerStep } from "./computer-activity";
-import { layout, shownApprovalIds, type Item } from "./layout";
+import { ComputerActivityCard } from "./ComputerActivityCard";
+import { isComputerStep, layout, shownApprovalIds, type Item } from "./layout";
 import { PlanCard, planAnchor } from "./PlanCard";
 import { useConversationPrefs } from "./prefs";
 import { isPreparationPending, preparationLabel } from "../connect/preparation-status";
@@ -97,11 +96,11 @@ type Props = {
 };
 
 /** Watch/Take over props from the shell's pinned card, so each in-turn card can open the stage. */
-function computerCardProps(node: ReactNode): ComputerActivityProps | undefined {
+function computerCardProps(node: ReactNode): ComponentProps<typeof ComputerActivityCard> | undefined {
   if (!isValidElement(node)) return undefined;
-  if (node.type === ComputerActivityCard) return node.props as ComputerActivityProps;
+  if (node.type === ComputerActivityCard) return node.props as ComponentProps<typeof ComputerActivityCard>;
   const children = (node.props as { children?: ReactNode }).children;
-  let found: ComputerActivityProps | undefined;
+  let found: ComponentProps<typeof ComputerActivityCard> | undefined;
   Children.forEach(children, (child) => {
     found ??= computerCardProps(child);
   });

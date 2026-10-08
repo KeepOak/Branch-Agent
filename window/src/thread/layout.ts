@@ -2,14 +2,26 @@
 // item carries the gutter face, as the approved design draws it: the Steps fold when the turn starts with steps,
 // else the first reply. A new user message or a new run always starts a new fold (preview stepsPB18 / threads.fixPB18).
 import type { Block } from "./model";
-import { stepRunId } from "./computer-activity";
 
 type Step = Extract<Block, { kind: "step" }>;
+
+/** The run a step belongs to (`outputKey` is `${runId}:${step.key}` from projectRun / history). */
+export function stepRunId(step: Step): string | undefined {
+  const key = step.outputKey;
+  if (!key) return undefined;
+  const suffix = `:${step.key}`;
+  return key.endsWith(suffix) ? key.slice(0, -suffix.length) : undefined;
+}
 
 function sameStepRun(a: Step, b: Step): boolean {
   const left = stepRunId(a);
   const right = stepRunId(b);
   return !left || !right || left === right;
+}
+
+/** Browser, computer, screen or desktop rows the conversation's activity card groups. */
+export function isComputerStep(block: Block): block is Step {
+  return block.kind === "step" && /browser|computer|screen|desktop/i.test(block.tool);
 }
 
 export type Item =
