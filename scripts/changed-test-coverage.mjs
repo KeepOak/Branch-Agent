@@ -9,18 +9,42 @@ import { priorityMemoryIntegration, priorityTests } from './priority-capabilitie
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const testFile = /^(engine|window|desktop)\/.+\.test\.(?:ts|tsx|mjs|mts)$/;
 
+const FALSE_IF = /^\s+(?:-\s+)?if:\s*(?:false|'false'|"false"|\$\{\{\s*false\s*\}\})\s*$/;
+
+function stepHasFalseIf(lines, runIndex) {
+  let start = runIndex;
+  while (start > 0 && !/^\s+-\s/.test(lines[start])) start -= 1;
+  for (let i = start; i <= runIndex; i += 1) {
+    if (FALSE_IF.test(lines[i])) return true;
+  }
+  return false;
+}
+
 // The desktop job uses explicit node --test arguments, not test discovery. A token only counts
-// when it belongs to an actual run line; mentions in comments or unrelated jobs do not count.
+// when it belongs to an actual run line; mentions in comments, `if: false` steps, or unrelated
+// jobs do not count.
 export function desktopRunTargets(workflow) {
   const targets = new Set();
-  for (const line of workflow.split(/\r?\n/)) {
-    const command = /^\s*(?:-\s*)?run:\s*(node\b.*\s--test\s+.*)$/.exec(line)?.[1];
-    if (!command) continue;
+  const lines = String(workflow).split(/\r?\n/);
+  for (let i = 0; i < lines.length; i += 1) {
+    const command = /^\s*(?:-\s*)?run:\s*(node\b.*\s--test\s+.*)$/.exec(lines[i])?.[1];
+    if (!command || stepHasFalseIf(lines, i)) continue;
     for (const token of command.matchAll(/(?:^|\s)((?:desktop\/)?[\w./*?-]+\.test\.(?:ts|tsx|mjs|mts))(?=\s|$)/g)) {
       targets.add(token[1].startsWith('desktop/') ? token[1] : `desktop/${token[1]}`);
     }
   }
   return targets;
+}
+
+export function workflowHasPullRequestTrigger(workflow) {
+  const text = String(workflow ?? '');
+  if (/^on:\s*(?:\[(?:[^\]]*?)pull_request|pull_request(?:\s|:|\[|$))/m.test(text)) return true;
+  return /^on:\s*$/m.test(text) && /^\s+pull_request\s*:/m.test(text);
+}
+
+export function pullRequestDesktopRunTargets(workflow) {
+  if (!workflowHasPullRequestTrigger(workflow)) return new Set();
+  return desktopRunTargets(workflow);
 }
 
 // The real-engine handoff suite is deliberately split by named case on each OS. Registering
@@ -51,7 +75,7 @@ export function uncoveredTests(changed, covered) {
 }
 
 export function coverageTargets(desktopWorkflow, handoffWorkflow = '', handoffConfig = '') {
-  const covered = desktopRunTargets(desktopWorkflow);
+  const covered = pullRequestDesktopRunTargets(desktopWorkflow);
   for (const file of handoffRunTargets(handoffWorkflow, handoffConfig)) covered.add(file);
   for (const lane of ['engine', 'window']) {
     for (const file of [...namedTests(lane), ...harvestTests(lane)]) covered.add(`${lane}/${file}`);

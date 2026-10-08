@@ -13,6 +13,8 @@ import {
   TRUSTED_WORKFLOW_PATH,
   VISUAL_TOUR_WORKFLOW_PATH,
   coverageFromPrFiles,
+  resolvePrDesktopWorkflow,
+  trustedDesktopWorkflow,
   evaluateOtherChecks,
   evaluateTrustedGate,
   fetchCheckRuns,
@@ -1098,6 +1100,58 @@ test('PR-only named list entry covers a changed test', () => {
   assert.deepEqual(extraNamed, [{ lane: 'engine', file: 'src/pr-only.test.ts' }]);
   const withList = coverageFromPrFiles(files, workflow, extraNamed);
   assert.ok(!withList.uncovered.includes('engine/src/pr-only.test.ts'));
+});
+
+test('trusted desktop coverage reads the PR workflow and fails closed', () => {
+  const files = [{ filename: 'desktop/scripts/component-release-readiness.test.mjs', status: 'added' }];
+  const mainWorkflow = [
+    'on:\n  pull_request:\n',
+    '      - run: node --test scripts/release-inventory.test.mjs\n',
+  ].join('');
+  const prWorkflow = [
+    'on:\n  pull_request:\n    paths: [desktop/**]\n',
+    '      - name: Build strict desktop sources\n',
+    '        run: npm run build\n',
+    '      - name: Check component release readiness\n',
+    '        run: node --test scripts/component-release-readiness.test.mjs\n',
+  ].join('');
+  assert.equal(resolvePrDesktopWorkflow(null), null);
+  assert.equal(resolvePrDesktopWorkflow(''), null);
+  assert.equal(trustedDesktopWorkflow(null), null);
+  assert.equal(trustedDesktopWorkflow(''), null);
+  assert.ok(coverageFromPrFiles(files, mainWorkflow).uncovered.includes(
+    'desktop/scripts/component-release-readiness.test.mjs',
+  ));
+  const workflow = trustedDesktopWorkflow(prWorkflow);
+  assert.equal(workflow, prWorkflow);
+  assert.ok(!coverageFromPrFiles(files, workflow).uncovered.includes(
+    'desktop/scripts/component-release-readiness.test.mjs',
+  ));
+});
+
+test('trusted desktop coverage ignores comments, if: false, and non-pull_request workflows', () => {
+  const files = [{ filename: 'desktop/scripts/new.test.mjs', status: 'added' }];
+  const commented = [
+    'on:\n  pull_request:\n',
+    '      # run: node --test scripts/new.test.mjs\n',
+    '      - run: node --test scripts/other.test.mjs\n',
+  ].join('');
+  const disabled = [
+    'on:\n  pull_request:\n',
+    '      - name: fake coverage\n',
+    '        if: false\n',
+    '        run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  const pushOnly = [
+    'on:\n  push:\n    branches: [main]\n',
+    '      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  assert.ok(coverageFromPrFiles(files, commented).uncovered.includes('desktop/scripts/new.test.mjs'));
+  assert.ok(coverageFromPrFiles(files, disabled).uncovered.includes('desktop/scripts/new.test.mjs'));
+  assert.equal(trustedDesktopWorkflow(pushOnly), '');
+  assert.ok(coverageFromPrFiles(files, trustedDesktopWorkflow(pushOnly)).uncovered.includes(
+    'desktop/scripts/new.test.mjs',
+  ));
 });
 
 test('nameStatusFromPrFiles and coverageFromPrFiles treat API files as data', () => {
