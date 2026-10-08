@@ -27,7 +27,7 @@
     "appFile": "window/src/shell/WindowShell.tsx",
     "appComponent": "WindowShell",
     "appAction": "Focus mode exists via Ctrl+. and Leave focus mode. No titlebar eye button.",
-    "status": "missing"
+    "status": "different"
   },
   {
     "id": "titlebar-minimize",
@@ -47,7 +47,7 @@
     "appFile": "window/src/shell/WindowShell.tsx",
     "appComponent": "WindowShell",
     "appAction": "No maximize/focus window button in the React chrome; focus is Ctrl+.",
-    "status": "missing"
+    "status": "different"
   },
   {
     "id": "titlebar-quit",
@@ -297,7 +297,7 @@
     "appFile": "window/src/shell/PersonMenu.tsx",
     "appComponent": "PersonMenu",
     "appAction": "Update to Branch <version> is a person-menu row, not a chip on the sidebar row.",
-    "status": "missing"
+    "status": "different"
   },
   {
     "id": "sidebar-hide-list",
@@ -377,7 +377,7 @@
     "appFile": "window/src/shell/TopBar.tsx",
     "appComponent": "TopBar",
     "appAction": "History back. Preview has no back/forward in the chat header.",
-    "status": "extra"
+    "status": "app-extra"
   },
   {
     "id": "chat-forward",
@@ -387,7 +387,7 @@
     "appFile": "window/src/shell/TopBar.tsx",
     "appComponent": "TopBar",
     "appAction": "History forward.",
-    "status": "extra"
+    "status": "app-extra"
   },
   {
     "id": "lock-banner-off",
@@ -717,7 +717,7 @@
     "appFile": "window/src/composer/PlusMenu.tsx",
     "appComponent": "PlusMenu",
     "appAction": "Listed and greyed: Google's picker opens in the desktop app.",
-    "status": "extra"
+    "status": "app-extra"
   },
   {
     "id": "plus-onedrive",
@@ -727,7 +727,7 @@
     "appFile": "window/src/composer/PlusMenu.tsx",
     "appComponent": "PlusMenu",
     "appAction": "Listed and greyed.",
-    "status": "extra"
+    "status": "app-extra"
   },
   {
     "id": "plus-photo",
@@ -947,7 +947,7 @@
     "appFile": "window/src/shell/PersonMenu.tsx",
     "appComponent": "PersonMenu",
     "appAction": "No Switch person row. Add opens inviting another person.",
-    "status": "missing"
+    "status": "different"
   },
   {
     "id": "person-add",
@@ -957,7 +957,7 @@
     "appFile": "window/src/shell/PersonMenu.tsx",
     "appComponent": "PersonMenu",
     "appAction": "Add person.",
-    "status": "extra"
+    "status": "same"
   },
   {
     "id": "person-settings",
@@ -2047,7 +2047,7 @@
     "appFile": "window/src/places/inbox/index.tsx",
     "appComponent": "InboxPlace",
     "appAction": "Shows Later (snoozed).",
-    "status": "extra"
+    "status": "app-extra"
   },
   {
     "id": "inbox-allow-all",
@@ -2277,7 +2277,7 @@
     "appFile": "window/src/places/library/index.tsx",
     "appComponent": "LibraryPlace",
     "appAction": "Shows Meetings.",
-    "status": "extra"
+    "status": "app-extra"
   },
   {
     "id": "lib-tab-logbook",
@@ -2287,7 +2287,7 @@
     "appFile": "window/src/places/library/index.tsx",
     "appComponent": "LibraryPlace",
     "appAction": "Shows Logbook.",
-    "status": "extra"
+    "status": "app-extra"
   },
   {
     "id": "lib-forget",
@@ -2767,7 +2767,7 @@
     "appFile": "window/src/places-nav/settings-nav.ts",
     "appComponent": "settingsGroups",
     "appAction": "Opens Settings \u203a Seasons. Preview has no Seasons page.",
-    "status": "extra"
+    "status": "app-extra"
   },
   {
     "id": "set-nav-advanced",
