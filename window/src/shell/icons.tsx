@@ -66,6 +66,7 @@ const PATHS = {
     </>
   ),
   back: <path d="M15 6l-6 6 6 6" />,
+  forward: <path d="M9 6l6 6-6 6" />,
   play: <path d="M7 5l12 7-12 7z" />,
   eye: <><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" /><circle cx="12" cy="12" r="2.5" /></>,
   alert: <><path d="M12 4 2.8 19.5h18.4z" /><path d="M12 10v4.5M12 17h.01" /></>,

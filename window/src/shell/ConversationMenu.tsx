@@ -51,6 +51,8 @@ export type ConversationMenuProps = {
   onTalk: () => void;
   onSearch?: () => void;
   onSidePanel?: () => void;
+  onTower?: () => void;
+  towerVisible?: boolean;
   onList?: () => void;
   onTheme?: () => void;
   onComputer?: () => void;
@@ -146,6 +148,7 @@ export function useConversationMenu(p: ConversationMenuProps): { open: (e: Mouse
     ownWindowOff: ownWindowUnavailable(),
     hasContactReturn: p.hasContactReturn,
     hasContactConversations: p.hasContactConversations,
+    towerVisible: p.towerVisible,
     room: p.room ? [...roomMenuItems({ ruleWords: p.room.ruleWords, canLeave: Boolean(p.row && !p.isMain), run: { rename: run.rename, rules: () => setOpen({ kind: "rules", at: menuAnchor() }), leave: run.archive, remove: run.remove } }),
       ...(p.room.members?.length ? [{ kind: "sub" as const, label: `Members · ${p.room.members.length}`, items: [{ kind: "head" as const, label: "Members" }, ...p.room.members.map((member) => ({ kind: "custom" as const, node: <div className="mi">{member}</div> }))] }] : [])] : null,
     run,
@@ -216,6 +219,7 @@ function useRun(p: ConversationMenuProps, c: RunCtx): ConversationMenuRun {
     removeTrunk: () => setOpen({ kind: "removeTrunk" }),
     search: () => p.onSearch?.(),
     sidePanel: () => p.onSidePanel?.(),
+    tower: () => p.onTower?.(),
     list: () => p.onList?.(),
     theme: () => p.onTheme?.(),
     computer: () => p.onComputer?.(),

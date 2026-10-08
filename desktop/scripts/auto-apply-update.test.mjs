@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
-const { createAutoApplyUpdate, AUTO_APPLY_POLL_MS, AUTO_APPLY_IDLE_MS } = await import(
+const { createAutoApplyUpdate, AUTO_APPLY_POLL_MS, AUTO_APPLY_IDLE_MS, AUTO_APPLY_RETRY_MS } = await import(
   pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "auto-apply-update.js"))
 );
 const { COMPONENT_UPDATE_CHECK_MS } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update.js")));
@@ -70,4 +70,34 @@ test("staged idle is rechecked every 30 seconds and releases every ten minutes",
   assert.equal(AUTO_APPLY_POLL_MS, 30_000);
   assert.equal(scheduled, 30_000);
   assert.equal(COMPONENT_UPDATE_CHECK_MS, 10 * 60 * 1000);
+});
+
+test("flagged handoff applies during active work without an idle hold", async () => {
+  let applied = 0; let probes = 0;
+  const controller = createAutoApplyUpdate({ pendingVersion: async () => "next", enabled: () => true,
+    seamlessHandoff: () => true,
+    activity: async () => { probes++; return { activeRuns: 2, pendingApprovals: 1, streaming: true, unsavedDraftFiles: true }; },
+    restart: async (version, handoffOnly) => { assert.equal(version, "next"); assert.equal(handoffOnly, true); applied++; }, onApplied: () => {}, log: () => {} });
+  await controller.tick(); await controller.tick();
+  assert.equal(applied, 1);
+  assert.equal(probes, 0);
+});
+
+test("failed flagged handoff falls back after idle and notifies once per version", async () => {
+  let now = 0; let attempts = 0; let version = "next"; let activeRuns = 1; const failures = [];
+  const controller = createAutoApplyUpdate({ pendingVersion: async () => version, enabled: () => true,
+    seamlessHandoff: () => true, activity: async () => ({ activeRuns, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }),
+    restart: async (_version, handoffOnly) => { attempts++; assert.equal(handoffOnly, attempts === 1 || version === "later"); throw new Error("standby failed"); },
+    onFailure: value => failures.push(value), log: () => {}, now: () => now });
+  await controller.tick(); await controller.tick();
+  assert.equal(attempts, 1); assert.deepEqual(failures, ["next"]);
+  now += AUTO_APPLY_RETRY_MS; await controller.tick();
+  assert.equal(attempts, 1);
+  now += AUTO_APPLY_IDLE_MS; await controller.tick();
+  assert.equal(attempts, 1, "fallback interrupted active work");
+  activeRuns = 0; await controller.tick();
+  now += AUTO_APPLY_IDLE_MS; await controller.tick();
+  assert.equal(attempts, 2); assert.deepEqual(failures, ["next"]);
+  version = "later"; await controller.tick();
+  assert.deepEqual(failures, ["next", "later"]);
 });

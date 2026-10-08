@@ -7,7 +7,6 @@ import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Seg, Status, Switch, useConfig, type RowEntry } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
-import { sessions as readSessions } from "../../overview/engine";
 import { CallLine, CodeRow, Kv, Tile, day, lvOf, openPlace, rec, str, useCall, useLive, when, type RecordValue } from "./common";
 import { Ico } from "./icons";
 import { componentDesktop } from "../../../connect/desktop-component-updates";
@@ -102,7 +101,7 @@ function useNow(on: boolean): number {
 }
 
 function Waiting({ engine, data, version }: SettingsPageProps & { data: Data; version: string }) {
-  const [dialog, setDialog] = useState<"" | "install" | "notes" | "report">("");
+  const [dialog, setDialog] = useState<"" | "notes" | "report">("");
   const call = useCall();
   const hold = useCall();
   const available = rec(data.status.updateAvailable);
@@ -119,6 +118,11 @@ function Waiting({ engine, data, version }: SettingsPageProps & { data: Data; ve
   const active = rec(data.status.activeRun);
   const last = rec(data.status.lastRun);
   const failed = !str(active.runId) && (last.status === "failed" || last.status === "rolled-back");
+  const install = () => void call.run(async () => {
+    const result = rec(await engine.request("update.run", {}));
+    if (result.ok !== true) throw new Error(str(result.message) || str(rec(result.result).reason) || "The engine didn’t start the update.");
+    return result;
+  }, () => "Installing. You can keep working.");
   return (
     <>
       {latest ? (
@@ -141,51 +145,16 @@ function Waiting({ engine, data, version }: SettingsPageProps & { data: Data; ve
       )}
       {latest && !str(active.runId) ? (
         <Acts>
-          <Btn pri disabled={call.busy} onClick={() => setDialog("install")}>{failed ? "Try again" : "Install when idle"}</Btn>
+          <Btn pri disabled={call.busy} onClick={install}>{failed ? "Try again" : "Install update"}</Btn>
           {started && campaign.state !== "applying" && !(Number(campaign.holdUntilMs) > now) ? <Btn ghost disabled={hold.busy} onClick={holdIt}>Hold for an hour</Btn> : null}
           {failed ? <Btn ghost onClick={() => setDialog("report")}>Report the failure</Btn> : <Btn ghost disabled title={NO_SKIP}>Skip this version</Btn>}
         </Acts>
       ) : null}
       <CallLine call={call} />
       <CallLine call={hold} />
-      {dialog === "install" ? <InstallDialog engine={engine} latest={latest} call={call} onClose={() => { setDialog(""); data.reload(); }} /> : null}
-      {dialog === "notes" ? <NotesDialog available={available} version={version} onClose={() => setDialog("")} onInstall={() => setDialog("install")} /> : null}
+      {dialog === "notes" ? <NotesDialog available={available} version={version} onClose={() => setDialog("")} onInstall={() => { setDialog(""); install(); }} /> : null}
       {dialog === "report" ? <ReportDialog engine={engine} run={last} onClose={() => setDialog("")} /> : null}
     </>
-  );
-}
-
-type Call = ReturnType<typeof useCall>;
-
-/** Install: with tasks running, "Let them finish first" (update.run waits for them, up to the deadline) or
- *  "Install now" (each running conversation is stopped with sessions.abort, then update.run). */
-function InstallDialog({ engine, latest, call, onClose }: Pick<SettingsPageProps, "engine"> & { latest: string; call: Call; onClose: () => void }) {
-  const running = useLive<RecordValue>(engine, "sessions.list", { includeGlobal: true, includeUnknown: true }, []);
-  const working = readSessions(running.data).filter((s) => s.working);
-  const [pick, setPick] = useState<"wait" | "now">("wait");
-  const go = async () => {
-    const now = pick === "now" && working.length > 0;
-    onClose();
-    await call.run(async () => {
-      if (now) for (const s of working) await engine.request("sessions.abort", { key: s.key, ...(s.agentId ? { agentId: s.agentId } : {}), ...(s.runId ? { runId: s.runId } : {}) });
-      const result = rec(await engine.request("update.run", {}));
-      if (result.ok !== true) throw new Error(str(result.message) || str(rec(result.result).reason) || "The engine didn’t start the update.");
-      return result;
-    }, () => (working.length && !now ? "It installs when the running tasks finish, or when the update deadline passes. You can keep working." : "Installing. Branch restarts by itself when it’s done."));
-  };
-  const n = working.length;
-  return (
-    <Dialog title={`Install ${latest}`} onClose={onClose} footer={<><Btn ghost onClick={onClose}>Not now</Btn><Btn pri disabled={running.loading} onClick={() => void go()}>Continue</Btn></>}>
-      {running.loading ? <p>Checking what’s running…</p> : n === 0 ? <p>Nothing is running right now. Branch keeps a safety copy first.</p> : (
-        <>
-          <p>{n === 1 ? "1 task is" : `${n} tasks are`} working right now. Branch keeps a safety copy either way.</p>
-          <div className="s2-opts" role="radiogroup" aria-label="When to install">
-            <button type="button" className="s2-opt" role="radio" aria-checked={pick === "wait"} onClick={() => setPick("wait")}><b>Let them finish first</b><small>Installs by itself when the last one is done, or when the update deadline passes; anything cut off is offered back.</small></button>
-            <button type="button" className="s2-opt" role="radio" aria-checked={pick === "now"} onClick={() => setPick("now")}><b>Install now</b><small>Stops them at a safe point. Afterwards you can pick each one up where it was.</small></button>
-          </div>
-        </>
-      )}
-    </Dialog>
   );
 }
 
@@ -194,7 +163,7 @@ function NotesDialog({ available, version, onClose, onInstall }: { available: Re
   const commits = list(available.commits);
   const behind = typeof available.commitsBehind === "number" ? available.commitsBehind : undefined;
   return (
-    <Dialog title="What’s new" wide onClose={onClose} footer={<><Btn ghost disabled title={NO_SKIP}>Skip this version</Btn><Btn pri onClick={onInstall}>Install when nothing is running</Btn></>}>
+    <Dialog title="What’s new" wide onClose={onClose} footer={<><Btn ghost disabled title={NO_SKIP}>Skip this version</Btn><Btn pri onClick={onInstall}>Install update</Btn></>}>
       <p className="hint">{version ? `What this update changes from Branch ${versionParts(version).detail}.` : "What this Branch update changes."}</p>
       {commits.length ? (
         <div className="rows">{commits.map((c) => <Prow key={str(c.sha)} title={str(c.subject)} sub={str(c.sha).slice(0, 7)} />)}</div>

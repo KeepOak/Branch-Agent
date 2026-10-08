@@ -8,12 +8,17 @@ export interface UpdateActivity {
 
 export const AUTO_APPLY_POLL_MS = 30_000;
 export const AUTO_APPLY_IDLE_MS = 60_000;
+export const AUTO_APPLY_RETRY_MS = 60_000;
 
 export function createAutoApplyUpdate(options: {
   pendingVersion(): Promise<string | null>;
   enabled(): boolean;
   activity(): Promise<UpdateActivity>;
-  restart(version: string): Promise<void>;
+  restart(version: string, handoffOnly: boolean): Promise<void>;
+  /** A flagged standby can take over while the predecessor finishes admitted work. */
+  seamlessHandoff?(): boolean;
+  onApplied?(version: string): void | Promise<void>;
+  onFailure?(version: string): void;
   log(line: string): void;
   now?: () => number;
   interval?: (tick: () => void, ms: number) => ReturnType<typeof setInterval>;
@@ -23,6 +28,9 @@ export function createAutoApplyUpdate(options: {
   let heldVersion: string | undefined;
   let checking = false;
   let restarting = false;
+  let appliedVersion: string | undefined;
+  let retryAfter = 0;
+  let failedVersion: string | undefined;
   let stopped = false;
   let lastDecision = "";
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -35,10 +43,23 @@ export function createAutoApplyUpdate(options: {
     checking = true;
     try {
       const version = await options.pendingVersion();
-      if (version !== heldVersion) { idleSince = undefined; heldVersion = version ?? undefined; }
-      if (!version || !options.enabled()) {
+      if (version !== heldVersion) { idleSince = undefined; retryAfter = 0; failedVersion = undefined; appliedVersion = undefined; heldVersion = version ?? undefined; }
+      if (!version || !options.enabled() || appliedVersion === version) {
         idleSince = undefined;
         if (version) decision("off; awaiting Restart");
+        return;
+      }
+      if (now() < retryAfter) return;
+      if (options.seamlessHandoff?.() && failedVersion !== version) {
+        restarting = true;
+        decision(`prepared handoff for ${version}`);
+        try { await options.restart(version, true); await options.onApplied?.(version); appliedVersion = version; restarting = false; }
+        catch (error) {
+          restarting = false;
+          retryAfter = now() + AUTO_APPLY_RETRY_MS;
+          if (failedVersion !== version) { failedVersion = version; options.onFailure?.(version); }
+          throw error;
+        }
         return;
       }
       const activity = await options.activity();
@@ -61,8 +82,13 @@ export function createAutoApplyUpdate(options: {
       }
       restarting = true;
       decision(`restarting for ${version}`);
-      try { await options.restart(version); }
-      catch (error) { restarting = false; throw error; }
+      try { await options.restart(version, false); await options.onApplied?.(version); appliedVersion = version; restarting = false; }
+      catch (error) {
+        restarting = false;
+        retryAfter = now() + AUTO_APPLY_RETRY_MS;
+        if (failedVersion !== version) { failedVersion = version; options.onFailure?.(version); }
+        throw error;
+      }
     } catch (error) {
       idleSince = undefined;
       decision(`waiting; activity check failed: ${error instanceof Error ? error.message : String(error)}`);

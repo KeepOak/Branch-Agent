@@ -106,7 +106,17 @@ describe("Settings › Models", () => {
     const request = vi.fn(async (method: string) => method === "config.get" ? { hash: "h", valid: true, config: {} } : method === "models.authStatus" ? { providers: [] } : { models: [] });
     await render({ request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine);
     expect(host.textContent).toContain("No model set up");
+    expect([...host.querySelectorAll("button")].filter((b) => b.textContent?.trim() === "Add an account")).toHaveLength(1);
     await click("Add an account");
     expect(document.querySelector('[data-testid="add-account"]')).not.toBeNull();
+  });
+
+  it("calls the unconfigured xAI service by its product name", async () => {
+    const request = vi.fn(async (method: string) => method === "config.get" ? { hash: "h", valid: true, config: {} } : method === "models.authStatus" ? {
+      providers: [], providerCapabilities: [{ provider: "xai", loginOptions: [{ featured: true }] }],
+    } : { models: [] });
+    await render({ request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine);
+    expect(host.querySelector(".acct-gh > b")?.textContent).toBe("xAI");
+    expect([...host.querySelectorAll(".acct-g .add-row")].map((b) => b.textContent)).toEqual(["Sign in to xAI"]);
   });
 });

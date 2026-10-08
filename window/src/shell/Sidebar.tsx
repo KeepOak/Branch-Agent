@@ -230,7 +230,7 @@ export function Sidebar(p: SidebarProps) {
         {p.rail ? (
           <>
             <button type="button" className="ib rail-search" aria-label="Search" title="Search" onClick={p.onRailSearch}><Icon name="search" /></button>
-            <button type="button" className="ib rail-new" aria-label="New, places and more" title="New, places and more" onClick={p.onNew}><Icon name="plus" /></button>
+            <button type="button" className="ib rail-new" aria-label="New, places and more" title="New, places and more" data-testid="new" onClick={p.onNew}><Icon name="plus" /></button>
           </>
         ) : (
           <>

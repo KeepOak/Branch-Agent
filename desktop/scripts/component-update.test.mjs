@@ -251,6 +251,38 @@ test("readiness confirmation records version and repeated poll avoids assets", a
   assert.equal(await source.rollbackComponentUpdate(cfg), false);
 }));
 
+test("Undo stages the previous release, confirms it, and never rejects the current good release", async () => fixture(async ({ cfg, request, release }) => {
+  await source.refreshComponentUpdate(cfg, request);
+  await source.confirmComponentUpdate(cfg, undefined, true);
+  assert.equal(await source.canUndoComponentUpdate(cfg), true);
+  const current = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  assert.equal(await source.prepareComponentUpdateUndo(cfg), true);
+  assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), cfg.engineDir);
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.2");
+  await source.confirmComponentUpdate(cfg, undefined, true);
+  await source.confirmComponentUpdateUndo(cfg);
+  assert.equal((await source.readComponentUpdateStatus(cfg)).currentVersion, "0.4.2");
+  assert.equal(await source.componentReleaseRejected(cfg, release), true, "the intentionally undone release must not be restaged");
+  assert.equal(await exists(current), true, "Undo retained the outgoing release for rollback");
+}, async ({ cfg }) => {
+  await mkdir(cfg.engineDir, { recursive: true });
+  await writeFile(join(cfg.dataDir, "component-update-version.txt"), "0.4.2\n");
+}));
+
+test("a failed Undo restores its receipt and leaves the current release eligible", async () => fixture(async ({ cfg, request, release }) => {
+  await source.refreshComponentUpdate(cfg, request);
+  await source.confirmComponentUpdate(cfg, undefined, true);
+  const current = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  assert.equal(await source.prepareComponentUpdateUndo(cfg), true);
+  await source.rollbackComponentUpdateUndo(cfg);
+  assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), current);
+  assert.equal(await source.canUndoComponentUpdate(cfg), true, "Undo should be retryable");
+  assert.equal(await source.componentReleaseRejected(cfg, release), false, "failed Undo must not blacklist the current release");
+}, async ({ cfg }) => {
+  await mkdir(cfg.engineDir, { recursive: true });
+  await writeFile(join(cfg.dataDir, "component-update-version.txt"), "0.4.2\n");
+}));
+
 test("confirmed update retains current and previous releases but prunes older updater folders", async () => fixture(async ({ cfg, request }) => {
   const updates = join(cfg.dataDir, "updates");
   const previous = join(updates, "release-0.4.2-abcdef");
@@ -852,4 +884,16 @@ test("bare unrelated legacy folder and incomplete markers do not capture fresh d
     await writeFile(join(legacy, "desktop.json"), "{}");
     assert.equal(defaultDataDirectory(), legacy, "an existing real desktop config remains authoritative");
   } finally { home.mock.restore(); if (previous === undefined) delete process.env.BRANCH_DESKTOP_DATA; else process.env.BRANCH_DESKTOP_DATA = previous; }
+}));
+
+test("updater fetches the newest available release directly, skipping intermediate releases", async () => fixture(async ({ cfg, request }) => {
+  // The updater is on 0.4.1, releases 0.4.2 and 0.4.3 exist, and 0.4.3 is the latest.
+  // readComponentManifest fetches from /releases/latest/download/, which always returns
+  // the newest release (0.4.3), not intermediate ones. The updater stages 0.4.3 directly.
+  const manifest = await source.readComponentManifest(request);
+  assert.equal(manifest.version, "0.4.3", "manifest version should be the latest, not an intermediate one");
+  assert.equal(await source.refreshComponentUpdate(cfg, request), true);
+  const status = await source.readComponentUpdateStatus(cfg);
+  assert.equal(status.componentsPendingVersion, "0.4.3", "updater should stage the latest release directly");
+  // If another release (0.4.4) becomes available, the next check fetches that one.
 }));
