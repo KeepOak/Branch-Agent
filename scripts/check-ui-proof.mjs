@@ -14,15 +14,42 @@ export function isWindowUISource(filePath) {
   return windowSource.test(filePath) && !windowTest.test(filePath) && !windowTypes.test(filePath);
 }
 
+const REJECTED_PROOF_HOST = /(?:^|\.)(?:cursor\.com|shields\.io|badge\.fury\.io)$/i;
+const GITHUB_ATTACHMENT = /^https:\/\/(?:user-images\.githubusercontent\.com\/|github\.com\/user-attachments\/assets\/)/i;
+
+export function proofImageUrls(prBody) {
+  if (!prBody) return [];
+  const urls = [];
+  for (const match of prBody.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)) urls.push(match[1]);
+  for (const match of prBody.matchAll(/<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi)) urls.push(match[1]);
+  for (const match of prBody.matchAll(/https:\/\/(?:user-images\.githubusercontent\.com|github\.com\/user-attachments\/assets\/)[^\s)"']+/gi)) {
+    urls.push(match[0]);
+  }
+  return urls;
+}
+
+export function isRejectedProofUrl(url) {
+  try {
+    const parsed = new URL(url, 'https://example.invalid');
+    if (REJECTED_PROOF_HOST.test(parsed.hostname)) return true;
+    if (/\/badge(?:s)?(?:\/|\.|$)/i.test(parsed.pathname)) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+export function isAcceptedProofUrl(url) {
+  if (GITHUB_ATTACHMENT.test(url)) return true;
+  if (isRejectedProofUrl(url)) return false;
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) return Boolean(url);
+  return /^https?:\/\//i.test(url);
+}
+
 export function hasScreenshotProof(prBody) {
   if (!prBody) return false;
   if (/^No visible change:\s+\S+/im.test(prBody)) return true;
-  if (/!\[[^\]]*\]\([^)]+\)/.test(prBody)) return true;
-  if (/<img\b[^>]*\bsrc\s*=\s*["'][^"']+["'][^>]*>/i.test(prBody)) return true;
-  if (/https:\/\/(?:user-images\.githubusercontent\.com|github\.com\/user-attachments\/assets\/)/i.test(prBody)) {
-    return true;
-  }
-  return false;
+  return proofImageUrls(prBody).some(isAcceptedProofUrl);
 }
 
 export function checkUIProof(changedFiles, prBody) {

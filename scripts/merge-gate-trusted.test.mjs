@@ -908,6 +908,11 @@ test('old-base PR still runs the trusted check from the default branch', () => {
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-trusted.test.mjs'));
 });
 
+test('trusted gate re-runs the UI screenshot proof check from main', () => {
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.test.mjs'));
+});
+
 test('merge-gate does not retrigger on ready_for_review and cancel its waiting run', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
   assert.match(yaml, /^  pull_request:\s*$/m);
