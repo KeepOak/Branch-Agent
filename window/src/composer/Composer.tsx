@@ -439,6 +439,7 @@ export function Composer(props: Props) {
         </div>
       ) : null}
       <DockRow
+        sessionKey={engine?.sessionKey ?? null}
         plan={prefs.taskProgress ? props.plan : null}
         planStarts={prefs.taskProgressStarts}
         trunkName={trunkName}

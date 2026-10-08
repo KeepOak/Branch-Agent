@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import "./plan.css";
+import { usePlanCardWatch } from "./plan-in-view";
 import type { WindowEngine } from "../connect/engine";
 // Mirrors engine/packages/gateway-protocol/src/schema/progress-card.ts. The
 // generated protocol declaration currently loses its TypeBox namespace types.
@@ -154,12 +155,13 @@ const small = (d: string) => (
 /** A plan shows actual step counts; a note-only card is a progress update without a completion fraction.
  *  Refresh/Dismiss remain available until every step of a nonempty plan is done. */
 export function PlanCard({ card, onRefresh, onDismiss, refreshing }: { card: ProgressCard; onRefresh?: () => void; onDismiss?: () => void; refreshing?: RefreshState }) {
+  const watch = usePlanCardWatch(card.sessionKey);
   const steps = card.steps || [];
   const title = steps.length ? "Plan" : "Progress update";
   const done = steps.filter((s) => s.status === "completed").length;
   const finished = steps.length > 0 && done === steps.length;
   return (
-    <section className="card plan-card indent" aria-label={title} data-testid="plan-card">
+    <section ref={watch} className="card plan-card indent" aria-label={title} data-testid="plan-card">
       <header className="plan-h">
         <b>{title}</b>
         {steps.length ? <span className="plan-n">{done} of {steps.length} done</span> : null}

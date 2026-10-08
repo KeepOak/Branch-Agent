@@ -1,6 +1,7 @@
 // The dock row above the composer (DESIGN-SPEC §4.3.7): waiting line, background, goal, attachments, the people a
 // message tells, and Steer. Chip order is fixed (rule 1); the row shows only when it has a chip.
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { usePlanCardInView } from "../thread/plan-in-view";
 import { formatSize, preparingLine, type DraftFile } from "./attachments";
 import { Pebble } from "../face/Pebble";
 import { Icon } from "./icons";
@@ -33,7 +34,8 @@ type Props = {
   people: Person[];
   onForget: (profileId: string) => void;
   onSteer: (text: string) => Promise<boolean>;
-  /** The plan's progress while the Trunk works ("1 of 4"); shown only while the Plan card is out of view. */
+  sessionKey?: string | null;
+  /** The plan's progress while the Trunk works ("1 of 4"); shown only while the Plan card is out of view (one plan view at a time). */
   plan?: { done: number; total: number; steps: { step: string; status: string }[] } | null;
   /** "Task progress starts" (§4.7.1): the plan above the box starts open or folded; on a phone always folded. */
   planStarts?: "open" | "folded";
@@ -84,7 +86,7 @@ export function DockRow(p: Props) {
           {goalChip(p.goal)}
         </button>
       ) : null}
-      {p.plan && p.working ? <PlanChip plan={p.plan} starts={p.planStarts ?? "open"} /> : null}
+      {p.plan && p.working && p.plan.done < p.plan.total ? <PlanChip plan={p.plan} sessionKey={p.sessionKey} starts={p.planStarts ?? "open"} /> : null}
       {p.preparing ? <span className="c-chip quiet">{preparingLine(p.preparing)}</span> : null}
       {p.files.map((f) => (
         <FileChip key={f.id} file={f} onRemove={() => p.onRemoveFile(f.id)} onShowText={() => p.onShowText(f.id)} />
@@ -114,23 +116,15 @@ export function DockRow(p: Props) {
   );
 }
 
-/** The plan above the message box (§4.2.2, §4.7.1 "Task progress above the message box"): while the Trunk works and
- *  the Plan card is out of view, its ticked steps show here, open or folded to "1 of 4"; a click on the count
+/** The plan above the message box (§4.2.2, §4.7.1 "Task progress above the message box"): while the Trunk works,
+ *  shown only while the Plan card is out of view (one plan view at a time). Its ticked steps show here, open or folded to "1 of 4"; a click on the count
  *  brings the card back into view. */
-function PlanChip({ plan, starts }: { plan: NonNullable<Props["plan"]>; starts: "open" | "folded" }) {
-  const [hidden, setHidden] = useState(false);
-  const [open, setOpen] = useState(() => starts === "open" && !matchMedia("(max-width: 760px)").matches);
-  useEffect(() => {
-    const card = document.querySelector('.thread [data-testid="plan-card"]');
-    if (!card || typeof IntersectionObserver === "undefined") return;
-    const watch = new IntersectionObserver(([entry]) => setHidden(entry.isIntersecting), { root: card.closest(".scroll"), threshold: 0.2 });
-    watch.observe(card);
-    return () => watch.disconnect();
-  }, [plan.done, plan.total]);
-  if (hidden) return null;
-  const toCard = () => document.querySelector('.thread [data-testid="plan-card"]')?.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+function PlanChip({ plan, starts, sessionKey }: { plan: NonNullable<Props["plan"]>; starts: "open" | "folded"; sessionKey?: string | null }) {
+  const { inView, registered, show } = usePlanCardInView(sessionKey);
+  const [open] = useState(() => starts === "open" && !matchMedia("(max-width: 760px)").matches);
+  if (inView || !registered) return null;
   const count = (
-    <button type="button" className="c-chip" data-testid="plan-chip" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+    <button type="button" className="c-chip" data-testid="plan-chip" aria-expanded={open} onClick={show}>
       <Icon name="plan" size={14} />
       {plan.done} of {plan.total}
     </button>
@@ -140,7 +134,7 @@ function PlanChip({ plan, starts }: { plan: NonNullable<Props["plan"]>; starts: 
     <div className="c-plan" data-testid="plan-dock">
       <div className="c-plan-h">
         {count}
-        <button type="button" className="c-link sm" onClick={toCard}>Show the plan</button>
+        <button type="button" className="c-link sm" onClick={show}>Show the plan</button>
       </div>
       <ul>
         {plan.steps.map((s, i) => (

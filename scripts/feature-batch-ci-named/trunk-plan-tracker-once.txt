@@ -1,0 +1,2 @@
+window:src/composer/plan-once.test.tsx
+window:src/thread/PlanCard.note-only.test.tsx
