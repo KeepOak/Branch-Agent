@@ -1,7 +1,8 @@
 // node --test scripts/feature-batch-ci-shard.test.mjs
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { harvestE2eError, harvestMatrix, harvestTestFiles, harvestTests, namedTests, shardOf, shardTests, touchedHarvestTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
+import { expectedShardSeconds, featureTestWeight, featureTestWeightKeys, firstShardReserveSeconds, harvestE2eError, harvestMatrix, harvestTestFiles, harvestTests, mainPushShardCounts, namedTests, planShards, pullRequestLinuxShardCount, runnerTestScale, shardBudgetSeconds, shardOf, shardTests, touchedHarvestTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
 
 test('no FEATURE_SHARD runs everything in one job', () => {
   assert.deepEqual(shardOf(''), { index: 0, total: 1 });
@@ -11,12 +12,63 @@ test('no FEATURE_SHARD runs everything in one job', () => {
 test('the shards split the named list with nothing lost or run twice', () => {
   for (const lane of ['engine', 'window']) {
     const all = namedTests(lane);
-    for (const total of [2, 5]) {
+    for (const total of [2, 3, 5, 6, 10]) {
       const parts = Array.from({ length: total }, (_, index) => shardTests(all, shardOf(`${index + 1}/${total}`)));
       assert.deepEqual(parts.flat().sort(), [...all].sort());
       assert.equal(new Set(parts.flat()).size, all.length);
-      assert.ok(Math.max(...parts.map((part) => part.length)) - Math.min(...parts.map((part) => part.length)) <= 1);
     }
+  }
+});
+
+test('slow files land on different shards instead of the same index stripe', () => {
+  // Sorted-index round-robin puts every third file on shard 1. These three would share it.
+  const tests = ['slow-a', 'fast-a', 'fast-b', 'slow-b', 'fast-c', 'fast-d', 'slow-c', 'fast-e', 'fast-f'];
+  const weights = new Map([['slow-a', 100], ['slow-b', 90], ['slow-c', 80]]);
+  const parts = [1, 2, 3].map(n => shardTests(tests, shardOf(`${n}/3`), weights));
+  assert.deepEqual(parts.map(part => part.filter(file => file.startsWith('slow-'))), [['slow-c'], ['slow-a'], ['slow-b']]);
+  assert.deepEqual(parts.flat().sort(), [...tests].sort());
+});
+
+test('duration weighting keeps named engine shards within one heavy file', () => {
+  const known = new Set([...namedTests('engine'), ...namedTests('window')]);
+  for (const file of featureTestWeightKeys()) assert.ok(known.has(file), `${file} is not a named test`);
+  const all = namedTests('engine');
+  const heaviest = Math.max(...all.map(file => featureTestWeight(file)));
+  for (const total of [3, 6, 7, 8, 10]) {
+    const plan = planShards(all, total);
+    const testLoads = plan.loads.map((load, index) => load - (index === 0 ? firstShardReserveSeconds : 0));
+    const span = Math.max(...testLoads) - Math.min(...testLoads);
+    assert.ok(span <= heaviest, `engine ${total}: shard span ${span}s is wider than the slowest file ${heaviest}s`);
+    assert.ok(Math.max(...testLoads) / Math.min(...testLoads) < 1.25, `engine ${total}: ${testLoads.join(',')}`);
+  }
+});
+
+function workflowMatrices(yaml) {
+  const match = /fromJSON\(github\.event_name == 'pull_request' && '(\[.*?\])' \|\| '(\[.*?\])'\)/.exec(yaml);
+  assert.ok(match, 'feature-batch matrix JSON is missing');
+  return { pullRequest: JSON.parse(match[1]), main: JSON.parse(match[2]) };
+}
+
+test('the 15-minute cap stays, and every planned shard fits the 12-minute budget', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/feature-batch-checks.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /timeout-minutes: 15/);
+  assert.doesNotMatch(yaml, /timeout-minutes: 20/);
+  const { pullRequest, main } = workflowMatrices(yaml);
+  const labels = (rows, os) => rows.filter(row => row.os === os).map(row => row.label);
+  assert.deepEqual(labels(pullRequest, 'ubuntu-latest'), Array.from({ length: pullRequestLinuxShardCount }, (_, index) => `${index + 1}/10`));
+  assert.deepEqual(pullRequest.filter(row => row.os === 'windows-latest').map(row => row.label), ['touched']);
+  assert.deepEqual(labels(main, 'ubuntu-latest'), Array.from({ length: mainPushShardCounts.ubuntu }, (_, index) => `${index + 1}/6`));
+  assert.deepEqual(labels(main, 'windows-latest'), Array.from({ length: mainPushShardCounts.windows }, (_, index) => `${index + 1}/8`));
+  assert.deepEqual(labels(main, 'macos-latest'), Array.from({ length: mainPushShardCounts.macos }, (_, index) => `${index + 1}/7`));
+  const plans = [
+    ['ubuntu', expectedShardSeconds(mainPushShardCounts.ubuntu, { typecheck: true, scale: runnerTestScale.ubuntu })],
+    ['windows', expectedShardSeconds(mainPushShardCounts.windows, { typecheck: false, scale: runnerTestScale.windows })],
+    ['macos', expectedShardSeconds(mainPushShardCounts.macos, { typecheck: false, scale: runnerTestScale.macos })],
+    ['pull-request', expectedShardSeconds(pullRequestLinuxShardCount, { typecheck: true, scale: runnerTestScale.ubuntu })],
+  ];
+  for (const [name, loads] of plans) {
+    const slowest = Math.max(...loads);
+    assert.ok(slowest <= shardBudgetSeconds, `${name} shard is ${slowest}s, over the ${shardBudgetSeconds}s budget`);
   }
 });
 

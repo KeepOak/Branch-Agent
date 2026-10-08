@@ -55,7 +55,12 @@ export function resolveConfiguredDesktopGatewayPort(
       gatewayPort?: unknown;
     };
     return parsePort(raw.gatewayPort) ?? DESKTOP_GATEWAY_PORT;
-  } catch {
+  } catch (error) {
+    // No desktop.json: same default as a file that names no port. Keep other
+    // read/parse failures from inventing a reclaim target.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return DESKTOP_GATEWAY_PORT;
+    }
     return undefined;
   }
 }
