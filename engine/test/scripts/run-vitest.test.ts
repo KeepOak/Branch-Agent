@@ -441,7 +441,7 @@ registerHooks({resolve(specifier, context, nextResolve) {
           platform: "win32",
           requireResolve,
         }),
-      ).toBe("/repo/node_modules/vitest/vitest.mjs");
+      ).toMatch(/^[/\\]repo[/\\]node_modules[/\\]vitest[/\\]vitest\.mjs$/u);
       expect(symlinkSync.mock.calls).toEqual([
         [modulesDir, modulesDir + "/node_modules", "junction"],
         [modulesDir, "/repo/node_modules", "junction"],
