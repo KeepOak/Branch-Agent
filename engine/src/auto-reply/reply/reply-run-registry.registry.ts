@@ -61,12 +61,15 @@ export function isReplyOperationForSession(
 ): operation is ReplyOperation {
   return (
     operation !== undefined &&
-    (!params.sessionId || operation.sessionId === params.sessionId) &&
-    params.sessionKeys.some((key) => agentSessionKeysMatchByRequestKey(operation.key, key)) &&
+    (!params.sessionId ||
+      (operation.sessionTarget?.sessionId ?? operation.sessionId) === params.sessionId) &&
+    params.sessionKeys.some((key) =>
+      agentSessionKeysMatchByRequestKey(operation.sessionTarget?.sessionKey ?? operation.key, key),
+    ) &&
     chatRunBelongsToAgent(
       {
         agentId: operation.agentId,
-        sessionKey: operation.key,
+        sessionKey: operation.sessionTarget?.sessionKey ?? operation.key,
         defaultAgentId: params.defaultAgentId,
       },
       params.agentId,
@@ -78,6 +81,7 @@ export function resolveReplyOperationsForSession(params: ReplyOperationSessionTa
   const candidates = [
     ...params.sessionKeys.map((key) => replyRunRegistry.get(key)),
     ...(params.sessionId ? [resolveReplyRunForCurrentSessionId(params.sessionId)] : []),
+    ...[...replyRunState.activeRunsByKey.values()].filter((operation) => operation.sessionTarget),
   ];
   return [...new Set(candidates)].filter((operation) =>
     isReplyOperationForSession(params, operation),
@@ -309,7 +313,17 @@ export function isReplyRunAbortableForCompaction(sessionId: string): boolean {
 }
 
 export function abortReplyRunBySessionId(sessionId: string): boolean {
-  return resolveReplyRunForCurrentSessionId(sessionId)?.abortByUser() ?? false;
+  const operations = new Set([
+    resolveReplyRunForCurrentSessionId(sessionId),
+    ...[...replyRunState.activeRunsByKey.values()].filter(
+      (operation) => operation.sessionTarget?.sessionId === sessionId,
+    ),
+  ]);
+  let aborted = false;
+  for (const operation of operations) {
+    aborted = (operation?.abortByUser() ?? false) || aborted;
+  }
+  return aborted;
 }
 
 export { resolveReplyRunForCurrentSessionId as resolveActiveReplyOperationForSessionId };

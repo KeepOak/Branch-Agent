@@ -13,6 +13,7 @@ import { createDeferredCore } from "../../shared/deferred.js";
 import type { ReplyFollowupAdmissionBarrierTimeoutPolicy } from "./reply-dispatcher.types.js";
 import * as replyRunSettle from "./reply-run-finalization-lease.js";
 import {
+  REPLY_OPERATION_EXPIRED_AS_STALE,
   REPLY_RUN_TERMINAL_SETTLE_TIMEOUT_MS,
   ReplyRunAlreadyActiveError,
   ReplyRunFollowupAdmissionBlockedError,
@@ -56,6 +57,7 @@ type ReplyOperationAbortCode = Extract<ReplyOperationResult, { kind: "aborted" }
 export function createReplyOperation(params: {
   sessionKey: string;
   sessionId: string;
+  sessionTarget?: Readonly<{ sessionKey: string; sessionId: string }>;
   agentId?: string;
   turnKind?: ReplyTurnKind;
   resetTriggered: boolean;
@@ -232,6 +234,7 @@ export function createReplyOperation(params: {
     get sessionId() {
       return currentSessionId;
     },
+    sessionTarget: params.sessionTarget ? Object.freeze({ ...params.sessionTarget }) : undefined,
     get agentId() {
       return currentAgentId;
     },
@@ -550,7 +553,7 @@ export function createReplyOperation(params: {
         `reply run stale takeover cancel failed: sessionKey=${currentSessionKey} reason=${reason} owner=${stateCleared ? "completed" : "retained"} error=${String(error)}`,
       );
     }
-    controller.abort(createAbortError("Reply operation expired as stale"));
+    controller.abort(createAbortError(REPLY_OPERATION_EXPIRED_AS_STALE));
     if (stateCleared) {
       diag.warn(
         `reply run stale takeover: forced release sessionKey=${currentSessionKey} reason=${reason} phase=${phase} result=${replyRunSettle.formatReplyOperationResult(

@@ -266,6 +266,7 @@ async function executeAgentTurnInternalLoop(
       const target = {
         agentId: effectiveRun.agentId,
         sessionId: params.replyOperation?.sessionId ?? effectiveRun.sessionId,
+        ...params.replyOperation?.sessionTarget,
         sessionKey: params.sessionKey,
         storePath:
           params.storePath ??

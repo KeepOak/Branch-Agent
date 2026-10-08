@@ -681,6 +681,16 @@ function isReplyRunRecoveryBlocked(operation: ReplyOperation): boolean {
   return blocker === "human_input_wait" || blocker === "runtime_owned_wait";
 }
 
+/** Live work excludes retained terminal slots and stale owners. */
+export function isLiveReplyOperation(operation: ReplyOperation | undefined): boolean {
+  return (
+    operation !== undefined &&
+    !operation.result &&
+    !operation.abortSignal.aborted &&
+    !isReplyRunEvidenceStale(operation)
+  );
+}
+
 export function isReplyRunEvidenceStale(operation: ReplyOperation): boolean {
   // Reading the wait may expire it and record the owner's resumed activity.
   const recoveryBlocked = isReplyRunRecoveryBlocked(operation);

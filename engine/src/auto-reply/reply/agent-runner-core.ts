@@ -493,4 +493,6 @@ export type RunReplyAgentParams = {
   resetTriggered?: boolean;
   replyThreadingOverride?: TemplateContext["ReplyThreading"];
   replyOperation?: ReplyOperation;
+  /** This call is already the live reply for a busy session; do not start another. */
+  liveInbound?: boolean;
 };

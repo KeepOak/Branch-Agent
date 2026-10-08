@@ -416,7 +416,7 @@ export async function assertAgentHarnessRunAdmission(
 export async function claimAgentSessionWriter(params: RunEmbeddedAgentParams): Promise<
   | {
       expectedLifecycleRevision: string | undefined;
-      expectedWriterRunId: string;
+      expectedWriterRunId: string | undefined;
     }
   | undefined
 > {
@@ -431,6 +431,12 @@ export async function claimAgentSessionWriter(params: RunEmbeddedAgentParams): P
   }
 
   const previousWriterRunId = normalizeOptionalString(snapshot.entry.activeWriterRunId);
+  // A live reply is another producer for this chat, not a replacement owner.
+  // Retain the incumbent writer fence (and lifecycle revision) so both replies
+  // can persist while reset/replacement still fences their late writes.
+  if (params.liveInboundSessionLane?.trim()) {
+    return { expectedLifecycleRevision, expectedWriterRunId: previousWriterRunId };
+  }
   const claimed = await patchSessionEntryCore(
     {
       ...(snapshot.agentId ? { agentId: snapshot.agentId } : {}),
