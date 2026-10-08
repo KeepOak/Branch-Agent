@@ -47,6 +47,15 @@ async function press(title: string, label: string) {
 }
 
 describe("Settings › General", () => {
+  it("keeps a row pin beside its title, clear of the Show all control", async () => {
+    const { engine } = engineOf();
+    const pins: Pins = { page: "general", list: [], has: () => false, toggle: vi.fn(), go: vi.fn(), unpin: vi.fn() };
+    await act(async () => root.render(<KitProvider level={0} report={report} scope={null} pins={pins}><GeneralPage page="general" title="General" level="regular" engine={engine} /></KitProvider>));
+    const keyboard = row("Keyboard shortcuts");
+    expect(keyboard.querySelector("b > .pin-k")).not.toBeNull();
+    await act(async () => keyboard.querySelector<HTMLButtonElement>(".right button")!.click());
+    expect(document.querySelector('[role="dialog"][aria-label="Keyboard shortcuts"]')).not.toBeNull();
+  });
   it("shows the preview's sections at each level", async () => {
     const { engine } = engineOf();
     await render(engine, 0);
