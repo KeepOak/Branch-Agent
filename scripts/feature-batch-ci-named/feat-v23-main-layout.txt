@@ -1,2 +1,3 @@
 # v23 layout contacts column coverage for trusted merge-gate after cancelled coverage.
+# Retrigger after a second pull_request_target trusted run on the same SHA failed as extra.
 window:src/shell/contacts-layout.test.tsx
