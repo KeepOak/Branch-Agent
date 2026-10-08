@@ -92,7 +92,7 @@ Every child process Branch starts on Windows (the engine, shells, probes, git, P
   gh pr merge <number> --merge --match-head-commit <reviewed-sha>
   ```
 
-  Auto-merge is turned off automatically. Don't force-push to `main`.
+  The repository allows merge commits only and has auto-merge turned off. A workflow opens one tracking issue if anything lands on main as a squash or rebase. Don't force-push to `main`.
 - **CI has a hard 15-minute cap.** Every check job sets `timeout-minutes: 15` or less; the merge-gate job allows up to 35 because it waits for the others. A change that makes CI slower than the cap gets split, sharded or cut, never given a longer timeout.
 
 ## Releases and component updates

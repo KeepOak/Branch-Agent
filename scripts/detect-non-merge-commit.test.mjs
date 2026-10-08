@@ -17,7 +17,6 @@ import {
   upsertIssueBody,
 } from './detect-non-merge-commit.mjs';
 
-const disableWorkflow = readFileSync(new URL('../.github/workflows/disable-auto-merge.yml', import.meta.url), 'utf8');
 const trackWorkflow = readFileSync(new URL('../.github/workflows/non-merge-commit.yml', import.meta.url), 'utf8');
 const detectorSource = readFileSync(new URL('./detect-non-merge-commit.mjs', import.meta.url), 'utf8');
 
@@ -113,28 +112,6 @@ test('parseArgs reads dry-run, sha, and repo without using process state', () =>
   assert.deepEqual(parseArgs(['node', 'detect-non-merge-commit.mjs'], { SHA: 'abc', REPO: repo }), {
     dryRun: false, sha: 'abc', repo, serverUrl: 'https://github.com',
   });
-});
-
-test('disable-auto-merge workflow only writes pull requests and does not check out code', () => {
-  assert.match(disableWorkflow, /pull_request_target:/);
-  assert.match(disableWorkflow, /types:\s*\[auto_merge_enabled\]/);
-  assert.match(disableWorkflow, /disablePullRequestAutoMerge/);
-  assert.match(disableWorkflow, /permissions:\s*\n  pull-requests: write\s*\n/);
-  assert.doesNotMatch(disableWorkflow, /^\s+contents:\s/m);
-  assert.doesNotMatch(disableWorkflow, /^\s+issues:\s/m);
-  assert.doesNotMatch(disableWorkflow, /actions\/checkout/);
-  assert.doesNotMatch(disableWorkflow, /git\s+clone/);
-  assert.doesNotMatch(disableWorkflow, /github\.event\.pull_request\.(title|body|head)/);
-  assert.match(disableWorkflow, /github\.token/);
-  assert.match(disableWorkflow, /PR Closer merges by hand as a merge commit/);
-});
-
-test('disable-auto-merge comments even when disable fails, then exits non-zero', () => {
-  const run = disableWorkflow.split(/run:\s*\|/)[1] ?? '';
-  assert.match(run, /if gh api graphql/);
-  assert.match(run, /then\s*\n\s*gh pr comment "\$PR_NUMBER" --body "\$COMMENT"/);
-  assert.match(run, /else\s*\n\s*gh pr comment "\$PR_NUMBER" --body "\$COMMENT_FAILED"\s*\n\s*exit 1/);
-  assert.match(disableWorkflow, /COMMENT_FAILED: Auto-merge could not be turned off/);
 });
 
 test('push-to-main workflow tracks one issue and never reverts', () => {

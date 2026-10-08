@@ -7,7 +7,6 @@ on:
     branches: [main]
   pull_request:
     paths:
-      - '.github/workflows/disable-auto-merge.yml'
       - '.github/workflows/non-merge-commit.yml'
       - 'scripts/detect-non-merge-commit.mjs'
       - 'scripts/detect-non-merge-commit.test.mjs'

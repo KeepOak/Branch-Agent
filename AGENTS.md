@@ -45,7 +45,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 12. **Merging:** Branch PR Closer merges by hand with a merge commit (never squash or rebase), pinned to the reviewed head SHA so a new push blocks the merge:
     - `gh pr merge <number> --merge --match-head-commit <reviewed-sha>`
     - REST API: `PUT /repos/KeepOak/Branch-Agent/pulls/<number>/merge` with `{"merge_method": "merge", "sha": "<reviewed-sha>"}`
-    Auto-merge is turned off automatically. Workflows disable auto-merge when it is armed on a PR, and open one tracking issue if a PR lands on main as a squash or rebase.
+    The repository allows merge commits only and has auto-merge turned off. A workflow opens one tracking issue if anything lands on main as a squash or rebase.
 
 13. **CI has a hard 15-minute cap.** Every check job sets `timeout-minutes: 15` or less; the merge-gate job allows up to 35 because it waits for the others. A change that makes CI slower than the cap gets split, sharded or cut, never given a longer timeout.
 
@@ -110,7 +110,7 @@ Open PRs and their current CI status: `gh pr list --json number,title,headRefNam
 4. **Merging.** Branch PR Closer may merge a PR when both conditions hold: (1) the merge-gate check is green on the current head, and (2) a review gave a MERGE verdict for that exact commit SHA. Branch PR Closer merges by hand with a merge commit, pinned to the reviewed SHA:
    - `gh pr merge <number> --merge --match-head-commit <reviewed-sha>`
    - Or via REST API: `PUT /repos/KeepOak/Branch-Agent/pulls/<number>/merge` with `{"merge_method": "merge", "sha": "<reviewed-sha>"}`
-   Auto-merge is turned off automatically.
+   The repository allows merge commits only and has auto-merge turned off. A workflow opens one tracking issue if anything lands on main as a squash or rebase.
 
 5. **Seamless handoff gate.** The `seamlessHandoff` flag stays off until #429 (real two-engine handoff test) is merged. After #429 lands, turn it on in its own one-line PR and test it live mid-conversation.
 
