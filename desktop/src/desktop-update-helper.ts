@@ -1,11 +1,12 @@
-// Runs by itself under plain Node (copied out of app.asar): only Node built-ins, no other desktop modules.
+// Runs by itself under plain Node, copied out of app.asar with install-folder-holders.js beside it.
 // Waits for the desktop app to exit, swaps the staged copy in, relaunches it and waits for the new app to confirm
 // its start (it removes the journal). No confirmation in time: stop the new app by its PID, put the previous copy
 // back, remember the release as rejected and relaunch the previous app.
 import { spawn, execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { readdir, rename, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
+import { BESIDE_MARKER, besideInstallDir, createHolderDeps, installDirFor, placeAppShell, writeBesideMarker } from "./install-folder-holders";
 
 export interface HelperPlan {
   journal: string;
@@ -86,20 +87,34 @@ async function restoreAsarNames(folder: string): Promise<void> {
   }
 }
 
+/** Set when the in-place rename could not move the install and the new shell was placed beside it. */
+let sideBySide: { directory: string; blockers: string[] } | undefined;
+
 /** Old copy aside, new copy in. On failure the old copy is put back and the update stays staged. */
 async function swap(plan: HelperPlan, journal: Journal, previous: string, log: (line: string) => void): Promise<boolean> {
+  sideBySide = undefined;
   await rm(previous, { recursive: true, force: true });
   if (journal.kind === "runtime") await restoreAsarNames(journal.staged);
   await writeJournal(plan.journal, { ...journal, phase: "applying" });
-  try { await move(journal.target, previous); } catch (error) {
+  const installDir = installDirFor(journal.kind, journal.target);
+  const besideDir = besideInstallDir(installDir);
+  try {
+    const placed = await placeAppShell({
+      installDir, target: journal.target, staged: journal.staged, previous, besideDir, kind: journal.kind,
+      targetRelative: journal.kind === "asar" ? relative(installDir, journal.target) : "",
+      relaunchCommand: plan.relaunch.command, excludePids: [process.pid, plan.waitPid],
+      deps: createHolderDeps(log),
+    });
+    if (placed.result === "beside") {
+      sideBySide = { directory: besideDir, blockers: placed.blockers };
+      plan.relaunch = { ...plan.relaunch, command: placed.relaunch, fallback: plan.relaunch.command };
+      try { await writeBesideMarker(dirname(plan.journal), placed.relaunch, placed.blockers); }
+      catch (error) { log(`desktop update: could not record the side-by-side install (${String(error)})`); }
+      log(`desktop update ${journal.version}: installed side by side at ${besideDir}; in-place swap blocked by ${placed.blockers.join("; ") || "a file lock"}`);
+    }
+  } catch (error) {
     await writeJournal(plan.journal, { ...journal, phase: "staged", heldUntil: Date.now() + RETRY_AFTER_MS });
     log(`desktop update ${journal.version}: the app is still in use (${String(error)}); kept staged for the next start`);
-    return false;
-  }
-  try { await move(journal.staged, journal.target); } catch (error) {
-    await move(previous, journal.target);
-    await writeJournal(plan.journal, { ...journal, phase: "staged", heldUntil: Date.now() + RETRY_AFTER_MS });
-    log(`desktop update ${journal.version}: could not place the new copy (${String(error)}); kept staged`);
     return false;
   }
   const { heldUntil: _retry, ...applied } = journal;
@@ -109,6 +124,16 @@ async function swap(plan: HelperPlan, journal: Journal, previous: string, log: (
 
 async function rollback(plan: HelperPlan, journal: Journal, previous: string, pid: number | undefined): Promise<void> {
   if (pid !== undefined) await stop(pid);
+  if (sideBySide) {
+    const note = sideBySide.blockers.join("; ") || "a file lock";
+    const directory = sideBySide.directory;
+    sideBySide = undefined;
+    await rm(directory, { recursive: true, force: true });
+    await rm(join(dirname(plan.journal), BESIDE_MARKER), { force: true });
+    await writeJournal(plan.journal, { ...journal, phase: "staged", heldUntil: Date.now() + RETRY_AFTER_MS });
+    try { appendFileSync(plan.log, `${new Date().toISOString()} desktop update ${journal.version}: side-by-side install did not confirm (${note}); the current install was left in place\n`); } catch { /* a log failure must not skip the relaunch */ }
+    return;
+  }
   await move(journal.target, `${journal.staged}-failed`);
   await move(previous, journal.target);
   await writeFile(plan.rejectedFile, JSON.stringify({ version: journal.version, sha256: journal.sha256 }));

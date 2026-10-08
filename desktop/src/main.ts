@@ -1,6 +1,6 @@
 // Branch Agent desktop app: starts the engine gateway, serves the built window on 127.0.0.1 and shows it.
 import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, session, shell } from "electron";
-import type { ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
 import { appendFileSync, existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -21,6 +21,7 @@ import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./ti
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from "./desktop-update";
+import { readBesideLaunch } from "./install-folder-holders";
 import { createAutoApplyUpdate } from "./auto-apply-update";
 import { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes } from "./available-memory";
 import { checkCandidateBeside, stopCandidate } from "./candidate-check";
@@ -822,6 +823,18 @@ async function handOffDesktop(): Promise<boolean> {
 }
 
 async function start(): Promise<void> {
+  // A previous shell update could not rename this folder. Open the side-by-side install instead of staying on the old copy.
+  if (install) {
+    const beside = await readBesideLaunch(cfg.dataDir, process.execPath);
+    if (beside) {
+      log(`desktop update: opening the side-by-side install`);
+      // This relaunches the Branch GUI, whose first ShowWindow must remain visible.
+      const child = spawn(beside, process.argv.slice(1), { detached: true, stdio: "ignore", windowsHide: false });
+      child.unref();
+      app.exit(0);
+      return;
+    }
+  }
   // A desktop update staged during the last run applies before anything starts.
   if (await handOffDesktop()) { app.exit(0); return; }
   token = readToken(cfg);
