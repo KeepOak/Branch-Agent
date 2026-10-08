@@ -34,6 +34,12 @@ import {
   workflowAppliesToChanges,
   workflowFromActionsRun,
 } from './merge-gate-trusted.mjs';
+import {
+  evaluateOrdinaryChecks,
+  fetchOrdinaryCheckRuns,
+  formatOrdinaryTimeout,
+  pollOrdinaryGate,
+} from './merge-gate-rate-limit.mjs';
 
 function ordinaryYaml() {
   return readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
@@ -1302,4 +1308,52 @@ test('merge-gate recheck fires when Visual tour and Engine build complete', () =
   assert.match(yaml, /^\s+-\s+Visual tour\s*$/m);
   assert.match(yaml, /^\s+-\s+Engine build \(PR\)\s*$/m);
   assert.match(yaml, /^\s+-\s+Gate files fresh\s*$/m);
+});
+
+test('ordinary JS waiter additions stay aligned with the yaml jq filters', () => {
+  const yaml = ordinaryYaml();
+  assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs gh --/);
+  const pair = evaluateOrdinaryChecks(realBuildPair);
+  assert.equal(pair.failed.map((run) => `${run.name}: ${run.conclusion}`).join('\n'), 'build: failure');
+  const ignored = evaluateOrdinaryChecks(passCheckRuns);
+  assert.equal(ignored.others.some((run) => run.name === 'merge-gate-trusted'), false);
+  assert.equal(ignored.others.some((run) => run.name === 'merge-gate'), false);
+  const page1 = {
+    total_count: 101,
+    check_runs: Array.from({ length: 100 }, (_, index) => ({
+      id: index + 1,
+      name: index === 0 ? 'Analyze (actions)' : `ok-${index}`,
+      status: 'completed',
+      conclusion: 'success',
+    })),
+  };
+  const page2 = {
+    total_count: 101,
+    check_runs: [{
+      id: 101,
+      name: 'Named feature tests on ubuntu-latest (9/10)',
+      status: 'completed',
+      conclusion: 'failure',
+    }],
+  };
+  const ordinary = fetchOrdinaryCheckRuns('example/repo', SHA, 'unused', { mode: 'all' }, {
+    request: (requestPath) => (requestPath.endsWith('page=1') ? page1 : page2),
+  });
+  assert.equal(ordinary.length, 101);
+  assert.equal(evaluateOrdinaryChecks(ordinary).failed[0].conclusion, 'failure');
+  const ordinaryCode = pollOrdinaryGate({
+    repo: 'example/repo', sha: SHA, token: 'unused', initialWait: 0, waitBudgetSeconds: 30, maxPolls: 1,
+  }, {
+    fetchChecks: () => [
+      { ...passCheckRuns[1], status: 'in_progress', conclusion: null },
+      analyzeCheck,
+    ],
+    sleep: () => {},
+    now: () => 0,
+    log: () => {},
+    error: () => {},
+    resolveWorkflows: () => ({}),
+  });
+  assert.equal(ordinaryCode, 1);
+  assert.match(formatOrdinaryTimeout([{ name: 'build' }]), /Timed out waiting for: build/);
 });
