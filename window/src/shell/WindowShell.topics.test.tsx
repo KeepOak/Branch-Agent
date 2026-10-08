@@ -106,6 +106,7 @@ describe("preview topic row in the shell", () => {
     expect(host.querySelector(".topicsT5")).toBeTruthy();
     const css = readFileSync(join(process.cwd(), "src/shell/topic-rail.css"), "utf8");
     expect(css).toMatch(/\.conversation-column:has\(>\s*\.topicsT5\.lay-column\)\{padding-left:var\(--topic-width,300px\)\}/);
+    expect(css).toMatch(/\.conversation-column:has\(>\s*\.head-row\)\s*>\s*\.topicsT5:not\(\.lay-tabs\)\{top:58px\}/);
     const column = host.querySelector(".conversation-column");
     expect(column?.contains(host.querySelector(".head-row"))).toBe(true);
     expect(column?.querySelector("[data-testid=conversation-menu-button]")).toBeTruthy();

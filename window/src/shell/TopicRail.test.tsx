@@ -65,6 +65,15 @@ describe("preview thread row", () => {
     expect(t.host.querySelector(".tpBadgeT5")).toBeTruthy();
   });
 
+  it("keeps General's who on General's last speaker when a child thread is open", async () => {
+    const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    await act(async () => root!.render(<TopicRail contactId="trunk:oak" contactName="Oak" contactKey="agent:oak:main" generalPreview="Booked the hall" generalWho="You" generalUpdatedAt={Date.now()} currentKey={topic.key} items={[{ topic, preview: "Oak: Flights found", who: "Oak", updatedAt: Date.now() }]} onOpen={() => {}} onAll={() => {}} onPatch={async () => {}}/>));
+    const general = [...host.querySelectorAll(".tpRowT5")].find((row) => row.querySelector("[aria-label=General]"));
+    expect(general?.querySelector(".tpWhoT5")?.textContent).toBe("You:");
+    expect(general?.textContent).toContain("Booked the hall");
+    expect(general?.textContent).not.toContain("Flights found");
+  });
+
   it("uses explicit engine names and syncs local choices from another window", async () => {
     const t = await render();
     await t.updateTopic({ ...topic, title: "Fix the parser for CSV", labelled: true });
