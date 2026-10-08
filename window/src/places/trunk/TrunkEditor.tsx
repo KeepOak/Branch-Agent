@@ -13,7 +13,8 @@ import { canWrite, loadTrunkData, useLoad, WRITE_WHY, type TrunkData } from "./d
 import { COLOURS, EYES, LookTab, SHAPES } from "./LookTab";
 import { readMay } from "./may";
 import { MayTab } from "./MayTab";
-import { errorText, lookOf, LOOKS } from "./model";
+import { errorText, lookOf } from "./model";
+import { shuffleLook } from "./shuffle";
 import { TrunkFace } from "./TrunkFace";
 import { Layer } from "./layer";
 import "./trunk.css";
@@ -84,16 +85,8 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
   }, []);
   const set = (d: Partial<Draft>) => setDraft((x) => ({ ...x, ...d }));
   const shuffle = () => {
-    if (draft.look === "classic") {
-      const combinations = COLOURS.flatMap((colour) => SHAPES.flatMap((shape) => EYES.map((eyes) => ({ colour, shape, eyes }))));
-      const alternatives = combinations.filter((look) => look.colour !== draft.colour || look.shape !== draft.shape || look.eyes !== draft.eyes);
-      set(alternatives[Math.floor(Math.random() * alternatives.length)]);
-    } else {
-      const worn = new Set(data.roster.agents.filter((a) => a.id !== agentId).map((a) => lookOf(a.avatar, a.name)));
-      const free = LOOKS.filter((l) => l.id !== "classic" && l.id !== "branch" && l.id !== draft.look && !worn.has(l.id));
-      const pool = free.length ? free : LOOKS.filter((l) => l.id !== "classic" && l.id !== "branch" && l.id !== draft.look);
-      set({ look: pool[Math.floor(Math.random() * pool.length)].id, emoji: "" });
-    }
+    const worn = new Set(data.roster.agents.filter((a) => a.id !== agentId).map((a) => lookOf(a.avatar, a.name)));
+    set(shuffleLook(draft, worn));
   };
   const changed = JSON.stringify(draft) !== JSON.stringify(initial);
   const save = async () => {
