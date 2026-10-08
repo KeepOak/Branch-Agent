@@ -100,10 +100,11 @@ function Window({ url, sharedToken, onConnect, onRetry }: WindowProps) {
   const [everConnected, setEverConnected] = useState(() => sessionStorage.getItem(RESIDENT_URL_KEY) === url);
   useEffect(() => {
     if (s.status.phase === "connected") {
-      sessionStorage.setItem(RESIDENT_URL_KEY, activeUrl);
+      // Keep the original target identity across engine handoffs to a spare local port.
+      sessionStorage.setItem(RESIDENT_URL_KEY, url);
       setEverConnected(true);
     }
-  }, [s.status.phase, activeUrl]);
+  }, [s.status.phase, url]);
   // Once connected, the frame stays up through reconnects; the status bar says "Offline" or "Connecting" (§3.5).
   if (everConnected || s.status.phase === "connected") {
     return <WindowShell session={session} url={activeUrl} />;

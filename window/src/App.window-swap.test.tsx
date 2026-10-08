@@ -91,6 +91,35 @@ it("records the connected target and keeps the shell through a reload", async ()
   expect(reloaded.textContent).not.toContain("Starting Branch");
 });
 
+it("keeps the resident window after a local engine handoff and reload", async () => {
+  let currentUrl = url;
+  (window as { branchDesktop?: unknown }).branchDesktop = {
+    gatewayUrl: url, getGatewayUrl: () => currentUrl, gatewayToken: "test-token",
+  };
+  const host = await mount();
+  await connected();
+  expect(sessionStorage.getItem(marker)).toBe(url);
+
+  currentUrl = otherUrl;
+  await act(async () => window.dispatchEvent(new CustomEvent("branch:engine-handoff", {
+    detail: { gatewayUrl: currentUrl },
+  })));
+  expect(fake.gateways).toHaveLength(2);
+  const successor = fake.gateways[1]!;
+  expect(successor.options.url).toBe(otherUrl);
+  await act(async () => successor.options.onStatus({ phase: "connected", hello } as unknown as GatewayStatus));
+  expect(host.querySelector('[data-testid="resident-window"]')).not.toBeNull();
+
+  await act(async () => root?.unmount());
+  root = undefined;
+  vi.resetModules();
+  const reloaded = await mount();
+  expect(fake.gateways).toHaveLength(3);
+  expect(fake.gateways[2]!.options.url).toBe(url);
+  expect(reloaded.querySelector('[data-testid="resident-window"]')).not.toBeNull();
+  expect(reloaded.textContent).not.toContain("Starting Branch");
+});
+
 it("clears the resident marker when switching computers", async () => {
   const host = await mount();
   await connected();
