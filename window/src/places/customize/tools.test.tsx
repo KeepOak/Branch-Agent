@@ -101,6 +101,7 @@ describe("Tools, three panes", () => {
     expect(button("Test it")!.title).toBe("Add a server first");
     expect(button("Check for updates")!.disabled).toBe(true);
     expect(button("Check for updates")!.title).toBe("Add a server first");
+    expect(host.textContent).toContain("Add a server first");
     expect(visibleDevNotes(host)).toEqual([]);
     if (root) await act(async () => root!.unmount()); document.body.innerHTML = "";
     await open("Connectors");
@@ -108,7 +109,9 @@ describe("Tools, three panes", () => {
     expect(button("Test it")!.title).toBe("This connector cannot be tested yet.");
     expect(button("Check for updates")!.disabled).toBe(true);
     expect(button("Check for updates")!.title).toBe("This connector cannot be checked for updates yet.");
-    expect(visibleDevNotes(host)).toEqual([]);
+    expect(host.textContent).toContain("This connector cannot be tested yet.");
+    expect(host.textContent).toContain("This connector cannot be checked for updates yet.");
+    expect(visibleDevNotes(host.querySelector(".cz-acts")!)).toEqual([]);
   });
   it("installs from the connector catalogue with plugins.install", async () => {
     const request = await open("Connectors");

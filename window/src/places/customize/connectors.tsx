@@ -6,6 +6,7 @@ import { useState } from "react";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { shows } from "../../places-nav/level";
 import { Dialog } from "../../shell/Dialog";
+import { shownWhy } from "../../shell/shown-why";
 import { Switch } from "../../shell/Popover";
 import { useResource } from "../library/data";
 import { Status } from "../library/ui";
@@ -65,10 +66,14 @@ export const TEST_WHY = "This connector cannot be tested yet.";
 export const UPDATE_WHY = "This connector cannot be checked for updates yet.";
 
 function ConnectorActs({ server, onRemove }: { server?: Server; onRemove?: () => void }) {
+  const testWhy = server ? TEST_WHY : NO_SERVER_WHY;
+  const updateWhy = server ? UPDATE_WHY : NO_SERVER_WHY;
   return <div className="cz-acts">
-    <Grey reason={server ? TEST_WHY : NO_SERVER_WHY}>Test it</Grey>
-    <Grey reason={server ? UPDATE_WHY : NO_SERVER_WHY}>Check for updates</Grey>
+    <Grey reason={testWhy}>Test it</Grey>
+    <Grey reason={updateWhy}>Check for updates</Grey>
     {onRemove && <><span className="cz-grow" /><button type="button" className="btn ghost sm" onClick={onRemove}>Remove</button></>}
+    {shownWhy(testWhy) && <span className="cz-hint">{shownWhy(testWhy)}</span>}
+    {shownWhy(updateWhy) && updateWhy !== testWhy && <span className="cz-hint">{shownWhy(updateWhy)}</span>}
   </div>;
 }
 
