@@ -32,7 +32,7 @@ test("component-release splits the macOS engine compile from package and sign", 
   assert.match(workflow, /needs: \[identity, window, macos-engine\]/);
   assert.match(workflow, /needs: \[identity, native, macos-package\]/);
   assert.match(workflow, /BRANCH_RELEASE_ENGINE_DEPLOYMENT/);
-  assert.match(workflow, /tar -C "\$\{\{ runner\.temp \}\}\/macos-engine" -czf "\$\{\{ runner\.temp \}\}\/macos-engine\.tar\.gz" \./);
+  assert.match(workflow, /tar -C "\$\{\{ runner\.temp \}\}\/macos-engine" -h -czf "\$\{\{ runner\.temp \}\}\/macos-engine\.tar\.gz" \./);
   assert.doesNotMatch(workflow, /artifacts\/\$artifact\/zip/);
   assert.doesNotMatch(workflow, /os: macos-15\n            target: darwin-arm64/);
 });
