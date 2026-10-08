@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import * as gate from './merge-gate-trusted.mjs';
 import { fileURLToPath } from 'node:url';
 import {
   GATE_SCRIPTS,
@@ -37,7 +38,9 @@ const trustedWorkflow = {
   event: 'pull_request_target',
   checkSuiteId: 203,
 };
-const mergeGateWorkflow = { path: '.github/workflows/merge-gate.yml', name: 'Merge gate', id: 301, event: 'pull_request' };
+const mergeGateWorkflow = { path: '.github/workflows/merge-gate.yml', name: 'Merge gate', id: 301,
+  event: 'pull_request', checkSuiteId: 201, headSha: SHA,
+  pullRequests: [{ number: PR_NUMBER, base: BASE_REF }] };
 const earlierTrustedWorkflow = {
   ...trustedWorkflow,
   id: 304,
@@ -50,7 +53,12 @@ const featureBatchWorkflow = {
   name: 'Feature batch checks',
   id: 302,
   event: 'pull_request',
+  checkSuiteId: 202,
+  headSha: SHA,
+  pullRequests: [{ number: PR_NUMBER, base: BASE_REF }],
 };
+
+const analyzeCheck = { id: 105, name: 'Analyze (actions)', status: 'completed', conclusion: 'success' };
 
 const passCheckRuns = [
   {
@@ -79,6 +87,7 @@ const passCheckRuns = [
     check_suite: { id: 203 },
     details_url: 'https://github.com/example/repo/actions/runs/303/job/103',
   },
+  analyzeCheck,
 ];
 
 const passWorkflows = {
@@ -212,7 +221,7 @@ test('pass case: recorded check runs all succeed and core workflows are present'
   assert.equal(result.failed.length, 0);
   assert.equal(result.foreignTrusted.length, 0);
   assert.equal(result.missingCore.length, 0);
-  assert.equal(result.others.length, 2);
+  assert.equal(result.others.length, 3);
 });
 
 test('failed check: recorded unsuccessful conclusion fails the gate', () => {
@@ -402,15 +411,15 @@ test('unattributed merge-gate-trusted check fails closed', () => {
   assert.match(result.errors.join('\n'), /unattributed/);
 });
 
-test('rate-limited current trusted check fails closed without API suite attribution', () => {
+test('rate-limited current trusted check stays pending without API suite attribution', () => {
   const workflowsByCheckId = {
     101: mergeGateWorkflow,
   };
-  const checkRuns = [passCheckRuns[0], passCheckRuns[2]];
+  const checkRuns = [passCheckRuns[0], passCheckRuns[2], analyzeCheck];
   const foreign = findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
     allowedRunId: CURRENT_RUN_ID,
   });
-  assert.deepEqual(foreign.map((check) => check.id), [103]);
+  assert.deepEqual(foreign, []);
   const result = evaluateTrustedGate({
     checkRuns,
     workflowsByCheckId,
@@ -419,7 +428,8 @@ test('rate-limited current trusted check fails closed without API suite attribut
     currentRunId: CURRENT_RUN_ID,
   });
   assert.equal(result.ok, false);
-  assert.equal(result.foreignTrusted.length, 1);
+  assert.equal(result.ready, false);
+  assert.equal(result.foreignTrusted.length, 0);
   assert.equal(result.missingCore.length, 0);
 });
 
@@ -435,7 +445,7 @@ test('merge-gate.yml path attribution is satisfied by the merge-gate job', () =>
 });
 
 test('current run alone is accepted as the trusted check', () => {
-  const checkRuns = [passCheckRuns[0], passCheckRuns[2]];
+  const checkRuns = [passCheckRuns[0], passCheckRuns[2], analyzeCheck];
   const foreign = findForeignTrustedChecks(checkRuns, passWorkflows, {
     allowedRunId: CURRENT_RUN_ID,
   });
@@ -503,25 +513,29 @@ for (const [reason, checkPatch, workflowPatch] of [
 }
 
 test('reopened same SHA keeps newest check per App workflow and name over old cancelled checks', () => {
-  const oldGate = { ...passCheckRuns[0], id: 90, conclusion: 'cancelled' };
-  const oldFeature = { ...passCheckRuns[1], id: 91, conclusion: 'cancelled' };
+  const oldGate = { ...passCheckRuns[0], id: 90, conclusion: 'cancelled', check_suite: { id: 190 } };
+  const oldFeature = { ...passCheckRuns[1], id: 91, conclusion: 'cancelled', check_suite: { id: 191 } };
   for (const checkRuns of [
     [oldGate, oldFeature, ...passCheckRuns],
     [...passCheckRuns, oldFeature, oldGate],
   ]) {
     const result = evaluateTrustedGate({
       checkRuns,
-      workflowsByCheckId: { ...passWorkflows, 90: mergeGateWorkflow, 91: featureBatchWorkflow },
+      workflowsByCheckId: { ...passWorkflows,
+        90: { ...mergeGateWorkflow, id: 290, checkSuiteId: 190 },
+        91: { ...featureBatchWorkflow, id: 291, checkSuiteId: 191 } },
       changedFiles: ['engine/src/gateway/contacts.ts'],
       coreWorkflows,
       currentRunId: CURRENT_RUN_ID,
+      ...prContext,
     });
     assert.equal(result.ok, true);
-    assert.deepEqual(result.others.map((check) => check.id).sort(), [101, 102]);
+    assert.deepEqual(result.others.map((check) => check.id).sort(), [101, 102, 105]);
   }
   const result = evaluateTrustedGate({
     checkRuns: [...passCheckRuns, { ...passCheckRuns[0], id: 110, conclusion: 'cancelled' }],
     workflowsByCheckId: { ...passWorkflows, 110: mergeGateWorkflow },
+    ...prContext,
     changedFiles: ['README.md'],
     coreWorkflows,
     currentRunId: CURRENT_RUN_ID,
@@ -531,6 +545,7 @@ test('reopened same SHA keeps newest check per App workflow and name over old ca
   const pending = evaluateTrustedGate({
     checkRuns: [...passCheckRuns, { ...passCheckRuns[0], id: 110, status: 'queued', conclusion: null }],
     workflowsByCheckId: { ...passWorkflows, 110: mergeGateWorkflow },
+    ...prContext,
     changedFiles: ['README.md'],
     coreWorkflows,
     currentRunId: CURRENT_RUN_ID,
@@ -553,6 +568,142 @@ test('older forged trusted checks cannot be hidden by name deduplication', () =>
   assert.equal(result.foreignTrusted[0].id, 90);
 });
 
+for (const [reason, workflowPatch, checkPatch, contextPatch] of [
+  ['P3b another PR', { pullRequests: [{ number: 900, base: BASE_REF }] }],
+  ['P9 workflow_dispatch', { event: 'workflow_dispatch' }],
+  ['wrong SHA', { headSha: 'other-sha' }],
+  ['wrong suite', { checkSuiteId: 999 }],
+  ['missing suite', {}, { check_suite: undefined }],
+  ['fork empty PR list', { pullRequests: [] }],
+  ['additional non-main PR', { pullRequests: [
+    { number: PR_NUMBER, base: BASE_REF }, { number: 700, base: 'release' },
+  ] }],
+  ['missing evaluation context', {}, {}, { sha: undefined }],
+  ['missing PR context', {}, {}, { prNumber: undefined }],
+  ['missing base context', {}, {}, { baseRef: undefined }],
+]) {
+  test(`regression: same-path success cannot hide failure from ${reason}`, () => {
+    const failed = { ...passCheckRuns[1], conclusion: 'failure' };
+    const success = { ...failed, id: 160, conclusion: 'success', ...checkPatch };
+    for (const pair of [[failed, success], [success, failed]]) {
+      const result = evaluateTrustedGate({
+        checkRuns: [passCheckRuns[0], passCheckRuns[2], analyzeCheck, ...pair],
+        workflowsByCheckId: { ...passWorkflows, 160: { ...featureBatchWorkflow, ...workflowPatch } },
+        changedFiles: ['README.md'], coreWorkflows, currentRunId: CURRENT_RUN_ID,
+        ...prContext, ...contextPatch,
+      });
+      assert.equal(result.ok, false);
+      assert.deepEqual(result.failed.map((check) => check.id), [102]);
+    }
+  });
+}
+
+test('regression: an unbound old failure cannot collapse into this PR success', () => {
+  const failed = { ...passCheckRuns[1], id: 90, conclusion: 'failure' };
+  const result = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, failed],
+    workflowsByCheckId: { ...passWorkflows, 90: { ...featureBatchWorkflow, event: 'workflow_dispatch' } },
+    changedFiles: ['README.md'], coreWorkflows, currentRunId: CURRENT_RUN_ID, ...prContext,
+  });
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.failed.map((check) => check.id), [90]);
+});
+
+test('regression: trusted gate waits for missing or running Analyze and rejects failure', () => {
+  for (const analyze of [null, { ...analyzeCheck, status: 'queued', conclusion: null },
+    { ...analyzeCheck, status: 'in_progress', conclusion: null },
+    { ...analyzeCheck, conclusion: 'failure' }, analyzeCheck]) {
+    const result = evaluateTrustedGate({
+      checkRuns: [...passCheckRuns.filter((check) => check !== analyzeCheck), ...(analyze ? [analyze] : [])],
+      workflowsByCheckId: passWorkflows, changedFiles: ['README.md'],
+      coreWorkflows, currentRunId: CURRENT_RUN_ID, ...prContext,
+    });
+    assert.equal(result.ok, analyze === analyzeCheck);
+    assert.equal(result.ready, analyze?.status === 'completed');
+  }
+});
+
+test('regression: ordinary gate waits for absent Analyze through the actual pending jq', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  const filter = yaml.match(/pending=\$\(jq '([^']+)'/)[1];
+  const failedFilter = yaml.match(/failed=\$\(jq -r '([^']+)'/)[1];
+  for (const [checks, expected] of [
+    [[passCheckRuns[1]], 1],
+    [[passCheckRuns[1], { ...analyzeCheck, status: 'queued', conclusion: null }], 1],
+    [[passCheckRuns[1], { ...analyzeCheck, status: 'in_progress', conclusion: null }], 1],
+    [[passCheckRuns[1], analyzeCheck], 0],
+  ]) {
+    const pending = Number(execFileSync('jq', [filter], {
+      input: JSON.stringify(checks), encoding: 'utf8', windowsHide: true,
+    }));
+    assert.equal(pending, expected);
+  }
+  const failed = execFileSync('jq', ['-r', failedFilter], {
+    input: JSON.stringify([{ ...analyzeCheck, conclusion: 'failure' }]),
+    encoding: 'utf8', windowsHide: true,
+  });
+  assert.equal(failed.trim(), 'Analyze (actions): failure');
+});
+
+test('regression: trusted polling waits for late Analyze, rejects red, and times out if absent', () => {
+  for (const mode of ['success', 'failure', 'absent']) {
+    let polls = 0;
+    const waits = [];
+    const code = gate.pollTrustedGate({
+      repo: 'example/repo', token: 'unused', ...prContext, changedFiles: ['README.md'],
+      coreWorkflows, currentRunId: CURRENT_RUN_ID, maxAttempts: 3, pollSeconds: 30,
+    }, {
+      fetchChecks: () => {
+        polls += 1;
+        return [...passCheckRuns.filter((check) => check !== analyzeCheck),
+          ...(mode === 'absent' || polls === 1 ? [] : [{ ...analyzeCheck,
+            status: polls === 2 ? 'in_progress' : 'completed',
+            conclusion: polls === 2 ? null : mode }])];
+      },
+      resolveWorkflows: () => passWorkflows,
+      sleep: (seconds) => waits.push(seconds), log: () => {}, error: () => {},
+    });
+    assert.equal(code, mode === 'success' ? 0 : 1);
+    assert.equal(polls, 3);
+    assert.deepEqual(waits, [30, 30]);
+  }
+});
+
+test('regression: unresolved current claims retry, reject a resolved forgery, or time out', () => {
+  for (const mode of ['recover', 'forged', 'permanent']) {
+    let polls = 0;
+    let lookups = 0;
+    const waits = [];
+    const errors = [];
+    const forged = { ...passCheckRuns[2], id: 160, check_suite: { id: 999 } };
+    const checks = mode === 'forged' ? [...passCheckRuns, forged] : passCheckRuns;
+    const code = gate.pollTrustedGate({
+      repo: 'example/repo', token: 'unused', ...prContext, changedFiles: ['README.md'],
+      coreWorkflows, currentRunId: CURRENT_RUN_ID, maxAttempts: 3, pollSeconds: 30,
+    }, {
+      fetchChecks: () => { polls += 1; return checks; },
+      resolveWorkflows: (repo, token, runs, options) => resolveWorkflowsForCheckRuns(repo, token, runs, {
+        ...options,
+        resolveWorkflow: (_repo, _token, check) => {
+          if (check.id === (mode === 'forged' ? 160 : 103)) {
+            lookups += 1;
+            if (polls === 1 || mode === 'permanent') throw new Error('API 503');
+            return trustedWorkflow;
+          }
+          return passWorkflows[check.id] ?? null;
+        },
+      }),
+      sleep: (seconds) => waits.push(seconds), log: () => {}, error: (text) => errors.push(text),
+    });
+    assert.equal(code, mode === 'recover' ? 0 : 1);
+    assert.equal(polls, mode === 'permanent' ? 3 : 2);
+    assert.equal(lookups, polls);
+    assert.deepEqual(waits, mode === 'permanent' ? [30, 30] : [30]);
+    if (mode === 'forged') assert.match(errors.join('\n'), /Forged or extra/);
+    if (mode === 'permanent') assert.match(errors.join('\n'), /Timed out/);
+  }
+});
+
 test('ordinary merge gate jq preserves all checks and its polling budget', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
   const filter = yaml.match(/--jq '([^']+)'/)[1];
@@ -566,7 +717,7 @@ test('ordinary merge gate jq preserves all checks and its polling budget', () =>
     const actual = JSON.parse(execFileSync('jq', [filter], {
       input: JSON.stringify({ check_runs: checks }), encoding: 'utf8', windowsHide: true,
     }));
-    assert.deepEqual(actual, [feature, latest, { ...feature, id: 90, conclusion: 'cancelled' }]);
+    assert.deepEqual(actual, [feature, analyzeCheck, latest, { ...feature, id: 90, conclusion: 'cancelled' }]);
   }
   assert.match(yaml, /seq 1 64/);
   assert.match(yaml, /if \[ "\$attempt" -lt 64 \]; then sleep 30; fi/);
@@ -607,7 +758,7 @@ test('successful workflow attribution is cached across polls while new checks ar
   assert.deepEqual(second, { 501: featureBatchWorkflow, 502: featureBatchWorkflow });
   assert.deepEqual(calls, [501, 502]);
   const result = evaluateTrustedGate({
-    checkRuns: [passCheckRuns[0], nextChecks[0]],
+    checkRuns: [passCheckRuns[0], nextChecks[0], analyzeCheck],
     workflowsByCheckId: second,
     changedFiles: ['engine/src/gateway/contacts.ts'],
     coreWorkflows,
