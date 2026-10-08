@@ -164,7 +164,8 @@ export function conversationMenuItems(c: ConversationMenuContext): MenuItem[] {
     { kind: "sub", label: "Export", icon: menuIcon("doc"), items: exportItems },
     SEP,
     { kind: "head", label: "View" },
-    c.threadView ? { kind: "sub", label: "View", icon: menuIcon("eye"), items: [
+    // Preview View opens on click (viewmPB18). Hover here covers Side panel and Open the browser.
+    c.threadView ? { kind: "sub", label: "View", icon: menuIcon("eye"), hover: false, testid: "conversation-view", items: [
       { kind: "head", label: `${c.threadView.contactName}’s threads show as` },
       ...(Object.entries(topicLayoutNames) as [TopicLayout, string][]).map(([layout, label]): MenuItem => ({ label, checked: c.threadView!.layout === layout, radio: true, run: () => c.threadView!.set(layout) })),
     ] } : null,
