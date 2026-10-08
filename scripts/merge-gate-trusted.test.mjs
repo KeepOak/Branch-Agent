@@ -13,7 +13,6 @@ import {
   TRUSTED_WORKFLOW_PATH,
   VISUAL_TOUR_WORKFLOW_PATH,
   coverageFromPrFiles,
-  resolveCoverageWorkflow,
   evaluateOtherChecks,
   evaluateTrustedGate,
   fetchCheckRuns,
@@ -1099,27 +1098,6 @@ test('PR-only named list entry covers a changed test', () => {
   assert.deepEqual(extraNamed, [{ lane: 'engine', file: 'src/pr-only.test.ts' }]);
   const withList = coverageFromPrFiles(files, workflow, extraNamed);
   assert.ok(!withList.uncovered.includes('engine/src/pr-only.test.ts'));
-});
-
-test('PR desktop-checks run line covers a changed desktop test that main omits', () => {
-  const files = [{ filename: 'desktop/scripts/component-release-readiness.test.mjs', status: 'added' }];
-  const mainWorkflow = '      - run: node --test scripts/release-inventory.test.mjs\n';
-  const prWorkflow = [
-    '      - name: Build strict desktop sources\n',
-    '        run: npm run build\n',
-    '      - name: Check component release readiness\n',
-    '        run: node --test scripts/component-release-readiness.test.mjs\n',
-  ].join('');
-  assert.ok(coverageFromPrFiles(files, mainWorkflow).uncovered.includes(
-    'desktop/scripts/component-release-readiness.test.mjs',
-  ));
-  assert.equal(resolveCoverageWorkflow(null, mainWorkflow), mainWorkflow);
-  assert.equal(resolveCoverageWorkflow('', mainWorkflow), mainWorkflow);
-  const workflow = resolveCoverageWorkflow(prWorkflow, mainWorkflow);
-  assert.equal(workflow, prWorkflow);
-  assert.ok(!coverageFromPrFiles(files, workflow).uncovered.includes(
-    'desktop/scripts/component-release-readiness.test.mjs',
-  ));
 });
 
 test('nameStatusFromPrFiles and coverageFromPrFiles treat API files as data', () => {

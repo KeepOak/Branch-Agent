@@ -638,18 +638,8 @@ export function fetchNamedTestLists(repo, sha, token) {
   return extra;
 }
 
-export function resolveCoverageWorkflow(fetched, fallback) {
-  return fetched == null || fetched === '' ? fallback : fetched;
-}
-
-function runCoverage(files, extraNamed, repo, sha, token) {
-  const fallback = readFileSync(path.join(root, '.github/workflows/desktop-checks.yml'), 'utf8');
-  const workflow = resolveCoverageWorkflow(
-    repo && sha && token
-      ? fetchFileText(repo, sha, token, '.github/workflows/desktop-checks.yml')
-      : null,
-    fallback,
-  );
+function runCoverage(files, extraNamed) {
+  const workflow = readFileSync(path.join(root, '.github/workflows/desktop-checks.yml'), 'utf8');
   const handoffWorkflow = readFileSync(path.join(root, HANDOFF_WORKFLOW_PATH), 'utf8');
   const handoffConfig = readFileSync(path.join(root, 'engine/test/vitest/vitest.desktop-handoff.config.ts'), 'utf8');
   const { changed, uncovered } = coverageFromPrFiles(files, workflow, extraNamed, handoffWorkflow, handoffConfig);
@@ -804,7 +794,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   writeSummary(formatGateChangeSummary(changedFiles));
 
   const extraNamed = fetchNamedTestLists(repo, sha, token);
-  if (!runCoverage(files, extraNamed, repo, sha, token)) process.exit(1);
+  if (!runCoverage(files, extraNamed)) process.exit(1);
   if (!runMergeCommandCheck(repo, sha, token)) {
     console.error('Merge-command check failed on the pull request documentation.');
     process.exit(1);
