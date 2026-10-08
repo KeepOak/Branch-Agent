@@ -19,7 +19,9 @@ import {
   isAgentEventLifecycleGenerationCurrent,
 } from "../../infra/agent-events.js";
 import { hasLiveAgentRunContext, listAgentRunsForSession } from "../../infra/agent-run-registry.js";
+import { isSessionLaneHeldByPredecessor } from "../../process/session-handoff-lease-gate.js";
 import { captureGatewaySessionWorkAdmissions } from "../../sessions/session-lifecycle-admission.js";
+import { resolveSessionLane } from "../embedded-agent-runner/lanes.js";
 import { createCurrentProcessOwnerLookup } from "./main-session-recovery-live-owners.js";
 import {
   isMainRestartRecoveryAggregateTerminalOnly,
@@ -334,6 +336,9 @@ async function markOrphanedMainSessionStore(
         ...(entry.restartRecoveryRuns ?? []).map((run) => run.runId),
       ];
       const hasLiveOwner = () =>
+        // Local registries cannot see a run still finishing on the predecessor.
+        // Its lease protects the row both during selection and at commit.
+        isSessionLaneHeldByPredecessor(resolveSessionLane(sessionKey)) ||
         writerRunIds.some((runId) => runId && hasLiveAgentRunContext(runId)) ||
         listAgentRunsForSession({ sessionKey, sessionId: entry.sessionId }).some(({ runId }) =>
           hasLiveAgentRunContext(runId),

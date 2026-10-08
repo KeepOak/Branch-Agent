@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { existsSync } from "node:fs";
+import fs, { existsSync } from "node:fs";
 import { lstat, mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -26,6 +26,24 @@ async function waitForLog(file, expected) {
     await new Promise(resolve => setTimeout(resolve, 20));
   }
   return readFile(file, "utf8");
+}
+
+function failCopy(t, pathname) {
+  const copy = fs.copyFileSync;
+  return t.mock.method(fs, "copyFileSync", (from, to, flags) => {
+    if (to === pathname) throw Object.assign(new Error("injected failure"), { code: "EACCES", path: to });
+    return copy(from, to, flags);
+  });
+}
+
+async function replacementFiles(home) {
+  const root = join(home, ".branch", ".migration-replaced");
+  if (!existsSync(root)) return [];
+  const files = [];
+  for (const stamp of await readdir(root)) {
+    for (const name of await readdir(join(root, stamp, "workspace"))) files.push(join(root, stamp, "workspace", name));
+  }
+  return files.sort();
 }
 
 test("standby never creates or migrates an unprepared profile", async () => homeFixture(async (_root, home) => {
@@ -101,10 +119,13 @@ test("gateway log records migration start, counts, and failure details", async (
   await mkdir(join(home, ".branch-dev", "workspace"), { recursive: true });
   await writeFile(join(home, ".branch-dev", "workspace", "IDENTITY.md"), "owner");
   const child = startGateway({ dataDir: root, nodePath: process.execPath, gatewayPort: 19631 }, root, "fixture-token");
-  await once(child, "exit");
+  const exited = once(child, "exit");
+  assert.match(await readFile(join(root, "gateway.log"), "utf8"), /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z Profile migration start\n/,
+    "migration start must be on disk before startGateway returns");
+  await exited;
   const log = await waitForLog(join(root, "gateway.log"), "Profile migration done:");
   assert.match(log, /Profile migration start/);
-  assert.match(log, /Profile migration done: 1 copied, 0 links skipped, \d+ ms/);
+  assert.match(log, /Profile migration done: 1 copied, 0 links skipped, 0 failed, \d+ ms/);
   await rm(join(home, ".branch"), { recursive: true });
   await writeFile(join(home, ".branch"), "not a directory");
   const failed = startGateway({ dataDir: root, nodePath: process.execPath, gatewayPort: 19631 }, root, "fixture-token");
@@ -131,43 +152,217 @@ test("a dangling link or junction in the legacy profile never stops the migratio
   assert.ok((await lstat(join(home, archive, "plugin-skills", "browser-automation"))).isSymbolicLink(), "the archive lost the original link");
 }));
 
-test("mid-migration failure retains the archive and resumes only missing files", async () => homeFixture(async (_root, home) => {
+test("a failed merge backs up only untouched new templates, preserving owner edits and pre-existing files", async (t) => homeFixture(async (root, home) => {
   await mkdir(join(home, ".branch"), { recursive: true });
   await mkdir(join(home, ".branch-dev", "workspace"), { recursive: true });
   await writeFile(join(home, ".branch", "branch.json"), "{\"owner\":true}\n");
+  await mkdir(join(home, ".branch", "workspace"), { recursive: true });
+  await writeFile(join(home, ".branch", "workspace", "USER.md"), "pre-migration owner file");
+  await writeFile(join(home, ".branch-dev", "workspace", "AGENTS.md"), "owner instructions");
   await writeFile(join(home, ".branch-dev", "workspace", "IDENTITY.md"), "original\u0000bytes");
+  await writeFile(join(home, ".branch-dev", "workspace", "USER.md"), "archived user file");
+  await writeFile(join(home, ".branch-dev", "workspace", "ZZZ.md"), "later sibling");
   const beforeConfig = await readFile(join(home, ".branch", "branch.json"));
   const logs = [];
-  let copied = 0;
-  const failure = Object.assign(new Error("injected failure"), { code: "EACCES", path: join(home, ".branch", "workspace", "IDENTITY.md") });
-  const result = prepareNormalProfile(home, () => { copied++; throw failure; }, (message) => logs.push(message));
+  const failedPath = join(home, ".branch", "workspace", "IDENTITY.md");
+  const failure = failCopy(t, failedPath);
+  const result = prepareNormalProfile(home, undefined, (message) => logs.push(message));
+  failure.mock.restore();
   assert.equal(result.legacyDevMode, false);
-  assert.match(result.note, /code=EACCES/);
-  assert.ok(result.note.includes(`path=${failure.path}`));
-  assert.match(result.note, /message=injected failure/);
-  assert.deepEqual(logs, ["Profile migration start"]);
+  assert.match(result.note, /1 profile migration file\(s\) failed/);
+  assert.ok(logs.some((message) => message.includes(`code=EACCES path=${failedPath} message=injected failure`)));
+  assert.ok(logs.some((message) => /Profile migration done: 2 copied, 0 links skipped, 1 failed/.test(message)));
   assert.deepEqual(await readFile(join(home, ".branch", "branch.json")), beforeConfig);
-  assert.equal(await readFile(join(home, ".branch", "workspace", "IDENTITY.md"), "utf8"), "original\u0000bytes");
+  assert.equal(existsSync(failedPath), false);
+  assert.equal(await readFile(join(home, ".branch", "workspace", "ZZZ.md"), "utf8"), "later sibling");
   assert.equal((await readdir(home)).includes(".branch-dev"), false);
   const archive = (await readdir(home)).find((name) => name.startsWith(".branch-dev.migrated-"));
   assert.equal(await readFile(join(home, archive, "workspace", "IDENTITY.md"), "utf8"), "original\u0000bytes");
   assert.equal((await readdir(join(home, ".branch"))).includes(".normal-profile-migrated.json"), false);
-  assert.equal(prepareNormalProfile(home, () => { copied++; }, (message) => logs.push(message)).legacyDevMode, false);
-  assert.equal(copied, 1, "the copied file was copied again");
-  assert.deepEqual(logs.slice(1, 2), ["Profile migration start"]);
-  assert.match(logs[2], /^Profile migration done: 0 copied, 0 links skipped, \d+ ms$/);
+  const templates = join(root, "templates");
+  await mkdir(templates);
+  await writeFile(join(templates, "IDENTITY.md"), "---\ntitle: template\n---\n\nengine template identity");
+  await writeFile(join(home, ".branch", "workspace", "AGENTS.md"), "owner edited after failure");
+  await writeFile(join(home, ".branch", "workspace", "IDENTITY.md"), "engine template identity");
+  assert.equal(prepareNormalProfile(home, undefined, (message) => logs.push(message), templates).legacyDevMode, false);
+  assert.equal(await readFile(join(home, ".branch", "workspace", "AGENTS.md"), "utf8"), "owner edited after failure");
+  assert.equal(await readFile(join(home, ".branch", "workspace", "IDENTITY.md"), "utf8"), "original\u0000bytes");
+  assert.equal(await readFile(join(home, ".branch", "workspace", "USER.md"), "utf8"), "pre-migration owner file");
+  assert.equal(await readFile(join(home, ".branch", "workspace", "ZZZ.md"), "utf8"), "later sibling");
+  const backups = await replacementFiles(home);
+  assert.equal(backups.length, 1);
+  assert.match(backups[0], /\.migration-replaced[\\/]\d{4}-[^\\/]+[\\/]workspace[\\/]IDENTITY\.md$/);
+  assert.equal(await readFile(backups[0], "utf8"), "engine template identity");
+  assert.deepEqual((await readdir(join(home, ".branch", "workspace"))).sort(), ["AGENTS.md", "IDENTITY.md", "USER.md", "ZZZ.md"]);
+  assert.match(logs.at(-1), /^Profile migration done: 1 copied, 0 links skipped, 0 failed, \d+ ms$/);
   assert.equal(JSON.parse(await readFile(join(home, ".branch", ".normal-profile-migrated.json"), "utf8")).archive, join(home, archive));
+  assert.equal(existsSync(join(home, ".branch", ".normal-profile-migration-pending.json")), false);
 }));
 
-test("a fresh profile remains launchable when merge pauses after archiving", async () => homeFixture(async (_root, home) => {
+test("a fresh profile remains launchable when merge pauses after archiving", async (t) => homeFixture(async (_root, home) => {
   await mkdir(join(home, ".branch-dev", "workspace"), { recursive: true });
   await writeFile(join(home, ".branch-dev", "workspace", "IDENTITY.md"), "legacy");
-  const result = prepareNormalProfile(home, () => { throw new Error("paused merge"); });
+  const failure = failCopy(t, join(home, ".branch", "workspace", "IDENTITY.md"));
+  const result = prepareNormalProfile(home);
+  failure.mock.restore();
   assert.equal(result.legacyDevMode, false);
+  assert.match(result.note, /will resume on next launch/);
   const config = JSON.parse(await readFile(join(home, ".branch", "branch.json"), "utf8"));
   assert.equal(config.agents.defaults.workspace, join(home, ".branch", "workspace"));
   assert.equal(prepareNormalProfile(home).legacyDevMode, false);
   assert.equal(await readFile(join(home, ".branch", "workspace", "IDENTITY.md"), "utf8"), "legacy");
+}));
+
+for (const [label, progress] of [["missing", undefined], ["empty", ""], ["garbage", "not JSON"], ["object", "{}"]]) {
+  test(`${label} progress resumes missing-only and writes the marker`, async () => homeFixture(async (root, home) => {
+    const archive = join(home, ".branch-dev.migrated-fixture", "workspace");
+    const normal = join(home, ".branch", "workspace");
+    const templates = join(root, "templates");
+    await mkdir(archive, { recursive: true });
+    await mkdir(normal, { recursive: true });
+    await mkdir(templates);
+    await writeFile(join(archive, "IDENTITY.md"), "archived identity");
+    await writeFile(join(archive, "AGENTS.md"), "archived instructions");
+    await writeFile(join(archive, "Notes.md"), "missing notes");
+    await writeFile(join(normal, "IDENTITY.md"), "engine identity");
+    await writeFile(join(normal, "AGENTS.md"), "owner instructions");
+    await writeFile(join(templates, "IDENTITY.md"), "engine identity");
+    const pending = join(home, ".branch", ".normal-profile-migration-pending.json");
+    if (progress !== undefined) await writeFile(pending, progress);
+    assert.equal(prepareNormalProfile(home, undefined, undefined, templates).note, undefined);
+    assert.equal(await readFile(join(normal, "IDENTITY.md"), "utf8"), "engine identity", "no eligibility evidence means no template replacement");
+    assert.equal(await readFile(join(normal, "AGENTS.md"), "utf8"), "owner instructions");
+    assert.equal(await readFile(join(normal, "Notes.md"), "utf8"), "missing notes");
+    assert.deepEqual(await replacementFiles(home), []);
+    assert.deepEqual(readPreparedNormalProfile(home), { legacyDevMode: false });
+    assert.equal(existsSync(pending), false);
+  }));
+}
+
+test("replaced templates land under migration-replaced outside the live workspace", async () => homeFixture(async (root, home) => {
+  const archive = join(home, ".branch-dev.migrated-fixture", "workspace");
+  const normal = join(home, ".branch", "workspace");
+  const templates = join(root, "templates");
+  await mkdir(archive, { recursive: true });
+  await mkdir(normal, { recursive: true });
+  await mkdir(templates);
+  await writeFile(join(archive, "SOUL.md"), "archived soul");
+  await writeFile(join(normal, "SOUL.md"), "engine soul");
+  await writeFile(join(templates, "SOUL.md"), "engine soul");
+  await writeFile(join(home, ".branch", ".normal-profile-migration-pending.json"), '["SOUL.md"]');
+  assert.equal(prepareNormalProfile(home, undefined, undefined, templates).note, undefined);
+  assert.equal(await readFile(join(normal, "SOUL.md"), "utf8"), "archived soul");
+  const backups = await replacementFiles(home);
+  assert.equal(backups.length, 1);
+  assert.match(backups[0], /\.migration-replaced[\\/]\d{4}-[^\\/]+[\\/]workspace[\\/]SOUL\.md$/);
+  assert.equal(await readFile(backups[0], "utf8"), "engine soul");
+  assert.deepEqual(await readdir(normal), ["SOUL.md"]);
+  assert.equal(await readFile(join(archive, "SOUL.md"), "utf8"), "archived soul");
+  assert.deepEqual(readPreparedNormalProfile(home), { legacyDevMode: false });
+}));
+
+test("progress accepts only bootstrap names from an array", async (t) => homeFixture(async (root, home) => {
+  const archive = join(home, ".branch-dev.migrated-fixture", "workspace");
+  const normal = join(home, ".branch", "workspace");
+  const templates = join(root, "templates");
+  await mkdir(archive, { recursive: true });
+  await mkdir(normal, { recursive: true });
+  await mkdir(templates);
+  await writeFile(join(archive, "BLOCK.md"), "blocked");
+  await writeFile(join(archive, "IDENTITY.md"), "archived identity");
+  await writeFile(join(normal, "IDENTITY.md"), "owner edit");
+  await writeFile(join(templates, "IDENTITY.md"), "engine identity");
+  const pending = join(home, ".branch", ".normal-profile-migration-pending.json");
+  await writeFile(pending, JSON.stringify(["AGENTS.md", "SOUL.md", "USER.md", "IDENTITY.md", "Notes.md", "../outside", 42, null, {}]));
+  const failure = failCopy(t, join(normal, "BLOCK.md"));
+  assert.match(prepareNormalProfile(home, undefined, undefined, templates).note, /will resume/);
+  assert.equal(await readFile(join(normal, "IDENTITY.md"), "utf8"), "owner edit");
+  // A successful eligible copy persists the filtered record.
+  const archivedRoot = join(home, ".branch-dev.migrated-fixture");
+  await writeFile(join(archivedRoot, "workspace", "AGENTS.md"), "archived instructions");
+  assert.match(prepareNormalProfile(home, undefined, undefined, templates).note, /will resume/);
+  assert.deepEqual(JSON.parse(await readFile(pending, "utf8")).sort(), ["IDENTITY.md", "SOUL.md", "USER.md"]);
+  failure.mock.restore();
+  assert.equal(prepareNormalProfile(home, undefined, undefined, templates).note, undefined);
+  assert.deepEqual(readPreparedNormalProfile(home), { legacyDevMode: false });
+}));
+
+test("an owner edit after launch one survives launch two and launch three while another file fails", async (t) => homeFixture(async (root, home) => {
+  const legacy = join(home, ".branch-dev", "workspace");
+  const normal = join(home, ".branch", "workspace");
+  const templates = join(root, "templates");
+  await mkdir(legacy, { recursive: true });
+  await mkdir(templates);
+  await writeFile(join(legacy, "AGENTS.md"), "archived instructions");
+  await writeFile(join(legacy, "BLOCK.md"), "failing sibling");
+  await writeFile(join(templates, "AGENTS.md"), "engine instructions");
+  const failure = failCopy(t, join(normal, "BLOCK.md"));
+  assert.match(prepareNormalProfile(home).note, /will resume/);
+  assert.equal(await readFile(join(normal, "AGENTS.md"), "utf8"), "archived instructions");
+  await writeFile(join(normal, "AGENTS.md"), "owner edit after launch one");
+  for (const launch of [2, 3]) {
+    assert.match(prepareNormalProfile(home, undefined, undefined, templates).note, /will resume/);
+    assert.equal(await readFile(join(normal, "AGENTS.md"), "utf8"), "owner edit after launch one", `launch ${launch}`);
+    assert.equal(existsSync(join(home, ".branch", ".normal-profile-migrated.json")), false);
+    assert.deepEqual(await replacementFiles(home), []);
+  }
+  failure.mock.restore();
+  assert.equal(prepareNormalProfile(home, undefined, undefined, templates).note, undefined);
+  assert.deepEqual(readPreparedNormalProfile(home), { legacyDevMode: false });
+}));
+
+test("case-insensitive name clashes preserve owner files and do not block the marker", async (t) => homeFixture(async (root, home) => {
+  const legacy = join(home, ".branch-dev", "workspace");
+  const normal = join(home, ".branch", "workspace");
+  const templates = join(root, "templates");
+  await mkdir(legacy, { recursive: true });
+  await mkdir(normal, { recursive: true });
+  await mkdir(templates);
+  await writeFile(join(normal, "notes.md"), "owner notes");
+  if (!existsSync(join(normal, "Notes.md"))) return t.skip("case-sensitive filesystem");
+  await writeFile(join(normal, "identity.md"), "engine identity");
+  await writeFile(join(templates, "IDENTITY.md"), "engine identity");
+  await writeFile(join(legacy, "Notes.md"), "archived notes");
+  await writeFile(join(legacy, "IDENTITY.md"), "archived identity");
+  await writeFile(join(legacy, "BLOCK.md"), "blocked");
+  const failure = failCopy(t, join(normal, "BLOCK.md"));
+  assert.match(prepareNormalProfile(home).note, /will resume/);
+  assert.deepEqual(JSON.parse(await readFile(join(home, ".branch", ".normal-profile-migration-pending.json"), "utf8")), [], "the case variant existed before migration");
+  failure.mock.restore();
+  assert.equal(prepareNormalProfile(home, undefined, undefined, templates).note, undefined);
+  assert.equal(await readFile(join(normal, "Notes.md"), "utf8"), "owner notes");
+  assert.equal(await readFile(join(normal, "IDENTITY.md"), "utf8"), "engine identity");
+  assert.deepEqual(await replacementFiles(home), []);
+  assert.deepEqual(readPreparedNormalProfile(home), { legacyDevMode: false });
+}));
+
+test("a file that keeps failing cannot repeatedly overwrite a restored bootstrap file", async (t) => homeFixture(async (root, home) => {
+  const legacy = join(home, ".branch-dev", "workspace");
+  const normal = join(home, ".branch", "workspace");
+  const templates = join(root, "templates");
+  await mkdir(legacy, { recursive: true });
+  await mkdir(templates);
+  await writeFile(join(legacy, "BLOCK.md"), "failing sibling");
+  await writeFile(join(legacy, "IDENTITY.md"), "archived identity");
+  await writeFile(join(templates, "IDENTITY.md"), "engine identity");
+  const firstFailure = failCopy(t, join(normal, "IDENTITY.md"));
+  assert.match(prepareNormalProfile(home).note, /will resume/);
+  firstFailure.mock.restore();
+  await rm(join(normal, "BLOCK.md"));
+  await writeFile(join(normal, "IDENTITY.md"), "engine identity");
+  const failure = failCopy(t, join(normal, "BLOCK.md"));
+  assert.match(prepareNormalProfile(home, undefined, undefined, templates).note, /will resume/);
+  assert.equal(await readFile(join(normal, "IDENTITY.md"), "utf8"), "archived identity");
+  const backups = await replacementFiles(home);
+  assert.equal(backups.length, 1);
+  await writeFile(join(normal, "IDENTITY.md"), "owner edit after restore");
+  assert.match(prepareNormalProfile(home, undefined, undefined, templates).note, /will resume/);
+  assert.equal(await readFile(join(normal, "IDENTITY.md"), "utf8"), "owner edit after restore");
+  assert.deepEqual(await replacementFiles(home), backups);
+  assert.equal(existsSync(join(home, ".branch", ".normal-profile-migrated.json")), false);
+  failure.mock.restore();
+  assert.equal(prepareNormalProfile(home, undefined, undefined, templates).note, undefined);
+  assert.equal(await readFile(join(normal, "IDENTITY.md"), "utf8"), "owner edit after restore");
 }));
 
 test("transient rename locks retry and permanent locks stop after bounded attempts", async () => homeFixture(async (_root, home) => {

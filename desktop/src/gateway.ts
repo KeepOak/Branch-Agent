@@ -1,6 +1,6 @@
 // Starts the Branch engine gateway as a child process (as the early copy's start.sh does) and stops it by PID.
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
-import { createWriteStream, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
+import { appendFileSync, createWriteStream, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { constants as osConstants, setPriority } from "node:os";
@@ -61,8 +61,12 @@ function testProfile(): Record<string, string> {
 export function startGateway(cfg: DesktopConfig, engineDir: string, token: string, standby = false, port = cfg.gatewayPort, macComputerEndpoint?: string): ChildProcess {
   // The profile check can refuse a standby; it runs before the log is opened so a refusal leaks nothing.
   const prepared = standby ? readPreparedNormalProfile(join(cfg.dataDir, "home")) : undefined;
-  const log = createWriteStream(join(cfg.dataDir, "gateway.log"), { flags: "a" });
-  const profile = prepared ?? prepareNormalProfile(join(cfg.dataDir, "home"), undefined, (message) => log.write(message + "\n"));
+  const logPath = join(cfg.dataDir, "gateway.log");
+  const log = createWriteStream(logPath, { flags: "a" });
+  const profile = prepared ?? prepareNormalProfile(join(cfg.dataDir, "home"), undefined, (message) => {
+    if (message === "Profile migration start") appendFileSync(logPath, `${new Date().toISOString()} ${message}\n`);
+    else log.write(message + "\n");
+  }, join(engineDir, "docs", "reference", "templates"));
   if (profile.note) log.write(profile.note + "\n");
   const endpointFile = macComputerEndpoint ? join(cfg.dataDir, `cua-endpoint-${randomBytes(16).toString("hex")}`) : undefined;
   if (endpointFile && macComputerEndpoint) writeFileSync(endpointFile, macComputerEndpoint, { flag: "wx", mode: 0o600 });

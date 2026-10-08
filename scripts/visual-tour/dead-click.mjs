@@ -11,7 +11,7 @@ export async function checkedStep(page, step, locate) {
     const destination = locate(page, step.toBy, step.to);
     if (!(await destination.count()) || !(await destination.first().isVisible())) throw new Error(`Missing drop target: ${step.to}`);
     await control.first().dragTo(destination.first());
-  } else await control.first().click();
+  } else await control.first().click(step.action === 'contextmenu' ? { button: 'right' } : undefined);
   if (step.expectBy === 'movement') {
     const after = await control.first().boundingBox();
     if (!before || !after || Math.hypot(after.x - before.x, after.y - before.y) < 12) throw new Error(`Dead drag: ${step.target} did not move`);

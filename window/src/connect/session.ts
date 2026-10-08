@@ -246,6 +246,14 @@ export class SaplingSession {
     return this.gateway.request<T>(method, params);
   }
 
+  requestScopeUpgrade(options?: { onPending?: (requestId: string) => void }) {
+    return this.gateway.requestScopeUpgrade(options);
+  }
+
+  cancelScopeUpgrade(): void {
+    this.gateway.cancelScopeUpgrade();
+  }
+
   /** Every event the engine pushes, raw (`event`, `payload`). */
   onGatewayEvent(listener: GatewayEventListener): () => void {
     this.eventListeners.add(listener);
@@ -828,6 +836,8 @@ function buildEngine(session: SaplingSession, sessionKey: string | null, hello: 
     send: (text) => session.send(text),
     rewound: (entryId) => session.rewound(entryId),
     scopes: hello ? [...hello.auth.scopes] : [],
+    requestScopeUpgrade: (options) => session.requestScopeUpgrade(options),
+    cancelScopeUpgrade: () => session.cancelScopeUpgrade(),
     ...(attachments ? { attachmentPolicy: { maxBytes: attachments.maxBytes, maxImageBytes: attachments.maxImageBytes } } : {}),
   };
 }
