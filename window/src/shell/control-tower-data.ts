@@ -17,11 +17,12 @@ const WARM_LEFT = 40;
 
 export type HealthTone = "ok" | "warn" | "bad" | "";
 
-/** Preview towerHtmlT5: all-clear only after a real healthy usage.status. */
+/** Preview towerHtmlT5: all-clear only after a real healthy usage.status with at least one account. */
 export function towerHealth(locked: boolean, checking: boolean, limits: Limits | null, failed = false): { tone: HealthTone; text: string } {
   if (locked) return { tone: "bad", text: "Lockdown is on. Trunks can only read." };
   if (checking || (!failed && limits == null)) return { tone: "", text: "Checking every account…" };
   if (failed || limits == null) return { tone: "warn", text: "Couldn’t check accounts right now. Branch will try again." };
+  if (limits.rows.length === 0) return { tone: "", text: "No accounts connected yet." };
   const low = limits.rows.some((row) => {
     const five = row.windows.find((window) => /5-hour/i.test(window.name)) ?? row.windows[0];
     return Boolean(five && five.left <= NEARLY);

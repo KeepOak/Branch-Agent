@@ -2,12 +2,13 @@
 // Controllers and This PC. Each is drawn as the preview draws it, greyed, with the reason on its own line.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../../connect/engine";
+import { platformName } from "../../../setup/steps-later";
 import { Btn, Ctl, Hint, Pick, Sec, Seg, Switch, useLevel, useSaveRunner } from "../kit";
 import { useLook } from "./appearance-store";
 
 const MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-/** The computer's own name for itself, as the preview words its rows. */
-export const OS = MAC ? "macOS" : "Windows";
+/** The computer's own name for itself, as setup's Start-with row uses it. */
+export const OS = platformName;
 export const NO_KEY = "Branch has no setting for this yet.";
 const noop = () => undefined;
 

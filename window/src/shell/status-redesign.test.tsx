@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { BRANCH_VERSION_TIP } from "../connect/branch-version";
-import { StatusBar, type StatusItem } from "./StatusBar";
+import { StatusBar, UsageRing, usageRingColour, usageRingDash, type StatusItem } from "./StatusBar";
 import { GatewayPopover, RunningPopover, UsagePopover, VersionPopover } from "./StatusPopovers";
 import { machineMenuItems } from "./MachineMenu";
 import { saveTargetName } from "../setup/pre-connect-state";
@@ -46,22 +46,53 @@ it("status glyphs open all six popovers from live facts", async () => {
   expect(host.querySelector("[data-testid=sb-usage]")?.getAttribute("aria-label")).toContain("ChatGPT · Account 1 · 77% left");
 });
 
-it("usage ring folds after five seconds and still opens on one click", async () => {
+it("usage ring matches the preview 16px geometry and colour thresholds", async () => {
+  expect(usageRingDash(60)).toBe("22.6 40");
+  expect(usageRingDash(0)).toBe("0.0 40");
+  expect(usageRingDash(100)).toBe("37.7 40");
+  expect(usageRingColour(14)).toBe("var(--bad)");
+  expect(usageRingColour(15)).toBe("var(--warn)");
+  expect(usageRingColour(34)).toBe("var(--warn)");
+  expect(usageRingColour(35)).toBe("var(--ok)");
+  const host = await show(<UsageRing left={77} />);
+  const svg = host.querySelector("svg")!;
+  expect(svg.getAttribute("viewBox")).toBe("0 0 16 16");
+  const circles = [...host.querySelectorAll("circle")];
+  expect(circles[0]?.getAttribute("r")).toBe("6");
+  expect(circles[1]?.getAttribute("stroke-width")).toBe("2");
+  expect(circles[1]?.getAttribute("stroke-dasharray")).toBe(usageRingDash(77));
+  expect(circles[1]?.getAttribute("stroke")).toBe("var(--ok)");
+  await act(async () => root?.render(<UsageRing left={14} />));
+  expect(host.querySelectorAll("circle")[1]?.getAttribute("stroke")).toBe("var(--bad)");
+});
+
+it("usage ring folds after five seconds; collapsed click expands, expanded click opens, Enter opens", async () => {
   vi.useFakeTimers();
   try {
     const onItem = vi.fn();
     const host = await show(<StatusBar connection="connected" gateway="on" machineName="This computer" roomUsed={null} running={0} version="0.19.5" usage={null} open={null} onItem={onItem} />);
     const ring = host.querySelector<HTMLButtonElement>("[data-testid=sb-usage]")!;
     expect(ring.getAttribute("aria-label")).toContain("no account limits yet");
+    expect(ring.getAttribute("aria-label")).toContain("Enter opens every account");
     let hovered = true;
     vi.spyOn(ring, "matches").mockImplementation((selector) => selector === ":hover" && hovered);
     await act(async () => vi.advanceTimersByTime(5000));
-    expect(ring.querySelector(".status-ring-label")?.classList.contains("collapsed")).toBe(false);
+    expect(ring.classList.contains("collapsedT5")).toBe(false);
     hovered = false;
     await act(async () => vi.advanceTimersByTime(5000));
-    expect(ring.querySelector(".status-ring-label")?.classList.contains("collapsed")).toBe(true);
+    expect(ring.classList.contains("collapsedT5")).toBe(true);
+    await act(async () => ring.click());
+    expect(onItem).not.toHaveBeenCalled();
+    expect(ring.classList.contains("collapsedT5")).toBe(false);
     await act(async () => ring.click());
     expect(onItem).toHaveBeenCalledWith("usage", expect.anything());
+    onItem.mockClear();
+    hovered = false;
+    await act(async () => vi.advanceTimersByTime(5000));
+    expect(ring.classList.contains("collapsedT5")).toBe(true);
+    await act(async () => ring.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(onItem).toHaveBeenCalledWith("usage", expect.anything());
+    expect(ring.classList.contains("collapsedT5")).toBe(false);
   } finally { vi.useRealTimers(); }
 });
 
@@ -85,7 +116,7 @@ it("computer popover lists saved computers but not linked teammates", () => {
   expect(onSwitch).toHaveBeenCalledWith("wss://other.example.test");
 });
 
-it("Every account groups refreshed readings and checks again through usage.status", async () => {
+it("Every account is a flat list with preview row text and checks again through usage.status", async () => {
   const request = vi.fn(async (method: string) => method === "usage.status" ? { updatedAt: Date.now(), providers: [
     { provider: "openai-codex", displayName: "ChatGPT", accountEmail: "you@example.com", plan: "Plus", windows: [{ label: "5h", usedPercent: 23 }, { label: "Week", usedPercent: 41 }] },
     { provider: "anthropic", displayName: "Claude", accountEmail: "new@example.com", plan: "Pro", windows: [{ label: "5h", usedPercent: 9 }] },
@@ -93,13 +124,16 @@ it("Every account groups refreshed readings and checks again through usage.statu
   const open = vi.fn();
   const host = await show(<UsagePopover above={above} onClose={() => {}} limits={seeded} request={request as never} onOpenUsage={open} />);
   expect(request).toHaveBeenCalledWith("usage.status", { refresh: true });
+  expect(host.querySelector(".sp-provider")).toBeNull();
   expect(host.textContent).toContain("you@example.com");
   expect(host.textContent).toContain("77% left");
-  expect(host.textContent).toContain("week 59% left");
+  expect(host.textContent).toContain("ChatGPT · Account 1 · Plus · this week 41% used");
+  expect(host.textContent).not.toContain("week 59% left");
   await click(host, "usage-check");
   expect(request).toHaveBeenCalledWith("models.authStatus", { refresh: true });
   expect(request.mock.calls.filter(([method]) => method === "usage.status")).toHaveLength(2);
   expect(host.textContent).toContain("new@example.com");
+  expect(host.textContent).toContain("Claude · Pro");
   await click(host, "open-usage");
   expect(open).toHaveBeenCalledOnce();
 });

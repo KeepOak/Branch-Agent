@@ -14,6 +14,11 @@ describe("permission modes", () => {
     expect(MODE_ROWS.map((r) => r.name)).toEqual(["Auto", "Ask first", "Plan first", "Read only", "Full access"]);
     expect(MODE_ROWS.map((r) => r.engine)).toEqual(["workspace", "guarded", null, "read-only", "full"]);
   });
+  it("says Full access does not include seeing the screen", () => {
+    expect(MODE_ROWS[4].line).toMatch(/Does anything on this computer without asking: files, commands, the internet/);
+    expect(MODE_ROWS[4].line).toMatch(/separate switch in Settings › Computer & browser/);
+    expect(MODE_ROWS[4].line).not.toMatch(/Computer Control/);
+  });
   it("blocks Full access for anyone but the owner, and Plan first as an engine gap", () => {
     expect(blockedReason(MODE_ROWS[4], false)).toBe(FULL_ACCESS_BLOCKED);
     expect(blockedReason(MODE_ROWS[4], true)).toBeNull();

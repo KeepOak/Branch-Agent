@@ -1,0 +1,2 @@
+engine:extensions/browser/src/browser/chrome.internal.test.ts
+engine:extensions/browser/src/browser/config.test.ts

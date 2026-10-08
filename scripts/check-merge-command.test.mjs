@@ -1,11 +1,12 @@
 // Test the merge command checker.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { existsSync, realpathSync } from 'node:fs';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
-import { baseContentFromHeadAndPatch, baseContentsFromPrDiff, checkMergeCommands } from './check-merge-command.mjs';
+import { baseContentFromHeadAndPatch, baseContentsFromPrDiff, checkMergeCommands, samePath } from './check-merge-command.mjs';
 
 const STALE_AUTO = 'Use `gh pr merge <number> --auto --merge --match-head-commit <reviewed-sha>`.';
 const CLEAN_MERGE = 'Use `gh pr merge <number> --merge --match-head-commit <reviewed-sha>`.';
@@ -203,6 +204,71 @@ test('fallback still rejects an auto-merge command that is on main', async () =>
   });
   assert.equal(result.passed, false);
   assert.match(result.errors, /AGENTS\.md: merge command must not use --auto:/);
+});
+
+function foldWinPath(value) {
+  return String(value).replaceAll('/', '\\').replace(/\\+$/g, '').toLowerCase();
+}
+
+function nativeRealpathOrReason(value) {
+  try {
+    return realpathSync.native(value);
+  } catch (error) {
+    return `unavailable: ${error?.message ?? error}`;
+  }
+}
+
+// Node's default Windows quoting wraps the /c argument and backslash-escapes
+// inner quotes. cmd does not treat \" as a quote, and /s then strips the outer
+// quotes, so %~sI can echo a path that is not on disk. Pass the command
+// through verbatim so cmd sees for %I in ("<dir>") do @echo %~sI.
+function windowsShortPath(dir) {
+  const command = `"for %I in ("${String(dir).replaceAll('"', '')}") do @echo %~sI"`;
+  const output = execFileSync('cmd.exe', ['/d', '/s', '/c', command], {
+    encoding: 'utf8',
+    windowsHide: true,
+    windowsVerbatimArguments: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const lines = String(output)
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return lines.at(-1) ?? '';
+}
+
+test('samePath equates Windows short names and slash styles', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'merge-check-path-'));
+  try {
+    assert.equal(samePath(dir, dir), true);
+
+    if (process.platform !== 'win32') return;
+
+    const forward = dir.replaceAll('\\', '/');
+    const backward = dir.replaceAll('/', '\\');
+    assert.equal(samePath(forward, backward), true);
+    assert.equal(samePath(backward, dir), true);
+    assert.equal(samePath(forward, dir), true);
+
+    let short = '';
+    try {
+      short = windowsShortPath(dir);
+    } catch {
+      short = '';
+    }
+    if (!short || !existsSync(short) || foldWinPath(short) === foldWinPath(dir)) {
+      t.diagnostic(
+        `skipping short-name assert: need a distinct existing 8.3 path (short=${JSON.stringify(short)}, dir=${JSON.stringify(dir)})`,
+      );
+      return;
+    }
+    const detail = `short=${JSON.stringify(short)} dir=${JSON.stringify(dir)} nativeRealpath(short)=${JSON.stringify(nativeRealpathOrReason(short))}`;
+    assert.equal(samePath(short, dir), true, detail);
+    assert.equal(samePath(short.replaceAll('\\', '/'), dir), true, detail);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 function git(cwd, args) {

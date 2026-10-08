@@ -415,6 +415,17 @@ describe.runIf(process.env.BRANCH_BROWSER_SNAPSHOT_E2E === "1")("native humanize
     expect((await readState()).events).toEqual([]);
   });
 
+  async function expectPrivateHumanClickRefused() {
+    await expect(
+      executeActViaPlaywright({
+        ...target,
+        action: { kind: "humanClick", selector: "#target" },
+        ssrfPolicy: { dangerouslyAllowPrivateNetwork: false },
+      }),
+    ).rejects.toThrow(/Blocked hostname or private\/internal\/special-use IP address/);
+    expect(service.blockedRequests()).toBe(0);
+  }
+
   it("retains the native navigation policy on a humanClick-triggered request", async () => {
     await page.locator("#target").evaluate(
       (el, url) =>
@@ -423,13 +434,66 @@ describe.runIf(process.env.BRANCH_BROWSER_SNAPSHOT_E2E === "1")("native humanize
         }),
       `${service.baseUrl}/blocked`,
     );
-    await expect(
-      executeActViaPlaywright({
-        ...target,
-        action: { kind: "humanClick", selector: "#target" },
-        ssrfPolicy: { dangerouslyAllowPrivateNetwork: false },
-      }),
-    ).rejects.toThrow();
-    expect(service.blockedRequests()).toBe(0);
+    await expectPrivateHumanClickRefused();
+  });
+
+  it("completes a humanClick when the target swallows the bubble click", async () => {
+    await page.locator("#target").evaluate((el) => {
+      el.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      });
+    });
+    await humanClickViaPlaywright({ ...target, selector: "#target" });
+    expectLanding(await readState(), 400, 250);
+  });
+
+  it("completes a swallowed click and still refuses a private navigation", async () => {
+    await page.locator("#target").evaluate((el, url) => {
+      el.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        location.href = url;
+      });
+    }, `${service.baseUrl}/blocked`);
+    await expectPrivateHumanClickRefused();
+  });
+
+  it("refuses a private navigation after capture-phase stopPropagation", async () => {
+    await page.evaluate((url) => {
+      document.addEventListener(
+        "click",
+        (event) => {
+          location.href = url;
+          event.stopPropagation();
+        },
+        true,
+      );
+    }, `${service.baseUrl}/blocked`);
+    await expectPrivateHumanClickRefused();
+  });
+
+  it("refuses a private navigation when a capture listener calls stopImmediatePropagation", async () => {
+    await page.evaluate((url) => {
+      document.addEventListener(
+        "click",
+        (event) => {
+          location.href = url;
+          event.stopImmediatePropagation();
+        },
+        true,
+      );
+    }, `${service.baseUrl}/blocked`);
+    await expectPrivateHumanClickRefused();
+  });
+
+  it("refuses a private navigation when the target is removed on mousedown", async () => {
+    await page.locator("#target").evaluate((el, url) => {
+      el.addEventListener("mousedown", () => {
+        location.href = url;
+        el.remove();
+      });
+    }, `${service.baseUrl}/blocked`);
+    await expectPrivateHumanClickRefused();
   });
 });

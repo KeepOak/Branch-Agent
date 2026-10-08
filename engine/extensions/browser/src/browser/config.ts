@@ -501,7 +501,9 @@ export function resolveManagedBrowserHeadlessMode(
     return { headless: true, source: "linux-display-fallback" };
   }
 
-  return { headless: resolved.headless, source: "default" };
+  // Auto / unset: stay off the user's desktop. Watch in Branch's browser
+  // stage. Explicit browser.headless=false still opens a window.
+  return { headless: true, source: "default" };
 }
 
 export function getManagedBrowserMissingDisplayError(

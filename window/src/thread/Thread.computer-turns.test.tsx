@@ -84,7 +84,9 @@ describe("computer cards stay on their own turn", () => {
     const cards = [...container.querySelectorAll(".acts-card-st, .comp-card-st")];
     expect(cards).toHaveLength(2);
     expect(cards[0].textContent).toContain("1 action");
+    expect(cards[0].textContent).toContain("Done");
     expect(cards[1].textContent).toContain("2 actions");
+    expect(cards[1].textContent).toContain("Done");
     expect(container.textContent).not.toContain("3 actions");
     expect(container.textContent).not.toContain("7 actions");
 

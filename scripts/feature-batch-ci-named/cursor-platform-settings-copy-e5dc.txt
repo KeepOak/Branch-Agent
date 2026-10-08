@@ -1,0 +1,2 @@
+window:src/places/settings/set1/general.test.tsx
+window:src/places/settings/set1/permissions-platform.test.tsx

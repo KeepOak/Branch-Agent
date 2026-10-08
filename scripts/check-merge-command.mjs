@@ -128,12 +128,31 @@ function gitOutput(cwd, args) {
   }
 }
 
-function samePath(left, right) {
+function canonicalizePath(value) {
+  let resolved;
   try {
-    return realpathSync(left) === realpathSync(right);
+    resolved = realpathSync.native(value);
   } catch {
-    return path.resolve(left) === path.resolve(right);
+    try {
+      resolved = realpathSync(value);
+    } catch {
+      resolved = path.resolve(value);
+    }
   }
+  if (process.platform !== 'win32') return resolved;
+  if (resolved.startsWith('\\\\?\\UNC\\')) resolved = `\\\\${resolved.slice(8)}`;
+  else if (resolved.startsWith('\\\\?\\')) resolved = resolved.slice(4);
+  return resolved.replace(/\//g, '\\');
+}
+
+// Windows runners often hand the checker an 8.3 temp path while git
+// --show-toplevel returns the long, forward-slash form. JS realpathSync does
+// not expand short names; native realpath does. Compare case-insensitively on
+// win32 only so Linux and macOS stay byte-for-byte.
+export function samePath(left, right) {
+  const a = canonicalizePath(left);
+  const b = canonicalizePath(right);
+  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
 
 function repoRootIfOwned(cwd) {
