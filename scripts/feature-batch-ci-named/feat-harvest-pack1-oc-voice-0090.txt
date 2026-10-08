@@ -13,6 +13,7 @@ engine:extensions/voice-call/src/media-stream.test.ts
 engine:extensions/voice-call/src/providers/twilio.test.ts
 engine:extensions/voice-call/src/telephony-tts.test.ts
 engine:src/talk/activation-name.test.ts
+engine:src/talk/agent-consult-runtime.test.ts
 engine:src/talk/agent-consult-tool.test.ts
 engine:src/talk/agent-run-control.test.ts
 engine:src/talk/agent-talkback-runtime.test.ts
