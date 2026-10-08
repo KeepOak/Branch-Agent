@@ -12,8 +12,9 @@ import { historyToBlocks, markStopped, readApprovalRecords } from "../thread/his
 import { sanitizeBlocks } from "../thread/tool-output-display";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "./preparation-status";
 import { addNotSent, healNotSent } from "../composer/queue";
-import { droppedFiles, engineKeyOf, heldRuns, UnconfirmedSends } from "./unconfirmed";
+import { droppedFiles, engineKeyOf, FirstSendEcho, heldRuns, UnconfirmedSends } from "./unconfirmed";
 import { failedAck, isRetryable, refusedOrUnsent, requestWithRetry } from "./send-errors";
+import { firstSendEcho, shouldKeepFirstSendEcho } from "../composer/sending";
 import { safeStorage } from "../composer/drafts";
 
 export type SessionSnapshot = {
@@ -103,6 +104,8 @@ export class SaplingSession {
   /** Messages this window sent, by run id (= the idempotency key, engine chat-send-session.ts): their text, and
    *  whether the thread draws them itself (your message over its turn, or a steered note). */
   private readonly ownSends = new Map<string, { text: string; shown: boolean; attachments: number }>();
+  /** First message of an empty conversation, kept on screen until history holds it (unconfirmed.ts FirstSendEcho). */
+  private readonly firstEcho = new FirstSendEcho();
   /** Messages sent but not confirmed (connect/unconfirmed.ts). */
   private readonly unconfirmed = new UnconfirmedSends({
     request: (method, params) => this.gateway.request(method, params),
@@ -261,9 +264,24 @@ export class SaplingSession {
     return () => this.eventListeners.delete(listener);
   }
 
+  /** Local unconfirmed echo of the first message, so opening the new conversation does not flash EmptyState. */
+  seedFirstSend(sessionKey: string, text: string, runId: string = crypto.randomUUID()): string {
+    const echo = firstSendEcho(text);
+    if (!echo || !sessionKey) return runId;
+    this.firstEcho.set(sessionKey, echo, runId);
+    this.ownSends.set(runId, { text: echo, shown: true, attachments: 0 });
+    if (this.snapshot.sessionKey === sessionKey) {
+      this.liveSeen = false;
+      this.set({ pendingUser: echo, liveRunId: this.snapshot.liveRunId ?? runId, liveStartedAt: this.snapshot.liveStartedAt ?? Date.now(), live: [], doneAt: null, error: null });
+    }
+    return runId;
+  }
+
   /** Opens another conversation in the thread; its history is read from the engine. */
   async open(key: string): Promise<void> {
     if (!key || key === this.snapshot.sessionKey) {
+      const echo = this.firstEcho.peek(key);
+      if (echo && !this.snapshot.pendingUser && !this.snapshot.history.length) this.seedFirstSend(key, echo.text, echo.runId);
       return;
     }
     this.wanted = key;
@@ -272,7 +290,14 @@ export class SaplingSession {
     this.liveRefreshTimer = null;
     this.approvals.clear();
     this.ownSends.clear();
-    this.set({ sessionKey: key, history: [], live: [], pendingUser: null, queued: [], liveRunId: null, liveStartedAt: null, doneAt: null, lastActivityAt: null, error: null, steered: [], ended: null });
+    const echo = this.firstEcho.peek(key);
+    if (echo) this.ownSends.set(echo.runId, { text: echo.text, shown: true, attachments: 0 });
+    this.set({
+      sessionKey: key, history: [], live: [], queued: [], doneAt: null, lastActivityAt: null, error: null, steered: [], ended: null,
+      pendingUser: echo?.text ?? null,
+      liveRunId: echo?.runId ?? null,
+      liveStartedAt: echo ? Date.now() : null,
+    });
     try {
       await this.backfillApprovals();
       await this.loadHistory();
@@ -322,7 +347,14 @@ export class SaplingSession {
       // A fresh engine: what this window drew itself is gone with the live view, so the engine's own copies show.
       this.ownSends.clear();
       this.liveSeen = false;
-      this.set({ sessionKey, mainKey, live: [], liveRunId: null, liveStartedAt: null, pendingUser: null, steered: [] });
+      const echo = sessionKey ? this.firstEcho.peek(sessionKey) : null;
+      if (echo) this.ownSends.set(echo.runId, { text: echo.text, shown: true, attachments: 0 });
+      this.set({
+        sessionKey, mainKey, live: [], steered: [],
+        liveRunId: echo?.runId ?? null,
+        liveStartedAt: echo ? Date.now() : null,
+        pendingUser: echo?.text ?? null,
+      });
     } else {
       this.set({ sessionKey, mainKey });
     }
@@ -396,6 +428,9 @@ export class SaplingSession {
     this.readError = null;
     const blocks = markStopped(historyToBlocks(messages, readApprovalRecords(ledger), sessionKey, inFlightRunId), this.stoppedRuns);
     const info = rec(h.sessionInfo);
+    const echo = this.firstEcho.peek(sessionKey);
+    const historyHasEcho = Boolean(echo && keptInHistory(blocks, echo.runId, echo.text));
+    if (historyHasEcho && echo) this.firstEcho.clear(echo.runId);
     this.set({
       history: blocks,
       // The notice a failed read left goes once a read works; any other notice (a refused steer, an approval) stays.
@@ -403,6 +438,8 @@ export class SaplingSession {
       queued: mergeQueued(this.snapshot.queued, h.pendingInputs, sessionKey, true, this.shownRuns()),
       lastActivityAt: typeof info.lastActivityAt === "number" ? info.lastActivityAt : null,
       ...(inFlightRunId ? { liveRunId: inFlightRunId, liveStartedAt: runStart(inFlight) } : {}),
+      ...(historyHasEcho && this.snapshot.pendingUser === echo?.text ? { pendingUser: null } : {}),
+      ...(!inFlightRunId && echo && !historyHasEcho ? { pendingUser: echo.text, liveRunId: this.snapshot.liveRunId ?? echo.runId, liveStartedAt: this.snapshot.liveStartedAt ?? Date.now() } : {}),
     });
     if (inFlightRunId) {
       this.adoptInFlight(inFlightRunId, str(inFlight.text), inFlight);
@@ -602,9 +639,10 @@ export class SaplingSession {
    * Skipped while a run is still live or a send is in flight; that run's history is read when it finishes.
    */
   private refreshSettled(): void {
-    const { liveRunId, pendingUser } = this.snapshot;
+    const { liveRunId, pendingUser, sessionKey } = this.snapshot;
     const settled = liveRunId ? this.finished.has(liveRunId) : pendingUser === null;
-    if (settled) {
+    const waitingEcho = Boolean(sessionKey && this.firstEcho.peek(sessionKey) && !liveRunId);
+    if (settled || waitingEcho) {
       this.loadHistory().catch((error: unknown) => this.set({ error: error instanceof Error ? error.message : String(error) }));
     } else {
       // A turn is running: the history waits for it to end, but what is waiting for a turn shows now.
@@ -651,10 +689,15 @@ export class SaplingSession {
       this.ownSends.delete(runId);
       for (const note of this.snapshot.steered) if (note.target === runId) this.ownSends.delete(note.runId);
       if (wasLive) this.liveSeen = false;
+      const historyHasMessage = Boolean(own && keptInHistory(this.snapshot.history, runId, own.text));
+      const keepEcho = Boolean(own?.shown && shouldKeepFirstSendEcho(historyHasMessage, Boolean(failure)));
+      // Another turn that is still running took this send in: drop the local echo so the bubble is not drawn twice.
+      if (!keepEcho || (absorbed && !wasLive)) this.firstEcho.clear(runId);
+      else if (own) this.firstEcho.set(this.snapshot.sessionKey ?? "", own.text, runId);
       this.set({
         // Only a run that finished plays "Done" (header, agent window, cheer); a stopped or failed one, or one whose
         // input another turn took in, does not.
-        ...(wasLive ? { liveRunId: null, liveStartedAt: null, live: [], pendingUser: null, doneAt: outcome === "done" ? Date.now() : null, ended: { runId, outcome, at: Date.now() } } : {}),
+        ...(wasLive ? { liveRunId: null, liveStartedAt: null, live: [], pendingUser: keepEcho && own ? own.text : null, doneAt: outcome === "done" && !keepEcho ? Date.now() : null, ended: { runId, outcome, at: Date.now() } } : {}),
         // Your send, taken into another turn that is still running: that turn's history has your message, so your
         // own bubble goes now instead of drawing it twice. Only when the bubble is that send's: someone else's run,
         // or a queued send of yours (not drawn) taken in, leaves the bubble alone.
@@ -705,6 +748,7 @@ export class SaplingSession {
     if (!busy) {
       this.runs.clear();
       this.liveSeen = false;
+      if (!this.snapshot.history.length) this.seedFirstSend(sessionKey, text, runId);
       this.set({ pendingUser: text, liveRunId: runId, liveStartedAt: Date.now(), live: [], doneAt: null, error: null });
     } else if (steer) {
       this.set({ steered: [...this.snapshot.steered, { runId, text, target: this.snapshot.liveRunId ?? "" }] });
@@ -717,6 +761,8 @@ export class SaplingSession {
       if (acked !== runId && this.snapshot.liveRunId === runId && !this.liveSeen) {
         this.ownSends.set(acked, this.ownSends.get(runId)!);
         this.ownSends.delete(runId);
+        const echo = this.firstEcho.peek(sessionKey);
+        if (echo?.runId === runId) this.firstEcho.set(sessionKey, echo.text, acked);
         this.set({ liveRunId: acked });
       }
       // "ok" means the engine already had this input (a retry it deduplicated, or a steer the turn took in): no run
@@ -730,6 +776,7 @@ export class SaplingSession {
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       this.ownSends.delete(runId);
+      this.firstEcho.clear(runId);
       if (this.snapshot.liveRunId === runId) {
         this.liveSeen = false;
         this.set({ pendingUser: null, liveRunId: null, liveStartedAt: null, live: [] });
