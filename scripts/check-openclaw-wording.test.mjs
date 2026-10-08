@@ -1,0 +1,146 @@
+// node --test scripts/check-openclaw-wording.test.mjs
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  ALLOWLIST,
+  REPLACEMENTS,
+  allowlistRule,
+  checkAddedDiff,
+  findCandidateSpans,
+  formatFailure,
+  parseAddedLines,
+} from './check-openclaw-wording.mjs';
+
+function diff(file, hunks) {
+  return [
+    `diff --git a/${file} b/${file}`,
+    `--- a/${file}`,
+    `+++ b/${file}`,
+    ...hunks,
+  ].join('\n');
+}
+
+function added(file, line, text) {
+  return diff(file, [`@@ -${Math.max(line - 1, 0)},0 +${line},1 @@`, `+${text}`]);
+}
+
+test('added user-visible OpenClaw wording fails', () => {
+  const hits = checkAddedDiff(added('engine/src/wizard/setup.ts', 12, 'Welcome to OpenClaw'));
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].file, 'engine/src/wizard/setup.ts');
+  assert.equal(hits[0].line, 12);
+  assert.equal(hits[0].kind, 'name');
+  assert.match(hits[0].match, /OpenClaw/);
+});
+
+test('added docs and GitHub links fail', () => {
+  const docs = checkAddedDiff(added(
+    'engine/src/agents/system-prompt.ts',
+    609,
+    'Docs: https://docs.openclaw.ai',
+  ));
+  assert.equal(docs.length, 1);
+  assert.equal(docs[0].kind, 'host');
+  assert.match(docs[0].match, /docs\.openclaw\.ai/);
+
+  const github = checkAddedDiff(added(
+    'engine/src/agents/system-prompt.ts',
+    611,
+    'Source: https://github.com/openclaw/openclaw',
+  ));
+  assert.equal(github.length, 1);
+  assert.equal(github[0].kind, 'github');
+  assert.match(github[0].match, /github\.com\/openclaw/);
+});
+
+test('removed OpenClaw wording passes', () => {
+  const text = diff('engine/src/wizard/setup.ts', [
+    '@@ -12,1 +12,0 @@',
+    '-Welcome to OpenClaw',
+  ]);
+  assert.deepEqual(parseAddedLines(text), []);
+  assert.deepEqual(checkAddedDiff(text), []);
+});
+
+test('replacing OpenClaw with Branch Agent passes', () => {
+  const text = diff('engine/src/wizard/setup.ts', [
+    '@@ -12,1 +12,1 @@',
+    '-Welcome to OpenClaw',
+    '+Welcome to Branch Agent',
+  ]);
+  assert.deepEqual(checkAddedDiff(text), []);
+});
+
+test('allowlisted internals pass', () => {
+  const cases = [
+    ['engine/src/compat.ts', 'import x from "@openclaw/crabline"'],
+    ['engine/src/compat.ts', 'const home = process.env.OPENCLAW_HOME;'],
+    ['engine/src/compat.ts', 'readConfig("openclaw.json")'],
+    ['engine/src/compat.ts', '{ "openclaw": { "legacy": true } }'],
+    ['engine/src/compat.ts', 'from "legacy/openclaw/compat"'],
+    ['engine/extensions/whatsapp/skills/wacli/SKILL.md', '"module": "github.com/openclaw/wacli/cmd/wacli@latest"'],
+    ['docs/notes.md', 'Copied from openclaw/openclaw@abc123def4567890'],
+    ['engine/LICENSE', '© 2026 OpenClaw Foundation — MIT License.'],
+    ['engine/src/foo.test.ts', 'expect(url).toBe("https://docs.openclaw.ai")'],
+    ['engine/package.json', '"repository": "https://github.com/openclaw/openclaw"'],
+  ];
+  for (const [file, line] of cases) {
+    assert.deepEqual(checkAddedDiff(added(file, 3, line)), [], `${file}: ${line}`);
+  }
+});
+
+test('allowlist is explicit: every rule has an id and a why', () => {
+  assert.ok(ALLOWLIST.length >= 8);
+  for (const rule of ALLOWLIST) {
+    assert.equal(typeof rule.id, 'string');
+    assert.ok(rule.id.length > 0);
+    assert.equal(typeof rule.why, 'string');
+    assert.ok(rule.why.length > 0);
+    assert.ok(rule.file || rule.line || rule.re, rule.id);
+  }
+});
+
+test('failure message tells the agent what to write instead', () => {
+  const hits = checkAddedDiff(added('engine/src/prompts.ts', 4, 'Read https://docs.openclaw.ai/gateway'));
+  const message = formatFailure(hits);
+  assert.match(message, /Branch Agent/);
+  assert.match(message, /https:\/\/keepoak\.com\/help/);
+  assert.match(message, /https:\/\/keepoak\.com/);
+  assert.match(message, /https:\/\/github\.com\/KeepOak\/Branch-Agent/);
+  assert.match(message, /engine\/src\/prompts\.ts:4:/);
+  for (const row of REPLACEMENTS) assert.match(message, new RegExp(row.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+test('parseAddedLines records only plus lines and their new-file numbers', () => {
+  const text = [
+    'diff --git a/engine/src/a.ts b/engine/src/a.ts',
+    '--- a/engine/src/a.ts',
+    '+++ b/engine/src/a.ts',
+    '@@ -10,1 +10,2 @@',
+    ' context',
+    '-gone OpenClaw',
+    '+Branch Agent',
+    '+extra',
+  ].join('\n');
+  assert.deepEqual(parseAddedLines(text), [
+    { file: 'engine/src/a.ts', line: 11, text: 'Branch Agent' },
+    { file: 'engine/src/a.ts', line: 12, text: 'extra' },
+  ]);
+});
+
+test('host spans win over the product-name span inside the same URL', () => {
+  const spans = findCandidateSpans('See https://docs.openclaw.ai/help');
+  assert.deepEqual(spans.map((span) => span.kind), ['host']);
+});
+
+test('standalone OPENCLAW in a string is a name hit; OPENCLAW_HOME is not', () => {
+  assert.equal(findCandidateSpans('label: "OPENCLAW"').length, 1);
+  assert.deepEqual(findCandidateSpans('process.env.OPENCLAW_HOME'), []);
+});
+
+test('allowlistRule covers an npm scope and rejects the same word in prose', () => {
+  const pkg = findCandidateSpans('dep @openclaw/crabline')[0];
+  assert.equal(allowlistRule('engine/src/a.ts', 'dep @openclaw/crabline', pkg)?.id, 'npm-scope');
+  const prose = findCandidateSpans('Welcome to OpenClaw')[0];
+  assert.equal(allowlistRule('engine/src/a.ts', 'Welcome to OpenClaw', prose), null);
+});
