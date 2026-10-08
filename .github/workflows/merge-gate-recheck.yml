@@ -29,7 +29,11 @@ concurrency:
 
 jobs:
   recheck:
-    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    # pull_request_target is accepted only for Gate files fresh. That workflow
+    # is the only listed check that uses that event. Live Actions runs show
+    # workflow_run.head_sha is the PR head (not main); still verify it before
+    # rerunning so a base-branch SHA cannot retrigger the wrong merge gate.
+    if: github.event.workflow_run.conclusion == 'success' && (github.event.workflow_run.event == 'pull_request' || (github.event.workflow_run.event == 'pull_request_target' && github.event.workflow_run.name == 'Gate files fresh'))
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -37,9 +41,31 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
+          EVENT: ${{ github.event.workflow_run.event }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          PRS: ${{ toJSON(github.event.workflow_run.pull_requests) }}
         run: |
           set -euo pipefail
+          printf '%s\n' "${PRS:-[]}" > "${RUNNER_TEMP:-/tmp}/workflow-run-prs.json"
+          SHA=$(jq -r --arg event "$EVENT" --arg head "$HEAD_SHA" '
+            def heads: [.[]? | .head.sha // empty];
+            def head_from_base: [.[]? | select(.base.sha == $head) | .head.sha // empty] | first // "";
+            if $head == "" then
+              empty
+            elif ($event == "pull_request") and ((heads | index($head)) != null or (heads | length) == 0) then
+              $head
+            elif $event == "pull_request_target" and (heads | index($head)) != null then
+              $head
+            elif $event == "pull_request_target" and (head_from_base != "") then
+              head_from_base
+            else
+              empty
+            end
+          ' "${RUNNER_TEMP:-/tmp}/workflow-run-prs.json")
+          if [ -z "$SHA" ]; then
+            echo "No verified PR head SHA for $EVENT $HEAD_SHA; not rerunning."
+            exit 0
+          fi
           gate=$(gh run list -R "$REPO" --workflow merge-gate.yml --commit "$SHA" --limit 1 \
             --json databaseId,status,conclusion --jq '.[0] // empty')
           if [ -z "$gate" ]; then echo "No merge gate run for $SHA."; exit 0; fi
