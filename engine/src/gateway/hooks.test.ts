@@ -1,4 +1,3 @@
-// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/gateway/hooks.test.ts (atlas AUTOMATION-0049). Changed for Branch: rebranded through scripts/rebrand-map.json; retain current upstream regression coverage instead of older atlas tests.
 // Gateway hooks tests cover token extraction, target agent resolution, payload
 // normalization, allowed-agent checks, and channel alias handling.
 import type { IncomingMessage } from "node:http";

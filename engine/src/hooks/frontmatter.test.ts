@@ -1,4 +1,3 @@
-// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/hooks/frontmatter.test.ts (atlas AUTOMATION-0070). Changed for Branch: rebranded through scripts/rebrand-map.json; retain current upstream regression coverage instead of older atlas tests.
 // Hook frontmatter tests cover hook metadata parsing from hook files.
 import { expectDefined } from "@branch/normalization-core";
 import { describe, expect, it } from "vitest";

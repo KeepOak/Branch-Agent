@@ -1,4 +1,3 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/gateway/server.hooks.test.ts (atlas AUTOMATION-0049). Changed for Branch: use explicit Branch agent roster ownership and system agent designation; preserve all upstream assertions.
 // Server hooks tests cover HTTP hook auth, payload normalization, dedupe,
 // session targeting, system events, and cron-isolated hook dispatch.
 import fs from "node:fs/promises";

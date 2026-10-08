@@ -1,4 +1,3 @@
-// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/cron/session-reaper.test.ts (atlas AUTOMATION-0035). Changed for Branch: rebranded through scripts/rebrand-map.json; retain current upstream regression coverage instead of older atlas tests.
 // Cron session reaper tests cover cleanup of sessions created by scheduled runs.
 import fsPromises from "node:fs/promises";
 import path from "node:path";
