@@ -85,7 +85,7 @@ function childPidsFromParentIdentity(): number[] {
   return children;
 }
 
-function childPids(): number[] {
+function childPidsFromTaskFiles(): { pids: number[]; readableThreads: number; absentThreads: number } {
   const children = new Set<number>();
   let readableThreads = 0;
   let absentThreads = 0;
@@ -95,7 +95,6 @@ function childPids(): number[] {
       value = readFileSync("/proc/self/task/" + thread + "/children", "utf8");
     } catch (error) {
       // A thread can retire, or this kernel can omit task children files.
-      // Partial visibility is not a complete census; merge the PPID scan.
       if (isAbsentProcEntry(error)) {
         absentThreads += 1;
         continue;
@@ -110,7 +109,14 @@ function childPids(): number[] {
       children.add(Number(pid));
     }
   }
-  if (readableThreads === 0 || absentThreads > 0) {
+  return { pids: [...children], readableThreads, absentThreads };
+}
+
+function childPids(): number[] {
+  const fromFiles = childPidsFromTaskFiles();
+  const children = new Set(fromFiles.pids);
+  // Partial visibility is not a complete census; merge the PPID scan.
+  if (fromFiles.readableThreads === 0 || fromFiles.absentThreads > 0) {
     for (const pid of childPidsFromParentIdentity()) {
       children.add(pid);
     }
@@ -193,11 +199,17 @@ export function acquireLinuxChildSubreaper() {
       signaledChildren.delete(pid);
     });
   };
-  // A loader thread can reap its compiler concurrently with this thread. That
-  // would invalidate numeric-PID pinning. Admit only the dedicated built owner,
-  // before its one libuv-owned application root has been spawned.
-  if (childPids().length > 0) {
+  // Task-children files are the dedicated-owner census when this kernel has
+  // them. A NODE_OPTIONS preload can hide those files; PPID walks then pick up
+  // leftover tsx compiler pids that waitid no longer owns. In that case admit
+  // only from kernel wait ownership.
+  const fromFiles = childPidsFromTaskFiles();
+  const waited = probeWaitid(P_ALL, 0, WEXITED | WNOHANG | WNOWAIT | WALL);
+  if (fromFiles.readableThreads > 0 ? fromFiles.pids.length > 0 : waited.rc === 0) {
     throw new Error("Linux child ownership requires a dedicated owner without existing children");
+  }
+  if (fromFiles.readableThreads === 0 && waited.errno !== ECHILD) {
+    fail("admission wait", waited.errno);
   }
   let closed = false;
   const owns = (pid: number): boolean => {
