@@ -18,7 +18,7 @@ import type { ProviderPlugin } from "../plugins/provider-plugin.types.js";
 import { mintSecretSentinel } from "../secrets/sentinel.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { isPidAlive } from "../shared/pid-alive.js";
-import { killPidIfAlive, readPidFile } from "../test-utils/process-tree.js";
+import { killPidIfAlive, readPidFile, waitForPidToExit } from "../test-utils/process-tree.js";
 import { agentProcessTestEntrypoints } from "./process-runtime.test-support.js";
 import { hasLocalServiceProcessExited } from "./provider-local-service-process.js";
 import {
@@ -784,6 +784,8 @@ describe("provider local service", () => {
         servicePid = await readPidFile(servicePidPath).catch(() => undefined);
       }
       killPidIfAlive(servicePid);
+      await waitForPidToExit(parent.pid);
+      await waitForPidToExit(servicePid);
     }
   });
 

@@ -4,7 +4,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import { SYSTEM_PROMPT_CACHE_BOUNDARY } from "@branch/ai/internal/shared";
 import type { StreamFn } from "branch/plugin-sdk/agent-core";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { SessionTranscriptWriterClaimReboundError } from "../../config/sessions/transcript-write-context.js";
 import { attachModelProviderRequestTransport } from "../provider-request-config.js";
 import { closeProviderTransportDispatcherPool } from "../provider-transport-dispatcher-pool.js";
@@ -78,6 +78,10 @@ function readyEntry(params: {
 }
 
 describe("google prompt cache failure handling", () => {
+  afterAll(async () => {
+    await closeProviderTransportDispatcherPool();
+  });
+
   it.each([
     ["malformed JSON", () => new Response("not-json{{{", { status: 200 })],
     [
@@ -468,13 +472,20 @@ describe("google prompt cache failure handling", () => {
     const server = createServer((request, response) => {
       requests.push(request.url ?? "");
       if (request.url?.endsWith("/cachedContents")) {
-        response.writeHead(200, { "content-type": "application/json" });
+        response.writeHead(200, {
+          "content-type": "application/json",
+          connection: "close",
+        });
         response.end("not-json{{{");
         return;
       }
-      response.writeHead(200, { "content-type": "text/plain" });
+      response.writeHead(200, {
+        "content-type": "text/plain",
+        connection: "close",
+      });
       response.end("visible-generation-output");
     });
+    server.keepAliveTimeout = 0;
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
 
