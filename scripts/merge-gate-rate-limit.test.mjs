@@ -112,16 +112,10 @@ test('backoff and poll intervals stay capped and increase 30/60/90', () => {
   assert.equal(MAX_RATE_LIMIT_SLEEP_SECONDS, 120);
 });
 
-test('nextCheckRefresh stops re-listing finished checks after the first full poll', () => {
+test('nextCheckRefresh uses one check-runs list call every poll', () => {
   assert.deepEqual(nextCheckRefresh({ pendingIds: null, pollIndex: 0 }), { mode: 'all' });
-  assert.deepEqual(nextCheckRefresh({ pendingIds: [2, 3], pollIndex: 1 }), {
-    mode: 'pending',
-    ids: [2, 3],
-  });
+  assert.deepEqual(nextCheckRefresh({ pendingIds: [2, 3], pollIndex: 1 }), { mode: 'all' });
   assert.deepEqual(nextCheckRefresh({ pendingIds: [2], pollIndex: 3 }), { mode: 'all' });
-  assert.deepEqual(nextCheckRefresh({ pendingIds: [1, 2, 3, 4, 5, 6, 7, 8, 9], pollIndex: 1 }), {
-    mode: 'all',
-  });
 });
 
 test('mergeCheckSnapshots keeps completed checks across pending-only refreshes', () => {
@@ -243,7 +237,7 @@ test('pollOrdinaryGate fails a red check and a non-rate-limit API error', () => 
   assert.equal(apiError, 1);
 });
 
-test('pollOrdinaryGate backs the interval off and only refreshes pending checks', () => {
+test('pollOrdinaryGate backs the interval off and uses one list call per poll', () => {
   const plans = [];
   const sleeps = [];
   let nowMs = 0;
@@ -268,8 +262,8 @@ test('pollOrdinaryGate backs the interval off and only refreshes pending checks'
   });
   assert.equal(code, 0);
   assert.deepEqual(sleeps.slice(0, 3), [5, 30, 60]);
-  assert.deepEqual(plans[0], { mode: 'all' });
-  assert.deepEqual(plans[1], { mode: 'pending', ids: [200] });
+  assert.deepEqual(plans, [{ mode: 'all' }, { mode: 'all' }, { mode: 'all' }]);
+  assert.equal(polls, 3);
 });
 
 test('pollOrdinaryGate times out on a lasting rate limit instead of passing', () => {

@@ -87,21 +87,10 @@ export function pollIntervalSeconds(pollIndex) {
   return POLL_INTERVAL_SECONDS[index];
 }
 
-export function nextCheckRefresh({
-  pendingIds,
-  pollIndex = 0,
-  pendingLimit = 8,
-  fullEvery = 3,
-} = {}) {
-  if (
-    pendingIds == null
-    || pendingIds.length === 0
-    || pendingIds.length > pendingLimit
-    || pollIndex % fullEvery === 0
-  ) {
-    return { mode: 'all' };
-  }
-  return { mode: 'pending', ids: pendingIds };
+export function nextCheckRefresh(_state = {}) {
+  // One list call per poll. Per-id refreshes cost more than repos/.../check-runs
+  // once two checks are still running, and they miss newly registered jobs.
+  return { mode: 'all' };
 }
 
 export function mergeCheckSnapshots(previousCompleted, fetched, plan = { mode: 'all' }) {
