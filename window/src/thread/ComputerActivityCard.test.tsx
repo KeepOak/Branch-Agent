@@ -3,23 +3,46 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { ComputerActivityCard } from "./ComputerActivityCard";
+import type { WindowEngine } from "../connect/engine";
 import type { Block } from "./model";
 
-(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | undefined, container: HTMLDivElement;
 afterEach(async () => {
   if (root) await act(async () => root!.unmount());
   root = undefined;
   document.body.innerHTML = "";
 });
-const step = (key: string, title: string, status: "ok" | "running"): Block => ({ kind: "step", key, tool: "computer", title, detail: `${title} detail`, status });
-async function render(blocks: Block[], running: boolean, onWatch = vi.fn()) {
+const step = (key: string, title: string, status: "ok" | "running" | "failed" | "denied", tool = "computer"): Block => ({
+  kind: "step",
+  key,
+  tool,
+  title,
+  detail: `${title} detail`,
+  status,
+});
+function engineWith(send?: WindowEngine["send"]): WindowEngine {
+  return {
+    sessionKey: "agent:main:main",
+    scopes: [],
+    onEvent: () => () => {},
+    request: (async () => ({})) as WindowEngine["request"],
+    send,
+  };
+}
+async function render(blocks: Block[], running: boolean, onWatch = vi.fn(), engine?: WindowEngine) {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
-  await act(async () => root!.render(<ComputerActivityCard blocks={blocks} running={running} name="Ada" onWatch={onWatch} />));
+  await act(async () => root!.render(<ComputerActivityCard blocks={blocks} running={running} name="Ada" onWatch={onWatch} engine={engine} gatewayUrl={engine ? "ws://127.0.0.1:9" : undefined} />));
   return onWatch;
 }
+const click = async (label: string) => {
+  const button = [...container.querySelectorAll("button")].find((b) => b.textContent?.includes(label));
+  if (!button) throw new Error(`no button ${label}`);
+  await act(async () => button.click());
+  return button;
+};
 
 describe("computer card in the conversation", () => {
   it("groups finished actions and lists each one when opened", async () => {
@@ -32,8 +55,48 @@ describe("computer card in the conversation", () => {
   it("shows the live card while a computer step runs, with Watch full size", async () => {
     const onWatch = await render([step("a", "Searching the inbox", "running")], true);
     expect(container.textContent).toContain("Working");
-    const watch = [...container.querySelectorAll("button")].find((b) => b.textContent?.includes("Watch full size"))!;
-    await act(async () => watch.click());
+    await click("Watch full size");
     expect(onWatch).toHaveBeenCalledWith("Computer");
+  });
+  it("shows You have control and Hand back after Take over", async () => {
+    const onWatch = await render([step("a", "Searching the inbox", "running")], true);
+    await click("Take over");
+    expect(onWatch).toHaveBeenCalledWith("Computer", true);
+    expect(container.textContent).toContain("You have control");
+    expect(container.textContent).toContain("Hand back to Ada");
+    expect(container.textContent).toContain("Open full size");
+    expect(container.querySelector("[data-state='yours']")).toBeTruthy();
+    await click("Open full size");
+    expect(onWatch).toHaveBeenCalledWith("Computer");
+    await click("Hand back to Ada");
+    expect(container.textContent).toContain("Working");
+    expect(container.textContent).toContain("Watch full size");
+  });
+  it("shows Stopped and Carry on when the run was stopped", async () => {
+    const send = vi.fn(async () => undefined);
+    await render(
+      [step("a", "Opened mail", "ok"), { kind: "done", key: "d", runId: "r", stopped: true }],
+      false,
+      vi.fn(),
+      engineWith(send),
+    );
+    expect(container.textContent).toContain("Stopped");
+    expect(container.textContent).not.toContain("Used Ada's computer");
+    await click("Carry on");
+    expect(send).toHaveBeenCalledWith("Carry on");
+  });
+  it("shows Done when the computer work finished", async () => {
+    await render([step("a", "Opened mail", "ok")], false);
+    expect(container.querySelector("[data-state='done']")?.textContent).toContain("Done");
+    expect(container.textContent).toContain("Used Ada's computer · 1 action");
+  });
+  it("shows a live thumbnail and Take over for the browser", async () => {
+    const onWatch = await render([step("a", "Opened the inbox", "running", "browser")], true, vi.fn(), engineWith());
+    expect(container.querySelector("[aria-label='Open the browser full size']")).toBeTruthy();
+    expect(container.textContent).toContain("Ada's browser");
+    await click("Take over");
+    expect(onWatch).toHaveBeenCalledWith("Browser", true);
+    expect(container.textContent).toContain("You have control");
+    expect(container.querySelector("[aria-label='Open the browser full size']")).toBeTruthy();
   });
 });
