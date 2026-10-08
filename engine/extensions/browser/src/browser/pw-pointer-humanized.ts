@@ -1,7 +1,10 @@
 /** Native portable input driver adapted from elizaOS/eliza@3f38e54495ba5518f84bcf9cc1e84e0dc3d60bbf. */
 import { sleepWithAbort } from "branch/plugin-sdk/runtime-env";
-import type { ElementHandle, Page } from "playwright-core";
-import { resolveActInteractionTimeoutMs } from "./act-policy.js";
+import type { ElementHandle, JSHandle, Page } from "playwright-core";
+import {
+  BROWSER_ACTION_NAVIGATION_GRACE_MS,
+  resolveActInteractionTimeoutMs,
+} from "./act-policy.js";
 import { MocapEngine } from "./pw-pointer-mocap.js";
 import type { MocapSequence } from "./pw-pointer-mocap.types.js";
 import { refLocator } from "./pw-session.js";
@@ -124,7 +127,7 @@ async function assertTargetUnmoved(handle: ElementHandle<Element>, box: Box, gua
   await fence(guard);
 }
 
-const HUMAN_CLICK_JOIN = "__branchHumanClickJoin";
+type TrustedClickJoin = { promise: Promise<void>; dispose: () => void };
 
 function isHumanClickJoinContextDestroyed(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -133,60 +136,64 @@ function isHumanClickJoinContextDestroyed(error: unknown): boolean {
   );
 }
 
-async function installTrustedClickJoin(handle: ElementHandle<Element>): Promise<void> {
-  await handle.evaluate((el, key) => {
-    const root = globalThis as typeof globalThis & {
-      [name: string]: WeakMap<Element, Promise<void>> | undefined;
+async function armTrustedClickJoin(
+  handle: ElementHandle<Element>,
+): Promise<JSHandle<TrustedClickJoin>> {
+  // Held only by this JSHandle: capture on the owner window/document so a
+  // stopped or retargeted click is still observed, without a page global.
+  return handle.evaluateHandle((el) => {
+    const root = el.ownerDocument.defaultView ?? el.ownerDocument;
+    let settled = false;
+    let resolve = () => {};
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve();
     };
-    root[key] ??= new WeakMap();
-    root[key].set(
-      el,
-      new Promise<void>((resolve) => {
-        el.addEventListener("click", () => resolve(), { once: true });
-      }),
-    );
-  }, HUMAN_CLICK_JOIN);
+    const promise = new Promise<void>((next) => {
+      resolve = next;
+    });
+    const onClick = () => {
+      // Resolve after the current click finishes so same-event navigations run.
+      queueMicrotask(finish);
+    };
+    root.addEventListener("click", onClick, { capture: true, once: true });
+    return {
+      promise,
+      dispose: () => {
+        root.removeEventListener("click", onClick, { capture: true });
+        finish();
+      },
+    };
+  });
+}
+
+async function releaseTrustedClickJoin(gate: JSHandle<TrustedClickJoin>): Promise<void> {
+  await gate.evaluate((joined) => joined.dispose()).catch(() => {});
+  await gate.dispose().catch(() => {});
 }
 
 async function waitTrustedClickJoin(
-  handle: ElementHandle<Element>,
-  timeoutMs: number,
+  gate: JSHandle<TrustedClickJoin>,
+  signal: AbortSignal,
 ): Promise<void> {
   try {
-    await handle.evaluate(
-      (el, args) => {
-        const root = globalThis as typeof globalThis & {
-          [name: string]: WeakMap<Element, Promise<void>> | undefined;
-        };
-        const clicked = root[args.key]?.get(el);
-        if (!clicked) {
-          throw new Error("humanClick page click join was not armed");
+    await Promise.race([
+      gate.evaluate((joined) => joined.promise).catch((error: unknown) => {
+        if (!isHumanClickJoinContextDestroyed(error)) {
+          throw error;
         }
-        return new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(() => {
-            reject(new Error("humanClick page click was not dispatched"));
-          }, args.timeoutMs);
-          void clicked.then(
-            () => {
-              clearTimeout(timer);
-              resolve();
-            },
-            (error: unknown) => {
-              clearTimeout(timer);
-              reject(error);
-            },
-          );
-        });
-      },
-      { key: HUMAN_CLICK_JOIN, timeoutMs },
-    );
+      }),
+      sleepWithAbort(BROWSER_ACTION_NAVIGATION_GRACE_MS, signal),
+    ]);
   } catch (error) {
-    // A click that starts navigation can tear the document down before the
-    // waiter evaluates; the click listeners already ran in that case.
-    if (isHumanClickJoinContextDestroyed(error)) {
-      return;
+    if (!isHumanClickJoinContextDestroyed(error)) {
+      throw error;
     }
-    throw error;
+  } finally {
+    await releaseTrustedClickJoin(gate);
   }
 }
 
@@ -204,10 +211,12 @@ async function clickAtTarget(
   await sleepWithAbort(60 + Math.random() * 50, guard.signal);
   await assertTargetUnmoved(handle, box, guard);
   // CDP mouse.up resolves when the event is dispatched, not when page click
-  // listeners run. Join that click so a click-triggered navigation is admitted
-  // to the request guard before humanClick settles.
-  await fenced(guard, () => installTrustedClickJoin(handle));
+  // listeners run. Join a short capture-phase click when it arrives so a
+  // click-triggered navigation is admitted to the request guard. A missing
+  // click falls back to the existing post-action grace; do not fail the click.
+  const clickJoin = await fenced(guard, () => armTrustedClickJoin(handle));
   let buttonHeld = false;
+  let joined = false;
   try {
     await fence(guard);
     await fenced(guard, () => {
@@ -218,11 +227,15 @@ async function clickAtTarget(
     await fence(guard);
     await fenced(guard, () => page.mouse.up());
     buttonHeld = false;
-    await fenced(guard, () => waitTrustedClickJoin(handle, remainingMs(guard)));
+    await fenced(guard, () => waitTrustedClickJoin(clickJoin, guard.signal));
+    joined = true;
   } finally {
     // Join release under the same navigation guard, even after cancellation.
     if (buttonHeld) {
       await page.mouse.up().catch(() => {});
+    }
+    if (!joined) {
+      await releaseTrustedClickJoin(clickJoin).catch(() => {});
     }
   }
 }
