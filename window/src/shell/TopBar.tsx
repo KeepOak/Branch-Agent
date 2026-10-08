@@ -116,7 +116,7 @@ export function HeaderRow({ header, onCharacter, tools, onList, onBack, onForwar
     <div className={`head-row${live ? " live" : ""}${tint ? " tinted" : ""}`} style={tint ? ({ "--tint": tint } as CSSProperties) : undefined}>
       <button type="button" className="ib" aria-label="Back" title="Back" onClick={onBack}><Icon name="back" /></button>
       <button type="button" className="ib" aria-label="Forward" title="Forward" onClick={onForward}><Icon name="forward" /></button>
-      {onList ? <button type="button" className="ib" aria-label="Conversations" title="Conversations" onClick={onList}><Icon name="menu" /></button> : null}
+      {onList ? <button type="button" className="ib" aria-label="Conversations" title="Conversations" data-testid="list-toggle" onClick={onList}><Icon name="menu" /></button> : null}
       <HeaderFace header={header} onCharacter={onCharacter} size={56} />
       {!header.room ? <span className="head-status-announcement" role="status" aria-live="polite" aria-atomic="true">{header.trunkName}: {stateWords(header)}</span> : null}
       <div className="head-text">
@@ -203,7 +203,7 @@ export function TopBar({ compact, machine, header, dark, listHidden, onTheme, on
           {!header ? <button type="button" className="ib" aria-label={dark ? "Light" : "Dark"} title="Switch light or dark" data-testid="theme" onClick={onTheme}>
             <Icon name={dark ? "sun" : "moon"} small />
           </button> : null}
-          {!header ? <button
+          {!compact ? <button
             type="button"
             className="ib"
             aria-label={listHidden ? "Show the list · Ctrl+B" : "Hide the list · Ctrl+B"}

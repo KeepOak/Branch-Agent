@@ -71,6 +71,12 @@ describe("contacts layout", () => {
     await drag(68, 320);
     expect(commits.at(-1)).toEqual({ sideW: 320, rail: false });
   });
+  it("defaults to a full contact list outside the mid-width rail band", () => {
+    const originalMatchMedia = globalThis.matchMedia;
+    globalThis.matchMedia = vi.fn(() => ({ matches: false })) as unknown as typeof matchMedia;
+    expect(readLayout()).toMatchObject({ rail: false });
+    globalThis.matchMedia = originalMatchMedia;
+  });
   it("reload keeps both the saved full width and rail state", () => {
     const originalMatchMedia = globalThis.matchMedia;
     globalThis.matchMedia = vi.fn(() => ({ matches: true })) as unknown as typeof matchMedia;
