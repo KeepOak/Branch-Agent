@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SaplingSession } from "../connect/session";
 import { NEW_GROUP_EVENT } from "../rooms/NewGroupChat";
-import { GroupDropPopover, roomContact, type GroupContact, type GroupRoom } from "./group-drop";
+import { GroupDropPopover, groupChatPrefill, roomContact, type GroupContact, type GroupRoom } from "./group-drop";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | undefined;
@@ -51,6 +51,22 @@ describe("Move to group pick popover", () => {
     window.removeEventListener(NEW_GROUP_EVENT, opened);
   });
 
+  it("confirms a drop then opens New group chat prefilled with both chats", async () => {
+    const opened: Event[] = [];
+    const onEvent = (event: Event) => opened.push(event);
+    window.addEventListener(NEW_GROUP_EVENT, onEvent);
+    const rendered = await show({
+      drop: { kind: "new", source: scout.threadKey, target: ledger.threadKey, anchor },
+      contacts: [scout, ledger],
+    });
+    expect(rendered.host.textContent).toContain("Start a group chat with Scout and Ledger?");
+    expect(groupChatPrefill(scout, ledger, "scout")).toEqual({ name: "Scout and Ledger", trunk: "scout", people: [] });
+    await act(async () => rendered.host.querySelector<HTMLButtonElement>("[data-testid=start-group-with-these]")!.click());
+    expect(rendered.onClose).toHaveBeenCalled();
+    expect(opened).toHaveLength(1);
+    expect((opened[0] as CustomEvent).detail).toEqual({ name: "Scout and Ledger", trunk: "scout", people: [] });
+    window.removeEventListener(NEW_GROUP_EVENT, onEvent);
+  });
   it("lists the group under Add <name> to and the contact under Start a group with", async () => {
     const rendered = await show({ contacts: [scout, ledger, roomContact(room)!], rooms: [room] });
     expect(rendered.host.textContent).toContain("Add Scout to");
