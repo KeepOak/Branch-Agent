@@ -48,7 +48,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 13. **CI has a hard 15-minute cap.** Every check job sets `timeout-minutes: 15` or less; the merge-gate job allows up to 35 because it waits for the others. A change that makes CI slower than the cap gets split, sharded or cut, never given a longer timeout.
 
-14. **Releases are automatic.** A merge touching `engine/`, `window/` or `desktop/` publishes a component release (engine, window, desktop, desktopRuntime) that installed apps pick up within the hour and apply on restart. Treat every merge as shipping.
+14. **Releases are batched.** A merge touching `engine/`, `window/` or `desktop/` is built in CI but only published in scheduled 30-minute batches when at least one commit landed since the last release and no check run on main's head has failed. Installed apps pick up the batched release within the hour and apply on restart. Treat every merge as potentially shipping in the next batch.
 
 15. **Stop processes you start.** Any test, self-test or proof script that starts a process (MCP servers, mcporter, node, browsers) must stop it and its children before finishing. Leftover processes lock the app install folder and block updates.
 
@@ -111,6 +111,31 @@ Open PRs and their current CI status: `gh pr list --json number,title,headRefNam
    - Or via REST API: `PUT /repos/KeepOak/Branch-Agent/pulls/<number>/merge` with `{"merge_method": "merge", "sha": "<reviewed-sha>"}`
 
 5. **Seamless handoff gate.** The `seamlessHandoff` flag stays off until #429 (real two-engine handoff test) is merged. After #429 lands, turn it on in its own one-line PR and test it live mid-conversation.
+
+### How GOD works
+
+GOD is a Claude Code session (Opus) acting as the owner's coordinator. It spends its own effort on routing, review and judgment, and leaves the hands-on work to builders.
+
+1. **Routes, doesn't build.** Every task goes to a builder as a brief (rule 2 above). GOD writes code only when no builder can, for example when the build host is down, or for a one-line change such as the `seamlessHandoff` switch.
+2. **Reviews every head.** Each new head commit gets a read-only, adversarial review from a separate Opus agent, which returns MERGE or FIX with `file:line` evidence and the CI log lines that prove the changed tests ran on macOS, Ubuntu and Windows. A FIX verdict becomes the next brief to the same builder. A new push means a new review, and a rebase counts as a push.
+3. **Merges only what was reviewed.** A PR is merged only at the exact SHA that got a MERGE verdict (rule 12). When Branch PR Closer is running, it does the merge and GOD supplies the verdict.
+4. **Never goes silent.** While work is running, GOD watches for new head commits and new PRs, reports to the owner at least every 90 minutes, and keeps one status page with the tallies, the to-do list, what failed and how Branch compares with competitors. It never makes a second page.
+5. **Follows the owner's priorities exactly.** GOD works the priority order above, top first, and states its opinion plainly. When something blocks it, it names the blocker once and moves on to the next viable task.
+6. **Pausing.** When the owner says pause, GOD sends nothing new, lets running work finish, sets unsent briefs aside, stops its watchers and records the state.
+
+### The Trunk fleet (paused, resumes later)
+
+The first builder fleet was seven Trunks running inside Branch itself: **Oak, Elm, Birch, Ash, Cedar, Maple and Spruce**. They were paused on 2026-10-07 and will continue later. They are not retired. This is how GOD ran them, so the fleet can be restarted the same way:
+
+- **Dispatch.** Briefs were text files kept in a queue for each Trunk. A drain loop sent them one at a time through Graft (`branch graft`) to the Branch instance that hosts the Trunks, sending a Trunk its next brief only when its current thread had finished.
+- **Builders.** Each Trunk ran on a ChatGPT/Codex subscription in its own worktree from `origin/main`, pushed to its own PR branch, and never merged.
+- **Ownership.** A PR stayed with the Trunk that opened it. Review fixes went back to that same Trunk, put at the front of its queue when they touched priority work.
+- **Watchers.** A PR watcher woke GOD whenever a head commit changed or a new PR appeared, and at least every 90 minutes otherwise.
+- **Resuming.** Check which tasks the current builders already own, so the two fleets never work on the same PR. Then send the set-aside briefs and the follow-ups in #449, starting with the remaining #445 profile-migration fixes:
+  - a corrupt progress file must not block migration;
+  - a name that differs only in case must not block migration;
+  - replaced files must move out of the live workspace;
+  - tests must cover all of these.
 
 ## Working with AI agents
 
