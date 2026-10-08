@@ -87,6 +87,55 @@ test("finds getLogger().info({ apiKey: secret })", () => {
   }
 });
 
+test("finds optional-call forms such as log.warn?.({ token })", () => {
+  const dir = createTestRepo();
+  try {
+    writeTracked(
+      dir,
+      "app.ts",
+      `log.trace?.({ accessToken });
+log.debug?.({ refreshToken });
+log.info?.({ idToken });
+log.warn?.({ token });
+log.error?.({ password });
+log.fatal?.({ secret });
+logger.trace?.({ apiKey });
+logger.debug?.({ authToken });
+logger.info?.({ botToken });
+logger.warn?.({ clientSecret });
+logger.error?.({ sessionToken });
+logger.fatal?.({ sessionSecret });
+console.log?.({ cookie });
+console.info?.({ bearer });
+console.warn?.({ authorization });
+console.error?.({ passwd });
+console.debug?.({ access_token });
+getLogger().info?.({ api_key: value });
+`,
+    );
+    assert.strictEqual(scan(dir).length, 18);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("finds credentials on later lines of an optional multi-line log call", () => {
+  const dir = createTestRepo();
+  try {
+    writeTracked(
+      dir,
+      "app.ts",
+      `log.warn?.(
+  { token: value },
+);
+`,
+    );
+    assert.strictEqual(scan(dir).length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("finds credentials on later lines of a multi-line log call", () => {
   const dir = createTestRepo();
   try {

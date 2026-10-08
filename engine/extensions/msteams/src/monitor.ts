@@ -461,7 +461,7 @@ export async function monitorMSTeamsProvider(
             hasConnectionName: Boolean(connectionName),
             hasToken: Boolean(ctx.token.token),
             hasUser: userIds.length > 0,
-          });
+          }); // credential-logging-allowed: presence flag only, not the token value
           return;
         }
 

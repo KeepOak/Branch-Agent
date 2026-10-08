@@ -78,7 +78,7 @@ const REDACTION_RE = new RegExp(
 );
 
 const CALL_OPEN_RE =
-  /(?:getLogger\s*\(\s*\)|console|logger|(?:^|[^A-Za-z0-9_$])log)\s*\.\s*(?:trace|debug|info|warn|error|fatal|log)\s*\(/g;
+  /(?:getLogger\s*\(\s*\)|console|logger|(?:^|[^A-Za-z0-9_$])log)\s*\.\s*(?:trace|debug|info|warn|error|fatal|log)\s*(?:\?\.)?\s*\(/g;
 
 const MAX_CALL_LINES = 80;
 const GIT_IO = { encoding: "utf8", windowsHide: true };
