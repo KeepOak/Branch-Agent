@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { layout, titleOf, turnOf } from "./layout";
+import { isComputerStep, layout, stepRunId, titleOf, turnOf } from "./layout";
 import type { Block } from "./model";
 
 const blocks: Block[] = [
@@ -40,5 +40,29 @@ describe("layout", () => {
   it("finds a block's turn", () => {
     expect(turnOf(blocks, 3).map((b) => b.key)).toEqual(["s1", "s2", "t1", "t2"]);
     expect(turnOf(blocks, 0).map((b) => b.key)).toEqual(["u1", "s1", "s2", "t1", "t2"]);
+  });
+
+  it("does not fold steps from a later turn or a later run into the earlier card", () => {
+    const twoTurns: Block[] = [
+      { kind: "user", key: "u1", text: "browse" },
+      { kind: "step", key: "b1", outputKey: "run-a:b1", tool: "browser", title: "Opened", detail: "", status: "ok" },
+      { kind: "user", key: "u2", text: "computer" },
+      { kind: "step", key: "c1", outputKey: "run-b:c1", tool: "computer", title: "Clicked", detail: "", status: "ok" },
+    ];
+    expect(layout(twoTurns).filter((i) => i.type === "steps")).toHaveLength(2);
+
+    const twoRuns: Block[] = [
+      { kind: "step", key: "b1", outputKey: "run-a:b1", tool: "browser", title: "Opened", detail: "", status: "ok" },
+      { kind: "step", key: "c1", outputKey: "run-b:c1", tool: "computer", title: "Clicked", detail: "", status: "ok" },
+    ];
+    expect(layout(twoRuns).map((i) => (i.type === "steps" ? i.steps.map((s) => s.key) : i.block.key))).toEqual([["b1"], ["c1"]]);
+  });
+
+  it("reads a step's run from outputKey and only treats computer-like tools as activity", () => {
+    const browser: Block = { kind: "step", key: "b1", outputKey: "run-a:b1", tool: "browser", title: "Opened", detail: "", status: "ok" };
+    const command: Block = { kind: "step", key: "x", outputKey: "run-a:x", tool: "exec", title: "ls", detail: "", status: "ok" };
+    expect(isComputerStep(browser)).toBe(true);
+    expect(isComputerStep(command)).toBe(false);
+    expect(stepRunId(browser)).toBe("run-a");
   });
 });
