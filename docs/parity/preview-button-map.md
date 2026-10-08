@@ -8,7 +8,7 @@ Statuses: `same` (app matches the preview), `different` (exists but destination 
 
 Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Later-pass interpolated `data-act` keys that are not distinct product destinations are omitted; `scripts/parity/extract-preview-acts.mjs` lists raw act keys.
 
-**379 controls.** Totals: same 262, different 98, missing 5, extra 9, dead 0, unknown 5.
+**379 controls.** Totals: same 263, different 98, missing 5, extra 9, dead 0, unknown 4.
 
 ## Non-`same` entries
 
@@ -298,12 +298,6 @@ Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Lat
 | id | label | status | preview | app |
 |---|---|---|---|---|
 | `palette-item` | Palette row | different | Runs that action / opens that conversation, place, or settings page. | Runs the matching action. Action labels differ (Set up Branch vs Replay the first run; Browse themes vs Browse skins; Take the walkthrough vs Take the tour). |
-
-### dialogs
-
-| id | label | status | preview | app |
-|---|---|---|---|---|
-| `edit-trunk-shuffle` | Shuffle | unknown | Randomizes colour, shape, and eyes. | Shuffle exists on the look editor when that UI is ported. |
 
 ### first-run
 

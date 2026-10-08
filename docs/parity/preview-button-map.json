@@ -3464,19 +3464,19 @@
     "screen": "dialogs",
     "label": "Shuffle",
     "previewAction": "Randomizes colour, shape, and eyes.",
-    "appFile": "window/src/face/appearance.tsx",
-    "appComponent": "Trunk editor",
-    "appAction": "Shuffle exists on the look editor when that UI is ported.",
-    "status": "unknown"
+    "appFile": "window/src/places/trunk/TrunkEditor.tsx",
+    "appComponent": "TrunkEditor",
+    "appAction": "Randomizes colour, shape and eyes on a pebble look, or picks another unused character look.",
+    "status": "same"
   },
   {
     "id": "edit-trunk-save",
     "screen": "dialogs",
     "label": "Save",
     "previewAction": "Saves the Trunk look / permissions.",
-    "appFile": "window/src/places/people/person.tsx",
-    "appComponent": "Trunk / person edit",
-    "appAction": "Saves the Trunk.",
+    "appFile": "window/src/places/trunk/TrunkEditor.tsx",
+    "appComponent": "TrunkEditor",
+    "appAction": "Footer Save writes the Trunk look, name and permissions, then closes the editor.",
     "status": "same"
   },
   {
@@ -3746,7 +3746,7 @@
     "previewAction": "Later preview: Browser full size.",
     "appFile": "window/src/shell/keymap.ts",
     "appComponent": "keyActions",
-    "appAction": "Opens Browser full size when wired.",
+    "appAction": "Ctrl Alt Shift U opens Browser full size (toggles it closed if already open).",
     "status": "same"
   },
   {
@@ -3756,7 +3756,7 @@
     "previewAction": "Later preview: Computer full size.",
     "appFile": "window/src/shell/keymap.ts",
     "appComponent": "keyActions",
-    "appAction": "Opens Computer full size when wired.",
+    "appAction": "Ctrl Alt Shift D opens Computer full size (toggles it closed if already open).",
     "status": "same"
   },
   {

@@ -1767,13 +1767,13 @@ add("pair-cancel", "dialogs", "Cancel",
     "same")
 add("edit-trunk-shuffle", "dialogs", "Shuffle",
     "Randomizes colour, shape, and eyes.",
-    "window/src/face/appearance.tsx", "Trunk editor",
-    "Shuffle exists on the look editor when that UI is ported.",
-    "unknown")
+    "window/src/places/trunk/TrunkEditor.tsx", "TrunkEditor",
+    "Randomizes colour, shape and eyes on a pebble look, or picks another unused character look.",
+    "same")
 add("edit-trunk-save", "dialogs", "Save",
     "Saves the Trunk look / permissions.",
-    "window/src/places/people/person.tsx", "Trunk / person edit",
-    "Saves the Trunk.",
+    "window/src/places/trunk/TrunkEditor.tsx", "TrunkEditor",
+    "Footer Save writes the Trunk look, name and permissions, then closes the editor.",
     "same")
 add("edit-trunk-cancel", "dialogs", "Cancel",
     "Closes Edit Trunk without saving.",
@@ -1910,12 +1910,12 @@ add("key-pane-files", "keyboard", "Ctrl Shift B",
 add("key-stage-browser", "keyboard", "Ctrl Alt Shift U",
     "Later preview: Browser full size.",
     "window/src/shell/keymap.ts", "keyActions",
-    "Opens Browser full size when wired.",
+    "Ctrl Alt Shift U opens Browser full size (toggles it closed if already open).",
     "same")
 add("key-stage-computer", "keyboard", "Ctrl Alt Shift D",
     "Later preview: Computer full size.",
     "window/src/shell/keymap.ts", "keyActions",
-    "Opens Computer full size when wired.",
+    "Ctrl Alt Shift D opens Computer full size (toggles it closed if already open).",
     "same")
 add("key-talk-any-app", "keyboard", "Ctrl Alt Shift V",
     "Later preview: talk live from any app.",
