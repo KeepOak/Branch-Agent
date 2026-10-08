@@ -14,13 +14,14 @@ afterEach(async () => {
   root = undefined;
   document.body.innerHTML = "";
 });
-const step = (key: string, title: string, status: "ok" | "running" | "failed" | "denied", tool = "computer"): Block => ({
+const step = (key: string, title: string, status: "ok" | "running" | "failed" | "denied", tool = "computer", outputKey?: string): Block => ({
   kind: "step",
   key,
   tool,
   title,
   detail: `${title} detail`,
   status,
+  ...(outputKey ? { outputKey } : {}),
 });
 function engineWith(send?: WindowEngine["send"]): WindowEngine {
   return {
@@ -95,7 +96,7 @@ describe("computer card in the conversation", () => {
   it("shows Stopped and Carry on when the run was stopped", async () => {
     const send = vi.fn(async () => undefined);
     await render(
-      [{ ...step("a", "Opened mail", "ok"), outputKey: "r:a" }, { kind: "done", key: "d", runId: "r", stopped: true }],
+      [step("a", "Opened mail", "ok", "computer", "r:a"), { kind: "done", key: "d", runId: "r", stopped: true }],
       false,
       vi.fn(),
       engineWith(send),
@@ -205,14 +206,14 @@ describe("computer card in the conversation", () => {
       root!.render(
         <>
           <ComputerActivityCard
-            blocks={[{ ...step("old", "Opened mail", "ok"), outputKey: "run-old:old" }, { kind: "done", key: "d1", runId: "run-old", stopped: true }]}
+            blocks={[step("old", "Opened mail", "ok", "computer", "run-old:old"), { kind: "done", key: "d1", runId: "run-old", stopped: true }]}
             running={true}
             name="Ada"
             onWatch={vi.fn()}
             engine={engineWith(send)}
           />
           <ComputerActivityCard
-            blocks={[{ ...step("now", "Searching the inbox", "running"), outputKey: "run-now:now" }]}
+            blocks={[step("now", "Searching the inbox", "running", "computer", "run-now:now")]}
             running={true}
             name="Ada"
             onWatch={vi.fn()}
