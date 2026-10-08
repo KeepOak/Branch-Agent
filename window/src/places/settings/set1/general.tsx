@@ -40,10 +40,11 @@ export function GeneralPage(props: SettingsPageProps) {
 function StartingUp() {
   const desk = useDesktopControls();
   const why = desk.off;
+  const start = `Start with ${OS()}`;
   return (
     <Sec title="Starting up">
-      <Ctl title={`Start with ${OS}`} sub="Opens quietly in the tray." off={why}>
-        <Switch checked={desk.state?.startWithWindows ?? false} disabled={desk.busy !== null} label={`Start with ${OS}`} onChange={(on) => void desk.set("startWithWindows", on)} />
+      <Ctl title={start} sub="Opens quietly in the tray." off={why}>
+        <Switch checked={desk.state?.startWithWindows ?? false} disabled={desk.busy !== null} label={start} onChange={(on) => void desk.set("startWithWindows", on)} />
       </Ctl>
       {desk.state && desk.error ? <small className="why-k" role="alert">{visible(desk.error)}</small> : null}
     </Sec>
@@ -91,7 +92,7 @@ function Keyboard() {
 
 const rows = (sec: string, lv: Lv, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "general", title, sec, group: sec, lv }));
 export const GENERAL_ROWS: RowEntry[] = [
-  ...rows("Starting up", 0, [`Start with ${OS}`]),
+  ...rows("Starting up", 0, [`Start with ${OS()}`]),
   ...rows("Projects", 0, []),
   ...rows("Keyboard", 0, ["Keyboard shortcuts"]),
   ...rows("Writing", 0, ["Message box grows with the text", "Check spelling in the message box", "Suggest the rest as I type", "Add my location to messages", "Replies in", "After a plan", "Open Branch on", "Show “Finish setting up”"]),
