@@ -1330,6 +1330,49 @@ describe("models.authOrderSet", () => {
     expect(firstRespondCall(opts)?.[0]).toBe(false);
     expect(firstRespondCall(opts)?.[2]?.message).toContain(scenario.message);
   });
+
+  describe("with an API-key sign-in", () => {
+    const order = ["openai:key", "openai:one", "openai:two"];
+
+    beforeEach(() => {
+      setPreparedAuthStore(
+        createAuthProfileStoreFixture({
+          "openai:one": oauthCredential("openai", { access: "one", refresh: "one-refresh" }),
+          "openai:two": oauthCredential("openai", { access: "two", refresh: "two-refresh" }),
+          "openai:key": { type: "api_key", provider: "openai", key: "fixture-key" },
+        }),
+      );
+    });
+
+    it("refuses an agent-made order change that puts an API-key sign-in in", async () => {
+      const opts = createOrderOptions({ provider: "openai", profileIds: order });
+      opts.client = {
+        connect: { scopes: ["operator.admin"] },
+        internal: { agentRuntimeIdentity: { agentId: "main", sessionKey: "agent:main:main" } },
+      } as never;
+      await orderHandler(opts);
+      expect(mocks.setAuthProfileOrder).not.toHaveBeenCalled();
+      expect(firstRespondCall(opts)).toEqual([
+        false,
+        undefined,
+        expect.objectContaining({
+          code: "FORBIDDEN",
+          message: "Trunks only use subscription sign-ins.",
+        }),
+      ]);
+    });
+
+    it("keeps owner order changes that include an API-key sign-in", async () => {
+      const opts = createOrderOptions({ provider: "openai", profileIds: order });
+      await orderHandler(opts);
+      expect(mocks.setAuthProfileOrder).toHaveBeenCalledWith({
+        agentDir: "/tmp/agent",
+        provider: "openai",
+        order,
+      });
+      expect(firstRespondCall(opts)?.[0]).toBe(true);
+    });
+  });
 });
 
 describe("models.authSetApiKey", () => {
