@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Conversation } from "../connect/conversations";
 import type { WindowEngine } from "../connect/engine";
 import { ControlTower } from "./ControlTower";
+import { resetWaitingNotices } from "./notify";
 
 vi.mock("../face/Face", () => ({ Face: ({ label }: { label?: string }) => <span data-face={label} /> }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -14,6 +15,7 @@ beforeEach(() => {
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, media: "", addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn() })));
 });
 afterEach(async () => {
+  resetWaitingNotices();
   if (root) await act(async () => root?.unmount());
   root = undefined;
   document.body.replaceChildren();
@@ -226,5 +228,87 @@ describe("Control tower live sections", () => {
     expect(host.textContent).not.toContain("Nothing finished yet");
     expect(host.textContent).toContain("Tidy the Downloads folder");
     expect(host.textContent).toContain("32s");
+  });
+
+  it("shows a waiting item that triggers the notification in Needs you without a reload, then clears both when handled", async () => {
+    const closed: string[] = [];
+    const opened: Array<{ title: string; body?: string; tag?: string }> = [];
+    class FakeNotice {
+      title: string;
+      body?: string;
+      tag?: string;
+      constructor(title: string, opts?: NotificationOptions) {
+        this.title = title;
+        this.body = typeof opts?.body === "string" ? opts.body : undefined;
+        this.tag = typeof opts?.tag === "string" ? opts.tag : undefined;
+        opened.push({ title: this.title, body: this.body, tag: this.tag });
+      }
+      close() { closed.push(this.tag ?? this.title); }
+      static permission: NotificationPermission = "granted";
+    }
+    vi.stubGlobal("Notification", FakeNotice);
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    const listeners: Array<(event: { event: string; payload?: unknown }) => void> = [];
+    const answers: Record<string, unknown> = {
+      ...live,
+      "question.list": { questions: [] },
+      "question.resolve": { status: "answered" },
+    };
+    const session = engine(answers, (fn) => {
+      listeners.push(fn);
+      return () => undefined;
+    });
+    const props = {
+      engine: session,
+      rows: [conv({ key: "agent:ada:wait", title: "Tidy the Downloads folder", agentId: "ada" })],
+      needsCount: 0,
+      trunkName: (id?: string) => (id === "ada" ? "Ada" : id ?? ""),
+      onOpen: () => undefined,
+      onInbox: () => undefined,
+      onClose: () => undefined,
+    };
+    const host = await show(<ControlTower {...props} />);
+    expect(host.textContent).toContain("Nothing is waiting for you");
+    expect(opened).toEqual([]);
+
+    const ask = {
+      id: "q-wait",
+      status: "pending",
+      agentId: "ada",
+      sessionKey: "agent:ada:wait",
+      questions: [{ questionId: "which", question: "Which folder first?", options: [{ label: "Downloads" }, { label: "Desktop" }] }],
+    };
+    await act(async () => {
+      for (const fn of listeners) fn({ event: "question.requested", payload: ask });
+    });
+    expect(host.textContent).toContain("Which folder first?");
+    expect(host.textContent).not.toContain("Nothing is waiting for you");
+    expect(opened).toEqual([{ title: "Ada", body: "is waiting for you", tag: "question:q-wait" }]);
+
+    await act(async () => { [...host.querySelectorAll("button")].find((button) => button.textContent === "Allow")?.click(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(session.request).toHaveBeenCalledWith("question.resolve", { id: "q-wait", answers: { answers: { which: ["Desktop"] } } });
+    expect(host.textContent).toContain("Nothing is waiting for you");
+    expect(host.textContent).not.toContain("Which folder first?");
+    expect(closed).toEqual(["question:q-wait"]);
+  });
+
+  it("shows a needsYou conversation in Needs you without a reload", async () => {
+    const props = {
+      engine: engine(live),
+      needsCount: 0,
+      trunkName: (id?: string) => (id === "ada" ? "Ada" : id ?? ""),
+      onOpen: () => undefined,
+      onInbox: () => undefined,
+      onClose: () => undefined,
+    };
+    const idle = conv({ key: "agent:ada:wait", title: "Tidy the Downloads folder", agentId: "ada" });
+    const host = await show(<ControlTower {...props} rows={[idle]} />);
+    expect(host.textContent).toContain("Nothing is waiting for you");
+    await act(async () => {
+      root?.render(<ControlTower {...props} rows={[{ ...idle, needsYou: true, headline: "Which folder first?" }]} />);
+    });
+    expect(host.textContent).toContain("Which folder first?");
+    expect(host.textContent).not.toContain("Nothing is waiting for you");
   });
 });
