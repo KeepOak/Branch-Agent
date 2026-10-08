@@ -279,36 +279,42 @@ async function resolveRealtimeVoiceAgentConsultSessionEntry(params: {
   const shouldFork =
     params.contextMode === "fork" &&
     requesterSessionKey &&
+    Boolean(requesterEntry?.sessionId?.trim()) &&
     (!requesterAgentId || requesterAgentId === params.agentId);
   let forkDecisionWarning: string | undefined;
 
   let patched: SessionEntry | null = null;
   if (shouldFork) {
-    const { forkSessionEntryFromParent } = await import("../auto-reply/reply/session-fork.js");
-    const forked = await forkSessionEntryFromParent({
-      storePath: params.storePath,
-      parentSessionKey: requesterSessionKey,
-      agentId: params.agentId,
-      config: params.cfg,
-      sessionKey: params.sessionKey,
-      fallbackEntry: {
-        ...creationStamp,
-        sessionId: "",
-        updatedAt: now,
-      },
-      entryPatch: {
-        skipExisting: true,
-        skipped: { ...deliveryFields, updatedAt: now },
-        forked: { ...deliveryFields, ...spawnLineage, updatedAt: now },
-      },
-    });
-    if (forked.status === "forked" || forked.status === "skipped") {
-      if (forked.status === "skipped" && forked.decision?.status === "skip") {
-        forkDecisionWarning = forked.decision.message;
+    try {
+      const { forkSessionEntryFromParent } = await import("../auto-reply/reply/session-fork.js");
+      const forked = await forkSessionEntryFromParent({
+        storePath: params.storePath,
+        parentSessionKey: requesterSessionKey,
+        agentId: params.agentId,
+        config: params.cfg,
+        sessionKey: params.sessionKey,
+        fallbackEntry: {
+          ...creationStamp,
+          sessionId: "",
+          updatedAt: now,
+        },
+        entryPatch: {
+          skipExisting: true,
+          skipped: { ...deliveryFields, updatedAt: now },
+          forked: { ...deliveryFields, ...spawnLineage, updatedAt: now },
+        },
+      });
+      if (forked.status === "forked" || forked.status === "skipped") {
+        if (forked.status === "skipped" && forked.decision?.status === "skip") {
+          forkDecisionWarning = forked.decision.message;
+        }
+        if (forked.sessionEntry.sessionId?.trim()) {
+          patched = forked.sessionEntry;
+        }
       }
-      if (forked.sessionEntry.sessionId?.trim()) {
-        patched = forked.sessionEntry;
-      }
+    } catch {
+      // Same-agent fork is best-effort. A missing parent, or a source worker that
+      // cannot load TypeScript, still initializes an isolated consult session.
     }
   }
 

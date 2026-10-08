@@ -1,0 +1,3 @@
+# Tests for feat/harvest-pack1-oc-voice-0090 run from scripts/feature-batch-ci-named/feat-harvest-pack1-oc-voice-0090.txt.
+# Left out of Harvest so harvestTests() and namedTests() stay disjoint.
+# merge-gate-trusted coverage reads only named lists from the PR head.

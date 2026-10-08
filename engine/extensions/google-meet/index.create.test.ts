@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/google-meet/index.create.test.ts (atlas VOICE-0105). Changed for Branch: Retained Branch gateway and platform test injection with all upstream assertions.
 import { runInNewContext } from "node:vm";
 import { Command } from "commander";
 import { createRequireRecord, useMeetingTestState } from "branch/plugin-sdk/test-fixtures";

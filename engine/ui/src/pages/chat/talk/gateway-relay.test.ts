@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:ui/src/pages/chat/talk/gateway-relay.test.ts (atlas VOICE-0096). Changed for Branch: Retained Branch rename (DECISIONS.md item 127) and existing assertions.
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
