@@ -46,6 +46,5 @@ jobs:
       - name: Verify Control UI source catalog and raw-copy baseline
         working-directory: engine
         run: pnpm ui:i18n:verify
-      - name: Verify Control UI catalog fallback baseline
-        working-directory: engine
-        run: node --import ./scripts/tsx.mjs scripts/control-ui-i18n-verify.ts generated
+        # `generated` / catalog-fallbacks.json is post-merge owned. Requiring it
+        # on source PRs forces mixed generated+source commits, which isolation rejects.
