@@ -260,6 +260,7 @@ export function prepareAgentRuntimeAuth(
   }
   const store = params.authProfileStore;
   const authProfileSelectionProvider = harnessOwnsOpenAIAuth ? "openai" : params.provider;
+  let pinnedProfileUnavailable = false;
   if (userPinnedProfileId) {
     const eligibility = store
       ? resolveAuthProfileEligibility({
@@ -270,7 +271,7 @@ export function prepareAgentRuntimeAuth(
           profileId: userPinnedProfileId,
           includePendingOAuthRefresh: true,
         })
-      : { eligible: false };
+      : { eligible: false, reasonCode: "profile_missing" as const };
     if (!eligibility.eligible) {
       if (
         !store?.profiles[userPinnedProfileId] &&
@@ -282,9 +283,18 @@ export function prepareAgentRuntimeAuth(
           modelId: params.modelId,
         });
       }
-      throw new Error(
-        `Auth profile "${userPinnedProfileId}" is not configured for ${authProfileSelectionProvider}.`,
-      );
+      if (
+        eligibility.reasonCode === "profile_missing" ||
+        eligibility.reasonCode === "provider_mismatch" ||
+        params.allowAuthProfileFallback === false
+      ) {
+        throw new Error(
+          `Auth profile "${userPinnedProfileId}" is not configured for ${authProfileSelectionProvider}: ${eligibility.reasonCode}.`,
+        );
+      }
+      // A known pin is a retry preference, not a requirement that blocks later turns.
+      // Keep its route facts and preference, but do not dispatch ineligible credentials.
+      pinnedProfileUnavailable = true;
     }
   }
 
@@ -459,7 +469,12 @@ export function prepareAgentRuntimeAuth(
         : undefined;
   const sourcePlan = buildProviderModelAuthSourcePlan({
     ...(ownership ? { ownership } : {}),
-    profiles: resolvedOrderedProfileIds.map((profileId) => resolveProfile(params, profileId)),
+    profiles: resolvedOrderedProfileIds.map((profileId) => ({
+      ...resolveProfile(params, profileId),
+      ...(profileId === userPinnedProfileId && pinnedProfileUnavailable
+        ? { readiness: "unavailable" as const }
+        : {}),
+    })),
     ...(userPinnedProfileId || providerPreferredProfileId
       ? { preferredProfileId: userPinnedProfileId ?? providerPreferredProfileId }
       : {}),
