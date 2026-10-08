@@ -902,10 +902,11 @@ test('old-base PR still runs the trusted check from the default branch', () => {
   assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-trusted.test.mjs'));
 });
 
-test('merge-gate does not retrigger on ready_for_review and cancel its waiting run', () => {
+test('merge-gate lists ready_for_review and converted_to_draft so drafts start and stop the wait', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
   assert.match(yaml, /^  pull_request:\s*$/m);
-  assert.doesNotMatch(yaml, /^\s+types:.*ready_for_review/m);
+  assert.match(yaml, /^\s+types:.*ready_for_review/m);
+  assert.match(yaml, /^\s+types:.*converted_to_draft/m);
 });
 
 test('merge-gate wait ignores merge-gate-trusted so the two gates cannot deadlock', () => {
