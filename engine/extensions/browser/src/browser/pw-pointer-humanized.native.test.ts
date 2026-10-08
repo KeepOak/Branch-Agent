@@ -416,20 +416,28 @@ describe.runIf(process.env.BRANCH_BROWSER_SNAPSHOT_E2E === "1")("native humanize
   });
 
   it("retains the native navigation policy on a humanClick-triggered request", async () => {
-    await page.locator("#target").evaluate(
-      (el, url) =>
-        el.addEventListener("click", () => {
-          location.href = url;
-        }),
-      `${service.baseUrl}/blocked`,
-    );
-    await expect(
-      executeActViaPlaywright({
-        ...target,
-        action: { kind: "humanClick", selector: "#target" },
-        ssrfPolicy: { dangerouslyAllowPrivateNetwork: false },
-      }),
-    ).rejects.toThrow();
+    // Start the private navigation on mousedown so the document request is in
+    // flight during the held-button pause, while request interception is still
+    // installed. A click-handler location.href assignment can begin after
+    // humanClick returns and miss the 250ms post-action grace on loaded Ubuntu CI.
+    await page.locator("#target").evaluate((el, url) => {
+      el.addEventListener("mousedown", () => {
+        location.href = url;
+      });
+    }, `${service.baseUrl}/blocked`);
+    const landed = Promise.withResolvers<void>();
+    onInput = (event) => {
+      if (event.type === "mousedown" && event.target === "target") {
+        landed.resolve();
+      }
+    };
+    const act = executeActViaPlaywright({
+      ...target,
+      action: { kind: "humanClick", selector: "#target" },
+      ssrfPolicy: { dangerouslyAllowPrivateNetwork: false },
+    });
+    await landed.promise;
+    await expect(act).rejects.toThrow();
     expect(service.blockedRequests()).toBe(0);
   });
 });
