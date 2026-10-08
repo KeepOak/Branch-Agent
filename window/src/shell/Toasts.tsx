@@ -1,4 +1,5 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useDesktopAppliedUpdateNotice } from "../connect/desktop-component-updates";
 import { dismiss, getToasts, subscribeToasts, TOAST_MS, type Toast } from "./notify";
 
 /** One toast: 6 s, paused while hovered or focused; × closes it (DESIGN-SPEC §2.7, §5.11). */
@@ -62,6 +63,7 @@ function ToastItem({ toast }: { toast: Toast }) {
 }
 
 export function Toasts({ setupOpen = false }: { setupOpen?: boolean }) {
+  useDesktopAppliedUpdateNotice();
   const toasts = useSyncExternalStore(subscribeToasts, getToasts);
   const visible = setupOpen ? toasts.find((toast) => toast.tone === "bad") : toasts[0];
   return (

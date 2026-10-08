@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { StatusBar } from "../shell/StatusBar";
 import { UpdatesPage } from "../places/settings/set2/updates";
-import { useBranchVersion } from "./branch-version";
+import { BRANCH_VERSION_TIP, useBranchVersion } from "./branch-version";
 import type { WindowEngine } from "./engine";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -25,7 +25,8 @@ it("status bar shows Branch desktop version, not engine version", async () => {
   await act(async () => root.render(<Bar />));
   const button = host.querySelector<HTMLElement>('[data-testid="sb-version"]');
   expect(button?.getAttribute("aria-label")).toBe("Branch 0.4.4");
-  expect(button?.title).toContain("0.4.4 · build a300a48d");
+  expect(button?.textContent).toContain("Branch 0.4.4");
+  expect(button?.title).toBe(BRANCH_VERSION_TIP);
   expect(host.textContent).not.toContain("2026.9");
 });
 
