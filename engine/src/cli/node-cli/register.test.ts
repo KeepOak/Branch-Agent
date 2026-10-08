@@ -1,5 +1,8 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { Command } from "commander";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encodePairingSetupCode } from "../../pairing/setup-code.js";
 import { registerNodeCli } from "./register.js";
 
@@ -74,10 +77,28 @@ const pairCode = (overrides: Partial<Parameters<typeof encodePairingSetupCode>[0
   });
 
 describe("registerNodeCli", () => {
+  let tempDir: string | undefined;
+
   beforeEach(() => {
     vi.clearAllMocks();
     daemonMocks.loadNodeHostConfig.mockResolvedValue(null);
   });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    if (tempDir && fs.existsSync(tempDir)) {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+    tempDir = undefined;
+  });
+
+  function writeCodeFile(contents: string) {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-pair-register-"));
+    const filePath = path.join(tempDir, "code.txt");
+    fs.writeFileSync(filePath, contents, { mode: 0o600 });
+    fs.chmodSync(filePath, 0o600);
+    return filePath;
+  }
 
   it("forwards the private worker's explicit desktop preference", async () => {
     await run(["worker", "--desktop-sharing"]);
@@ -241,6 +262,30 @@ describe("registerNodeCli", () => {
     },
   );
 
+  it.each([
+    ["--pair-file", true],
+    ["--pair-if-needed-file", false],
+  ] as const)(
+    "derives authentication preference from pairing mode for %s",
+    async (flag, preferBootstrap) => {
+      const filePath = writeCodeFile(pairCode());
+      await run(["run", flag, filePath]);
+      expectHost({
+        gatewayBootstrapToken: "bootstrap-123",
+        preferGatewayBootstrapToken: preferBootstrap,
+      });
+    },
+  );
+
+  it("forces bootstrap token when BRANCH_PAIRING_CODE is the only pairing source", async () => {
+    vi.stubEnv("BRANCH_PAIRING_CODE", pairCode());
+    await run(["run"]);
+    expectHost({
+      gatewayBootstrapToken: "bootstrap-123",
+      preferGatewayBootstrapToken: true,
+    });
+  });
+
   it.each(["--pair", "--pair-if-needed"])(
     "handles expired pairing according to %s",
     async (flag) => {
@@ -289,9 +334,19 @@ describe("registerNodeCli", () => {
     expect(daemonMocks.runNodeHost).not.toHaveBeenCalled();
   });
 
-  it("rejects simultaneous forced and resumable pairing", async () => {
+  it.each([
+    ["--pair", "first", "--pair-if-needed", "second"],
+    ["--pair", "first", "--pair-if-needed-file", "second.txt"],
+    ["--pair-file", "first.txt", "--pair-if-needed", "second"],
+    ["--pair-file", "first.txt", "--pair-if-needed-file", "second.txt"],
+  ])("rejects simultaneous forced and resumable pairing: %s with %s", async (
+    forcedFlag,
+    forcedValue,
+    ifNeededFlag,
+    ifNeededValue,
+  ) => {
     await expect(
-      run(["run", "--pair", "first", "--pair-if-needed", "second"]),
+      run(["run", forcedFlag, forcedValue, ifNeededFlag, ifNeededValue]),
     ).rejects.toMatchObject({ code: "commander.conflictingOption" });
     expect(daemonMocks.runNodeHost).not.toHaveBeenCalled();
     expect(daemonMocks.loadNodeHostConfig).not.toHaveBeenCalled();
