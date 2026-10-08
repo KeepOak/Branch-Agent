@@ -73,9 +73,13 @@ function canReclaimDistArtifactOwner(payload: unknown, directory?: string): bool
   } catch {
     return true;
   }
-  if (hasRecycledIdentity(record)) {
-    return directory === undefined || !hasRetainedChildWork(directory);
+  if (
+    hasRecycledIdentity(record) &&
+    (directory === undefined || !hasRetainedChildWork(directory))
+  ) {
+    return true;
   }
+  // As on main, an unjoined marker makes fs-safe refuse at once instead of waiting forever.
   return directory !== undefined && fs.existsSync(path.join(directory, "unjoined"));
 }
 

@@ -77,6 +77,26 @@ it.for(["unjoined", "child-4242"])(
   },
 );
 
+it("refuses a waiting acquire at once for a recycled PID with unjoined work", async () => {
+  const root = createRoot();
+  const directory = resolveDistArtifactLockPath(root);
+  fs.mkdirSync(directory, { recursive: true });
+  const ownerPath = path.join(directory, "owner.json");
+  const bytes = JSON.stringify({
+    pid: process.pid,
+    startIdentity: "different-process-start",
+    startedAt: new Date().toISOString(),
+  });
+  fs.writeFileSync(ownerPath, bytes);
+  fs.writeFileSync(path.join(directory, "unjoined"), "retained child fence");
+  // A waiter that never refuses would end with the timeout reason instead.
+  await expect(
+    acquireDistArtifactOwnership(root, true, AbortSignal.timeout(2_000)),
+  ).rejects.toThrow("retained by PID");
+  expect(fs.readFileSync(ownerPath, "utf8")).toBe(bytes);
+  expect(fs.readFileSync(path.join(directory, "unjoined"), "utf8")).toBe("retained child fence");
+});
+
 it("refuses a live same-identity owner", async () => {
   const root = createRoot();
   const lock = await acquireDistArtifactOwnership(root);
