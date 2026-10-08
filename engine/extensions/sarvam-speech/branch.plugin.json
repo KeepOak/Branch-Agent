@@ -1,0 +1,32 @@
+{
+  "id": "sarvam-speech",
+  "name": "Sarvam Speech",
+  "description": "Sarvam bulbul speech synthesis and saarika/saaras Indian-language transcription.",
+  "categories": ["voice"],
+  "capabilityCatalogEntry": "./capability-catalog.ts",
+  "activation": {
+    "onStartup": false
+  },
+  "enabledByDefault": true,
+  "setup": {
+    "providers": [
+      {
+        "id": "sarvam-speech",
+        "envVars": ["SARVAM_API_KEY"]
+      },
+      {
+        "id": "sarvam",
+        "envVars": ["SARVAM_API_KEY"]
+      }
+    ]
+  },
+  "contracts": {
+    "speechProviders": ["sarvam-speech", "sarvam"],
+    "mediaUnderstandingProviders": ["sarvam-speech"]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
