@@ -1,0 +1,28 @@
+{
+  "id": "stable-diffusion-webui",
+  "categories": ["media"],
+  "activation": { "onStartup": false },
+  "enabledByDefault": true,
+  "contracts": { "imageGenerationProviders": ["stable-diffusion-webui"] },
+  "configContracts": {
+    "secretInputs": { "paths": [{ "path": "headers.*", "expected": "string" }] }
+  },
+  "imageGenerationProviderMetadata": {
+    "stable-diffusion-webui": {
+      "configSignals": [
+        { "rootPath": "plugins.entries.stable-diffusion-webui.config", "required": ["baseUrl"] }
+      ]
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "baseUrl": { "type": "string" },
+      "allowPrivateNetwork": { "type": "boolean" },
+      "headers": { "type": "object", "additionalProperties": { "type": ["string", "object"] } },
+      "parameters": { "type": "object", "additionalProperties": true },
+      "timeoutMs": { "type": "integer", "minimum": 1 }
+    }
+  }
+}
