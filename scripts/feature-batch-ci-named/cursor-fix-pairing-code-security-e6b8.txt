@@ -1,0 +1,7 @@
+engine:src/cli/node-cli/pairing-security.test.ts
+engine:src/cli/node-cli/register.test.ts
+engine:src/cli/setup-code-input.test.ts
+engine:src/infra/device-bootstrap-single-use.test.ts
+engine:ui/src/e2e/mobile-pairing.e2e.test.ts
+engine:ui/src/pages/devices/view-pairing.test.ts
+window:src/stage/AddComputer.test.tsx

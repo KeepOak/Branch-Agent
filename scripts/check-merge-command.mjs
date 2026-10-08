@@ -14,6 +14,16 @@ export const docsToCheck = [
   'docs/CHECKPOINT.md',
 ];
 
+// Read the quoted value assigned to a JSON-like field in a lookahead window.
+// Matches merge_method: "merge" and "merge_method":"merge", not a nearby mention.
+export function assignedFieldValue(context, field) {
+  const pattern = new RegExp(
+    String.raw`["']?${field}["']?\s*[:=]\s*["']([^"']+)["']`,
+  );
+  const match = context.match(pattern);
+  return match ? match[1] : null;
+}
+
 export function checkMergeCommands(rootDir = root, docs = docsToCheck) {
   let failed = false;
 
@@ -46,7 +56,7 @@ export function checkMergeCommands(rootDir = root, docs = docsToCheck) {
       failed = true;
     }
     
-    // Must not have --squash or --rebase
+    // Must not have --squash, --rebase, or --auto
     if (cmd.includes('--squash')) {
       console.error(`${doc}: merge command must not use --squash:`);
       console.error(`  ${cmd}`);
@@ -55,6 +65,12 @@ export function checkMergeCommands(rootDir = root, docs = docsToCheck) {
     
     if (cmd.includes('--rebase')) {
       console.error(`${doc}: merge command must not use --rebase:`);
+      console.error(`  ${cmd}`);
+      failed = true;
+    }
+
+    if (cmd.includes('--auto')) {
+      console.error(`${doc}: merge command must not use --auto:`);
       console.error(`  ${cmd}`);
       failed = true;
     }
@@ -70,14 +86,24 @@ export function checkMergeCommands(rootDir = root, docs = docsToCheck) {
     const contextEnd = Math.min(contextStart + 300, content.length);
     const context = content.slice(contextStart, contextEnd);
     
-    if (!context.includes('"merge"') && !context.includes('merge_method')) {
-      console.error(`${doc}: REST API merge call should specify merge_method: "merge":`);
+    const mergeMethod = assignedFieldValue(context, 'merge_method');
+    if (mergeMethod === 'squash') {
+      console.error(`${doc}: REST API merge call must not use merge_method: "squash":`);
+      console.error(`  ${call}`);
+      failed = true;
+    } else if (mergeMethod === 'rebase') {
+      console.error(`${doc}: REST API merge call must not use merge_method: "rebase":`);
+      console.error(`  ${call}`);
+      failed = true;
+    } else if (mergeMethod !== 'merge') {
+      console.error(`${doc}: REST API merge call must specify merge_method: "merge":`);
       console.error(`  ${call}`);
       failed = true;
     }
-    
-    if (!context.includes('sha')) {
-      console.error(`${doc}: REST API merge call should specify sha parameter:`);
+
+    // Must specify sha as an assigned field, not just the word nearby
+    if (!assignedFieldValue(context, 'sha')) {
+      console.error(`${doc}: REST API merge call must specify sha parameter:`);
       console.error(`  ${call}`);
       failed = true;
     }
@@ -85,7 +111,7 @@ export function checkMergeCommands(rootDir = root, docs = docsToCheck) {
 }
 
   if (failed) {
-    console.error('\nMerge commands must use: gh pr merge <n> --auto --merge --match-head-commit <sha>');
+    console.error('\nMerge commands must use: gh pr merge <n> --merge --match-head-commit <sha>');
     console.error('Or REST API: PUT /repos/KeepOak/Branch-Agent/pulls/<n>/merge with merge_method: "merge" and sha');
     return false;
   } else {

@@ -357,14 +357,26 @@ async function verifyControlUiContributorCatalogs(options: { checkOnly: boolean;
 }
 
 function usage(): never {
-  console.error("Usage: node --import tsx scripts/control-ui-i18n-verify.ts <verify|baseline>");
+  console.error(
+    "Usage: node --import tsx scripts/control-ui-i18n-verify.ts <verify|baseline|generated>",
+  );
   process.exit(2);
 }
 
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
-  if ((command !== "verify" && command !== "baseline") || rest.length > 0) {
+  if (
+    (command !== "verify" && command !== "baseline" && command !== "generated") ||
+    rest.length > 0
+  ) {
     usage();
+  }
+  if (command === "generated") {
+    await verifyControlUiGeneratedCatalogs({
+      checkOnly: true,
+      write: false,
+    });
+    return;
   }
   await verifyControlUiContributorCatalogs({
     checkOnly: command === "verify",
