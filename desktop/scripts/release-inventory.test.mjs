@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile, cp, rm, chmod, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
+import { adoptSharedEngineDist } from "./release-build.mjs";
 import { gunzipSync } from "node:zlib";
 import test from "node:test";
 import { makeComponentRelease } from "./make-component-release.mjs";
@@ -204,3 +205,38 @@ test("public latest readback rejects stale aliases, inaccessible manifests and c
   await assert.rejects(verifyPublicLatest(assets, commit, version, proof, async () => latest(), async () => new Response("", { status: 404 })), /not publicly downloadable/);
   await assert.rejects(verifyPublicLatest(assets, commit, version, proof, async () => latest(), async () => new Response("altered")), /Expected values|differs/);
 }));
+
+test("adoptSharedEngineDist copies a matching prebuilt dist and rejects a different commit", async () => {
+  const root = await mkdtemp(join(process.env.RUNNER_TEMP ?? process.env.BRANCH_RELEASE_TEST_TEMP ?? tmpdir(), "release-build-"));
+  try {
+    const source = join(root, "shared");
+    const destination = join(root, "engine", "dist");
+    await mkdir(source, { recursive: true });
+    await writeFile(join(source, "build-info.json"), `${JSON.stringify({ commit: "a".repeat(40), version: "1.0.0" }, null, 2)}\n`);
+    await writeFile(join(source, "entry.js"), "export {}\n");
+    await adoptSharedEngineDist(source, destination, { commit: "a".repeat(40) });
+    assert.equal(JSON.parse(await readFile(join(destination, "build-info.json"), "utf8")).commit, "a".repeat(40));
+    assert.equal(await readFile(join(destination, "entry.js"), "utf8"), "export {}\n");
+    await writeFile(join(source, "build-info.json"), `${JSON.stringify({ commit: "b".repeat(40), version: "1.0.0" }, null, 2)}\n`);
+    await assert.rejects(() => adoptSharedEngineDist(source, destination, { commit: "a".repeat(40) }), /Shared engine build differs from source freeze/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("component-release splits macOS and Windows engine compile from package and sign", async () => {
+  const workflow = await readFile(resolve(import.meta.dirname, "../../.github/workflows/component-release.yml"), "utf8");
+  assert.match(workflow, /macos-engine:/);
+  assert.match(workflow, /macos-package:/);
+  assert.match(workflow, /windows-engine:/);
+  assert.match(workflow, /windows-package:/);
+  assert.match(workflow, /needs: \[identity, window, macos-engine\]/);
+  assert.match(workflow, /needs: \[identity, window, windows-engine\]/);
+  assert.match(workflow, /needs: \[identity, native, windows-package, macos-package\]/);
+  assert.match(workflow, /BRANCH_RELEASE_ENGINE_DEPLOYMENT/);
+  assert.match(workflow, /tar -C "\$\{\{ runner\.temp \}\}\/macos-engine" -h -czf "\$\{\{ runner\.temp \}\}\/macos-engine\.tar\.gz" \./);
+  assert.match(workflow, /tar --force-local -C windows-engine -h -czf windows-engine\.tar\.gz \./);
+  assert.doesNotMatch(workflow, /artifacts\/\$artifact\/zip/);
+  assert.doesNotMatch(workflow, /os: macos-15\n            target: darwin-arm64/);
+  assert.doesNotMatch(workflow, /os: windows-latest\n            target: win32-x64/);
+});
