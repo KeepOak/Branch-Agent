@@ -1,0 +1,155 @@
+/* Preview job cards (spec-v23 jobT5 / jobCardT5). Ported from design/spec-v23/index.html:7392–7416, 7552–7553, 7563. */
+.jobT5 {
+  border: 1px solid var(--line);
+  background: var(--raise);
+  border-radius: 12px;
+  overflow: hidden;
+  max-width: 620px;
+}
+.jobTopT5 {
+  all: unset;
+  box-sizing: border-box;
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 12px;
+  padding: 11px 14px;
+  cursor: pointer;
+}
+.jobTopT5:hover {
+  background: var(--fill);
+}
+.jobTopT5:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.jobTitleT5 {
+  font-weight: 600;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+.jobTitleT5 > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.jobSumT5 {
+  grid-column: 1 / -1;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.pillT5 {
+  font: 600 11px / 1 var(--mono, ui-monospace);
+  padding: 4px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  align-self: start;
+  background: var(--fill);
+  color: var(--ink-2);
+}
+.p-working {
+  color: var(--accent-ink, var(--accent));
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.p-needs {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+}
+.p-done {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 15%, transparent);
+}
+.p-stuck {
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 15%, transparent);
+}
+.p-moved {
+  color: var(--ink-3);
+}
+.barT5 {
+  grid-column: 1 / -1;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--line);
+  overflow: hidden;
+}
+.barT5 i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 1s;
+}
+.chipsT5 {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.chipT5 {
+  font: 11.5px var(--mono, ui-monospace);
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  padding: 2px 7px;
+  color: var(--ink-2);
+}
+.chipT5.exc {
+  border-style: dashed;
+  color: var(--ink-3);
+}
+.jobBodyT5 {
+  border-top: 1px solid var(--line);
+  padding: 10px 14px 12px;
+  display: flex;
+  gap: 5px;
+  flex-direction: column;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.stepT5 small {
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+.stepT5 small:first-letter {
+  text-transform: none;
+}
+.jobBodyT5[hidden] {
+  display: none;
+}
+.jobActsT5 {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+  font-family: var(--sans, inherit);
+}
+.spinT5 {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  flex: none;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .spinT5 {
+    animation: spin 1s linear infinite;
+  }
+}
+/* Preview #main .thread .jobT5 width (7552) and the narrow-pane override (7563). */
+.thread .jobT5 {
+  max-width: min(100%, 82ch);
+}
+@container chat (max-width: 620px) {
+  .thread .jobT5 {
+    max-width: 100%;
+  }
+}

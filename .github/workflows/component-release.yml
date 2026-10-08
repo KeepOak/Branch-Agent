@@ -4,18 +4,15 @@ on:
   push:
     branches: [main]
     tags: ['v[0-9]*.[0-9]*.[0-9]*']
-    paths:
-      - 'engine/**'
-      - 'window/**'
-      - 'desktop/**'
-      - 'scripts/feature-batch-ci*'
-      - '.github/workflows/component-release.yml'
-  # Release-pipeline changes build and smoke every native target before merge; publish stays main-only.
+  schedule:
+    # Every 30 minutes, offset from the top of the hour: batch merges into releases.
+    - cron: '7,37 * * * *'
   pull_request:
     paths:
       - 'desktop/scripts/release-*'
       - 'desktop/scripts/make-component-release.mjs'
       - 'desktop/scripts/publish-component-release.mjs'
+      - 'desktop/scripts/component-release-readiness.mjs'
       - 'desktop/scripts/production-engine-smoke*'
       - 'desktop/scripts/bundle-node.mjs'
       - 'desktop/src/component-update*'
@@ -24,20 +21,107 @@ on:
       - 'engine/pnpm-workspace.yaml'
       - '.github/workflows/component-release.yml'
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Stop after readiness and identity; do not build natives or publish'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
-# Main: an in-flight release always finishes; queued pushes collapse to the newest pending run, so
-# releases keep landing while lanes merge (publish refuses anything older than GitHub latest).
-# Pull requests: a new push replaces the previous check.
+# Scheduled, manual, and main-push backup releases share one group and never cancel each other: an
+# in-flight release always finishes; queued runs collapse to the newest pending run. A push to main
+# releases only when the latest release is more than 25 minutes old, so a missed cron cannot strand a
+# merge and bursts still batch. Pull requests: a new push replaces the previous check.
 concurrency:
   group: github-component-release-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  identity:
+  readiness:
     if: github.repository == 'KeepOak/Branch-Agent'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      commit: ${{ steps.check.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Check if a release is needed
+        id: check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_GATE_WAIT_SECONDS: '240'
+        run: |
+          set -euo pipefail
+          decide_scheduled() {
+            git fetch origin main
+            local main_commit latest_release latest_commit failed_checks latest_meta published_at
+            main_commit="$(git rev-parse origin/main)"
+            latest_release=""
+            published_at=""
+            latest_meta=$(node scripts/merge-gate-rate-limit.mjs gh -- api repos/KeepOak/Branch-Agent/releases/latest --jq '[.tag_name,.published_at] | @tsv' 2>/dev/null || echo "")
+            if [[ -n "$latest_meta" ]]; then
+              latest_release="${latest_meta%%$'\t'*}"
+              published_at="${latest_meta#*$'\t'}"
+            fi
+            if [[ -z "$latest_release" ]]; then
+              echo "No previous release found; proceeding with release" >&2
+              printf '%s %s\n' true "$main_commit"
+              return
+            fi
+            # Resolves lightweight and annotated tags to the commit they point at.
+            latest_commit=$(node scripts/merge-gate-rate-limit.mjs gh -- api repos/KeepOak/Branch-Agent/commits/"$latest_release" --jq .sha)
+            if [[ "$main_commit" == "$latest_commit" ]]; then
+              echo "Main has not changed since $latest_release ($latest_commit); skipping release" >&2
+              printf '%s %s\n' false "$main_commit"
+              return
+            fi
+            # Skip only when a check on main's head actually failed. Missing or pending checks do not block.
+            failed_checks=$(node scripts/merge-gate-rate-limit.mjs gh -- api --paginate "repos/KeepOak/Branch-Agent/commits/$main_commit/check-runs" \
+              --jq '[.check_runs[] | select(.conclusion == "failure")] | length' | awk '{s+=$1} END {print s+0}')
+            if [[ "$failed_checks" != "0" ]]; then
+              echo "Main has $failed_checks failed check(s) at $main_commit; skipping release" >&2
+              printf '%s %s\n' false "$main_commit"
+              return
+            fi
+            if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+              if ! node desktop/scripts/component-release-readiness.mjs "$published_at"; then
+                echo "Latest release $latest_release was published at $published_at; push backup waits until it is more than 25 minutes old" >&2
+                printf '%s %s\n' false "$main_commit"
+                return
+              fi
+            fi
+            echo "Main has new changes since $latest_release and no failed checks; proceeding with release" >&2
+            printf '%s %s\n' true "$main_commit"
+          }
+
+          should_release="false"
+          commit=""
+
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            echo "scheduled rehearsal (does not decide this pull-request build):"
+            decide_scheduled >/dev/null || echo "scheduled rehearsal could not finish" >&2
+            node desktop/scripts/component-release-readiness.mjs "2000-01-01T00:00:00Z"
+            should_release="true"
+            commit="$(git rev-parse HEAD)"
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            should_release="true"
+            commit="$(git rev-parse HEAD)"
+          else
+            read -r should_release commit < <(decide_scheduled)
+          fi
+
+          printf 'should_release=%s\ncommit=%s\n' "$should_release" "$commit" >> "$GITHUB_OUTPUT"
+  
+  identity:
+    needs: readiness
+    if: needs.readiness.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -46,6 +130,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ needs.readiness.outputs.commit }}
           persist-credentials: false
       - name: Freeze exact source and release identity
         id: identity
@@ -67,7 +152,8 @@ jobs:
           fi
           printf 'commit=%s\nversion=%s\n' "$commit" "$version" >> "$GITHUB_OUTPUT"
   window:
-    needs: identity
+    needs: [readiness, identity]
+    if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -90,10 +176,11 @@ jobs:
           path: ${{ runner.temp }}/shared-window/
           if-no-files-found: error
           retention-days: 3
-  # Native targets start with identity; the engine builds while the shared renderer job runs, and the
-  # renderer artifact is fetched only when packaging needs it (release-build.mjs waits for the ready file).
+  # Wait for the shared renderer artifact before starting natives. Starting them in parallel
+  # burns the 15-minute clock while window is still queued, and the 10-minute poll then fails.
   native:
-    needs: identity
+    needs: [readiness, identity, window]
+    if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     permissions:
@@ -209,8 +296,28 @@ jobs:
           path: ${{ runner.temp }}/release-assets/
           if-no-files-found: error
           retention-days: 3
+  report:
+    needs: [readiness, identity]
+    if: always() && github.event_name != 'pull_request' && (needs.readiness.outputs.should_release != 'true' || (github.event_name == 'workflow_dispatch' && inputs.dry_run))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Record readiness without publishing
+        env:
+          SHOULD_RELEASE: ${{ needs.readiness.outputs.should_release }}
+          RELEASE_COMMIT: ${{ needs.readiness.outputs.commit }}
+          IDENTITY_RESULT: ${{ needs.identity.result }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          echo "dry_run=${DRY_RUN}"
+          echo "should_release=${SHOULD_RELEASE}"
+          echo "commit=${RELEASE_COMMIT}"
+          echo "identity=${IDENTITY_RESULT}"
+          echo "publish skipped"
   publish:
-    needs: [identity, native]
+    needs: [readiness, identity, native]
+    if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

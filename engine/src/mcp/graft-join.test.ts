@@ -117,7 +117,9 @@ describe("branch graft join", () => {
 
   it("remembers the host and finds it again for branch graft --host", () => {
     const env = scratchEnv();
-    expect(() => resolveGraftLink("", env)).toThrow("has not joined another Branch yet");
+    expect(() => resolveGraftLink("", env)).toThrow(
+      "This Branch has not joined another Branch yet; run `branch graft join` (stdin prompt) or `branch graft join --code-file` first.",
+    );
     saveGraftLink({ url: "ws://127.0.0.1:41001", name: "B", joinedAt: 1 }, env);
     saveGraftLink({ url: "ws://127.0.0.1:41001", name: "B2", joinedAt: 2 }, env);
     expect(readGraftLinks(env)).toEqual([{ url: "ws://127.0.0.1:41001", name: "B2", joinedAt: 2 }]);

@@ -90,7 +90,7 @@ export type Block =
   /** The end of a turn. `stopped`: you (or the engine) stopped it; the thread says so instead of "Done in". */
   | { kind: "done"; key: string; runId: string; durationMs?: number; stopped?: boolean }
   | { kind: "error"; key: string; runId?: string; message: string }
-  | { kind: "notice"; key: string; text: string; at?: number }
+  | { kind: "notice"; key: string; text: string; at?: number; topicKey?: string }
   | { kind: "status"; key: string; phase: string; attempt?: number; maxAttempts?: number };
 
 const record = (value: unknown): Record<string, unknown> =>

@@ -26,6 +26,7 @@ import { whoItKnowsItems } from "./who-it-knows-menu";
 import { roomMenuItems } from "../rooms/room-menu";
 import "./conversation-menu.css";
 import { conversationLink, openConversationWindow, ownWindowUnavailable } from "./own-window";
+import type { TopicLayout } from "./topic-layout";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -62,6 +63,7 @@ export type ConversationMenuProps = {
   onConversations?: () => void;
   hasContactReturn?: boolean;
   hasContactConversations?: boolean;
+  threadView?: { contactName: string; layout: TopicLayout; set: (layout: TopicLayout) => void };
   /** The agent window is closed; the header face opens the profile now, so the menu brings the window back. */
   characterHidden: boolean;
   onShowCharacter: () => void;
@@ -148,6 +150,7 @@ export function useConversationMenu(p: ConversationMenuProps): { open: (e: Mouse
     ownWindowOff: ownWindowUnavailable(),
     hasContactReturn: p.hasContactReturn,
     hasContactConversations: p.hasContactConversations,
+    threadView: p.threadView,
     towerVisible: p.towerVisible,
     room: p.room ? [...roomMenuItems({ ruleWords: p.room.ruleWords, canLeave: Boolean(p.row && !p.isMain), run: { rename: run.rename, rules: () => setOpen({ kind: "rules", at: menuAnchor() }), leave: run.archive, remove: run.remove } }),
       ...(p.room.members?.length ? [{ kind: "sub" as const, label: `Members · ${p.room.members.length}`, items: [{ kind: "head" as const, label: "Members" }, ...p.room.members.map((member) => ({ kind: "custom" as const, node: <div className="mi">{member}</div> }))] }] : [])] : null,
