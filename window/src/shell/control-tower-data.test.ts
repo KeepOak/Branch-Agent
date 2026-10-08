@@ -15,7 +15,7 @@ import {
   towerNeeds,
   trunkList,
 } from "./control-tower-data";
-import { readLimits } from "./status-data";
+import { readLimits, usagePollResult } from "./status-data";
 
 const NOW = new Date(2026, 9, 8, 12, 0).getTime();
 
@@ -57,6 +57,15 @@ describe("tower health (towerHtmlT5)", () => {
     expect(towerHealth(true, false, low)).toEqual({ tone: "bad", text: "Lockdown is on. Trunks can only read." });
     expect(towerHealth(false, true, low)).toEqual({ tone: "", text: "Checking every account…" });
     expect(towerHealth(false, false, ok, true)).toEqual({ tone: "warn", text: "Couldn’t check accounts right now. Branch will try again." });
+  });
+
+  it("never says everything is running fine when no accounts are connected", () => {
+    const empty = readLimits({ updatedAt: NOW, providers: [] }, NOW);
+    expect(empty.rows).toEqual([]);
+    expect(towerHealth(false, false, empty)).toEqual({ tone: "", text: "No accounts connected yet." });
+    expect(towerHealth(false, false, empty).text).not.toBe("Everything is running fine.");
+    expect(usagePollResult(new CustomEvent("branch:usage-checked", { detail: empty }))).toEqual(empty);
+    expect(usagePollResult(new Event("branch:usage-checked"))).toBeNull();
   });
 });
 

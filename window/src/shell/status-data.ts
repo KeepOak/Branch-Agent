@@ -62,6 +62,13 @@ export type LimitPill = "Measured" | "Not published";
 export type LimitRow = { id: string; name: string; provider?: string; email?: string; plan?: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string; inUse?: boolean };
 export type Limits = { rows: LimitRow[]; updatedAt: number; refreshing: boolean };
 
+/** Limits carried on branch:usage-checked when the status-bar poll got a result. */
+export function usagePollResult(event: Event): Limits | null {
+  const detail = (event as CustomEvent).detail;
+  if (!detail || typeof detail !== "object" || !Array.isArray((detail as Limits).rows)) return null;
+  return detail as Limits;
+}
+
 /** Usage endpoints return diagnostic text; the status bar only shows human-facing status words. */
 export function usageStatusWords(error: unknown, provider: string): string {
   const raw = str(error);
