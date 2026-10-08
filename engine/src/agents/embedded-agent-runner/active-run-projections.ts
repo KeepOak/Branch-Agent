@@ -3,6 +3,7 @@ import {
   getActiveReplyRunCount,
   listActiveReplyRunSessionKeys,
   listActiveReplyRunSessionIds,
+  listLiveReplyRunSessionIds,
   resolveActiveReplyRunSessionId,
 } from "../../auto-reply/reply/reply-run-registry.registry.js";
 import {
@@ -14,7 +15,7 @@ import {
 /** Counts active embedded runs while including auto-reply registry runs for shared sessions. */
 export function getActiveEmbeddedRunCount(): number {
   let activeCount = ACTIVE_EMBEDDED_RUNS.size;
-  for (const sessionId of listActiveReplyRunSessionIds()) {
+  for (const sessionId of listLiveReplyRunSessionIds()) {
     if (!ACTIVE_EMBEDDED_RUNS.has(sessionId)) {
       activeCount += 1;
     }
