@@ -1,0 +1,21 @@
+{
+  "name": "@branch/sofya-plugin",
+  "version": "2026.9.7",
+  "description": "Branch Agent Sofya full-content search and fetch plugin.",
+  "type": "module",
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*"
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.9.7"
+    },
+    "build": {
+      "branchVersion": "2026.9.7",
+      "bundledDist": false
+    }
+  }
+}
