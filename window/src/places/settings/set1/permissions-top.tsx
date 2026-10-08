@@ -70,8 +70,8 @@ export function ThisPc() {
       </Plist>
       <Hint>{copy.why}</Hint>
       <div className="sec pm-loc">
-        <Ctl title="Location access" sub="Lets a Trunk ask where this computer is when a tool needs it." help={copy.locationHelp} off={copy.why}>{deadControl({ seg: ["Off", "While using", "Always"], v: "While using" }, "Location access")}</Ctl>
-        <Ctl title="Precise location" sub="The exact spot, not just the area." off={copy.why}>{deadControl({ sw: true }, "Precise location")}</Ctl>
+        <Ctl title="Location access" sub="Lets a Trunk ask where this computer is when a tool needs it." help={copy.locationHelp} off={WHY.key}>{deadControl({ seg: ["Off", "While using", "Always"], v: "While using" }, "Location access")}</Ctl>
+        <Ctl title="Precise location" sub="The exact spot, not just the area." off={WHY.key}>{deadControl({ sw: true }, "Precise location")}</Ctl>
       </div>
     </Sec>
   );
