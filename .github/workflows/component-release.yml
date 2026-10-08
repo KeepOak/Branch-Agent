@@ -177,12 +177,12 @@ jobs:
           if-no-files-found: error
           retention-days: 3
   # Wait for the shared renderer artifact before starting natives. Starting them in parallel
-  # burns the 15-minute clock while window is still queued, and the 10-minute poll then fails.
+  # burns the 35-minute clock while window is still queued, and the 10-minute poll then fails.
   native:
     needs: [readiness, identity, window]
     if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 35
     permissions:
       contents: read
       actions: read
