@@ -52,6 +52,18 @@ function expectPromptCase(
   expectPromptText(renderPrompt(params), included, excluded);
 }
 
+/** Compatibility tokens that may mention OpenClaw without being product branding. */
+const ALLOWED_SYSTEM_PROMPT_OPENCLAW_IDENTIFIERS = new Set<string>([
+  // None today. Keep this list for later prompt sections that must name a
+  // compatibility surface (package, import, config key, env var, or file).
+]);
+
+function findDisallowedOpenClawMentions(prompt: string): string[] {
+  return [...prompt.matchAll(/[A-Za-z0-9_@./#-]*openclaw[A-Za-z0-9_@./#-]*/gi)]
+    .map((match) => match[0])
+    .filter((token) => !ALLOWED_SYSTEM_PROMPT_OPENCLAW_IDENTIFIERS.has(token.toLowerCase()));
+}
+
 describe("buildAgentSystemPrompt", () => {
   it("resolves helper session keys to scoped prompt surfaces", () => {
     expect(resolveAgentPromptSurfaceForSessionKey("agent:main:subagent:child")).toBe("subagent");
@@ -152,6 +164,23 @@ describe("buildAgentSystemPrompt", () => {
         toolNames: ["read"],
       },
       ["## Documentation", "Docs: /tmp/branch/docs", "Source: /tmp/branch"],
+      [
+        "Mirror:",
+        "docs.openclaw.ai",
+        "github.com/openclaw/openclaw",
+        "https://github.com/KeepOak/Branch-Agent",
+      ],
+    ],
+    [
+      "falls back to Branch Agent repository docs and source when local paths are absent",
+      { toolNames: ["read"] },
+      [
+        "## Documentation",
+        "Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
+        "Source: https://github.com/KeepOak/Branch-Agent",
+        "repository docs first when web exists",
+      ],
+      ["Mirror:", "docs.openclaw.ai", "github.com/openclaw/openclaw"],
     ],
     [
       "uses limited bootstrap wording for constrained user-facing runs",
@@ -238,6 +267,36 @@ describe("buildAgentSystemPrompt", () => {
       ],
     ],
   ])("%s", expectPromptCase);
+  it("omits OpenClaw product names and docs links from built system prompts", () => {
+    const prompts = [
+      renderPrompt(),
+      renderPrompt({ promptMode: "none" }),
+      renderPrompt({ promptMode: "minimal", toolNames: ["read", "exec", "message"] }),
+      renderPrompt({
+        toolNames: [
+          "read",
+          "exec",
+          "process",
+          "gateway",
+          "branch",
+          "message",
+          "sessions_spawn",
+          "automations",
+        ],
+        runtimeInfo: { channel: "webchat", capabilities: ["inlineButtons", "markdownDetails"] },
+      }),
+      renderPrompt({
+        docsPath: "/tmp/branch/docs",
+        sourcePath: "/tmp/branch",
+        toolNames: ["read", "gateway"],
+      }),
+    ];
+
+    for (const prompt of prompts) {
+      expect(findDisallowedOpenClawMentions(prompt), prompt.slice(0, 200)).toEqual([]);
+    }
+  });
+
   it("does not inspect owner identities when minimal prompts omit owner guidance", () => {
     const ownerNumbers = new Proxy(["private-owner"], {
       get() {
