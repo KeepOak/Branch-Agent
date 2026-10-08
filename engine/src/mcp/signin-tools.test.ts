@@ -46,7 +46,10 @@ async function check(models: unknown = accounts, github: unknown = identity, fai
   clients.push(client);
   await Promise.all([server.connect(a), client.connect(b)]);
   const result = await client.callTool({ name: "signin_check", arguments: {} });
-  return { result, request };
+  return {
+    result: { ...result, structuredContent: result.structuredContent as Record<string, unknown> },
+    request,
+  };
 }
 
 describe("signin_check", () => {
