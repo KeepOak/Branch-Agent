@@ -1268,6 +1268,56 @@ test('node --eval or -e combined with --test does not cover a desktop test', () 
   )), true);
 });
 
+test('transitive needs through a disqualified job does not cover a desktop test', () => {
+  const pr = [
+    'on:\n  pull_request:\njobs:\n',
+    '  gate:\n    if: false\n    steps:\n      - run: echo skip\n',
+    '  mid:\n    needs: gate\n    steps:\n      - run: echo mid\n',
+    '  extra:\n    needs: mid\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  assert.equal(trustedUncovers(pr), true);
+});
+
+test('step continue-on-error does not cover a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    steps:\n      - name: fake\n        continue-on-error: true\n        run: node --test scripts/new.test.mjs\n',
+  )), true);
+});
+
+test('step shell does not cover a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    steps:\n      - name: fake\n        shell: bash\n        run: node --test scripts/new.test.mjs\n',
+  )), true);
+});
+
+test('step working-directory does not cover a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    steps:\n      - name: fake\n        working-directory: desktop\n        run: node --test scripts/new.test.mjs\n',
+  )), true);
+});
+
+test('job continue-on-error does not cover a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob(
+    '    continue-on-error: true\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  )), true);
+});
+
+test('job defaults.run.working-directory: desktop still covers a desktop test', () => {
+  assert.equal(trustedUncovers(prDesktopJob([
+    '    defaults:\n      run:\n        working-directory: desktop\n',
+    '    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join(''))), false);
+});
+
+test('workflow defaults.run.shell does not cover a desktop test', () => {
+  const pr = [
+    'on:\n  pull_request:\n',
+    'defaults:\n  run:\n    shell: bash\n',
+    'jobs:\n  desktop:\n    steps:\n      - run: node --test scripts/new.test.mjs\n',
+  ].join('');
+  assert.equal(trustedUncovers(pr), true);
+});
+
 test('nameStatusFromPrFiles and coverageFromPrFiles treat API files as data', () => {
   const status = nameStatusFromPrFiles([
     { filename: 'engine/src/covered.test.ts', status: 'modified' },

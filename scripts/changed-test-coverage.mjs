@@ -73,6 +73,43 @@ function parseNeedsValue(raw) {
   return /^[A-Za-z_][\w-]*$/.test(id) ? [id] : null;
 }
 
+const STEP_DISALLOWED_KEY = /^(?:if|continue-on-error|shell|working-directory):/;
+
+export function workflowDefaultsSetShell(workflow) {
+  const lines = String(workflow).split(/\r?\n/);
+  let inDefaults = false;
+  let inRun = false;
+  for (const line of lines) {
+    if (/^jobs:\s*$/.test(line) || (/^\S/.test(line) && inDefaults && !/^defaults:/.test(line))) break;
+    if (/^defaults:\s*$/.test(line)) {
+      inDefaults = true;
+      inRun = false;
+      continue;
+    }
+    if (!inDefaults) continue;
+    if (/^  run:\s*$/.test(line)) {
+      inRun = true;
+      continue;
+    }
+    if (inRun && /^    shell:/.test(line)) return true;
+    if (/^  [A-Za-z_]/.test(line) && !/^  run:/.test(line)) inRun = false;
+  }
+  return false;
+}
+
+function emptyJob(id) {
+  return {
+    id,
+    hasIf: false,
+    hasMatrixIncludeOrExclude: false,
+    hasContinueOnError: false,
+    hasShellDefault: false,
+    needs: [],
+    needsUnparseable: false,
+    steps: [],
+  };
+}
+
 function collectWorkflowJobs(workflow) {
   const jobs = new Map();
   const lines = String(workflow).split(/\r?\n/);
@@ -95,6 +132,10 @@ function collectWorkflowJobs(workflow) {
     current = null;
     mode = 'job';
   };
+  const markStepDisallowed = (line) => {
+    const key = line.trim().replace(/^- /, '');
+    if (STEP_DISALLOWED_KEY.test(key)) step.disallowed = true;
+  };
 
   for (; index < lines.length; index += 1) {
     const line = lines[index];
@@ -107,14 +148,7 @@ function collectWorkflowJobs(workflow) {
     const jobMatch = /^  ([A-Za-z_][\w-]*):\s*$/.exec(line);
     if (jobMatch) {
       finishJob();
-      current = {
-        id: jobMatch[1],
-        hasIf: false,
-        hasMatrixIncludeOrExclude: false,
-        needs: [],
-        needsUnparseable: false,
-        steps: [],
-      };
+      current = emptyJob(jobMatch[1]);
       mode = 'job';
       continue;
     }
@@ -140,6 +174,26 @@ function collectWorkflowJobs(workflow) {
       else continue;
     }
 
+    if (mode === 'defaults') {
+      if (/^      run:\s*$/.test(line)) {
+        mode = 'defaults-run';
+        continue;
+      }
+      if (/^    [A-Za-z_][\w-]*:/.test(line)) mode = 'job';
+      else continue;
+    }
+
+    if (mode === 'defaults-run') {
+      if (/^        shell:/.test(line)) {
+        current.hasShellDefault = true;
+        continue;
+      }
+      if (/^        working-directory:/.test(line)) continue;
+      if (/^    [A-Za-z_][\w-]*:/.test(line)) mode = 'job';
+      else if (/^      [A-Za-z_]/.test(line)) mode = 'defaults';
+      else continue;
+    }
+
     if (mode === 'steps' || /^    steps:\s*$/.test(line)) {
       if (/^    steps:\s*$/.test(line)) {
         mode = 'steps';
@@ -147,24 +201,21 @@ function collectWorkflowJobs(workflow) {
       }
       if (/^      - /.test(line)) {
         finishStep();
-        step = { hasIf: false, run: null };
-        if (/^      - if:/.test(line)) step.hasIf = true;
+        step = { disallowed: false, run: null };
+        markStepDisallowed(line);
         const runSame = /^      - run:\s*(.*)$/.exec(line);
         if (runSame) step.run = runSame[1];
         continue;
       }
-      if (step && /^        if:/.test(line)) {
-        step.hasIf = true;
-        continue;
-      }
       if (step) {
+        markStepDisallowed(line);
         const runIndented = /^        run:\s*(.*)$/.exec(line);
         if (runIndented) {
           step.run = runIndented[1];
           continue;
         }
+        if (/^        /.test(line)) continue;
       }
-      if (step && /^        /.test(line)) continue;
       if (/^    [A-Za-z_][\w-]*:/.test(line)) {
         finishStep();
         mode = 'job';
@@ -175,6 +226,18 @@ function collectWorkflowJobs(workflow) {
 
     if (/^    if:/.test(line)) {
       current.hasIf = true;
+      continue;
+    }
+    if (/^    continue-on-error:/.test(line)) {
+      current.hasContinueOnError = true;
+      continue;
+    }
+    if (/^    defaults:\s*$/.test(line)) {
+      mode = 'defaults';
+      continue;
+    }
+    if (/^    defaults:\s+\S/.test(line)) {
+      current.hasShellDefault = /shell:/.test(line);
       continue;
     }
     const needs = /^    needs:\s*(.*)$/.exec(line);
@@ -201,15 +264,39 @@ function collectWorkflowJobs(workflow) {
   return jobs;
 }
 
+function jobSelfDisqualified(job) {
+  return !job
+    || job.hasIf
+    || job.hasMatrixIncludeOrExclude
+    || job.hasContinueOnError
+    || job.hasShellDefault
+    || job.needsUnparseable;
+}
+
+export function jobDisqualifiedByNeeds(job, jobs, visiting = new Set()) {
+  if (!job) return true;
+  if (visiting.has(job.id)) return true;
+  if (jobSelfDisqualified(job)) return true;
+  visiting.add(job.id);
+  for (const id of job.needs) {
+    if (jobDisqualifiedByNeeds(jobs.get(id), jobs, visiting)) {
+      visiting.delete(job.id);
+      return true;
+    }
+  }
+  visiting.delete(job.id);
+  return false;
+}
+
 export function allowlistedDesktopRunTargets(workflow) {
   const targets = new Set();
   if (!workflowHasPullRequestTrigger(workflow) || hasYamlAnchorsOrAliases(workflow)) return targets;
+  if (workflowDefaultsSetShell(workflow)) return targets;
   const jobs = collectWorkflowJobs(workflow);
   for (const job of jobs.values()) {
-    if (job.hasIf || job.hasMatrixIncludeOrExclude || job.needsUnparseable) continue;
-    if (job.needs.some((id) => !jobs.has(id) || jobs.get(id).hasIf)) continue;
+    if (jobDisqualifiedByNeeds(job, jobs)) continue;
     for (const step of job.steps) {
-      if (step.hasIf || !isAllowlistedDesktopRun(step.run)) continue;
+      if (step.disallowed || !isAllowlistedDesktopRun(step.run)) continue;
       for (const token of step.run.trim().slice('node --test '.length).split(/\s+/)) {
         if (!isPlainDesktopTestPath(token)) continue;
         targets.add(token.startsWith('desktop/') ? token : `desktop/${token}`);

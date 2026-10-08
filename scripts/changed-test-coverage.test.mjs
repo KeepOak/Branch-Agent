@@ -70,13 +70,7 @@ test('real-engine handoff coverage requires the executable sharded Vitest comman
 
 test('allowlisted desktop coverage counts #677\'s plain post-build step on the real workflow', () => {
   const real = readFileSync(new URL('../.github/workflows/desktop-checks.yml', import.meta.url), 'utf8');
-  const withReadiness = real.replace(
-    '        run: npm run build\n      - name: Check updates, startup and owned process cleanup',
-    '        run: npm run build\n      - name: Check component release readiness\n'
-      + '        run: node --test scripts/component-release-readiness.test.mjs\n'
-      + '      - name: Check updates, startup and owned process cleanup',
-  );
-  const targets = allowlistedDesktopRunTargets(withReadiness);
+  const targets = allowlistedDesktopRunTargets(real);
   assert.ok(targets.has('desktop/scripts/component-release-readiness.test.mjs'));
   assert.ok(targets.has('desktop/scripts/handoff-timeouts.test.mjs'));
   assert.ok(!targets.has('desktop/scripts/gateway-ready.test.mjs'));
