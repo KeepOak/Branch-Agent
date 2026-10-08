@@ -163,9 +163,9 @@ const engine: WindowEngine = {
 
 const historyBlocks: Block[] = [
   { kind: "user", key: "u1", text: "First" },
-  { kind: "text", key: "a1", text: "Reply one" },
+  { kind: "text", key: "a1", text: "Reply one", streaming: false },
   { kind: "user", key: "u2", text: "Second" },
-  { kind: "text", key: "a2", text: "Reply two" },
+  { kind: "text", key: "a2", text: "Reply two", streaming: false },
 ];
 
 function threadNode(live: Block[] = []): ReactNode {
