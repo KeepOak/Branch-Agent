@@ -97,7 +97,7 @@ Every child process Branch starts on Windows (the engine, shells, probes, git, P
 
 ## Releases and component updates
 
-Every push to `main` that touches `engine/`, `window/`, `desktop/` or the CI runner scripts runs `.github/workflows/component-release.yml`. It builds and smoke-tests each native target (Windows, macOS, Linux) and publishes a GitHub release with four components:
+`.github/workflows/component-release.yml` publishes a GitHub release on a 30-minute schedule at :07 and :37 past each hour, for a source-version tag, or from a manual run — not on each merge. Scheduled and manual runs skip when main has not moved since the last release or when a check on main's head has failed. A published release has four components:
 
 | Component | Asset |
 |---|---|
@@ -108,7 +108,7 @@ Every push to `main` that touches `engine/`, `window/`, `desktop/` or the CI run
 
 A release is published only from a commit on `main` that is newer than the current latest release, so updates never move backwards. Pull requests that change the release pipeline build and smoke every target without publishing.
 
-The installed desktop app checks GitHub for a newer release every hour, verifies and stages it, and applies it on the next restart. If the new engine fails its readiness check, the app rolls back to the previous engine automatically. Applying a staged update by itself when no Trunk is working is in progress.
+The installed desktop app checks GitHub for a newer release every hour, jumps straight to the newest one, verifies and stages it, and applies it on the next restart. If the new engine fails its readiness check, the app rolls back to the previous engine automatically. Applying a staged update by itself when no Trunk is working is in progress.
 
 The manual `Source builds` workflow and `Desktop checks` are described in the [README](README.md#source-builds-on-github).
 
