@@ -1,27 +1,29 @@
 /* The side panel (App Preview §4.5.8, patches 61/96 PC18 and 21 17c): tabs and frame controls, Activity, Timeline,
-   Plan, Files, Memory, Terminal, Side chat, Branches. */
-.pane-pn {position:relative;}
-.pane-pn.at-right {width:var(--pane-w,352px);}
+   Plan, Files, Memory, Terminal, Side chat, Branches. Width, min-width and .ptab/.ptabs come from spec-v23. */
+.pane-pn {position:relative;min-width:0;}
+.conversation-pane.pane-pn.at-right {width:var(--pane-w,352px);min-width:var(--pane-w,352px);max-width:none;flex:none;}
 .pane-pn > .pane-resizer-pn {position:absolute;top:0;bottom:0;left:-5px;width:9px;z-index:2;}
-.main:has(> .pane-pn.at-left) > .pane-pn {order:-1;border-left:0;border-right:1px solid var(--hair17,var(--line));width:var(--pane-w,352px);}
+.main:has(> .pane-pn.at-left) > .conversation-pane.pane-pn {order:-1;border-left:0;border-right:1px solid var(--hair17,var(--line));width:var(--pane-w,352px);min-width:var(--pane-w,352px);max-width:none;}
 .main:has(> .pane-pn.at-left) > .pane-pn > .pane-resizer-pn {left:auto;right:-5px;}
 .main.with-pane:has(> .pane-pn.at-below) {flex-direction:column;}
-.main:has(> .pane-pn.at-below) > .pane-pn {width:100%;max-width:none;height:var(--pane-h,300px);border-left:0;border-top:1px solid var(--hair17,var(--line));}
+.main:has(> .pane-pn.at-below) > .pane-pn {width:100%;max-width:none;min-width:0;height:var(--pane-h,300px);border-left:0;border-top:1px solid var(--hair17,var(--line));}
 .main:has(> .pane-pn.at-below) > .pane-pn > .pane-resizer-pn {left:0;right:0;top:-5px;bottom:auto;width:auto;height:9px;}
 .main:has(> .pane-pn.swap:not(.at-below)) > .conversation-column {flex:none;width:var(--pane-w,352px);}
-.main:has(> .pane-pn.swap:not(.at-below)) > .pane-pn {flex:1;width:auto;}
+.main:has(> .pane-pn.swap:not(.at-below)) > .pane-pn {flex:1;width:auto;min-width:0;}
 .main:has(> .pane-pn.focus) > .conversation-column:not(:has(> .stage7)) {display:none;}
-.main:has(> .pane-pn.focus) > .pane-pn {flex:1;width:auto;height:auto;max-width:none;}
-.pane-pn.min {width:auto;}
+.main:has(> .pane-pn.focus) > .pane-pn {flex:1;width:auto;height:auto;max-width:none;min-width:0;}
+.pane-pn.min {width:auto;min-width:0;}
 .main:has(> .pane-pn.at-below.min) > .pane-pn {height:auto;}
 .pane-pn.min .pane-b-pn {display:none;}
-.pane-h-pn {gap:2px;}
+.conversation-pane.pane-pn .pane-h-pn {display:flex;align-items:center;gap:2px;padding:8px 6px 8px 8px;overflow:visible;min-width:0;}
 .pane-h-pn > .ib {flex:none;color:var(--ink-2);border-radius:10px;}
+.conversation-pane.pane-pn .pane-tabs {display:flex;flex-wrap:nowrap;gap:2px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;flex:1;min-width:0;}
+.conversation-pane.pane-pn .pane-tabs::-webkit-scrollbar {display:none;}
 .ptab-wrap-pn {display:inline-flex;align-items:center;flex:none;}
-.pane-tabs .ptab-pn {height:28px;padding:0 6px;border:0;border-radius:8px;background:transparent;font:inherit;font-size:12px;color:var(--ink-3);white-space:nowrap;}
-.pane-tabs .ptab-pn:hover {color:var(--ink);background:var(--fill);}
-.pane-tabs .ptab-pn[aria-selected="true"] {background:var(--fill-2);color:var(--ink);font-weight:600;}
-.ptab-x-pn {width:18px;height:18px;border:0;background:none;border-radius:6px;display:grid;place-items:center;color:var(--ink-3);margin-left:-4px;}
+.conversation-pane.pane-pn .pane-tabs .ptab-pn {height:28px;padding:0 6px;border:0;border-radius:8px;background:transparent;font:inherit;font-size:12px;color:var(--ink-3);white-space:nowrap;flex:none;overflow:visible;text-overflow:clip;}
+.conversation-pane.pane-pn .pane-tabs .ptab-pn:hover {color:var(--ink);background:var(--fill);}
+.conversation-pane.pane-pn .pane-tabs .ptab-pn[aria-selected="true"] {background:var(--fill-2);color:var(--ink);font-weight:600;}
+.ptab-x-pn {width:18px;height:18px;border:0;background:none;border-radius:6px;display:grid;place-items:center;color:var(--ink-3);margin-left:-4px;flex:none;}
 .ptab-x-pn:hover {background:var(--fill);}
 .pane-b-pn {display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-content:start;}
 .pane-b-pn > * {min-width:0;}
@@ -168,7 +170,7 @@
 .side-msgs-pn {display:flex;flex-direction:column;gap:6px;}
 .side-x-pn {display:flex;flex-direction:column;gap:6px;}
 /* At 1100 px and narrower the pane floats over the conversation as an inset card (preview win-1100). */
-@media (max-width:1100px) and (min-width:761px) {.pane-pn.at-right:not(.focus) {top:50px;bottom:28px;border:1px solid var(--hair17,var(--line));border-right:0;border-radius:14px 0 0 14px;overflow:hidden;}}
+@media (max-width:1100px) and (min-width:761px) {.conversation-pane.pane-pn.at-right:not(.focus) {top:50px;bottom:28px;width:min(var(--pane-w,352px),100%);min-width:min(var(--pane-w,352px),100%);border:1px solid var(--hair17,var(--line));border-right:0;border-radius:14px 0 0 14px;}}
 /* Dashboard (the preview's dashTab): the board's widgets in a 12-column grid of 56 px rows, or "Nothing pinned yet". */
 .dash-pn {display:grid;gap:12px;}
 .dtabs-pn {display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;}
