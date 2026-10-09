@@ -73,7 +73,13 @@ function readOwner(ownerPath: string): unknown {
   try {
     return JSON.parse(fs.readFileSync(ownerPath, "utf8"));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (
+      code === "ENOENT" ||
+      ((code === "EPERM" || code === "EBUSY") && !fs.existsSync(ownerPath))
+    ) {
+      // Windows may report access denied while a released owner's file is being deleted.
+      // The existing lock still decides admission; an unreadable retained file is not ignored.
       return undefined;
     }
     throw error;

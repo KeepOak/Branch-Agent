@@ -45,6 +45,28 @@ const createRoot = () => {
   return root;
 };
 
+it("host admission retries a Windows owner-file deletion race without ignoring retained owners", async () => {
+  const root = createRoot();
+  const env = { BRANCH_HEAVY_STEP_DIRECTORY: root, BRANCH_HEAVY_STEP_BUILD_MEMORY_MB: "0" };
+  const ownerPath = path.join(resolveDistArtifactLockPath(root, false), "owner.json");
+  const read = fs.readFileSync;
+  let pendingDeletion = true;
+  vi.spyOn(fs, "readFileSync").mockImplementation((...args: Parameters<typeof fs.readFileSync>) => {
+    if (args[0] === ownerPath && pendingDeletion) {
+      pendingDeletion = false;
+      throw Object.assign(new Error("Owner file is being deleted"), { code: "EPERM" });
+    }
+    return read(...args);
+  });
+  const handle = await acquireHostHeavyStep("build", { env });
+  await handle.release();
+
+  fs.mkdirSync(path.dirname(ownerPath), { recursive: true });
+  fs.writeFileSync(ownerPath, JSON.stringify({ pid: process.pid }));
+  pendingDeletion = true;
+  await expect(acquireHostHeavyStep("build", { env })).rejects.toMatchObject({ code: "EPERM" });
+});
+
 it("reclaims a lock retained by a recycled live PID", async () => {
   const root = createRoot();
   const directory = resolveDistArtifactLockPath(root);
