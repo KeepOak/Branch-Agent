@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   listAgentIds,
-  listOutsideAgents,
+  listOutsideAgentIdentityIds,
   type BranchConfig,
 } from "branch/plugin-sdk/memory-core-host-runtime-core";
 import type { MemorySearchResult } from "branch/plugin-sdk/memory-core-host-runtime-files";
@@ -64,28 +64,13 @@ type AgentOutcome =
  * Team members are exactly the Trunks the owner lists in agents.teamMemory.agents. Unset means no members.
  * Linked outside Branches (and their grafted Trunks) are never members, even under a builder-* id.
  */
-export function resolveTeamMemberIds(
-  cfg: BranchConfig,
-  outsideAgentIds: ReadonlySet<string> = readOutsideAgentIds(),
-): string[] {
+export function resolveTeamMemberIds(cfg: BranchConfig): string[] {
   const listed = cfg.agents?.teamMemory?.agents;
   if (!listed) {
     return [];
   }
-  return listAgentIds(cfg).filter(
-    (agentId) => listed.includes(agentId) && !outsideAgentIds.has(agentId),
-  );
-}
-
-function readOutsideAgentIds(): ReadonlySet<string> {
-  const ids = new Set<string>();
-  for (const record of listOutsideAgents()) {
-    ids.add(record.id);
-    if (record.trunkId) {
-      ids.add(record.trunkId);
-    }
-  }
-  return ids;
+  const outside = new Set(listOutsideAgentIdentityIds());
+  return listAgentIds(cfg).filter((agentId) => listed.includes(agentId) && !outside.has(agentId));
 }
 
 function isUntrusted(result: MemorySearchResult): boolean {
@@ -184,8 +169,17 @@ async function searchMemberNotes(
     return { agentId, hits: await shareableHits(agentId, workspaceDir, found) };
   } finally {
     if (params.closeAfterSearch) {
-      await lookup.manager.close?.();
+      await closeQuietly(lookup.manager);
     }
+  }
+}
+
+/** A close failure must not replace the search result or the search error. */
+async function closeQuietly(manager: TeamMemorySearcher): Promise<void> {
+  try {
+    await manager.close?.();
+  } catch {
+    // Ignored on purpose: the search outcome is what the caller needs.
   }
 }
 

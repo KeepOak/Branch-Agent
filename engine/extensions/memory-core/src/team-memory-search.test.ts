@@ -1,8 +1,10 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { listOutsideAgentIdentityIds } from "branch/plugin-sdk/memory-core-host-runtime-core";
 import type { MemorySearchResult } from "branch/plugin-sdk/memory-core-host-runtime-files";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createMemorySearchDeadlineError } from "./memory/search-deadline.js";
 import {
   resolveTeamMemberIds,
   searchTeamMemory,
@@ -13,9 +15,41 @@ import { asBranchConfig } from "./tools.test-helpers.js";
 
 let workspace: string;
 let root: string;
+let stateDir: string;
+let savedStateDir: string | undefined;
+
+const OUTSIDE_REGISTRY = [
+  {
+    id: "builder-linked",
+    name: "Linked Branch",
+    kind: "branch",
+    deviceId: "device-7f3a",
+    activity: "Messaging builder-a",
+    project: "private-project",
+    firstSeenAt: 1,
+    lastSeenAt: 2,
+  },
+  {
+    id: "builder-desk",
+    name: "Grafted Trunk",
+    kind: "trunk",
+    trunkId: "builder-grafted",
+    via: "builder-linked",
+    firstSeenAt: 1,
+    lastSeenAt: 2,
+  },
+];
 
 beforeEach(async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "team-memory-"));
+  savedStateDir = process.env.BRANCH_STATE_DIR;
+  stateDir = path.join(root, "state");
+  process.env.BRANCH_STATE_DIR = stateDir;
+  await fs.mkdir(path.join(stateDir, "contacts"), { recursive: true });
+  await fs.writeFile(
+    path.join(stateDir, "contacts", "outside-agents.json"),
+    JSON.stringify(OUTSIDE_REGISTRY),
+  );
   workspace = path.join(root, "builder-a");
   const outside = path.join(root, "outside");
   await fs.mkdir(path.join(workspace, "memory"), { recursive: true });
@@ -31,6 +65,11 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  if (savedStateDir === undefined) {
+    delete process.env.BRANCH_STATE_DIR;
+  } else {
+    process.env.BRANCH_STATE_DIR = savedStateDir;
+  }
   await fs.rm(root, { recursive: true, force: true });
 });
 
@@ -73,7 +112,7 @@ describe("resolveTeamMemberIds", () => {
   };
 
   it("is opt-in: with no owner list, no Trunk is a member", () => {
-    expect(resolveTeamMemberIds(asBranchConfig({ agents: roster }), new Set())).toEqual([]);
+    expect(resolveTeamMemberIds(asBranchConfig({ agents: roster }))).toEqual([]);
   });
 
   it("uses only the owner's explicit list, dropping ids that are not configured agents", () => {
@@ -81,19 +120,41 @@ describe("resolveTeamMemberIds", () => {
       agents: { ...roster, teamMemory: { agents: ["main", "builder-b", "outside-branch"] } },
     });
 
-    expect(resolveTeamMemberIds(listed, new Set())).toEqual(["main", "builder-b"]);
+    expect(resolveTeamMemberIds(listed)).toEqual(["main", "builder-b"]);
   });
 
-  it("excludes linked outside Branches even when listed under a builder-* id", () => {
+  it("excludes registry outside Branches and grafted Trunks even when listed under builder-* ids", () => {
     const listed = asBranchConfig({
       agents: {
         defaultId: "main",
-        entries: { main: {}, "builder-linked": {}, "builder-a": {} },
-        teamMemory: { agents: ["builder-linked", "builder-a"] },
+        entries: { main: {}, "builder-linked": {}, "builder-grafted": {}, "builder-a": {} },
+        teamMemory: { agents: ["builder-linked", "builder-grafted", "builder-a"] },
       },
     });
 
-    expect(resolveTeamMemberIds(listed, new Set(["builder-linked"]))).toEqual(["builder-a"]);
+    expect(resolveTeamMemberIds(listed)).toEqual(["builder-a"]);
+  });
+
+  it("exposes only outside ids and grafted Trunk ids from the registry", () => {
+    const ids = listOutsideAgentIdentityIds();
+
+    expect(ids).toEqual(["builder-desk", "builder-grafted", "builder-linked"]);
+    expect(JSON.stringify(ids)).not.toContain("device-7f3a");
+    expect(JSON.stringify(ids)).not.toContain("private-project");
+  });
+
+  it("excludes nothing when the registry file is missing", async () => {
+    await fs.rm(path.join(stateDir, "contacts"), { recursive: true, force: true });
+    const listed = asBranchConfig({
+      agents: {
+        defaultId: "main",
+        entries: { main: {}, "builder-a": {} },
+        teamMemory: { agents: ["builder-a"] },
+      },
+    });
+
+    expect(listOutsideAgentIdentityIds()).toEqual([]);
+    expect(resolveTeamMemberIds(listed)).toEqual(["builder-a"]);
   });
 });
 
@@ -267,6 +328,49 @@ describe("searchTeamMemory", () => {
 });
 
 describe("searchTeamMemory manager lifecycle", () => {
+  it("keeps the search deadline when close also fails", async () => {
+    const outcome = await searchTeamMemory({
+      memberIds: ["builder-a"],
+      query: "q",
+      maxResults: 10,
+      closeAfterSearch: true,
+      lookupManager: async () => ({
+        manager: {
+          status: () => ({ workspaceDir: workspace }),
+          search: async () => {
+            throw createMemorySearchDeadlineError("memory_search timed out");
+          },
+          close: async () => {
+            throw new Error("close failed");
+          },
+        },
+      }),
+    });
+
+    expect(outcome.skipped).toEqual([{ agentId: "builder-a", reason: "timeout" }]);
+  });
+
+  it("keeps the hits when close fails after a successful search", async () => {
+    const outcome = await searchTeamMemory({
+      memberIds: ["builder-a"],
+      query: "q",
+      maxResults: 10,
+      closeAfterSearch: true,
+      lookupManager: async () => ({
+        manager: {
+          status: () => ({ workspaceDir: workspace }),
+          search: async () => [hit({ path: "memory/ok.md" })],
+          close: async () => {
+            throw new Error("close failed");
+          },
+        },
+      }),
+    });
+
+    expect(outcome.results.map((result) => result.path)).toEqual(["memory/ok.md"]);
+    expect(outcome.skipped).toEqual([]);
+  });
+
   it("closes a cli-run manager even when its search throws", async () => {
     let closed = 0;
     const outcome = await searchTeamMemory({
