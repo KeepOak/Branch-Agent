@@ -168,7 +168,7 @@ async function removeGraftDevice(
 }
 
 /** The paired device of a joined Branch that is still linked on this Branch, or undefined. */
-function hostedBranchRow(client: unknown): { deviceId: string } | undefined {
+function hostedBranchRow(client: Parameters<typeof graftDeviceId>[0]): { deviceId: string } | undefined {
   const deviceId = graftDeviceId(client);
   if (!deviceId) return undefined;
   const linked = listOutsideAgents().some(
