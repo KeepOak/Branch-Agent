@@ -131,6 +131,7 @@ export type EmbeddedRunFailoverRetryController = ReturnType<
 type AuthRetryTrace = TraceAttempt & { reason: FailoverReason };
 type TransientRetryReason = FailoverReason | "output_limit";
 
+type AuthAdvanceOptions = Parameters<PreparedRuntime["advanceAttemptAuthProfile"]>[0];
 type RateLimitAuthProfileContext = {
   failoverProvider: string;
   failoverModel: string;
@@ -238,6 +239,20 @@ export function createEmbeddedRunFailoverRetryController(input: {
   // A long rate limit marks the limited subscription blocked until its reset (so it isn't
   // picked next anywhere) and moves this run to the next free subscription in order. The
   // caller continues the same transcript, so finished tool calls never run again.
+  // Every automatic move in this run goes through here. With subscriptionsOnly, a stored API-key
+  // sign-in is passed over by rate-limit, auth-failure and recovery rotations alike. Harness-owned
+  // runs cannot pass over a profile, and their attempt list is already filtered in prepare-auth.
+  const advanceAutomaticAuthProfile = (options?: AuthAdvanceOptions): Promise<boolean> => {
+    if (!isSubscriptionsOnly(params.config) || input.harnessOwnsTransport()) {
+      return input.advanceAuthProfile(options);
+    }
+    const accept = options?.accept;
+    return input.advanceAuthProfile({
+      accept: (candidate) =>
+        !(candidate !== undefined && profileFailureStore.profiles[candidate]?.type === "api_key") &&
+        (accept ? accept(candidate) : true),
+    });
+  };
   const switchLimitedSubscription = async (limit: {
     retryAfterMs: number;
     candidates: readonly (string | undefined)[];
@@ -330,7 +345,7 @@ export function createEmbeddedRunFailoverRetryController(input: {
         transientRetryWindowStartMs = null;
       }
     },
-    advanceAuthProfile: input.advanceAuthProfile,
+    advanceAuthProfile: advanceAutomaticAuthProfile,
     advanceRateLimitAuthProfile: async (context: RateLimitAuthProfileContext): Promise<boolean> => {
       if (rateLimitProfileRotations >= MAX_RATE_LIMIT_PROFILE_ROTATIONS && fallbackConfigured) {
         const status = resolveFailoverStatus("rate_limit");
@@ -351,7 +366,7 @@ export function createEmbeddedRunFailoverRetryController(input: {
           },
         );
       }
-      const rotated = await input.advanceAuthProfile();
+      const rotated = await advanceAutomaticAuthProfile();
       if (rotated) {
         rateLimitProfileRotations += 1;
       }
@@ -373,7 +388,7 @@ export function createEmbeddedRunFailoverRetryController(input: {
       const profileFailureReason = resolveProfileFailureReason(failoverReason);
       const userPinnedProfile =
         params.authProfileIdSource === "user" && failedProfileId === params.authProfileId;
-      const rotated = userPinnedProfile ? false : await input.advanceAuthProfile();
+      const rotated = userPinnedProfile ? false : await advanceAutomaticAuthProfile();
       try {
         await maybeMarkAuthProfileFailure({
           profileId: failedProfileId,

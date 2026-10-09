@@ -224,7 +224,15 @@ Prepared agent requests use their selected plugin metadata, configuration, works
 
 ## Subscription-only mode
 
-`agents.defaults.subscriptionsOnly` (default `false`) controls whether automatic sign-in choices may use API keys. By default API-key sign-ins work everywhere: unpinned runs can use them, agents can put them in the sign-in order or onto a session, and rate-limit switching can move to them. Set it to `true` to keep an installation subscription-only: unpinned runs skip API keys and fail when only API keys exist, agents cannot move a session or the sign-in order onto an API key, and rate-limit switching passes over API keys. Changes made by the owner in the app are never restricted by this setting.
+`agents.defaults.subscriptionsOnly` (default `false`) controls whether stored API-key sign-ins are picked automatically. By default they are ordinary candidates. Set it to `true` to keep an installation subscription-only, which covers these paths:
+
+- Unpinned CLI-backend runs skip stored API-key sign-ins. A run with only API-key sign-ins fails to start.
+- The automatic sign-in order of embedded runs leaves out stored API-key sign-ins. A run with only API-key sign-ins has no automatic sign-in to use.
+- Rate-limit, auth-failure and failover rotations within a run pass over stored API-key sign-ins. Harness-owned runs get the same filtering when their attempt list is built.
+- Rate-limit account switching passes over stored API-key sign-ins.
+- Agents cannot move a session, or the sign-in order, onto a stored API-key sign-in.
+
+It does not change a sign-in the owner or user pins for a session, a provider API key set in config or the environment (those are not stored sign-ins), or Claude CLI's rule that an API-key sign-in is used only when chosen explicitly, which applies in both modes. Owner changes made in the app are never restricted by this setting.
 
 ## Model catalog discovery
 

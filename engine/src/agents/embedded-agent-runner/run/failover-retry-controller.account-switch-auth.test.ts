@@ -82,11 +82,8 @@ function resolvedAuth(profileId: string, secondSignedIn: boolean): ResolvedProvi
   }
 }
 
-async function limitedRun(params: {
-  secondSignedIn: boolean;
-  replaySafe: boolean;
-  subscriptionsOnly: boolean;
-}) {
+/** The run's auth state and controller, with the first sign-in already applied. */
+async function setUpRun(params: { secondSignedIn: boolean; subscriptionsOnly: boolean }) {
   const store = {
     version: 1,
     profiles: {
@@ -144,6 +141,27 @@ async function limitedRun(params: {
     getApiKeyInfo: () => state.apiKeyInfo,
     advanceAuthProfile: authController.advanceAuthProfile,
   });
+  return { controller, state, setRuntimeApiKey };
+}
+
+/** One short rate-limit rotation (below the wait threshold) from the first sign-in. */
+async function rotateOnce(params: { secondSignedIn: boolean; subscriptionsOnly: boolean }) {
+  const { controller, state, setRuntimeApiKey } = await setUpRun(params);
+  const rotated = await controller.advanceRateLimitAuthProfile({
+    failoverProvider: PROVIDER,
+    failoverModel: MODEL,
+    logFallbackDecision: () => undefined,
+  });
+  const runtimeKeys = setRuntimeApiKey.mock.calls.map(([, key]) => key);
+  return { rotated, state, runtimeKeys };
+}
+
+async function limitedRun(params: {
+  secondSignedIn: boolean;
+  replaySafe: boolean;
+  subscriptionsOnly: boolean;
+}) {
+  const { controller, state, setRuntimeApiKey } = await setUpRun(params);
   const limits: RateLimitAccountWait[] = [];
   const switches: string[] = [];
   const retried = await controller.maybeRetryTransient({
@@ -225,6 +243,24 @@ describe("rate-limit account switch with the embedded auth controller", () => {
     expect(run.state.lastProfileId).toBe("anthropic:second");
     expect(run.runtimeKeys).not.toContain("fixture-api-key");
     expect(run.runtimeKeys.at(-1)).toBe("fixture-token-second");
+  });
+
+  it("never rotates a short rate limit onto an API-key sign-in when subscriptionsOnly is set", async () => {
+    const run = await rotateOnce({ secondSignedIn: true, subscriptionsOnly: true });
+
+    // The rotation really happens (no cap throw): it lands on the next subscription, not the key.
+    expect(run.rotated).toBe(true);
+    expect(run.state.lastProfileId).toBe("anthropic:second");
+    expect(run.runtimeKeys).not.toContain("fixture-api-key");
+    expect(run.runtimeKeys.at(-1)).toBe("fixture-token-second");
+  });
+
+  it("rotates a short rate limit onto the API-key sign-in when subscriptionsOnly is off", async () => {
+    const run = await rotateOnce({ secondSignedIn: true, subscriptionsOnly: false });
+
+    expect(run.rotated).toBe(true);
+    expect(run.state.lastProfileId).toBe("anthropic:key");
+    expect(run.runtimeKeys.at(-1)).toBe("fixture-api-key");
   });
 
   it("moves a limited run onto the API-key sign-in when subscriptionsOnly is off", async () => {
