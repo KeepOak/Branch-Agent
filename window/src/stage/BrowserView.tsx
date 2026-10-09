@@ -289,7 +289,7 @@ const ownerBrowser: BrowserRoute = { target: "host", profile: "branch" };
 
 function BrowserPanel({ engine, gatewayUrl, blocks, name = "It", running = false, control = false, onControl, level = "regular", onState }: Props) {
   const entries = useMemo(() => recordedBrowserTabs(blocks), [blocks]);
-  const route = useMemo(() => routeOf(entries) ?? ownerBrowser, [routeKey(routeOf(entries))]); // eslint-disable-line react-hooks/exhaustive-deps
+  const route = useMemo(() => engine.sessionKey ? routeOf(entries) ?? ownerBrowser : null, [engine.sessionKey, routeKey(routeOf(entries))]); // eslint-disable-line react-hooks/exhaustive-deps
   const steps = blocks.filter((b) => b.kind === "step").length;
   const [tick, setTick] = useState(0);
   const browser = useBrowser(engine, route, tick + steps);

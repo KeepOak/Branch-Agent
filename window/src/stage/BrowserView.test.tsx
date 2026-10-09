@@ -86,7 +86,7 @@ afterEach(async () => {
 describe("scoped browser viewing", () => {
   it("offers an address and New tab before the Trunk has browsed", async () => {
     const request = vi.fn(async () => ({ running: false }));
-    await render(owner(request), []);
+    await render(owner(request as any), []);
     expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({
       target: "host", path: "/", query: { profile: "branch" }, tabScope: { sessionKey: "agent:scout:one" },
     }));
