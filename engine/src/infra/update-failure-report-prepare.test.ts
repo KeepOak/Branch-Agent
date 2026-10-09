@@ -245,7 +245,7 @@ it("preserves classified destination ownership and recovery without exposing use
         "~/.npm-global/lib/node_modules/branch",
         "/home/[redacted-user]/.npm-global",
         "Next step:",
-        "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/install/update-troubleshooting#node-and-global-install-permissions",
+        "https://docs.openclaw.ai/install/update-troubleshooting#node-and-global-install-permissions",
       ],
       ["[redacted-diagnostic]", "Private arbitrary diagnostic"],
     );

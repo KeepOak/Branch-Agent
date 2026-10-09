@@ -47,7 +47,7 @@ export function formatUnresolvedBranchPeerLinkError(packageName: string): string
 }
 
 const MISSING_EXTENSIONS_ERROR =
-  'package.json missing branch.extensions; update the plugin package to include branch.extensions (for example ["./dist/index.js"]). See https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/help/troubleshooting#plugin-install-fails-with-missing-openclaw-extensions';
+  'package.json missing branch.extensions; update the plugin package to include branch.extensions (for example ["./dist/index.js"]). See https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/help/troubleshooting';
 export function validateBranchPackageInstallCompatibility(params: {
   runtime: PluginCompatibilityRuntime;
   pluginId: string;

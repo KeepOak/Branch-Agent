@@ -18,7 +18,7 @@ const response = {
   schema: {},
   uiHints: {
     "channels.sms.fromNumber": {
-      docsUrl: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/channels/sms",
+      docsUrl: "https://docs.openclaw.ai/channels/sms",
       presentation: "phone-number",
     },
   },
@@ -51,7 +51,7 @@ describe("ConfigSchemaLookupResultSchema", () => {
       Value.Check(ConfigSchemaLookupResultSchema, {
         path: "gateway",
         schema: { type: "object" },
-        hint: { docsUrl: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway" },
+        hint: { docsUrl: "https://docs.openclaw.ai/gateway" },
         children: [],
       }),
     ).toBe(true);

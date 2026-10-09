@@ -788,7 +788,7 @@ describe("Slack session status and titles", () => {
     expect(log).toHaveBeenCalledOnce();
     expect(log).toHaveBeenCalledWith(
       expect.stringContaining(
-        "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/channels/slack#additional-manifest-settings",
+        "https://docs.openclaw.ai/channels/slack#additional-manifest-settings",
       ),
     );
   });

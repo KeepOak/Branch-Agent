@@ -4741,7 +4741,7 @@ INSERT INTO device_identities VALUES (
     }
     expect(firstFailure).toMatchObject({
       name: "SqliteSchemaVersionError",
-      message: expect.stringContaining("https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/reference/database-schemas"),
+      message: expect.stringContaining("https://docs.openclaw.ai/reference/database-schemas"),
     });
 
     for (const candidate of [databasePath, `${databasePath}-wal`, `${databasePath}-shm`]) {

@@ -266,7 +266,7 @@ describe("setupWizardCommand", () => {
           "Windows detected - Branch Agent runs great on WSL2!",
           "Native Windows might be trickier.",
           "Quick setup: wsl --install (one command, one reboot)",
-          "Guide: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/windows",
+          "Guide: https://docs.openclaw.ai/windows",
         ].join("\n"),
       );
     } finally {

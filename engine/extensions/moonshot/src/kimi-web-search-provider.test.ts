@@ -164,7 +164,7 @@ describe("kimi web search provider", () => {
     const toolArguments = `  ${JSON.stringify({
       query: "Branch Agent GitHub repository",
       url: " https://github.com/openclaw/openclaw ",
-      search_results: [{ url: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs" }, null, { url: "https://unused.test" }],
+      search_results: [{ url: "https://docs.openclaw.ai" }, null, { url: "https://unused.test" }],
       usage: { total_tokens: 1200 },
     })}\n`;
     const laterArguments = '{"url":"https://openclaw.ai"}';
@@ -181,7 +181,7 @@ describe("kimi web search provider", () => {
       )
       .mockResolvedValueOnce(
         groundedResponse("Branch Agent is available on GitHub.", [
-          "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
+          "https://docs.openclaw.ai",
           "https://example.com/final",
         ]),
       );
@@ -193,7 +193,7 @@ describe("kimi web search provider", () => {
     expectStringFieldContains(result, "content", "Branch Agent is available on GitHub.");
     expect(result.citations).toEqual([
       "https://github.com/openclaw/openclaw",
-      "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
+      "https://docs.openclaw.ai",
       "https://openclaw.ai",
       "https://example.com/final",
     ]);

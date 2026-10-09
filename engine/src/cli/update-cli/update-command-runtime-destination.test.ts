@@ -259,7 +259,7 @@ it.each([
         },
       });
       expect(JSON.stringify(result)).toContain(
-        "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/install/update-troubleshooting#node-and-global-install-permissions",
+        "https://docs.openclaw.ai/install/update-troubleshooting#node-and-global-install-permissions",
       );
     } else {
       expect(result).toMatchObject({ dryRun: true, root: oldRoot });

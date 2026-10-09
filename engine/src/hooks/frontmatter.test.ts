@@ -101,7 +101,7 @@ describe("resolveHookManifestMetadata", () => {
     const content = `---
 name: session-memory
 description: "Save session context to memory when a session is reset"
-homepage: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/automation/hooks#session-memory
+homepage: https://docs.openclaw.ai/automation/hooks#session-memory
 metadata:
   {
     "branch":

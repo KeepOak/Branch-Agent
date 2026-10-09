@@ -39,7 +39,7 @@ describe("shared/entry-status", () => {
         },
         frontmatter: {
           emoji: "🙂",
-          homepage: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
+          homepage: "https://docs.openclaw.ai",
         },
       },
       hasLocalBin: (bin) => bin === "bun",
@@ -100,7 +100,7 @@ describe("shared/entry-status", () => {
           },
         },
         frontmatter: {
-          website: " https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs ",
+          website: " https://docs.openclaw.ai ",
           emoji: "🙂",
         },
       },
@@ -108,7 +108,7 @@ describe("shared/entry-status", () => {
 
     expect(result).toEqual({
       emoji: "🙂",
-      homepage: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
+      homepage: "https://docs.openclaw.ai",
       required: {
         bins: ["missing-bin"],
         anyBins: [],
@@ -149,7 +149,7 @@ describe("shared/entry-status", () => {
       entry: {
         frontmatter: {
           homepage: " ",
-          website: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
+          website: "https://docs.openclaw.ai",
           url: "https://openclaw.ai/install",
         },
       },

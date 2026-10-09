@@ -243,7 +243,7 @@ it.each([
     "BRANCH_SERVICE_REPAIR_POLICY=external",
     "skips native maintenance inspection and service mutations",
     "Gateway/state coordinators and agent-database lease checks",
-    "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway#existing-system-launchdaemons",
+    "https://docs.openclaw.ai/gateway#existing-system-launchdaemons",
   ]) {
     expect.soft(output).toContain(hint);
   }

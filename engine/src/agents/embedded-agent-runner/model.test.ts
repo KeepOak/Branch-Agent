@@ -1780,7 +1780,7 @@ describe("resolveModel", () => {
     );
 
     expect(result.error).toBe(
-      'Unknown model: microsoft-foundry/Kimi-K2.6-1. Found agents.defaults.models["microsoft-foundry/Kimi-K2.6-1"], but no matching models.providers["microsoft-foundry"].models[] entry. Add { "id": "Kimi-K2.6-1", "name": "Kimi-K2.6-1" } to models.providers["microsoft-foundry"].models[] to register this provider model. For custom or proxy providers, also set api and baseUrl so requests route to the intended endpoint. See https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/concepts/model-providers.',
+      'Unknown model: microsoft-foundry/Kimi-K2.6-1. Found agents.defaults.models["microsoft-foundry/Kimi-K2.6-1"], but no matching models.providers["microsoft-foundry"].models[] entry. Add { "id": "Kimi-K2.6-1", "name": "Kimi-K2.6-1" } to models.providers["microsoft-foundry"].models[] to register this provider model. For custom or proxy providers, also set api and baseUrl so requests route to the intended endpoint. See https://docs.openclaw.ai/concepts/model-providers.',
     );
   });
 
@@ -1793,7 +1793,7 @@ describe("resolveModel", () => {
       skipAgentDiscovery: true,
     });
     expect(result.error).toBe(
-      'Unknown model: openai-codex/gpt-5.4. "openai-codex" is a legacy provider ID. Run `branch doctor --fix` to migrate legacy model and provider config to the current OpenAI format. If the provider has no authenticated profile, run `branch models status` to check provider auth and re-authenticate if needed. See https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/concepts/model-providers.',
+      'Unknown model: openai-codex/gpt-5.4. "openai-codex" is a legacy provider ID. Run `branch doctor --fix` to migrate legacy model and provider config to the current OpenAI format. If the provider has no authenticated profile, run `branch models status` to check provider auth and re-authenticate if needed. See https://docs.openclaw.ai/concepts/model-providers.',
     );
   });
 
@@ -1816,7 +1816,7 @@ describe("resolveModel", () => {
     });
 
     expect(result.error).toBe(
-      'Unknown model: openai/gpt-5.3-codex. Found agents.defaults.models["openai/gpt-5.3-codex"] bound to the "codex" agent runtime. Models served by an agent runtime come from that runtime and its linked account, not from models.providers["openai"].models[] — registering it there will not make it usable. Confirm "gpt-5.3-codex" is still offered by the "codex" runtime and switch agents.defaults.model.primary to a currently available model (run `branch models list --refresh --provider openai` to list them). See https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/concepts/model-providers.',
+      'Unknown model: openai/gpt-5.3-codex. Found agents.defaults.models["openai/gpt-5.3-codex"] bound to the "codex" agent runtime. Models served by an agent runtime come from that runtime and its linked account, not from models.providers["openai"].models[] — registering it there will not make it usable. Confirm "gpt-5.3-codex" is still offered by the "codex" runtime and switch agents.defaults.model.primary to a currently available model (run `branch models list --refresh --provider openai` to list them). See https://docs.openclaw.ai/concepts/model-providers.',
     );
   });
 

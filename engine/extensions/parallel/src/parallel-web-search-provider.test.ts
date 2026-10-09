@@ -246,7 +246,7 @@ describe("parallel web search provider", () => {
       error: "missing_parallel_api_key",
       message:
         "web_search (parallel) needs a Parallel API key. Set PARALLEL_API_KEY in the Gateway environment, or configure plugins.entries.parallel.config.webSearch.apiKey.",
-      docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/parallel-search",
+      docs: "https://docs.openclaw.ai/tools/parallel-search",
     });
     expect(endpointMockState.calls).toHaveLength(0);
   });

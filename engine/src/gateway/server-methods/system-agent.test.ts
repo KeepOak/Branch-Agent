@@ -94,7 +94,7 @@ function stubEngineOverview() {
     },
     gateway: { url: "ws://127.0.0.1:18789", source: "test", reachable: true },
     references: {
-      docsUrl: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
+      docsUrl: "https://docs.openclaw.ai",
       sourceUrl: "https://github.com/openclaw/openclaw",
     },
   } as never);

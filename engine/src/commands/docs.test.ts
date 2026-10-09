@@ -49,7 +49,7 @@ describe("docsSearchCommand", () => {
     if (!(url instanceof URL)) {
       throw new Error("expected docs search to call fetch with a URL");
     }
-    expect(url.href).toBe("https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/api/search?q=plugin+allowlist");
+    expect(url.href).toBe("https://docs.openclaw.ai/api/search?q=plugin+allowlist");
     expect(init).toMatchObject({ headers: { Accept: "application/json" } });
   });
 
@@ -60,7 +60,7 @@ describe("docsSearchCommand", () => {
           results: [
             {
               title: "CLI reference",
-              link: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli",
+              link: "https://docs.openclaw.ai/cli",
               snippet: "Command-line usage",
             },
           ],
@@ -77,7 +77,7 @@ describe("docsSearchCommand", () => {
       results: [
         {
           title: "CLI reference",
-          link: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli",
+          link: "https://docs.openclaw.ai/cli",
           snippet: "Command-line usage",
         },
       ],
@@ -90,8 +90,8 @@ describe("docsSearchCommand", () => {
         JSON.stringify({
           results: [
             { title: "Invalid result without a link" },
-            { title: "CLI reference", link: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli" },
-            { title: "Plugin guide", link: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins" },
+            { title: "CLI reference", link: "https://docs.openclaw.ai/cli" },
+            { title: "Plugin guide", link: "https://docs.openclaw.ai/plugins" },
           ],
         }),
       ),
@@ -102,7 +102,7 @@ describe("docsSearchCommand", () => {
 
     expect(JSON.parse(String(runtime.log.mock.calls[0]?.[0]))).toEqual({
       query: "branch",
-      results: [{ title: "CLI reference", link: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli" }],
+      results: [{ title: "CLI reference", link: "https://docs.openclaw.ai/cli" }],
     });
   });
 
@@ -114,7 +114,7 @@ describe("docsSearchCommand", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(JSON.parse(String(runtime.log.mock.calls[0]?.[0]))).toEqual({
       query: null,
-      url: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
+      url: "https://docs.openclaw.ai/",
       results: [],
     });
   });
@@ -188,7 +188,7 @@ describe("docsSearchCommand", () => {
     const body = new Uint8Array([
       ...new TextEncoder().encode('{"results":[{"title":"Plugin allow'),
       0xff,
-      ...new TextEncoder().encode('list","link":"https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/allowlist"}]}'),
+      ...new TextEncoder().encode('list","link":"https://docs.openclaw.ai/plugins/allowlist"}]}'),
     ]);
     fetchMock.mockResolvedValueOnce(
       new Response(body, { headers: { "Content-Type": "application/json" } }),
@@ -207,7 +207,7 @@ describe("docsSearchCommand", () => {
           results: [
             {
               title: "Plugin allowlist",
-              link: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/allowlist",
+              link: "https://docs.openclaw.ai/plugins/allowlist",
               snippet: "How to configure the allowlist.",
             },
           ],
@@ -312,7 +312,7 @@ describe("docs search request ownership", () => {
       requestSignal = init?.signal;
       return new Response(
         JSON.stringify({
-          results: [{ title: "Retained result", link: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli" }],
+          results: [{ title: "Retained result", link: "https://docs.openclaw.ai/cli" }],
         }),
       );
     });
@@ -322,7 +322,7 @@ describe("docs search request ownership", () => {
       await docsSearchCommand(["kept"], runtime, { json: true });
       expect(JSON.parse(String(runtime.log.mock.calls[0]?.[0]))).toEqual({
         query: "kept",
-        results: [{ title: "Retained result", link: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli" }],
+        results: [{ title: "Retained result", link: "https://docs.openclaw.ai/cli" }],
       });
       expect(requestSignal?.aborted).toBe(true);
       expect(runtime.error).not.toHaveBeenCalled();

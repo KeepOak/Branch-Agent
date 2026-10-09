@@ -150,7 +150,7 @@ describe("configureProgramHelp", () => {
     expect(options?.mode).toBe("default");
     expect(help).toContain("Examples:");
     expect(help).toContain("branch setup --baseline");
-    expect(help).toContain("https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli");
+    expect(help).toContain("https://docs.openclaw.ai/cli");
   });
 
   it("keeps valid root, group, subcommand, short, and help-command output successful", async () => {

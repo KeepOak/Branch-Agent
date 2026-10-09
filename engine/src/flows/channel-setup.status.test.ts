@@ -394,7 +394,7 @@ describe("resolveChannelSetupSelectionOptions", () => {
         "Approve with: branch pairing approve <channel> <code>",
         'Open/public DMs require dmPolicy="open" plus allowFrom=["*"].',
         'For multi-user DMs, isolate sessions with: branch config set session.dmScope "per-channel-peer" (or "per-account-channel-peer" for multi-account channels).',
-        "Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/channels/pairing",
+        "Docs: https://docs.openclaw.ai/channels/pairing",
         "",
         "bad\\nid: Blurb\\nline",
       ].join("\n"),
@@ -470,7 +470,7 @@ describe("resolveChannelSetupSelectionOptions", () => {
     if (typeof docsLink !== "function") {
       throw new Error("Expected docs link formatter");
     }
-    expect(docsLink("/channels/zalo", "Docs")).toBe("https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/channels/zalo");
+    expect(docsLink("/channels/zalo", "Docs")).toBe("https://docs.openclaw.ai/channels/zalo");
     expect(lines).toEqual(["Zalo\\nBot — Setup\\nhelp"]);
   });
 

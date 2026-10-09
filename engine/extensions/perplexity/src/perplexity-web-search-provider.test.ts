@@ -78,7 +78,7 @@ describe("perplexity web search provider", () => {
           error: "missing_perplexity_api_key",
           message:
             "web_search (perplexity) needs an API key. Set PERPLEXITY_API_KEY or OPENROUTER_API_KEY in the Gateway environment, or configure plugins.entries.perplexity.config.webSearch.apiKey. If you do not want to configure a search API key, use web_fetch for a specific URL or the browser tool for interactive pages.",
-          docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
+          docs: "https://docs.openclaw.ai/tools/web",
         });
       },
     );
@@ -181,7 +181,7 @@ describe("perplexity web search provider", () => {
       ).resolves.toEqual({
         error,
         message,
-        docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
+        docs: "https://docs.openclaw.ai/tools/web",
       });
     },
   );

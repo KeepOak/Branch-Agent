@@ -34,11 +34,11 @@ describe("qa-lab web search provider", () => {
       query: "Branch Agent runtime parity fixed query",
       results: [
         {
-          url: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/qa-lab/search-fixture/1",
+          url: "https://docs.openclaw.ai/qa-lab/search-fixture/1",
           siteName: "docs.openclaw.ai",
         },
         {
-          url: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/qa-lab/search-fixture/2",
+          url: "https://docs.openclaw.ai/qa-lab/search-fixture/2",
           siteName: "docs.openclaw.ai",
         },
       ],

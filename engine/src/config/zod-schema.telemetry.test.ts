@@ -32,7 +32,7 @@ describe("BranchSchema telemetry config", () => {
       help: expect.stringContaining("ISO timestamp"),
     });
 
-    expect(response.uiHints.telemetry?.docsUrl).toBe("https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/telemetry");
+    expect(response.uiHints.telemetry?.docsUrl).toBe("https://docs.openclaw.ai/gateway/telemetry");
     expect(response.uiHints["telemetry.enabled"]?.advanced).toBe(true);
   });
 });

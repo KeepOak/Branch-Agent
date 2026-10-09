@@ -76,7 +76,7 @@ describe("uninstallCommand", () => {
     expect(removeStateAndLinkedPaths).not.toHaveBeenCalled();
     expect(removeWorkspaceDirs).not.toHaveBeenCalled();
     expect(cleanupCommandLogMessages(runtime)).not.toContain(
-      "CLI removal instructions: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/install/uninstall",
+      "CLI removal instructions: https://docs.openclaw.ai/install/uninstall",
     );
   });
 

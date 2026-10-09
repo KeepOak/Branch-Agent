@@ -25,7 +25,7 @@ function createOverview(gatewayReachable: boolean): SystemAgentOverview {
       reachable: gatewayReachable,
     },
     references: {
-      docsUrl: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
+      docsUrl: "https://docs.openclaw.ai",
       sourceUrl: "https://github.com/openclaw/openclaw",
     },
   };

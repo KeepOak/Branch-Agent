@@ -1932,7 +1932,7 @@ describe("launchd install", () => {
     }
     expect(message).toContain("logged-in macOS GUI session");
     expect(message).toContain("wrong user (including sudo)");
-    expect(message).toContain("https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway");
+    expect(message).toContain("https://docs.openclaw.ai/gateway");
   });
 });
 

@@ -226,7 +226,7 @@ describe("slack prepareSlackMessage inbound contract", () => {
           token: "token",
           channel: "C_DENIED",
           user: "U1",
-          text: "Personal Grove can’t reply here because this channel isn’t in its Branch Agent channel allowlist. Ask the Branch Agent owner to allow this channel. <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/channels/slack#access-control-and-routing|Learn how to configure Slack channel access.>",
+          text: "Personal Grove can’t reply here because this channel isn’t in its Branch Agent channel allowlist. Ask the Branch Agent owner to allow this channel. <https://docs.openclaw.ai/channels/slack#access-control-and-routing|Learn how to configure Slack channel access.>",
         });
         expect(enqueueSystemEventMock).not.toHaveBeenCalled();
       } else if (outcome === "name lookup failed") {

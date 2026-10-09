@@ -48,11 +48,11 @@ describe("createOptionalChannelSetupSurface", () => {
         input: {},
       }),
     ).toBe(
-      "Example setup requires @branch/example to be installed. Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/channels/example",
+      "Example setup requires @branch/example to be installed. Docs: https://docs.openclaw.ai/channels/example",
     );
     expect(setup.setupWizard.channel).toBe("example");
     expect(setup.setupWizard.status.unconfiguredHint).toBe(
-      "Example setup requires @branch/example to be installed. Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/channels/example",
+      "Example setup requires @branch/example to be installed. Docs: https://docs.openclaw.ai/channels/example",
     );
     await expect(
       runSetupWizardFinalize({

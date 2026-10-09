@@ -763,7 +763,7 @@ it.each(["unchanged", "device changed", "metadata changed", "contents changed"])
             "No action is needed if all expected conversations are present",
           );
           expect(issue.message).toContain(
-            "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli/doctor/sqlite-maintenance#changed-archived-registry",
+            "https://docs.openclaw.ai/cli/doctor/sqlite-maintenance#changed-archived-registry",
           );
           expect(issue.message).not.toContain("Error:");
           if (report.migrationRun) {

@@ -526,7 +526,7 @@ describe("formatCliParseErrorOutput", () => {
 
     expect(error.message).toBe('Branch Agent does not know the command "pairng".');
     expect(error.humanOutput).toBe(
-      'Branch Agent does not know the command "pairng".\nDid you mean this?\n  branch pairing\nTry: branch --help\nPlugin command? branch plugins list\nDocs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli\n',
+      'Branch Agent does not know the command "pairng".\nDid you mean this?\n  branch pairing\nTry: branch --help\nPlugin command? branch plugins list\nDocs: https://docs.openclaw.ai/cli\n',
     );
   });
 
@@ -548,7 +548,7 @@ describe("formatCliParseErrorOutput", () => {
     });
 
     expect(output).toBe(
-      'Branch Agent does not know the command "wat".\nTry: branch --help\nPlugin command? branch plugins list\nDocs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli\n',
+      'Branch Agent does not know the command "wat".\nTry: branch --help\nPlugin command? branch plugins list\nDocs: https://docs.openclaw.ai/cli\n',
     );
   });
 
@@ -559,7 +559,7 @@ describe("formatCliParseErrorOutput", () => {
     });
 
     expect(output).toBe(
-      'Branch Agent webhooks has no command "list".\nTry: branch webhooks --help\nDocs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli\n',
+      'Branch Agent webhooks has no command "list".\nTry: branch webhooks --help\nDocs: https://docs.openclaw.ai/cli\n',
     );
   });
 
@@ -571,7 +571,7 @@ describe("formatCliParseErrorOutput", () => {
     });
 
     expect(output).toBe(
-      'Branch Agent webhooks has no command "gmial".\nDid you mean this?\n  branch webhooks gmail\nTry: branch webhooks --help\nDocs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli\n',
+      'Branch Agent webhooks has no command "gmial".\nDid you mean this?\n  branch webhooks gmail\nTry: branch webhooks --help\nDocs: https://docs.openclaw.ai/cli\n',
     );
   });
 
@@ -584,7 +584,7 @@ describe("formatCliParseErrorOutput", () => {
 
     expect(error.code).toBe("commander.unknownCommand");
     expect(output).toBe(
-      'Branch Agent sessions has no command "lst".\nDid you mean this?\n  branch sessions list\nTry: branch sessions --help\nDocs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli\n',
+      'Branch Agent sessions has no command "lst".\nDid you mean this?\n  branch sessions list\nTry: branch sessions --help\nDocs: https://docs.openclaw.ai/cli\n',
     );
   });
 
@@ -597,7 +597,7 @@ describe("formatCliParseErrorOutput", () => {
 
     expect(error.code).toBe("commander.unknownCommand");
     expect(output).toBe(
-      'Branch Agent config has no command "gett".\nDid you mean this?\n  branch config get\nTry: branch config --help\nDocs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli\n',
+      'Branch Agent config has no command "gett".\nDid you mean this?\n  branch config get\nTry: branch config --help\nDocs: https://docs.openclaw.ai/cli\n',
     );
   });
 
@@ -612,7 +612,7 @@ describe("formatCliParseErrorOutput", () => {
     expect(error.exitCode).toBe(1);
     expect(stdout).toBe("");
     expect(output).toBe(
-      'Branch Agent sessions has no command "lst".\nDid you mean this?\n  branch sessions list\nTry: branch sessions --help\nDocs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli\n',
+      'Branch Agent sessions has no command "lst".\nDid you mean this?\n  branch sessions list\nTry: branch sessions --help\nDocs: https://docs.openclaw.ai/cli\n',
     );
   });
 
@@ -659,7 +659,7 @@ describe("formatCliParseErrorOutput", () => {
     });
 
     expect(output).toBe(
-      'Branch Agent does not know the command "upate".\nDid you mean this?\n  branch update\nTry: branch --help\nPlugin command? branch plugins list\nDocs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli\n',
+      'Branch Agent does not know the command "upate".\nDid you mean this?\n  branch update\nTry: branch --help\nPlugin command? branch plugins list\nDocs: https://docs.openclaw.ai/cli\n',
     );
   });
 

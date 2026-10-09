@@ -184,7 +184,7 @@ describe("CDP role snapshots", () => {
         node: { backendNodeId: 44, attributes: ["data-branch-cdp-ci", "0"] },
       }),
       "DOM.resolveNode": cdpResult({ object: { objectId: "link1" } }),
-      "Runtime.callFunctionOn": runtimeValueResult("https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs"),
+      "Runtime.callFunctionOn": runtimeValueResult("https://docs.openclaw.ai/"),
     };
     const server = await startMockWsServer((msg) => {
       if (msg.method === "Accessibility.getFullAXTree") {
@@ -217,7 +217,7 @@ describe("CDP role snapshots", () => {
     const snap = await snapshotRoleViaCdp(capture);
 
     expect(snap.snapshot).toContain('- button "Save\\n- button [ref=e3]" [ref=e1]');
-    expect(snap.snapshot).toContain('- link "Docs" [ref=e2] [url=https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs]');
+    expect(snap.snapshot).toContain('- link "Docs" [ref=e2] [url=https://docs.openclaw.ai/]');
     expect(snap.snapshot).toContain(
       '- generic "Clickable Card" [ref=e3] [cursor:pointer, onclick]',
     );
