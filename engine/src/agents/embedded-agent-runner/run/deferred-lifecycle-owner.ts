@@ -1,4 +1,4 @@
-import { getAgentEventLifecycleGeneration } from "../../../infra/agent-events.js";
+import { captureAgentRunLifecycleGeneration } from "../../../infra/agent-events.js";
 import { formatErrorMessage } from "../../../infra/errors.js";
 import {
   beginDiagnosticRetryWait,
@@ -147,6 +147,7 @@ export function createDeferredEmbeddedRunLifecycleManager(params: {
 }): DeferredEmbeddedRunLifecycleManager {
   // Recovery projections time the whole logical turn, not the current runtime attempt.
   const startedAtMs = Date.now();
+  const lifecycleGeneration = captureAgentRunLifecycleGeneration(params.runId);
   const controller = new AbortController();
   const signal = params.abortSignal
     ? AbortSignal.any([params.abortSignal, controller.signal])
@@ -181,7 +182,7 @@ export function createDeferredEmbeddedRunLifecycleManager(params: {
         runId: params.runId,
         sessionId: params.sessionId,
         sessionKey: params.sessionKey,
-        lifecycleGeneration: getAgentEventLifecycleGeneration(),
+        lifecycleGeneration,
         isCurrent: () => current === owner && !signal.aborted,
         abort: () => abort("restart"),
       });
@@ -207,7 +208,7 @@ export function createDeferredEmbeddedRunLifecycleManager(params: {
         runId: params.runId,
         sessionId: params.sessionId,
         sessionKey: params.sessionKey,
-        lifecycleGeneration: getAgentEventLifecycleGeneration(),
+        lifecycleGeneration,
         deadlineAtMs,
         isCurrent: () => current === owner && retryWait === wait && !waitSignal.aborted,
         abort: () => abort("restart"),

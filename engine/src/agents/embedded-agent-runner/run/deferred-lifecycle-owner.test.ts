@@ -423,6 +423,8 @@ describe("deferred logical-turn lifecycle", () => {
       expect(manager.signal.aborted).toBe(false);
       handoff.commit();
       await release?.();
+      await manager.checkpoint();
+      expect(persist).not.toHaveBeenCalled();
     } finally {
       handoff.stop();
       await manager.complete();
