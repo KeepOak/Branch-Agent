@@ -21,6 +21,7 @@ import {
 // listedGateFiles() is called after both modules load, so this cycle stays safe.
 import { listedGateFiles } from './check-gate-files-fresh.mjs';
 import { checkUIProof } from './check-ui-proof.mjs';
+import { checkSelfCheck, formatSelfCheckSummary } from './check-self-check.mjs';
 import {
   DEFAULT_WAIT_BUDGET_SECONDS,
   GH_API_MAX_BUFFER,
@@ -54,6 +55,8 @@ export const GATE_SCRIPTS = [
   'scripts/check-commit-emails.test.mjs',
   'scripts/check-ui-proof.mjs',
   'scripts/check-ui-proof.test.mjs',
+  'scripts/check-self-check.mjs',
+  'scripts/check-self-check.test.mjs',
   'scripts/feature-batch-ci-targets.mjs',
   'scripts/feature-slice-ci-targets.mjs',
   'scripts/priority-capabilities-ci-targets.mjs',
@@ -836,6 +839,14 @@ export function runUiProofFromPr(files, prBody) {
   return result.exitCode === 0;
 }
 
+export function runSelfCheckFromPr(headRef, body) {
+  const result = checkSelfCheck({ headRef, body });
+  writeSummary(formatSelfCheckSummary(result));
+  for (const sentence of result.problems) console.error(sentence);
+  if (result.ok) console.log(formatSelfCheckSummary(result).split('\n')[1]);
+  return result.ok;
+}
+
 export function fetchFileText(repo, sha, token, filePath) {
   try {
     const payload = ghApi(repo, token, `contents/${filePath}?ref=${sha}`);
@@ -1172,8 +1183,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const waitBudgetSeconds = Number(process.env.MERGE_GATE_WAIT_SECONDS ?? DEFAULT_WAIT_BUDGET_SECONDS);
   const initialWait = Number(process.env.MERGE_GATE_INITIAL_WAIT ?? 30);
 
-  if (!repo || !sha || !token || !prNumber || !baseRef) {
-    console.error('Missing required environment variables: REPO, SHA, GH_TOKEN, PR_NUMBER, BASE_REF');
+  if (!repo || !sha || !token || !prNumber || !baseRef || !process.env.HEAD_BRANCH) {
+    console.error('Missing required environment variables: REPO, SHA, GH_TOKEN, PR_NUMBER, BASE_REF, HEAD_BRANCH');
     process.exit(1);
   }
 
@@ -1205,6 +1216,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   }
   console.log('Merge-command check passed.');
   if (!runUiProofFromPr(files, body)) process.exit(1);
+  if (!runSelfCheckFromPr(process.env.HEAD_BRANCH, body)) process.exit(1);
 
   if (initialWait > 0) sleepSeconds(initialWait);
 
