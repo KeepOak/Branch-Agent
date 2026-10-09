@@ -256,6 +256,14 @@ function AnsweredRow({ answered, trunk }: { answered: Answered; trunk: Trunk }) 
 
 function PermissionCard({ permission, onTurnOn, onSettings }: { permission: NotificationPermission | null; onTurnOn: () => void; onSettings: () => void }) {
   const { color, space, radius, layout } = useTheme();
+  if (permission === 'unavailable') {
+    // Expo Go on Android and the web preview can't post Branch's notifications; answering here still works.
+    return (
+      <ThemedText testID="notifications-unavailable" variant="footnote" tone="ink2" style={{ marginTop: space.md }}>
+        Notifications need the installed Branch app. Approvals still show up here.
+      </ThemedText>
+    );
+  }
   if (permission !== 'undetermined' && permission !== 'denied') return null;
   const off = permission === 'denied';
   return (
