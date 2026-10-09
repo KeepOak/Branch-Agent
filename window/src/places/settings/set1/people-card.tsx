@@ -3,7 +3,7 @@
 // a one-time code for their device (device.pair.setupCode) and Sign out everywhere (device.token.revoke).
 import { useState } from "react";
 import { visible } from "../adapter";
-import { Acts, Btn, Hint, Pill, Sec, Seg, useSaveRunner } from "../kit";
+import { Acts, Btn, Pill, Sec, Seg, useSaveRunner } from "../kit";
 import { ACTKINDS, OWNER_ID, devicesLine, firstName, mayOf, revokePlan, roleOf, scopesOf, type Profile } from "./people-data";
 import { Face, type People } from "./people";
 import { MineHead, YouSecs } from "./people-mine";
@@ -45,7 +45,7 @@ function May({ ctx, p }: { ctx: People; p: Profile }) {
           </label>
         ))}
       </div>
-      {p.owner ? null : <p className="hint">{ctx.roles.defs[roleOf(p, ctx.roles)] ? `Follows ${firstName(visible(p.name))}’s role.` : `What ${firstName(visible(p.name))}’s devices were granted.`} Branch can’t tick these one by one yet.</p>}
+      {p.owner ? null : <p className="hint">{ctx.roles.defs[roleOf(p, ctx.roles)] ? `Follows ${firstName(visible(p.name))}’s role.` : `What ${firstName(visible(p.name))}’s devices were granted.`}</p>}
     </Sec>
   );
 }
@@ -71,14 +71,11 @@ function Actions({ ctx, p, out, onOut }: ActProps) {
   return (
     <>
       <Acts>
-        <Btn sm disabled title="Branch can’t switch person yet.">Switch to {first}</Btn>
         <RoleSeg ctx={ctx} p={p} />
         <Btn ghost sm disabled={Boolean(noAdmin)} title={noAdmin} onClick={makeCode}>Make a one-time code</Btn>
         <SignOut ctx={ctx} p={p} out={out} onOut={onOut} />
-        <Btn ghost sm disabled title="Branch can’t remove a person yet.">Remove</Btn>
       </Acts>
       {code ? <p className="code-pp"><code>{code.c}</code><span>Works once{code.until ? `, until ${new Date(code.until).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true })}` : ""}. {first} types it on their own device.</span></p> : null}
-      <Hint>Switching to someone and removing someone aren’t in Branch yet.</Hint>
     </>
   );
 }

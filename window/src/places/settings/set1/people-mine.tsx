@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { errorText, visible } from "../adapter";
 import { Btn, Ctl, Sec, useLevel, useSaveRunner } from "../kit";
-import { PIC_ERRORS, accessLine, avatarParams, pictureFileError, type Profile } from "./people-data";
+import { OWNER_DEFAULT_NAME, PIC_ERRORS, accessLine, avatarParams, pictureFileError, type Profile } from "./people-data";
 import type { People } from "./people";
 
 export type Picture = { url: string | null; msg: string; pick: (file: File) => void };
@@ -68,7 +68,7 @@ export function MineHead({ ctx, me, face, where }: { ctx: People; me: Profile; f
       </span>
       <span className="grow">
         <span className="namerow-pp">
-          {edit === null ? <><b>{visible(me.name)}</b><Btn ghost sm onClick={() => setEdit(me.name)}>Change</Btn></> : (
+          {edit === null ? <><b>{visible(me.name)}</b><Btn ghost sm onClick={() => setEdit(me.name === OWNER_DEFAULT_NAME ? "" : me.name)}>{me.name === OWNER_DEFAULT_NAME ? "Add your name" : "Change"}</Btn></> : (
             <span className="nameed-pp">
               <input className="inp" autoFocus maxLength={256} value={edit} aria-label="Your name" onChange={(e) => setEdit(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setEdit(null); } }} />
@@ -77,6 +77,7 @@ export function MineHead({ ctx, me, face, where }: { ctx: People; me: Profile; f
             </span>
           )}
         </span>
+        {me.name === OWNER_DEFAULT_NAME ? <small className="why-k">Nobody has set a name yet. People will see “{OWNER_DEFAULT_NAME}”.</small> : null}
         {where ? <small>{where}</small> : null}
       </span>
     </>
@@ -98,7 +99,13 @@ export function YouSecs({ ctx, me, owner }: { ctx: People; me: Profile; owner: s
       <Sec title="Your access">
         <p className="acc-pp">{accessLine(scopes)}</p>
         {me.owner ? null : <p className="hint">Missing something? Ask {owner} to look at what you may do, then reconnect.</p>}
-        {lv >= 2 ? <><p className="hint">Granted when you connected. A role can narrow these, never widen them.</p><span className="scopes-pp">{scopes.map((s) => <code key={s}>{s}</code>)}</span></> : null}
+        {lv >= 2 ? (
+          <details className="tech-pp">
+            <summary>Technical details</summary>
+            <p className="hint">Granted when you connected. A role can narrow these, never widen them.</p>
+            <span className="scopes-pp">{scopes.map((s) => <code key={s}>{s}</code>)}</span>
+          </details>
+        ) : null}
       </Sec>
     </>
   );
