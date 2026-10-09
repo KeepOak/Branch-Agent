@@ -47,7 +47,7 @@ describe("Settings › Branch account", () => {
     const open = vi.spyOn(window, "open").mockReturnValue(null);
     const { engine, request } = engineWith({
       "account.status": () => (signedIn ? SIGNED_IN : SIGNED_OUT),
-      "account.google.signIn": (p) => ({ sessionId: p.sessionId, done: false, status: "running" }),
+      "account.google.signIn": (p: Record<string, unknown>) => ({ sessionId: p.sessionId, done: false, status: "running" }),
       "wizard.next": () => {
         nextCount += 1;
         if (nextCount === 1) {
@@ -102,7 +102,7 @@ describe("Settings › Branch account", () => {
   it("a cancelled sign-in returns to the button and tells the engine to stop", async () => {
     const { engine, request } = engineWith({
       "account.status": SIGNED_OUT,
-      "account.google.signIn": (p) => ({ sessionId: p.sessionId, done: false, status: "running" }),
+      "account.google.signIn": (p: Record<string, unknown>) => ({ sessionId: p.sessionId, done: false, status: "running" }),
       "wizard.next": () => new Promise(() => undefined),
     });
     vi.spyOn(window, "open").mockReturnValue(null);
