@@ -7,10 +7,15 @@ import {
   resolveExplicitAuthOrderSelection,
   setAuthProfileOrder,
 } from "../../agents/auth-profiles.js";
+import { SUBSCRIPTION_ONLY_SIGN_IN_MESSAGE } from "../../agents/auth-profiles/subscription-only.js";
 import { resolveProviderIdForAuth } from "../../agents/provider-auth-aliases.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { refreshModelAuthStateAfterMutation } from "../model-auth-refresh.js";
 import { readPreparedCatalog } from "../server-model-catalog-auth.js";
+import {
+  isAgentSessionModelPatchOrigin,
+  isSessionStatusModelPatchOrigin,
+} from "../session-model-patch-origin.js";
 import { formatForLog } from "../ws-log.js";
 import { resolveModelAuthAgentScope } from "./model-auth-agent-scope.js";
 import { resolveConfigBoundProfileIds } from "./models-auth-status-config.js";
@@ -22,7 +27,7 @@ import { assertValidParams } from "./validation.js";
 const log = createSubsystemLogger("models-auth-order");
 
 export const modelsAuthOrderHandlers: GatewayRequestHandlers = {
-  "models.authOrderSet": async ({ params, respond, context }) => {
+  "models.authOrderSet": async ({ params, respond, context, client }) => {
     if (
       !assertValidParams(params, validateModelsAuthOrderSetParams, "models.authOrderSet", respond)
     ) {
@@ -90,6 +95,24 @@ export const modelsAuthOrderHandlers: GatewayRequestHandlers = {
       );
       if (invalidProfile) {
         rejectInvalidOrder(`profileId ${invalidProfile} is unavailable for provider ${provider}`);
+        return;
+      }
+      // Agent-made order changes never put an API-key sign-in in line; owner changes stay as-is.
+      const agentMade =
+        client?.internal?.agentRuntimeIdentity !== undefined ||
+        isAgentSessionModelPatchOrigin() ||
+        isSessionStatusModelPatchOrigin();
+      if (
+        agentMade &&
+        profileIds?.some(
+          (profileId) => preparedSnapshot.authStore.profiles[profileId]?.type === "api_key",
+        )
+      ) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.FORBIDDEN, SUBSCRIPTION_ONLY_SIGN_IN_MESSAGE),
+        );
         return;
       }
       const updated = await setAuthProfileOrder({

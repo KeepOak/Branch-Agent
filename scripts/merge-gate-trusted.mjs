@@ -21,6 +21,7 @@ import {
 // listedGateFiles() is called after both modules load, so this cycle stays safe.
 import { listedGateFiles } from './check-gate-files-fresh.mjs';
 import { checkUIProof } from './check-ui-proof.mjs';
+import { checkSelfCheck, formatSelfCheckSummary } from './check-self-check.mjs';
 import {
   DEFAULT_WAIT_BUDGET_SECONDS,
   GH_API_MAX_BUFFER,
@@ -39,6 +40,7 @@ export const HANDOFF_WORKFLOW_PATH = '.github/workflows/engine-handoff-checks.ym
 export const TRUSTED_CHECKOUT_REF = '${{ github.event.repository.default_branch }}';
 export const REQUIRED_JOBS = ['merge-gate', 'Analyze (actions)'];
 export const PASS_CONCLUSIONS = new Set(['success', 'skipped', 'neutral']);
+export const PATH_FILTER_NO_CHECK_RUN = 'path filter matched, no check run';
 export const COMMENT_JOB_NAME = 'comment';
 export const VISUAL_TOUR_WORKFLOW_PATH = '.github/workflows/visual-tour.yml';
 export const TIMEOUT_RERUN_LINE = 're-run merge-gate, do not merge main';
@@ -53,6 +55,8 @@ export const GATE_SCRIPTS = [
   'scripts/check-commit-emails.test.mjs',
   'scripts/check-ui-proof.mjs',
   'scripts/check-ui-proof.test.mjs',
+  'scripts/check-self-check.mjs',
+  'scripts/check-self-check.test.mjs',
   'scripts/feature-batch-ci-targets.mjs',
   'scripts/feature-slice-ci-targets.mjs',
   'scripts/priority-capabilities-ci-targets.mjs',
@@ -106,19 +110,64 @@ function suiteNumber(run) {
   return Number(run?.check_suite?.id);
 }
 
+function isCompletedPass(run) {
+  return run.status === 'completed' && PASS_CONCLUSIONS.has(run.conclusion);
+}
+
+function suiteCompletedPass(runs) {
+  return runs.length > 0 && runs.every(isCompletedPass);
+}
+
+function suiteOnlyCancelledNonPasses(runs) {
+  return runs.every((run) =>
+    run.status !== 'completed'
+    || PASS_CONCLUSIONS.has(run.conclusion)
+    || run.conclusion === 'cancelled');
+}
+
 function newestSuiteSupersedes(runs) {
-  // A still-running suite waits. Only success replaces an earlier non-pass.
+  // A still-running suite waits. Only success replaces an earlier hard
+  // non-pass (failure, timed_out, action_required, startup_failure).
   return runs.every((run) => run.status !== 'completed' || run.conclusion === 'success');
 }
 
 function keepNewestSuite(runs) {
+  const bySuite = new Map();
+  for (const run of runs) {
+    const suite = suiteNumber(run);
+    const group = bySuite.get(suite);
+    if (group) group.push(run);
+    else bySuite.set(suite, [run]);
+  }
   let newestSuite = suiteNumber(runs[0]);
   for (const run of runs) {
     const suite = suiteNumber(run);
     if (suite > newestSuite) newestSuite = suite;
   }
-  const inNewest = runs.filter((run) => suiteNumber(run) === newestSuite);
-  return newestSuiteSupersedes(inNewest) ? inNewest : runs;
+  const inNewest = bySuite.get(newestSuite) ?? [];
+  if (newestSuiteSupersedes(inNewest)) return inNewest;
+
+  // A completed success/skipped/neutral suite supersedes cancelled-only
+  // suites of the same identity. Concurrency can cancel a later-numbered
+  // duplicate, so a cancelled suite with a higher ID does not hide a pass.
+  // A skipped or neutral suite must not hide failure, timed_out,
+  // action_required, or startup_failure.
+  let passSuiteId = Number.NEGATIVE_INFINITY;
+  let passSuite = null;
+  for (const [suite, suiteRuns] of bySuite) {
+    if (suiteCompletedPass(suiteRuns) && suite > passSuiteId) {
+      passSuiteId = suite;
+      passSuite = suiteRuns;
+    }
+  }
+  if (passSuite) {
+    const others = [];
+    for (const [suite, suiteRuns] of bySuite) {
+      if (suite !== passSuiteId) others.push(...suiteRuns);
+    }
+    if (suiteOnlyCancelledNonPasses(others)) return passSuite;
+  }
+  return runs;
 }
 
 export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}, { sha, prNumber, baseRef } = {}) {
@@ -352,7 +401,7 @@ export function missingCoreWorkflows({
       continue;
     }
     const runs = checkRuns.filter((run) => lookupWorkflow(workflowsByCheckId, run.id)?.path === workflow.path);
-    if (!runs.length) missing.push(`${workflow.path} (path filter matched, no check run)`);
+    if (!runs.length) missing.push(`${workflow.path} (${PATH_FILTER_NO_CHECK_RUN})`);
     else if (workflow.path === HANDOFF_WORKFLOW_PATH && !runs.some(isPassingHandoffE2e)) {
       missing.push(`${workflow.path} (hand-over paths changed, no passing real-engine handoff run)`);
     }
@@ -410,17 +459,24 @@ export function evaluateTrustedGate({
     errors.push(`Missing or failed core workflows: ${missingCore.join(', ')}`);
   }
 
+  const unregisteredCore = unregisteredPathFilterMisses(missingCore);
   return {
     others,
     pending,
     failed,
     foreignTrusted,
     missingCore,
+    unregisteredCore,
     unresolvedCurrent,
-    ready: pending.length === 0 && unresolvedCurrent.length === 0 && !missingAnalyze,
+    ready: pending.length === 0 && unresolvedCurrent.length === 0 && !missingAnalyze
+      && unregisteredCore.length === 0,
     ok: errors.length === 0 && pending.length === 0 && unresolvedCurrent.length === 0 && !missingAnalyze,
     errors,
   };
+}
+
+export function unregisteredPathFilterMisses(missingCore) {
+  return (missingCore ?? []).filter((item) => String(item).includes(`(${PATH_FILTER_NO_CHECK_RUN})`));
 }
 
 export function summarizeGateFileChanges(changedFiles) {
@@ -445,7 +501,58 @@ export function formatGateChangeSummary(changedFiles) {
 
 export const GATE_CHANGE_REVIEW_REQUIRED =
   'The gate change needs a separate review before the marker can be added for this head.';
+export const BUTTON_CRAWL_BASELINE = 'scripts/button-crawl/baseline.json';
 const GATE_CHANGE_REVIEWED_LINE = /^gate-change-reviewed: ([0-9a-f]{40})$/;
+
+/** Problem entries in the button-crawl baseline. Unparseable text is not a usable set. */
+export function buttonCrawlBaselineEntries(text) {
+  if (text == null || String(text).trim() === '') return { ok: true, entries: new Set() };
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { ok: false, entries: new Set() };
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { ok: false, entries: new Set() };
+  const problems = parsed.problems;
+  if (problems == null) return { ok: true, entries: new Set() };
+  if (typeof problems !== 'object' || Array.isArray(problems)) return { ok: false, entries: new Set() };
+  const entries = new Set();
+  for (const [key, list] of Object.entries(problems)) {
+    if (!Array.isArray(list)) return { ok: false, entries: new Set() };
+    for (const problem of list) {
+      if (typeof problem !== 'string' || problem.trim() === '') return { ok: false, entries: new Set() };
+      entries.add(`${key}\0${problem}`);
+    }
+  }
+  return { ok: true, entries };
+}
+
+/** True when the pull request baseline has a problem entry main does not. Order and formatting do not count. */
+export function buttonCrawlBaselineGrew(baseText, headText) {
+  const base = buttonCrawlBaselineEntries(baseText);
+  const head = buttonCrawlBaselineEntries(headText);
+  if (!head.ok) return true;
+  const known = base.ok ? base.entries : new Set();
+  for (const entry of head.entries) {
+    if (!known.has(entry)) return true;
+  }
+  return false;
+}
+
+export function pullRequestTouchesPath(files, filePath) {
+  return (files ?? []).some((file) => {
+    const name = typeof file === 'string' ? file : file?.filename;
+    const previous = typeof file === 'string' ? '' : file?.previous_filename;
+    return name === filePath || previous === filePath;
+  });
+}
+
+/** Growth only counts when this pull request changes the baseline file. */
+export function buttonCrawlBaselineGrowth({ files, baseText, headText }) {
+  if (!pullRequestTouchesPath(files, BUTTON_CRAWL_BASELINE)) return false;
+  return buttonCrawlBaselineGrew(baseText, headText);
+}
 const GATE_RUNNER_WORKFLOWS = [
   '.github/workflows/merge-gate.yml',
   TRUSTED_WORKFLOW_PATH,
@@ -536,12 +643,19 @@ export function formatGateChangeReviewFailure(protectedFiles, headSha, body) {
   } else {
     lines.push(`The gate-change-reviewed marker does not match the current head ${headSha}.`);
   }
+  if (protectedFiles.includes(BUTTON_CRAWL_BASELINE)) {
+    lines.push('The button-crawl baseline has an entry that main does not. A shrink or a reorder does not need this review.');
+  }
   return lines.join('\n');
 }
 
-export function evaluateGateChangeReview({ changedFiles, body, headSha, protectedPaths }) {
+export function evaluateGateChangeReview({ changedFiles, body, headSha, protectedPaths, baselineGrew = false }) {
   const paths = protectedPaths ?? loadProtectedGatePaths();
   const protectedFiles = touchedProtectedFiles(changedFiles, paths);
+  if (baselineGrew && !protectedFiles.includes(BUTTON_CRAWL_BASELINE)) {
+    protectedFiles.push(BUTTON_CRAWL_BASELINE);
+    protectedFiles.sort();
+  }
   const markerMatched = gateChangeMarkerMatches(body, headSha);
   const touched = protectedFiles.length > 0;
   return {
@@ -696,9 +810,13 @@ export function fetchCheckRuns(repo, sha, token, api = ghApi) {
   }
 }
 
-export function formatTimeoutMessage(pending, { missingAnalyze = false } = {}) {
+export function formatTimeoutMessage(pending, { missingAnalyze = false, unregisteredCore = [] } = {}) {
   const names = [...new Set((pending ?? []).map((run) => run.name).filter(Boolean))];
   if (missingAnalyze && !names.includes('Analyze (actions)')) names.push('Analyze (actions)');
+  for (const item of unregisteredCore) {
+    const workflowPath = String(item).replace(` (${PATH_FILTER_NO_CHECK_RUN})`, '');
+    if (workflowPath && !names.includes(workflowPath)) names.push(workflowPath);
+  }
   names.sort();
   const waitingOn = names.length ? names.join(', ') : '(no named pending check)';
   return `Timed out waiting for: ${waitingOn}\n${TIMEOUT_RERUN_LINE}`;
@@ -719,6 +837,14 @@ export function runUiProofFromPr(files, prBody) {
   if (result.exitCode) console.error(result.message);
   else console.log(result.message);
   return result.exitCode === 0;
+}
+
+export function runSelfCheckFromPr(headRef, body) {
+  const result = checkSelfCheck({ headRef, body });
+  writeSummary(formatSelfCheckSummary(result));
+  for (const sentence of result.problems) console.error(sentence);
+  if (result.ok) console.log(formatSelfCheckSummary(result).split('\n')[1]);
+  return result.ok;
 }
 
 export function fetchFileText(repo, sha, token, filePath) {
@@ -1032,14 +1158,17 @@ export function pollTrustedGateWithBudget({
       log(`All ${result.others.length} other checks passed.`);
       return 0;
     }
-    log(`Waiting for checks (running: ${result.pending.length}, unresolved current claims: ${result.unresolvedCurrent.length}, including required Analyze)…`);
+    log(`Waiting for checks (running: ${result.pending.length}, unresolved current claims: ${result.unresolvedCurrent.length}, unregistered path-filtered: ${result.unregisteredCore.length}, including required Analyze)…`);
     if (attempt >= maxAttempts || remaining() < 1) break;
     sleep(Math.min(pollSeconds ?? pollIntervalSeconds(attempt - 1), remaining()));
     attempt += 1;
   }
 
   const analyze = (last.others ?? []).find((run) => run.name === 'Analyze (actions)');
-  error(formatTimeoutMessage(last.pending, { missingAnalyze: !analyze }));
+  error(formatTimeoutMessage(last.pending, {
+    missingAnalyze: !analyze,
+    unregisteredCore: last.unregisteredCore ?? unregisteredPathFilterMisses(last.missingCore),
+  }));
   return 1;
 }
 
@@ -1054,15 +1183,24 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const waitBudgetSeconds = Number(process.env.MERGE_GATE_WAIT_SECONDS ?? DEFAULT_WAIT_BUDGET_SECONDS);
   const initialWait = Number(process.env.MERGE_GATE_INITIAL_WAIT ?? 30);
 
-  if (!repo || !sha || !token || !prNumber || !baseRef) {
-    console.error('Missing required environment variables: REPO, SHA, GH_TOKEN, PR_NUMBER, BASE_REF');
+  if (!repo || !sha || !token || !prNumber || !baseRef || !process.env.HEAD_BRANCH) {
+    console.error('Missing required environment variables: REPO, SHA, GH_TOKEN, PR_NUMBER, BASE_REF, HEAD_BRANCH');
     process.exit(1);
   }
 
   const files = fetchPrFiles(repo, prNumber, token);
   const changedFiles = changedFilesFromPrFiles(files);
   const body = fetchPrBody(repo, prNumber, token);
-  const review = evaluateGateChangeReview({ changedFiles, body, headSha: sha });
+  const baselineGrew = buttonCrawlBaselineGrowth({
+    files,
+    baseText: pullRequestTouchesPath(files, BUTTON_CRAWL_BASELINE)
+      ? fetchFileText(repo, baseRef, token, BUTTON_CRAWL_BASELINE)
+      : null,
+    headText: pullRequestTouchesPath(files, BUTTON_CRAWL_BASELINE)
+      ? fetchFileText(repo, sha, token, BUTTON_CRAWL_BASELINE)
+      : null,
+  });
+  const review = evaluateGateChangeReview({ changedFiles, body, headSha: sha, baselineGrew });
   writeSummary(formatGateChangeSummary(changedFiles));
   writeSummary(formatGateChangeReviewSummary(review));
   if (!review.ok) {
@@ -1078,6 +1216,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   }
   console.log('Merge-command check passed.');
   if (!runUiProofFromPr(files, body)) process.exit(1);
+  if (!runSelfCheckFromPr(process.env.HEAD_BRANCH, body)) process.exit(1);
 
   if (initialWait > 0) sleepSeconds(initialWait);
 

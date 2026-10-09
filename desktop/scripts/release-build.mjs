@@ -79,7 +79,7 @@ async function deployEngine(pnpm, scratch, identity) {
 async function packageDesktop(scratch, output, identity) {
   const npmDirectory = process.platform === "win32" ? dirname(process.execPath) : join(dirname(process.execPath), "../lib");
   await run(process.execPath, [join(npmDirectory, "node_modules/npm/bin/npm-cli.js"), "ci", "--no-audit", "--no-fund"], desktopRoot);
-  await run(process.execPath, [join(desktopRoot, "node_modules/typescript/bin/tsc"), "-p", join(desktopRoot, "tsconfig.json")], desktopRoot);
+  await run(process.execPath, [join(desktopRoot, "scripts/build.mjs")], desktopRoot);
   const packageJson = JSON.parse(await readFile(join(desktopRoot, "package.json"), "utf8"));
   delete packageJson.devDependencies; delete packageJson.scripts;
   const appDirectory = join(scratch, "desktop-app"); await mkdir(appDirectory);
@@ -89,14 +89,19 @@ async function packageDesktop(scratch, output, identity) {
   const { downloadArtifact } = require("@electron/get");
   const electron = await fileDigest(await downloadArtifact({ version: identity.electronVersion, artifactName: "electron", platform: identity.platform, arch: identity.arch }));
   const { packager } = require("@electron/packager");
+  const { darwinPackagerOptions, stampMacBundle, MAC_ARCHIVE_BUNDLE_FOLDER } = require(join(desktopRoot, "dist/mac-applications.js"));
+  const macIcon = join(desktopRoot, "assets/branch.icns");
   const folders = await packager({ dir: appDirectory, name: "Branch Agent", platform: identity.platform, arch: identity.arch,
     electronVersion: identity.electronVersion, asar: true, out: join(scratch, "desktop-packaged"), prune: false,
-    appVersion: packageJson.version, ...({ win32: { icon: join(desktopRoot, "assets/branch.ico") },
-      darwin: { icon: join(desktopRoot, "assets/branch.icns") }, linux: { icon: join(desktopRoot, "assets/brand/linux/branch-512.png") } }[identity.platform] ?? {}) });
+    appVersion: packageJson.version, ...(identity.platform === "win32" ? { icon: join(desktopRoot, "assets/branch.ico") } : {}),
+    ...(identity.platform === "darwin" ? darwinPackagerOptions(macIcon) : {}),
+    ...(identity.platform === "linux" ? { icon: join(desktopRoot, "assets/brand/linux/branch-512.png") } : {}) });
   assert.equal(folders.length, 1, "Expected one native desktop package");
   const app = folders[0];
+  // Stamp the name and stable bundle id before signing. A later rewrite would break the signature.
+  if (identity.platform === "darwin") await stampMacBundle(join(app, MAC_ARCHIVE_BUNDLE_FOLDER));
   if (identity.platform === "linux") await installLinuxLauncher(app);
-  const resources = identity.platform === "darwin" ? join(app, "Branch Agent.app/Contents/Resources") : join(app, "resources");
+  const resources = identity.platform === "darwin" ? join(app, `${MAC_ARCHIVE_BUNDLE_FOLDER}/Contents/Resources`) : join(app, "resources");
   let node = await bundleNode(resources, undefined, identity);
   // Outside app.asar so a fresh package can prove its executable already has the Keeper icon.
   await writeFile(join(resources, "keeper-icon-revision"), "keeper-v1\n");
@@ -114,7 +119,7 @@ async function packageDesktop(scratch, output, identity) {
     await rm(join(resources, "node/node-runtime.json"));
     // Packager signs before the bundled Node and icon revision are added. Sign the finished bundle,
     // including its nested code, before hashing the Node binary or archiving the app.
-    await run(rcodesign, ["sign", "--p12-file", signingP12, "--p12-password-file", signingPassword, join(app, "Branch Agent.app")]);
+    await run(rcodesign, ["sign", "--p12-file", signingP12, "--p12-password-file", signingPassword, join(app, MAC_ARCHIVE_BUNDLE_FOLDER)]);
     node = { ...node, sha256: (await fileDigest(join(resources, "node/node"))).sha256 };
   }
   desktop.runtime = app;

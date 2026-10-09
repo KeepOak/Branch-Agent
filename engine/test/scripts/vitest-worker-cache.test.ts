@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as buildArtifactCache from "../../scripts/lib/build-artifact-cache.mts";
 import { createVitestResourceOwner } from "../../scripts/lib/vitest-resource-ownership.mts";
 import {
   hashVitestWorkerArtifact,
@@ -167,6 +168,83 @@ function cachedProbe(root: string, directory: string): string {
 }
 
 describe("compiled worker content cache", () => {
+  it.each(["EPERM", "EBUSY", "EACCES"])(
+    "retries two transient %s transfer renames",
+    async (code) => {
+      const f = fixture();
+      await f.seed();
+      f.nextInvocation();
+      const rename = fs.promises.rename.bind(fs.promises);
+      let attempts = 0;
+      const spy = vi.spyOn(fs.promises, "rename").mockImplementation(async (source, target) => {
+        attempts++;
+        if (attempts <= 2) {
+          throw Object.assign(new Error("transient handle"), { code });
+        }
+        await rename(source, target);
+      });
+      try {
+        expect(await f.restore()).toBeDefined();
+        expect(attempts).toBeGreaterThanOrEqual(3);
+      } finally {
+        spy.mockRestore();
+      }
+    },
+  );
+
+  it("throws ENOSPC transfer errors without retry", async () => {
+    const f = fixture();
+    await f.seed();
+    f.nextInvocation();
+    const error = Object.assign(new Error("disk full"), { code: "ENOSPC" });
+    const spy = vi.spyOn(fs.promises, "rename").mockRejectedValue(error);
+    try {
+      await expect(f.restore()).rejects.toBe(error);
+      expect(spy).toHaveBeenCalledOnce();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("stops transient transfer errors after five attempts", async () => {
+    const f = fixture();
+    await f.seed();
+    f.nextInvocation();
+    const error = Object.assign(new Error("held handle"), { code: "EPERM" });
+    const spy = vi.spyOn(fs.promises, "rename").mockRejectedValue(error);
+    try {
+      await expect(f.restore()).rejects.toBe(error);
+      expect(spy).toHaveBeenCalledTimes(5);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("stops retrying transfer renames when ownership changes", async () => {
+    const f = fixture();
+    await f.seed();
+    f.nextInvocation();
+    let changed = false;
+    const acquire = buildArtifactCache.acquireBuildArtifactLockAsync;
+    const acquiring = vi
+      .spyOn(buildArtifactCache, "acquireBuildArtifactLockAsync")
+      .mockImplementation(async (...args) => {
+        const lock = await acquire(...args);
+        return { ...lock, verifyStillHeld: async () => !changed && (await lock.verifyStillHeld()) };
+      });
+    const renaming = vi.spyOn(fs.promises, "rename").mockImplementation(async () => {
+      changed = true;
+      throw Object.assign(new Error("held handle"), { code: "EPERM" });
+    });
+    try {
+      await expect(f.restore()).rejects.toThrow("cache transfer lock changed");
+      expect(renaming).toHaveBeenCalledOnce();
+    } finally {
+      renaming.mockRestore();
+      acquiring.mockRestore();
+    }
+  });
+
   it("propagates namespace rejection evidence without publishing a cache signature", async () => {
     const f = fixture();
     const owner = await f.cache();

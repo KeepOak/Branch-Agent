@@ -38,9 +38,9 @@ const QUIET = process.platform === "win32" && process.argv.includes(START_IN_TRA
 const ICON = process.platform === "win32"
   ? join(__dirname, "..", "assets", "branch.ico")
   : join(__dirname, "..", "assets", "brand", "linux", "branch-48.png");
-// Electron loads branch-16@2x.png automatically for Retina menu bars.
+// Menu bar template: black leaf on a transparent background. Electron loads branchTemplate@2x.png for Retina.
 const TRAY_ICON = process.platform === "darwin"
-  ? join(__dirname, "..", "assets", "brand", "linux", "branch-16.png")
+  ? join(__dirname, "..", "assets", "brand", "linux", "branchTemplate.png")
   : ICON;
 /** A positive whole number of milliseconds from the environment, else `fallback` (a typo never means "0 ms"). */
 function envMs(value: string | undefined, fallback: number): number {
@@ -222,7 +222,7 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
 });
 const componentUpdates = createComponentUpdateController(cfg, { stage: stageComponentUpdate });
 let tray: Tray | undefined;
-const controls = createDesktopControls({ ...desktopOs(app, cfg, () => tray, ICON), onChange: settings => {
+const controls = createDesktopControls({ ...desktopOs(app, cfg, () => tray, TRAY_ICON), onChange: settings => {
   if (engineUpdateReady) sendToBranchWindows("branch-desktop:engine-update", settings.autoApplyUpdates ? "auto-wait" : "ready");
   void autoApply.tick();
 } });

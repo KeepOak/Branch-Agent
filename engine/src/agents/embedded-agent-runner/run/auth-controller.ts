@@ -556,13 +556,26 @@ export function createEmbeddedRunAuthController(params: {
     state.lastProfileId = profileId;
   };
 
-  const advanceAuthProfile = async (): Promise<boolean> => {
+  /**
+   * Moves to the next usable profile in the run's order. With `accept`, only matching profiles
+   * are tried and the others are passed over without applying their credentials; when none
+   * signs in, the run stays on its current profile (re-applied if a failed try disturbed it).
+   */
+  const advanceAuthProfile = async (options?: {
+    accept?: (profileId: string | undefined) => boolean;
+  }): Promise<boolean> => {
+    const accept = options?.accept;
+    const startIndex = state.profileIndex;
+    let triedAccepted = false;
     let nextIndex = state.profileIndex + 1;
     while (nextIndex < params.profileCandidates.length) {
       const candidateIndex = nextIndex++;
       const candidate = params.profileCandidates[candidateIndex];
       // Candidate exhaustion is run-local and never depends on a cooldown write.
       state.profileIndex = candidateIndex;
+      if (accept && !accept(candidate)) {
+        continue;
+      }
       if (
         candidate &&
         isProfileInCooldown(params.authStore, candidate, undefined, params.modelId)
@@ -570,6 +583,7 @@ export function createEmbeddedRunAuthController(params: {
         continue;
       }
       try {
+        triedAccepted = true;
         await applyApiKeyInfo(candidate, candidateIndex);
         state.thinkLevel = params.initialThinkLevel;
         params.attemptedThinking.clear();
@@ -580,6 +594,20 @@ export function createEmbeddedRunAuthController(params: {
         }
         await recordOAuthRefreshFailure(candidate, err);
       }
+    }
+    if (accept) {
+      state.profileIndex = startIndex;
+      if (triedAccepted) {
+        // A failed sign-in can leave partial auth state behind; put the current profile back.
+        try {
+          await applyApiKeyInfo(params.profileCandidates[startIndex], startIndex);
+        } catch (err) {
+          params.log.warn(
+            `auth profile "${params.profileCandidates[startIndex] ?? "(none)"}" could not be restored for ${params.provider}: ${formatErrorMessage(err)}`,
+          );
+        }
+      }
+      return false;
     }
     state.profileIndex = params.profileCandidates.length;
     return false;

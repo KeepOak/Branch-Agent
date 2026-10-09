@@ -90,6 +90,8 @@ export type MemorySearchRuntimeDebug = {
   backend: "builtin";
   configuredMode?: string;
   effectiveMode?: string;
+  /** The leased keyword index matches the configured corpus, sources and scope. */
+  keywordFallbackContentScopeValid?: true;
   fallback?: string;
   embeddingBootstrap?: {
     ok: false;
