@@ -184,7 +184,7 @@ export const MODEL_FIELD_HELP: Record<string, string> = {
   "agents.defaults.modelPolicy.allow":
     'Allowed model override refs. Accepts aliases, full "provider/model" refs, and provider wildcards such as "openai/*". Empty permits any model.',
   "agents.defaults.subscriptionsOnly":
-    "When true, automatic sign-in choices use only subscription (OAuth or token) sign-ins: unpinned runs skip API keys and fail if only API keys exist, agents cannot move a session or the sign-in order onto an API key, and rate-limit switching skips API keys. Default false: API-key sign-ins work everywhere, as in upstream OpenClaw.",
+    "When true, automatic sign-in choices use only subscription (OAuth or token) sign-ins: unpinned runs skip API keys and fail if only API keys exist, agents cannot move a session or the sign-in order onto an API key, and rate-limit switching skips API keys. Default false: API-key sign-ins work everywhere.",
   "agents.defaults.models.*.agentRuntime":
     "Optional per-model runtime policy for the default agent. Use this for model-specific runtime exceptions instead of setting a whole-agent runtime.",
   "agents.defaults.models.*.agentRuntime.id":

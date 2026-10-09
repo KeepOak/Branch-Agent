@@ -8,8 +8,8 @@ export const SUBSCRIPTION_ONLY_SIGN_IN_MESSAGE = "Trunks only use subscription s
 export const SUBSCRIPTION_ONLY_RUN_MESSAGE = `${SUBSCRIPTION_ONLY_SIGN_IN_MESSAGE} This provider only has API-key sign-ins; add a subscription sign-in in Model Setup. Branch Agent did not start the run.`;
 
 /**
- * The one reader of agents.defaults.subscriptionsOnly. Off (the default) keeps upstream OpenClaw
- * behaviour: API-key sign-ins are ordinary candidates for unpinned runs, auth order, session
+ * The one reader of agents.defaults.subscriptionsOnly. Off (the default) keeps API-key sign-ins
+ * working everywhere: API-key sign-ins are ordinary candidates for unpinned runs, auth order, session
  * patches and rate-limit switching. On restores the subscription-only rules the guards enforce.
  */
 export function isSubscriptionsOnly(cfg: BranchConfig | undefined): boolean {
