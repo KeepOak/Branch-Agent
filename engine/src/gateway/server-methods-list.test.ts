@@ -308,6 +308,10 @@ describe("listGatewayMethods", () => {
       "backup.schedule.set",
       "backup.schedule.clear",
       "backup.run",
+      "trunks.queue.add",
+      "trunks.queue.list",
+      "trunks.queue.done",
+      "trunks.queue.release",
       "agents.retryStartup",
     ];
     expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
@@ -422,6 +426,10 @@ describe("listGatewayMethods", () => {
       "backup.schedule.set",
       "backup.schedule.clear",
       "backup.run",
+      "trunks.queue.add",
+      "trunks.queue.list",
+      "trunks.queue.done",
+      "trunks.queue.release",
       "agents.retryStartup",
     ]);
   });
@@ -670,6 +678,10 @@ describe("listGatewayMethods", () => {
       "backup.schedule.set",
       "backup.schedule.clear",
       "backup.run",
+      "trunks.queue.add",
+      "trunks.queue.list",
+      "trunks.queue.done",
+      "trunks.queue.release",
       "agents.retryStartup",
     ];
     expect(coreMethods.slice(-expectedCoreSuffix.length)).toEqual(expectedCoreSuffix);

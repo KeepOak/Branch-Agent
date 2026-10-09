@@ -31,10 +31,12 @@ One codebase gives us both iPhone and Android, and it ships as fast as an iOS-on
 
 ## Approvals and notifications
 
-- The engine already has push methods: `push.apns`, `push.web` and `push.test`. After pairing, the phone registers its push token with the engine.
-- When a Trunk needs a yes (`exec.approval.requested`), the phone gets a notification with Allow and Deny buttons, and it's answered without opening the app (`exec.approval.resolve`). Opening the notification shows the full command and context in a sheet.
-- The same approval shows on the computer too. Whichever one answers first wins, and the other one clears (`exec.approval.resolved`).
-- Push uses the owner's own Apple and Google developer accounts. There are no paid API keys. Exactly what `push.apns` needs is an engine question for Coordinator, and it gets settled in the approvals PR.
+- **Where they come from.** The phone follows every pending approval the engine has for it: `exec.approval.list` and `plugin.approval.list` on each connect, then `exec.approval.requested` / `plugin.approval.requested` and their `.resolved` events. That is the same data the window's approval cards use.
+- **In the app.** A "Needs your yes" bar sits at the top of Chats. It opens **Needs you**, with one card per request: the Trunk, what it wants in plain words ("Run a command", or a plugin's own question such as "Send an email to Dana?"), the command with secrets dotted out, the computer and folder, anything the engine noticed, and how long is left. The buttons are Allow and Deny ("Send it" and "Don't send" for a request that sends). Always allow is offered only where the engine allows it, and only after a second tap that says what it covers. "Look at the chat first" opens the chat it came from. What was answered lately stays below, with where it was answered.
+- **Notifications.** While Branch is in the background or the phone is locked, each new request posts one local notification with real Allow and Deny buttons (`expo-notifications` categories). A button answers it on the computer (`exec.approval.resolve` or `plugin.approval.resolve`) without opening the app. If the computer is briefly out of reach, the answer waits up to 15 seconds for it to come back. On iPhone, Allow asks for the phone to be unlocked first. Tapping the notification opens Needs you at that request. If an answer can't get through, a second notification says so.
+- **Whichever answers first wins.** The computer, a chat channel or the phone can answer. The others hear `*.approval.resolved`, the card moves to Answered, the phone's notification goes away and the app badge counts down.
+- **Asking for permission.** Needs you asks for notifications in context, with one button. If they're turned off, it says so and opens Settings.
+- **Not yet: a closed app.** A notification can only go out while the app is running, which includes running in the background. Once the phone suspends or closes Branch, it stops hearing the computer. The engine's APNs approval push (`exec-approval-ios-push.ts`) only reaches devices that register through the node `push.apns.register` event, and only through the hosted relay for its own iOS app. That needs an engine card: push registration for paired operator phones, via APNs and FCM or Expo's push service, using the owner's own developer accounts.
 
 ## Updates
 
@@ -52,7 +54,8 @@ Grok Bot's calm, conversation-first feel, built with Apple's design language, wi
 - **Motion:** Springs instead of easing curves (snappy for taps, gentle for sheets) and 180 ms fades. Light haptics on send, approve and deny.
 - **Fixes to the preview's phone screens:**
   - The preview squeezes the desktop layout to full width. The phone gets a native stack with a bottom tab bar.
-  - The preview's approvals are a notice you can't act on. The phone gets real Allow and Deny buttons in the notification.
+  - The preview's approvals are a notice you can't act on. The phone gets real Allow and Deny buttons in the notification, and they answer on the computer.
+  - The preview's Inbox says Yes and No, and offers "Allow all". The phone says what each button does (Allow, Deny, Send it, Don't send) and has no Allow all, because a command should be read before it runs.
   - Status in the preview lives in small chips. The phone puts presence right on the avatar and in the chat header ("typing…").
 
 All values live in `src/theme/tokens.ts` and screens read them through `useTheme()`. There are no hardcoded colours, and a test checks that every text colour passes WCAG AA (4.5:1) on every surface in both modes.
@@ -68,7 +71,7 @@ The preview's phone also has a Home tab (Needs you, Working now, What's left, qu
 1. **Welcome and pairing.** A large-title welcome, one "Pair with your computer" button, a full-screen QR scanner, and a live "Waiting for you to approve on your computer…" step that turns into a tick by itself.
 2. **Chats.** An iMessage-style list of Trunks and Branch Agent with avatars, presence dots, the last line, and a relative time. A count of chats that want a look sits beside the large title. Chips for All, Trunks, Rooms, Needs you, Snoozed, Archived and Automations show only when they have chats behind them. Search finds chat names as you type and words inside messages (`sessions.search`). Pinned and Recent groups. Swipe actions are pin and mark read.
 3. **Chat.** Live streaming replies with a bottom-anchored composer that follows the keyboard. Tool steps fold into a single quiet "Worked for 12s" line you can expand.
-4. **Approvals and notifications.** Actionable notifications, plus an in-app sheet with the command, why it's needed, and Allow or Deny. Pending approvals pin to the top of Chats.
+4. **Approvals and notifications.** Actionable notifications, plus Needs you, which shows the command, the computer and folder, what the engine noticed, and the time left, with Allow or Deny. Pending approvals pin to the top of Chats as a "Needs your yes" bar.
 5. **Trunk status and "typing…".** Presence on every avatar, a live "typing…" in the header and the list, and a Trunk detail sheet with its current task and model.
 6. **Settings.** Inset grouped lists: this phone, the paired computer, notifications, appearance (follow system, light or dark), and unpair. Each row says what it does.
 7. **Updates.** A quiet "Branch updated" note that lists what changed, with the version and when it was applied. No nags.

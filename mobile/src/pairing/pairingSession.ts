@@ -169,6 +169,11 @@ export class PairingSession implements EngineLink {
     return this.openHello;
   }
 
+  /** A fresh random id, for a message's idempotency key. */
+  newId(): string {
+    return this.deps.createRequestId();
+  }
+
   request<T = unknown>(method: string, params?: unknown): Promise<T> {
     const gateway = this.gateway;
     if (!gateway || !this.openHello) return Promise.reject(new Error('Your computer isn’t connected right now.'));

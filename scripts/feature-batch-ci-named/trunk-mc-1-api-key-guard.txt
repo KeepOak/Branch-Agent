@@ -1,0 +1,3 @@
+engine:src/agents/cli-runner/prepare.test.ts
+engine:src/gateway/server-methods/models-auth-status.test.ts
+engine:src/gateway/sessions-patch.test.ts

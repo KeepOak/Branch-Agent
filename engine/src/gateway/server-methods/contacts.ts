@@ -37,6 +37,7 @@ import {
 import { projectContacts } from "../contacts/project.js";
 import { claimGraftWork, completeGraftWork, enqueueGraftWork, getGraftWork } from "../contacts/graft-work.js";
 import { hasOperatorBoundary, resolveOperatorRolePolicy } from "../operator-role-policy.js";
+import { removeOutsideRoomMembers } from "../rooms/store.js";
 import { createSessionListEntryFilter } from "../session-sharing.js";
 import { readSessionTitleFieldsFromTranscriptAsync } from "../session-transcript-title-reader.js";
 import { deriveSessionTitle } from "../session-utils-core.js";
@@ -323,6 +324,19 @@ export const contactHandlers: GatewayRequestHandlers = {
     let settings = updateOutsideAgentSettings(params);
     for (const other of device?.ids.filter((id) => id !== params.id) ?? []) {
       settings = updateOutsideAgentSettings({ id: other, revoked: true });
+    }
+    if (params.revoked === true) {
+      // Include legacy/product-wide revocations as well as every row belonging to a grafted device.
+      const revokedIds = new Set([
+        params.id!,
+        ...(device?.ids ?? []),
+        ...listOutsideAgents()
+          .filter((row) => outsideAgentRefusal(row, { ...settings, enabled: true }))
+          .map((row) => row.id),
+      ]);
+      for (const room of removeOutsideRoomMembers([...revokedIds])) {
+        context.broadcast("rooms.changed", { roomId: room.roomId, room }, { dropIfSlow: true });
+      }
     }
     context.broadcast("contacts.changed", { ts: Date.now() }, { dropIfSlow: true });
     respond(true, settings);

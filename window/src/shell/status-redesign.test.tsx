@@ -133,7 +133,7 @@ it("Every account is a flat list with preview row text and checks again through 
   expect(request).toHaveBeenCalledWith("models.authStatus", { refresh: true });
   expect(request.mock.calls.filter(([method]) => method === "usage.status")).toHaveLength(2);
   expect(host.textContent).toContain("new@example.com");
-  expect(host.textContent).toContain("Claude · Pro");
+  expect(host.textContent).toContain("Claude · Account 1 · Pro");
   await click(host, "open-usage");
   expect(open).toHaveBeenCalledOnce();
 });
