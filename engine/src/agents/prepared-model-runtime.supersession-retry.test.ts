@@ -3,6 +3,11 @@
 import { usePreparedModelRuntimeHarness } from "./prepared-model-runtime.test-harness.js";
 import { describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
+import {
+  MAX_STARTUP_PUBLICATION_SKIPS,
+  publishStartupModelsUntilUnskipped,
+} from "../gateway/server-agent-database-startup.js";
+import { AgentDatabasePreparationSupersededError } from "../state/agent-database-admission.js";
 import { acquirePreparedModelRuntimeLeaseFromOwners } from "./prepared-model-runtime-lease.js";
 import {
   acquireAgentRunPreparedModelRuntime,
@@ -217,6 +222,101 @@ describe("model runtime publication supersession", () => {
     await Promise.allSettled([first]);
     await successor;
     expect(skipped).toBeGreaterThan(0);
+    expect(getPreparedModelRuntimeSnapshot(fixture.agentInput("worker", config))).toBeDefined();
+  });
+
+  it("republishes a superseded startup publication within the same attempt", async () => {
+    const config = {};
+    mocks.configuredAgentIds = ["worker", "sibling"];
+    const started = createDeferred();
+    const release = createDeferred();
+    mocks.ensureBranchModelsJson.mockImplementationOnce(async (_config, agentDir) => {
+      started.resolve();
+      await release.promise;
+      return { agentDir: String(agentDir), wrote: false };
+    });
+    let attempts = 0;
+    let successor: Promise<void> | undefined;
+    let republished = 0;
+    const attempt = publishStartupModelsUntilUnskipped({
+      assertCurrent: () => undefined,
+      onRepublish: () => {
+        republished += 1;
+      },
+      publishOnce: async (onSkipped) => {
+        attempts += 1;
+        const publication = refreshPreparedModelRuntimeSnapshots(config, {
+          gatewayLifecycle: true,
+          onPublicationSkipped: onSkipped,
+        });
+        if (attempts === 1) {
+          void publication.catch(() => undefined);
+          await started.promise;
+          successor = refreshPreparedModelRuntimeSnapshots(config, {
+            gatewayLifecycle: true,
+          });
+          release.resolve();
+        }
+        await publication.catch((error: unknown) => {
+          if (!(error instanceof PreparedModelRuntimePublicationSupersededError)) {
+            throw error;
+          }
+          onSkipped();
+        });
+      },
+    });
+    await attempt;
+    await successor;
+    expect(attempts).toBe(2);
+    expect(republished).toBe(1);
+    expect(getPreparedModelRuntimeSnapshot(fixture.agentInput("worker", config))).toBeDefined();
+  });
+
+  it("fails a startup publication whose config or secrets change while it is republished", async () => {
+    let publishes = 0;
+    let checks = 0;
+    const attempt = publishStartupModelsUntilUnskipped({
+      assertCurrent: () => {
+        checks += 1;
+        if (checks >= 1) {
+          throw new AgentDatabasePreparationSupersededError("config changed");
+        }
+      },
+      onRepublish: () => undefined,
+      publishOnce: async (onSkipped) => {
+        publishes += 1;
+        onSkipped();
+      },
+    });
+    await expect(attempt).rejects.toBeInstanceOf(AgentDatabasePreparationSupersededError);
+    expect(publishes).toBe(1);
+  });
+
+  it("fails a startup publication as superseded after too many skips in a row", async () => {
+    let publishes = 0;
+    const attempt = publishStartupModelsUntilUnskipped({
+      assertCurrent: () => undefined,
+      onRepublish: () => undefined,
+      publishOnce: async (onSkipped) => {
+        publishes += 1;
+        onSkipped();
+      },
+    });
+    await expect(attempt).rejects.toThrow(/superseded/);
+    expect(publishes).toBe(MAX_STARTUP_PUBLICATION_SKIPS);
+  });
+
+  it("does not report a successful publication as skipped", async () => {
+    const config = {};
+    mocks.configuredAgentIds = ["worker"];
+    let skipped = 0;
+    await refreshPreparedModelRuntimeSnapshots(config, {
+      gatewayLifecycle: true,
+      onPublicationSkipped: () => {
+        skipped += 1;
+      },
+    });
+    expect(skipped).toBe(0);
     expect(getPreparedModelRuntimeSnapshot(fixture.agentInput("worker", config))).toBeDefined();
   });
 });

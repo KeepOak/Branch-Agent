@@ -79,6 +79,38 @@ export async function replaceStartupAgentModelPreparation(
   return replacePreparedModelRuntimeAgentBuilds(resolveAgentDir(cfg, agentId, env), reason);
 }
 
+/** Consecutive superseded publications an attempt republishes before it fails as superseded. */
+export const MAX_STARTUP_PUBLICATION_SKIPS = 8;
+
+/**
+ * Runs one startup model publication, republishing it each time a newer refresh, reload, or
+ * metadata read supersedes it. The agent's config and secrets are checked before each republish, so
+ * a change there fails the attempt with its own superseded error. Too many skips in a row also fail
+ * it as superseded; the attempt's watchdog still bounds the time.
+ */
+export async function publishStartupModelsUntilUnskipped(params: {
+  publishOnce: (onSkipped: () => void) => Promise<void>;
+  assertCurrent: () => void;
+  onRepublish: () => void;
+}): Promise<void> {
+  for (let skips = 1; ; skips += 1) {
+    let skipped = false;
+    await params.publishOnce(() => {
+      skipped = true;
+    });
+    if (!skipped) {
+      return;
+    }
+    params.assertCurrent();
+    if (skips >= MAX_STARTUP_PUBLICATION_SKIPS) {
+      throw new AgentDatabasePreparationSupersededError(
+        `startup model publication was superseded ${skips} times in a row`,
+      );
+    }
+    params.onRepublish();
+  }
+}
+
 /**
  * Another publication that covers this agent (a sibling's preparation, a config or auth refresh)
  * hides its snapshot until that publication commits. Waits for it instead of calling this
@@ -274,36 +306,31 @@ export function activateGatewayAgentDatabaseStartup(params: {
           // publish it again within this attempt (its watchdog bounds the loop) rather than fail.
           for (;;) {
             preparedInput = undefined;
-            const publication = { skipped: false };
-            await runStartupModelPublication(assertPreparationCurrent, (isPublicationCurrent) =>
-              withPluginRuntimeRegistryScope(params.getPluginRegistry(), () =>
-                refreshPreparedModelRuntimeSnapshots(cfg, {
-                  agentIds,
-                  catalogMode: "static",
-                  allowGatewaySubagentBinding: true,
-                  ...(pluginMetadataSnapshot ? { pluginMetadataSnapshot } : {}),
-                  isPublicationCurrent,
-                  onPublicationSkipped: () => {
-                    publication.skipped = true;
-                  },
-                }).catch((error: unknown) => {
-                  if (!(error instanceof PreparedModelRuntimePublicationSupersededError)) {
-                    throw error;
-                  }
-                  publication.skipped = true;
-                }),
-              ),
-            );
-            if (publication.skipped) {
-              // A newer refresh, reload, or metadata read superseded this publication while this
-              // agent's config and secrets stayed current. Publish again within this attempt rather
-              // than failing it as unpublished; the attempt's watchdog still bounds the loop.
-              assertPreparationCurrent();
-              params.log.info(
-                `agent ${agentId} startup model publication was superseded; publishing it again`,
-              );
-              continue;
-            }
+            await publishStartupModelsUntilUnskipped({
+              assertCurrent: assertPreparationCurrent,
+              onRepublish: () =>
+                params.log.info(
+                  `agent ${agentId} startup model publication was superseded; publishing it again`,
+                ),
+              publishOnce: (onSkipped) =>
+                runStartupModelPublication(assertPreparationCurrent, (isPublicationCurrent) =>
+                  withPluginRuntimeRegistryScope(params.getPluginRegistry(), () =>
+                    refreshPreparedModelRuntimeSnapshots(cfg, {
+                      agentIds,
+                      catalogMode: "static",
+                      allowGatewaySubagentBinding: true,
+                      ...(pluginMetadataSnapshot ? { pluginMetadataSnapshot } : {}),
+                      isPublicationCurrent,
+                      onPublicationSkipped: onSkipped,
+                    }).catch((error: unknown) => {
+                      if (!(error instanceof PreparedModelRuntimePublicationSupersededError)) {
+                        throw error;
+                      }
+                      onSkipped();
+                    }),
+                  ),
+                ),
+            });
             preparedInput = listConfiguredOwnerInputs(cfg, undefined, true).find(
               (input) => input.agentId === agentId,
             );

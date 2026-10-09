@@ -600,8 +600,17 @@ export function refreshPreparedModelRuntimeSnapshots(
     }
     rejectPendingPreparedModelRuntimeReplacement(replacement?.gateId, error);
   };
+  let publicationCommitted = false;
   const commitReplacement = () => {
-    if (!replacement || pendingModelRuntimeReplacement !== replacement) {
+    if (!replacement) {
+      return;
+    }
+    if (pendingModelRuntimeReplacement !== replacement) {
+      // A newer gate replaced this publication before its commit ran. A drain that already
+      // committed this publication also reaches here, so only an uncommitted one is a skip.
+      if (!publicationCommitted) {
+        skipPublication();
+      }
       return;
     }
     if (!isPublicationCurrent()) {
@@ -613,6 +622,7 @@ export function refreshPreparedModelRuntimeSnapshots(
       );
       return;
     }
+    publicationCommitted = true;
     const adoptedAuthTransaction = authPublication.prepareAdoptedCommit(replacement.gateId);
     replyDispatchPublication.rebuild(owners.values());
     pendingModelRuntimeReplacement = undefined;
