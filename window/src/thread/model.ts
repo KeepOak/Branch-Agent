@@ -362,6 +362,9 @@ function onLifecycle(b: Builder, event: RunEvent, approvals: ReadonlyMap<string,
   }
 }
 
+/** `run_status` phases that explain an account change in plain words and stay in the thread. */
+const NOTICE_PHASES = new Set(["account_switched", "account_limited"]);
+
 /** The run's startup phase (`run_status`), while nothing else has come after it. */
 function lastStatus(events: readonly RunEvent[]): Extract<Block, { kind: "status" }> | null {
   for (let i = events.length - 1; i >= 0; i -= 1) {
@@ -369,7 +372,7 @@ function lastStatus(events: readonly RunEvent[]): Extract<Block, { kind: "status
     if (e.stream === "assistant" || e.stream === "tool" || e.stream === "thinking") {
       return null;
     }
-    if (e.stream === "run_status" && str(e.data.phase)) {
+    if (e.stream === "run_status" && str(e.data.phase) && !NOTICE_PHASES.has(str(e.data.phase))) {
       const retry = record(e.data.retry);
       return {
         kind: "status",
@@ -418,6 +421,10 @@ export function projectRun(events: readonly RunEvent[], approvals: ReadonlyMap<s
       const block: Block = { kind: "usage", key, input, output, total };
       if (at < 0) b.blocks.push(block);
       else b.blocks[at] = block;
+    } else if (event.stream === "run_status" && NOTICE_PHASES.has(str(event.data.phase)) && str(event.data.message)) {
+      // "Claude account 1 hit its limit until Sat 2:00 AM. Moved to Claude account 2." stays after later events.
+      b.text = null;
+      b.blocks.push({ kind: "notice", key: `${event.runId}:${str(event.data.phase)}:${event.seq}`, text: str(event.data.message), ...recordedAt(event.ts) });
     } else if (event.stream === "lifecycle") {
       onLifecycle(b, event, approvals);
       ended ||= event.data.phase === "end" || event.data.phase === "error";

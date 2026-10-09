@@ -1,7 +1,9 @@
 // Fetches Claude provider usage windows.
+import { createHash } from "node:crypto";
 import { asFiniteNumber } from "@branch/normalization-core/number-coercion";
 import { isRecord } from "@branch/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
+import { ANTHROPIC_CLAUDE_CODE_VERSION } from "../../packages/ai/src/providers/anthropic-model-contract.js";
 import { readProviderJsonResponse } from "../agents/provider-http-errors.js";
 import {
   buildUsageHttpErrorSnapshot,
@@ -12,6 +14,14 @@ import {
 } from "./provider-usage.fetch.shared.js";
 import { clampPercent, PROVIDER_LABELS } from "./provider-usage.shared.js";
 import type { ProviderUsageSnapshot, UsageWindow } from "./provider-usage.types.js";
+import { parseRetryAfterHeaderSeconds } from "./retry-after.js";
+
+// Anthropic answers /api/oauth/usage for Claude Code's own client from a roomier
+// rate-limit bucket than for other user agents, and limits each token separately.
+const CLAUDE_USAGE_USER_AGENT = `claude-code/${ANTHROPIC_CLAUDE_CODE_VERSION}`;
+// Its 429s usually say `retry-after: 0`; asking again at once only extends the limit.
+const CLAUDE_USAGE_RATE_LIMIT_BACKOFF_MS = 5 * 60_000;
+const rateLimitedUsage = new Map<string, { until: number; snapshot: ProviderUsageSnapshot }>();
 
 function readClaudeWindow(
   value: unknown,
@@ -172,12 +182,23 @@ export async function fetchClaudeUsage(
   timeoutMs: number,
   fetchFn: typeof fetch,
 ): Promise<ProviderUsageSnapshot> {
+  const tokenKey = createHash("sha256").update(token).digest("hex");
+  const now = Date.now();
+  for (const [key, entry] of rateLimitedUsage) {
+    if (entry.until <= now) {
+      rateLimitedUsage.delete(key);
+    }
+  }
+  const backoff = rateLimitedUsage.get(tokenKey);
+  if (backoff) {
+    return backoff.snapshot;
+  }
   const res = await fetchJson(
     "https://api.anthropic.com/api/oauth/usage",
     {
       headers: {
         Authorization: `Bearer ${token}`,
-        "User-Agent": "branch",
+        "User-Agent": CLAUDE_USAGE_USER_AGENT,
         Accept: "application/json",
         "anthropic-version": "2023-06-01",
         "anthropic-beta": "oauth-2025-04-20",
@@ -214,11 +235,20 @@ export async function fetchClaudeUsage(
       }
     }
 
-    return buildUsageHttpErrorSnapshot({
+    const snapshot = buildUsageHttpErrorSnapshot({
       provider: "anthropic",
       status: res.status,
       message,
     });
+    if (res.status === 429) {
+      const retryAfterMs =
+        (parseRetryAfterHeaderSeconds(res.headers.get("retry-after")) ?? 0) * 1000;
+      rateLimitedUsage.set(tokenKey, {
+        until: Date.now() + Math.max(CLAUDE_USAGE_RATE_LIMIT_BACKOFF_MS, retryAfterMs),
+        snapshot,
+      });
+    }
+    return snapshot;
   }
 
   const parsed = await readUsageJson("anthropic", res);

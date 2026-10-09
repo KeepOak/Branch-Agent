@@ -79,6 +79,10 @@ export type ProviderUsageSnapshot = {
   /** First usable account in this provider's configured order. */
   inUse?: boolean;
   error?: string;
+  /** Set when a timeout or rate limit kept an earlier reading: when that reading was taken. */
+  readingAt?: number;
+  /** Why the latest check couldn't replace a kept reading (the check's error). */
+  staleReason?: string;
 };
 
 export type UsageSummary = {
