@@ -17,7 +17,7 @@ export function tailnetIPv4(interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> =
     for (const entry of entries ?? []) {
       const isIPv4 = entry.family === "IPv4" || (entry.family as unknown) === 4;
       if (!isIPv4 || entry.internal) continue;
-      const [first, second] = entry.address.split(".").map(Number);
+      const [first = -1, second = -1] = entry.address.split(".").map(Number);
       if (first === 100 && second >= 64 && second <= 127) return entry.address;
     }
   }
@@ -27,7 +27,7 @@ export function tailnetIPv4(interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> =
 const GRAFT_ADDRESS_LIMIT = 8;
 
 function isPrivateIPv4(address: string): boolean {
-  const [first, second] = address.split(".").map(Number);
+  const [first = -1, second = -1] = address.split(".").map(Number);
   return first === 10 || (first === 172 && second >= 16 && second <= 31) || (first === 192 && second === 168);
 }
 
