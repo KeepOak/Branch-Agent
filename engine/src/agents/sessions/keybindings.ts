@@ -241,7 +241,7 @@ function parseKeybindingsConfig(
       `Retired keybinding names: ${retired.join("; ")}. ` +
         "Preserve the original file and replace the retired names, keeping existing canonical bindings when both names occur. " +
         "Branch Agent 2026.9.7 retains the former keybinding reader for a staged upgrade. " +
-        "See https://docs.openclaw.ai/gateway/doctor/config-migrations#session-settings.",
+        "See https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/doctor/config-migrations#session-settings.",
       { recovery: "manual" },
     );
   }

@@ -270,14 +270,14 @@ const normalizedProviderFixtures: Array<{
     query: "requested error query",
     result: {
       error: "missing_brave_api_key",
-      docs: "https://docs.openclaw.ai/tools/web",
+      docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
     },
     expected: {
       kind: "error",
       provider: "brave",
       error: "provider_error",
       message: "missing_brave_api_key",
-      docs: "https://docs.openclaw.ai/tools/web",
+      docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
     },
   },
   {
@@ -603,7 +603,7 @@ describe("web_search time filter parsing", () => {
       error: "conflicting_time_filters",
       message:
         "freshness and date_after/date_before cannot be used together. Use either freshness (day/week/month/year) or a date range (date_after/date_before), not both.",
-      docs: "https://docs.openclaw.ai/tools/web",
+      docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
     });
   });
 
@@ -629,7 +629,7 @@ describe("web_search unsupported filter response", () => {
       error: "unsupported_country",
       message:
         "country filtering is not supported by the grok provider. Only Brave and Perplexity support country filtering.",
-      docs: "https://docs.openclaw.ai/tools/web",
+      docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
     });
   });
 
@@ -638,7 +638,7 @@ describe("web_search unsupported filter response", () => {
       error: "unsupported_date_filter",
       message:
         "date_after/date_before filtering is not supported by the kimi provider. Only Brave and Perplexity support date filtering.",
-      docs: "https://docs.openclaw.ai/tools/web",
+      docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
     });
   });
 });

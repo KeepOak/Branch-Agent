@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { resolveBranchPackageRoot } from "../infra/branch-root.js";
 
-export const BRANCH_DOCS_URL = "https://docs.openclaw.ai";
+export const BRANCH_DOCS_URL = "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs";
 export const BRANCH_SOURCE_URL = "https://github.com/openclaw/openclaw";
 
 type ResolveBranchReferencePathParams = {

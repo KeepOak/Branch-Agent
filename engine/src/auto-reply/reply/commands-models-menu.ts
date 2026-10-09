@@ -3,7 +3,7 @@ import { resolveModelRuntimeRoute } from "../../shared/model-runtime-route.js";
 import { formatProviderLoginCommand } from "../../shared/provider-login-command.js";
 
 const CUSTOM_MODEL_SETUP_GUIDANCE =
-  "Set up this connection with the custom-provider guide: https://docs.openclaw.ai/concepts/model-providers/custom-providers";
+  "Set up this connection with the custom-provider guide: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/concepts/model-providers/custom-providers";
 const MODEL_PROVIDER_ROUTE_DETAILS = {
   claudeCli:
     "Claude CLI runs through Claude Code using its native login or a selected saved account. An explicitly selected API-key account has separate API billing; CLI does not mean free or subscription-only.",

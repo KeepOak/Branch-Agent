@@ -358,7 +358,7 @@ describe("resolveModel forward-compat errors and overrides", () => {
     expect(result.model).toBeUndefined();
     expect(result.error).toContain("Unknown model: ollama/gemma3:4b");
     expect(result.error).toContain("OLLAMA_API_KEY");
-    expect(result.error).toContain("docs.openclaw.ai/providers/ollama");
+    expect(result.error).toContain("github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/ollama");
   });
 
   it("points unknown models to the requested provider catalog", async () => {
