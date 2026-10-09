@@ -1,6 +1,6 @@
 import type { WindowEngine } from "../../connect/engine";
 
-export type Tile = "sessions" | "health" | "computer" | "spend" | "people" | "presence" | "agents" | "backup" | "update" | "runs";
+export type Tile = "sessions" | "health" | "computer" | "spend" | "people" | "presence" | "agents" | "backup" | "update" | "runs" | "auth";
 export type Resource = { value?: unknown; loading: boolean; error?: string; updatedAt?: number };
 export type OverviewSnapshot = { tiles: Record<Tile, Resource> };
 
@@ -17,6 +17,8 @@ export const OVERVIEW_READS: Record<Tile, { method: string; params: Record<strin
   backup: { method: "backup.status", params: {} },
   update: { method: "update.status", params: {} },
   runs: { method: "audit.list", params: { kind: "agent_run", limit: 500 } },
+  // Saved accounts: whether any is pay-per-use (api_key). Without one, the spend is what the plans already include.
+  auth: { method: "models.authStatus", params: {} },
 };
 const TILES = Object.keys(OVERVIEW_READS) as Tile[];
 export const record = (v: unknown): Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};

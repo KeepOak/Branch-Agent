@@ -78,6 +78,8 @@ export function OfficePlace({ engine, openConversation, createTrunk }: PlaceProp
   const office = useRef<Office | null>(null);
   const count = useRef(0);
   const [data, setData] = useState<{ agents: unknown; sessions: unknown; contacts: unknown; outside: unknown; approvals: unknown } | null>(null);
+  // The pixel office is a separate chunk: the stage stays "Opening the Grove…" until it has drawn.
+  const [mounted, setMounted] = useState(false);
   const [error, setError] = useState("");
   const [layoutError, setLayoutError] = useState("");
   const [retry, setRetry] = useState(0);
@@ -145,16 +147,17 @@ export function OfficePlace({ engine, openConversation, createTrunk }: PlaceProp
           onOpen: (id: string) => { const key = rosterRef.current?.openKey.get(id); if (key) openConversation(key); },
           onNewAgent: () => createTrunkRef.current?.(),
         });
+        setMounted(true);
       } catch (e) { if (live) setError(e instanceof Error ? e.message : String(e)); }
     })();
-    return () => { live = false; motionObserver.disconnect(); office.current?.destroy(); office.current = null; };
+    return () => { live = false; motionObserver.disconnect(); office.current?.destroy(); office.current = null; setMounted(false); };
   }, [data !== null, engine, openConversation, retry]);
 
   return <section className="pixel-office-view" aria-label="Grove" data-testid="pixel-office">
     <header className="pixel-office-head"><b>Grove</b><span>Your Trunks at their desks. Click one to open its chat; drag one to another desk.</span></header>
     {error ? <p role="alert">The office didn’t load. {error} <button type="button" onClick={() => setRetry(n => n + 1)}>Try again</button></p> : null}
     {layoutError ? <p role="alert">{layoutError}</p> : null}
-    {!data && !error ? <p role="status">Opening the office…</p> : null}
+    {(!data || !mounted) && !error ? <p role="status" className="pixel-office-loading">Opening the Grove…</p> : null}
     <div className="pixel-office-stage" ref={host} />
   </section>;
 }

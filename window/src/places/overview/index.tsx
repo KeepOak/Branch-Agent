@@ -41,7 +41,7 @@ function updateRow(value: unknown): { value: string; dot?: "good" | "warn" | "ba
   if (value === undefined) return null;
   const v = record(value), available = record(v.updateAvailable), active = record(v.activeRun), last = record(v.lastRun);
   if (Object.keys(active).length) return { value: "Updating", dot: "next" };
-  if (text(available.latestVersion)) return { value: "Branch update ready", dot: "next" };
+  if (text(available.latestVersion)) return { value: "Ready, installs when your Trunks finish", dot: "next" };
   if (last.status === "failed" || last.status === "error") return { value: "Last update failed", dot: "bad" };
   return { value: "No update waiting", dot: "good" };
 }
@@ -60,8 +60,17 @@ function Health({ tiles }: { tiles: Record<string, Resource> }) {
   </>;
 }
 
-function Spending({ resource, trunks }: { resource: Resource; trunks: Agent[] }) {
+/** True when a saved account is pay-per-use (an API key), false when every saved account is a plan, undefined until accounts are known. */
+export function payPerUse(auth: Resource): boolean | undefined {
+  const profiles = records(record(auth.value).providers).flatMap(provider => records(provider.profiles));
+  if (!profiles.length) return undefined;
+  return profiles.some(profile => profile.type === "api_key");
+}
+
+function Spending({ resource, trunks, payPerUse: apiKeys }: { resource: Resource; trunks: Agent[]; payPerUse?: boolean }) {
   if (resource.value === undefined) return null;
+  // Plans include their usage: no money figure, only the honest note.
+  if (apiKeys === false) return <p className="ov-hint">Included in your plans</p>;
   const value = record(resource.value), amount = number(record(value.totals).totalCost);
   const rows = records(record(value.aggregates).byAgent).map(row => ({ id: text(row.agentId), cost: number(record(row.totals).totalCost) ?? 0 })).filter(row => row.id && row.cost > 0);
   const highest = Math.max(0, ...rows.map(row => row.cost));
@@ -109,7 +118,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
         <div className="ov-acts">{facts.waiting > 0 ? <button type="button" className="btn pri sm" onClick={() => openPlace("inbox")}>Answer {facts.waiting} waiting</button> : <span className="ov-pill"><i />Nothing waiting</span>}</div>
       </Tile>
       <Tile title="Health">{status("health", "gateway health")}<Health tiles={tiles} /></Tile>
-      <Tile title="Spend this week">{status("spend", "spending")}<Spending resource={tiles.spend} trunks={trunks.list} /></Tile>
+      <Tile title="Spend this week">{status("spend", "spending")}<Spending resource={tiles.spend} trunks={trunks.list} payPerUse={payPerUse(tiles.auth)} /></Tile>
       <Tile title="Recent activity">
         {status("sessions", "recent activity")}
         {recent.map(({ row, length }) => <button key={row.key} type="button" className="ov-recent" onClick={() => openConversation(row.key)}><Face size={20} label={agentName(trunks.list, row.agentId)} /><span className="ov-recent-t">{row.title}</span><span className="ov-mono">{length}</span></button>)}
@@ -126,7 +135,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
         {tiles.people.value !== undefined && !lines.length ? <p>No one has signed in yet.</p> : null}
         <div className="ov-acts"><button type="button" className="btn sm" onClick={() => openPlace("people")}>Invite someone</button></div>
       </Tile>
-      <Tile title="Milestones"><div className="ov-badges" data-reason={MILESTONES_GAP} />{shownWhy(MILESTONES_GAP) && <p className="ov-hint">{shownWhy(MILESTONES_GAP)}</p>}</Tile>
+      <Tile title="Milestones"><div className="ov-badges" data-reason={MILESTONES_GAP} /><p className="ov-hint">{shownWhy(MILESTONES_GAP) || "Milestones will appear here once Branch records them."}</p></Tile>
     </div>
   </PlaceFrame>;
 }
