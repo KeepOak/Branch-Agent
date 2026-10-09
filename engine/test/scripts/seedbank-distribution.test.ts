@@ -64,13 +64,29 @@ describe("Seedbank distribution", () => {
         JSON.stringify({
           name: "@branch-agent/test-plugin",
           version: "2026.9.8",
-          files: ["index.js", "branch.plugin.json"],
+          files: ["index.js", "branch.plugin.json", "branch.pack.json"],
         }),
       );
       writeFileSync(join(directory, "index.js"), "export default {};\n");
       writeFileSync(
         join(directory, "branch.plugin.json"),
         JSON.stringify({ id: "test-plugin", configSchema: { type: "object", properties: {} } }),
+      );
+      writeFileSync(
+        join(directory, "branch.pack.json"),
+        JSON.stringify({
+          schema: "branch.pack/v1",
+          kind: "plugin",
+          tier: "community",
+          id: "test-plugin",
+          permissions: {
+            network: false,
+            files: "none",
+            runCommands: false,
+            secrets: false,
+            computerControl: false,
+          },
+        }),
       );
       const npm = resolveCommandShim("npm", ["pack", "--ignore-scripts", "--json"]);
       const packed = spawnSync(npm.command, npm.args, {

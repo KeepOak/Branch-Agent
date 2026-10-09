@@ -10,6 +10,13 @@
 <script>
 const catalog = JSON.parse(document.getElementById('catalog').textContent);
 const container = document.getElementById('plugins');
+// Plain words for what a pack can reach. Skills never reach anything (they are instructions only).
+function permissionSentence(p) {
+  const x = p.permissions;
+  if (!x) return 'Permissions not declared.';
+  const reach = [x.network && 'the network', x.files !== 'none' && 'your files', x.runCommands && 'run commands', x.secrets && 'your secrets', x.computerControl && 'control your computer'].filter(Boolean);
+  return reach.length ? `Can reach: ${reach.join(', ')}.` : 'Reaches nothing outside Branch Agent.';
+}
 function render() {
   const query = document.getElementById('filter').value.toLowerCase();
   container.replaceChildren();
@@ -17,7 +24,10 @@ function render() {
   document.getElementById('status').textContent = `${entries.length} plugins · source ${catalog.sourceSha}`;
   for (const p of entries) {
     const article = document.createElement('article');
-    for (const [tag, text] of [['h2',p.name],['p',p.description],['code',`branch plugins install ${p.npmSpec} --force`],['code',`node scripts/seedbank-install.mjs seedbank.json ${p.seedbankSpec} --force`],['small',`SHA-256: ${p.sha256}`]]) {
+    const kind = p.kind === 'skill' ? 'skill' : 'plugin';
+    const lines = [['h2',p.name],['small',`${kind} · ${p.tier}`],['p',p.description],['p',permissionSentence(p)],['code',`node scripts/seedbank-install.mjs seedbank.json ${p.seedbankSpec} --force`],['small',`SHA-256: ${p.sha256}`]];
+    if (kind === 'plugin') lines.splice(4, 0, ['code',`branch plugins install ${p.npmSpec} --force`]);
+    for (const [tag, text] of lines) {
       const element = document.createElement(tag); element.textContent = text; article.append(element);
     }
     const a = document.createElement('a'); a.href = p.tarball; a.textContent = 'Download identical release tarball'; a.rel = 'noopener'; article.append(document.createElement('br'),a);

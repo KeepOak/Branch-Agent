@@ -1,0 +1,14 @@
+{
+  "schema": "branch.pack/v1",
+  "kind": "plugin",
+  "tier": "official",
+  "id": "cerebras",
+  "summary": "Cerebras model provider. Calls the Cerebras API and uses your Cerebras API key.",
+  "permissions": {
+    "network": true,
+    "files": "none",
+    "runCommands": false,
+    "secrets": true,
+    "computerControl": false
+  }
+}
