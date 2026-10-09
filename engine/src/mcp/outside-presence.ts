@@ -99,10 +99,11 @@ export class OutsidePresence {
   /** Every tool calls this first: it throws once a hello was refused (hellos run at connect, every minute and on
    *  activity). It never waits, so no tool hangs on a slow gateway. */
   async assertAllowed(): Promise<void> {
-    if (this.refusal)
+    if (this.refusal) {
       throw new Error(
         `${this.refusal} Ask the owner to allow this agent in Settings › Grafts, then reconnect Graft.`,
       );
+    }
   }
 
   /** Whether the owner let this agent drive their own window (Settings › Grafts). */
@@ -151,7 +152,9 @@ export class OutsidePresence {
   }
 
   private say(activity?: string): Promise<void> {
-    if (this.pendingHello) return this.pendingHello;
+    if (this.pendingHello) {
+      return this.pendingHello;
+    }
     this.pendingHello = this.sayHello(activity).finally(() => {
       this.pendingHello = undefined;
     });

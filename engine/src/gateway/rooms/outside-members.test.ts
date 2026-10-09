@@ -91,8 +91,11 @@ describe("outside room membership", () => {
   });
   afterEach(() => {
     closeBranchStateDatabaseForTest();
-    if (previous === undefined) delete process.env.BRANCH_STATE_DIR;
-    else process.env.BRANCH_STATE_DIR = previous;
+    if (previous === undefined) {
+      delete process.env.BRANCH_STATE_DIR;
+    } else {
+      process.env.BRANCH_STATE_DIR = previous;
+    }
     rmSync(directory, { recursive: true, force: true });
   });
 
@@ -110,12 +113,12 @@ describe("outside room membership", () => {
       runStarted: false,
     });
     const message = mocks.persist.mock.calls[0]![1].messages[0].message;
-    expect(message.__branch).toMatchObject({
+    expect(message["__branch"]).toMatchObject({
       senderId: "scout",
       senderName: "Scout",
       senderIdentity: { pluginId: "a2a", senderKind: "bot" },
     });
-    expect(message.__branch).not.toHaveProperty("senderIsOwner");
+    expect(message["__branch"]).not.toHaveProperty("senderIsOwner");
     const mentioned = await call("rooms.send", {
       roomId,
       message: "@Lead please review",
@@ -130,7 +133,9 @@ describe("outside room membership", () => {
     "the lead's deny switch blocks an outside %s before any event or transcript is written",
     async (operation) => {
       const roomId = await room();
-      if (operation === "post") expect((await join(roomId)).ok).toBe(true);
+      if (operation === "post") {
+        expect((await join(roomId)).ok).toBe(true);
+      }
       cfg = { agents: { entries: { lead: { agentToAgent: { deny: ["a2a:scout"] } } } } };
       const before = (await call("rooms.log", { roomId })).payload.events.length;
       const result =
@@ -160,7 +165,9 @@ describe("outside room membership", () => {
       if (device) {
         recordOutsideAgent(outside, Date.now(), undefined, { deviceId: "graft-device" });
         recordOutsideAgent(peer, Date.now(), undefined, { deviceId: "graft-device" });
-      } else recordOutsideAgent(peer);
+      } else {
+        recordOutsideAgent(peer);
+      }
       const first = await room();
       const second = await room();
       for (const roomId of [first, second]) {

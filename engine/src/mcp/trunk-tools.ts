@@ -526,10 +526,11 @@ function registerRoomTools(server: McpServer, gw: TrunkGateway, opts: TrunkTools
     { room_id: z.string().min(1) },
     async ({ room_id }) => {
       const agent = await opts.outsideAgent();
-      if (!agent)
+      if (!agent) {
         throw new Error(
           "Branch has not registered this outside agent. Reconnect Graft and try room_join again.",
         );
+      }
       const result = await gw.request("rooms.members.add", {
         roomId: room_id,
         kind: "a2a",
@@ -547,10 +548,11 @@ function registerRoomTools(server: McpServer, gw: TrunkGateway, opts: TrunkTools
     async ({ room_id, text }) => {
       opts.activity?.(`Posting in group chat ${room_id}`);
       const agent = await opts.outsideAgent();
-      if (!agent)
+      if (!agent) {
         throw new Error(
           "Branch has not registered this outside agent. Reconnect Graft and try room_join before posting.",
         );
+      }
       const result = await gw.request("rooms.send", {
         roomId: room_id,
         message: text,

@@ -84,10 +84,16 @@ function outsideRoomRefusal(
   outside?: OutsideSender,
 ): string | undefined {
   const deviceRefusal = graftSendRefusal(outside?.id, graftDeviceId(options.client));
-  if (deviceRefusal) return `${deviceRefusal} Reconnect through your own Graft and try again.`;
-  if (!outside) return undefined;
+  if (deviceRefusal) {
+    return `${deviceRefusal} Reconnect through your own Graft and try again.`;
+  }
+  if (!outside) {
+    return undefined;
+  }
   const refusal = outsideAgentRefusal(outside);
-  if (refusal) return `${refusal} Ask the owner to allow this agent there, then reconnect Graft.`;
+  if (refusal) {
+    return `${refusal} Ask the owner to allow this agent there, then reconnect Graft.`;
+  }
   const cfg = options.context.getRuntimeConfig();
   for (const member of room.members) {
     if (
@@ -612,14 +618,19 @@ export const roomHandlers: GatewayRequestHandlers = {
     try {
       if (options.params.kind === "trunk") await checkTrunks(options, [options.params.id]);
       const outside = options.params.outsideAgent;
-      if (outside && (options.params.kind !== "a2a" || options.params.id !== outside.id))
+      if (outside && (options.params.kind !== "a2a" || options.params.id !== outside.id)) {
         throw new Error(
           "An outside agent can join only as its own identity. Use room_join without changing the member id.",
         );
+      }
       const current = getRoom(options.params.roomId);
-      if (!current || current.archivedAt !== undefined) throw new Error("Room not found");
+      if (!current || current.archivedAt !== undefined) {
+        throw new Error("Room not found");
+      }
       const refusal = outsideRoomRefusal(options, current, outside);
-      if (refusal) throw new Error(refusal);
+      if (refusal) {
+        throw new Error(refusal);
+      }
       const room = addRoomMember(options.params.roomId, options.params);
       const actorId =
         outside && options.params.kind === "a2a" && options.params.id === outside.id

@@ -27,7 +27,9 @@ describe("Graft room identity", () => {
     let calls = 0;
     let finish!: (result: { contact: { id: string } }) => void;
     const presence = new OutsidePresence(async () => {
-      if (++calls === 1) throw new Error("Gateway connection interrupted");
+      if (++calls === 1) {
+        throw new Error("Gateway connection interrupted");
+      }
       return new Promise<{ contact: { id: string } }>((resolve) => {
         finish = resolve;
       });
@@ -41,7 +43,9 @@ describe("Graft room identity", () => {
         returned = true;
         return value;
       });
-      await new Promise<void>((resolve) => setImmediate(resolve));
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
       expect(returned).toBe(false);
       expect(calls).toBe(2);
       finish({ contact: { id: "a2a:scout-2" } });
@@ -55,7 +59,9 @@ describe("Graft room identity", () => {
   it("retries a failed hello so the next room join and post use the registered agent", async () => {
     let hellos = 0;
     const presence = new OutsidePresence(async () => {
-      if (++hellos === 1) throw new Error("Gateway connection interrupted");
+      if (++hellos === 1) {
+        throw new Error("Gateway connection interrupted");
+      }
       return { contact: { id: "a2a:scout-2" } };
     });
     presence.start({ id: "scout", name: "Scout" });

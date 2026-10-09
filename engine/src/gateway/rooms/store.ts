@@ -233,14 +233,18 @@ export function setRoomRule(roomId: string, rule: Room["rule"], trunksTalk: bool
 
 /** Disconnect removes membership even in archived rooms, so restoring a room cannot restore access. */
 export function removeOutsideRoomMembers(ids: readonly string[]): Room[] {
-  if (!ids.length) return [];
+  if (!ids.length) {
+    return [];
+  }
   return runBranchStateWriteTransaction(
     ({ db }) => {
       const affected = new Set<string>();
       const find = db.prepare("SELECT room_id FROM room_members WHERE kind='a2a' AND id=?");
       const remove = db.prepare("DELETE FROM room_members WHERE kind='a2a' AND id=?");
       for (const id of ids) {
-        for (const row of find.all(id) as Array<{ room_id: string }>) affected.add(row.room_id);
+        for (const row of find.all(id) as Array<{ room_id: string }>) {
+          affected.add(row.room_id);
+        }
         remove.run(id);
       }
       return [...affected].map((roomId) => mapRoom(db, roomRow(db, roomId)!));
