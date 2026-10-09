@@ -1,0 +1,5 @@
+{
+  "sessionPhase": "connected",
+  "gatewayLabel": "Gateway · running",
+  "automations": "real cron.list loaded default schedule rows after Retry"
+}

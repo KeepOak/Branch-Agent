@@ -1,0 +1,7 @@
+{
+  "source": "base e1d47d8b192868f09f85d382b35b4378a6da55c3",
+  "sessionPhase": "connected",
+  "gatewayLabel": "Gateway · running",
+  "automationsError": "gateway not connected",
+  "fault": "real socket disconnect during delayed agents bootstrap; previously answered real health settlement released late"
+}
