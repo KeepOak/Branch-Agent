@@ -118,9 +118,9 @@ function Window({ url, sharedToken, onConnect, onRetry }: WindowProps) {
     return <WindowShell session={session} url={activeUrl} />;
   }
   const status = s.status;
-  if (status.phase === "pairing" || status.phase === "failed") {
-    const state: PreConnectState = status.phase === "pairing" ? { kind: "pairing", requestId: status.requestId } : { kind: "failed", code: status.code, message: status.message };
+  if (status.phase === "pairing") {
+    const state: PreConnectState = { kind: "pairing", requestId: status.requestId };
     return <PreConnect local={LOCAL} address={url} state={state} busy={false} onConnect={onConnect} onRetry={onRetry} />;
   }
-  return <Connecting url={url} status={status.phase} />;
+  return <Connecting url={url} status={status.phase} error={status.phase === "failed" || status.phase === "connecting" ? status.message : undefined} onRetry={onRetry} />;
 }
