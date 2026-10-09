@@ -37,7 +37,7 @@ jobs:
     # Main and nightly: 6 Linux shards (~10 minutes, including the shard-1 typecheck),
     # 10 Windows shards (~9 minutes), and 9 macOS shards (~9 minutes).
     # Four extra jobs add setup cost and queue time; max-parallel stays 6.
-    timeout-minutes: 15
+    timeout-minutes: ${{ matrix.scope == 'touched' && 25 || 15 }}
     strategy:
       fail-fast: false
       max-parallel: 6
