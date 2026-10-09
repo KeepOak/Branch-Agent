@@ -167,10 +167,12 @@ export async function listTrunks(gw: TrunkGateway): Promise<Rec[]> {
           row.hasActiveRun === true || row.status === "running" || str(row.activeWriterRunId),
       );
       const state = running ? await threadState(gw, running) : undefined;
+      // Startup stopped retrying this Trunk's preparation on its own (agents.retryStartup starts it again).
+      const attention = rec(rec(agent.admissionRefusal).preparation).state === "needs-attention";
       return {
         id,
         name: str(rec(agent.identity).name) ?? str(agent.name) ?? id,
-        state: running ? "working" : "idle",
+        state: attention ? "needs-attention" : running ? "working" : "idle",
         ...(running ? { thread: running.key, ...state } : {}),
         model: str(rec(agent.model).primary) ?? str(agent.model) ?? str(rows[0]?.model),
         account: str(running?.authProfileOverride) ?? str(rows[0]?.authProfileOverride),
@@ -231,7 +233,7 @@ export function registerTrunkMcpTools(
 function registerTrunkReadTools(server: McpServer, gw: TrunkGateway): void {
   server.tool(
     "trunks_list",
-    "List Branch Trunks and contacts with live status: working or idle, the thread in use, model and account.",
+    "List Branch Trunks and contacts with live status: working, idle or needs-attention (its startup stopped retrying), the thread in use, model and account.",
     {},
     async () => {
       const trunks = await listTrunks(gw);

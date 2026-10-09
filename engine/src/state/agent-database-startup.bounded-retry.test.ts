@@ -87,7 +87,7 @@ describe("agent database startup preparation that keeps failing", () => {
     }
   });
 
-  it("reports retrying, never a dead end, while it keeps failing", async () => {
+  it("stops retrying after five failed starts in a row, needs attention, and starts a fresh series when asked", async () => {
     let fail = true;
     const prepareAgent = vi.fn(async () => {
       if (fail) {
@@ -96,6 +96,53 @@ describe("agent database startup preparation that keeps failing", () => {
     });
     const started = await startDeferredPreparation(prepareAgent, {
       BRANCH_AGENT_PREPARATION_RETRY_MS: "1",
+    });
+    const preparation = () =>
+      readAgentDatabaseAdmissionRefusal(started.agentId, { env: started.env })?.preparation;
+    try {
+      // Five starts (the first and four restarts from scratch) of six failed attempts each.
+      await vi.waitFor(() => expect(preparation()).toMatchObject({ state: "needs-attention" }), {
+        timeout: 20000,
+      });
+      expect(preparation()).toEqual({ state: "needs-attention", failures: 30, restarts: 4 });
+      expect(prepareAgent).toHaveBeenCalledTimes(30);
+      // What the last attempt left running is still replaced, once per failure.
+      await vi.waitFor(() => expect(started.replaceAgent).toHaveBeenCalledTimes(30));
+      // Nothing retries it on its own any more.
+      await new Promise((resolve) => {
+        setTimeout(resolve, 300);
+      });
+      expect(prepareAgent).toHaveBeenCalledTimes(30);
+
+      // A retry request starts it again with a fresh series: five more failed starts before it stops.
+      expect(retryStartup(started.agentId)).toBe(true);
+      await vi.waitFor(() => expect(prepareAgent.mock.calls.length).toBeGreaterThan(30));
+      expect(preparation()?.state).toBe("retrying");
+      await vi.waitFor(
+        () => expect(preparation()).toMatchObject({ state: "needs-attention", failures: 60 }),
+        { timeout: 20000 },
+      );
+      expect(prepareAgent).toHaveBeenCalledTimes(60);
+
+      fail = false;
+      expect(retryStartup(started.agentId)).toBe(true);
+      await started.admitted();
+      expect(prepareAgent).toHaveBeenCalledTimes(61);
+    } finally {
+      await started.stop();
+    }
+  });
+
+  it("reports retrying while it keeps failing, before its fifth failed start", async () => {
+    let fail = true;
+    const prepareAgent = vi.fn(async () => {
+      if (fail) {
+        throw new Error(NOT_PUBLISHED);
+      }
+    });
+    const started = await startDeferredPreparation(prepareAgent, {
+      // Slow enough that it is still short of its fifth failed start when the failure clears.
+      BRANCH_AGENT_PREPARATION_RETRY_MS: "5",
     });
     try {
       await vi.waitFor(

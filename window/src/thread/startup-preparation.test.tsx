@@ -83,6 +83,23 @@ it("says so when the engine answers that it had nothing to retry, and reads the 
   await vi.waitFor(() => expect(state.calls.filter((call) => call.method === "agents.list").length).toBeGreaterThan(listsBefore));
 });
 
+it("says a Trunk whose startup stopped retrying needs attention, without a spinner, and its Retry starts it again", async () => {
+  // Five failed starts in a row (thirty failures, four restarts): the engine stopped retrying on its own.
+  const { engine, state } = fakeEngine(refusal({ state: "needs-attention", failures: 30, restarts: 4 }));
+  const onStartupReady = vi.fn();
+  const view = await render(engine, { preparationError: PENDING, onStartupReady });
+  await vi.waitFor(() => expect(statusText(view)).toContain("Juniper needs attention: getting it ready kept failing."));
+  expect(statusText(view)).not.toContain("retrying…");
+  expect(view.querySelector('[data-testid="preparation-status"] .preparation-spinner')).toBeNull();
+  const retry = [...view.querySelectorAll("button")].find((button) => button.textContent === "Retry");
+  expect(retry).toBeDefined();
+
+  state.refusal = null;
+  await act(async () => retry!.click());
+  expect(state.calls).toContainEqual({ method: "agents.retryStartup", params: { agentId: "juniper" } });
+  await vi.waitFor(() => expect(onStartupReady).toHaveBeenCalled());
+});
+
 it("keeps the plain getting-ready line, without a button, while the first preparation is still running", async () => {
   const { engine } = fakeEngine(refusal());
   const view = await render(engine, { preparationError: PENDING });

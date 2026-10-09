@@ -21,7 +21,7 @@ import { turnDoneLines } from "./computer-card";
 import { isComputerStep, layout, shownApprovalIds, type Item } from "./layout";
 import { PlanCard, planAnchor } from "./PlanCard";
 import { useConversationPrefs } from "./prefs";
-import { isPreparationPending, isPreparationStalled, preparationLabel, preparationRetryingLabel } from "../connect/preparation-status";
+import { isPreparationPending, isPreparationStalled, preparationLabel, preparationNeedsAttentionLabel, preparationRetryingLabel } from "../connect/preparation-status";
 import { useStartupPreparation } from "../connect/startup-preparation";
 import { QuestionLine } from "./QuestionCard";
 import { anchorQuestions, type QuestionRecord } from "./questions";
@@ -322,9 +322,9 @@ export function Thread(props: Props) {
         <div className="thread" ref={threadRef}>
           {props.hasEarlierPages ? <button type="button" className="stamp segment-more" onClick={props.onLoadEarlier} disabled={props.loadingEarlier}>{props.loadingEarlier ? "Loading earlier pages…" : "Earlier pages"}</button> : null}
           {preparationError ? <div className="stamp preparation-status" role="status" data-testid="preparation-status">
-            <span className="preparation-spinner" aria-hidden="true" />
-            {startup.state === "retrying" ? preparationRetryingLabel(name) : isPreparationStalled(preparationError) ? preparationError : preparationLabel(name)}
-            {startup.state === "retrying" ? <button type="button" className="btn sm" disabled={startup.busy} onClick={startup.retry}>{startup.busy ? "Retrying…" : "Retry now"}</button> : null}
+            {startup.state !== "needs-attention" ? <span className="preparation-spinner" aria-hidden="true" /> : null}
+            {startup.state === "needs-attention" ? preparationNeedsAttentionLabel(name) : startup.state === "retrying" ? preparationRetryingLabel(name) : isPreparationStalled(preparationError) ? preparationError : preparationLabel(name)}
+            {startup.state !== "preparing" ? <button type="button" className="btn sm" disabled={startup.busy} onClick={startup.retry}>{startup.busy ? "Retrying…" : startup.state === "needs-attention" ? "Retry" : "Retry now"}</button> : null}
             {startup.error ? <span role="alert">Couldn't retry: {startup.error}</span> : null}
             {props.advancedDiagnostics ? <details><summary>Diagnostics</summary><code>{preparationError}</code></details> : null}
           </div> : null}

@@ -122,10 +122,24 @@ const MAX_RETRY_MS = 60_000;
 /**
  * Failed attempts in a row before startup starts the preparation again from scratch, with a fresh
  * backoff and time limit. The backoff has reached its one-minute ceiling by then (2, 4, 8, 16, 32,
- * 60 s). There is no limit on restarts: a failure that clears later (publication, auth) still lets
- * the agent through on its own.
+ * 60 s).
  */
 const FAILURES_BEFORE_RESTART = 6;
+/**
+ * Starts in a row (the first and each restart from scratch) whose attempts all failed before startup
+ * stops retrying on its own. The agent then needs attention: only a retry request starts it again,
+ * with a fresh count.
+ */
+const FAILED_STARTS_BEFORE_ATTENTION = 5;
+
+/** Resolves when `signal` aborts. */
+function untilAborted(signal: AbortSignal): Promise<void> {
+  return signal.aborted
+    ? Promise.resolve()
+    : new Promise((resolve) => {
+        signal.addEventListener("abort", () => resolve(), { once: true });
+      });
+}
 
 function firstRetryMs(env: NodeJS.ProcessEnv): number {
   const configured = Number(env.BRANCH_AGENT_PREPARATION_RETRY_MS);
@@ -436,6 +450,7 @@ class AgentDatabaseStartupAdmission {
             const initialRetryMs = firstRetryMs(env);
             let retryDelayMs = initialRetryMs;
             let failures = 0;
+            let failedStarts = 0;
             /** The running attempt, ended by a retry request; set between attempts' starts and ends. */
             let running: AbortController | undefined;
             let wake: AbortController | undefined;
@@ -465,7 +480,11 @@ class AgentDatabaseStartupAdmission {
                 });
               }
             };
-            const restartFromScratch = async (reason: Error) => {
+            const restartFromScratch = async (reason: Error, replaceFirst = true) => {
+              if (requested) {
+                // A retry request starts a fresh series of starts.
+                failedStarts = 0;
+              }
               failures = 0;
               retryDelayMs = initialRetryMs;
               attemptLimitMs = preparationAttemptLimitMs(env);
@@ -474,10 +493,13 @@ class AgentDatabaseStartupAdmission {
                 // Only a failed preparation reports its status (and counts its restarts).
                 refusal.preparation = {
                   ...refusal.preparation,
+                  state: "retrying",
                   restarts: refusal.preparation.restarts + 1,
                 };
               }
-              await replace(reason);
+              if (replaceFirst) {
+                await replace(reason);
+              }
             };
             try {
               for (;;) {
@@ -511,16 +533,31 @@ class AgentDatabaseStartupAdmission {
                     restarts: refusal.preparation?.restarts ?? 0,
                   };
                   const restart = failures >= FAILURES_BEFORE_RESTART;
+                  if (restart) {
+                    failedStarts += 1;
+                  }
+                  const attention = restart && failedStarts >= FAILED_STARTS_BEFORE_ATTENTION;
                   const reason = formatErrorMessage(error);
+                  const replacement = new Error(`Agent ${agentId} preparation: ${reason}`);
                   log.warn(
-                    restart
-                      ? "agent database startup preparation keeps failing; starting it again from scratch"
-                      : "agent database startup preparation failed; retrying",
-                    { agentId, paths, reason, retryDelayMs, failures },
+                    attention
+                      ? "agent database startup preparation keeps failing; stopped retrying, it needs attention"
+                      : restart
+                        ? "agent database startup preparation keeps failing; starting it again from scratch"
+                        : "agent database startup preparation failed; retrying",
+                    { agentId, paths, reason, retryDelayMs, failures, failedStarts },
                   );
                   wake = new AbortController();
                   try {
-                    if (!requested) {
+                    if (attention) {
+                      refusal.preparation = { ...refusal.preparation, state: "needs-attention" };
+                      // Nothing retries it on its own any more: release what the attempt left running.
+                      await replace(replacement);
+                      if (!requested) {
+                        await untilAborted(AbortSignal.any([this.signal, wake.signal]));
+                        this.signal.throwIfAborted();
+                      }
+                    } else if (!requested) {
                       await delay(retryDelayMs, undefined, {
                         signal: AbortSignal.any([this.signal, wake.signal]),
                       });
@@ -535,8 +572,10 @@ class AgentDatabaseStartupAdmission {
                   if (requested) {
                     log.info("agent database startup preparation retried on request", { agentId });
                   }
-                  const replacement = new Error(`Agent ${agentId} preparation: ${reason}`);
-                  if (restart || requested) {
+                  if (attention) {
+                    // Its replacement already ran; only a retry request reaches this point.
+                    await restartFromScratch(new Error(`Agent ${agentId} retry requested`), false);
+                  } else if (restart || requested) {
                     await restartFromScratch(replacement);
                   } else {
                     retryDelayMs = Math.min(retryDelayMs * 2, MAX_RETRY_MS);

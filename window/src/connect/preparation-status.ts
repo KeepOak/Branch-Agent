@@ -22,6 +22,11 @@ export function preparationRetryingLabel(name: string): string {
   return `Getting ${name || "this Trunk"} ready failed, retrying…`;
 }
 
+/** The engine stopped retrying after five failed starts in a row; only Retry starts it again. */
+export function preparationNeedsAttentionLabel(name: string): string {
+  return `${name || "This Trunk"} needs attention: getting it ready kept failing.`;
+}
+
 /** A single startup episode gets at most two minutes of increasingly spaced retries. */
 export class PreparationRetry {
   private startedAt: number | null = null;

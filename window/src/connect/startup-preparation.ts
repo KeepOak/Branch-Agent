@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "./engine";
 
-export type StartupPreparationState = "preparing" | "retrying";
+export type StartupPreparationState = "preparing" | "retrying" | "needs-attention";
 
 export type StartupPreparation = {
   state: StartupPreparationState;
@@ -33,7 +33,7 @@ export function readStartupPreparation(list: unknown, agentId: string): StartupP
   const refusal = rec(rec(agents.find((agent) => rec(agent).id === agentId)).admissionRefusal);
   if (refusal.code !== "agent-database-inspection-pending") return null;
   const state = rec(refusal.preparation).state;
-  return state === "retrying" ? state : "preparing";
+  return state === "retrying" || state === "needs-attention" ? state : "preparing";
 }
 
 /**

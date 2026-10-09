@@ -23,7 +23,7 @@ export const AgentDatabaseAdmissionRefusalSchema = Type.Union([
     ]),
     preparation: Type.Optional(
       closedObject({
-        state: Type.Literal("retrying"),
+        state: Type.Union([Type.Literal("retrying"), Type.Literal("needs-attention")]),
         failures: Type.Integer({ minimum: 1 }),
         restarts: Type.Integer({ minimum: 0 }),
       }),
