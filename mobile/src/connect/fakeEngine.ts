@@ -2,7 +2,10 @@
 // protocol (connect.challenge, the connect request, hello-ok or a PAIRING_REQUIRED error) and checks the
 // phone's Ed25519 signature over the engine's v3 device-auth payload, so the engine's own client code in
 // PhoneGateway runs exactly as it would against a computer. After the handshake it answers the reads the
-// Chats screen makes (sessions.subscribe, sessions.list, agents.list, sessions.search) and pushes events.
+// Chats screen makes (sessions.subscribe, sessions.list, agents.list, sessions.search), the Chat screen's
+// chat.history, chat.send, chat.abort and sessions.patch, and pushes events. A reply streamed with `streamReply`
+// reaches each connection the way the engine sends it: the whole text in that connection's first frame for the
+// run and in replacements, and only the addition once the connection holds the frame before it.
 import { verify } from '@noble/ed25519';
 import type { ConnectParams, GatewayProtocolSocket, GatewayProtocolSocketHandlers } from '@branch/gateway-client/browser';
 import { base64UrlToBytes, utf8ToBytes } from './base64url';
@@ -27,10 +30,23 @@ export type FakeEngine = {
   requests: Array<{ method: string; params: unknown }>;
   /** The sessions.list rows the engine reports from now on. */
   setSessions: (rows: unknown[]) => void;
-  /** Pushes one event to every connected phone. */
+  /** Pushes one event to every connected phone, as it is. A `final`, `error` or `aborted` chat event ends that run's reply. */
   emit: (event: string, payload?: unknown) => void;
+  /**
+   * The reply `runId` in `sessionKey` now reads `text`. Each connected phone gets a `chat` delta: the whole text
+   * (`message`) when it holds no earlier frame of this run or the text isn't the last one plus more, otherwise only
+   * the addition (server-chat-live-text.ts `projectChatWireDelta`, server-broadcast-live-text.ts `canSendDelta`).
+   * The engine keeps which frames a connection holds per connection, whichever chat the phone shows.
+   */
+  streamReply: (sessionKey: string, runId: string, text: string) => void;
+  /** Every event a connected phone was sent, in order. */
+  delivered: Array<{ event: string; payload: unknown }>;
+  /** Holds the answers to a method until the returned release is called. The engine reads its answer when asked. */
+  hold: (method: string) => () => void;
   /** Makes one method fail with this message until cleared with null. */
   failMethod: (method: string, message: string | null) => void;
+  /** The chat.history messages (and the run still going, if any) the engine reports for a chat from now on. */
+  setHistory: (sessionKey: string, messages: unknown[], inFlightRun?: unknown) => void;
 };
 
 export type FakeEngineOptions = {
@@ -52,7 +68,17 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
   let sessions = options.sessions ?? [];
   const agents = options.agents ?? { defaultId: 'main', mainKey: 'main', scope: 'per-sender', agents: [{ id: 'main', name: 'Branch Agent' }] };
   const failures = new Map<string, string>();
-  const live = new Set<{ close: (code: number, reason: string) => void; event: (frame: unknown) => void }>();
+  const histories = new Map<string, { messages: unknown[]; inFlightRun?: unknown }>();
+  const replies = new Map<string, { sessionKey: string; text: string; seq: number }>();
+  const holds = new Map<string, Array<() => void>>();
+  type Connection = {
+    close: (code: number, reason: string) => void;
+    /** Sends an event once the handshake is done; false before it. */
+    event: (frame: { type: 'event'; event: string; payload: unknown }) => boolean;
+    /** The runs whose frames this connection holds. */
+    receipts: Set<string>;
+  };
+  const live = new Set<Connection>();
   const answer = (method: string, params: unknown): { ok: true; payload: unknown } | { ok: false; message: string } => {
     const failure = failures.get(method);
     if (failure) return { ok: false, message: failure };
@@ -71,6 +97,22 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
           .map((s) => ({ sessionKey: s.key, role: 'assistant', snippet: s.lastMessagePreview, timestamp: s.updatedAt, messageId: `m-${String(s.key)}` }));
         return { ok: true, payload: { results } };
       }
+      case 'chat.history': {
+        const key = String((params as { sessionKey?: unknown } | null)?.sessionKey ?? '');
+        const history = histories.get(key);
+        return { ok: true, payload: { sessionKey: key, messages: history?.messages ?? [], ...(history?.inFlightRun ? { inFlightRun: history.inFlightRun } : {}) } };
+      }
+      case 'chat.send':
+        return { ok: true, payload: { runId: (params as { idempotencyKey?: unknown } | null)?.idempotencyKey, status: 'started' } };
+      case 'chat.abort':
+        return { ok: true, payload: { ok: true, aborted: true } };
+      case 'sessions.patch': {
+        // Like the engine: the row changes and every phone hears sessions.changed.
+        const { key, unread } = (params ?? {}) as { key?: string; unread?: boolean };
+        if (typeof unread === 'boolean') sessions = (sessions as Array<Record<string, unknown>>).map((row) => (row.key === key ? { ...row, unread } : row));
+        setTimeout(() => engine.emit('sessions.changed', { sessionKey: key }), 0);
+        return { ok: true, payload: { ok: true, key } };
+      }
       default:
         return { ok: true, payload: {} };
     }
@@ -80,11 +122,48 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
     urls: [],
     signaturesValid: [],
     requests: [],
+    delivered: [],
     setSessions: (rows) => {
       sessions = rows;
     },
     emit: (event, payload = {}) => {
+      const { runId, state } = (payload ?? {}) as { runId?: unknown; state?: unknown };
+      if (event === 'chat' && typeof runId === 'string' && (state === 'final' || state === 'error' || state === 'aborted')) {
+        replies.delete(runId);
+        for (const socket of live) socket.receipts.delete(runId);
+      }
       for (const socket of [...live]) socket.event({ type: 'event', event, payload });
+    },
+    streamReply: (sessionKey, runId, text) => {
+      const before = replies.get(runId);
+      const seq = (before?.seq ?? 0) + 1;
+      const added = !before ? text : text.startsWith(before.text) ? text.slice(before.text.length) : null;
+      replies.set(runId, { sessionKey, text, seq });
+      const message = { role: 'assistant', content: [{ type: 'text', text }], timestamp: 1_800_000_000_000 + seq };
+      for (const socket of [...live]) {
+        const whole = added === null || !socket.receipts.has(runId);
+        const payload = {
+          runId,
+          sessionKey,
+          seq,
+          state: 'delta',
+          deltaText: added ?? text,
+          ...(added === null ? { replace: true } : {}),
+          ...(whole ? { message } : {}),
+        };
+        if (socket.event({ type: 'event', event: 'chat', payload })) socket.receipts.add(runId);
+      }
+    },
+    hold: (method) => {
+      holds.set(method, []);
+      return () => {
+        const waiting = holds.get(method) ?? [];
+        holds.delete(method);
+        for (const answer of waiting) answer();
+      };
+    },
+    setHistory: (sessionKey, messages, inFlightRun) => {
+      histories.set(sessionKey, { messages, ...(inFlightRun ? { inFlightRun } : {}) });
     },
     failMethod: (method, message) => {
       if (message === null) failures.delete(method);
@@ -121,7 +200,16 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
         setTimeout(() => handlers.close(code, reason), 0);
       };
       let helloSent = false;
-      const entry = { close, event: (frame: unknown) => helloSent && reply(frame) };
+      const entry: Connection = {
+        close,
+        event: (frame) => {
+          if (!helloSent) return false;
+          engine.delivered.push({ event: frame.event, payload: frame.payload });
+          reply(frame);
+          return true;
+        },
+        receipts: new Set(),
+      };
       live.add(entry);
       setTimeout(() => {
         if (!open) return;
@@ -136,11 +224,15 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
           if (frame.method !== 'connect') {
             engine.requests.push({ method: frame.method, params: frame.params });
             const result = answer(frame.method, frame.params);
-            reply(
-              result.ok
-                ? { type: 'res', id: frame.id, ok: true, payload: result.payload }
-                : { type: 'res', id: frame.id, ok: false, error: { code: 'UNAVAILABLE', message: result.message } },
-            );
+            const respond = () =>
+              reply(
+                result.ok
+                  ? { type: 'res', id: frame.id, ok: true, payload: result.payload }
+                  : { type: 'res', id: frame.id, ok: false, error: { code: 'UNAVAILABLE', message: result.message } },
+              );
+            const held = holds.get(frame.method);
+            if (held) held.push(respond);
+            else respond();
             return;
           }
           const params = frame.params;
