@@ -18,7 +18,7 @@ const trunks: Props["trunks"] = [
   { id: "builder", name: "Builder", defaultMode: "ask", theme: "", model: "" },
 ];
 const TOP = ["Attach files", "Add a folder", "Take a photo", "Record a voice note", "Mention a Trunk", "Use a skill", "More…"];
-const NO_ROUTE_ROWS = ["From Google Drive", "From OneDrive or SharePoint", "Take a screenshot", "Saved prompts", "Write a document, spreadsheet or slides", "Find a GIF…", "Improve my draft", "Check with me"];
+const STUB_ROWS = ["Saved prompts", "Write a document, spreadsheet or slides", "Find a GIF…", "Improve my draft", "Check with me"];
 
 async function renderMenu(extra: Partial<Props> = {}) {
   const host = document.body.appendChild(document.createElement("div"));
@@ -63,11 +63,22 @@ describe("P54 composer plus menu", () => {
     expect(spies.onInsert).toHaveBeenCalledWith("@");
   });
 
-  it("never lists the rows that have no route, in either view", async () => {
+  it("never lists stubs for unbuilt features, in either view", async () => {
     const { host } = await renderMenu({ onPicture: vi.fn(), onVoiceNote: vi.fn() });
-    for (const name of NO_ROUTE_ROWS) expect(labels(host)).not.toContain(name);
+    for (const name of STUB_ROWS) expect(labels(host)).not.toContain(name);
     await openMore(host);
-    for (const name of NO_ROUTE_ROWS) expect(labels(host)).not.toContain(name);
+    for (const name of STUB_ROWS) expect(labels(host)).not.toContain(name);
+  });
+
+  it("keeps Drive, OneDrive and screenshot in More…, greyed with a plain reason", async () => {
+    const { host } = await renderMenu({ onPicture: vi.fn(), onVoiceNote: vi.fn() });
+    await openMore(host);
+    for (const name of ["From Google Drive", "From OneDrive or SharePoint", "Take a screenshot"]) {
+      const row = rowNamed(host, name);
+      expect(row.hasAttribute("disabled")).toBe(true);
+      expect(row.getAttribute("title")).toBeTruthy();
+      expect(row.getAttribute("title")).not.toMatch(/engine/i);
+    }
   });
 
   it("shows the rest under More… with a Back row and a This conversation heading", async () => {
@@ -75,9 +86,10 @@ describe("P54 composer plus menu", () => {
     await openMore(host);
     expect(labels(host)).toEqual([
       "Back", "Set a goal", "Make a picture", "Run it in the background",
+      "From Google Drive", "From OneDrive or SharePoint", "Take a screenshot",
       "Phone call…", "Join a meeting…", "Research", "Builder", "Temporary conversation",
     ]);
-    expect([...host.querySelectorAll(".c-ph")].map((x) => x.textContent)).toEqual(["This conversation", "Who answers here"]);
+    expect([...host.querySelectorAll(".c-ph")].map((x) => x.textContent)).toEqual(["Other sources", "This conversation", "Who answers here"]);
   });
 
   it("moves focus into the More… view, does not close the menu, and Back returns to the top", async () => {

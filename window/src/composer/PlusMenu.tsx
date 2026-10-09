@@ -10,6 +10,9 @@ import type { Trunk } from "./useConversation";
 import { shownWhy } from "../shell/shown-why";
 
 export const GAP = {
+  drive: "Not available in this window yet: Google's file picker opens in the desktop app.",
+  oneDrive: "Not available in this window yet: the OneDrive and SharePoint picker opens in the desktop app.",
+  screenshot: "Not available in this window yet: screen capture needs the desktop app.",
   picture: "Connect a model first, in Settings › Models.",
   voiceNote: "Off until you choose: it uses the microphone. Turn it on in Settings › Voice.",
   temporary: "Not available in this window yet: it can't start a temporary conversation.",
@@ -98,6 +101,11 @@ function MoreView({ p, run, onBack }: { p: Props; run: Run; onBack: () => void }
       <MenuItem icon="image" label="Make a picture" disabled={!p.onPicture} reason={p.onPicture ? undefined : GAP.picture}
         onClick={p.onPicture ? run(p.onPicture) : undefined} />
       <MenuItem icon="bg" label="Run it in the background" testId="plus-background" right={<kbd>/bg</kbd>} onClick={run(p.onBackground)} />
+      <Sep />
+      <Head>Other sources</Head>
+      <MenuItem icon="folder" label="From Google Drive" disabled reason={GAP.drive} />
+      <MenuItem icon="folder" label="From OneDrive or SharePoint" disabled reason={GAP.oneDrive} />
+      <MenuItem icon="camera" label="Take a screenshot" disabled reason={GAP.screenshot} />
       <Sep />
       <Head>This conversation</Head>
       <OffRow p={p} run={run} label="Phone call…" icon="call" off />
