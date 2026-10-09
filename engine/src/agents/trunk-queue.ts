@@ -305,13 +305,15 @@ type PickupParams = {
   idleWaitMs?: number;
 };
 
-/** Trunks with a pickup in flight, so overlapping wakes for one Trunk cannot both reach sessions.list and send. */
+/** Trunks with a pickup in flight: overlapping pickups for one Trunk are serialized, not run side by side. */
 const pickupsInFlight = new Set<string>();
 
 /**
  * After a Trunk's run ends, or when a card is added: when the Trunk is idle and holds no job, claim the top job
  * and send its brief in a new thread titled with the job title, as trunk_send does. Returns the job and thread,
- * or undefined for no pickup.
+ * or undefined for no pickup. Overlapping pickups for one Trunk are serialized, and a pickup only starts when the
+ * Trunk has no active run at check time. Runs started elsewhere are not fenced here; per-Trunk run exclusivity
+ * belongs to the run admission and the arch mailbox work.
  */
 export async function pickUpQueuedWork(
   params: PickupParams,
@@ -362,7 +364,8 @@ async function dispatchClaim(
     await params.gateway.request("sessions.create", {
       key: threadKey,
       agentId: params.agentId,
-      label: item.title,
+      // Session labels are unique per Trunk, so a job sent again after a release needs its own label.
+      label: `${item.title} (${claimId.slice(0, 8)})`,
     });
     if (!current()) {
       return undefined;

@@ -85,7 +85,8 @@ describe("Trunk job queue pickup", () => {
       "sessions.create",
       "chat.send",
     ]);
-    expect(calls[1]!.params).toEqual({ key: thread, agentId: "builder-birch", label: "High job" });
+    expect(calls[1]!.params).toMatchObject({ key: thread, agentId: "builder-birch" });
+    expect(String(calls[1]!.params.label)).toMatch(/^High job \([0-9a-f]{8}\)$/);
     expect(calls[2]!.params).toMatchObject({
       sessionKey: thread,
       agentId: "builder-birch",
