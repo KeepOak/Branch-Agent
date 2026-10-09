@@ -3,6 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { EventFrame } from "../../packages/gateway-protocol/src/index.js";
 import { extractFirstTextBlock } from "../shared/chat-message-content.js";
+import { registerQueueMcpTools } from "./queue-tools.js";
 import { registerSigninMcpTools } from "./signin-tools.js";
 
 /**
@@ -220,6 +221,7 @@ export function registerTrunkMcpTools(
   opts: TrunkToolsOptions,
 ): void {
   registerSigninMcpTools(server, gw);
+  registerQueueMcpTools(server, gw);
   registerTrunkReadTools(server, gw);
   registerTrunkWriteTools(server, gw, opts);
   registerRunTools(server, gw);
