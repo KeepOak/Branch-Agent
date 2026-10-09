@@ -19,7 +19,7 @@ export async function main() {
   process.once('SIGTERM', cancel);
   const runCheck = async (bin, args, cwd) => {
     const code = await runManagedCommand({ bin, args, cwd, env: process.env,
-      signal: controller.signal, requireProcessTreeExit: true });
+      signal: controller.signal, requireProcessTreeExit: process.platform !== 'win32' });
     if (code !== 0) throw new Error(`Strict typecheck command exited ${code}`);
   };
   try {
