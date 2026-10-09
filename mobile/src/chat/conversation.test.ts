@@ -2,7 +2,7 @@ import { waitFor } from '@testing-library/react-native';
 import { Conversation, historyItems, phaseLabel, stepTitle } from './conversation';
 import { createFakeEngine, type FakeEngine } from '../connect/fakeEngine';
 import { createFakeSession } from '../testing/fakeSession';
-import type { PairingSession } from '../pairing/pairingSession';
+import type { EngineLink, PairingSession } from '../pairing/pairingSession';
 
 const KEY = 'agent:main:main';
 const eventually = (check: () => void) => waitFor(check, { timeout: 3000 });
@@ -23,6 +23,23 @@ function open(session: PairingSession, ids: string[] = ['run-1', 'run-2']) {
   const conversation = new Conversation(KEY, session, () => queue.shift() ?? 'run-x');
   conversation.attach();
   return conversation;
+}
+
+/** A link whose requests wait until the test answers them, to land a history read after events that came during it. */
+function heldLink() {
+  const held: Array<{ method: string; answer: (payload: unknown) => void }> = [];
+  const listeners = new Set<(event: string, payload: unknown) => void>();
+  const link: EngineLink = {
+    hello: {} as EngineLink['hello'],
+    request: <T,>(method: string) => new Promise<T>((resolve) => held.push({ method, answer: (payload) => resolve(payload as T) })),
+    onEvent: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    onConnected: () => () => undefined,
+  };
+  const emit = (event: string, payload: unknown) => listeners.forEach((listener) => listener(event, payload));
+  return { link, held, emit };
 }
 
 describe('chat history as the phone shows it', () => {
@@ -172,6 +189,31 @@ describe('one chat, live', () => {
     expect(chat.getSnapshot().items).toMatchObject([{ kind: 'user', text: 'Summarise my mail' }]);
     chat.dispose();
     session.dispose();
+  });
+
+  it('keeps a reply from the computer that started while a history read was on its way', async () => {
+    const { link, held, emit } = heldLink();
+    const chat = new Conversation(KEY, link, () => 'run-1');
+    chat.attach();
+    held.shift()!.answer({ sessionKey: KEY, messages: [] });
+    await eventually(() => expect(chat.getSnapshot().loaded).toBe(true));
+
+    // A read starts (a reconnect, a change on the computer), then the computer starts a reply.
+    const reading = chat.load();
+    emit('chat', { runId: 'desk-1', sessionKey: KEY, seq: 1, state: 'delta', deltaText: 'From the desk' });
+    expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'From the desk' });
+    // The read was answered before that run began, so it has no inFlightRun.
+    held.shift()!.answer({ sessionKey: KEY, messages: [user('Summarise my mail', 1_000)] });
+    await reading;
+    expect(chat.getSnapshot().items).toMatchObject([{ kind: 'user', text: 'Summarise my mail' }]);
+    expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'From the desk' });
+
+    // A read started after the reply's last words, and still without it, is the newer word: the reply is over.
+    const later = chat.load();
+    held.shift()!.answer({ sessionKey: KEY, messages: [user('Summarise my mail', 1_000)] });
+    await later;
+    expect(chat.getSnapshot().live).toBeNull();
+    chat.dispose();
   });
 
   it('says why the chat couldn’t be read, and clears the unread mark once when opened', async () => {

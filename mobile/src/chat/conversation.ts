@@ -170,6 +170,8 @@ export class Conversation {
   private readonly offs: Array<() => void> = [];
   /** Only the newest history read may land. */
   private reads = 0;
+  /** Counts the live events this chat has seen; a history read only speaks for the reply as it was when the read began. */
+  private liveEvents = 0;
   /** Runs this chat saw end; a late event or a slow history read can't bring them back. */
   private readonly finished = new Set<string>();
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -212,6 +214,7 @@ export class Conversation {
   /** Reads the whole chat again. */
   async load(): Promise<void> {
     const read = ++this.reads;
+    const fence = this.liveEvents;
     try {
       const history = rec(await this.link.request('chat.history', { sessionKey: this.sessionKey }));
       if (read !== this.reads || this.disposed) return;
@@ -222,8 +225,12 @@ export class Conversation {
       // holds a send when it has that send's key (`<runId>:user`), never because an earlier message said the same words.
       const sends = this.snapshot.sends.filter((send) => send.state !== 'sent' || !runKeys.has(send.id));
       const live = this.snapshot.live;
+      // A reply that streamed while this read was on its way is newer than what the read says.
+      const newer = live && this.liveEvents !== fence && !this.finished.has(live.runId) ? live : null;
       let next: LiveReply | null = null;
-      if (inFlightId) {
+      if (newer && newer.runId !== inFlightId) {
+        next = newer;
+      } else if (inFlightId) {
         const known = live?.runId === inFlightId ? live : null;
         const text = str(inFlight.text);
         next = { runId: inFlightId, text: known && known.text.length > text.length ? known.text : text, phase: known?.phase ?? null, startedAt: num(inFlight.startedAt) || known?.startedAt || this.now() };
@@ -307,6 +314,7 @@ export class Conversation {
     const live = this.snapshot.live;
     // A reply started somewhere else (the computer, an automation) streams here too.
     const current: LiveReply = live?.runId === runId ? live : { runId, text: '', phase: null, startedAt: this.now() };
+    if (state === 'status' || state === 'delta') this.liveEvents += 1;
     if (state === 'status') {
       this.set({ live: { ...current, phase: str(p.phase) || null } });
     } else if (state === 'delta') {
