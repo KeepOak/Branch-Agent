@@ -1,12 +1,16 @@
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { BackHandler } from 'react-native';
 import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-context';
+import { ChatList } from './src/chats/chatList';
+import { messageSearcher } from './src/chats/messageSearch';
 import { createDeviceSession } from './src/pairing/createDeviceSession';
 import type { PairingSession } from './src/pairing/pairingSession';
 import type { SetupPayload } from './src/pairing/setupCode';
 import { usePairingState } from './src/pairing/usePairingState';
 import { ApprovalScreen } from './src/screens/ApprovalScreen';
+import { ChatsScreen } from './src/screens/ChatsScreen';
 import { EnterCodeScreen } from './src/screens/EnterCodeScreen';
 import { PairedScreen } from './src/screens/PairedScreen';
 import { ScanScreen } from './src/screens/ScanScreen';
@@ -18,17 +22,42 @@ import type { ColorScheme } from './src/theme/tokens';
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 type Route = 'welcome' | 'scan' | 'code';
+type PairedRoute = 'chats' | 'computer';
 
 function Shell({ session }: { session: PairingSession }) {
   const theme = useTheme();
   const state = usePairingState(session);
   const [route, setRoute] = useState<Route>('welcome');
+  const [pairedRoute, setPairedRoute] = useState<PairedRoute>('chats');
+  // One list for the whole session, so going to Your computer and back doesn't reload it.
+  const [chats] = useState(() => new ChatList(session));
+  const chatList = useSyncExternalStore(chats.subscribe, chats.getSnapshot);
+  const [searchMessages] = useState(() => messageSearcher((method, params) => session.request(method, params)));
+
+  useEffect(() => {
+    chats.attach();
+    return () => chats.dispose();
+  }, [chats]);
 
   useEffect(() => {
     if (state.step !== 'loading') void SplashScreen.hideAsync().catch(() => undefined);
-    if (state.step === 'unpaired') return;
+    if (state.step === 'unpaired') {
+      chats.reset();
+      setPairedRoute('chats');
+      return;
+    }
     setRoute('welcome');
-  }, [state.step]);
+  }, [state.step, chats]);
+
+  // Android's back gesture leaves Your computer for Chats, like the on-screen back button.
+  useEffect(() => {
+    if (state.step !== 'paired' || pairedRoute !== 'computer') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setPairedRoute('chats');
+      return true;
+    });
+    return () => sub.remove();
+  }, [state.step, pairedRoute]);
 
   const begin = (setup: SetupPayload) => session.begin(setup);
   const toWelcome = () => {
@@ -60,7 +89,12 @@ function Shell({ session }: { session: PairingSession }) {
       screen = <ApprovalScreen state={state} onCancel={toWelcome} onScanAgain={scanAgain} />;
       break;
     case 'paired':
-      screen = <PairedScreen state={state} onUnpair={() => void session.unpair()} />;
+      screen =
+        pairedRoute === 'computer' ? (
+          <PairedScreen state={state} onUnpair={() => void session.unpair()} onBack={() => setPairedRoute('chats')} />
+        ) : (
+          <ChatsScreen list={chatList} online={state.online} searchMessages={searchMessages} onRefresh={() => chats.refresh()} onComputer={() => setPairedRoute('computer')} />
+        );
   }
 
   return (
