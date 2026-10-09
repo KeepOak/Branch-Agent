@@ -21,7 +21,8 @@ import { turnDoneLines } from "./computer-card";
 import { isComputerStep, layout, shownApprovalIds, type Item } from "./layout";
 import { PlanCard, planAnchor } from "./PlanCard";
 import { useConversationPrefs } from "./prefs";
-import { isPreparationPending, preparationLabel } from "../connect/preparation-status";
+import { isPreparationPending, isPreparationStalled, preparationLabel, preparationNeedsAttentionLabel, preparationRetryingLabel } from "../connect/preparation-status";
+import { useStartupPreparation } from "../connect/startup-preparation";
 import { QuestionLine } from "./QuestionCard";
 import { anchorQuestions, type QuestionRecord } from "./questions";
 import type { Approval, ApprovalDecision, Block } from "./model";
@@ -98,6 +99,8 @@ type Props = {
   loadingEarlier?: boolean;
   earlierError?: string;
   preparationError?: string | null;
+  /** The Trunk got ready after this conversation stopped waiting for it: read the conversation again. */
+  onStartupReady?: () => void;
   advancedDiagnostics?: boolean;
   onLoadEarlier?: () => void;
 };
@@ -252,7 +255,8 @@ export function Thread(props: Props) {
   const suggestionKey = lastReply ? `${props.sessionKey ?? ""}:${lastReply.key}` : null;
   const suggestions = props.onStart && !firstPending && suggestionKey !== usedSuggestion
     ? suggestionsFor(history, running, Boolean(pendingUser)) : [];
-  const preparationError = [props.preparationError, props.earlierError].find(isPreparationPending);
+  const preparationError = [props.preparationError, props.earlierError].find((error) => isPreparationPending(error) || isPreparationStalled(error));
+  const startup = useStartupPreparation(engine, Boolean(preparationError), isPreparationStalled(preparationError), props.onStartupReady);
   const inRoom = Boolean(props.room);
   const ownAgentId = props.room?.ownAgentId;
   const anchors = useMemo(() => anchorQuestions(history, props.questions ?? []), [history, props.questions]);
@@ -317,8 +321,11 @@ export function Thread(props: Props) {
       <div className="scroll" ref={follow.scroller} tabIndex={-1} onScroll={(event) => { follow.onScroll(); if (event.currentTarget.scrollTop < 80 && props.hasEarlierPages && !props.loadingEarlier) props.onLoadEarlier?.(); }} data-testid="thread-scroll">
         <div className="thread" ref={threadRef}>
           {props.hasEarlierPages ? <button type="button" className="stamp segment-more" onClick={props.onLoadEarlier} disabled={props.loadingEarlier}>{props.loadingEarlier ? "Loading earlier pages…" : "Earlier pages"}</button> : null}
-          {preparationError ? <div className="stamp preparation-status" role="status">
-            <span className="preparation-spinner" aria-hidden="true" />{preparationLabel(name)}
+          {preparationError ? <div className="stamp preparation-status" role="status" data-testid="preparation-status">
+            {startup.state !== "needs-attention" ? <span className="preparation-spinner" aria-hidden="true" /> : null}
+            {startup.state === "needs-attention" ? preparationNeedsAttentionLabel(name) : startup.state === "retrying" ? preparationRetryingLabel(name) : isPreparationStalled(preparationError) ? preparationError : preparationLabel(name)}
+            {startup.state !== "preparing" ? <button type="button" className="btn sm" disabled={startup.busy} onClick={startup.retry}>{startup.busy ? "Retrying…" : startup.state === "needs-attention" ? "Retry" : "Retry now"}</button> : null}
+            {startup.error ? <span role="alert">Couldn't retry: {startup.error}</span> : null}
             {props.advancedDiagnostics ? <details><summary>Diagnostics</summary><code>{preparationError}</code></details> : null}
           </div> : null}
           {props.earlierError && !isPreparationPending(props.earlierError) ? <div className="stamp" role="status">Couldn't load earlier pages: {props.earlierError}</div> : null}
