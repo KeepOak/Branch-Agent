@@ -1,0 +1,4 @@
+engine:extensions/codex/src/app-server/native-process-authority.test.ts
+engine:src/agents/bash-tools.exec-host-heavy.test.ts
+engine:src/infra/heavy-step-command.test.ts
+engine:test/scripts/dist-artifact-lock.test.ts

@@ -7,7 +7,7 @@ import test from "node:test";
 const root = join(dirname(fileURLToPath(import.meta.url)), "../src");
 
 test("desktop child-process launches are hidden", () => {
-  for (const file of ["available-memory.ts", "gateway.ts", "desktop-update.ts", "desktop-os.ts", "candidate-check.ts", "engine-records.ts"]) {
+  for (const file of ["../../engine/scripts/lib/available-memory.mjs", "../scripts/build.mjs", "gateway.ts", "desktop-update.ts", "desktop-os.ts", "candidate-check.ts", "engine-records.ts"]) {
     const source = readFileSync(join(root, file), "utf8");
     assert.doesNotMatch(source, /windowsHide\s*:\s*false/, file);
     assert.match(source, /windowsHide\s*:\s*true/, file);

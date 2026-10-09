@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'desktop/**'
+      - 'engine/scripts/lib/available-memory.*'
       - '.github/workflows/desktop-checks.yml'
       - '.github/workflows/source-build.yml'
       - '.github/workflows/component-release.yml'
@@ -11,6 +12,7 @@ on:
     branches: [main]
     paths:
       - 'desktop/**'
+      - 'engine/scripts/lib/available-memory.*'
       - '.github/workflows/desktop-checks.yml'
       - '.github/workflows/source-build.yml'
       - '.github/workflows/component-release.yml'

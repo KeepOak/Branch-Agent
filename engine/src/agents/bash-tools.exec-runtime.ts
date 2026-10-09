@@ -1,6 +1,12 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { normalizeStringEntries } from "@branch/normalization-core/string-normalization";
+import {
+  acquireHostHeavyStep,
+  HOST_HEAVY_STEP_OWNER,
+  resolveHeavyStepMemoryNeed,
+  type HostHeavyStepHandle,
+} from "../../scripts/lib/host-heavy-step.mts";
 import { recordDiagnosticToolExecutionDeadline } from "../infra/diagnostic-tool-execution-liveness.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import {
@@ -15,6 +21,7 @@ import {
   type ExecTarget,
 } from "../infra/exec-approvals.js";
 import { requestHeartbeat } from "../infra/heartbeat-wake.js";
+import { resolveHeavyStepCommand } from "../infra/heavy-step-command.js";
 import { findPathKey, mergePathPrepend } from "../infra/path-prepend.js";
 import { withSystemEventOwner } from "../infra/system-event-ownership.js";
 import { enqueueSystemEventWithReceipt } from "../infra/system-events.js";
@@ -567,6 +574,7 @@ export async function runExecProcess({
   let operatorAuthority = getGatewayToolCallerIdentity()?.operatorAuthority;
   const operatorSignal = operatorAuthority?.signal;
   let releaseOperatorAuthority: (() => void) | undefined;
+  let heavyStep: HostHeavyStepHandle | undefined;
   const startedAt = Date.now();
   const sessionId = createSessionSlug(isProcessSessionIdTaken);
   const execCommand = opts.execCommand ?? opts.command;
@@ -742,7 +750,15 @@ export async function runExecProcess({
       finalOutcome = await settleExecProcessExit({
         session,
         outcome: finalOutcome,
-        onSettledBeforeNotify,
+        onSettledBeforeNotify: async (settledOutcome) => {
+          const handle = heavyStep;
+          heavyStep = undefined;
+          try {
+            await handle?.release(session.finalizationFailed !== true);
+          } finally {
+            await onSettledBeforeNotify?.(settledOutcome);
+          }
+        },
         notifyOnExit: (settledSession, status) =>
           maybeNotifyOnExit(settledSession, status, opts.subagentSession === true),
         failureOutcome: (error) =>
@@ -831,6 +847,26 @@ export async function runExecProcess({
     assertSourceActive?.();
     operatorAuthority?.assertCurrent();
     releaseOperatorAuthority = operatorAuthority?.retain?.();
+    const admissionEnv = { ...process.env, ...opts.env };
+    const heavyKind = resolveHeavyStepCommand(execCommand, (kind) =>
+      resolveHeavyStepMemoryNeed(kind, admissionEnv),
+    );
+    if (heavyKind) {
+      const signals = [initialStartupSignal, operatorSignal].filter(
+        (signal): signal is AbortSignal => signal !== undefined,
+      );
+      heavyStep = await acquireHostHeavyStep(heavyKind, {
+        env: admissionEnv,
+        signal: signals.length > 0 ? AbortSignal.any(signals) : undefined,
+        onWait: (message) => {
+          appendOutput(session, "stderr", `${message}\n`);
+          emitUpdate();
+        },
+      });
+      shellRuntimeEnv[HOST_HEAVY_STEP_OWNER] = heavyStep.env[HOST_HEAVY_STEP_OWNER]!;
+      shellRuntimeEnv.BRANCH_HEAVY_STEP_DIRECTORY = heavyStep.env.BRANCH_HEAVY_STEP_DIRECTORY!;
+      assertSourceActive?.();
+    }
     const spawnSpec = await prepareSpawnSpec();
     usingPty = spawnSpec.mode === "pty";
     const spawnBase = {
