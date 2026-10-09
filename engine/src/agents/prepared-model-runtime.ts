@@ -317,7 +317,7 @@ export async function publishPreparedModelRuntimeSnapshot(
       options.catalogMode,
     );
   } catch (error) {
-    return await adoptSupersedingPublication(owners, ownerKey(input), error);
+    return await adoptSupersedingPublication(owners, input, error);
   }
 }
 
