@@ -170,6 +170,16 @@ export class Conversation {
   private readonly offs: Array<() => void> = [];
   /** Only the newest history read may land. */
   private reads = 0;
+  /** Counts the live events this chat has seen; a history read only speaks for the reply as it was when the read began. */
+  private liveEvents = 0;
+  /**
+   * The reply whose whole text this chat's events carry. The engine sends a connection an addition alone once that
+   * connection holds the frame before it (server-broadcast-live-text.ts `canSendDelta`), whichever chat the phone
+   * shows; the phone's connection rebuilds the whole text into every frame (PhoneGateway `chatStream`), so each
+   * delta here has `message`. From the first one on the events are the reply's text, word for word, and a history
+   * read only lends the run's start time. Cleared on a new connection, until its first frame for the run.
+   */
+  private streamed: string | null = null;
   /** Runs this chat saw end; a late event or a slow history read can't bring them back. */
   private readonly finished = new Set<string>();
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -194,7 +204,9 @@ export class Conversation {
     this.disposed = false;
     this.offs.push(
       this.link.onConnected(() => {
-        // A new connection: the history says which reply is still being written.
+        // A new connection: the history says which reply is still being written, and its words until this
+        // connection's first frame for that reply carries the whole text.
+        this.streamed = null;
         void this.load();
       }),
       this.link.onEvent((event, payload) => this.onEvent(event, payload)),
@@ -212,25 +224,32 @@ export class Conversation {
   /** Reads the whole chat again. */
   async load(): Promise<void> {
     const read = ++this.reads;
+    const fence = this.liveEvents;
     try {
       const history = rec(await this.link.request('chat.history', { sessionKey: this.sessionKey }));
       if (read !== this.reads || this.disposed) return;
       const { items, runKeys } = historyItems(Array.isArray(history.messages) ? history.messages : []);
       const inFlight = rec(history.inFlightRun);
       const inFlightId = str(inFlight.runId) && !this.finished.has(str(inFlight.runId)) ? str(inFlight.runId) : '';
-      const recent = items.filter((item) => item.kind === 'user').slice(-5).map((item) => (item.kind === 'user' ? item.text : ''));
-      // A send the history now holds is drawn from the history; one that failed keeps its Try again.
-      const sends = this.snapshot.sends.filter((send) => send.state !== 'sent' || !(runKeys.has(send.id) || recent.includes(send.text)));
+      // A send the history now holds is drawn from the history; one that failed keeps its Try again. The history
+      // holds a send when it has that send's key (`<runId>:user`), never because an earlier message said the same words.
+      const sends = this.snapshot.sends.filter((send) => send.state !== 'sent' || !runKeys.has(send.id));
       const live = this.snapshot.live;
       let next: LiveReply | null = null;
-      if (inFlightId) {
-        const known = live?.runId === inFlightId ? live : null;
-        const text = str(inFlight.text);
-        next = { runId: inFlightId, text: known && known.text.length > text.length ? known.text : text, phase: known?.phase ?? null, startedAt: num(inFlight.startedAt) || known?.startedAt || this.now() };
+      if (live && live.runId === inFlightId) {
+        // The read names the reply on screen. Its words are the events' when this connection carries the whole text
+        // (see `streamed`); otherwise the history's, which hold the words written before the phone was listening.
+        next = { ...live, text: this.streamed === live.runId ? live.text : str(inFlight.text), startedAt: num(inFlight.startedAt) || live.startedAt };
+      } else if (live && this.liveEvents !== fence && !this.finished.has(live.runId)) {
+        // A reply that streamed while this read was on its way is newer than the read, which can't name it yet.
+        next = live;
+      } else if (inFlightId) {
+        next = { runId: inFlightId, text: str(inFlight.text), phase: null, startedAt: num(inFlight.startedAt) || this.now() };
       } else if (live && !this.finished.has(live.runId) && sends.some((send) => send.id === live.runId && send.state !== 'failed')) {
         // Your message is on its way and its run hasn't reported yet: keep the Thinking bubble.
         next = live;
       }
+      if (this.streamed && this.streamed !== next?.runId) this.streamed = null;
       this.set({ items, loaded: true, error: null, sends, live: next });
     } catch (error) {
       if (read !== this.reads || this.disposed) return;
@@ -307,11 +326,16 @@ export class Conversation {
     const live = this.snapshot.live;
     // A reply started somewhere else (the computer, an automation) streams here too.
     const current: LiveReply = live?.runId === runId ? live : { runId, text: '', phase: null, startedAt: this.now() };
+    if (state === 'status' || state === 'delta') this.liveEvents += 1;
     if (state === 'status') {
       this.set({ live: { ...current, phase: str(p.phase) || null } });
     } else if (state === 'delta') {
-      const delta = str(p.deltaText);
-      this.set({ live: { ...current, text: p.replace === true ? delta : current.text + delta, phase: null } });
+      // A frame with `message` (or a replacement) is the reply's whole text so far; one without (an engine that sends
+      // none) adds to the frame before it.
+      const message = rec(p.message);
+      const whole = 'content' in message ? messageText(message.content) : p.replace === true ? str(p.deltaText) : null;
+      if (whole !== null) this.streamed = runId;
+      this.set({ live: { ...current, text: whole ?? current.text + str(p.deltaText), phase: null } });
     } else if (state === 'final' || state === 'error' || state === 'aborted') {
       this.finished.add(runId);
       if (state === 'error') this.set({ ended: { runId, text: str(p.errorMessage) || 'The reply stopped with an error.', failed: true } });
