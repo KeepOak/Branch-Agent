@@ -3,7 +3,7 @@ import { createFakeEngine } from '../connect/fakeEngine';
 import { createFakeSession } from '../testing/fakeSession';
 import { FIXTURE_NOW, fixtureAgents } from '../testing/chatFixtures';
 import { fixtureApprovals, fixtureExecApproval } from '../testing/approvalFixtures';
-import { ApprovalInbox, readApproval, trunkOf } from './approvals';
+import { ANSWER_FAILED_MESSAGE, ApprovalInbox, LIST_FAILED_MESSAGE, readApproval, trunkOf } from './approvals';
 import { actionWords, expiresIn, maskCommand, mixedAlphabets, notificationText, outcomeWords, shortFolder } from './approvalWords';
 
 const eventually = (check: () => void) => waitFor(check, { timeout: 4000 });
@@ -94,10 +94,10 @@ describe('approvals on the phone', () => {
     expect(inbox.getSnapshot().failed).toEqual({});
     expect(outcomeWords(inbox.getSnapshot().answered[0])).toBe('Answered somewhere else');
     // The same words without the engine's reason are just a failed answer, and the card stays.
-    engine.failMethod('plugin.approval.resolve', 'approval expired or not found');
+    engine.failMethod('plugin.approval.resolve', 'approval expired or not found', undefined, 'INVALID_REQUEST');
     await expect(inbox.answer('plugin:mail-1', 'deny')).resolves.toBe(false);
     expect(inbox.getSnapshot().pending.map((a) => a.id)).toEqual(['plugin:mail-1']);
-    expect(inbox.getSnapshot().failed['plugin:mail-1']).toBe('Your answer didn’t go through: approval expired or not found');
+    expect(inbox.getSnapshot().failed['plugin:mail-1']).toBe(ANSWER_FAILED_MESSAGE);
     session.dispose();
   });
 
@@ -148,10 +148,57 @@ describe('approvals on the phone', () => {
     const snapshot = inbox.getSnapshot();
     expect(snapshot.pending.map((a) => a.id)).toContain('exec-1');
     expect(snapshot.sending).toEqual({});
-    expect(snapshot.failed['exec-1']).toBe('Your answer didn’t go through: gateway busy');
+    expect(snapshot.failed['exec-1']).toBe('Your computer couldn’t take the answer just now. Try again in a moment.');
     engine.failMethod('exec.approval.resolve', null);
     await expect(inbox.answer('exec-1', 'allow-once')).resolves.toBe(true);
     expect(inbox.getSnapshot().failed).toEqual({});
+    session.dispose();
+  });
+
+  it('never shows the engine’s own words when it refuses an answer', async () => {
+    const { engine, session, inbox } = await connected();
+    // The engine's refusals (approval-shared.ts, error-codes.ts), each with the plain words the card says instead.
+    const refusals: Array<[string, unknown, string | undefined, string]> = [
+      ['missing scope: operator.approvals', { code: 'MISSING_SCOPE', missingScope: 'operator.approvals' }, 'FORBIDDEN', 'This phone isn’t allowed to answer approvals any more. Answer this one on your computer, or pair this phone again.'],
+      ['invalid decision', undefined, 'INVALID_REQUEST', ANSWER_FAILED_MESSAGE],
+      ['approval resolver authority is no longer active', undefined, 'INVALID_REQUEST', ANSWER_FAILED_MESSAGE],
+      ['approval storage unavailable', undefined, 'UNAVAILABLE', 'Your computer couldn’t take the answer just now. Try again in a moment.'],
+      ['something a later engine says', { code: 'SOMETHING_NEW' }, 'SOMETHING_NEW', ANSWER_FAILED_MESSAGE],
+    ];
+    for (const [message, details, code, words] of refusals) {
+      engine.failMethod('exec.approval.resolve', message, details, code);
+      await expect(inbox.answer('exec-1', 'allow-once')).resolves.toBe(false);
+      expect(inbox.getSnapshot().failed['exec-1']).toBe(words);
+      expect(inbox.getSnapshot().failed['exec-1']).not.toContain(message);
+    }
+    expect(inbox.getSnapshot().pending.map((a) => a.id)).toContain('exec-1');
+    session.dispose();
+  });
+
+  it('treats the engine’s APPROVAL_NOT_FOUND code as already settled, not as a failed answer', async () => {
+    const { engine, session, inbox } = await connected();
+    engine.failMethod('exec.approval.resolve', 'unknown or expired approval id', undefined, 'APPROVAL_NOT_FOUND');
+    await expect(inbox.answer('exec-1', 'allow-once')).resolves.toBe(false);
+    const snapshot = inbox.getSnapshot();
+    expect(snapshot.failed).toEqual({});
+    expect(snapshot.answered.map((a) => [a.id, a.by])).toEqual([['exec-1', 'elsewhere']]);
+    session.dispose();
+  });
+
+  it('says in plain words why the list couldn’t be read', async () => {
+    const { engine, session, inbox } = await connected();
+    engine.failMethod('exec.approval.list', 'approval storage unavailable');
+    await inbox.refresh();
+    expect(inbox.getSnapshot().error).toBe('Your computer is busy right now. Try again in a moment.');
+    engine.failMethod('exec.approval.list', 'missing scope: operator.approvals', { code: 'MISSING_SCOPE', missingScope: 'operator.approvals' }, 'FORBIDDEN');
+    await inbox.refresh();
+    expect(inbox.getSnapshot().error).toBe('This phone isn’t allowed to see approvals any more. Pair it again from Branch on your computer.');
+    engine.failMethod('exec.approval.list', 'invalid exec.approval.list params', undefined, 'INVALID_REQUEST');
+    await inbox.refresh();
+    expect(inbox.getSnapshot().error).toBe(LIST_FAILED_MESSAGE);
+    engine.failMethod('exec.approval.list', null);
+    await inbox.refresh();
+    expect(inbox.getSnapshot().error).toBeNull();
     session.dispose();
   });
 

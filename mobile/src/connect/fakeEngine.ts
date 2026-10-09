@@ -49,8 +49,11 @@ export type FakeEngine = {
   delivered: Array<{ event: string; payload: unknown }>;
   /** Holds the answers to a method until the returned release is called. The engine reads its answer when asked. */
   hold: (method: string) => () => void;
-  /** Makes one method fail with this message (and the engine's error details, if given) until cleared with null. */
-  failMethod: (method: string, message: string | null, details?: unknown) => void;
+  /**
+   * Makes one method fail with this message (and the engine's error details and code, if given) until cleared with
+   * null. The code defaults to INVALID_REQUEST with details and UNAVAILABLE without.
+   */
+  failMethod: (method: string, message: string | null, details?: unknown, code?: string) => void;
   /** The chat.history messages (and the run still going, if any) the engine reports for a chat from now on. */
   setHistory: (sessionKey: string, messages: unknown[], inFlightRun?: unknown) => void;
   /** A Trunk asks for a yes: the approval joins the list and every approvals connection hears *.approval.requested. */
@@ -83,7 +86,7 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
   let refusal: { code: string; message: string } | null = null;
   let sessions = options.sessions ?? [];
   const agents = options.agents ?? { defaultId: 'main', mainKey: 'main', scope: 'per-sender', agents: [{ id: 'main', name: 'Branch Agent' }] };
-  const failures = new Map<string, { message: string; details?: unknown }>();
+  const failures = new Map<string, { message: string; details?: unknown; code?: string }>();
   const histories = new Map<string, { messages: unknown[]; inFlightRun?: unknown }>();
   const approvals = { exec: [...(options.approvals?.exec ?? [])], plugin: [...(options.approvals?.plugin ?? [])] };
   /** The first decision recorded for each answered approval, so a later answer gets the engine's reply to a repeat. */
@@ -112,12 +115,12 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
     name: string | null;
   };
   const live = new Set<Connection>();
-  const answer = (method: string, params: unknown, from: Connection): { ok: true; payload: unknown } | { ok: false; message: string; details?: unknown } => {
+  const answer = (method: string, params: unknown, from: Connection): { ok: true; payload: unknown } | { ok: false; message: string; details?: unknown; code?: string } => {
     const failure = failures.get(method);
     if (failure) return { ok: false, ...failure };
     // methods/core-descriptors.ts: the approval methods need operator.approvals on the asking connection.
     if (/^(exec|plugin)\.approval\./.test(method) && !from.scopes.includes(APPROVALS_SCOPE)) {
-      return { ok: false, message: `missing scope: ${APPROVALS_SCOPE}`, details: { code: 'MISSING_SCOPE', missingScope: APPROVALS_SCOPE } };
+      return { ok: false, code: 'FORBIDDEN', message: `missing scope: ${APPROVALS_SCOPE}`, details: { code: 'MISSING_SCOPE', missingScope: APPROVALS_SCOPE } };
     }
     switch (method) {
       case 'sessions.subscribe':
@@ -232,9 +235,9 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
       if (!settle('exec', id, decision, resolvedBy)) settle('plugin', id, decision, resolvedBy);
     },
     pendingApprovals: (kind) => [...approvals[kind]],
-    failMethod: (method, message, details) => {
+    failMethod: (method, message, details, code) => {
       if (message === null) failures.delete(method);
-      else failures.set(method, { message, ...(details === undefined ? {} : { details }) });
+      else failures.set(method, { message, ...(details === undefined ? {} : { details }), ...(code === undefined ? {} : { code }) });
     },
     approve: () => {
       decision = 'approved';
@@ -301,7 +304,7 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
                       type: 'res',
                       id: frame.id,
                       ok: false,
-                      error: { code: result.details ? 'INVALID_REQUEST' : 'UNAVAILABLE', message: result.message, ...(result.details ? { details: result.details } : {}) },
+                      error: { code: result.code ?? (result.details ? 'INVALID_REQUEST' : 'UNAVAILABLE'), message: result.message, ...(result.details ? { details: result.details } : {}) },
                     },
               );
             const held = holds.get(frame.method);

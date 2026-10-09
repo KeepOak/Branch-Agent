@@ -47,6 +47,7 @@ export type ApprovalsSnapshot = {
   /** The Trunks by id, for names and avatars. */
   trunks: Record<string, Trunk>;
   loaded: boolean;
+  /** Why the list couldn't be read, in plain words (never the engine's own text). */
   error: string | null;
   /** The answer on its way for each approval. */
   sending: Record<string, ApprovalDecision>;
@@ -107,20 +108,49 @@ export function trunkOf(approval: Approval, trunks: Record<string, Trunk>): Trun
   return { name, avatar: approval.agentId ? name.charAt(0) : '?' };
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+/** The engine's error code (ErrorCodes in gateway-error-details.ts), as the gateway client carries it. */
+const codeOf = (error: unknown): string => str(rec(error).gatewayCode) || str(rec(error).code);
+
+/** The engine refused because this phone's connection lacks a scope (FORBIDDEN, details MISSING_SCOPE). */
+function missingScope(error: unknown): boolean {
+  return codeOf(error) === 'FORBIDDEN' || str(rec(rec(error).details).code) === 'MISSING_SCOPE';
 }
 
 /**
  * The engine's reasons for refusing an answer because the approval isn't waiting any more: another surface
  * answered it first (approval-shared.ts APPROVAL_ALREADY_RESOLVED_DETAILS), or it ran out of time or the
- * engine restarted (approval-record-lookup.ts APPROVAL_NOT_FOUND_DETAILS). Read from the error's details,
- * never from its words.
+ * engine restarted (approval-record-lookup.ts APPROVAL_NOT_FOUND_DETAILS, or the APPROVAL_NOT_FOUND code that
+ * infra/approval-errors.ts also accepts). Read from the error's code and details, never from its words.
  */
 const SETTLED_REASONS = new Set(['APPROVAL_ALREADY_RESOLVED', 'APPROVAL_NOT_FOUND']);
 function alreadySettled(error: unknown): boolean {
   const details = rec(rec(error).details);
-  return SETTLED_REASONS.has(str(details.reason));
+  return SETTLED_REASONS.has(str(details.reason)) || codeOf(error) === 'APPROVAL_NOT_FOUND';
+}
+
+/** What a card says for any refused answer the phone has no specific words for. Never the engine's own text. */
+export const ANSWER_FAILED_MESSAGE = 'Your answer didn’t go through. Try again, or answer it on your computer.';
+export const NOT_CONNECTED_MESSAGE = 'Your computer isn’t connected right now. Try again when it’s back.';
+
+/**
+ * Plain words for why the computer refused this phone's answer, keyed by the engine's error code and details.
+ * The engine's message ("missing scope: operator.approvals", "invalid decision") is written for the command
+ * line and is never shown, the same rule as pairingSession.ts failureMessage.
+ */
+export function answerFailureMessage(error: unknown): string {
+  if (missingScope(error)) return 'This phone isn’t allowed to answer approvals any more. Answer this one on your computer, or pair this phone again.';
+  if (codeOf(error) === 'UNAVAILABLE') return 'Your computer couldn’t take the answer just now. Try again in a moment.';
+  return ANSWER_FAILED_MESSAGE;
+}
+
+/** What the list says when the phone has no specific words for why it couldn't be read. */
+export const LIST_FAILED_MESSAGE = 'Your computer didn’t send its approvals. Try again in a moment.';
+
+/** Plain words for why the computer wouldn't list its approvals, by the same rule as answerFailureMessage. */
+export function listFailureMessage(error: unknown): string {
+  if (missingScope(error)) return 'This phone isn’t allowed to see approvals any more. Pair it again from Branch on your computer.';
+  if (codeOf(error) === 'UNAVAILABLE') return 'Your computer is busy right now. Try again in a moment.';
+  return LIST_FAILED_MESSAGE;
 }
 
 export class ApprovalInbox {
@@ -210,7 +240,7 @@ export class ApprovalInbox {
         failed: Object.fromEntries(Object.entries(this.snapshot.failed).filter(([id]) => ids.has(id))),
       });
     } catch (error) {
-      this.set({ error: messageOf(error) });
+      this.set({ error: listFailureMessage(error) });
     } finally {
       this.reads.delete(since);
     }
@@ -272,8 +302,7 @@ export class ApprovalInbox {
         if (still) this.move(still, this.ended(still, still.expiresAtMs && still.expiresAtMs <= this.now() ? 'expired' : 'gone', false, 'elsewhere'));
         return false;
       }
-      const message = messageOf(error);
-      const words = this.link.hello ? `Your answer didn’t go through: ${message}` : 'Your computer isn’t connected right now. Try again when it’s back.';
+      const words = this.link.hello ? answerFailureMessage(error) : NOT_CONNECTED_MESSAGE;
       this.set({ failed: { ...this.snapshot.failed, [id]: words } });
       return false;
     }
