@@ -10,7 +10,7 @@ type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
 
 export type Actions = ReturnType<typeof conversationActions>;
 
-const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));
+const reason = (error: unknown) => (error instanceof Error ? error.message : String(error)).replace(/^(?:Error:\s*)+/, "");
 const nameOf = (row: Conversation) => row.title || "New conversation";
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -211,7 +211,10 @@ export function conversationActions(request: Request, list: ConversationList, op
           try {
             return await createOnce();
           } catch (error) {
-            if (!isPreparationPending(error)) throw error;
+            // A concurrent first contact read can reserve the absent database before
+            // this attempt. Retry from discovery, never reuse its rejected witness.
+            const creationPending = /Agent creation no longer owns its originally observed target/.test(reason(error));
+            if (!isPreparationPending(error) && !creationPending) throw error;
             const delay = backoff.nextDelay();
             if (delay === null) throw new Error(preparationTimeoutLabel("This Trunk"));
             await new Promise((resolve) => setTimeout(resolve, delay));
