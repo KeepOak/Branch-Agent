@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GatewayPopover, RunningPopover, UsagePopover, VersionPopover } from "./StatusPopovers";
+import { readLimits, resetWords } from "./status-data";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const above = { left: 10, right: 200, top: 700, align: "left" as const };
@@ -62,6 +63,24 @@ describe("status popovers", () => {
     expect(host.textContent).toMatch(/40% left · resets /);
     expect(host.textContent).toContain("ChatGPT · Account 1 · Plus · this week 30% used");
     expect(host.querySelector(".meterT5 i")?.getAttribute("style")).toContain("60%");
+  });
+  it("Usage: each Claude subscription shows what is left, a bar and the reset, or plain words when it shares no number", async () => {
+    const at = Date.now() + 2 * 3_600_000;
+    const reset = resetWords(at, 1, Date.now());
+    const claude = (id: string, used?: number) => ({ provider: "anthropic", displayName: "Claude", authProfileId: `anthropic:${id}`, plan: "Max (20x)", windows: used === undefined ? [] : [{ label: "5h", usedPercent: used, resetAt: at }, { label: "Week", usedPercent: used / 2, resetAt: at + 86_400_000 }] });
+    const usage = { updatedAt: Date.now(), providers: [claude("one", 20), claude("two", 50), claude("three", 70), { ...claude("four"), error: "HTTP 429: Rate limited. Please try again later." }, { ...claude("five"), plan: undefined }] };
+    const request = vi.fn(async () => usage);
+    const host = await show(<UsagePopover above={above} onClose={() => {}} limits={readLimits(usage)} request={request as never} onOpenUsage={() => {}} />);
+    const rows = [...host.querySelectorAll(".acctT5")];
+    expect(rows.map((row) => row.querySelector(".aNameT5")?.textContent)).toEqual(["Claude · Account 1", "Claude · Account 2", "Claude · Account 3", "Claude · Account 4", "Claude · Account 5"]);
+    expect(reset).toMatch(/^resets /);
+    expect(rows.slice(0, 3).map((row) => row.querySelector(".aLeftT5")?.textContent)).toEqual([`80% left · ${reset}`, `50% left · ${reset}`, `30% left · ${reset}`]);
+    expect(rows.slice(0, 3).map((row) => row.querySelector(".meterT5 i")?.getAttribute("style"))).toEqual(["width: 20%;", "width: 50%;", "width: 70%;"]);
+    expect(rows[0].textContent).toContain("Max (20x) · this week 10% used");
+    expect(rows[3].querySelector(".meterT5")).toBeNull();
+    expect(rows[3].textContent).toContain("Claude · Account 4 didn't share what's left right now. Branch checks again in 5 min.");
+    expect(rows[4].textContent).toContain("Claude · Account 5 hasn't shared a limit with Branch.");
+    expect(host.textContent).not.toContain("Not shared");
   });
   it("Version: up to date has no install item", async () => {
     const host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "1.0.0", latest: null, notes: [], installing: false, waiting: null }} version="1.0.0" onWhatsNew={() => {}} onInstall={() => {}} onRemind={() => {}} />);

@@ -89,7 +89,7 @@ function limitRow(p: Record<string, unknown>, updatedAt: number, now: number, ac
   const measured = windows.length > 0;
   const provider = str(p.provider);
   const service = str(p.displayName) || provider;
-  const name = provider === "openai-codex" || /^ChatGPT plan$/i.test(service) ? `ChatGPT · Account ${accountNumber}` : service.replace(/\s+plan$/i, "");
+  const name = provider === "openai-codex" || /^ChatGPT plan$/i.test(service) ? `ChatGPT · Account ${accountNumber}` : provider === "anthropic" ? `Claude · Account ${accountNumber}` : service.replace(/\s+plan$/i, "");
   const line = p.error === "Usage not reported" ? "Usage not reported" : p.error ? usageStatusWords(p.error, name) : measured ? `as of ${ageWords(updatedAt, now)}` : str(p.summary) === "Usage not reported" ? "Usage not reported" : usageStatusWords(undefined, name);
   return { id: `${str(p.provider)}:${str(p.authProfileId) || str(p.accountEmail) || account}`, name, provider: str(p.provider), email: str(p.accountEmail), plan: str(p.plan), account, pill: measured ? "Measured" : "Not published", windows, line, inUse: p.inUse === true };
 }

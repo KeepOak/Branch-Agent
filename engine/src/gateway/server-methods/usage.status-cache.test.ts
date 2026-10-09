@@ -257,34 +257,38 @@ describe("usage.status provider usage cache", () => {
     expect(mocks.ensureAuthProfileStore).toHaveBeenCalledTimes(3);
   });
 
-  it.each([false, true])("serves stale usage while refreshing (timeout: %s)", async (timeout) => {
-    const first = (await runUsageStatus()) as UsageSummary;
-    now = 61_000;
-    if (timeout) {
-      mocks.loadProviderUsageSummary.mockResolvedValueOnce({
-        updatedAt: now,
-        providers: [{ ...providerDescriptor, windows: [], error: "Timeout" }],
-      });
-    }
-    expect(JSON.stringify(await settledStatus(null))).toBe(JSON.stringify(first));
-    now = 62_000;
-    const retained = (await runUsageStatus()) as UsageSummary;
-    expect(retained).toEqual(
-      timeout
-        ? first
-        : {
-            updatedAt: 61_000,
-            providers: [
-              {
-                ...providerDescriptor,
-                windows: [{ label: "5h", usedPercent: 20 }],
-                plan: "Plus",
-              },
-            ],
-          },
-    );
-    expect(mocks.loadProviderUsageSummary).toHaveBeenCalledTimes(2);
-  });
+  it.each([undefined, "Timeout", "HTTP 429: Rate limited. Please try again later."])(
+    "serves stale usage while refreshing (error: %s)",
+    async (error) => {
+      const timeout = error !== undefined;
+      const first = (await runUsageStatus()) as UsageSummary;
+      now = 61_000;
+      if (timeout) {
+        mocks.loadProviderUsageSummary.mockResolvedValueOnce({
+          updatedAt: now,
+          providers: [{ ...providerDescriptor, windows: [], error }],
+        });
+      }
+      expect(JSON.stringify(await settledStatus(null))).toBe(JSON.stringify(first));
+      now = 62_000;
+      const retained = (await runUsageStatus()) as UsageSummary;
+      expect(retained).toEqual(
+        timeout
+          ? first
+          : {
+              updatedAt: 61_000,
+              providers: [
+                {
+                  ...providerDescriptor,
+                  windows: [{ label: "5h", usedPercent: 20 }],
+                  plan: "Plus",
+                },
+              ],
+            },
+      );
+      expect(mocks.loadProviderUsageSummary).toHaveBeenCalledTimes(2);
+    },
+  );
   it("shares the credential-bound snapshot and invalidates it on rotation", async () => {
     await runUsageStatus();
     const usage = readProviderUsageStaleWhileRevalidate({
