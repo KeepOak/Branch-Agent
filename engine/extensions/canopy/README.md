@@ -18,5 +18,5 @@ Open **Canopy** from navigation to create a board and cards. No
 plugin-specific configuration is required. Agent tools remain subject to your
 tool policy and workspace permissions.
 
-Canopy tracks work on one Gateway. See the [Canopy guide](https://docs.openclaw.ai/plugins/workboard)
+Canopy tracks work on one Gateway. See the [Canopy guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/workboard)
 for card workflows, worker dispatch, and sharing boundaries.

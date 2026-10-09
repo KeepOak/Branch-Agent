@@ -29,8 +29,8 @@ On a compatible packaged host, install the local candidate with
 checkout's co-versioned source loading does not grant compatibility to an older
 packaged host.
 
-See [Local ONNX decision models](https://docs.openclaw.ai/plugins/onnx) for the
+See [Local ONNX decision models](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/onnx) for the
 model catalog, configuration, local exports, and runtime limits. The
-[Decision models guide](https://docs.openclaw.ai/concepts/decision-models)
+[Decision models guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/concepts/decision-models)
 explains rubric definitions, score semantics, and the plugin API shared with
 TypeSafe AI.

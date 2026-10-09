@@ -9,4 +9,4 @@ branch plugins install @branch/deepseek-provider
 branch gateway restart
 ```
 
-See <https://docs.openclaw.ai/providers/deepseek> for setup and configuration.
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/deepseek> for setup and configuration.

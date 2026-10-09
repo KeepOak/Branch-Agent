@@ -9,4 +9,4 @@ branch plugins install @branch/exa-plugin
 branch gateway restart
 ```
 
-See <https://docs.openclaw.ai/tools/exa-search> for setup and configuration.
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/exa-search> for setup and configuration.

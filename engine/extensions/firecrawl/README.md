@@ -9,4 +9,4 @@ branch plugins install @branch/firecrawl-plugin
 branch gateway restart
 ```
 
-See <https://docs.openclaw.ai/tools/firecrawl> for setup and configuration.
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/firecrawl> for setup and configuration.

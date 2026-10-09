@@ -20,8 +20,8 @@ Install `@branch/diffs` first, then install this language pack. The language pac
 
 ## Docs
 
-- https://docs.openclaw.ai/tools/diffs
-- https://docs.openclaw.ai/plugins/reference/diffs-language-pack
+- https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/diffs
+- https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/reference/diffs-language-pack
 
 ## Package
 

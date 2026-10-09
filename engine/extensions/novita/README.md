@@ -12,4 +12,4 @@ branch gateway restart
 ## Docs
 
 See `docs/providers/novita.md` in the Branch Agent repository, or the published
-docs at `https://docs.openclaw.ai/providers/novita`.
+docs at `https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/novita`.

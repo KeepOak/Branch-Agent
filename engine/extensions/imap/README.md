@@ -15,5 +15,5 @@ policy, and reader agent under the plugin's account settings, then enable IMAP.
 Passwords must resolve to strings. Malformed credentials are rejected; an unresolved
 secret reference leaves only its account unavailable while other accounts can start.
 
-Follow the [IMAP setup guide](https://docs.openclaw.ai/automation/imap) for the
+Follow the [IMAP setup guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/automation/imap) for the
 reader configuration, credential storage, and verification steps.

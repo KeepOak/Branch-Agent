@@ -796,7 +796,7 @@ export default definePluginEntry({
       buildUnknownModelHint: () =>
         "Ollama Cloud requires an API key. " +
         'Set OLLAMA_API_KEY or run "branch onboard --auth-choice ollama-cloud". ' +
-        "See: https://docs.openclaw.ai/providers/ollama",
+        "See: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/ollama",
     });
     api.registerProvider({
       id: OLLAMA_PROVIDER_ID,
@@ -1031,7 +1031,7 @@ export default definePluginEntry({
       buildUnknownModelHint: () =>
         "Ollama requires authentication to be registered as a provider. " +
         'Set OLLAMA_API_KEY="ollama-local" (any value works) or run "branch configure". ' +
-        "See: https://docs.openclaw.ai/providers/ollama",
+        "See: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/ollama",
     });
   },
 });

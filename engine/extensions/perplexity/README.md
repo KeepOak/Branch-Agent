@@ -9,4 +9,4 @@ branch plugins install @branch/perplexity-plugin
 branch gateway restart
 ```
 
-See <https://docs.openclaw.ai/tools/perplexity-search> for setup and configuration.
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/perplexity-search> for setup and configuration.

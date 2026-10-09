@@ -16,5 +16,5 @@ fingerprints with a friend before approving pairing.
 A working guard model is required. Guard errors stop outgoing messages and hold
 incoming messages for later delivery; friendship alone does not bypass guards.
 
-See the [Reef guide](https://docs.openclaw.ai/channels/reef) for setup, pairing,
+See the [Reef guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/channels/reef) for setup, pairing,
 and per-friend autonomy.

@@ -17,7 +17,7 @@ Local ComfyUI workflows do not require credentials. Comfy Cloud workflows use
 
 Full workflow, model, and provider configuration:
 
-- https://docs.openclaw.ai/providers/comfy
+- https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/comfy
 
 ## Package
 

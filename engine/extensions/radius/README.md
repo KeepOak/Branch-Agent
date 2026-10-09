@@ -13,4 +13,4 @@ branch models list --provider radius --refresh
 For API-key setups, use `--method api-key` or `RADIUS_API_KEY`.
 Requests use the selected organization's credits and policies.
 
-See [Radius setup and configuration](https://docs.openclaw.ai/providers/radius).
+See [Radius setup and configuration](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/radius).

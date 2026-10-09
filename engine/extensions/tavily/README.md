@@ -10,4 +10,4 @@ branch plugins install @branch/tavily-plugin
 
 ## Docs
 
-See `docs/tools/tavily.md` in the Branch Agent repository, or the published docs at `https://docs.openclaw.ai/tools/tavily`.
+See `docs/tools/tavily.md` in the Branch Agent repository, or the published docs at `https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/tavily`.

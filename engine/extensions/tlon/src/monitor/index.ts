@@ -420,7 +420,7 @@ export async function monitorTlonProvider(opts: MonitorTlonOpts): Promise<void> 
             `This can leak conversation context between users.\n\n` +
             `Fix: Add to your Branch Agent config:\n` +
             `session:\n  dmScope: "per-channel-peer"\n\n` +
-            `Docs: https://docs.openclaw.ai/concepts/session#dm-isolation`;
+            `Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/concepts/session#dm-isolation`;
 
           sendDm({
             api,

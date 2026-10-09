@@ -5,7 +5,7 @@ set of secrets with approval policy and audit history.
 
 The plugin is also included in Branch Agent. It uses the official `op` CLI and a
 1Password service account on the Gateway host. Follow the
-[1Password plugin guide](https://docs.openclaw.ai/plugins/onepassword) to prepare
+[1Password plugin guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/onepassword) to prepare
 the CLI, token file, SecretRefs, and optional agent registry.
 
 The SecretRef integration and agent tool are separate, opt-in surfaces.

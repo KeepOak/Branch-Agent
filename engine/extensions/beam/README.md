@@ -17,5 +17,5 @@ The sender needs a reachable Gateway endpoint and permission to upload. Prepare
 and redact the transcript before sending it. Snapshots provide conversation
 context without access to the source computer or its tools.
 
-See the [Beam guide](https://docs.openclaw.ai/plugins/beam) for sender setup,
+See the [Beam guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/beam) for sender setup,
 authentication, visibility, and optional mirroring.

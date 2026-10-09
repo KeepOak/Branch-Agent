@@ -13,5 +13,5 @@ spoken replies, or select it for audio transcription.
 Speech output, recorded audio, and realtime transcription have separate settings;
 configure the capability you want to use.
 
-The [ElevenLabs guide](https://docs.openclaw.ai/providers/elevenlabs) includes setup
+The [ElevenLabs guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/elevenlabs) includes setup
 examples for each capability, including Voice Call and Google Meet integrations.

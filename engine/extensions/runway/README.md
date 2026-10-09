@@ -19,5 +19,5 @@ generate a video.
 Choose a model that supports your input mode. Local or remote reference inputs
 are supported, but video editing requires a video-to-video model.
 
-See the [Runway guide](https://docs.openclaw.ai/providers/runway) for supported
+See the [Runway guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/runway) for supported
 models, reference inputs, and output controls.

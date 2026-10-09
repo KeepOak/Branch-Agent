@@ -9,4 +9,4 @@ branch plugins install @branch/featherless-provider
 branch gateway restart
 ```
 
-See <https://docs.openclaw.ai/providers/featherless> for setup and configuration.
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/featherless> for setup and configuration.

@@ -9,4 +9,4 @@ branch plugins install @branch/inworld-speech
 branch gateway restart
 ```
 
-See <https://docs.openclaw.ai/providers/inworld> for setup and configuration.
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/inworld> for setup and configuration.

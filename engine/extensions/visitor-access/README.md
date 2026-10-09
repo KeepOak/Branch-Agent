@@ -64,7 +64,7 @@ grant manager. Tool calls and expiry sweeps share that service's mutation queue.
 Use a secret reference value through your host or deployment's supported secret
 resolution path, then pass the resolved string as `apiToken`. This plugin does
 not resolve SecretRef objects itself. Do not paste a real token into chat or
-commit it to source control. See [Secrets](https://docs.openclaw.ai/gateway/secrets)
+commit it to source control. See [Secrets](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/secrets)
 for the host's supported credential surfaces.
 
 Setting `defaultTtlDays` to `0` or `null` does not silently create permanent

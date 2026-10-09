@@ -20,5 +20,5 @@ Choose a model matching the intended input mode. Reference images and videos
 must be reachable HTTP or HTTPS URLs. Qwen chat models belong to the separate
 Qwen plugin.
 
-See the [Alibaba Model Studio guide](https://docs.openclaw.ai/providers/alibaba)
+See the [Alibaba Model Studio guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/alibaba)
 for model-specific inputs and regional endpoints.

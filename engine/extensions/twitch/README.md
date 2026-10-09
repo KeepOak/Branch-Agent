@@ -80,7 +80,7 @@ Multi-account config (advanced):
 
 ## Full documentation
 
-See https://docs.openclaw.ai/channels/twitch for:
+See https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/channels/twitch for:
 
 - Token refresh setup
 - Access control patterns

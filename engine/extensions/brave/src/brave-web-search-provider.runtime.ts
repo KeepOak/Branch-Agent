@@ -257,7 +257,7 @@ export async function executeBraveSearch(
     return {
       error: "missing_brave_api_key",
       message: `web_search (brave) needs a Brave Search API key. Run \`${formatCliCommand("branch configure --section web")}\` to store it, or set BRAVE_API_KEY in the Gateway environment. If you do not want to configure a search API key, use web_fetch for a specific URL or the browser tool for interactive pages.`,
-      docs: "https://docs.openclaw.ai/tools/web",
+      docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
     };
   }
 
@@ -297,14 +297,14 @@ export async function executeBraveSearch(
         error: "invalid_search_lang",
         message:
           "search_lang must be a Brave-supported language code like 'en', 'en-gb', 'zh-hans', or 'zh-hant'.",
-        docs: "https://docs.openclaw.ai/tools/web",
+        docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
       };
     }
     if (normalizedLanguage.invalidField === "ui_lang") {
       return {
         error: "invalid_ui_lang",
         message: "ui_lang must be a language-region locale like 'en-US'.",
-        docs: "https://docs.openclaw.ai/tools/web",
+        docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
       };
     }
     if (normalizedLanguage.ui_lang && braveMode === "llm-context") {
@@ -312,7 +312,7 @@ export async function executeBraveSearch(
         error: "unsupported_ui_lang",
         message:
           "ui_lang is not supported by Brave llm-context mode. Remove ui_lang or use Brave web mode for locale-based UI hints.",
-        docs: "https://docs.openclaw.ai/tools/web",
+        docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
       };
     }
 
@@ -340,7 +340,7 @@ export async function executeBraveSearch(
         return {
           error: "invalid_date_range",
           message: "date_after cannot be in the future for Brave llm-context mode.",
-          docs: "https://docs.openclaw.ai/tools/web",
+          docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
         };
       }
       if (dateBefore && !dateAfter) {
@@ -348,7 +348,7 @@ export async function executeBraveSearch(
           error: "unsupported_date_filter",
           message:
             "Brave llm-context mode requires date_after when date_before is set. Use a bounded date range or freshness.",
-          docs: "https://docs.openclaw.ai/tools/web",
+          docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
         };
       }
     }

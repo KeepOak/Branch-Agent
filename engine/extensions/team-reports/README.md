@@ -36,7 +36,7 @@ run's source warnings with `branch team-reports status --json`, then regenerate
 the affected day after access or connectivity recovers. Later healthy runs use
 accepted historical reports under the usual partial-coverage policy.
 
-See the [Team Reports guide](https://docs.openclaw.ai/plugins/team-reports)
+See the [Team Reports guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/team-reports)
 for setup, configuration, attribution rules, exports, and troubleshooting.
 
 ## Fixture benchmark

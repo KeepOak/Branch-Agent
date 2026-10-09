@@ -26,7 +26,7 @@ branch plugins enable tokenjuice
 
 ## Docs
 
-- https://docs.openclaw.ai/tools/tokenjuice
+- https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/tokenjuice
 
 ## Package
 

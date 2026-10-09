@@ -20,5 +20,5 @@ on the CLI host and do not require a running Gateway.
 This is a file-editing interface; it does not replace higher-level configuration
 or memory management.
 
-See the [OC Path guide](https://docs.openclaw.ai/plugins/oc-path) for addressing
+See the [OC Path guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/oc-path) for addressing
 syntax and worked examples.

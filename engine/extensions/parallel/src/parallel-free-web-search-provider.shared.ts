@@ -20,7 +20,7 @@ export function createParallelFreeWebSearchProviderBase() {
     envVars: [],
     placeholder: "(no key needed)",
     signupUrl: "https://parallel.ai",
-    docsUrl: "https://docs.openclaw.ai/tools/parallel-search",
+    docsUrl: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/parallel-search",
     credentialPath: "",
     ...createWebSearchProviderContractFields({
       credentialPath: "",

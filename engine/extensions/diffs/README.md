@@ -122,7 +122,7 @@ Explicit tool parameters still win over these defaults.
 
 ## Docs
 
-- https://docs.openclaw.ai/tools/diffs
+- https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/diffs
 
 ## Package
 

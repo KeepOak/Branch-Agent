@@ -443,7 +443,7 @@ export function registerPathCli(program: Command): void {
   const path = program
     .command("path")
     .description("Inspect and edit workspace files via the oc:// addressing scheme")
-    .addHelpText("after", "\nDocs: https://docs.openclaw.ai/cli/path\n");
+    .addHelpText("after", "\nDocs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli/path\n");
 
   withCommonOpts(
     path

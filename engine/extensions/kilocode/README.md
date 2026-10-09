@@ -9,4 +9,4 @@ branch plugins install @branch/kilocode-provider
 branch gateway restart
 ```
 
-See <https://docs.openclaw.ai/providers/kilocode> for setup and configuration.
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/kilocode> for setup and configuration.

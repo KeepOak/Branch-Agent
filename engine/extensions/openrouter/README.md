@@ -17,5 +17,5 @@ The Gateway also accepts `OPENROUTER_API_KEY`. Browse chat models with
 Media and speech settings can select different models from chat.
 
 Tool use, inputs, and output formats depend on the selected model and upstream
-provider. See the [OpenRouter guide](https://docs.openclaw.ai/providers/openrouter)
+provider. See the [OpenRouter guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/openrouter)
 for setup and routing options.

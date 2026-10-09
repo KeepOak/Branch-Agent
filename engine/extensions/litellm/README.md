@@ -19,5 +19,5 @@ through onboarding or `LITELLM_API_KEY`. Refresh the proxy's catalog with
 The proxy owns upstream credentials and model availability. Installing this
 plugin does not start a proxy.
 
-See the [LiteLLM guide](https://docs.openclaw.ai/providers/litellm) for endpoint,
+See the [LiteLLM guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/litellm) for endpoint,
 image generation, and routing setup.

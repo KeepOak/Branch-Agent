@@ -1,0 +1,9 @@
+engine:extensions/brave/src/brave-web-search-provider.test.ts
+engine:extensions/exa/src/exa-web-search-provider.test.ts
+engine:extensions/firecrawl/src/firecrawl-tools.test.ts
+engine:extensions/google/web-search-provider.test.ts
+engine:extensions/moonshot/src/kimi-web-search-provider.test.ts
+engine:extensions/parallel/src/parallel-web-search-provider.test.ts
+engine:extensions/perplexity/src/perplexity-web-search-provider.test.ts
+engine:extensions/slack/src/monitor/context.test.ts
+engine:extensions/slack/src/monitor/message-handler/prepare.test.ts

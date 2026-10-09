@@ -13,5 +13,5 @@ remain `fish-audio`. Configure `tts.provider: "fish-audio"` and set
 `FISH_API_KEY`. The provider supports buffered audio, HTTP-streamed playback,
 native Opus voice notes, 8 kHz PCM telephony, and Fish Audio voice discovery.
 
-See [Fish Audio](https://docs.openclaw.ai/providers/fish-audio) for setup,
+See [Fish Audio](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/fish-audio) for setup,
 models, voice selection, expressive tags, and local macOS MLX usage.

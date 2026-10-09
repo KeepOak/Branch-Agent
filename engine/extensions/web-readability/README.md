@@ -14,5 +14,5 @@ Extraction runs locally on fetched HTML. It does not execute page JavaScript,
 sign in to websites, or make every page readable; interactive and protected
 pages may need a browser.
 
-See the [Web fetch guide](https://docs.openclaw.ai/tools/web-fetch) for extraction
+See the [Web fetch guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web-fetch) for extraction
 settings and supported page formats.

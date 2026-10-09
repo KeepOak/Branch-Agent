@@ -7,7 +7,7 @@ standup summaries and answers grounded in that timeline.
 The standalone package requires Branch Agent 2026.9.5 or newer. Logbook is also
 included in Branch Agent and disabled by default. Enable it only
 after reviewing the capture and model setup in the
-[Logbook guide](https://docs.openclaw.ai/plugins/logbook).
+[Logbook guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/logbook).
 
 You need a connected screen-capture node, a compatible structured vision route,
 and a working default agent model. The guide covers node permissions, model

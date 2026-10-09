@@ -27,7 +27,7 @@ Provider-specific options live under `plugins.entries.brave.config.webSearch.*`.
 
 Full setup, config examples, search modes, and tool parameters:
 
-- https://docs.openclaw.ai/tools/brave-search
+- https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/brave-search
 
 ## Package
 

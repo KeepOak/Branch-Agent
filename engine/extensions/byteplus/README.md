@@ -12,6 +12,6 @@ branch gateway restart
 
 Set `BYTEPLUS_API_KEY`, then select a `byteplus/*` or `byteplus-plan/*` model.
 
-See <https://docs.openclaw.ai/concepts/model-providers#byteplus-international>
-for model setup and <https://docs.openclaw.ai/tools/video-generation> for
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/concepts/model-providers#byteplus-international>
+for model setup and <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/video-generation> for
 Seedance video generation.

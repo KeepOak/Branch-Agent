@@ -83,7 +83,7 @@ copy a key into the box. Ordinary tool `exec` and `background` do not acquire
 this model grant. Cancellation revokes access before cleanup; if settlement is
 uncertain, inspect the named session and remote process before reusing the lease.
 This path needs no Gateway restart or persistent egress setting. See the
-[setup, runnable example, and recovery guide](https://docs.openclaw.ai/gateway/secrets/secret-store-and-egress#model-credentials-for-crabbox-commands).
+[setup, runnable example, and recovery guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/secrets/secret-store-and-egress#model-credentials-for-crabbox-commands).
 
 ## Follow-ups and cleanup
 
