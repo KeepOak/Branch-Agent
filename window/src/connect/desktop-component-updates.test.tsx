@@ -37,6 +37,17 @@ async function click(text: string) {
   await act(async () => button.click());
 }
 
+it("Install now hands the staged update to the desktop and says what happens next", async () => {
+  const staged = { ...state, phase: "staged", currentVersion: "1.0", pendingVersion: "1.1", latestVersion: "1.1" };
+  const install = vi.fn();
+  desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1", componentUpdates: { status: async () => staged, check: async () => staged, stage: async () => staged, install } };
+  await show();
+  await click("Install now");
+  expect(install).toHaveBeenCalledTimes(1);
+  expect(host.textContent).toContain("up to about 5 minutes");
+  expect(host.textContent).not.toContain("safe switch");
+});
+
 it("actual native Check now and Download update use component bridge and never generic gateway updates", async () => {
   const status = vi.fn(async () => state); const check = vi.fn(async () => state);
   const stage = vi.fn(async () => ({ ...state, phase: "staged", pendingVersion: "1.1" }));
@@ -44,7 +55,7 @@ it("actual native Check now and Download update use component bridge and never g
   await show(); await click("Check now"); await click("Download update");
   expect(status).toHaveBeenCalledTimes(1); expect(check).toHaveBeenCalledTimes(1); expect(stage).toHaveBeenCalledTimes(1);
   expect(request).not.toHaveBeenCalled();
-  expect(host.textContent).toContain("Update staged; waiting for a safe switch");
+  expect(host.textContent).toContain("Update ready to install");
   expect(localStorage.getItem("branch-draft")).toBe("unfinished input");
 });
 
@@ -60,8 +71,8 @@ it("Updates & about shows the running build and hides a leftover older staged sh
   expect(host.textContent).toContain("Branch 0.4.4 · build c27f2be2 on this computer");
   expect(host.textContent).toContain("You have Branch 0.4.4 · build c27f2be2");
   expect(host.textContent).toContain("Branch is up to date.");
-  expect(host.textContent).not.toContain("Update staged; waiting for a safe switch");
-  expect(host.textContent).not.toContain("A Branch update is ready; restart to finish");
+  expect(host.textContent).not.toContain("Update ready to install");
+  expect(host.textContent).not.toContain("Update ready to install");
 });
 
 it("Updates toggle is on by default and staged updates wait for Trunks in Settings and version popover", async () => {
@@ -75,11 +86,11 @@ it("Updates toggle is on by default and staged updates wait for Trunks in Settin
   await show();
   const toggle = host.querySelector<HTMLInputElement>('input[aria-label="Apply updates automatically"]');
   expect(toggle?.checked).toBe(true);
-  expect(host.textContent).toContain("Update staged; waiting for a safe switch");
+  expect(host.textContent).toContain("Update ready to install");
   if (!toggle) throw new Error("missing auto-apply toggle");
   await act(async () => toggle.click());
   expect(set).toHaveBeenCalledWith("autoApplyUpdates", false);
-  expect(host.textContent).toContain("A Branch update is ready; restart to finish");
+  expect(host.textContent).toContain("Update ready to install");
   expect(host.textContent).not.toContain("1.1 is ready");
   await act(async () => root.unmount()); root = createRoot(host);
   const session = { engine, gatewayUrl: engine.gatewayUrl, request } as unknown as SaplingSession;

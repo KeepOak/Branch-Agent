@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { SettingsPageProps } from "../index";
 import { KeeperMark } from "../../../brand/KeeperMark";
 import { Btn, Ctl, Hint, Page, Sec, Status, Switch } from "../kit";
@@ -18,6 +18,9 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
   const auto = useDesktopControls();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [installRequested, setInstallRequested] = useState(false);
+  const staged = data.status?.phase === "staged";
+  useEffect(() => { if (!staged) setInstallRequested(false); }, [staged]);
   const run = async (method: "check" | "stage") => {
     if (!bridge || busy) return;
     setBusy(true); setError(null);
@@ -29,13 +32,14 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
   const running = runningBranchVersion(data.status?.currentVersion, shipped);
   const stagedWaiting = Boolean(data.status?.phase === "staged" && isNewerBranchVersion(data.status.pendingVersion ?? data.status.latestVersion, running));
   const lede = running ? `Branch ${versionParts(running).detail} on this computer.` : "Updates for Branch on this computer.";
+  const install = bridge.install;
   return <Page title={title} lede={lede}>
     <div className="s2-keeper"><KeeperMark size={64} /></div>
     {error || data.error ? <Status tone="bad" title="Branch couldn’t update">{error || data.error}</Status> : null}
-    <Status tone={stagedWaiting ? "ok" : "idle"} title={statusLine(data.status, auto.state?.autoApplyUpdates !== false, stagedWaiting)}>
-      {stagedWaiting ? auto.state?.autoApplyUpdates === false
-        ? "Restart Branch when your work is ready. Your conversations and settings stay in place."
-        : "Your conversations and settings stay in place." : running ? `You have Branch ${versionParts(running).detail}. Checks for a new verified Branch release.` : "Checks for a new verified Branch release."}
+    <Status tone={stagedWaiting ? "ok" : "idle"} title={statusLine(data.status, stagedWaiting)}>
+      {stagedWaiting ? installRequested
+        ? "Installing. Running work carries on for up to about 5 minutes, then Branch restarts and picks up anything interrupted."
+        : "Downloaded and checked. Your conversations and settings stay in place." : running ? `You have Branch ${versionParts(running).detail}. Checks for a new verified Branch release.` : "Checks for a new verified Branch release."}
     </Status>
     <Sec title="Updating">
       <Ctl title="Apply updates automatically" off={auto.off}>
@@ -44,7 +48,10 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
       </Ctl>
       <Ctl title="Check for updates"><Btn sm disabled={busy} onClick={() => void run("check")}>{busy ? "Working…" : "Check now"}</Btn></Ctl>
       {data.status?.phase === "available" ? <Ctl title="Update available"><Btn disabled={busy} onClick={() => void run("stage")}>Download update</Btn></Ctl> : null}
-      <Hint>Branch checks when it starts and every 10 minutes. With seamless handoff enabled, new work moves to a ready standby while ongoing runs finish in the previous engine. Otherwise, Branch waits for a safe idle period before the guarded swap.</Hint>
+      {stagedWaiting && install ? <Ctl title="Install now" sub="Running work carries on for up to about 5 minutes, then Branch restarts and picks up anything interrupted.">
+        <Btn pri sm disabled={installRequested} onClick={() => { install(); setInstallRequested(true); }}>{installRequested ? "Installing…" : "Install now"}</Btn>
+      </Ctl> : null}
+      <Hint>Branch checks every 10 minutes. A ready update installs by itself once every Trunk is idle, which can take a long time on a busy computer. Install now doesn’t wait for that.</Hint>
     </Sec>
   </Page>;
 }
@@ -68,9 +75,9 @@ function HourlyUpdates({ title, engine, reason }: Pick<SettingsPageProps, "title
   </Page>;
 }
 
-function statusLine(status: ComponentUpdateStatus | null, autoApply: boolean, stagedWaiting: boolean): string {
+function statusLine(status: ComponentUpdateStatus | null, stagedWaiting: boolean): string {
   if (!status) return "Reading desktop update status…";
-  if (stagedWaiting) return autoApply ? "Update staged; waiting for a safe switch" : "A Branch update is ready; restart to finish";
+  if (stagedWaiting) return "Update ready to install";
   if (status.phase === "available") return "A Branch update is ready";
   if (status.phase === "current" || status.phase === "staged") return "Branch is up to date.";
   if (status.phase === "checking") return "Checking for updates…";

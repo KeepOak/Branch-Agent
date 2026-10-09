@@ -82,6 +82,8 @@ if (info) {
       status: () => ipcRenderer.invoke("branch-desktop:component-update:status"),
       check: () => ipcRenderer.invoke("branch-desktop:component-update:check"),
       stage: () => ipcRenderer.invoke("branch-desktop:component-update:stage"),
+      /** The owner's Install now: the same owned-window restart the update bar's button sends. */
+      install: () => ipcRenderer.send("branch-desktop:restart-engine"),
     },
     onUpdateApplied: (listener: (notice: AppliedUpdateNotice) => void) => subscribeApplied(listener),
     onUpdateUndone: (listener: () => void) => subscribeUndone(listener),

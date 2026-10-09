@@ -11,6 +11,8 @@ export type ComponentUpdates = {
   status(): Promise<ComponentUpdateStatus>;
   check(): Promise<ComponentUpdateStatus>;
   stage(): Promise<ComponentUpdateStatus>;
+  /** Older desktop builds have no Install now; the page hides the button without it. */
+  install?: () => void;
 };
 export type AppliedUpdateNotice = { version: string; canUndo: boolean; expiresAt: number };
 export type UpdateNoticeEvent = "shown" | "dismissed" | "expired" | "undo";
