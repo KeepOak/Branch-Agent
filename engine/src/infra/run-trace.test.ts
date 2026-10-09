@@ -114,7 +114,7 @@ describe("run trace", () => {
   it("drops fields that are not plain identifiers", () => {
     setRunTraceSinkForTest((line) => lines.push(line));
     traceRunStep("run-3", "failed", { agent: "has spaces and words", code: "x\ny" });
-    expect(lines).toEqual(["trace id=run-3 step=failed"]);
+    expect(lines).toEqual(["trace id=run-3 step=failed code=other"]);
   });
 
   it("ignores events that are not part of the run lifecycle", () => {
