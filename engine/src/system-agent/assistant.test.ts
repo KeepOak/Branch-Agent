@@ -32,7 +32,7 @@ function overview(overrides: Partial<SystemAgentOverview["tools"]> = {}): System
       reachable: false,
     },
     references: {
-      docsUrl: "https://docs.openclaw.ai",
+      docsUrl: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
       sourceUrl: "https://github.com/openclaw/openclaw",
     },
   };
@@ -131,7 +131,7 @@ describe("Branch Agent assistant", () => {
         defaultModel: "openai/gpt-5.5",
         references: {
           docsPath: "/tmp/branch/docs",
-          docsUrl: "https://docs.openclaw.ai",
+          docsUrl: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
           sourcePath: "/tmp/branch",
           sourceUrl: "https://github.com/openclaw/openclaw",
         },

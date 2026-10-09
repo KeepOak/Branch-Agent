@@ -587,7 +587,7 @@ describe("modelsAuthLoginCommand", () => {
       "Default model available: openai/gpt-5.5 (current default unchanged; run branch models set openai/gpt-5.5 to apply)",
     );
     expect(runtime.log).toHaveBeenCalledWith(
-      "Tip: Codex-capable models can use native Codex web search. Configure the `web_search` tool with `branch configure --section web`. Docs: https://docs.openclaw.ai/tools/web",
+      "Tip: Codex-capable models can use native Codex web search. Configure the `web_search` tool with `branch configure --section web`. Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
     );
     expect(mocks.callGateway).toHaveBeenCalledWith(
       expect.objectContaining({

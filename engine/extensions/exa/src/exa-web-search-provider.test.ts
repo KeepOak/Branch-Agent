@@ -253,7 +253,7 @@ describe("exa web search provider", () => {
     ).resolves.toEqual({
       error,
       message,
-      docs: `https://docs.openclaw.ai/tools/${error === "invalid_base_url" ? "exa-search" : "web"}`,
+      docs: `https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/${error === "invalid_base_url" ? "exa-search" : "web"}`,
     });
   });
 

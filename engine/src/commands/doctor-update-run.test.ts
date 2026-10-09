@@ -248,7 +248,7 @@ it.each([
   expect(note).toHaveBeenCalledWith(
     expect.stringContaining(
       failure.nextAction ??
-        "https://docs.openclaw.ai/install/update-troubleshooting#node-and-global-install-permissions",
+        "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/install/update-troubleshooting#node-and-global-install-permissions",
     ),
     "Update history",
   );
