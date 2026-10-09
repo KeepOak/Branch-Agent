@@ -15,7 +15,7 @@ import {
   outcomeWords,
   shortFolder,
 } from '../approvals/approvalWords';
-import { trunkOf, type Answered, type Approval, type ApprovalDecision, type ApprovalsSnapshot, type Trunk } from '../approvals/approvals';
+import { LIST_FAILED_MESSAGE, trunkOf, type Answered, type Approval, type ApprovalDecision, type ApprovalsSnapshot, type Trunk } from '../approvals/approvals';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
@@ -271,7 +271,7 @@ function PermissionCard({ permission, onTurnOn, onSettings }: { permission: Noti
   );
 }
 
-function Note({ title, body, testID }: { title: string; body: string; testID: string }) {
+function Note({ title, body, testID, action }: { title: string; body: string; testID: string; action?: { title: string; onPress: () => void } }) {
   const { space } = useTheme();
   return (
     <View testID={testID} style={{ paddingTop: space.xxxl * 1.5, paddingHorizontal: space.lg, alignItems: 'center', gap: space.sm }}>
@@ -281,6 +281,11 @@ function Note({ title, body, testID }: { title: string; body: string; testID: st
       <ThemedText variant="subhead" tone="ink2" style={{ textAlign: 'center' }}>
         {body}
       </ThemedText>
+      {action ? (
+        <View style={{ marginTop: space.md, alignSelf: 'stretch' }}>
+          <Button title={action.title} kind="secondary" onPress={action.onPress} testID={`${testID}-action`} />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -293,6 +298,7 @@ export function ApprovalsScreen({
   onTurnOnNotifications,
   onOpenSettings,
   onAnswer,
+  onRetry,
   onBack,
   onOpenChat,
   canOpenChat = () => false,
@@ -305,6 +311,8 @@ export function ApprovalsScreen({
   onTurnOnNotifications: () => void;
   onOpenSettings: () => void;
   onAnswer: (id: string, decision: ApprovalDecision) => void;
+  /** Reads the list again after a read failed. */
+  onRetry: () => void;
   onBack: () => void;
   onOpenChat?: (sessionKey: string) => void;
   canOpenChat?: (sessionKey: string) => boolean;
@@ -322,7 +330,8 @@ export function ApprovalsScreen({
   if (!snapshot.loaded && !snapshot.error) body = <Note testID="approvals-loading" title="Checking with your computer…" body="Anything a Trunk is waiting on shows up here." />;
   else if (!snapshot.loaded)
     body = online ? (
-      <Note testID="approvals-error" title="Couldn’t check for approvals" body={snapshot.error ?? ''} />
+      // snapshot.error is already plain words (approvals.ts listFailureMessage); the fallback covers a blank one.
+      <Note testID="approvals-error" title="Couldn’t check for approvals" body={snapshot.error || LIST_FAILED_MESSAGE} action={{ title: 'Try again', onPress: onRetry }} />
     ) : (
       <Note testID="approvals-waiting" title="Waiting for your computer" body="Approvals show up here as soon as this phone reaches it." />
     );

@@ -174,6 +174,7 @@ function Shell({ session, notifier, appState }: { session: PairingSession; notif
             onTurnOnNotifications={turnOnNotifications}
             onOpenSettings={() => void Linking.openSettings().catch(() => undefined)}
             onAnswer={(id, decision) => void inbox.answer(id, decision)}
+            onRetry={() => void inbox.refresh()}
             onBack={() => setPairedRoute(CHATS)}
             canOpenChat={(key) => Boolean(chatFor(key))}
             onOpenChat={(key) => {

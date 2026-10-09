@@ -18,7 +18,7 @@ const trunks = Object.fromEntries(readAgents(fixtureAgents).agents);
 const base: ApprovalsSnapshot = { pending: [exec, plugin], answered: [], trunks, loaded: true, error: null, sending: {}, failed: {} };
 
 async function renderScreen(snapshot: Partial<ApprovalsSnapshot> = {}, extra: Partial<Parameters<typeof ApprovalsScreen>[0]> = {}) {
-  const mocks = { onTurnOnNotifications: jest.fn(), onOpenSettings: jest.fn(), onAnswer: jest.fn(), onBack: jest.fn() };
+  const mocks = { onTurnOnNotifications: jest.fn(), onOpenSettings: jest.fn(), onAnswer: jest.fn(), onRetry: jest.fn(), onBack: jest.fn() };
   await render(
     <ThemeProvider scheme="light">
       <ApprovalsScreen snapshot={{ ...base, ...snapshot }} online permission="granted" now={FIXTURE_NOW} {...mocks} {...extra} />
@@ -93,8 +93,10 @@ describe('needs you screen', () => {
     expect(screen.queryByTestId('approvals-count')).toBeNull();
     await renderScreen({ pending: [], loaded: false });
     expect(screen.getByTestId('approvals-loading')).toBeOnTheScreen();
-    await renderScreen({ pending: [], loaded: false, error: 'approvals unavailable' });
-    expect(screen.getByTestId('approvals-error')).toHaveTextContent(/approvals unavailable/);
+    const failed = await renderScreen({ pending: [], loaded: false, error: 'Your computer is busy right now. Try again in a moment.' });
+    expect(screen.getByTestId('approvals-error')).toHaveTextContent(/Couldn’t check for approvals.*Your computer is busy right now\. Try again in a moment\./);
+    await fireEvent.press(screen.getByTestId('approvals-error-action'));
+    expect(failed.props.onRetry).toHaveBeenCalledTimes(1);
     await renderScreen({ pending: [], loaded: false, error: 'not connected' }, { online: false });
     expect(screen.getByTestId('approvals-waiting')).toBeOnTheScreen();
     expect(screen.getByTestId('approvals-offline')).toBeOnTheScreen();
@@ -171,6 +173,26 @@ describe('approvals in the app', () => {
     // The mail request's chat (agent:main:main) is on the computer; this one opens it.
     await fireEvent.press(screen.getByTestId('open-chat-plugin:mail-1'));
     await eventually(() => expect(screen.getByTestId('chat-screen')).toBeOnTheScreen());
+    session.dispose();
+  });
+
+  it('says in plain words when the computer won’t list its approvals, and Try again reads it again', async () => {
+    const engine = createFakeEngine({ sessions: fixtureSessions, agents: fixtureAgents, approvals: approvalsAt(Date.now()) });
+    engine.failMethod('exec.approval.list', 'missing scope: operator.approvals', { code: 'MISSING_SCOPE', missingScope: 'operator.approvals' }, 'FORBIDDEN');
+    const { session } = createFakeSession(engine);
+    const fake = createFakeNotifier('granted');
+    const appState = createFakeAppState('active');
+    await render(<App scheme="dark" session={session} notifier={fake.notifier} appState={appState.source} />);
+    await act(() => session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' }));
+    engine.approve();
+    await eventually(() => expect(session.hello).not.toBeNull());
+    await act(async () => fake.respond({ approvalId: 'exec-1', action: 'open' }));
+    await eventually(() => expect(screen.getByTestId('approvals-error')).toBeOnTheScreen());
+    expect(screen.getByTestId('approvals-error')).toHaveTextContent(/This phone isn’t allowed to see approvals any more\. Pair it again from Branch on your computer\./);
+    expect(screen.getByTestId('approvals-error')).not.toHaveTextContent(/missing scope|operator\.approvals/);
+    engine.failMethod('exec.approval.list', null);
+    await fireEvent.press(screen.getByTestId('approvals-error-action'));
+    await eventually(() => expect(screen.getByTestId('approval-exec-1')).toBeOnTheScreen());
     session.dispose();
   });
 
