@@ -259,7 +259,9 @@ describe("per-Trunk run journal", () => {
         const journal = new RunJournal(input(root, "failed-run"));
         const badArgs: Record<string, unknown> = {};
         badArgs.self = badArgs;
-        expect(() => journal.record({ ...startEvent(), args: badArgs }, [])).toThrow();
+        expect(() => journal.record({ ...startEvent(), args: badArgs }, [])).toThrow(
+          "This run couldn't save its progress.",
+        );
         expect(() => journal.end("completed")).toThrow();
         const unmatched = new RunJournal(input(root, "unmatched-result"));
         expect(() => unmatched.record(endEvent(), [])).toThrow("without a saved start");

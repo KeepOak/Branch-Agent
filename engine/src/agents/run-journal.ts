@@ -98,8 +98,8 @@ export class RunJournal {
       }
     } catch (error) {
       // Delivery observers can isolate errors; never later mark an unjournaled run successful.
-      this.failure = { error };
-      throw error;
+      this.failure = { error: new Error("This run couldn't save its progress.", { cause: error }) };
+      throw this.failure.error;
     }
   }
 
