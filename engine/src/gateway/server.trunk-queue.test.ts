@@ -155,7 +155,7 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
           },
         },
         defaultId: "main",
-        entries: { main: {}, ash: {}, birch: {} },
+        entries: { main: {}, ash: {}, "builder-birch": {} },
       },
       gateway: { auth: { mode: "token", token } },
       models: { mode: "replace", providers: { [provider.providerId]: provider.config } },
@@ -173,7 +173,7 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
     // Session storage can still be opening right after startup; wait until every Trunk answers.
     await vi.waitFor(
       async () => {
-        for (const agentId of ["main", "ash", "birch"]) {
+        for (const agentId of ["main", "ash", "builder-birch"]) {
           await client().request("sessions.list", { agentId, limit: 1 });
         }
       },
@@ -203,20 +203,20 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
   it("keeps the claim of a run lasting past 2 hours and releases a claim with no run", async () => {
     const holdRun = randomUUID();
     await client().request("chat.send", {
-      sessionKey: "agent:birch:main",
+      sessionKey: "agent:builder-birch:main",
       message: `${HOLD} demo long task`,
       idempotencyKey: holdRun,
     });
     await vi.waitFor(() => expect(held).toHaveLength(1), { timeout: RUN_WAIT_MS });
     try {
-      // Both claims were last touched long ago; only birch has a run going right now.
+      // Both claims were last touched long ago; only builder-birch has a run going right now.
       const longAgo = Date.now() - STALE_CLAIM_MS - 60_000;
       const longJob = addQueueItem(
         { title: "Demo long job", brief_text: "demo long" },
         process.env,
         longAgo,
       );
-      claimNextQueueItem("birch", process.env, longAgo);
+      claimNextQueueItem("builder-birch", process.env, longAgo);
       const lostJob = addQueueItem(
         { title: "Demo lost job", brief_text: "demo lost" },
         process.env,
@@ -228,7 +228,7 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
 
       expect(listed.find((item) => item.id === longJob.id)).toMatchObject({
         status: "claimed",
-        claimed_by: "birch",
+        claimed_by: "builder-birch",
       });
       expect(listed.find((item) => item.id === lostJob.id)).toMatchObject({
         status: "released",
@@ -237,10 +237,10 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
       await client().request("trunks.queue.done", { id: longJob.id });
       await client().request("trunks.queue.done", { id: lostJob.id });
     } finally {
-      // Later tests need birch idle whatever this one found.
+      // Later tests need builder-birch idle whatever this one found.
       held.shift()?.();
       expect((await waitRun(holdRun)).status).toBe("ok");
-      await waitIdle("birch");
+      await waitIdle("builder-birch");
     }
   });
 
@@ -252,22 +252,39 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
     });
     expect(requestsWith("demo-queued-brief")).toHaveLength(0);
 
-    await runToEnd("agent:birch:main", "demo first task");
+    await runToEnd("agent:builder-birch:main", "demo first task");
 
     await vi.waitFor(() => expect(requestsWith("demo-queued-brief")).toHaveLength(1), {
       timeout: RUN_WAIT_MS,
     });
     const claim = (await list()).find((item) => item.id === queued.item.id);
-    expect(claim).toMatchObject({ status: "claimed", claimed_by: "birch" });
+    expect(claim).toMatchObject({ status: "claimed", claimed_by: "builder-birch" });
     const threads = await client().request<{ sessions: Array<{ key: string; label?: string }> }>(
       "sessions.list",
-      { agentId: "birch", limit: 50 },
+      { agentId: "builder-birch", limit: 50 },
     );
     expect(threads.sessions).toContainEqual(
       expect.objectContaining({ key: claim?.thread_key, label: "Demo queued job" }),
     );
-    await waitIdle("birch");
+    await waitIdle("builder-birch");
     await client().request("trunks.queue.done", { id: queued.item.id });
+  });
+
+  it("starts a card added while a Trunk is idle, without waiting for a run to end", async () => {
+    await waitIdle("builder-birch");
+    const added = await client().request<{ item: TrunkQueueItem }>("trunks.queue.add", {
+      title: "Demo added job",
+      brief_text: "demo-added-brief",
+      priority: 100,
+    });
+
+    await vi.waitFor(() => expect(requestsWith("demo-added-brief")).toHaveLength(1), {
+      timeout: RUN_WAIT_MS,
+    });
+    const claim = (await list()).find((item) => item.id === added.item.id);
+    expect(claim).toMatchObject({ status: "claimed", claimed_by: "builder-birch" });
+    await waitIdle("builder-birch");
+    await client().request("trunks.queue.done", { id: added.item.id });
   });
 
   it("sends a released job to the next Trunk as a fresh run through real chat admission", async () => {
@@ -291,7 +308,7 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
       released_from: "ash",
     });
 
-    const second = await pickUpQueuedWork({ agentId: "birch", gateway: realGateway });
+    const second = await pickUpQueuedWork({ agentId: "builder-birch", gateway: realGateway });
 
     expect(second?.item.id).toBe(job.item.id);
     expect(second?.threadKey).not.toBe(first?.threadKey);
@@ -301,7 +318,7 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
     });
     expect((await list()).find((item) => item.id === job.item.id)).toMatchObject({
       status: "claimed",
-      claimed_by: "birch",
+      claimed_by: "builder-birch",
     });
   });
 });

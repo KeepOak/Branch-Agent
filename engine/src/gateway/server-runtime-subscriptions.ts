@@ -608,7 +608,11 @@ export function startGatewayEventSubscriptions(params: {
         .then(({ onTrunkRunLifecycle }) =>
           params.signal.aborted
             ? undefined
-            : onTrunkRunLifecycle({ agentId: queueAgentId, terminal: queueTerminal }),
+            : onTrunkRunLifecycle({
+                agentId: queueAgentId,
+                terminal: queueTerminal,
+                cfg: getRuntimeConfig(),
+              }),
         )
         .catch((error: unknown) =>
           params.log.warn("Trunk queue pickup failed", { agentId: queueAgentId, error }),

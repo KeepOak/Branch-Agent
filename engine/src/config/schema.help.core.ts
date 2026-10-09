@@ -335,6 +335,12 @@ export const CORE_FIELD_HELP: Record<string, string> = {
     "Default max characters returned by memory_get before truncation metadata and continuation notice are added. Increase to approximate older larger excerpts, but keep it bounded.",
   "agents.defaults.contextLimits.postCompactionMaxChars":
     "Default max characters retained from AGENTS.md during post-compaction context refresh injection. Lower this to make compaction recovery cheaper, or raise it for agents that depend on longer startup guidance.",
+  "agents.trunkQueue":
+    "Shared Trunk job queue. Idle Trunks take the top queued job when a card is added, a run ends, or a claim is released.",
+  "agents.trunkQueue.enabled":
+    "Turn automatic queue pickup on or off. Off stops every idle Trunk from taking queued jobs; cards stay queued. Default on.",
+  "agents.trunkQueue.agents":
+    "Trunk ids allowed to take queued jobs. Leave unset to allow every builder-* Trunk; list an id here to allow a non-builder Trunk.",
   "agents.entries":
     "Explicit list of configured agents with IDs and optional overrides for model, tools, identity, and workspace. Keep IDs stable over time so bindings, approvals, and session routing remain deterministic.",
   "agents.entries.*.skillsLimits":

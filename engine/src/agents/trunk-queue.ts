@@ -293,11 +293,7 @@ export async function releaseStaleQueueClaims(params: {
   }
 }
 
-/**
- * After a Trunk's run ends: when it is idle and holds no job, claim the top job and send its brief in a new
- * thread titled with the job title, as trunk_send does. Returns the job and thread, or undefined for no pickup.
- */
-export async function pickUpQueuedWork(params: {
+type PickupParams = {
   agentId: string;
   gateway: TrunkQueueGateway;
   env?: NodeJS.ProcessEnv;
@@ -307,7 +303,33 @@ export async function pickUpQueuedWork(params: {
    * for the Trunk to show idle; a Trunk still working after that keeps its turn, and its next run end tries again.
    */
   idleWaitMs?: number;
-}): Promise<{ item: TrunkQueueItem; threadKey: string } | undefined> {
+};
+
+/** Trunks with a pickup in flight, so overlapping wakes for one Trunk cannot both reach sessions.list and send. */
+const pickupsInFlight = new Set<string>();
+
+/**
+ * After a Trunk's run ends, or when a card is added: when the Trunk is idle and holds no job, claim the top job
+ * and send its brief in a new thread titled with the job title, as trunk_send does. Returns the job and thread,
+ * or undefined for no pickup.
+ */
+export async function pickUpQueuedWork(
+  params: PickupParams,
+): Promise<{ item: TrunkQueueItem; threadKey: string } | undefined> {
+  if (pickupsInFlight.has(params.agentId)) {
+    return undefined;
+  }
+  pickupsInFlight.add(params.agentId);
+  try {
+    return await claimAndDispatch(params);
+  } finally {
+    pickupsInFlight.delete(params.agentId);
+  }
+}
+
+async function claimAndDispatch(
+  params: PickupParams,
+): Promise<{ item: TrunkQueueItem; threadKey: string } | undefined> {
   const now = params.now ?? Date.now;
   // Abandoned claims go back first, so a queue holding only those still recovers.
   await releaseStaleQueueClaims(params);
@@ -322,6 +344,14 @@ export async function pickUpQueuedWork(params: {
   if (!item) {
     return undefined;
   }
+  return await dispatchClaim(item, params, now);
+}
+
+async function dispatchClaim(
+  item: TrunkQueueClaim,
+  params: PickupParams,
+  now: () => number,
+): Promise<{ item: TrunkQueueItem; threadKey: string } | undefined> {
   const { id, claim_id: claimId, thread_key: threadKey } = item;
   // A claim released (or released and reclaimed) while a call was in flight sends nothing more.
   const current = () => isQueueClaimCurrent(id, claimId, params.env);
@@ -349,4 +379,29 @@ export async function pickUpQueuedWork(params: {
     throw error;
   }
   return { item, threadKey };
+}
+
+/**
+ * A card was added or a claim was released: hand the top queued job to each idle Trunk in turn, one job per
+ * Trunk. Stops at the first error (a refused run, for instance), so the rest of the Trunks are not asked too;
+ * the claim that failed is already released. Returns the Trunks that took a job.
+ */
+export async function wakeIdleTrunks(params: {
+  agentIds: string[];
+  gateway: TrunkQueueGateway;
+  env?: NodeJS.ProcessEnv;
+  now?: () => number;
+}): Promise<string[]> {
+  await releaseStaleQueueClaims(params);
+  const woken: string[] = [];
+  for (const agentId of params.agentIds) {
+    if (!read(params.env).some(isClaimable)) {
+      break;
+    }
+    const picked = await pickUpQueuedWork({ ...params, agentId, idleWaitMs: 0 });
+    if (picked) {
+      woken.push(agentId);
+    }
+  }
+  return woken;
 }
