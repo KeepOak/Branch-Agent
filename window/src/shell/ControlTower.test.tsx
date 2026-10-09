@@ -371,4 +371,32 @@ describe("Control tower live sections", () => {
     expect(host.textContent).toContain("Which folder first?");
     expect(host.textContent).not.toContain("Nothing is waiting for you");
   });
+
+  it("shows a routine check-in and a display name without a chat-app id in Working now", async () => {
+    const rows = [
+      conv({
+        key: "agent:ada:poll",
+        title: "[Branch Agent heartbeat poll]",
+        agentId: "ada",
+        working: true,
+        headline: "Alex River id:10001",
+      }),
+    ];
+    const host = await show(<ControlTower
+      engine={engine(live)}
+      rows={rows}
+      needsCount={0}
+      trunkName={(id) => id === "ada" ? "Ada" : id ?? ""}
+      onOpen={() => undefined}
+      onInbox={() => undefined}
+      onClose={() => undefined}
+    />);
+    const working = host.querySelector("section:nth-of-type(2)")?.textContent ?? "";
+    expect(working).toContain("Working now");
+    expect(working).toContain("Routine check-in");
+    expect(working).toContain("Alex River");
+    expect(working).not.toMatch(/heartbeat poll/i);
+    expect(working).not.toMatch(/id:/i);
+    expect(working).not.toContain("10001");
+  });
 });
