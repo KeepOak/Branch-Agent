@@ -1,4 +1,4 @@
-// Settings › Branch itself (DESIGN-SPEC §4.7.16): how it runs (health, status, system.info), restarting the engine
+// Settings › About Branch (DESIGN-SPEC §4.7.16): how it runs (health, status, system.info), restarting the engine
 // (gateway.restart.request), updating itself (update.auto.enabled, update.checkOnStart), every change to its setup
 // (branch.changes.list), who is connected (system-presence, users.list), conversation storage (sessions.storage.* and
 // session.maintenance.coldStorage.*) and the settings file. The rest needs engine settings that don't exist yet, so
@@ -83,7 +83,7 @@ export const ROWS: RowEntry[] = [
   ...rows("Settings you can talk to", 1, ["Change settings by talking", "Suggestions made on this computer"]),
   ...rows("Conversation storage", 1, ["Archive older conversations", "Archive after", "Tidy now"]), ...rows("Conversation storage", 2, ["Shrink the shared database", "Conversation databases"]),
   ...rows("Database, technical", 2, ["Check a copied database", "Who writes the database", "Hand writing to a supervisor"]),
-].map(([title, sec, lv]) => ({ page: "self", title: String(title), ...(sec ? { sec: String(sec) } : {}), group: ({ "Working on its own code": "What it may change", "What it may fix by itself": "What it may change", "Database, technical": "Database" } as Record<string, string>)[String(sec)] ?? String(sec || "Branch itself"), lv: Number(lv) as 0 | 1 | 2 }));
+].map(([title, sec, lv]) => ({ page: "self", title: String(title), ...(sec ? { sec: String(sec) } : {}), group: ({ "Working on its own code": "What it may change", "What it may fix by itself": "What it may change", "Database, technical": "Database" } as Record<string, string>)[String(sec)] ?? String(sec || "About Branch"), lv: Number(lv) as 0 | 1 | 2 }));
 
 type Ctx = SettingsPageProps & { config: ReturnType<typeof useConfig>; lv: number };
 
@@ -94,7 +94,7 @@ export function SelfPage(props: SettingsPageProps) {
     <Page title={props.title} lede={LEDE}>
       <Running {...ctx} />
       <MayChange />
-      {lv >= 1 ? <Sec title=""><DesktopCtl title="Type branch in any terminal" sub="Adds the branch command for terminal views and scripts." help="Adds the branch command, so the terminal view and scripts work anywhere." name="branchOnPath" /><DesktopCtl title="Let agents use this window" sub="Grafted agents may see and click this window." help="Grafted coding agents (Settings › Grafts) may see and click this window. A bar with Stop shows while one does. Takes effect the next time Branch starts." name="agentControl" /></Sec> : null}
+      {lv >= 1 ? <Sec title=""><DesktopCtl title="Type branch in any terminal" sub="Adds the branch command for terminal views and scripts." help="Adds the branch command, so the terminal view and scripts work anywhere." name="branchOnPath" /><DesktopCtl title="Let agents use this window" sub="Connected agents may see and click this window." help="Connected coding agents (Settings › Connected agents) may see and click this window. A bar with Stop shows while one does. Takes effect the next time Branch starts." name="agentControl" /></Sec> : null}
       <NeverDies />
       <Changes {...ctx} />
       <Learning lv={lv} />

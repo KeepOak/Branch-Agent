@@ -1718,7 +1718,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onTheme={changeTheme}
           onClose={() => setOverlay(null)}
           onSettings={() => openSettings("general")}
-          onAchievements={() => openSettings("achievements")}
           onShortcuts={() => setOverlay({ kind: "shortcuts" })}
           onApps={() => setOverlay({ kind: "apps" })}
           onAbout={() => openSettings("updates")}

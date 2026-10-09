@@ -356,7 +356,7 @@ const RECALL: SecSpec = { title: "Recall and memory files", lv: 1, rows: [
   btnOff("Notes about this computer", "Short files kept up to date in the background: this computer, its disks, the devices on your network and what you use most. Off until you choose.", "Read them"),
   no("Keep notes about this computer", "Off until you choose: it looks at your network, disks and recent activity."),
   { t: "Learn from other coding agents’ history on this computer", draw: (c) => <LearnRow c={c} /> },
-  btnOff("Rings’ own instructions for this workspace", "Rings works the usual way. Make one to tell it what matters here.", "Make one"),
+  btnOff("Memory cleanup instructions for this workspace", "Memory cleanup works the usual way. Make one to tell it what matters here.", "Make one"),
   { t: "Prefer recent notes", s: "Newer notes win ties; a note’s weight halves every 30 days.", lv: 2, kind: "sw", def: true, off: ALWAYS },
   { t: "Vary the results", s: "Leaves out near-repeats so a search brings back different things.", lv: 2, kind: "sw", def: true, off: ALWAYS },
   no("Pick up edits to memory files", "Your own edits to the Markdown files are read back in; a file it can’t read is set aside, never deleted.", "sw", { lv: 2 }),

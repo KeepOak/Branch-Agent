@@ -35,7 +35,7 @@ export function SpeakingMore(props: Shared) {
 const KEY_WORD: Record<string, string> = { yes: "Ready", no: "No key yet", here: "On this computer" };
 /** A provider that runs on this computer (your own program, a local voice) needs no key. */
 const runsHere = (p: Provider) => /local|cli/i.test(p.id);
-/** Each service and whether it has a key; keys live in Saved sign-ins. */
+/** Each service and whether it has a key; keys live in Saved passwords. */
 function KeyList({ providers, openSettings }: { providers: Provider[]; openSettings?: (page: string) => void }) {
   if (!providers.length) return null;
   return (

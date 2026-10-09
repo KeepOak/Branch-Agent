@@ -1,0 +1,6 @@
+engine:src/gateway/contacts/outside-agents.test.ts
+engine:src/infra/provider-usage.shared.test.ts
+window:src/places-nav/settings-nav.test.ts
+window:src/places/library/memory.test.tsx
+window:src/places/settings/set2/set2.test.tsx
+window:src/places/settings/settings.test.tsx

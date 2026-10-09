@@ -42,7 +42,7 @@ const EDITORS_MORE: OffRow[] = [
   ["Tidy each turn’s messages for the editor", "", ne("agent protocol message setting"), "sw"],
 ];
 const ASSISTANTS: OffRow[] = [
-  ["Branch as a connector", "Other assistants see your conversations, Trunks and folders as tools.", "Other assistants start it themselves with branch graft (Settings › Grafts).", "sw"],
+  ["Branch as a connector", "Other assistants see your conversations, Trunks and folders as tools.", "Other assistants start it themselves with branch graft (Settings › Connected agents).", "sw"],
   ["Share your skills as a connector", "Other assistants can find and add your skills.", ne("skills connector"), "sw"],
   ["Share Branch’s browser", "Other assistants get Branch’s browser tools, sign-ins and saved steps.", ne("browser connector"), "sw"],
   ["Share skills, plugins and connectors with any assistant", "One address gives them what you assign, with your Google and Microsoft sign-ins kept here.", ne("shared connector address"), "sw"],
@@ -204,7 +204,7 @@ const KITS: [string, string, string, string?][] = [
   ["Python", "The same, sync or async.", "", "There is no Python kit yet."],
   ["Java", "A client for the agent protocol and the Gateway.", "", "There is no Java kit yet."],
   ["Gateway client", "Live updates, device sign-in and reconnecting. In the engine’s source as @branch/gateway-client.", "engine/packages/gateway-client"],
-  ["KeepOak cloud", "Your Trunks on keepoak.com, from your own code.", "", "There is no KeepOak kit yet."],
+  ["KeepOak cloud", "Your helpers on keepoak.com, from your own code.", "", "There is no KeepOak kit yet."],
 ];
 
 function BuildOnBranch({ config }: Ctx) {

@@ -131,7 +131,7 @@ function PicturesVideoMusic({ m }: { m: ModelsCtx }) {
   };
   return (
     <Sec title="Pictures, video and music">
-      <Ctl title="Pictures with" sub="Making and editing pictures." help="Making and editing pictures. Picks need their service connected in Accounts or Saved sign-ins.">{pick("image", "Pictures with")}</Ctl>
+      <Ctl title="Pictures with" sub="Making and editing pictures." help="Making and editing pictures. Picks need their service connected in Accounts or Saved passwords.">{pick("image", "Pictures with")}</Ctl>
       <Ctl title="Video with" sub="Video from words, a picture or another video.">{pick("video", "Video with")}</Ctl>
       <Ctl title="Music with" sub="Songs and instrumentals from a style and a mood.">{pick("music", "Music with")}</Ctl>
       <Ctl title="Fill out the picture prompt first" sub="A model turns your words and the conversation into a detailed prompt." help="A model turns your words and the conversation into a detailed prompt. You can read it under each picture." off={NONE}><Switch checked label="Fill out the picture prompt first" onChange={() => undefined} /></Ctl>

@@ -39,7 +39,6 @@ type Props = {
   theme: ThemeChoice;
   onTheme: (t: ThemeChoice) => void;
   onSettings: () => void;
-  onAchievements: () => void;
   onShortcuts: () => void;
   onApps: () => void;
   onAbout: () => void;
@@ -97,7 +96,6 @@ export function PersonMenu(p: Props) {
       </div>
       <hr className="msep" />
       <Row icon="gear" label="Settings" hint="Ctrl ," onClick={run(p.onSettings)} testid="person-settings" />
-      <Row icon="check" label="Achievements" onClick={run(p.onAchievements)} />
       <Row icon="menu" label="Keyboard shortcuts" hint="?" onClick={run(p.onShortcuts)} testid="person-shortcuts" />
       <Row icon="phone" label="Get the apps" onClick={run(p.onApps)} testid="person-apps" />
       <Row icon="help" label="Guide" onClick={run(p.onGuide)} testid="person-guide" />
