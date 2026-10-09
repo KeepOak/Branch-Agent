@@ -12,12 +12,21 @@ import {
   outsideAgentDeviceRows,
   readOutsideAgentSettings,
 } from "../contacts/outside-agents.js";
+import { resetRelayState } from "../contacts/graft-relay.js";
 
 const removed = vi.hoisted(() => ({ calls: [] as string[], fail: "" }));
 const replyStep = vi.hoisted(() => vi.fn(async () => undefined));
 vi.mock("../../agents/tools/agent-step.js", () => ({ runAgentStep: replyStep }));
 vi.mock("../call.js", () => ({ callGateway: vi.fn() }));
-vi.mock("../../mcp/graft-link.js", () => ({ ensureGraftLinks: vi.fn(() => ({ states: () => ({}) })) }));
+vi.mock("../../mcp/graft-link.js", () => ({
+  ensureGraftLinks: vi.fn(() => ({ states: () => ({}) })),
+  runJoinedTrunkJob: vi.fn(async (job: { id: string; trunkId: string }) => ({ reply: `PONG from ${job.trunkId}` })),
+}));
+const roster = vi.hoisted(() => ({ agents: [] as { id: string; name: string; kind: string }[] }));
+vi.mock("../agent-list.js", () => ({
+  listGatewayAgentsBasic: vi.fn(async () => ({ agents: roster.agents })),
+  listExistingAgentIdsFromDisk: vi.fn(() => []),
+}));
 vi.mock("./devices.js", () => ({
   deviceHandlers: {
     "device.pair.remove": async ({
@@ -67,12 +76,17 @@ const owner = {
   connect: { scopes: ["operator.admin", "operator.read"], device: { id: "owner-dev" } },
 };
 
-async function call(method: string, params: Record<string, unknown>, client: unknown) {
+async function call(
+  method: string,
+  params: Record<string, unknown>,
+  client: unknown,
+  config: Record<string, unknown> = {},
+) {
   let reply: { ok: boolean; payload?: any; error?: { message?: string } } | undefined;
   await contactHandlers[method]!({
     params,
     client,
-    context: { broadcast: () => undefined, getRuntimeConfig: () => ({}), logGateway: { warn: () => undefined, info: () => undefined } },
+    context: { broadcast: () => undefined, getRuntimeConfig: () => config, logGateway: { warn: () => undefined, info: () => undefined } },
     respond: (ok: boolean, payload?: unknown, error?: { message?: string }) => {
       reply = { ok, payload, error };
     },
@@ -253,5 +267,91 @@ describe("Branch-to-Branch graft on the host", () => {
     );
     expect(sent.ok).toBe(false);
     expect(sent.error?.message).toContain("disconnected");
+  });
+
+  it("lists this Branch's Trunks only to a joined Branch's device", async () => {
+    roster.agents = [
+      { id: "scout-host", name: "Scout Host", kind: "trunk" },
+      { id: "system", name: "System", kind: "system" },
+    ];
+    await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    expect((await call("graft.roster.list", {}, owner)).ok).toBe(false);
+    expect((await call("graft.roster.list", {}, device("dev-b"))).payload.trunks).toEqual([
+      { id: "scout-host", name: "Scout Host" },
+    ]);
+  });
+
+  it("relays a message to a Trunk here, and hands the reply back on the joined Branch's poll until acknowledged", async () => {
+    resetRelayState();
+    roster.agents = [{ id: "scout-host", name: "Scout Host", kind: "trunk" }];
+    const config = { agents: { entries: { "scout-host": {} } }, tools: { agentToAgent: { enabled: true } } };
+    await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    const sent = await call(
+      "graft.relay.send",
+      { target: "scout-host", sourceTrunkId: "scout", text: "Ping", idempotencyKey: "relay-1" },
+      device("dev-b"),
+      config,
+    );
+    expect(sent.ok).toBe(true);
+    const id = sent.payload.id;
+    await vi.waitFor(
+      async () => {
+        const polled = await call("graft.relay.poll", {}, device("dev-b"));
+        expect(polled.payload.replies.length).toBeGreaterThan(0);
+      },
+      { timeout: 20_000, interval: 25 },
+    );
+    expect((await call("graft.relay.poll", {}, device("dev-b"))).payload.replies).toEqual([
+      { id, reply: "PONG from scout-host" },
+    ]);
+    expect((await call("graft.relay.poll", {}, device("dev-c"))).ok).toBe(false);
+    expect((await call("graft.relay.ack", { id }, device("dev-b"))).payload).toEqual({ acked: true });
+    expect((await call("graft.relay.poll", {}, device("dev-b"))).payload.replies).toEqual([]);
+  });
+
+  it("refuses a relay to a Trunk that is not here, and a relay the policy does not allow", async () => {
+    resetRelayState();
+    roster.agents = [{ id: "scout-host", name: "Scout Host", kind: "trunk" }];
+    const allowed = { agents: { entries: { "scout-host": {} } }, tools: { agentToAgent: { enabled: true } } };
+    await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    const unknown = await call(
+      "graft.relay.send",
+      { target: "nobody", sourceTrunkId: "scout", text: "Ping" },
+      device("dev-b"),
+      allowed,
+    );
+    expect(unknown.error?.message).toBe("That Trunk is not on this Branch.");
+    const denied = await call(
+      "graft.relay.send",
+      { target: "scout-host", sourceTrunkId: "scout", text: "Ping" },
+      device("dev-b"),
+      { agents: { entries: { "scout-host": {} } }, tools: { agentToAgent: { enabled: false } } },
+    );
+    expect(denied.ok).toBe(false);
+    expect(denied.error?.message).toContain("agentToAgent");
+  });
+
+  it("holds at most eight relayed messages running for one joined Branch", async () => {
+    resetRelayState();
+    roster.agents = [{ id: "scout-host", name: "Scout Host", kind: "trunk" }];
+    const config = { agents: { entries: { "scout-host": {} } }, tools: { agentToAgent: { enabled: true } } };
+    const { runJoinedTrunkJob } = await import("../../mcp/graft-link.js");
+    vi.mocked(runJoinedTrunkJob).mockImplementation(() => new Promise(() => {}));
+    await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    const results = [];
+    for (let i = 0; i < 9; i += 1) {
+      results.push(
+        await call(
+          "graft.relay.send",
+          { target: "scout-host", sourceTrunkId: "scout", text: `Ping ${i}` },
+          device("dev-b"),
+          config,
+        ),
+      );
+    }
+    expect(results.slice(0, 8).every((result) => result.ok)).toBe(true);
+    expect(results[8]?.ok).toBe(false);
+    expect(results[8]?.error?.message).toContain("too many messages running");
+    resetRelayState();
   });
 });
