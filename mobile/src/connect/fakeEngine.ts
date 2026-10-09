@@ -62,6 +62,11 @@ export type FakeEngine = {
   resolveApproval: (id: string, decision: string, resolvedBy?: string | null) => void;
   /** The approvals still waiting, by kind. */
   pendingApprovals: (kind: 'exec' | 'plugin') => FakeApproval[];
+  /**
+   * Whether Branch is open on the computer, as another approvals client. When it isn't, a phone's own
+   * plugin.approval.request has nowhere else to show and the engine expires it at once (no-approval-route).
+   */
+  setWindowOpen: (open: boolean) => void;
 };
 
 /** One pending approval as the engine lists it (approval-record-lookup.ts listVisiblePendingApprovalRequests). */
@@ -101,6 +106,8 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
     engine.emit(`${kind}.approval.resolved`, { id, decision, resolvedBy, ts: Date.now(), request: record.request });
     return true;
   };
+  let windowOpen = true;
+  let asked = 0;
   const replies = new Map<string, { sessionKey: string; text: string; seq: number }>();
   const holds = new Map<string, Array<() => void>>();
   type Connection = {
@@ -152,6 +159,25 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
         if (typeof unread === 'boolean') sessions = (sessions as Array<Record<string, unknown>>).map((row) => (row.key === key ? { ...row, unread } : row));
         setTimeout(() => engine.emit('sessions.changed', { sessionKey: key }), 0);
         return { ok: true, payload: { ok: true, key } };
+      }
+      case 'plugin.approval.request': {
+        // plugin-approval.ts: the engine makes the id, keeps the request's own words, and binds it to the asking
+        // device. approval-shared.ts handlePendingApprovalRequest leaves the asking connection out of the
+        // requested broadcast, and with nowhere else to show it, expires it at once.
+        const p = (params ?? {}) as Record<string, unknown>;
+        const createdAtMs = Date.now();
+        const timeoutMs = typeof p.timeoutMs === 'number' ? p.timeoutMs : 120_000;
+        const id = `plugin:request-${++asked}`;
+        const record: FakeApproval = {
+          id,
+          createdAtMs,
+          expiresAtMs: createdAtMs + timeoutMs,
+          request: { pluginId: p.pluginId ?? null, title: p.title, description: p.description, severity: p.severity ?? null, allowedDecisions: p.allowedDecisions, agentId: null, sessionKey: null },
+        };
+        if (!windowOpen) return { ok: true, payload: { id, decision: null, createdAtMs, expiresAtMs: record.expiresAtMs } };
+        approvals.plugin = [...approvals.plugin, record];
+        for (const socket of [...live]) if (socket !== from && socket.scopes.includes(APPROVALS_SCOPE)) socket.event({ type: 'event', event: 'plugin.approval.requested', payload: record });
+        return { ok: true, payload: { status: 'accepted', id, deliveryRoute: 'approval-client', createdAtMs, expiresAtMs: record.expiresAtMs } };
       }
       case 'exec.approval.list':
         return { ok: true, payload: approvals.exec };
@@ -235,6 +261,9 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
       if (!settle('exec', id, decision, resolvedBy)) settle('plugin', id, decision, resolvedBy);
     },
     pendingApprovals: (kind) => [...approvals[kind]],
+    setWindowOpen: (open) => {
+      windowOpen = open;
+    },
     failMethod: (method, message, details, code) => {
       if (message === null) failures.delete(method);
       else failures.set(method, { message, ...(details === undefined ? {} : { details }), ...(code === undefined ? {} : { code }) });

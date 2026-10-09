@@ -165,6 +165,7 @@ const EMPTY: Record<ChatFilter, [string, string]> = {
   all: ['No chats yet', 'Start a chat with a Trunk on your computer and it shows up here.'],
   trunks: ['No Trunk chats', 'Chats with a single Trunk show up here.'],
   rooms: ['No rooms yet', 'Rooms with several Trunks show up here.'],
+  unread: ['Nothing unread', 'Chats with something new, or waiting for you, show up here.'],
   needsYou: ['Nothing needs you', 'When a Trunk is waiting for a yes or an answer, its chat shows up here.'],
   snoozed: ['Nothing snoozed', 'Snoozed chats wait here until their time, then come back by themselves.'],
   archived: ['Nothing archived', 'Archived chats are kept here.'],
@@ -258,6 +259,7 @@ export function ChatsScreen({
   searchMessages?: (query: string) => Promise<unknown>;
   /** Approvals waiting for a yes: how many, and the oldest one in a line ("Oak · Run a command"). */
   needsYou?: { count: number; line: string } | null;
+  /** Opens Approvals. With it, the top bar always has an Approvals button, with the count when any wait. */
   onNeedsYou?: () => void;
   now?: number;
 }) {
@@ -273,6 +275,13 @@ export function ChatsScreen({
   const byKey = new Map(list.rows.map((row) => [row.key, row]));
   const items = typing ? searchItems(list.rows, query, messages.hits) : browseItems(list.rows, filter, now);
 
+  const approvals = needsYou?.count ?? 0;
+  // The count beside the title opens what it counts: Approvals while any wait (their chats are in it), else Unread.
+  const openCount = () => {
+    if (approvals > 0 && onNeedsYou) onNeedsYou();
+    else setFilter('unread');
+  };
+
   const refresh = async () => {
     setRefreshing(true);
     try {
@@ -284,7 +293,28 @@ export function ChatsScreen({
 
   const header = (
     <View style={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: space.sm }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+      <View style={{ flexDirection: 'row', justifyContent: onNeedsYou ? 'space-between' : 'flex-end' }}>
+        {onNeedsYou ? (
+          <Pressable
+            testID="approvals-button"
+            accessibilityRole="button"
+            accessibilityLabel={approvals ? `Approvals, ${approvals} waiting` : 'Approvals, nothing waiting'}
+            onPress={onNeedsYou}
+            hitSlop={8}
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', minHeight: layout.rowMinHeight, gap: space.xs + 2, opacity: pressed ? 0.6 : 1 })}
+          >
+            <ThemedText variant="body" tone="accentInk">
+              Approvals
+            </ThemedText>
+            {approvals ? (
+              <View testID="approvals-button-count" style={{ minWidth: 22, height: 22, paddingHorizontal: space.xs + 2, borderRadius: radius.pill, backgroundColor: color.accent, alignItems: 'center', justifyContent: 'center' }}>
+                <ThemedText variant="footnote" tone="onAccent" style={{ fontWeight: '700' }}>
+                  {approvals}
+                </ThemedText>
+              </View>
+            ) : null}
+          </Pressable>
+        ) : null}
         <Pressable
           testID="computer-button"
           accessibilityRole="button"
@@ -304,15 +334,18 @@ export function ChatsScreen({
           Chats
         </ThemedText>
         {waiting ? (
-          <View
+          <Pressable
             testID="chats-count"
-            accessibilityLabel={`${waiting} ${waiting === 1 ? 'chat wants' : 'chats want'} a look`}
-            style={{ minWidth: 24, height: 24, paddingHorizontal: space.sm, borderRadius: radius.pill, backgroundColor: color.accent, alignItems: 'center', justifyContent: 'center' }}
+            accessibilityRole="button"
+            accessibilityLabel={`${waiting} ${waiting === 1 ? 'chat wants' : 'chats want'} a look. ${approvals > 0 && onNeedsYou ? 'Opens Approvals' : 'Shows them'}`}
+            onPress={openCount}
+            hitSlop={10}
+            style={({ pressed }) => ({ minWidth: 24, height: 24, paddingHorizontal: space.sm, borderRadius: radius.pill, backgroundColor: color.accent, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.7 : 1 })}
           >
             <ThemedText variant="footnote" tone="onAccent" style={{ fontWeight: '700' }}>
               {waiting}
             </ThemedText>
-          </View>
+          </Pressable>
         ) : null}
       </View>
       {needsYou && needsYou.count > 0 ? (

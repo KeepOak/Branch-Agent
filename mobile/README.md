@@ -84,3 +84,31 @@ phone or emulator in one step.
   `usesCleartextTraffic`), as Expo Go allows it.
 - Light and dark follow the phone's setting (`userInterfaceStyle: automatic`, which needs
   `expo-system-ui` in a built app).
+
+## Check approvals end to end
+
+You don't need a Trunk to ask for something, or to change what your computer lets Trunks run. Development
+builds (Expo Go, `npx expo start`) have a **For testing** card at the bottom of Approvals (the Approvals
+button at the top of Chats):
+
+- **Send a test approval** asks your computer for an approval from this phone. Nothing is attached to it,
+  so Allow and Deny run nothing. It shows up on the phone and in Branch on your computer; answer it in
+  either place and watch the other move it to Answered.
+- **Send one in 10 seconds** gives you time to lock the phone, so you can check the notification and its
+  Allow and Deny buttons too.
+
+Branch has to be open on your computer: the engine drops a request that nobody but the asker could see,
+and the phone says so.
+
+A release APK leaves the card out unless you build it with the switch on:
+
+```bash
+cd mobile
+EXPO_PUBLIC_BRANCH_TEST_APPROVALS=1 npm run build:android
+```
+
+(PowerShell: `$env:EXPO_PUBLIC_BRANCH_TEST_APPROVALS='1'; npm run build:android`.) Build again without it
+for an APK to hand to anyone else.
+
+Under the hood it is a `plugin.approval.request` with `twoPhase`, which needs only the
+`operator.approvals` scope the phone already has (`src/approvals/testApproval.ts`).

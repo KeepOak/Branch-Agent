@@ -40,6 +40,7 @@ export const CHAT_FILTERS = [
   ['all', 'All'],
   ['trunks', 'Trunks'],
   ['rooms', 'Rooms'],
+  ['unread', 'Unread'],
   ['needsYou', 'Needs you'],
   ['snoozed', 'Snoozed'],
   ['archived', 'Archived'],
@@ -50,7 +51,7 @@ export type ChatFilter = (typeof CHAT_FILTERS)[number][0];
 
 const asleep = (row: ChatRow, now: number) => row.snoozedUntil !== null && row.snoozedUntil > now;
 
-/** The rows a filter shows. All, Trunks, Rooms and Needs you leave out archived, snoozed and automation chats. */
+/** The rows a filter shows. All, Trunks, Rooms, Unread and Needs you leave out archived, snoozed and automation chats. */
 export function filterRows(rows: ChatRow[], filter: ChatFilter, now: number): ChatRow[] {
   return rows.filter((row) => {
     if (filter === 'archived') return row.archived;
@@ -61,13 +62,15 @@ export function filterRows(rows: ChatRow[], filter: ChatFilter, now: number): Ch
     if (filter === 'trunks') return !row.room;
     if (filter === 'rooms') return row.room;
     if (filter === 'needsYou') return row.needsYou;
+    // Unread is exactly what the count beside the title counts, so a tap on the count lands here.
+    if (filter === 'unread') return row.unread || row.needsYou;
     return true;
   });
 }
 
 /** How many chats in All are unread or need you, for the count beside the title. */
 export function unreadCount(rows: ChatRow[], now: number): number {
-  return filterRows(rows, 'all', now).filter((row) => row.unread || row.needsYou).length;
+  return filterRows(rows, 'unread', now).length;
 }
 
 export type ChatListSnapshot = {
