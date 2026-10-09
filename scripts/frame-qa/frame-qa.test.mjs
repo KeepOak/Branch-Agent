@@ -177,3 +177,20 @@ test('audit lines are unique per finding and numbered per OS', () => {
   assert.equal(uniqueFindings([base, base]).length, 1);
   assert.match(auditLines([base], 'linux')[0], /^- QA-LINUX-001 /);
 });
+
+test('a crashed page is recorded and recovered, and the walk continues with the next control', async () => {
+  const adapter = fakeAdapter();
+  const original = adapter.act;
+  let recovered = 0;
+  adapter.act = async (control) => {
+    if (control.name === 'Go') throw new Error('Target crashed');
+    return original(control);
+  };
+  adapter.recover = async () => { recovered += 1; };
+  const graph = new VisitedGraph();
+  await traverse({ roots: [{ id: 'home', route: { kind: 'place', place: 'home' } }], adapter, graph, maxDepth: 3, now: () => 0 });
+  const go = [...graph.nodes.values()].find((n) => n.label === 'Go');
+  assert.deepEqual(go.problems, ['browser-crash']);
+  assert.equal(recovered, 1);
+  assert.ok([...graph.nodes.values()].some((n) => n.label === 'Menu' && n.status === 'pass'), 'controls after the crash are still walked');
+});
