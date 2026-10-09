@@ -17,6 +17,8 @@ import {
   TEST_ATTEMPT_ID,
 } from "./service.runtime.test-helpers.js";
 
+const TEST_FLEET_IMAGE = "registry.example.test/branch-fleet:test";
+
 type FleetServiceOptions = NonNullable<Parameters<typeof createFleetServiceRuntime>[0]>;
 
 let root: string;
@@ -55,7 +57,7 @@ describe("fleet service filesystem and removal", () => {
       getuid: () => 1001,
       getgid: () => 1002,
       selinuxEnabled: async () => true,
-    }).create({ tenant: "docker-cell", gatewayToken: "token" });
+    }).create({ image: TEST_FLEET_IMAGE, tenant: "docker-cell", gatewayToken: "token" });
     expect(docker.run.mock.calls[0]?.[0].containerUser).toEqual({
       mode: "numeric",
       uid: 0,
@@ -74,7 +76,7 @@ describe("fleet service filesystem and removal", () => {
       getuid: () => 1001,
       getgid: () => 1002,
       selinuxEnabled: async () => true,
-    }).create({ tenant: "podman-cell", runtime: "podman", gatewayToken: "token" });
+    }).create({ image: TEST_FLEET_IMAGE, tenant: "podman-cell", runtime: "podman", gatewayToken: "token" });
     expect(podman.isDockerRootless).not.toHaveBeenCalled();
     expect(podman.run.mock.calls[0]?.[0]).toMatchObject({
       containerUser: { mode: "podman-keep-id", uid: 1001, gid: 1002 },
@@ -93,7 +95,7 @@ describe("fleet service filesystem and removal", () => {
     await reserveFleetCell(env, {
       tenantId: "escape",
       createdAtMs: 1000,
-      image: "ghcr.io/openclaw/openclaw:latest",
+      image: TEST_FLEET_IMAGE,
       runtime: "docker",
       containerName: "branch-cell-escape",
       dataDir: outside,
@@ -111,8 +113,8 @@ describe("fleet service filesystem and removal", () => {
   it("refuses to purge a tenant symlinked to a sibling cell", async () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "acme", gatewayToken: "token" });
-    await service.create({ tenant: "beta", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "beta", gatewayToken: "token" });
     const acmeDir = path.join(root, "fleet", "cells", "acme");
     const betaDir = path.join(root, "fleet", "cells", "beta");
     await fs.rm(acmeDir, { recursive: true });
@@ -131,8 +133,8 @@ describe("fleet service filesystem and removal", () => {
   it("refuses a tenant-controlled config symlink during recreate", async () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "acme", gatewayToken: "token" });
-    await service.create({ tenant: "beta", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "beta", gatewayToken: "token" });
     containers.inspect.mockResolvedValue(runningInspection({ state: "exited", running: false }));
     await service.remove({ tenant: "acme" });
     const acmeConfig = path.join(root, "fleet", "cells", "acme", "branch.json");
@@ -149,7 +151,7 @@ describe("fleet service filesystem and removal", () => {
       generateAttemptId: () => TEST_ATTEMPT_ID,
     });
 
-    await expect(retryService.create({ tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
+    await expect(retryService.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
       /unsafe cell config/iu,
     );
 
@@ -162,7 +164,7 @@ describe("fleet service filesystem and removal", () => {
   it("validates rejected recreate input before rewriting retained config", async () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "acme", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
     containers.inspect.mockResolvedValue(runningInspection({ state: "exited", running: false }));
     await service.remove({ tenant: "acme" });
     const configPath = path.join(root, "fleet", "cells", "acme", "branch.json");
@@ -170,7 +172,7 @@ describe("fleet service filesystem and removal", () => {
     const runCount = containers.run.mock.calls.length;
 
     await expect(
-      service.create({ tenant: "acme", gatewayToken: "token", env: ["INVALID"] }),
+      service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token", env: ["INVALID"] }),
     ).rejects.toThrow(/expected KEY=VAL/iu);
 
     expect(containers.run).toHaveBeenCalledTimes(runCount);
@@ -181,7 +183,7 @@ describe("fleet service filesystem and removal", () => {
   it("purges a contained cell only after forced container removal", async () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "acme", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
     containers.inspect.mockResolvedValue(runningInspection());
 
     await expect(service.remove({ tenant: "acme", purgeData: true, force: true })).resolves.toEqual(
@@ -202,7 +204,7 @@ describe("fleet service filesystem and removal", () => {
   it("passes explicit force through even when inspect observed a stopped container", async () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "acme", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
     containers.inspect.mockResolvedValue(runningInspection({ state: "exited", running: false }));
 
     await service.remove({ tenant: "acme", force: true });
@@ -213,7 +215,7 @@ describe("fleet service filesystem and removal", () => {
   it("retains state when network removal fails and completes on retry", async () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "acme", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
     containers.inspect.mockResolvedValue(runningInspection({ state: "exited", running: false }));
     containers.removeNetwork.mockRejectedValueOnce(new Error("network still in use"));
 
@@ -232,7 +234,7 @@ describe("fleet service filesystem and removal", () => {
   it("finishes purge when one exact tenant directory is already missing", async () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "acme", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
     await fs.rm(path.join(root, "fleet", "cells", "acme"), { recursive: true });
 
     await expect(service.remove({ tenant: "acme", purgeData: true, force: true })).resolves.toEqual(
@@ -248,7 +250,7 @@ describe("fleet service filesystem and removal", () => {
   it("refuses to remove a container when its cell network belongs to another profile", async () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "acme", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
     containers.inspect.mockResolvedValue(runningInspection({ state: "exited", running: false }));
     containers.inspectNetwork.mockResolvedValue({
       kind: "ok",
@@ -272,7 +274,7 @@ describe("fleet service filesystem and removal", () => {
   it("removes the ownership-validated generation, not whatever holds the cell name", async () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "acme", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
 
     // Docker and Podman resolve a reference as an id first and a name second, so
     // an id stays pinned to one container while a name follows whatever holds it
@@ -298,7 +300,7 @@ describe("fleet service filesystem and removal", () => {
   it("refuses removal before mutation when an unexpected network peer is attached", async () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "acme", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
     containers.inspect.mockResolvedValue(runningInspection({ state: "exited", running: false }));
     containers.inspectNetwork.mockResolvedValue({
       kind: "ok",
