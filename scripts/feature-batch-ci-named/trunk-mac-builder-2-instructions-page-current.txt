@@ -1,0 +1,2 @@
+window:src/places-nav/SettingsFrame.test.tsx
+window:src/places/settings/set1/instructions.test.tsx
