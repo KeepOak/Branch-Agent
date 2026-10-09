@@ -96,8 +96,8 @@ export function ScheduledTab({ engine, level, openConversation }: Props) {
       setLeaving(false); setDraft(null);
       notify("Nothing was changed."); // fakes-ok: F4 the preview's own toast after Leave (app-latest Change… leave dialog); not yet in DESIGN-SPEC
     }} />}
-    {state.loading && !data && <p className="au-hint" role="status">Reading automations…</p>}
-    {state.error && <p className="au-error" role="alert">{state.error}</p>}
+    {engine.connected === false ? <p className="au-hint" role="status">Waiting for the gateway connection…</p> : state.loading && !data && <p className="au-hint" role="status">Reading automations…</p>}
+    {state.error && <div className="au-error" role="alert">{state.error} <button type="button" className="btn sm" disabled={state.loading} onClick={() => void state.refresh()}>Retry</button></div>}
     {adv && sum && sum.count > 0 && <p className="au-hint au-summary">{sum.count} automation{sum.count === 1 ? "" : "s"} · <span className={sum.failing ? "au-warn" : ""}>{sum.failing} failing</span>{sum.next ? ` · next run ${sum.next}` : ""}</p>}
     {adv && data && data.jobs.some(j => !isTrigger(j)) && <FindBar find={find} set={setFind} />}
     {data && <List data={data} find={find} level={level} write={write} busy={busy} actions={actions} open={open} />}

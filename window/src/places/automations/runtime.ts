@@ -59,7 +59,9 @@ export function usePlaceData<T>(engine: WindowEngine, load: (engine: WindowEngin
   currentEngine.current = engine;
   const refresh = useCallback(async () => {
     const id = ++generation.current;
+    if (engine.connected === false) { setLoading(false); setError(""); return; }
     setLoading(true);
+    setError("");
     try { const value = await load(engine); if (mounted.current && id === generation.current) { setData(value); setError(""); } }
     catch (e) { if (mounted.current && id === generation.current) setError(errorText(e)); }
     finally { if (mounted.current && id === generation.current) setLoading(false); }
