@@ -28,7 +28,12 @@ const MemorySearchSchema = {
     query: { type: "string" },
     maxResults: { type: "integer", minimum: 1 },
     minScore: { type: "number" },
-    corpus: { type: "string", enum: ["memory", "wiki", "all", "sessions"] },
+    corpus: {
+      type: "string",
+      enum: ["memory", "wiki", "all", "sessions", "team"],
+      description:
+        "team searches durable memory notes of every configured agent. Each hit carries agentId; its path is relative to that agent, so do not pass it to memory_get.",
+    },
   },
   required: ["query"],
   additionalProperties: false,
