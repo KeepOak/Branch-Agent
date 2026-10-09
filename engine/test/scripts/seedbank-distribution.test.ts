@@ -4,11 +4,24 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  ghCommandEnv,
+  npmPublishEnv,
   resolveCommandShim,
   resolveSeedbankPackageManifest,
   createSeedbankCatalog,
   resolveSeedbankEntry,
 } from "../../scripts/lib/seedbank-distribution.mjs";
+
+const JOB_SECRETS = {
+  PATH: "/usr/bin:/bin",
+  HOME: "/home/runner",
+  GH_TOKEN: "gh-token-value",
+  GITHUB_TOKEN: "github-token-value",
+  NPM_TOKEN: "npm-token-value",
+  ACTIONS_ID_TOKEN_REQUEST_URL: "https://oidc.example.test/token",
+  ACTIONS_ID_TOKEN_REQUEST_TOKEN: "oidc-request-value",
+  AWS_SECRET_ACCESS_KEY: "unrelated-secret",
+};
 
 describe("Seedbank distribution", () => {
   it("keeps verification and publication jobs within the repository CI cap", () => {
@@ -142,5 +155,42 @@ describe("Seedbank distribution", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+});
+
+describe("Seedbank publish environment", () => {
+  it("gives npm publish no GitHub token and no other job secret", () => {
+    const env = npmPublishEnv(JOB_SECRETS);
+    expect(env).not.toHaveProperty("GH_TOKEN");
+    expect(env).not.toHaveProperty("GITHUB_TOKEN");
+    expect(env).not.toHaveProperty("NPM_TOKEN");
+    expect(env).not.toHaveProperty("AWS_SECRET_ACCESS_KEY");
+    expect(env).toMatchObject({
+      PATH: JOB_SECRETS.PATH,
+      HOME: JOB_SECRETS.HOME,
+      ACTIONS_ID_TOKEN_REQUEST_URL: JOB_SECRETS.ACTIONS_ID_TOKEN_REQUEST_URL,
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: JOB_SECRETS.ACTIONS_ID_TOKEN_REQUEST_TOKEN,
+    });
+  });
+
+  it("does not leak GH_TOKEN into a real child process spawned for npm", () => {
+    const child = spawnSync(
+      process.execPath,
+      ["-e", "process.stdout.write(JSON.stringify(Object.keys(process.env)))"],
+      { encoding: "utf8", env: npmPublishEnv(JOB_SECRETS), windowsHide: true },
+    );
+    expect(child.status).toBe(0);
+    const names: string[] = JSON.parse(child.stdout);
+    expect(names).not.toContain("GH_TOKEN");
+    expect(names).not.toContain("GITHUB_TOKEN");
+    expect(names).not.toContain("AWS_SECRET_ACCESS_KEY");
+  });
+
+  it("gives gh only GH_TOKEN and no npm or OIDC variables", () => {
+    const env = ghCommandEnv(JOB_SECRETS);
+    expect(env.GH_TOKEN).toBe(JOB_SECRETS.GH_TOKEN);
+    expect(env).not.toHaveProperty("ACTIONS_ID_TOKEN_REQUEST_TOKEN");
+    expect(env).not.toHaveProperty("NPM_TOKEN");
+    expect(env).not.toHaveProperty("AWS_SECRET_ACCESS_KEY");
   });
 });
