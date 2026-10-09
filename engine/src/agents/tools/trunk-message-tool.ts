@@ -45,8 +45,17 @@ export function trunkMailboxKey(targetAgentId: string, senderAgentId: string): s
   return `agent:${targetAgentId}:trunk:${senderAgentId}`;
 }
 
-/** Trunk-owned means a Trunk task thread or a mailbox. The owner's main chat and human-created rows never qualify. */
-export function isTrunkOwnedThread(row: ActiveSessionRow, targetAgentId: string): boolean {
+/**
+ * Steerable means a Trunk-owned thread that this sender may write into: a Trunk task thread, or the sender's
+ * own mailbox on the target. The owner's main chat, human-created rows and other senders' mailboxes never qualify.
+ * Cron roots are excluded by the sessions.list filters; an agent-created row that is none of the above is
+ * still not steerable unless it is a task thread (createdActor "agent").
+ */
+export function isTrunkOwnedThread(
+  row: ActiveSessionRow,
+  targetAgentId: string,
+  senderAgentId: string,
+): boolean {
   const key = typeof row.key === "string" ? row.key : "";
   if (!key || key === `agent:${targetAgentId}:main`) {
     return false;
@@ -59,7 +68,8 @@ export function isTrunkOwnedThread(row: ActiveSessionRow, targetAgentId: string)
     return false;
   }
   if (key.startsWith(`agent:${targetAgentId}:trunk:`)) {
-    return true;
+    // Another sender's mailbox on the same target is somebody else's conversation: never steer into it.
+    return key === trunkMailboxKey(targetAgentId, senderAgentId);
   }
   return row.createdActor?.type === "agent";
 }
@@ -174,7 +184,8 @@ export function createTrunkMessageTool(options: TrunkMessageToolOptions = {}): A
 
       const active = await activeRows(targetAgentId, signal);
       const steerable = active.find(
-        (row) => typeof row.key === "string" && isTrunkOwnedThread(row, targetAgentId),
+        (row) =>
+          typeof row.key === "string" && isTrunkOwnedThread(row, targetAgentId, senderAgentId),
       );
       if (steerable && typeof steerable.key === "string") {
         const steered = await trySteer(toolCallId, steerable.key, text, signal);

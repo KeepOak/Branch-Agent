@@ -202,6 +202,33 @@ describe("trunk_message", () => {
     expect(result.details).toMatchObject({ status: "forbidden" });
   });
 
+  it("never steers into another sender's active mailbox on the same target", async () => {
+    // Trunk A (builder-ash) has an active mailbox on T (builder-elm). Trunk B (builder-maple) messages T.
+    const aMailbox = trunkMailboxKey("builder-elm", "builder-ash");
+    const { tool, sent } = harness({
+      listings: [[{ key: aMailbox, createdActor: { type: "agent" } }]],
+    });
+    await tool.execute("c13", { agentId: "builder-elm", text: "from B" }, undefined);
+    expect(sent.some((call) => call.sessionKey === aMailbox)).toBe(false);
+    expect(sent).toEqual([
+      {
+        sessionKey: trunkMailboxKey("builder-elm", "builder-maple"),
+        mode: "notify",
+        message: "from B",
+      },
+    ]);
+  });
+
+  it("steers into the sender's own active mailbox on the target", async () => {
+    const own = trunkMailboxKey("builder-elm", "builder-maple");
+    const { tool, sent } = harness({
+      listings: [[{ key: own, createdActor: { type: "agent" } }]],
+      steer: "ok",
+    });
+    await tool.execute("c14", { agentId: "builder-elm", text: "follow up" }, undefined);
+    expect(sent).toEqual([{ sessionKey: own, mode: "steer", message: "follow up" }]);
+  });
+
   it("keeps a sender's mailbox separate from the owner's chat and from other senders", () => {
     expect(trunkMailboxKey("builder-elm", "builder-maple")).not.toBe(
       trunkMailboxKey("builder-elm", "builder-ash"),
