@@ -22,9 +22,15 @@ const superseded = () =>
   );
 
 it.each([
-  { when: "during setup", startAttempt: false, calls: 2 },
-  { when: "after the first attempt started", startAttempt: true, calls: 1 },
-])("handles a runtime superseded $when", async ({ startAttempt, calls }) => {
+  { when: "during setup", startAttempt: false, calls: 2, failedResult: false },
+  { when: "after the first attempt started", startAttempt: true, calls: 1, failedResult: false },
+  {
+    when: "during setup before a returned failure",
+    startAttempt: false,
+    calls: 2,
+    failedResult: true,
+  },
+])("handles a runtime superseded $when", async ({ startAttempt, calls, failedResult }) => {
   const state = await createBranchTestState({
     label: "run-superseded-setup",
     env: { BRANCH_DISABLE_BUNDLED_PLUGINS: "1" },
@@ -73,7 +79,7 @@ it.each([
         payloads: [{ text: "ran on the current runtime" }],
         meta: {
           durationMs: 1,
-          stopReason: "completed",
+          stopReason: failedResult ? "error" : "completed",
           agentMeta: {
             sessionId: input.runParams.sessionId,
             provider: input.provider,
@@ -113,7 +119,7 @@ it.each([
     const journal =
       journalDatabase?.db
         .prepare(
-          "SELECT event_type, snapshot_id FROM run_journal WHERE run_id = ? ORDER BY sequence",
+          "SELECT event_type, snapshot_id, payload_json FROM run_journal WHERE run_id = ? ORDER BY sequence",
         )
         .all(runId) ?? [];
     expect(journal.map((row) => row.event_type)).toEqual(
@@ -125,6 +131,9 @@ it.each([
     expect(snapshots.every((snapshot) => typeof snapshot === "string" && snapshot.length > 0)).toBe(
       true,
     );
+    expect(JSON.parse(String(journal.at(-1)?.payload_json))).toEqual({
+      status: startAttempt || failedResult ? "failed" : "completed",
+    });
     expect(loop).toHaveBeenCalledTimes(calls);
   } finally {
     admission.close();

@@ -13,11 +13,13 @@ import {
   recordRunJournalSchemaCommitted,
 } from "../state/branch-agent-run-journal-schema.js";
 import type { RunEmbeddedAgentParams } from "./embedded-agent-runner/run/params.js";
+import type { EmbeddedAgentRunResult } from "./embedded-agent-runner/types.js";
 import type { PreparedModelRuntimeSnapshot } from "./prepared-model-runtime.types.js";
 import type { AgentMessage } from "./runtime/index.js";
 import type { AgentSessionEvent } from "./sessions/index.js";
 
 type JournalDatabase = Pick<DB, "run_journal">;
+type RunJournalStatus = "completed" | "failed";
 export type RunJournalInput = {
   database: BranchAgentDatabaseOptions;
   runId: string;
@@ -171,18 +173,22 @@ export class RunJournal {
     }
   }
 
-  end(status: "completed" | "failed"): void {
+  end(status: RunJournalStatus): void {
     this.append("run_ended", { status });
   }
 }
 
-export async function withRunJournal<T>(input: RunJournalInput, run: () => Promise<T>): Promise<T> {
+export async function withRunJournal<T>(
+  input: RunJournalInput,
+  run: () => Promise<T>,
+  statusOf: (result: T) => RunJournalStatus = () => "completed",
+): Promise<T> {
   const journal = new RunJournal(input);
   return scope.run(journal, async () => {
-    let status: "completed" | "failed" = "failed";
+    let status: RunJournalStatus = "failed";
     try {
       const result = await run();
-      status = "completed";
+      status = statusOf(result);
       return result;
     } finally {
       journal.end(status);
@@ -190,7 +196,7 @@ export async function withRunJournal<T>(input: RunJournalInput, run: () => Promi
   });
 }
 
-export function withPreparedRunJournal<T>(
+export function withPreparedRunJournal<T extends EmbeddedAgentRunResult>(
   params: Pick<
     RunEmbeddedAgentParams,
     "agentId" | "runId" | "sessionId" | "sessionKey" | "sessionPersistence"
@@ -217,6 +223,8 @@ export function withPreparedRunJournal<T>(
         snapshotId: snapshot.snapshotId,
       },
       run,
+      (result) =>
+        Boolean(result.meta.error) || result.meta.stopReason === "error" ? "failed" : "completed",
     ),
   );
 }
