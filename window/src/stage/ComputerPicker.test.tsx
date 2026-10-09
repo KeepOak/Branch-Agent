@@ -43,6 +43,18 @@ describe("plain computer picker", () => {
     await render([host, device({ workerSlots: { total: 1, available: 0, reclaimableIdle: 1 } })]);
     expect(button("Whichever is free")).toBeDefined();
   });
+  it("hides named targets that cannot host another conversation", async () => {
+    await render([host, device({ sessionHost: false }), device({ id: "node:offline", label: "Offline computer", status: "unavailable" }), device({ id: "cloud", type: "worker", label: "Cloud computer" })]);
+    expect(button("Other computer")).toBeUndefined();
+    expect(button("Offline computer")).toBeUndefined();
+    expect(button("Cloud computer")).toBeUndefined();
+  });
+  it("keeps the current computer selectable even when it is offline", async () => {
+    const { request, onClose } = await render([host, device({ status: "unavailable" })], undefined, undefined, "node:other");
+    await act(async () => button("Other computer")!.click());
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(request).not.toHaveBeenCalled();
+  });
   it("hides automatic choice for an active placement", async () => {
     await render([host, device()], undefined, { state: "active", environmentId: "node:other" }, "node:other");
     expect(button("Whichever is free")).toBeUndefined();
