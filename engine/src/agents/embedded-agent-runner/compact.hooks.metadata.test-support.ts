@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { vi, type Mock } from "vitest";
 import {
   createPluginExecutionFrame,
@@ -80,6 +81,7 @@ export async function acquireCompactHooksPreparedModelRuntime(
 ) {
   return {
     snapshot: {
+      snapshotId: randomUUID(),
       isCurrent: () => true,
       agentId: input.agentId,
       agentDir: input.agentDir,
