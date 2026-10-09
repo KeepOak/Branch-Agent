@@ -1,0 +1,28 @@
+name: C3 main regression proof
+on:
+  push:
+    branches: [trunk/arch-c3-operation-key]
+permissions:
+  contents: read
+jobs:
+  main-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Run only the new regressions against unchanged main implementation
+        run: |
+          node --input-type=module <<'JS'
+          import { preparePnpm, run, engineRoot, verifiedExceptionFlags } from './scripts/feature-batch-ci-runtime.mjs';
+          const pnpm = await preparePnpm();
+          await run(pnpm, ['install', '--frozen-lockfile', '--ignore-scripts', ...await verifiedExceptionFlags('engine')], engineRoot);
+          await run(process.execPath, ['scripts/run-vitest.mjs', 'run', 'src/agents/tools/sessions-send-operation-key.test.ts'], engineRoot);
+          JS
