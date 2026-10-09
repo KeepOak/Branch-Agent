@@ -38,10 +38,11 @@ describe("main-thread work tally", () => {
 
 describe("main-thread work names", () => {
   it("caps a caller-chosen name at record time", () => {
-    const longName = `rpc.${"x".repeat(200)}`;
-    recordMainThreadWork("rpc-send", longName, 5);
+    const hugeName = `rpc.${"x".repeat(10_000)}`;
+    recordMainThreadWork("rpc-send", hugeName, 5);
     const summary = takeMainThreadWorkSummary();
-    expect(summary).not.toContain(longName);
+    expect(summary).not.toContain("x".repeat(65));
+    expect(summary.length).toBeLessThan(200);
     expect(summary).toMatch(/^rpc-send:rpc\.x{60}…=5ms\/1$/);
   });
 });
