@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { errorText } from "./adapter";
 
+/** How long a settings read may wait before the page says the engine did not answer. A late answer still lands. */
+export const READ_WAIT_MS = 20_000;
+export const NO_ANSWER = "The engine didn’t answer in time.";
+
 /** A stale response never replaces a newer load or a different page's state. */
 export function useResource<T>(engine: WindowEngine, method: string, params: unknown = {}) {
   const paramsKey = JSON.stringify(params);
@@ -10,10 +14,14 @@ export function useResource<T>(engine: WindowEngine, method: string, params: unk
   const reload = useCallback(async () => {
     const current = ++generation.current;
     setState({ loading: true });
+    const timer = setTimeout(() => {
+      if (current === generation.current) setState((s) => (s.loading ? { loading: false, error: NO_ANSWER } : s));
+    }, READ_WAIT_MS);
     try {
       const data = await engine.request<T>(method, JSON.parse(paramsKey));
       if (current === generation.current) setState({ data, loading: false });
     } catch (error) { if (current === generation.current) setState({ error: errorText(error), loading: false }); }
+    finally { clearTimeout(timer); }
   }, [engine, method, paramsKey]);
   useEffect(() => { void reload(); return () => { generation.current++; }; }, [reload]);
   return { ...state, reload };

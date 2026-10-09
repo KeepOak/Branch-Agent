@@ -7,7 +7,7 @@ import type { WindowEngine } from "../../../connect/engine";
 import { list, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Dialog } from "../../../shell/Dialog";
-import { Btn, Ctl, Pill, Prow, Sec, Switch, useConfig, useLevel } from "../kit";
+import { Btn, Ctl, Pill, Prow, Sec, Status, Switch, useConfig, useLevel } from "../kit";
 import { Logo } from "./service";
 import type { Hw } from "./local";
 import { shownWhy } from "../../../shell/shown-why";
@@ -16,11 +16,11 @@ type Runtime = { id: string; name: string; mark: string; note: string; off?: str
 const NO_PROBE = "Branch can’t look for this runtime yet. Add it in Accounts as your own service.";
 export const RUNTIMES: Runtime[] = [
   { id: "ollama", mark: "OL", name: "Ollama", note: "Runs on this computer, so nothing leaves it and nothing is charged. Install Ollama and run `ollama serve`. No key needed." },
-  { id: "lmstudio", mark: "LS", name: "LM Studio", note: "Runs on this computer. Load a model in LM Studio and start its server. Any placeholder key works." },
-  { id: "vllm", mark: "VL", name: "vLLM", note: "Runs on this computer. Start vLLM with its OpenAI-compatible server. Any placeholder key works." },
-  { id: "llama-cpp", mark: "LC", name: "llama.cpp", note: "Runs on this computer. Start llama-server from llama.cpp. Any placeholder key works." },
-  { id: "localai", mark: "LO", name: "LocalAI", note: "Runs on this computer and can also make speech and pictures. Any placeholder key works.", off: NO_PROBE },
-  { id: "jan", mark: "JA", name: "Jan", note: "Runs on this computer. Turn on Jan’s local server. Any placeholder key works.", off: NO_PROBE },
+  { id: "lmstudio", mark: "LS", name: "LM Studio", note: "Runs on this computer. Load a model in LM Studio and start its server. No account needed." },
+  { id: "vllm", mark: "VL", name: "vLLM", note: "Runs on this computer. Start vLLM with its OpenAI-compatible server. No account needed." },
+  { id: "llama-cpp", mark: "LC", name: "llama.cpp", note: "Runs on this computer. Start llama-server from llama.cpp. No account needed." },
+  { id: "localai", mark: "LO", name: "LocalAI", note: "Runs on this computer and can also make speech and pictures. No account needed.", off: NO_PROBE },
+  { id: "jan", mark: "JA", name: "Jan", note: "Runs on this computer. Turn on Jan’s local server. No account needed.", off: NO_PROBE },
   { id: "litellm", mark: "LI", name: "LiteLLM proxy", note: "A proxy you run yourself that speaks OpenAI’s shape and forwards to whichever service you configured behind it. Point this at wherever you run it." },
 ];
 const NOT_FOUND = "Not found on this computer. Branch can use it as soon as it runs.";
@@ -35,6 +35,17 @@ function reasonFor(r: Runtime, detect: RecordValue | undefined): string | undefi
   return hit ? visible(hit.reason) : undefined;
 }
 
+function RuntimeRow({ engine, r, lv, found, detect, busy, looked, onLook, showShare }: { engine: WindowEngine; r: Runtime; lv: number; found: Set<string>; detect: Res; busy: string | null; looked: Set<string>; onLook: (r: Runtime) => void; showShare: boolean }) {
+  const on = found.has(r.id);
+  return [
+    <Prow key={r.id} icon={<Logo id={r.id} name={r.mark} size={30} />} title={r.name} sub={!on && r.off ? r.off : !on && looked.has(r.id) ? reasonFor(r, detect.data) ?? NOT_FOUND : r.note}>
+      <RuntimeRight r={r} on={on} loading={detect.loading && busy !== r.id} busy={busy === r.id} looked={looked.has(r.id)} onLook={() => onLook(r)} />
+    </Prow>,
+    showShare && on && lv >= 1 ? <ShareRow key="share" engine={engine} /> : null,
+  ];
+}
+
+/** One recommendation first (Ollama, free and nothing to sign up for); the other runtimes sit behind More runtimes. */
 export function Runtimes({ engine, hw, detect, models, found }: Props) {
   const lv = useLevel();
   const [looked, setLooked] = useState<Set<string>>(new Set());
@@ -50,19 +61,20 @@ export function Runtimes({ engine, hw, detect, models, found }: Props) {
     if (hw.windows && /\bWSL\b/.test(reasonFor(r, detect.data) ?? "")) setWsl(true);
     else void look(r);
   };
+  const [start, ...more] = RUNTIMES;
+  const rowProps = { engine, lv, found, detect, busy, looked, onLook: lookFor };
   return (
     <Sec title="Runtimes">
+      {detect.error ? <Status tone="warn" title="Branch couldn’t check which runtimes are installed." action={<Btn sm onClick={() => void detect.reload()}>Try again</Btn>}>{visible(detect.error)}</Status> : null}
       <div className="rows rt-k">
-        {RUNTIMES.map((r) => {
-          const on = found.has(r.id);
-          return [
-            <Prow key={r.id} icon={<Logo id={r.id} name={r.mark} size={30} />} title={r.name} sub={!on && looked.has(r.id) ? reasonFor(r, detect.data) ?? NOT_FOUND : r.note}>
-              <RuntimeRight r={r} on={on} loading={detect.loading && busy !== r.id} busy={busy === r.id} looked={looked.has(r.id)} onLook={() => lookFor(r)} />
-            </Prow>,
-            on && r.id === "ollama" && lv >= 1 ? <ShareRow key="share" engine={engine} /> : null,
-          ];
-        })}
+        <RuntimeRow r={start} showShare {...rowProps} />
       </div>
+      <details className="rt-more">
+        <summary>More runtimes ({more.length})</summary>
+        <div className="rows rt-k">
+          {more.map((r) => <RuntimeRow key={r.id} r={r} showShare={false} {...rowProps} />)}
+        </div>
+      </details>
       {wsl ? <WslDialog onClose={() => setWsl(false)} /> : null}
     </Sec>
   );
@@ -72,7 +84,7 @@ type RightProps = { r: Runtime; on: boolean; loading: boolean; busy: boolean; lo
 function RuntimeRight({ r, on, loading, busy, looked, onLook }: RightProps) {
   if (on) return <Pill tone="ok">Found</Pill>;
   if (loading) return <Pill tone="idle">Looking…</Pill>;
-  if (r.off) return <Btn ghost sm disabled title={shownWhy(r.off)}>Look for it</Btn>;
+  if (r.off) return null;
   if (busy) return <Btn ghost sm disabled>Looking…</Btn>;
   return <>{looked ? <Pill tone="idle">Not found</Pill> : null}<Btn ghost sm onClick={onLook}>{looked ? "Look again" : "Look for it"}</Btn></>;
 }
