@@ -3,6 +3,7 @@ import type { SettingsPageProps } from "../index";
 import type { RowEntry } from "../kit";
 import { AccountsPage } from "../set1/accounts";
 import { GeneralPage, GENERAL_ROWS } from "../set1/general";
+import { BranchAccountPage, ACCOUNT_ROWS } from "../set1/branch-account";
 import { PeoplePage, PEOPLE_ROWS } from "../set1/people";
 import { AppearancePage, APPEARANCE_ROWS } from "../set1/appearance";
 import { NotificationsPage, NOTIFICATIONS_ROWS } from "../set1/notifications";
@@ -13,6 +14,7 @@ import { ACCOUNTS_ROWS } from "../set1/rows";
 
 export const PAGES: Record<string, ComponentType<SettingsPageProps>> = {
   general: GeneralPage,
+  account: BranchAccountPage,
   people: PeoplePage,
   appearance: AppearancePage,
   notifications: NotificationsPage,
@@ -22,4 +24,4 @@ export const PAGES: Record<string, ComponentType<SettingsPageProps>> = {
   accounts: AccountsPage,
 };
 
-export const ROWS: RowEntry[] = [...GENERAL_ROWS, ...PEOPLE_ROWS, ...APPEARANCE_ROWS, ...NOTIFICATIONS_ROWS, ...INSTRUCTIONS_ROWS, ...MODELS_ROWS, ...LOCAL_ROWS, ...ACCOUNTS_ROWS];
+export const ROWS: RowEntry[] = [...GENERAL_ROWS, ...ACCOUNT_ROWS, ...PEOPLE_ROWS, ...APPEARANCE_ROWS, ...NOTIFICATIONS_ROWS, ...INSTRUCTIONS_ROWS, ...MODELS_ROWS, ...LOCAL_ROWS, ...ACCOUNTS_ROWS];

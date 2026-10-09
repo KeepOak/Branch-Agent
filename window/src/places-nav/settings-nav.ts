@@ -8,6 +8,7 @@ const BASE: SettingsGroup[] = [
     name: "General",
     pages: [
       { id: "general", name: "General" },
+      { id: "account", name: "Branch account" },
       { id: "people", name: "People" },
       { id: "appearance", name: "Appearance" },
       { id: "notifications", name: "Notifications" },
@@ -87,6 +88,7 @@ export function levelFor(page: string, level: Level): Level {
 /** Extra words each page answers to (the preview's KEYS_E18), so "dark" finds Appearance. */
 const KEYWORDS: Record<string, string> = {
   general: "start startup windows tray projects keyboard shortcuts vim summaries",
+  account: "google sign in sign out branch account keychain",
   people: "person family child pin invite profile sign in",
   appearance: "dark light moonlight daylight theme themes colour color accent contrast background scene pet font text size width language mirror skin",
   notifications: "quiet hours sound chime days off alerts ping",

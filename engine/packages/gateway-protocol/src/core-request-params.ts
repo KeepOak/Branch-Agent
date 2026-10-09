@@ -1,4 +1,5 @@
 import type { Static } from "typebox";
+import type { AccountSignOutParams, AccountStatusParams } from "./schema/account.js";
 import type * as AgentSchema from "./schema/agent.js";
 import type { MemoryExportParams } from "./schema/agents-files.js";
 import type {
@@ -40,6 +41,8 @@ export type GatewayCoreRequestParams = {
   "backup.schedule.set": BackupScheduleSetParams;
   "backup.schedule.clear": BackupScheduleClearParams;
   "backup.run": BackupRunParams;
+  "account.status": AccountStatusParams;
+  "account.signOut": AccountSignOutParams;
   "storage.locations.list": StorageLocationsListParams;
   "storage.locations.probe": StorageLocationsProbeParams;
   "presence.activity": PresenceActivityParams;

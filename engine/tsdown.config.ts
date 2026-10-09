@@ -70,6 +70,9 @@ type ExternalOptionFunction = (
 
 const env = {
   NODE_ENV: "production",
+  // Settings › Branch account: the desktop Google OAuth client, from the release build's environment (never the repo).
+  BRANCH_GOOGLE_OAUTH_CLIENT_ID: process.env.BRANCH_GOOGLE_OAUTH_CLIENT_ID ?? "",
+  BRANCH_GOOGLE_OAUTH_CLIENT_SECRET: process.env.BRANCH_GOOGLE_OAUTH_CLIENT_SECRET ?? "",
 };
 const workerDeployVersion = (
   JSON.parse(fs.readFileSync("package.json", "utf8")) as { version: string }

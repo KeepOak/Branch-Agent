@@ -686,4 +686,7 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["backup.schedule.set", "backup", "operator.admin", "2026.9"],
   ["backup.schedule.clear", "backup", "operator.admin", "2026.9"],
   ["backup.run", "backup", "operator.admin", "2026.9"],
+  ["account.status", "account", "operator.read", "2026.10"],
+  ["account.google.signIn", "account", "operator.admin", "2026.10", CONTROL_PLANE_WRITE],
+  ["account.signOut", "account", "operator.admin", "2026.10", CONTROL_PLANE_WRITE],
 ] as const satisfies readonly CoreGatewayMethodSpecRow[];

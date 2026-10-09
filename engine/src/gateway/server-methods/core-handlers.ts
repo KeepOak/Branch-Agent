@@ -13,6 +13,7 @@ import type { GatewayRequestHandlers } from "./types.js";
 type CoreGatewayHandlerModuleLoader = () => Promise<GatewayRequestHandlers>;
 
 const CORE_GATEWAY_HANDLER_MODULES = {
+  account: () => import("./account.js").then((module) => module.accountHandlers),
   agent: () => import("./agent.js").then((module) => module.agentHandlers),
   "agent-identity": () =>
     import("./agent-identity.js").then((module) => module.agentIdentityHandlers),

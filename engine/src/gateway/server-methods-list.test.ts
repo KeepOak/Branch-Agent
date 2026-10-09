@@ -308,6 +308,9 @@ describe("listGatewayMethods", () => {
       "backup.schedule.set",
       "backup.schedule.clear",
       "backup.run",
+      "account.status",
+      "account.google.signIn",
+      "account.signOut",
     ];
     expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
     const methods = listGatewayMethods();
@@ -421,6 +424,9 @@ describe("listGatewayMethods", () => {
       "backup.schedule.set",
       "backup.schedule.clear",
       "backup.run",
+      "account.status",
+      "account.google.signIn",
+      "account.signOut",
     ]);
   });
 
@@ -668,6 +674,9 @@ describe("listGatewayMethods", () => {
       "backup.schedule.set",
       "backup.schedule.clear",
       "backup.run",
+      "account.status",
+      "account.google.signIn",
+      "account.signOut",
     ];
     expect(coreMethods.slice(-expectedCoreSuffix.length)).toEqual(expectedCoreSuffix);
     expect(methods.indexOf("approval.get")).toBeGreaterThan(methods.indexOf("tts.speak"));
