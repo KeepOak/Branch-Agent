@@ -1,7 +1,7 @@
-import os from "node:os";
 import { invokeNativeHookRelay, onAgentEvent } from "branch/plugin-sdk/agent-harness-runtime";
 import { acquireHostHeavyStep } from "branch/plugin-sdk/native-hook-relay-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as availableMemory from "../../../../scripts/lib/available-memory.mjs";
 import { createFixtureLifetime } from "../../../../test/helpers/fixture-lifetime.js";
 import { createCodexTestHostCapabilities } from "./host-capability.test-support.js";
 import {
@@ -44,7 +44,7 @@ it("native heavy steps wait for memory, inherit the owner in scripts, and releas
   vi.stubEnv("BRANCH_HEAVY_STEP_DIRECTORY", root);
   vi.stubEnv("BRANCH_HOST_HEAVY_STEP_OWNER", "");
   vi.stubEnv("BRANCH_HEAVY_STEP_BUILD_MEMORY_MB", "8");
-  const memory = vi.spyOn(os, "freemem").mockReturnValue(1024);
+  const memory = vi.spyOn(availableMemory, "availableMemoryBytes").mockReturnValue(1024);
   const client = createClientHarness();
   const origin = source(false);
   const waiting = vi.fn();

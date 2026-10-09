@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as fileLock from "@openclaw/fs-safe/file-lock";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import * as availableMemory from "../../scripts/lib/available-memory.mts";
+import * as availableMemory from "../../scripts/lib/available-memory.mjs";
 import {
   acquireDistArtifactOwnership,
   resolveDistArtifactLockPath,
@@ -35,6 +35,7 @@ beforeEach(() => {
   vi.spyOn(availableMemory, "availableMemoryBytes").mockImplementation(() => os.freemem());
 });
 const fixture = createFixtureLifetime();
+const readAvailableMemory = availableMemory.availableMemoryBytes;
 afterEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
@@ -51,7 +52,14 @@ const createRoot = () => {
 it("host admission uses reclaimable memory for root and larger inherited steps", async () => {
   const root = createRoot();
   vi.spyOn(os, "freemem").mockReturnValue(0);
-  vi.mocked(availableMemory.availableMemoryBytes).mockReturnValue(16 * 1024 ** 2);
+  vi.mocked(availableMemory.availableMemoryBytes).mockImplementation(() =>
+    readAvailableMemory({
+      platform: "darwin",
+      freemem: 0,
+      vmStat:
+        "Mach Virtual Memory Statistics: (page size of 4096 bytes)\nPages free: 0.\nPages inactive: 4096.\nPages purgeable: 0.\n",
+    }),
+  );
   const controller = new AbortController();
   const waiting = vi.fn(() => controller.abort());
   const owner = await acquireHostHeavyStep("build", {
@@ -572,6 +580,17 @@ it("host memory thresholds are configurable without a minimum or upper cap", () 
     resolveHeavyStepMemoryNeed("typecheck", { BRANCH_HEAVY_STEP_TYPECHECK_MEMORY_MB: "100000" }),
   ).toBe(100000 * 1024 ** 2);
   expect(resolveHeavyStepMemoryNeed("test", { BRANCH_HEAVY_STEP_TEST_MEMORY_MB: "invalid" })).toBe(
+    Math.min(6 * 1024 ** 3, Math.floor(os.totalmem() / 4)),
+  );
+});
+
+it("host default memory needs fit small hosts while explicit settings remain absolute", () => {
+  vi.spyOn(os, "totalmem").mockReturnValue(7 * 1024 ** 3);
+  syncBuiltinESMExports();
+  expect(resolveHeavyStepMemoryNeed("test", {})).toBe((7 * 1024 ** 3) / 4);
+  expect(resolveHeavyStepMemoryNeed("typecheck", {})).toBe((7 * 1024 ** 3) / 4);
+  expect(resolveHeavyStepMemoryNeed("build", {})).toBe((7 * 1024 ** 3) / 4);
+  expect(resolveHeavyStepMemoryNeed("test", { BRANCH_HEAVY_STEP_TEST_MEMORY_MB: "6144" })).toBe(
     6 * 1024 ** 3,
   );
 });
@@ -707,7 +726,9 @@ it("host admission shares one FIFO slot across real processes in different workt
     expect(await third.closed).toBe(0);
   } finally {
     for (const { child } of children) {
-      if (child.exitCode === null && child.signalCode === null) child.kill();
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill();
+      }
     }
     await Promise.all(children.map(({ closed }) => closed));
   }

@@ -40,6 +40,8 @@ The execution host can configure these environment settings:
 
 Values are memory requirements, not limits on the process. Any nonnegative finite
 value is accepted; `0` disables the memory floor while preserving serialization.
+Without an override, each default is at most a quarter of total RAM, using the
+same load rule as the desktop update check.
 `BRANCH_HEAVY_STEP_DIRECTORY` selects the shared admission directory. Its default
 is scoped to the current operating-system user, independent of checkout, Trunk,
 thread or running Gateway. Use the same directory for runs on the same computer.

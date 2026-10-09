@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { FileLockHandle } from "@openclaw/fs-safe/file-lock";
-import { availableMemoryBytes } from "./available-memory.mts";
+import { availableMemoryBytes, defaultMemoryNeedBytes } from "./available-memory.mjs";
 import {
   acquireDistArtifactOwnership,
   canReclaimDistArtifactOwner,
@@ -30,7 +30,7 @@ export function resolveHeavyStepMemoryNeed(kind: HeavyStepKind, env = process.en
     configured >= 0 &&
     env[`BRANCH_HEAVY_STEP_${kind.toUpperCase()}_MEMORY_MB`]?.trim()
     ? configured * 1024 ** 2
-    : DEFAULT_HEAVY_STEP_MEMORY_MB[kind] * 1024 ** 2;
+    : defaultMemoryNeedBytes(DEFAULT_HEAVY_STEP_MEMORY_MB[kind] * 1024 ** 2);
 }
 
 export type HostHeavyStepHandle = {

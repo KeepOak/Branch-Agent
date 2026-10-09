@@ -1,6 +1,6 @@
-import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
+import * as availableMemory from "../../scripts/lib/available-memory.mjs";
 import { createFixtureLifetime } from "../../test/helpers/fixture-lifetime.js";
 import { createDeferred } from "../../test/helpers/promise.js";
 import type { RunExit, SpawnInput } from "../process/supervisor/types.js";
@@ -40,7 +40,7 @@ it("host-heavy admission publishes memory waiting, leaves light exec free, and r
     BRANCH_HOST_HEAVY_STEP_OWNER: "",
     BRANCH_HEAVY_STEP_BUILD_MEMORY_MB: "8",
   };
-  const memory = vi.spyOn(os, "freemem").mockReturnValue(1024);
+  const memory = vi.spyOn(availableMemory, "availableMemoryBytes").mockReturnValue(1024);
   const update = vi.fn();
   const controller = new AbortController();
   const completion = createDeferred<RunExit>();

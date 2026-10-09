@@ -1,24 +1,17 @@
-// Uses the available-memory probe from desktop/src/available-memory.ts.
-// Unused pages alone omit reclaimable cache on macOS and Linux.
+// Shared desktop/admission probe: reclaimable cache is available memory (#459).
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { freemem } from "node:os";
+import { freemem, totalmem } from "node:os";
 
-export interface MemoryProbe {
-  platform?: NodeJS.Platform;
-  meminfo?: string;
-  vmStat?: string;
-  freemem?: number;
-}
-
-function pages(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined;
+function pages(value) {
+  if (value === undefined) {
+    return undefined;
+  }
   const n = Number(value);
   return Number.isFinite(n) && n >= 0 ? n : undefined;
 }
 
-/** Bytes the OS can give a new process, including reclaimable cache. */
-export function availableMemoryBytes(probe: MemoryProbe = {}): number {
+export function availableMemory(probe = {}) {
   const platform = probe.platform ?? process.platform;
   try {
     if (platform === "linux") {
@@ -26,7 +19,9 @@ export function availableMemoryBytes(probe: MemoryProbe = {}): number {
         probe.meminfo ?? readFileSync("/proc/meminfo", "utf8"),
       )?.[1];
       const kib = pages(available);
-      if (kib !== undefined) return kib * 1024;
+      if (kib !== undefined) {
+        return { bytes: kib * 1024, measure: "MemAvailable" };
+      }
     }
     if (platform === "darwin") {
       const text =
@@ -42,11 +37,20 @@ export function availableMemoryBytes(probe: MemoryProbe = {}): number {
       const inactive = pages(/^Pages inactive:\s+(\d+)\./mu.exec(text)?.[1]);
       const purgeable = pages(/^Pages purgeable:\s+(\d+)\./mu.exec(text)?.[1]) ?? 0;
       if (pageSize !== undefined && free !== undefined && inactive !== undefined) {
-        return (free + inactive + purgeable) * pageSize;
+        return { bytes: (free + inactive + purgeable) * pageSize, measure: "vm_stat" };
       }
     }
   } catch {
-    // Preserve the desktop probe's behavior when an OS counter is unavailable.
+    // Preserve the desktop probe's existing behavior when an OS counter is unavailable.
   }
-  return probe.freemem ?? freemem();
+  return { bytes: probe.freemem ?? freemem(), measure: "os.freemem" };
+}
+
+export function availableMemoryBytes(probe = {}) {
+  return availableMemory(probe).bytes;
+}
+
+// The desktop's existing default-load rule; explicit settings remain absolute.
+export function defaultMemoryNeedBytes(defaultBytes, totalBytes = totalmem()) {
+  return Math.min(defaultBytes, Math.floor(totalBytes / 4));
 }

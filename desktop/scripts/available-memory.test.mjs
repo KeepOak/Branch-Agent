@@ -23,6 +23,12 @@ const linuxMeminfo = [
   "Cached:          4567890 kB",
 ].join("\n");
 
+test("desktop packages the single canonical memory implementation", () => {
+  const shared = readFileSync(new URL("../../engine/scripts/lib/available-memory.mjs", import.meta.url), "utf8");
+  const packaged = readFileSync(join(process.env.BRANCH_DESKTOP_TEST_DIST, "available-memory-core.mjs"), "utf8");
+  assert.equal(packaged, shared);
+});
+
 test("Linux uses MemAvailable, not MemFree", () => {
   const strictlyFree = 80 * MIB;
   const memory = availableMemory({ platform: "linux", meminfo: linuxMeminfo, freemem: strictlyFree });

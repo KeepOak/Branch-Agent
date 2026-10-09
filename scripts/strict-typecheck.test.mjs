@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { access, readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { availableMemoryBytes } from '../engine/scripts/lib/available-memory.mts';
+import { availableMemoryBytes } from '../engine/scripts/lib/available-memory.mjs';
 
 test('available memory includes reclaimable macOS pages instead of only unused pages', () => {
   assert.equal(availableMemoryBytes({
@@ -25,7 +25,8 @@ test('native tooling loads host admission without a source-loader preload', () =
     `const admission = await import(${JSON.stringify(entrypoint.href)});\n` +
     `const facade = await import(${JSON.stringify(facade.href)});\n` +
     `if (typeof facade.withDistArtifactOwnership !== 'function') throw new Error('Missing artifact facade');\n` +
-    `if (admission.resolveHeavyStepMemoryNeed('test', {}) !== 6144 * 1024 ** 2) throw new Error('Wrong test memory default');`], {
+    `const os = await import('node:os');\n` +
+    `if (admission.resolveHeavyStepMemoryNeed('test', {}) !== Math.min(6144 * 1024 ** 2, Math.floor(os.totalmem() / 4))) throw new Error('Wrong test memory default');`], {
     env: { ...process.env, NODE_OPTIONS: '' },
     encoding: 'utf8', windowsHide: true, timeout: 30000,
   });
