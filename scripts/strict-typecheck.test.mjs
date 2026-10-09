@@ -1,6 +1,21 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { access, readFile } from 'node:fs/promises';
 import test from 'node:test';
+
+test('native tooling loads host admission without a source-loader preload', () => {
+  const entrypoint = new URL('../engine/scripts/lib/host-heavy-step.mts', import.meta.url);
+  const facade = new URL('../engine/scripts/lib/dist-artifact-ownership.mts', import.meta.url);
+  const result = spawnSync(process.execPath, ['--input-type=module', '--eval',
+    `const admission = await import(${JSON.stringify(entrypoint.href)});\n` +
+    `const facade = await import(${JSON.stringify(facade.href)});\n` +
+    `if (typeof facade.withDistArtifactOwnership !== 'function') throw new Error('Missing artifact facade');\n` +
+    `if (admission.resolveHeavyStepMemoryNeed('test', {}) !== 6144 * 1024 ** 2) throw new Error('Wrong test memory default');`], {
+    env: { ...process.env, NODE_OPTIONS: '' },
+    encoding: 'utf8', windowsHide: true, timeout: 30000,
+  });
+  assert.equal(result.status, 0, result.stderr || result.error?.message || 'native admission bootstrap failed');
+});
 
 test('runs the same targeted strict check CI runs', async () => {
   const local = await readFile(new URL('./strict-typecheck.mjs', import.meta.url), 'utf8');

@@ -7,7 +7,7 @@ import type { FileLockHandle } from "@openclaw/fs-safe/file-lock";
 import {
   DEFAULT_HEAVY_STEP_MEMORY_MB,
   type HeavyStepKind,
-} from "../../src/infra/heavy-step-command.js";
+} from "./heavy-step-command.mts";
 import {
   acquireDistArtifactOwnership,
   canReclaimDistArtifactOwner,

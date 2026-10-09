@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { resolveHeavyStepArgv } from "../../src/infra/heavy-step-command.js";
+import { resolveHeavyStepArgv } from "./heavy-step-command.mts";
 import { isDirectRunUrl } from "./direct-run.mjs";
 import {
   runOwnedDistArtifactEntry,
