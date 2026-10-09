@@ -1,0 +1,3 @@
+window:src/shell/SidebarPet.test.ts
+window:src/shell/shown.test.tsx
+window:src/shell/pet-row-redesign.test.tsx
