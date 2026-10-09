@@ -739,7 +739,7 @@ export const ToolsSchema = z
       .strictObject({
         /** Default: false. True lets a Trunk change its own model; without Full access each change asks first. */
         enabled: z.boolean().optional(),
-        /** Default: false. True lets a Trunk choose a model when it starts a task. */
+        /** Default: true. False refuses a model a Trunk names when it starts a task (sessions_spawn). */
         perTask: z.boolean().optional(),
       })
       .optional(),

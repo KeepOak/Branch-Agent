@@ -96,17 +96,18 @@ describe("Settings › Models", () => {
     const { engine, request } = engineOf();
     await render(engine, 1);
     const sw = (label: string) => host.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
-    for (const [label, key] of [["Trunks may switch their own model", "enabled"], ["Pick the model per task", "perTask"]] as const) {
+    // Own-model changes start off; choosing the model at task start starts on (the engine's defaults).
+    for (const [label, key, before] of [["Trunks may switch their own model", "enabled", false], ["Pick the model per task", "perTask", true]] as const) {
       expect(sw(label).disabled).toBe(false);
-      expect(sw(label).checked).toBe(false);
+      expect(sw(label).checked).toBe(before);
       await act(async () => sw(label).click());
-      expect(patches(request)).toContainEqual({ tools: { modelChoice: { [key]: true } } });
+      expect(patches(request)).toContainEqual({ tools: { modelChoice: { [key]: !before } } });
     }
     await act(async () => root.unmount());
     root = createRoot(host);
-    await render(engineOf({ tools: { modelChoice: { enabled: true, perTask: true } } }).engine, 1);
+    await render(engineOf({ tools: { modelChoice: { enabled: true, perTask: false } } }).engine, 1);
     expect(sw("Trunks may switch their own model").checked).toBe(true);
-    expect(sw("Pick the model per task").checked).toBe(true);
+    expect(sw("Pick the model per task").checked).toBe(false);
   });
 
   it("Technical shows one Per account heading with its sections together", async () => {

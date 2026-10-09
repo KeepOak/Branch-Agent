@@ -14,6 +14,17 @@ export const MODEL_CHOICE_OFF_MESSAGE =
 export const MODEL_CHOICE_NO_PROMPT_MESSAGE =
   "Nothing was changed: switching the model needs the person's approval, and Branch can't ask them from here.";
 
+export const MODEL_CHOICE_PER_TASK_OFF_MESSAGE =
+  'Nothing was started: "Pick the model per task" is off in Settings › Models. Start the task without a model, or ask the person to turn that setting on.';
+
+/**
+ * A Trunk may name the model when it starts a task (sessions_spawn `model`), as
+ * upstream allows, unless the owner turns "Pick the model per task" off.
+ */
+export function isPerTaskModelChoiceEnabled(cfg: BranchConfig | undefined): boolean {
+  return cfg?.tools?.modelChoice?.perTask !== false;
+}
+
 /** Trunk-made model and sign-in changes are off unless the owner turns them on. */
 export function isAgentModelChoiceEnabled(cfg: BranchConfig | undefined): boolean {
   return cfg?.tools?.modelChoice?.enabled === true;

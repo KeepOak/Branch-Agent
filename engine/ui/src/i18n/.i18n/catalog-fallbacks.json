@@ -3190,7 +3190,7 @@
       "zh-CN",
       "zh-TW"
     ],
-    "configHints.tools%2EmodelChoice.help.v1-1x9mb5t-52": [
+    "configHints.tools%2EmodelChoice.help.v1-nnufra-7t": [
       "ar",
       "de",
       "es",
@@ -3278,7 +3278,7 @@
       "zh-CN",
       "zh-TW"
     ],
-    "configHints.tools%2EmodelChoice%2EperTask.help.v1-19v4xpm-1v": [
+    "configHints.tools%2EmodelChoice%2EperTask.help.v1-15lxg50-4k": [
       "ar",
       "de",
       "es",
@@ -7657,6 +7657,6 @@
       "zh-TW"
     ]
   },
-  "sourceHash": "3987a8b69a1e7f9bd4a76cb27f886923cdb62bbbc455786eba385d9e13a9931d",
+  "sourceHash": "6b40e212c7d0f6c1fefdbedc813dbe729a01ba0cbaceaf8edec39513e1652ff4",
   "version": 1
 }

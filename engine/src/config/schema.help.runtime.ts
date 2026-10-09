@@ -129,11 +129,11 @@ export const RUNTIME_FIELD_HELP: Record<string, string> = {
   "tools.agentToAgent.allow":
     "Agent ids or * patterns that may take part in cross-agent calls; the requesting and target agent must both match. Cross-agent access is on by default, and omitted or empty allow permits every pair. Set an explicit list to restrict access; blank entries deny.",
   "tools.modelChoice":
-    "Trunk-made model and sign-in changes (default: off). With Full access a change applies at once; without it the person gets one approve prompt and nothing changes until they allow it.",
+    "Trunk-made model and sign-in choices. A Trunk changing its own model is off by default; with Full access a change applies at once, without it the person gets one approve prompt and nothing changes until they allow it. Choosing the model when a Trunk starts a task is on by default.",
   "tools.modelChoice.enabled":
     "Lets a Trunk change its own model through session_status or the sessions tool (default: false). While false, agent-made model changes are refused and nothing is written.",
   "tools.modelChoice.perTask":
-    "Lets a Trunk choose a model when it starts a task (default: false).",
+    "Lets a Trunk choose the model when it starts a task with sessions_spawn (default: true). While false, a task start that names a model is refused and nothing starts.",
   "tools.updatePlan":
     "Unified `progress_card` status tool for durable plans and narrative notes in parent sessions. Enabled by default; set false to opt out. Always unavailable to subagents.",
   "tools.toolSearch":

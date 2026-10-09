@@ -75,7 +75,7 @@ function SmallerJobs({ m }: { m: ModelsCtx }) {
         <Pick label="Sub-tasks and side jobs" value={side} options={[{ id: "", label: "Automatic" }, ...modelOpts(m.models)]} onChange={(v) => void m.cfg.set(m.own("subagents", "model"), v || null)} />
       </Ctl>
       <Ctl title="Pick the model per task" sub="A Trunk may choose the model when it starts a task.">
-        <Switch checked={m.cfg.get(MODEL_CHOICE_PER_TASK) === true} label="Pick the model per task" onChange={(v) => void m.cfg.set(MODEL_CHOICE_PER_TASK, v)} />
+        <Switch checked={m.cfg.get(MODEL_CHOICE_PER_TASK) !== false} label="Pick the model per task" onChange={(v) => void m.cfg.set(MODEL_CHOICE_PER_TASK, v)} />
       </Ctl>
       <Ctl title="Planning model" sub="Writes the plan in Plan first." off={NONE}><Pick label="Planning model" value="" options={[{ id: "", label: "Same model" }]} onChange={() => undefined} /></Ctl>
       <Ctl title="Mix models on hard questions" sub="Asks two and merges the best of each." help="Asks two and merges the best of each. Off until you choose: it doubles the cost." off={NONE}><Switch checked={false} label="Mix models on hard questions" onChange={() => undefined} /></Ctl>
