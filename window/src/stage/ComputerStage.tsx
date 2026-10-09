@@ -228,7 +228,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
     setMenu({
       at,
       label: "More for this view",
-      items: [{ label: "Disconnect", run: () => onClose(), disabled: view.phase === "connected" ? undefined : "Nothing is connected." }],
+      items: [{ label: "Disconnect", run: () => onClose(), disabled: connected ? undefined : "Nothing is connected." }],
     });
   const title = `${name}’s ${browser ? "browser" : "computer"}`;
   return (
@@ -250,7 +250,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
           ) : (
             <button type="button" className="st7-pick" aria-haspopup="dialog" aria-expanded={picker !== null} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setPicker(picker ? null : { x: r.left, y: r.bottom + 6 }); }}>
               <SIcon name="layers" small />
-              {where.loaded ? pickerLabel(where.computers, current) : "Computers"}
+              {native ? "This computer (viewing)" : where.loaded ? pickerLabel(where.computers, current) : "Computers"}
               <SIcon name="down" small />
             </button>
           )}

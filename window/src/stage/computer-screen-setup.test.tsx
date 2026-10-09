@@ -60,6 +60,7 @@ describe("computer screen setup", () => {
     const close = request.mock.calls.find(([method, params]) => method === "computer.invoke" && (params as { params: { action?: string } }).params.action === "__close_execution");
     expect(close).toBeDefined();
     expect(document.body.textContent).not.toContain("Take over");
+    expect(document.querySelector(".st7-pick")?.textContent).toContain("This computer (viewing)");
   });
   it("keeps the switch available after a refused save with a plain message", async () => {
     const { engine, request } = fixture(undefined, true);
