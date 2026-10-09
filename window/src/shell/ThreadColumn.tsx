@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Face } from "../face/Face";
 import type { TopicListItem } from "./contact-topics";
+import { threadCountLabel } from "./sidebar-row";
 import "./v23-layout.css";
 
 type Props = {
@@ -32,7 +33,7 @@ export function ThreadColumn({ name, generalKey, openKey, items, onOpen }: Props
   return <nav className={visible ? "v23-threads" : "v23-threads v23-threads-hidden"} aria-label={`Threads with ${name}`}>
     <div className="v23-threads-head">
       <button type="button" className="v23-layout-button" aria-label={`How threads show: ${visible ? "Column" : "Hidden"}`} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>◫</button>
-      <strong>{name}</strong><small>{threads.length} {threads.length === 1 ? "thread" : "threads"}</small>
+      <strong>{name}</strong><small>{threadCountLabel(threads.length)}</small>
       {menu ? <div className="v23-threads-menu" role="menu" aria-label="Threads show as">
         <button type="button" role="menuitemradio" aria-checked={visible} onClick={() => { setVisible(true); setMenu(false); }}>Column</button>
         <button type="button" role="menuitemradio" aria-checked={!visible} onClick={() => { setVisible(false); setMenu(false); }}>Hidden</button>

@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Conversation } from "../connect/conversations";
 import { Pebble } from "../face/Pebble";
 import { badgeList, type RowExtras } from "./ConversationRow";
+import { rowCardPosition, rowDisplayName } from "./sidebar-row";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
 type Line = { role: string; text: string };
@@ -68,17 +69,21 @@ export function RowCard({ row, anchor, request, trunkName, personName, project, 
     const el = ref.current;
     const side = anchor.closest(".side")?.getBoundingClientRect();
     if (!el || !side) return;
+    const thread = anchor.ownerDocument.querySelector(".v23-threads:not(.v23-threads-hidden), .topicsT5")?.getBoundingClientRect() ?? null;
     const r = anchor.getBoundingClientRect();
-    const w = el.offsetWidth;
-    const h = el.offsetHeight;
-    const left = side.right + 8 + w > innerWidth - 8 ? Math.max(8, r.left + 24) : side.right + 8;
-    setPos({ left, top: Math.max(8, Math.min(r.top, innerHeight - h - 8)) });
+    setPos(rowCardPosition({
+      anchor: r,
+      sidebar: side,
+      thread,
+      card: { width: el.offsetWidth, height: el.offsetHeight },
+      viewport: { width: innerWidth, height: innerHeight },
+    }));
   }, [anchor, latest.length]);
   const marks = badgeList(row, extras).map((b) => b.words);
   return (
     <div ref={ref} className="row-card" role="tooltip" id="row-card" data-testid="row-card" style={pos ? { left: pos.left, top: pos.top } : { visibility: "hidden" }}>
       <div className="cdh">
-        <b>{row.title || trunkName}</b>
+        <b>{rowDisplayName(row.title, trunkName) || trunkName || "New conversation"}</b>
         <small>{kindWords(row)}</small>
       </div>
       <div className="cdt">
