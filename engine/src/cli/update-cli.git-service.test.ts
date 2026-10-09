@@ -24,7 +24,6 @@ import {
   readPackageVersion,
   resolveGlobalManager,
   restartHealthTestControl,
-  retainUpdateRuntime,
   serviceDefinitionMutationCapability,
   serviceLoaded,
   serviceReadCommand,
