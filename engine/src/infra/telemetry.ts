@@ -286,6 +286,11 @@ async function prepareTelemetryPayload(
   };
 }
 
+/** Telemetry and the update check contact the telemetry endpoint only after an explicit opt-in. */
+export function isFeatureStatsOptedIn(config: BranchConfig): boolean {
+  return config.telemetry?.enabled === true && !isDoNotTrackEnabled();
+}
+
 export async function checkTelemetryUpdate(
   getConfig: () => BranchConfig,
   options: TelemetryUpdateOptions,
@@ -329,6 +334,10 @@ export async function checkTelemetryUpdate(
     ) {
       return { update: cached, networkAttempted: false };
     }
+    // Nothing leaves this machine unless the user opted in to feature stats and has not set Do Not Track.
+    if (!isFeatureStatsOptedIn(config)) {
+      return { update: cached, networkAttempted: false };
+    }
     if (
       lastFailedAttempt?.endpoint === endpoint &&
       lastFailedAttempt.stateDirectory === stateDirectory &&
@@ -351,7 +360,7 @@ export async function checkTelemetryUpdate(
     let networkAttempted = false;
 
     try {
-      const featureStatsEnabled = config.telemetry?.enabled === true && !isDoNotTrackEnabled();
+      const featureStatsEnabled = isFeatureStatsOptedIn(config);
       const headers: Record<string, string> = {
         "User-Agent": buildTelemetryUserAgent(options.surface),
       };
