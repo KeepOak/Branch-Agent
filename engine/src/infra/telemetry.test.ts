@@ -14,7 +14,6 @@ import {
   createBranchTestState,
   type BranchTestState,
 } from "../test-utils/branch-test-state.js";
-import { VERSION } from "../version.js";
 import {
   buildTelemetryPayload,
   checkTelemetryUpdate,
@@ -567,25 +566,16 @@ describe("anonymous telemetry", () => {
   it.each([
     { name: "never opted in", config: {} satisfies BranchConfig },
     { name: "explicitly opted out", config: createFeatureConfig(false) },
-  ])("sends only an anonymous GET when $name", async ({ config }) => {
-    mockHttp.intercept({
-      url: TELEMETRY_URL,
-      method: "GET",
-      requestHeaders: {
-        "user-agent": `branch/${VERSION} (${process.platform}; node/${process.versions.node}; ${process.arch}; gateway)`,
-      },
-      reply: { json: { version: "2026.8.24" } },
-    });
-
+  ])("sends nothing when $name", async ({ config }) => {
     await expect(
       checkTelemetryUpdate(() => config, {
         surface: "gateway",
         fetchImpl: globalThis.fetch,
         nowMs: NOW,
       }),
-    ).resolves.toEqual({ version: "2026.8.24" });
+    ).resolves.toBeNull();
 
-    expect(mockHttp.requests()).toHaveLength(1);
+    expect(mockHttp.requests()).toHaveLength(0);
   });
 
   it("POSTs exactly the canonical payload only after explicit feature-stats opt-in", async () => {
@@ -613,14 +603,9 @@ describe("anonymous telemetry", () => {
   });
 
   it.each(["1", "true"])(
-    "DO_NOT_TRACK=%s suppresses feature stats but keeps update checks",
+    "DO_NOT_TRACK=%s sends nothing, even with feature stats opted in",
     async (value) => {
       setTestEnvValue("DO_NOT_TRACK", value);
-      mockHttp.intercept({
-        url: TELEMETRY_URL,
-        method: "GET",
-        reply: { json: { version: "2026.8.24" } },
-      });
 
       await expect(
         checkTelemetryUpdate(() => createFeatureConfig(), {
@@ -628,9 +613,9 @@ describe("anonymous telemetry", () => {
           fetchImpl: globalThis.fetch,
           nowMs: NOW,
         }),
-      ).resolves.toEqual({ version: "2026.8.24" });
+      ).resolves.toBeNull();
 
-      expect(mockHttp.requests()).toHaveLength(1);
+      expect(mockHttp.requests()).toHaveLength(0);
     },
   );
 
