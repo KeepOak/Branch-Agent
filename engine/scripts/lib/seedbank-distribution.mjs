@@ -129,3 +129,40 @@ export function resolveSeedbankEntry(catalog, spec) {
   }
   return entry;
 }
+
+// Only the variables npm needs to publish with OIDC provenance. GH_TOKEN and other job secrets are not passed.
+const NPM_ENV_KEYS = [
+  "PATH",
+  "HOME",
+  "USER",
+  "LANG",
+  "TMPDIR",
+  "TEMP",
+  "TMP",
+  "SYSTEMROOT",
+  "RUNNER_TEMP",
+  "CI",
+  "ACTIONS_ID_TOKEN_REQUEST_URL",
+  "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+];
+const GH_ENV_KEYS = ["PATH", "HOME", "TMPDIR", "TEMP", "TMP", "SYSTEMROOT"];
+
+function pickEnv(source, keys) {
+  return Object.fromEntries(
+    keys.filter((key) => source[key] !== undefined).map((key) => [key, source[key]]),
+  );
+}
+
+// npm publish runs in a job that holds contents:write, so it gets no GitHub token at all.
+export function npmPublishEnv(source = process.env) {
+  return pickEnv(source, NPM_ENV_KEYS);
+}
+
+// gh gets GH_TOKEN and nothing else from the job's environment.
+export function ghCommandEnv(source = process.env) {
+  const env = pickEnv(source, GH_ENV_KEYS);
+  if (source.GH_TOKEN !== undefined) {
+    env.GH_TOKEN = source.GH_TOKEN;
+  }
+  return env;
+}

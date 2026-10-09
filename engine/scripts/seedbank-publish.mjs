@@ -5,7 +5,12 @@ import { createHash } from "node:crypto";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { createSeedbankCatalog, resolveSeedbankEntry } from "./lib/seedbank-distribution.mjs";
+import {
+  createSeedbankCatalog,
+  ghCommandEnv,
+  npmPublishEnv,
+  resolveSeedbankEntry,
+} from "./lib/seedbank-distribution.mjs";
 
 const [directory, mode] = process.argv.slice(2);
 if (!directory || !["--verify", "--publish"].includes(mode)) {
@@ -55,7 +60,7 @@ if (mode === "--verify") {
   function gh(args) {
     const result = spawnSync("gh", args, {
       encoding: "utf8",
-      env: process.env,
+      env: ghCommandEnv(),
       shell: false,
       windowsHide: true,
     });
@@ -67,7 +72,7 @@ if (mode === "--verify") {
   const existing = spawnSync(
     "gh",
     ["api", `repos/${repository}/releases/tags/${catalog.releaseTag}`],
-    { encoding: "utf8", shell: false, windowsHide: true },
+    { encoding: "utf8", env: ghCommandEnv(), shell: false, windowsHide: true },
   );
   if (existing.status === 0) {
     const release = JSON.parse(existing.stdout);
@@ -165,7 +170,7 @@ if (mode === "--verify") {
         "--tag",
         entry.version.includes("-") ? "beta" : "latest",
       ],
-      { stdio: "inherit", env: process.env, shell: false, windowsHide: true },
+      { stdio: "inherit", env: npmPublishEnv(), shell: false, windowsHide: true },
     );
     if (result.error || result.status !== 0) {
       throw new Error(
