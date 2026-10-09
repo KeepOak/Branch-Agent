@@ -36,7 +36,6 @@ export type ConversationMenuRun = {
   exportWebPage: () => void;
   remove: () => void;
   removeTrunk: () => void;
-  search: () => void;
   sidePanel: () => void;
   tower: () => void;
   list: () => void;
@@ -128,11 +127,10 @@ function primaryRows(c: ConversationMenuContext): (MenuItem | null)[] {
   const row = c.row;
   const isRoom = Boolean(c.room);
   return [
-    item("Search in this conversation", "eye", c.run.search, { hint: keyHint("Ctrl F", c.mac) }),
     row ? item(row.pinned ? "Unpin" : "Pin", "pin", c.run.pin) : null,
     item("Share this conversation…", "link", c.run.share),
     !isRoom && c.canMove ? item("Move to computer…", "monitor", c.run.move) : null,
-    item("Start over…", "retry", c.run.startOver),
+    item("Clear messages and start fresh…", "retry", c.run.startOver),
     row && !c.isMain && !isRoom ? item(row.archived ? "Restore" : "Archive", "box", row.archived ? c.run.restore : c.run.archive) : null,
   ];
 }
@@ -178,12 +176,12 @@ function moreRows(c: ConversationMenuContext): (MenuItem | null)[] {
   return [
     ...roomRows(c),
     c.bookmarks ?? null,
-    item("Talk live", "wave", c.run.talk, c.talkOff ? { disabled: c.talkOff } : {}),
+    c.talkOff ? null : item("Talk live", "wave", c.run.talk),
     snoozeRow(c),
     renameRow(c),
     c.hasContactReturn ? item("Back to contact thread", "chat", c.run.backToContact) : null,
     !isRoom ? item(`Who ${c.trunkName} knows`, "spark", c.run.whoItKnows) : null,
-    item("Make a Canopy card", "puzzle", c.run.toBoard),
+    item("Make a card on the Canopy board", "puzzle", c.run.toBoard),
     c.characterHidden && !isRoom ? item(`Show ${c.trunkName}’s window`, "panel", c.run.showCharacter) : null,
     SEP,
     c.hasReply ? item("Look inside the last reply", "eye", c.run.lookInside) : null,

@@ -207,7 +207,6 @@ function useRun(p: ConversationMenuProps, c: RunCtx): ConversationMenuRun {
     exportWebPage: () => setOpen({ kind: "export", format: "html" }),
     remove: () => row && p.onDelete(row),
     removeTrunk: () => setOpen({ kind: "removeTrunk" }),
-    search: () => p.onSearch?.(),
     sidePanel: () => p.onSidePanel?.(),
     tower: () => p.onTower?.(),
     list: () => p.onList?.(),

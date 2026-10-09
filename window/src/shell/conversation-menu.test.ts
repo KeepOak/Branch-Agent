@@ -27,7 +27,7 @@ const leaf = (items: MenuItem[], label: string) => leaves(items).find((i) => i.l
 describe("P54 conversation header menu", () => {
   it("shows six actions, the Trunk and More at the top, with no developer rows", () => {
     expect(shape(conversationMenuItems(ctx("regular", true)))).toEqual([
-      "Search in this conversation", "Unpin", "Share this conversation…", "Start over…", "Archive", "---", "Research…", "---", "More ›",
+      "Unpin", "Share this conversation…", "Clear messages and start fresh…", "Archive", "---", "Research…", "---", "More ›",
     ]);
     const all = leaves(conversationMenuItems(ctx("regular", true, { canMove: true }))).map((i) => i.label);
     expect(all).not.toEqual(expect.arrayContaining(["Reload", "Copy link", "Send to the board", "Research’s profile", "Edit Research…"]));
@@ -36,7 +36,7 @@ describe("P54 conversation header menu", () => {
   it("keeps every other action reachable under More", () => {
     const labels = leaves(more(conversationMenuItems(ctx("regular", true)))).map((i) => i.label);
     expect(labels).toEqual(expect.arrayContaining([
-      "Talk live", "Rename this thread…", "Who Research knows", "Make a Canopy card", "Look inside the last reply", "Map of this conversation",
+      "Talk live", "Rename this thread…", "Who Research knows", "Make a card on the Canopy board", "Look inside the last reply", "Map of this conversation",
       "Replay this conversation", "As Markdown", "As a web page", "Side panel", "Hide or show the list", "Open the browser", "Switch light or dark",
       "Why each thing is here", "Delete this conversation…", "Remove Research…",
     ]));
@@ -52,8 +52,8 @@ describe("P54 conversation header menu", () => {
   it("uses ⌘ for shortcut hints on a Mac and Ctrl elsewhere", () => {
     expect(keyHint("Ctrl Shift K", true)).toBe("⌘⇧K");
     expect(keyHint("Ctrl F", false)).toBe("Ctrl F");
-    expect(leaf(conversationMenuItems(ctx("regular", true, { mac: true })), "Search in this conversation")?.hint).toBe("⌘F");
-    expect(leaf(conversationMenuItems(ctx("regular", true, { mac: false })), "Search in this conversation")?.hint).toBe("Ctrl F");
+    expect(leaf(conversationMenuItems(ctx("regular", true, { mac: true })), "Side panel")?.hint).toBe("⌘⇧K");
+    expect(leaf(conversationMenuItems(ctx("regular", true, { mac: false })), "Side panel")?.hint).toBe("Ctrl Shift K");
   });
 
   it("shows Move to computer only when another computer exists", () => {
@@ -61,9 +61,10 @@ describe("P54 conversation header menu", () => {
     expect(shape(conversationMenuItems(ctx("regular", true)))).not.toContain("Move to computer…");
   });
 
-  it("greys Talk live with its reason and leaves no other greyed row without one", () => {
+  it("hides Talk live while voice is off, and leaves no greyed row without a reason", () => {
     const off = "Off until you choose: it uses the microphone.";
-    expect(leaf(conversationMenuItems(ctx("regular", true, { talkOff: off })), "Talk live")?.disabled).toBe(off);
+    expect(leaf(conversationMenuItems(ctx("regular", true, { talkOff: off })), "Talk live")).toBeUndefined();
+    expect(leaf(conversationMenuItems(ctx("regular", true, { talkOff: null })), "Talk live")?.disabled).toBeUndefined();
     for (const entry of leaves(conversationMenuItems(ctx("regular", true, { talkOff: off, ownWindowOff: "Not here." })))) {
       if (entry.disabled !== undefined) expect(entry.disabled.length).toBeGreaterThan(0);
     }
@@ -95,12 +96,12 @@ describe("P54 conversation header menu", () => {
   it("keeps the view actions wired", () => {
     calls.length = 0;
     const items = conversationMenuItems(ctx("regular", true));
-    for (const label of ["Search in this conversation", "Side panel", "Hide or show the list", "Open in its own window", "Open its computer", "Open the browser", "Switch light or dark", "Why each thing is here"]) {
+    for (const label of ["Side panel", "Hide or show the list", "Open in its own window", "Open its computer", "Open the browser", "Switch light or dark", "Why each thing is here"]) {
       const found = leaf(items, label)!;
       expect(found.disabled).toBeUndefined();
       found.run();
     }
-    expect(calls).toEqual(["search", "sidePanel", "list", "ownWindow", "computer", "browser", "theme", "guide"]);
+    expect(calls).toEqual(["sidePanel", "list", "ownWindow", "computer", "browser", "theme", "guide"]);
     expect(shape(conversationMenuItems(ctx("regular", true, { towerVisible: true })))).toBeDefined();
     expect(leaves(more(conversationMenuItems(ctx("regular", true, { towerVisible: true })))).map((i) => i.label)).toContain("Hide the Control tower");
   });
