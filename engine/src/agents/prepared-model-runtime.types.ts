@@ -192,6 +192,11 @@ export type PreparedModelRuntimeRefreshOptions = {
   isPublicationCurrent?: () => boolean;
   /** Lifecycle callers may join a newer refresh after their own publication is superseded. */
   joinSupersedingPublication?: boolean;
+  /**
+   * Called when this refresh ends without publishing because a newer refresh, a reload, or the
+   * caller superseded it, whether it resolves quietly or rejects with that supersession.
+   */
+  onPublicationSkipped?: () => void;
   /** Restricts replacement to configured owners whose normalized agent id is present. */
   agentIds?: ReadonlySet<string>;
 };

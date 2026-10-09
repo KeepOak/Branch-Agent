@@ -6,6 +6,7 @@ import { createDeferred } from "../../test/helpers/promise.js";
 import { acquirePreparedModelRuntimeLeaseFromOwners } from "./prepared-model-runtime-lease.js";
 import {
   acquireAgentRunPreparedModelRuntime,
+  getPreparedModelRuntimeSnapshot,
   loadPublishedGatewayReplyDispatchRuntime,
   refreshPreparedModelRuntimeSnapshots,
 } from "./prepared-model-runtime.js";
@@ -190,5 +191,32 @@ describe("model runtime publication supersession", () => {
     await Promise.allSettled([first]);
     await successor;
     await expect(dispatch).resolves.toMatchObject({ agentId: "worker" });
+  });
+
+  it("reports a publication that a superseding refresh drops, so startup can publish it again", async () => {
+    const config = {};
+    mocks.configuredAgentIds = ["worker"];
+    const started = createDeferred();
+    const release = createDeferred();
+    mocks.ensureBranchModelsJson.mockImplementationOnce(async (_config, agentDir) => {
+      started.resolve();
+      await release.promise;
+      return { agentDir: String(agentDir), wrote: false };
+    });
+    let skipped = 0;
+    const first = refreshPreparedModelRuntimeSnapshots(config, {
+      gatewayLifecycle: true,
+      onPublicationSkipped: () => {
+        skipped += 1;
+      },
+    });
+    void first.catch(() => undefined);
+    await started.promise;
+    const successor = refreshPreparedModelRuntimeSnapshots(config, { gatewayLifecycle: true });
+    release.resolve();
+    await Promise.allSettled([first]);
+    await successor;
+    expect(skipped).toBeGreaterThan(0);
+    expect(getPreparedModelRuntimeSnapshot(fixture.agentInput("worker", config))).toBeDefined();
   });
 });

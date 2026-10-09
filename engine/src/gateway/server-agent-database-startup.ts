@@ -1,5 +1,6 @@
 import { resolveAgentDir } from "../agents/agent-scope-config.js";
 import { resolveAuthProfileDatabasePath } from "../agents/auth-profiles/sqlite.js";
+import { PreparedModelRuntimePublicationSupersededError } from "../agents/prepared-model-runtime.errors.js";
 import type { PreparedModelRuntimeInput } from "../agents/prepared-model-runtime.js";
 import { resolveConfiguredAgentDatabaseTargets } from "../config/sessions/targets.js";
 import type { BranchConfig } from "../config/types.branch.js";
@@ -273,6 +274,7 @@ export function activateGatewayAgentDatabaseStartup(params: {
           // publish it again within this attempt (its watchdog bounds the loop) rather than fail.
           for (;;) {
             preparedInput = undefined;
+            const publication = { skipped: false };
             await runStartupModelPublication(assertPreparationCurrent, (isPublicationCurrent) =>
               withPluginRuntimeRegistryScope(params.getPluginRegistry(), () =>
                 refreshPreparedModelRuntimeSnapshots(cfg, {
@@ -281,9 +283,27 @@ export function activateGatewayAgentDatabaseStartup(params: {
                   allowGatewaySubagentBinding: true,
                   ...(pluginMetadataSnapshot ? { pluginMetadataSnapshot } : {}),
                   isPublicationCurrent,
+                  onPublicationSkipped: () => {
+                    publication.skipped = true;
+                  },
+                }).catch((error: unknown) => {
+                  if (!(error instanceof PreparedModelRuntimePublicationSupersededError)) {
+                    throw error;
+                  }
+                  publication.skipped = true;
                 }),
               ),
             );
+            if (publication.skipped) {
+              // A newer refresh, reload, or metadata read superseded this publication while this
+              // agent's config and secrets stayed current. Publish again within this attempt rather
+              // than failing it as unpublished; the attempt's watchdog still bounds the loop.
+              assertPreparationCurrent();
+              params.log.info(
+                `agent ${agentId} startup model publication was superseded; publishing it again`,
+              );
+              continue;
+            }
             preparedInput = listConfiguredOwnerInputs(cfg, undefined, true).find(
               (input) => input.agentId === agentId,
             );

@@ -545,6 +545,7 @@ export function refreshPreparedModelRuntimeSnapshots(
   options: PreparedModelRuntimeRefreshOptions = {},
 ): Promise<void> {
   if (options.isPublicationCurrent?.() === false) {
+    options.onPublicationSkipped?.();
     return Promise.resolve();
   }
   const requestedScopedRefresh = options.agentIds !== undefined;
@@ -562,6 +563,9 @@ export function refreshPreparedModelRuntimeSnapshots(
   let publicationAgentIds = initialAgentIds;
   const isPublicationCurrent = () =>
     requestEpoch === refreshRequestEpoch && options.isPublicationCurrent?.() !== false;
+  const skipPublication = () => {
+    options.onPublicationSkipped?.();
+  };
   const startup =
     options.startup === true && options.catalogMode === "static" && replacement
       ? new PreparedModelRuntimeStartup({
@@ -601,6 +605,7 @@ export function refreshPreparedModelRuntimeSnapshots(
       return;
     }
     if (!isPublicationCurrent()) {
+      skipPublication();
       rejectReplacement(
         new PreparedModelRuntimePublicationSupersededError(
           "prepared model runtime publication was superseded",
@@ -624,10 +629,12 @@ export function refreshPreparedModelRuntimeSnapshots(
   const publication = publicationQueue
     .enqueue(async () => {
       if (!isPublicationCurrent()) {
+        skipPublication();
         return;
       }
       const currentConfig = typeof config === "function" ? await config() : config;
       if (!isPublicationCurrent()) {
+        skipPublication();
         return;
       }
       publicationAgentIds = forceFullRefresh
@@ -656,6 +663,7 @@ export function refreshPreparedModelRuntimeSnapshots(
         },
       );
       if (!isPublicationCurrent()) {
+        skipPublication();
         return;
       }
       const drain = () =>
@@ -672,6 +680,9 @@ export function refreshPreparedModelRuntimeSnapshots(
     }, startup?.release)
     .then(commitReplacement, (error: unknown) => {
       const refreshError = toStringifiedError(error);
+      if (!isPublicationCurrent()) {
+        skipPublication();
+      }
       if (replacement?.degraded && isPublicationCurrent()) {
         startup?.update(true);
         if (pendingModelRuntimeReplacement === replacement) {
