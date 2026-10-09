@@ -89,8 +89,17 @@ function GatewayStatus(p: Pick<Props, "gateway" | "open" | "onItem">) {
       data-hide="gateway" data-state={p.gateway} aria-expanded={p.open === "gateway"} aria-haspopup="dialog"
       onClick={(e) => p.onItem("gateway", e)}>
       <StatusGlyph kind="gateway" colour={colour} />
+      <span className="status-label">Gateway</span>
     </button>
   );
+}
+
+/** "maria@example.com · 40% left · resets 6 PM", or "… · usage unknown" when the account has no reading yet. */
+export function usageWords(usage: RingReading | null): string {
+  if (!usage) return "Usage";
+  const who = usage.email || usage.name;
+  if (usage.left === null) return `${who} · usage unknown`;
+  return `${who} · ${usage.left}% left${usage.reset ? ` · ${usage.reset}` : ""}`;
 }
 
 /** The status bar (DESIGN-SPEC §4.9.1): connection, gateway, room left, running, then the usage ring and version. */
@@ -105,11 +114,12 @@ export function StatusBar(p: Props) {
     return () => window.clearTimeout(timer);
   }, [usageExpanded, p.open]);
   const connectionWord = WORDS[p.connection] || "Online";
-  const connectionLabel = p.connection === "connected" ? "Online · you are here" : `${connectionWord} · ${p.machineName}`;
+  const connectionLabel = p.connection === "connected" ? "Online" : `${connectionWord} · ${p.machineName}`;
   const connectionColour = p.connection === "connected" ? "var(--ok)" : p.connection === "connecting" ? "var(--warn)" : "var(--bad)";
   const left = p.roomUsed === null ? null : Math.max(0, Math.round((1 - p.roomUsed) * 100));
   const item = (id: StatusItem) => ({ "aria-expanded": p.open === id, "aria-haspopup": "dialog" as const, onClick: (e: MouseEvent<HTMLElement>) => p.onItem(id, e) });
-  const usageLine = p.usage ? `${p.usage.name} · ${p.usage.left}% left${p.usage.reset ? ` · ${p.usage.reset}` : ""}` : "Usage";
+  // One tracker: the account used next, by email, with its share left and reset time, or "usage unknown" when it has no reading.
+  const usageLine = usageWords(p.usage);
   const usageLabel = p.usage ? `${usageLine}. Enter opens every account.` : "Usage · no account limits yet. Enter opens every account.";
   const openUsage = (e: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => {
     setUsageExpanded(true);
@@ -132,12 +142,12 @@ export function StatusBar(p: Props) {
       {left !== null && p.roomUsed !== null ? (
         <button type="button" className="sb status-symbol" title={`Context left · ${left}%`} aria-label={`Context left · ${left}%`} data-testid="sb-room" {...item("room")}>
           <StatusGlyph kind="context" colour={roomColour(p.roomUsed)} value={left} />
-          <span className="status-number">{left}%</span>
+          <span className="status-number">Context {left}%</span>
         </button>
       ) : null}
       <button type="button" className="sb status-symbol" title={p.running ? `${p.running} running` : "Nothing running"} aria-label={p.running ? `${p.running} running` : "Nothing running"} data-testid="sb-running" {...item("running")}>
         <StatusGlyph kind="running" colour={p.running ? "var(--ok)" : "currentColor"} value={p.running} />
-        <span className="status-number">{p.running}</span>
+        <span className="status-number">{p.running ? `${p.running} running` : "Idle"}</span>
       </button>
       {p.extras?.left}
       <span className="sb-spacer" />

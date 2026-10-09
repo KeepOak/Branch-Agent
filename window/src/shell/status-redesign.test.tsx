@@ -43,7 +43,7 @@ it("status glyphs open all six popovers from live facts", async () => {
   expect(host.querySelector("[data-testid=sb-running]")?.getAttribute("aria-label")).toBe("3 running");
   expect(host.querySelector("[data-testid=sb-version]")?.textContent).toContain("Branch 0.19.5");
   expect(host.querySelector("[data-testid=sb-version]")?.getAttribute("title")).toBe(BRANCH_VERSION_TIP);
-  expect(host.querySelector("[data-testid=sb-usage]")?.getAttribute("aria-label")).toContain("ChatGPT · Account 1 · 77% left");
+  expect(host.querySelector("[data-testid=sb-usage]")?.getAttribute("aria-label")).toContain("you@example.com · 77% left");
 });
 
 it("usage ring matches the preview 16px geometry and colour thresholds", async () => {
@@ -123,17 +123,18 @@ it("Every account is a flat list with preview row text and checks again through 
   ] } : {});
   const open = vi.fn();
   const host = await show(<UsagePopover above={above} onClose={() => {}} limits={seeded} request={request as never} onOpenUsage={open} />);
-  expect(request).toHaveBeenCalledWith("usage.status", { refresh: true });
+  // Opening shows the reading Branch already has: no provider call until someone asks for a fresh check.
+  expect(request).not.toHaveBeenCalled();
   expect(host.querySelector(".sp-provider")).toBeNull();
   expect(host.textContent).toContain("you@example.com");
   expect(host.textContent).toContain("77% left");
-  expect(host.textContent).toContain("ChatGPT · Account 1 · Plus · this week 41% used");
+  expect(host.textContent).toContain("Account 1 · ChatGPT Plus · this week 41% used");
   expect(host.textContent).not.toContain("week 59% left");
   await click(host, "usage-check");
   expect(request).toHaveBeenCalledWith("models.authStatus", { refresh: true });
-  expect(request.mock.calls.filter(([method]) => method === "usage.status")).toHaveLength(2);
+  expect(request.mock.calls.filter(([method]) => method === "usage.status")).toHaveLength(1);
   expect(host.textContent).toContain("new@example.com");
-  expect(host.textContent).toContain("Claude · Account 1 · Pro");
+  expect(host.textContent).toContain("Account 1 · Claude Pro");
   await click(host, "open-usage");
   expect(open).toHaveBeenCalledOnce();
 });

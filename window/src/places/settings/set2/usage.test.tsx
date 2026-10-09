@@ -103,7 +103,8 @@ describe("Settings › Data & usage", () => {
     expect(claude.textContent).toContain("58% left · resets");
     expect(claude.textContent).toContain("as of 4 min ago, asked Claude");
     expect(document.querySelector('[data-provider="google"]')!.textContent).toContain("Not published");
-    expect(document.querySelector('[data-provider="zai"]')!.textContent).toContain("Token expired");
+    expect(document.querySelector('[data-provider="zai"]')!.textContent).toContain("Z.ai needs you to sign in again to check usage.");
+    expect(document.querySelector('[data-provider="zai"]')!.textContent).not.toContain("Token expired");
   });
   it("draws spend per Trunk from the same period as the spend picker", async () => {
     const { engine, request } = engineWith(BASE);

@@ -11,7 +11,7 @@ import { Menu, type MenuAnchor } from "../../../shell/Menu";
 import { CallLine, CodeRow, CopyBtn, Kv, Tile, bytes, lvOf, openPlace, rec, span, str, useCall, useLive, useResource, when, type RecordValue } from "./common";
 import { Ico } from "./icons";
 import { Logo } from "../set1/service";
-import { readLimits, resetWords as sharedResetWords, type LimitRow } from "../../../shell/status-data";
+import { accountEmails, readLimits, resetWords as sharedResetWords, withAccountEmails, type LimitRow } from "../../../shell/status-data";
 import { ModelPrices } from "./usage-prices";
 import { CKPT_PREF, CKPT_SHOW, useCkptOn } from "../../../shell/SaveProgress";
 import { lookStore } from "../set1/appearance-store";
@@ -83,7 +83,7 @@ export function UsagePage(props: SettingsPageProps) {
   return (
     <Page title={props.title} lede="What each account has left, what Branch spent, what it keeps.">
       <SpendCard spend={spend} days={days} setDays={setDays} onOpen={() => setReport(true)} />
-      <Allowances engine={props.engine} />
+      <Allowances engine={props.engine} openSettings={props.openSettings} />
       <TrunkSpend spend={spend} names={names} days={days} />
       <Keeping engine={props.engine} lv={lv} />
       <TestModel />
@@ -170,12 +170,15 @@ function Billing({ b }: { b: RecordValue }) {
   return <div className="s2usage-limw"><span>{label}</span><span>{amount(b.amount)}{str(b.period) ? ` · ${str(b.period)}` : ""}</span></div>;
 }
 
-function Provider({ p, limit, updatedAt }: { p: RecordValue; limit: LimitRow; updatedAt: unknown }) {
-  const name = limit.name;
+function Provider({ p, limit, updatedAt, openSettings }: { p: RecordValue; limit: LimitRow; updatedAt: unknown; openSettings?: (page: string) => void }) {
+  // The account is named by its email; the plan is in words. The raw HTTP error never reaches the page.
+  const name = limit.email || limit.name;
   const windows = limit.windows.map((window) => ({ label: window.name, left: window.left, words: window.reset }));
   const billing = list(p.billing);
   const told = windows.length > 0 || billing.some(billingMeasured);
-  const sub = [str(p.accountEmail), str(p.plan)].filter(Boolean).join(" · ");
+  const signIn = limit.signInNeeded === true;
+  const failed = signIn || Boolean(p.error);
+  const sub = [limit.email ? limit.name : "", limit.plan].filter(Boolean).join(" · ");
   return (
     <div className="s2usage-lim" data-provider={str(p.provider)}>
       <Logo id={str(p.provider)} name={name} />
@@ -183,29 +186,32 @@ function Provider({ p, limit, updatedAt }: { p: RecordValue; limit: LimitRow; up
         <div className="s2usage-limh">
           <b>{name}</b>
           {sub ? <span className="s2usage-muted">{sub}</span> : null}
-          <span className={`pill ${p.error ? "bad" : told ? "ok" : "idle"}`}>{p.error ? "Couldn’t check" : told ? "Measured" : "Not published"}</span>
+          <span className={`pill ${failed ? "bad" : told ? "ok" : "idle"}`}>{signIn ? "Sign in again" : failed ? "Couldn’t check" : told ? "Measured" : "Not published"}</span>
         </div>
         {windows.map((w, i) => <LimWindow key={i} {...w} />)}
         {billing.map((b, i) => <Billing key={`b${i}`} b={b} />)}
-        {p.error ? <small className="s2-err">{str(p.error)}</small>
+        {failed ? <small className="s2-err">{limit.line}</small>
           : told ? <small>{`as of ${ago(updatedAt)}, asked ${name}`}</small>
           : <small>{str(p.summary) || "This service does not say what it allows."}</small>}
+        {signIn && openSettings ? <Btn onClick={() => { sessionStorage.setItem("branch.openAddAccount", str(p.provider)); openSettings("accounts"); }}>Sign in again</Btn> : null}
       </div>
     </div>
   );
 }
 
-function Allowances({ engine }: { engine: WindowEngine }) {
+function Allowances({ engine, openSettings }: { engine: WindowEngine; openSettings?: (page: string) => void }) {
   const res = useLive<RecordValue>(engine, "usage.status", {}, []);
+  const auth = useLive<RecordValue>(engine, "models.authStatus", {}, []);
   const data = rec(res.data);
   const providers = list(data.providers);
-  const limits = readLimits(res.data);
+  // Saved accounts' emails, the same ones Settings › Accounts lists, name each row.
+  const limits = withAccountEmails(readLimits(res.data), accountEmails(auth.data));
   return (
     <Sec title="Account allowances" hint="What each account has left. Every figure comes from its service.">
       {res.error ? <p className="hint s2-err" role="alert">{res.error}</p> : null}
       {res.loading && !res.data ? <Hint>Checking accounts…</Hint> : null}
       {res.data && !providers.length ? <Empty>No account reports an allowance yet.</Empty> : null}
-      {providers.length ? <div className="s2usage-lims">{providers.map((p, i) => <Provider key={`${str(p.provider)}-${i}`} p={p} limit={limits.rows[i]} updatedAt={data.updatedAt} />)}</div> : null}
+      {providers.length ? <div className="s2usage-lims">{providers.map((p, i) => <Provider key={`${str(p.provider)}-${i}`} p={p} limit={limits.rows[i]} updatedAt={data.updatedAt} openSettings={openSettings} />)}</div> : null}
       {data.refreshing === true ? <Hint>Checking accounts again…</Hint> : null}
       <AllowanceRows engine={engine} />
     </Sec>

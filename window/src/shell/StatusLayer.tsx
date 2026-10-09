@@ -200,7 +200,12 @@ export function StatusPopover({ item, above, onClose, ctx }: Props) {
     return <GatewayPopover {...base} facts={ctx.gateway} level={level} onRestart={close(() => void restart(ctx))} onSettings={close(() => ctx.openSettings("gateway"))} />;
   }
   if (item === "usage") {
-    return <UsagePopover {...base} limits={ctx.limits} request={request} onOpenUsage={close(() => ctx.openSettings("usage"))} />;
+    // "Sign in again" opens Accounts straight on that provider's sign-in (the same flag the Accounts page reads once).
+    const signIn = (provider: string) => close(() => {
+      sessionStorage.setItem("branch.openAddAccount", provider);
+      ctx.openSettings("accounts");
+    })();
+    return <UsagePopover {...base} limits={ctx.limits} request={request} onOpenUsage={close(() => ctx.openSettings("usage"))} onSignIn={signIn} />;
   }
   if (item === "room" && ctx.openRow) {
     const row = ctx.openRow;
