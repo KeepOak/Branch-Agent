@@ -28,6 +28,7 @@
 .st7-screen {position:relative;border-radius:14px;overflow:hidden;box-shadow:0 30px 80px -30px rgba(0,0,0,.55),0 0 0 1px var(--line-2);background:#0e1419;}
 /* The preview's fitStage: 18 px clear on each side, as wide as fits the wrap at 16:10. */
 .st7-screen.live-st {width:min(calc(100cqw - 36px),calc((100cqh - 36px) * 1.6));aspect-ratio:16/10;}
+.native-screen {width:100%;height:100%;object-fit:contain;display:block;}
 .st7-screen.ctl-st {box-shadow:0 0 0 4px var(--accent) inset,0 30px 80px -30px rgba(0,0,0,.55);}
 .st7-screen .stage-screen {position:absolute;inset:0;width:100%;height:100%;overflow:hidden;}
 .st7-screen .stage-empty {position:absolute;inset:0;}

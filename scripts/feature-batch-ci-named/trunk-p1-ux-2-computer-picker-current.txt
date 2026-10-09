@@ -1,0 +1,2 @@
+window:src/stage/ComputerPicker.test.tsx
+window:src/stage/computer-screen-setup.test.tsx
