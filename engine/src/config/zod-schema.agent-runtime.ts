@@ -734,6 +734,15 @@ export const ToolsSchema = z
         allow: z.array(z.string()).optional(),
       })
       .optional(),
+    /** Trunk-made model and sign-in changes. */
+    modelChoice: z
+      .strictObject({
+        /** Default: false. True lets a Trunk change its own model; without Full access each change asks first. */
+        enabled: z.boolean().optional(),
+        /** Default: true. False refuses a model a Trunk names when it starts a task (sessions_spawn). */
+        perTask: z.boolean().optional(),
+      })
+      .optional(),
     /** Elevated exec permissions for the host machine. */
     elevated: ElevatedToolsSchema,
     /** Exec tool defaults. */
