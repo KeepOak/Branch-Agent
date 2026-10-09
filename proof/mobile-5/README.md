@@ -1,6 +1,8 @@
 # mobile-5 proof: approvals with Allow and Deny that answer on the computer
 
-Head: f189be417592e1feca5ead17792f5cc416ea2a1c on trunk/mobile-5-approvals (stacked on #869).
+Head: 2b7918a48ca4723f88c3f7f54e3e881f3f08c9f8 on trunk/mobile-5-approvals (stacked on #869).
+
+Recaptured at this head after merging #869's final code (d7a97679). The fake engine now broadcasts `*.approval.resolved` to the answering phone before it replies, as `approval-shared.ts` does, so **04-allowed-on-this-phone** also shows the phone crediting its own answer from the engine's reply rather than from the event.
 
 These stills come from this Windows PC. They show the app's own React Native screens through react-native-web in headless Chrome, driven over the DevTools protocol at iPhone size (393x852 pt, 3x, mobile emulation), first in light mode and then in dark. The GOD seat posts iPhone simulator and Android emulator proof on the PR.
 
@@ -20,7 +22,7 @@ Native bundles: `npx expo export --platform android --platform ios` compiled bot
 
 ## Frames checked
 
-- 36 screencast frames of the light run: 0 blank. The sheet runs from Needs you through Always allow, Allowed, the computer answering, a new request, Reconnecting and Denied, then back to Chats. Each screen replaces the last directly.
+- 33 screencast frames of the light run: 0 blank. The sheet runs from Needs you through Always allow, Allowed, the computer answering, a new request, Reconnecting and Denied, then back to Chats. Each screen replaces the last directly.
 - In both runs, the script read the fake engine's requests: `exec.approval.resolve {exec-1, allow-always}` and `{exec-live, deny}`.
 
 ## The stills
