@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import App from '../../App';
+import { createFakeSession } from '../testing/fakeSession';
 import { contrastRatio } from './contrast';
 import { palettes, themeFor, type ColorScheme } from './tokens';
 
@@ -31,21 +32,15 @@ describe('theme tokens', () => {
 
 describe('app shell', () => {
   it.each(schemes)('draws the welcome screen from the %s tokens', async scheme => {
-    await render(<App scheme={scheme} />);
+    await render(<App scheme={scheme} session={createFakeSession().session} />);
     const theme = themeFor(scheme);
-    expect(screen.getByRole('header')).toHaveTextContent('Branch');
+    expect(await screen.findByRole('header')).toHaveTextContent('Branch');
     expect(StyleSheet.flatten(screen.getByTestId('welcome-screen').props.style).backgroundColor).toBe(
       theme.color.grouped,
     );
-    expect(StyleSheet.flatten(screen.getByTestId('pairing-status').props.style).backgroundColor).toBe(
+    expect(StyleSheet.flatten(screen.getByTestId('pairing-steps').props.style).backgroundColor).toBe(
       theme.color.raise,
     );
-    expect(screen.getByText('Not paired with a computer yet')).toBeOnTheScreen();
-  });
-
-  it('shows no buttons before pairing exists', async () => {
-    await render(<App scheme="light" />);
-    expect(screen.getByTestId('welcome-screen')).toBeOnTheScreen();
-    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Pair with your computer' })).toBeOnTheScreen();
   });
 });

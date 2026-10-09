@@ -22,10 +22,11 @@ One codebase gives us both iPhone and Android, and it ships as fast as an iOS-on
 
 - **Same engine, same socket.** The phone opens the engine gateway's WebSocket exactly as the window does, with the `operator` role. It asks only for what a phone needs: `operator.read`, `operator.write`, `operator.approvals` and `operator.questions`. It never asks for `operator.admin` or `operator.pairing`, so a lost phone can't change settings or pair other devices.
 - **Pairing uses the engine's own device pairing.** Nobody pastes a secret:
-  1. Settings → Pair a phone on the desktop shows a QR code from `device.pair.setupCode`.
+  1. Get the apps → Pair a phone on the desktop shows a QR code from `device.pair.setupCode`.
   2. The phone scans it, creates its own Ed25519 device key, and stores it in the Keychain (Keystore on Android) through `expo-secure-store`.
-  3. The phone connects and shows up on the desktop as a request (`device.pair.requested`). You approve it with one tap (`device.pair.approve`), and the desktop follows progress through `device.pair.setupStatus`.
+  3. The phone connects and shows up on the desktop as a request (`device.pair.requested`). You choose Allow on the desktop (`device.pair.approve`), and the desktop follows progress through `device.pair.setupStatus`.
   4. The engine's device token is kept in secure storage, and the phone reconnects with it from then on. Settings → Devices on the desktop can rename or remove it (`device.pair.rename`, `device.pair.remove`).
+- **One client, not two.** The phone runs the engine's own gateway client (`engine/packages/gateway-client` and the three small packages it uses), compiled from source by Metro and Jest through `engine-modules.js`. Those packages have no third-party runtime dependencies, so `mobile/` needs the engine folder checked out next to it but no engine install. `src/connect/gateway-client.d.ts` declares the few signatures the app calls; the engine typechecks the code itself.
 - **Reaching the computer.** At home the phone connects over the local network. Away from home it uses the engine's existing remote-access route. If the engine needs anything new for phones, such as a phone-reachable listener or a pairing setting, that gets its own engine brief through Coordinator. Mobile PRs never touch `engine/`.
 
 ## Approvals and notifications
@@ -76,4 +77,4 @@ npx jest src/theme/theme.test.tsx
 npm run web                # browser preview at phone size; npm run ios / android need a Mac or an emulator
 ```
 
-CI: the desktop checks don't build `mobile/`. Gardener adds a separate `mobile/` check (`npm ci`, `npm run typecheck`, `npm test`) so the phone app can never break the desktop checks.
+CI: the desktop checks don't build `mobile/`. Gardener adds a separate `mobile/` check (`npm ci`, `npm run typecheck`, `npm test`) so the phone app can never break the desktop checks. It needs the whole repository checked out, because the app compiles the engine's gateway client from `engine/packages`.
