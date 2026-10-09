@@ -136,6 +136,11 @@ export class ApprovalInbox {
    * event was ours is only known from the reply: { ok: true } means this phone's answer counted.
    */
   private readonly heard = new Map<string, string>();
+  /**
+   * What each list read still on its way has missed: the engine answers a read with the list as it was when the
+   * read arrived, so a request or resolution heard after that must win over the read's answer.
+   */
+  private readonly reads = new Set<{ requested: Map<string, Approval>; resolved: Set<string> }>();
 
   constructor(
     private readonly link: EngineLink,
@@ -178,6 +183,8 @@ export class ApprovalInbox {
    * answered (or ran out of time) while this phone wasn't listening, so it moves to Answered.
    */
   async refresh(): Promise<void> {
+    const since = { requested: new Map<string, Approval>(), resolved: new Set<string>() };
+    this.reads.add(since);
     try {
       const [execs, plugins, agents] = await Promise.all([
         this.link.request('exec.approval.list', {}),
@@ -188,12 +195,14 @@ export class ApprovalInbox {
         ...itemsOf(execs).map((item) => readApproval(item, 'exec')),
         ...itemsOf(plugins).map((item) => readApproval(item, 'plugin')),
       ].filter((a): a is Approval => a !== null);
-      const ids = new Set(pending.map((a) => a.id));
+      for (const approval of since.requested.values()) if (!pending.some((a) => a.id === approval.id)) pending.push(approval);
+      const current = pending.filter((a) => !since.resolved.has(a.id));
+      const ids = new Set(current.map((a) => a.id));
       const now = this.now();
       const left = this.snapshot.pending.filter((a) => !ids.has(a.id)).map((a) => this.ended(a, a.expiresAtMs && a.expiresAtMs <= now ? 'expired' : 'gone', false, 'elsewhere'));
       const trunks = agents ? Object.fromEntries(readAgents(agents).agents) : this.snapshot.trunks;
       this.set({
-        pending: sortPending(pending),
+        pending: sortPending(current),
         answered: [...left, ...this.snapshot.answered].slice(0, ANSWERED_KEPT),
         trunks,
         loaded: true,
@@ -202,17 +211,22 @@ export class ApprovalInbox {
       });
     } catch (error) {
       this.set({ error: messageOf(error) });
+    } finally {
+      this.reads.delete(since);
     }
   }
 
   onEvent(event: string, payload: unknown): void {
     if (event === 'exec.approval.requested' || event === 'plugin.approval.requested') {
       const approval = readApproval(payload, event.startsWith('plugin') ? 'plugin' : 'exec');
-      if (!approval || this.snapshot.pending.some((a) => a.id === approval.id)) return;
+      if (!approval) return;
+      for (const read of this.reads) read.requested.set(approval.id, approval);
+      if (this.snapshot.pending.some((a) => a.id === approval.id)) return;
       this.set({ pending: sortPending([...this.snapshot.pending, approval]) });
     } else if (event === 'exec.approval.resolved' || event === 'plugin.approval.resolved') {
       const p = rec(payload);
       const id = str(p.id);
+      for (const read of this.reads) read.resolved.add(id);
       if (this.snapshot.sending[id]) {
         this.heard.set(id, str(p.decision));
         return;

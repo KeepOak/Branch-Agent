@@ -124,6 +124,23 @@ describe('approvals on the phone', () => {
     session.dispose();
   });
 
+  it('keeps what it heard while a read of the list was on its way', async () => {
+    const { engine, session, inbox } = await connected();
+    // The engine answers a read with the list as it stood when the read arrived.
+    const release = engine.hold('exec.approval.list');
+    const reading = inbox.refresh();
+    await eventually(() => expect(engine.requests.filter((r) => r.method === 'exec.approval.list')).toHaveLength(2));
+    engine.requestApproval('exec', { id: 'exec-2', createdAtMs: FIXTURE_NOW, expiresAtMs: FIXTURE_NOW + 30 * MINUTE, request: { command: 'git push', agentId: 'oak' } });
+    engine.resolveApproval('exec-1', 'allow-once');
+    await eventually(() => expect(inbox.getSnapshot().answered.map((a) => a.id)).toEqual(['exec-1']));
+    release();
+    await reading;
+    const snapshot = inbox.getSnapshot();
+    expect(snapshot.pending.map((a) => a.id)).toEqual(['plugin:mail-1', 'exec-2']);
+    expect(snapshot.answered.map((a) => [a.id, a.outcome, a.by])).toEqual([['exec-1', 'allowed', 'elsewhere']]);
+    session.dispose();
+  });
+
   it('keeps the card and says why when an answer doesn’t go through', async () => {
     const { engine, session, inbox } = await connected();
     engine.failMethod('exec.approval.resolve', 'gateway busy');
