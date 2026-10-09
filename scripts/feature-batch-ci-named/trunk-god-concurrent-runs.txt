@@ -1,0 +1,3 @@
+engine:src/agents/prepared-model-runtime.concurrent-runs.test.ts
+engine:src/agents/prepared-model-runtime.superseded-adoption.test.ts
+engine:src/mcp/trunk-tools.test.ts
