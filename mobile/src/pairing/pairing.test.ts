@@ -3,7 +3,7 @@ import { bytesToBase64Url, utf8ToBytes } from '../connect/base64url';
 import { createFakeEngine } from '../connect/fakeEngine';
 import { PHONE_SCOPES } from '../connect/phoneGateway';
 import { memoryStore } from '../storage/keyValueStore';
-import { failureMessage, NEUTRAL_FAILURE_MESSAGE, PAIRING_RECORD_KEY, PairingSession, type PairingState } from './pairingSession';
+import { ASK_AGAIN_MESSAGE, failureMessage, NEUTRAL_FAILURE_MESSAGE, PAIRING_RECORD_KEY, PairingSession, type PairingState } from './pairingSession';
 import { decodeSetupCode, gatewayHost, isGatewayUrl, SetupCodeError } from './setupCode';
 
 const encode = (value: unknown) => bytesToBase64Url(utf8ToBytes(JSON.stringify(value)));
@@ -96,6 +96,23 @@ describe('pairing code', () => {
     expect(gatewayHost('not an address user:secret@')).toBe('your computer');
   });
 
+  it('drops spaces and line breaks a copy picked up, inside the code as well as around it', () => {
+    const text = encode(payload);
+    const wrapped = ` ${text.slice(0, 20)}\n${text.slice(20, 41)}\r\n ${text.slice(41)}\t\n`;
+    expect(decodeSetupCode(wrapped, 1_000)).toEqual(payload);
+    expect(decodeSetupCode(`oc-pair:// ${text}`, 1_000)).toEqual(payload);
+  });
+
+  it('calls a code with one stray or missing character damaged, not “not a Branch code”', () => {
+    const text = encode(payload);
+    for (const damaged of [`${text}x`, `${text.slice(0, 30)}k${text.slice(30)}`, `${text.slice(0, 30)}${text.slice(31)}`, `${text.slice(0, 30)}.${text.slice(30)}`, `oc-pair://${text}!`, `x${text}`]) {
+      expect(() => decodeSetupCode(damaged, 1_000)).toThrow(new SetupCodeError('damaged'));
+    }
+    for (const other of ['hello world', 'https://example.com/pair', '1234']) {
+      expect(() => decodeSetupCode(other, 1_000)).toThrow(new SetupCodeError('invalid'));
+    }
+  });
+
   it('says when a code has expired', () => {
     expect(() => decodeSetupCode(encode(payload), payload.expiresAtMs)).toThrow(new SetupCodeError('expired'));
   });
@@ -165,6 +182,65 @@ describe('pairing with the computer', () => {
     stale.session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'old-code' });
     expect(await until(stale.session, (s) => s.step === 'failed')).toMatchObject({ message: expect.stringContaining('expired or was already used') });
     stale.session.dispose();
+  });
+
+  it('carries the engine’s request id and the code’s expiry while waiting for Allow', async () => {
+    const { session } = sessionWith();
+    session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1', expiresAtMs: Date.now() + 300_000 });
+    const waiting = await until(session, (s) => s.step === 'approval');
+    expect(waiting).toEqual({ step: 'approval', url: 'ws://computer.local:19031', requestId: 'request-1', expiresAtMs: expect.any(Number) });
+    session.dispose();
+  });
+
+  it('offers to ask again with the same code when the request ran out but the code still works, once', async () => {
+    const { session, engine } = sessionWith();
+    session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1', expiresAtMs: Date.now() + 300_000 });
+    await until(session, (s) => s.step === 'approval');
+    engine.refuse({ code: 'AUTH_BOOTSTRAP_TOKEN_INVALID', message: 'unauthorized: bootstrap token invalid or expired' });
+    expect(await until(session, (s) => s.step === 'failed')).toEqual({ step: 'failed', url: 'ws://computer.local:19031', message: ASK_AGAIN_MESSAGE, canAskAgain: true });
+
+    // Asking again sends the same code; the computer lets the phone in this time.
+    engine.refuse(null);
+    const connects = engine.connects.length;
+    session.askAgain();
+    await until(session, (s) => s.step === 'approval');
+    expect(engine.connects[connects].auth).toEqual({ bootstrapToken: 'boot-1' });
+    engine.approve();
+    await until(session, (s) => s.step === 'paired' && s.online);
+    session.dispose();
+
+    // Turned away again after asking again: the code is spent, so only a new one helps.
+    const twice = sessionWith();
+    twice.session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1', expiresAtMs: Date.now() + 300_000 });
+    twice.engine.refuse({ code: 'PAIRING_EXPIRED', message: 'pairing expired' });
+    await until(twice.session, (s) => s.step === 'failed' && s.canAskAgain === true);
+    twice.session.askAgain();
+    const spent = await until(twice.session, (s) => s.step === 'failed' && !s.canAskAgain);
+    expect(spent).toMatchObject({ message: expect.stringContaining('expired or was already used') });
+    twice.session.askAgain();
+    expect(twice.session.getState().step).toBe('failed');
+    twice.session.dispose();
+  });
+
+  it('does not offer to ask again once the code itself has run out, or when it has no expiry', async () => {
+    let now = 1_000;
+    const store = memoryStore();
+    const engine = createFakeEngine();
+    const session = new PairingSession(
+      { store, platform: 'ios', appVersion: '0.1.0', loadIdentity: () => loadDeviceIdentity(store, randomBytes), createRequestId: randomUUID, createSocket: engine.createSocket, pairingRetryMs: 20 },
+      () => now,
+    );
+    session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1', expiresAtMs: 2_000 });
+    await until(session, (s) => s.step === 'approval');
+    now = 2_000;
+    engine.refuse({ code: 'AUTH_BOOTSTRAP_TOKEN_INVALID', message: 'unauthorized: bootstrap token invalid or expired' });
+    expect(await until(session, (s) => s.step === 'failed')).toEqual({ step: 'failed', url: 'ws://computer.local:19031', message: failureMessage('AUTH_BOOTSTRAP_TOKEN_INVALID') });
+    session.dispose();
+
+    const noExpiry = sessionWith();
+    noExpiry.session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'old-code' });
+    expect(await until(noExpiry.session, (s) => s.step === 'failed')).not.toHaveProperty('canAskAgain');
+    noExpiry.session.dispose();
   });
 
   it('ignores a saved computer whose address carries a user name or password', async () => {

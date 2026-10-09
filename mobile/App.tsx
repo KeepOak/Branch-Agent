@@ -155,7 +155,7 @@ function Shell({ session, notifier, appState }: { session: PairingSession; notif
     case 'connecting':
     case 'approval':
     case 'failed':
-      screen = <ApprovalScreen state={state} onCancel={toWelcome} onScanAgain={scanAgain} />;
+      screen = <ApprovalScreen state={state} onCancel={toWelcome} onScanAgain={scanAgain} onAskAgain={() => session.askAgain()} />;
       break;
     case 'paired':
       if (pairedRoute.name === 'computer') {

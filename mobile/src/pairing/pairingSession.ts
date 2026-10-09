@@ -13,9 +13,14 @@ export type PairingState =
   | { step: 'loading' }
   | { step: 'unpaired' }
   | { step: 'connecting'; url: string }
-  | { step: 'approval'; url: string }
+  /**
+   * Waiting for Allow on the computer. `requestId` is the engine's pending request, whose check code the
+   * computer shows; `expiresAtMs` is when the pairing code stops working.
+   */
+  | { step: 'approval'; url: string; requestId?: string; expiresAtMs?: number }
   | { step: 'paired'; url: string; online: boolean; serverVersion?: string }
-  | { step: 'failed'; url: string; message: string }
+  /** `canAskAgain`: the computer let the request run out, but the code still works, so it can be sent again. */
+  | { step: 'failed'; url: string; message: string; canAskAgain?: boolean }
   /**
    * The computer this phone paired with turned it away for good (its device token was revoked or no
    * longer matches, its permissions changed, or too many tries). The engine's client has stopped
@@ -81,6 +86,15 @@ export function failureMessage(code: string | undefined): string {
   }
 }
 
+/** The request ran out while it waited for Allow, in the words for when the code itself still works. */
+export const ASK_AGAIN_MESSAGE =
+  'Your computer didn’t let this phone in before the request ran out. The code still works, so you can ask again.';
+
+/** The engine's codes for a pairing request or code that ran out or was spent. */
+function ranOut(code: string | undefined): boolean {
+  return code === ConnectErrorDetailCodes.PAIRING_EXPIRED || code === ConnectErrorDetailCodes.AUTH_BOOTSTRAP_TOKEN_INVALID;
+}
+
 /** Refusals that can clear up by themselves, so trying again makes sense. */
 function canRetryAfter(code: string | undefined): boolean {
   return code === ConnectErrorDetailCodes.AUTH_RATE_LIMITED;
@@ -94,8 +108,12 @@ export class PairingSession implements EngineLink {
   private gateway: PhoneGateway | null = null;
   private paired: PairingRecord | null = null;
   private openHello: HelloOk | null = null;
+  /** The code this pairing started from, so a request that ran out can be sent again with it. */
+  private setup: SetupPayload | null = null;
+  /** The code was already sent again once; a second refusal means it is spent, whatever its time says. */
+  private askedAgain = false;
 
-  constructor(private readonly deps: PairingDeps) {}
+  constructor(private readonly deps: PairingDeps, private readonly now: () => number = Date.now) {}
 
   getState(): PairingState {
     return this.state;
@@ -120,15 +138,39 @@ export class PairingSession implements EngineLink {
 
   /** Starts pairing with the computer named in a scanned or typed pairing code. */
   begin(setup: SetupPayload): void {
+    this.askedAgain = false;
+    this.start(setup);
+  }
+
+  /**
+   * After the computer let the request run out: sends it again with the same code, while the code still
+   * works. Once only; a code turned away twice is spent.
+   */
+  askAgain(): void {
+    const setup = this.setup;
+    if (this.state.step !== 'failed' || !this.state.canAskAgain || !setup) return;
+    this.askedAgain = true;
+    this.start(setup);
+  }
+
+  private start(setup: SetupPayload): void {
     this.stopGateway();
     this.paired = null;
+    this.setup = setup;
     this.set({ step: 'connecting', url: setup.url });
     this.connect(setup.url, setup.bootstrapToken);
+  }
+
+  /** Whether the code this pairing started from still works by its own expiry time. */
+  private codeStillWorks(): boolean {
+    const expires = this.setup?.expiresAtMs;
+    return expires !== undefined && expires > this.now();
   }
 
   /** Stops a pairing that hasn't finished and goes back to the welcome. */
   cancel(): void {
     this.stopGateway();
+    this.setup = null;
     if (!this.paired) this.set({ step: 'unpaired' });
   }
 
@@ -219,11 +261,14 @@ export class PairingSession implements EngineLink {
       case 'connecting':
         this.set(this.paired ? { step: 'paired', url, online: false } : { step: 'connecting', url });
         return;
-      case 'pairing':
-        this.set({ step: 'approval', url });
+      case 'pairing': {
+        const expiresAtMs = this.setup?.expiresAtMs;
+        this.set({ step: 'approval', url, ...(status.requestId ? { requestId: status.requestId } : {}), ...(expiresAtMs !== undefined ? { expiresAtMs } : {}) });
         return;
+      }
       case 'connected': {
         if (!this.paired) {
+          this.setup = null;
           this.paired = { version: 1, url, pairedAtMs: Date.now() };
           await this.deps.store.set(PAIRING_RECORD_KEY, JSON.stringify(this.paired));
         }
@@ -235,11 +280,15 @@ export class PairingSession implements EngineLink {
       case 'failed':
         // PhoneGateway only reports 'failed' once the engine's reconnect policy has stopped retrying, so a
         // saved pairing that fails here will not come back by itself.
-        this.set(
-          this.paired
-            ? { step: 'refused', url, message: failureMessage(status.code), canRetry: canRetryAfter(status.code) }
-            : { step: 'failed', url, message: failureMessage(status.code) },
-        );
+        if (this.paired) {
+          this.set({ step: 'refused', url, message: failureMessage(status.code), canRetry: canRetryAfter(status.code) });
+          return;
+        }
+        if (ranOut(status.code) && !this.askedAgain && this.codeStillWorks()) {
+          this.set({ step: 'failed', url, message: ASK_AGAIN_MESSAGE, canAskAgain: true });
+          return;
+        }
+        this.set({ step: 'failed', url, message: failureMessage(status.code) });
     }
   }
 
