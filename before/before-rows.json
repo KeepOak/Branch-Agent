@@ -1,0 +1,152 @@
+{
+  "label": "before",
+  "heads": [
+    "Add",
+    "Insert",
+    "Make",
+    "Run",
+    "Who answers here"
+  ],
+  "top": [
+    {
+      "label": "Attach files",
+      "disabled": false,
+      "reason": "",
+      "chip": ""
+    },
+    {
+      "label": "Add a folder",
+      "disabled": false,
+      "reason": "",
+      "chip": ""
+    },
+    {
+      "label": "From Google Drive",
+      "disabled": true,
+      "reason": "Not available in this window yet: Google's file picker opens in the desktop app.",
+      "chip": ""
+    },
+    {
+      "label": "From OneDrive or SharePoint",
+      "disabled": true,
+      "reason": "Not available in this window yet: the OneDrive and SharePoint picker opens in the desktop app.",
+      "chip": ""
+    },
+    {
+      "label": "Take a screenshot",
+      "disabled": true,
+      "reason": "Not available in this window yet: screen capture needs the desktop app.",
+      "chip": ""
+    },
+    {
+      "label": "Take a photo",
+      "disabled": false,
+      "reason": "",
+      "chip": ""
+    },
+    {
+      "label": "Record a voice note",
+      "disabled": false,
+      "reason": "",
+      "chip": ""
+    },
+    {
+      "label": "Mention a Trunk",
+      "disabled": false,
+      "reason": "",
+      "chip": "@"
+    },
+    {
+      "label": "Use a skill",
+      "disabled": false,
+      "reason": "",
+      "chip": "/"
+    },
+    {
+      "label": "Saved prompts",
+      "disabled": true,
+      "reason": "",
+      "chip": ""
+    },
+    {
+      "label": "Set a goal",
+      "disabled": false,
+      "reason": "",
+      "chip": "/goal"
+    },
+    {
+      "label": "Make a picture",
+      "disabled": false,
+      "reason": "",
+      "chip": ""
+    },
+    {
+      "label": "Write a document, spreadsheet or slides",
+      "disabled": true,
+      "reason": "",
+      "chip": ""
+    },
+    {
+      "label": "Find a GIF…",
+      "disabled": true,
+      "reason": "",
+      "chip": ""
+    },
+    {
+      "label": "Improve my draft",
+      "disabled": true,
+      "reason": "",
+      "chip": ""
+    },
+    {
+      "label": "Run it in the background",
+      "disabled": false,
+      "reason": "",
+      "chip": "/bg"
+    },
+    {
+      "label": "Phone call…",
+      "disabled": false,
+      "reason": "Off until you turn it on in Settings › Voice.",
+      "chip": ""
+    },
+    {
+      "label": "Join a meeting…",
+      "disabled": false,
+      "reason": "Off until you turn it on in Settings › Voice.",
+      "chip": ""
+    },
+    {
+      "label": "Researcher",
+      "disabled": false,
+      "reason": "",
+      "chip": ""
+    },
+    {
+      "label": "Builder",
+      "disabled": true,
+      "reason": "This conversation's Trunk is fixed after its first message.",
+      "chip": ""
+    },
+    {
+      "label": "Planner",
+      "disabled": true,
+      "reason": "This conversation's Trunk is fixed after its first message.",
+      "chip": ""
+    },
+    {
+      "label": "Temporary conversation",
+      "disabled": false,
+      "reason": "Starts a new temporary conversation with this Trunk.",
+      "chip": ""
+    },
+    {
+      "label": "Check with me",
+      "disabled": true,
+      "reason": "",
+      "chip": ""
+    }
+  ],
+  "more": null,
+  "pageErrors": []
+}

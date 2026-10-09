@@ -1,0 +1,117 @@
+{
+  "label": "after",
+  "heads": [],
+  "top": [
+    {
+      "label": "Attach files",
+      "disabled": false,
+      "reason": "",
+      "chip": ""
+    },
+    {
+      "label": "Add a folder",
+      "disabled": false,
+      "reason": "",
+      "chip": ""
+    },
+    {
+      "label": "Take a photo",
+      "disabled": false,
+      "reason": "",
+      "chip": ""
+    },
+    {
+      "label": "Record a voice note",
+      "disabled": false,
+      "reason": "",
+      "chip": ""
+    },
+    {
+      "label": "Mention a Trunk",
+      "disabled": false,
+      "reason": "",
+      "chip": "@"
+    },
+    {
+      "label": "Use a skill",
+      "disabled": false,
+      "reason": "",
+      "chip": "/"
+    },
+    {
+      "label": "More…",
+      "disabled": false,
+      "reason": "",
+      "chip": ""
+    }
+  ],
+  "more": {
+    "heads": [
+      "This conversation",
+      "Who answers here"
+    ],
+    "rows": [
+      {
+        "label": "Back",
+        "disabled": false,
+        "reason": "",
+        "chip": ""
+      },
+      {
+        "label": "Set a goal",
+        "disabled": false,
+        "reason": "",
+        "chip": "/goal"
+      },
+      {
+        "label": "Make a picture",
+        "disabled": false,
+        "reason": "",
+        "chip": ""
+      },
+      {
+        "label": "Run it in the background",
+        "disabled": false,
+        "reason": "",
+        "chip": "/bg"
+      },
+      {
+        "label": "Phone call…",
+        "disabled": false,
+        "reason": "Off until you turn it on in Settings › Voice.",
+        "chip": ""
+      },
+      {
+        "label": "Join a meeting…",
+        "disabled": false,
+        "reason": "Off until you turn it on in Settings › Voice.",
+        "chip": ""
+      },
+      {
+        "label": "Researcher",
+        "disabled": false,
+        "reason": "",
+        "chip": ""
+      },
+      {
+        "label": "Builder",
+        "disabled": true,
+        "reason": "This conversation's Trunk is fixed after its first message.",
+        "chip": ""
+      },
+      {
+        "label": "Planner",
+        "disabled": true,
+        "reason": "This conversation's Trunk is fixed after its first message.",
+        "chip": ""
+      },
+      {
+        "label": "Temporary conversation",
+        "disabled": false,
+        "reason": "Starts a new temporary conversation with this Trunk.",
+        "chip": ""
+      }
+    ]
+  },
+  "pageErrors": []
+}
