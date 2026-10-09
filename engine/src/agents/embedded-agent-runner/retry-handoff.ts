@@ -26,14 +26,20 @@ const state = resolveGlobalSingleton<{
 
 function park(wait: HandoffRetryWait, persist: ParkRetryWait): Promise<void> {
   const previous = state.pending.get(wait);
-  if (previous) return previous;
+  if (previous) {
+    return previous;
+  }
   const activation = state.activation;
   const prepared = Promise.resolve().then(async () => {
-    if (!wait.isCurrent()) return;
+    if (!wait.isCurrent()) {
+      return;
+    }
     await persist(wait);
   });
   const pending = prepared.then(async () => {
-    if ((await activation) && wait.isCurrent()) wait.abort();
+    if ((await activation) && wait.isCurrent()) {
+      wait.abort();
+    }
   });
   state.prepared.set(wait, prepared);
   state.pending.set(wait, pending);
@@ -52,7 +58,9 @@ export function registerHandoffRetryWait(owner: HandoffRetryWait) {
       owner.isCurrent(),
   };
   state.waits.add(wait);
-  if (state.park) void park(wait, state.park);
+  if (state.park) {
+    void park(wait, state.park);
+  }
   return {
     finish(): Promise<void> | undefined {
       // The timer can expire while the durable handoff is committing. Do not start another attempt then.
@@ -74,7 +82,9 @@ export function registerHandoffRetryWait(owner: HandoffRetryWait) {
       active = false;
       state.waits.delete(wait);
       state.prepared.delete(wait);
-      if (!state.pending.has(wait)) return;
+      if (!state.pending.has(wait)) {
+        return;
+      }
       void state.pending
         .get(wait)!
         .finally(() => state.pending.delete(wait))
@@ -85,7 +95,9 @@ export function registerHandoffRetryWait(owner: HandoffRetryWait) {
 
 /** Keeps parking later retries as already-admitted steps reach their next quiet boundary. */
 export function beginRetryWaitHandoff(persist: ParkRetryWait) {
-  if (state.park) throw new Error("Retry wait handoff is already active");
+  if (state.park) {
+    throw new Error("Retry wait handoff is already active");
+  }
   let activate!: (committed: boolean) => void;
   state.activation = new Promise<boolean>((resolve) => {
     activate = resolve;

@@ -177,7 +177,9 @@ export function createDeferredEmbeddedRunLifecycleManager(params: {
     abort,
     checkpoint: () => {
       const owner = current;
-      if (!owner || !params.sessionKey) return undefined;
+      if (!owner || !params.sessionKey) {
+        return undefined;
+      }
       const boundary = registerHandoffRetryWait({
         runId: params.runId,
         sessionId: params.sessionId,
@@ -187,7 +189,9 @@ export function createDeferredEmbeddedRunLifecycleManager(params: {
         abort: () => abort("restart"),
       });
       const pending = boundary.finish();
-      if (pending) return pending.then(() => signal.throwIfAborted());
+      if (pending) {
+        return pending.then(() => signal.throwIfAborted());
+      }
       signal.throwIfAborted();
       return undefined;
     },
@@ -202,7 +206,9 @@ export function createDeferredEmbeddedRunLifecycleManager(params: {
       const owner = current;
       const waitSignal = retrySignal ? AbortSignal.any([signal, retrySignal]) : signal;
       const close = owner?.beginRetryWait(deadlineAtMs, waitSignal);
-      if (!close || !params.sessionKey) return close;
+      if (!close || !params.sessionKey) {
+        return close;
+      }
       retryWait?.release();
       const wait = registerHandoffRetryWait({
         runId: params.runId,
@@ -217,8 +223,12 @@ export function createDeferredEmbeddedRunLifecycleManager(params: {
       return (completed) => {
         const finish = () => {
           const result = close(completed);
-          if (retryWait === wait) retryWait = undefined;
-          if (completed) signal.throwIfAborted();
+          if (retryWait === wait) {
+            retryWait = undefined;
+          }
+          if (completed) {
+            signal.throwIfAborted();
+          }
           return result;
         };
         const pending = wait.finish();

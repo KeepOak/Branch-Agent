@@ -165,7 +165,9 @@ export async function recoverRestartAbortedMainSessions(params: {
     );
   }
   if (result.retryAtMs !== undefined) {
-    for (const observe of retryWaitObservers) observe(result.retryAtMs);
+    for (const observe of retryWaitObservers) {
+      observe(result.retryAtMs);
+    }
   }
   return result;
 }
@@ -274,7 +276,9 @@ export function scheduleRestartAbortedMainSessionRecoveryAfterOwnerRelease(
           ref: false,
         });
       }
-      if (!shouldContinue()) return true;
+      if (!shouldContinue()) {
+        return true;
+      }
       const result = await recover();
       const stillPending = loadExpectedRestartRecoveryTarget({
         expected: {
@@ -415,7 +419,9 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
   let retryAtMs: number | undefined;
   let wake: (() => void) | undefined;
   const observeRetryWait = (deadlineAtMs: number) => {
-    if (!shouldContinue()) return;
+    if (!shouldContinue()) {
+      return;
+    }
     retryAtMs = Math.min(retryAtMs ?? Infinity, deadlineAtMs);
     wake?.();
   };
@@ -481,14 +487,18 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
       try {
         await Promise.race([waiting, changed]);
       } catch (error) {
-        if (shouldContinue()) throw error;
+        if (shouldContinue()) {
+          throw error;
+        }
         return;
       } finally {
         wake = undefined;
         waitController.abort();
         await waiting.catch(() => {});
       }
-      if (!shouldContinue()) return;
+      if (!shouldContinue()) {
+        return;
+      }
       pendingAdmissionAgentIds.clear();
       await runRecoveryWave(0);
     }

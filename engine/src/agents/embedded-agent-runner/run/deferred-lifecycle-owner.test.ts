@@ -239,7 +239,7 @@ describe("deferred logical-turn lifecycle", () => {
         ).toBeUndefined();
       } finally {
         expect(onRetryWaitCompleted).not.toHaveBeenCalled();
-        release?.();
+        await release?.();
         await manager.complete();
       }
     },
@@ -264,11 +264,11 @@ describe("deferred logical-turn lifecycle", () => {
       const releaseFirst = manager.beginRetryWait(Date.now() + 660_000);
       const nextDeadline = Date.now() + 900_000;
       const releaseNext = manager.beginRetryWait(nextDeadline);
-      releaseFirst?.();
+      await releaseFirst?.();
       expect(getDiagnosticSessionActivitySnapshot(ref).activeRetryWaitDeadlineAtMs).toBe(
         nextDeadline,
       );
-      releaseNext?.();
+      await releaseNext?.();
       expect(getDiagnosticSessionActivitySnapshot(ref).activeRetryWaitDeadlineAtMs).toBeUndefined();
     } finally {
       await manager.complete();
