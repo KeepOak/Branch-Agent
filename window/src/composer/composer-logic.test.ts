@@ -203,7 +203,7 @@ describe("the plug", () => {
       { name: "a", skillKey: "a", missing: { bins: [] } },
       { name: "hidden", blockedByAllowlist: true },
     ] });
-    expect(skills.map((s) => [s.name, s.problem])).toEqual([["a", undefined], ["b", "Needs a key"]]);
+    expect(skills.map((s) => [s.name, s.problem])).toEqual([["A", undefined], ["B", "Needs a key"]]);
   });
   it("keeps only what differs from the Trunk's own settings", () => {
     const off = toggle({}, "skills", "a", false, true);

@@ -12,6 +12,11 @@ import type { RunningChrome } from "./chrome.js";
 import { stopBranchChrome, stopOwnedBranchChrome } from "./chrome.js";
 import type { ResolvedBrowserConfig, ResolvedBrowserProfile } from "./config.js";
 import { BrowserProfileUnavailableError } from "./errors.js";
+import {
+  armManagedChromeIdleWatch,
+  clearManagedChromeIdleWatch,
+  resolveLiveManagedChromeIdleTimeoutMs,
+} from "./managed-chrome-idle.js";
 import type { ExtensionRelayResource } from "./extension-relay/relay-access.js";
 import { getBrowserProfileCapabilities } from "./profile-capabilities.js";
 import { getLoadedPwAiModule } from "./pw-ai-module.js";
@@ -188,6 +193,42 @@ export function waitForProfileOperation<T>(promise: Promise<T>, signal?: AbortSi
   return waiting.finally(() => signal.removeEventListener("abort", onAbort));
 }
 
+function isProfileBusy(actor: ProfileLifecycleActor): boolean {
+  return actor.leases.size > 0 || actor.starts.size > 0 || Boolean(actor.terminal);
+}
+
+function armManagedChromeIdleTimeout(
+  state: BrowserServerState,
+  runtime: ProfileRuntimeState,
+): void {
+  armManagedChromeIdleWatch({
+    runtime,
+    getBusy: () => isProfileBusy(getProfileLifecycle(runtime)),
+    getRunning: () => runtime.running,
+    getTimeoutMs: () => resolveLiveManagedChromeIdleTimeoutMs(),
+    close: async () => {
+      if (!isBrowserRuntimeRunning(state)) {
+        return;
+      }
+      await beginProfileTransition({
+        state,
+        runtime,
+        reason: "idle headless Chrome timeout",
+        managedChrome: "stop",
+      });
+    },
+  });
+}
+
+export function refreshManagedChromeIdleWatches(state: BrowserServerState): void {
+  for (const runtime of state.profiles.values()) {
+    if (getProfileLifecycle(runtime).terminal) {
+      continue;
+    }
+    armManagedChromeIdleTimeout(state, runtime);
+  }
+}
+
 function createLease(actor: ProfileLifecycleActor): () => void {
   const { promise: settled, resolve: release } = createDeferred<void>();
   actor.leases.add(settled);
@@ -285,6 +326,7 @@ export async function withProfileOperationLease<T>(params: {
   }
 
   const requestedGeneration = actor.generation;
+  clearManagedChromeIdleWatch(params.runtime);
   assertProfileCurrent({ ...params, generation: requestedGeneration });
   // The settled actor tail is the readiness barrier for new ordinary work.
   // Re-read after every await so a synchronously-started transition cannot be
@@ -318,6 +360,7 @@ export async function withProfileOperationLease<T>(params: {
     return result;
   } finally {
     release();
+    armManagedChromeIdleTimeout(params.state, params.runtime);
   }
 }
 
@@ -340,6 +383,7 @@ export function enqueueProfileStart(params: {
 
   const generation = actor.generation;
   const signal = actor.controller.signal;
+  clearManagedChromeIdleWatch(params.runtime);
   const promise = actor.tail.then(async () => {
     assertProfileCurrent({ ...params, generation });
     signal.throwIfAborted();
@@ -354,6 +398,7 @@ export function enqueueProfileStart(params: {
     if (actor.starts.get(params.key) === promise) {
       actor.starts.delete(params.key);
     }
+    armManagedChromeIdleTimeout(params.state, params.runtime);
   };
   actor.tail = promise.then(settleStart, settleStart);
   return waitForProfileOperation(promise, params.signal);
@@ -468,6 +513,7 @@ async function cleanupProfileResources(params: {
 export function beginProfileTransition(
   params: ProfileTransitionOptions,
 ): Promise<ProfileTransitionResult> {
+  clearManagedChromeIdleWatch(params.runtime);
   const actor = getProfileLifecycle(params.runtime);
   const ownerProfile = params.runtime.profile;
   const managedChrome =

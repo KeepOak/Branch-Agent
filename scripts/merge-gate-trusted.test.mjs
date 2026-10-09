@@ -14,7 +14,9 @@ import {
   TRUSTED_CHECKOUT_REF,
   TRUSTED_WORKFLOW_PATH,
   VISUAL_TOUR_WORKFLOW_PATH,
+  PATH_FILTER_NO_CHECK_RUN,
   coverageFromPrFiles,
+  newestChecksByIdentity,
   resolvePrDesktopWorkflow,
   trustedDesktopWorkflow,
   evaluateOtherChecks,
@@ -30,6 +32,9 @@ import {
   formatGateChangeReviewSummary,
   changedFilesFromPrFiles,
   evaluateGateChangeReview,
+  BUTTON_CRAWL_BASELINE,
+  buttonCrawlBaselineGrew,
+  buttonCrawlBaselineGrowth,
   GATE_CHANGE_REVIEW_REQUIRED,
   loadProtectedGatePaths,
   listCoreWorkflows,
@@ -740,7 +745,7 @@ function assertOrdinaryAgreesWithYaml(runs, workflows) {
     input: JSON.stringify(collapsed),
     encoding: 'utf8',
     windowsHide: true,
-  }).trim().split('\n').filter(Boolean).sort();
+  }).trim().split(/\r?\n/).filter(Boolean).sort();
   assert.deepEqual(failed, ordinary.failed.map((run) => `${run.name}: ${run.conclusion}`).sort());
   return ordinary;
 }
@@ -825,6 +830,284 @@ test('newer neutral run does not hide an older failure', () => {
   });
   assert.equal(trustedResult.ok, false);
   assert.deepEqual(trustedResult.failed.map((check) => check.id), [failed.id]);
+});
+
+// PR #767 harvest pair: concurrency cancelled run 37791522434 (higher suite
+// id) while run 37791522096 finished with select=success and two skipped jobs.
+const harvestApp = { id: 15368 };
+const harvestCancelledSuite = 102385772354;
+const harvestPassingSuite = 102385771625;
+const harvestCancelledRun = 37791522434;
+const harvestPassingRun = 37791522096;
+function harvestJob(id, name, suite, runId, conclusion) {
+  return {
+    id,
+    app: harvestApp,
+    name,
+    status: 'completed',
+    conclusion,
+    check_suite: { id: suite },
+    details_url: `https://github.com/KeepOak/Branch-Agent/actions/runs/${runId}/job/${id}`,
+  };
+}
+const harvestCancelledChecks = [
+  harvestJob(113359874720, 'select', harvestCancelledSuite, harvestCancelledRun, 'cancelled'),
+  harvestJob(113359886668, 'Harvest ${{ matrix.lane }} ${{ matrix.shard }}',
+    harvestCancelledSuite, harvestCancelledRun, 'cancelled'),
+  harvestJob(113359887083, 'report-nightly', harvestCancelledSuite, harvestCancelledRun, 'cancelled'),
+];
+const harvestPassingChecks = [
+  harvestJob(113359901237, 'select', harvestPassingSuite, harvestPassingRun, 'success'),
+  harvestJob(113360430916, 'Harvest ${{ matrix.lane }} ${{ matrix.shard }}',
+    harvestPassingSuite, harvestPassingRun, 'skipped'),
+  harvestJob(113360432533, 'report-nightly', harvestPassingSuite, harvestPassingRun, 'skipped'),
+];
+function harvestWorkflow(suite, runId) {
+  return {
+    path: '.github/workflows/harvest-checks.yml',
+    name: 'Harvest checks',
+    id: runId,
+    event: 'pull_request',
+    headSha: SHA,
+    checkSuiteId: suite,
+    pullRequests: [{ number: PR_NUMBER, base: BASE_REF }],
+  };
+}
+const harvestWorkflows = {
+  113359874720: harvestWorkflow(harvestCancelledSuite, harvestCancelledRun),
+  113359886668: harvestWorkflow(harvestCancelledSuite, harvestCancelledRun),
+  113359887083: harvestWorkflow(harvestCancelledSuite, harvestCancelledRun),
+  113359901237: harvestWorkflow(harvestPassingSuite, harvestPassingRun),
+  113360430916: harvestWorkflow(harvestPassingSuite, harvestPassingRun),
+  113360432533: harvestWorkflow(harvestPassingSuite, harvestPassingRun),
+};
+
+function assertHarvestPairPasses(checkRuns) {
+  const ordinary = assertOrdinaryAgreesWithYaml(
+    [...checkRuns, analyzeCheck],
+    harvestWorkflows,
+  );
+  assert.equal(ordinary.ready, true);
+  assert.deepEqual(ordinary.failed, []);
+  assert.deepEqual(
+    ordinary.others.filter((run) => harvestWorkflows[run.id]).map((run) => run.id).sort((a, b) => a - b),
+    harvestPassingChecks.map((run) => run.id).sort((a, b) => a - b),
+  );
+  const trustedResult = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, ...checkRuns],
+    workflowsByCheckId: { ...passWorkflows, ...harvestWorkflows },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(trustedResult.ok, true);
+  assert.deepEqual(trustedResult.failed, []);
+  const kept = newestChecksByIdentity(
+    checkRuns,
+    harvestWorkflows,
+    prContext,
+  ).map((run) => run.id).sort((a, b) => a - b);
+  assert.deepEqual(kept, harvestPassingChecks.map((run) => run.id).sort((a, b) => a - b));
+}
+
+test('regression: #767 cancelled harvest suite is superseded by skipped+success replacement', () => {
+  for (const pair of [
+    [...harvestCancelledChecks, ...harvestPassingChecks],
+    [...harvestPassingChecks, ...harvestCancelledChecks],
+  ]) {
+    assertHarvestPairPasses(pair);
+  }
+});
+
+test('regression: cancelled harvest suite with no replacement still fails both gates', () => {
+  const ordinary = assertOrdinaryAgreesWithYaml(
+    [...harvestCancelledChecks, analyzeCheck],
+    harvestWorkflows,
+  );
+  assert.equal(ordinary.ready, false);
+  assert.deepEqual(
+    ordinary.failed.map((run) => `${run.name}: ${run.conclusion}`).sort(),
+    harvestCancelledChecks.map((run) => `${run.name}: cancelled`).sort(),
+  );
+  const trustedResult = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, ...harvestCancelledChecks],
+    workflowsByCheckId: { ...passWorkflows, ...harvestWorkflows },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(trustedResult.ok, false);
+  assert.deepEqual(
+    trustedResult.failed.map((run) => `${run.name}: ${run.conclusion}`).sort(),
+    harvestCancelledChecks.map((run) => `${run.name}: cancelled`).sort(),
+  );
+});
+
+test('regression: older harvest failure plus newer skipped suite still fails both gates', () => {
+  for (const conclusion of ['failure', 'timed_out', 'action_required', 'startup_failure']) {
+    const failedSelect = harvestJob(90, 'select', 490, 90, conclusion);
+    const skippedSelect = harvestJob(110, 'select', harvestPassingSuite, harvestPassingRun, 'skipped');
+    const workflows = {
+      90: harvestWorkflow(490, 90),
+      110: harvestWorkflow(harvestPassingSuite, harvestPassingRun),
+    };
+    const ordinary = assertOrdinaryAgreesWithYaml(
+      [failedSelect, skippedSelect, analyzeCheck],
+      workflows,
+    );
+    assert.equal(ordinary.ready, false, conclusion);
+    assert.deepEqual(ordinary.failed.map((run) => run.id), [90]);
+    assert.equal(ordinary.others.some((run) => run.id === 110), true);
+    const trustedResult = evaluateTrustedGate({
+      checkRuns: [...passCheckRuns, failedSelect, skippedSelect],
+      workflowsByCheckId: { ...passWorkflows, ...workflows },
+      changedFiles: ['README.md'],
+      coreWorkflows,
+      currentRunId: CURRENT_RUN_ID,
+      ...prContext,
+    });
+    assert.equal(trustedResult.ok, false, conclusion);
+    assert.deepEqual(trustedResult.failed.map((check) => check.id), [90]);
+  }
+});
+
+const visualTourCore = [
+  { path: '.github/workflows/merge-gate.yml', pullRequestPaths: null },
+  { path: VISUAL_TOUR_WORKFLOW_PATH, pullRequestPaths: ['window/**', 'engine/**', 'desktop/**'] },
+];
+const visualTourWindowFiles = ['window/src/app.tsx'];
+const visualTourBuild = {
+  id: 113361725521,
+  app: harvestApp,
+  name: 'build',
+  status: 'completed',
+  conclusion: 'success',
+  check_suite: { id: 102385772397 },
+  details_url: 'https://github.com/KeepOak/Branch-Agent/actions/runs/37791522451/job/113361725521',
+};
+const visualTourTour = {
+  id: 113364294349,
+  app: harvestApp,
+  name: 'tour',
+  status: 'completed',
+  conclusion: 'success',
+  check_suite: { id: 102385772397 },
+  details_url: 'https://github.com/KeepOak/Branch-Agent/actions/runs/37791522451/job/113364294349',
+};
+const visualTourRunWorkflow = {
+  path: VISUAL_TOUR_WORKFLOW_PATH,
+  name: 'Visual tour',
+  id: 37791522451,
+  event: 'pull_request',
+  headSha: SHA,
+  checkSuiteId: 102385772397,
+  pullRequests: [{ number: PR_NUMBER, base: BASE_REF }],
+};
+const visualTourCheckWorkflows = {
+  113361725521: visualTourRunWorkflow,
+  113364294349: visualTourRunWorkflow,
+};
+
+test('regression: #767 Visual tour build and tour satisfy the path-filter once attributed', () => {
+  const missing = missingCoreWorkflows({
+    checkRuns: [passCheckRuns[0], analyzeCheck, visualTourBuild, visualTourTour],
+    workflowsByCheckId: { 101: mergeGateWorkflow, ...visualTourCheckWorkflows },
+    changedFiles: visualTourWindowFiles,
+    coreWorkflows: visualTourCore,
+    ...prContext,
+  });
+  assert.deepEqual(missing, []);
+  const result = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, visualTourBuild, visualTourTour],
+    workflowsByCheckId: { ...passWorkflows, ...visualTourCheckWorkflows },
+    changedFiles: visualTourWindowFiles,
+    coreWorkflows: visualTourCore,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.ready, true);
+  assert.deepEqual(result.unregisteredCore, []);
+  assert.equal(result.others.some((run) => run.id === visualTourBuild.id), true);
+  assert.equal(result.others.some((run) => run.id === visualTourTour.id), true);
+});
+
+test('regression: Visual tour registering late is waited for and then passes', () => {
+  let polls = 0;
+  const waits = [];
+  const code = gate.pollTrustedGate({
+    repo: 'example/repo', token: 'unused', ...prContext,
+    changedFiles: visualTourWindowFiles,
+    coreWorkflows: visualTourCore, currentRunId: CURRENT_RUN_ID,
+    maxAttempts: 3, pollSeconds: 30,
+  }, {
+    fetchChecks: () => {
+      polls += 1;
+      return polls === 1
+        ? passCheckRuns
+        : [...passCheckRuns, visualTourBuild, visualTourTour];
+    },
+    resolveWorkflows: (_repo, _token, runs) => {
+      const found = { ...passWorkflows };
+      for (const run of runs) {
+        if (visualTourCheckWorkflows[run.id]) found[run.id] = visualTourCheckWorkflows[run.id];
+      }
+      return found;
+    },
+    sleep: (seconds) => waits.push(seconds), log: () => {}, error: () => {},
+  });
+  assert.equal(code, 0);
+  assert.equal(polls, 2);
+  assert.deepEqual(waits, [30]);
+});
+
+test('regression: Visual tour truly missing still fails after the timeout', () => {
+  const errors = [];
+  let polls = 0;
+  const code = gate.pollTrustedGate({
+    repo: 'example/repo', token: 'unused', ...prContext,
+    changedFiles: visualTourWindowFiles,
+    coreWorkflows: visualTourCore, currentRunId: CURRENT_RUN_ID,
+    maxAttempts: 3, pollSeconds: 30,
+  }, {
+    fetchChecks: () => {
+      polls += 1;
+      return passCheckRuns;
+    },
+    resolveWorkflows: () => passWorkflows,
+    sleep: () => {}, log: () => {}, error: (text) => errors.push(text),
+  });
+  assert.equal(code, 1);
+  assert.equal(polls, 3);
+  const snapshot = evaluateTrustedGate({
+    checkRuns: passCheckRuns,
+    workflowsByCheckId: passWorkflows,
+    changedFiles: visualTourWindowFiles,
+    coreWorkflows: visualTourCore,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(snapshot.ready, false);
+  assert.ok(snapshot.unregisteredCore.some((item) => item.includes(VISUAL_TOUR_WORKFLOW_PATH)));
+  assert.match(errors.join('\n'), new RegExp(`${VISUAL_TOUR_WORKFLOW_PATH.replaceAll('.', '\\.')}`));
+  assert.match(errors.join('\n'), /Timed out waiting for:/);
+  assert.match(errors.join('\n'), new RegExp(TIMEOUT_RERUN_LINE));
+});
+
+test('regression: unattributed Visual tour jobs stay a path-filter miss until resolved', () => {
+  const result = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, visualTourBuild, visualTourTour],
+    workflowsByCheckId: passWorkflows,
+    changedFiles: visualTourWindowFiles,
+    coreWorkflows: visualTourCore,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(result.ready, false);
+  assert.ok(result.unregisteredCore.some((item) => item.includes(VISUAL_TOUR_WORKFLOW_PATH)));
+  assert.ok(result.missingCore.some((item) => item.includes(PATH_FILTER_NO_CHECK_RUN)));
 });
 
 test('older forged trusted checks cannot be hidden by name deduplication', () => {
@@ -1709,6 +1992,41 @@ test('trusted gate re-runs the UI screenshot proof check from main', () => {
   assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.test.mjs'));
 });
 
+test('trusted gate includes and runs the SELF-CHECK body check from main', () => {
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-self-check.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/check-self-check.test.mjs'));
+  const source = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
+  assert.match(source, /from '\.\/check-self-check\.mjs'/);
+  assert.match(source, /if \(!runSelfCheckFromPr\(process\.env\.HEAD_BRANCH, body\)\) process\.exit\(1\)/);
+  assert.match(source, /if \([^\n]*!process\.env\.HEAD_BRANCH\)/);
+  assert.match(source, /Missing required environment variables:[^\n]*HEAD_BRANCH/);
+});
+
+test('trusted SELF-CHECK runner rejects missing trunk block and skips other branches', () => {
+  assert.equal(gate.runSelfCheckFromPr('trunk/x', 'no block'), false);
+  assert.equal(gate.runSelfCheckFromPr('cursor/x', ''), true);
+});
+
+test('SELF-CHECK workflow wiring reruns edits and never interpolates body or branch into shell', () => {
+  const ordinary = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  const trusted = readFileSync(new URL(`../${TRUSTED_WORKFLOW_PATH}`, import.meta.url), 'utf8');
+  assert.match(trusted, /HEAD_BRANCH:\s*\$\{\{\s*github\.event\.pull_request\.head\.ref\s*\}\}/);
+  assert.match(ordinary, /^\s+run:\s*node --test scripts\/check-self-check\.test\.mjs\s*$/m);
+  assert.match(ordinary, /^\s+run:\s*node scripts\/check-self-check\.mjs\s*$/m);
+  for (const yaml of [ordinary, trusted]) {
+    assert.match(yaml, /^\s+types:.*\bedited\b/m);
+    assert.doesNotMatch(yaml, /^\s+run:.*github\.event\.pull_request\.(?:body|head\.ref)/m);
+    const lines = yaml.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i += 1) {
+      if (!/^\s+run:\s*[|>]/.test(lines[i])) continue;
+      const indent = lines[i].match(/^ */)[0].length;
+      for (let j = i + 1; j < lines.length && (!lines[j].trim() || lines[j].match(/^ */)[0].length > indent); j += 1) {
+        assert.doesNotMatch(lines[j], /github\.event\.pull_request\.(?:body|head\.ref)/);
+      }
+    }
+  }
+});
+
 test('merge-gate does not retrigger on ready_for_review and cancel its waiting run', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
   assert.match(yaml, /^  pull_request:\s*$/m);
@@ -1899,7 +2217,7 @@ test('ordinary JS waiter additions stay aligned with the yaml jq filters', () =>
       input: JSON.stringify(collapsed),
       encoding: 'utf8',
       windowsHide: true,
-    }).trim().split('\n').filter(Boolean).sort();
+    }).trim().split(/\r?\n/).filter(Boolean).sort();
     assert.deepEqual(failed, js.failed.map((run) => `${run.name}: ${run.conclusion}`).sort());
     const pending = Number(execFileSync('jq', [pendingFilter], {
       input: JSON.stringify(collapsed),
@@ -1975,6 +2293,19 @@ test('ordinary JS waiter additions stay aligned with the yaml jq filters', () =>
   align(
     [older, newer, analyzeCheck],
     { 90: desktopWorkflow(490), 110: desktopWorkflow(501, { pullRequests: [{ number: 900, base: BASE_REF }] }) },
+  );
+  align([...harvestCancelledChecks, ...harvestPassingChecks, analyzeCheck], harvestWorkflows);
+  align([...harvestCancelledChecks, analyzeCheck], harvestWorkflows);
+  align(
+    [
+      harvestJob(90, 'select', 490, 90, 'failure'),
+      harvestJob(110, 'select', harvestPassingSuite, harvestPassingRun, 'skipped'),
+      analyzeCheck,
+    ],
+    {
+      90: harvestWorkflow(490, 90),
+      110: harvestWorkflow(harvestPassingSuite, harvestPassingRun),
+    },
   );
   align(realBuildPair, {
     112992933987: {
@@ -2182,6 +2513,102 @@ test('a docs-only change is not a protected gate change', () => {
   assert.match(summary, /Marker matched: no/);
 });
 
+const baselineOnMain = JSON.stringify({
+  version: 1,
+  problems: {
+    'sidebar :: Builder': ['row-actions-inconsistent'],
+    'sidebar :: Researcher': ['row-actions-inconsistent'],
+  },
+}, null, 2);
+
+test('a grown button-crawl baseline is a protected gate change', () => {
+  const head = JSON.stringify({
+    version: 1,
+    problems: {
+      'sidebar :: Builder': ['dead', 'row-actions-inconsistent'],
+      'sidebar :: Researcher': ['row-actions-inconsistent'],
+    },
+  });
+  assert.equal(buttonCrawlBaselineGrew(baselineOnMain, head), true);
+  assert.equal(buttonCrawlBaselineGrew(baselineOnMain, '{'), true);
+  assert.equal(buttonCrawlBaselineGrowth({
+    files: [{ filename: BUTTON_CRAWL_BASELINE, status: 'modified' }],
+    baseText: baselineOnMain,
+    headText: head,
+  }), true);
+  const result = evaluateGateChangeReview({
+    changedFiles: [BUTTON_CRAWL_BASELINE],
+    body: '',
+    headSha: REVIEW_HEAD,
+    baselineGrew: true,
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.touched, true);
+  assert.deepEqual(result.protectedFiles, [BUTTON_CRAWL_BASELINE]);
+  assert.match(result.message, /scripts\/button-crawl\/baseline\.json/);
+  assert.match(result.message, /entry that main does not/);
+  assert.ok(result.message.includes(GATE_CHANGE_REVIEW_REQUIRED));
+  const signed = evaluateGateChangeReview({
+    changedFiles: [BUTTON_CRAWL_BASELINE],
+    body: `gate-change-reviewed: ${REVIEW_HEAD}\n`,
+    headSha: REVIEW_HEAD,
+    baselineGrew: true,
+  });
+  assert.equal(signed.ok, true);
+});
+
+test('a shrunk button-crawl baseline is not a protected gate change', () => {
+  const head = JSON.stringify({
+    version: 1,
+    problems: {
+      'sidebar :: Researcher': ['row-actions-inconsistent'],
+    },
+  });
+  assert.equal(buttonCrawlBaselineGrew(baselineOnMain, head), false);
+  assert.equal(buttonCrawlBaselineGrew(baselineOnMain, null), false);
+  const result = evaluateGateChangeReview({
+    changedFiles: [BUTTON_CRAWL_BASELINE],
+    body: '',
+    headSha: REVIEW_HEAD,
+    baselineGrew: false,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.touched, false);
+  assert.deepEqual(result.protectedFiles, []);
+});
+
+test('an unchanged button-crawl baseline is not a protected gate change', () => {
+  assert.equal(buttonCrawlBaselineGrew(baselineOnMain, baselineOnMain), false);
+  assert.equal(buttonCrawlBaselineGrew(baselineOnMain, `${baselineOnMain}\n`), false);
+  assert.equal(buttonCrawlBaselineGrowth({
+    files: [{ filename: 'README.md', status: 'modified' }],
+    baseText: '{}',
+    headText: baselineOnMain,
+  }), false);
+  const result = reviewChange([BUTTON_CRAWL_BASELINE], '');
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.protectedFiles, []);
+});
+
+test('reordering the button-crawl baseline is not growth', () => {
+  const reordered = JSON.stringify({
+    problems: {
+      'sidebar :: Researcher': ['row-actions-inconsistent'],
+      'sidebar :: Builder': ['row-actions-inconsistent'],
+    },
+  });
+  assert.equal(buttonCrawlBaselineGrew(baselineOnMain, reordered), false);
+  const flipped = JSON.stringify({ problems: { 'place:overview :: Export': ['slow', 'dead'] } });
+  const flippedBase = '{\n  "problems": {\n    "place:overview :: Export": ["dead", "slow"]\n  }\n}\n';
+  assert.equal(buttonCrawlBaselineGrew(flippedBase, flipped), false);
+});
+
+test('button-crawl baseline growth tests run in the changed-test-coverage job', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /^\s+run:\s*node --test scripts\/merge-gate-trusted\.test\.mjs\s*$/m);
+  assert.doesNotMatch(yaml, /merge-gate-trusted\.test\.mjs -t /);
+});
+
 test('merge-gate-trusted still reruns when the pull request body is edited', () => {
   const yaml = readFileSync(new URL(`../${TRUSTED_WORKFLOW_PATH}`, import.meta.url), 'utf8');
   assert.match(yaml, /pull_request_target:/);
@@ -2191,7 +2618,10 @@ test('merge-gate-trusted still reruns when the pull request body is edited', () 
   const source = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
   assert.match(source, /fetchPrFiles\(repo, prNumber, token\)/);
   assert.match(source, /changedFilesFromPrFiles\(files\)/);
-  assert.match(source, /evaluateGateChangeReview\(\{ changedFiles, body, headSha: sha \}\)/);
+  assert.match(source, /buttonCrawlBaselineGrowth\(\{/);
+  assert.match(source, /fetchFileText\(repo, baseRef, token, BUTTON_CRAWL_BASELINE\)/);
+  assert.match(source, /fetchFileText\(repo, sha, token, BUTTON_CRAWL_BASELINE\)/);
+  assert.match(source, /evaluateGateChangeReview\(\{ changedFiles, body, headSha: sha, baselineGrew \}\)/);
   assert.match(source, /writeSummary\(formatGateChangeReviewSummary\(review\)\)/);
   assert.match(source, /if \(!review\.ok\)/);
 });

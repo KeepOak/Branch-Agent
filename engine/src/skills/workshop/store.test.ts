@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createConfigRuntimeEnv,
@@ -14,11 +15,8 @@ import {
   runBranchStateWriteTransaction,
 } from "../../state/branch-state-db.js";
 import * as stateLease from "../../state/branch-state-lease.js";
+import { createBranchTestState, type BranchTestState } from "../../test-utils/branch-test-state.js";
 import { observeMainThreadSql } from "../../test-utils/main-thread-sql-spies.test-support.js";
-import {
-  createBranchTestState,
-  type BranchTestState,
-} from "../../test-utils/branch-test-state.js";
 import { withMockedPlatform } from "../../test-utils/vitest-spies.js";
 import { stripProposalFrontmatterForSkill } from "./frontmatter.js";
 import { createSkillProposalEvent } from "./plugin-hooks.js";
@@ -50,6 +48,7 @@ import {
   updateSkillProposalRecord,
   writeSkillProposal,
 } from "./store.js";
+import { withSkillCollectionLock } from "./target-lock.js";
 
 let testState: BranchTestState;
 const workshopConfig = {};
@@ -520,6 +519,19 @@ describe("Skill Workshop SQLite store", () => {
         operationLabel: "skill-workshop.test.conflict",
       }),
     ).toMatchObject({ state: "conflict", current: { status: "applied" } });
+  });
+
+  it("lists a pending proposal whose target skill does not exist while the agent's collection lease is held", async () => {
+    await createProposal("Listed While Locked");
+    await withSkillCollectionLock(async () => {
+      const outcome = await Promise.race([
+        listSkillProposals(storeOptions()),
+        delay(2_000).then(() => "still waiting for the collection lease"),
+      ]);
+      expect(outcome).toMatchObject({
+        proposals: [expect.objectContaining({ kind: "create", status: "pending" })],
+      });
+    }, storeOptions());
   });
 
   it("lazily ensures additive tables without changing the schema version", async () => {

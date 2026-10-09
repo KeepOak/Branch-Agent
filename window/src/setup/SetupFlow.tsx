@@ -14,7 +14,7 @@ import type { LoginStart } from "../places/settings/account-login";
 import { Icon } from "../shell/icons";
 import { notify } from "../shell/notify";
 import { readThemeChoice, setThemeChoice } from "../theme/theme";
-import { doneSteps, firstOn, freshChoices, LAST, STEPS, type Check, type SetupChoices, type TestResult } from "./setup-model";
+import { doneSteps, firstOn, freshChoices, LAST, railTicked, RUN_SETUP_AGAIN, STEPS, type Check, type SetupChoices, type TestResult } from "./setup-model";
 import { SetupShell } from "./SetupShell";
 import { WelcomeHero } from "./SetupBrand";
 import { ModelsBody, WelcomeBody, WhereBody } from "./steps-early";
@@ -49,11 +49,11 @@ const TITLES: Record<number, [string, string?]> = {
   2: ["Which models should answer?", "Found on this computer:"],
   3: ["Make it yours", "Two quick choices. Both can change any time in Settings."],
   4: ["Your first Trunks", "Pick a few, or tell Branch about your life and work and it proposes them."],
-  5: ["Tools to start with", "Picked for your Trunks. The rest is under the plug."],
-  6: ["Reach Branch anywhere", "Message your Trunks from apps you already use."],
+  5: ["Reach Branch anywhere", "Message your Trunks from apps you already use."],
+  6: ["Tools to start with", "Picked for your Trunks. The rest is under the plug."],
   7: ["Keep it running"],
   8: ["Anyone else?", "People on this computer, teammates on theirs, or your keepoak.com team. Skip it if it’s just you."],
-  9: ["A few extras", "All optional. Branch works the same without them."],
+  9: ["Two more things", "All optional. Skip them and Branch works the same."],
   10: ["All set?", "Branch checks everything before you start."],
 };
 const PROPOSE_OFF = "Proposing Trunks from a sentence needs a setup call the engine doesn't have yet.";
@@ -100,6 +100,11 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
   const done = known ? doneSteps(known, Boolean(apps?.some((a) => a.connected))) : new Set<number>();
   const [prefilled, setPrefilled] = useState(false);
   useEffect(() => {
+    const on = () => setStep(0);
+    window.addEventListener(RUN_SETUP_AGAIN, on);
+    return () => window.removeEventListener(RUN_SETUP_AGAIN, on);
+  }, []);
+  useEffect(() => {
     // An already set-up Branch: prefill from its config and open at the first step not done yet, once.
     if (!known || prefilled) {
       return;
@@ -145,12 +150,12 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
     }
   };
   const answer = (q: TalkQuestion, o: TalkOption) => {
-    if (q.step === 3) { const look = o.value as SetupChoices["look"]; set({ look }); setThemeChoice(look); }
-    else if (q.step === 4 && o.value !== "enough") setChoices((c) => ({ ...c, jobs: [...c.jobs, Number(o.value)] }));
-    else if (q.step === 6 && o.value === "phone") setPairing(true);
-    else if (q.step === 6 && o.value.startsWith("app:")) { const app = apps?.find((a) => a.id === o.value.slice(4)); if (app) setConnecting(app); }
-    else if (q.step === 7) setAutoUpdate(o.value === "yes");
-    else if (q.step === 8) set({ people: o.value === "none" ? null : Number(o.value) });
+    if (STEPS[q.step] === "Make it yours") { const look = o.value as SetupChoices["look"]; set({ look }); setThemeChoice(look); }
+    else if (STEPS[q.step] === "Your first Trunks" && o.value !== "enough") setChoices((c) => ({ ...c, jobs: [...c.jobs, Number(o.value)] }));
+    else if (STEPS[q.step] === "Reach it anywhere" && o.value === "phone") setPairing(true);
+    else if (STEPS[q.step] === "Reach it anywhere" && o.value.startsWith("app:")) { const app = apps?.find((a) => a.id === o.value.slice(4)); if (app) setConnecting(app); }
+    else if (STEPS[q.step] === "Keep it running") setAutoUpdate(o.value === "yes");
+    else if (STEPS[q.step] === "People") set({ people: o.value === "none" ? null : Number(o.value) });
   };
   useEffect(() => {
     if (!talking) return;
@@ -170,7 +175,7 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
     && !known?.model
     && !(models.detected && firstOn(models.detected, choices.modelsOff));
   const body = renderStep(step, { p, choices, set, models, inUse: known?.model ?? null, test, setTest, setLogin, apps, setConnecting, setPairing, autoUpdate: autoUpdate ?? known?.autoUpdate ?? false, setAutoUpdate, boot: boot ?? (known?.promise ? null : true), setBoot, checks, setStep });
-  const [title, lede] = step === 6 ? [TITLES[6][0], reachLede(apps)] : TITLES[step];
+  const [title, lede] = STEPS[step] === "Reach it anywhere" ? [TITLES[step][0], reachLede(apps)] : TITLES[step];
   const footer = (
     <>
       {step > 0 ? (
@@ -189,7 +194,7 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
           {modelNeedsConnection ? "Connect a model" : doneChecks < checks.length ? `Checking… ${doneChecks} of ${checks.length}` : "Open Branch and take the walkthrough"}
         </button>
       ) : (
-        <button type="button" className="btn pri" data-testid="setup-next" disabled={step === 0 && !choices.promise} onClick={() => setStep(step === 0 ? firstUndone(done, 1) : step + 1)}>
+        <button type="button" className="btn pri" data-testid="setup-next" disabled={step === 0 && !choices.promise} onClick={() => setStep(step + 1)}>
           {step === 0 ? "Start" : "Continue"}
         </button>
       )}
@@ -213,7 +218,7 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
         step={step}
         reach={choices.promise ? LAST : 0}
         reachReason="Tick the promise on Welcome first."
-        done={(i) => i < step || done.has(i)}
+        done={(i) => railTicked(step, i)}
         onStep={setStep}
         onSkip={step === 0 || busy ? null : () => void close(false)}
         title={title}
@@ -322,7 +327,7 @@ function renderStep(step: number, c: Ctx): ReactNode {
       return <KeepBody autoUpdate={c.autoUpdate} onAutoUpdate={c.setAutoUpdate} boot={c.boot} onBoot={c.setBoot} />;
     case "People":
       return <PeopleBody people={choices.people} onPeople={(people) => set({ people })} />;
-    case "A few extras":
+    case "Two more things":
       return <MoreBody engine={c.p.engine} agentId={c.p.defaultAgentId} trunkName={c.p.defaultName} />;
     default:
       return <CheckBody checks={c.checks} onFix={(i) => { c.setStep(i); if (i === 2) c.setLogin({ agentId: c.p.defaultAgentId ?? c.p.engine.agentId ?? "", provider: "", choiceId: "", method: SECRET }); }} />;

@@ -68,6 +68,9 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
   // result envelope; every non-tool boundary or interim result restarts it.
   let preserveFrom = 0;
   let sawToolUseSinceText = false;
+  // True while the latest tool call has no visible text after it. Unlike the
+  // boundary flag above, commentary buffering never clears it.
+  let toolCallIsLatestOutput = false;
   let currentMessageHadToolUse = false;
   let previousMessageHadToolUse = false;
   let sessionId: string | undefined;
@@ -122,6 +125,9 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
   const emitClaudeVisibleText = (delta: string) => {
     if (!delta) {
       return;
+    }
+    if (delta.trim()) {
+      toolCallIsLatestOutput = false;
     }
     if (classifyClaudeCommentary) {
       pendingClaudeText = `${pendingClaudeText}${delta}`;
@@ -420,9 +426,15 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
         finalMessageText: assistantText.slice(currentMessageStart).trim(),
         resultText: result.text,
       });
-      const nextText = (
-        keepStreamed ? preservedCandidate : result.text || streamedText || texts.join("\n").trim()
-      ).trim();
+      // A turn whose last output is a tool call has no final message. Text
+      // streamed before that call is narration, not the reply (#847).
+      const endedAfterToolCall = claudeStreamJson && toolCallIsLatestOutput && !result.text.trim();
+      const nextText = endedAfterToolCall
+        ? ""
+        : (keepStreamed
+            ? preservedCandidate
+            : result.text || streamedText || texts.join("\n").trim()
+          ).trim();
       const { text, textParts, completedText } = appendCliResultText(output, nextText);
       const syntheticNoResponse =
         sawClaudeSyntheticNoResponse &&
@@ -438,6 +450,7 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
         !(stoppedTurn && !nextText)
           ? { textParts }
           : {}),
+        ...(endedAfterToolCall && !stoppedTurn ? { endedAfterToolCall: true as const } : {}),
         ...(syntheticNoResponse
           ? {
               errorText: CLAUDE_SYNTHETIC_NO_RESPONSE_ERROR,
@@ -469,6 +482,7 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
       preserveFrom = segmentStart;
       pendingMessageSeparator = false;
       sawToolUseSinceText = false;
+      toolCallIsLatestOutput = false;
       currentMessageHadToolUse = false;
       previousMessageHadToolUse = false;
       return;
@@ -499,6 +513,7 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
         isClaudeToolUseBlockType(evt.content_block.type);
       if (isToolUseBlockStart) {
         sawToolUseSinceText = true;
+        toolCallIsLatestOutput = true;
         currentMessageHadToolUse = true;
       }
       if (classifyClaudeCommentary) {
@@ -551,6 +566,7 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
         claudeStreamJson && parsed.type === "assistant"
           ? (tool: Parameters<NonNullable<typeof params.onToolUseStart>>[0]) => {
               sawToolUseSinceText = true;
+              toolCallIsLatestOutput = true;
               currentMessageHadToolUse = true;
               if (classifyClaudeCommentary) {
                 flushPendingClaudeCommentaryText();
@@ -566,6 +582,18 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
         onToolUseStart,
         onToolResult: params.onToolResult,
       });
+    }
+    // Snapshot-only streams carry no deltas; a snapshot ending in text (not the
+    // CLI's synthetic no-response placeholder) is output after any tool call.
+    if (claudeStreamJson && parsed.type === "assistant" && !isClaudeSyntheticNoResponse(parsed)) {
+      const content = isRecord(parsed.message) ? parsed.message.content : undefined;
+      const last = (Array.isArray(content) ? content : []).findLast(
+        (block) =>
+          isRecord(block) && (block.type === "text" || isClaudeToolUseBlockType(block.type)),
+      );
+      if (isRecord(last) && typeof last.text === "string" && last.text.trim()) {
+        toolCallIsLatestOutput = false;
+      }
     }
     if (!delta) {
       if (

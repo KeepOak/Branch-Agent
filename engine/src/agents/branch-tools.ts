@@ -86,6 +86,12 @@ import { createSubagentsTool } from "./tools/subagents-tool.js";
 import { createTaskSuggestionTools } from "./tools/task-suggestion-tools.js";
 import { createTerminalTool } from "./tools/terminal-tool.js";
 import { createThemeTool } from "./tools/theme-tool.js";
+import { createTrunkMessageTool } from "./tools/trunk-message-tool.js";
+import {
+  createRoomListTool,
+  createRoomPostTool,
+  createRoomReadTool,
+} from "./tools/trunk-room-tools.js";
 import { createTtsTool } from "./tools/tts-tool.js";
 import { createVideoGenerateTool } from "./tools/video-generate-tool.js";
 import { createWeatherTool } from "./tools/weather-tool.js";
@@ -290,6 +296,23 @@ export function createBranchTools(options?: BranchToolsOptions): AnyAgentTool[] 
       allowlist: explicitFactoryAllowlist,
       denylist: explicitFactoryDenylist,
     });
+  // One option set for sessions_send and trunk_message, so both route from the same requester.
+  const sessionsSendToolOptions = {
+    ...options,
+    requesterTurnRunId: options?.runId,
+    agentId: sessionAgentId,
+    // Match sessions_spawn: spawned children record the durable run
+    // session as spawnedBy, so the parent check must use the same key.
+    agentSessionKey: options?.runSessionKey ?? options?.agentSessionKey,
+    agentSessionId: options?.sessionId,
+    requesterOrigin: {
+      channel: options?.agentChannel,
+      accountId: options?.agentAccountId,
+      to: options?.currentMessagingTarget ?? options?.currentChannelId ?? options?.agentTo,
+      threadId: options?.currentThreadTs ?? options?.agentThreadId,
+    },
+    config: sessionConfig,
+  };
   const sessionLookupToolOptions = {
     agentSessionKey: options?.runSessionKey ?? options?.agentSessionKey,
     sandboxed: options?.sandboxed,
@@ -472,22 +495,11 @@ export function createBranchTools(options?: BranchToolsOptions): AnyAgentTool[] 
             }),
           ),
           // Keep the in-process caller so materialized agent roots retain their creation stamp.
-          createSessionsSendTool({
-            ...options,
-            requesterTurnRunId: options?.runId,
-            agentId: sessionAgentId,
-            // Match sessions_spawn: spawned children record the durable run
-            // session as spawnedBy, so the parent check must use the same key.
-            agentSessionKey: options?.runSessionKey ?? options?.agentSessionKey,
-            agentSessionId: options?.sessionId,
-            requesterOrigin: {
-              channel: options?.agentChannel,
-              accountId: options?.agentAccountId,
-              to: options?.currentMessagingTarget ?? options?.currentChannelId ?? options?.agentTo,
-              threadId: options?.currentThreadTs ?? options?.agentThreadId,
-            },
-            config: sessionConfig,
-          }),
+          createSessionsSendTool(sessionsSendToolOptions),
+          createTrunkMessageTool(sessionsSendToolOptions),
+          createRoomListTool({ config: sessionConfig }),
+          createRoomReadTool({ config: sessionConfig }),
+          createRoomPostTool({ config: sessionConfig }),
         ]),
     !embedded || options?.allowGatewaySubagentBinding === true
       ? createSessionsSpawnTool({

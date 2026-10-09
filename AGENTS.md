@@ -18,7 +18,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 2. **Smallest complete change.** Follow existing patterns. No stubs, placeholder behaviour, skipped tests or TODOs for the thing you built. A control is either real or shown disabled with its reason.
 
-3. **One worktree per branch**, from `origin/main`. Install with `node scripts/install-worktree.mjs both` (hardlinked, offline-first). Never link `node_modules` with junctions or symlinks. Don't change `package.json` or lockfiles unless that is the task.
+3. **One worktree per branch**, from `origin/main`. Install with `node scripts/install-worktree.mjs both` from the repo root (hardlinked, offline-first). Never link `node_modules` with junctions or symlinks. Don't change `package.json` or lockfiles unless that is the task.
 
 4. **Tests by name only.** Run only the test files you touched, optionally narrowed with `-t`:
    ```bash
@@ -32,7 +32,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 6. **Lint before pushing:** `cd window && pnpm lint` for window changes; `cd engine && pnpm lint` for engine changes (uses oxlint with strict rules). Fix all lint errors. If engine lint reports raw-copy baseline drift, regenerate with `cd engine && pnpm ui:i18n:baseline` and commit `engine/ui/src/i18n/.i18n/raw-copy-baseline.json`. Do not commit `catalog-fallbacks.json` on a source PR; post-merge locale refresh owns that file.
 
-7. **Type-check before pushing:** `pnpm -C window typecheck` for window changes; `node scripts/strict-typecheck.mjs` for engine changes (about 6 GB).
+7. **Type-check before pushing:** `pnpm -C window typecheck` for window changes; `node scripts/strict-typecheck.mjs` from the repo root (or `cd engine && node ../scripts/strict-typecheck.mjs`) for engine changes (about 6 GB).
 
 8. **Windows child processes start hidden** (`windowsHide: true`, `CREATE_NO_WINDOW`). Tests never open visible windows. `desktop/scripts/hidden-processes.test.mjs` enforces this for desktop launches.
 
@@ -55,22 +55,22 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 15. **Stop processes you start.** Any test, self-test or proof script that starts a process (MCP servers, mcporter, node, browsers) must stop it and its children before finishing. Leftover processes lock the app install folder and block updates.
 
 16. **No new OpenClaw wording.** `scripts/check-openclaw-wording.mjs` fails a PR that adds user-visible OpenClaw names or openclaw.ai / docs.openclaw.ai / github.com/openclaw links; write Branch Agent and Branch links instead.
+17. **Trunk pull requests carry a SELF-CHECK.** A pull request from a `trunk/` branch has the SELF-CHECK block from [`docs/SELF-CHECK.md`](docs/SELF-CHECK.md) in its description, with real test counts. `merge-gate` fails without it; fix it by editing the description (no new commit needed).
 
 ## Common tasks
 
 ### Install dependencies
 ```bash
 # From the worktree root
-node scripts/install-worktree.mjs both     # or: engine | window
+node scripts/install-worktree.mjs both     # from the repo root; or: engine | window
 cd desktop && npm ci                        # only when you change desktop/
 ```
 
 ### Run the app locally (web window)
 ```bash
 # Terminal 1: start the engine gateway
-cd engine
-pnpm install  # first time only
-node scripts/run-node.mjs gateway --port 19011
+pnpm -C engine install  # first time only, from the repo root
+cd engine && node scripts/run-node.mjs gateway --port 19011
 
 # Terminal 2: start the window dev server
 cd window
@@ -95,7 +95,7 @@ cd engine && pnpm lint && node ../scripts/strict-typecheck.mjs
 ```bash
 cd window && pnpm exec vitest run src/path/to/file.test.tsx
 cd engine && node scripts/run-vitest.mjs run src/path/to/file.test.ts
-cd desktop && node --test scripts/file.test.mjs
+cd desktop && node --test scripts/hidden-processes.test.mjs
 ```
 
 ## Coordinating work

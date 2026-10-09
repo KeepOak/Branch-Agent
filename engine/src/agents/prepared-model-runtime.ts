@@ -1,4 +1,5 @@
 /** Lifecycle-owned auth/model discovery snapshots for agent runs. */
+import { adoptSupersedingPublication } from "./prepared-model-runtime.superseded-adoption.js";
 import { toStringifiedError } from "@branch/normalization-core/error-coercion";
 import type { BranchConfig } from "../config/types.branch.js";
 import { normalizeAgentId } from "../routing/session-key.js";
@@ -17,6 +18,7 @@ import {
   configuredOwnersAreRequestVisible,
   registerPreparedRuntimeAuthMaterializationPublisher,
 } from "./prepared-model-runtime-materializations.js";
+import { replaceAgentDirectoryBuilds } from "./prepared-model-runtime.build.js";
 import * as configuredRefresh from "./prepared-model-runtime.configured-refresh.js";
 import {
   capturePreparedModelRuntimeLifetime,
@@ -273,6 +275,10 @@ export function getPendingPreparedModelRuntimeReplacement(agentId?: string): Pro
   return getPassiveReplacement(agentId)?.promise;
 }
 
+/** Startup's retry of one agent: its unsettled model builds stop holding the next one back. */
+export const replacePreparedModelRuntimeAgentBuilds = (agentDir: string, reason: Error) =>
+  replaceAgentDirectoryBuilds(agentBuildCompletions, normalizeOptionalDir(agentDir) ?? "", reason);
+
 /** Fence new execution while plugin work drains, without withdrawing the active catalog. */
 export const beginPreparedModelRuntimePluginDrain = modelRuntimeDrain.begin;
 
@@ -305,15 +311,19 @@ export async function publishPreparedModelRuntimeSnapshot(
       return existing.snapshot;
     }
   }
-  return await publishModelRuntimeSnapshot(
-    input,
-    owners,
-    agentBuildCompletions,
-    modelRuntimeBuildTimeoutMs,
-    existing,
-    options.provenance,
-    options.catalogMode,
-  );
+  try {
+    return await publishModelRuntimeSnapshot(
+      input,
+      owners,
+      agentBuildCompletions,
+      modelRuntimeBuildTimeoutMs,
+      existing,
+      options.provenance,
+      options.catalogMode,
+    );
+  } catch (error) {
+    return await adoptSupersedingPublication(owners, input, error);
+  }
 }
 
 /** Activates lifecycle publication for direct embedded runtimes without a gateway startup. */
