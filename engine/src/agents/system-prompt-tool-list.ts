@@ -54,6 +54,10 @@ export function buildSystemPromptToolLines(params: SystemPromptToolListParams): 
       ? "Search past sessions; use sessionKey with sessions_history"
       : "Search past sessions",
     sessions_send: "Message other session/subagent",
+    trunk_message: "Message another Trunk: joins its active task, or queues for its mailbox",
+    room_list: "List group chats you are in",
+    room_read: "Read a group chat you are in",
+    room_post: "Post to a group chat you are in (does not wake others)",
     sessions_spawn: acpSpawnRuntimeEnabled
       ? `Spawn subagent/ACP. Native clean context: context="isolated"; transcript: context="fork". ACP needs agentId unless default; ids from acp.allowedAgents${availableTools.has("agents_list") ? ", not agents_list" : ""}.`
       : 'Spawn subagent; clean context: context="isolated"; transcript: context="fork"',

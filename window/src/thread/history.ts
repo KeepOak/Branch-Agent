@@ -139,7 +139,8 @@ export function readAttachment(part: unknown): Attachment | null {
   const src = data ? `data:${mimeType ?? "application/octet-stream"};base64,${data}` : url || undefined;
   return {
     kind,
-    name: str(p.name) || str(p.fileName) || str(p.filename) || kind,
+    name: str(p.name) || str(p.fileName) || str(p.filename) || str(p.alt) || kind,
+    ...(str(p.artifactId) ? { artifactId: str(p.artifactId) } : {}),
     ...(mimeType ? { mimeType } : {}),
     ...(src ? { src } : {}),
     ...(num(p.sizeBytes) ? { sizeBytes: num(p.sizeBytes) } : {}),

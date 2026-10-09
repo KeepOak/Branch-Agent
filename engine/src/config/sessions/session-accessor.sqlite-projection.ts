@@ -78,7 +78,10 @@ import {
   commitSessionLifecycleProjectionInWorker,
   projectSessionEntryLifecycleMutationInWorker,
 } from "./session-lifecycle-projection.js";
-import { prepareSessionMaintenancePreservation } from "./store-maintenance-preserve.js";
+import {
+  prepareSessionMaintenancePreservation,
+  retryAfterSessionMaintenancePreservationChange,
+} from "./store-maintenance-preserve.js";
 import { resolveMaintenanceConfig } from "./store-maintenance-runtime.js";
 import { normalizeResolvedMaintenanceConfigInput } from "./store-maintenance.js";
 import type { SessionEntry } from "./types.js";
@@ -192,119 +195,120 @@ export async function applySessionEntryLifecycleMutation(
                 },
               }
             : {}),
-          commit: async (assertSourceCurrent?: () => void) => {
-            if (
-              reclamationOptions &&
-              (!hasPreparedNativeSessionDeletion() ||
-                captureNativeSessionWorkerDeletion(deletedOwners))
-            ) {
-              const preparedPreservation = params.skipMaintenance
-                ? undefined
-                : await prepareSessionMaintenancePreservation(params.storePath);
-              try {
-                const maintenance: SessionEntryMaintenanceInput | null = preparedPreservation
-                  ? {
-                      activeSessionKey: params.activeSessionKey ?? "",
-                      archiveDirectory: resolveSqliteTranscriptArchiveDirectory(resolved),
-                      forceMaintenance: params.maintenanceOverride !== undefined,
-                      maintenance: normalizeResolvedMaintenanceConfigInput({
-                        ...resolveMaintenanceConfig(),
-                        ...params.maintenanceOverride,
-                      }),
-                      preservation: preparedPreservation.capture(),
-                      storePath: params.storePath,
+          commit: (assertSourceCurrent?: () => void) =>
+            retryAfterSessionMaintenancePreservationChange(async () => {
+              if (
+                reclamationOptions &&
+                (!hasPreparedNativeSessionDeletion() ||
+                  captureNativeSessionWorkerDeletion(deletedOwners))
+              ) {
+                const preparedPreservation = params.skipMaintenance
+                  ? undefined
+                  : await prepareSessionMaintenancePreservation(params.storePath);
+                try {
+                  const maintenance: SessionEntryMaintenanceInput | null = preparedPreservation
+                    ? {
+                        activeSessionKey: params.activeSessionKey ?? "",
+                        archiveDirectory: resolveSqliteTranscriptArchiveDirectory(resolved),
+                        forceMaintenance: params.maintenanceOverride !== undefined,
+                        maintenance: normalizeResolvedMaintenanceConfigInput({
+                          ...resolveMaintenanceConfig(),
+                          ...params.maintenanceOverride,
+                        }),
+                        preservation: preparedPreservation.capture(),
+                        storePath: params.storePath,
+                      }
+                    : null;
+                  const assertCurrent = () => {
+                    execution?.assertCurrent();
+                    params.commitGuard?.();
+                    assertSourceCurrent?.();
+                  };
+                  const assertPreservationCurrent = () => {
+                    if (
+                      maintenance &&
+                      preparedPreservation &&
+                      !isDeepStrictEqual(maintenance.preservation, preparedPreservation.capture())
+                    ) {
+                      throw new Error(
+                        "Session maintenance protection changed before lifecycle removal",
+                      );
                     }
-                  : null;
-                const assertCurrent = () => {
-                  execution?.assertCurrent();
-                  params.commitGuard?.();
-                  assertSourceCurrent?.();
-                };
-                const assertPreservationCurrent = () => {
-                  if (
-                    maintenance &&
-                    preparedPreservation &&
-                    !isDeepStrictEqual(maintenance.preservation, preparedPreservation.capture())
-                  ) {
-                    throw new Error(
-                      "Session maintenance protection changed before lifecycle removal",
+                  };
+                  if (upserts.length > 0 && execution && !hasPreparedNativeSessionDeletion()) {
+                    return withArchivePublication(
+                      await commitSessionLifecycleProjectionInWorker({
+                        database: reclamationOptions,
+                        execution,
+                        assertCurrent,
+                        assertPreservationCurrent,
+                        onLifecycleCommitted: params.onLifecycleCommitted,
+                        input: {
+                          agentId: resolved.agentId,
+                          projected,
+                          removalPlans: materializedRemovalPlans,
+                          materializationFailed: removalArchiveMaterializationFailed,
+                          allowCanonicalRepair: params.allowCanonicalRepair,
+                          maintenance,
+                          descendantRunBasis: params.descendantRunBasis,
+                          maintenanceRunBasis: preparedPreservation?.subagentRunBasis,
+                        },
+                      }),
                     );
                   }
-                };
-                if (upserts.length > 0 && execution && !hasPreparedNativeSessionDeletion()) {
-                  return withArchivePublication(
-                    await commitSessionLifecycleProjectionInWorker({
-                      database: reclamationOptions,
-                      execution,
-                      assertCurrent,
-                      assertPreservationCurrent,
-                      onLifecycleCommitted: params.onLifecycleCommitted,
+                  const result = await runSqliteSessionReclamation({
+                    forceInProcess: false,
+                    assertCommitAllowed: () => {
+                      assertCurrent();
+                      assertPreservationCurrent();
+                    },
+                    onWorkerResult: (completed) => {
+                      if (completed.kind === "lifecycle-projection-commit") {
+                        params.onLifecycleCommitted?.();
+                      }
+                    },
+                    plan: {
+                      kind: "lifecycle-projection-commit",
+                      agentId: resolved.agentId,
+                      databaseOptions: reclamationOptions,
+                      materializedPlans: materializedRemovalPlans,
+                      descendantRunBasis: params.descendantRunBasis,
+                      maintenanceRunBasis: preparedPreservation?.subagentRunBasis,
                       input: {
-                        agentId: resolved.agentId,
                         projected,
-                        removalPlans: materializedRemovalPlans,
                         materializationFailed: removalArchiveMaterializationFailed,
                         allowCanonicalRepair: params.allowCanonicalRepair,
                         maintenance,
-                        descendantRunBasis: params.descendantRunBasis,
-                        maintenanceRunBasis: preparedPreservation?.subagentRunBasis,
                       },
-                    }),
-                  );
-                }
-                const result = await runSqliteSessionReclamation({
-                  forceInProcess: false,
-                  assertCommitAllowed: () => {
-                    assertCurrent();
-                    assertPreservationCurrent();
-                  },
-                  onWorkerResult: (completed) => {
-                    if (completed.kind === "lifecycle-projection-commit") {
-                      params.onLifecycleCommitted?.();
-                    }
-                  },
-                  plan: {
-                    kind: "lifecycle-projection-commit",
-                    agentId: resolved.agentId,
-                    databaseOptions: reclamationOptions,
-                    materializedPlans: materializedRemovalPlans,
-                    descendantRunBasis: params.descendantRunBasis,
-                    maintenanceRunBasis: preparedPreservation?.subagentRunBasis,
-                    input: {
-                      projected,
-                      materializationFailed: removalArchiveMaterializationFailed,
-                      allowCanonicalRepair: params.allowCanonicalRepair,
-                      maintenance,
                     },
-                  },
-                });
-                if (result.kind !== "lifecycle-projection-commit") {
-                  throw new Error(
-                    "SQLite lifecycle projection returned an unexpected commit result",
-                  );
+                  });
+                  if (result.kind !== "lifecycle-projection-commit") {
+                    throw new Error(
+                      "SQLite lifecycle projection returned an unexpected commit result",
+                    );
+                  }
+                  return withArchivePublication(result.value);
+                } finally {
+                  preparedPreservation?.dispose();
                 }
-                return withArchivePublication(result.value);
-              } finally {
-                preparedPreservation?.dispose();
               }
-            }
-            return withSqliteSessionDatabase(toDatabaseOptions(resolved), (database) =>
-              withNativeSessionCommitContext(
-                database,
-                resolved.env,
-                (source) =>
-                  commitProjectedLifecycleMutation(
-                    materializedRemovalPlans,
-                    removalArchiveMaterializationFailed,
-                    () => {
-                      assertSourceCurrent?.();
-                      source?.assertCurrent();
-                    },
-                  ),
-                params.afterCommitted,
-              ),
-            );
-          },
+              return withSqliteSessionDatabase(toDatabaseOptions(resolved), (database) =>
+                withNativeSessionCommitContext(
+                  database,
+                  resolved.env,
+                  (source) =>
+                    commitProjectedLifecycleMutation(
+                      materializedRemovalPlans,
+                      removalArchiveMaterializationFailed,
+                      () => {
+                        assertSourceCurrent?.();
+                        source?.assertCurrent();
+                      },
+                    ),
+                  params.afterCommitted,
+                ),
+              );
+            }),
         };
       },
       "session.lifecycle.mutate",

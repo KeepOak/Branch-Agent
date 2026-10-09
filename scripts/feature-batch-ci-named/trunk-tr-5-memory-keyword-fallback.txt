@@ -1,0 +1,2 @@
+engine:extensions/memory-core/src/memory/manager-search-keyword-fallback.test.ts
+engine:extensions/memory-core/src/memory/manager-search-upgrade.test.ts

@@ -257,34 +257,75 @@ describe("usage.status provider usage cache", () => {
     expect(mocks.ensureAuthProfileStore).toHaveBeenCalledTimes(3);
   });
 
-  it.each([false, true])("serves stale usage while refreshing (timeout: %s)", async (timeout) => {
-    const first = (await runUsageStatus()) as UsageSummary;
-    now = 61_000;
-    if (timeout) {
+  it.each([undefined, "Timeout", "HTTP 429: Rate limited. Please try again later."])(
+    "serves stale usage while refreshing (error: %s)",
+    async (error) => {
+      const timeout = error !== undefined;
+      const first = (await runUsageStatus()) as UsageSummary;
+      now = 61_000;
+      if (timeout) {
+        mocks.loadProviderUsageSummary.mockResolvedValueOnce({
+          updatedAt: now,
+          providers: [{ ...providerDescriptor, windows: [], error }],
+        });
+      }
+      expect(JSON.stringify(await settledStatus(null))).toBe(JSON.stringify(first));
+      now = 62_000;
+      const retained = (await runUsageStatus()) as UsageSummary;
+      expect(retained).toEqual(
+        timeout
+          ? {
+              updatedAt: 61_000,
+              providers: [{ ...first.providers[0], readingAt: 1_000, staleReason: error }],
+            }
+          : {
+              updatedAt: 61_000,
+              providers: [
+                {
+                  ...providerDescriptor,
+                  windows: [{ label: "5h", usedPercent: 20 }],
+                  plan: "Plus",
+                },
+              ],
+            },
+      );
+      expect(mocks.loadProviderUsageSummary).toHaveBeenCalledTimes(2);
+    },
+  );
+  it("dates each kept reading by account across repeated rate limits", async () => {
+    const rateLimited = "HTTP 429: Rate limited. Please try again later.";
+    const account = (id: string, usedPercent?: number) => ({
+      ...providerDescriptor,
+      authProfileId: `openai:${id}`,
+      windows: usedPercent === undefined ? [] : [{ label: "5h", usedPercent }],
+      ...(usedPercent === undefined ? { error: rateLimited } : {}),
+    });
+    mocks.loadProviderUsageSummary.mockResolvedValueOnce({
+      updatedAt: now,
+      providers: [account("a", 10), account("b", 20)],
+    });
+    await runUsageStatus();
+    for (const [checkedAt, fresh] of [
+      [61_000, 30],
+      [122_000, 40],
+    ] as const) {
+      now = checkedAt;
       mocks.loadProviderUsageSummary.mockResolvedValueOnce({
         updatedAt: now,
-        providers: [{ ...providerDescriptor, windows: [], error: "Timeout" }],
+        providers: [account("a"), account("b", fresh)],
+      });
+      await settledStatus(null);
+      now = checkedAt + 1_000;
+      await expect(runUsageStatus()).resolves.toEqual({
+        updatedAt: checkedAt,
+        providers: [
+          { ...account("a", 10), readingAt: 1_000, staleReason: rateLimited },
+          account("b", fresh),
+        ],
       });
     }
-    expect(JSON.stringify(await settledStatus(null))).toBe(JSON.stringify(first));
-    now = 62_000;
-    const retained = (await runUsageStatus()) as UsageSummary;
-    expect(retained).toEqual(
-      timeout
-        ? first
-        : {
-            updatedAt: 61_000,
-            providers: [
-              {
-                ...providerDescriptor,
-                windows: [{ label: "5h", usedPercent: 20 }],
-                plan: "Plus",
-              },
-            ],
-          },
-    );
-    expect(mocks.loadProviderUsageSummary).toHaveBeenCalledTimes(2);
   });
+
   it("shares the credential-bound snapshot and invalidates it on rotation", async () => {
     await runUsageStatus();
     const usage = readProviderUsageStaleWhileRevalidate({

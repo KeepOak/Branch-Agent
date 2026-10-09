@@ -21,5 +21,12 @@ export const AgentDatabaseAdmissionRefusalSchema = Type.Union([
       Type.Literal("agent-database-inspection-pending"),
       Type.Literal("agent-database-inspection-failed"),
     ]),
+    preparation: Type.Optional(
+      closedObject({
+        state: Type.Union([Type.Literal("retrying"), Type.Literal("needs-attention")]),
+        failures: Type.Integer({ minimum: 1 }),
+        restarts: Type.Integer({ minimum: 0 }),
+      }),
+    ),
   }),
 ]);
