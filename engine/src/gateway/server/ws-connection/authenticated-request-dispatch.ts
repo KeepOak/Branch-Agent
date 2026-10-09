@@ -46,7 +46,7 @@ import {
 } from "../ws-policy-close.js";
 import type { GatewayWsClient } from "../ws-types.js";
 import type { GatewayWsMessageHandlerParams } from "./message-handler-types.js";
-import { createGatewayRpcDiagnostics } from "./request-diagnostics.js";
+import { createGatewayRpcDiagnostics, gatewayRpcCatalogLabel } from "./request-diagnostics.js";
 import { scheduleGatewayRequestStart } from "./request-start.js";
 import { isUnauthorizedRoleError, UnauthorizedFloodGuard } from "./unauthorized-flood-guard.js";
 
@@ -263,7 +263,11 @@ export function createGatewayAuthenticatedRequestDispatcher(params: {
           let responseError = error;
           const sendStartedAt = performance.now();
           let sendResult = sendResponse({ type: "res", id: req.id, ok, payload, error });
-          recordMainThreadWork("rpc-send", req.method, performance.now() - sendStartedAt);
+          recordMainThreadWork(
+            "rpc-send",
+            gatewayRpcCatalogLabel(req.method, getMethodRegistry, extraHandlers),
+            performance.now() - sendStartedAt,
+          );
           if (sendResult.kind === "serialization") {
             const detail = formatForLog(sendResult.error);
             logGateway.error(`response serialization failed method=${req.method}: ${detail}`);

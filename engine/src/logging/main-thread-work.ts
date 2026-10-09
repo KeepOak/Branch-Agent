@@ -7,6 +7,8 @@ const MAX_CATEGORIES = 8;
 const MAX_NAMES_PER_CATEGORY = 64;
 const REPORTED_ENTRIES = 5;
 const OVERFLOW_NAME = "other";
+// Names can carry caller-chosen text (an RPC method, for one), so cap each name at record time.
+const MAX_NAME_LENGTH = 64;
 
 type WorkEntry = { ms: number; count: number };
 type WorkState = Map<string, Map<string, WorkEntry>>;
@@ -18,6 +20,9 @@ const state = resolveGlobalSingleton(
 
 /** Adds one synchronous main-thread span. Callers measure the span with performance.now(). */
 export function recordMainThreadWork(category: string, name: string, ms: number): void {
+  if (name.length > MAX_NAME_LENGTH) {
+    name = `${name.slice(0, MAX_NAME_LENGTH)}…`;
+  }
   let names = state.get(category);
   if (names === undefined) {
     if (state.size >= MAX_CATEGORIES) {

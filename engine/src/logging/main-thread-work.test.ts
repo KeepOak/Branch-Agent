@@ -35,3 +35,13 @@ describe("main-thread work tally", () => {
     expect(summary).toContain("rpc-send:other=6ms/6");
   });
 });
+
+describe("main-thread work names", () => {
+  it("caps a caller-chosen name at record time", () => {
+    const longName = `rpc.${"x".repeat(200)}`;
+    recordMainThreadWork("rpc-send", longName, 5);
+    const summary = takeMainThreadWorkSummary();
+    expect(summary).not.toContain(longName);
+    expect(summary).toMatch(/^rpc-send:rpc\.x{60}…=5ms\/1$/);
+  });
+});
