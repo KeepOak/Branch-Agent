@@ -95,6 +95,16 @@ export function buildMessagingSection(params: {
     ...(params.availableTools.has("sessions_send")
       ? ["- Cross-session: `sessions_send(sessionKey, message)`."]
       : []),
+    ...(params.availableTools.has("trunk_message")
+      ? [
+          "- Another Trunk: `trunk_message(agentId, text)` joins its active run or starts a turn when it is idle. It never starts a second run beside a working one.",
+        ]
+      : []),
+    ...(params.availableTools.has("room_post")
+      ? [
+          "- Group chats: `room_list`, then `room_read(roomId)` and `room_post(roomId, text)` to coordinate in the room. A post is recorded only; to wake a Trunk, also `trunk_message` it.",
+        ]
+      : []),
     subagentOrchestrationGuidance,
     completionEventGuidance,
     ...routingGuidance,
