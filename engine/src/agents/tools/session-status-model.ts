@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import { patchSessionEntryWithKey, type SessionEntry } from "../../config/sessions.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { hasOperatorToolGatewayAuthority } from "../../gateway/operator-invocation-authority.js";
-import { withSessionStatusModelPatchOrigin } from "../../gateway/session-model-patch-origin.js";
+import {
+  withSessionStatusModelPatchOrigin,
+  type AgentModelPatchAccess,
+} from "../../gateway/session-model-patch-origin.js";
 import { triggerSessionPatchHook } from "../../gateway/session-patch-hooks.js";
 import type { SessionsPatchResult } from "../../gateway/session-utils.types.js";
 import {
@@ -11,6 +14,7 @@ import {
 } from "../../plugins/plugin-metadata-snapshot.js";
 import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
 import { applyModelOverrideWithAuthProfileCompatibility } from "../../sessions/auth-profile-preservation.js";
+import { authorizeAgentModelChange } from "../model-choice.js";
 import {
   buildModelAliasIndex,
   modelKey,
@@ -34,6 +38,8 @@ export async function patchSessionStatusModel(params: {
   resolved: ResolvedStatusSession;
   metadataSnapshot?: PluginMetadataSnapshot;
   gatewayCall?: AgentToolGatewayRequestCaller;
+  /** The requesting Trunk's posture; the Gateway or this local path applies tools.modelChoice. */
+  access: AgentModelPatchAccess;
 }): Promise<{ resolved: ResolvedStatusSession; changedModel: boolean }> {
   const { cfg, agentId, resolved } = params;
   if (hasOperatorToolGatewayAuthority() && !params.gatewayCall) {
@@ -41,23 +47,25 @@ export async function patchSessionStatusModel(params: {
   }
   if (params.gatewayCall) {
     const gatewayCall = params.gatewayCall;
-    const { result, applied } = await withSessionStatusModelPatchOrigin(() =>
-      gatewayCall<SessionsPatchResult>({
-        method: "sessions.patch",
-        params: {
-          key: resolved.key,
-          agentId,
-          ...(resolved.persisted
-            ? {
-                ...(resolved.entry.sessionId.trim()
-                  ? { expectedSessionId: resolved.entry.sessionId }
-                  : {}),
-                expectedLifecycleRevision: resolved.entry.lifecycleRevision,
-              }
-            : {}),
-          model: normalizeToolModelOverride(params.raw) ?? null,
-        },
-      }),
+    const { result, applied } = await withSessionStatusModelPatchOrigin(
+      () =>
+        gatewayCall<SessionsPatchResult>({
+          method: "sessions.patch",
+          params: {
+            key: resolved.key,
+            agentId,
+            ...(resolved.persisted
+              ? {
+                  ...(resolved.entry.sessionId.trim()
+                    ? { expectedSessionId: resolved.entry.sessionId }
+                    : {}),
+                  expectedLifecycleRevision: resolved.entry.lifecycleRevision,
+                }
+              : {}),
+            model: normalizeToolModelOverride(params.raw) ?? null,
+          },
+        }),
+      params.access,
     );
     return {
       resolved: { key: result.key, entry: result.entry, persisted: true },
@@ -149,6 +157,15 @@ export async function patchSessionStatusModel(params: {
   const applied = applySelection({ ...resolved.entry });
   if (!applied.updated) {
     return { resolved, changedModel: false };
+  }
+  // Standalone runs have no approval prompt, so only Full access applies here.
+  const decision = await authorizeAgentModelChange({
+    cfg,
+    fullAccess: params.access.fullAccess,
+    request: { model: raw ?? null },
+  });
+  if (!decision.ok) {
+    throw new ToolAuthorizationError(decision.reason);
   }
   const patched = await patchSessionEntryWithKey(
     { agentId, sessionKey: resolved.key, storePath: params.storePath },
