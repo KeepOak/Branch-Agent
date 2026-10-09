@@ -159,6 +159,13 @@ class HarnessAdapter {
   }
 
   /** Shortcut and wheel probes change the screen, so they run after the walk, never before it. */
+  /** Reopens a root after its page crashed, and records the crash. The walk replays the path from there. */
+  async recover(rootEntry, reason) {
+    this.record({ kind: 'browser-crash', root: rootEntry.id, place: rootEntry.id, control: '(page)', detail: `renderer crashed, root reopened: ${reason.slice(0, 160)}`, evidence: [] });
+    await this.closeContext();
+    await this.beginRoot(rootEntry);
+  }
+
   async endRoot(rootEntry) {
     if (this.page) {
       await this.shortcutChecks(rootEntry);
