@@ -5,10 +5,8 @@ import {
   readAgentDatabaseAdmissionRefusal,
   recordAgentDatabaseAdmissions,
 } from "./agent-database-admission.js";
-import {
-  retryAgentDatabaseStartupPreparation,
-  withAgentDatabaseStartupAdmission,
-} from "./agent-database-startup.js";
+// A namespace import: on a base without the retry request, the assertions below fail, not the import.
+import * as startup from "./agent-database-startup.js";
 import {
   closeBranchAgentDatabasesAsync,
   closeBranchAgentDatabasesForTest,
@@ -28,8 +26,13 @@ afterEach(closeDatabases);
 
 const NOT_PUBLISHED = "Agent tk model preparation has not published";
 
+const retryStartup = (agentId: string): boolean =>
+  (
+    startup as { retryAgentDatabaseStartupPreparation?: (agentId: string) => boolean }
+  ).retryAgentDatabaseStartupPreparation?.(agentId) ?? false;
+
 async function startDeferredPreparation(
-  prepareAgent: () => Promise<void>,
+  prepareAgent: (input: { signal: AbortSignal }) => Promise<void>,
   extraEnv: Record<string, string>,
 ) {
   const env = { BRANCH_STATE_DIR: tempDirs.make("branch-startup-bounded-"), ...extraEnv };
@@ -38,9 +41,9 @@ async function startDeferredPreparation(
   await closeDatabases();
   const clean: BranchDatabaseSchemaPreflight = { incompatible: [], indeterminate: [] };
   const openAgent = vi.fn(async () => {});
+  const replaceAgent = vi.fn(async (_input: { agentId: string; reason: Error }) => {});
   let stop: (() => Promise<void>) | undefined;
-  let retryNow: ((agentId: string) => boolean) | undefined;
-  await withAgentDatabaseStartupAdmission(async (admission) => {
+  await startup.withAgentDatabaseStartupAdmission(async (admission) => {
     const refusals = admission.defer({
       env,
       inspections: [{ target: { agentId, path }, result: Promise.resolve(clean) }],
@@ -48,57 +51,43 @@ async function startDeferredPreparation(
     });
     recordAgentDatabaseAdmissions(refusals, { env, source: "startup" });
     stop = admission.adopt().stop;
-    retryNow = (id) => admission.retryNow(id);
-    admission.activate({ isCurrent: () => true, openAgent, prepareAgent });
+    admission.activate({ isCurrent: () => true, openAgent, prepareAgent, replaceAgent });
   });
-  return { env, agentId, openAgent, stop: stop!, retryNow: retryNow! };
+  const admitted = () =>
+    vi.waitFor(() => expect(readAgentDatabaseAdmissionRefusal(agentId, { env })).toBeUndefined(), {
+      timeout: 10000,
+    });
+  return { env, agentId, openAgent, replaceAgent, admitted, stop: stop! };
 }
 
 describe("agent database startup preparation that keeps failing", () => {
-  it("backs off, then starts the preparation again from scratch instead of retrying it forever", async () => {
+  it("keeps recovering on its own past twelve failures, replacing the preparation before every retry", async () => {
     let calls = 0;
-    let release!: () => void;
-    const restarted = new Promise<void>((resolve) => {
-      release = resolve;
-    });
     const prepareAgent = vi.fn(async () => {
       calls += 1;
-      if (calls <= 6) {
+      // Six failures, a restart; six more, another restart; then the failure clears by itself.
+      if (calls <= 14) {
         throw new Error(NOT_PUBLISHED);
       }
-      // The restarted attempt holds until the test has read the status it left.
-      await restarted;
     });
     const started = await startDeferredPreparation(prepareAgent, {
-      BRANCH_AGENT_PREPARATION_RETRY_MS: "10",
+      BRANCH_AGENT_PREPARATION_RETRY_MS: "1",
     });
     try {
-      // While it retries, the pending refusal says so, for the window's status line.
-      await vi.waitFor(
-        () =>
-          expect(
-            readAgentDatabaseAdmissionRefusal(started.agentId, { env: started.env }),
-          ).toMatchObject({
-            code: "agent-database-inspection-pending",
-            preparation: { state: "retrying", failures: 6, restarts: 1 },
-          }),
-        { timeout: 10000 },
+      await started.admitted();
+      expect(prepareAgent).toHaveBeenCalledTimes(15);
+      // Every retry, the two restarts from scratch included, first replaced what the failed
+      // attempt left running (its model builds).
+      expect(started.replaceAgent).toHaveBeenCalledTimes(14);
+      expect(started.replaceAgent).toHaveBeenCalledWith(
+        expect.objectContaining({ agentId: "tk", reason: expect.any(Error) }),
       );
-      release();
-      await vi.waitFor(
-        () =>
-          expect(
-            readAgentDatabaseAdmissionRefusal(started.agentId, { env: started.env }),
-          ).toBeUndefined(),
-        { timeout: 10000 },
-      );
-      expect(prepareAgent).toHaveBeenCalledTimes(7);
     } finally {
       await started.stop();
     }
   });
 
-  it("stops retrying once the restarted preparation fails as often again, and says it needs a restart", async () => {
+  it("reports retrying, never a dead end, while it keeps failing", async () => {
     let fail = true;
     const prepareAgent = vi.fn(async () => {
       if (fail) {
@@ -106,36 +95,60 @@ describe("agent database startup preparation that keeps failing", () => {
       }
     });
     const started = await startDeferredPreparation(prepareAgent, {
-      BRANCH_AGENT_PREPARATION_RETRY_MS: "5",
+      BRANCH_AGENT_PREPARATION_RETRY_MS: "1",
     });
     try {
       await vi.waitFor(
-        () =>
-          expect(
-            readAgentDatabaseAdmissionRefusal(started.agentId, { env: started.env }),
-          ).toMatchObject({
+        () => {
+          const refusal = readAgentDatabaseAdmissionRefusal(started.agentId, { env: started.env });
+          expect(refusal).toMatchObject({
             code: "agent-database-inspection-pending",
-            preparation: { state: "needs-restart", failures: 12, restarts: 1 },
-          }),
+            preparation: { state: "retrying" },
+          });
+          // Past the second restart from scratch, where it used to stop and wait for a person.
+          expect(refusal?.preparation?.restarts).toBeGreaterThanOrEqual(2);
+        },
         { timeout: 10000 },
       );
-      // No timer retries it any more: well past the backoff it has still been tried 12 times.
-      await new Promise((resolve) => {
-        setTimeout(resolve, 200);
+      const tried = prepareAgent.mock.calls.length;
+      expect(tried).toBeGreaterThan(12);
+      // Still trying on its own: no retry request is needed to reach the next attempt.
+      await vi.waitFor(() => expect(prepareAgent.mock.calls.length).toBeGreaterThan(tried + 1), {
+        timeout: 10000,
       });
-      expect(prepareAgent).toHaveBeenCalledTimes(12);
-      // The window's Retry (agents.retryStartup) starts it again from scratch.
       fail = false;
-      expect(retryAgentDatabaseStartupPreparation(started.agentId)).toBe(true);
-      await vi.waitFor(
-        () =>
-          expect(
-            readAgentDatabaseAdmissionRefusal(started.agentId, { env: started.env }),
-          ).toBeUndefined(),
-        { timeout: 10000 },
-      );
-      expect(prepareAgent).toHaveBeenCalledTimes(13);
-      expect(retryAgentDatabaseStartupPreparation(started.agentId)).toBe(false);
+      await started.admitted();
+    } finally {
+      await started.stop();
+    }
+  });
+
+  it("starts a running, hung attempt again from scratch when asked, not only during the backoff", async () => {
+    const hung = Promise.withResolvers<void>();
+    let calls = 0;
+    const prepareAgent = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) {
+        throw new Error(NOT_PUBLISHED);
+      }
+      if (calls === 2) {
+        hung.resolve();
+        // Never settles and ignores its abort signal: only the retry request can end the attempt
+        // (its watchdog is two minutes).
+        await new Promise(() => {});
+      }
+    });
+    const started = await startDeferredPreparation(prepareAgent, {
+      BRANCH_AGENT_PREPARATION_RETRY_MS: "1",
+    });
+    try {
+      await hung.promise;
+      expect(retryStartup(started.agentId)).toBe(true);
+      await started.admitted();
+      expect(prepareAgent).toHaveBeenCalledTimes(3);
+      // Once after the first failure, once more for the hung attempt the request ended.
+      expect(started.replaceAgent).toHaveBeenCalledTimes(2);
+      expect(retryStartup(started.agentId)).toBe(false);
     } finally {
       await started.stop();
     }
@@ -151,18 +164,19 @@ describe("agent database startup preparation that keeps failing", () => {
       BRANCH_AGENT_PREPARATION_RETRY_MS: "60000",
     });
     try {
-      await vi.waitFor(() => expect(started.retryNow(started.agentId)).toBe(true), {
-        timeout: 10000,
-      });
+      await vi.waitFor(() => expect(prepareAgent).toHaveBeenCalledTimes(1), { timeout: 10000 });
       await vi.waitFor(
         () =>
           expect(
             readAgentDatabaseAdmissionRefusal(started.agentId, { env: started.env }),
-          ).toBeUndefined(),
+          ).toMatchObject({ preparation: { state: "retrying", failures: 1 } }),
         { timeout: 10000 },
       );
+      expect(retryStartup(started.agentId)).toBe(true);
+      await started.admitted();
       expect(prepareAgent).toHaveBeenCalledTimes(2);
-      expect(started.retryNow(started.agentId)).toBe(false);
+      expect(started.replaceAgent).toHaveBeenCalledTimes(1);
+      expect(retryStartup(started.agentId)).toBe(false);
     } finally {
       await started.stop();
     }

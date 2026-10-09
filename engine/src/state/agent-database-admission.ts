@@ -25,10 +25,10 @@ export type AgentDatabaseAdmissionRefusal = {
   reason: string;
   repairHint: string;
   /**
-   * Set once a pending preparation has failed: whether it is retrying on its own or waits for a
-   * retry request, how often it failed, and how often it was started again from scratch.
+   * Set once a pending preparation has failed: it keeps retrying on its own; how often it failed,
+   * and how often it was started again from scratch.
    */
-  preparation?: { state: "retrying" | "needs-restart"; failures: number; restarts: number };
+  preparation?: { state: "retrying"; failures: number; restarts: number };
 } & (
   | { code: "agent-database-ownership-mismatch"; embeddedOwnerId: string }
   | {
