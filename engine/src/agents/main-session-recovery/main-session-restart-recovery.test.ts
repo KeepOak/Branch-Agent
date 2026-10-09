@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GatewayClientRequestError } from "../../../packages/gateway-client/src/index.js";
-import { createDeferred } from "../../../test/helpers/promise.js";
+import { createDeferred, withinTest } from "../../../test/helpers/promise.js";
 import {
   emptySqliteCounts,
   observeParentSqlite,
@@ -2162,7 +2162,7 @@ describe("main-session-restart-recovery", () => {
     }
   });
 
-  it("wakes for a handed-off retry reported after the startup scan", async () => {
+  it("wakes for a handed-off retry reported after the startup scan", async ({ signal }) => {
     const { sessionsDir, storePath } = await makeMainSessionFixture({
       restartRecoveryRetryAtMs: Date.now() + 30 * 60 * 60 * 1000,
     });
@@ -2174,9 +2174,12 @@ describe("main-session-restart-recovery", () => {
       stateDir: tmpDir,
       delayMs: 0,
     });
+    let rescheduled: ReturnType<typeof observeRecoveryRootCompletions> | undefined;
     try {
       await attempts.completed;
       await vi.advanceTimersByTimeAsync(1);
+      attempts.restore();
+      rescheduled = observeRecoveryRootCompletions("main-session:startup-recovery", 1);
       const deadlineAtMs = Date.now() + 180_000;
       const target = { sessionKey: "agent:main:main", storePath };
       await replaceSessionEntry(target, {
@@ -2184,15 +2187,23 @@ describe("main-session-restart-recovery", () => {
         restartRecoveryRetryAtMs: deadlineAtMs,
       });
       await recoverRestartAbortedMainSessions({ cfg: {}, stateDir: tmpDir });
+      // Notification starts another real SQLite scan. Join that scan before
+      // advancing the fake clock; wall-clock polling races its disk work.
+      await withinTest(rescheduled.completed, signal);
+      await vi.advanceTimersByTimeAsync(1);
       expect(callGateway).not.toHaveBeenCalled();
-      vi.mocked(callGateway).mockResolvedValueOnce({ runId: "run-resumed" });
-      await vi.advanceTimersByTimeAsync(180_000);
-      // Real SQLite work may finish after the single clock jump. Keep advancing
-      // the fake clock while waiting, with Vitest's standard bounded wait.
-      await vi.waitFor(() => expect(callGateway).toHaveBeenCalledOnce());
+      const dispatched = createDeferred();
+      vi.mocked(callGateway).mockImplementationOnce(async () => {
+        dispatched.resolve();
+        return { runId: "run-resumed" };
+      });
+      await vi.advanceTimersByTimeAsync(Math.max(0, deadlineAtMs - Date.now()));
+      await withinTest(dispatched.promise, signal);
+      expect(callGateway).toHaveBeenCalledOnce();
     } finally {
       dispatchSettlement.resolve();
       await recovery.stop();
+      rescheduled?.restore();
       attempts.restore();
       vi.useRealTimers();
     }
