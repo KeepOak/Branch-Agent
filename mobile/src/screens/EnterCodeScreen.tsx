@@ -7,7 +7,10 @@ import { Button } from '../ui/Button';
 import { Card, Screen } from '../ui/Screen';
 import { setupCodeProblem } from './ScanScreen';
 
-/** For when the camera can't help: paste the pairing code the computer shows under its QR code. */
+/**
+ * For when the camera can't help: paste the pairing code the computer shows under its QR code. Pair stays
+ * above the keyboard, and the keyboard's own done key pairs too.
+ */
 export function EnterCodeScreen({ onCode, onScan, onCancel }: { onCode: (setup: SetupPayload) => void; onScan: () => void; onCancel: () => void }) {
   const { color, space, radius, type } = useTheme();
   const [text, setText] = useState('');
@@ -24,6 +27,7 @@ export function EnterCodeScreen({ onCode, onScan, onCancel }: { onCode: (setup: 
   return (
     <Screen
       testID="enter-code-screen"
+      avoidKeyboard
       footer={
         <>
           <Button title="Pair" onPress={submit} disabled={!text.trim()} testID="submit-code" />

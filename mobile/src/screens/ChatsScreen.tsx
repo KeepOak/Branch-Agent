@@ -7,6 +7,7 @@ import { chatTime } from '../chats/chatTime';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
+import { useNow } from '../ui/useNow';
 
 const AVATAR = 52;
 const SKELETON_ROWS = 6;
@@ -246,7 +247,7 @@ export function ChatsScreen({
   searchMessages,
   needsYou,
   onNeedsYou,
-  now = Date.now(),
+  now: fixedNow,
 }: {
   list: ChatListSnapshot;
   online: boolean;
@@ -259,9 +260,14 @@ export function ChatsScreen({
   /** Approvals waiting for a yes: how many, and the oldest one in a line ("Oak · Run a command"). */
   needsYou?: { count: number; line: string } | null;
   onNeedsYou?: () => void;
+  /** A fixed time for tests and screenshots; otherwise the phone's clock, read again every half minute. */
   now?: number;
 }) {
   const { color, space, radius, layout, type } = useTheme();
+  // The list can stay open for hours: a render every half minute moves rows from "Now" to a time, and from
+  // today to "Yesterday", by themselves. Each render reads the clock, so a fresh row is never in the future.
+  useNow(30_000);
+  const now = fixedNow ?? Date.now();
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
