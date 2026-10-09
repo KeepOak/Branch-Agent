@@ -3,7 +3,8 @@
 // phone's Ed25519 signature over the engine's v3 device-auth payload, so the engine's own client code in
 // PhoneGateway runs exactly as it would against a computer. After the handshake it answers the reads the
 // Chats screen makes (sessions.subscribe, sessions.list, agents.list, sessions.search), the Chat screen's
-// chat.history, chat.send, chat.abort and sessions.patch, and pushes events.
+// chat.history, chat.send, chat.abort and sessions.patch, the approvals' exec/plugin .approval.list and
+// .approval.resolve, and pushes events.
 import { verify } from '@noble/ed25519';
 import type { ConnectParams, GatewayProtocolSocket, GatewayProtocolSocketHandlers } from '@branch/gateway-client/browser';
 import { base64UrlToBytes, utf8ToBytes } from './base64url';
@@ -34,7 +35,16 @@ export type FakeEngine = {
   failMethod: (method: string, message: string | null) => void;
   /** The chat.history messages (and the run still going, if any) the engine reports for a chat from now on. */
   setHistory: (sessionKey: string, messages: unknown[], inFlightRun?: unknown) => void;
+  /** A Trunk asks for a yes: the approval joins the list and every phone hears *.approval.requested. */
+  requestApproval: (kind: 'exec' | 'plugin', record: FakeApproval) => void;
+  /** Another surface (the window, a timeout) answers: it leaves the list and every phone hears *.approval.resolved. */
+  resolveApproval: (id: string, decision: string, resolvedBy?: string | null) => void;
+  /** The approvals still waiting, by kind. */
+  pendingApprovals: (kind: 'exec' | 'plugin') => FakeApproval[];
 };
+
+/** One pending approval as the engine lists it (approval-record-lookup.ts listVisiblePendingApprovalRequests). */
+export type FakeApproval = { id: string; request: Record<string, unknown>; createdAtMs: number; expiresAtMs: number };
 
 export type FakeEngineOptions = {
   version?: string;
@@ -43,6 +53,7 @@ export type FakeEngineOptions = {
   sessions?: unknown[];
   /** The agents.list payload. */
   agents?: unknown;
+  approvals?: { exec?: FakeApproval[]; plugin?: FakeApproval[] };
 };
 
 export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
@@ -56,6 +67,15 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
   const agents = options.agents ?? { defaultId: 'main', mainKey: 'main', scope: 'per-sender', agents: [{ id: 'main', name: 'Branch Agent' }] };
   const failures = new Map<string, string>();
   const histories = new Map<string, { messages: unknown[]; inFlightRun?: unknown }>();
+  const approvals = { exec: [...(options.approvals?.exec ?? [])], plugin: [...(options.approvals?.plugin ?? [])] };
+  const settle = (kind: 'exec' | 'plugin', id: string, decision: string, resolvedBy: string | null): boolean => {
+    const record = approvals[kind].find((a) => a.id === id);
+    if (!record) return false;
+    approvals[kind] = approvals[kind].filter((a) => a.id !== id);
+    // Like approval-shared.ts: the resolution is broadcast to every approvals client, the answering one included.
+    setTimeout(() => engine.emit(`${kind}.approval.resolved`, { id, decision, resolvedBy, ts: Date.now(), request: record.request }), 0);
+    return true;
+  };
   const live = new Set<{ close: (code: number, reason: string) => void; event: (frame: unknown) => void }>();
   const answer = (method: string, params: unknown): { ok: true; payload: unknown } | { ok: false; message: string } => {
     const failure = failures.get(method);
@@ -91,6 +111,18 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
         setTimeout(() => engine.emit('sessions.changed', { sessionKey: key }), 0);
         return { ok: true, payload: { ok: true, key } };
       }
+      case 'exec.approval.list':
+        return { ok: true, payload: approvals.exec };
+      case 'plugin.approval.list':
+        return { ok: true, payload: approvals.plugin };
+      case 'exec.approval.resolve':
+      case 'plugin.approval.resolve': {
+        const { id, decision } = (params ?? {}) as { id?: string; decision?: string };
+        // The engine's words when it isn't waiting any more (approval-shared.ts).
+        return settle(method.startsWith('plugin') ? 'plugin' : 'exec', String(id), String(decision), 'Branch')
+          ? { ok: true, payload: { ok: true } }
+          : { ok: false, message: 'approval expired or not found' };
+      }
       default:
         return { ok: true, payload: {} };
     }
@@ -109,6 +141,14 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
     setHistory: (sessionKey, messages, inFlightRun) => {
       histories.set(sessionKey, { messages, ...(inFlightRun ? { inFlightRun } : {}) });
     },
+    requestApproval: (kind, record) => {
+      approvals[kind] = [...approvals[kind], record];
+      engine.emit(`${kind}.approval.requested`, record);
+    },
+    resolveApproval: (id, decision, resolvedBy = 'Branch on the computer') => {
+      if (!settle('exec', id, decision, resolvedBy)) settle('plugin', id, decision, resolvedBy);
+    },
+    pendingApprovals: (kind) => [...approvals[kind]],
     failMethod: (method, message) => {
       if (message === null) failures.delete(method);
       else failures.set(method, message);
