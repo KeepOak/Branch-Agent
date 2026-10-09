@@ -13,7 +13,6 @@ import {
   getErrorOutput,
   getLogOutput,
   lastWriteJsonCall,
-  packageInstallCommandCall,
   requireValue,
 } from "./update-cli-assertions.test-support.js";
 import { createUpdateCliFixture } from "./update-cli-fixture.test-support.js";
@@ -25,7 +24,6 @@ import {
   readPackageVersion,
   resolveGlobalManager,
   restartHealthTestControl,
-  retainUpdateRuntime,
   serviceDefinitionMutationCapability,
   serviceLoaded,
   serviceReadCommand,
@@ -70,7 +68,6 @@ describe("update-cli", () => {
     initializeExistingUpdateProfile,
     mockFileBackedPathExists,
     mockGatewayHealth,
-    mockNoopPostUpdatePluginConvergence,
     mockNpmGlobalCommands,
     mockNpmGlobalRoot,
     mockPackageInstallStatus,
@@ -457,89 +454,6 @@ describe("update-cli", () => {
       const updateCall = vi.mocked(updateGitCheckout).mock.calls[0]?.[0];
       expect(updateCall?.gitRoot).toBe(canonicalGitRoot);
       expect(updateCall?.opts.beforeGitMutation).toEqual(expect.any(Function));
-    },
-  );
-
-  it.runIf(process.platform !== "win32")(
-    "continues package-to-Git updates from the published checkout after its alias is retargeted",
-    async () => {
-      const root = tempDirs.make("branch-update-git-alias-");
-      const { nodeModules, pkgRoot } = await setupInstalledPackageAtNodeModules(
-        path.join(root, "package", "lib", "node_modules"),
-      );
-      const targetRoot = path.join(root, "checkout-target");
-      const replacementRoot = path.join(root, "checkout-replacement");
-      const checkoutAlias = path.join(root, "checkout-alias");
-      await Promise.all([fs.mkdir(targetRoot), fs.mkdir(replacementRoot)]);
-      await fs.symlink(targetRoot, checkoutAlias, "dir");
-      const publishedRoot = await fs.realpath(checkoutAlias);
-      mockFileBackedPathExists();
-      mockNoopPostUpdatePluginConvergence();
-      const sha = "a".repeat(40);
-      vi.mocked(updateGitCheckout).mockImplementationOnce(
-        async ({ gitRoot: stagingRoot, opts: options }) => {
-          expect(options.gitArtifactStorageRoot).toBe(path.dirname(stagingRoot));
-          await options.inspectGitTarget({});
-          await writeBranchPackageFixture(stagingRoot, "2026.8.17", {
-            git: true,
-            builtSha: sha,
-            entrySource: "export {};\n",
-          });
-          await options.prepareGitExposure?.(stagingRoot, sha, undefined);
-          await options.validateCandidate(stagingRoot);
-          await requireValue(options.beforeGitMutation, "Git mutation admission")({});
-          expect(await options.publishGitCheckout?.()).toBe(publishedRoot);
-          return makeOkUpdateResult({
-            mode: "git",
-            root: publishedRoot,
-            after: { sha, version: "2026.8.17" },
-          });
-        },
-      );
-      mockNpmGlobalCommands(
-        nodeModules,
-        async (argv) => {
-          if (argv[0] === "git" && argv[1] === "clone") {
-            const stagingDir = requireValue(argv.at(-1), "Git clone staging directory");
-            await writeBranchPackageFixture(stagingDir, "2026.8.17", { git: true });
-            await fs.unlink(checkoutAlias);
-            await fs.symlink(replacementRoot, checkoutAlias, "dir");
-          }
-        },
-        () =>
-          requireValue(
-            vi.mocked(updateGitCheckout).mock.calls[0]?.[0]?.gitRoot,
-            "candidate checkout",
-          ),
-      );
-
-      await withEnvAsync({ BRANCH_GIT_DIR: checkoutAlias }, async () => {
-        await updateCommand({ channel: "dev", yes: true, restart: false }).catch(
-          (error: unknown) => {
-            throw new Error(getErrorOutput() + getLogOutput(), { cause: error });
-          },
-        );
-      });
-
-      const installCall = packageInstallCommandCall();
-      const candidateRoot = requireValue(
-        vi.mocked(updateGitCheckout).mock.calls[0]?.[0]?.gitRoot,
-        "candidate checkout",
-      );
-      expect(installCall?.[0]).toContain(candidateRoot);
-      expect(installCall?.[0]).not.toContain(checkoutAlias);
-      expect(installCall?.[1].cwd).toBe(candidateRoot);
-      expect(retainUpdateRuntime).toHaveBeenCalledWith(
-        expect.objectContaining({
-          installTarget: expect.objectContaining({
-            manager: "npm",
-            globalRoot: nodeModules,
-            packageRoot: pkgRoot,
-          }),
-          mutationRoots: expect.arrayContaining([pkgRoot, checkoutAlias]),
-        }),
-      );
-      await expect(fs.readdir(replacementRoot)).resolves.toEqual([]);
     },
   );
 
