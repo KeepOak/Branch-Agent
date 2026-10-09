@@ -546,6 +546,7 @@ export {
   SkillsUploadChunkParamsSchema,
   SkillsUploadCommitParamsSchema,
   SkillsUpdateParamsSchema,
+  SkillsUninstallParamsSchema,
   CronJobSchema,
   CronListParamsSchema,
   CronStatusParamsSchema,

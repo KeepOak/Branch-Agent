@@ -370,6 +370,16 @@ export const SkillsUpdateParamsSchema = Type.Union([
   }),
 ]);
 
+/**
+ * Removes a Seedbank-installed workspace skill. `expectedVersion` must name the installed version
+ * the operator reviewed, so a client cannot remove a skill it has not seen.
+ */
+export const SkillsUninstallParamsSchema = closedObject({
+  agentId: Type.Optional(NonEmptyString),
+  slug: Type.String({ minLength: 1, description: CLAWHUB_SKILL_REF_DESCRIPTION }),
+  expectedVersion: NonEmptyString,
+});
+
 /** Searches the skill registry. */
 export const SkillsSearchParamsSchema = closedObject({
   query: Type.Optional(NonEmptyString),
@@ -1175,4 +1185,5 @@ export type SkillsUploadChunkParams = Static<typeof SkillsUploadChunkParamsSchem
 export type SkillsUploadCommitParams = Static<typeof SkillsUploadCommitParamsSchema>;
 export type SkillsInstallParams = Static<typeof SkillsInstallParamsSchema>;
 export type SkillsUpdateParams = Static<typeof SkillsUpdateParamsSchema>;
+export type SkillsUninstallParams = Static<typeof SkillsUninstallParamsSchema>;
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

@@ -108,6 +108,11 @@ Methods an operator client calls on behalf of a person: helper reads, exec appro
     to replace such a skill anyway.
   - Config mode patches `skills.entries.<skillKey>` values such as `enabled`,
     `apiKey`, and `env`.
+- `skills.uninstall` (`operator.admin`) removes one Seedbank-installed workspace
+  skill in the default agent workspace. `slug` and `expectedVersion` are both
+  required; the removal proceeds only when the installed version matches
+  `expectedVersion`, the skill has no local file changes, and the skill is a
+  tracked Seedbank install. Bundled and custodian skills are refused.
 
 ### `models.list` views
 
