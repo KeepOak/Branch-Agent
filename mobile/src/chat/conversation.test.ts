@@ -9,6 +9,19 @@ const eventually = (check: () => void) => waitFor(check, { timeout: 3000 });
 
 const user = (text: string, timestamp: number, runId?: string) => ({ role: 'user', content: [{ type: 'text', text }], timestamp, ...(runId ? { idempotencyKey: `${runId}:user` } : {}) });
 const reply = (text: string, timestamp: number) => ({ role: 'assistant', content: [{ type: 'text', text }], timestamp, stopReason: 'stop' });
+/**
+ * A `chat` delta as the engine sends it (server-chat.ts `broadcastChatDelta`): a connection's first frame for a run, and
+ * every replacement, carries the reply's whole text so far in `message`; later additions carry only `deltaText`
+ * (server-chat-live-text.ts `projectChatWireDelta`, sent only to a connection holding the frame before).
+ */
+const delta = (runId: string, seq: number, deltaText: string, whole?: string, sessionKey = KEY) => ({
+  runId,
+  sessionKey,
+  seq,
+  state: 'delta',
+  deltaText,
+  ...(whole === undefined ? {} : { message: { role: 'assistant', content: [{ type: 'text', text: whole }], timestamp: 1 } }),
+});
 
 async function paired(engine: FakeEngine = createFakeEngine()) {
   const { session } = createFakeSession(engine);
@@ -93,10 +106,10 @@ describe('one chat, live', () => {
 
     engine.emit('chat', { runId: 'run-1', sessionKey: KEY, seq: 1, state: 'status', phase: 'starting_model' });
     await eventually(() => expect(chat.getSnapshot().live?.phase).toBe('starting_model'));
-    engine.emit('chat', { runId: 'run-1', sessionKey: KEY, seq: 2, state: 'delta', deltaText: 'Two ' });
-    engine.emit('chat', { runId: 'run-1', sessionKey: KEY, seq: 3, state: 'delta', deltaText: 'meetings.' });
+    engine.emit('chat', delta('run-1', 2, 'Two ', 'Two '));
+    engine.emit('chat', delta('run-1', 3, 'meetings.'));
     await eventually(() => expect(chat.getSnapshot().live?.text).toBe('Two meetings.'));
-    engine.emit('chat', { runId: 'run-1', sessionKey: KEY, seq: 4, state: 'delta', deltaText: 'Two meetings and lunch.', replace: true });
+    engine.emit('chat', { ...delta('run-1', 4, 'Two meetings and lunch.', 'Two meetings and lunch.'), replace: true });
     await eventually(() => expect(chat.getSnapshot().live?.text).toBe('Two meetings and lunch.'));
 
     engine.setHistory(KEY, [user('Hi', 1_000), reply('Hello!', 2_000), user('What is on today?', 3_000, 'run-1'), reply('Two meetings and lunch.', 4_000)]);
@@ -109,7 +122,7 @@ describe('one chat, live', () => {
     expect(chat.getSnapshot().items.at(-1)).toMatchObject({ kind: 'assistant', text: 'Two meetings and lunch.' });
     expect(chat.getSnapshot().sends).toEqual([]);
     // A late event for the finished run can't bring it back.
-    engine.emit('chat', { runId: 'run-1', sessionKey: KEY, seq: 6, state: 'delta', deltaText: 'late' });
+    engine.emit('chat', delta('run-1', 6, 'late'));
     await new Promise((r) => setTimeout(r, 20));
     expect(chat.getSnapshot().live).toBeNull();
     chat.dispose();
@@ -159,7 +172,7 @@ describe('one chat, live', () => {
     const chat = open(session);
     await eventually(() => expect(chat.getSnapshot().loaded).toBe(true));
     await chat.send('Write a long essay');
-    engine.emit('chat', { runId: 'run-1', sessionKey: KEY, seq: 1, state: 'delta', deltaText: 'Once' });
+    engine.emit('chat', delta('run-1', 1, 'Once', 'Once'));
     await eventually(() => expect(chat.getSnapshot().live?.text).toBe('Once'));
     await chat.stop();
     expect(engine.requests.find((r) => r.method === 'chat.abort')?.params).toEqual({ sessionKey: KEY, runId: 'run-1' });
@@ -179,14 +192,33 @@ describe('one chat, live', () => {
     const { session, engine } = await paired();
     const chat = open(session);
     await eventually(() => expect(chat.getSnapshot().loaded).toBe(true));
-    engine.emit('chat', { runId: 'other', sessionKey: 'agent:oak:main', seq: 1, state: 'delta', deltaText: 'not here' });
-    engine.emit('chat', { runId: 'desk-1', sessionKey: KEY, seq: 1, state: 'delta', deltaText: 'From the desk' });
+    engine.emit('chat', delta('other', 1, 'not here', 'not here', 'agent:oak:main'));
+    engine.emit('chat', delta('desk-1', 1, 'From the desk', 'From the desk'));
     await eventually(() => expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'From the desk' }));
 
     engine.setHistory(KEY, [user('Summarise my mail', 1_000)], { runId: 'desk-1', text: 'From the desk, three emails', startedAt: 900 });
     engine.drop();
     await eventually(() => expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'From the desk, three emails', startedAt: 900 }));
     expect(chat.getSnapshot().items).toMatchObject([{ kind: 'user', text: 'Summarise my mail' }]);
+    chat.dispose();
+    session.dispose();
+  });
+
+  it('takes the history’s words for a reply after a reconnect, even when they are shorter than what streamed before', async () => {
+    const { session, engine } = await paired();
+    const chat = open(session);
+    await eventually(() => expect(chat.getSnapshot().loaded).toBe(true));
+    engine.emit('chat', delta('desk-1', 1, 'Three emails, all about the long offsite plan', 'Three emails, all about the long offsite plan'));
+    await eventually(() => expect(chat.getSnapshot().live?.text).toBe('Three emails, all about the long offsite plan'));
+
+    // While the phone was away the reply rewrote itself shorter; the new connection's read is the newest word on it.
+    engine.setHistory(KEY, [user('Summarise my mail', 1_000)], { runId: 'desk-1', text: 'Two emails.', startedAt: 900 });
+    engine.drop();
+    await eventually(() => expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'Two emails.', startedAt: 900 }));
+    // The new connection's first frame for the run carries its whole text; additions follow it.
+    engine.emit('chat', delta('desk-1', 7, ' Both', 'Two emails. Both'));
+    engine.emit('chat', delta('desk-1', 8, ' about lunch.'));
+    await eventually(() => expect(chat.getSnapshot().live?.text).toBe('Two emails. Both about lunch.'));
     chat.dispose();
     session.dispose();
   });
@@ -200,7 +232,7 @@ describe('one chat, live', () => {
 
     // A read starts (a reconnect, a change on the computer), then the computer starts a reply.
     const reading = chat.load();
-    emit('chat', { runId: 'desk-1', sessionKey: KEY, seq: 1, state: 'delta', deltaText: 'From the desk' });
+    emit('chat', delta('desk-1', 1, 'From the desk', 'From the desk'));
     expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'From the desk' });
     // The read was answered before that run began, so it has no inFlightRun.
     held.shift()!.answer({ sessionKey: KEY, messages: [user('Summarise my mail', 1_000)] });
@@ -222,11 +254,11 @@ describe('one chat, live', () => {
     chat.attach();
     held.shift()!.answer({ sessionKey: KEY, messages: [] });
     await eventually(() => expect(chat.getSnapshot().loaded).toBe(true));
-    emit('chat', { runId: 'desk-1', sessionKey: KEY, seq: 1, state: 'delta', deltaText: 'Three emails, all about the long offsite plan' });
+    emit('chat', delta('desk-1', 1, 'Three emails, all about the long offsite plan', 'Three emails, all about the long offsite plan'));
 
     // A read starts, then the reply rewrites itself shorter before the read's answer arrives.
     const reading = chat.load();
-    emit('chat', { runId: 'desk-1', sessionKey: KEY, seq: 2, state: 'delta', deltaText: 'Two emails.', replace: true });
+    emit('chat', { ...delta('desk-1', 2, 'Two emails.', 'Two emails.'), replace: true });
     expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'Two emails.' });
     // The read names the same run, with its words from before the rewrite: longer, but older.
     held.shift()!.answer({ sessionKey: KEY, messages: [user('Summarise my mail', 1_000)], inFlightRun: { runId: 'desk-1', text: 'Three emails, all about the long offsite plan', startedAt: 900 } });
@@ -241,27 +273,41 @@ describe('one chat, live', () => {
     const chat = new Conversation(KEY, link, () => 'run-1');
     chat.attach();
     // The chat opens while the computer is part-way through "Hello world": the first read is on its way when the
-    // next words stream in, and the engine reads the reply for the history after sending them.
-    emit('chat', { runId: 'desk-1', sessionKey: KEY, seq: 2, state: 'delta', deltaText: ' world' });
-    expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: ' world' });
+    // next words stream in. The phone's first frame for the run carries the whole text so far.
+    emit('chat', delta('desk-1', 2, ' world', 'Hello world'));
+    expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'Hello world' });
     held.shift()!.answer({ sessionKey: KEY, messages: [user('Say hello', 1_000)], inFlightRun: { runId: 'desk-1', text: 'Hello world', startedAt: 900 } });
     await eventually(() => expect(chat.getSnapshot().loaded).toBe(true));
     expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'Hello world', startedAt: 900 });
-    emit('chat', { runId: 'desk-1', sessionKey: KEY, seq: 3, state: 'delta', deltaText: '!' });
+    emit('chat', delta('desk-1', 3, '!'));
     expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'Hello world!' });
 
     chat.dispose();
 
-    // Words that came after the engine read the reply are added to the history's copy, never lost or doubled.
+    // Words that came after the engine read the reply for the history are kept, never lost or doubled.
     const second = heldLink();
     const again = new Conversation(KEY, second.link, () => 'run-1');
     again.attach();
-    second.emit('chat', { runId: 'desk-2', sessionKey: KEY, seq: 2, state: 'delta', deltaText: ' How' });
-    second.emit('chat', { runId: 'desk-2', sessionKey: KEY, seq: 3, state: 'delta', deltaText: ' are you?' });
+    second.emit('chat', delta('desk-2', 2, ' How', 'Hello. How'));
+    second.emit('chat', delta('desk-2', 3, ' are you?'));
     second.held.shift()!.answer({ sessionKey: KEY, messages: [user('Say hello', 1_000)], inFlightRun: { runId: 'desk-2', text: 'Hello. How', startedAt: 900 } });
     await eventually(() => expect(again.getSnapshot().loaded).toBe(true));
     expect(again.getSnapshot().live).toMatchObject({ runId: 'desk-2', text: 'Hello. How are you?' });
     again.dispose();
+  });
+
+  it('keeps a repeated word that streamed while the first read of a chat the computer is replying in was on its way', async () => {
+    const { link, held, emit } = heldLink();
+    const chat = new Conversation(KEY, link, () => 'run-1');
+    chat.attach();
+    // The engine reads "Hello world" for the history, then streams " world" again before the read's answer arrives.
+    emit('chat', delta('desk-1', 3, ' world', 'Hello world world'));
+    held.shift()!.answer({ sessionKey: KEY, messages: [user('Say hello', 1_000)], inFlightRun: { runId: 'desk-1', text: 'Hello world', startedAt: 1 } });
+    await eventually(() => expect(chat.getSnapshot().loaded).toBe(true));
+    expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'Hello world world', startedAt: 1 });
+    emit('chat', delta('desk-1', 4, ' world'));
+    expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'Hello world world world' });
+    chat.dispose();
   });
 
   it('keeps the words written before the phone opened a chat when only a status came during the first read', async () => {
@@ -272,7 +318,7 @@ describe('one chat, live', () => {
     held.shift()!.answer({ sessionKey: KEY, messages: [user('Say hello', 1_000)], inFlightRun: { runId: 'desk-1', text: 'Hello', startedAt: 900 } });
     await eventually(() => expect(chat.getSnapshot().loaded).toBe(true));
     expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'Hello' });
-    emit('chat', { runId: 'desk-1', sessionKey: KEY, seq: 3, state: 'delta', deltaText: ' there' });
+    emit('chat', delta('desk-1', 3, ' there', 'Hello there'));
     expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'Hello there' });
     chat.dispose();
   });
