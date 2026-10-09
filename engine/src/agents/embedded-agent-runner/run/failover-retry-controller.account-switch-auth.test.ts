@@ -82,7 +82,11 @@ function resolvedAuth(profileId: string, secondSignedIn: boolean): ResolvedProvi
   }
 }
 
-async function limitedRun(params: { secondSignedIn: boolean; replaySafe: boolean }) {
+async function limitedRun(params: {
+  secondSignedIn: boolean;
+  replaySafe: boolean;
+  subscriptionsOnly: boolean;
+}) {
   const store = {
     version: 1,
     profiles: {
@@ -125,6 +129,7 @@ async function limitedRun(params: { secondSignedIn: boolean; replaySafe: boolean
   const controller = createEmbeddedRunFailoverRetryController({
     runParams: {
       runId: "run:account-switch-auth",
+      config: { agents: { defaults: { subscriptionsOnly: params.subscriptionsOnly } } },
     } as Parameters<typeof createEmbeddedRunFailoverRetryController>[0]["runParams"],
     provider: PROVIDER,
     modelId: MODEL,
@@ -168,7 +173,11 @@ describe("rate-limit account switch with the embedded auth controller", () => {
   });
 
   it("waits on the limited account when the next subscription can't sign in and tools ran", async () => {
-    const run = await limitedRun({ secondSignedIn: false, replaySafe: false });
+    const run = await limitedRun({
+      secondSignedIn: false,
+      replaySafe: false,
+      subscriptionsOnly: true,
+    });
 
     expect(run.retried).toBe(true);
     const slept = vi.mocked(sleepWithAbort).mock.calls.reduce((total, [ms]) => total + ms, 0);
@@ -188,7 +197,11 @@ describe("rate-limit account switch with the embedded auth controller", () => {
   });
 
   it("hands a replay-safe run to fallback without applying the API key", async () => {
-    const run = await limitedRun({ secondSignedIn: false, replaySafe: true });
+    const run = await limitedRun({
+      secondSignedIn: false,
+      replaySafe: true,
+      subscriptionsOnly: true,
+    });
 
     expect(run.retried).toBe(false);
     expect(sleepWithAbort).not.toHaveBeenCalled();
@@ -200,7 +213,11 @@ describe("rate-limit account switch with the embedded auth controller", () => {
   });
 
   it("passes over the API key to the next subscription that signs in", async () => {
-    const run = await limitedRun({ secondSignedIn: true, replaySafe: false });
+    const run = await limitedRun({
+      secondSignedIn: true,
+      replaySafe: false,
+      subscriptionsOnly: true,
+    });
 
     expect(run.retried).toBe(true);
     expect(sleepWithAbort).not.toHaveBeenCalled();
@@ -208,5 +225,19 @@ describe("rate-limit account switch with the embedded auth controller", () => {
     expect(run.state.lastProfileId).toBe("anthropic:second");
     expect(run.runtimeKeys).not.toContain("fixture-api-key");
     expect(run.runtimeKeys.at(-1)).toBe("fixture-token-second");
+  });
+
+  it("moves a limited run onto the API-key sign-in when subscriptionsOnly is off", async () => {
+    const run = await limitedRun({
+      secondSignedIn: false,
+      replaySafe: false,
+      subscriptionsOnly: false,
+    });
+
+    expect(run.retried).toBe(true);
+    expect(sleepWithAbort).not.toHaveBeenCalled();
+    expect(run.switches).toEqual(["anthropic:key"]);
+    expect(run.state.lastProfileId).toBe("anthropic:key");
+    expect(run.runtimeKeys.at(-1)).toBe("fixture-api-key");
   });
 });

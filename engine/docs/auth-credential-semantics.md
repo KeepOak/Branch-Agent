@@ -222,6 +222,10 @@ OAuth re-authentication preserves an existing profile id only when the provider'
 
 Prepared agent requests use their selected plugin metadata, configuration, workspace, and environment for auth profile eligibility, ordering, and environment credential evidence. An empty selected plugin set remains authoritative; another request’s plugin aliases cannot add profiles or change the credential owner.
 
+## Subscription-only mode
+
+`agents.defaults.subscriptionsOnly` (default `false`) controls whether automatic sign-in choices may use API keys. By default API-key sign-ins work everywhere, as in upstream OpenClaw: unpinned runs can use them, agents can put them in the sign-in order or onto a session, and rate-limit switching can move to them. Set it to `true` to keep an installation subscription-only: unpinned runs skip API keys and fail when only API keys exist, agents cannot move a session or the sign-in order onto an API key, and rate-limit switching passes over API keys. Changes made by the owner in the app are never restricted by this setting.
+
 ## Model catalog discovery
 
 Stored-profile selection for model discovery follows the canonical auth order and

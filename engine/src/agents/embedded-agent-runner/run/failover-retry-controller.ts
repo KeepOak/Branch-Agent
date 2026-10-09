@@ -9,6 +9,7 @@ import {
   markInlineProviderApiKeyFailure,
 } from "../../auth-profiles.js";
 import { revokeRuntimeAuthMaterializations } from "../../auth-profiles/runtime-materializations.js";
+import { isSubscriptionsOnly } from "../../auth-profiles/subscription-only.js";
 import {
   FailoverError,
   resolveFailoverReasonFromError,
@@ -88,13 +89,17 @@ const SERVICE_NAMES: Record<string, string> = {
   "openai-codex": "ChatGPT",
 };
 
-/** A subscription sign-in (OAuth or pasted token). API keys are never switched to. */
-function isSubscriptionProfile(
+/**
+ * A stored sign-in a rate-limited run may move to. API keys count only when allowApiKeys is set
+ * (subscriptionsOnly off); keyless runs never count.
+ */
+function isSwitchableProfile(
   store: PreparedRuntime["profileFailureStore"],
   profileId: string | undefined,
+  allowApiKeys: boolean,
 ): profileId is string {
   const type = profileId ? store.profiles[profileId]?.type : undefined;
-  return type !== undefined && type !== "api_key";
+  return type !== undefined && (allowApiKeys || type !== "api_key");
 }
 
 /** "Claude account 2": the service and the account's place among this run's subscriptions. */
@@ -103,12 +108,15 @@ function describeAccount(
   provider: string,
   candidates: readonly (string | undefined)[],
   profileId: string,
+  allowApiKeys: boolean,
 ): RateLimitAccount {
   const service =
     SERVICE_NAMES[store.profiles[profileId]?.provider ?? provider] ??
     SERVICE_NAMES[provider] ??
     provider;
-  const subscriptions = [...new Set(candidates)].filter((id) => isSubscriptionProfile(store, id));
+  const subscriptions = [...new Set(candidates)].filter((id) =>
+    isSwitchableProfile(store, id, allowApiKeys),
+  );
   const place = subscriptions.indexOf(profileId);
   return {
     profileId,
@@ -238,12 +246,13 @@ export function createEmbeddedRunFailoverRetryController(input: {
     | { action: "wait"; wait: RateLimitAccountWait }
   > => {
     const store = profileFailureStore;
+    const allowApiKeys = !isSubscriptionsOnly(params.config);
     const limitedProfileId = input.getLastProfileId();
     const resetAt = Number.isFinite(limit.retryAfterMs)
       ? Date.now() + Math.ceil(limit.retryAfterMs)
       : undefined;
     const from = limitedProfileId
-      ? describeAccount(store, provider, limit.candidates, limitedProfileId)
+      ? describeAccount(store, provider, limit.candidates, limitedProfileId, allowApiKeys)
       : undefined;
     if (limitedProfileId && resetAt !== undefined && params.authProfileStateMode !== "read-only") {
       try {
@@ -275,25 +284,29 @@ export function createEmbeddedRunFailoverRetryController(input: {
             .find(
               (candidate) =>
                 candidate !== limitedProfileId &&
-                isSubscriptionProfile(store, candidate) &&
+                isSwitchableProfile(store, candidate, allowApiKeys) &&
                 !isProfileInCooldown(store, candidate, undefined, modelId),
             );
     if (!from || !target) {
       return { action: "wait", wait: { account: from, resetAt, reason: "no_other_subscription" } };
     }
-    // Move only to another subscription: API keys are passed over without applying their
-    // credentials. When no subscription signs in, the run stays on (and waits for) this one.
+    // Move only to another sign-in the switch allows: with subscriptionsOnly, API keys are passed
+    // over without applying their credentials. When no such sign-in works, the run stays on (and waits for) this one.
     const advanced = await input.advanceAuthProfile({
       accept: (candidate) =>
-        candidate !== limitedProfileId && isSubscriptionProfile(store, candidate),
+        candidate !== limitedProfileId && isSwitchableProfile(store, candidate, allowApiKeys),
     });
     const current = input.getLastProfileId();
-    if (advanced && current !== limitedProfileId && isSubscriptionProfile(store, current)) {
+    if (
+      advanced &&
+      current !== limitedProfileId &&
+      isSwitchableProfile(store, current, allowApiKeys)
+    ) {
       return {
         action: "switched",
         change: {
           from,
-          to: describeAccount(store, provider, limit.candidates, current),
+          to: describeAccount(store, provider, limit.candidates, current, allowApiKeys),
           ...(resetAt !== undefined ? { resetAt } : {}),
         },
       };
@@ -445,12 +458,16 @@ export function createEmbeddedRunFailoverRetryController(input: {
       }
       const rateLimit = retry.reason === "rate_limit";
       let limitWait: RateLimitAccountWait | undefined;
-      // Only a subscription account switches; API-key and keyless runs keep the waits below.
+      // Only a run on a stored sign-in switches (API keys too, unless subscriptionsOnly); keyless runs keep the waits below.
       if (
         rateLimit &&
         retry.retryAfterMs !== undefined &&
         retry.retryAfterMs > RATE_LIMIT_ACCOUNT_SWITCH_AFTER_MS &&
-        isSubscriptionProfile(profileFailureStore, input.getLastProfileId())
+        isSwitchableProfile(
+          profileFailureStore,
+          input.getLastProfileId(),
+          !isSubscriptionsOnly(params.config),
+        )
       ) {
         const switched = await switchLimitedSubscription({
           retryAfterMs: retry.retryAfterMs,
@@ -459,7 +476,7 @@ export function createEmbeddedRunFailoverRetryController(input: {
         if (switched.action === "switched") {
           recordDecision("accepted", "account_switched");
           log.warn(
-            `rate limit on ${sanitizeForLog(provider)}/${sanitizeForLog(modelId)} resets in ${retry.retryAfterMs === Infinity ? "an unrepresentable time" : `${retry.retryAfterMs}ms`}; moved to the next subscription`,
+            `rate limit on ${sanitizeForLog(provider)}/${sanitizeForLog(modelId)} resets in ${retry.retryAfterMs === Infinity ? "an unrepresentable time" : `${retry.retryAfterMs}ms`}; moved to the next free sign-in`,
           );
           await retry.onAccountSwitch?.(switched.change);
           return true;
