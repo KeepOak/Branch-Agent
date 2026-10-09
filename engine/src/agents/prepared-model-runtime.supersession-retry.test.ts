@@ -245,6 +245,8 @@ describe("model runtime publication supersession", () => {
       },
       publishOnce: async (onSkipped) => {
         attempts += 1;
+        // A later attempt must not supersede the successor the first attempt started.
+        await successor?.catch(() => undefined);
         const publication = refreshPreparedModelRuntimeSnapshots(config, {
           gatewayLifecycle: true,
           onPublicationSkipped: onSkipped,
@@ -266,7 +268,7 @@ describe("model runtime publication supersession", () => {
       },
     });
     await attempt;
-    await successor;
+    await successor?.catch(() => undefined);
     expect(attempts).toBe(2);
     expect(republished).toBe(1);
     expect(getPreparedModelRuntimeSnapshot(fixture.agentInput("worker", config))).toBeDefined();
