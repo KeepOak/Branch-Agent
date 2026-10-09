@@ -41,7 +41,7 @@ export type TrunkQueueConfig = {
 
 /** Shared durable memory between Trunks: team memory search reads only these agents. */
 export type TeamMemoryConfig = {
-  /** Trunk ids that share durable notes with each other. Unset means every builder-* Trunk. */
+  /** Trunk ids that share durable notes with each other. Opt-in: unset means no Trunk shares. Linked outside Branches are never included. */
   agents?: string[];
 };
 

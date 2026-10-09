@@ -34,6 +34,14 @@ afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
 });
 
+function createTeamTool(params: Parameters<typeof createMemorySearchTool>[0]) {
+  const tool = createMemorySearchTool(params);
+  if (!tool) {
+    throw new Error("tool missing");
+  }
+  return tool;
+}
+
 function hit(overrides: Partial<MemorySearchResult>): MemorySearchResult {
   return {
     path: "memory/ok.md",
@@ -64,11 +72,8 @@ describe("resolveTeamMemberIds", () => {
     entries: { main: {}, "builder-a": {}, "builder-b": {}, personal: {} },
   };
 
-  it("defaults to builder Trunks and never includes the main or personal agent", () => {
-    expect(resolveTeamMemberIds(asBranchConfig({ agents: roster }))).toEqual([
-      "builder-a",
-      "builder-b",
-    ]);
+  it("is opt-in: with no owner list, no Trunk is a member", () => {
+    expect(resolveTeamMemberIds(asBranchConfig({ agents: roster }), new Set())).toEqual([]);
   });
 
   it("uses only the owner's explicit list, dropping ids that are not configured agents", () => {
@@ -76,7 +81,19 @@ describe("resolveTeamMemberIds", () => {
       agents: { ...roster, teamMemory: { agents: ["main", "builder-b", "outside-branch"] } },
     });
 
-    expect(resolveTeamMemberIds(listed)).toEqual(["main", "builder-b"]);
+    expect(resolveTeamMemberIds(listed, new Set())).toEqual(["main", "builder-b"]);
+  });
+
+  it("excludes linked outside Branches even when listed under a builder-* id", () => {
+    const listed = asBranchConfig({
+      agents: {
+        defaultId: "main",
+        entries: { main: {}, "builder-linked": {}, "builder-a": {} },
+        teamMemory: { agents: ["builder-linked", "builder-a"] },
+      },
+    });
+
+    expect(resolveTeamMemberIds(listed, new Set(["builder-linked"]))).toEqual(["builder-a"]);
   });
 });
 
@@ -249,9 +266,35 @@ describe("searchTeamMemory", () => {
   });
 });
 
+describe("searchTeamMemory manager lifecycle", () => {
+  it("closes a cli-run manager even when its search throws", async () => {
+    let closed = 0;
+    const outcome = await searchTeamMemory({
+      memberIds: ["builder-a"],
+      query: "q",
+      maxResults: 10,
+      closeAfterSearch: true,
+      lookupManager: async () => ({
+        manager: {
+          status: () => ({ workspaceDir: workspace }),
+          search: async () => {
+            throw new Error("index unreadable");
+          },
+          close: async () => {
+            closed += 1;
+          },
+        },
+      }),
+    });
+
+    expect(closed).toBe(1);
+    expect(outcome.skipped).toEqual([{ agentId: "builder-a", reason: "unavailable" }]);
+  });
+});
+
 describe("memory_search corpus=team", () => {
   it("refuses team search in a sandboxed run without searching", async () => {
-    const tool = createMemorySearchTool({
+    const tool = createTeamTool({
       config: asBranchConfig({ agents: { entries: { main: {} } } }),
       sandboxed: true,
     });
@@ -265,7 +308,7 @@ describe("memory_search corpus=team", () => {
   });
 
   it("refuses team search from a Trunk the owner did not list", async () => {
-    const tool = createMemorySearchTool({
+    const tool = createTeamTool({
       config: asBranchConfig({
         agents: { defaultId: "main", entries: { main: {}, "builder-a": {} } },
       }),

@@ -1,6 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { listAgentIds, type BranchConfig } from "branch/plugin-sdk/memory-core-host-runtime-core";
+import {
+  listAgentIds,
+  listOutsideAgents,
+  type BranchConfig,
+} from "branch/plugin-sdk/memory-core-host-runtime-core";
 import type { MemorySearchResult } from "branch/plugin-sdk/memory-core-host-runtime-files";
 import type { MemoryCoreAcquireLocalService } from "./memory/embedding-local-service.js";
 import {
@@ -10,7 +14,6 @@ import {
 } from "./memory/search-deadline.js";
 import { getMemoryManagerContextWithPurpose } from "./tools.shared.js";
 
-const BUILDER_TRUNK_PREFIX = "builder-";
 const TEAM_SEARCH_CONCURRENCY = 4;
 
 export type TeamMemoryHit = {
@@ -57,14 +60,32 @@ type AgentOutcome =
   | { agentId: string; hits: TeamMemoryHit[] }
   | { agentId: string; reason: TeamMemorySkip["reason"] };
 
-/** Owner-listed Trunks (agents.teamMemory.agents), else every builder-* Trunk. The main agent and linked outside Branches are never included unless listed. */
-export function resolveTeamMemberIds(cfg: BranchConfig): string[] {
-  const roster = listAgentIds(cfg);
+/**
+ * Team members are exactly the Trunks the owner lists in agents.teamMemory.agents. Unset means no members.
+ * Linked outside Branches (and their grafted Trunks) are never members, even under a builder-* id.
+ */
+export function resolveTeamMemberIds(
+  cfg: BranchConfig,
+  outsideAgentIds: ReadonlySet<string> = readOutsideAgentIds(),
+): string[] {
   const listed = cfg.agents?.teamMemory?.agents;
-  if (listed) {
-    return roster.filter((agentId) => listed.includes(agentId));
+  if (!listed) {
+    return [];
   }
-  return roster.filter((agentId) => agentId.startsWith(BUILDER_TRUNK_PREFIX));
+  return listAgentIds(cfg).filter(
+    (agentId) => listed.includes(agentId) && !outsideAgentIds.has(agentId),
+  );
+}
+
+function readOutsideAgentIds(): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (const record of listOutsideAgents()) {
+    ids.add(record.id);
+    if (record.trunkId) {
+      ids.add(record.trunkId);
+    }
+  }
+  return ids;
 }
 
 function isUntrusted(result: MemorySearchResult): boolean {
@@ -155,14 +176,17 @@ async function searchMemberNotes(
   if (!workspaceDir) {
     return { agentId, reason: "unavailable" };
   }
-  const found = await lookup.manager.search(params.query, {
-    maxResults: params.maxResults,
-    ...(params.minScore !== undefined ? { minScore: params.minScore } : {}),
-  });
-  if (params.closeAfterSearch) {
-    await lookup.manager.close?.();
+  try {
+    const found = await lookup.manager.search(params.query, {
+      maxResults: params.maxResults,
+      ...(params.minScore !== undefined ? { minScore: params.minScore } : {}),
+    });
+    return { agentId, hits: await shareableHits(agentId, workspaceDir, found) };
+  } finally {
+    if (params.closeAfterSearch) {
+      await lookup.manager.close?.();
+    }
   }
-  return { agentId, hits: await shareableHits(agentId, workspaceDir, found) };
 }
 
 async function searchAgent(params: TeamMemorySearchParams, agentId: string): Promise<AgentOutcome> {
