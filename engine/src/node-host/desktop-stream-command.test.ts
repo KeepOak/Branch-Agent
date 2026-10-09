@@ -9,6 +9,7 @@ import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { rawDataToString } from "../infra/ws.js";
 import {
   invokeNodeDesktopStream,
+  loopbackRfbUnavailableMessage,
   invokeNodeWorkerDesktopStream,
 } from "./desktop-stream-command.js";
 
@@ -92,7 +93,16 @@ describe("node desktop stream command", () => {
         config: { enabled: true, port: address.port },
         signal: new AbortController().signal,
       }),
-    ).rejects.toThrow(/Screen Sharing.*authenticated loopback VNC server/);
+    ).rejects.toThrow(loopbackRfbUnavailableMessage(address.port));
+  });
+
+  it("names this computer's own setup, not another platform's", () => {
+    const linux = loopbackRfbUnavailableMessage(5900, "linux");
+    expect(linux).toContain("tigervnc");
+    expect(linux).not.toContain("System Settings");
+    expect(loopbackRfbUnavailableMessage(5900, "win32")).toContain("TightVNC");
+    expect(loopbackRfbUnavailableMessage(5900, "darwin")).toContain("Screen Sharing");
+    expect(loopbackRfbUnavailableMessage(5900, "darwin")).not.toContain("tigervnc");
   });
 
   it.each([
