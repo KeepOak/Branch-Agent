@@ -1,5 +1,6 @@
 // The + menu (DESIGN-SPEC §4.3.2): add material from a short list, with the rest one tap away under More….
-// Rows the engine or window can't do yet are not listed at all, so every row shown either works or says why it is off.
+// Rule: never hide a working or setup-gated feature; stubs for unbuilt features don't belong in the menu.
+// A setup-gated row stays greyed with one line of reason. The reasons are user-facing (shownWhy hides developer notes).
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { NO_ROUTE, type OpenTarget } from "./nav";
 import { Popover, moveFocus } from "./Popover";
@@ -7,6 +8,12 @@ import { Head, MenuItem, Sep, Switch } from "./ui";
 import { Icon } from "./icons";
 import type { Trunk } from "./useConversation";
 import { shownWhy } from "../shell/shown-why";
+
+export const GAP = {
+  picture: "Connect a model first, in Settings › Models.",
+  voiceNote: "Off until you choose: it uses the microphone. Turn it on in Settings › Voice.",
+  temporary: "Not available in this window yet: it can't start a temporary conversation.",
+};
 
 type Props = {
   anchor: RefObject<HTMLElement | null>;
@@ -36,13 +43,17 @@ type View = "top" | "more";
 export function PlusMenu(p: Props) {
   const body = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View>("top");
+  // After Back, focus goes back to the More… row that opened the view.
+  const returnToMore = useRef(false);
   const run: Run = (fn) => () => {
     p.onClose();
     fn();
   };
-  // The popover focuses its first row only on mount, so each view focuses its own first row when it opens.
+  // The popover focuses its first row only on mount, so each view focuses its own row when it opens.
   useEffect(() => {
-    body.current?.querySelector<HTMLElement>("[data-mi]:not([disabled])")?.focus();
+    const target = view === "top" && returnToMore.current ? '[data-testid="plus-more"]' : "[data-mi]:not([disabled])";
+    returnToMore.current = false;
+    body.current?.querySelector<HTMLElement>(target)?.focus();
   }, [view]);
   return (
     <Popover anchor={p.anchor} onClose={p.onClose} label="Attach, mention a Trunk, skills, Temporary" className="c-plus">
@@ -56,7 +67,7 @@ export function PlusMenu(p: Props) {
           }
         }}
       >
-        {view === "top" ? <TopView p={p} run={run} onMore={() => setView("more")} /> : <MoreView p={p} run={run} onBack={() => setView("top")} />}
+        {view === "top" ? <TopView p={p} run={run} onMore={() => setView("more")} /> : <MoreView p={p} run={run} onBack={() => { returnToMore.current = true; setView("top"); }} />}
       </div>
     </Popover>
   );
@@ -68,24 +79,24 @@ function TopView({ p, run, onMore }: { p: Props; run: Run; onMore: () => void })
       <MenuItem icon="clip" label="Attach files" testId="plus-attach" onClick={run(p.onAttach)} />
       <MenuItem icon="folder" label="Add a folder" onClick={run(p.onFolder)} />
       <MenuItem icon="camera" label="Take a photo" testId="plus-photo" onClick={run(p.onPhoto)} />
-      {p.onVoiceNote ? <MenuItem icon="mic" label="Record a voice note" testId="plus-voice-note" onClick={run(p.onVoiceNote)} /> : null}
+      <MenuItem icon="mic" label="Record a voice note" testId="plus-voice-note" disabled={!p.onVoiceNote} reason={p.onVoiceNote ? undefined : GAP.voiceNote}
+        onClick={p.onVoiceNote ? run(p.onVoiceNote) : undefined} />
       <MenuItem icon="at" label="Mention a Trunk" right={<kbd>@</kbd>} onClick={run(() => p.onInsert("@"))} />
       <MenuItem icon="slash" label="Use a skill" right={<kbd>/</kbd>} onClick={run(() => p.onInsert("/"))} />
       <Sep />
-      <MenuItem icon="sliders" label="More…" onClick={onMore} />
+      <MenuItem icon="sliders" label="More…" testId="plus-more" onClick={onMore} />
     </>
   );
 }
 
 function MoreView({ p, run, onBack }: { p: Props; run: Run; onBack: () => void }) {
-  // A Temporary switch needs either a conversation already made temporary or a way to start one.
-  const showTemporary = p.temporary || Boolean(p.onTemporary);
   return (
     <>
       <MenuItem icon="back" label="Back" onClick={onBack} />
       <Sep />
       <MenuItem icon="target" label="Set a goal" right={<kbd>/goal</kbd>} onClick={run(() => p.onInsert("/goal "))} />
-      {p.onPicture ? <MenuItem icon="image" label="Make a picture" onClick={run(p.onPicture)} /> : null}
+      <MenuItem icon="image" label="Make a picture" disabled={!p.onPicture} reason={p.onPicture ? undefined : GAP.picture}
+        onClick={p.onPicture ? run(p.onPicture) : undefined} />
       <MenuItem icon="bg" label="Run it in the background" testId="plus-background" right={<kbd>/bg</kbd>} onClick={run(p.onBackground)} />
       <Sep />
       <Head>This conversation</Head>
@@ -93,14 +104,8 @@ function MoreView({ p, run, onBack }: { p: Props; run: Run; onBack: () => void }
       <OffRow p={p} run={run} label="Join a meeting…" icon="meet" off={false} />
       <Head>Who answers here</Head>
       <TrunkRows p={p} run={run} />
-      {showTemporary ? (
-        <>
-          <Sep />
-          <SwitchRow icon="ghost" label="Temporary conversation" on={p.temporary}
-            reason={p.temporary ? "This conversation is temporary." : "Starts a new temporary conversation with this Trunk."}
-            onChange={p.temporary || !p.onTemporary ? undefined : run(p.onTemporary)} />
-        </>
-      ) : null}
+      <Sep />
+      <TemporaryRow p={p} run={run} />
     </>
   );
 }
@@ -127,6 +132,16 @@ function TrunkRows({ p, run }: { p: Props; run: Run }) {
           onClick={t.id !== p.trunkId && p.onWhoAnswers ? run(() => p.onWhoAnswers?.(t.id)) : undefined} />
       ))}
     </>
+  );
+}
+
+function TemporaryRow({ p, run }: { p: Props; run: Run }) {
+  const reason = p.temporary
+    ? "This conversation is temporary."
+    : p.onTemporary ? "Starts a new temporary conversation with this Trunk." : GAP.temporary;
+  return (
+    <SwitchRow icon="ghost" label="Temporary conversation" on={p.temporary} reason={reason}
+      onChange={p.temporary || !p.onTemporary ? undefined : run(p.onTemporary)} />
   );
 }
 

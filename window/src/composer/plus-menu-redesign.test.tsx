@@ -87,24 +87,35 @@ describe("P54 composer plus menu", () => {
     expect(document.activeElement?.textContent).toContain("Back");
     await press(rowNamed(host, "Back"));
     expect(labels(host)).toEqual(TOP);
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("plus-more");
   });
 
-  it("removes Make a picture and Record a voice note when their handlers are absent", async () => {
+  it("keeps Make a picture and Record a voice note greyed, with a reason, when their handlers are absent", async () => {
     const { host } = await renderMenu({ onPicture: undefined, onVoiceNote: undefined });
-    expect(labels(host)).toEqual(TOP.filter((name) => name !== "Record a voice note"));
+    expect(labels(host)).toEqual(TOP);
+    const voice = rowNamed(host, "Record a voice note");
+    expect(voice.hasAttribute("disabled")).toBe(true);
+    expect(voice.getAttribute("title")).toBeTruthy();
     await openMore(host);
-    expect(labels(host)).not.toContain("Make a picture");
+    const picture = rowNamed(host, "Make a picture");
+    expect(picture.hasAttribute("disabled")).toBe(true);
+    expect(picture.getAttribute("title")).toContain("Settings › Models");
   });
 
-  it("drops Temporary conversation when a temporary conversation cannot be started", async () => {
+  it("keeps Temporary conversation greyed, with a reason a person can read, when it cannot start", async () => {
     const { host } = await renderMenu({ onTemporary: undefined, onPicture: vi.fn() });
     await openMore(host);
-    expect(labels(host)).not.toContain("Temporary conversation");
+    const row = rowNamed(host, "Temporary conversation");
+    expect(row.querySelector("[role=switch]")?.hasAttribute("disabled")).toBe(true);
+    expect(row.getAttribute("title")).toBeTruthy();
+    expect(row.getAttribute("title")).not.toMatch(/engine/i);
   });
 
   it("gives every greyed row in both views a visible reason", async () => {
-    const { host } = await renderMenu({ onOpen: undefined, onWhoAnswers: undefined, onPicture: vi.fn(), onVoiceNote: vi.fn() });
+    const { host } = await renderMenu({ onOpen: undefined, onWhoAnswers: undefined, onPicture: undefined, onVoiceNote: undefined, onTemporary: undefined });
     const greyed = () => [...host.querySelectorAll<HTMLElement>(".c-mi[disabled], .c-switch[disabled]")];
+    expect(greyed().length).toBeGreaterThan(0);
+    for (const row of greyed()) expect(row.getAttribute("title")).toBeTruthy();
     await openMore(host);
     expect(greyed().length).toBeGreaterThan(0);
     for (const row of greyed()) expect(row.getAttribute("title")).toBeTruthy();
@@ -127,6 +138,22 @@ describe("P54 composer plus menu", () => {
     await openMore(host);
     expect(chip("Set a goal")).toBe("/goal");
     expect(chip("Run it in the background")).toBe("/bg");
+  });
+
+  it("keeps /goal inserting its text", async () => {
+    const { host, spies } = await renderMenu({ onPicture: vi.fn(), onVoiceNote: vi.fn() });
+    await openMore(host);
+    await press(rowNamed(host, "Set a goal"));
+    expect(spies.onInsert).toHaveBeenCalledWith("/goal ");
+    expect(spies.onClose).toHaveBeenCalledOnce();
+  });
+
+  it("keeps /bg starting the background run and closing the menu", async () => {
+    const { host, spies } = await renderMenu({ onPicture: vi.fn(), onVoiceNote: vi.fn() });
+    await openMore(host);
+    await press(rowNamed(host, "Run it in the background"));
+    expect(spies.onBackground).toHaveBeenCalledOnce();
+    expect(spies.onClose).toHaveBeenCalledOnce();
   });
 
   it("keeps the testids the shell and button crawl rely on", async () => {
