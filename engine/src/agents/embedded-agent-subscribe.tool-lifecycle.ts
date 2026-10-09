@@ -45,6 +45,7 @@ export function createEmbeddedToolLifecycleRunner(
       hideFromChannelProgress: toolParams.hideFromChannelProgress,
       lifecycleProvenance: "nested",
     } as const;
+    ctx.runJournal?.record(startEvent, ctx.params.session.messages);
     recordEmbeddedToolTrajectoryEvent(ctx, startEvent, undefined);
     await handleToolExecutionStart(ctx, startEvent);
     let executionStarted = false;
@@ -94,6 +95,7 @@ async function finishToolLifecycle(
     hideFromChannelProgress: toolParams.hideFromChannelProgress,
   };
   const readSanitizedResult = prepareToolResult(outcome.result);
+  ctx.runJournal?.record(endEvent, ctx.params.session.messages);
   recordEmbeddedToolTrajectoryEvent(ctx, endEvent, readSanitizedResult);
   const terminal = await handleToolExecutionEnd(ctx, endEvent, readSanitizedResult);
   return {

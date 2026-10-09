@@ -34,6 +34,7 @@ import {
   filterToolResultMediaUrls,
 } from "./embedded-agent-tool-media.js";
 import { stripDowngradedToolCallText } from "./embedded-agent-utils.js";
+import { getRunJournal } from "./run-journal.js";
 import { sessionManagerReadTranscriptStart } from "./sessions/session-manager-current-turn.js";
 import { setSessionModelUsageSink } from "./sessions/session-model-usage.js";
 
@@ -363,6 +364,7 @@ export function subscribeEmbeddedAgentSession(input: SubscribeEmbeddedAgentSessi
   };
 
   const ctx: EmbeddedAgentSubscribeContext = {
+    runJournal: getRunJournal(),
     ...streamRendering,
     params,
     state,

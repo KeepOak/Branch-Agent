@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { BranchConfig } from "../config/types.branch.js";
 import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
 import { buildInlineProviderModels } from "./embedded-agent-runner/model.inline-provider.js";
@@ -28,6 +29,7 @@ export function createModelRuntimeChoiceOwnerFixture(
   const metadataSnapshot = facts.metadataSnapshot ?? createPluginMetadataSnapshotFixture();
   const workspaceDir = paths.workspaceDir ?? facts.workspaceDir ?? "/tmp/runtime-choice";
   const owner: PreparedModelRuntimeSnapshot = {
+    snapshotId: randomUUID(),
     config,
     observationConfig: config,
     catalogOwner: { agentId: "main", workspaceDir },
