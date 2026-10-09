@@ -118,22 +118,19 @@ describe('pairing screens', () => {
     expect([timeLeft(0), timeLeft(-5), timeLeft(1), timeLeft(600_000)]).toEqual(['0:00', '0:00', '0:01', '10:00']);
   });
 
-  it('offers Ask again when the request ran out but the code still works, and it pairs with the same code', async () => {
+  it('after Deny on the computer, says so and offers only a new code', async () => {
     const { session, engine } = createFakeSession();
     await render(<App scheme="light" session={session} />);
     await eventually(() => expect(screen.getByTestId('welcome-screen')).toBeOnTheScreen());
     await act(() => session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1', expiresAtMs: Date.now() + 300_000 }));
     await eventually(() => expect(screen.getByTestId('pairing-approval')).toBeOnTheScreen());
-    engine.refuse({ code: 'AUTH_BOOTSTRAP_TOKEN_INVALID', message: 'unauthorized: bootstrap token invalid or expired' });
+    engine.reject();
     await eventually(() => expect(screen.getByTestId('pairing-failed')).toBeOnTheScreen());
-    expect(screen.getByText(/The code still works, so you can ask again/)).toBeOnTheScreen();
-    expect(screen.getByText('Scan a new code')).toBeOnTheScreen();
-
-    engine.refuse(null);
-    await fireEvent.press(screen.getByTestId('ask-again'));
-    await eventually(() => expect(screen.getByTestId('pairing-approval')).toBeOnTheScreen());
-    engine.approve();
-    await eventually(() => expect(screen.getByTestId('chats-screen')).toBeOnTheScreen());
+    expect(screen.getByText('Your computer said no.')).toBeOnTheScreen();
+    expect(screen.queryByText(/ask again/i)).toBeNull();
+    expect(screen.queryByTestId('ask-again')).toBeNull();
+    await fireEvent.press(screen.getByText('Scan a new code'));
+    expect(screen.getByTestId('camera-permission')).toBeOnTheScreen();
   });
 
   it('turns away a typed code whose address carries a user name or password, and never shows them', async () => {
@@ -185,13 +182,12 @@ describe('pairing screens', () => {
   });
 
   it('shows why pairing stopped and offers a fresh scan', async () => {
-    const { session, engine } = createFakeSession();
-    engine.reject();
+    const { session } = createFakeSession();
     await render(<App scheme="light" session={session} />);
     await eventually(() => expect(screen.getByTestId('welcome-screen')).toBeOnTheScreen());
-    await act(() => session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' }));
+    await act(() => session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'old-code' }));
     await eventually(() => expect(screen.getByTestId('pairing-failed')).toBeOnTheScreen());
-    expect(screen.getByText(/turned this phone away/)).toBeOnTheScreen();
+    expect(screen.getByText('This code no longer works. Make a new one on your computer.')).toBeOnTheScreen();
     expect(screen.queryByTestId('ask-again')).toBeNull();
     await fireEvent.press(screen.getByText('Scan a new code'));
     expect(screen.getByTestId('camera-permission')).toBeOnTheScreen();

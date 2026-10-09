@@ -3,7 +3,7 @@ import { bytesToBase64Url, utf8ToBytes } from '../connect/base64url';
 import { createFakeEngine } from '../connect/fakeEngine';
 import { PHONE_SCOPES } from '../connect/phoneGateway';
 import { memoryStore } from '../storage/keyValueStore';
-import { ASK_AGAIN_MESSAGE, failureMessage, NEUTRAL_FAILURE_MESSAGE, PAIRING_RECORD_KEY, PairingSession, type PairingState } from './pairingSession';
+import { CODE_GONE_MESSAGE, DENIED_MESSAGE, failureMessage, NEUTRAL_FAILURE_MESSAGE, PAIRING_RECORD_KEY, PairingSession, type PairingState } from './pairingSession';
 import { decodeSetupCode, gatewayHost, isGatewayUrl, SetupCodeError } from './setupCode';
 
 const encode = (value: unknown) => bytesToBase64Url(utf8ToBytes(JSON.stringify(value)));
@@ -171,16 +171,19 @@ describe('pairing with the computer', () => {
     expect(JSON.parse(store.dump()[DEVICE_IDENTITY_KEY]).publicKey).toBe(a.publicKey);
   });
 
-  it('explains a refusal and an expired code in plain words', async () => {
+  it('explains a Deny and a code that no longer works in plain words', async () => {
     const refused = sessionWith();
+    refused.session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1', expiresAtMs: Date.now() + 300_000 });
+    await until(refused.session, (s) => s.step === 'approval');
     refused.engine.reject();
-    refused.session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' });
-    expect(await until(refused.session, (s) => s.step === 'failed')).toMatchObject({ message: expect.stringContaining('turned this phone away') });
+    expect(await until(refused.session, (s) => s.step === 'failed')).toEqual({ step: 'failed', url: 'ws://computer.local:19031', message: DENIED_MESSAGE });
+    expect(DENIED_MESSAGE).toBe('Your computer said no.');
     refused.session.dispose();
 
     const stale = sessionWith();
     stale.session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'old-code' });
-    expect(await until(stale.session, (s) => s.step === 'failed')).toMatchObject({ message: expect.stringContaining('expired or was already used') });
+    expect(await until(stale.session, (s) => s.step === 'failed')).toEqual({ step: 'failed', url: 'ws://computer.local:19031', message: CODE_GONE_MESSAGE });
+    expect(CODE_GONE_MESSAGE).toBe('This code no longer works. Make a new one on your computer.');
     stale.session.dispose();
   });
 
@@ -192,37 +195,23 @@ describe('pairing with the computer', () => {
     session.dispose();
   });
 
-  it('offers to ask again with the same code when the request ran out but the code still works, once', async () => {
+  it('a code whose record is gone stays gone: the same code again is turned away, and only a new code pairs', async () => {
     const { session, engine } = sessionWith();
     session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1', expiresAtMs: Date.now() + 300_000 });
     await until(session, (s) => s.step === 'approval');
     engine.refuse({ code: 'AUTH_BOOTSTRAP_TOKEN_INVALID', message: 'unauthorized: bootstrap token invalid or expired' });
-    expect(await until(session, (s) => s.step === 'failed')).toEqual({ step: 'failed', url: 'ws://computer.local:19031', message: ASK_AGAIN_MESSAGE, canAskAgain: true });
+    expect(await until(session, (s) => s.step === 'failed')).toEqual({ step: 'failed', url: 'ws://computer.local:19031', message: DENIED_MESSAGE });
 
-    // Asking again sends the same code; the computer lets the phone in this time.
+    // Stopping the refusal doesn't bring the code back, as on the real engine.
     engine.refuse(null);
-    const connects = engine.connects.length;
-    session.askAgain();
-    await until(session, (s) => s.step === 'approval');
-    expect(engine.connects[connects].auth).toEqual({ bootstrapToken: 'boot-1' });
     engine.approve();
-    await until(session, (s) => s.step === 'paired' && s.online);
+    session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1', expiresAtMs: Date.now() + 300_000 });
+    expect(await until(session, (s) => s.step === 'failed')).toEqual({ step: 'failed', url: 'ws://computer.local:19031', message: CODE_GONE_MESSAGE });
+    expect(session).not.toHaveProperty('askAgain');
     session.dispose();
-
-    // Turned away again after asking again: the code is spent, so only a new one helps.
-    const twice = sessionWith();
-    twice.session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1', expiresAtMs: Date.now() + 300_000 });
-    twice.engine.refuse({ code: 'PAIRING_EXPIRED', message: 'pairing expired' });
-    await until(twice.session, (s) => s.step === 'failed' && s.canAskAgain === true);
-    twice.session.askAgain();
-    const spent = await until(twice.session, (s) => s.step === 'failed' && !s.canAskAgain);
-    expect(spent).toMatchObject({ message: expect.stringContaining('expired or was already used') });
-    twice.session.askAgain();
-    expect(twice.session.getState().step).toBe('failed');
-    twice.session.dispose();
   });
 
-  it('does not offer to ask again once the code itself has run out, or when it has no expiry', async () => {
+  it('says the code no longer works, not that the computer said no, when the code ran out while it waited', async () => {
     let now = 1_000;
     const store = memoryStore();
     const engine = createFakeEngine();
@@ -236,11 +225,6 @@ describe('pairing with the computer', () => {
     engine.refuse({ code: 'AUTH_BOOTSTRAP_TOKEN_INVALID', message: 'unauthorized: bootstrap token invalid or expired' });
     expect(await until(session, (s) => s.step === 'failed')).toEqual({ step: 'failed', url: 'ws://computer.local:19031', message: failureMessage('AUTH_BOOTSTRAP_TOKEN_INVALID') });
     session.dispose();
-
-    const noExpiry = sessionWith();
-    noExpiry.session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'old-code' });
-    expect(await until(noExpiry.session, (s) => s.step === 'failed')).not.toHaveProperty('canAskAgain');
-    noExpiry.session.dispose();
   });
 
   it('ignores a saved computer whose address carries a user name or password', async () => {

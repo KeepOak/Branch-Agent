@@ -56,26 +56,21 @@ export function ApprovalScreen({
   state,
   onCancel,
   onScanAgain,
-  onAskAgain,
 }: {
   state: Waiting;
   onCancel: () => void;
   onScanAgain: () => void;
-  /** Sends the same code again, after the request ran out while the code still works. */
-  onAskAgain?: () => void;
 }) {
   const { color, space } = useTheme();
   const host = gatewayHost(state.url);
 
   if (state.step === 'failed') {
-    const askAgain = state.canAskAgain && onAskAgain;
     return (
       <Screen
         testID="pairing-failed"
         footer={
           <>
-            {askAgain ? <Button title="Ask again" onPress={onAskAgain} testID="ask-again" /> : null}
-            <Button title="Scan a new code" kind={askAgain ? 'secondary' : 'primary'} onPress={onScanAgain} />
+            <Button title="Scan a new code" onPress={onScanAgain} />
             <Button title="Back" kind="plain" onPress={onCancel} />
           </>
         }

@@ -19,8 +19,7 @@ export type PairingState =
    */
   | { step: 'approval'; url: string; requestId?: string; expiresAtMs?: number }
   | { step: 'paired'; url: string; online: boolean; serverVersion?: string }
-  /** `canAskAgain`: the computer let the request run out, but the code still works, so it can be sent again. */
-  | { step: 'failed'; url: string; message: string; canAskAgain?: boolean }
+  | { step: 'failed'; url: string; message: string }
   /**
    * The computer this phone paired with turned it away for good (its device token was revoked or no
    * longer matches, its permissions changed, or too many tries). The engine's client has stopped
@@ -63,10 +62,10 @@ export const NEUTRAL_FAILURE_MESSAGE =
 export function failureMessage(code: string | undefined): string {
   switch (code) {
     case ConnectErrorDetailCodes.PAIRING_REJECTED:
-      return 'Your computer turned this phone away. Pair again if that was a mistake.';
+      return DENIED_MESSAGE;
     case ConnectErrorDetailCodes.PAIRING_EXPIRED:
     case ConnectErrorDetailCodes.AUTH_BOOTSTRAP_TOKEN_INVALID:
-      return 'This pairing code has expired or was already used. Make a new one on your computer and scan it again.';
+      return CODE_GONE_MESSAGE;
     case ConnectErrorDetailCodes.AUTH_DEVICE_TOKEN_MISMATCH:
     case ConnectErrorDetailCodes.DEVICE_IDENTITY_REQUIRED:
     case ConnectErrorDetailCodes.DEVICE_AUTH_INVALID:
@@ -86,12 +85,22 @@ export function failureMessage(code: string | undefined): string {
   }
 }
 
-/** The request ran out while it waited for Allow, in the words for when the code itself still works. */
-export const ASK_AGAIN_MESSAGE =
-  'Your computer didn’t let this phone in before the request ran out. The code still works, so you can ask again.';
+/**
+ * The pairing code's record is gone on the computer: it ran out, was used, or was revoked. The engine
+ * (device-bootstrap.worker-kernel.ts verifyDeviceBootstrapToken) answers AUTH_BOOTSTRAP_TOKEN_INVALID and
+ * nothing brings the record back, so only a new code helps.
+ */
+export const CODE_GONE_MESSAGE = 'This code no longer works. Make a new one on your computer.';
 
-/** The engine's codes for a pairing request or code that ran out or was spent. */
-function ranOut(code: string | undefined): boolean {
+/**
+ * The owner chose Deny on the computer. The engine has no refusal code of its own for that: Deny removes the
+ * request and revokes the code (device-pairing-core.kernel.ts rejectDevicePairingInWorker), so the phone's
+ * next try is answered AUTH_BOOTSTRAP_TOKEN_INVALID while the code's own time hasn't run out.
+ */
+export const DENIED_MESSAGE = 'Your computer said no.';
+
+/** The engine's code for a pairing code whose record is gone. */
+function codeGone(code: string | undefined): boolean {
   return code === ConnectErrorDetailCodes.PAIRING_EXPIRED || code === ConnectErrorDetailCodes.AUTH_BOOTSTRAP_TOKEN_INVALID;
 }
 
@@ -108,10 +117,10 @@ export class PairingSession implements EngineLink {
   private gateway: PhoneGateway | null = null;
   private paired: PairingRecord | null = null;
   private openHello: HelloOk | null = null;
-  /** The code this pairing started from, so a request that ran out can be sent again with it. */
+  /** The code this pairing started from, for its expiry. */
   private setup: SetupPayload | null = null;
-  /** The code was already sent again once; a second refusal means it is spent, whatever its time says. */
-  private askedAgain = false;
+  /** The computer had this phone's request and was asked for Allow, so a code that stops working was turned down. */
+  private asked = false;
 
   constructor(private readonly deps: PairingDeps, private readonly now: () => number = Date.now) {}
 
@@ -138,33 +147,18 @@ export class PairingSession implements EngineLink {
 
   /** Starts pairing with the computer named in a scanned or typed pairing code. */
   begin(setup: SetupPayload): void {
-    this.askedAgain = false;
-    this.start(setup);
-  }
-
-  /**
-   * After the computer let the request run out: sends it again with the same code, while the code still
-   * works. Once only; a code turned away twice is spent.
-   */
-  askAgain(): void {
-    const setup = this.setup;
-    if (this.state.step !== 'failed' || !this.state.canAskAgain || !setup) return;
-    this.askedAgain = true;
-    this.start(setup);
-  }
-
-  private start(setup: SetupPayload): void {
     this.stopGateway();
     this.paired = null;
     this.setup = setup;
+    this.asked = false;
     this.set({ step: 'connecting', url: setup.url });
     this.connect(setup.url, setup.bootstrapToken);
   }
 
-  /** Whether the code this pairing started from still works by its own expiry time. */
-  private codeStillWorks(): boolean {
+  /** Whether the code this pairing started from has run out by its own expiry time. */
+  private codeRanOut(): boolean {
     const expires = this.setup?.expiresAtMs;
-    return expires !== undefined && expires > this.now();
+    return expires !== undefined && expires <= this.now();
   }
 
   /** Stops a pairing that hasn't finished and goes back to the welcome. */
@@ -262,6 +256,7 @@ export class PairingSession implements EngineLink {
         this.set(this.paired ? { step: 'paired', url, online: false } : { step: 'connecting', url });
         return;
       case 'pairing': {
+        this.asked = true;
         const expiresAtMs = this.setup?.expiresAtMs;
         this.set({ step: 'approval', url, ...(status.requestId ? { requestId: status.requestId } : {}), ...(expiresAtMs !== undefined ? { expiresAtMs } : {}) });
         return;
@@ -284,11 +279,7 @@ export class PairingSession implements EngineLink {
           this.set({ step: 'refused', url, message: failureMessage(status.code), canRetry: canRetryAfter(status.code) });
           return;
         }
-        if (ranOut(status.code) && !this.askedAgain && this.codeStillWorks()) {
-          this.set({ step: 'failed', url, message: ASK_AGAIN_MESSAGE, canAskAgain: true });
-          return;
-        }
-        this.set({ step: 'failed', url, message: failureMessage(status.code) });
+        this.set({ step: 'failed', url, message: codeGone(status.code) && this.asked && !this.codeRanOut() ? DENIED_MESSAGE : failureMessage(status.code) });
     }
   }
 
