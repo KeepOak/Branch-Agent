@@ -526,12 +526,19 @@ export function uncoveredTests(changed, covered) {
     target === file || (target.includes('*') && path.matchesGlob(file, target)))).sort();
 }
 
-export function coverageTargets(desktopWorkflow, handoffWorkflow = '', handoffConfig = '', lintBaselinesWorkflow = '') {
+// namedFor reads one lane's named feature tests; tests inject their own list so they do not depend on the repo's lists.
+export function coverageTargets(
+  desktopWorkflow,
+  handoffWorkflow = '',
+  handoffConfig = '',
+  lintBaselinesWorkflow = '',
+  { namedFor = namedTests } = {},
+) {
   const covered = pullRequestDesktopRunTargets(desktopWorkflow);
   for (const file of handoffRunTargets(handoffWorkflow, handoffConfig)) covered.add(file);
   for (const file of postMergeEngineRunTargets(lintBaselinesWorkflow)) covered.add(file);
   for (const lane of ['engine', 'window']) {
-    for (const file of [...namedTests(lane), ...harvestTests(lane)]) covered.add(`${lane}/${file}`);
+    for (const file of [...namedFor(lane), ...harvestTests(lane)]) covered.add(`${lane}/${file}`);
   }
   for (const file of capabilityTests()) covered.add(`engine/${file}`);
   for (const slice of slices) {

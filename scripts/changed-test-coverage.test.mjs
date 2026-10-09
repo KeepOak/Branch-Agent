@@ -76,8 +76,10 @@ test('the post-merge catalog-fallback test counts as covered only through its ex
   assert.deepEqual([...postMergeEngineRunTargets('# run: node scripts/run-vitest.mjs run test/scripts/x.test.ts\n')], []);
   const desktop = readFileSync(new URL('../.github/workflows/desktop-checks.yml', import.meta.url), 'utf8');
   const file = 'engine/test/scripts/control-ui-i18n.generated.test.ts';
-  assert.deepEqual(uncoveredTests([file], coverageTargets(desktop)), [file]);
-  assert.deepEqual(uncoveredTests([file], coverageTargets(desktop, '', '', workflow)), []);
+  // Hermetic: no named list from the repo, so the file is covered only by the post-merge run line.
+  const noNamedLists = { namedFor: () => [] };
+  assert.deepEqual(uncoveredTests([file], coverageTargets(desktop, '', '', '', noNamedLists)), [file]);
+  assert.deepEqual(uncoveredTests([file], coverageTargets(desktop, '', '', workflow, noNamedLists)), []);
 });
 
 test('allowlisted desktop coverage counts #677\'s plain post-build step on the real workflow', () => {
