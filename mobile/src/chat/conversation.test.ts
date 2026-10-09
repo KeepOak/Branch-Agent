@@ -216,6 +216,26 @@ describe('one chat, live', () => {
     chat.dispose();
   });
 
+  it('keeps a shorter rewrite of the same reply that came while a history read naming that reply was on its way', async () => {
+    const { link, held, emit } = heldLink();
+    const chat = new Conversation(KEY, link, () => 'run-1');
+    chat.attach();
+    held.shift()!.answer({ sessionKey: KEY, messages: [] });
+    await eventually(() => expect(chat.getSnapshot().loaded).toBe(true));
+    emit('chat', { runId: 'desk-1', sessionKey: KEY, seq: 1, state: 'delta', deltaText: 'Three emails, all about the long offsite plan' });
+
+    // A read starts, then the reply rewrites itself shorter before the read's answer arrives.
+    const reading = chat.load();
+    emit('chat', { runId: 'desk-1', sessionKey: KEY, seq: 2, state: 'delta', deltaText: 'Two emails.', replace: true });
+    expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'Two emails.' });
+    // The read names the same run, with its words from before the rewrite: longer, but older.
+    held.shift()!.answer({ sessionKey: KEY, messages: [user('Summarise my mail', 1_000)], inFlightRun: { runId: 'desk-1', text: 'Three emails, all about the long offsite plan', startedAt: 900 } });
+    await reading;
+    expect(chat.getSnapshot().items).toMatchObject([{ kind: 'user', text: 'Summarise my mail' }]);
+    expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'Two emails.', startedAt: 900 });
+    chat.dispose();
+  });
+
   it('says why the chat couldn’t be read, and clears the unread mark once when opened', async () => {
     const { session, engine } = await paired();
     engine.failMethod('chat.history', 'history unavailable');

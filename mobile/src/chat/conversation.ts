@@ -225,11 +225,12 @@ export class Conversation {
       // holds a send when it has that send's key (`<runId>:user`), never because an earlier message said the same words.
       const sends = this.snapshot.sends.filter((send) => send.state !== 'sent' || !runKeys.has(send.id));
       const live = this.snapshot.live;
-      // A reply that streamed while this read was on its way is newer than what the read says.
+      // A reply that streamed while this read was on its way is newer than what the read says, even when the read
+      // names the same run: its words may be from before a later replacement, and being longer doesn't make them newer.
       const newer = live && this.liveEvents !== fence && !this.finished.has(live.runId) ? live : null;
       let next: LiveReply | null = null;
-      if (newer && newer.runId !== inFlightId) {
-        next = newer;
+      if (newer) {
+        next = newer.runId === inFlightId ? { ...newer, startedAt: num(inFlight.startedAt) || newer.startedAt } : newer;
       } else if (inFlightId) {
         const known = live?.runId === inFlightId ? live : null;
         const text = str(inFlight.text);
