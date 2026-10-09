@@ -218,7 +218,9 @@ export async function prepareGatewayKernel(
             try {
               await beforeDeadline(Promise.resolve(stateLease?.release?.()));
             } catch (error) {
-              if (error instanceof GatewayHandoffFatalError) throw error;
+              if (error instanceof GatewayHandoffFatalError) {
+                throw error;
+              }
               // The lease release may fail before ownership transfers. In that
               // case this kernel is still the only engine and must take work again.
               try {
@@ -229,7 +231,9 @@ export async function prepareGatewayKernel(
                 );
                 await beforeDeadline(sdkResourceHost.run(() => kernel.restoreFailedStateRelease()));
               } catch (restoreError) {
-                if (restoreError instanceof GatewayHandoffFatalError) throw restoreError;
+                if (restoreError instanceof GatewayHandoffFatalError) {
+                  throw restoreError;
+                }
                 throw new GatewayHandoffFatalError(
                   "Gateway handoff lost state ownership or could not restore serving",
                   { cause: new AggregateError([error, restoreError]) },

@@ -218,7 +218,7 @@ export function createGatewayRunHandoff(params: {
   };
   return {
     deactivate,
-    commitStateRelease() {
+    commitStateRelease: () => {
       // Preparing producers is reversible while this kernel still owns state.
       // Retire quiet runs only after the state lease has actually transferred.
       retryWaitHandoff?.commit();
