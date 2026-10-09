@@ -110,8 +110,9 @@ describe("agent database startup preparation that keeps failing", () => {
         },
         { timeout: 10000 },
       );
+      // The second restart is recorded once the twelfth attempt has failed, before the next starts.
       const tried = prepareAgent.mock.calls.length;
-      expect(tried).toBeGreaterThan(12);
+      expect(tried).toBeGreaterThanOrEqual(12);
       // Still trying on its own: no retry request is needed to reach the next attempt.
       await vi.waitFor(() => expect(prepareAgent.mock.calls.length).toBeGreaterThan(tried + 1), {
         timeout: 10000,
