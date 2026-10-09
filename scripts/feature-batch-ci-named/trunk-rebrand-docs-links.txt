@@ -1,1 +1,8 @@
+engine:packages/terminal-core/src/links.test.ts
+engine:src/agents/embedded-agent-runner/model.forward-compat.errors-and-overrides.test.ts
+engine:src/cli/update-cli/update-command-config-failure.test.ts
+engine:src/commands/doctor-web-fetch-proxy.test.ts
+engine:src/commands/doctor/shared/legacy-config-migrations.runtime.cli-backends.test.ts
+engine:src/gateway/server-plugins.test.ts
+engine:src/infra/install-source-utils.test.ts
 engine:test/scripts/docs-links.test.ts
