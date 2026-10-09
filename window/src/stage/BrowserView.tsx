@@ -1,4 +1,3 @@
-// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
 import type { Block } from "../thread/model";
@@ -29,10 +28,6 @@ export function browserRemotePoint(
 }
 
 export type BrowserPhase = "loading" | "empty" | "connected" | "error";
-const NO_READS = "Choosing how it reads pages isn't wired in this window yet.";
-const NO_NUMBERS = "The engine can't show its numbers on the live page yet.";
-const NO_COMMENT = "The engine can't take comments pinned to a page yet.";
-const NO_RECORD = "The engine can't record what you do in the browser yet.";
 export const NO_MARKUP = "Marking up a page needs a way to send the drawing to the chat, which the window doesn't have yet.";
 
 type Browser = { key: string; phase: "none" | "loading" | "stopped" | "ready" | "error"; tabs: LiveTab[]; error?: string };
@@ -284,9 +279,17 @@ export function BrowserMini({ engine, gatewayUrl, blocks }: { engine: WindowEngi
   );
 }
 
-export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running = false, control = false, onControl, level = "regular", onState }: Props) {
+export function BrowserView(props: Props) {
+  return <BrowserPanel key={props.engine.sessionKey} {...props} />;
+}
+
+// Before the Trunk has browsed, the owner opens Branch's own managed browser,
+// never the owner's Chrome. Recorded tabs retain their exact execution route.
+const ownerBrowser: BrowserRoute = { target: "host", profile: "branch" };
+
+function BrowserPanel({ engine, gatewayUrl, blocks, name = "It", running = false, control = false, onControl, level = "regular", onState }: Props) {
   const entries = useMemo(() => recordedBrowserTabs(blocks), [blocks]);
-  const route = useMemo(() => routeOf(entries), [routeKey(routeOf(entries))]); // eslint-disable-line react-hooks/exhaustive-deps
+  const route = useMemo(() => routeOf(entries) ?? ownerBrowser, [routeKey(routeOf(entries))]); // eslint-disable-line react-hooks/exhaustive-deps
   const steps = blocks.filter((b) => b.kind === "step").length;
   const [tick, setTick] = useState(0);
   const browser = useBrowser(engine, route, tick + steps);
@@ -296,6 +299,8 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   const [drawer, setDrawer] = useState(false);
   const [menu, setMenu] = useState<{ at: MenuAnchor; items: MenuItem[] } | null>(null);
   const [note, setNote] = useState("");
+  const [opening, setOpening] = useState(false);
+  const openingRef = useRef(false);
   const [find, setFind] = useState<string | null>(null);
   const [view, setView] = useState<{ url?: string; title?: string; phase: BrowserPhase }>({ phase: "empty" });
   const recordedNewest = entries.at(-1)?.tab.targetId;
@@ -320,12 +325,17 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   };
   const refresh = () => setTick((t) => t + 1);
   const url = view.phase === "connected" && view.url ? view.url : tab?.url ?? "";
-  const shownAddress = address && address.for === tab?.targetId ? address.text : url;
+  const shownAddress = address && address.for === (tab?.targetId ?? "") ? address.text : url;
   const go = (raw: string) => {
     const target = raw.trim();
-    if (!target || !tab) return;
+    if (!target || openingRef.current) return;
+    const nextUrl = /^[a-z][a-z0-9+.-]*:/i.test(target) ? target : `https://${target}`;
+    if (!tab) {
+      void openTab(nextUrl);
+      return;
+    }
     onControl?.(true);
-    void call("POST", "/navigate", { targetId: tab.targetId, body: { url: /^[a-z][a-z0-9+.-]*:/i.test(target) ? target : `https://${target}` } }).then(() => {
+    void call("POST", "/navigate", { targetId: tab.targetId, body: { url: nextUrl } }).then(() => {
       setAddress(null);
       refresh();
     }, fail);
@@ -335,16 +345,27 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     onControl?.(true);
     void call("POST", "/act", { targetId: tab.targetId, body: { kind: "evaluate", fn: `() => history.${step}()` } }).then(refresh, fail);
   };
-  const newTab = () => {
+  const openTab = async (url: string) => {
+    if (openingRef.current) return;
+    openingRef.current = true;
+    setOpening(true);
     onControl?.(true);
-    void call("POST", "/tabs/open", { body: { url: "about:blank" } }).then((r) => {
+    try {
+      if (browser.phase !== "ready") await call("POST", "/start");
+      const r = await call("POST", "/tabs/open", { body: { url } });
       const id = String((r as { targetId?: unknown } | null)?.targetId ?? "");
       if (id) {
         setMine((m) => new Set(m).add(id));
         setPicked(id);
       }
+      setAddress(null);
       refresh();
-    }, fail);
+    } catch (e) {
+      fail(e);
+    } finally {
+      openingRef.current = false;
+      setOpening(false);
+    }
   };
   const closeTab = (id: string) => {
     onControl?.(true);
@@ -358,9 +379,6 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
         { label: "Take a screenshot", disabled: tab ? undefined : "Nothing open.", run: () => void call("POST", "/screenshot", { targetId: tab?.targetId }).then((r) => setNote(`Saved the screenshot to ${String((r as { path?: unknown } | null)?.path ?? "the browser's folder")}.`), fail) },
         { label: "Save as PDF", disabled: tab ? undefined : "Nothing open.", run: () => void call("POST", "/pdf", { targetId: tab?.targetId }).then((r) => setNote(`Saved the page as a PDF to ${String((r as { path?: unknown } | null)?.path ?? "the browser's folder")}.`), fail) },
         { label: "Find on this page", disabled: tab ? undefined : "Nothing open.", run: () => setFind("") },
-        { label: "Watch this page for changes", run: () => undefined, disabled: "The engine can't watch a page for changes yet." },
-        { kind: "sep" },
-        { label: "Borrow a tab from your Chrome…", run: () => undefined, disabled: "Borrowing one of your own Chrome tabs isn't wired in this window yet." },
         { kind: "info", label: "Screenshots black out password boxes." },
       ],
     });
@@ -386,31 +404,11 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     );
   else if (!tab) page = <Blank title="Nothing open" text={`${name} hasn't opened a page in this conversation.`} />;
   else page = <Screencast key={entry ? `${routeKey(route)}:${tab.targetId}` : "none"} engine={engine} gatewayUrl={gatewayUrl} entry={entry} interact={control} onState={onView} />;
-  const showChrome = browser.phase === "ready" || (browser.phase === "loading" && browser.tabs.length > 0);
+  const showChrome = Boolean(engine.sessionKey);
   return (
     <div className="browser-st">
-      {route ? (
+      {tab ? (
         <div className="bar-br" role="toolbar" aria-label="Browser tools">
-          <span className="lbl-br">Reads</span>
-          <span className="seg-br" role="group" aria-label="How it reads the page" title={NO_READS}>
-            {["Page", "Picture", "Both"].map((m) => (
-              <button key={m} type="button" disabled aria-pressed={false}>
-                {m}
-              </button>
-            ))}
-          </span>
-          <button type="button" className="btn ghost sm tb-br" disabled title={NO_NUMBERS}>
-            <SIcon name="hash" small />
-            <span>Numbers</span>
-          </button>
-          <button type="button" className="btn ghost sm tb-br" disabled title={NO_COMMENT}>
-            <SIcon name="comment" small />
-            <span>Comment</span>
-          </button>
-          <button type="button" className="btn ghost sm tb-br" disabled title={NO_RECORD}>
-            <SIcon name="record" small />
-            <span>Record</span>
-          </button>
           <button type="button" className="btn ghost sm tb-br" aria-haspopup="menu" disabled={!showChrome} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); pageMenu({ x: r.left, y: r.bottom + 6 }); }}>
             <SIcon name="doc" small />
             <span>Page</span>
@@ -462,7 +460,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
                         </button>
                       </span>
                     ))}
-                    <button type="button" className="br-new-st" aria-label="New tab" title="New tab" onClick={newTab}>
+                    <button type="button" className="br-new-st" aria-label="New tab" title="New tab" disabled={opening} onClick={() => void openTab("about:blank")}>
                       +
                     </button>
                   </div>
@@ -485,7 +483,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
                       aria-label="Enter an address and press Enter"
                       spellCheck={false}
                       autoComplete="off"
-                      disabled={!tab}
+                      disabled={opening}
                     />
                   </form>
                 </div>
