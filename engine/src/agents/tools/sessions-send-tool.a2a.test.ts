@@ -112,6 +112,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
     expect(policy.isAllowed("b", "a")).toBe(false);
 
     await runSessionsSendA2AFlow({
+      operationKey: "source-operation",
       runId: "run-one-way",
       targetAgentId: "b",
       targetSessionKey: "agent:b:main",
@@ -129,6 +130,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
 
   it("passes threadId through to gateway send for Telegram forum topics", async () => {
     await runSessionsSendA2AFlow({
+      operationKey: "source-operation",
       callGateway: callGatewayMock,
       runId: "run-test",
       targetAgentId: "main",
@@ -152,6 +154,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
 
   it("omits threadId for non-topic sessions", async () => {
     await runSessionsSendA2AFlow({
+      operationKey: "source-operation",
       callGateway: callGatewayMock,
       runId: "run-test",
       targetAgentId: "main",
@@ -174,6 +177,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
 
   it("delivers same-session channel replies without another agent turn", async () => {
     await runSessionsSendA2AFlow({
+      operationKey: "source-operation",
       runId: "run-test",
       callGateway: callGatewayMock,
       requesterDeliveryGeneration,
@@ -228,6 +232,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
     "projects $name into the same-session source delivery contract",
     async ({ reply, expected }) => {
       await runSessionsSendA2AFlow({
+        operationKey: "source-operation",
         callGateway: callGatewayMock,
         runId: "run-test",
         targetAgentId: "orion",
@@ -268,6 +273,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
     });
 
     await runSessionsSendA2AFlow({
+      operationKey: "source-operation",
       callGateway: callGatewayMock,
       requesterDeliveryGeneration,
       targetAgentId: "main",
@@ -299,6 +305,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
     });
 
     await runSessionsSendA2AFlow({
+      operationKey: "source-operation",
       targetAgentId: "main",
       targetSessionKey: "agent:main:discord:channel:target-room",
       displayKey: "agent:main:discord:channel:target-room",
@@ -316,6 +323,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
     const reply = 'The log says "Agent couldn\'t generate a response", but the retry succeeded.';
 
     await runSessionsSendA2AFlow({
+      operationKey: "source-operation",
       runId: "run-test",
       callGateway: callGatewayMock,
       requesterDeliveryGeneration,
@@ -335,6 +343,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
 
   it("does not turn a missing original session generation into an unbound direct send", async () => {
     await runSessionsSendA2AFlow({
+      operationKey: "source-operation",
       runId: "run-test",
       targetAgentId: "main",
       targetSessionKey: requesterDeliveryGeneration.sessionKey,
@@ -350,6 +359,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
 
   it("does not start a turn or send for same-session replies from a different channel", async () => {
     await runSessionsSendA2AFlow({
+      operationKey: "source-operation",
       runId: "run-test",
       targetAgentId: "main",
       targetSessionKey: "agent:main:discord:channel:target-room",
@@ -374,6 +384,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
       });
 
       await runSessionsSendA2AFlow({
+        operationKey: "source-operation",
         runId: "run-test",
         targetAgentId: "main",
         targetSessionKey: "agent:main:discord:channel:target-room",
@@ -406,6 +417,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
       });
 
       await runSessionsSendA2AFlow({
+        operationKey: "source-operation",
         runId: "run-test",
         targetAgentId: "main",
         targetSessionKey: "agent:main:webchat:direct:target",
@@ -431,6 +443,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
 
   it("preserves requester delivery when the target delivered only to its own channel", async () => {
     await runSessionsSendA2AFlow({
+      operationKey: "source-operation",
       runId: "run-test",
       targetAgentId: "main",
       targetSessionKey: "agent:main:discord:channel:target-room",
@@ -457,6 +470,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
 
   it("delivers once to an internal requester without a target-channel turn or send", async () => {
     await runSessionsSendA2AFlow({
+      operationKey: "source-operation",
       runId: "run-test",
       targetAgentId: "main",
       targetSessionKey: "agent:main:discord:channel:target-room",
@@ -488,6 +502,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
         { key: sessionKey, agentId: "main", kind: "direct", classification: "channel" },
       ];
       await runSessionsSendA2AFlow({
+        operationKey: "source-operation",
         runId: "run-test",
         callGateway: callGatewayMock,
         requesterDeliveryGeneration: generation
@@ -536,6 +551,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
     sessionListRows = [session];
 
     await runSessionsSendA2AFlow({
+      operationKey: "source-operation",
       callGateway: callGatewayMock,
       runId: "run-test",
       targetAgentId: "main",
@@ -559,6 +575,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
     "does not re-inject exact control reply %s into agent-to-agent flow",
     async (replyText) => {
       await runSessionsSendA2AFlow({
+        operationKey: "source-operation",
         runId: "run-test",
         targetAgentId: "main",
         targetSessionKey: "agent:main:discord:group:dev",
@@ -588,6 +605,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
     agentWaitMock.mockResolvedValueOnce(wait);
 
     await runSessionsSendA2AFlow({
+      operationKey: "source-operation",
       targetAgentId: "worker",
       targetSessionKey: "agent:worker:discord:group:dev",
       displayKey: "agent:worker:discord:group:dev",
@@ -622,6 +640,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
       });
 
       await runSessionsSendA2AFlow({
+        operationKey: "source-operation",
         targetAgentId: "main",
         targetSessionKey: "agent:main:discord:channel:target-room",
         displayKey: "agent:main:discord:channel:target-room",
@@ -650,6 +669,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
     });
 
     await runSessionsSendA2AFlow({
+      operationKey: "source-operation",
       targetAgentId: "worker",
       targetSessionKey: "agent:worker:discord:group:dev",
       displayKey: "agent:worker:discord:group:dev",
@@ -670,6 +690,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
     });
 
     await runSessionsSendA2AFlow({
+      operationKey: "source-operation",
       targetAgentId: "worker",
       targetSessionKey: "agent:worker:discord:group:dev",
       displayKey: "agent:worker:discord:group:dev",
@@ -688,6 +709,7 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
     agentWaitMock.mockRejectedValueOnce(new Error("gateway closed (1006)"));
 
     await runSessionsSendA2AFlow({
+      operationKey: "source-operation",
       targetAgentId: "worker",
       targetSessionKey: "agent:worker:discord:group:dev",
       displayKey: "agent:worker:discord:group:dev",

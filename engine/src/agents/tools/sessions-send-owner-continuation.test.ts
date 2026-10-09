@@ -188,6 +188,7 @@ describe("child followup requester continuation", () => {
     );
     try {
       await startSessionsSendReplyFlow({
+        operationKey: "source-operation",
         completion,
         callGateway: callAgentToolGatewayRequest,
         runId: request!.runId,
@@ -349,6 +350,7 @@ describe("child followup requester continuation", () => {
       }),
     );
     await startSessionsSendReplyFlow({
+      operationKey: "source-operation",
       completion,
       callGateway,
       runId: request!.runId,

@@ -149,15 +149,16 @@ describe("sessions_send dispatch admission", () => {
           return { sessions: [{ key: targetSessionKey, agentId: "main", kind: "direct" }] };
         }
         if (request.method === "agent") {
-          const followup = readFollowupRequest(runId, targetSessionKey);
+          const operationKey = String(request.params?.idempotencyKey);
+          const followup = readFollowupRequest(operationKey, targetSessionKey);
           if (followup) {
             completion = SessionFollowupCompletion.bind(followup);
             followup.completion = completion;
-            completion.markAccepted(runId);
-            await completion.settle(runId, { status: "ok", replyText: "Task complete" });
-            completion.finishExecution(runId);
+            completion.markAccepted(operationKey);
+            await completion.settle(operationKey, { status: "ok", replyText: "Task complete" });
+            completion.finishExecution(operationKey);
           }
-          return { runId, status: "accepted" };
+          return { runId: operationKey, status: "accepted" };
         }
         throw new Error(`Unexpected Gateway method: ${request.method}`);
       },
@@ -470,7 +471,10 @@ describe("sessions_send dispatch admission", () => {
         sessionId: entry.sessionId,
         lifecycleRevision: entry.lifecycleRevision,
       });
-      expect(sendParams).toHaveProperty("idempotencyKey", `sessions-send:${runId}`);
+      expect(sendParams).toHaveProperty(
+        "idempotencyKey",
+        requests.find((request) => request.method === "agent")?.params?.idempotencyKey,
+      );
       expect(sendParams).not.toHaveProperty("sessionGeneration");
     } finally {
       gateway.mockRestore();
@@ -523,7 +527,10 @@ describe("sessions_send dispatch admission", () => {
 
       expect.soft(result.details).toMatchObject({
         status: "error",
-        runId,
+        runId:
+          admission === "pending"
+            ? runId
+            : requests.find((request) => request.method === "agent")?.params?.idempotencyKey,
         sessionKey: targetSessionKey,
         error:
           admission === "rejected"

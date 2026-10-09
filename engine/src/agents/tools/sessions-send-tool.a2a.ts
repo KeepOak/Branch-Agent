@@ -51,6 +51,7 @@ async function deliverSourceReply(params: {
   callGateway: AgentToolGatewayRequestCaller;
   message: string;
   runId: string;
+  operationKey: string;
   targetAgentId: string;
   sessionGeneration: SessionDeliveryGeneration;
 }) {
@@ -73,7 +74,7 @@ async function deliverSourceReply(params: {
           channel: params.deliveryTarget.channel,
           accountId: params.deliveryTarget.accountId,
           threadId: params.deliveryTarget.threadId,
-          idempotencyKey: `sessions-send:${params.runId}`,
+          idempotencyKey: params.operationKey,
         },
         params.sessionGeneration,
       ),
@@ -95,6 +96,7 @@ export async function runSessionsSendA2AFlow(params: {
   targetAgentId: string;
   displayKey: string;
   runId: string;
+  operationKey: string;
   replyTimeoutMs: number;
   replyMode?: "peer" | "one-way";
   requesterSessionKey?: string;
@@ -209,6 +211,7 @@ export async function runSessionsSendA2AFlow(params: {
           message: reply,
           runId: params.runId,
           targetAgentId: params.targetAgentId,
+          operationKey: params.operationKey,
           sessionGeneration: params.requesterDeliveryGeneration,
         });
       }
