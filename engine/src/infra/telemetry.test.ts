@@ -329,12 +329,12 @@ describe("anonymous telemetry", () => {
     mockHttp.intercept({
       url: TELEMETRY_URL,
       method: "POST",
-      reply: { json: { version: "2026.8.24", note: "A newer release is available." } },,
+      reply: { json: { version: "2026.8.24", note: "A newer release is available." } },
     });
     mockHttp.intercept({
       url: TELEMETRY_URL,
       method: "POST",
-      reply: { json: { version: "2026.8.25" } },,
+      reply: { json: { version: "2026.8.25" } },
     });
     const options = { surface: "gateway" as const, fetchImpl: globalThis.fetch };
 
@@ -418,7 +418,7 @@ describe("anonymous telemetry", () => {
       mockHttp.intercept({
         url: TELEMETRY_URL,
         method: "POST",
-        reply: { json: { version: "2026.8.24" } },,
+        reply: { json: { version: "2026.8.24" } },
       });
       await checkTelemetryUpdate(() => OPTED_IN_CONFIG, { ...options, nowMs: NOW });
 
@@ -456,7 +456,7 @@ describe("anonymous telemetry", () => {
     mockHttp.intercept({
       url: TELEMETRY_URL,
       method: "POST",
-      reply: { json: { version: "2026.8.24" } },,
+      reply: { json: { version: "2026.8.24" } },
     });
     const options = { surface: "gateway" as const, fetchImpl: globalThis.fetch };
     await checkTelemetryUpdate(() => OPTED_IN_CONFIG, { ...options, nowMs: NOW });
@@ -502,7 +502,7 @@ describe("anonymous telemetry", () => {
     mockHttp.intercept({
       url: TELEMETRY_URL,
       method: "POST",
-      reply: { json: { version: "2026.8.24" } },,
+      reply: { json: { version: "2026.8.24" } },
     });
     const options = { surface: "gateway" as const, fetchImpl: globalThis.fetch };
     await checkTelemetryUpdate(() => OPTED_IN_CONFIG, { ...options, nowMs: NOW });
@@ -730,7 +730,7 @@ describe("anonymous telemetry", () => {
     mockHttp.intercept({
       url: customEndpoint,
       method: "POST",
-      reply: { json: { version: "2026.8.24" } },,
+      reply: { json: { version: "2026.8.24" } },
     });
 
     await expect(
@@ -762,7 +762,7 @@ describe("anonymous telemetry", () => {
     mockHttp.intercept({
       url: TELEMETRY_URL,
       method: "POST",
-      reply: { json: { version: "2026.8.24" } },,
+      reply: { json: { version: "2026.8.24" } },
     });
     await expect(
       checkTelemetryUpdate(() => OPTED_IN_CONFIG, {
@@ -778,7 +778,7 @@ describe("anonymous telemetry", () => {
     mockHttp.intercept({
       url: TELEMETRY_URL,
       method: "POST",
-      reply: { json: { version: "2026.8.24", note: "x".repeat(800) } },,
+      reply: { json: { version: "2026.8.24", note: "x".repeat(800) } },
     });
 
     const result = await checkTelemetryUpdate(() => OPTED_IN_CONFIG, {
