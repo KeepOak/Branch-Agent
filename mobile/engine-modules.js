@@ -40,4 +40,7 @@ function resolveEngineModule(moduleName, originPath) {
   return null;
 }
 
-module.exports = { packagesRoot, resolveEngineModule };
+/** Matches a module under engine/packages as Metro names it in a require-cycle warning ("../engine/packages/…"). */
+const engineCyclePattern = /(^|[\\/])engine[\\/]packages[\\/]/;
+
+module.exports = { engineCyclePattern, packagesRoot, resolveEngineModule };

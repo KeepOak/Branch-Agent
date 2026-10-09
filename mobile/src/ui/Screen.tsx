@@ -1,14 +1,20 @@
 import type { ReactNode } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeProvider';
 
-/** A screen with the iOS large-title margins: scrolling content above, actions pinned to the bottom. */
-export function Screen({ children, footer, testID }: { children: ReactNode; footer?: ReactNode; testID?: string }) {
+/**
+ * A screen with the iOS large-title margins: scrolling content above, actions pinned to the bottom. With
+ * `avoidKeyboard`, the actions ride above the on-screen keyboard instead of sitting under it, so a tap meant
+ * for them never lands on a key. Padding works on both platforms now that Android draws edge to edge and no
+ * longer resizes the window for the keyboard.
+ */
+export function Screen({ children, footer, testID, avoidKeyboard = false }: { children: ReactNode; footer?: ReactNode; testID?: string; avoidKeyboard?: boolean }) {
   const { color, space, layout } = useTheme();
   const insets = useSafeAreaInsets();
+  const Root = avoidKeyboard ? KeyboardAvoidingView : View;
   return (
-    <View testID={testID} style={[styles.fill, { backgroundColor: color.grouped }]}>
+    <Root testID={testID} {...(avoidKeyboard ? { behavior: 'padding' as const } : {})} style={[styles.fill, { backgroundColor: color.grouped }]}>
       <ScrollView
         style={styles.fill}
         contentContainerStyle={{ paddingTop: insets.top + space.xxl, paddingHorizontal: layout.screenInset, paddingBottom: space.xl }}
@@ -21,7 +27,7 @@ export function Screen({ children, footer, testID }: { children: ReactNode; foot
           {footer}
         </View>
       ) : null}
-    </View>
+    </Root>
   );
 }
 

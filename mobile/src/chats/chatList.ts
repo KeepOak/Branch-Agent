@@ -19,6 +19,7 @@ export type ChatRow = {
   avatar: string;
   /** The last line said, on one line. */
   preview: string;
+  /** When the chat was last active (ms): the later of the engine's updatedAt and lastActivityAt. */
   updatedAt: number;
   /** A Trunk is answering in it right now. */
   working: boolean;
@@ -150,7 +151,8 @@ export function projectChat(raw: unknown, agents: Map<string, Agent>, mainKey: s
     ...(trunk && title !== trunk ? { trunkName: trunk } : {}),
     avatar: agent?.avatar ?? initial(title),
     preview: oneLine(str(r.lastMessagePreview)),
-    updatedAt: num(r.updatedAt),
+    // A finished reply sets lastActivityAt; a row whose updatedAt lags it still reads as active then.
+    updatedAt: Math.max(num(r.updatedAt), num(r.lastActivityAt)),
     working: r.hasActiveRun === true || activeRunIds.length > 0,
     unread: r.unread === true,
     pinned: r.pinned === true,

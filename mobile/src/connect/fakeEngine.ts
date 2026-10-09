@@ -24,12 +24,19 @@ export type FakeEngine = {
   /** Whether each connect's device signature checked out. */
   signaturesValid: boolean[];
   approve: () => void;
+  /**
+   * The owner chooses Deny. Like the engine (rejectDevicePairingInWorker), that drops the request and revokes
+   * the pairing code, so every later try with it is answered AUTH_BOOTSTRAP_TOKEN_INVALID.
+   */
   reject: () => void;
   /** Drops the phone's connection the way an engine restart does. */
   drop: () => void;
   /** Revokes the device token it issued, as removing the phone in Branch on the computer does. */
   revoke: () => void;
-  /** Turns every later connect away with this error (the engine's wire shape); null stops refusing. */
+  /**
+   * Turns every later connect away with this error (the engine's wire shape); null stops refusing. Refusing
+   * with AUTH_BOOTSTRAP_TOKEN_INVALID means the code's record is gone, and null doesn't bring it back.
+   */
   refuse: (refusal: { code: string; message: string } | null) => void;
   readonly openSockets: number;
   /** Every request after the handshake, in order. */
@@ -81,7 +88,9 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
   const version = options.version ?? '2026.10.8';
   const bootstrapToken = options.bootstrapToken ?? 'boot-1';
   const deviceToken = options.deviceToken ?? 'device-token-1';
-  let decision: 'pending' | 'approved' | 'rejected' = 'pending';
+  let decision: 'pending' | 'approved' = 'pending';
+  /** The pairing code's record was removed (Deny, run out, used): nothing brings it back. */
+  let codeGone = false;
   let revoked = false;
   let refusal: { code: string; message: string } | null = null;
   let sessions = options.sessions ?? [];
@@ -243,7 +252,7 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
       decision = 'approved';
     },
     reject: () => {
-      decision = 'rejected';
+      codeGone = true;
     },
     drop: () => {
       for (const socket of [...live]) socket.close(1012, 'engine restarting');
@@ -252,6 +261,7 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
       revoked = true;
     },
     refuse: (next) => {
+      if (next?.code === 'AUTH_BOOTSTRAP_TOKEN_INVALID') codeGone = true;
       refusal = next;
     },
     get openSockets() {
@@ -339,7 +349,8 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
             return;
           }
           const knownDevice = params.auth?.deviceToken === deviceToken;
-          if (knownDevice || (params.auth?.bootstrapToken === bootstrapToken && decision === 'approved')) {
+          const codeWorks = params.auth?.bootstrapToken === bootstrapToken && !codeGone;
+          if (knownDevice || (codeWorks && decision === 'approved')) {
             helloSent = true;
             entry.scopes = params.scopes ?? [];
             entry.name = params.client.displayName ?? params.client.id;
@@ -359,13 +370,14 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
             });
             return;
           }
-          const details =
-            decision === 'rejected'
-              ? { code: 'PAIRING_REJECTED' }
-              : params.auth?.bootstrapToken === bootstrapToken
-                ? { code: 'PAIRING_REQUIRED', requestId: 'request-1', reason: 'not-paired' }
-                : { code: 'AUTH_BOOTSTRAP_TOKEN_INVALID' };
-          reply({ type: 'res', id: frame.id, ok: false, error: { code: 'NOT_PAIRED', message: details.code.toLowerCase().replaceAll('_', ' '), details } });
+          if (!codeWorks) {
+            // The engine's words for this (engine/src/gateway/server/ws-connection/auth-messages.ts).
+            const message = 'unauthorized: bootstrap token invalid or expired';
+            reply({ type: 'res', id: frame.id, ok: false, error: { code: 'INVALID_REQUEST', message, details: { code: 'AUTH_BOOTSTRAP_TOKEN_INVALID' } } });
+            return;
+          }
+          const details = { code: 'PAIRING_REQUIRED', requestId: 'request-1', reason: 'not-paired' };
+          reply({ type: 'res', id: frame.id, ok: false, error: { code: 'NOT_PAIRED', message: 'pairing required', details } });
         },
       };
     },
