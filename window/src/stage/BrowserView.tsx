@@ -306,18 +306,19 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     setNote("");
   }, [engine]);
   const [find, setFind] = useState<string | null>(null);
-  const [view, setView] = useState<{ url?: string; title?: string; phase: BrowserPhase }>({ phase: "empty" });
+  const [view, setView] = useState<{ owner: WindowEngine; tabId?: string; url?: string; title?: string; phase: BrowserPhase }>({ owner: engine, phase: "empty" });
   const recordedNewest = entries.at(-1)?.tab.targetId;
   const tabs = browser.tabs.filter((t) => !closed.has(t.targetId));
   const tab = tabs.find((t) => t.targetId === picked) ?? tabs.find((t) => t.targetId === recordedNewest) ?? tabs[0];
   const entry: BrowserPresentation | null = route && tab ? { tab: { ...route, targetId: tab.targetId } as BrowserPresentation["tab"], revision: String(tick), url: tab.url, title: tab.title } : null;
   const onView = useCallback(
     (s: { phase: BrowserPhase; url?: string; title?: string }) => {
-      setView(s);
+      setView({ ...s, owner: engine, tabId: tab?.targetId });
       onState(s.phase, s.title);
     },
-    [onState],
+    [engine, tab?.targetId, onState],
   );
+  const currentView = view.owner === engine && view.tabId === tab?.targetId ? view : { phase: "empty" as const };
   useEffect(() => {
     if (browser.phase === "none" || browser.phase === "stopped" || (browser.phase === "ready" && !browser.tabs.length)) onState("empty");
     if (browser.phase === "error") onState("error");
@@ -329,7 +330,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     return browserCall(engine, route, method, path, options);
   };
   const refresh = () => setTick((t) => t + 1);
-  const url = tab?.url === "about:blank" ? "about:blank" : view.phase === "connected" && view.url ? view.url : tab?.url ?? "";
+  const url = currentView.phase === "connected" && currentView.url ? currentView.url : tab?.url ?? "";
   const shownAddress = address && address.for === (tab?.targetId ?? "") ? address.text : url === "about:blank" ? "" : url;
   const openTab = async (target: string) => {
     if (opening || !engine.sessionKey) return;
@@ -373,7 +374,10 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   const closeTab = (id: string) => {
     onControl?.(true);
     setClosed((old) => new Set(old).add(id));
-    void call("DELETE", `/tabs/${encodeURIComponent(id)}`).then(refresh, (e) => {
+    void call("DELETE", `/tabs/${encodeURIComponent(id)}`).then(() => {
+      if (currentEngine.current === engine) refresh();
+    }, (e) => {
+      if (currentEngine.current !== engine) return;
       setClosed((old) => { const next = new Set(old); next.delete(id); return next; });
       fail(e);
     });
@@ -424,7 +428,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
           </button>
         </div>
       ) : null}
-      {working && view.phase === "connected" ? (
+      {working && currentView.phase === "connected" ? (
         <div className="bn-br" role="note">
           <i className="dot-br" />
           <span className="grow">
@@ -493,7 +497,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
                 </div>
               ) : null}
               {page}
-              {control && view.phase === "connected" ? <span className="drive-st">You're driving</span> : null}
+              {control && currentView.phase === "connected" ? <span className="drive-st">You're driving</span> : null}
             </div>
           </div>
           {drawer && route && tab ? (

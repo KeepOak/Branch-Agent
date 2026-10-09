@@ -179,6 +179,16 @@ describe("scoped browser viewing", () => {
     expect(container.textContent).toContain("Choose a conversation first");
     expect(container.querySelector(".br-addr-st")).toBeNull();
   });
+  it("does not show a previous conversation's live address in the empty panel", async () => {
+    vi.stubGlobal("createImageBitmap", vi.fn(async () => ({ width: 100, height: 100, close: vi.fn() })));
+    await render(owner(routed(() => ({ wsPath: "/stream/one", targetId: "tab-one" })) as any));
+    await flush();
+    await act(async () => casts.created[0].options.onFrame({ blob: new Blob(), cssWidth: 100, cssHeight: 100, url: "https://example.test/private-page" }));
+    expect(container.querySelector<HTMLInputElement>(".br-addr-st")!.value).toContain("private-page");
+    await render(owner(vi.fn(async () => ({ running: false })) as any, "agent:ada:two"), []);
+    expect(container.querySelector<HTMLInputElement>(".br-addr-st")!.value).toBe("");
+    expect(container.textContent).toContain("Browse with your Trunk");
+  });
   it("retires a closing final tab immediately and restores it if closing fails", async () => {
     let reject!: (error: Error) => void;
     const request = vi.fn(async (_m: string, p: any) => {
