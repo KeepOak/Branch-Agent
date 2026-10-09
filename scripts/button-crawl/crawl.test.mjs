@@ -30,6 +30,18 @@ test('denylist skips destructive and external controls and clicks ordinary ones'
   assert.equal(skipReason({ name: 'Pin', disabled: true }), 'disabled');
 });
 
+test('denylist records external sign-in controls without clicking them', () => {
+  for (const name of ['Connect GitHub', 'connect Google', 'CONNECT Microsoft', 'Sign in with Google', 'Continue with GitHub']) {
+    assert.equal(skipReason({ name }), 'external-sign-in');
+  }
+  for (const name of ['Connect', 'New chat', 'Sign in', 'Continue', 'Reconnect GitHub', 'Connect to a Branch elsewhere…']) {
+    assert.equal(skipReason({ name }), null);
+  }
+  assert.equal(skipReason({ name: 'Remove GitHub account' }), 'destructive');
+  assert.equal(skipReason({ name: 'Connect GitHub', disabled: true }), 'disabled');
+  assert.equal(skipReason({ name: 'Connect GitHub', href: 'https://github.com/login' }), 'external-url');
+});
+
 test('click classification flags dead, toast-only, slow, and error screens', () => {
   const before = surface({});
   assert.deepEqual(classifyClick({ before, after: surface({}), elapsedMs: 20 }).problems, ['dead']);

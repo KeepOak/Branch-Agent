@@ -1,5 +1,8 @@
+import childProcesses from "node:child_process";
 import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import * as fileLock from "@openclaw/fs-safe/file-lock";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
@@ -7,6 +10,7 @@ import {
   resolveDistArtifactLockPath,
   withDistArtifactOwnership,
 } from "../../scripts/lib/dist-artifact-lock.mts";
+import * as windowsProcessStart from "../../src/infra/windows-process-start.js";
 import { createFixtureLifetime } from "../helpers/fixture-lifetime.js";
 import { createDeferred } from "../helpers/promise.js";
 
@@ -23,6 +27,7 @@ beforeEach(() => {
 const fixture = createFixtureLifetime();
 afterEach(async () => {
   vi.restoreAllMocks();
+  syncBuiltinESMExports();
   await fixture.cleanup();
 });
 const createRoot = () => {
@@ -31,6 +36,179 @@ const createRoot = () => {
   fs.mkdirSync(path.join(root, ".git"));
   return root;
 };
+
+it("reclaims a lock retained by a recycled live PID", async () => {
+  const root = createRoot();
+  const directory = resolveDistArtifactLockPath(root);
+  fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(
+    path.join(directory, "owner.json"),
+    JSON.stringify({
+      pid: process.pid,
+      startIdentity: "different-process-start",
+      startedAt: new Date().toISOString(),
+    }),
+  );
+  const lock = await acquireDistArtifactOwnership(root);
+  try {
+    const owner = JSON.parse(fs.readFileSync(path.join(directory, "owner.json"), "utf8"));
+    expect(owner.startIdentity).toEqual(expect.any(String));
+    expect(owner.startIdentity).not.toBe("different-process-start");
+  } finally {
+    await lock.release();
+  }
+});
+
+it.for(["unjoined", "child-4242"])(
+  "keeps a recycled-PID lock while %s child work is retained",
+  async (fence) => {
+    const root = createRoot();
+    const directory = resolveDistArtifactLockPath(root);
+    fs.mkdirSync(directory, { recursive: true });
+    const ownerPath = path.join(directory, "owner.json");
+    const bytes = JSON.stringify({
+      pid: process.pid,
+      startIdentity: "different-process-start",
+      startedAt: new Date().toISOString(),
+    });
+    fs.writeFileSync(ownerPath, bytes);
+    fs.writeFileSync(path.join(directory, fence), "retained child fence");
+    await expect(acquireDistArtifactOwnership(root)).rejects.toThrow("retained by PID");
+    expect(fs.readFileSync(ownerPath, "utf8")).toBe(bytes);
+    expect(fs.existsSync(path.join(directory, fence))).toBe(true);
+  },
+);
+
+it("refuses a waiting acquire at once for a recycled PID with unjoined work", async () => {
+  const root = createRoot();
+  const directory = resolveDistArtifactLockPath(root);
+  fs.mkdirSync(directory, { recursive: true });
+  const ownerPath = path.join(directory, "owner.json");
+  const bytes = JSON.stringify({
+    pid: process.pid,
+    startIdentity: "different-process-start",
+    startedAt: new Date().toISOString(),
+  });
+  fs.writeFileSync(ownerPath, bytes);
+  fs.writeFileSync(path.join(directory, "unjoined"), "retained child fence");
+  // A waiter that never refuses would end with the timeout reason instead.
+  await expect(
+    acquireDistArtifactOwnership(root, true, AbortSignal.timeout(2_000)),
+  ).rejects.toThrow("retained by PID");
+  expect(fs.readFileSync(ownerPath, "utf8")).toBe(bytes);
+  expect(fs.readFileSync(path.join(directory, "unjoined"), "utf8")).toBe("retained child fence");
+});
+
+it("refuses a live same-identity owner", async () => {
+  const root = createRoot();
+  const lock = await acquireDistArtifactOwnership(root);
+  const ownerPath = path.join(resolveDistArtifactLockPath(root), "owner.json");
+  const original = fs.readFileSync(ownerPath, "utf8");
+  await lock.release();
+  // Restore a retained record rather than relying on manager-local reentrancy.
+  fs.writeFileSync(ownerPath, original);
+  await expect(acquireDistArtifactOwnership(root)).rejects.toThrow("retained by PID");
+  expect(fs.readFileSync(ownerPath, "utf8")).toBe(original);
+});
+
+it("gives a policy-safe release hint for contention", async () => {
+  const root = createRoot();
+  const lock = await acquireDistArtifactOwnership(root);
+  const ownerPath = path.join(resolveDistArtifactLockPath(root), "owner.json");
+  const original = fs.readFileSync(ownerPath, "utf8");
+  try {
+    const error = await acquireDistArtifactOwnership(root).catch((failure: unknown) => failure);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("release-dist-artifact-lock.mjs");
+    expect((error as Error).message).not.toMatch(/Remove-Item|rm -rf/u);
+    expect(fs.readFileSync(ownerPath, "utf8")).toBe(original);
+  } finally {
+    await lock.release();
+  }
+});
+
+it("keeps old live owner records without an identity fail-closed", async () => {
+  const root = createRoot();
+  const directory = resolveDistArtifactLockPath(root);
+  fs.mkdirSync(directory, { recursive: true });
+  const bytes = JSON.stringify({ pid: process.pid });
+  fs.writeFileSync(path.join(directory, "owner.json"), bytes);
+  await expect(acquireDistArtifactOwnership(root)).rejects.toThrow("retained by PID");
+  expect(fs.readFileSync(path.join(directory, "owner.json"), "utf8")).toBe(bytes);
+});
+
+it("keeps a live owner fail-closed when its start identity cannot be read", async () => {
+  const root = createRoot();
+  const directory = resolveDistArtifactLockPath(root);
+  fs.mkdirSync(directory, { recursive: true });
+  const bytes = JSON.stringify({ pid: process.pid, startIdentity: "unreadable" });
+  fs.writeFileSync(path.join(directory, "owner.json"), bytes);
+  vi.spyOn(windowsProcessStart, "readWindowsProcessStartTimeSync").mockReturnValue(null);
+  vi.spyOn(childProcesses, "spawnSync").mockReturnValue({
+    pid: 0,
+    output: [],
+    stdout: "",
+    stderr: "",
+    status: 1,
+    signal: null,
+  });
+  // Native ESM named exports do not track spies on the default export until synced.
+  syncBuiltinESMExports();
+  const read = fs.readFileSync.bind(fs);
+  vi.spyOn(fs, "readFileSync").mockImplementation((...args) => {
+    if (args[0] === `/proc/${process.pid}/stat`) {
+      throw Object.assign(new Error("unreadable identity"), { code: "EACCES" });
+    }
+    return read(...args);
+  });
+  await expect(acquireDistArtifactOwnership(root)).rejects.toThrow("retained by PID");
+  expect(fs.readFileSync(path.join(directory, "owner.json"), "utf8")).toBe(bytes);
+});
+
+it("release script refuses a live owner and removes a dead owner in a temp checkout", async () => {
+  const root = createRoot();
+  const scripts = path.join(root, "scripts");
+  fs.mkdirSync(scripts);
+  // Keep the entrypoint's checkout boundary real while reusing installed tooling.
+  const scriptUrl = new URL("../../scripts/release-dist-artifact-lock.mjs", import.meta.url);
+  let source = fs.readFileSync(scriptUrl, "utf8");
+  for (const relative of ["./lib/tsx-cli-shim.mjs", "./lib/dist-artifact-lock.mts"]) {
+    source = source.replace(relative, new URL(relative, scriptUrl).href);
+  }
+  const script = path.join(scripts, "release-dist-artifact-lock.mjs");
+  fs.writeFileSync(script, source);
+  const run = (args: string[] = []) =>
+    childProcesses.spawnSync(process.execPath, [script, ...args], {
+      cwd: fileURLToPath(new URL("../../", import.meta.url)),
+      encoding: "utf8",
+      windowsHide: true,
+    });
+  const lock = await acquireDistArtifactOwnership(root);
+  const directory = resolveDistArtifactLockPath(root);
+  const ownerPath = path.join(directory, "owner.json");
+  const live = fs.readFileSync(ownerPath, "utf8");
+  fs.writeFileSync(path.join(directory, "unjoined"), "retained child fence");
+  try {
+    const refused = run();
+    expect(refused.status, refused.stderr).toBe(1);
+    expect(refused.stderr).toContain("Refusing to release live");
+    expect(refused.stderr).toContain(String(process.pid));
+    expect(fs.readFileSync(ownerPath, "utf8")).toBe(live);
+  } finally {
+    await lock.release();
+  }
+  const child = childProcesses.spawnSync(process.execPath, ["-e", ""], { windowsHide: true });
+  expect(child.status).toBe(0);
+  fs.writeFileSync(ownerPath, JSON.stringify({ pid: child.pid, startIdentity: "dead" }));
+  fs.writeFileSync(path.join(directory, "unjoined"), "retained child fence");
+  const removed = run([directory]);
+  expect(removed.status, removed.stderr).toBe(0);
+  expect(fs.existsSync(directory)).toBe(false);
+  const outside = fixture.createTempDir("branch-lock-outside-");
+  const rejected = run([outside]);
+  expect(rejected.status).toBe(1);
+  expect(fs.existsSync(outside)).toBe(true);
+});
 
 it("cancels an already contended same-process waiter without disturbing the owner", async () => {
   const root = createRoot();

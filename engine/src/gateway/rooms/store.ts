@@ -13,6 +13,10 @@ const MAX_LOG_LIMIT = 500;
 const MAX_LOG_PAGE_BYTES = 2 * 1024 * 1024;
 const MAX_ROOM_EVENT_BYTES = 256 * 1024 * 1024;
 const MAX_GATEWAY_EVENT_BYTES = 16 * 1024 * 1024;
+// Rooms take any number of Trunks (owner decision; copy-upstream exception, Private PR #15).
+// This total only protects the store. Room turns still run one at a time in member order,
+// and every run stays under the host's agents.defaults.maxConcurrent lane.
+const MAX_ROOM_MEMBERS = 500;
 
 export type RoomMember = {
   roomId: string;
@@ -137,11 +141,10 @@ export function createRoom(input: {
   const trunks = input.members.filter((member) => member.kind === "trunk");
   if (
     trunks.length < 1 ||
-    trunks.length > 6 ||
     new Set(trunks.map((member) => member.id)).size !== trunks.length
   )
-    throw new Error("Rooms require 1–6 distinct Trunks");
-  if (input.members.length > 128) throw new Error("Too many room members");
+    throw new Error("Rooms require at least one Trunk, each listed once");
+  if (input.members.length > MAX_ROOM_MEMBERS) throw new Error("Too many room members");
   const lead = trunks.find((member) => member.role === "lead")?.id ?? trunks[0]!.id;
   if (
     trunks.filter((member) => member.role === "lead").length > 1 ||
@@ -190,11 +193,7 @@ export function addRoomMember(roomId: string, member: Pick<RoomMember, "kind" | 
       const members = readMembers(db, roomId);
       if (members.some((row) => row.kind === member.kind && row.id === member.id))
         throw new Error("Member already exists");
-      if (
-        members.length >= 128 ||
-        (member.kind === "trunk" && members.filter((row) => row.kind === "trunk").length >= 6)
-      )
-        throw new Error("Too many room members");
+      if (members.length >= MAX_ROOM_MEMBERS) throw new Error("Too many room members");
       db.prepare(
         "INSERT INTO room_members(room_id,kind,id,member_order,role,enabled) VALUES (?,?,?,?,'member',1)",
       ).run(roomId, member.kind, requireText(member.id, "member id", 128), members.length);
