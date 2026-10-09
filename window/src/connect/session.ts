@@ -1002,6 +1002,7 @@ function buildEngine(session: SaplingSession, sessionKey: string | null, hello: 
   return {
     gatewayUrl: session.gatewayUrl,
     connected: hello !== null,
+    reconnect: () => session.reconnectNow(),
     // With several Trunks, owned calls that name none go to the open conversation's Trunk (the default one).
     request: (method, params) => session.request(method, withOwner(method, params, agentId)),
     onEvent: (listener) => session.onGatewayEvent((event, payload) => listener({ event, payload })),

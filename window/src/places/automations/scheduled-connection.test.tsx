@@ -8,16 +8,23 @@ import { ScheduledTab } from "./Scheduled";
 const host = document.createElement("div"); document.body.append(host);
 let root = createRoot(host);
 afterEach(async () => { await act(async () => root.unmount()); host.replaceChildren(); root = createRoot(host); });
-const engine = (connected = true): WindowEngine => ({ connected, sessionKey: null, scopes: [], onEvent: () => () => {}, request: vi.fn(async (method: string) => method === "cron.list" ? { jobs: [], hasMore: false } : {}) as WindowEngine["request"] });
+const engine = (connected = true): WindowEngine => ({ connected, reconnect: vi.fn(), sessionKey: null, scopes: [], onEvent: () => () => {}, request: vi.fn(async (method: string) => method === "cron.list" ? { jobs: [], hasMore: false } : {}) as WindowEngine["request"] });
 const show = async (e: WindowEngine) => { await act(async () => root.render(<ScheduledTab engine={e} level="regular" openConversation={() => {}} />)); };
-it("waits on the shared connection state and reads schedules when reconnected", async () => {
+it("shows an honest disconnected error with Retry and reads schedules when reconnected", async () => {
   const offline = engine(false); await show(offline);
   expect(offline.request).not.toHaveBeenCalled();
-  expect(host.textContent).toContain("Waiting for the gateway connection…");
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain("Gateway is not connected. Automations will retry when it reconnects.");
   expect(host.textContent).not.toContain("Reading automations…");
+  const retry = host.querySelector<HTMLButtonElement>('[role="alert"] button')!;
+  expect(retry.disabled).toBe(false);
+  await act(async () => retry.click());
+  expect(offline.reconnect).toHaveBeenCalledOnce();
+  expect(offline.request).not.toHaveBeenCalled();
+  expect(host.querySelector('[role="alert"]')).not.toBeNull();
   const online = engine(); await show(online);
   expect(online.request).toHaveBeenCalledWith("cron.list", expect.objectContaining({ includeDisabled: true }));
   expect(host.textContent).toContain("Nothing runs on a schedule yet.");
+  expect(host.querySelector('[role="alert"]')).toBeNull();
 });
 it("shows the real request error and Retry recovers without a stuck reading message", async () => {
   const e = engine(); const request = e.request;
