@@ -7,6 +7,7 @@ import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
 import { fileOf, num, optStr, rec, useOperation, useResource, trunkName, type Trunk } from "./data";
+import { aboutYouSummary } from "./memory-about";
 import type { Fact } from "./memory-data";
 import { Grey, GreySwitch, plural, Row, Section, when } from "./parts";
 import { BringInDialog } from "./memory-bring-dialog";
@@ -130,7 +131,7 @@ export function Pinned({ facts }: { facts: Fact[] }) {
 export function AboutYou({ engine, agentId }: { engine: WindowEngine; agentId: string }) {
   const user = useResource<unknown>(engine, agentId ? "agents.files.get" : null, { agentId, name: "USER.md" });
   const file = user.data ? fileOf(user.data) : null;
-  const text = !file || file.missing ? "" : (file.content ?? "").split("\n").filter(l => !/^#{1,6}\s/.test(l)).join("\n").trim();
+  const text = !file || file.missing ? "" : aboutYouSummary(file.content ?? "");
   return <Section title="About you" hint="A short summary Trunks keep of you from what they remember. Edit it by changing the memories it comes from." testid="about-you">
     {user.loading && <p className="lib-hint" role="status">Loading…</p>}
     {user.error && <p className="lib-bad" role="alert">{user.error}</p>}
