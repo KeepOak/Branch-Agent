@@ -1,0 +1,5 @@
+engine:src/gateway/server-methods/usage.status-cache.test.ts
+engine:src/infra/provider-usage.fetch.claude.test.ts
+window:src/shell/StatusPopovers.test.tsx
+window:src/shell/status-data.test.ts
+window:src/shell/status-redesign.test.tsx

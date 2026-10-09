@@ -39,7 +39,7 @@ import {
 import type { PreparedModelRuntimeLeaseOptions } from "./prepared-model-runtime.types.js";
 
 const PREPARED_RUNTIME_SUPERSEDED_NO_PROGRESS_MS = 120_000;
-const PREPARED_RUNTIME_SUPERSEDED_TOTAL_CAP_MS = 600_000;
+export const PREPARED_RUNTIME_SUPERSEDED_TOTAL_CAP_MS = 600_000;
 
 type PreparedModelRuntimeLeaseContext = {
   captureLifetime(): () => void;

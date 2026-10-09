@@ -6,6 +6,7 @@ import {
   patchSessionEntryCore,
 } from "../config/sessions/session-accessor.js";
 import { observeSessionMaintenanceChanges } from "../config/sessions/session-accessor.sqlite-maintenance.test-support.js";
+import { applySessionEntryLifecycleMutation } from "../config/sessions/session-accessor.sqlite-projection.js";
 import * as reclamationRun from "../config/sessions/session-accessor.sqlite-reclamation-run.js";
 import {
   collectSessionMaintenancePreserveKeys,
@@ -16,8 +17,8 @@ import { createDeferredCore } from "../shared/deferred.js";
 import { resolveBranchAgentSqlitePath } from "../state/branch-agent-db.js";
 import { openBranchStateDatabase } from "../state/branch-state-db.js";
 import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-workspaces.js";
-import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
 import { withBranchTestState } from "../test-utils/branch-test-state.js";
+import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
 import * as workspaceRetention from "./worker-environments/node-workspace-retain-coordinator.js";
 import type { WorkerSessionPlacementRecord } from "./worker-environments/placement-record.js";
 import {
@@ -84,6 +85,11 @@ function createPlacementFixture(
 function createMaintenanceRuntime(params: {
   placements: PlacementFixture[];
   preservationStore?: WorkerSessionPlacementStore;
+  prepareMaintenancePlacements?: () => Promise<{
+    placements: PlacementFixture[];
+    assertCurrent: () => void;
+    release: () => void;
+  }>;
   onRecovery?: () => void;
   recoveryError?: Error;
   stopError?: Error;
@@ -136,15 +142,17 @@ function createMaintenanceRuntime(params: {
                 (sessionKey === undefined || placement.sessionKey === sessionKey),
             ),
       prepareMaintenancePlacements: async () =>
-        params.preservationStore
-          ? await params.preservationStore.prepareMaintenancePlacements()
-          : {
-              placements: params.placements.filter(
-                (placement) => placement.state !== "local" && placement.state !== "reclaimed",
-              ),
-              assertCurrent: () => {},
-              release: () => {},
-            },
+        params.prepareMaintenancePlacements
+          ? await params.prepareMaintenancePlacements()
+          : params.preservationStore
+            ? await params.preservationStore.prepareMaintenancePlacements()
+            : {
+                placements: params.placements.filter(
+                  (placement) => placement.state !== "local" && placement.state !== "reclaimed",
+                ),
+                assertCurrent: () => {},
+                release: () => {},
+              },
       retireSessionPlacement: vi.fn(),
       pruneOrphanedWorkspaceReconciliations: async () => {
         params.onRecovery?.();
@@ -376,6 +384,52 @@ describe("worker placement session maintenance ownership", () => {
       });
     },
   );
+
+  it("keeps a session write when worker placements change between preparation and commit", async () => {
+    await withBranchTestState({ scenario: "minimal" }, async (state) => {
+      const placement = createPlacementFixture("agent:main:explicit:placement-raced");
+      const storePath = resolveBranchAgentSqlitePath({ agentId: "main", env: state.env });
+      let preparations = 0;
+      const { runtime } = createMaintenanceRuntime({
+        placements: [placement],
+        prepareMaintenancePlacements: async () => {
+          preparations += 1;
+          // A sibling session's placement write (or a seamless engine swap) lands after the
+          // first preparation; only that prepared view is stale.
+          const stale = preparations === 1;
+          return {
+            placements: [placement],
+            assertCurrent: () => {
+              if (stale) {
+                throw new Error("Worker placement inventory changed");
+              }
+            },
+            release: () => {},
+          };
+        },
+      });
+      const sidecar = await startMaintenanceRuntime(runtime);
+      const sessionKey = "agent:main:explicit:placement-race-turn";
+      const entry = { sessionId: "placement-race-turn", updatedAt: Date.now() };
+      try {
+        // The turn-time session write that failed in the field (session.lifecycle.mutate).
+        await applySessionEntryLifecycleMutation({
+          agentId: "main",
+          env: state.env,
+          storePath,
+          activeSessionKey: sessionKey,
+          upserts: [{ sessionKey, entry }],
+          maintenanceOverride: { mode: "enforce" },
+        });
+        expect(
+          loadSessionEntry({ agentId: "main", env: state.env, sessionKey, storePath }),
+        ).toMatchObject({ sessionId: entry.sessionId });
+        expect(preparations).toBe(2);
+      } finally {
+        await sidecar.stop();
+      }
+    });
+  });
 
   it("preserves every remote-owning state and releases failed placements once their environment is gone", async () => {
     const remoteOwningStates = [
