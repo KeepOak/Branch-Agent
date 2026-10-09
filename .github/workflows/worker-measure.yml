@@ -38,6 +38,8 @@ jobs:
         with:
           node-version: '24.19.0'
           package-manager-cache: false
+      - name: Install pinned pnpm
+        run: npm install --global pnpm@12.5.1
       - name: Install frozen engine dependencies
         run: node scripts/install-worktree.mjs engine
       - name: Test report parsing and recommendations
