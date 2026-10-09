@@ -32,6 +32,6 @@ export function getSecurityNoteMessage(): string {
     formatCliCommand("branch security audit --deep"),
     formatCliCommand("branch security audit --fix"),
     "",
-    `${t("wizard.security.learnMore")} https://docs.openclaw.ai/gateway/security`,
+    `${t("wizard.security.learnMore")} https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/security`,
   ].join("\n");
 }

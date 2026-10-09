@@ -97,7 +97,7 @@ export async function inspectUpdateRecoveryBackups(params: { installRoot?: strin
           : "unresolved";
       const nextAction =
         status === "unresolved"
-          ? `Preserve current state and inspect ${ref.manifestPath} before manual recovery. See https://docs.openclaw.ai/cli/update/repair-and-recovery#original-state-captures`
+          ? `Preserve current state and inspect ${ref.manifestPath} before manual recovery. See https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli/update/repair-and-recovery#original-state-captures`
           : "branch update status --json";
       const reason = terminalOutcome
         ? `stale: its update already ${terminalOutcome === "committed" ? "succeeded" : "restored state"}`

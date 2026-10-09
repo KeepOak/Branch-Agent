@@ -150,7 +150,7 @@ module.exports = { id: "search-fixture", register(api) {
             provider: "fixture-search",
             error: "provider_error",
             message: expect.stringContaining("Search failed"),
-            docs: "https://docs.openclaw.ai/tools/web",
+            docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
           });
         } else {
           expect(outcome.value.details).toMatchObject({

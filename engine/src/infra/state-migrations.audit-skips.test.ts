@@ -107,7 +107,7 @@ describe("Doctor legacy audit skips", () => {
         expect(result.warnings.join("\n")).toContain("branch doctor --fix");
       } else {
         expect(result.warnings.join("\n")).toContain(
-          "https://docs.openclaw.ai/cli/update/repair-and-recovery",
+          "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli/update/repair-and-recovery",
         );
       }
       expect(result.stepReceipts.find((receipt) => receipt.id === "exec-approvals")).toMatchObject({
