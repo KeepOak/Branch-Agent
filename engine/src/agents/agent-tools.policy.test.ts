@@ -13,6 +13,7 @@ import {
   resolveSubagentToolPolicyForSession,
 } from "./agent-tools.policy.js";
 import { isToolAllowedByPolicyName } from "./tool-policy-match.js";
+import { listToolsetIds } from "./tool-toolsets.js";
 
 vi.mock("../channels/plugins/session-conversation.js", () => ({
   resolveSessionConversation: ({ rawId }: { rawId: string }) => ({
@@ -290,5 +291,38 @@ describe("resolveEffectiveToolPolicy", () => {
     } finally {
       logs.cleanup();
     }
+  });
+});
+
+describe("resolveEffectiveToolPolicy with agent toolsets", () => {
+  const rosterWith = (entry: Record<string, unknown>) =>
+    ({ agents: { entries: { ops: entry } } }) as unknown as BranchConfig;
+  const allOn = Object.fromEntries(listToolsetIds().map((id) => [id, true]));
+
+  it("adds denies for switched-off toolsets and never adds an allow", () => {
+    const config = rosterWith({ toolsets: { browser: false, messaging: false } });
+    const { agentPolicy } = resolveEffectiveToolPolicy({ config, agentId: "ops" });
+    expect(agentPolicy?.deny).toEqual(expect.arrayContaining(["browser", "conversations_send"]));
+    expect(agentPolicy?.allow).toBeUndefined();
+  });
+
+  it("produces the same agent policy when every toolset is on or unset", () => {
+    const tools = { deny: ["exec"] };
+    const unset = resolveEffectiveToolPolicy({
+      config: rosterWith({ tools }),
+      agentId: "ops",
+    }).agentPolicy;
+    const everyOn = resolveEffectiveToolPolicy({
+      config: rosterWith({ tools, toolsets: allOn }),
+      agentId: "ops",
+    }).agentPolicy;
+    expect(everyOn).toEqual(unset);
+  });
+
+  it("keeps the agent's own deny in force when toolsets are on", () => {
+    const config = rosterWith({ tools: { deny: ["exec"] }, toolsets: allOn });
+    const { agentPolicy } = resolveEffectiveToolPolicy({ config, agentId: "ops" });
+    expect(isToolAllowedByPolicyName("exec", agentPolicy)).toBe(false);
+    expect(isToolAllowedByPolicyName("read", agentPolicy)).toBe(true);
   });
 });

@@ -9,6 +9,7 @@ import { GitHubSettings } from "../settings/GitHubSettings";
 import { Menu, type MenuAnchor } from "../../shell/Menu";
 import { Segmented, Switch } from "../../shell/Popover";
 import { Icon } from "../../shell/icons";
+import { useResource } from "../settings/hooks";
 import { shows, type Level } from "../../places-nav/level";
 import type { Draft } from "./api";
 import type { May } from "./may";
@@ -74,15 +75,34 @@ function Advanced({ engine, agentId, name, draft, models, setMay }: { engine: Wi
   );
 }
 
+type ToolsetRow = { id: string; label: string; description: string };
+
+/** One switch per toolset the engine offers (tools.catalog). Browser is the browser switch, with its own lock reason. */
+function ToolsSection({ engine, agentId, may, setMay }: { engine: WindowEngine; agentId: string; may: May; setMay: (m: Partial<May>) => void }) {
+  const catalog = useResource<{ toolsets?: ToolsetRow[] }>(engine, "tools.catalog", { agentId });
+  const toolsets = catalog.data?.toolsets ?? [];
+  if (!toolsets.length) return null;
+  return (
+    <section className="tk-tools" aria-label="Tools">
+      <p className="tk-hint">Switch off what this Trunk should never reach. The reply tool, its questions and its status stay on.</p>
+      {toolsets.map((t) => t.id === "browser"
+        ? <Row key={t.id} title={t.label} hint={t.description} off={may.browseLock || undefined}>
+            {may.browseLock ? <button type="button" role="switch" aria-checked={false} aria-label="Use the browser" className="switch" disabled /> : <Switch label="Use the browser" on={may.browse} onChange={(browse) => setMay({ browse })} />}
+          </Row>
+        : <Row key={t.id} title={t.label} hint={t.description}>
+            <Switch label={`Use ${t.label}`} on={may.toolsets[t.id] !== false} onChange={(on) => setMay({ toolsets: { ...may.toolsets, [t.id]: on } })} />
+          </Row>)}
+    </section>
+  );
+}
+
 type Props = { engine: WindowEngine; agentId: string; name: string; draft: Draft; models: ModelChoice[]; level: Level; set: (d: Partial<Draft>) => void; openSettings?: (page: string) => void };
 export function MayTab({ engine, agentId, name, draft, models, level, set, openSettings }: Props) {
   const may = draft.may, setMay = (m: Partial<May>) => set({ may: { ...may, ...m } });
   return (
     <div className="tk-may">
       <Row title="Read files in Documents and Downloads" hint="Reading never changes a file."><Switch label="Read files in Documents and Downloads" on={may.read} onChange={(read) => setMay({ read })} /></Row>
-      <Row title="Use the browser" hint="With your saved sign-ins." off={may.browseLock || undefined}>
-        {may.browseLock ? <button type="button" role="switch" aria-checked={false} aria-label="Use the browser" className="switch" disabled /> : <Switch label="Use the browser" on={may.browse} onChange={(browse) => setMay({ browse })} />}
-      </Row>
+      <ToolsSection engine={engine} agentId={agentId} may={may} setMay={setMay} />
       <Row title="Send email and messages" hint="Overrides the mode for this Trunk only." off={SEND_WHY}>
         <span className="tk-seg">{["Ask first", "Allowed"].map((l) => <button key={l} type="button" disabled>{l}</button>)}</span>
       </Row>

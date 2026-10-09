@@ -13,6 +13,7 @@ import {
   resolveCoreToolProfiles,
 } from "../../agents/tool-catalog.js";
 import { summarizeToolDescriptionText } from "../../agents/tool-description-summary.js";
+import { TOOLSETS } from "../../agents/tool-toolsets.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import type { PluginRegistry } from "../../plugins/registry-types.js";
 import { getActivePluginRegistry } from "../../plugins/runtime.js";
@@ -228,6 +229,12 @@ export const toolsCatalogHandlers: GatewayRequestHandlers = {
         agentId,
         profiles: PROFILE_OPTIONS.map((profile) => ({ id: profile.id, label: profile.label })),
         groups,
+        toolsets: TOOLSETS.map((toolset) => ({
+          id: toolset.id,
+          label: toolset.label,
+          description: toolset.description,
+          tools: [...toolset.tools],
+        })),
       } satisfies ToolsCatalogResult,
       undefined,
     );
