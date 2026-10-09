@@ -6,10 +6,15 @@
 // chat.history, chat.send, chat.abort and sessions.patch, the approvals' exec/plugin .approval.list and
 // .approval.resolve, and pushes events. A reply streamed with `streamReply` reaches each connection the way the
 // engine sends it: the whole text in that connection's first frame for the run and in replacements, and only the
-// addition once the connection holds the frame before it.
+// addition once the connection holds the frame before it. Approval events and methods follow the engine's
+// per-connection rules: only a connection holding operator.approvals hears *.approval.* or may list and resolve,
+// and a resolve broadcasts *.approval.resolved (naming the answering connection) before it answers that connection.
 import { verify } from '@noble/ed25519';
 import type { ConnectParams, GatewayProtocolSocket, GatewayProtocolSocketHandlers } from '@branch/gateway-client/browser';
 import { base64UrlToBytes, utf8ToBytes } from './base64url';
+
+const APPROVALS_SCOPE = 'operator.approvals';
+const APPROVAL_EVENTS = new Set(['exec.approval.requested', 'exec.approval.resolved', 'plugin.approval.requested', 'plugin.approval.resolved']);
 
 export type FakeEngine = {
   createSocket: (url: string, handlers: GatewayProtocolSocketHandlers) => GatewayProtocolSocket;
@@ -44,13 +49,13 @@ export type FakeEngine = {
   delivered: Array<{ event: string; payload: unknown }>;
   /** Holds the answers to a method until the returned release is called. The engine reads its answer when asked. */
   hold: (method: string) => () => void;
-  /** Makes one method fail with this message until cleared with null. */
-  failMethod: (method: string, message: string | null) => void;
+  /** Makes one method fail with this message (and the engine's error details, if given) until cleared with null. */
+  failMethod: (method: string, message: string | null, details?: unknown) => void;
   /** The chat.history messages (and the run still going, if any) the engine reports for a chat from now on. */
   setHistory: (sessionKey: string, messages: unknown[], inFlightRun?: unknown) => void;
-  /** A Trunk asks for a yes: the approval joins the list and every phone hears *.approval.requested. */
+  /** A Trunk asks for a yes: the approval joins the list and every approvals connection hears *.approval.requested. */
   requestApproval: (kind: 'exec' | 'plugin', record: FakeApproval) => void;
-  /** Another surface (the window, a timeout) answers: it leaves the list and every phone hears *.approval.resolved. */
+  /** Another surface (the window, a timeout) answers: it leaves the list and every approvals connection hears *.approval.resolved. */
   resolveApproval: (id: string, decision: string, resolvedBy?: string | null) => void;
   /** The approvals still waiting, by kind. */
   pendingApprovals: (kind: 'exec' | 'plugin') => FakeApproval[];
@@ -78,15 +83,19 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
   let refusal: { code: string; message: string } | null = null;
   let sessions = options.sessions ?? [];
   const agents = options.agents ?? { defaultId: 'main', mainKey: 'main', scope: 'per-sender', agents: [{ id: 'main', name: 'Branch Agent' }] };
-  const failures = new Map<string, string>();
+  const failures = new Map<string, { message: string; details?: unknown }>();
   const histories = new Map<string, { messages: unknown[]; inFlightRun?: unknown }>();
   const approvals = { exec: [...(options.approvals?.exec ?? [])], plugin: [...(options.approvals?.plugin ?? [])] };
+  /** The first decision recorded for each answered approval, so a later answer gets the engine's reply to a repeat. */
+  const decided = new Map<string, string>();
   const settle = (kind: 'exec' | 'plugin', id: string, decision: string, resolvedBy: string | null): boolean => {
     const record = approvals[kind].find((a) => a.id === id);
     if (!record) return false;
     approvals[kind] = approvals[kind].filter((a) => a.id !== id);
-    // Like approval-shared.ts: the resolution is broadcast to every approvals client, the answering one included.
-    setTimeout(() => engine.emit(`${kind}.approval.resolved`, { id, decision, resolvedBy, ts: Date.now(), request: record.request }), 0);
+    decided.set(id, decision);
+    // Like approval-shared.ts handleApprovalResolve: the resolution is broadcast to every approvals connection,
+    // the answering one included, before the answering connection hears { ok: true }.
+    engine.emit(`${kind}.approval.resolved`, { id, decision, resolvedBy, ts: Date.now(), request: record.request });
     return true;
   };
   const replies = new Map<string, { sessionKey: string; text: string; seq: number }>();
@@ -97,11 +106,19 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
     event: (frame: { type: 'event'; event: string; payload: unknown }) => boolean;
     /** The runs whose frames this connection holds. */
     receipts: Set<string>;
+    /** The scopes the engine granted this connection at hello. */
+    scopes: readonly string[];
+    /** Who the engine names as the resolver of an answer from this connection (client displayName, else id). */
+    name: string | null;
   };
   const live = new Set<Connection>();
-  const answer = (method: string, params: unknown): { ok: true; payload: unknown } | { ok: false; message: string } => {
+  const answer = (method: string, params: unknown, from: Connection): { ok: true; payload: unknown } | { ok: false; message: string; details?: unknown } => {
     const failure = failures.get(method);
-    if (failure) return { ok: false, message: failure };
+    if (failure) return { ok: false, ...failure };
+    // methods/core-descriptors.ts: the approval methods need operator.approvals on the asking connection.
+    if (/^(exec|plugin)\.approval\./.test(method) && !from.scopes.includes(APPROVALS_SCOPE)) {
+      return { ok: false, message: `missing scope: ${APPROVALS_SCOPE}`, details: { code: 'MISSING_SCOPE', missingScope: APPROVALS_SCOPE } };
+    }
     switch (method) {
       case 'sessions.subscribe':
         return { ok: true, payload: { subscribed: true, list: { sessions } } };
@@ -140,10 +157,16 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
       case 'exec.approval.resolve':
       case 'plugin.approval.resolve': {
         const { id, decision } = (params ?? {}) as { id?: string; decision?: string };
-        // The engine's words when it isn't waiting any more (approval-shared.ts).
-        return settle(method.startsWith('plugin') ? 'plugin' : 'exec', String(id), String(decision), 'Branch')
-          ? { ok: true, payload: { ok: true } }
-          : { ok: false, message: 'approval expired or not found' };
+        if (settle(method.startsWith('plugin') ? 'plugin' : 'exec', String(id), String(decision), from.name)) return { ok: true, payload: { ok: true } };
+        // approval-shared.ts respondRepeatedApprovalResolution: the same answer again is fine, a different one is refused.
+        const first = decided.get(String(id));
+        if (first !== undefined) {
+          return first === decision
+            ? { ok: true, payload: { ok: true } }
+            : { ok: false, message: 'approval already resolved', details: { reason: 'APPROVAL_ALREADY_RESOLVED' } };
+        }
+        // approval-record-lookup.ts respondUnknownOrExpiredApproval.
+        return { ok: false, message: 'unknown or expired approval id', details: { reason: 'APPROVAL_NOT_FOUND' } };
       }
       default:
         return { ok: true, payload: {} };
@@ -164,7 +187,11 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
         replies.delete(runId);
         for (const socket of live) socket.receipts.delete(runId);
       }
-      for (const socket of [...live]) socket.event({ type: 'event', event, payload });
+      for (const socket of [...live]) {
+        // server-broadcast-scopes.ts: approval events reach only connections holding operator.approvals.
+        if (APPROVAL_EVENTS.has(event) && !socket.scopes.includes(APPROVALS_SCOPE)) continue;
+        socket.event({ type: 'event', event, payload });
+      }
     },
     streamReply: (sessionKey, runId, text) => {
       const before = replies.get(runId);
@@ -205,9 +232,9 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
       if (!settle('exec', id, decision, resolvedBy)) settle('plugin', id, decision, resolvedBy);
     },
     pendingApprovals: (kind) => [...approvals[kind]],
-    failMethod: (method, message) => {
+    failMethod: (method, message, details) => {
       if (message === null) failures.delete(method);
-      else failures.set(method, message);
+      else failures.set(method, { message, ...(details === undefined ? {} : { details }) });
     },
     approve: () => {
       decision = 'approved';
@@ -249,6 +276,8 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
           return true;
         },
         receipts: new Set(),
+        scopes: [],
+        name: null,
       };
       live.add(entry);
       setTimeout(() => {
@@ -263,12 +292,17 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
           const frame = JSON.parse(data) as { id: string; method: string; params: ConnectParams };
           if (frame.method !== 'connect') {
             engine.requests.push({ method: frame.method, params: frame.params });
-            const result = answer(frame.method, frame.params);
+            const result = answer(frame.method, frame.params, entry);
             const respond = () =>
               reply(
                 result.ok
                   ? { type: 'res', id: frame.id, ok: true, payload: result.payload }
-                  : { type: 'res', id: frame.id, ok: false, error: { code: 'UNAVAILABLE', message: result.message } },
+                  : {
+                      type: 'res',
+                      id: frame.id,
+                      ok: false,
+                      error: { code: result.details ? 'INVALID_REQUEST' : 'UNAVAILABLE', message: result.message, ...(result.details ? { details: result.details } : {}) },
+                    },
               );
             const held = holds.get(frame.method);
             if (held) held.push(respond);
@@ -304,6 +338,8 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
           const knownDevice = params.auth?.deviceToken === deviceToken;
           if (knownDevice || (params.auth?.bootstrapToken === bootstrapToken && decision === 'approved')) {
             helloSent = true;
+            entry.scopes = params.scopes ?? [];
+            entry.name = params.client.displayName ?? params.client.id;
             reply({
               type: 'res',
               id: frame.id,

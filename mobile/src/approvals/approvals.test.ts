@@ -58,8 +58,11 @@ describe('approvals on the phone', () => {
       { method: 'plugin.approval.resolve', params: { id: 'plugin:mail-1', decision: 'deny' } },
     ]);
     expect(engine.pendingApprovals('exec')).toEqual([]);
-    // The engine's resolved broadcast for our own answers arrives afterwards and changes nothing.
-    await new Promise((r) => setTimeout(r, 20));
+    // The engine broadcast each resolution to this phone before replying to it, naming the phone as the resolver.
+    const heard = engine.delivered.filter((d) => d.event.endsWith('.approval.resolved'));
+    expect(heard.map((d) => (d.payload as { id: string }).id)).toEqual(['exec-1', 'plugin:mail-1']);
+    const phone = engine.connects[engine.connects.length - 1].client;
+    expect(heard.map((d) => (d.payload as { resolvedBy: unknown }).resolvedBy)).toEqual([phone.displayName ?? phone.id, phone.displayName ?? phone.id]);
     const answered = inbox.getSnapshot().answered;
     expect(answered.map((a) => [a.id, a.outcome, a.by, a.always])).toEqual([
       ['plugin:mail-1', 'denied', 'phone', false],
@@ -70,14 +73,54 @@ describe('approvals on the phone', () => {
     session.dispose();
   });
 
-  it('says plainly when someone else answered first', async () => {
+  it('says what the other surface decided when it answered first', async () => {
     const { engine, session, inbox } = await connected();
-    engine.failMethod('exec.approval.resolve', 'approval already resolved');
+    // The window allows it a moment before the phone's Deny reaches the engine.
+    engine.resolveApproval('exec-1', 'allow-once');
     await expect(inbox.answer('exec-1', 'deny')).resolves.toBe(false);
     const snapshot = inbox.getSnapshot();
+    expect(resolves(engine)).toEqual([{ method: 'exec.approval.resolve', params: { id: 'exec-1', decision: 'deny' } }]);
     expect(snapshot.pending.map((a) => a.id)).toEqual(['plugin:mail-1']);
     expect(snapshot.failed).toEqual({});
-    expect(outcomeWords(snapshot.answered[0])).toBe('Answered somewhere else');
+    expect(snapshot.answered[0]).toMatchObject({ id: 'exec-1', outcome: 'allowed', by: 'elsewhere' });
+    expect(outcomeWords(snapshot.answered[0])).toBe('Allowed somewhere else');
+    session.dispose();
+  });
+
+  it('knows an approval isn’t waiting any more from the engine’s reason, not its words', async () => {
+    const { engine, session, inbox } = await connected();
+    engine.failMethod('exec.approval.resolve', 'that one is gone', { reason: 'APPROVAL_NOT_FOUND' });
+    await expect(inbox.answer('exec-1', 'deny')).resolves.toBe(false);
+    expect(inbox.getSnapshot().failed).toEqual({});
+    expect(outcomeWords(inbox.getSnapshot().answered[0])).toBe('Answered somewhere else');
+    // The same words without the engine's reason are just a failed answer, and the card stays.
+    engine.failMethod('plugin.approval.resolve', 'approval expired or not found');
+    await expect(inbox.answer('plugin:mail-1', 'deny')).resolves.toBe(false);
+    expect(inbox.getSnapshot().pending.map((a) => a.id)).toEqual(['plugin:mail-1']);
+    expect(inbox.getSnapshot().failed['plugin:mail-1']).toBe('Your answer didn’t go through: approval expired or not found');
+    session.dispose();
+  });
+
+  it('hears approvals only on a connection the engine gave operator.approvals', async () => {
+    const { engine, session, inbox } = await connected();
+    // A second client paired without the approvals scope, like a read-only dashboard.
+    const frames: Array<{ type: string; event?: string; id?: string; ok?: boolean; error?: { details?: unknown } }> = [];
+    const other = engine.createSocket('ws://computer.local:19031', {
+      open: () => undefined,
+      message: (data) => frames.push(JSON.parse(data)),
+      close: () => undefined,
+      error: () => undefined,
+    });
+    await eventually(() => expect(frames.some((f) => f.event === 'connect.challenge')).toBe(true));
+    const client = { id: 'webchat-ui', version: '1', platform: 'web', mode: 'webchat' };
+    other.send(JSON.stringify({ type: 'req', id: 'c1', method: 'connect', params: { minProtocol: 4, maxProtocol: 4, client, role: 'operator', scopes: ['operator.read'], auth: { deviceToken: 'device-token-1' } } }));
+    await eventually(() => expect(frames.some((f) => f.id === 'c1' && f.ok)).toBe(true));
+    other.send(JSON.stringify({ type: 'req', id: 'l1', method: 'exec.approval.list', params: {} }));
+    await eventually(() => expect(frames.find((f) => f.id === 'l1')).toMatchObject({ ok: false, error: { details: { code: 'MISSING_SCOPE' } } }));
+    engine.requestApproval('exec', { id: 'exec-2', createdAtMs: FIXTURE_NOW, expiresAtMs: FIXTURE_NOW + 30 * MINUTE, request: { command: 'git push', agentId: 'oak' } });
+    await eventually(() => expect(inbox.getSnapshot().pending.map((a) => a.id)).toContain('exec-2'));
+    expect(frames.filter((f) => f.event?.includes('.approval.'))).toEqual([]);
+    other.close();
     session.dispose();
   });
 

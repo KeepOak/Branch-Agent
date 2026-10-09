@@ -111,9 +111,16 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** The engine's answer when someone else got there first (approval-shared.ts). */
-function alreadySettled(message: string): boolean {
-  return /expired or not found|already resolved|unknown or expired/i.test(message);
+/**
+ * The engine's reasons for refusing an answer because the approval isn't waiting any more: another surface
+ * answered it first (approval-shared.ts APPROVAL_ALREADY_RESOLVED_DETAILS), or it ran out of time or the
+ * engine restarted (approval-record-lookup.ts APPROVAL_NOT_FOUND_DETAILS). Read from the error's details,
+ * never from its words.
+ */
+const SETTLED_REASONS = new Set(['APPROVAL_ALREADY_RESOLVED', 'APPROVAL_NOT_FOUND']);
+function alreadySettled(error: unknown): boolean {
+  const details = rec(rec(error).details);
+  return SETTLED_REASONS.has(str(details.reason));
 }
 
 export class ApprovalInbox {
@@ -123,6 +130,12 @@ export class ApprovalInbox {
   private disposed = false;
   private readonly now: () => number;
   private readonly reconnectWaitMs: number;
+  /**
+   * The decision in a *.approval.resolved event heard while this phone's own answer to that approval was on its
+   * way. The engine broadcasts the resolution before it replies to the surface that answered, so whether the
+   * event was ours is only known from the reply: { ok: true } means this phone's answer counted.
+   */
+  private readonly heard = new Map<string, string>();
 
   constructor(
     private readonly link: EngineLink,
@@ -156,6 +169,7 @@ export class ApprovalInbox {
 
   /** Forgets everything, after the phone unpairs. */
   reset(): void {
+    this.heard.clear();
     this.set({ pending: [], answered: [], trunks: {}, loaded: false, error: null, sending: {}, failed: {} });
   }
 
@@ -198,7 +212,12 @@ export class ApprovalInbox {
       this.set({ pending: sortPending([...this.snapshot.pending, approval]) });
     } else if (event === 'exec.approval.resolved' || event === 'plugin.approval.resolved') {
       const p = rec(payload);
-      this.settle(str(p.id), str(p.decision), 'elsewhere');
+      const id = str(p.id);
+      if (this.snapshot.sending[id]) {
+        this.heard.set(id, str(p.decision));
+        return;
+      }
+      this.settle(id, str(p.decision), 'elsewhere');
     }
   }
 
@@ -220,18 +239,26 @@ export class ApprovalInbox {
     try {
       await this.connected();
       await this.link.request(approval.kind === 'plugin' ? 'plugin.approval.resolve' : 'exec.approval.resolve', { id, decision });
+      this.heard.delete(id);
       this.done(id);
       this.settle(id, decision, 'phone');
       return true;
     } catch (error) {
+      const heard = this.heard.get(id);
+      this.heard.delete(id);
       this.done(id);
-      const message = messageOf(error);
-      if (alreadySettled(message)) {
-        // Someone else answered first, or it ran out of time; its resolved event may follow.
+      if (heard !== undefined) {
+        // Another surface's answer reached the engine first; its resolved event says what it was.
+        this.settle(id, heard, 'elsewhere');
+        return false;
+      }
+      if (alreadySettled(error)) {
+        // Someone else answered first, or it ran out of time, and this phone didn't hear how.
         const still = this.snapshot.pending.find((a) => a.id === id);
         if (still) this.move(still, this.ended(still, still.expiresAtMs && still.expiresAtMs <= this.now() ? 'expired' : 'gone', false, 'elsewhere'));
         return false;
       }
+      const message = messageOf(error);
       const words = this.link.hello ? `Your answer didn’t go through: ${message}` : 'Your computer isn’t connected right now. Try again when it’s back.';
       this.set({ failed: { ...this.snapshot.failed, [id]: words } });
       return false;
@@ -261,7 +288,7 @@ export class ApprovalInbox {
   private settle(id: string, decision: string, by: Answered['by']): void {
     const approval = this.snapshot.pending.find((a) => a.id === id);
     if (!approval) {
-      // Our own answer's resolved event lands after the reply: keep "on this phone".
+      // Already moved: answered on this phone, or the same resolution heard again after a reconnect.
       return;
     }
     const allowed = decision === 'allow-once' || decision === 'allow-always';
