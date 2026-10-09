@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { EmbeddedRunAttemptParamsV2 } from "branch/plugin-sdk/agent-harness-runtime";
+import {
+  acquireHostHeavyStep,
+  bindHostHeavyStep,
+  createHostHeavyStepEnvironment,
+  resolveHeavyStepCommand,
+  resolveHeavyStepMemoryNeed,
+  type HostHeavyStepHandle,
+} from "branch/plugin-sdk/native-hook-relay-runtime";
 import { protectCodexAppServerLiveThread } from "./client-runtime.js";
 import type { CodexAppServerClient } from "./client.js";
 import {
@@ -25,6 +33,8 @@ type CommandAdmission = NativeCommand & {
   assertActive: () => void;
   releaseClient?: () => void;
   releaseThread: () => void;
+  heavyStep?: HostHeavyStepHandle;
+  heavyReleasing?: boolean;
 };
 
 const clients = new WeakMap<CodexAppServerClient, CodexNativeProcessClient>();
@@ -241,6 +251,19 @@ export class CodexNativeProcessClient {
     if (command.accepting || command.background || command.processes.size > 0) {
       return;
     }
+    if (command.heavyStep) {
+      if (!command.heavyReleasing) {
+        command.heavyReleasing = true;
+        void command.heavyStep.release().then(
+          () => {
+            command.heavyStep = undefined;
+            this.forgetSettled(command);
+          },
+          (error: unknown) => command.owner.reportSettlementFailure(error),
+        );
+      }
+      return;
+    }
     const commands = this.threads.get(command.threadId);
     if (commands?.get(command.itemId) === command) {
       commands.delete(command.itemId);
@@ -258,6 +281,7 @@ export class CodexNativeProcessClient {
 /** Original-source custody outlives foreground authority, never permitting new admission after release. */
 export class CodexNativeProcessAuthority {
   readonly commands = new Set<CommandAdmission>();
+  readonly heavyStepEnvironment = createHostHeavyStepEnvironment();
   private holds = 1;
   private cancelled = false;
   private released = false;
@@ -344,6 +368,56 @@ export class CodexNativeProcessAuthority {
     }
     assertAdmissionCurrent();
     return getCodexNativeProcessClient(client).admit(this, receipt, parent, assertAdmissionCurrent);
+  }
+
+  async admitHeavyStep(
+    client: CodexAppServerClient,
+    receipt: NativeCommand,
+    assertAdmissionCurrent: () => void,
+    commandText: string,
+    signal: AbortSignal | undefined,
+    onWait: (message: string) => void,
+    childParentThreadId?: string,
+  ): Promise<void> {
+    this.assertCurrent();
+    assertAdmissionCurrent();
+    if (
+      [...this.commands].some(
+        (entry) =>
+          entry.client === clients.get(client) &&
+          entry.threadId === receipt.threadId &&
+          entry.turnId === receipt.turnId &&
+          entry.itemId === receipt.itemId,
+      )
+    ) {
+      this.admit(client, receipt, assertAdmissionCurrent, childParentThreadId);
+      return;
+    }
+    const kind = resolveHeavyStepCommand(commandText, resolveHeavyStepMemoryNeed);
+    // Remote sandbox execution is admitted on its execution host, not this transport host.
+    if (!kind || this.requiresProcessAdmission) {
+      this.admit(client, receipt, assertAdmissionCurrent, childParentThreadId);
+      return;
+    }
+    const signals = [signal, this.source?.signal].filter(
+      (entry): entry is AbortSignal => entry !== undefined,
+    );
+    let handle: HostHeavyStepHandle | undefined = await acquireHostHeavyStep(kind, {
+      signal: signals.length ? AbortSignal.any(signals) : undefined,
+      onWait,
+    });
+    try {
+      handle = bindHostHeavyStep(handle, this.heavyStepEnvironment);
+      const command = this.admit(client, receipt, assertAdmissionCurrent, childParentThreadId);
+      command.heavyStep = handle;
+      if (!this.requiresProcessAdmission) {
+        // Native turn completion alone is not evidence that a background terminal stopped.
+        command.background = { processId: null, confirmed: true };
+      }
+      handle = undefined;
+    } finally {
+      await handle?.release();
+    }
   }
 
   /** Native inventory confirms lifetime only; these receipts never admit sandbox execution. */
@@ -435,6 +509,22 @@ export class CodexNativeProcessAuthority {
     );
   }
 
+  /** Called only after interruption and native terminal cleanup have both been confirmed. */
+  settleTerminatedLocalTurn(client: CodexAppServerClient, threadId: string, turnId: string): void {
+    const owner = getCodexNativeProcessClient(client);
+    for (const command of this.commands) {
+      if (
+        !this.requiresProcessAdmission &&
+        command.client === owner &&
+        command.parentTurn.threadId === threadId &&
+        command.parentTurn.turnId === turnId
+      ) {
+        command.background = undefined;
+        command.client.closeAdmission(command);
+      }
+    }
+  }
+
   reportSettlementFailure(error: unknown): void {
     this.onCleanupFailure(
       new AggregateError(
@@ -451,6 +541,12 @@ export class CodexNativeProcessAuthority {
 
   private async terminate(commands: CommandAdmission[]): Promise<void> {
     const processes = commands.flatMap((command) => {
+      if (command.heavyStep && !this.requiresProcessAdmission && command.processes.size === 0) {
+        // Revocation closes admission, not physical custody. Native cleanup or an exact
+        // terminal receipt must confirm the command stopped before freeing its host slot.
+        command.accepting = false;
+        return [];
+      }
       command.background = undefined;
       command.client.closeAdmission(command);
       return [...command.processes];

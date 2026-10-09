@@ -979,7 +979,7 @@ export function spawnWatchedVitestProcess({
   };
 }
 
-export async function runVitest(
+async function runVitestAdmitted(
   exitBySignal: typeof exitVitestBySignal,
   argv: string[] = process.argv.slice(2),
   env: NodeJS.ProcessEnv = process.env,
@@ -1205,10 +1205,7 @@ export async function runVitest(
     process.exitCode = failedExitCode;
   } finally {
     try {
-      await workers?.dispose().catch((error: unknown) => {
-        process.exitCode ||= 1;
-        console.error(error);
-      });
+      await workers?.dispose();
     } finally {
       process.off("SIGINT", onSignal);
       process.off("SIGTERM", onSignal);
@@ -1216,6 +1213,43 @@ export async function runVitest(
         await exitBySignal(interrupted);
       }
     }
+  }
+}
+
+export async function runVitest(
+  exitBySignal: typeof exitVitestBySignal,
+  argv: string[] = process.argv.slice(2),
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
+  const { withHostHeavyStep } = await import("./lib/host-heavy-step.mts");
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  let interrupted: NodeJS.Signals | undefined;
+  process.once("SIGINT", abort);
+  process.once("SIGTERM", abort);
+  try {
+    await withHostHeavyStep(
+      "test",
+      () =>
+        runVitestAdmitted(
+          async (signal) => {
+            interrupted ??= signal;
+          },
+          argv,
+          {
+            ...env,
+            BRANCH_HOST_HEAVY_STEP_OWNER: process.env.BRANCH_HOST_HEAVY_STEP_OWNER,
+            BRANCH_HEAVY_STEP_DIRECTORY: process.env.BRANCH_HEAVY_STEP_DIRECTORY,
+          },
+        ),
+      controller.signal,
+    );
+  } finally {
+    process.off("SIGINT", abort);
+    process.off("SIGTERM", abort);
+  }
+  if (interrupted) {
+    await exitBySignal(interrupted);
   }
 }
 
