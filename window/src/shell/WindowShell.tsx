@@ -50,7 +50,7 @@ import { topicLayoutFor, readTopicSettings, setContactTopicLayout, type TopicLay
 import { patchTopicSession } from "./topic-session";
 import { loadAllTopicTranscripts } from "./topic-all";
 import { useContactSegments } from "./useContactSegments";
-import { contactAlert, contactAlertTarget, notify, readMutedContacts, saveMutedContacts } from "./notify";
+import { contactAlert, contactAlertTarget, noticesHereOn, notify, readMutedContacts, saveMutedContacts } from "./notify";
 import { SaveProgressOffer, useCkptOn } from "./SaveProgress";
 import { SidebarPet } from "./SidebarPet";
 import { GetAppsDialog } from "./GetApps";
@@ -630,7 +630,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     if (!ready) { previousContactActivity.current = null; return; }
     const previous = previousContactActivity.current;
     previousContactActivity.current = new Map(contactRows.map((contact) => [contact.id, contact.lastActivityAt]));
-    if (!previous || !document.hidden || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    if (!previous || !document.hidden || typeof Notification === "undefined" || Notification.permission !== "granted" || !noticesHereOn()) return;
     for (const contact of contactRows) {
       if (!previous.has(contact.id) || contact.lastActivityAt <= previous.get(contact.id)! || (!contact.threadUnread && contact.unreadTopics === 0)) continue;
       const alert = contactAlert(contact, mutedContacts.has(contact.id));
