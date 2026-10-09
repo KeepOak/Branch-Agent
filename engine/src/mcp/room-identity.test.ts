@@ -6,6 +6,23 @@ import { OutsidePresence } from "./outside-presence.js";
 import { registerTrunkMcpTools } from "./trunk-tools.js";
 
 describe("Graft room identity", () => {
+  it("cached Disconnect refusals explain how the owner can allow the agent again", async () => {
+    const presence = new OutsidePresence(async () => {
+      throw new Error("Scout was disconnected in Settings › Grafts.");
+    });
+    presence.start({ id: "scout", name: "Scout" });
+    try {
+      await expect(presence.identity()).rejects.toThrow(
+        /disconnected.*Ask the owner.*reconnect Graft/,
+      );
+      await expect(presence.assertAllowed()).rejects.toThrow(
+        /Ask the owner.*Settings.*reconnect Graft/,
+      );
+    } finally {
+      presence.stop();
+    }
+  });
+
   it("waits for an activity-triggered registration retry before returning the room identity", async () => {
     let calls = 0;
     let finish!: (result: { contact: { id: string } }) => void;

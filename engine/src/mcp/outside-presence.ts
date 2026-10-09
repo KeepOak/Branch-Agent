@@ -92,14 +92,17 @@ export class OutsidePresence {
       this.first = this.say();
     }
     await this.firstHello();
-    if (this.refusal) throw new Error(this.refusal);
+    await this.assertAllowed();
     return this.known ? this.agent : undefined;
   }
 
   /** Every tool calls this first: it throws once a hello was refused (hellos run at connect, every minute and on
    *  activity). It never waits, so no tool hangs on a slow gateway. */
   async assertAllowed(): Promise<void> {
-    if (this.refusal) throw new Error(this.refusal);
+    if (this.refusal)
+      throw new Error(
+        `${this.refusal} Ask the owner to allow this agent in Settings › Grafts, then reconnect Graft.`,
+      );
   }
 
   /** Whether the owner let this agent drive their own window (Settings › Grafts). */
