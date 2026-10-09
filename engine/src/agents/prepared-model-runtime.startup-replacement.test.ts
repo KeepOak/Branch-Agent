@@ -1,13 +1,16 @@
 // Preserve the runtime harness setup before importing its consumers.
 // oxfmt-ignore
 import { getPreparedModelRuntimeMocks, getPreparedModelRuntimeTestApi, usePreparedModelRuntimeHarness } from "./prepared-model-runtime.test-harness.js";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { setTimeout as delay } from "node:timers/promises";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import type { BranchConfig } from "../config/types.branch.js";
 // A namespace import: on a base without these helpers, the assertions fail, not the import.
 import * as gatewayStartup from "../gateway/server-agent-database-startup.js";
+import { activateGatewayAgentDatabaseStartup } from "../gateway/server-agent-database-startup.js";
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
+import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import {
   readAgentDatabaseAdmissionRefusal,
   recordAgentDatabaseAdmissions,
@@ -20,6 +23,7 @@ import {
 } from "../state/branch-agent-db.js";
 import type { BranchDatabaseSchemaPreflight } from "../state/branch-database-preflight.types.js";
 import { closeStateDatabaseForTest } from "../test-utils/database-cleanup.js";
+import { resolveAuthProfileDatabasePath } from "./auth-profiles/sqlite.js";
 import { listConfiguredOwnerInputs } from "./prepared-model-runtime.configured.js";
 import {
   getPreparedModelRuntimeSnapshot,
@@ -39,15 +43,66 @@ const helpers = gatewayStartup as Partial<{
     agentId: string,
     input: PreparedModelRuntimeInput,
     signal: AbortSignal,
-  ) => Promise<boolean>;
+  ) => Promise<string>;
 }>;
 
 let releaseHungBuild = () => {};
-usePreparedModelRuntimeHarness({ label: "startup-model-replacement" }, () => {
+const fixture = usePreparedModelRuntimeHarness({ label: "startup-model-replacement" }, () => {
   // The reset joins every owned build, the replaced one included.
   releaseHungBuild();
 });
 const mocks = getPreparedModelRuntimeMocks();
+
+// The Gateway's startup preparation refreshes the active secrets snapshot and migrates sessions
+// first; this fixture has neither, so those two steps succeed and the model publication is real.
+const secrets = vi.hoisted(() => ({ active: false, revision: 0, authDatabasePath: "" }));
+vi.mock("../secrets/runtime.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../secrets/runtime.js")>();
+  const snapshot = () => ({
+    sourceConfig: {},
+    authStores: [{ databasePath: secrets.authDatabasePath }],
+  });
+  return {
+    ...actual,
+    getActiveSecretsRuntimeSnapshot: (() =>
+      secrets.active
+        ? snapshot()
+        : actual.getActiveSecretsRuntimeSnapshot()) as typeof actual.getActiveSecretsRuntimeSnapshot,
+    getActiveSecretsRuntimeSnapshotRevision: () =>
+      secrets.active ? secrets.revision : actual.getActiveSecretsRuntimeSnapshotRevision(),
+    refreshActiveSecretsRuntimeSnapshotForConfig: (async (
+      params: Parameters<typeof actual.refreshActiveSecretsRuntimeSnapshotForConfig>[0],
+    ) => {
+      if (!secrets.active) {
+        return await actual.refreshActiveSecretsRuntimeSnapshotForConfig(params);
+      }
+      params.assertCurrent?.();
+      secrets.revision += 1;
+      return true;
+    }) as typeof actual.refreshActiveSecretsRuntimeSnapshotForConfig,
+  };
+});
+// The Gateway publishes a starting Trunk with a refresh scoped to it; the test can start a covering
+// reload the moment that refresh resolves.
+const startCoveringReload = vi.hoisted(() => ({ next: undefined as (() => void) | undefined }));
+vi.mock("./prepared-model-runtime.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./prepared-model-runtime.js")>();
+  return {
+    ...actual,
+    refreshPreparedModelRuntimeSnapshots: ((...args) => {
+      const refresh = actual.refreshPreparedModelRuntimeSnapshots(...args);
+      const start = args[1]?.agentIds?.has("tk") ? startCoveringReload.next : undefined;
+      if (!start) {
+        return refresh;
+      }
+      startCoveringReload.next = undefined;
+      return refresh.then(start);
+    }) as typeof actual.refreshPreparedModelRuntimeSnapshots,
+  };
+});
+vi.mock("../gateway/server-startup-session-migration.js", () => ({
+  runStartupSessionMigration: async () => {},
+}));
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
 async function closeDatabases() {
@@ -174,47 +229,98 @@ describe("startup preparation of a Trunk whose model build never settles", () =>
     expect(closed).toBe(true);
   }, 40000);
 
-  it("waits for a publication that covers the Trunk instead of calling its preparation unpublished", async () => {
+  it("lets a Trunk through the Gateway's startup preparation while a publication that covers it commits, instead of failing it", async () => {
     mocks.configuredAgentIds = ["tk", "sibling"];
-    await refreshPreparedModelRuntimeSnapshots(config, {
-      agentIds: new Set(["tk"]),
-      catalogMode: "static",
-      allowGatewaySubagentBinding: true,
-      gatewayLifecycle: true,
-    });
-    const input = inputFor("tk");
-    expect(getPreparedModelRuntimeSnapshot(input)).toBeDefined();
-
-    // A config reload covers every Trunk; a slow sibling build holds it.
-    const started = Promise.withResolvers<void>();
+    // A one-minute backoff: a failed attempt could not be retried within the test.
+    const env = { ...process.env, BRANCH_AGENT_PREPARATION_RETRY_MS: "60000" };
+    const path = openBranchAgentDatabase({ agentId: "tk", env }).path;
+    await closeDatabases();
+    secrets.authDatabasePath = resolveAuthProfileDatabasePath(fixture.state.agentDir("tk"));
+    secrets.active = true;
+    const siblingStarted = Promise.withResolvers<void>();
     const gate = Promise.withResolvers<void>();
     mocks.prepareStaticCatalog.mockImplementation(async (...args: unknown[]) => {
       if (workspaceOf(args).includes("sibling")) {
-        started.resolve();
+        siblingStarted.resolve();
         await gate.promise;
       }
       return { entries: [] };
     });
-    const covering = refreshPreparedModelRuntimeSnapshots(config, {
-      catalogMode: "static",
-      allowGatewaySubagentBinding: true,
-      gatewayLifecycle: true,
-    });
-    // Its own publication is complete, but the covering one hides it until it commits.
-    expect(getPreparedModelRuntimeSnapshot(input)).toBeUndefined();
-    let settled = false;
-    const waited = (
-      helpers.waitForCoveringModelPublication?.("tk", input, new AbortController().signal) ??
-      Promise.resolve(false)
-    ).finally(() => {
-      settled = true;
-    });
-    await started.promise;
-    await delay(20);
-    expect(settled).toBe(false);
-    gate.resolve();
-    await covering;
-    await expect(waited).resolves.toBe(true);
-    expect(getPreparedModelRuntimeSnapshot(input)).toBeDefined();
+    // The moment the Trunk's own startup publication resolves, before the Gateway reads its
+    // snapshot, a config reload that covers every Trunk starts (the Oct 8 evening). It hides the
+    // Trunk's snapshot until it commits in turn.
+    // A reload starts from the Gateway's own context, never from inside the Trunk's preparation.
+    const outsidePreparation = AsyncLocalStorage.snapshot();
+    let covering: Promise<void> | undefined;
+    startCoveringReload.next = () => {
+      covering = outsidePreparation(() =>
+        refreshPreparedModelRuntimeSnapshots(config, {
+          catalogMode: "static",
+          allowGatewaySubagentBinding: true,
+          gatewayLifecycle: true,
+        }),
+      );
+      void covering.catch(() => undefined);
+    };
+    const clean: BranchDatabaseSchemaPreflight = { incompatible: [], indeterminate: [] };
+    const failedAttempts: string[] = [];
+    let stop: (() => Promise<void>) | undefined;
+    try {
+      await withAgentDatabaseStartupAdmission(async (admission) => {
+        const refusals = admission.defer({
+          env,
+          inspections: [{ target: { agentId: "tk", path }, result: Promise.resolve(clean) }],
+          reason: "Inspection continues after the Gateway listener binds.",
+        });
+        recordAgentDatabaseAdmissions(refusals, { env, source: "startup" });
+        stop = admission.adopt().stop;
+        // The Gateway's own activation: its prepareAgent and replaceAgent run unchanged. Only
+        // openAgent (the database worker handshake, covered elsewhere) is skipped.
+        activateGatewayAgentDatabaseStartup({
+          admission: {
+            activate: (activation: Parameters<typeof admission.activate>[0]) =>
+              admission.activate({
+                ...activation,
+                openAgent: async () => {},
+                prepareAgent: async (input) => {
+                  try {
+                    await activation.prepareAgent(input);
+                  } catch (error) {
+                    failedAttempts.push(String(error));
+                    throw error;
+                  }
+                },
+              }),
+          } as unknown as Parameters<typeof activateGatewayAgentDatabaseStartup>[0]["admission"],
+          preparationReady: Promise.resolve(),
+          getConfig: () => config,
+          getPluginRegistry: () => createEmptyPluginRegistry(),
+          getPluginMetadataSnapshot: () => undefined,
+          isCurrent: () => true,
+          log: { info: () => {}, warn: () => {} },
+        });
+      });
+      await siblingStarted.promise;
+      await delay(300);
+      const held = readAgentDatabaseAdmissionRefusal("tk", { env });
+      expect(held).toBeDefined();
+      // Waiting for the covering publication, not failed: no attempt failed into the backoff.
+      expect(held?.preparation).toBeUndefined();
+
+      gate.resolve();
+      await covering;
+      await expect
+        .poll(() => readAgentDatabaseAdmissionRefusal("tk", { env }), { timeout: 5000 })
+        .toBeUndefined();
+      expect(getPreparedModelRuntimeSnapshot(inputFor("tk"))).toBeDefined();
+      // Its one attempt waited for the reload; it never failed as "model preparation has not
+      // published" into a backoff.
+      expect(failedAttempts).toEqual([]);
+    } finally {
+      gate.resolve();
+      startCoveringReload.next = undefined;
+      secrets.active = false;
+      await stop?.();
+    }
   });
 });
