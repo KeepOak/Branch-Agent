@@ -65,7 +65,15 @@ type Scenario = {
   replaySafe?: boolean;
   fallbackConfigured?: boolean;
   pinned?: boolean;
+  /** Provider error text; defaults to generic rate-limit wording with the Retry-After. */
+  errorMessage?: string;
+  /** Saved retry.provider.maxRetryDelayMs for the attempt. */
+  maxRetryDelayMs?: number;
 };
+
+/** The usage-window wording a subscription returns when its 5-hour or weekly limit is hit. */
+const USAGE_LIMIT_MESSAGE = "429 subscription usage limit. Retry after 108000 seconds.";
+const USAGE_LIMIT_MS = 108_000 * 1000;
 
 /** One finished attempt: a tool ran, then the provider answered 429 with a Retry-After. */
 async function recoverFromRateLimit(scenario: Scenario) {
@@ -92,7 +100,9 @@ async function recoverFromRateLimit(scenario: Scenario) {
     provider: PROVIDER,
     model: MODEL,
     stopReason: "error",
-    errorMessage: `429 This request would exceed your account's rate limit. Retry after ${seconds} seconds.`,
+    errorMessage:
+      scenario.errorMessage ??
+      `429 This request would exceed your account's rate limit. Retry after ${seconds} seconds.`,
     content: [],
     usage: createMockUsage(0, 0),
   });
@@ -114,6 +124,9 @@ async function recoverFromRateLimit(scenario: Scenario) {
     lastAssistant: erroredAssistant,
     currentAttemptAssistant: erroredAssistant,
     itemLifecycle: { startedCount: 1, completedCount: 1, activeCount: 0 },
+    ...(scenario.maxRetryDelayMs !== undefined
+      ? { providerRetryMaxDelayMs: scenario.maxRetryDelayMs }
+      : {}),
     ...(scenario.replaySafe
       ? { currentAttemptReplayMetadata: { replaySafe: true, hadPotentialSideEffects: false } }
       : {}),
@@ -355,6 +368,66 @@ describe("rate-limited run switches subscription", () => {
     const limited = run.statusEvents.find((event) => event.data.phase === "account_limited");
     expect(limited?.data).toMatchObject({ reason: "pinned", profileId: "anthropic:first" });
     expect(String(limited?.data.message)).toContain("set to use only that account");
+  });
+
+  it("waits on a pinned account that hit its usage window and names its reset", async () => {
+    const run = await recoverFromRateLimit({
+      candidates: ["anthropic:first", "anthropic:second"],
+      pinned: true,
+      errorMessage: USAGE_LIMIT_MESSAGE,
+    });
+
+    const slept = vi.mocked(sleepWithAbort).mock.calls.reduce((total, [ms]) => total + ms, 0);
+    expect(slept).toBeGreaterThanOrEqual(USAGE_LIMIT_MS);
+    expect(run.recovery).toMatchObject({ action: "retry" });
+    expect(run.used).toEqual(["anthropic:first"]);
+    expect(run.continueFromCurrentTranscript).toHaveBeenCalledTimes(1);
+    const blockedUntil = run.store.usageStats?.["anthropic:first"]?.blockedUntil ?? 0;
+    const limited = run.statusEvents.find((event) => event.data.phase === "account_limited");
+    expect(limited?.data).toMatchObject({
+      message: `Claude account 1 hit its limit until ${resetLabel(blockedUntil)}. This conversation is set to use only that account, so it waits until then.`,
+      profileId: "anthropic:first",
+      limitedUntil: blockedUntil,
+      reason: "pinned",
+    });
+  });
+
+  it("waits on the usage-window account when tools ran and no other subscription is free", async () => {
+    const run = await recoverFromRateLimit({
+      candidates: ["anthropic:first", "anthropic:key"],
+      fallbackConfigured: true,
+      errorMessage: USAGE_LIMIT_MESSAGE,
+    });
+
+    const slept = vi.mocked(sleepWithAbort).mock.calls.reduce((total, [ms]) => total + ms, 0);
+    expect(slept).toBeGreaterThanOrEqual(USAGE_LIMIT_MS);
+    expect(run.recovery).toMatchObject({ action: "retry" });
+    expect(run.used).toEqual(["anthropic:first"]);
+    expect(run.continueFromCurrentTranscript).toHaveBeenCalledTimes(1);
+    const limited = run.statusEvents.find((event) => event.data.phase === "account_limited");
+    expect(limited?.data).toMatchObject({
+      profileId: "anthropic:first",
+      reason: "no_other_subscription",
+    });
+  });
+
+  it("keeps a replay-safe pinned account waiting past a delay cap with fallback configured", async () => {
+    const run = await recoverFromRateLimit({
+      candidates: ["anthropic:first", "anthropic:second"],
+      pinned: true,
+      replaySafe: true,
+      fallbackConfigured: true,
+      maxRetryDelayMs: 60_000,
+      errorMessage: USAGE_LIMIT_MESSAGE,
+    });
+
+    const slept = vi.mocked(sleepWithAbort).mock.calls.reduce((total, [ms]) => total + ms, 0);
+    expect(slept).toBeGreaterThanOrEqual(USAGE_LIMIT_MS);
+    expect(run.recovery).toMatchObject({ action: "retry" });
+    expect(run.advanceAuthProfile).not.toHaveBeenCalled();
+    expect(run.used).toEqual(["anthropic:first"]);
+    const limited = run.statusEvents.find((event) => event.data.phase === "account_limited");
+    expect(limited?.data).toMatchObject({ reason: "pinned", profileId: "anthropic:first" });
   });
 
   it("keeps short waits on the same account", async () => {

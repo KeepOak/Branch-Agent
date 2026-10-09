@@ -501,7 +501,9 @@ export function createEmbeddedRunFailoverRetryController(input: {
         }
         limitWait = switched.wait;
       }
-      if (rateLimit && hasLongWindowRateLimitEvidence(retry.message)) {
+      // A long limit that must wait on its account (pinned, or no free subscription and not
+      // replay-safe) waits even on usage-window wording; declining would end the run unnoticed.
+      if (rateLimit && !limitWait && hasLongWindowRateLimitEvidence(retry.message)) {
         recordDecision("rejected", "long_window_rate_limit");
         return false;
       }
@@ -517,6 +519,8 @@ export function createEmbeddedRunFailoverRetryController(input: {
         rateLimit &&
         fallbackConfigured &&
         retry.failoverEligible !== false &&
+        // A user-pinned account never leaves its account for the fallback chain.
+        limitWait?.reason !== "pinned" &&
         retryDelayCapMs !== undefined &&
         retry.retryAfterMs !== undefined &&
         retry.retryAfterMs > retryDelayCapMs
