@@ -48,7 +48,7 @@ import { historyToBlocks } from "../thread/history";
 import { lastSpeakerWho, topicSpeakerKeys } from "./topic-who";
 import { topicLayoutFor, readTopicSettings, setContactTopicLayout, type TopicLayout } from "./topic-layout";
 import { patchTopicSession } from "./topic-session";
-import { loadAllTopicTranscripts } from "./topic-all";
+import { createSerialReloader, loadAllTopicTranscripts, type TopicTranscriptCache } from "./topic-all";
 import { useContactSegments } from "./useContactSegments";
 import { contactAlert, contactAlertTarget, notify, readMutedContacts, saveMutedContacts } from "./notify";
 import { SaveProgressOffer, useCkptOn } from "./SaveProgress";
@@ -885,14 +885,18 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     const topics = topicItems.map(({ topic, updatedAt, preview }) => ({ key: topic.key, title: topic.title, labelled: topic.labelled, updatedAt, preview }));
     let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const reload = () => {
+    // One load at a time: live events that arrive during a load collapse into one follow-up load, and
+    // threads whose rows have not moved reuse their blocks from this view's cache.
+    const transcripts: TopicTranscriptCache = new Map();
+    const reloader = createSerialReloader(() => new Promise<void>((settled) => {
       let picks: Record<string, string> = {};
       try { picks = JSON.parse(localStorage.getItem("branch-topic-emoji-t5") || "{}"); } catch { /* A damaged local preference does not hide All. */ }
-      void loadAllTopicTranscripts(request, main, topics, picks).then(
-        (history) => { if (live) setAllTopics((value) => value?.contactId === contactId ? { contactId, history, loading: false, error: "" } : value); },
-        (error: unknown) => { if (live) setAllTopics((value) => value && value.contactId === contactId ? { ...value, loading: false, error: error instanceof Error ? error.message : String(error) } : value); },
+      void loadAllTopicTranscripts(request, main, topics, picks, transcripts).then(
+        (history) => { if (live) setAllTopics((value) => value?.contactId === contactId ? { contactId, history, loading: false, error: "" } : value); settled(); },
+        (error: unknown) => { if (live) setAllTopics((value) => value && value.contactId === contactId ? { ...value, loading: false, error: error instanceof Error ? error.message : String(error) } : value); settled(); },
       );
-    };
+    }));
+    const reload = () => reloader.trigger();
     reload();
     const off = session.onGatewayEvent((event) => {
       if (event !== "contacts.changed" && event !== "chat") return;
@@ -901,7 +905,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     });
     const storage = (event: StorageEvent) => { if (event.key === "branch-topic-emoji-t5") reload(); };
     window.addEventListener("storage", storage);
-    return () => { live = false; if (timer) clearTimeout(timer); off(); window.removeEventListener("storage", storage); };
+    return () => { live = false; reloader.cancel(); if (timer) clearTimeout(timer); off(); window.removeEventListener("storage", storage); };
   }, [showingAll, topicContact?.id, session, activeTopics, lists.rows, ready]);
   const home = contacts.find((c) => c.isDefault) ? contactRow(contacts.find((c) => c.isDefault)!) : homeRow(lists.rows, s.mainKey, defaultName);
   const sections = buildContactSections(contacts, prefs, now);
