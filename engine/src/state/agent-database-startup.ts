@@ -105,6 +105,19 @@ function preparationAttemptLimitMs(env: NodeJS.ProcessEnv): number {
   return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_PREPARATION_ATTEMPT_MS;
 }
 
+const DEFAULT_FIRST_RETRY_MS = 2_000;
+const MAX_RETRY_MS = 60_000;
+/**
+ * Failed attempts in a row before startup stops retrying the same preparation and starts it again
+ * from scratch. The backoff has reached its one-minute ceiling by then (2, 4, 8, 16, 32, 60 s).
+ */
+const FAILURES_BEFORE_RESTART = 6;
+
+function firstRetryMs(env: NodeJS.ProcessEnv): number {
+  const configured = Number(env.BRANCH_AGENT_PREPARATION_RETRY_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_FIRST_RETRY_MS;
+}
+
 const log = createSubsystemLogger("state/agent-admission");
 const startupAdmission = new AsyncLocalStorage<AgentDatabaseStartupAdmission>();
 
@@ -116,6 +129,8 @@ class AgentDatabaseStartupAdmission {
   private readonly activation = createDeferredCore<Activation | undefined>();
   private readonly work = new Set<Promise<unknown>>();
   private readonly pending = new Map<string, AgentDatabaseAdmissionRefusal>();
+  /** Ends the backoff wait of an agent whose preparation is retrying, so it starts again now. */
+  private readonly wakers = new Map<string, () => void>();
   private adopted = false;
   private activated = false;
   private stopped = false;
@@ -130,6 +145,13 @@ class AgentDatabaseStartupAdmission {
 
   get isStopped(): boolean {
     return this.stopped;
+  }
+
+  /** Starts a retrying agent's preparation again from scratch now; false when it isn't retrying. */
+  retryNow(agentId: string): boolean {
+    const wake = this.wakers.get(agentId);
+    wake?.();
+    return wake !== undefined;
   }
 
   /** Full readiness stays fresh; only unchanged compatibility headers cross into bootstrap. */
@@ -391,7 +413,14 @@ class AgentDatabaseStartupAdmission {
                 );
               }
             }
-            let retryDelayMs = 2_000;
+            const initialRetryMs = firstRetryMs(env);
+            let retryDelayMs = initialRetryMs;
+            let failures = 0;
+            const restartFromScratch = () => {
+              failures = 0;
+              retryDelayMs = initialRetryMs;
+              attemptLimitMs = preparationAttemptLimitMs(env);
+            };
             for (;;) {
               try {
                 await attempt();
@@ -407,14 +436,40 @@ class AgentDatabaseStartupAdmission {
                   });
                   continue;
                 }
-                log.warn("agent database startup preparation failed; retrying", {
-                  agentId,
-                  paths,
-                  reason: formatErrorMessage(error),
-                  retryDelayMs,
-                });
-                await delay(retryDelayMs, undefined, { signal: this.signal });
-                retryDelayMs = Math.min(retryDelayMs * 2, 60_000);
+                failures += 1;
+                const status = {
+                  failures: (refusal.preparation?.failures ?? 0) + 1,
+                  restarts: refusal.preparation?.restarts ?? 0,
+                };
+                refusal.preparation = status;
+                const reason = formatErrorMessage(error);
+                const restart = failures >= FAILURES_BEFORE_RESTART;
+                log.warn(
+                  restart
+                    ? "agent database startup preparation keeps failing; starting it again from scratch"
+                    : "agent database startup preparation failed; retrying",
+                  { agentId, paths, reason, retryDelayMs, failures },
+                );
+                const wake = new AbortController();
+                this.wakers.set(agentId, () => wake.abort());
+                try {
+                  await delay(retryDelayMs, undefined, {
+                    signal: AbortSignal.any([this.signal, wake.signal]),
+                  });
+                } catch (waitError) {
+                  if (!wake.signal.aborted || this.signal.aborted) {
+                    throw waitError;
+                  }
+                  log.info("agent database startup preparation retried on request", { agentId });
+                } finally {
+                  this.wakers.delete(agentId);
+                }
+                if (restart || wake.signal.aborted) {
+                  restartFromScratch();
+                  refusal.preparation = { ...status, restarts: status.restarts + 1 };
+                } else {
+                  retryDelayMs = Math.min(retryDelayMs * 2, MAX_RETRY_MS);
+                }
               }
             }
             log.info("agent database recovered after background inspection and preparation", {

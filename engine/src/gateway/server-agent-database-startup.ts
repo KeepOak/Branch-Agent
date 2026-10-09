@@ -134,7 +134,11 @@ export function activateGatewayAgentDatabaseStartup(params: {
         await racePromiseWithAbortSignal(params.preparationReady, signal);
         const [
           { runStartupSessionMigration },
-          { refreshPreparedModelRuntimeSnapshots, getPreparedModelRuntimeSnapshot },
+          {
+            refreshPreparedModelRuntimeSnapshots,
+            getPreparedModelRuntimeSnapshot,
+            getPendingPreparedModelRuntimeReplacement,
+          },
           { listConfiguredOwnerInputs },
           {
             getActiveSecretsRuntimeSnapshot,
@@ -235,6 +239,19 @@ export function activateGatewayAgentDatabaseStartup(params: {
           );
           if (!preparedInput) {
             throw new Error(`Agent ${agentId} model preparation is no longer configured`);
+          }
+          // Another publication that covers this agent (a sibling's preparation, a config or auth
+          // refresh) hides its snapshot until that publication commits. Wait for it instead of
+          // calling this preparation failed and backing off for up to a minute.
+          for (
+            let replacement = getPendingPreparedModelRuntimeReplacement(agentId);
+            replacement && !getPreparedModelRuntimeSnapshot(preparedInput);
+            replacement = getPendingPreparedModelRuntimeReplacement(agentId)
+          ) {
+            await racePromiseWithAbortSignal(
+              replacement.catch(() => undefined),
+              signal,
+            );
           }
           assertPreparationCurrent();
         });
