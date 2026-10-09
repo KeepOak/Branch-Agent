@@ -336,7 +336,10 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
         this.refreshKeywordFallbackIndexIdentity(indexState).status === "valid";
       const embeddingKeywordFallback = embeddingIdentityOnlyKeywordFallback(repairedIndexIdentity);
       if (repairedIndexIdentity.status !== "valid") {
-        if (!chunkingUpgradePendingKeywordOnly(repairedIndexIdentity) && !embeddingKeywordFallback) {
+        if (
+          !chunkingUpgradePendingKeywordOnly(repairedIndexIdentity) &&
+          !embeddingKeywordFallback
+        ) {
           return [];
         }
         if (embeddingKeywordFallback) {
@@ -423,7 +426,13 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
         chunkingUpgradePendingKeywordOnly(effectiveIdentity) ||
         embeddingIdentityOnlyKeywordFallback(effectiveIdentity)
       ) {
-        opts?.onDebug?.({ backend: "builtin", effectiveMode: "keyword-only" });
+        opts?.onDebug?.({
+          backend: "builtin",
+          effectiveMode: "keyword-only",
+          ...(embeddingIdentityOnlyKeywordFallback(effectiveIdentity)
+            ? { keywordFallbackContentScopeValid: true as const }
+            : {}),
+        });
       }
       const loadKeywordResults = async () => {
         const initialResult = preparedKeyword;
