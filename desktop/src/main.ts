@@ -1,5 +1,5 @@
 // Branch Agent desktop app: starts the engine gateway, serves the built window on 127.0.0.1 and shows it.
-import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, session, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, powerMonitor, screen, session, shell } from "electron";
 import type { ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
 import { appendFileSync, existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
@@ -21,7 +21,8 @@ import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./ti
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from "./desktop-update";
-import { createAutoApplyUpdate } from "./auto-apply-update";
+import { createAutoApplyUpdate, type UpdateOutcome } from "./auto-apply-update";
+import { createTitleHold } from "./title-hold";
 import { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes } from "./available-memory";
 import { checkCandidateBeside, stopCandidate } from "./candidate-check";
 import { clearEngineRecords, retireRecordedEngines } from "./engine-records";
@@ -134,6 +135,16 @@ const branchWindows = (): BrowserWindow[] => [win, ...conversationWindows.values
 const sendToBranchWindows = (channel: string, ...args: unknown[]): void => {
   for (const w of branchWindows()) w.webContents.send(channel, ...args);
 };
+/** While an update swaps the engine, each window's native title keeps its conversation (no "(Offline)" or other Trunk). */
+const titleHold = createTitleHold({ windows: branchWindows, show: title => TEST_COPY ? `Test — ${title}` : title });
+/**
+ * Since the owner last typed or moved the pointer, when a Branch window has focus; undefined when none has focus (the
+ * owner is elsewhere). Auto-apply never stops and starts the engine while the owner is using Branch.
+ */
+function ownerActiveMsAgo(): number | undefined {
+  if (!branchWindows().some(w => w.isFocused())) return undefined;
+  return powerMonitor.getSystemIdleTime() * 1000;
+}
 const ownedWebContents = (sender: unknown) => {
   const owner = BrowserWindow.fromWebContents(sender as Electron.WebContents);
   return owner && branchWindows().includes(owner) ? owner.webContents : undefined;
@@ -270,7 +281,7 @@ const engineServing = (): boolean => engineRunning() && gateway === readyGateway
  * engine's state lock means the standby can only bind and become ready after the old engine has released state.
  * A staged desktop app is never applied here; it waits for the next natural launch.
  */
-async function swapEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle, handoffOnly = false): Promise<void> {
+async function swapEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle, handoffOnly = false): Promise<UpdateOutcome> {
   // `held`: the caller (Undo) already holds the update lock and keeps it; otherwise the swap takes it.
   if (!gateway || !win || (held ? !updateLock.holds(held) : updateLock.held)) throw new Error("The desktop is not ready to update");
   // A crash restart always runs first: an update never cancels it, and never starts with no engine serving.
@@ -279,6 +290,9 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
   const windowBefore = windowBuild(servedWindowDir);
   const priorGateway = gateway;
   const attempt = { stepDownSent: false };
+  // From the moment the old engine stops serving, each window's native title keeps what it showed (title-hold.ts).
+  let releaseTitle: (() => void) | undefined;
+  let titleReleasedAfterWindowSwap = false;
   const stillOpen = () => { if (quitting) throw new Error("Branch Agent is quitting"); };
   const preparation = new AbortController();
   const priorExited = () => {
@@ -288,7 +302,7 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
   };
   priorGateway.once("exit", priorExited);
   try {
-    if (!await candidatePassed(label, explicit, preparation.signal)) return;
+    if (!await candidatePassed(label, explicit, preparation.signal)) return { restarted: false };
     if (preparation.signal.aborted || !engineServing()) throw new Error("The serving engine exited during update preparation");
     await prepareUpdateStandby(label, explicit);
     if (preparation.signal.aborted || !engineServing()) throw new Error("The serving engine exited during standby warmup");
@@ -300,6 +314,7 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
     const started = Date.now();
     if (explicit) sendToBranchWindows("branch-desktop:engine-update", "updating");
     const resumeSupervision = gatewaySupervisor.expectExit(priorGateway);
+    releaseTitle = titleHold.hold();
     // One handoff at a time: while an old engine still finishes its sessions, the guarded swap runs instead.
     if (standby && seamlessHandoff() && retiring.size > 0) log(`update ${label}: an old engine is still finishing its sessions; using the guarded swap`);
     const handoff = standby && seamlessHandoff() && retiring.size === 0
@@ -335,9 +350,15 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
       // The engine may now serve on the standby's port: hand the window the address it answered /readyz on first,
       // also before a new window build swaps in, so the window can still send attachments while it waits.
       handWindowToGateway(true);
-      if (windowBuild(cfg.windowDir) !== windowBefore) void hotSwapWindow();
-      else sendToBranchWindows("branch-desktop:engine-update", "updated");
+      if (windowBuild(cfg.windowDir) !== windowBefore) {
+        // The reload loads the new window build: hold the title through it too.
+        titleReleasedAfterWindowSwap = true;
+        const release = releaseTitle;
+        void hotSwapWindow().finally(() => release?.());
+      } else sendToBranchWindows("branch-desktop:engine-update", "updated");
     }
+    // A drain stopped the old engine and started the new one; a handoff kept an engine serving throughout.
+    return { restarted: handoff === "drain" };
   } catch (error) {
     if (standby) stopGateway(standby.child);
     standby = undefined;
@@ -361,6 +382,7 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
     }
     throw error;
   } finally {
+    if (!titleReleasedAfterWindowSwap) releaseTitle?.();
     priorGateway.off("exit", priorExited);
     // A held lock stays with its holder, whose release runs the same recovery check.
     if (!held) await updateLock.release(lock);
@@ -631,11 +653,13 @@ const autoApply = createAutoApplyUpdate({
     const window = await probeWindowState();
     const engine = await gatewayActivity(gateway);
     return { activeRuns: Math.max(engine.activeRuns, engine.totalActive), pendingApprovals: window.pendingApprovals,
-      streaming: engine.pendingReplies > 0 || window.streaming, unsavedDraftFiles: window.unsavedDraftFiles };
+      streaming: engine.pendingReplies > 0 || window.streaming, unsavedDraftFiles: window.unsavedDraftFiles,
+      ownerActiveMsAgo: ownerActiveMsAgo() };
   },
   restart: async (version, handoffOnly) => {
-    await swapEngineInPlace(version, false, undefined, handoffOnly);
+    const outcome = await swapEngineInPlace(version, false, undefined, handoffOnly);
     if ((await readComponentUpdateStatus(cfg)).currentVersion !== version) throw new Error("The new release was not confirmed");
+    return outcome;
   },
   onApplied: async version => {
     if (lastNotifiedVersion === version) return;
@@ -643,6 +667,11 @@ const autoApply = createAutoApplyUpdate({
     lastNotifiedVersion = version;
     updateNotice = { version, canUndo, expiresAt: Date.now() + 10 * 60_000 };
     sendToBranchWindows("branch-desktop:update-applied", updateNotice);
+  },
+  // The engine stopped and started: never "Nothing restarted". The swap already said "Branch updated".
+  onRestarted: version => {
+    updateNotice = undefined;
+    log(`update ${version}: applied by restarting the engine; no in-place notice`);
   },
   onFailure: version => {
     if (!engineServing() || lastPostponedVersion === version) return;
@@ -730,7 +759,7 @@ function createWindow(): BrowserWindow {
   });
   w.setMenuBarVisibility(false);
   if (place.maximized) w.once("show", () => w.maximize());
-  if (TEST_COPY) w.on("page-title-updated", (event, title) => { event.preventDefault(); w.setTitle(`Test — ${title}`); });
+  if (TEST_COPY) w.on("page-title-updated", (event, title) => { if (titleHold.holding(w)) return; event.preventDefault(); w.setTitle(`Test — ${title}`); });
   if (!HIDDEN && !QUIET && !TEST_COPY) w.once("ready-to-show", () => (place.maximized ? w.maximize() : w.show()));
   trackWindowState(w, cfg.dataDir, (bounds) => screen.getDisplayMatching(bounds).bounds);
   lockDown(w);

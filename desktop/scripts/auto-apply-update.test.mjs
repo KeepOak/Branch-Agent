@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
-const { createAutoApplyUpdate, AUTO_APPLY_POLL_MS, AUTO_APPLY_IDLE_MS, AUTO_APPLY_RETRY_MS } = await import(
+const { createAutoApplyUpdate, AUTO_APPLY_POLL_MS, AUTO_APPLY_IDLE_MS, AUTO_APPLY_RETRY_MS, AUTO_APPLY_OWNER_AWAY_MS } = await import(
   pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "auto-apply-update.js"))
 );
 const { COMPONENT_UPDATE_CHECK_MS } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update.js")));
@@ -126,4 +126,82 @@ test("failed flagged handoff falls back after idle without notifying or waiting 
   now += AUTO_APPLY_IDLE_MS; await controller.tick();
   assert.deepEqual(attempts, [true, false]);
   assert.deepEqual(failures, []);
+});
+
+// Mac low-memory handoff: no standby fits, so the automatic update stops and starts the engine.
+
+test("the in-place notice is only sent when nothing restarted", async () => {
+  // Low-memory Mac: the handoff-only attempt finds no standby, then the idle drain stops and starts the engine.
+  let now = 0; const applied = []; const restarted = [];
+  const drain = createAutoApplyUpdate({ pendingVersion: async () => "next", enabled: () => true, seamlessHandoff: () => true,
+    activity: async () => ({ activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }),
+    restart: async (_version, handoffOnly) => {
+      if (handoffOnly) throw new Error("A standby is needed to hand off without interrupting running work");
+      return { restarted: true };
+    },
+    onApplied: value => applied.push(value), onRestarted: value => restarted.push(value), log: () => {}, now: () => now });
+  await drain.tick(); now += AUTO_APPLY_IDLE_MS; await drain.tick();
+  assert.deepEqual(applied, [], "a drain restart was announced as \"Nothing restarted\"");
+  assert.deepEqual(restarted, ["next"]);
+  // A standby took over: nothing restarted, so the in-place notice is true.
+  const handoffApplied = []; const handoffRestarted = [];
+  const handoff = createAutoApplyUpdate({ pendingVersion: async () => "next", enabled: () => true, seamlessHandoff: () => true,
+    activity: async () => assert.fail("a handoff never waits for idle"),
+    restart: async () => ({ restarted: false }),
+    onApplied: value => handoffApplied.push(value), onRestarted: value => handoffRestarted.push(value), log: () => {} });
+  await handoff.tick();
+  assert.deepEqual(handoffApplied, ["next"]);
+  assert.deepEqual(handoffRestarted, []);
+  // The swap reports what it did: a non-handoff restart that only kept serving (candidate swap) is in place too.
+  const keptApplied = [];
+  const kept = createAutoApplyUpdate({ pendingVersion: async () => "next", enabled: () => true,
+    activity: async () => ({ activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }),
+    restart: async () => ({ restarted: false }), onApplied: value => keptApplied.push(value),
+    onRestarted: () => assert.fail("nothing restarted"), log: () => {}, now: () => now });
+  await kept.tick(); now += AUTO_APPLY_IDLE_MS; await kept.tick();
+  assert.deepEqual(keptApplied, ["next"]);
+});
+
+test("the stop/start restart waits while the owner is using Branch, so the window never goes offline mid-chat", async () => {
+  let now = 0; let ownerActiveMsAgo = 5_000; const attempts = []; const logs = [];
+  const controller = createAutoApplyUpdate({ pendingVersion: async () => "next", enabled: () => true, seamlessHandoff: () => true,
+    activity: async () => ({ activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false, ownerActiveMsAgo }),
+    restart: async (_version, handoffOnly) => {
+      attempts.push(handoffOnly);
+      if (handoffOnly) throw new Error("A standby is needed to hand off without interrupting running work");
+      return { restarted: true };
+    },
+    log: line => logs.push(line), now: () => now });
+  await controller.tick();
+  for (let i = 0; i < 10; i++) { now += AUTO_APPLY_IDLE_MS; ownerActiveMsAgo = 1_000 + i * 6_000; await controller.tick(); }
+  assert.deepEqual(attempts, [true], "the engine restarted while the owner was typing in Branch");
+  assert.ok(logs.includes("auto-apply: waiting; the owner is using Branch"));
+  // Away from Branch long enough (or another app has focus): the idle hold runs from then.
+  ownerActiveMsAgo = AUTO_APPLY_OWNER_AWAY_MS; await controller.tick();
+  assert.deepEqual(attempts, [true]);
+  now += AUTO_APPLY_IDLE_MS; ownerActiveMsAgo = undefined; await controller.tick();
+  assert.deepEqual(attempts, [true, false]);
+});
+
+test("a restart never starts with a message in flight: typing or a reply at the final check cancels it", async () => {
+  let now = 0; let calls = 0; let atFinalCheck = {}; const attempts = [];
+  const controller = createAutoApplyUpdate({ pendingVersion: async () => "next", enabled: () => true,
+    activity: async () => {
+      calls++;
+      const idle = { activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false };
+      // The second probe of a tick is the fresh snapshot taken right before the stop.
+      return calls === 2 ? { ...idle, ...atFinalCheck } : idle;
+    },
+    restart: async () => { attempts.push(now); return { restarted: true }; }, log: () => {}, now: () => now });
+  const tick = async () => { calls = 0; await controller.tick(); };
+  await tick(); // the idle hold starts
+  for (const inFlight of [{ ownerActiveMsAgo: 0 }, { streaming: true }, { activeRuns: 1 }]) {
+    atFinalCheck = inFlight;
+    now += AUTO_APPLY_IDLE_MS; await tick(); // past the hold: the final probe sees the message
+    assert.deepEqual(attempts, [], `restarted with ${JSON.stringify(inFlight)} at the final check`);
+    now += AUTO_APPLY_IDLE_MS; await tick(); // the hold starts over
+  }
+  atFinalCheck = {};
+  now += AUTO_APPLY_IDLE_MS; await tick();
+  assert.equal(attempts.length, 1);
 });
