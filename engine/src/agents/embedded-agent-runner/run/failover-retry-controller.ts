@@ -281,45 +281,24 @@ export function createEmbeddedRunFailoverRetryController(input: {
     if (!from || !target) {
       return { action: "wait", wait: { account: from, resetAt, reason: "no_other_subscription" } };
     }
-    // advanceAuthProfile walks the run's order one profile at a time. Step over any API key
-    // between here and the target; no request is sent until a subscription is selected.
-    for (let step = 0; ; step += 1) {
-      const advanced = await input.advanceAuthProfile();
-      const current = input.getLastProfileId();
-      if (advanced && current !== limitedProfileId && isSubscriptionProfile(store, current)) {
-        return {
-          action: "switched",
-          change: {
-            from,
-            to: describeAccount(store, provider, limit.candidates, current),
-            ...(resetAt !== undefined ? { resetAt } : {}),
-          },
-        };
-      }
-      if (!advanced && step === 0) {
-        // This runtime can't change profiles (or nothing was selectable): wait on this account.
-        return {
-          action: "wait",
-          wait: { account: from, resetAt, reason: "no_other_subscription" },
-        };
-      }
-      if (!advanced) {
-        // The free subscription failed to sign in and only API keys (or nothing) remained.
-        // Never send this run on an API key: end it as rate-limited instead.
-        throw new FailoverError(
-          "The AI service is temporarily rate-limited. Please try again in a moment.",
-          {
-            reason: "rate_limit",
-            provider,
-            model: modelId,
-            profileId: limitedProfileId,
-            sessionId: input.getSessionId(),
-            lane: globalLane,
-            status: resolveFailoverStatus("rate_limit"),
-          },
-        );
-      }
+    // Move only to another subscription: API keys are passed over without applying their
+    // credentials. When no subscription signs in, the run stays on (and waits for) this one.
+    const advanced = await input.advanceAuthProfile({
+      accept: (candidate) =>
+        candidate !== limitedProfileId && isSubscriptionProfile(store, candidate),
+    });
+    const current = input.getLastProfileId();
+    if (advanced && current !== limitedProfileId && isSubscriptionProfile(store, current)) {
+      return {
+        action: "switched",
+        change: {
+          from,
+          to: describeAccount(store, provider, limit.candidates, current),
+          ...(resetAt !== undefined ? { resetAt } : {}),
+        },
+      };
     }
+    return { action: "wait", wait: { account: from, resetAt, reason: "no_other_subscription" } };
   };
 
   return {

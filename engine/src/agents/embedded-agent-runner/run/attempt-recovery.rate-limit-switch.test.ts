@@ -82,18 +82,28 @@ async function recoverFromRateLimit(scenario: Scenario) {
   let index = 0;
   let current: string | undefined = candidates[0];
   const used: string[] = [candidates[0]];
-  // Mirrors auth-controller advanceAuthProfile: forward through the run's order, skipping cooldowns.
-  const advanceAuthProfile = vi.fn(async () => {
-    while (++index < candidates.length) {
-      const candidate = candidates[index];
-      if (!isProfileInCooldown(store, candidate, undefined, MODEL)) {
-        current = candidate;
-        used.push(candidate);
-        return true;
+  // Mirrors auth-controller advanceAuthProfile: forward through the run's order, skipping
+  // cooldowns and, with `accept`, the profiles it rejects; a filtered miss keeps the current one.
+  const advanceAuthProfile = vi.fn(
+    async (options?: { accept?: (profileId: string | undefined) => boolean }) => {
+      const startIndex = index;
+      while (++index < candidates.length) {
+        const candidate = candidates[index];
+        if (options?.accept && !options.accept(candidate)) {
+          continue;
+        }
+        if (!isProfileInCooldown(store, candidate, undefined, MODEL)) {
+          current = candidate;
+          used.push(candidate);
+          return true;
+        }
       }
-    }
-    return false;
-  });
+      if (options?.accept) {
+        index = startIndex;
+      }
+      return false;
+    },
+  );
   const seconds = Math.round((scenario.retryAfterMs ?? THIRTY_HOURS_MS) / 1000);
   const erroredAssistant = buildEmbeddedRunnerAssistant({
     api: "anthropic-messages",
