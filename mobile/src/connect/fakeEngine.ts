@@ -2,7 +2,8 @@
 // protocol (connect.challenge, the connect request, hello-ok or a PAIRING_REQUIRED error) and checks the
 // phone's Ed25519 signature over the engine's v3 device-auth payload, so the engine's own client code in
 // PhoneGateway runs exactly as it would against a computer. After the handshake it answers the reads the
-// Chats screen makes (sessions.subscribe, sessions.list, agents.list, sessions.search) and pushes events.
+// Chats screen makes (sessions.subscribe, sessions.list, agents.list, sessions.search), the Chat screen's
+// chat.history, chat.send, chat.abort and sessions.patch, and pushes events.
 import { verify } from '@noble/ed25519';
 import type { ConnectParams, GatewayProtocolSocket, GatewayProtocolSocketHandlers } from '@branch/gateway-client/browser';
 import { base64UrlToBytes, utf8ToBytes } from './base64url';
@@ -31,6 +32,8 @@ export type FakeEngine = {
   emit: (event: string, payload?: unknown) => void;
   /** Makes one method fail with this message until cleared with null. */
   failMethod: (method: string, message: string | null) => void;
+  /** The chat.history messages (and the run still going, if any) the engine reports for a chat from now on. */
+  setHistory: (sessionKey: string, messages: unknown[], inFlightRun?: unknown) => void;
 };
 
 export type FakeEngineOptions = {
@@ -52,6 +55,7 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
   let sessions = options.sessions ?? [];
   const agents = options.agents ?? { defaultId: 'main', mainKey: 'main', scope: 'per-sender', agents: [{ id: 'main', name: 'Branch Agent' }] };
   const failures = new Map<string, string>();
+  const histories = new Map<string, { messages: unknown[]; inFlightRun?: unknown }>();
   const live = new Set<{ close: (code: number, reason: string) => void; event: (frame: unknown) => void }>();
   const answer = (method: string, params: unknown): { ok: true; payload: unknown } | { ok: false; message: string } => {
     const failure = failures.get(method);
@@ -71,6 +75,22 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
           .map((s) => ({ sessionKey: s.key, role: 'assistant', snippet: s.lastMessagePreview, timestamp: s.updatedAt, messageId: `m-${String(s.key)}` }));
         return { ok: true, payload: { results } };
       }
+      case 'chat.history': {
+        const key = String((params as { sessionKey?: unknown } | null)?.sessionKey ?? '');
+        const history = histories.get(key);
+        return { ok: true, payload: { sessionKey: key, messages: history?.messages ?? [], ...(history?.inFlightRun ? { inFlightRun: history.inFlightRun } : {}) } };
+      }
+      case 'chat.send':
+        return { ok: true, payload: { runId: (params as { idempotencyKey?: unknown } | null)?.idempotencyKey, status: 'started' } };
+      case 'chat.abort':
+        return { ok: true, payload: { ok: true, aborted: true } };
+      case 'sessions.patch': {
+        // Like the engine: the row changes and every phone hears sessions.changed.
+        const { key, unread } = (params ?? {}) as { key?: string; unread?: boolean };
+        if (typeof unread === 'boolean') sessions = (sessions as Array<Record<string, unknown>>).map((row) => (row.key === key ? { ...row, unread } : row));
+        setTimeout(() => engine.emit('sessions.changed', { sessionKey: key }), 0);
+        return { ok: true, payload: { ok: true, key } };
+      }
       default:
         return { ok: true, payload: {} };
     }
@@ -85,6 +105,9 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
     },
     emit: (event, payload = {}) => {
       for (const socket of [...live]) socket.event({ type: 'event', event, payload });
+    },
+    setHistory: (sessionKey, messages, inFlightRun) => {
+      histories.set(sessionKey, { messages, ...(inFlightRun ? { inFlightRun } : {}) });
     },
     failMethod: (method, message) => {
       if (message === null) failures.delete(method);
