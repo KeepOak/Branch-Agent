@@ -14,6 +14,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { skipReason } from './denylist.mjs';
 import { chooseRegion, chooseScreenClicks } from './targets.mjs';
+import { isPlusMoreRow } from './plus-more.mjs';
 import { classifyClick, elementKey, isNoise } from './observe.mjs';
 import { inconsistentOpens, internalNameProblems, rowActionProblems } from './list-checks.mjs';
 import { compareBaseline, formatGate, normalizeBaseline } from './baseline.mjs';
@@ -303,6 +304,14 @@ async function main() {
         }
         if (!threadMenu && isThreadLayoutMenu(result.after.menu, el.name)) {
           threadMenu = { items: result.after.menuItems || [], ...threadLayoutDiff(result.after.menuItems || []) };
+        }
+        if (isPlusMoreRow(el, screen)) {
+          queue.push({
+            id: `${screen.id} > ${el.name}`,
+            route: screen.route,
+            depth: screen.depth + 1,
+            path: [...(screen.path || []), { name: el.name, occurrence: el.occurrence, region: el.region }],
+          });
         }
         const menuOpened = Boolean(result.after.menu) && result.after.menu !== result.before.menu;
         const dialogOpened = Boolean(result.after.dialog) && result.after.dialog !== result.before.dialog;
