@@ -67,6 +67,7 @@ export class OutsidePresence {
   private timer: NodeJS.Timeout | undefined;
   private lastActivityAt = 0;
   private known = false;
+  private pendingHello: Promise<void> | undefined;
 
   constructor(
     private readonly hello: Hello,
@@ -85,6 +86,11 @@ export class OutsidePresence {
 
   /** The identity to send as. Throws when Branch has turned this agent away. */
   async identity(): Promise<OutsideAgentIdentity | undefined> {
+    // A transient connection failure is not an old gateway. Retry on the next tool,
+    // without overlapping a hello that is still in flight or changing its wait budget.
+    if (this.agent && !this.known && !this.refusal) {
+      this.first = this.say();
+    }
     await this.firstHello();
     if (this.refusal) throw new Error(this.refusal);
     return this.known ? this.agent : undefined;
@@ -141,7 +147,15 @@ export class OutsidePresence {
     clearTimeout(timer);
   }
 
-  private async say(activity?: string): Promise<void> {
+  private say(activity?: string): Promise<void> {
+    if (this.pendingHello) return this.pendingHello;
+    this.pendingHello = this.sayHello(activity).finally(() => {
+      this.pendingHello = undefined;
+    });
+    return this.pendingHello;
+  }
+
+  private async sayHello(activity?: string): Promise<void> {
     if (!this.agent) return;
     try {
       const full = { ...this.agent, ...(activity ? { activity } : {}) };
