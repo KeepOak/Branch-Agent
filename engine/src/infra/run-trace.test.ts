@@ -111,6 +111,23 @@ describe("run trace", () => {
     ]);
   });
 
+  it("never writes a run id that is not a plain identifier", () => {
+    setRunTraceSinkForTest((line) => lines.push(line));
+    traceRunStep("has a space", "accept");
+    traceRunStep("line\nbreak", "accept");
+    traceRunStep("sk-abcdefghijklmnopqrstuvwxyz0123456789", "accept");
+    traceRunStep("run-ok-1", "accept");
+    traceRunStep("3f2c9a7e-1b4d-4e8a-9c2f-6d7e8f9a0b1c", "accept");
+    expect(lines).toEqual([
+      "trace id=invalid step=accept",
+      "trace id=invalid step=accept",
+      "trace id=invalid step=accept",
+      "trace id=run-ok-1 step=accept",
+      "trace id=3f2c9a7e-1b4d-4e8a-9c2f-6d7e8f9a0b1c step=accept",
+    ]);
+    expect(lines.join("\n")).not.toMatch(/sk-|has a space|line/);
+  });
+
   it("drops fields that are not plain identifiers", () => {
     setRunTraceSinkForTest((line) => lines.push(line));
     traceRunStep("run-3", "failed", { agent: "has spaces and words", code: "x\ny" });

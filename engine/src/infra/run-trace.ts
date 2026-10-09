@@ -16,11 +16,19 @@ const MAX_TRACKED_RUNS = 512;
 const firstTokenRuns = new Map<string, true>();
 const KNOWN_CODES: ReadonlySet<string> = new Set<string>(Object.values(ErrorCodes));
 const MAX_CODE_LENGTH = 40;
+// Run ids are UUIDs or "run-" names. Anything else is not written, so free text cannot ride in on an id.
+const RUN_ID =
+  /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|run-[a-z0-9-]{1,40})$/i;
 const SAFE_ID = /^[A-Za-z0-9_.:@-]{1,80}$/;
 
 /** Tests replace the sink; production writes through the engine logger. */
 export function setRunTraceSinkForTest(next: TraceSink | undefined): void {
   sink = next ?? ((line) => log.info(line));
+}
+
+/** A run id comes from the caller's request, so it is checked too. A value that fails the pattern is logged as "invalid". */
+function runIdField(runId: unknown): string {
+  return typeof runId === "string" && RUN_ID.test(runId) ? runId : "invalid";
 }
 
 /** Agent ids are configured names and pass the identifier pattern; anything else is left out. */
@@ -44,7 +52,7 @@ export function traceRunStep(
   fields: { agent?: unknown; code?: unknown } = {},
 ): void {
   const parts = [
-    `trace id=${runId}`,
+    `trace id=${runIdField(runId)}`,
     `step=${step}`,
     agentField(fields.agent),
     traceCode(fields.code),
