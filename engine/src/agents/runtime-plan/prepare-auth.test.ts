@@ -273,6 +273,60 @@ describe("prepareAgentRuntimeAuthPlan", () => {
       expect(profileAttemptIds(attempts)).toEqual(["xai:key", "xai:sub"]);
     });
 
+    it("fails to plan when the only stored sign-in is an API key in an explicit order and subscriptionsOnly is set", () => {
+      expect(() =>
+        prepareAuthFixture({
+          provider: "xai",
+          modelId: "grok-4",
+          env: {},
+          config: subscriptionsOnlyConfig,
+          authProfileStore: authStore(
+            { "xai:key": createApiKeyCredential("xai", "key") },
+            { xai: ["xai:key"] },
+          ),
+        }),
+      ).toThrow("Explicit auth order for xai has no usable profiles.");
+    });
+
+    it("leaves no automatic profile attempt when the only stored sign-in is an API key and no order is set", () => {
+      const { attempts } = prepareAuthFixture({
+        provider: "xai",
+        modelId: "grok-4",
+        env: {},
+        config: subscriptionsOnlyConfig,
+        authProfileStore: authStore({ "xai:key": createApiKeyCredential("xai", "key") }),
+      });
+
+      expect(profileAttemptIds(attempts)).toEqual([]);
+    });
+
+    it("keeps API-key sign-ins out of a harness-owned run's list when subscriptionsOnly is set", () => {
+      const store = authStore(
+        {
+          "openai:key": openAIApiKeyProfile("key"),
+          "openai:sub": openAITokenProfile("sub-token"),
+        },
+        { openai: ["openai:key", "openai:sub"] },
+      );
+      const withSubscriptionsOnly = prepareAuthFixture({
+        ...openAIPlatformAuthFixture,
+        harnessId: "codex",
+        harnessRuntime: "codex",
+        config: subscriptionsOnlyConfig,
+        authProfileStore: store,
+      });
+      const withDefault = prepareAuthFixture({
+        ...openAIPlatformAuthFixture,
+        harnessId: "codex",
+        harnessRuntime: "codex",
+        config: {},
+        authProfileStore: store,
+      });
+
+      expect(profileAttemptIds(withDefault.attempts)).toContain("openai:key");
+      expect(profileAttemptIds(withSubscriptionsOnly.attempts)).not.toContain("openai:key");
+    });
+
     it("still uses an API-key sign-in the user pinned when subscriptionsOnly is set", () => {
       const { attempts } = prepareAuthFixture({
         provider: "xai",

@@ -184,7 +184,7 @@ export const MODEL_FIELD_HELP: Record<string, string> = {
   "agents.defaults.modelPolicy.allow":
     'Allowed model override refs. Accepts aliases, full "provider/model" refs, and provider wildcards such as "openai/*". Empty permits any model.',
   "agents.defaults.subscriptionsOnly":
-    "When true, stored API-key sign-ins are never picked automatically: unpinned runs and the automatic order of embedded runs skip them, so a run with only API-key sign-ins has no sign-in to use; rate-limit, auth-failure and failover rotations pass them over; rate-limit account switching does too; and agents cannot move a session or the sign-in order onto one. A sign-in the owner or user pins is still used, and provider keys set in config or environment are not affected. Default false: stored API-key sign-ins are ordinary candidates, as before this setting existed.",
+    "When true, stored API-key sign-ins are never picked automatically: unpinned runs and the automatic order of embedded runs skip them, so a run with only API-key sign-ins has no sign-in to use; rate-limit, auth-failure and failover rotations pass them over; rate-limit account switching does too; and agents cannot move a session or the sign-in order onto one. A sign-in the owner or user pins is still used, and provider keys set in config or environment are not affected. Default false: stored API-key sign-ins are ordinary candidates for automatic choices.",
   "agents.defaults.models.*.agentRuntime":
     "Optional per-model runtime policy for the default agent. Use this for model-specific runtime exceptions instead of setting a whole-agent runtime.",
   "agents.defaults.models.*.agentRuntime.id":

@@ -83,7 +83,15 @@ function resolvedAuth(profileId: string, secondSignedIn: boolean): ResolvedProvi
 }
 
 /** The run's auth state and controller, with the first sign-in already applied. */
-async function setUpRun(params: { secondSignedIn: boolean; subscriptionsOnly: boolean }) {
+type RunSetup = {
+  secondSignedIn: boolean;
+  subscriptionsOnly: boolean;
+  /** The run's own candidate list; a harness-owned run gets its prepared list from prepare-auth. */
+  candidates?: string[];
+  harnessOwnsTransport?: boolean;
+};
+
+async function setUpRun(params: RunSetup) {
   const store = {
     version: 1,
     profiles: {
@@ -112,7 +120,7 @@ async function setUpRun(params: { secondSignedIn: boolean; subscriptionsOnly: bo
     workspaceDir: "/tmp/account-switch-auth-workspace",
     authStore: store,
     authStorage: { setRuntimeApiKey },
-    profileCandidates: ORDER,
+    profileCandidates: params.candidates ?? ORDER,
     initialThinkLevel: "off",
     attemptedThinking: new Set(),
     fallbackConfigured: true,
@@ -136,7 +144,7 @@ async function setUpRun(params: { secondSignedIn: boolean; subscriptionsOnly: bo
     profileFailureStore: store,
     getLastProfileId: () => state.lastProfileId,
     getSessionId: () => "session:account-switch-auth",
-    harnessOwnsTransport: () => false,
+    harnessOwnsTransport: () => params.harnessOwnsTransport === true,
     getRuntimeAuthOwnerId: () => "embedded",
     getApiKeyInfo: () => state.apiKeyInfo,
     advanceAuthProfile: authController.advanceAuthProfile,
@@ -145,13 +153,17 @@ async function setUpRun(params: { secondSignedIn: boolean; subscriptionsOnly: bo
 }
 
 /** One short rate-limit rotation (below the wait threshold) from the first sign-in. */
-async function rotateOnce(params: { secondSignedIn: boolean; subscriptionsOnly: boolean }) {
+/** One automatic move from the first sign-in: a short rate limit, or an auth failure when rateLimit is false. */
+async function rotateOnce(params: RunSetup & { rateLimit?: boolean }) {
   const { controller, state, setRuntimeApiKey } = await setUpRun(params);
-  const rotated = await controller.advanceRateLimitAuthProfile({
-    failoverProvider: PROVIDER,
-    failoverModel: MODEL,
-    logFallbackDecision: () => undefined,
-  });
+  const rotated =
+    params.rateLimit === false
+      ? await controller.advanceAuthProfile()
+      : await controller.advanceRateLimitAuthProfile({
+          failoverProvider: PROVIDER,
+          failoverModel: MODEL,
+          logFallbackDecision: () => undefined,
+        });
   const runtimeKeys = setRuntimeApiKey.mock.calls.map(([, key]) => key);
   return { rotated, state, runtimeKeys };
 }
@@ -257,6 +269,46 @@ describe("rate-limit account switch with the embedded auth controller", () => {
 
   it("rotates a short rate limit onto the API-key sign-in when subscriptionsOnly is off", async () => {
     const run = await rotateOnce({ secondSignedIn: true, subscriptionsOnly: false });
+
+    expect(run.rotated).toBe(true);
+    expect(run.state.lastProfileId).toBe("anthropic:key");
+    expect(run.runtimeKeys.at(-1)).toBe("fixture-api-key");
+  });
+
+  it("never rotates an auth failure onto an API-key sign-in when subscriptionsOnly is set", async () => {
+    const run = await rotateOnce({
+      secondSignedIn: true,
+      subscriptionsOnly: true,
+      rateLimit: false,
+    });
+
+    expect(run.rotated).toBe(true);
+    expect(run.state.lastProfileId).toBe("anthropic:second");
+    expect(run.runtimeKeys).not.toContain("fixture-api-key");
+  });
+
+  it("rotates an auth failure onto the API-key sign-in when subscriptionsOnly is off", async () => {
+    const run = await rotateOnce({
+      secondSignedIn: true,
+      subscriptionsOnly: false,
+      rateLimit: false,
+    });
+
+    expect(run.rotated).toBe(true);
+    expect(run.state.lastProfileId).toBe("anthropic:key");
+    expect(run.runtimeKeys.at(-1)).toBe("fixture-api-key");
+  });
+
+  it("a harness-owned run takes the next entry of its own list without re-filtering it", async () => {
+    // The guard is skipped here on purpose: prepare-auth builds a harness-owned run's list without
+    // API-key sign-ins when subscriptionsOnly is set (see prepare-auth.test.ts), so this list is what
+    // the run was given and the controller only moves along it.
+    const run = await rotateOnce({
+      secondSignedIn: true,
+      subscriptionsOnly: true,
+      rateLimit: false,
+      harnessOwnsTransport: true,
+    });
 
     expect(run.rotated).toBe(true);
     expect(run.state.lastProfileId).toBe("anthropic:key");
