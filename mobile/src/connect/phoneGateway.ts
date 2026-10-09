@@ -13,6 +13,7 @@ import {
   readPairingConnectErrorDetails,
   shouldPauseGatewayReconnect,
   type ConnectParams,
+  type EventFrame,
   type GatewayBrowserDeviceAuthPlan,
   type GatewayBrowserDeviceIdentity,
   type GatewayBrowserDeviceTokenStore,
@@ -157,6 +158,16 @@ export class PhoneGateway {
 
   stop(): void {
     this.protocol.stop();
+  }
+
+  /** One request to the engine over the open connection; rejects while it is closed. */
+  request<T = unknown>(method: string, params?: unknown): Promise<T> {
+    return this.protocol.request<T>(method, params);
+  }
+
+  /** Every event the engine pushes on this connection (sessions.changed, chat, approvals…). */
+  addEventListener(listener: (event: EventFrame) => void): () => void {
+    return this.protocol.addEventListener(listener);
   }
 
   private reportClose(context: GatewayProtocolCloseContext, willRetry: boolean): void {
