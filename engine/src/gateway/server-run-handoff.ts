@@ -133,7 +133,6 @@ export function createGatewayRunHandoff(params: {
       if (!handoffAdmission.commit()) {
         throw new Error("Gateway handoff admission was invalidated before state release");
       }
-      retryWaitHandoff.commit();
     })().catch(async (error: unknown) => {
       retryWaitHandoff?.stop();
       retryWaitHandoff = undefined;
@@ -219,6 +218,11 @@ export function createGatewayRunHandoff(params: {
   };
   return {
     deactivate,
+    commitStateRelease() {
+      // Preparing producers is reversible while this kernel still owns state.
+      // Retire quiet runs only after the state lease has actually transferred.
+      retryWaitHandoff?.commit();
+    },
     restoreFailedStateRelease,
     rollbackDeactivation,
     waitForDeactivatedRuns,

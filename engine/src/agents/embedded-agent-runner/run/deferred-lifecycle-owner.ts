@@ -169,14 +169,16 @@ export function createDeferredEmbeddedRunLifecycleManager(params: {
   let cliOwner: EmbeddedAgentQueueHandle | undefined;
   const clearCliOwner = () => {
     if (cliOwner) {
-      clearActiveEmbeddedRun(params.sessionId, cliOwner, params.sessionKey, params.sessionFile);
+      const owner = cliOwner;
+      cliOwner = undefined;
+      clearActiveEmbeddedRun(params.sessionId, owner, params.sessionKey, params.sessionFile);
     }
   };
   return {
     signal,
     abort,
     checkpoint: () => {
-      const owner = current;
+      const owner = current ?? cliOwner;
       if (!owner || !params.sessionKey) {
         return undefined;
       }
@@ -185,7 +187,7 @@ export function createDeferredEmbeddedRunLifecycleManager(params: {
         sessionId: params.sessionId,
         sessionKey: params.sessionKey,
         lifecycleGeneration,
-        isCurrent: () => current === owner && !signal.aborted,
+        isCurrent: () => (current ?? cliOwner) === owner && !signal.aborted,
         abort: () => abort("restart"),
       });
       const pending = boundary.finish();
@@ -198,16 +200,35 @@ export function createDeferredEmbeddedRunLifecycleManager(params: {
     adopt: (owner) => {
       retryWait?.release();
       retryWait = undefined;
+      clearCliOwner();
       const previous = current;
       current = owner;
       previous?.discard();
     },
     beginRetryWait: (deadlineAtMs, retrySignal) => {
-      const owner = current;
+      const owner = current ?? cliOwner;
       const waitSignal = retrySignal ? AbortSignal.any([signal, retrySignal]) : signal;
-      const close = owner?.beginRetryWait(deadlineAtMs, waitSignal);
-      if (!close || !params.sessionKey) {
-        return close;
+      const close = current
+        ? current.beginRetryWait(deadlineAtMs, waitSignal)
+        : cliOwner?.diagnosticOwner
+          ? beginDiagnosticRetryWait({
+              owner: cliOwner.diagnosticOwner,
+              deadlineAtMs,
+              signal: waitSignal,
+              assertCurrent: () => {
+                if (cliOwner !== owner) {
+                  throw createAgentRunSupersededAbortError();
+                }
+              },
+            })
+          : undefined;
+      if (!close) {
+        return undefined;
+      }
+      if (!params.sessionKey) {
+        return async (completed) => {
+          await close(completed);
+        };
       }
       retryWait?.release();
       const wait = registerHandoffRetryWait({
@@ -216,20 +237,20 @@ export function createDeferredEmbeddedRunLifecycleManager(params: {
         sessionKey: params.sessionKey,
         lifecycleGeneration,
         deadlineAtMs,
-        isCurrent: () => current === owner && retryWait === wait && !waitSignal.aborted,
+        isCurrent: () =>
+          (current ?? cliOwner) === owner && retryWait === wait && !waitSignal.aborted,
         abort: () => abort("restart"),
       });
       retryWait = wait;
       return (completed) => {
-        const finish = () => {
-          const result = close(completed);
+        const finish = async () => {
+          await close(completed);
           if (retryWait === wait) {
             retryWait = undefined;
           }
           if (completed) {
             signal.throwIfAborted();
           }
-          return result;
         };
         const pending = wait.finish();
         return pending ? pending.then(finish) : finish();

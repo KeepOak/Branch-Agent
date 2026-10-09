@@ -480,8 +480,13 @@ export async function prepareGatewayLifecycle(params: {
     shutdownRuntime,
     getCron: () => runtimeState.cronState.cron,
   });
-  const { deactivate, restoreFailedStateRelease, rollbackDeactivation, waitForDeactivatedRuns } =
-    handoff;
+  const {
+    deactivate,
+    commitStateRelease,
+    restoreFailedStateRelease,
+    rollbackDeactivation,
+    waitForDeactivatedRuns,
+  } = handoff;
   const refreshGatewayHealthSnapshotWithRuntime: typeof refreshGatewayHealthSnapshot = (
     optsResult,
   ) => {
@@ -680,6 +685,7 @@ export async function prepareGatewayLifecycle(params: {
     startChannel,
     stopChannel,
     deactivate,
+    commitStateRelease,
     restoreFailedStateRelease,
     rollbackDeactivation,
     waitForDeactivatedRuns,

@@ -455,4 +455,59 @@ describe("deferred logical-turn lifecycle", () => {
       await manager.complete();
     }
   });
+
+  it("parks a native CLI retry without waiting for its distant deadline", async () => {
+    const manager = createDeferredEmbeddedRunLifecycleManager({
+      runId: "cli-retry",
+      sessionId,
+      sessionKey,
+    });
+    const diagnosticOwner = manager.handoffToCli();
+    markDiagnosticEmbeddedRunStarted({
+      runId: "cli-retry",
+      sessionId,
+      sessionKey,
+      owner: diagnosticOwner,
+    });
+    const deadlineAtMs = Date.now() + 30 * 60 * 60 * 1000;
+    const release = manager.beginRetryWait(deadlineAtMs);
+    expect(release).toEqual(expect.any(Function));
+    const persist = vi.fn(async () => {});
+    const handoff = beginRetryWaitHandoff(persist);
+    try {
+      await handoff.ready;
+      expect(persist).toHaveBeenCalledWith(
+        expect.objectContaining({ runId: "cli-retry", deadlineAtMs }),
+      );
+      expect(manager.signal.aborted).toBe(false);
+      handoff.commit();
+      await release?.();
+      expect(isAgentRunRestartAbortReason(manager.signal.reason)).toBe(true);
+    } finally {
+      handoff.stop();
+      await manager.complete();
+    }
+  });
+
+  it("does not park a retired CLI owner through retained checkpoint callbacks", async () => {
+    const manager = createDeferredEmbeddedRunLifecycleManager({
+      runId: "cli-completed",
+      sessionId,
+      sessionKey,
+    });
+    manager.handoffToCli();
+    await manager.complete();
+    const persist = vi.fn(async () => {});
+    const handoff = beginRetryWaitHandoff(persist);
+    try {
+      await handoff.ready;
+      handoff.commit();
+      await manager.checkpoint();
+      expect(manager.beginRetryWait(Date.now() + 1000)).toBeUndefined();
+      expect(persist).not.toHaveBeenCalled();
+      expect(manager.signal.aborted).toBe(false);
+    } finally {
+      handoff.stop();
+    }
+  });
 });
