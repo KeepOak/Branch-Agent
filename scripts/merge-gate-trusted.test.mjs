@@ -1623,6 +1623,20 @@ test('PR-only named list entry covers a changed test', () => {
   assert.ok(!withList.uncovered.includes('engine/src/pr-only.test.ts'));
 });
 
+test('trusted coverage credits the post-merge generated i18n test through the lint-baselines run line', () => {
+  const generated = 'engine/test/scripts/control-ui-i18n.generated.test.ts';
+  const files = [{ filename: generated, status: 'modified' }];
+  const workflow = readFileSync(new URL('../.github/workflows/desktop-checks.yml', import.meta.url), 'utf8');
+  const lintBaselines = readFileSync(
+    new URL('../.github/workflows/engine-lint-baselines.yml', import.meta.url),
+    'utf8',
+  );
+  assert.ok(coverageFromPrFiles(files, workflow).uncovered.includes(generated));
+  assert.ok(
+    !coverageFromPrFiles(files, workflow, [], '', '', [], lintBaselines).uncovered.includes(generated),
+  );
+});
+
 function prDesktopJob(body) {
   return ['on:\n  pull_request:\njobs:\n  desktop:\n', body].join('');
 }
