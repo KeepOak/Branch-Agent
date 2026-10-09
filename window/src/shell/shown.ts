@@ -7,13 +7,13 @@ import { lookStore } from "../places/settings/set1/appearance-store";
 import type { MenuItem } from "./Menu";
 import { menuIcon } from "./menu-icons";
 
-export type Shown = { usage: boolean; gateway: boolean; statusBar: boolean; projects: boolean; gfx: boolean };
+export type Shown = { usage: boolean; gateway: boolean; statusBar: boolean; projects: boolean; gfx: boolean; pet: boolean };
 
 /** Each part is shown unless its switch is off. */
 export function shownFrom(look: Record<string, unknown>): Shown {
   const on = (key: string) => look[key] !== false;
   // The graphics and memory readout ships off, as in Hermes; only its switch turns it on (the preview's S.hide.gfx).
-  return { usage: on("show.usage"), gateway: on("show.gateway"), statusBar: on("show.statusbar"), projects: on("show.projects"), gfx: look["show.gfx"] === true };
+  return { usage: on("show.usage"), gateway: on("show.gateway"), statusBar: on("show.statusbar"), projects: on("show.projects"), gfx: look["show.gfx"] === true, pet: on("show.pet") };
 }
 
 export function useShown(engine: WindowEngine): Shown {
@@ -23,7 +23,7 @@ export function useShown(engine: WindowEngine): Shown {
 }
 
 /** The parts that hide from a right-click (data-hide="<part>"), as the preview's: its What's shown key for each. */
-export const HIDEABLE: Record<string, string> = { usage: "show.usage", gateway: "show.gateway", projects: "show.projects", gfx: "show.gfx" };
+export const HIDEABLE: Record<string, string> = { usage: "show.usage", gateway: "show.gateway", projects: "show.projects", gfx: "show.gfx", pet: "show.pet" };
 
 /** The part a right-click landed on, or null. */
 export function hideTarget(target: EventTarget | null): string | null {

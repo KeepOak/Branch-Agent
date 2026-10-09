@@ -1148,6 +1148,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       : null;
   const voiceReady = useVoiceCatalog(ready ? session.engine : undefined);
   const pet = usePetLook(session.engine);
+  // Appearance › What's shown › The pet (show.pet) hides the lane; the pet's own Hide pet switches it off the same way.
+  const lanePet = shown.pet ? pet : { ...pet, id: "none" };
+  const setPetShown = (on: boolean) => void lookStore(session.engine).set("show.pet", on);
   const reducedMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
   const pausedTrunks = trunks.list.filter((t) => t.paused);
   const statusExtras = {
@@ -1290,7 +1293,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onOpenSession={openConversation}
           onStart={(start) => void sendNew(start)}
         />
-        <div className={pet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={pet} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={null} /></div>
+        <div className={lanePet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={lanePet} openSettings={openSettings} setShown={setPetShown} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={null} /></div>
         <Composer
           key={draftTopic.nonce}
           {...composerProps}
@@ -1404,7 +1407,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         stage={stage ? (
           <ComputerStage key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} mode={stage} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} initialComputer={stageComputer} initialControl={stageTakeOver} onMode={setStage} onClose={() => { setStage(null); setStageComputer(null); setStageTakeOver(false); }} onChooseComputer={() => openSettings("computer")} onPip={(computer) => { setPip(computer); setStage(null); }} />
         ) : null}
-        pet={<div className={pet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={pet} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={(() => { const w = lists.rows.find((r) => rowState(r).waiting); return w ? trunkName(w.agentId) : null; })()} /></div>}
+        pet={<div className={lanePet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={lanePet} openSettings={openSettings} setShown={setPetShown} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={(() => { const w = lists.rows.find((r) => rowState(r).waiting); return w ? trunkName(w.agentId) : null; })()} /></div>}
         composer={<Composer
           {...composerProps}
           mainKey={mainKeySuffix}

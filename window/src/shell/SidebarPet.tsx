@@ -1,6 +1,8 @@
 // The pet in the chat's lane above the composer; outside a chat it is not mounted.
 import { useEffect, useRef, useState } from "react";
 import { PETS, PIXEL, PixelPet } from "../places/settings/set1/appearance-pet";
+import { Menu, type MenuItem } from "./Menu";
+import { notify } from "./notify";
 
 const TIPS = ["Type @ to call a Trunk into any conversation.", "Ctrl K finds anything, even settings.", "Hover anything to see what it does.", "The ring bottom right shows what each account has left."];
 const STEP_MS = 360;
@@ -11,13 +13,15 @@ export function petWords(waiting: string | null, now = Date.now()): string {
   return waiting ? `${waiting} needs a yes. It’s in your Inbox.` : TIPS[Math.floor(now / 60000) % TIPS.length];
 }
 
-export function SidebarPet({ pet, waiting, still, working = false }: { pet: { id: string; name: string }; waiting: string | null; still: boolean; working?: boolean }) {
+/** The pet's menu: a tip, Change pet (Settings › Appearance › The pet), and Hide pet with Undo. */
+export function SidebarPet({ pet, waiting, still, working = false, openSettings, setShown }: { pet: { id: string; name: string }; waiting: string | null; still: boolean; working?: boolean; openSettings?: (page: string) => void; setShown?: (on: boolean) => void }) {
   const strip = useRef<HTMLDivElement>(null);
   const [x, setX] = useState(0);
   const [dir, setDir] = useState(1);
   const [say, setSay] = useState<string | null>(null);
   const [napping, setNapping] = useState(false);
   const [cheering, setCheering] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [keepStill, setKeepStill] = useState(() => document.documentElement.hasAttribute("data-still"));
   const wasWorking = useRef(false);
   const lastActivity = useRef(Date.now());
@@ -59,15 +63,28 @@ export function SidebarPet({ pet, waiting, still, working = false }: { pet: { id
   }, [say]);
   if (!shown) return null;
   const painted = PETS.find((p) => p.id === pet.id)?.still;
+  const wake = () => { lastActivity.current = Date.now(); setNapping(false); };
+  const tip = () => { wake(); setSay(petWords(waiting)); };
+  const hide = () => {
+    setShown?.(false);
+    notify("Pet hidden. Undo, or turn it on in Appearance › What’s shown.", { action: { label: "Undo", run: () => setShown?.(true) } });
+  };
+  const items: MenuItem[] = [
+    { label: "Show a tip", run: tip, testid: "pet-tip" },
+    { kind: "sep" },
+    { label: "Change pet…", run: () => openSettings?.("appearance"), testid: "pet-change" },
+    { label: "Hide pet", run: hide, testid: "pet-hide" },
+  ];
   return (
     <div className="keeper" ref={strip}>
       <div className={dir < 0 ? "petbox flip" : "petbox"} style={{ transform: `translateX(${8 + x}px)` }} data-hide="pet">
         {say ? <span className="pet-say" role="status">{say}</span> : null}
-        {napping && !still && !keepStill ? <span aria-label="Napping">z</span> : null}
-        <button type="button" className="pet-btn" aria-label={`${pet.name}. Click for a tip.`} onClick={() => { lastActivity.current = Date.now(); setNapping(false); setSay(petWords(waiting)); }}>
+        {napping && !still && !keepStill ? <span className="pet-zz" aria-hidden="true">Zz</span> : null}
+        <button type="button" className="pet-btn" aria-label={`${pet.name}. Tips and options.`} aria-haspopup="menu" onClick={(event) => { wake(); const box = event.currentTarget.getBoundingClientRect(); setMenu({ x: box.left, y: box.top }); }}>
           {painted ? still || keepStill || napping ? <img className="still13" src={painted} alt="" width={44} height={44} draggable={false} /> : <video src={`/assets/pets/${pet.id}-${cheering ? "cheer" : "walk"}.webm`} poster={painted} width={44} height={44} muted autoPlay playsInline loop={!cheering} onLoadedMetadata={(event) => { event.currentTarget.playbackRate = working && !cheering ? 1.5 : 1; }} /> : PIXEL[pet.id] ? <PixelPet p={PIXEL[pet.id]} /> : null}
         </button>
       </div>
+      {menu ? <Menu at={menu} upward label={pet.name} items={items} onClose={() => setMenu(null)} testid="pet-menu" /> : null}
     </div>
   );
 }
