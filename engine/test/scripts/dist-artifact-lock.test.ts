@@ -1,4 +1,5 @@
 import childProcesses from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import os from "node:os";
@@ -65,6 +66,31 @@ it("host admission retries a Windows owner-file deletion race without ignoring r
   fs.writeFileSync(ownerPath, JSON.stringify({ pid: process.pid }));
   pendingDeletion = true;
   await expect(acquireHostHeavyStep("build", { env })).rejects.toMatchObject({ code: "EPERM" });
+});
+
+it("host admission preserves FIFO when requests share a wall-clock millisecond", async () => {
+  const root = createRoot();
+  const env = { BRANCH_HEAVY_STEP_DIRECTORY: root, BRANCH_HEAVY_STEP_BUILD_MEMORY_MB: "8" };
+  const owner = await acquireHostHeavyStep("build", { env });
+  const controller = new AbortController();
+  vi.spyOn(os, "freemem").mockReturnValue(0);
+  vi.spyOn(Date, "now").mockReturnValue(1234567890123);
+  vi.spyOn(crypto, "randomUUID")
+    .mockReturnValueOnce("ffffffff-ffff-4fff-afff-ffffffffffff")
+    .mockReturnValueOnce("00000000-0000-4000-a000-000000000000");
+  syncBuiltinESMExports();
+  const firstWait = vi.fn();
+  const secondWait = vi.fn();
+  const first = acquireHostHeavyStep("build", { env, signal: controller.signal, onWait: firstWait });
+  const second = acquireHostHeavyStep("build", { env, signal: controller.signal, onWait: secondWait });
+  try {
+    expect(firstWait).toHaveBeenCalledWith("Waiting for memory: 1 build ahead");
+    expect(secondWait).toHaveBeenCalledWith("Waiting for memory: 2 builds ahead");
+  } finally {
+    controller.abort();
+    await Promise.allSettled([first, second]);
+    await owner.release();
+  }
 });
 
 it("reclaims a lock retained by a recycled live PID", async () => {

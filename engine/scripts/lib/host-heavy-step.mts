@@ -170,7 +170,8 @@ export async function acquireHostHeavyStep(
   }
   const requests = path.join(root, ".artifacts", "waiting");
   fs.mkdirSync(requests, { recursive: true });
-  const name = `${String(Date.now()).padStart(16, "0")}-${randomUUID()}.json`;
+  const order = String(process.hrtime.bigint()).padStart(24, "0");
+  const name = `${String(Date.now()).padStart(16, "0")}-${order}-${randomUUID()}.json`;
   const request = path.join(requests, name);
   const staging = `${request}.tmp`;
   fs.writeFileSync(
