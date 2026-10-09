@@ -84,6 +84,7 @@ function ToolsSection({ engine, agentId, may, setMay }: { engine: WindowEngine; 
   if (!toolsets.length) return null;
   return (
     <section className="tk-tools" aria-label="Tools">
+      <h4 className="tk-tools-title">Tools</h4>
       <p className="tk-hint">Switch off what this Trunk should never reach. The reply tool, its questions and its status stay on.</p>
       {toolsets.map((t) => t.id === "browser"
         ? <Row key={t.id} title={t.label} hint={t.description} off={may.browseLock || undefined}>
