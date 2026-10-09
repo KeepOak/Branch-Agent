@@ -75,7 +75,8 @@ export type RunEmbeddedAgentInternalParams = RunEmbeddedAgentParams & {
   onRetryWait?: (
     deadlineAtMs: number,
     signal?: AbortSignal,
-  ) => ((completed?: boolean) => void) | undefined;
+  ) => ((completed?: boolean) => void | Promise<void>) | undefined;
+  onHandoffBoundary?: () => void | Promise<void>;
 };
 
 export type EmbeddedRunAttemptInternalParams = EmbeddedRunAttemptParams &

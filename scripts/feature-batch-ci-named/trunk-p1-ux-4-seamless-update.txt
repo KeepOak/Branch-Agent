@@ -1,0 +1,4 @@
+engine:src/agents/command/attempt-execution.cli.test.ts
+engine:src/agents/embedded-agent-runner/run/attempt-prompt-submit.test.ts
+engine:src/agents/embedded-agent-runner/run/deferred-lifecycle-owner.test.ts
+engine:src/agents/main-session-recovery/main-session-restart-recovery.test.ts

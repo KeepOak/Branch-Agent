@@ -1,6 +1,7 @@
 import { closeAuthProfileUsage } from "../agents/auth-profiles/usage-lifecycle.js";
 import { resolveActiveEmbeddedRunSessionId } from "../agents/embedded-agent-runner/active-run-projections.js";
 import { resolveEmbeddedSessionLane } from "../agents/embedded-agent-runner/lanes.js";
+import { beginRetryWaitHandoff } from "../agents/embedded-agent-runner/retry-handoff.js";
 import { createAgentRunRestartAbortError } from "../agents/run-termination.js";
 import { fenceSessionSuspensionWritesForGatewayShutdown } from "../agents/session-suspension.js";
 import { prepareWorktreeRunEndClose } from "../agents/worktrees/run-end-lifecycle.js";
@@ -90,7 +91,10 @@ async function beforeHandoffDeadline<T>(work: Promise<T>, deadline: number): Pro
       work,
       new Promise<never>((_, reject) => {
         timer = setTimeout(
-          () => reject(new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds")),
+          () =>
+            reject(
+              new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds"),
+            ),
           remaining,
         );
       }),
@@ -524,6 +528,7 @@ export async function prepareGatewayLifecycle(params: {
   let deactivation: Promise<void> | undefined;
   let handoffAdmission: ReturnType<typeof tryBeginGatewaySuspendAdmission>;
   let handoffLeases: ReturnType<typeof holdSessionHandoffLeases> | undefined;
+  let retryWaitHandoff: ReturnType<typeof beginRetryWaitHandoff> | undefined;
   const restoreHandoffProducers = async () => {
     await resumeCronReceiptAuthorityHostAfterFailedHandoff();
     await runtimeState.cronState.cron.start();
@@ -538,6 +543,21 @@ export async function prepareGatewayLifecycle(params: {
       if (!handoffAdmission) {
         throw new Error("Gateway handoff could not fence new work");
       }
+      retryWaitHandoff = beginRetryWaitHandoff(async (wait) => {
+        const result = await shutdownRuntime.markRestartAbortedMainSessions({
+          resolveGatewayContext: runtime.resolvePluginGatewayContext,
+          cfg: getRuntimeConfig(),
+          activeRuns: [wait],
+          isActiveRun: () => wait.isCurrent(),
+          onlyActiveRuns: true,
+          retryAtMs: wait.deadlineAtMs,
+          reason: "desktop step-boundary handoff",
+        });
+        if (result.marked === 0 && wait.isCurrent()) {
+          throw new Error("Gateway could not persist the waiting run for handoff");
+        }
+      });
+      await beforeHandoffDeadline(retryWaitHandoff.ready, deadline);
       const busyLanes = () =>
         new Set(
           Array.from(chatAbortControllers.values(), (entry) =>
@@ -579,7 +599,10 @@ export async function prepareGatewayLifecycle(params: {
       if (!handoffAdmission.commit()) {
         throw new Error("Gateway handoff admission was invalidated before state release");
       }
+      retryWaitHandoff.commit();
     })().catch(async (error: unknown) => {
+      retryWaitHandoff?.stop();
+      retryWaitHandoff = undefined;
       if (error instanceof GatewayHandoffFatalError) {
         // Timed-out work may still settle. Keep admission and leases fenced;
         // the run loop must stop this owner instead of racing a rollback.
@@ -616,6 +639,8 @@ export async function prepareGatewayLifecycle(params: {
     }));
   const rollbackDeactivation = async () => {
     await deactivation;
+    retryWaitHandoff?.stop();
+    retryWaitHandoff = undefined;
     handoffLeases?.releaseAll();
     // Rollback is followed by a one-way restart fence in the run loop. Do not
     // briefly admit fresh work against the lock already given to a successor.
@@ -625,6 +650,8 @@ export async function prepareGatewayLifecycle(params: {
   };
   const restoreFailedStateRelease = async () => {
     await deactivation;
+    retryWaitHandoff?.stop();
+    retryWaitHandoff = undefined;
     handoffLeases?.releaseAll();
     let restored = false;
     try {
@@ -799,6 +826,8 @@ export async function prepareGatewayLifecycle(params: {
       // an in-process lifecycle restart can install its own enqueue hook.
       handoffLeases?.releaseAll();
       handoffLeases = undefined;
+      retryWaitHandoff?.stop();
+      retryWaitHandoff = undefined;
     };
   };
   const closeStepOwner = {

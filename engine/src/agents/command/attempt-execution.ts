@@ -825,7 +825,7 @@ export function runAgentAttempt(
     // Hidden internal runs lack an event consumer; visible lanes still feed UI and parent relays.
     suppressLiveStreamOutput:
       params.opts.sessionEffects === "internal" && params.opts.deliver !== true,
-    abortSignal: params.opts.abortSignal,
+    abortSignal: params.deferredLifecycle?.signal ?? params.opts.abortSignal,
     bootstrapContextMode: params.opts.bootstrapContextMode,
     bootstrapContextRunKind: params.opts.bootstrapContextRunKind,
     toolsAllow: runtimeToolsAllow,
@@ -853,6 +853,7 @@ export function runAgentAttempt(
     onDeferredLifecycleOwner: params.deferredLifecycle?.adopt,
     onDeferredLifecycleAbort: params.deferredLifecycle?.abort,
     onRetryWait: params.deferredLifecycle?.beginRetryWait,
+    onHandoffBoundary: params.deferredLifecycle?.checkpoint,
     assistantErrorTranscript: params.assistantErrorTranscript,
     authProfileFailurePolicy: params.authProfileFailurePolicy,
     onUserMessagePersisted: params.onUserMessagePersisted,

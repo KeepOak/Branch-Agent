@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveReplyOperationAbortReason } from "../../../auto-reply/reply/reply-operation-abort.js";
+import { rotateAgentEventLifecycleGeneration } from "../../../infra/agent-events.js";
 import {
   createDiagnosticEmbeddedRunOwner,
   getDiagnosticSessionActivitySnapshot,
@@ -11,6 +12,7 @@ import {
   isAgentRunSupersededAbortReason,
   resolveAgentRunErrorLifecycleFields,
 } from "../../run-termination.js";
+import { beginRetryWaitHandoff } from "../retry-handoff.js";
 import {
   abortEmbeddedAgentRun,
   clearActiveEmbeddedRun,
@@ -269,6 +271,185 @@ describe("deferred logical-turn lifecycle", () => {
       releaseNext?.();
       expect(getDiagnosticSessionActivitySnapshot(ref).activeRetryWaitDeadlineAtMs).toBeUndefined();
     } finally {
+      await manager.complete();
+    }
+  });
+
+  it("parks a distant retry only after its deadline is durable, without aborting a streaming owner", async () => {
+    const waiting = createDeferredEmbeddedRunLifecycleManager({
+      runId: "waiting",
+      sessionId,
+      sessionKey,
+    });
+    const streaming = createDeferredEmbeddedRunLifecycleManager({
+      runId: "streaming",
+      sessionId: "stream-session",
+      sessionKey: "agent:main:stream",
+    });
+    const close = vi.fn();
+    waiting.adopt({ beginRetryWait: () => close, complete: async () => {}, discard: () => {} });
+    streaming.adopt({
+      beginRetryWait: () => undefined,
+      complete: async () => {},
+      discard: () => {},
+    });
+    const deadlineAtMs = Date.now() + 30 * 60 * 60 * 1000;
+    const release = waiting.beginRetryWait(deadlineAtMs);
+    let commit!: () => void;
+    const persisted = new Promise<void>((resolve) => {
+      commit = resolve;
+    });
+    const persist = vi.fn(() => persisted);
+    const handoff = beginRetryWaitHandoff(persist);
+    try {
+      await Promise.resolve();
+      expect(persist).toHaveBeenCalledWith(
+        expect.objectContaining({ runId: "waiting", deadlineAtMs }),
+      );
+      expect(waiting.signal.aborted).toBe(false);
+      const completing = release?.(true);
+      expect(close).not.toHaveBeenCalled();
+      commit();
+      await handoff.ready;
+      handoff.commit();
+      await expect(completing).rejects.toThrow();
+      expect(isAgentRunRestartAbortReason(waiting.signal.reason)).toBe(true);
+      expect(streaming.signal.aborted).toBe(false);
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      handoff.stop();
+      await waiting.complete();
+      await streaming.complete();
+    }
+  });
+
+  it("keeps a retry running if handoff persistence fails", async () => {
+    const manager = createDeferredEmbeddedRunLifecycleManager({
+      runId: "persist-failed",
+      sessionId,
+      sessionKey,
+    });
+    const close = vi.fn();
+    manager.adopt({ beginRetryWait: () => close, complete: async () => {}, discard: () => {} });
+    const release = manager.beginRetryWait(Date.now() + 1000);
+    const handoff = beginRetryWaitHandoff(async () => {
+      throw new Error("store unavailable");
+    });
+    try {
+      await expect(handoff.ready).rejects.toThrow("store unavailable");
+      expect(manager.signal.aborted).toBe(false);
+      await release?.(true);
+      expect(close).toHaveBeenCalledWith(true);
+    } finally {
+      handoff.stop();
+      await manager.complete();
+    }
+  });
+
+  it("parks a retry reached after handoff without cutting off the preceding step", async () => {
+    const manager = createDeferredEmbeddedRunLifecycleManager({
+      runId: "late-retry",
+      sessionId,
+      sessionKey,
+    });
+    manager.adopt({ beginRetryWait: () => () => {}, complete: async () => {}, discard: () => {} });
+    const persist = vi.fn(async () => {});
+    const handoff = beginRetryWaitHandoff(persist);
+    try {
+      await handoff.ready;
+      expect(manager.signal.aborted).toBe(false);
+      expect(persist).not.toHaveBeenCalled();
+      handoff.commit();
+      const release = manager.beginRetryWait(Date.now() + 1000);
+      await release?.();
+      expect(persist).toHaveBeenCalledOnce();
+      expect(isAgentRunRestartAbortReason(manager.signal.reason)).toBe(true);
+    } finally {
+      handoff.stop();
+      await manager.complete();
+    }
+  });
+
+  it.each([true, false])(
+    "retires a prepared retry only when handoff commits (%s)",
+    async (committed) => {
+      const manager = createDeferredEmbeddedRunLifecycleManager({
+        runId: "prepared-wait",
+        sessionId,
+        sessionKey,
+      });
+      const close = vi.fn();
+      manager.adopt({ beginRetryWait: () => close, complete: async () => {}, discard: () => {} });
+      const release = manager.beginRetryWait(Date.now() + 1000);
+      const persist = vi.fn(async () => {});
+      const handoff = beginRetryWaitHandoff(persist);
+      try {
+        await handoff.ready;
+        expect(persist).toHaveBeenCalledOnce();
+        expect(manager.signal.aborted).toBe(false);
+        const completing = release?.(true);
+        expect(close).not.toHaveBeenCalled();
+        if (committed) {
+          handoff.commit();
+          await expect(completing).rejects.toThrow();
+          expect(isAgentRunRestartAbortReason(manager.signal.reason)).toBe(true);
+        } else {
+          handoff.stop();
+          await completing;
+          expect(manager.signal.aborted).toBe(false);
+        }
+        expect(close).toHaveBeenCalledWith(true);
+      } finally {
+        handoff.stop();
+        await manager.complete();
+      }
+    },
+  );
+
+  it("does not persist a retry owned by a retired lifecycle", async () => {
+    const manager = createDeferredEmbeddedRunLifecycleManager({
+      runId: "retired-wait",
+      sessionId,
+      sessionKey,
+    });
+    manager.adopt({ beginRetryWait: () => () => {}, complete: async () => {}, discard: () => {} });
+    const release = manager.beginRetryWait(Date.now() + 1000);
+    rotateAgentEventLifecycleGeneration();
+    const persist = vi.fn(async () => {});
+    const handoff = beginRetryWaitHandoff(persist);
+    try {
+      await handoff.ready;
+      expect(persist).not.toHaveBeenCalled();
+      expect(manager.signal.aborted).toBe(false);
+      handoff.commit();
+      await release?.();
+    } finally {
+      handoff.stop();
+      await manager.complete();
+    }
+  });
+
+  it("hands off a running turn at its next model-step checkpoint", async () => {
+    const manager = createDeferredEmbeddedRunLifecycleManager({
+      runId: "model-step",
+      sessionId,
+      sessionKey,
+    });
+    manager.adopt({ beginRetryWait: () => undefined, complete: async () => {}, discard: () => {} });
+    const persist = vi.fn(async () => {});
+    const handoff = beginRetryWaitHandoff(persist);
+    try {
+      await handoff.ready;
+      expect(manager.signal.aborted).toBe(false);
+      handoff.commit();
+      await expect(manager.checkpoint()).rejects.toThrow();
+      expect(persist).toHaveBeenCalledWith(expect.objectContaining({ runId: "model-step" }));
+      expect(persist).toHaveBeenCalledWith(
+        expect.not.objectContaining({ deadlineAtMs: expect.anything() }),
+      );
+      expect(isAgentRunRestartAbortReason(manager.signal.reason)).toBe(true);
+    } finally {
+      handoff.stop();
       await manager.complete();
     }
   });
