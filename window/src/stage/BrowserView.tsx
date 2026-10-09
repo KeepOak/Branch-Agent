@@ -465,15 +465,17 @@ function BrowserPanel({ engine, gatewayUrl, blocks, name = "It", running = false
                     </button>
                   </div>
                   <form className="br-url-st" onSubmit={(e) => { e.preventDefault(); go(shownAddress); }}>
-                    <button type="button" className="br-nav-st" aria-label="Back" title="Back" disabled={!tab} onClick={() => history("back")}>
+                    {tab ? <>
+                    <button type="button" className="br-nav-st" aria-label="Back" title="Back" onClick={() => history("back")}>
                       <SIcon name="back" small />
                     </button>
-                    <button type="button" className="br-nav-st" aria-label="Forward" title="Forward" disabled={!tab} onClick={() => history("forward")}>
+                    <button type="button" className="br-nav-st" aria-label="Forward" title="Forward" onClick={() => history("forward")}>
                       <SIcon name="forward" small />
                     </button>
-                    <button type="button" className="br-nav-st" aria-label="Reload" title="Reload" disabled={!tab || !url} onClick={() => go(url)}>
+                    <button type="button" className="br-nav-st" aria-label="Reload" title="Reload" onClick={() => go(url || "about:blank")}>
                       <SIcon name="reload" small />
                     </button>
+                    </> : null}
                     <SIcon name="lock" small />
                     <input
                       className="br-addr-st"

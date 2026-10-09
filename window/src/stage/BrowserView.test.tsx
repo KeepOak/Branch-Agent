@@ -84,6 +84,14 @@ afterEach(async () => {
   document.body.innerHTML = "";
 });
 describe("scoped browser viewing", () => {
+  it("hides page navigation when the browser is stopped or has no tabs", async () => {
+    for (const running of [false, true]) {
+      await render(owner(vi.fn(async (_method: string, params: any) => params.path === "/" ? { running } : { tabs: [] }) as any), []);
+      for (const label of ["Back", "Forward", "Reload"]) expect(container.querySelector(`[aria-label="${label}"]`)).toBeNull();
+      expect(container.querySelector<HTMLInputElement>(".br-addr-st")?.disabled).toBe(false);
+      expect(container.querySelector<HTMLButtonElement>('[aria-label="New tab"]')?.disabled).toBe(false);
+    }
+  });
   it("offers an address and New tab before the Trunk has browsed", async () => {
     const request = vi.fn(async () => ({ running: false }));
     await render(owner(request as any), []);
