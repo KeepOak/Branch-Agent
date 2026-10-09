@@ -71,7 +71,10 @@ function child(entry, args, env, execArgv) {
     processChild.once('error', reject);
     processChild.once('exit', (code, signal) => {
       if (code === 0) resolve();
-      else reject(new Error(`Measurement child failed (${code ?? signal}); ${diagnostics.includes('Error') ? 'see private scratch diagnostics' : 'no error detail'}`));
+      else {
+        const stage = [...diagnostics.matchAll(/Scratch gateway: ([a-z ]+)/g)].at(-1)?.[1];
+        reject(new Error(`Measurement child failed (${code ?? signal})${stage ? ` during ${stage}` : ''}`));
+      }
     });
   });
   void exited.catch(() => {});
