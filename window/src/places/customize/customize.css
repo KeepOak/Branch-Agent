@@ -215,3 +215,4 @@
 .get-row .grow { display: grid; min-width: 0; flex: 1; }
 .get-row small { color: var(--ink-3); font-size: 12.5px; line-height: 1.45; overflow-wrap: anywhere; }
 .get-row .cz-acts { display: flex; gap: 6px; flex: none; }
+.get-row .get-perm { color: var(--ink-2); }
