@@ -1,4 +1,3 @@
-// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { Popover } from "../shell/Popover";
