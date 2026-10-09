@@ -11,6 +11,7 @@ import { actionSet, inconsistentOpens, internalNameProblems, rowActionProblems }
 import { compareBaseline, formatGate } from './baseline.mjs';
 import { isInformationalStatus, loadPreviewMap, previewDestinationMatches, threadLayoutDiff } from './preview-map.mjs';
 import { countProblems } from './report.mjs';
+import { isPlusMoreRow, PLUS_POPOVER } from './plus-more.mjs';
 
 const fixture = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'fixtures/preview-map.sample.json'), 'utf8'));
 
@@ -199,4 +200,12 @@ test('preview map counts come from the file and extra or unknown statuses do not
   const gated = countProblems({ 'sidebar :: Back': ['dead'] });
   assert.equal(gated.dead, 1);
   assert.equal(gated['missing-button'], undefined);
+});
+
+test('the + popover More… row opens its own nested screen only from the popover overlay', () => {
+  const overlay = { id: 'chat:a > ' + PLUS_POPOVER, depth: 1, path: [{ name: 'Plus' }, { name: PLUS_POPOVER }] };
+  assert.equal(isPlusMoreRow({ name: 'More…' }, overlay), true);
+  assert.equal(isPlusMoreRow({ name: 'More' }, overlay), false);
+  assert.equal(isPlusMoreRow({ name: 'More…' }, { depth: 0, path: [] }), false);
+  assert.equal(isPlusMoreRow({ name: 'More…' }, { depth: 1, path: [{ name: 'Conversation menu' }] }), false);
 });
