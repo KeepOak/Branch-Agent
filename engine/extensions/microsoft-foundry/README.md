@@ -14,5 +14,5 @@ Choose a deployment from your resource. Model references use
 `microsoft-foundry/<deployment-name>`; public model names alone do not identify
 your deployments. Image generation needs a supported MAI deployment.
 
-See the [Microsoft Foundry reference](https://docs.openclaw.ai/plugins/reference/microsoft-foundry)
+See the [Microsoft Foundry reference](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/reference/microsoft-foundry)
 for resource requirements and image limits.

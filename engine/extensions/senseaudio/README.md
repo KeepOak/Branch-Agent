@@ -16,5 +16,5 @@ Model and language options belong to the audio model configuration.
 This is batch transcription; the plugin does not provide realtime transcription
 or spoken output.
 
-See the [SenseAudio guide](https://docs.openclaw.ai/providers/senseaudio) for a
+See the [SenseAudio guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/senseaudio) for a
 complete configuration example.

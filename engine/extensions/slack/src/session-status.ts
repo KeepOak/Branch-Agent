@@ -44,7 +44,7 @@ export async function setSlackSessionStatus(params: {
       warnedMissingStopSubscription = true;
       (params.runtime ?? defaultRuntime).log?.(
         warn(
-          "Slack's Stop button is unavailable until the app subscribes to agent_session_stopped. See https://docs.openclaw.ai/channels/slack#additional-manifest-settings",
+          "Slack's Stop button is unavailable until the app subscribes to agent_session_stopped. See https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/channels/slack#additional-manifest-settings",
         ),
       );
     }

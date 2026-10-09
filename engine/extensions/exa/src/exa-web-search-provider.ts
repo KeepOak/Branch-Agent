@@ -72,7 +72,7 @@ export function createExaWebSearchProvider(): WebSearchProviderPlugin {
     envVars: ["EXA_API_KEY"],
     placeholder: "exa-...",
     signupUrl: "https://exa.ai/",
-    docsUrl: "https://docs.openclaw.ai/tools/web",
+    docsUrl: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
     autoDetectOrder: 65,
     credentialPath: EXA_CREDENTIAL_PATH,
     ...createWebSearchProviderContractFields({

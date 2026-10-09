@@ -102,10 +102,10 @@ describe("brave web search provider", () => {
 
   it("points provider metadata at the canonical Brave docs page", () => {
     expect(createBraveWebSearchProvider().docsUrl).toBe(
-      "https://docs.openclaw.ai/tools/brave-search",
+      "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/brave-search",
     );
     expect(createBraveWebSearchContractProvider().docsUrl).toBe(
-      "https://docs.openclaw.ai/tools/brave-search",
+      "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/brave-search",
     );
   });
 
@@ -118,7 +118,7 @@ describe("brave web search provider", () => {
       error: "missing_brave_api_key",
       message:
         "web_search (brave) needs a Brave Search API key. Run `branch configure --section web` to store it, or set BRAVE_API_KEY in the Gateway environment. If you do not want to configure a search API key, use web_fetch for a specific URL or the browser tool for interactive pages.",
-      docs: "https://docs.openclaw.ai/tools/web",
+      docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
     });
   });
 
@@ -438,7 +438,7 @@ describe("brave web search provider", () => {
     expect(result).toEqual({
       error: "invalid_date_range",
       message: "date_after must be before date_before.",
-      docs: "https://docs.openclaw.ai/tools/web",
+      docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
     });
   });
 
@@ -567,7 +567,7 @@ describe("brave web search provider", () => {
         query: "invalid filter",
         ...args,
       });
-      expect(result).toEqual({ error, message, docs: "https://docs.openclaw.ai/tools/web" });
+      expect(result).toEqual({ error, message, docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web" });
       expect(mockFetch).not.toHaveBeenCalled();
     },
   );

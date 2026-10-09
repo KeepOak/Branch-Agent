@@ -20,7 +20,7 @@ export default defineSelfHostedOpenAICompatibleProvider({
     buildUnknownModelHint: () =>
       "vLLM requires authentication to be registered as a provider. " +
       'Set VLLM_API_KEY (any value works) or run "branch configure". ' +
-      "See: https://docs.openclaw.ai/providers/vllm",
+      "See: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/vllm",
     resolveThinkingProfile,
     wrapStreamFn: wrapVllmProviderStream,
   },

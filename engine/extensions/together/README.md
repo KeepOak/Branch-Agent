@@ -19,5 +19,5 @@ For video, set your preferred Together model under
 `agents.defaults.mediaModels.video`. Text-to-video and image-to-video support
 depend on the selected model.
 
-See the [Together AI guide](https://docs.openclaw.ai/providers/together) for model
+See the [Together AI guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/together) for model
 selection and supported video inputs.

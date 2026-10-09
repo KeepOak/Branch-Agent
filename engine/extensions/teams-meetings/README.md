@@ -18,7 +18,7 @@ Restart the Gateway after installing or updating the plugin.
 Follow the Teams meetings guide for Chrome profiles, paired nodes, audio
 routing, and guest join setup:
 
-- https://docs.openclaw.ai/plugins/teams-meetings
+- https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/teams-meetings
 
 ## Package
 

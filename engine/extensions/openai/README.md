@@ -19,6 +19,6 @@ Account sign-in is available through onboarding too. Authentication methods have
 different model and capability coverage; configuring chat does not configure
 every media or voice feature.
 
-See the [OpenAI setup guide](https://docs.openclaw.ai/providers/openai/setup) and
-[authentication comparison](https://docs.openclaw.ai/providers/openai/authentication)
+See the [OpenAI setup guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/openai/setup) and
+[authentication comparison](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/openai/authentication)
 to choose the appropriate access method.

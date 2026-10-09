@@ -9,4 +9,4 @@ branch plugins install @branch/cerebras-provider
 branch gateway restart
 ```
 
-See <https://docs.openclaw.ai/providers/cerebras> for setup and configuration.
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/cerebras> for setup and configuration.

@@ -23,7 +23,7 @@ Restart the Gateway after installing or updating the plugin.
 
 Use the memory plugin docs for embedding provider setup, storage paths, indexing, and recall behavior:
 
-- <https://docs.openclaw.ai/plugins/memory-lancedb>
+- <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/memory-lancedb>
 
 ## Package
 

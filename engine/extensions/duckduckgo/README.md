@@ -9,4 +9,4 @@ branch plugins install @branch/duckduckgo-plugin
 branch gateway restart
 ```
 
-See <https://docs.openclaw.ai/tools/duckduckgo-search> for setup and configuration.
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/duckduckgo-search> for setup and configuration.

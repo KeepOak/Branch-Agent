@@ -9,4 +9,4 @@ branch plugins install @branch/parallel-plugin
 branch gateway restart
 ```
 
-See <https://docs.openclaw.ai/tools/parallel-search> for setup and configuration.
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/parallel-search> for setup and configuration.

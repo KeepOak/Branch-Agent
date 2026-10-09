@@ -10,4 +10,4 @@ branch gateway restart
 ```
 
 Set `VYDRA_API_KEY`, then configure an image, video, or speech model. See
-<https://docs.openclaw.ai/providers/vydra> for capability details and examples.
+<https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/vydra> for capability details and examples.

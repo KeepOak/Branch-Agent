@@ -71,6 +71,6 @@ branch message send \
   lookup in group rooms.
 - Not yet supported: DMs, media, reactions, or creating rooms from Branch Agent.
 
-Full documentation: https://docs.openclaw.ai/channels/buzz
+Full documentation: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/channels/buzz
 
 Package: `@branch/buzz` · Plugin ID: `buzz`

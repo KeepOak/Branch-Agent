@@ -10,7 +10,7 @@ export function registerMatrixCli(params: { program: Command }): void {
   const root = params.program
     .command("matrix")
     .description("Matrix channel utilities")
-    .addHelpText("after", () => "\nDocs: https://docs.openclaw.ai/channels/matrix\n");
+    .addHelpText("after", () => "\nDocs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/channels/matrix\n");
 
   registerMatrixAccountCommands(root);
   registerMatrixProfileCommands(root);

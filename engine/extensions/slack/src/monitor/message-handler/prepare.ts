@@ -102,7 +102,7 @@ const SLACK_USER_MENTION_RE = /<@([^>|]+)(?:\|[^>]+)?>/g;
 const SLACK_SUBTEAM_MENTION_RE = /<!subteam\^([^>|]+)(?:\|[^>]+)?>/g;
 const SLACK_SUBTEAM_MENTION_MARKER = "<!subteam^";
 const SLACK_CHANNEL_ACCESS_DOCS_URL =
-  "https://docs.openclaw.ai/channels/slack#access-control-and-routing";
+  "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/channels/slack#access-control-and-routing";
 
 function mergeSlackAssistantThreadContext(
   primary: Omit<SlackAssistantThreadContext, "updatedAt"> | undefined,

@@ -17,5 +17,5 @@ with `branch models list --provider huggingface`, then choose a model your
 account can access.
 
 Model availability and supported inputs depend on the selected inference
-provider. See the [Hugging Face guide](https://docs.openclaw.ai/providers/huggingface)
+provider. See the [Hugging Face guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/huggingface)
 for token setup, routing, and model configuration.

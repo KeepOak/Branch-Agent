@@ -10,5 +10,5 @@ branch gateway restart
 ```
 
 Set `VOYAGE_API_KEY`, then configure memory search with `provider: "voyage"`.
-See <https://docs.openclaw.ai/reference/memory-config> for setup and
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/reference/memory-config> for setup and
 configuration.

@@ -68,7 +68,7 @@ export function createParallelWebSearchProvider(): WebSearchProviderPlugin {
     envVars: ["PARALLEL_API_KEY"],
     placeholder: "par-...",
     signupUrl: "https://platform.parallel.ai",
-    docsUrl: "https://docs.openclaw.ai/tools/parallel-search",
+    docsUrl: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/parallel-search",
     autoDetectOrder: 75,
     credentialPath: PARALLEL_CREDENTIAL_PATH,
     ...createWebSearchProviderContractFields({

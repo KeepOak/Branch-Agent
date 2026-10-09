@@ -16,5 +16,5 @@ agents should be advertised.
 Peers can submit text tasks, not operator slash commands. Streaming, file
 transfer, and task cancellation are not supported.
 
-See the [A2A guide](https://docs.openclaw.ai/channels/a2a) for configuration,
+See the [A2A guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/channels/a2a) for configuration,
 authentication, and task polling.

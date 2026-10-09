@@ -19,5 +19,5 @@ This is a full operator surface. Keep it on loopback, a tailnet, or a trusted
 private ingress; do not expose it directly to the public internet. The route
 is absent while the plugin is disabled.
 
-See the [Admin HTTP RPC guide](https://docs.openclaw.ai/plugins/admin-http-rpc)
+See the [Admin HTTP RPC guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/admin-http-rpc)
 for authentication, allowed methods, and request examples.

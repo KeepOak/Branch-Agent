@@ -13,5 +13,5 @@ state directory, and configuration as its Gateway.
 Pair it with the receiver using the guide's two-command allowlist for session
 listings and reads. The source must stay connected for browsing.
 
-See the [Session Share guide](https://docs.openclaw.ai/plugins/session-share) for
+See the [Session Share guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/session-share) for
 pairing, viewer permissions, and sharing boundaries.

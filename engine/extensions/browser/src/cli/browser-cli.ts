@@ -161,10 +161,7 @@ export function registerBrowserCli(
         `\n${theme.heading("Examples:")}\n${formatHelpExamples(
           [...browserCoreExamples, ...browserActionExamples].map((cmd) => [cmd, ""]),
           true,
-        )}\n\n${theme.muted("Docs:")} ${formatDocsLink(
-          "/cli/browser",
-          "docs.openclaw.ai/cli/browser",
-        )}\n`,
+        )}\n\n${theme.muted("Docs:")} ${formatDocsLink("/cli/browser")}\n`,
     )
     .action(() => {
       browser.outputHelp();

@@ -47,7 +47,7 @@ path to avoid resolving it relative to an agent workspace.
 
 Use the OpenShell docs for credentials, workspace mirroring, runtime selection, and troubleshooting:
 
-- https://docs.openclaw.ai/gateway/openshell
+- https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/openshell
 
 ## Package
 

@@ -20,5 +20,5 @@ Policy reports configuration drift; it does not enforce individual tool calls
 or prove that stored content contains no sensitive data. Workspace repairs
 require the plugin's explicit repair setting.
 
-See the [Policy guide](https://docs.openclaw.ai/cli/policy) for authoring rules,
+See the [Policy guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli/policy) for authoring rules,
 scope selection, and interpreting findings.

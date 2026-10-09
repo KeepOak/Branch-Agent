@@ -18,7 +18,7 @@ Enable the plugin, set `diagnostics.otel.enabled` to `true`, and set the collect
 
 The full config surface, metric names, span names, and collector examples live in the docs:
 
-- https://docs.openclaw.ai/gateway/opentelemetry
+- https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/opentelemetry
 
 ## Package
 

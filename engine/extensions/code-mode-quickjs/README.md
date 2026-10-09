@@ -16,5 +16,5 @@ denied. Guest isolation does not remove permissions from tools exposed through
 the bridge; normal tool policy and approvals still apply. Suspended cells do
 not survive Gateway restarts.
 
-See [Code Mode executors](https://docs.openclaw.ai/tools/code-mode/executors) for
+See [Code Mode executors](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/code-mode/executors) for
 selection, execution limits, and security boundaries.

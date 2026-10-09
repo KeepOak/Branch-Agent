@@ -20,5 +20,5 @@ Branch Agent state before making changes.
 Hermes plugins, sessions, and scheduled jobs are not activated automatically.
 Credential import has a separate consent step.
 
-See [Migrating from Hermes](https://docs.openclaw.ai/install/migrating-hermes) for
+See [Migrating from Hermes](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/install/migrating-hermes) for
 coverage, conflicts, and credential handling.

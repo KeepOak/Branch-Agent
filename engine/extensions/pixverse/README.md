@@ -18,7 +18,7 @@ Store your PixVerse API key in Branch Agent config or expose the supported envir
 
 Full setup and model/provider examples:
 
-- https://docs.openclaw.ai/providers/pixverse
+- https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/pixverse
 
 ## Package
 

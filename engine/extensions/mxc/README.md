@@ -108,7 +108,7 @@ help stay in sync with plugin runtime validation.
 Use an already configured Branch Agent installation with MXC installed and enabled
 on a supported Windows host. These commands create a uniquely named test agent
 and a new temporary workspace, leaving existing agents and workspaces alone.
-[`branch config patch --stdin`](https://docs.openclaw.ai/cli/config#config-patch)
+[`branch config patch --stdin`](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli/config#config-patch)
 applies sandbox settings only to that agent. Installation-wide MXC settings
 and policy files remain unchanged; review them before testing because they
 apply to the test agent too.

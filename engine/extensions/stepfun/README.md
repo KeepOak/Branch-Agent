@@ -9,4 +9,4 @@ branch plugins install @branch/stepfun-provider
 branch gateway restart
 ```
 
-See <https://docs.openclaw.ai/providers/stepfun> for setup and configuration.
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/stepfun> for setup and configuration.

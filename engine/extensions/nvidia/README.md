@@ -19,5 +19,5 @@ your agent.
 This plugin calls NVIDIA's hosted service; it does not install local GPU models.
 Catalog entries and supported inputs depend on NVIDIA's current inventory.
 
-See the [NVIDIA guide](https://docs.openclaw.ai/providers/nvidia) for authentication
+See the [NVIDIA guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/nvidia) for authentication
 and model selection.

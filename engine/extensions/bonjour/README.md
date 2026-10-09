@@ -15,5 +15,5 @@ branch plugins enable bonjour
 Devices must be on a network that permits multicast discovery. Server and
 container deployments can use a known Gateway address instead.
 
-See the [Bonjour guide](https://docs.openclaw.ai/gateway/bonjour) for discovery
+See the [Bonjour guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/bonjour) for discovery
 settings, network requirements, and troubleshooting.

@@ -17,5 +17,5 @@ select one for your agent. Enterprise accounts can use the dedicated Enterprise
 login option.
 
 This is the model provider; the separate Copilot SDK harness plugin runs native
-Copilot agent sessions. See the [GitHub Copilot guide](https://docs.openclaw.ai/providers/github-copilot)
+Copilot agent sessions. See the [GitHub Copilot guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/github-copilot)
 for both options and account requirements.

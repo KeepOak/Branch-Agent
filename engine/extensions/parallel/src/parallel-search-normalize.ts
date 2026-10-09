@@ -204,7 +204,7 @@ function invalidSearchQueriesPayload() {
     error: "invalid_search_queries",
     message:
       "search_queries must be a non-empty array of keyword strings (max 5, max 200 chars each). See https://docs.parallel.ai/search/best-practices.",
-    docs: "https://docs.openclaw.ai/tools/parallel-search",
+    docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/parallel-search",
   };
 }
 

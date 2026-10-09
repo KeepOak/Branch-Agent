@@ -3,8 +3,8 @@
 Experimental FaceTime carrier plugin for a dedicated Apple Silicon
 Mac. The public setup, security, operation, and removal guides are:
 
-- <https://docs.openclaw.ai/plugins/facetime>
-- <https://docs.openclaw.ai/plugins/facetime-recovery>
+- <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/facetime>
+- <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/facetime-recovery>
 
 Install the plugin from npm. Its signed and notarized native helpers are released
 separately from `branch/branch-facetime`:
