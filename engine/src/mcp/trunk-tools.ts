@@ -392,7 +392,14 @@ function registerTrunkWriteTools(
           label: title ?? text.slice(0, 60),
         });
       }
-      const sent = await chatSend(gw, opts, { sessionKey: key, agentId: agent_id, message: text });
+      // A send queues behind the thread's active run. It never starts a parallel run, whatever
+      // queue mode the session or config sets. trunk_steer is the path that joins the run.
+      const sent = await chatSend(gw, opts, {
+        sessionKey: key,
+        agentId: agent_id,
+        message: text,
+        queueMode: "followup",
+      });
       return ok(`sent to ${key}`, {
         thread_key: key,
         run_id: sent.runId ?? null,
