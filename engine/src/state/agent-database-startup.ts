@@ -102,7 +102,9 @@ const MAX_PREPARATION_ATTEMPT_MS = 600_000;
 
 function preparationAttemptLimitMs(env: NodeJS.ProcessEnv): number {
   const configured = Number(env.BRANCH_AGENT_PREPARATION_ATTEMPT_MS);
-  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_PREPARATION_ATTEMPT_MS;
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : DEFAULT_PREPARATION_ATTEMPT_MS;
 }
 
 const DEFAULT_FIRST_RETRY_MS = 2_000;
@@ -112,6 +114,12 @@ const MAX_RETRY_MS = 60_000;
  * from scratch. The backoff has reached its one-minute ceiling by then (2, 4, 8, 16, 32, 60 s).
  */
 const FAILURES_BEFORE_RESTART = 6;
+/**
+ * From-scratch restarts startup makes on its own. When the restarted preparation fails as often
+ * again (about four minutes in all), the agent stops retrying and waits for a retry request: its
+ * status says it needs a restart instead of retrying the same failure every minute for hours.
+ */
+const AUTOMATIC_RESTARTS = 1;
 
 function firstRetryMs(env: NodeJS.ProcessEnv): number {
   const configured = Number(env.BRANCH_AGENT_PREPARATION_RETRY_MS);
@@ -120,6 +128,19 @@ function firstRetryMs(env: NodeJS.ProcessEnv): number {
 
 const log = createSubsystemLogger("state/agent-admission");
 const startupAdmission = new AsyncLocalStorage<AgentDatabaseStartupAdmission>();
+/** Admissions the running Gateway adopted; a retry request reaches their pending agents. */
+const adoptedAdmissions = new Set<AgentDatabaseStartupAdmission>();
+
+/** Resolves when the signal aborts; a preparation that needs a restart waits here for a retry request. */
+function untilAborted(signal: AbortSignal): Promise<never> {
+  return new Promise((_, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+  });
+}
 
 /** Startup owns readers until the Gateway adopts them; only the Gateway activates agents. */
 class AgentDatabaseStartupAdmission {
@@ -370,7 +391,9 @@ class AgentDatabaseStartupAdmission {
                           paths,
                           attemptLimitMs,
                         });
-                        controller.abort(new Error(`Agent ${agentId} preparation watchdog expired`));
+                        controller.abort(
+                          new Error(`Agent ${agentId} preparation watchdog expired`),
+                        );
                       }, attemptLimitMs);
                       timer.unref?.();
                       try {
@@ -437,25 +460,32 @@ class AgentDatabaseStartupAdmission {
                   continue;
                 }
                 failures += 1;
-                const status = {
+                const counts = {
                   failures: (refusal.preparation?.failures ?? 0) + 1,
                   restarts: refusal.preparation?.restarts ?? 0,
                 };
-                refusal.preparation = status;
-                const reason = formatErrorMessage(error);
                 const restart = failures >= FAILURES_BEFORE_RESTART;
+                const needsRestart = restart && counts.restarts >= AUTOMATIC_RESTARTS;
+                refusal.preparation = {
+                  state: needsRestart ? "needs-restart" : "retrying",
+                  ...counts,
+                };
+                const reason = formatErrorMessage(error);
                 log.warn(
-                  restart
-                    ? "agent database startup preparation keeps failing; starting it again from scratch"
-                    : "agent database startup preparation failed; retrying",
+                  needsRestart
+                    ? "agent database startup preparation keeps failing; it waits for a retry request"
+                    : restart
+                      ? "agent database startup preparation keeps failing; starting it again from scratch"
+                      : "agent database startup preparation failed; retrying",
                   { agentId, paths, reason, retryDelayMs, failures },
                 );
                 const wake = new AbortController();
                 this.wakers.set(agentId, () => wake.abort());
                 try {
-                  await delay(retryDelayMs, undefined, {
-                    signal: AbortSignal.any([this.signal, wake.signal]),
-                  });
+                  const waitSignal = AbortSignal.any([this.signal, wake.signal]);
+                  await (needsRestart
+                    ? untilAborted(waitSignal)
+                    : delay(retryDelayMs, undefined, { signal: waitSignal }));
                 } catch (waitError) {
                   if (!wake.signal.aborted || this.signal.aborted) {
                     throw waitError;
@@ -466,7 +496,11 @@ class AgentDatabaseStartupAdmission {
                 }
                 if (restart || wake.signal.aborted) {
                   restartFromScratch();
-                  refusal.preparation = { ...status, restarts: status.restarts + 1 };
+                  refusal.preparation = {
+                    state: "retrying",
+                    failures: counts.failures,
+                    restarts: counts.restarts + 1,
+                  };
                 } else {
                   retryDelayMs = Math.min(retryDelayMs * 2, MAX_RETRY_MS);
                 }
@@ -501,6 +535,7 @@ class AgentDatabaseStartupAdmission {
       throw new Error("Agent database startup admission already belongs to a Gateway");
     }
     this.adopted = true;
+    adoptedAdmissions.add(this);
     return { stop: () => this.stop() };
   }
 
@@ -521,6 +556,7 @@ class AgentDatabaseStartupAdmission {
   stop(): Promise<void> {
     return (this.stopping ??= (async () => {
       this.stopped = true;
+      adoptedAdmissions.delete(this);
       this.preparedSchemaHeaders = undefined;
       this.controller.abort(new Error("Gateway stopped during agent database inspection"));
       this.activation.resolve(undefined);
@@ -529,6 +565,19 @@ class AgentDatabaseStartupAdmission {
       }
     })());
   }
+}
+
+/**
+ * Starts a pending agent's failed startup preparation again from scratch now, in the running
+ * Gateway. False when that agent is not waiting to retry (ready, still on its first attempt, or
+ * failed for a reason only Doctor can repair).
+ */
+export function retryAgentDatabaseStartupPreparation(agentId: string): boolean {
+  let retried = false;
+  for (const admission of adoptedAdmissions) {
+    retried = admission.retryNow(agentId) || retried;
+  }
+  return retried;
 }
 
 export function getAgentDatabaseStartupAdmission(): AgentDatabaseStartupAdmission | undefined {

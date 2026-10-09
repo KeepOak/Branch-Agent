@@ -308,6 +308,7 @@ describe("listGatewayMethods", () => {
       "backup.schedule.set",
       "backup.schedule.clear",
       "backup.run",
+      "agents.retryStartup",
     ];
     expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
     const methods = listGatewayMethods();
@@ -421,6 +422,7 @@ describe("listGatewayMethods", () => {
       "backup.schedule.set",
       "backup.schedule.clear",
       "backup.run",
+      "agents.retryStartup",
     ]);
   });
 
@@ -668,6 +670,7 @@ describe("listGatewayMethods", () => {
       "backup.schedule.set",
       "backup.schedule.clear",
       "backup.run",
+      "agents.retryStartup",
     ];
     expect(coreMethods.slice(-expectedCoreSuffix.length)).toEqual(expectedCoreSuffix);
     expect(methods.indexOf("approval.get")).toBeGreaterThan(methods.indexOf("tts.speak"));

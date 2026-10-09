@@ -5,7 +5,10 @@ import {
   readAgentDatabaseAdmissionRefusal,
   recordAgentDatabaseAdmissions,
 } from "./agent-database-admission.js";
-import { withAgentDatabaseStartupAdmission } from "./agent-database-startup.js";
+import {
+  retryAgentDatabaseStartupPreparation,
+  withAgentDatabaseStartupAdmission,
+} from "./agent-database-startup.js";
 import {
   closeBranchAgentDatabasesAsync,
   closeBranchAgentDatabasesForTest,
@@ -54,11 +57,17 @@ async function startDeferredPreparation(
 describe("agent database startup preparation that keeps failing", () => {
   it("backs off, then starts the preparation again from scratch instead of retrying it forever", async () => {
     let calls = 0;
+    let release!: () => void;
+    const restarted = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const prepareAgent = vi.fn(async () => {
       calls += 1;
       if (calls <= 6) {
         throw new Error(NOT_PUBLISHED);
       }
+      // The restarted attempt holds until the test has read the status it left.
+      await restarted;
     });
     const started = await startDeferredPreparation(prepareAgent, {
       BRANCH_AGENT_PREPARATION_RETRY_MS: "10",
@@ -71,10 +80,11 @@ describe("agent database startup preparation that keeps failing", () => {
             readAgentDatabaseAdmissionRefusal(started.agentId, { env: started.env }),
           ).toMatchObject({
             code: "agent-database-inspection-pending",
-            preparation: { failures: 6, restarts: 1 },
+            preparation: { state: "retrying", failures: 6, restarts: 1 },
           }),
         { timeout: 10000 },
       );
+      release();
       await vi.waitFor(
         () =>
           expect(
@@ -83,6 +93,49 @@ describe("agent database startup preparation that keeps failing", () => {
         { timeout: 10000 },
       );
       expect(prepareAgent).toHaveBeenCalledTimes(7);
+    } finally {
+      await started.stop();
+    }
+  });
+
+  it("stops retrying once the restarted preparation fails as often again, and says it needs a restart", async () => {
+    let fail = true;
+    const prepareAgent = vi.fn(async () => {
+      if (fail) {
+        throw new Error(NOT_PUBLISHED);
+      }
+    });
+    const started = await startDeferredPreparation(prepareAgent, {
+      BRANCH_AGENT_PREPARATION_RETRY_MS: "5",
+    });
+    try {
+      await vi.waitFor(
+        () =>
+          expect(
+            readAgentDatabaseAdmissionRefusal(started.agentId, { env: started.env }),
+          ).toMatchObject({
+            code: "agent-database-inspection-pending",
+            preparation: { state: "needs-restart", failures: 12, restarts: 1 },
+          }),
+        { timeout: 10000 },
+      );
+      // No timer retries it any more: well past the backoff it has still been tried 12 times.
+      await new Promise((resolve) => {
+        setTimeout(resolve, 200);
+      });
+      expect(prepareAgent).toHaveBeenCalledTimes(12);
+      // The window's Retry (agents.retryStartup) starts it again from scratch.
+      fail = false;
+      expect(retryAgentDatabaseStartupPreparation(started.agentId)).toBe(true);
+      await vi.waitFor(
+        () =>
+          expect(
+            readAgentDatabaseAdmissionRefusal(started.agentId, { env: started.env }),
+          ).toBeUndefined(),
+        { timeout: 10000 },
+      );
+      expect(prepareAgent).toHaveBeenCalledTimes(13);
+      expect(retryAgentDatabaseStartupPreparation(started.agentId)).toBe(false);
     } finally {
       await started.stop();
     }
