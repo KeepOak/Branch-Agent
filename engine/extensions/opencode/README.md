@@ -13,4 +13,4 @@ branch gateway restart
 ## Docs
 
 See `docs/providers/opencode.md` in the Branch Agent repository, or the published
-docs at `https://docs.openclaw.ai/providers/opencode`.
+docs at `https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/opencode`.

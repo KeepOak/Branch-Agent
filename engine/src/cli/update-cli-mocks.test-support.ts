@@ -240,7 +240,7 @@ vi.mock("../infra/update-runner-git.js", () => ({
 }));
 
 vi.mock("../state/branch-database-preflight.js", () => ({
-  BRANCH_DATABASE_SCHEMA_DOCS_URL: "https://docs.openclaw.ai/reference/database-schemas",
+  BRANCH_DATABASE_SCHEMA_DOCS_URL: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/reference/database-schemas",
   preflightBranchDatabaseSchemas: databasePreflightMocks.preflightBranchDatabaseSchemas,
 }));
 

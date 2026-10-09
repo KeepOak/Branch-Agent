@@ -9,4 +9,4 @@ branch plugins install @branch/chutes-provider
 branch gateway restart
 ```
 
-See <https://docs.openclaw.ai/providers/chutes> for setup and configuration.
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/chutes> for setup and configuration.

@@ -13,5 +13,5 @@ replies, or try `/tts audio Hello from Branch Agent` for a one-off reply.
 The service requires network access and is best-effort, without a published SLA.
 Use the separate Azure Speech plugin when you need an Azure Speech resource.
 
-See [speech configuration](https://docs.openclaw.ai/tools/tts/configuration) for
+See [speech configuration](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/tts/configuration) for
 the Microsoft preset and voice options.

@@ -14,7 +14,7 @@ Restart the Gateway after installing or updating the plugin.
 
 - Trellis is a standalone workflow shell (typed JSON-first pipelines + approval/input checkpoints).
 - This plugin integrates Trellis with Branch Agent _without core changes_.
-- Input checkpoints return the question and schema; resume with `responseJson` containing the user's answer as JSON. See [structured input](https://docs.openclaw.ai/tools/lobster#structured-input).
+- Input checkpoints return the question and schema; resume with `responseJson` containing the user's answer as JSON. See [structured input](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/lobster#structured-input).
 
 ## Enable
 
@@ -84,7 +84,7 @@ Notes:
 
 ## Docs
 
-- https://docs.openclaw.ai/tools/lobster
+- https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/lobster
 
 ## Package
 

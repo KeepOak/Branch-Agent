@@ -125,7 +125,7 @@ export function renderTriagePrompt(params: {
     return severity || left.checkId.localeCompare(right.checkId);
   });
   const lines = [
-    "You are repairing THIS machine's Branch Agent installation. Diagnose the root cause, apply the repair autonomously within your existing permissions, and verify the result. Preserve configuration, history, and databases. Use read-only `branch doctor --lint --json`, `branch status --all`, and `branch logs` for diagnostics. Product documentation: https://docs.openclaw.ai.",
+    "You are repairing THIS machine's Branch Agent installation. Diagnose the root cause, apply the repair autonomously within your existing permissions, and verify the result. Preserve configuration, history, and databases. Use read-only `branch doctor --lint --json`, `branch status --all`, and `branch logs` for diagnostics. Product documentation: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs.",
     "",
     "## Environment",
     "",

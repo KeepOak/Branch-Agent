@@ -158,7 +158,7 @@ export async function handleBashChatCommand(params: {
     return buildDisabledCommandReply({
       label: "bash",
       configKey: "bash",
-      docsUrl: "https://docs.openclaw.ai/tools/slash-commands#configuration",
+      docsUrl: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/slash-commands#configuration",
     });
   }
 

@@ -293,7 +293,7 @@ function formatFullAccessBlockedReason(reason?: EmbeddedFullAccessBlockedReason)
 
 const MODEL_IDENTITY_PREFIX = "Current model identity:";
 
-/** In-repo docs on GitHub. Branch has no hosted docs site equivalent of docs.openclaw.ai. */
+/** In-repo docs on GitHub. Branch has no hosted docs site; its docs live in the repository. */
 const BRANCH_AGENT_DOCS_URL = "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs";
 const BRANCH_AGENT_SOURCE_URL = "https://github.com/KeepOak/Branch-Agent";
 

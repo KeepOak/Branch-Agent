@@ -7,7 +7,7 @@
   "author": {
     "name": "Branch Agent"
   },
-  "homepage": "https://docs.openclaw.ai/plugins/github",
+  "homepage": "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/github",
   "repository": {
     "type": "git",
     "url": "https://github.com/openclaw/openclaw",

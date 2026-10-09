@@ -9,4 +9,4 @@ branch plugins install @branch/deepinfra-provider
 branch gateway restart
 ```
 
-See <https://docs.openclaw.ai/providers/deepinfra> for setup and configuration.
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/deepinfra> for setup and configuration.

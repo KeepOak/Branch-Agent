@@ -36,7 +36,7 @@ Custom GGUF models remain supported through `params.modelPath`. Rerun llama.cpp
 setup after changing the model so Branch Agent can verify the file and regenerate
 the managed router preset.
 
-See the [llama.cpp provider guide](https://docs.openclaw.ai/plugins/llama-cpp)
+See the [llama.cpp provider guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/llama-cpp)
 for platform requirements, custom GGUF configuration, diagnostics, and repair.
 
 ## Connect to an existing server
@@ -45,7 +45,7 @@ Choose **Existing llama-server** during setup and enter the endpoint and
 optional API key. Branch Agent passively discovers single-model and router catalogs.
 It never installs, starts, stops, or reconfigures the external process.
 
-See the [llama.cpp provider guide](https://docs.openclaw.ai/plugins/llama-cpp)
+See the [llama.cpp provider guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/llama-cpp)
 for authentication, router behavior, manual configuration, and troubleshooting.
 
 ## Configure embeddings

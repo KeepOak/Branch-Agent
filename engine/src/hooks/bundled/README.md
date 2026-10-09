@@ -4,9 +4,9 @@ These internal hooks ship with Branch Agent. They subscribe to colon-separated e
 such as `command:new`; they are not typed plugin hooks or HTTP webhooks.
 
 For setup, custom hook authoring, event payloads, discovery precedence, and
-troubleshooting, use the canonical [Hooks guide](https://docs.openclaw.ai/automation/hooks).
+troubleshooting, use the canonical [Hooks guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/automation/hooks).
 For command flags and Gateway targeting, see the
-[hooks CLI reference](https://docs.openclaw.ai/cli/hooks).
+[hooks CLI reference](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli/hooks).
 
 ## Available hooks
 
@@ -19,7 +19,7 @@ For command flags and Gateway targeting, see the
 | [session-memory](session-memory/HOOK.md)               | `command:new`, `command:reset`, `session:auto-reset` | Saves recent conversation excerpts in `<workspace>/memory/`; timestamp filenames by default, optional model-generated slugs. |
 
 The default state directory is `~/.branch`. Agent workspaces can differ; see
-[Agent workspace](https://docs.openclaw.ai/concepts/agent-workspace).
+[Agent workspace](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/concepts/agent-workspace).
 
 ## Enable and verify
 
@@ -53,7 +53,7 @@ persisted hook entry is global, not an agent-specific enablement setting.
 Each bundled hook has a `HOOK.md` descriptor and a `handler.ts` default export.
 `metadata.branch.events` declares subscriptions. Custom hooks can also use
 `handler.js`, `index.ts`, or `index.js`; see the
-[authoring guide](https://docs.openclaw.ai/automation/hooks#writing-hooks) for a
+[authoring guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/automation/hooks#writing-hooks) for a
 complete example without repository-private imports.
 
 Keep descriptors, handlers, and the public guide aligned when changing a
@@ -61,6 +61,6 @@ contract. Do not duplicate the event catalog or config reference in this README.
 
 Internal handlers run as trusted code in the Gateway process, not in the agent
 sandbox. Keep work bounded, handle sensitive message content carefully, and use
-[typed plugin hooks and services](https://docs.openclaw.ai/plugins/hooks) for
+[typed plugin hooks and services](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/hooks) for
 policy decisions or long-lived resources. Pushing to `event.messages` produces a
 reply only on the replyable event paths documented in the Hooks guide.

@@ -19,7 +19,7 @@ Restart the Gateway after installing or updating the plugin.
 Follow the iMessage guide for installing `imsg`, granting macOS permissions,
 enabling private API actions, and configuring local or remote-Mac operation:
 
-- https://docs.openclaw.ai/channels/imessage
+- https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/channels/imessage
 
 ## Package
 

@@ -7,7 +7,7 @@ timeouts, reconnect backoff, device-token handling, and event delivery.
 
 The current wire protocol is version 4. General clients must advertise exactly v4 with
 `minProtocol: 4` and `maxProtocol: 4`. See the
-[Gateway protocol specification](https://docs.openclaw.ai/gateway/protocol) for
+[Gateway protocol specification](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/protocol) for
 the complete handshake, authentication, role, scope, and method contracts.
 Exact node identities (`role: "node"` plus `mode: "node"`) and probe clients
 can use v3. The built-in node host starts with an exact v4 envelope, then retries
@@ -31,7 +31,7 @@ Use the verified stable release with exact pins:
 npm install --save-exact @branch/gateway-client@2026.8.1 @branch/gateway-protocol@2026.8.1
 ```
 
-See the canonical [installation guide](https://docs.openclaw.ai/gateway/clients#install-the-packages)
+See the canonical [installation guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/clients#install-the-packages)
 for package/wire-version rules and recovery from reserved `0.0.0` artifacts.
 Test it with the Gateway version you deploy; the root `branch` CLI has its own
 package versions and dist-tags.
@@ -127,7 +127,7 @@ Gateway accepts a compatible connection, so requests should wait for that callba
 This loopback example uses the default `gateway-client` / `backend` identity.
 It is not a device-pairing example. UI clients should declare their actual `mode`
 and supply the device-auth host callbacks described above; see
-[device identity and pairing](https://docs.openclaw.ai/gateway/protocol#device-identity-and-pairing).
+[device identity and pairing](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/protocol#device-identity-and-pairing).
 
 For remote connections, prefer `wss://`. The Node client also accepts plaintext
 `ws://` by default for loopback, private/link-local/CGNAT IP addresses, and
@@ -183,7 +183,7 @@ also refresh durable state and restore their session subscriptions.
 
 The canonical defaults table and the server policy fields that can replace
 pre-handshake values are documented in the
-[Gateway protocol specification](https://docs.openclaw.ai/gateway/protocol#client-constants).
+[Gateway protocol specification](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/protocol#client-constants).
 
 Use the `./timeouts` entry point when a host must align readiness or watchdog
 budgets with these defaults. Use the `./readiness` entry point when startup must

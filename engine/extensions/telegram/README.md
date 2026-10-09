@@ -14,7 +14,7 @@ Send your bot a message, then approve the resulting pairing request. Group
 access uses separate allowlists and mention settings; configure these before
 using the bot in a group.
 
-Follow the [Telegram setup guide](https://docs.openclaw.ai/channels/telegram/setup)
+Follow the [Telegram setup guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/channels/telegram/setup)
 for bot creation, pairing, and group permissions.
 
 ## Upgrade legacy ingress state
@@ -33,7 +33,7 @@ and run `branch doctor --fix`. Keep the backups for recovery.
 Verified cleanup-only failures warn without blocking an upgrade.
 
 Plugin developers can follow the
-[Doctor ingress migration contract](https://docs.openclaw.ai/plugins/sdk-migration/how-to-migrate#migrate-durable-ingress-files-through-doctor).
+[Doctor ingress migration contract](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/sdk-migration/how-to-migrate#migrate-durable-ingress-files-through-doctor).
 
 ## Retired JSON sidecars
 
@@ -42,4 +42,4 @@ topic-name JSON sidecars from before July 2026 are no longer inspected or
 archived by Doctor. The files remain untouched. If they contain state you
 still need, restore a complete pre-update backup, run `branch doctor --fix`
 with Branch Agent 2026.9.5, then update again. See
-[older-version upgrades](https://docs.openclaw.ai/install/updating#upgrading-very-old-versions).
+[older-version upgrades](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/install/updating#upgrading-very-old-versions).

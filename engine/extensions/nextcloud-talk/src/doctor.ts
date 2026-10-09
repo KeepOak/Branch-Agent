@@ -104,7 +104,7 @@ export const nextcloudTalkDoctor: ChannelDoctorAdapter = {
       const legacyPath = path.join(replayDir, `${sanitizeLegacyReplaySegment(accountId)}.json`);
       if (fileExists(legacyPath)) {
         throw new Error(
-          `Retired pre-July Nextcloud Talk replay state at ${legacyPath} was left unchanged. Install Branch Agent 2026.9.5, run "${doctorFixCommand}", then upgrade to latest. See https://docs.openclaw.ai/install/updating#upgrading-very-old-versions.`,
+          `Retired pre-July Nextcloud Talk replay state at ${legacyPath} was left unchanged. Install Branch Agent 2026.9.5, run "${doctorFixCommand}", then upgrade to latest. See https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/install/updating#upgrading-very-old-versions.`,
         );
       }
     }

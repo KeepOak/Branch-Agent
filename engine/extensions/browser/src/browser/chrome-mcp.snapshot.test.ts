@@ -83,7 +83,7 @@ describe("chrome MCP snapshot conversion", () => {
     const built = buildAiSnapshotFromChromeMcpSnapshot({ root: snapshot });
     const result = finalizeRoleSnapshot({
       snapshot: appendSnapshotUrls(built.snapshot, [
-        { text: "Docs", url: "https://docs.openclaw.ai/" },
+        { text: "Docs", url: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs" },
       ]),
       refs: built.refs,
       maxChars: built.snapshot.length,
@@ -91,7 +91,7 @@ describe("chrome MCP snapshot conversion", () => {
 
     expect(result.truncated).toBe(true);
     expect(result.snapshot.length).toBeLessThanOrEqual(built.snapshot.length);
-    expect(result.snapshot).not.toContain("https://docs.openclaw.ai/");
+    expect(result.snapshot).not.toContain("https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs");
     expect(result.stats).toEqual({
       lines: result.snapshot.split("\n").length,
       chars: result.snapshot.length,

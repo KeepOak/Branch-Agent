@@ -14,5 +14,5 @@ Arguments can use `{{Text}}` and `{{OutputPath}}`. Without a text argument,
 Branch Agent sends the text on standard input. Install FFmpeg when output needs
 conversion for voice notes or telephony.
 
-See [local speech configuration](https://docs.openclaw.ai/tools/tts/configuration)
+See [local speech configuration](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/tts/configuration)
 for platform-specific examples and supported engines.

@@ -128,17 +128,17 @@ export async function docsSearchCommand(
     if (options.json) {
       writeRuntimeJson(runtime, {
         query: null,
-        url: "https://docs.openclaw.ai/",
+        url: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
         results: [],
       });
       return;
     }
-    const docs = formatDocsLink("/", "docs.openclaw.ai");
+    const docs = formatDocsLink("/");
     if (isRich()) {
       runtime.log(`${theme.muted("Docs:")} ${docs}`);
       runtime.log(`${theme.muted("Search:")} ${formatCliCommand('branch docs "your query"')}`);
     } else {
-      runtime.log("Docs: https://docs.openclaw.ai/");
+      runtime.log("Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs");
       runtime.log(`Search: ${formatCliCommand('branch docs "your query"')}`);
     }
     return;

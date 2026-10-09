@@ -39,7 +39,7 @@ export function createDuckDuckGoWebSearchProvider(): WebSearchProviderPlugin {
     envVars: [],
     placeholder: "(no key needed)",
     signupUrl: "https://duckduckgo.com/",
-    docsUrl: "https://docs.openclaw.ai/tools/web",
+    docsUrl: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
     autoDetectOrder: 100,
     credentialPath: "",
     ...createWebSearchProviderContractFields({

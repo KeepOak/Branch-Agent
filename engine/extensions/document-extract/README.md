@@ -15,5 +15,5 @@ needs its normal credentials. Models with native PDF support can receive the
 document directly instead. This extractor handles PDFs, not every document
 format.
 
-See the [PDF guide](https://docs.openclaw.ai/tools/pdf) for model selection,
+See the [PDF guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/pdf) for model selection,
 page limits, and encrypted documents.

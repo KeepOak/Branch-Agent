@@ -31,6 +31,6 @@ the selected agent's managed GitHub identity or the configured Control UI GitHub
 token for API requests. GitHub rate limits still apply, and large discussions or
 diffs can be incomplete; the reader marks those limits.
 
-See the [GitHub plugin documentation](https://docs.openclaw.ai/plugins/github) for
+See the [GitHub plugin documentation](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/github) for
 reader behavior, access, and troubleshooting. For model access, see the separate
-[GitHub Copilot provider](https://docs.openclaw.ai/providers/github-copilot).
+[GitHub Copilot provider](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/github-copilot).

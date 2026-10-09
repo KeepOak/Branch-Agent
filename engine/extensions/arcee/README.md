@@ -9,4 +9,4 @@ branch plugins install @branch/arcee-provider
 branch gateway restart
 ```
 
-See <https://docs.openclaw.ai/providers/arcee> for setup and configuration.
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/arcee> for setup and configuration.

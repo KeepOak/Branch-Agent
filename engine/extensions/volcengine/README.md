@@ -10,4 +10,4 @@ branch plugins install @branch/volcengine-provider
 branch gateway restart
 ```
 
-See <https://docs.openclaw.ai/providers/volcengine> for model and speech setup.
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/volcengine> for model and speech setup.

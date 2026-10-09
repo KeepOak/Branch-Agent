@@ -49,7 +49,7 @@ For GitHub Copilot CLI, run `copilot login` under the Gateway's OS account befor
 the catalog. Copilot owns GitHub authentication, model access, and plan usage. Its explicitly
 configured BYOK providers remain CLI-owned and can incur separate API charges; Branch Agent does
 not select a BYOK route for it. See the
-[Copilot setup and billing notes](https://docs.openclaw.ai/tools/acp-agents-setup#github-copilot-cli-in-native-chat).
+[Copilot setup and billing notes](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/acp-agents-setup#github-copilot-cli-in-native-chat).
 
 Native picker runtimes run on the Gateway host and use the native app's permissions.
 Branch Agent checks that execution choice before dispatching a chat turn; ACP runners do not
@@ -80,8 +80,8 @@ Native history stays with the agent; these operations do not delete it.
 
 Use the ACP docs for harness-specific setup, permission modes, and model/runtime selection:
 
-- https://docs.openclaw.ai/tools/acp-agents-setup
-- https://docs.openclaw.ai/tools/acp-agents
+- https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/acp-agents-setup
+- https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/acp-agents
 
 ## Package
 

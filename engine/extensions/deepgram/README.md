@@ -14,6 +14,6 @@ channel to use the transcript in the conversation.
 Realtime voice integrations have separate transcription settings. This plugin
 transcribes speech; it does not provide speech synthesis.
 
-See the [Deepgram guide](https://docs.openclaw.ai/providers/deepgram) and
-[audio guide](https://docs.openclaw.ai/nodes/audio) for configuration and model
+See the [Deepgram guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/deepgram) and
+[audio guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/nodes/audio) for configuration and model
 selection.

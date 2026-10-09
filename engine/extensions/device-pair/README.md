@@ -13,5 +13,5 @@ connect from the Branch Agent mobile app's Gateway settings.
 Use `/pair pending` to review outstanding requests and `/pair cleanup` to
 invalidate unused codes when finished.
 
-See the [pairing guide](https://docs.openclaw.ai/channels/pairing) for connection
+See the [pairing guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/channels/pairing) for connection
 requirements and approval behavior.

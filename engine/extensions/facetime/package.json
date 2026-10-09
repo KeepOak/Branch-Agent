@@ -4,7 +4,7 @@
   "description": "Experimental FaceTime realtime voice carrier for Branch Agent agents",
   "license": "MIT",
   "author": "Branch Agent contributors",
-  "homepage": "https://docs.openclaw.ai/plugins/facetime",
+  "homepage": "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/facetime",
   "bugs": {
     "url": "https://github.com/openclaw/openclaw/issues"
   },

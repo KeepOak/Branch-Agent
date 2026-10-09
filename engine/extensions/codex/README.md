@@ -46,4 +46,4 @@ Settled-turn finalization uses the same configured Codex App Server transport as
 
 When settled-turn recovery rejects history, the `codex settled-turn finalization context capture failed` warning includes a stable `reason`, such as `item_limit`, `byte_limit`, `field_limit`, `unsupported_user_image`, or `snapshot_invalidated`. Unknown failures use `history_read_failed`. The warning excludes transcript content and exception text. Rejected history remains unavailable for finalization, and completed actions are never replayed.
 
-See the [Codex harness](https://docs.openclaw.ai/plugins/codex-harness) and [Codex supervision](https://docs.openclaw.ai/plugins/codex-supervision) guides.
+See the [Codex harness](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/codex-harness) and [Codex supervision](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/codex-supervision) guides.

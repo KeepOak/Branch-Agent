@@ -9,7 +9,7 @@ branch plugins install @branch/kimi-provider
 branch gateway restart
 ```
 
-See <https://docs.openclaw.ai/providers/moonshot> for setup and configuration.
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/moonshot> for setup and configuration.
 
 ## Quota errors
 

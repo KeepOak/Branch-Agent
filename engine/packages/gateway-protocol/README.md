@@ -5,7 +5,7 @@ Gateway WebSocket protocol.
 
 The current wire protocol is version 4. General clients must use v4; authenticated
 node clients and lightweight probes may use the N-1 window during rolling upgrades.
-See the [Gateway protocol specification](https://docs.openclaw.ai/gateway/protocol)
+See the [Gateway protocol specification](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/protocol)
 for transport, authentication, roles, scopes, and complete frame examples.
 
 ## Versioning
@@ -30,7 +30,7 @@ npm install --save-exact @branch/gateway-protocol@2026.8.1
 ```
 
 This release declares Node.js `>=22.19.0`. See the canonical
-[installation guide](https://docs.openclaw.ai/gateway/clients#install-the-packages)
+[installation guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/clients#install-the-packages)
 for the matching client package, package/wire-version rules, and recovery from
 reserved `0.0.0` artifacts. Test it with the Gateway version you deploy; the root
 `branch` CLI has its own package versions and dist-tags.

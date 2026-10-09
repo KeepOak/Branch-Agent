@@ -126,7 +126,7 @@ export async function prepareInternalHooks(
           `Hook '${safeLogValue(entry.hook.name)}' subscribes to event${unknownEvents.length === 1 ? "" : "s"} ` +
             `${unknownEvents.map((event) => safeLogValue(event)).join(", ")} not emitted by Branch Agent core — ` +
             `likely a typo; unless a plugin emits it, the hook never fires. ` +
-            `Known events: https://docs.openclaw.ai/automation/hooks`,
+            `Known events: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/automation/hooks`,
         );
       }
       registrations.push(...events.map((event) => ({ event, handler })));

@@ -16,13 +16,13 @@ creating key to continue the same session.
 Model, environment, and effective HTTP MCP configuration changes still require a
 session reset. Bindings created before this change are not migrated or supported.
 
-Start with the [setup and supported features guide](https://docs.openclaw.ai/plugins/agentsapi).
+Start with the [setup and supported features guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/agentsapi).
 Enable the `agentsapi` plugin and select it for the model through
 `agents.defaults.models["openai/<model>"].agentRuntime.id: "agentsapi"`.
 Replace `<model>` with a model available to your Agents API project. Enabling the
 plugin alone does not select the runtime. Provider-scoped and per-agent model
 overrides are covered in the
-[harness configuration reference](https://docs.openclaw.ai/plugins/sdk-agent-harness/runtime-config).
+[harness configuration reference](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/sdk-agent-harness/runtime-config).
 
 Multi-user Gateways are not supported by the Agents API MVP.
 

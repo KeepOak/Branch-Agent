@@ -13,5 +13,5 @@ Camera and location are off by default. Enable the capabilities you need in the
 plugin settings, restart the node service, and approve its updated command
 surface on the Gateway.
 
-See [Linux node capabilities](https://docs.openclaw.ai/platforms/linux#node-capabilities)
+See [Linux node capabilities](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/platforms/linux#node-capabilities)
 for configuration, host requirements, and camera authorization.

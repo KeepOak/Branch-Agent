@@ -61,7 +61,7 @@ function createFirecrawlSearchProvider(keyless: boolean): WebSearchProviderPlugi
           placeholder: "fc-...",
         }),
     signupUrl: "https://www.firecrawl.dev/",
-    docsUrl: "https://docs.openclaw.ai/tools/firecrawl",
+    docsUrl: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/firecrawl",
     ...(keyless ? {} : { autoDetectOrder: 60 }),
     credentialPath,
     ...createWebSearchProviderContractFields({

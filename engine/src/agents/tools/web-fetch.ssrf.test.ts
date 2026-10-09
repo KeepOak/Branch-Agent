@@ -249,8 +249,8 @@ describe("web_fetch SSRF protection", () => {
     {
       name: "removes whitespace between scheme and authority (reported bug)",
       input: "https:// docs.openclaw.ai",
-      expectedUrl: "https://docs.openclaw.ai",
-      expectedFetchUrl: "https://docs.openclaw.ai/",
+      expectedUrl: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
+      expectedFetchUrl: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
     },
     {
       name: "trims leading and trailing whitespace",
@@ -314,9 +314,9 @@ describe("web_fetch SSRF protection", () => {
     },
     {
       name: "does not modify already-valid URLs",
-      input: "https://docs.openclaw.ai",
-      expectedUrl: "https://docs.openclaw.ai",
-      expectedFetchUrl: "https://docs.openclaw.ai/",
+      input: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
+      expectedUrl: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
+      expectedFetchUrl: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
     },
     {
       name: "handles https:// with tab after scheme",

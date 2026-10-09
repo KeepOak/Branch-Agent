@@ -186,7 +186,7 @@ function missingMiniMaxKeyPayload() {
   return {
     error: "missing_minimax_api_key",
     message: `web_search (minimax) needs a MiniMax Token Plan key or OAuth token. Run \`${formatCliCommand("branch configure --section web")}\` to store it, or set MINIMAX_CODE_PLAN_KEY, MINIMAX_CODING_API_KEY, MINIMAX_OAUTH_TOKEN, or MINIMAX_API_KEY in the Gateway environment.`,
-    docs: "https://docs.openclaw.ai/tools/web",
+    docs: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
   };
 }
 

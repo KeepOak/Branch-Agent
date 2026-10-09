@@ -9,4 +9,4 @@ branch plugins install @branch/groq-provider
 branch gateway restart
 ```
 
-See <https://docs.openclaw.ai/providers/groq> for setup and configuration.
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/groq> for setup and configuration.

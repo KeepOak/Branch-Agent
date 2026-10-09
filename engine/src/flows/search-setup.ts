@@ -32,7 +32,7 @@ type SearchConfig = NonNullable<NonNullable<NonNullable<BranchConfig["tools"]>["
 type SearchProvider = NonNullable<SearchConfig["provider"]>;
 
 const SEARCH_INSTALL_CATALOG_ENTRY = Symbol("search-install-catalog-entry");
-const WEB_SEARCH_DOCS_URL = "https://docs.openclaw.ai/tools/web";
+const WEB_SEARCH_DOCS_URL = "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web";
 const CODEX_HOSTED_SEARCH_PROVIDER_ID = "codex";
 
 type SearchProviderEntryWithInstall = PluginWebSearchProviderEntry & {
@@ -590,7 +590,7 @@ export async function runSearchSetupFlow(
       [
         `${entry.label} works without an API key.`,
         "Branch Agent will enable the plugin and use it as your web_search provider.",
-        `Docs: ${entry.docsUrl ?? "https://docs.openclaw.ai/tools/web"}`,
+        `Docs: ${entry.docsUrl ?? "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web"}`,
       ].join("\n"),
       "Web search",
     );
@@ -629,7 +629,7 @@ export async function runSearchSetupFlow(
         "Secret references enabled — Branch Agent will store a reference instead of the API key.",
         `Env var: ${ref.id}${envAvailable ? " (detected)" : ""}.`,
         ...(envAvailable ? [] : [`Set ${ref.id} in the Gateway environment.`]),
-        "Docs: https://docs.openclaw.ai/tools/web",
+        "Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
       ].join("\n"),
       "Web search",
     );
@@ -663,7 +663,7 @@ export async function runSearchSetupFlow(
     [
       `No ${credentialLabel} stored — web_search won't work until a key is available.`,
       `Get your key at: ${entry.signupUrl}`,
-      "Docs: https://docs.openclaw.ai/tools/web",
+      "Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
     ].join("\n"),
     "Web search",
   );

@@ -9,8 +9,8 @@ Providers:
 - **Plivo** (Voice API + XML transfer + GetInput speech)
 - **Mock** (dev/no network)
 
-Docs: `https://docs.openclaw.ai/plugins/voice-call`
-Plugin system: `https://docs.openclaw.ai/tools/plugin`
+Docs: `https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/voice-call`
+Plugin system: `https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/plugin`
 
 ## Install
 
@@ -103,7 +103,7 @@ Notes:
 - `mock` is a local dev provider (no network calls).
 - Telnyx requires `telnyx.publicKey` (or `TELNYX_PUBLIC_KEY`) unless `skipSignatureVerification` is true.
 - Runtime accepts canonical config only. If older configs still use `provider: "log"`, `twilio.from`, or legacy `streaming.*` OpenAI keys, run `branch doctor --fix` to rewrite them.
-- advanced webhook, streaming, and tunnel notes: `https://docs.openclaw.ai/plugins/voice-call`
+- advanced webhook, streaming, and tunnel notes: `https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/voice-call`
 - `responseModel` is optional. When unset, voice responses use the runtime default model.
 - `sessionScope` defaults to `per-phone`, preserving caller memory across calls. Use `per-call` for reception, booking, IVR, and bridge flows where each carrier call should start fresh. Use `main` to share the configured agent's main session (`agent:<agentId>:main`, or `global` when core `session.scope` is `"global"`). Custom core `session.mainKey` values are ignored.
 - `realtime.consultThinkingLevel` is optional. When set, it overrides the thinking level used by the model behind realtime `branch_agent_consult` calls.
@@ -112,13 +112,13 @@ Notes:
 ## Stale call reaper
 
 See the plugin docs for recommended ranges and production examples:
-`https://docs.openclaw.ai/plugins/voice-call#stale-call-reaper`
+`https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/voice-call#stale-call-reaper`
 
 ## TTS for calls
 
 Voice Call uses the core `tts` configuration for
 streaming speech on calls. Override examples and provider caveats live here:
-`https://docs.openclaw.ai/plugins/voice-call#tts-for-calls`
+`https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/voice-call#tts-for-calls`
 
 ## CLI
 

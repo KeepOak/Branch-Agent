@@ -50,7 +50,7 @@ export async function handleGatewayStartupMaintenance(error: unknown): Promise<b
   const stop = `Stop the service with ${formatCliCommand("branch gateway stop")} (or its service owner), then`;
   const guidance =
     reason === "a newer Branch Agent build"
-      ? `${stop} restore your pre-update backup created with ${formatCliCommand("branch backup create")}, then start it again with ${formatCliCommand("branch gateway start")}. See https://docs.openclaw.ai/install/updating#rollback.`
+      ? `${stop} restore your pre-update backup created with ${formatCliCommand("branch backup create")}, then start it again with ${formatCliCommand("branch gateway start")}. See https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/install/updating#rollback.`
       : `${stop} run ${formatCliCommand("branch doctor --fix")}, then start it again with ${formatCliCommand("branch gateway start")}.`;
   let parked = false;
   try {

@@ -82,7 +82,7 @@ export async function dispatchTrustedPluginGatewayMethod<T>(
     throw new Error(
       `Gateway requests are only available to bundled or trusted official plugins. ${
         pluginId ? `Plugin "${pluginId}" is neither.` : "This call carries no plugin identity."
-      } See https://docs.openclaw.ai/plugins/sdk-runtime#api-runtime-gateway`,
+      } See https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/sdk-runtime#api-runtime-gateway`,
     );
   }
   const syntheticScopes = normalizeOperatorScopeList(options?.scopes);

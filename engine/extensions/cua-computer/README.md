@@ -17,5 +17,5 @@ branch doctor --lint --only cua-computer/driver-artifacts
 ```
 
 You also need a vision-capable model and tool policy that permits computer use.
-See the [computer use guide](https://docs.openclaw.ai/nodes/computer-use) for host
+See the [computer use guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/nodes/computer-use) for host
 requirements, pairing, and permissions.

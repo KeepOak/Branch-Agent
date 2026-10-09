@@ -15,4 +15,4 @@ Apple's native Foundation Models API. Onboarding sets `utilityModel`, preserving
 the primary model. A fresh installation uses Apple for its setup assistant and
 asks for a separate primary model before regular agent chat.
 
-See the [provider guide](https://docs.openclaw.ai/plugins/apple-fm).
+See the [provider guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/apple-fm).

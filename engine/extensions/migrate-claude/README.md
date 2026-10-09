@@ -19,5 +19,5 @@ existing Branch Agent state; target conflicts require an explicit decision.
 Hooks, broad permission settings, and opaque credential state are not activated
 automatically. Review archive-only items separately.
 
-See [Migrating from Claude](https://docs.openclaw.ai/install/migrating-claude) for
+See [Migrating from Claude](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/install/migrating-claude) for
 import coverage, conflicts, and post-import verification.

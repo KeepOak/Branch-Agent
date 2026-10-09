@@ -19,5 +19,5 @@ Vertex AI uses separate Google Cloud authentication and project settings. Media,
 voice, and search have their own settings and can use different models from
 your agent's chat model.
 
-See the [Google guide](https://docs.openclaw.ai/providers/google) for each setup
+See the [Google guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/google) for each setup
 path and supported inputs.

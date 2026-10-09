@@ -876,7 +876,7 @@ describe("update run ledger", () => {
       },
       options,
     );
-    const summary = `openai/gpt-5.6-luna: use /update; see https://docs.openclaw.ai/cli/update, http://host/share/x and https://host/share/x. Read config:${options.env.BRANCH_STATE_DIR}/state/branch.sqlite and file:///home/operator/module.js and /opt/branch-candidate/config.json and \\\\host\\share\\x; token=synthetic-test-token`;
+    const summary = `openai/gpt-5.6-luna: use /update; see https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli/update, http://host/share/x and https://host/share/x. Read config:${options.env.BRANCH_STATE_DIR}/state/branch.sqlite and file:///home/operator/module.js and /opt/branch-candidate/config.json and \\\\host\\share\\x; token=synthetic-test-token`;
     recordUpdateRunRepairAttempt(
       run.runId,
       { attempt: 1, status: "failed", startedAtMs: 1, summary },
@@ -885,7 +885,7 @@ describe("update run ledger", () => {
     const persisted = getUpdateRun(run.runId, options)!;
     expect(persisted.origin.nextAction).toContain("~/.branch");
     expect(persisted.repair[0]?.summary).toContain("openai/gpt-5.6-luna: use /update");
-    expect(persisted.repair[0]?.summary).toContain("https://docs.openclaw.ai/cli/update");
+    expect(persisted.repair[0]?.summary).toContain("https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli/update");
     expect(persisted.repair[0]?.summary).toContain("http://host/share/x");
     expect(persisted.repair[0]?.summary).toContain("https://host/share/x");
     expect(persisted.repair[0]?.summary).not.toContain("\\\\host\\share");

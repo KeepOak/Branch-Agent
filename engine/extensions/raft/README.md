@@ -2,4 +2,4 @@
 
 Raft CLI wake bridge channel plugin for Branch Agent.
 
-Docs: https://docs.openclaw.ai/channels/raft
+Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/channels/raft

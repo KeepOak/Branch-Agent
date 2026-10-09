@@ -246,7 +246,7 @@ export async function uninstallCommand(runtime: RuntimeEnv, opts: UninstallOptio
   }
 
   if (!failed) {
-    runtime.log("CLI removal instructions: https://docs.openclaw.ai/install/uninstall");
+    runtime.log("CLI removal instructions: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/install/uninstall");
   }
 
   if (scopes.has("state") && !scopes.has("workspace") && cleanupPlan) {

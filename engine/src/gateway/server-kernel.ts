@@ -103,7 +103,7 @@ function formatRuntimeGatewayAuthTokenWarning(): string {
   return [
     base,
     "In Nix mode, set gateway.auth.token in your Nix-managed Branch Agent config and rebuild.",
-    "For the first-party Nix flow, see https://github.com/openclaw/nix-openclaw#quick-start and https://docs.openclaw.ai/install/nix.",
+    "For the first-party Nix flow, see https://github.com/openclaw/nix-openclaw#quick-start and https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/install/nix.",
   ].join(" ");
 }
 

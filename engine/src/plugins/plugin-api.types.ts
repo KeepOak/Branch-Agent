@@ -188,7 +188,7 @@ type BranchPluginLifecycleApi = Partial<
 /**
  * Main registration API injected into native plugin entry files.
  * @experimental All plugin APIs are experimental. Pin and test Branch Agent host versions.
- * @see https://docs.openclaw.ai/plugins/sdk-overview#api-stability
+ * @see https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/sdk-overview#api-stability
  */
 export type BranchPluginApi = {
   id: string;

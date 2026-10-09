@@ -14,5 +14,5 @@ and keep Active Memory enabled.
 Use `/active-memory status`, `/active-memory off`, or `/active-memory on` to
 inspect or change recall for a conversation.
 
-See [enabling Active Memory](https://docs.openclaw.ai/concepts/active-memory/enabling)
+See [enabling Active Memory](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/concepts/active-memory/enabling)
 for scope, privacy boundaries, and advanced configuration.

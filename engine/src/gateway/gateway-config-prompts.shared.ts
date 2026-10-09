@@ -35,8 +35,8 @@ export const TAILSCALE_MISSING_BIN_NOTE_LINES = [
 
 export const TAILSCALE_DOCS_LINES = [
   "Docs:",
-  "https://docs.openclaw.ai/gateway/tailscale",
-  "https://docs.openclaw.ai/web",
+  "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/tailscale",
+  "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/web",
 ] as const;
 
 function normalizeTailnetHostForUrl(rawHost: string): string | null {

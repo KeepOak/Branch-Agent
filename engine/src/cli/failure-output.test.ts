@@ -125,9 +125,9 @@ describe("formatCliJsonFailure", () => {
       new ExpectedCliError({
         message: 'Branch Agent sessions has no command "lst".',
         humanOutput:
-          '\u001B[31mBranch sessions has no command "lst".\u001B[39m\nDid you mean this?\n  branch sessions list\nTry: branch sessions --help\nDocs: \u001B]8;;https://docs.openclaw.ai/cli\u0007docs.openclaw.ai/cli\u001B]8;;\u0007\n',
+          '\u001B[31mBranch sessions has no command "lst".\u001B[39m\nDid you mean this?\n  branch sessions list\nTry: branch sessions --help\nDocs: \u001B]8;;https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli\u0007docs.openclaw.ai/cli\u001B]8;;\u0007\n',
         machineOutput:
-          'Branch Agent sessions has no command "lst".\nDid you mean this?\n  branch sessions list\nTry: branch sessions --help\nDocs: https://docs.openclaw.ai/cli\n',
+          'Branch Agent sessions has no command "lst".\nDid you mean this?\n  branch sessions list\nTry: branch sessions --help\nDocs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli\n',
       }),
       { cause: new Error("internal parse cause") },
     );
@@ -138,7 +138,7 @@ describe("formatCliJsonFailure", () => {
       error: {
         type: "cli_error",
         message:
-          'Branch Agent sessions has no command "lst".\nDid you mean this?\n  branch sessions list\nTry: branch sessions --help\nDocs: https://docs.openclaw.ai/cli',
+          'Branch Agent sessions has no command "lst".\nDid you mean this?\n  branch sessions list\nTry: branch sessions --help\nDocs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli',
       },
     });
   });

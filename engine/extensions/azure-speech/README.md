@@ -14,5 +14,5 @@ spoken replies.
 Try a one-off reply with `/tts audio Hello from Branch Agent` in chat.
 
 This requires an Azure **Speech** resource key, not an Azure OpenAI key.
-See the [Azure Speech guide](https://docs.openclaw.ai/providers/azure-speech) for
+See the [Azure Speech guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/azure-speech) for
 voice selection, output formats, and endpoint configuration.

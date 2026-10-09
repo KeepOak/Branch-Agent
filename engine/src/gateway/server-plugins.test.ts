@@ -1440,7 +1440,7 @@ describe("loadGatewayPlugins", () => {
     await expect(request).rejects.toThrow(reason);
     await expect(request).rejects.toThrow("bundled or trusted official plugins");
     await expect(request).rejects.toThrow(
-      "https://docs.openclaw.ai/plugins/sdk-runtime#api-runtime-gateway",
+      "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/sdk-runtime#api-runtime-gateway",
     );
     expect(handleGatewayRequest).not.toHaveBeenCalled();
   });
@@ -2144,7 +2144,7 @@ describe("loadGatewayPlugins", () => {
       pluginId: "voice-call",
       invalidAllowlist: false,
       reason:
-        'plugin "voice-call" is not trusted for fallback provider/model override requests. See https://docs.openclaw.ai/plugins/sdk-runtime#api-runtime-subagent and search for: plugins.entries.<id>.subagent.allowModelOverride',
+        'plugin "voice-call" is not trusted for fallback provider/model override requests. See https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/sdk-runtime#api-runtime-subagent and search for: plugins.entries.<id>.subagent.allowModelOverride',
     },
     {
       name: "invalid allowlist",

@@ -90,7 +90,7 @@ function overview(defaultModel?: string): SystemAgentOverview {
     },
     gateway: { url: "ws://127.0.0.1:18789", source: "local loopback", reachable: false },
     references: {
-      docsUrl: "https://docs.openclaw.ai",
+      docsUrl: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
       sourceUrl: "https://github.com/openclaw/openclaw",
     },
   };

@@ -9,4 +9,4 @@ branch plugins install @branch/qianfan-provider
 branch gateway restart
 ```
 
-See <https://docs.openclaw.ai/providers/qianfan> for setup and configuration.
+See <https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/qianfan> for setup and configuration.

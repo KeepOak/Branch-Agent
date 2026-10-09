@@ -16,7 +16,7 @@ Restart the Gateway after installing or updating the plugin.
 
 Enable the plugin and follow the Google Meet docs for browser profile, transport, and call-join setup:
 
-- https://docs.openclaw.ai/plugins/google-meet
+- https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/google-meet
 
 ## Package
 

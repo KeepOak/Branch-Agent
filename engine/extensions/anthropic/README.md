@@ -13,5 +13,5 @@ installed and signed in on the host running Branch Agent.
 After setup, browse the available models with
 `branch models list --provider anthropic`.
 
-See the [Anthropic guide](https://docs.openclaw.ai/providers/anthropic) for
+See the [Anthropic guide](https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/providers/anthropic) for
 authentication, model selection, and native session discovery.
