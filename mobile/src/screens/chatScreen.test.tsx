@@ -71,10 +71,10 @@ describe('chat screen', () => {
     expect(screen.getByTestId('stop-reply')).toBeOnTheScreen();
 
     const runId = sent.idempotencyKey;
-    await act(async () => engine.emit('chat', { runId, sessionKey: KEY, seq: 1, state: 'delta', deltaText: 'The rent, ' }));
+    await act(async () => engine.streamReply(KEY, runId, 'The rent, '));
     await eventually(() => expect(screen.getByTestId('live-reply')).toHaveTextContent('The rent,'));
     expect(screen.getByTestId('chat-status')).toHaveTextContent('Typing…');
-    await act(async () => engine.emit('chat', { runId, sessionKey: KEY, seq: 2, state: 'delta', deltaText: 'on Friday.' }));
+    await act(async () => engine.streamReply(KEY, runId, 'The rent, on Friday.'));
     await eventually(() => expect(screen.getByTestId('live-reply')).toHaveTextContent('The rent, on Friday.'));
 
     engine.setHistory(KEY, [

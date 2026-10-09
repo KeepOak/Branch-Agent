@@ -173,11 +173,11 @@ export class Conversation {
   /** Counts the live events this chat has seen; a history read only speaks for the reply as it was when the read began. */
   private liveEvents = 0;
   /**
-   * The reply whose whole text this connection's events carry. The engine sends each connection the reply's whole
-   * text (`message`) in its first frame for a run and in every replacement, and sends an addition alone only to a
-   * connection that holds the frame before it (server-broadcast-live-text.ts `canSendDelta`). From then on the events
-   * are the reply's text, word for word, and a history read only lends the run's start time. Cleared on a new
-   * connection, whose first frame for the run will carry the whole text again.
+   * The reply whose whole text this chat's events carry. The engine sends a connection an addition alone once that
+   * connection holds the frame before it (server-broadcast-live-text.ts `canSendDelta`), whichever chat the phone
+   * shows; the phone's connection rebuilds the whole text into every frame (PhoneGateway `chatStream`), so each
+   * delta here has `message`. From the first one on the events are the reply's text, word for word, and a history
+   * read only lends the run's start time. Cleared on a new connection, until its first frame for the run.
    */
   private streamed: string | null = null;
   /** Runs this chat saw end; a late event or a slow history read can't bring them back. */
@@ -330,7 +330,8 @@ export class Conversation {
     if (state === 'status') {
       this.set({ live: { ...current, phase: str(p.phase) || null } });
     } else if (state === 'delta') {
-      // A frame with `message` (or a replacement) is the reply's whole text so far; one without adds to the frame before it.
+      // A frame with `message` (or a replacement) is the reply's whole text so far; one without (an engine that sends
+      // none) adds to the frame before it.
       const message = rec(p.message);
       const whole = 'content' in message ? messageText(message.content) : p.replace === true ? str(p.deltaText) : null;
       if (whole !== null) this.streamed = runId;
