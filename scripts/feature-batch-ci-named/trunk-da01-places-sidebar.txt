@@ -1,0 +1,4 @@
+window:src/places-nav/routes.test.ts
+window:src/places/canopy/canopy.test.tsx
+window:src/places/overview/overview.test.tsx
+window:src/shell/sidebar-places.test.tsx

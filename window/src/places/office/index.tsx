@@ -36,11 +36,11 @@ async function decode(value: string): Promise<Layout> {
 
 export async function readLayout(engine: PlaceProps["engine"]): Promise<{ layout: Layout; count: number }> {
   const meta = obj(await engine.request("users.prefs.get", { keys: [META] }));
-  if (meta.status !== "ok") throw new Error("The engine couldn't load the office layout.");
+  if (meta.status !== "ok") throw new Error("The engine couldn't load the Grove layout.");
   const count = Number(obj(obj(meta.entries)[META]).parts) || 0;
   if (!count || count > 31) return { layout: null, count: 0 };
   const reply = obj(await engine.request("users.prefs.get", { keys: Array.from({ length: count }, (_, n) => part(n)) }));
-  if (reply.status !== "ok") throw new Error("The engine couldn't load the office layout.");
+  if (reply.status !== "ok") throw new Error("The engine couldn't load the Grove layout.");
   const value = Array.from({ length: count }, (_, n) => str(obj(reply.entries)[part(n)])).join("");
   try { return { layout: value ? await decode(value) : null, count }; }
   catch { return { layout: null, count }; }
@@ -48,7 +48,7 @@ export async function readLayout(engine: PlaceProps["engine"]): Promise<{ layout
 export async function readOfficeStore(engine: PlaceProps["engine"]): Promise<{ store: OfficeStore; count: number }> {
   const [saved, reply] = await Promise.all([readLayout(engine), engine.request("users.prefs.get", { keys: Object.values(STORE_KEYS) })]);
   const result = obj(reply);
-  if (result.status !== "ok") throw new Error("The engine couldn't load the office preferences.");
+  if (result.status !== "ok") throw new Error("The engine couldn't load the Grove preferences.");
   const entries = obj(result.entries);
   return { count: saved.count, store: {
     layout: saved.layout as OfficeStore["layout"],
@@ -59,17 +59,17 @@ export async function readOfficeStore(engine: PlaceProps["engine"]): Promise<{ s
 }
 export async function writeOfficeSetting(engine: PlaceProps["engine"], key: keyof typeof STORE_KEYS, value: unknown): Promise<void> {
   const reply = obj(await engine.request("users.prefs.set", { entries: { [STORE_KEYS[key]]: value } }));
-  if (reply.status !== "ok") throw new Error(`The engine couldn't save office ${key}.`);
+  if (reply.status !== "ok") throw new Error(`The engine couldn't save the Grove ${key}.`);
 }
 export async function writeLayout(engine: PlaceProps["engine"], layout: Layout, oldCount: number): Promise<number> {
   const value = await encode(layout);
   const parts = value.match(/.{1,3000}/g) ?? [];
-  if (parts.length > 31) throw new Error("The office layout is too large to save to your profile.");
+  if (parts.length > 31) throw new Error("The Grove layout is too large to save to your profile.");
   const entries: Record<string, unknown> = { [META]: { parts: parts.length } };
   parts.forEach((chunk, n) => { entries[part(n)] = chunk; });
   for (let n = parts.length; n < oldCount; n++) entries[part(n)] = null;
   const reply = obj(await engine.request("users.prefs.set", { entries }));
-  if (reply.status !== "ok") throw new Error("The engine couldn't save the office layout.");
+  if (reply.status !== "ok") throw new Error("The engine couldn't save the Grove layout.");
   return parts.length;
 }
 
@@ -152,9 +152,9 @@ export function OfficePlace({ engine, openConversation, createTrunk }: PlaceProp
 
   return <section className="pixel-office-view" aria-label="Grove" data-testid="pixel-office">
     <header className="pixel-office-head"><b>Grove</b><span>Your Trunks at their desks. Click one to open its chat; drag one to another desk.</span></header>
-    {error ? <p role="alert">The office didn’t load. {error} <button type="button" onClick={() => setRetry(n => n + 1)}>Try again</button></p> : null}
+    {error ? <p role="alert">Grove didn’t load. {error} <button type="button" onClick={() => setRetry(n => n + 1)}>Try again</button></p> : null}
     {layoutError ? <p role="alert">{layoutError}</p> : null}
-    {!data && !error ? <p role="status">Opening the office…</p> : null}
+    {!data && !error ? <p role="status">Opening Grove…</p> : null}
     <div className="pixel-office-stage" ref={host} />
   </section>;
 }

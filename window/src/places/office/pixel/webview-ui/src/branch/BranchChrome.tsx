@@ -28,7 +28,7 @@ export function BranchToolbar(p: {
           + Trunk
         </Button>
       )}
-      <Button size="md" variant={p.isEditMode ? 'active' : 'default'} onClick={p.onToggleEditMode} title="Edit office layout">
+      <Button size="md" variant={p.isEditMode ? 'active' : 'default'} onClick={p.onToggleEditMode} title="Edit Grove layout">
         Layout
       </Button>
       <Button size="md" variant={p.isTrunksOpen ? 'active' : 'default'} onClick={p.onOpenTrunks} title="Looks and desks">

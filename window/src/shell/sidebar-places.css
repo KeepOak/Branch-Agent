@@ -1,0 +1,99 @@
+/* The sidebar's Places section (§4.1.1 Place rows; preview .places-h14 + .side-nav.nav7), restored from the rows
+   that sat above the list before the contacts layout: a ruled header that folds, one row per place, Inbox's badge. */
+.side .places {
+  border-bottom: 1px solid var(--hair17);
+  margin: 0 -8px 4px 0;
+  padding: 0 8px 0 0;
+}
+.side .places-h {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  padding: 10px 10px 2px;
+}
+.side .place-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 0 8px;
+}
+.side .places .nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-nav);
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  position: relative;
+  cursor: pointer;
+  transition: background var(--t-colour) var(--ease17), color var(--t-colour) var(--ease17), box-shadow var(--t-colour) var(--ease17);
+}
+.side .places .nav .icon {
+  color: var(--ink-3);
+  flex: none;
+}
+.side .places .nav:hover {
+  background: var(--wash17);
+}
+.side .places .nav[aria-current="page"] {
+  background: var(--raise);
+  box-shadow: var(--sh1-17);
+  color: var(--ink);
+  font-weight: 600;
+}
+.side .places .nav[aria-current="page"] .icon {
+  color: var(--ink);
+}
+.side .places .nav-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Inbox's "Needs you" count: the preview's accent .cnt */
+.side .places .cnt.attn {
+  margin-left: auto;
+  font: 600 11px/1 var(--mono);
+  padding: 3px 7px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-variant-numeric: tabular-nums;
+}
+/* §4.1.8 rail: icons only, names become tooltips; the badge becomes a dot on the icon */
+.frame.rail .side .places {
+  margin: 0 0 4px;
+  padding: 0 0 4px;
+}
+.frame.rail .side .places .nav {
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin: 0 auto;
+  padding: 0;
+}
+.frame.rail .side .places .nav-name {
+  display: none;
+}
+.frame.rail .side .places .cnt.attn {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  overflow: hidden;
+  color: transparent;
+  box-shadow: 0 0 0 2px var(--side);
+}

@@ -10,8 +10,9 @@ describe("routes", () => {
     expect(parseRoute("{not json")).toBeNull();
     expect(parseRoute(null)).toBeNull();
   });
-  it("lists the seven places in the sidebar's order", () => {
-    expect(PLACES.map((p) => p.name)).toEqual(["Overview", "Canopy", "Inbox", "Automations", "Library", "People", "Customize"]);
+  it("lists the eight places in the sidebar's order, Grove included", () => {
+    expect(PLACES.map((p) => p.name)).toEqual(["Inbox", "Automations", "Library", "People", "Customize", "Overview", "Canopy", "Grove"]);
+    expect(parseRoute('{"kind":"place","place":"office"}')).toEqual({ kind: "place", place: "office" });
   });
   it("window title", () => {
     expect(windowTitle("Sapling", 0, false)).toBe("Sapling — Branch");

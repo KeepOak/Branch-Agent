@@ -1,5 +1,5 @@
 // Where the window can be (DESIGN-SPEC §3.3 saved layout, §4.6 Places, §4.7 Settings): a conversation,
-// one of the seven places, or a Settings page. The last route is kept on this computer and reopened at launch.
+// one of the eight places, or a Settings page. The last route is kept on this computer and reopened at launch.
 import type { IconName } from "../shell/icons";
 
 export type PlaceId = "overview" | "canopy" | "inbox" | "automations" | "library" | "people" | "customize" | "office";
@@ -9,21 +9,23 @@ export type Route =
   | { kind: "place"; place: PlaceId }
   | { kind: "settings"; page: string };
 
-/** The seven places, in the sidebar's order (§4.1.1 Place rows). */
+/** The eight places, in the sidebar's Places order (§4.1.1 Place rows): Inbox first, the way a mail app lists its
+ *  mailboxes. Canopy is the live work; Grove (route id "office") is the office where the Trunks sit. */
 export const PLACES: { id: PlaceId; name: string; icon: IconName }[] = [
-  { id: "overview", name: "Overview", icon: "home" },
-  { id: "canopy", name: "Canopy", icon: "panel" },
   { id: "inbox", name: "Inbox", icon: "inbox" },
   { id: "automations", name: "Automations", icon: "clock" },
   { id: "library", name: "Library", icon: "book" },
   { id: "people", name: "People", icon: "users" },
   { id: "customize", name: "Customize", icon: "sliders" },
+  { id: "overview", name: "Overview", icon: "home" },
+  { id: "canopy", name: "Canopy", icon: "panel" },
+  { id: "office", name: "Grove", icon: "tree" },
 ];
 
 const KEY = "branch.route";
 
 export function isPlace(id: string): id is PlaceId {
-  return id === "office" || PLACES.some((p) => p.id === id);
+  return PLACES.some((p) => p.id === id);
 }
 
 export function parseRoute(raw: string | null): Route | null {

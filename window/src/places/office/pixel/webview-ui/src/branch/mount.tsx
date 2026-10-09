@@ -89,7 +89,7 @@ export function mountPixelOffice(el: HTMLElement, options: MountOptions): PixelO
 
   const open = (id: string) => options.onOpen?.(id);
 
-  rootEl.textContent = 'Opening the office…';
+  rootEl.textContent = 'Opening Grove…';
   void Promise.all([loadAssets(), loadPixelFont()])
     .then(([assets]) => {
       if (destroyed) return;
@@ -123,7 +123,7 @@ export function mountPixelOffice(el: HTMLElement, options: MountOptions): PixelO
     })
     .catch((err) => {
       console.error('[PixelOffice] failed to start', err);
-      rootEl.textContent = 'The pixel office could not start.';
+      rootEl.textContent = 'Grove could not start.';
     });
 
   const handle: PixelOfficeHandle = {

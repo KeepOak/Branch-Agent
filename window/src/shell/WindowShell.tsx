@@ -962,7 +962,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       void session.open(key).then(() => session.send(text));
     },
   });
-  const pageTitle = route.kind === "chat" ? name : route.kind === "place" ? route.place === "office" ? "Grove" : PLACES.find((p) => p.id === route.place)?.name ?? "" : pageName(route.page);
+  const pageTitle = route.kind === "chat" ? name : route.kind === "place" ? PLACES.find((p) => p.id === route.place)?.name ?? "" : pageName(route.page);
   useEffect(() => {
     document.title = windowTitle(pageTitle, needsYou, !ready);
   }, [pageTitle, needsYou, ready]);
@@ -1512,6 +1512,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         sections={sections}
         openKey={route.kind === "chat" ? openKey : null}
         currentPlace={route.kind === "place" ? route.place : null}
+        onPlace={openPlace}
+        inboxCount={needsYou}
         now={now}
         showPreview={prefs.preview}
         poppedKeys={poppedKeys}

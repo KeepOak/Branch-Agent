@@ -74,6 +74,14 @@ async function pressTab(tab: HTMLButtonElement, key: string, modifiers: Keyboard
   return event;
 }
 
+describe("Canopy names Grove (DA-32)", () => {
+  it("links to Grove by its name and never says Office view", async () => {
+    await mount();
+    expect(button("Open Grove")).toBeDefined();
+    expect(document.body.textContent).not.toContain("Office view");
+  });
+});
+
 describe("Canopy tab-row keyboard parity", () => {
   it("uses one roving tab stop and wraps Left/Right selection with actual focus", async () => {
     const { calls } = await mount();

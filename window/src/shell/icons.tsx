@@ -7,6 +7,7 @@ const PATHS = {
   plus: <path d="M12 5v14M5 12h14" />,
   search: <><circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4-4" /></>,
   home: <><path d="M4 11l8-6.5 8 6.5v8.5H4z" /><path d="M10 19.5v-5h4v5" /></>,
+  tree: <><path d="M12 3.5l5.5 7h-3l4 5.5h-13l4-5.5h-3z" /><path d="M12 16v4.5" /></>,
   panel: <><rect x="3" y="4.5" width="18" height="15" rx="2" /><path d="M15 4.5v15" /></>,
   inbox: <><path d="M3 13l3-8h12l3 8v6H3z" /><path d="M3 13h5l1 2.5h6L16 13h5" /></>,
   clock: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></>,

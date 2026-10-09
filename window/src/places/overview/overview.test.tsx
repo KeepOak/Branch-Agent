@@ -59,6 +59,14 @@ async function render(request = vi.fn(async (method: string) => FX[method] ?? {}
 }
 const button = (host: HTMLElement, label: string) => [...host.querySelectorAll("button")].find(b => b.textContent?.trim() === label);
 
+describe("Overview header (DA-27)", () => {
+  it("has no Grove pill above the title; Grove lives in the sidebar's Places", async () => {
+    const { host } = await render();
+    expect(button(host, "Grove")).toBeUndefined();
+    expect(host.textContent).not.toContain("Office view");
+  });
+});
+
 describe("Overview reads", () => {
   it("reads each tile from its engine method, spend per Trunk from sessions.usage over seven days", () => {
     expect(OVERVIEW_READS.spend).toEqual({ method: "sessions.usage", params: { agentScope: "all", range: "7d", mode: "gateway", limit: 1 } });

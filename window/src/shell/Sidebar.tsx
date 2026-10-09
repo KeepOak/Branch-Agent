@@ -2,13 +2,14 @@ import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { Pebble } from "../face/Pebble";
 import { RoomFaces } from "../rooms/RoomFaces";
 import type { Conversation } from "../connect/conversations";
-import type { PlaceId } from "../places-nav/routes";
+import { PLACES, type PlaceId } from "../places-nav/routes";
 import { ConversationRow, type RowExtras, type RowState } from "./ConversationRow";
 import { Icon } from "./icons";
 import { childrenOf, rowTime, shownChildren, type ListSection } from "./list-model";
 import { ProjectsSection, type Project } from "./Projects";
 import { useSidebarPointerDrag, type SidebarDrop } from "./sidebar-drag";
 import "./contacts-layout.css";
+import "./sidebar-places.css";
 
 /** The default Trunk beside a page: its name, the keys that toggle it, whether it is open. */
 export type TalkEntry = { name: string; keys: string; open: boolean; onToggle: () => void };
@@ -38,6 +39,10 @@ export type SidebarProps = {
   onMoveToGroup?: (key: string, anchor: DOMRect) => void;
   onRailSearch: () => void;
   onOpen: (key: string) => void;
+  /** The Places section (§4.1.1 Place rows): opens a place. Without it the sidebar shows no Places section. */
+  onPlace?: (place: PlaceId) => void;
+  /** What Inbox › Needs you counts: the Inbox row's badge. */
+  inboxCount?: number;
   onNew: (event: MouseEvent<HTMLElement>) => void;
   onMenu: (row: Conversation, event: MouseEvent<HTMLElement>) => void;
   onPin: (row: Conversation) => void;
@@ -67,6 +72,65 @@ export type SidebarProps = {
   /** The machine switcher, shown at the top of the list only when it slides over (760 px and below). */
   machine?: ReactNode;
 };
+
+const FOLD_KEY = "branch.placesFolded";
+
+function readFolded(): boolean {
+  try {
+    return localStorage.getItem(FOLD_KEY) === "1";
+  } catch {
+    return false; // storage blocked: places start open
+  }
+}
+
+/** The Places section, the way a mail app lists its mailboxes: a folding header, one row per place, Inbox's badge. */
+function Places({ current, inbox, rail, onPlace }: { current: PlaceId | null; inbox: number; rail: boolean; onPlace: (p: PlaceId) => void }) {
+  const [foldedPref, setFolded] = useState(readFolded);
+  const folded = foldedPref && !rail; // the rail has no header and no folding (§4.1.8)
+  const toggle = () => {
+    setFolded(!foldedPref);
+    try {
+      localStorage.setItem(FOLD_KEY, foldedPref ? "0" : "1");
+    } catch {
+      // storage blocked: the fold lasts for this window only
+    }
+  };
+  return (
+    <nav className={folded ? "places folded" : "places"} aria-label="Places" data-testid="places">
+      {rail ? null : (
+        <button type="button" className="lh places-h" aria-expanded={!folded} onClick={toggle}>
+          <Icon name={folded ? "chev" : "down"} small />
+          Places
+        </button>
+      )}
+      {folded ? null : (
+        <div className="place-rows">
+          {PLACES.map((p) => {
+            const badge = p.id === "inbox" && inbox > 0 ? inbox : 0;
+            const label = badge ? `${p.name}, ${badge} need${badge === 1 ? "s" : ""} you` : p.name;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                className="nav"
+                data-place={p.id}
+                data-testid={`place-${p.id}`}
+                aria-current={current === p.id ? "page" : undefined}
+                aria-label={label}
+                title={rail ? label : undefined}
+                onClick={() => onPlace(p.id)}
+              >
+                <Icon name={p.icon} />
+                <span className="nav-name">{p.name}</span>
+                {badge ? <span className="cnt attn" title="Needs you">{badge}</span> : null}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </nav>
+  );
+}
 
 const CHILDREN_KEY = "branch.childrenOpen";
 
@@ -243,6 +307,7 @@ export function Sidebar(p: SidebarProps) {
       </div>
       {p.searchResults && !p.rail ? p.searchResults : (
         <div className="side-scroll">
+          {p.onPlace ? <Places current={p.currentPlace} inbox={p.inboxCount ?? 0} rail={p.rail} onPlace={p.onPlace} /> : null}
           <div className="list" data-testid="conversation-list">
             {p.sections.map((s, i) => {
               // The Filter and sort button sits on the "Recent" label row, or on the first row when there is no "Recent".

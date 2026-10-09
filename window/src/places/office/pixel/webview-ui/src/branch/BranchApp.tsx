@@ -218,7 +218,7 @@ export function BranchApp({ officeState, editorState, server, signals, onNewAgen
   const areaFolders = useMemo(() => [{ name: 'Trunks', path: 'Trunks' }, { name: 'Grafted', path: 'Grafted' }], []);
 
   if (!msgs.layoutReady) {
-    return <div className="w-full h-full flex items-center justify-center text-text-muted">Opening the office…</div>;
+    return <div className="w-full h-full flex items-center justify-center text-text-muted">Opening Grove…</div>;
   }
 
   return (
