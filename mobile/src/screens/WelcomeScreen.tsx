@@ -1,30 +1,29 @@
-import { StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View } from 'react-native';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
+import { Button } from '../ui/Button';
+import { Card, Screen } from '../ui/Screen';
 
-/**
- * First screen of the empty app. It says plainly what Branch on the phone is and that pairing comes
- * next. It has no buttons yet: pairing lands in the next pull request, and a control that does
- * nothing is never shown.
- */
-export function WelcomeScreen() {
-  const theme = useTheme();
-  const insets = useSafeAreaInsets();
-  const { color, space, layout, radius } = theme;
+const STEPS = [
+  'On your computer, open Branch and choose Get the apps, then Pair a phone.',
+  'Scan the code it shows with this phone.',
+  'Choose Allow when Branch on your computer asks about this phone. That’s it.',
+];
 
+/** First launch: what Branch on the phone is, how pairing works, and one way forward. */
+export function WelcomeScreen({ onPair }: { onPair: () => void }) {
+  const { color, space, radius } = useTheme();
   return (
-    <View
+    <Screen
       testID="welcome-screen"
-      style={[
-        styles.screen,
-        {
-          backgroundColor: color.grouped,
-          paddingTop: insets.top + space.xxl,
-          paddingBottom: insets.bottom + space.xl,
-          paddingHorizontal: layout.screenInset,
-        },
-      ]}
+      footer={
+        <>
+          <Button title="Pair with your computer" onPress={onPair} testID="pair-button" />
+          <ThemedText variant="footnote" tone="ink3" style={{ textAlign: 'center', marginTop: space.xs }}>
+            Talks only to your own computer. No passwords, no keys.
+          </ThemedText>
+        </>
+      }
     >
       <ThemedText variant="largeTitle" accessibilityRole="header">
         Branch
@@ -32,37 +31,31 @@ export function WelcomeScreen() {
       <ThemedText variant="body" tone="ink2" style={{ marginTop: space.xs }}>
         Your Trunks and Branch Agent, in your pocket.
       </ThemedText>
-
-      <View
-        testID="pairing-status"
-        style={[
-          { backgroundColor: color.raise, borderRadius: radius.md, marginTop: space.xxxl, padding: layout.cardInset },
-        ]}
-      >
-        <View style={styles.row}>
-          <View
-            style={[styles.dot, { backgroundColor: color.warn, borderRadius: radius.pill, marginRight: space.sm }]}
-          />
-          <ThemedText variant="headline">Not paired with a computer yet</ThemedText>
-        </View>
-        <ThemedText variant="subhead" tone="ink2" style={{ marginTop: space.xs }}>
-          Pairing with the Branch app on your computer comes in the next update. After that, your chats,
-          approvals and Trunk status show up here live.
-        </ThemedText>
-      </View>
-
-      <View style={styles.spacer} />
-      <ThemedText variant="footnote" tone="ink3" style={styles.center}>
-        Talks only to your own computer. No passwords, no keys.
-      </ThemedText>
-    </View>
+      <Card testID="pairing-steps">
+        <ThemedText variant="headline">How pairing works</ThemedText>
+        {STEPS.map((step, index) => (
+          <View key={step} style={{ flexDirection: 'row', marginTop: space.md }}>
+            <View
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: radius.pill,
+                backgroundColor: color.accentTint,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: space.md,
+              }}
+            >
+              <ThemedText variant="footnote" tone="accentInk" style={{ fontWeight: '600' }}>
+                {index + 1}
+              </ThemedText>
+            </View>
+            <ThemedText variant="subhead" tone="ink2" style={{ flex: 1 }}>
+              {step}
+            </ThemedText>
+          </View>
+        ))}
+      </Card>
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  row: { flexDirection: 'row', alignItems: 'center' },
-  dot: { width: 8, height: 8 },
-  spacer: { flex: 1 },
-  center: { textAlign: 'center' },
-});

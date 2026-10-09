@@ -38,6 +38,8 @@ export interface Palette {
   badTint: string;
   /** Dimmed backdrop behind sheets. */
   scrim: string;
+  /** Behind the live camera, before the first frame arrives. */
+  camera: string;
 }
 
 const light: Palette = {
@@ -60,6 +62,7 @@ const light: Palette = {
   bad: '#c2412d',
   badTint: '#f8e3df',
   scrim: 'rgba(14, 20, 26, 0.3)',
+  camera: '#000000',
 };
 
 // Dark is near-black like Grok and iOS dark mode: deep enough for OLED, with raised surfaces a step lighter.
@@ -83,6 +86,7 @@ const dark: Palette = {
   bad: '#f0806c',
   badTint: '#361c17',
   scrim: 'rgba(0, 0, 0, 0.52)',
+  camera: '#000000',
 };
 
 export const palettes: Record<ColorScheme, Palette> = { light, dark };
