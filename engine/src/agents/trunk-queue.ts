@@ -125,7 +125,6 @@ export function addQueueItem(
 
 export function listQueueItems(
   env?: NodeJS.ProcessEnv,
-  now = Date.now(),
 ): Array<TrunkQueueItem & { status: TrunkQueueStatus }> {
   return read(env)
     .toSorted(byPriority)
@@ -187,7 +186,11 @@ export function isQueueClaimCurrent(id: string, claimId: string, env?: NodeJS.Pr
   return read(env).some((row) => row.id === id && isOpenClaim(row) && row.claim_id === claimId);
 }
 
-export type TrunkQueueClaim = TrunkQueueItem & { claimed_by: string; claim_id: string; thread_key: string };
+export type TrunkQueueClaim = TrunkQueueItem & {
+  claimed_by: string;
+  claim_id: string;
+  thread_key: string;
+};
 
 /**
  * Claims the top unclaimed job for a Trunk; nothing when the queue is empty or the Trunk already holds one.
@@ -229,6 +232,27 @@ async function isTrunkWorking(gw: TrunkQueueGateway, agentId: string): Promise<b
       row.status === "running" ||
       (typeof row.activeWriterRunId === "string" && row.activeWriterRunId !== ""),
   );
+}
+
+const IDLE_POLL_MS = 500;
+
+/** True once the Trunk has no running thread, checking again every IDLE_POLL_MS for up to waitMs. */
+async function waitForTrunkIdle(
+  gw: TrunkQueueGateway,
+  agentId: string,
+  waitMs: number,
+): Promise<boolean> {
+  for (let waited = 0; ; waited += IDLE_POLL_MS) {
+    if (!(await isTrunkWorking(gw, agentId))) {
+      return true;
+    }
+    if (waited + IDLE_POLL_MS > waitMs) {
+      return false;
+    }
+    await new Promise((resolve) => {
+      setTimeout(resolve, IDLE_POLL_MS);
+    });
+  }
 }
 
 /**
@@ -278,6 +302,11 @@ export async function pickUpQueuedWork(params: {
   gateway: TrunkQueueGateway;
   env?: NodeJS.ProcessEnv;
   now?: () => number;
+  /**
+   * Right after a run ends, sessions.list can still count it as active for a moment. Wait up to this long
+   * for the Trunk to show idle; a Trunk still working after that keeps its turn, and its next run end tries again.
+   */
+  idleWaitMs?: number;
 }): Promise<{ item: TrunkQueueItem; threadKey: string } | undefined> {
   const now = params.now ?? Date.now;
   // Abandoned claims go back first, so a queue holding only those still recovers.
@@ -286,7 +315,7 @@ export async function pickUpQueuedWork(params: {
   if (!read(params.env).some(isClaimable)) {
     return undefined;
   }
-  if (await isTrunkWorking(params.gateway, params.agentId)) {
+  if (!(await waitForTrunkIdle(params.gateway, params.agentId, params.idleWaitMs ?? 0))) {
     return undefined;
   }
   const item = claimNextQueueItem(params.agentId, params.env, now());

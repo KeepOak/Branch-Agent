@@ -126,6 +126,34 @@ describe("Trunk job queue pickup", () => {
     expect(listQueueItems(env)[0]!.status).toBe("queued");
   });
 
+  it("picks up once the Trunk's own just-ended run stops counting as active", async () => {
+    addQueueItem({ title: "Next", brief_text: "next job" }, env);
+    // sessions.list still shows the ended run for a moment after its end is published.
+    let stillActive = 2;
+    const { gateway: idle, calls } = fakeGateway();
+    const gateway: TrunkQueueGateway = {
+      async request<T>(method: string, params: Record<string, unknown>): Promise<T> {
+        if (method === "sessions.list" && stillActive > 0) {
+          stillActive -= 1;
+          calls.push({ method, params });
+          return { sessions: [{ key: "agent:birch:main", hasActiveRun: true }] } as T;
+        }
+        return await idle.request<T>(method, params);
+      },
+    };
+
+    await onTrunkRunLifecycle({ agentId: "birch", terminal: true, gateway });
+
+    expect(calls.map((call) => call.method)).toEqual([
+      "sessions.list",
+      "sessions.list",
+      "sessions.list",
+      "sessions.create",
+      "chat.send",
+    ]);
+    expect(listQueueItems(env)[0]).toMatchObject({ status: "claimed", claimed_by: "birch" });
+  });
+
   it("does nothing on an empty queue: no thread, no message", async () => {
     const { gateway, calls } = fakeGateway();
 

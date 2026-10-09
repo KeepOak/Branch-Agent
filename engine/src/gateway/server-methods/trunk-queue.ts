@@ -26,6 +26,9 @@ const localGateway: TrunkQueueGateway = {
   },
 };
 
+/** How long a run end waits for its own run to stop counting as active before pickup gives up. */
+const RUN_END_IDLE_WAIT_MS = 30_000;
+
 /** Run start or end of a Trunk: keep its claim fresh, and on run end hand an idle Trunk the next job. */
 export async function onTrunkRunLifecycle(params: {
   agentId: string;
@@ -34,7 +37,11 @@ export async function onTrunkRunLifecycle(params: {
 }): Promise<void> {
   touchQueueClaim(params.agentId);
   if (params.terminal) {
-    await pickUpQueuedWork({ agentId: params.agentId, gateway: params.gateway ?? localGateway });
+    await pickUpQueuedWork({
+      agentId: params.agentId,
+      gateway: params.gateway ?? localGateway,
+      idleWaitMs: RUN_END_IDLE_WAIT_MS,
+    });
   }
 }
 
