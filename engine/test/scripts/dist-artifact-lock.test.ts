@@ -1,5 +1,6 @@
 import childProcesses from "node:child_process";
 import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as fileLock from "@openclaw/fs-safe/file-lock";
@@ -26,6 +27,7 @@ beforeEach(() => {
 const fixture = createFixtureLifetime();
 afterEach(async () => {
   vi.restoreAllMocks();
+  syncBuiltinESMExports();
   await fixture.cleanup();
 });
 const createRoot = () => {
@@ -150,6 +152,8 @@ it("keeps a live owner fail-closed when its start identity cannot be read", asyn
     status: 1,
     signal: null,
   });
+  // Native ESM named exports do not track spies on the default export until synced.
+  syncBuiltinESMExports();
   const read = fs.readFileSync.bind(fs);
   vi.spyOn(fs, "readFileSync").mockImplementation((...args) => {
     if (args[0] === `/proc/${process.pid}/stat`) {
