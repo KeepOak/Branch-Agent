@@ -15,6 +15,10 @@
       }
     },
     "android": {
+      "package": "com.keepoak.branch",
+      "permissions": [
+        "android.permission.CAMERA"
+      ],
       "predictiveBackGestureEnabled": false
     },
     "web": {
