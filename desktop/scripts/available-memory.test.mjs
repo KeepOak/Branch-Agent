@@ -23,6 +23,23 @@ const linuxMeminfo = [
   "Cached:          4567890 kB",
 ].join("\n");
 
+test("desktop packages the single canonical memory implementation", () => {
+  const shared = readFileSync(new URL("../../engine/scripts/lib/available-memory.mjs", import.meta.url), "utf8");
+  const packaged = readFileSync(join(process.env.BRANCH_DESKTOP_TEST_DIST, "available-memory-core.mjs"), "utf8");
+  assert.equal(packaged, shared);
+});
+
+test("desktop packaging entrypoints include the canonical memory implementation", () => {
+  const entrypoints = ["package.sh", "package.ps1", "release-build.mjs", "prepare-release-layout-tests.mjs"];
+  const bypassed = entrypoints.filter((file) => {
+    const source = readFileSync(new URL(file, import.meta.url), "utf8");
+    const directDesktopCompile = /\bnpx\s+tsc\s+-p\s+tsconfig\.json\b/u.test(source) ||
+      /\b(?:desktopRoot|desktop)\b[^\r\n]*typescript[\\/]+bin[\\/]+tsc\b/u.test(source);
+    return !/scripts[\\/]+build\.mjs/u.test(source) || directDesktopCompile;
+  });
+  assert.deepEqual(bypassed, [], "Packaging must use the build that includes the shared memory module");
+});
+
 test("Linux uses MemAvailable, not MemFree", () => {
   const strictlyFree = 80 * MIB;
   const memory = availableMemory({ platform: "linux", meminfo: linuxMeminfo, freemem: strictlyFree });

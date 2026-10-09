@@ -441,8 +441,10 @@ registerHooks({resolve(specifier, context, nextResolve) {
           platform: "win32",
           requireResolve,
         }),
-      ).toBe("/repo/node_modules/vitest/vitest.mjs");
-      expect(symlinkSync.mock.calls).toEqual([
+      ).toMatch(/^[/\\]repo[/\\]node_modules[/\\]vitest[/\\]vitest\.mjs$/u);
+      expect(
+        symlinkSync.mock.calls.map((args) => args.map((arg) => arg.replaceAll("\\", "/"))),
+      ).toEqual([
         [modulesDir, modulesDir + "/node_modules", "junction"],
         [modulesDir, "/repo/node_modules", "junction"],
       ]);
@@ -1001,7 +1003,9 @@ registerHooks({resolve(specifier, context, nextResolve) {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => vi.useRealTimers());
 
-    function setup(options: { heartbeatMs?: number; forceKillAfterMs?: number } = {}) {
+    function setup(
+      options: { timeoutMs?: number; heartbeatMs?: number; forceKillAfterMs?: number } = {},
+    ) {
       const stdout = new EventEmitter();
       const onTimeout = vi.fn();
       const onForceKill = vi.fn();
@@ -1056,18 +1060,29 @@ registerHooks({resolve(specifier, context, nextResolve) {
     });
 
     it("prints bounded heartbeats until the idle deadline", () => {
-      const { stdout, onTimeout, log } = setup({ heartbeatMs: 400, forceKillAfterMs: 0 });
-      vi.advanceTimersByTime(400);
-      expect(log).toHaveBeenCalledWith("[vitest] still running with no output for 400ms.");
-      vi.advanceTimersByTime(400);
-      expect(log).toHaveBeenCalledWith("[vitest] still running with no output for 800ms.");
+      const { stdout, onTimeout, log } = setup({
+        timeoutMs: 100_000,
+        heartbeatMs: 40_000,
+        forceKillAfterMs: 0,
+      });
+      vi.advanceTimersByTime(40_000);
+      expect(log).toHaveBeenCalledWith(
+        "[vitest] still running (healthy): no new output for 40s; the wrapper stops it automatically after 60s of silence. Do not interrupt.",
+      );
+      expect(log.mock.calls[0]?.[0]).toContain("stops it automatically after 60s of silence");
+      vi.advanceTimersByTime(40_000);
+      expect(log).toHaveBeenCalledWith(
+        "[vitest] still running (healthy): no new output for 80s; the wrapper stops it automatically after 20s of silence. Do not interrupt.",
+      );
       stdout.emit("data", "still alive");
-      vi.advanceTimersByTime(400);
-      expect(log).toHaveBeenCalledWith("[vitest] still running with no output for 400ms.");
-      vi.advanceTimersByTime(600);
+      vi.advanceTimersByTime(40_000);
+      expect(log).toHaveBeenLastCalledWith(
+        "[vitest] still running (healthy): no new output for 40s; the wrapper stops it automatically after 60s of silence. Do not interrupt.",
+      );
+      vi.advanceTimersByTime(60_000);
       expect(onTimeout).toHaveBeenCalledTimes(1);
       expect(log).toHaveBeenCalledWith(
-        "[vitest] no output for 1000ms; terminating stalled Vitest process group.",
+        "[vitest] no output for 100000ms; terminating stalled Vitest process group.",
       );
     });
   });

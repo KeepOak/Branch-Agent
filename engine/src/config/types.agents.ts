@@ -31,6 +31,14 @@ export type AgentConfig = Omit<
 
 export type AgentEntryConfig = Omit<AgentConfig, "id">;
 
+/** Shared Trunk job queue: whether idle Trunks take queued jobs, and which Trunks may. */
+export type TrunkQueueConfig = {
+  /** Idle Trunks take queued jobs unless this is false. */
+  enabled?: boolean;
+  /** Trunk ids allowed to take queued jobs. Unset means every builder-* Trunk. */
+  agents?: string[];
+};
+
 export type AgentsConfig = {
   ownership?: "explicit";
   /** Contact Trunk used by unrouted conversations; explicit bindings take precedence. */
@@ -38,4 +46,5 @@ export type AgentsConfig = {
   characterAssignmentVersion?: 1;
   defaults?: AgentDefaultsConfig;
   entries?: Record<string, AgentEntryConfig>;
+  trunkQueue?: TrunkQueueConfig;
 };

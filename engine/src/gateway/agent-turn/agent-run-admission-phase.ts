@@ -388,6 +388,9 @@ export async function prepareAgentRunDispatch(
         {
           catalogMode: "static",
           pluginGeneration: replyDispatchRuntime.pluginGeneration,
+          // Pre-accept admission has not run anything under this generation; a sibling Trunk's
+          // preparation may publish a successor first, and the turn joins it rather than failing.
+          rejoinSupersededPluginGeneration: true,
           abortSignal: activeRunAbort.controller.signal,
         },
       );

@@ -59,7 +59,7 @@ export function ageWords(at: number, now: number): string {
 
 export type LimitWindow = { name: string; left: number; reset: string; low: boolean };
 export type LimitPill = "Measured" | "Not published";
-export type LimitRow = { id: string; name: string; provider?: string; email?: string; plan?: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string; inUse?: boolean };
+export type LimitRow = { id: string; name: string; provider?: string; email?: string; plan?: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string; inUse?: boolean; stale?: boolean };
 export type Limits = { rows: LimitRow[]; updatedAt: number; refreshing: boolean };
 
 /** Limits carried on branch:usage-checked when the status-bar poll got a result. */
@@ -78,6 +78,11 @@ export function usageStatusWords(error: unknown, provider: string): string {
   return `${provider} couldn't share usage right now. Branch will try again.`;
 }
 
+/** A reading the engine kept because the latest check was rate limited or timed out: say how old it is and why. */
+export function staleReadingWords(reason: unknown, age: string): string {
+  return /\b429\b|rate.?limit/i.test(str(reason)) ? `Rate limited · last reading ${age}. Branch checks again in 5 min.` : `No answer · last reading ${age}. Branch will try again.`;
+}
+
 function limitRow(p: Record<string, unknown>, updatedAt: number, now: number, accountNumber: number): LimitRow {
   const windows = list(p.windows).flatMap((w) => {
     const measured = readMeasuredPercent(w.usedPercent);
@@ -89,9 +94,11 @@ function limitRow(p: Record<string, unknown>, updatedAt: number, now: number, ac
   const measured = windows.length > 0;
   const provider = str(p.provider);
   const service = str(p.displayName) || provider;
-  const name = provider === "openai-codex" || /^ChatGPT plan$/i.test(service) ? `ChatGPT · Account ${accountNumber}` : service.replace(/\s+plan$/i, "");
-  const line = p.error === "Usage not reported" ? "Usage not reported" : p.error ? usageStatusWords(p.error, name) : measured ? `as of ${ageWords(updatedAt, now)}` : str(p.summary) === "Usage not reported" ? "Usage not reported" : usageStatusWords(undefined, name);
-  return { id: `${str(p.provider)}:${str(p.authProfileId) || str(p.accountEmail) || account}`, name, provider: str(p.provider), email: str(p.accountEmail), plan: str(p.plan), account, pill: measured ? "Measured" : "Not published", windows, line, inUse: p.inUse === true };
+  const name = provider === "openai-codex" || /^ChatGPT plan$/i.test(service) ? `ChatGPT · Account ${accountNumber}` : provider === "anthropic" ? `Claude · Account ${accountNumber}` : service.replace(/\s+plan$/i, "");
+  const readingAt = num(p.readingAt);
+  const stale = measured && readingAt > 0;
+  const line = stale ? staleReadingWords(p.staleReason, ageWords(readingAt, now)) : p.error === "Usage not reported" ? "Usage not reported" : p.error ? usageStatusWords(p.error, name) : measured ? `as of ${ageWords(updatedAt, now)}` : str(p.summary) === "Usage not reported" ? "Usage not reported" : usageStatusWords(undefined, name);
+  return { id: `${str(p.provider)}:${str(p.authProfileId) || str(p.accountEmail) || account}`, name, provider: str(p.provider), email: str(p.accountEmail), plan: str(p.plan), account, pill: measured ? "Measured" : "Not published", windows, line, inUse: p.inUse === true, ...(stale ? { stale } : {}) };
 }
 
 /** usage.status: one row per connection and account, never added together (§4.9.4 rule 1). */

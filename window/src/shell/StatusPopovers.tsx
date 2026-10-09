@@ -100,9 +100,10 @@ function accountRow(row: LimitRow) {
   const week = row.windows.find((window) => /week/i.test(window.name));
   const used = fiveHour ? Math.max(0, 100 - fiveHour.left) : 0;
   const weekUsed = week ? Math.max(0, 100 - week.left) : null;
-  const left = fiveHour ? `${fiveHour.left}% left${fiveHour.reset ? ` · ${fiveHour.reset}` : ""}` : "Not shared";
-  const detail = [row.name, row.plan, weekUsed === null ? null : `this week ${weekUsed}% used`].filter(Boolean).join(" · ");
-  return { fiveHour, used, left, detail };
+  const left = fiveHour ? `${fiveHour.left}% left${fiveHour.reset ? ` · ${fiveHour.reset}` : ""}` : null;
+  const label = row.email || row.name;
+  const detail = [label === row.name ? null : row.name, row.plan, weekUsed === null ? null : `this week ${weekUsed}% used`].filter(Boolean).join(" · ");
+  return { fiveHour, used, left, label, detail };
 }
 
 /** Every account is one flat list: provider dot, account, left · reset, meter, name · plan · this week. */
@@ -128,12 +129,14 @@ export function UsagePopover({ limits, request, onOpenUsage, ...base }: Base & {
       <div className="lims">
         <div className="pt">Every account</div>
         {rows.map((row) => {
-          const { fiveHour, used, left, detail } = accountRow(row);
-          return <div className="acctT5" key={row.id} style={{ cursor: "default" }}>
-            <span className="aNameT5"><span className={`provT5 ${providerDot(row)}`} aria-hidden="true" />{row.email || row.account || row.name}{row.inUse ? <span className="pill ok">used next</span> : null}</span>
-            <span className="aLeftT5">{left}</span>
+          const { fiveHour, used, left, label, detail } = accountRow(row);
+          return <div className={`acctT5${row.stale ? " staleT5" : ""}`} key={row.id} style={{ cursor: "default" }}>
+            <span className="aNameT5"><span className={`provT5 ${providerDot(row)}`} aria-hidden="true" /><span className="aLabelT5">{label}</span></span>
+            {row.inUse ? <span className="pill ok">used next</span> : null}
+            {left ? <span className="aLeftT5">{left}</span> : null}
             {fiveHour ? <span className="meterT5"><i style={{ width: `${Math.max(used, 1)}%` }} /></span> : null}
-            <small>{detail}</small>
+            {!fiveHour || row.stale ? <small className="aLineT5">{row.line}</small> : null}
+            {detail ? <small>{detail}</small> : null}
           </div>;
         })}
         {!limits ? <p className="sp-note">Asking each connection…</p> : null}

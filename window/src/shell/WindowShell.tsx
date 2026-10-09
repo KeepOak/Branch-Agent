@@ -6,7 +6,7 @@ import type { SendExtras } from "../connect/engine";
 import { firstSendEcho } from "../composer/sending";
 import { roomIdOf, type SaplingSession } from "../connect/session";
 import { withOwner } from "../connect/agent-owner";
-import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
+import { isPreparationPending, isPreparationStalled, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { Composer, VOICE_OFF } from "../composer/Composer";
 import { hasUnsavedDraftFiles } from "../composer/drafts";
 import { componentDesktop } from "../connect/desktop-component-updates";
@@ -1368,6 +1368,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           loadingEarlier={segments.loading}
           earlierError={segments.error}
           preparationError={s.error}
+          onStartupReady={() => session.retryOpen()}
           advancedDiagnostics={level !== "regular"}
           onLoadEarlier={segments.loadEarlier}
           onOpenSession={(key) => { if (showingAll) setAllTopics(null); openTopic(key); }}
@@ -1385,6 +1386,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           liveStartedAt={s.liveStartedAt}
           room={room.thread}
           history={showingAll ? allTopics?.loading ? [] : allTopics!.history : mergeRoomNotices(s.history, roomNotices)}
+          historyReady={showingAll ? !allTopics?.loading : s.historyReady}
           live={showingAll ? [] : s.live}
           questions={showingAll ? [] : questions.list}
           onStart={(text: string) => void session.send(text)}
@@ -1398,7 +1400,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onAnswer={(id, decision) => void session.answer(id, decision)}
         />
         </SplitFrame>}
-        notice={showingAll && allTopics?.error ? <p className="notice indent">Couldn't read all threads: {allTopics.error}</p> : showingAll && allTopics?.loading ? <p className="notice indent">Reading all threads…</p> : s.error && !isPreparationPending(s.error) ? <p className="notice indent">{s.error}</p> : null}
+        notice={showingAll && allTopics?.error ? <p className="notice indent">Couldn't read all threads: {allTopics.error}</p> : showingAll && allTopics?.loading ? <p className="notice indent">Reading all threads…</p> : s.error && !isPreparationPending(s.error) && !isPreparationStalled(s.error) ? <p className="notice indent">{s.error}</p> : null}
         stage={stage ? (
           <ComputerStage key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} mode={stage} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} initialComputer={stageComputer} initialControl={stageTakeOver} onMode={setStage} onClose={() => { setStage(null); setStageComputer(null); setStageTakeOver(false); }} onChooseComputer={() => openSettings("computer")} onPip={(computer) => { setPip(computer); setStage(null); }} />
         ) : null}
@@ -1419,7 +1421,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
               <TalkSetup handle={setupTalk} />
             ) : newTrunkFlow && newTrunkFlow.sessionKey === openKey ? (
               <NewTrunkCard engine={session.engine} flow={newTrunkFlow} onDone={(name) => { setNewTrunkFlow(null); notify(`${name} is ready. What’s the first job?`); }} />
-            ) : ready && !roomNotices.length && !s.history.length && !s.pendingUser && !s.liveRunId ? (
+            ) : ready && s.historyReady !== false && !roomNotices.length && !s.history.length && !s.pendingUser && !s.liveRunId ? (
               <WhereChips key={s.sessionKey} engine={session.engine} row={openRow} trunkName={trunkName(openRow?.agentId)} advanced={level !== "regular"}
                 projectName={projects.projects.find((x) => x.id === openRow?.projectId)?.name ?? null} onStartTopic={(options) => startNew(openRow?.agentId, options)} />
             ) : null

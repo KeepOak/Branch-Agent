@@ -70,6 +70,10 @@ const SUBAGENT_TOOL_DENY_ALWAYS = [
   // Direct user/session sends - subagents communicate through announce chain
   "message",
   "sessions_send",
+  "trunk_message",
+  "room_list",
+  "room_read",
+  "room_post",
   "conversations_list",
   "conversations_send",
   "conversations_turn",

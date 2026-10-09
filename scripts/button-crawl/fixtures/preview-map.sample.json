@@ -1,0 +1,42 @@
+[
+  {
+    "id": "sidebar-search",
+    "screen": "sidebar",
+    "label": "Search",
+    "previewAction": "Focuses sidebar search.",
+    "appFile": "window/src/shell/Sidebar.tsx",
+    "appComponent": "Sidebar",
+    "appAction": "Focuses the list search.",
+    "status": "same"
+  },
+  {
+    "id": "titlebar-guide",
+    "screen": "titlebar",
+    "label": "Guide",
+    "previewAction": "Opens the Guide popover.",
+    "appFile": "window/src/shell/guide-links.ts",
+    "appComponent": "Guide menu",
+    "appAction": "Opens the Guide menu.",
+    "status": "different"
+  },
+  {
+    "id": "chat-back",
+    "screen": "chat-header",
+    "label": "Back",
+    "previewAction": "Goes back.",
+    "appFile": "window/src/shell/TopBar.tsx",
+    "appComponent": "TopBar",
+    "appAction": "The app shows Back where the preview does not.",
+    "status": "extra"
+  },
+  {
+    "id": "future-status",
+    "screen": "sidebar",
+    "label": "Later",
+    "previewAction": "A status this reader may not know yet.",
+    "appFile": "window/src/places/inbox/index.tsx",
+    "appComponent": "Inbox",
+    "appAction": "Informational only.",
+    "status": "surprise"
+  }
+]

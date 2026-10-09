@@ -40,6 +40,8 @@ type FollowupQueueState = {
     sourceRefs: WeakMap<FollowupRun, FollowupRun>;
   }>;
   evictedSummaryCount: number;
+  /** Bounded retries after a stale-expired reply owner rejects drain. */
+  staleExpiryDrainAttempts?: number;
   // Collected transcript recorders retain this source after admission removes queue items.
   lastRun?: FollowupRun["run"];
 };

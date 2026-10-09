@@ -10,7 +10,7 @@ export type TalkQuestion = { key: string; step: number; part: number; title: str
 export type TalkState = { look: Look; jobs: number[]; apps: { id: string; label: string; connected: boolean }[]; autoUpdate: boolean };
 
 /** The steps asked, in order: Make it yours, Your first Trunks, Reach it anywhere, Keep it running, People, Two more things. */
-export const TALK_STEPS = [3, 4, 6, 7, 8, 9] as const;
+export const TALK_STEPS = [3, 4, 5, 7, 8, 9] as const;
 
 const head = (step: number) => `Setup · ${step + 1} of ${STEPS.length} · ${STEPS[step]}`;
 
@@ -51,7 +51,7 @@ export function talkQuestion(step: number, part: number, s: TalkState): TalkQues
         { label: "A teammate on their computer", line: "An invite link or an 8-character code", value: "1" },
         { label: "Just me", value: "none" },
       ]);
-    case "A few extras":
+    case "Two more things":
       return q("Email and calendar, or bringing back a backup?", [
         { label: "Show me the steps", line: "Opens this step of setup", value: "steps" },
         { label: "Neither for now", value: "none" },
