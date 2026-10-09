@@ -24,6 +24,35 @@ export function tailnetIPv4(interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> =
   return undefined;
 }
 
+const GRAFT_ADDRESS_LIMIT = 8;
+
+function isPrivateIPv4(address: string): boolean {
+  const [first, second] = address.split(".").map(Number);
+  return first === 10 || (first === 172 && second >= 16 && second <= 31) || (first === 192 && second === 168);
+}
+
+/** Every address a joined Branch may try, best first: the tailnet (stable across networks), the setup code's own
+ *  address, then this computer's private LAN addresses. Tailscale is optional: without it the LAN addresses remain. */
+export function graftAddressCandidates(params: {
+  bind: string;
+  port: number;
+  primary: string;
+  interfaces?: NodeJS.Dict<os.NetworkInterfaceInfo[]>;
+}): string[] {
+  if (params.bind === "loopback") return [params.primary];
+  const interfaces = params.interfaces ?? os.networkInterfaces();
+  const lan = Object.values(interfaces).flatMap((entries) =>
+    (entries ?? []).filter((entry) => {
+      const isIPv4 = entry.family === "IPv4" || (entry.family as unknown) === 4;
+      return isIPv4 && !entry.internal && isPrivateIPv4(entry.address);
+    }).map((entry) => entry.address),
+  );
+  const tailnet = tailnetIPv4(interfaces);
+  const urls = [tailnet, params.primary, ...lan.map((address) => `ws://${address}:${params.port}`)]
+    .map((value) => (value && !value.startsWith("ws") ? `ws://${value}:${params.port}` : value));
+  return [...new Set(urls.filter((value): value is string => Boolean(value)))].slice(0, GRAFT_ADDRESS_LIMIT);
+}
+
 /** The setup code carries this Branch's own loopback address unless the owner opened the gateway to the network
  *  (gateway.bind other than loopback). Then it prefers the tailnet address: upstream's resolver picks the LAN
  *  address, which goes stale when the router reassigns it and strands every joined Branch. */
@@ -56,6 +85,7 @@ async function runInvite(opts: InviteOpts): Promise<void> {
     graftInviteParams(cfg, port),
     { scopes: ["operator.admin"] },
   )) as { setupCode: string; gatewayUrl: string; expiresAtMs?: number };
+  result.setupCode = await withAddressCandidates(result.setupCode, cfg.gateway?.bind ?? "loopback", port);
   if (opts.json) {
     defaultRuntime.writeJson(result);
     return;
@@ -69,6 +99,14 @@ async function runInvite(opts: InviteOpts): Promise<void> {
   defaultRuntime.log(
     `Approve it with ${formatCliCommand("branch devices approve <requestId>")} if it waits for approval.`,
   );
+}
+
+/** The same setup code, listing every address this host can be reached on (the code's own bootstrap token is kept). */
+async function withAddressCandidates(setupCode: string, bind: string, port: number): Promise<string> {
+  const { decodePairingSetupCode, encodePairingSetupCode } = await import("../pairing/setup-code.js");
+  const payload = decodePairingSetupCode(setupCode);
+  const urls = graftAddressCandidates({ bind, port, primary: payload.url });
+  return urls.length > 1 ? encodePairingSetupCode({ ...payload, urls }) : setupCode;
 }
 
 type JoinOpts = { name?: string; json?: boolean };
@@ -85,6 +123,7 @@ async function runJoin(code: string, opts: JoinOpts): Promise<void> {
   const name = opts.name?.trim() || os.hostname();
   const link = {
     url: payload.url,
+    ...(payload.urls ? { urls: payload.urls } : {}),
     tlsFingerprint: payload.tlsFingerprint,
     name,
     joinedAt: Date.now(),

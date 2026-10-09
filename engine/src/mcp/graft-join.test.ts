@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { graftInviteParams, tailnetIPv4 } from "../cli/graft-cli.js";
+import { graftAddressCandidates, graftInviteParams, tailnetIPv4 } from "../cli/graft-cli.js";
 import {
   graftBranchIdentity,
   graftTrunkIdentity,
@@ -156,6 +156,23 @@ describe("branch graft join", () => {
     expect(
       graftInviteParams({ gateway: { bind: "loopback" } } as never, 19031, tailnetOnly).publicUrl,
     ).toBe("ws://127.0.0.1:19031");
+  });
+
+  it("lists the tailnet first, then the setup code's address, then private LAN addresses; Tailscale is optional", () => {
+    const iface = (address: string, internal = false) => [{ address, family: "IPv4", internal, netmask: "", mac: "", cidr: null }] as never;
+    const withTailnet = { en0: iface("10.0.0.9"), en1: iface("192.168.1.20"), utun3: iface("100.64.0.7"), lo0: iface("127.0.0.1", true) };
+    expect(graftAddressCandidates({ bind: "lan", port: 19031, primary: "ws://10.0.0.9:19031", interfaces: withTailnet as never })).toEqual([
+      "ws://100.64.0.7:19031",
+      "ws://10.0.0.9:19031",
+      "ws://192.168.1.20:19031",
+    ]);
+    const lanOnly = { en0: iface("10.0.0.9"), en1: iface("203.0.113.5") };
+    expect(graftAddressCandidates({ bind: "lan", port: 19031, primary: "ws://10.0.0.9:19031", interfaces: lanOnly as never })).toEqual([
+      "ws://10.0.0.9:19031",
+    ]);
+    expect(graftAddressCandidates({ bind: "loopback", port: 19031, primary: "ws://127.0.0.1:19031", interfaces: withTailnet as never })).toEqual([
+      "ws://127.0.0.1:19031",
+    ]);
   });
 
   it("finds the tailnet address among interfaces and ignores other private ranges", () => {

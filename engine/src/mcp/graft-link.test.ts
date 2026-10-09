@@ -133,6 +133,47 @@ describe("the joined Branch's link to its host", () => {
     expect(lines[0]).toContain("rejoin");
     runner.stop();
   });
+  it("moves to the host's next saved address after a pre-hello failure, but not on every failure", async () => {
+    const created: string[] = [];
+    const fake = fakeClient();
+    const runner = new GraftLinkRunner({
+      link: { url: "ws://10.0.0.5:41010", urls: ["ws://100.64.0.7:41010", "ws://10.0.0.5:41010"], name: "Branch B", joinedAt: 1 },
+      trunks: async () => [],
+      createClient: (handlers, url) => {
+        created.push(url);
+        return fake.create(handlers);
+      },
+      forget: vi.fn(),
+      log: () => undefined,
+    });
+    runner.start();
+    fake.get().handlers.onConnectError?.(new Error("connect ETIMEDOUT 10.0.0.5:41010"));
+    expect(created).toEqual(["ws://10.0.0.5:41010", "ws://100.64.0.7:41010"]);
+    fake.get().handlers.onConnectError?.(new Error("connect ECONNREFUSED 100.64.0.7:41010"));
+    expect(created).toHaveLength(2);
+    expect(runner.state).toBe("connecting");
+    runner.stop();
+  });
+
+  it("never switches addresses for a link that has only one", async () => {
+    const created: string[] = [];
+    const fake = fakeClient();
+    const runner = new GraftLinkRunner({
+      link,
+      trunks: async () => [],
+      createClient: (handlers, url) => {
+        created.push(url);
+        return fake.create(handlers);
+      },
+      forget: vi.fn(),
+      log: () => undefined,
+    });
+    runner.start();
+    fake.get().handlers.onConnectError?.(new Error("connect ECONNREFUSED"));
+    expect(created).toEqual(["ws://127.0.0.1:41010"]);
+    runner.stop();
+  });
+
   it("stops and forgets the host when the host removed this Branch's pairing", async () => {
     const fake = fakeClient();
     const forget = vi.fn();

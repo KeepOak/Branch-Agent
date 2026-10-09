@@ -15,6 +15,9 @@ import {
 } from "./graft-join.js";
 import { HELLO_INTERVAL_MS } from "./outside-presence.js";
 
+/** Pre-hello failures move the link to the next saved address, at most once per this interval. */
+export const ADDRESS_SWITCH_INTERVAL_MS = 60_000;
+
 export type LinkClient = {
   start: () => void;
   stop: () => void;
@@ -48,6 +51,8 @@ export const CONNECT_FAILURE_LOG_INTERVAL_MS = 5 * 60_000;
 export class GraftLinkRunner {
   state: LinkState = "connecting";
   private lastConnectFailureLogAt = Number.NEGATIVE_INFINITY;
+  private lastAddressSwitchAt = Number.NEGATIVE_INFINITY;
+  private addressIndex = 0;
   private client: LinkClient | undefined;
   private timer: ReturnType<typeof setInterval> | undefined;
   private workTimer: ReturnType<typeof setInterval> | undefined;
@@ -57,7 +62,7 @@ export class GraftLinkRunner {
     private readonly deps: {
       link: GraftLink;
       trunks: () => Promise<{ id: string; name?: string; avatar?: string }[]>;
-      createClient: (handlers: LinkHandlers) => LinkClient;
+      createClient: (handlers: LinkHandlers, url: string) => LinkClient;
       /** Forget the saved host (it disconnected this Branch). */
       forget: (link: GraftLink) => void;
       log: (line: string) => void;
@@ -67,34 +72,46 @@ export class GraftLinkRunner {
     },
   ) {}
 
+  /** The link's saved addresses, starting with its own `url`, without repeats. */
+  addresses(): string[] {
+    return [...new Set([this.deps.link.url, ...(this.deps.link.urls ?? [])])];
+  }
+
+  private activeUrl(): string {
+    const addresses = this.addresses();
+    return addresses[this.addressIndex % addresses.length] ?? this.deps.link.url;
+  }
+
+  private readonly handlers: LinkHandlers = {
+    onHello: () => {
+      this.state = "connected";
+      this.deps.log(`graft link: connected to ${this.activeUrl()}`);
+      void this.sayHello();
+      this.clearTimer();
+      this.timer = setInterval(
+        () => void this.sayHello(),
+        this.deps.helloIntervalMs ?? HELLO_INTERVAL_MS,
+      );
+      this.timer.unref?.();
+      if (this.deps.handleWork) {
+        void this.pollWork();
+        this.workTimer = setInterval(() => void this.pollWork(), this.deps.workPollMs ?? 2_000);
+        this.workTimer.unref?.();
+      }
+    },
+    onClose: () => {
+      this.clearTimer();
+      if (this.state === "connected") {
+        this.state = "connecting";
+        this.deps.log(`graft link: lost ${this.activeUrl()}; reconnecting`);
+      }
+    },
+    onRefused: (reason) => this.disconnected(reason),
+    onConnectError: (error) => this.connectFailed(error),
+  };
+
   start(): void {
-    this.client = this.deps.createClient({
-      onHello: () => {
-        this.state = "connected";
-        this.deps.log(`graft link: connected to ${this.deps.link.url}`);
-        void this.sayHello();
-        this.clearTimer();
-        this.timer = setInterval(
-          () => void this.sayHello(),
-          this.deps.helloIntervalMs ?? HELLO_INTERVAL_MS,
-        );
-        this.timer.unref?.();
-        if (this.deps.handleWork) {
-          void this.pollWork();
-          this.workTimer = setInterval(() => void this.pollWork(), this.deps.workPollMs ?? 2_000);
-          this.workTimer.unref?.();
-        }
-      },
-      onClose: () => {
-        this.clearTimer();
-        if (this.state === "connected") {
-          this.state = "connecting";
-          this.deps.log(`graft link: lost ${this.deps.link.url}; reconnecting`);
-        }
-      },
-      onRefused: (reason) => this.disconnected(reason),
-      onConnectError: (error) => this.connectFailed(error),
-    });
+    this.client = this.deps.createClient(this.handlers, this.activeUrl());
     this.client.start();
   }
 
@@ -134,12 +151,26 @@ export class GraftLinkRunner {
   private connectFailed(error: Error): void {
     if (this.state === "connected" || this.state === "disconnected" || this.state === "stopped") return;
     const now = Date.now();
-    if (now - this.lastConnectFailureLogAt < CONNECT_FAILURE_LOG_INTERVAL_MS) return;
-    this.lastConnectFailureLogAt = now;
-    const reason = String(error?.message ?? error);
-    this.deps.log(
-      `graft link: can't reach ${this.deps.link.url} (${reason}); retrying. If this host's address changed, rejoin it with a new setup code.`,
-    );
+    if (now - this.lastConnectFailureLogAt >= CONNECT_FAILURE_LOG_INTERVAL_MS) {
+      this.lastConnectFailureLogAt = now;
+      const reason = String(error?.message ?? error);
+      this.deps.log(
+        `graft link: can't reach ${this.activeUrl()} (${reason}); retrying. If this host's address changed, rejoin it with a new setup code.`,
+      );
+    }
+    this.switchAddress(now);
+  }
+
+  /** Moves to the next saved address; the host's other addresses are how a link recovers when one changes. */
+  private switchAddress(now: number): void {
+    if (this.addresses().length < 2) return;
+    if (now - this.lastAddressSwitchAt < ADDRESS_SWITCH_INTERVAL_MS) return;
+    this.lastAddressSwitchAt = now;
+    this.addressIndex += 1;
+    this.client?.stop();
+    this.client = this.deps.createClient(this.handlers, this.activeUrl());
+    this.deps.log(`graft link: trying ${this.activeUrl()} next`);
+    this.client.start();
   }
 
   private clearTimer(): void {
@@ -321,8 +352,8 @@ export function startGraftLinks(log: (line: string) => void): GraftLinkSuperviso
           void import("./graft-join.js").then(({ forgetGraftLink }) => forgetGraftLink(gone.url));
         },
         // The device client is created asynchronously (identity + store); calls before it exists are no-ops.
-        createClient: (handlers) => {
-          const ready = createDeviceLinkClient(link, handlers).then((created) => {
+        createClient: (handlers, url) => {
+          const ready = createDeviceLinkClient({ ...link, url }, handlers).then((created) => {
             client = created;
             if (stopped) created.stop();
             return created;
