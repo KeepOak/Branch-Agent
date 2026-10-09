@@ -15,7 +15,7 @@ import {
   outcomeWords,
   shortFolder,
 } from '../approvals/approvalWords';
-import { LIST_FAILED_MESSAGE, trunkOf, type Answered, type Approval, type ApprovalDecision, type ApprovalsSnapshot, type Trunk } from '../approvals/approvals';
+import { LIST_FAILED_MESSAGE, RECONNECT_WAIT_MS, trunkOf, type Answered, type Approval, type ApprovalDecision, type ApprovalsSnapshot, type Trunk } from '../approvals/approvals';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
@@ -386,7 +386,8 @@ export function ApprovalsScreen({
           <View testID="approvals-offline" style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md, backgroundColor: color.warnTint, borderRadius: radius.md, padding: space.md }}>
             <View style={{ width: 8, height: 8, borderRadius: radius.pill, backgroundColor: color.warn }} />
             <ThemedText variant="footnote" tone="ink2" style={{ flex: 1 }}>
-              Reconnecting to your computer… An answer goes through as soon as it’s back.
+              {/* answer() waits RECONNECT_WAIT_MS for the computer, then gives up with "Try again when it’s back". */}
+              {`Reconnecting to your computer… An answer sent now waits up to ${Math.round(RECONNECT_WAIT_MS / 1000)} seconds for it, then asks you to try again.`}
             </ThemedText>
           </View>
         )}

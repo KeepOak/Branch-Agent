@@ -99,7 +99,8 @@ describe('needs you screen', () => {
     expect(failed.props.onRetry).toHaveBeenCalledTimes(1);
     await renderScreen({ pending: [], loaded: false, error: 'not connected' }, { online: false });
     expect(screen.getByTestId('approvals-waiting')).toBeOnTheScreen();
-    expect(screen.getByTestId('approvals-offline')).toBeOnTheScreen();
+    // It promises only what answer() does: wait RECONNECT_WAIT_MS (15 s) for the computer, then give up.
+    expect(screen.getByTestId('approvals-offline')).toHaveTextContent('Reconnecting to your computer… An answer sent now waits up to 15 seconds for it, then asks you to try again.');
   });
 
   it('asks for notifications in context, and leads to Settings when they are off', async () => {
