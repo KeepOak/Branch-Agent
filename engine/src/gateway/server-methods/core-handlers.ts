@@ -181,6 +181,7 @@ const CORE_GATEWAY_HANDLER_MODULES = {
   "sessions-read": () => import("./sessions-read.js").then((module) => module.sessionReadHandlers),
   contacts: () => import("./contacts.js").then((module) => module.contactHandlers),
   rooms: () => import("./rooms.js").then((module) => module.roomHandlers),
+  "trunk-queue": () => import("./trunk-queue.js").then((module) => module.trunkQueueHandlers),
   "sessions-rewind": () =>
     import("./sessions-rewind.js").then((module) => module.sessionRewindHandlers),
   "sessions-sharing": () =>

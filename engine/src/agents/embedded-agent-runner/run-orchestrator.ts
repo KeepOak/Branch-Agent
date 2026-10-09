@@ -99,6 +99,7 @@ import { createEmbeddedRunProgressController } from "./run/progress-controller.j
 import { createRecoveryMessageActionTurnCapability } from "./run/recovery-message-action-capability.js";
 import { resolveInitialEmbeddedRunModel } from "./run/runtime-resolution.js";
 import { assertAgentHarnessRunAdmission, backfillSessionKey } from "./run/session-bootstrap.js";
+import { createSupersededSetupRetry } from "./run/superseded-setup-retry.js";
 import type { EmbeddedAgentRunResult } from "./types.js";
 import {
   createUsageAccumulator,
@@ -249,12 +250,13 @@ async function runEmbeddedAgentInternal(
       const refresh = createEmbeddedAgentPluginRuntimeRefresh(params);
       const usage = createUsageAccumulator();
       let refreshed = false;
+      const setupRetry = createSupersededSetupRetry(() => params);
       let generationCleanup = Promise.resolve();
       let terminal: ReturnType<typeof createAgentLifecycleTerminalBackstop> | undefined;
       let assistantErrorTranscript: ReturnType<typeof createAssistantErrorTranscript> | undefined;
       const ownsAssistantErrorTranscript = params.assistantErrorTranscript === undefined;
       const onAgentEvent = params.onAgentEvent;
-      const onAttemptStart = params.onAttemptStart;
+      const onAttemptStart = setupRetry.observeAttemptStart(params.onAttemptStart);
       const runGeneration = async (): Promise<EmbeddedAgentRunResult> => {
         throwIfAborted();
         assertInitialOperatorModelPolicy(params, sessionAdmission?.entry);
@@ -265,7 +267,7 @@ async function runEmbeddedAgentInternal(
           ...params,
           // Preserve the admitted writer claim alongside the already resolved storage identity.
           sessionTarget: { ...params.sessionTarget, ...runSessionTarget },
-        });
+        }).catch(setupRetry.failAttempt);
         if (cliDispatched) {
           return cliDispatched;
         }
@@ -651,7 +653,7 @@ async function runEmbeddedAgentInternal(
         let result: EmbeddedAgentRunResult;
         try {
           for (;;) {
-            const run = () => refresh.run(runGeneration);
+            const run = () => setupRetry.run(refresh, runGeneration, () => generationCleanup);
             result = await (refreshed
               ? runOutsidePreparedModelRuntimePluginGenerationScope(() =>
                   runOutsidePluginRuntimeGenerationScope(run),
