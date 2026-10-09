@@ -1,4 +1,7 @@
 /** A Codex Trunk's next turn runs on the model it was allowed to switch to, on the same thread, in the same engine. */
+// test/setup.extensions.ts prepares compiled subprocess declarations before collection for
+// app-server tests; the named feature batch doesn't load it, so this file does it first.
+import "../../../../src/test-utils/prepare-compiled-subprocesses.js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelChoiceDecision } from "../../../../src/agents/model-choice.js";
 import {
@@ -61,6 +64,44 @@ vi.mock("../../../../src/status/status-text.js", () => ({
   buildStatusText: async () => "Session status",
 }));
 
+// The named feature batch runs this file without test/setup.extensions.ts; give the run-attempt
+// hooks the same Codex attempt runtime that setup file provides for app-server tests.
+beforeEach(async (context) => {
+  if (context.codexAttemptRuntime) {
+    return;
+  }
+  const [workerCpu, mcp, clocks] = await Promise.all([
+    vi.importActual<typeof import("../../../../src/infra/worker-cpu.js")>(
+      "../../../../src/infra/worker-cpu.js",
+    ),
+    vi.importActual<typeof import("../../../../src/agents/agent-bundle-mcp-manager-api.js")>(
+      "../../../../src/agents/agent-bundle-mcp-manager-api.js",
+    ),
+    vi.importActual<typeof import("../../../../src/test-utils/gateway-scheduler-clock.js")>(
+      "../../../../src/test-utils/gateway-scheduler-clock.js",
+    ),
+  ]);
+  let stop: (() => Promise<void>) | undefined;
+  context.codexAttemptRuntime = {
+    readWorkerPools: workerCpu.getTrackedWorkerPoolSnapshot,
+    start: async () => {
+      const scheduler = clocks.createTestGatewayScheduler();
+      stop = async () => {
+        scheduler.beginClose();
+        try {
+          await mcp.disposeAllSessionMcpRuntimes();
+        } finally {
+          await scheduler.stop();
+        }
+      };
+      await mcp.setSessionMcpRuntimeScheduler(scheduler);
+    },
+    stop: async () => {
+      await stop?.();
+    },
+  };
+});
+
 setupRunAttemptTestHooks();
 
 const { from, to } = TRUNK_MODELS.codex;
@@ -106,13 +147,16 @@ async function codexTrunk(tools: NonNullable<BranchConfig["tools"]>) {
       runId: `run-${turns}`,
     });
     params.modelId = model;
+    // Room for a cold first attempt; each turn still completes as soon as the fixture says so.
+    params.timeoutMs = 60_000;
     const run = runCodexAppServerAttempt(params);
     await vi.waitFor(
       () =>
         expect(harness.requests.filter(({ method }) => method === "turn/start")).toHaveLength(
           turns,
         ),
-      fastWait,
+      // A cold first attempt (no shared extension setup) can take longer than fastWait to start.
+      { interval: fastWait.interval, timeout: 60_000 },
     );
     await harness.completeTurn({ threadId: THREAD, turnId: "turn-1" });
     await run;
