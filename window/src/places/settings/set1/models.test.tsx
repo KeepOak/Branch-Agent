@@ -92,6 +92,23 @@ describe("Settings › Models", () => {
     expect(patches(request)).toContainEqual({ agents: { defaults: { subagents: { maxConcurrent: 4 } } } });
   });
 
+  it("Trunk model choice switches save to the engine and read back after a reload", async () => {
+    const { engine, request } = engineOf();
+    await render(engine, 1);
+    const sw = (label: string) => host.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
+    for (const [label, key] of [["Trunks may switch their own model", "enabled"], ["Pick the model per task", "perTask"]] as const) {
+      expect(sw(label).disabled).toBe(false);
+      expect(sw(label).checked).toBe(false);
+      await act(async () => sw(label).click());
+      expect(patches(request)).toContainEqual({ tools: { modelChoice: { [key]: true } } });
+    }
+    await act(async () => root.unmount());
+    root = createRoot(host);
+    await render(engineOf({ tools: { modelChoice: { enabled: true, perTask: true } } }).engine, 1);
+    expect(sw("Trunks may switch their own model").checked).toBe(true);
+    expect(sw("Pick the model per task").checked).toBe(true);
+  });
+
   it("Technical shows one Per account heading with its sections together", async () => {
     const { engine } = engineOf();
     await render(engine, 2);
