@@ -6,7 +6,6 @@ engine:extensions/moonshot/src/kimi-web-search-provider.test.ts
 engine:extensions/parallel/src/parallel-web-search-provider.test.ts
 engine:extensions/perplexity/src/perplexity-web-search-provider.test.ts
 engine:extensions/slack/src/monitor/context.test.ts
-engine:extensions/slack/src/monitor/events/interactions.test.ts
 engine:extensions/slack/src/monitor/message-handler/prepare.test.ts
 engine:packages/gateway-protocol/src/schema/config.test.ts
 engine:packages/terminal-core/src/links.test.ts

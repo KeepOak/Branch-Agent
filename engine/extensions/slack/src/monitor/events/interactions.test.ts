@@ -2699,7 +2699,7 @@ describe("registerSlackInteractionEvents", () => {
               url_block: {
                 url_input: {
                   type: "url_text_input",
-                  value: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
+                  value: "https://docs.openclaw.ai",
                 },
               },
               richtext_block: {
@@ -2766,7 +2766,7 @@ describe("registerSlackInteractionEvents", () => {
     });
     expectRecordFields(inputByActionId(inputs, "url_input"), {
       inputKind: "url",
-      inputUrl: "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs",
+      inputUrl: "https://docs.openclaw.ai/",
     });
     expectRecordFields(inputByActionId(inputs, "richtext_input"), {
       inputKind: "rich_text",
