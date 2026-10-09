@@ -172,6 +172,12 @@ export class Conversation {
   private reads = 0;
   /** Counts the live events this chat has seen; a history read only speaks for the reply as it was when the read began. */
   private liveEvents = 0;
+  /**
+   * A reply this phone first met part-way through: its text is only the words streamed here, and the words written
+   * before them are the history's to supply. `cuts` is the text's length after each piece, so a history read naming
+   * that run can tell which of those pieces it already holds. Null once the reply's whole text is known here.
+   */
+  private joined: { runId: string; cuts: number[] } | null = null;
   /** Runs this chat saw end; a late event or a slow history read can't bring them back. */
   private readonly finished = new Set<string>();
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -225,11 +231,22 @@ export class Conversation {
       // holds a send when it has that send's key (`<runId>:user`), never because an earlier message said the same words.
       const sends = this.snapshot.sends.filter((send) => send.state !== 'sent' || !runKeys.has(send.id));
       const live = this.snapshot.live;
+      const joined = live && this.joined?.runId === live.runId ? this.joined : null;
       // A reply that streamed while this read was on its way is newer than what the read says, even when the read
       // names the same run: its words may be from before a later replacement, and being longer doesn't make them newer.
       const newer = live && this.liveEvents !== fence && !this.finished.has(live.runId) ? live : null;
       let next: LiveReply | null = null;
-      if (newer) {
+      if (live && joined && live.runId === inFlightId) {
+        // A reply first met part-way through (opening a chat while the computer replies): the history holds the words
+        // from before, and maybe some streamed here too. Keep the history's words and add the pieces it doesn't end with;
+        // a history that already holds every piece, with more after them (words missed while away), is the whole text.
+        const text = str(inFlight.text);
+        let held = joined.cuts.length - 1;
+        while (held > 0 && !text.endsWith(live.text.slice(0, joined.cuts[held]))) held -= 1;
+        const whole = held === 0 && live.text && text.includes(live.text) ? text : text + live.text.slice(joined.cuts[held]);
+        next = { ...live, text: whole, startedAt: num(inFlight.startedAt) || live.startedAt };
+        this.joined = null;
+      } else if (newer) {
         next = newer.runId === inFlightId ? { ...newer, startedAt: num(inFlight.startedAt) || newer.startedAt } : newer;
       } else if (inFlightId) {
         const known = live?.runId === inFlightId ? live : null;
@@ -239,6 +256,7 @@ export class Conversation {
         // Your message is on its way and its run hasn't reported yet: keep the Thinking bubble.
         next = live;
       }
+      if (this.joined && this.joined.runId !== next?.runId) this.joined = null;
       this.set({ items, loaded: true, error: null, sends, live: next });
     } catch (error) {
       if (read !== this.reads || this.disposed) return;
@@ -315,12 +333,22 @@ export class Conversation {
     const live = this.snapshot.live;
     // A reply started somewhere else (the computer, an automation) streams here too.
     const current: LiveReply = live?.runId === runId ? live : { runId, text: '', phase: null, startedAt: this.now() };
+    // A reply this phone didn't start, first met here, may have words from before: see `joined`.
+    if (live?.runId !== runId && (state === 'status' || state === 'delta') && !this.snapshot.sends.some((send) => send.id === runId)) {
+      this.joined = { runId, cuts: [0] };
+    }
     if (state === 'status' || state === 'delta') this.liveEvents += 1;
     if (state === 'status') {
       this.set({ live: { ...current, phase: str(p.phase) || null } });
     } else if (state === 'delta') {
       const delta = str(p.deltaText);
-      this.set({ live: { ...current, text: p.replace === true ? delta : current.text + delta, phase: null } });
+      const text = p.replace === true ? delta : current.text + delta;
+      if (this.joined?.runId === runId) {
+        // A replacement is the reply's whole text; an addition is one more piece.
+        if (p.replace === true) this.joined = null;
+        else this.joined.cuts.push(text.length);
+      }
+      this.set({ live: { ...current, text, phase: null } });
     } else if (state === 'final' || state === 'error' || state === 'aborted') {
       this.finished.add(runId);
       if (state === 'error') this.set({ ended: { runId, text: str(p.errorMessage) || 'The reply stopped with an error.', failed: true } });

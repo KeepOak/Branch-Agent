@@ -236,6 +236,47 @@ describe('one chat, live', () => {
     chat.dispose();
   });
 
+  it('keeps the words written before the phone opened a chat the computer is replying in', async () => {
+    const { link, held, emit } = heldLink();
+    const chat = new Conversation(KEY, link, () => 'run-1');
+    chat.attach();
+    // The chat opens while the computer is part-way through "Hello world": the first read is on its way when the
+    // next words stream in, and the engine reads the reply for the history after sending them.
+    emit('chat', { runId: 'desk-1', sessionKey: KEY, seq: 2, state: 'delta', deltaText: ' world' });
+    expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: ' world' });
+    held.shift()!.answer({ sessionKey: KEY, messages: [user('Say hello', 1_000)], inFlightRun: { runId: 'desk-1', text: 'Hello world', startedAt: 900 } });
+    await eventually(() => expect(chat.getSnapshot().loaded).toBe(true));
+    expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'Hello world', startedAt: 900 });
+    emit('chat', { runId: 'desk-1', sessionKey: KEY, seq: 3, state: 'delta', deltaText: '!' });
+    expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'Hello world!' });
+
+    chat.dispose();
+
+    // Words that came after the engine read the reply are added to the history's copy, never lost or doubled.
+    const second = heldLink();
+    const again = new Conversation(KEY, second.link, () => 'run-1');
+    again.attach();
+    second.emit('chat', { runId: 'desk-2', sessionKey: KEY, seq: 2, state: 'delta', deltaText: ' How' });
+    second.emit('chat', { runId: 'desk-2', sessionKey: KEY, seq: 3, state: 'delta', deltaText: ' are you?' });
+    second.held.shift()!.answer({ sessionKey: KEY, messages: [user('Say hello', 1_000)], inFlightRun: { runId: 'desk-2', text: 'Hello. How', startedAt: 900 } });
+    await eventually(() => expect(again.getSnapshot().loaded).toBe(true));
+    expect(again.getSnapshot().live).toMatchObject({ runId: 'desk-2', text: 'Hello. How are you?' });
+    again.dispose();
+  });
+
+  it('keeps the words written before the phone opened a chat when only a status came during the first read', async () => {
+    const { link, held, emit } = heldLink();
+    const chat = new Conversation(KEY, link, () => 'run-1');
+    chat.attach();
+    emit('chat', { runId: 'desk-1', sessionKey: KEY, seq: 2, state: 'status', phase: 'preparing_context' });
+    held.shift()!.answer({ sessionKey: KEY, messages: [user('Say hello', 1_000)], inFlightRun: { runId: 'desk-1', text: 'Hello', startedAt: 900 } });
+    await eventually(() => expect(chat.getSnapshot().loaded).toBe(true));
+    expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'Hello' });
+    emit('chat', { runId: 'desk-1', sessionKey: KEY, seq: 3, state: 'delta', deltaText: ' there' });
+    expect(chat.getSnapshot().live).toMatchObject({ runId: 'desk-1', text: 'Hello there' });
+    chat.dispose();
+  });
+
   it('says why the chat couldn’t be read, and clears the unread mark once when opened', async () => {
     const { session, engine } = await paired();
     engine.failMethod('chat.history', 'history unavailable');
