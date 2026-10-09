@@ -136,4 +136,30 @@ describe("duplicate tab names", () => {
     expect(labels[0]).toMatch(/^Talk with Coordinator · [0-9a-f]{6}$/);
     expect(new Set(labels).size).toBe(2);
   });
+
+  it("keeps the tag as its own element, so a cut name never hides it", async () => {
+    localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "tabs", width: 280, per: {} }));
+    const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    const items = ["agent:juniper:a2a:branch-coordinator-a5a54c", "agent:juniper:a2a:branch-coordinator-b1c2d3"].map((key) => ({ topic: { key, contactId: "trunk:juniper", title: key, status: "active", unread: false } as Topic, preview: "", updatedAt: 0 }));
+    await act(async () => root!.render(<TopicRail contactId="trunk:juniper" contactName="Juniper" contactKey="agent:juniper:main" generalPreview="" generalUpdatedAt={0} currentKey="agent:juniper:main" items={items} onOpen={() => {}} onAll={() => {}} onPatch={async () => {}} />));
+    const tab = [...host.querySelectorAll("button.tpTabT5")].find((button) => button.getAttribute("aria-label")?.startsWith("Talk with Coordinator"));
+    expect(tab?.querySelector(".tpTabNameT5")?.textContent).toBe("Talk with Coordinator");
+    expect(tab?.querySelector(".tpTabTagT5")?.textContent).toMatch(/^ · [0-9a-f]{6}$/);
+  });
+});
+
+describe("All view separators", () => {
+  it("gives two threads with the same readable name distinct separator labels", () => {
+    const a = "agent:juniper:a2a:branch-coordinator-a5a54c";
+    const b = "agent:juniper:a2a:branch-coordinator-b1c2d3";
+    const blocks = mergeTopicTranscripts([
+      { key: "agent:juniper:main", title: "General", preview: "", updatedAt: 1, blocks: [] },
+      { key: a, title: a, preview: "", updatedAt: 2, blocks: [{ kind: "text", key: "x", text: "One", streaming: false, meta: { timestamp: 100 } }] },
+      { key: b, title: b, preview: "", updatedAt: 3, blocks: [{ kind: "text", key: "y", text: "Two", streaming: false, meta: { timestamp: 200 } }] },
+    ]);
+    const separators = blocks.flatMap((block) => (block.kind === "notice" ? [block.text] : []));
+    expect(separators).toHaveLength(2);
+    expect(separators[0]).toMatch(/^💬 Talk with Coordinator · [0-9a-f]{6}$/);
+    expect(new Set(separators).size).toBe(2);
+  });
 });

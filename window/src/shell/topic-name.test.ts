@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { distinctNames, isRawSessionKey, readableTitle, sessionKeyName } from "./topic-name";
+import { distinctNames, isRawSessionKey, readableTitle, sessionKeyName, splitKeyTag } from "./topic-name";
 
 describe("topic names", () => {
   it("reads a cross-computer a2a key as a sentence about the other party", () => {
@@ -53,5 +53,12 @@ describe("duplicate and prefix rules", () => {
   it("keeps a colon title with no agent or a2a prefix as typed", () => {
     expect(isRawSessionKey("Standup:2026:Q3")).toBe(false);
     expect(readableTitle("Standup:2026:Q3")).toBe("Standup:2026:Q3");
+  });
+});
+
+describe("tag split", () => {
+  it("splits a tagged label into its name and tag, and leaves an untagged label whole", () => {
+    expect(splitKeyTag("Talk with Coordinator · ee3ee8")).toEqual({ name: "Talk with Coordinator", tag: "ee3ee8" });
+    expect(splitKeyTag("Plan the trip")).toEqual({ name: "Plan the trip", tag: "" });
   });
 });

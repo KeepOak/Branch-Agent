@@ -41,6 +41,12 @@ export function keyTag(key: string): string {
   return hash.toString(16).padStart(8, "0").slice(0, 6);
 }
 
+/** Splits a label from distinctNames into its name and its " · tag" suffix, so the tag can stay visible when the name is cut. */
+export function splitKeyTag(label: string): { name: string; tag: string } {
+  const match = label.match(/^(.*) · ([0-9a-f]{6})$/);
+  return match ? { name: match[1]!, tag: match[2]! } : { name: label, tag: "" };
+}
+
 /** Readable names for one list of threads: a name that repeats in the list gets the thread's key tag after " · ". */
 export function distinctNames(entries: readonly { key: string; name: string }[]): Map<string, string> {
   const counts = new Map<string, number>();
