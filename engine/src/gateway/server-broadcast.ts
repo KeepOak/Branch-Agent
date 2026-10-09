@@ -10,6 +10,7 @@ import type { SystemPresence } from "../infra/system-presence.js";
 // Gateway WebSocket broadcaster.
 // Applies event scope guards and slow-consumer handling before sending frames.
 import { logRejectedLargePayload } from "../logging/diagnostic-payload.js";
+import { recordMainThreadWork } from "../logging/main-thread-work.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { queuePluginSessionsChanged } from "../plugins/gateway-events.js";
 import { operatorScopeSatisfied } from "../shared/operator-scope-compat.js";
@@ -700,11 +701,21 @@ export function createGatewayBroadcaster(params: {
 
   const broadcast: GatewayBroadcastFn = (event, payload, opts) => {
     params.onBroadcast?.(event, payload, opts);
-    broadcastInternal(event, payload, opts);
+    const startedAt = performance.now();
+    try {
+      broadcastInternal(event, payload, opts);
+    } finally {
+      recordMainThreadWork("broadcast", event, performance.now() - startedAt);
+    }
   };
 
   const broadcastToConnIds: GatewayBroadcastToConnIdsFn = (event, payload, connIds, opts) => {
-    broadcastInternal(event, payload, opts, connIds);
+    const startedAt = performance.now();
+    try {
+      broadcastInternal(event, payload, opts, connIds);
+    } finally {
+      recordMainThreadWork("broadcast", event, performance.now() - startedAt);
+    }
   };
 
   const getBufferedAmount: GatewayBufferedAmountFn = (connId) => {
