@@ -1,12 +1,42 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import type { MemorySearchResult } from "branch/plugin-sdk/memory-core-host-runtime-files";
-import { describe, expect, it } from "vitest";
-import { searchTeamMemory, type TeamMemoryLookup } from "./team-memory-search.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  resolveTeamMemberIds,
+  searchTeamMemory,
+  type TeamMemoryLookup,
+} from "./team-memory-search.js";
 import { createMemorySearchTool } from "./tools.js";
 import { asBranchConfig } from "./tools.test-helpers.js";
 
+let workspace: string;
+let root: string;
+
+beforeEach(async () => {
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "team-memory-"));
+  workspace = path.join(root, "builder-a");
+  const outside = path.join(root, "outside");
+  await fs.mkdir(path.join(workspace, "memory"), { recursive: true });
+  await fs.mkdir(outside, { recursive: true });
+  await fs.writeFile(path.join(outside, "notes.md"), "private outside notes\n");
+  await fs.writeFile(path.join(workspace, "USER.md"), "owner profile\n");
+  await fs.writeFile(path.join(workspace, "SOUL.md"), "agent soul\n");
+  await fs.writeFile(path.join(workspace, "MEMORY.md"), "durable note\n");
+  await fs.writeFile(path.join(workspace, "memory", "ok.md"), "durable note\n");
+  await fs.writeFile(path.join(workspace, "memory", "USER.md"), "owner profile copy\n");
+  await fs.symlink(path.join(outside, "notes.md"), path.join(workspace, "memory", "link.md"));
+  await fs.symlink(path.join(workspace, "USER.md"), path.join(workspace, "memory", "profile.md"));
+});
+
+afterEach(async () => {
+  await fs.rm(root, { recursive: true, force: true });
+});
+
 function hit(overrides: Partial<MemorySearchResult>): MemorySearchResult {
   return {
-    path: "memory/note.md",
+    path: "memory/ok.md",
     startLine: 1,
     endLine: 2,
     score: 0.5,
@@ -16,86 +46,191 @@ function hit(overrides: Partial<MemorySearchResult>): MemorySearchResult {
   };
 }
 
-function managerReturning(results: MemorySearchResult[]): TeamMemoryLookup {
-  return { manager: { search: async () => results } };
+function managerReturning(
+  results: MemorySearchResult[],
+  workspaceDir: string | undefined = workspace,
+): TeamMemoryLookup {
+  return {
+    manager: {
+      search: async () => results,
+      status: () => ({ workspaceDir }),
+    },
+  };
 }
 
-describe("searchTeamMemory", () => {
-  it("returns only durable memory hits from every agent, tagged with agentId", async () => {
-    const lookups: Record<string, TeamMemoryLookup> = {
-      main: managerReturning([
-        hit({ path: "memory/main-note.md", score: 0.5 }),
-        hit({ path: "sessions/transcript.jsonl", source: "sessions", score: 0.99 }),
-        hit({ path: "/abs/home/secret.md", score: 0.9 }),
-        hit({
-          path: "memory/untrusted.md",
-          score: 0.8,
-          provenance: { originClass: "untrusted", sessionKind: "unknown", observedAt: 0 },
-        }),
-      ]),
-      builder: managerReturning([hit({ path: "memory/builder-note.md", score: 0.7 })]),
-    };
+describe("resolveTeamMemberIds", () => {
+  const roster = {
+    defaultId: "main",
+    entries: { main: {}, "builder-a": {}, "builder-b": {}, personal: {} },
+  };
 
+  it("defaults to builder Trunks and never includes the main or personal agent", () => {
+    expect(resolveTeamMemberIds(asBranchConfig({ agents: roster }))).toEqual([
+      "builder-a",
+      "builder-b",
+    ]);
+  });
+
+  it("uses only the owner's explicit list, dropping ids that are not configured agents", () => {
+    const listed = asBranchConfig({
+      agents: { ...roster, teamMemory: { agents: ["main", "builder-b", "outside-branch"] } },
+    });
+
+    expect(resolveTeamMemberIds(listed)).toEqual(["main", "builder-b"]);
+  });
+});
+
+describe("searchTeamMemory", () => {
+  it("never opens an unlisted agent, even when it would score highest", async () => {
+    const opened: string[] = [];
     const outcome = await searchTeamMemory({
-      agentIds: ["main", "builder"],
+      memberIds: ["builder-a"],
       query: "decision",
       maxResults: 10,
-      lookupManager: async (agentId) => lookups[agentId]!,
+      lookupManager: async (agentId) => {
+        opened.push(agentId);
+        return managerReturning([hit({ score: 0.99 })]);
+      },
+    });
+
+    expect(opened).toEqual(["builder-a"]);
+    expect(outcome.results.map((result) => result.agentId)).toEqual(["builder-a"]);
+  });
+
+  it("returns only durable notes from the agent's own workspace, tagged with agentId", async () => {
+    const outcome = await searchTeamMemory({
+      memberIds: ["builder-a"],
+      query: "decision",
+      maxResults: 10,
+      lookupManager: async () =>
+        managerReturning([
+          hit({ path: "memory/ok.md", score: 0.5 }),
+          hit({ path: "MEMORY.md", score: 0.4 }),
+          hit({ path: "sessions/transcript.jsonl", source: "sessions", score: 0.99 }),
+          hit({ path: "/abs/home/secret.md", score: 0.9 }),
+          hit({
+            path: "memory/ok.md",
+            score: 0.8,
+            provenance: { originClass: "untrusted", sessionKind: "unknown", observedAt: 0 },
+          }),
+        ]),
     });
 
     expect(outcome.results).toEqual([
       {
-        agentId: "builder",
-        path: "memory/builder-note.md",
-        startLine: 1,
-        endLine: 2,
-        score: 0.7,
-        snippet: "note",
-      },
-      {
-        agentId: "main",
-        path: "memory/main-note.md",
+        agentId: "builder-a",
+        path: "memory/ok.md",
         startLine: 1,
         endLine: 2,
         score: 0.5,
         snippet: "note",
       },
+      {
+        agentId: "builder-a",
+        path: "MEMORY.md",
+        startLine: 1,
+        endLine: 2,
+        score: 0.4,
+        snippet: "note",
+      },
     ]);
-    expect(outcome.skippedAgentIds).toEqual([]);
+  });
+
+  it("drops hits outside the workspace, USER.md, and symlinks that escape the notes", async () => {
+    const outcome = await searchTeamMemory({
+      memberIds: ["builder-a"],
+      query: "q",
+      maxResults: 20,
+      lookupManager: async () =>
+        managerReturning([
+          hit({ path: "../outside/notes.md", score: 0.9 }),
+          hit({ path: "USER.md", score: 0.9 }),
+          hit({ path: "memory/USER.md", score: 0.9 }),
+          hit({ path: "SOUL.md", score: 0.9 }),
+          hit({ path: "memory/link.md", score: 0.9 }),
+          hit({ path: "memory/profile.md", score: 0.9 }),
+          hit({ path: "memory/../USER.md", score: 0.9 }),
+          hit({ path: "memory/ok.md", score: 0.1 }),
+        ]),
+    });
+
+    expect(outcome.results.map((result) => result.path)).toEqual(["memory/ok.md"]);
   });
 
   it("caps merged results at maxResults, highest score first", async () => {
     const outcome = await searchTeamMemory({
-      agentIds: ["a", "b"],
+      memberIds: ["builder-a", "builder-b"],
       query: "q",
       maxResults: 1,
       lookupManager: async (agentId) =>
-        managerReturning([
-          hit({ path: `memory/${agentId}.md`, score: agentId === "a" ? 0.4 : 0.9 }),
-        ]),
+        managerReturning([hit({ score: agentId === "builder-a" ? 0.4 : 0.9 })]),
     });
 
-    expect(outcome.results.map((result) => result.agentId)).toEqual(["b"]);
+    expect(outcome.results.map((result) => result.agentId)).toEqual(["builder-b"]);
   });
 
-  it("reports agents it could not search instead of failing the whole call", async () => {
-    const outcome = await searchTeamMemory({
-      agentIds: ["ok", "broken", "unindexed"],
+  it("keeps at most four agents in flight", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const memberIds = Array.from({ length: 12 }, (_, index) => `builder-${index}`);
+    await searchTeamMemory({
+      memberIds,
       query: "q",
       maxResults: 10,
-      lookupManager: async (agentId) => {
-        if (agentId === "broken") {
-          throw new Error("index corrupt");
-        }
-        if (agentId === "unindexed") {
-          return { error: "no memory index" };
-        }
-        return managerReturning([hit({ path: "memory/ok.md" })]);
-      },
+      lookupManager: async () => ({
+        manager: {
+          status: () => ({ workspaceDir: workspace }),
+          search: async () => {
+            inFlight += 1;
+            peak = Math.max(peak, inFlight);
+            await new Promise((resolve) => {
+              setTimeout(resolve, 5);
+            });
+            inFlight -= 1;
+            return [];
+          },
+        },
+      }),
     });
 
-    expect(outcome.results.map((result) => result.agentId)).toEqual(["ok"]);
-    expect(outcome.skippedAgentIds).toEqual(["broken", "unindexed"]);
+    expect(peak).toBeLessThanOrEqual(4);
+    expect(peak).toBeGreaterThan(1);
+  });
+
+  it("returns partial results and names the agent that timed out", async () => {
+    const outcome = await searchTeamMemory({
+      memberIds: ["builder-a", "stuck"],
+      query: "q",
+      maxResults: 10,
+      timeoutMs: 40,
+      lookupManager: async (agentId) =>
+        agentId === "stuck"
+          ? {
+              manager: {
+                status: () => ({ workspaceDir: workspace }),
+                search: () => new Promise<MemorySearchResult[]>(() => {}),
+              },
+            }
+          : managerReturning([hit({})]),
+    });
+
+    expect(outcome.results.map((result) => result.agentId)).toEqual(["builder-a"]);
+    expect(outcome.skipped).toEqual([{ agentId: "stuck", reason: "timeout" }]);
+    expect(outcome.note).toBe("Partial results. Timed out: stuck.");
+  });
+
+  it("skips an agent whose workspace cannot be verified", async () => {
+    const outcome = await searchTeamMemory({
+      memberIds: ["builder-a"],
+      query: "q",
+      maxResults: 10,
+      lookupManager: async () => ({
+        manager: { search: async () => [hit({})], status: () => ({}) },
+      }),
+    });
+
+    expect(outcome.results).toEqual([]);
+    expect(outcome.skipped).toEqual([{ agentId: "builder-a", reason: "unavailable" }]);
   });
 
   it("stops when the caller has already aborted", async () => {
@@ -104,7 +239,7 @@ describe("searchTeamMemory", () => {
 
     await expect(
       searchTeamMemory({
-        agentIds: ["main"],
+        memberIds: ["builder-a"],
         query: "q",
         maxResults: 10,
         signal: controller.signal,
@@ -126,6 +261,22 @@ describe("memory_search corpus=team", () => {
     expect(result.details).toMatchObject({
       results: [],
       error: "Team memory search is not available in this run.",
+    });
+  });
+
+  it("refuses team search from a Trunk the owner did not list", async () => {
+    const tool = createMemorySearchTool({
+      config: asBranchConfig({
+        agents: { defaultId: "main", entries: { main: {}, "builder-a": {} } },
+      }),
+      agentId: "main",
+    });
+
+    const result = await tool.execute("team-unlisted", { query: "decision", corpus: "team" });
+
+    expect(result.details).toMatchObject({
+      results: [],
+      error: "This Trunk is not in the team memory group.",
     });
   });
 });

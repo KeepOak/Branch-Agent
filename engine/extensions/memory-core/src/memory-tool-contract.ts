@@ -32,7 +32,7 @@ const MemorySearchSchema = {
       type: "string",
       enum: ["memory", "wiki", "all", "sessions", "team"],
       description:
-        "team searches durable memory notes of every configured agent. Each hit carries agentId; its path is relative to that agent, so do not pass it to memory_get.",
+        "team searches durable notes (MEMORY.md and memory/) of the Trunks the owner lists in agents.teamMemory, builder Trunks by default. Each hit carries agentId; its path is relative to that agent, so do not pass it to memory_get.",
     },
   },
   required: ["query"],

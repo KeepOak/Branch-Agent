@@ -39,6 +39,12 @@ export type TrunkQueueConfig = {
   agents?: string[];
 };
 
+/** Shared durable memory between Trunks: team memory search reads only these agents. */
+export type TeamMemoryConfig = {
+  /** Trunk ids that share durable notes with each other. Unset means every builder-* Trunk. */
+  agents?: string[];
+};
+
 export type AgentsConfig = {
   ownership?: "explicit";
   /** Contact Trunk used by unrouted conversations; explicit bindings take precedence. */
@@ -47,4 +53,5 @@ export type AgentsConfig = {
   defaults?: AgentDefaultsConfig;
   entries?: Record<string, AgentEntryConfig>;
   trunkQueue?: TrunkQueueConfig;
+  teamMemory?: TeamMemoryConfig;
 };

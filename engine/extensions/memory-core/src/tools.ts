@@ -39,7 +39,7 @@ import {
   resolveMemorySearchAbortError,
   runMemorySearchWithDeadline,
 } from "./memory/search-deadline.js";
-import { searchTeamMemoryCorpus } from "./team-memory-search.js";
+import { resolveTeamMemberIds, searchTeamMemoryCorpus } from "./team-memory-search.js";
 import {
   buildMemorySearchPresentation,
   resolveMemoryCitationsMode,
@@ -255,6 +255,14 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
                   action: "Search this agent's own memory with memory_search without corpus.",
                 },
               ),
+            );
+          }
+          if (!resolveTeamMemberIds(cfg).includes(agentId)) {
+            return jsonResult(
+              buildMemorySearchUnavailableResult("This Trunk is not in the team memory group.", {
+                warning: "Team memory is shared only between the Trunks the owner lists.",
+                action: "Use memory_search without corpus to search this agent's own memory.",
+              }),
             );
           }
           const team = await searchTeamMemoryCorpus({
