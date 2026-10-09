@@ -78,10 +78,12 @@ function Advanced({ engine, agentId, name, draft, models, setMay }: { engine: Wi
 type ToolsetRow = { id: string; label: string; description: string };
 
 /** One switch per toolset the engine offers (tools.catalog). Browser is the browser switch, with its own lock reason. */
+/** Until tools.catalog answers, or when it doesn't, the browser switch stays available on its own. */
+const BROWSER_ONLY: ToolsetRow[] = [{ id: "browser", label: "Browser", description: "Open pages, click, type and read them in the built-in browser." }];
+
 function ToolsSection({ engine, agentId, may, setMay }: { engine: WindowEngine; agentId: string; may: May; setMay: (m: Partial<May>) => void }) {
   const catalog = useResource<{ toolsets?: ToolsetRow[] }>(engine, "tools.catalog", { agentId });
-  const toolsets = catalog.data?.toolsets ?? [];
-  if (!toolsets.length) return null;
+  const toolsets = catalog.data?.toolsets?.length ? catalog.data.toolsets : BROWSER_ONLY;
   return (
     <section className="tk-tools" aria-label="Tools">
       <h4 className="tk-tools-title">Tools</h4>
