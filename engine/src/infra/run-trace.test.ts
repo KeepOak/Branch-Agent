@@ -91,12 +91,12 @@ describe("run trace", () => {
 
   it("does not repeat a first token after the run's cap is passed, for a run still in progress", () => {
     setRunTraceSinkForTest((line) => lines.push(line));
-    traceAgentRunEvent({ runId: "live", stream: "assistant", data: {} });
+    traceAgentRunEvent({ runId: "run-live", stream: "assistant", data: {} });
     for (let i = 0; i < 600; i += 1) {
-      traceAgentRunEvent({ runId: `other-${i}`, stream: "assistant", data: {} });
-      traceAgentRunEvent({ runId: "live", stream: "assistant", data: {} });
+      traceAgentRunEvent({ runId: `run-other-${i}`, stream: "assistant", data: {} });
+      traceAgentRunEvent({ runId: "run-live", stream: "assistant", data: {} });
     }
-    expect(lines.filter((line) => line === "trace id=live step=first-token")).toHaveLength(1);
+    expect(lines.filter((line) => line === "trace id=run-live step=first-token")).toHaveLength(1);
   });
 
   it("forgets a run when it ends, so its entry is released", () => {
