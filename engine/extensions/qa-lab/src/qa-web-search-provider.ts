@@ -32,7 +32,7 @@ const QaLabWebSearchSchema = {
 } satisfies Record<string, unknown>;
 
 function buildQaLabSearchResult(query: string, index: number) {
-  const url = `https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/qa-lab/search-fixture${index + 1}`;
+  const url = `https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/qa-lab/search-fixture/${index + 1}`;
   return {
     title: wrapWebContent(`QA Lab search fixture result ${index + 1}`, "web_search"),
     url,
