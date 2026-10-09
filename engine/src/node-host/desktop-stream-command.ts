@@ -3,7 +3,6 @@ import fs from "node:fs/promises";
 import { isRecord } from "@branch/normalization-core/record-coerce";
 import type { CloudflareAccessCredentials } from "../../packages/gateway-client/src/cloudflare-access.js";
 import type { DesktopHostConfig } from "../config/types.desktop.js";
-import { getHostDesktopGuidance } from "../gateway/desktop/host-guidance.js";
 import { classifyRfbSecurity, connectRfbServer } from "../gateway/desktop/rfb-probe.js";
 import { registerSecretValueForRedaction } from "../logging/secret-redaction-registry.js";
 import { NODE_DESKTOP_ATTACH_PATH } from "../shared/node-desktop-stream.js";
@@ -13,9 +12,9 @@ import { runNodeStreamTransport } from "./node-stream-transport.js";
 
 const DEFAULT_DESKTOP_PORT = 5900;
 
-/** Why this computer's screen can't be seen, in plain words, with the setup for this computer's own OS. */
-export function loopbackRfbUnavailableMessage(port: number, platform: NodeJS.Platform = process.platform): string {
-  return `Branch can't see this computer's screen yet: no screen-sharing server is listening on 127.0.0.1:${port}. Set one up, then try again. ${getHostDesktopGuidance(platform)}`;
+/** What a person sees when another computer's screen can't be watched yet. No setup is asked of them. */
+export function loopbackRfbUnavailableMessage(): string {
+  return "Watching another computer's screen is coming in a Branch update. No setup needed.";
 }
 const PROBE_TIMEOUT_MS = 1_500;
 const TICKET_PATTERN = /^[a-f0-9]{48}$/u;
@@ -129,7 +128,7 @@ async function runNodeDesktopStreamCommand(params: {
     throw new Error(
       probe.kind === "not-rfb"
         ? `desktop stream target 127.0.0.1:${params.port} is not an RFB server; set desktop.host.port to the node's VNC server port`
-        : loopbackRfbUnavailableMessage(params.port),
+        : loopbackRfbUnavailableMessage(),
     );
   }
   try {

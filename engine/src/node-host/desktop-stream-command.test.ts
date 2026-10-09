@@ -93,16 +93,13 @@ describe("node desktop stream command", () => {
         config: { enabled: true, port: address.port },
         signal: new AbortController().signal,
       }),
-    ).rejects.toThrow(loopbackRfbUnavailableMessage(address.port));
+    ).rejects.toThrow(loopbackRfbUnavailableMessage());
   });
 
-  it("names this computer's own setup, not another platform's", () => {
-    const linux = loopbackRfbUnavailableMessage(5900, "linux");
-    expect(linux).toContain("tigervnc");
-    expect(linux).not.toContain("System Settings");
-    expect(loopbackRfbUnavailableMessage(5900, "win32")).toContain("TightVNC");
-    expect(loopbackRfbUnavailableMessage(5900, "darwin")).toContain("Screen Sharing");
-    expect(loopbackRfbUnavailableMessage(5900, "darwin")).not.toContain("tigervnc");
+  it("asks nothing of the person: no server, OS or port setup in the message", () => {
+    const message = loopbackRfbUnavailableMessage();
+    expect(message).toBe("Watching another computer's screen is coming in a Branch update. No setup needed.");
+    expect(message).not.toMatch(/VNC|Screen Sharing|TightVNC|System Settings|5900|127\.0\.0\.1/i);
   });
 
   it.each([
