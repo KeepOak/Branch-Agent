@@ -112,6 +112,27 @@ describe("the joined Branch's link to its host", () => {
     runner.stop();
   });
 
+  it("says why a link that never connects can't reach its host, and not on every retry", async () => {
+    const fake = fakeClient();
+    const lines: string[] = [];
+    const runner = new GraftLinkRunner({
+      link,
+      trunks: async () => [],
+      createClient: fake.create,
+      forget: vi.fn(),
+      log: (line) => lines.push(line),
+    });
+    runner.start();
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      fake.get().handlers.onConnectError?.(new Error("connect ETIMEDOUT 10.0.0.5:19031"));
+    }
+    expect(runner.state).toBe("connecting");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("can't reach ws://127.0.0.1:41010");
+    expect(lines[0]).toContain("connect ETIMEDOUT");
+    expect(lines[0]).toContain("rejoin");
+    runner.stop();
+  });
   it("stops and forgets the host when the host removed this Branch's pairing", async () => {
     const fake = fakeClient();
     const forget = vi.fn();

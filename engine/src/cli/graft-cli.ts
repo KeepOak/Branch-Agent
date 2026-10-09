@@ -10,14 +10,36 @@ import { callGatewayFromCli } from "./gateway-rpc.js";
 
 type InviteOpts = { url?: string; token?: string; json?: boolean };
 
+/** Tailscale's IPv4 addresses sit in the carrier-grade NAT block 100.64.0.0/10. Unlike a LAN address, they do not
+ *  change when the router reassigns addresses. */
+export function tailnetIPv4(interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> = os.networkInterfaces()): string | undefined {
+  for (const entries of Object.values(interfaces)) {
+    for (const entry of entries ?? []) {
+      const isIPv4 = entry.family === "IPv4" || (entry.family as unknown) === 4;
+      if (!isIPv4 || entry.internal) continue;
+      const [first, second] = entry.address.split(".").map(Number);
+      if (first === 100 && second >= 64 && second <= 127) return entry.address;
+    }
+  }
+  return undefined;
+}
+
 /** The setup code carries this Branch's own loopback address unless the owner opened the gateway to the network
- *  (gateway.bind other than loopback), where upstream's resolver picks the LAN, tailnet or public address. */
-export function graftInviteParams(cfg: BranchConfig, port: number): Record<string, unknown> {
+ *  (gateway.bind other than loopback). Then it prefers the tailnet address: upstream's resolver picks the LAN
+ *  address, which goes stale when the router reassigns it and strands every joined Branch. */
+export function graftInviteParams(
+  cfg: BranchConfig,
+  port: number,
+  interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> = os.networkInterfaces(),
+): Record<string, unknown> {
   const bind = cfg.gateway?.bind ?? "loopback";
+  const tailnet = bind === "loopback" ? undefined : tailnetIPv4(interfaces);
+  const publicUrl =
+    bind === "loopback" ? `ws://127.0.0.1:${port}` : tailnet ? `ws://${tailnet}:${port}` : undefined;
   return {
     includeQr: false,
     bootstrapProfile: "limited",
-    ...(bind === "loopback" ? { publicUrl: `ws://127.0.0.1:${port}` } : {}),
+    ...(publicUrl ? { publicUrl } : {}),
   };
 }
 

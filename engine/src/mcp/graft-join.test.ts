@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { graftInviteParams } from "../cli/graft-cli.js";
+import { graftInviteParams, tailnetIPv4 } from "../cli/graft-cli.js";
 import {
   graftBranchIdentity,
   graftTrunkIdentity,
@@ -139,9 +139,34 @@ describe("branch graft join", () => {
     expect(graftInviteParams({ gateway: { bind: "loopback" } } as never, 41002).publicUrl).toBe(
       "ws://127.0.0.1:41002",
     );
-    expect(graftInviteParams({ gateway: { bind: "lan" } } as never, 41002)).toEqual({
+    expect(graftInviteParams({ gateway: { bind: "lan" } } as never, 41002, {})).toEqual({
       includeQr: false,
       bootstrapProfile: "limited",
     });
+  });
+
+  it("invites with the stable tailnet address when the gateway is on the network", () => {
+    const tailnetOnly = { utun3: [{ address: "100.64.0.7", family: "IPv4", internal: false }] } as never;
+    // A LAN address changes when the router reassigns it; the tailnet address does not.
+    expect(graftInviteParams({ gateway: { bind: "lan" } } as never, 19031, tailnetOnly)).toEqual({
+      includeQr: false,
+      bootstrapProfile: "limited",
+      publicUrl: "ws://100.64.0.7:19031",
+    });
+    expect(
+      graftInviteParams({ gateway: { bind: "loopback" } } as never, 19031, tailnetOnly).publicUrl,
+    ).toBe("ws://127.0.0.1:19031");
+  });
+
+  it("finds the tailnet address among interfaces and ignores other private ranges", () => {
+    const entry = (address: string, internal = false) => ({ address, family: "IPv4", internal, netmask: "", mac: "", cidr: null }) as never;
+    expect(
+      tailnetIPv4({
+        en0: [entry("10.0.0.9")],
+        lo0: [entry("127.0.0.1", true)],
+        utun3: [entry("100.64.0.7")],
+      }),
+    ).toBe("100.64.0.7");
+    expect(tailnetIPv4({ en0: [entry("100.63.0.1")], en1: [entry("100.128.0.1")] })).toBeUndefined();
   });
 });

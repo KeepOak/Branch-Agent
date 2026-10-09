@@ -27,6 +27,8 @@ export type LinkHandlers = {
   onClose: () => void;
   /** The host refused this device (pairing removed or token revoked): reconnecting cannot help. */
   onRefused: (reason: string) => void;
+  /** A connection attempt failed before the host said hello (unreachable address, refused socket, timeout). */
+  onConnectError?: (error: Error) => void;
 };
 export type LinkState = "connecting" | "connected" | "disconnected" | "stopped";
 type GraftWorkJob = { id: string; trunkId: string; text: string; sourceAgentId: string };
@@ -40,8 +42,12 @@ export function isHostRefusal(error: unknown): boolean {
   );
 }
 
+/** Pre-hello failures repeat every backoff step; one line per window says why the host is unreachable. */
+export const CONNECT_FAILURE_LOG_INTERVAL_MS = 5 * 60_000;
+
 export class GraftLinkRunner {
   state: LinkState = "connecting";
+  private lastConnectFailureLogAt = Number.NEGATIVE_INFINITY;
   private client: LinkClient | undefined;
   private timer: ReturnType<typeof setInterval> | undefined;
   private workTimer: ReturnType<typeof setInterval> | undefined;
@@ -87,6 +93,7 @@ export class GraftLinkRunner {
         }
       },
       onRefused: (reason) => this.disconnected(reason),
+      onConnectError: (error) => this.connectFailed(error),
     });
     this.client.start();
   }
@@ -122,6 +129,17 @@ export class GraftLinkRunner {
     this.clearTimer();
     this.client?.stop();
     this.deps.forget(this.deps.link);
+  }
+
+  private connectFailed(error: Error): void {
+    if (this.state === "connected" || this.state === "disconnected" || this.state === "stopped") return;
+    const now = Date.now();
+    if (now - this.lastConnectFailureLogAt < CONNECT_FAILURE_LOG_INTERVAL_MS) return;
+    this.lastConnectFailureLogAt = now;
+    const reason = String(error?.message ?? error);
+    this.deps.log(
+      `graft link: can't reach ${this.deps.link.url} (${reason}); retrying. If this host's address changed, rejoin it with a new setup code.`,
+    );
   }
 
   private clearTimer(): void {
@@ -230,6 +248,7 @@ export async function createDeviceLinkClient(
     onClose: () => handlers.onClose(),
     onConnectError: (error) => {
       if (isHostRefusal(error)) handlers.onRefused(error.message);
+      else handlers.onConnectError?.(error);
     },
     onReconnectPaused: (info) =>
       handlers.onRefused(`${info.reason} (${info.detailCode ?? info.code})`),
