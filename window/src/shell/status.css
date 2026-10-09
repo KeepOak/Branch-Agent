@@ -241,11 +241,12 @@
 .status-ring-label { display: inline-block; max-width: 340px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; transition: max-width .35s ease, opacity .25s; }
 .status-ring-label.collapsed { max-width: 0; opacity: 0; }
 .pop.usePopT5 { width: min(360px, calc(100vw - 24px)); }
-/* The reading wraps under a long name instead of squeezing it; only the label itself ever shortens. */
-.acctT5 { box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: 3px 8px; padding: 6px; margin: 0 -6px; width: calc(100% + 12px); border-radius: 8px; font-size: 12.5px; }
-.aNameT5 { display: flex; flex: 1 1 auto; max-width: 100%; gap: 6px; align-items: center; min-width: 0; white-space: nowrap; }
-.aLabelT5 { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.aNameT5 .pill { flex: none; }
+/* Name, badge and reading wrap onto the next line instead of squeezing each other; a label longer than the row breaks, never hides. */
+.usePopT5 .lims { grid-template-columns: minmax(0, 1fr); }
+.acctT5 { box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: 3px 8px; padding: 6px; margin: 0 -6px; width: calc(100% + 12px); min-width: 0; border-radius: 8px; font-size: 12.5px; }
+.aNameT5 { display: flex; gap: 6px; align-items: center; min-width: 0; max-width: 100%; }
+.aLabelT5 { min-width: 0; overflow-wrap: anywhere; }
+.acctT5 > .pill { flex: none; }
 .provT5 { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--ink-2); }
 .provT5.anthropic { background: transparent; box-shadow: inset 0 0 0 1.5px var(--ink-2); }
 .aLeftT5 { flex: none; margin-left: auto; font: 11.5px var(--mono, ui-monospace); color: var(--ink-3); white-space: nowrap; }

@@ -131,7 +131,8 @@ export function UsagePopover({ limits, request, onOpenUsage, ...base }: Base & {
         {rows.map((row) => {
           const { fiveHour, used, left, label, detail } = accountRow(row);
           return <div className={`acctT5${row.stale ? " staleT5" : ""}`} key={row.id} style={{ cursor: "default" }}>
-            <span className="aNameT5"><span className={`provT5 ${providerDot(row)}`} aria-hidden="true" /><span className="aLabelT5" title={label}>{label}</span>{row.inUse ? <span className="pill ok">used next</span> : null}</span>
+            <span className="aNameT5"><span className={`provT5 ${providerDot(row)}`} aria-hidden="true" /><span className="aLabelT5">{label}</span></span>
+            {row.inUse ? <span className="pill ok">used next</span> : null}
             {left ? <span className="aLeftT5">{left}</span> : null}
             {fiveHour ? <span className="meterT5"><i style={{ width: `${Math.max(used, 1)}%` }} /></span> : null}
             {!fiveHour || row.stale ? <small className="aLineT5">{row.line}</small> : null}

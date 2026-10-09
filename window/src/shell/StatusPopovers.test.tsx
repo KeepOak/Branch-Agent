@@ -107,20 +107,21 @@ describe("status popovers", () => {
     expect(fresh.querySelector(".aLineT5")).toBeNull();
     expect(fresh.textContent).not.toContain("last reading");
   });
-  it("Usage: a long account label shortens itself and never cuts the used-next badge or the reading", async () => {
+  it("Usage: a long account label, the used-next badge and the reading each stay whole and wrap instead of clipping", async () => {
     const usage = { updatedAt: Date.now(), providers: [{ provider: "anthropic", displayName: "Claude", accountEmail: "a.very.long.claude.address@example-company.com", inUse: true, plan: "Max (20x)", windows: [{ label: "5h", usedPercent: 20, resetAt: Date.now() + 2 * 3_600_000 }] }] };
     const host = await show(<UsagePopover above={above} onClose={() => {}} limits={readLimits(usage)} request={vi.fn(async () => usage) as never} onOpenUsage={() => {}} />);
-    const name = host.querySelector(".acctT5 .aNameT5") as HTMLElement;
-    const label = name.querySelector(":scope > .aLabelT5") as HTMLElement;
-    expect(label.textContent).toBe("a.very.long.claude.address@example-company.com");
-    expect(label.title).toBe(label.textContent);
-    expect(name.querySelector(":scope > .pill.ok")?.textContent).toBe("used next");
+    const row = host.querySelector(".acctT5") as HTMLElement;
+    expect(row.querySelector(":scope > .aNameT5 > .aLabelT5")?.textContent).toBe("a.very.long.claude.address@example-company.com");
+    expect(row.querySelector(":scope > .pill.ok")?.textContent).toBe("used next");
+    expect(row.querySelector(":scope > .aLeftT5")?.textContent).toMatch(/^80% left · resets /);
     const css = readFileSync(join(process.cwd(), "src/shell/status.css"), "utf8");
     const rule = (selector: string) => new RegExp(`(^|\\n)${selector.replace(/[.*]/g, "\\$&")} \\{([^}]*)\\}`).exec(css)?.[2] ?? "";
+    // The account list's single column may never grow past the popover to fit a long label.
+    expect(rule(".usePopT5 .lims")).toContain("grid-template-columns: minmax(0, 1fr)");
     expect(rule(".acctT5")).toContain("flex-wrap: wrap");
-    expect(rule(".aNameT5")).not.toContain("overflow: hidden");
-    expect(rule(".aLabelT5")).toContain("text-overflow: ellipsis");
-    expect(rule(".aNameT5 .pill")).toContain("flex: none");
+    expect(rule(".aNameT5")).not.toMatch(/overflow: hidden|white-space: nowrap/);
+    expect(rule(".aLabelT5")).toContain("overflow-wrap: anywhere");
+    expect(rule(".acctT5 > .pill")).toContain("flex: none");
     expect(rule(".aLeftT5")).toContain("flex: none");
   });
   it("Version: up to date has no install item", async () => {
