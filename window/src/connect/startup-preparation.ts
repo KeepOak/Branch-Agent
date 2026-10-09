@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "./engine";
 
-export type StartupPreparationState = "preparing" | "retrying" | "needs-restart";
+export type StartupPreparationState = "preparing" | "retrying";
 
 export type StartupPreparation = {
   state: StartupPreparationState;
@@ -14,6 +14,9 @@ export type StartupPreparation = {
 };
 
 const POLL_MS = 3_000;
+
+/** agents.retryStartup answered `retrying: false`: the engine had no preparation of this Trunk to start again. */
+export const RETRY_NOT_PREPARING = "the engine isn't getting this Trunk ready any more";
 
 const rec = (value: unknown): Record<string, unknown> => (value && typeof value === "object" ? value as Record<string, unknown> : {});
 
@@ -30,7 +33,7 @@ export function readStartupPreparation(list: unknown, agentId: string): StartupP
   const refusal = rec(rec(agents.find((agent) => rec(agent).id === agentId)).admissionRefusal);
   if (refusal.code !== "agent-database-inspection-pending") return null;
   const state = rec(refusal.preparation).state;
-  return state === "needs-restart" || state === "retrying" ? state : "preparing";
+  return state === "retrying" ? state : "preparing";
 }
 
 /**
@@ -78,7 +81,11 @@ export function useStartupPreparation(engine: WindowEngine | undefined, active: 
     setBusy(true);
     setError(null);
     void engine.request("agents.retryStartup", { agentId }).then(
-      () => setTick((n) => n + 1),
+      (result: unknown) => {
+        // Not preparing any more (ready, or failed for Doctor): say so, and re-read what it is now.
+        if (rec(result).retrying !== true) setError(RETRY_NOT_PREPARING);
+        setTick((n) => n + 1);
+      },
       (reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason)),
     ).finally(() => setBusy(false));
   }, [engine, agentId]);

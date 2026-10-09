@@ -22,10 +22,6 @@ export function preparationRetryingLabel(name: string): string {
   return `Getting ${name || "this Trunk"} ready failed, retrying…`;
 }
 
-export function preparationNeedsRestartLabel(name: string): string {
-  return `${name || "This Trunk"} needs a restart.`;
-}
-
 /** A single startup episode gets at most two minutes of increasingly spaced retries. */
 export class PreparationRetry {
   private startedAt: number | null = null;
