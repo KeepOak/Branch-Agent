@@ -10,3 +10,4 @@ dist/
 /button-crawl-output/
 
 __pycache__/
+frame-qa-output/
