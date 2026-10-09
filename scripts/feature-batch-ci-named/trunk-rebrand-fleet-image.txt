@@ -1,0 +1,2 @@
+engine:src/fleet/cell-profile.test.ts
+engine:src/cli/fleet-cli/register.test.ts
