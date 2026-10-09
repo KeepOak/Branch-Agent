@@ -1,3 +1,4 @@
+import { flushCompileCache } from "node:module";
 import { formatErrorMessage } from "../infra/errors.js";
 import { LegacyPluginSdkResourceHost } from "../plugins/legacy-sdk-resource-host.js";
 import { hasRetainedPluginRuntimeCloseError } from "../plugins/runtime-close-error.js";
@@ -102,6 +103,10 @@ async function startGatewayServerWithSdkHost(
       if (gatewayKernel.lifecycle.closePreludeStarted) {
         return;
       }
+      // Node otherwise writes the entire cold-start cache inside process.exit(),
+      // after the clean-close log and outside the desktop's asynchronous drain.
+      // Publish it before deferred background work, not during a later quit.
+      flushCompileCache();
       // Deferred sidecars must finish before the I/O window for background work begins.
       gatewayKernel.scheduler.schedule({
         id: "startup:post-ready-work",
