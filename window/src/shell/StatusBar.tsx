@@ -6,7 +6,7 @@ import "./status.css";
 export type ConnectionPhase = "connected" | "connecting" | "offline";
 /** The gateway's own state (§4.9.1 item 2): its dot is green only while its health check answers. */
 export type GatewayPhase = "on" | "checking" | "offline";
-export type StatusItem = "connection" | "gateway" | "room" | "running" | "usage" | "version";
+export type StatusItem = "connection" | "gateway" | "room" | "running" | "usage" | "version" | "memory";
 
 export type StatusFacts = {
   connection: ConnectionPhase;

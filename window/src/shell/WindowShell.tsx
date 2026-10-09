@@ -1157,7 +1157,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     allPaused: pausedTrunks.length > 0 && pausedTrunks.length === trunks.list.length,
     gfx: shown.gfx,
     onMenu: (e: MouseEvent<HTMLElement>, id: string, items: MenuItem[], label: string) => showMenu(e, id, items, label, true),
-    onSettings: openSettings,
+    onMemory: (e: MouseEvent<HTMLElement>) => statusItem("memory", e),
   };
   /** "Open another conversation beside": the first pane shows the one picked (the preview's beside15). */
   const besideItems = (): MenuItem[] => [
