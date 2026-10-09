@@ -262,6 +262,65 @@ describe("rooms methods", () => {
       expect(actors(log, "turn.started")).toEqual(["ada", "bo", "ada", "bo", "ada", "bo", "ada"]);
       expect(log.filter((value) => value.kind === "note")).toHaveLength(1);
     });
+
+    it("wakes each of 20 Trunks one at a time in member order, never above the host limit", async () => {
+      const ids = Array.from({ length: 20 }, (_, index) => `t${String(index).padStart(2, "0")}`);
+      mocks.roster.mockResolvedValue({
+        agents: ids.map((id) => ({ id, name: id.toUpperCase(), kind: "agent" })),
+      });
+      const runs = new Map<string, string>();
+      let running = 0,
+        most = 0;
+      mocks.create.mockImplementation(async (options: GatewayRequestHandlerOptions) => {
+        const runId = `run-${runs.size + 1}`;
+        runs.set(runId, options.params.agentId as string);
+        running += 1;
+        most = Math.max(most, running);
+        options.respond(true, { runStarted: true, runId });
+      });
+      mocks.wait.mockImplementation(async (options: GatewayRequestHandlerOptions) => {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        running -= 1;
+        const agentId = runs.get(options.params.runId as string)!;
+        options.respond(true, {
+          status: "ok",
+          terminalReply: { disposition: "visible", text: `${agentId} done` },
+        });
+      });
+      // One host whose agent lane admits a single run at a time.
+      const hostLimit = 1;
+      const respond = vi.fn();
+      const options = (method: string, params: Record<string, unknown>) =>
+        ({
+          params,
+          respond,
+          context: {
+            getRuntimeConfig: () => ({ agents: { defaults: { maxConcurrent: hostLimit } } }),
+            broadcast,
+          },
+          client: null,
+        }) as unknown as GatewayRequestHandlerOptions;
+      await roomHandlers["rooms.create"]!(
+        options("rooms.create", {
+          name: "Everyone",
+          rule: "everyone",
+          members: ids.map((id) => ({ kind: "trunk", id })),
+        }),
+      );
+      const [created, { room }] = respond.mock.calls.at(-1)!;
+      expect(created).toBe(true);
+      expect(room.members).toHaveLength(20);
+      await roomHandlers["rooms.send"]!(
+        options("rooms.send", { roomId: room.roomId, message: "Report in" }),
+      );
+      expect(respond.mock.calls.at(-1)![0]).toBe(true);
+      await vi.waitFor(
+        async () => expect(actors(await events(room.roomId), "turn.replied")).toEqual(ids),
+        { timeout: 10_000 },
+      );
+      expect(actors(await events(room.roomId), "turn.started")).toEqual(ids);
+      expect(most).toBe(hostLimit);
+    });
   });
   it("records an outside agent joining itself as the actor", async () => {
     const { room } = await call("rooms.create", {
