@@ -56,7 +56,7 @@ export function CanopyPlace({ engine, openConversation, openPlace, level }: Plac
     <PlaceScroll>
       <div className="place wide-tools cn-place">
         <h1>Canopy</h1>
-        <button className="btn sm cn-office-btn" type="button" onClick={() => openPlace("office")}>Office view</button>
+        <button className="btn sm cn-office-btn" type="button" onClick={() => openPlace("office")}>Grove</button>
         <p className="lede">Everything your Trunks and their helpers are doing, on every computer, seen from above.</p>
         <div className="cn-tabs" role="tablist" aria-label="Canopy">{TABS.map(([id, name], index) => (
           <button key={id} type="button" role="tab" aria-selected={tab === id} tabIndex={tab === id ? 0 : -1} onKeyDown={event => moveTab(event, index, setTab)} onClick={() => setTab(id)}>{name}{id === "now" && n ? <span className="cn-tabn">{n}</span> : null}</button>))}</div>

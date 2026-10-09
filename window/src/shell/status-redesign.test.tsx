@@ -96,23 +96,35 @@ it("usage ring folds after five seconds; collapsed click expands, expanded click
   } finally { vi.useRealTimers(); }
 });
 
-it("computer popover lists saved computers but not linked teammates", () => {
+it("computer popover lists each real computer once, says Online or Offline, and groups the add actions", () => {
   const openSettings = vi.fn();
   const onLinkBranch = vi.fn(), onSwitch = vi.fn();
-  const elsewhere = vi.fn();
+  const elsewhere = vi.fn(), addComputer = vi.fn();
   window.addEventListener("branch:connect-elsewhere", elsewhere, { once: true });
+  window.addEventListener("branch:add-computer", addComputer, { once: true });
   localStorage.clear();
   saveTargetName("wss://other.example.test", "Other computer");
-  const rows = machineMenuItems({ machineName: "Studio Mac", currentUrl: "ws://127.0.0.1:19031", homeUrl: "ws://127.0.0.1:19031", online: true, level: "regular", roundTripMs: 4, openSettings, onLinkBranch, onSwitch });
-  expect(rows.find((row) => "label" in row && row.label === "Studio Mac")).toMatchObject({ sub: "Online · here", checked: true });
-  expect(rows.find((row) => "label" in row && row.label === "Other computer")).toMatchObject({ sub: "Saved computer" });
+  // The same Mac saved under another address, and a saved entry with the name on screen: both are the same computer.
+  saveTargetName("wss://studio.example.test", "Studio Mac");
+  saveTargetName("wss://studio-two.example.test", "studio mac");
+  const args = { machineName: "Studio Mac", currentUrl: "ws://127.0.0.1:19031", homeUrl: "ws://127.0.0.1:19031", online: true, level: "regular" as const, roundTripMs: 4, openSettings, onLinkBranch, onSwitch };
+  const rows = machineMenuItems(args);
+  const labels = rows.flatMap((row) => ("label" in row && row.kind !== "head" ? [row.label] : []));
+  expect(labels.filter((label) => label.toLowerCase() === "studio mac")).toHaveLength(1);
+  expect(rows.find((row) => "label" in row && row.label === "Studio Mac")).toMatchObject({ sub: "Online", checked: true });
+  expect(rows.find((row) => "label" in row && row.label === "Other computer")).toMatchObject({ sub: "Saved" });
   expect(rows.find((row) => "label" in row && row.label === "teammate.example.test")).toBeUndefined();
   expect(rows.some((row) => "label" in row && row.label === "Workspace")).toBe(false);
+  expect(JSON.stringify(rows)).not.toMatch(/\d ms\b|Online · here/);
+  const add = rows.find((row) => row.kind === "sub" && row.label === "Add a computer or Branch…");
+  const addItems = add && add.kind === "sub" ? add.items : [];
+  expect(addItems.map((item) => ("label" in item ? item.label : ""))).toEqual(["Another computer with Branch", "A Branch on another computer, by address", "Link a Branch with an invitation"]);
   for (const row of rows) if ("run" in row && row.run) row.run();
-  expect(openSettings).toHaveBeenCalledWith("computer");
-  expect(openSettings).toHaveBeenCalledWith("gateway");
+  for (const item of addItems) if ("run" in item && item.run) item.run();
+  expect(addComputer).toHaveBeenCalledOnce();
   expect(elsewhere).toHaveBeenCalledOnce();
   expect(onLinkBranch).toHaveBeenCalledOnce();
+  expect(openSettings).toHaveBeenCalledWith("gateway");
   expect(onSwitch).toHaveBeenCalledWith("wss://other.example.test");
 });
 
