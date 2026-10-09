@@ -1,4 +1,5 @@
 /** Lifecycle-owned auth/model discovery snapshots for agent runs. */
+import { adoptSupersedingPublication } from "./prepared-model-runtime.superseded-adoption.js";
 import { toStringifiedError } from "@branch/normalization-core/error-coercion";
 import type { BranchConfig } from "../config/types.branch.js";
 import { normalizeAgentId } from "../routing/session-key.js";
@@ -305,15 +306,19 @@ export async function publishPreparedModelRuntimeSnapshot(
       return existing.snapshot;
     }
   }
-  return await publishModelRuntimeSnapshot(
-    input,
-    owners,
-    agentBuildCompletions,
-    modelRuntimeBuildTimeoutMs,
-    existing,
-    options.provenance,
-    options.catalogMode,
-  );
+  try {
+    return await publishModelRuntimeSnapshot(
+      input,
+      owners,
+      agentBuildCompletions,
+      modelRuntimeBuildTimeoutMs,
+      existing,
+      options.provenance,
+      options.catalogMode,
+    );
+  } catch (error) {
+    return await adoptSupersedingPublication(owners, ownerKey(input), error);
+  }
 }
 
 /** Activates lifecycle publication for direct embedded runtimes without a gateway startup. */
