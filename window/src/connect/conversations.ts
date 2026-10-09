@@ -4,6 +4,12 @@
 import { agentIdOf } from "./session";
 import type { RoomPick } from "../rooms/RoomFaces";
 
+/** Heartbeat check-ins are engine prompts, not messages a person wrote; they never show as a preview. */
+const HEARTBEAT_PROMPT = /^\[Branch Agent heartbeat poll\]/i;
+function previewText(value: unknown): string {
+  const text = str(value).replace(/\s+/g, " ").trim();
+  return HEARTBEAT_PROMPT.test(text) ? "" : text;
+}
 export type Conversation = {
   key: string;
   title: string;
@@ -115,7 +121,7 @@ export function projectConversation(raw: unknown, mainKey: string | null): Conve
     done: r.done === true,
     createdAt: num(r.createdAt) || num(r.updatedAt),
     updatedAt: num(r.updatedAt),
-    preview: str(r.lastMessagePreview).replace(/\s+/g, " ").trim(),
+    preview: previewText(r.lastMessagePreview),
     working: r.hasActiveRun === true || activeRunIds.length > 0,
     activeRunIds,
     kind: str(r.kind),
