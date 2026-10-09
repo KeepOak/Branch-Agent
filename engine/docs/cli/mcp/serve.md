@@ -220,6 +220,9 @@ For any other client, use the stdio server `branch` with the arguments
 | `trunk_threads`  | A Trunk's threads with their status.                                                                           |
 | `rooms_list`, `room_read`, `room_join`, `room_post` | Group chats: list them, read the log, join as an outside agent, post.                                         |
 | `usage_status`   | Plan usage and which accounts each Trunk can use.                                                              |
+| `skills_status`  | The skills a Trunk can see: installed, enabled and eligible, with their source. Read-only.                     |
+| `memory_status`  | A Trunk's memory: how many entries it holds and whether they are its own or the project's shared memory. Read-only. |
+| `computer_status` | Whether computer control is configured and available, and which actions it supports. Read-only; takes no screenshot. |
 
 A typical round trip: `trunks_list`, then `trunk_send` with
 `agent_id: "builder-oak"`, then `run_wait` with the returned `run_id` and
