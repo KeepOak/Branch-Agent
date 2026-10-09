@@ -22,7 +22,7 @@ describe("heavy-step command classification", () => {
     ["env CI=1 pnpm build", "build"],
     ['bash -c "pnpm build"', "build"],
     ["pnpm build; tsc --noEmit", "typecheck"],
-    ["node --test scripts/example.test.mjs; pnpm build", "build"],
+    ["node --test scripts/example.test.mjs; pnpm build", "test"],
   ])("admits %s as %s", (command, kind) => {
     expect(resolveHeavyStepCommand(command)).toBe(kind);
   });

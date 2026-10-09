@@ -4,7 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { FileLockHandle } from "@openclaw/fs-safe/file-lock";
-import type { HeavyStepKind } from "../../src/infra/heavy-step-command.js";
+import {
+  DEFAULT_HEAVY_STEP_MEMORY_MB,
+  type HeavyStepKind,
+} from "../../src/infra/heavy-step-command.js";
 import {
   acquireDistArtifactOwnership,
   canReclaimDistArtifactOwner,
@@ -14,8 +17,6 @@ import {
 import { hasUnjoinedWork } from "./managed-child-process.mts";
 import { isRecord } from "./record-shared.mjs";
 
-const GiB = 1024 ** 3;
-const DEFAULT_NEEDS = { build: 4 * GiB, typecheck: 6 * GiB, test: 6 * GiB };
 export const HOST_HEAVY_STEP_OWNER = "BRANCH_HOST_HEAVY_STEP_OWNER";
 
 export function resolveHostHeavyStepRoot(env: NodeJS.ProcessEnv = process.env): string {
@@ -31,7 +32,7 @@ export function resolveHeavyStepMemoryNeed(kind: HeavyStepKind, env = process.en
     configured >= 0 &&
     env[`BRANCH_HEAVY_STEP_${kind.toUpperCase()}_MEMORY_MB`]?.trim()
     ? configured * 1024 ** 2
-    : DEFAULT_NEEDS[kind];
+    : DEFAULT_HEAVY_STEP_MEMORY_MB[kind] * 1024 ** 2;
 }
 
 export type HostHeavyStepHandle = {

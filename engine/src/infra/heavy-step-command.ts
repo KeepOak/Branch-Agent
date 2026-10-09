@@ -3,6 +3,7 @@ import { splitCommandArgs } from "../utils/shell-argv.js";
 import { buildCommandPayloadArgvCandidates } from "./command-analysis/risks.js";
 
 export type HeavyStepKind = "build" | "typecheck" | "test";
+export const DEFAULT_HEAVY_STEP_MEMORY_MB = { build: 4096, typecheck: 6144, test: 6144 };
 
 /** Classify executable arguments, never quoted prose (for example echo or rg). */
 export function resolveHeavyStepArgv(argv: readonly string[]): HeavyStepKind | undefined {
@@ -60,8 +61,7 @@ export function resolveHeavyStepArgv(argv: readonly string[]): HeavyStepKind | u
 
 export function resolveHeavyStepCommand(
   command: string,
-  memoryNeed: (kind: HeavyStepKind) => number = (kind) =>
-    ({ test: 1, build: 2, typecheck: 3 })[kind],
+  memoryNeed: (kind: HeavyStepKind) => number = (kind) => DEFAULT_HEAVY_STEP_MEMORY_MB[kind],
 ): HeavyStepKind | undefined {
   // Keep quoted separators in their word; inspect each actual command in a chain.
   const segments = command.match(/(?:'[^']*'|"(?:[^"\\]|\\.)*"|[^\s;&|])+|[;&|\r\n]+/gu) ?? [];
