@@ -26,6 +26,18 @@ async function open(page: string, onPage = vi.fn()) {
 }
 
 describe("settings frame level", () => {
+  it("follows the originating Trunk at every detail level", async () => {
+    const request = vi.fn(async (method: string) => method === "agents.list" ? { defaultId: "main", agents: [{ id: "main", name: "Default" }, { id: "writer", name: "Writer" }] } : {});
+    const scoped = { ...engine, agentId: "writer", request } as WindowEngine;
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(<SettingsFrame page="instructions" backName="Writer" engine={scoped} onPage={() => {}} onBack={() => {}} />));
+    expect(document.querySelector<HTMLSelectElement>('[aria-label="Settings for"]')?.value).toBe("writer");
+    expect(request).toHaveBeenCalledWith("agents.files.list", { agentId: "writer" });
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-level="advanced"]')!.click());
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-level="regular"]')!.click());
+    expect(document.querySelector<HTMLSelectElement>('[aria-label="Settings for"]')?.value).toBe("writer");
+  });
+
   it("keeps Settings headings and labels in sentence case", () => {
     const root = join(process.cwd(), "src/places/settings");
     const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((item) => {
