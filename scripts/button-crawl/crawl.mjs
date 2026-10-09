@@ -19,6 +19,7 @@ import { inconsistentOpens, internalNameProblems, rowActionProblems } from './li
 import { compareBaseline, formatGate, normalizeBaseline } from './baseline.mjs';
 import { MAP_PATH, isInformationalStatus, isThreadLayoutMenu, previewDestinationMatches, readPreviewMap, threadLayoutDiff } from './preview-map.mjs';
 import { markdownReport } from './report.mjs';
+import { REQUEST_WAIT_CAP_MS, waitForPermissionRequests as waitForRequests } from './permission-wait.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const windowDir = resolve(root, 'window');
@@ -105,31 +106,20 @@ async function show(page, screen) {
 // A click can start a permission-style request (the microphone, a notification prompt). Its
 // result arrives after the click, so the click is classified once no such request is in flight.
 // A request still pending after the cap is classified as is, and the crawl says so.
-const REQUEST_WAIT_CAP_MS = 5000;
+
 
 async function waitForPermissionRequests(page) {
-  await page.evaluate(() => new Promise((resolve) => {
-    let done = false;
-    const finish = () => { if (!done) { done = true; resolve(0); } };
-    setTimeout(finish, 100);
-    requestAnimationFrame(finish);
-  }));
-  const started = Date.now();
-  for (;;) {
-    const pending = await page.evaluate(() => window.__crawl.pendingPermissionRequests());
-    if (pending === 0) {
-      // Two frames: a request's result reaches React after it settles, and a frame commits it.
-      await page.evaluate(() => new Promise((resolve) => {
-        let done = false;
-        const finish = () => { if (!done) { done = true; resolve(0); } };
-        setTimeout(finish, 100);
-        requestAnimationFrame(() => requestAnimationFrame(finish));
-      }));
-      return { timedOut: false, pending: 0 };
-    }
-    if (Date.now() - started > REQUEST_WAIT_CAP_MS) return { timedOut: true, pending };
-    await page.waitForTimeout(20);
-  }
+  return waitForRequests({
+    readPending: () => page.evaluate(() => window.__crawl.pendingPermissionRequests()),
+    frames: (count) => page.evaluate((n) => new Promise((resolve) => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(0); } };
+      setTimeout(finish, 100 * n);
+      const step = (left) => (left === 0 ? finish() : requestAnimationFrame(() => step(left - 1)));
+      step(n);
+    }), count),
+    wait: (ms) => page.waitForTimeout(ms),
+  });
 }
 
 async function clickOne(page, errors, target) {

@@ -427,10 +427,17 @@ function trackPermissionRequest<T>(call: () => Promise<T>): Promise<T> {
     pendingPermissionRequests -= 1;
   });
 }
-if (navigator.mediaDevices?.getUserMedia) {
-  const nativeGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+// The crawl has no microphone or camera. Each capture request resolves to a silent stream of the kind it
+// asked for, so a voice note really starts recording and the crawl observes that state.
+function fakeCapture(constraints: MediaStreamConstraints): Promise<MediaStream> {
+  if (constraints.video) {
+    return Promise.resolve(document.createElement("canvas").captureStream());
+  }
+  return Promise.resolve(new AudioContext().createMediaStreamDestination().stream);
+}
+if (navigator.mediaDevices) {
   navigator.mediaDevices.getUserMedia = (constraints: MediaStreamConstraints) =>
-    trackPermissionRequest(() => nativeGetUserMedia(constraints));
+    trackPermissionRequest(() => fakeCapture(constraints));
 }
 if (typeof Notification !== 'undefined') {
   const nativeRequestPermission = Notification.requestPermission.bind(Notification);
