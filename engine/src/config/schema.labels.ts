@@ -499,8 +499,7 @@ export const FIELD_LABELS: Record<string, string> = {
     "Embedded Branch Agent Project Settings Policy",
   "agents.defaults.embeddedAgent.executionContract": "Embedded Branch Agent Execution Contract",
   "agents.entries.*.embeddedAgent": "Agent Embedded Branch Agent",
-  "agents.entries.*.embeddedAgent.executionContract":
-    "Agent Embedded Branch Agent Execution Contract",
+  "agents.entries.*.embeddedAgent.executionContract": "Agent Embedded Branch Agent Execution Contract",
   "agents.defaults.heartbeat.directPolicy": "Heartbeat Direct Policy",
   "agents.defaults.heartbeat.agentId": "Heartbeat Agent",
   "agents.entries.*.heartbeat.directPolicy": "Heartbeat Direct Policy",
