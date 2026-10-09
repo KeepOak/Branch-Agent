@@ -218,9 +218,9 @@ export class Conversation {
       const { items, runKeys } = historyItems(Array.isArray(history.messages) ? history.messages : []);
       const inFlight = rec(history.inFlightRun);
       const inFlightId = str(inFlight.runId) && !this.finished.has(str(inFlight.runId)) ? str(inFlight.runId) : '';
-      const recent = items.filter((item) => item.kind === 'user').slice(-5).map((item) => (item.kind === 'user' ? item.text : ''));
-      // A send the history now holds is drawn from the history; one that failed keeps its Try again.
-      const sends = this.snapshot.sends.filter((send) => send.state !== 'sent' || !(runKeys.has(send.id) || recent.includes(send.text)));
+      // A send the history now holds is drawn from the history; one that failed keeps its Try again. The history
+      // holds a send when it has that send's key (`<runId>:user`), never because an earlier message said the same words.
+      const sends = this.snapshot.sends.filter((send) => send.state !== 'sent' || !runKeys.has(send.id));
       const live = this.snapshot.live;
       let next: LiveReply | null = null;
       if (inFlightId) {

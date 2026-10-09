@@ -99,6 +99,27 @@ describe('one chat, live', () => {
     session.dispose();
   });
 
+  it('keeps a message the history doesn’t hold yet, even when an earlier message said the same words', async () => {
+    const { session, engine } = await paired();
+    engine.setHistory(KEY, [user('Hello', 1_000, 'run-0'), reply('Hi!', 2_000)]);
+    const chat = open(session);
+    await eventually(() => expect(chat.getSnapshot().loaded).toBe(true));
+    await chat.send('Hello');
+    expect(chat.getSnapshot().sends).toMatchObject([{ id: 'run-1', text: 'Hello', state: 'sent' }]);
+
+    // A read that lands before the engine has saved this send: only the earlier "Hello" is in it.
+    await chat.load();
+    expect(chat.getSnapshot().sends).toMatchObject([{ id: 'run-1', text: 'Hello', state: 'sent' }]);
+    expect(chat.getSnapshot().live).toMatchObject({ runId: 'run-1' });
+
+    // Once the history holds this send (by its key), the history draws it.
+    engine.setHistory(KEY, [user('Hello', 1_000, 'run-0'), reply('Hi!', 2_000), user('Hello', 3_000, 'run-1')]);
+    await chat.load();
+    expect(chat.getSnapshot().sends).toEqual([]);
+    chat.dispose();
+    session.dispose();
+  });
+
   it('keeps a message that didn’t go with its reason, and sends it again under the same key', async () => {
     const { session, engine } = await paired();
     const chat = open(session);
