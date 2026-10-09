@@ -244,6 +244,8 @@ export function ChatsScreen({
   onComputer,
   onOpen,
   searchMessages,
+  needsYou,
+  onNeedsYou,
   now = Date.now(),
 }: {
   list: ChatListSnapshot;
@@ -254,6 +256,9 @@ export function ChatsScreen({
   onOpen?: (row: ChatRow) => void;
   /** Searches every chat's messages (sessions.search); without it, search matches names and last lines. */
   searchMessages?: (query: string) => Promise<unknown>;
+  /** Approvals waiting for a yes: how many, and the oldest one in a line ("Oak · Run a command"). */
+  needsYou?: { count: number; line: string } | null;
+  onNeedsYou?: () => void;
   now?: number;
 }) {
   const { color, space, radius, layout, type } = useTheme();
@@ -310,6 +315,30 @@ export function ChatsScreen({
           </View>
         ) : null}
       </View>
+      {needsYou && needsYou.count > 0 ? (
+        <Pressable
+          testID="needs-you-banner"
+          accessibilityRole="button"
+          accessibilityLabel={`${needsYou.count} ${needsYou.count === 1 ? 'approval needs' : 'approvals need'} your yes. ${needsYou.line}`}
+          onPress={onNeedsYou}
+          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.sm, backgroundColor: color.warnTint, borderRadius: radius.md, paddingHorizontal: space.md, minHeight: layout.rowMinHeight + 12, opacity: pressed ? 0.7 : 1 })}
+        >
+          <View style={{ minWidth: 26, height: 26, paddingHorizontal: space.xs, borderRadius: radius.pill, backgroundColor: color.accent, alignItems: 'center', justifyContent: 'center' }}>
+            <ThemedText variant="footnote" tone="onAccent" style={{ fontWeight: '700' }}>
+              {needsYou.count}
+            </ThemedText>
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <ThemedText variant="headline">{needsYou.count === 1 ? 'Needs your yes' : 'Need your yes'}</ThemedText>
+            <ThemedText variant="footnote" tone="ink2" numberOfLines={1}>
+              {needsYou.line}
+            </ThemedText>
+          </View>
+          <ThemedText variant="body" tone="ink3">
+            ›
+          </ThemedText>
+        </Pressable>
+      ) : null}
       <TextInput
         testID="chat-search"
         value={query}
