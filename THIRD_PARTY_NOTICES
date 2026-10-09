@@ -1,0 +1,36 @@
+# Third-party notices
+
+This repository contains or bundles the third-party material listed below.
+Each entry names the path in this repository and the license stated in that
+path's own license or notice file. Full license texts are in the files named.
+
+## OpenClaw (engine/)
+
+MIT License, Copyright (c) 2026 OpenClaw Foundation.
+
+- engine/LICENSE
+- engine/extensions/facetime/LICENSE
+- engine/extensions/typesafe/LICENSE
+- engine/packages/ai/LICENSE
+- engine/packages/gateway-client/LICENSE
+- engine/packages/gateway-protocol/LICENSE
+
+## Pi / pi-mono and GitHub Octicons
+
+Listed in engine/THIRD_PARTY_NOTICES.md.
+
+- Pi / pi-mono: MIT License, Copyright (c) 2025 Mario Zechner.
+- GitHub Octicons: MIT License, Copyright (c) 2026 GitHub Inc.
+
+## Individual components
+
+- engine/src/agents/source-writing-detector/: MIT License, Copyright (c) 2026 Conor Bronsdon. See engine/src/agents/source-writing-detector/LICENSE.
+- engine/extensions/slack/skills/_vendor/: MIT License, Copyright (c) 2020- Slack Technologies, LLC. See engine/extensions/slack/skills/_vendor/slack-skills-plugin.LICENSE.
+- engine/skills/skill-creator/: Apache License 2.0. See engine/skills/skill-creator/license.txt. The file names no copyright holder.
+- engine/scripts/lib/codex-live-docker-security/: Apache License 2.0 (LICENSE). NOTICE file: Docker, Inc., Copyright 2012-2017; also contains creack/pty by Keith Rarick, MIT License. See engine/scripts/lib/codex-live-docker-security/LICENSE and NOTICE.
+- engine/ui/public/cloud-provider-icons/: devicon, MIT License, Copyright (c) 2015 konpa (engine/ui/public/cloud-provider-icons/LICENSE-devicon). Simple Icons, CC0 1.0 Universal (engine/ui/public/cloud-provider-icons/LICENSE-simple-icons).
+- engine/packages/mermaid-renderer/native/: bundled upstream packages (including Mermaid, Chevrotain, KaTeX, d3 modules, cytoscape, DOMPurify). Each component's license is listed in engine/packages/mermaid-renderer/native/NOTICE.txt.
+
+## Not included in this repository
+
+- BlackHole (GPL-3.0) is not distributed here. An administrator build script downloads and compiles it. See engine/extensions/facetime/THIRD_PARTY_NOTICES.md.
