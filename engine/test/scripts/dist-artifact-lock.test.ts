@@ -490,7 +490,7 @@ it("host memory thresholds are configurable without a minimum or upper cap", () 
     resolveHeavyStepMemoryNeed("typecheck", { BRANCH_HEAVY_STEP_TYPECHECK_MEMORY_MB: "100000" }),
   ).toBe(100000 * 1024 ** 2);
   expect(resolveHeavyStepMemoryNeed("test", { BRANCH_HEAVY_STEP_TEST_MEMORY_MB: "invalid" })).toBe(
-    2 * 1024 ** 3,
+    6 * 1024 ** 3,
   );
 });
 

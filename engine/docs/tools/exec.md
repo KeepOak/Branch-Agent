@@ -32,7 +32,7 @@ The execution host can configure these environment settings:
 | --- | --- |
 | `BRANCH_HEAVY_STEP_BUILD_MEMORY_MB` | 4096 |
 | `BRANCH_HEAVY_STEP_TYPECHECK_MEMORY_MB` | 6144 |
-| `BRANCH_HEAVY_STEP_TEST_MEMORY_MB` | 2048 |
+| `BRANCH_HEAVY_STEP_TEST_MEMORY_MB` | 6144 |
 
 Values are memory requirements, not limits on the process. Any nonnegative finite
 value is accepted; `0` disables the memory floor while preserving serialization.

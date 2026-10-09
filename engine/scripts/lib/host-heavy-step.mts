@@ -15,7 +15,7 @@ import { hasUnjoinedWork } from "./managed-child-process.mts";
 import { isRecord } from "./record-shared.mjs";
 
 const GiB = 1024 ** 3;
-const DEFAULT_NEEDS = { build: 4 * GiB, typecheck: 6 * GiB, test: 2 * GiB };
+const DEFAULT_NEEDS = { build: 4 * GiB, typecheck: 6 * GiB, test: 6 * GiB };
 export const HOST_HEAVY_STEP_OWNER = "BRANCH_HOST_HEAVY_STEP_OWNER";
 
 export function resolveHostHeavyStepRoot(env: NodeJS.ProcessEnv = process.env): string {
