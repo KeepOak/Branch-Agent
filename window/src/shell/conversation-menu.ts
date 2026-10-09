@@ -128,7 +128,7 @@ function primaryRows(c: ConversationMenuContext): (MenuItem | null)[] {
   const row = c.row;
   const isRoom = Boolean(c.room);
   return [
-    item("Search this conversation", "eye", c.run.search, { hint: keyHint("Ctrl F", c.mac) }),
+    item("Search in this conversation", "eye", c.run.search, { hint: keyHint("Ctrl F", c.mac) }),
     row ? item(row.pinned ? "Unpin" : "Pin", "pin", c.run.pin) : null,
     item("Share this conversation…", "link", c.run.share),
     !isRoom && c.canMove ? item("Move to computer…", "monitor", c.run.move) : null,

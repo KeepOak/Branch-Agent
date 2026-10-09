@@ -27,7 +27,7 @@ const leaf = (items: MenuItem[], label: string) => leaves(items).find((i) => i.l
 describe("P54 conversation header menu", () => {
   it("shows six actions, the Trunk and More at the top, with no developer rows", () => {
     expect(shape(conversationMenuItems(ctx("regular", true)))).toEqual([
-      "Search this conversation", "Unpin", "Share this conversation…", "Start over…", "Archive", "---", "Research…", "---", "More ›",
+      "Search in this conversation", "Unpin", "Share this conversation…", "Start over…", "Archive", "---", "Research…", "---", "More ›",
     ]);
     const all = leaves(conversationMenuItems(ctx("regular", true, { canMove: true }))).map((i) => i.label);
     expect(all).not.toEqual(expect.arrayContaining(["Reload", "Copy link", "Send to the board", "Research’s profile", "Edit Research…"]));
@@ -52,8 +52,8 @@ describe("P54 conversation header menu", () => {
   it("uses ⌘ for shortcut hints on a Mac and Ctrl elsewhere", () => {
     expect(keyHint("Ctrl Shift K", true)).toBe("⌘⇧K");
     expect(keyHint("Ctrl F", false)).toBe("Ctrl F");
-    expect(leaf(conversationMenuItems(ctx("regular", true, { mac: true })), "Search this conversation")?.hint).toBe("⌘F");
-    expect(leaf(conversationMenuItems(ctx("regular", true, { mac: false })), "Search this conversation")?.hint).toBe("Ctrl F");
+    expect(leaf(conversationMenuItems(ctx("regular", true, { mac: true })), "Search in this conversation")?.hint).toBe("⌘F");
+    expect(leaf(conversationMenuItems(ctx("regular", true, { mac: false })), "Search in this conversation")?.hint).toBe("Ctrl F");
   });
 
   it("shows Move to computer only when another computer exists", () => {
@@ -95,7 +95,7 @@ describe("P54 conversation header menu", () => {
   it("keeps the view actions wired", () => {
     calls.length = 0;
     const items = conversationMenuItems(ctx("regular", true));
-    for (const label of ["Search this conversation", "Side panel", "Hide or show the list", "Open in its own window", "Open its computer", "Open the browser", "Switch light or dark", "Why each thing is here"]) {
+    for (const label of ["Search in this conversation", "Side panel", "Hide or show the list", "Open in its own window", "Open its computer", "Open the browser", "Switch light or dark", "Why each thing is here"]) {
       const found = leaf(items, label)!;
       expect(found.disabled).toBeUndefined();
       found.run();
