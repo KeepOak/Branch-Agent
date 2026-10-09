@@ -418,6 +418,26 @@ function mount(route: Route) {
   root.render(<WindowShell key={nonce} session={fixture as never} url="ws://127.0.0.1:9" />);
 }
 
+// Permission-style requests a control can start. A microphone or notification prompt answers
+// later than the click, so the crawl waits for these to settle before it reads the result.
+let pendingPermissionRequests = 0;
+function trackPermissionRequest<T>(call: () => Promise<T>): Promise<T> {
+  pendingPermissionRequests += 1;
+  return call().finally(() => {
+    pendingPermissionRequests -= 1;
+  });
+}
+if (navigator.mediaDevices?.getUserMedia) {
+  const nativeGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+  navigator.mediaDevices.getUserMedia = (constraints: MediaStreamConstraints) =>
+    trackPermissionRequest(() => nativeGetUserMedia(constraints));
+}
+if (typeof Notification !== 'undefined') {
+  const nativeRequestPermission = Notification.requestPermission.bind(Notification);
+  Notification.requestPermission = (...args: Parameters<typeof Notification.requestPermission>) =>
+    trackPermissionRequest(() => nativeRequestPermission(...args));
+}
+
 const nativeFetch = window.fetch.bind(window);
 window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -437,6 +457,7 @@ window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
     };
   },
   collect, mark, clickTarget, surface, rowActions, listLabels, openKind,
+  pendingPermissionRequests: () => pendingPermissionRequests,
 };
 
 mount({ kind: 'chat', key: SESSIONS[0].key });
