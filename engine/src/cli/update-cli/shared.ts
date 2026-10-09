@@ -4,7 +4,6 @@ import path from "node:path";
 import { positiveSecondsToSafeMilliseconds } from "@branch/normalization-core/number-coercion";
 import { theme } from "../../../packages/terminal-core/src/theme.js";
 import { resolveBrewBranchPath } from "../../infra/brew.js";
-import { hasErrnoCode } from "../../infra/errors.js";
 import { resolveRequiredHomeDir } from "../../infra/home-dir.js";
 import { resolveBranchPackageRoot } from "../../infra/branch-root.js";
 import { readPackageName, readPackageVersion } from "../../infra/package-json.js";
@@ -26,19 +25,17 @@ import {
   detectGlobalInstallManagerForRoot,
   type GlobalInstallManager,
 } from "../../infra/update-global.js";
-import { cleanupUpdateTemporaryDirectory } from "../../infra/update-maintenance.js";
 import { createUpdatePreflightFailure } from "../../infra/update-preflight-details.js";
 import type { UpdateRecoveryBaselineRef } from "../../infra/update-recovery-baseline-capture.js";
 import type { UpdateRequesterAuthority } from "../../infra/update-requester-authority.js";
 import type { UpdateRecoveryFence } from "../../infra/update-run-recovery.js";
-import { reportUpdateStepCompletion, runStep } from "../../infra/update-runner-command.js";
+import { runStep } from "../../infra/update-runner-command.js";
 import {
   describeUpdateInstallRoot,
   resolveUnmanagedUpdateInstallReason,
 } from "../../infra/update-runner-install-surface.js";
 import type { UpdateRunResult, UpdateStepProgress } from "../../infra/update-runner-types.js";
 import type { UpdateStepResult } from "../../infra/update-step-result.js";
-import { hasCommandProcessCleanupError } from "../../process/exec-result.js";
 import { runCommandWithTimeout } from "../../process/exec.js";
 import { defaultRuntime } from "../../runtime.js";
 import type { UpdateRecoveryStep } from "../../shared/update-outcome.js";
@@ -170,11 +167,6 @@ export function parseUpdateTimeoutMs(
   return milliseconds;
 }
 
-const UPSTREAM_REPOSITORY_URL = "https://github.com/KeepOak/Branch-Agent.git";
-// Keep the full commit graph for dev ref switching while deferring historical blobs.
-// A shallow clone would make older or non-default dev targets unreachable.
-const GIT_CLONE_BLOB_FILTER = "--filter=blob:none";
-
 export const DEFAULT_PACKAGE_NAME = "branch";
 
 export function normalizeTag(value?: string | null): string | null {
@@ -277,237 +269,20 @@ type GitCheckoutResult = {
   step: UpdateStepResult | null;
 };
 
-type StagedGitCheckout = (
-  root: string,
-  publish: () => Promise<string>,
-  targetRoot: string,
-  storageRoot: string,
-) => Promise<void>;
-
-async function cloneGitCheckoutTransactionally(
-  params: Parameters<typeof ensureGitCheckout>[0],
-): Promise<GitCheckoutResult> {
-  const parentDir = path.dirname(params.dir);
-  await fs.mkdir(parentDir, { recursive: true });
-  const canonicalParentDir = await fs.realpath(parentDir);
-  const preserveDir = (await pathExists(params.dir)) && (await isEmptyDir(params.dir));
-  const targetDir = preserveDir
-    ? await fs.realpath(params.dir)
-    : path.join(canonicalParentDir, path.basename(params.dir));
-  const targetIdentity = preserveDir ? await fs.lstat(targetDir, { bigint: true }) : undefined;
-  const stagingParent = preserveDir ? targetDir : canonicalParentDir;
-  // Publication moves only the repository; candidate builds keep their paths
-  // until runtime promotion and cleanup finish on this same filesystem.
-  const storageRoot = await fs.mkdtemp(path.join(stagingParent, ".branch-clone-"));
-  const storageIdentity = await fs.lstat(storageRoot, { bigint: true });
-  const stagingDir = path.join(storageRoot, "repository");
-  await fs.mkdir(stagingDir).catch(async (error: unknown) => {
-    try {
-      if (await ownsDirectory(storageRoot, storageIdentity)) {
-        await fs.rmdir(storageRoot);
-      }
-    } catch {
-      // Retain nonempty or replaced storage; cleanup must not hide the allocation error.
-    }
-    throw error;
-  });
-  const stagingIdentity = await fs.lstat(stagingDir, { bigint: true });
-  let cleanupStaging = true;
-  let published = false;
-  let result: UpdateStepResult | undefined;
-
-  async function ownsDirectory(
-    directory: string,
-    identity: typeof storageIdentity,
-    allowMissing = false,
-  ) {
-    try {
-      const current = await fs.lstat(directory, { bigint: true });
-      // Unknown Windows identities cannot authorize publication or recursive cleanup.
-      return (
-        current.isDirectory() &&
-        current.ino !== 0n &&
-        (process.platform !== "win32" || current.dev !== 0n) &&
-        current.ino === identity.ino &&
-        current.dev === identity.dev
-      );
-    } catch (error) {
-      if (hasErrnoCode(error, "ENOENT")) {
-        return allowMissing;
-      }
-      throw error;
-    }
-  }
-
-  const runOperation = async (): Promise<GitCheckoutResult> => {
-    result = await runUpdateStep({
-      name: "git-clone",
-      argv: ["git", "clone", GIT_CLONE_BLOB_FILTER, UPSTREAM_REPOSITORY_URL, stagingDir],
-      env: params.env,
-      timeoutMs: params.timeoutMs,
-      progress: params.progress,
-    });
-    if (result.exitCode !== 0) {
-      return { checkoutDir: targetDir, step: result };
-    }
-
-    const publish = async (): Promise<string> => {
-      if (
-        !(await ownsDirectory(storageRoot, storageIdentity)) ||
-        !(await ownsDirectory(stagingDir, stagingIdentity)) ||
-        (targetIdentity && !(await ownsDirectory(targetDir, targetIdentity)))
-      ) {
-        throw new Error(
-          `The clone destination or staging directory changed before publication: ${targetDir}. The replacement was left unchanged; choose an empty BRANCH_GIT_DIR and retry.`,
-        );
-      }
-      if (!preserveDir) {
-        try {
-          await fs.lstat(targetDir);
-        } catch (error) {
-          if (!hasErrnoCode(error, "ENOENT")) {
-            throw error;
-          }
-          await fs.rename(stagingDir, targetDir);
-          published = true;
-          return targetDir;
-        }
-        throw new Error(
-          `BRANCH_GIT_DIR appeared while cloning: ${params.dir}. The existing path was left unchanged; move it or choose another BRANCH_GIT_DIR, then retry.`,
-        );
-      }
-
-      const destinationEntries = await fs.readdir(targetDir);
-      if (destinationEntries.length !== 1 || destinationEntries[0] !== path.basename(storageRoot)) {
-        throw new Error(
-          `BRANCH_GIT_DIR appeared while cloning: ${params.dir}. The existing path was left unchanged; move it or choose another BRANCH_GIT_DIR, then retry.`,
-        );
-      }
-
-      const entries = (await fs.readdir(stagingDir)).toSorted((a, b) =>
-        a === ".git" ? 1 : b === ".git" ? -1 : 0,
-      );
-      const moved: string[] = [];
-      let publishError: { value: unknown } | undefined;
-      try {
-        for (const entry of entries) {
-          await fs.rename(path.join(stagingDir, entry), path.join(targetDir, entry));
-          moved.push(entry);
-        }
-      } catch (error) {
-        publishError = { value: error };
-      }
-      if (publishError) {
-        const rollbackErrors: unknown[] = [];
-        for (const entry of moved.toReversed()) {
-          try {
-            await fs.rename(path.join(targetDir, entry), path.join(stagingDir, entry));
-          } catch (rollbackError) {
-            rollbackErrors.push(rollbackError);
-          }
-        }
-        if (rollbackErrors.length > 0) {
-          cleanupStaging = false;
-          throw new AggregateError(
-            [publishError.value, ...rollbackErrors],
-            `Could not publish or fully roll back the cloned checkout at ${targetDir}; recovery files remain at ${stagingDir}`,
-          );
-        }
-        throw publishError.value;
-      }
-      published = true;
-      return targetDir;
-    };
-    if (params.useStagedCheckout) {
-      await params.useStagedCheckout(stagingDir, publish, targetDir, storageRoot);
-    } else {
-      await publish();
-    }
-    return { checkoutDir: targetDir, step: result };
-  };
-  let outcome: { result: GitCheckoutResult } | { error: unknown };
-  try {
-    outcome = { result: await runOperation() };
-  } catch (error) {
-    outcome = { error };
-    if (hasCommandProcessCleanupError(error)) {
-      cleanupStaging = false;
-    }
-  }
-  let cleanupOutcome: { ok: true } | { ok: false; error: unknown } = { ok: true };
-  // The container does not confer ownership of a replaced repository child.
-  // Only completed publication permits that child to be absent at cleanup.
-  if (cleanupStaging) {
-    // Ordinary diagnostic failures do not replace publication or the operation error.
-    try {
-      await cleanupUpdateTemporaryDirectory({
-        directory: storageRoot,
-        root: targetDir,
-        name: "git-clone-staging-cleanup",
-        canRemove: async () =>
-          (await ownsDirectory(storageRoot, storageIdentity)) &&
-          (await ownsDirectory(stagingDir, stagingIdentity, published)),
-        onWarning: async (warning) => {
-          if (result && warning.advisory) {
-            result.warnings = [...(result.warnings ?? []), warning.advisory.message];
-          }
-          try {
-            await reportUpdateStepCompletion(params.progress, { ...warning, index: 0, total: 0 });
-          } catch (error) {
-            if (hasCommandProcessCleanupError(error)) {
-              throw error;
-            }
-            // Settled diagnostic failures leave the operation outcome unchanged.
-          }
-        },
-      });
-    } catch (error) {
-      cleanupOutcome = { ok: false, error };
-    }
-  }
-  if (!cleanupOutcome.ok) {
-    if (
-      "error" in outcome &&
-      outcome.error !== cleanupOutcome.error &&
-      hasCommandProcessCleanupError(cleanupOutcome.error)
-    ) {
-      throw new AggregateError(
-        [outcome.error, cleanupOutcome.error],
-        "Git clone and cleanup progress both failed",
-        { cause: outcome.error },
-      );
-    }
-    throw cleanupOutcome.error;
-  }
-  if ("error" in outcome) {
-    throw outcome.error;
-  }
-  return outcome.result;
-}
-
-export async function ensureGitCheckout(params: {
-  dir: string;
-  timeoutMs: number;
-  progress?: UpdateStepProgress;
-  env?: NodeJS.ProcessEnv;
-  useStagedCheckout?: StagedGitCheckout;
-}): Promise<GitCheckoutResult> {
-  const gitEnv = params.env ?? (await createGlobalInstallEnv());
+export async function ensureGitCheckout(params: { dir: string }): Promise<GitCheckoutResult> {
+  // Branch never clones its own source: a fresh clone is not proven to build.
   const dirExists = await pathExists(params.dir);
-  if (!dirExists || !(await isGitCheckout(params.dir))) {
-    if (dirExists && !(await isEmptyDir(params.dir))) {
-      throw new UpdatePreMutationError(
-        "invalid-git-directory",
-        `BRANCH_GIT_DIR points at a non-git directory: ${params.dir}. Set BRANCH_GIT_DIR to an empty folder or a branch checkout.`,
-      );
-    }
-    return await cloneGitCheckoutTransactionally({
-      dir: params.dir,
-      env: gitEnv,
-      timeoutMs: params.timeoutMs,
-      progress: params.progress,
-      useStagedCheckout: params.useStagedCheckout,
-    });
+  if (!dirExists || (await isEmptyDir(params.dir))) {
+    throw new UpdatePreMutationError(
+      "invalid-git-directory",
+      "Install Branch from the desktop app or the release page.",
+    );
+  }
+  if (!(await isGitCheckout(params.dir))) {
+    throw new UpdatePreMutationError(
+      "invalid-git-directory",
+      `BRANCH_GIT_DIR points at a non-git directory: ${params.dir}. Set BRANCH_GIT_DIR to a branch checkout.`,
+    );
   }
 
   if ((await readPackageName(params.dir)) !== DEFAULT_PACKAGE_NAME) {
