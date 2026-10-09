@@ -17,6 +17,7 @@ import {
   configuredOwnersAreRequestVisible,
   registerPreparedRuntimeAuthMaterializationPublisher,
 } from "./prepared-model-runtime-materializations.js";
+import { replaceAgentDirectoryBuilds } from "./prepared-model-runtime.build.js";
 import * as configuredRefresh from "./prepared-model-runtime.configured-refresh.js";
 import {
   capturePreparedModelRuntimeLifetime,
@@ -272,6 +273,10 @@ export function getPreparedModelRuntimeSnapshot(
 export function getPendingPreparedModelRuntimeReplacement(agentId?: string): Promise<void> | undefined {
   return getPassiveReplacement(agentId)?.promise;
 }
+
+/** Startup's retry of one agent: its unsettled model builds stop holding the next one back. */
+export const replacePreparedModelRuntimeAgentBuilds = (agentDir: string, reason: Error) =>
+  replaceAgentDirectoryBuilds(agentBuildCompletions, normalizeOptionalDir(agentDir) ?? "", reason);
 
 /** Fence new execution while plugin work drains, without withdrawing the active catalog. */
 export const beginPreparedModelRuntimePluginDrain = modelRuntimeDrain.begin;

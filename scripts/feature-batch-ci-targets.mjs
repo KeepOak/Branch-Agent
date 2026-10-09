@@ -623,6 +623,8 @@ export function shardOf(value = process.env.FEATURE_SHARD) {
 // files are a few seconds of vitest startup. The numbers only balance shards.
 const featureTestWeights = {
   'src/gateway/server.auth.control-ui.test.ts': 287,
+  // Measured 2026-10-09: 255 s on ubuntu-latest, 394 s on macos-latest (PR #878 runs).
+  'src/agents/cli-runner/prepare.test.ts': 255,
   'src/commands/startup-config-preflight.recovery.test.ts': 176,
   'src/gateway/server-kernel.phases.test.ts': 175,
   'src/gateway/server-methods/sessions-reactions.test.ts': 157,
