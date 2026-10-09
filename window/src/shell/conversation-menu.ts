@@ -189,7 +189,7 @@ function moreRows(c: ConversationMenuContext): (MenuItem | null)[] {
     item("Replay this conversation", "play", c.run.replay),
     SEP,
     { kind: "sub", label: "Export", icon: menuIcon("doc"), items: exportRows(c) },
-    { kind: "sub", label: "View", icon: menuIcon("eye"), items: viewRows(c) },
+    { kind: "sub", label: "View", icon: menuIcon("eye"), hover: false, items: viewRows(c) },
     SEP,
     item("Why each thing is here", "info", c.run.guide),
     SEP,

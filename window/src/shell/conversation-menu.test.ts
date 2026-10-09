@@ -52,6 +52,7 @@ describe("P54 conversation header menu", () => {
   it("uses ⌘ for shortcut hints on a Mac and Ctrl elsewhere", () => {
     expect(keyHint("Ctrl Shift K", true)).toBe("⌘⇧K");
     expect(keyHint("Ctrl F", false)).toBe("Ctrl F");
+    expect((more(conversationMenuItems(ctx("regular", true))).find((i) => i.kind === "sub" && i.label === "View") as Extract<MenuItem, { kind: "sub" }>).hover).toBe(false);
     expect(leaf(conversationMenuItems(ctx("regular", true, { mac: true })), "Side panel")?.hint).toBe("⌘⇧K");
     expect(leaf(conversationMenuItems(ctx("regular", true, { mac: false })), "Side panel")?.hint).toBe("Ctrl Shift K");
   });
