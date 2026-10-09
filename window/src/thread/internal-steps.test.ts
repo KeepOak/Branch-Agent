@@ -13,6 +13,7 @@ describe("heartbeat steps stay out of the transcript", () => {
     expect(isInternalStep(step("h", "mcp__branch__heartbeat_respond"))).toBe(true);
     expect(isInternalStep(step("r", "read"))).toBe(false);
     expect(isInternalStep(step("r", "heartbeats_report"))).toBe(false);
+    expect(isInternalStep(step("h", "heartbeat_run_check"))).toBe(false);
   });
 
   it("folds only the visible steps, so a check-in between two steps adds no count", () => {
@@ -25,6 +26,11 @@ describe("heartbeat steps stay out of the transcript", () => {
     const blocks: Block[] = [user, step("h1", "heartbeat_respond"), step("s1", "read"), reply];
     const reply_ = layout(blocks).find((item) => item.type === "block" && item.block.key === "t1");
     expect(reply_).toMatchObject({ index: 3, firstReply: true, face: false });
+  });
+
+  it("keeps heartbeat_run_check visible in the transcript", () => {
+    const items = layout([user, step("c1", "heartbeat_run_check"), reply]);
+    expect(items.map((item) => (item.type === "steps" ? `steps:${item.steps.length}` : item.block.key))).toEqual(["u1", "steps:1", "t1"]);
   });
 
   it("gives a check-in-only turn no fold and leaves its reply with the gutter face", () => {

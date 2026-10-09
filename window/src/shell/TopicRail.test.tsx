@@ -124,3 +124,16 @@ describe("tab names", () => {
     expect(host.textContent).not.toContain("a2a:");
   });
 });
+
+describe("duplicate tab names", () => {
+  it("tells two threads with the same readable name apart in the tab strip", async () => {
+    localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "tabs", width: 280, per: {} }));
+    const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    const items = ["agent:juniper:a2a:branch-coordinator-a5a54c", "agent:juniper:a2a:branch-coordinator-b1c2d3"].map((key) => ({ topic: { key, contactId: "trunk:juniper", title: key, status: "active", unread: false } as Topic, preview: "", updatedAt: 0 }));
+    await act(async () => root!.render(<TopicRail contactId="trunk:juniper" contactName="Juniper" contactKey="agent:juniper:main" generalPreview="" generalUpdatedAt={0} currentKey="agent:juniper:main" items={items} onOpen={() => {}} onAll={() => {}} onPatch={async () => {}} />));
+    const labels = [...host.querySelectorAll("button")].map((button) => button.getAttribute("aria-label") ?? "").filter((label) => label.startsWith("Talk with Coordinator"));
+    expect(labels).toHaveLength(2);
+    expect(labels[0]).toMatch(/^Talk with Coordinator · [0-9a-f]{6}$/);
+    expect(new Set(labels).size).toBe(2);
+  });
+});

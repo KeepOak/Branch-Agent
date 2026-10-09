@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isRawSessionKey, readableTitle, sessionKeyName } from "./topic-name";
+import { distinctNames, isRawSessionKey, readableTitle, sessionKeyName } from "./topic-name";
 
 describe("topic names", () => {
   it("reads a cross-computer a2a key as a sentence about the other party", () => {
@@ -31,5 +31,27 @@ describe("topic names", () => {
   it("returns a human title unchanged and converts a raw key", () => {
     expect(readableTitle("Plan the Lisbon trip")).toBe("Plan the Lisbon trip");
     expect(readableTitle("agent:juniper:a2a:branch-nas-linux--tester")).toBe("Talk with Tester on Nas-linux");
+  });
+});
+
+describe("duplicate and prefix rules", () => {
+  it("tags two threads whose readable names match, and leaves unique names alone", () => {
+    const first = "agent:juniper:a2a:branch-coordinator-a5a54c";
+    const second = "agent:juniper:a2a:branch-coordinator-b1c2d3";
+    const names = distinctNames([{ key: first, name: sessionKeyName(first) }, { key: second, name: sessionKeyName(second) }, { key: "agent:oak:notes:a1", name: "Plan the trip" }]);
+    expect(names.get(first)).toMatch(/^Talk with Coordinator · [0-9a-f]{6}$/);
+    expect(names.get(second)).toMatch(/^Talk with Coordinator · [0-9a-f]{6}$/);
+    expect(names.get(first)).not.toBe(names.get(second));
+    expect(names.get("agent:oak:notes:a1")).toBe("Plan the trip");
+  });
+
+  it("tags repeated generic names too, so two 'Thread' rows are distinct", () => {
+    const names = distinctNames([{ key: "agent:oak:notes:a5a54c", name: "Thread" }, { key: "agent:oak:notes:b1c2d3", name: "Thread" }]);
+    expect(new Set(names.values()).size).toBe(2);
+  });
+
+  it("keeps a colon title with no agent or a2a prefix as typed", () => {
+    expect(isRawSessionKey("Standup:2026:Q3")).toBe(false);
+    expect(readableTitle("Standup:2026:Q3")).toBe("Standup:2026:Q3");
   });
 });

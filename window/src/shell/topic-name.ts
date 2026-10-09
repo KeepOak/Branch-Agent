@@ -2,11 +2,11 @@
 // key when a topic has no label, preview or derived title, so the window turns those keys into plain words.
 const HASH_TAIL = /-[0-9a-f]{6,}$/i;
 
-/** A session key rather than a sentence: no spaces, and either an `agent:` / `a2a:` prefix or three or more segments. */
+/** A session key rather than a sentence: no spaces, and an `agent:` or `a2a:` prefix, or an `a2a` segment. */
 export function isRawSessionKey(name: string): boolean {
   const text = String(name ?? "").trim();
   if (!text || /\s/.test(text)) return false;
-  return /^(?:agent|a2a):/i.test(text) || /:a2a:/i.test(text) || /^[\w.-]+(?::[\w.-]+){2,}$/.test(text);
+  return /^(?:agent|a2a):/i.test(text) || /:a2a:/i.test(text);
 }
 
 function sentence(text: string): string {
@@ -32,4 +32,18 @@ export function sessionKeyName(key: string): string {
 /** The title to show: a raw session key becomes a readable name, anything else is shown as written. */
 export function readableTitle(name: string): string {
   return isRawSessionKey(name) ? sessionKeyName(name.trim()) : name;
+}
+
+/** Six hex characters that identify a key, so two threads with the same readable name can be told apart. */
+export function keyTag(key: string): string {
+  let hash = 0x811c9dc5;
+  for (const char of key) hash = Math.imul(hash ^ (char.codePointAt(0) ?? 0), 0x01000193) >>> 0;
+  return hash.toString(16).padStart(8, "0").slice(0, 6);
+}
+
+/** Readable names for one list of threads: a name that repeats in the list gets the thread's key tag after " · ". */
+export function distinctNames(entries: readonly { key: string; name: string }[]): Map<string, string> {
+  const counts = new Map<string, number>();
+  for (const { name } of entries) counts.set(name, (counts.get(name) ?? 0) + 1);
+  return new Map(entries.map(({ key, name }) => [key, (counts.get(name) ?? 0) > 1 ? `${name} · ${keyTag(key)}` : name]));
 }
