@@ -19,8 +19,9 @@ export function shouldShowThreadColumn(p: {
   draft: boolean;
   generalKey: string | null | undefined;
   topicRow: boolean;
+  viewportWidth?: number;
 }): boolean {
-  return p.chat && !p.focus && !p.stage && !p.draft && Boolean(p.generalKey) && !p.topicRow;
+  return (p.viewportWidth ?? 900) >= 900 && p.chat && !p.focus && !p.stage && !p.draft && Boolean(p.generalKey) && !p.topicRow;
 }
 
 /** The preview's per-contact threads, separate from the Control tower. */

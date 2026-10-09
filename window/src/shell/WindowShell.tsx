@@ -76,6 +76,7 @@ import { ShortcutsDialog } from "./ShortcutsDialog";
 import { QuickAsk } from "./QuickAsk";
 import { NewProjectDialog, useProjects } from "./Projects";
 import { Sidebar, type TalkEntry } from "./Sidebar";
+import { useNarrow } from "./use-narrow";
 import { TalkBeside, useTalkLayout } from "./TalkBeside";
 import { StatusBar, type StatusItem } from "./StatusBar";
 import { KeepLastDialog, remindedToday, StatusPopover, statusAnchor, tidy } from "./StatusLayer";
@@ -213,19 +214,6 @@ function useMarkRead(request: <T>(m: string, p?: unknown) => Promise<T>, row: Co
   }, [guard, key, unread, marker, row, request, refresh]);
 }
 
-/** Whether the window is 760 px or narrower (§3.4). */
-function useNarrow(): boolean {
-  const query = "(max-width: 760px)";
-  const [narrow, setNarrow] = useState(() => matchMedia(query).matches);
-  useEffect(() => {
-    const m = matchMedia(query);
-    const on = () => setNarrow(m.matches);
-    m.addEventListener("change", on);
-    return () => m.removeEventListener("change", on);
-  }, []);
-  return narrow;
-}
-
 /** Follows the computer's light/dark setting and theme changes made elsewhere in the window (Settings > Appearance). */
 function useThemeSync(setTheme: (t: ThemeChoice) => void): boolean {
   const [systemDark, setSystemDark] = useState(() => matchMedia("(prefers-color-scheme: dark)").matches);
@@ -354,6 +342,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const [liveW, setLiveW] = useState<number | null>(null);
   const isNarrow = useNarrow();
   const [slideOpen, setSlideOpen] = useState(false);
+  useEffect(() => { if (!isNarrow) setSlideOpen(false); }, [isNarrow]);
   const [phoneTopicListFor, setPhoneTopicListFor] = useState<string | null>(null);
   const [searchFind, setSearchFind] = useState<{ key: string; query: string; nonce: number } | null>(null);
   const searchFindNonce = useRef(0);
@@ -463,8 +452,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     return () => { window.removeEventListener("branch:topic-layout-changed", sync); window.removeEventListener("storage", storage); };
   }, [topicContact?.id]);
   const [fullListFor, setFullListFor] = useState<string | null>(null);
-  const topicAutoRail = route.kind === "chat" && Boolean(topicContact && activeTopics.length) && innerWidth > 760 && (topicLayout === "column" || topicLayout === "rail") && fullListFor !== topicContact?.id;
-  const rail = layout.rail || (topicAutoRail && !layout.hidden);
+  const topicAutoRail = route.kind === "chat" && Boolean(topicContact && activeTopics.length) && !isNarrow && (topicLayout === "column" || topicLayout === "rail") && fullListFor !== topicContact?.id;
+  const rail = !isNarrow && (layout.rail || (topicAutoRail && !layout.hidden));
   useEffect(() => {
     setAllTopics((value) => value && (!topicContact || value.contactId !== topicContact.id || openKey !== topicContact.threadKey) ? null : value);
   }, [openKey, topicContact?.id]);
@@ -1473,6 +1462,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   }
   const threadGeneralKey = topicContact?.threadKey ?? (openRow?.isMain ? openKey : null);
   const showThreadColumn = shouldShowThreadColumn({
+    viewportWidth: innerWidth,
     chat: route.kind === "chat",
     focus: layout.focus,
     stage: Boolean(stage),
@@ -1578,7 +1568,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           selection.clear();
           setTopicReturnKey(null);
           const contact = contacts.find((candidate) => candidate.threadKey === key);
-          setPhoneTopicListFor(innerWidth <= 640 && contact?.topicCount && topicLayout !== "tabs" && topicLayout !== "side" ? contact.id : null);
+          setPhoneTopicListFor(isNarrow && contact?.topicCount && topicLayout !== "tabs" && topicLayout !== "side" ? contact.id : null);
           setFocusTopic(contact?.preview.kind === "topic" ? { key: contact.preview.topicKey, nonce: Date.now() } : null);
           openConversation(key);
         }}
