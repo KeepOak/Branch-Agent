@@ -1,6 +1,8 @@
 # mobile-5 proof: approvals with Allow and Deny that answer on the computer
 
-Head: 2b7918a48ca4723f88c3f7f54e3e881f3f08c9f8 on trunk/mobile-5-approvals (stacked on #869).
+Head: 92688b382f1c314f3525e3184af2a9e638e377ce on trunk/mobile-5-approvals.
+
+Recaptured again at 92688b38 after Birch's FIX: the Reconnecting banner now promises only what answer() does (it waits RECONNECT_WAIT_MS, 15 s, then asks to try again). Earlier note:
 
 Recaptured at this head after merging #869's final code (d7a97679). The fake engine now broadcasts `*.approval.resolved` to the answering phone before it replies, as `approval-shared.ts` does, so **04-allowed-on-this-phone** also shows the phone crediting its own answer from the engine's reply rather than from the event.
 
@@ -22,7 +24,7 @@ Native bundles: `npx expo export --platform android --platform ios` compiled bot
 
 ## Frames checked
 
-- 33 screencast frames of the light run: 0 blank. The sheet runs from Needs you through Always allow, Allowed, the computer answering, a new request, Reconnecting and Denied, then back to Chats. Each screen replaces the last directly.
+- 34 screencast frames of the light run: 0 blank. The sheet runs from Needs you through Always allow, Allowed, the computer answering, a new request, Reconnecting and Denied, then back to Chats. Each screen replaces the last directly.
 - In both runs, the script read the fake engine's requests: `exec.approval.resolve {exec-1, allow-always}` and `{exec-live, deny}`.
 
 ## The stills
@@ -34,6 +36,6 @@ Native bundles: `npx expo export --platform android --platform ios` compiled bot
 - **04-allowed-on-this-phone:** The card has moved to Answered as "Always allowed on this phone", and the count is now 1.
 - **05-answered-on-the-computer:** The computer sent the email first. The phone shows "Sent somewhere else" and "Nothing is waiting for you".
 - **06-new-request-live:** A new request arrives live, after notifications were turned on. The bearer token shows as dots, the engine's warning is there, and the expiry turns amber under 2 minutes.
-- **07-reconnecting:** The computer dropped. The phone says an answer goes through as soon as it's back.
+- **07-reconnecting:** The computer dropped. The phone says an answer sent now waits up to 15 seconds for it, then asks you to try again.
 - **08-denied:** After reconnecting, Deny. Answered lists all three with what happened and where.
 - **09-back-to-chats:** Back on Chats, the bar is gone because nothing is waiting.
