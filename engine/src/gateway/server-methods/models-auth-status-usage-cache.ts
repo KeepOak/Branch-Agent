@@ -88,7 +88,10 @@ function mapProviderUsage(usage: Awaited<ReturnType<typeof loadProviderUsageSumm
   return usageByProvider;
 }
 
-/** Timeouts and provider rate limits say nothing new about an account, so its last reading stands. */
+/**
+ * Timeouts and provider rate limits say nothing new about an account, so its last
+ * reading stands, marked with when it was taken and why the latest check failed.
+ */
 function isPassingUsageError(error: string | undefined): boolean {
   return error === "Timeout" || /^HTTP 429\b/.test(error ?? "");
 }
@@ -108,23 +111,24 @@ function retainLastGoodReading(
         provider,
       ]),
   );
-  const retainedLastGood = summary.providers.some(
-    (provider) =>
-      isPassingUsageError(provider.error) &&
-      lastGoodByProvider.has(
-        `${provider.provider}:${provider.authProfileId ?? provider.accountEmail ?? ""}`,
-      ),
-  );
   return {
     ...summary,
-    updatedAt: retainedLastGood ? lastGood.updatedAt : summary.updatedAt,
-    providers: summary.providers.map((provider) =>
-      isPassingUsageError(provider.error)
-        ? (lastGoodByProvider.get(
+    providers: summary.providers.map((provider) => {
+      const kept = isPassingUsageError(provider.error)
+        ? lastGoodByProvider.get(
             `${provider.provider}:${provider.authProfileId ?? provider.accountEmail ?? ""}`,
-          ) ?? provider)
-        : provider,
-    ),
+          )
+        : undefined;
+      if (!kept) {
+        return provider;
+      }
+      // A reading kept across several failed checks keeps its first age.
+      return {
+        ...kept,
+        readingAt: kept.readingAt ?? lastGood.updatedAt,
+        staleReason: provider.error,
+      };
+    }),
   };
 }
 

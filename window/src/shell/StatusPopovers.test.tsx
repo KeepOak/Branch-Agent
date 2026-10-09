@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -81,6 +83,45 @@ describe("status popovers", () => {
     expect(rows[3].textContent).toContain("Claude · Account 4 didn't share what's left right now. Branch checks again in 5 min.");
     expect(rows[4].textContent).toContain("Claude · Account 5 hasn't shared a limit with Branch.");
     expect(host.textContent).not.toContain("Not shared");
+  });
+  it("Usage: a measured account that is then rate limited keeps its reading and says how old it is, next to a fresh account", async () => {
+    const at = Date.now() + 2 * 3_600_000;
+    const claude = (id: string, used: number, extra: Record<string, unknown> = {}) => ({ provider: "anthropic", displayName: "Claude", authProfileId: `anthropic:${id}`, plan: "Max (20x)", windows: [{ label: "5h", usedPercent: used, resetAt: at }], ...extra });
+    const measured = { updatedAt: Date.now(), providers: [claude("one", 20), claude("two", 40)] };
+    // What usage.status sends after Account 1's next check got HTTP 429 and Account 2's succeeded.
+    const rateLimited = { updatedAt: Date.now(), providers: [claude("one", 20, { readingAt: Date.now() - 12 * 60_000, staleReason: "HTTP 429: Rate limited. Please try again later." }), claude("two", 55)] };
+    let reply: unknown = measured;
+    const request = vi.fn(async () => reply);
+    const host = await show(<UsagePopover above={above} onClose={() => {}} limits={readLimits(measured)} request={request as never} onOpenUsage={() => {}} />);
+    expect(host.querySelector(".aLineT5")).toBeNull();
+    reply = rateLimited;
+    await act(async () => button(host, "Check every account now").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    const [stale, fresh] = [...host.querySelectorAll(".acctT5")];
+    expect(stale.classList.contains("staleT5")).toBe(true);
+    expect(stale.querySelector(".aLeftT5")?.textContent).toMatch(/^80% left · resets /);
+    expect(stale.querySelector(".meterT5 i")?.getAttribute("style")).toBe("width: 20%;");
+    expect(stale.querySelector(".aLineT5")?.textContent).toBe("Rate limited · last reading 12 min ago. Branch checks again in 5 min.");
+    expect(fresh.classList.contains("staleT5")).toBe(false);
+    expect(fresh.querySelector(".aLeftT5")?.textContent).toMatch(/^45% left · resets /);
+    expect(fresh.querySelector(".aLineT5")).toBeNull();
+    expect(fresh.textContent).not.toContain("last reading");
+  });
+  it("Usage: a long account label shortens itself and never cuts the used-next badge or the reading", async () => {
+    const usage = { updatedAt: Date.now(), providers: [{ provider: "anthropic", displayName: "Claude", accountEmail: "a.very.long.claude.address@example-company.com", inUse: true, plan: "Max (20x)", windows: [{ label: "5h", usedPercent: 20, resetAt: Date.now() + 2 * 3_600_000 }] }] };
+    const host = await show(<UsagePopover above={above} onClose={() => {}} limits={readLimits(usage)} request={vi.fn(async () => usage) as never} onOpenUsage={() => {}} />);
+    const name = host.querySelector(".acctT5 .aNameT5") as HTMLElement;
+    const label = name.querySelector(":scope > .aLabelT5") as HTMLElement;
+    expect(label.textContent).toBe("a.very.long.claude.address@example-company.com");
+    expect(label.title).toBe(label.textContent);
+    expect(name.querySelector(":scope > .pill.ok")?.textContent).toBe("used next");
+    const css = readFileSync(join(process.cwd(), "src/shell/status.css"), "utf8");
+    const rule = (selector: string) => new RegExp(`(^|\\n)${selector.replace(/[.*]/g, "\\$&")} \\{([^}]*)\\}`).exec(css)?.[2] ?? "";
+    expect(rule(".acctT5")).toContain("flex-wrap: wrap");
+    expect(rule(".aNameT5")).not.toContain("overflow: hidden");
+    expect(rule(".aLabelT5")).toContain("text-overflow: ellipsis");
+    expect(rule(".aNameT5 .pill")).toContain("flex: none");
+    expect(rule(".aLeftT5")).toContain("flex: none");
   });
   it("Version: up to date has no install item", async () => {
     const host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "1.0.0", latest: null, notes: [], installing: false, waiting: null }} version="1.0.0" onWhatsNew={() => {}} onInstall={() => {}} onRemind={() => {}} />);

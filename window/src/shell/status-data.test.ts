@@ -35,6 +35,18 @@ describe("usage.status (§4.9.4)", () => {
     expect(rows[0].windows).toEqual([{ name: "This 5-hour window", left: 75, reset: "resets 3 PM", low: false }]);
     expect(rows[1]).toMatchObject({ pill: "Not published", line: "Claude · Account 2 hasn't shared a limit with Branch." });
   });
+  it("dates a reading kept through a rate limit or timeout by its own age, not the reply's", () => {
+    const rows = readLimits({ updatedAt: NOW, providers: [
+      { provider: "anthropic", displayName: "Claude", authProfileId: "anthropic:one", windows: [{ label: "5h", usedPercent: 25 }], readingAt: NOW - 3 * 3_600_000, staleReason: "HTTP 429: Rate limited. Please try again later." },
+      { provider: "anthropic", displayName: "Claude", authProfileId: "anthropic:two", windows: [{ label: "5h", usedPercent: 25 }], readingAt: NOW - 7 * 60_000, staleReason: "Timeout" },
+      { provider: "anthropic", displayName: "Claude", authProfileId: "anthropic:three", windows: [{ label: "5h", usedPercent: 25 }] },
+    ] }, NOW).rows;
+    expect(rows.map((row) => [row.stale, row.line])).toEqual([
+      [true, "Rate limited · last reading 3 h ago. Branch checks again in 5 min."],
+      [true, "No answer · last reading 7 min ago. Branch will try again."],
+      [undefined, "as of just now"],
+    ]);
+  });
   it("the ring prefers the account used next, then the first measured account", () => {
     expect(ringReading(readLimits(result, NOW))).toEqual({ name: "ChatGPT · Account 1", left: 12, reset: "resets 6 PM", low: true });
     const usedNext = {
