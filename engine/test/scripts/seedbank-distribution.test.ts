@@ -10,6 +10,17 @@ import {
 } from "../../scripts/lib/seedbank-distribution.mjs";
 
 describe("Seedbank distribution", () => {
+  it("keeps verification and publication jobs within the repository CI cap", () => {
+    const workflow = readFileSync(
+      new URL("../../../.github/workflows/seedbank-plugin-distribution.yml", import.meta.url),
+      "utf8",
+    );
+    const timeouts = [...workflow.matchAll(/timeout-minutes:\s*(\d+)/gu)].map((match) =>
+      Number(match[1]),
+    );
+    expect(timeouts).toHaveLength(2);
+    expect(timeouts.every((timeout) => timeout > 0 && timeout <= 15)).toBe(true);
+  });
   it("publishes in the owned scope without changing SDK dependencies or upstream attribution", () => {
     const original = JSON.parse(
       readFileSync(new URL("../../extensions/cerebras/package.json", import.meta.url), "utf8"),
