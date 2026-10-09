@@ -216,6 +216,7 @@ function transactionDiagnosticLabels(
 }
 
 function logSlowTransactionHold(params: {
+  beginWaitMs: number;
   db: DatabaseSync;
   elapsedMs: number;
   mode: SqliteTransactionMode;
@@ -228,6 +229,7 @@ function logSlowTransactionHold(params: {
   }
   (params.options?.logger ?? transactionLog).warn("slow SQLite transaction hold", {
     async: false,
+    beginWaitMs: params.beginWaitMs,
     ...transactionDiagnosticLabels(params.db, params.options),
     elapsedMs: params.elapsedMs,
     isMainThread,
@@ -407,12 +409,15 @@ function runSqliteTransactionSync<T>(
     }
   }
 
+  const beginStartedAt = performance.now();
   execTimedTransactionStep({
     db,
     options,
     sql: mode === "immediate" ? "BEGIN IMMEDIATE" : "BEGIN",
     step: "begin",
   });
+  // Lock or busy wait for BEGIN; elapsedMs below is only the time the lock was held.
+  const beginWaitMs = performance.now() - beginStartedAt;
   const transactionStartedAt = Date.now();
   let commitStarted = false;
   try {
@@ -438,6 +443,7 @@ function runSqliteTransactionSync<T>(
     // Include COMMIT and failed holders: both keep other writers waiting too.
     try {
       logSlowTransactionHold({
+        beginWaitMs,
         db,
         elapsedMs: Date.now() - transactionStartedAt,
         mode,

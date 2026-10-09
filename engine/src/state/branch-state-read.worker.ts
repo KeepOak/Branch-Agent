@@ -15,12 +15,6 @@ import { readWorkspaceStateSnapshotForDirectoryInDatabase } from "../agents/work
 import { isChannelIngressReadCommand } from "../channels/message/ingress-queue-read-contract.js";
 import { readChannelIngressInDatabase } from "../channels/message/ingress-queue-read.worker.js";
 import {
-  readGroveInstallRecordFromDatabase,
-  readGroveInstallRecordsInDatabase,
-  readGroveOrphanWorkspaceInDatabase,
-  readClawPackageRefsInDatabase,
-} from "../groves/provenance-read.kernel.js";
-import {
   isCronStateReadCommand,
   readCronStateCommandInDatabase,
 } from "../cron/store/read-command.js";
@@ -54,6 +48,12 @@ import {
 import { readWorkspaceJournalInDatabase } from "../gateway/worker-environments/placement-workspace-journal.js";
 import { isWorkspaceJournalReadCommand } from "../gateway/worker-environments/placement-workspace-journal.types.js";
 import { listPendingWorkerWorkspaceResultsInDatabase } from "../gateway/worker-environments/placement-workspace-result.js";
+import {
+  readGroveInstallRecordFromDatabase,
+  readGroveInstallRecordsInDatabase,
+  readGroveOrphanWorkspaceInDatabase,
+  readClawPackageRefsInDatabase,
+} from "../groves/provenance-read.kernel.js";
 import { getSqliteRuntimeCapabilities } from "../infra/bun-sqlite-library.js";
 import { executeDevicePairingRead } from "../infra/device-pairing-read.kernel.js";
 import { readExecApprovalsConfigRow } from "../infra/exec-approvals-sqlite.js";
@@ -61,6 +61,7 @@ import { inspectGatewayOwnerLeaseForMaintenance } from "../infra/gateway-owner-l
 import { bunSqliteNativeCleanupPending } from "../infra/node-sqlite.js";
 import { inspectCurrentConversationBindingRecordInDatabase } from "../infra/outbound/current-conversation-bindings.kernel.js";
 import { readOutboundDeliveriesInDatabase } from "../infra/outbound/delivery-queue-storage.kernel.js";
+import { withSqliteReaderOwner } from "../infra/sqlite-reader-lifecycle.js";
 import { runSqliteDeferredTransactionSync } from "../infra/sqlite-transaction.js";
 import { runWithSqliteWorkerStateContext } from "../infra/sqlite-worker-state-context.js";
 import {
@@ -87,12 +88,6 @@ import { isTuiLastSessionReadCommand } from "../tui/tui-last-session.contract.js
 import { readTuiLastSessionCommand } from "../tui/tui-last-session.kernel.js";
 import { readAgentDatabaseDeletionSnapshotInDatabase } from "./agent-deletion-journal.read.js";
 import { readBackupRunsInDatabase } from "./backup-run-records.kernel.js";
-import {
-  isConfigMachineStateReadCommand,
-  readConfigMachineStateCommandInDatabase,
-} from "./config-machine-state.js";
-import { readGitHubPublicationSessionLifecycle } from "./github-publication-session-lifecycles.js";
-import { readOnboardingRecommendationsInDatabase } from "./onboarding-recommendations.kernel.js";
 import { readRegisteredAgentDatabaseRows } from "./branch-agent-db-registry.read.js";
 import { branchStateDatabaseCache } from "./branch-state-db-cache.js";
 import {
@@ -109,12 +104,15 @@ import {
 import { readMcpOAuthStateCommand } from "./branch-state-read-mcp-oauth.js";
 import { stateReadRegistry } from "./branch-state-read-operation-registry.js";
 import { readStateRegistryCommand } from "./branch-state-read-registry.js";
-import type {
-  BranchStateReadReply,
-  BranchStateReadResult,
-} from "./branch-state-read.types.js";
+import type { BranchStateReadReply, BranchStateReadResult } from "./branch-state-read.types.js";
 import { isReadRequest } from "./branch-state-read.validation.js";
 import { encodeBranchStateWorkerError } from "./branch-state-worker-error.js";
+import {
+  isConfigMachineStateReadCommand,
+  readConfigMachineStateCommandInDatabase,
+} from "./config-machine-state.js";
+import { readGitHubPublicationSessionLifecycle } from "./github-publication-session-lifecycles.js";
+import { readOnboardingRecommendationsInDatabase } from "./onboarding-recommendations.kernel.js";
 import { findSessionRepositoryWorkspaceInDatabase } from "./session-repository-workspaces.kernel.js";
 import {
   listUserChannelIdentitiesInDatabase,
@@ -134,556 +132,561 @@ import {
 } from "./user-profile-identity.read.js";
 import { readUserProfileAvatarCommand } from "./user-profiles-internal.js";
 
-serveOwnedWorkerTasks(
-  function read(input): BranchStateReadReply | Promise<BranchStateReadReply> {
-    let sourceAdmitted: true | undefined;
-    let nativeCleanupFailure: BranchStateReadReply["nativeCleanupFailure"];
-    try {
-      if (!isReadRequest(input)) {
-        throw new Error("Shared-state reader requires a captured state location and read command");
-      }
-      const prepared = stateReadRegistry.prepare(input.command.type);
-      if (prepared) {
-        return prepared.then(() => read(input));
-      }
-      const reply = runWithSqliteWorkerStateContext(input.context, (): BranchStateReadReply => {
-        if (input.checkFreshAdmission) {
-          branchStateDatabaseCache.assertBranchStateDatabaseFreshOpenAllowedAtPath(
-            input.databasePath,
-            input.context.environment,
-            (error) => {
-              nativeCleanupFailure = {
-                error: encodeBranchStateWorkerError(error, { includeOrdinary: true }),
-              };
-            },
-          );
-        }
-        const { command } = input;
-        if (command.type === "admit") {
-          return { ok: true, type: "admit" };
-        }
-        if (command.type === "doctor.gatewayOwnerLease.read") {
-          const lease = inspectGatewayOwnerLeaseForMaintenance(input, () => {
-            sourceAdmitted = true;
-          });
-          return { ok: true, type: command.type, sourceAdmitted: true, lease };
-        }
-        const locationArgs = [
+function readStateCommand(input: unknown): BranchStateReadReply | Promise<BranchStateReadReply> {
+  let sourceAdmitted: true | undefined;
+  let nativeCleanupFailure: BranchStateReadReply["nativeCleanupFailure"];
+  try {
+    if (!isReadRequest(input)) {
+      throw new Error("Shared-state reader requires a captured state location and read command");
+    }
+    const prepared = stateReadRegistry.prepare(input.command.type);
+    if (prepared) {
+      return prepared.then(() => readStateCommand(input));
+    }
+    const reply = runWithSqliteWorkerStateContext(input.context, (): BranchStateReadReply => {
+      if (input.checkFreshAdmission) {
+        branchStateDatabaseCache.assertBranchStateDatabaseFreshOpenAllowedAtPath(
           input.databasePath,
-          input.location,
-          undefined,
-          input.expectedIdentity,
-          input.snapshotRoot,
-          true,
-        ] as const;
-        if (command.type === "agentDatabaseRegistry.read") {
-          const result = readBranchStateReadOnlyLocation(
-            ({ db }) => {
-              sourceAdmitted = true;
-              return readRegisteredAgentDatabaseRows(db, input.databasePath, false);
-            },
-            ...locationArgs,
-          );
-          return {
-            ok: true,
-            type: command.type,
-            sourceAdmitted,
-            result:
-              result.status === "available"
-                ? { status: "available", entries: result.value }
-                : { status: "unavailable" },
-          };
-        }
-        if (command.type === "subagents.sessionList") {
-          const result = readBranchStateReadOnlyLocation(
-            ({ db }) => {
-              sourceAdmitted = true;
-              return loadSubagentSessionListRunsFromSqlite(undefined, { db });
-            },
-            ...locationArgs,
-          );
-          if (result.status === "unavailable" && sourceAdmitted !== true) {
-            throw result.error;
-          }
-          return result.status === "available"
-            ? { ok: true, type: command.type, sourceAdmitted: true, runs: result.value }
-            : {
-                ok: true,
-                type: command.type,
-                sourceAdmitted: true,
-                unavailable: {
-                  message: String(result.error),
-                  error: encodeBranchStateWorkerError(result.error, {
-                    includeOrdinary: true,
-                  }),
-                },
-              };
-        }
-        const result = withBranchStateReadOnlyLocation(
-          ({ db }): BranchStateReadResult => {
+          input.context.environment,
+          (error) => {
+            nativeCleanupFailure = {
+              error: encodeBranchStateWorkerError(error, { includeOrdinary: true }),
+            };
+          },
+        );
+      }
+      const { command } = input;
+      if (command.type === "admit") {
+        return { ok: true, type: "admit" };
+      }
+      if (command.type === "doctor.gatewayOwnerLease.read") {
+        const lease = inspectGatewayOwnerLeaseForMaintenance(input, () => {
+          sourceAdmitted = true;
+        });
+        return { ok: true, type: command.type, sourceAdmitted: true, lease };
+      }
+      const locationArgs = [
+        input.databasePath,
+        input.location,
+        undefined,
+        input.expectedIdentity,
+        input.snapshotRoot,
+        true,
+      ] as const;
+      if (command.type === "agentDatabaseRegistry.read") {
+        const result = readBranchStateReadOnlyLocation(
+          ({ db }) => {
             sourceAdmitted = true;
-            if (command.type === "groves.packageOwnership") {
-              const install =
-                command.agentId === undefined
-                  ? undefined
-                  : readGroveInstallRecordFromDatabase(db, command.agentId);
-              return {
-                type: command.type,
-                install,
-                installs: command.includeInstalls ? readGroveInstallRecordsInDatabase(db) : [],
-                packageRefs: readClawPackageRefsInDatabase(db, { agentId: command.agentId }),
-                orphanWorkspace:
-                  command.agentId !== undefined && !install
-                    ? readGroveOrphanWorkspaceInDatabase(db, command.agentId)
-                    : undefined,
-              };
-            }
-            if (command.type === "agentDatabaseDeletion.snapshot") {
-              return {
-                type: command.type,
-                snapshot: readAgentDatabaseDeletionSnapshotInDatabase(
-                  db,
-                  input.databasePath,
-                  command.purpose,
-                ),
-              };
-            }
-            if (command.type === "deliveryQueue.outbound") {
-              // Custody reads retain queue ownership admission even on a read-only connection.
-              assertBranchStateWriteAllowed({
-                database: db,
-                databasePath: input.databasePath,
-                env: input.context.environment,
-              });
-              return {
-                type: command.type,
-                entries: readOutboundDeliveriesInDatabase({ db }, command),
-              };
-            }
-            if (command.type === "acpSessions.list") {
-              return {
-                type: command.type,
-                rows: selectAcpSessionRows(db),
-              };
-            }
-            if (command.type === "acpSessions.metadata") {
-              return {
-                type: command.type,
-                rows: command.entries.map((entry) => selectAcpSessionRowForRead(db, entry) ?? null),
-              };
-            }
-            if (isChannelIngressReadCommand(command)) {
-              return readChannelIngressInDatabase(db, command);
-            }
-            if ("input" in command && stateReadRegistry.has(command)) {
-              return stateReadRegistry.execute(command, db);
-            }
-            if (command.type === "subagents.runs") {
-              if (command.scope.kind === "all") {
-                return { type: command.type, ...loadVersionedSubagentRunsInDatabase({ db }) };
-              }
-              if (command.scope.kind === "maintenance") {
-                const maintenance = loadSubagentMaintenanceRunsInDatabase({ db });
-                return {
-                  type: command.type,
-                  projection: "maintenance",
-                  runs: maintenance.runs,
-                  maintenanceDigest: maintenance.digest,
-                };
-              }
-              if (command.scope.kind === "descendants") {
-                const descendants = loadSubagentRunsForSessionsInDatabase(
-                  { db },
-                  command.scope.sessionKeys,
-                  command.scope.liveTopology,
-                );
-                return {
-                  type: command.type,
-                  runs: descendants.runs,
-                  descendantBasis: {
-                    digest: descendants.digest,
-                    sessionKeys: descendants.sessionKeys,
-                    runIds: descendants.runIds,
-                  },
-                };
-              }
-              if (command.scope.kind === "ids") {
-                return {
-                  type: command.type,
-                  ...loadVersionedSubagentRunsInDatabase({ db }, command.scope.runIds),
-                };
-              }
-              const rows = loadSubagentRunsForSessionFromSqlite(command.scope.sessionKey, { db });
-              return {
-                type: command.type,
-                runs: new Map(rows.map((entry) => [entry.runId, entry])),
-              };
-            }
-            if (
-              command.type === "mcpOAuth.statuses" ||
-              command.type === "mcpOAuth.readOnly" ||
-              command.type === "mcpOAuth.keys" ||
-              command.type === "mcpOAuth.pending" ||
-              command.type === "mcpOAuth.countPrincipals"
-            ) {
-              return readMcpOAuthStateCommand(db, command);
-            }
-            if (command.type === "sessionGroups.snapshot") {
-              return {
-                type: command.type,
-                snapshot: readSessionGroupCatalogSnapshot(db),
-              };
-            }
-            if (command.type === "sessionGroups.members") {
-              return {
-                type: command.type,
-                snapshot: readSessionGroupMembership(command.cfg, input.context.environment),
-              };
-            }
-            if (command.type === "conversationBindings.inspect") {
-              return {
-                type: command.type,
-                record: inspectCurrentConversationBindingRecordInDatabase(db, command.conversation),
-              };
-            }
-            if (command.type === "backup.runs") {
-              return { type: command.type, runs: readBackupRunsInDatabase(db) };
-            }
-            if (isCronStateReadCommand(command)) {
-              return readCronStateCommandInDatabase(db, command);
-            }
-            if (
-              command.type === "devicePairing.list" ||
-              command.type === "devicePairing.lookup" ||
-              command.type === "devicePairing.pending" ||
-              command.type === "devicePairing.bootstrapContext"
-            ) {
-              return executeDevicePairingRead(db, input.databasePath, command);
-            }
-            if (command.type === "subagents.forChildSession") {
-              return {
-                type: command.type,
-                runs: loadSubagentRunsForChildSessionFromSqlite(command.childSessionKey, {
-                  db,
-                }),
-              };
-            }
-            if (command.type === "pluginBlob.lookup") {
-              return {
-                type: command.type,
-                value: pluginBlobLookupInDatabase(db, {
-                  ...command.input,
-                  env: input.context.environment,
-                  path: input.databasePath,
-                }),
-              };
-            }
-            if (isStateDiagnosticCommand(command)) {
-              return readStateDiagnosticCommand(db, command);
-            }
-            if (command.type === "pluginBlob.entries") {
-              return {
-                type: command.type,
-                value: pluginBlobEntriesInDatabase(db, {
-                  ...command.input,
-                  env: input.context.environment,
-                  path: input.databasePath,
-                }),
-              };
-            }
-            if (command.type === "updateRuns.get") {
-              return {
-                type: command.type,
-                run: tableExists(db, "update_runs")
-                  ? readUpdateRunRecord(db, command.runId)
-                  : undefined,
-              };
-            }
-            if (command.type === "updateRuns.list") {
-              return {
-                type: command.type,
-                runs: readUpdateRuns(db, command.input),
-              };
-            }
-            if (command.type === "updateRuns.reconciliationCandidates") {
-              return {
-                type: command.type,
-                candidates: readUpdateRunReconciliationCandidates(db, command.input),
-              };
-            }
-            if (command.type === "updateRuns.reconciliationCandidate") {
-              const run = tableExists(db, "update_runs")
-                ? readUpdateRunRecord(db, command.runId)
-                : undefined;
-              return {
-                type: command.type,
-                candidate: run ? inspectUpdateRunReconciliation(db, run, {}) : undefined,
-              };
-            }
-            if (command.type === "updateRuns.status") {
-              return {
-                type: command.type,
-                status: runSqliteDeferredTransactionSync(db, () =>
-                  readUpdateRunStatusInDatabase(db),
-                ),
-              };
-            }
-            if (command.type === "updateRuns.historyStatus") {
-              return {
-                type: command.type,
-                status: runSqliteDeferredTransactionSync(db, () =>
-                  readUpdateRunHistoryStatusInDatabase(db),
-                ),
-              };
-            }
-            if (command.type === "updateRuns.interruptedCandidate") {
-              return {
-                type: command.type,
-                run: readInterruptedUpdateCandidate(db),
-              };
-            }
-            if (command.type === "exec-approvals.read") {
-              return {
-                type: command.type,
-                row: readExecApprovalsConfigRow(db),
-              };
-            }
-            if (command.type === "skills.library.descriptions") {
-              return {
-                type: command.type,
-                value: tableExists(db, "skill_library_entries")
-                  ? selectSkillLibraryRevisionMetadataBatch(db, command.input)
-                  : undefined,
-              };
-            }
-            if (command.type === "skills.library.manifests") {
-              return {
-                type: command.type,
-                value: tableExists(db, "skill_library_entries")
-                  ? selectSkillLibraryRevisionManifestsBatch(db, command.input)
-                  : undefined,
-              };
-            }
-            if (command.type === "operatorApprovals.history") {
-              return {
-                type: command.type,
-                history: listTerminalOperatorApprovalsInDatabase(command.input, db),
-              };
-            }
-            if (command.type === "operatorApprovals.validateCronGrant") {
-              return {
-                type: command.type,
-                result: lookupCronStandingGrantInDatabase(db, command.input, false),
-              };
-            }
-            if (command.type === "operatorApprovals.listCronGrants") {
-              return {
-                type: command.type,
-                grants: listCronStandingGrantsInDatabase(db, command.input),
-              };
-            }
-            if (command.type === "onboardingRecommendations.read") {
-              return {
-                type: command.type,
-                record: readOnboardingRecommendationsInDatabase(db, command.configKey),
-              };
-            }
-            if (isConfigMachineStateReadCommand(command)) {
-              return readConfigMachineStateCommandInDatabase(db, command);
-            }
-            if (command.type === "workspace.snapshot") {
-              return {
-                type: command.type,
-                snapshot: readWorkspaceStateSnapshotForDirectoryInDatabase({
-                  workspaceDir: command.workspaceDir,
-                  database: { db, path: input.databasePath },
-                }),
-              };
-            }
-            if (command.type === "githubPublication.lifecycle") {
-              return {
-                type: command.type,
-                lifecycle: readGitHubPublicationSessionLifecycle(command, db),
-              };
-            }
-            if (command.type === "githubPublication.sharedObservation") {
-              const { kind, session, selector, entry } = command.input;
-              return {
-                type: command.type,
-                row:
-                  kind === "repository"
-                    ? readSharedRepositoryGitHubPublicationInDatabase(db, session, selector, entry)
-                    : readSharedGitHubPublicationRequestInDatabase(db, session, selector, entry),
-              };
-            }
-            if (command.type === "githubPublication.request") {
-              return {
-                type: command.type,
-                row: readGitHubPublicationRequest(db, { requestId: command.requestId }),
-              };
-            }
-            if (command.type === "githubRepository.request") {
-              return {
-                type: command.type,
-                row: readRepositoryGitHubPublicationInDatabase(db, command.requestId),
-              };
-            }
-            if (
-              command.type === "githubPublication.knownPullRequestUrls" ||
-              command.type === "githubRepository.knownPullRequestUrls"
-            ) {
-              return {
-                type: command.type,
-                urls:
-                  command.type === "githubPublication.knownPullRequestUrls"
-                    ? readKnownGitHubPublicationPullRequestUrlsInDatabase(db, command.input)
-                    : readKnownRepositoryGitHubPublicationPullRequestUrlsInDatabase(
-                        db,
-                        command.input,
-                      ),
-              };
-            }
-            if (command.type === "userProfiles.authority.resolve") {
-              return {
-                type: command.type,
-                profile: readUserProfileAuthorityInDatabase(db, command.profileId),
-              };
-            }
-            if (
-              command.type === "userProfiles.githubIdentity.cached" ||
-              command.type === "userProfiles.githubAttribution.resolve"
-            ) {
-              return readUserProfileGitHubCommand(db, command);
-            }
-            if (command.type === "userProfiles.channelIdentity.list") {
-              return {
-                type: command.type,
-                result: readUserChannelIdentityResult(() =>
-                  listUserChannelIdentitiesInDatabase(db, command.profileId),
-                ),
-              };
-            }
-            if (command.type === "userProfiles.channelIdentity.resolve") {
-              return {
-                type: command.type,
-                linked: resolveUserChannelIdentityInDatabase(db, command.identity),
-              };
-            }
-            if (command.type === "userProfiles.reconcile") {
-              const facts = runSqliteDeferredTransactionSync(db, () => ({
-                profile: selectProfileAccessEntries(db, [command.profileId])[0]?.[1],
-                emailBindings: readUserProfileEmailBindings(db, command.profileId),
-              }));
-              return { type: command.type, ...facts };
-            }
-            if (
-              command.type === "userProfiles.avatar.inspect" ||
-              command.type === "userProfiles.avatar.read"
-            ) {
-              return readUserProfileAvatarCommand(db, command);
-            }
-            if (command.type === "userProfiles.catalog") {
-              const facts = runSqliteDeferredTransactionSync(db, () => ({
-                profiles: tableExists(db, "user_profiles") ? selectProfileAccessEntries(db) : [],
-                emailBindings: readUserProfileEmailBindings(db),
-              }));
-              return { type: command.type, ...facts };
-            }
-            if (command.type === "userPreferences.values") {
-              return {
-                type: command.type,
-                values: selectUserPreferenceValues(db, command.profileIds, command.key),
-              };
-            }
-            if (command.type === "userModelAccounts.links") {
-              return {
-                type: command.type,
-                links: runSqliteDeferredTransactionSync(db, () =>
-                  listUserProfileAuthLinksInDatabase(db, command.profileId),
-                ),
-              };
-            }
-            if (command.type === "userProfiles.email.resolve") {
-              return {
-                type: command.type,
-                profileId: runSqliteDeferredTransactionSync(db, () =>
-                  readUserProfileIdForEmail(db, command.email),
-                ),
-              };
-            }
-            if (command.type === "sessionRepositoryWorkspaces.find") {
-              return {
-                type: command.type,
-                workspaces: runSqliteDeferredTransactionSync(db, () =>
-                  command.owners.flatMap((owner) => {
-                    const workspace = findSessionRepositoryWorkspaceInDatabase(db, owner);
-                    return workspace ? [workspace] : [];
-                  }),
-                ),
-              };
-            }
-            if (command.type === "workerPlacements.changeSnapshot") {
-              return {
-                type: command.type,
-                placements: readWorkerPlacementChangeSnapshotInDatabase(db, command.profileIds),
-              };
-            }
-            if (isWorkspaceJournalReadCommand(command)) {
-              return readWorkspaceJournalInDatabase(db, command);
-            }
-            if (command.type === "workers.placementRecoveryCandidates") {
-              return {
-                type: command.type,
-                candidates: readWorkerPlacementRecoveryCandidatesInDatabase(db),
-              };
-            }
-            if (command.type === "workers.placementPreservation") {
-              return {
-                type: command.type,
-                placements: readWorkerPlacementsForReconcileInDatabase(db),
-              };
-            }
-            if (command.type === "workers.placementPendingResults") {
-              return {
-                type: command.type,
-                pendingResults: listPendingWorkerWorkspaceResultsInDatabase(db, command.sessionId),
-              };
-            }
-            if (command.type === "workers.placementProjection") {
-              return {
-                type: command.type,
-                result: readWorkerSessionPlacementProjectionInDatabase(
-                  db,
-                  command.sessionIds,
-                  command.conflictBindings,
-                ),
-              };
-            }
-            return isTuiLastSessionReadCommand(command)
-              ? readTuiLastSessionCommand(db, command)
-              : readStateRegistryCommand(db, command);
+            return readRegisteredAgentDatabaseRows(db, input.databasePath, false);
           },
           ...locationArgs,
         );
-        return { ok: true, sourceAdmitted: true, ...result };
-      });
-      if (
-        !getSqliteRuntimeCapabilities().explicitSqliteCloseReleasesNativeResources &&
-        bunSqliteNativeCleanupPending
-      ) {
-        nativeCleanupFailure ??= { error: undefined };
+        return {
+          ok: true,
+          type: command.type,
+          sourceAdmitted,
+          result:
+            result.status === "available"
+              ? { status: "available", entries: result.value }
+              : { status: "unavailable" },
+        };
       }
-      return nativeCleanupFailure ? { ...reply, nativeCleanupFailure } : reply;
-    } catch (value) {
-      const error = toStringifiedError(value);
-      return {
-        ok: false,
-        sourceAdmitted,
-        message: error.message,
-        error: encodeBranchStateWorkerError(error, { includeOrdinary: true }),
-        ...(nativeCleanupFailure ? { nativeCleanupFailure } : {}),
-      };
+      if (command.type === "subagents.sessionList") {
+        const result = readBranchStateReadOnlyLocation(
+          ({ db }) => {
+            sourceAdmitted = true;
+            return loadSubagentSessionListRunsFromSqlite(undefined, { db });
+          },
+          ...locationArgs,
+        );
+        if (result.status === "unavailable" && sourceAdmitted !== true) {
+          throw result.error;
+        }
+        return result.status === "available"
+          ? { ok: true, type: command.type, sourceAdmitted: true, runs: result.value }
+          : {
+              ok: true,
+              type: command.type,
+              sourceAdmitted: true,
+              unavailable: {
+                message: String(result.error),
+                error: encodeBranchStateWorkerError(result.error, {
+                  includeOrdinary: true,
+                }),
+              },
+            };
+      }
+      const result = withBranchStateReadOnlyLocation(
+        ({ db }): BranchStateReadResult => {
+          sourceAdmitted = true;
+          if (command.type === "groves.packageOwnership") {
+            const install =
+              command.agentId === undefined
+                ? undefined
+                : readGroveInstallRecordFromDatabase(db, command.agentId);
+            return {
+              type: command.type,
+              install,
+              installs: command.includeInstalls ? readGroveInstallRecordsInDatabase(db) : [],
+              packageRefs: readClawPackageRefsInDatabase(db, { agentId: command.agentId }),
+              orphanWorkspace:
+                command.agentId !== undefined && !install
+                  ? readGroveOrphanWorkspaceInDatabase(db, command.agentId)
+                  : undefined,
+            };
+          }
+          if (command.type === "agentDatabaseDeletion.snapshot") {
+            return {
+              type: command.type,
+              snapshot: readAgentDatabaseDeletionSnapshotInDatabase(
+                db,
+                input.databasePath,
+                command.purpose,
+              ),
+            };
+          }
+          if (command.type === "deliveryQueue.outbound") {
+            // Custody reads retain queue ownership admission even on a read-only connection.
+            assertBranchStateWriteAllowed({
+              database: db,
+              databasePath: input.databasePath,
+              env: input.context.environment,
+            });
+            return {
+              type: command.type,
+              entries: readOutboundDeliveriesInDatabase({ db }, command),
+            };
+          }
+          if (command.type === "acpSessions.list") {
+            return {
+              type: command.type,
+              rows: selectAcpSessionRows(db),
+            };
+          }
+          if (command.type === "acpSessions.metadata") {
+            return {
+              type: command.type,
+              rows: command.entries.map((entry) => selectAcpSessionRowForRead(db, entry) ?? null),
+            };
+          }
+          if (isChannelIngressReadCommand(command)) {
+            return readChannelIngressInDatabase(db, command);
+          }
+          if ("input" in command && stateReadRegistry.has(command)) {
+            return stateReadRegistry.execute(command, db);
+          }
+          if (command.type === "subagents.runs") {
+            if (command.scope.kind === "all") {
+              return { type: command.type, ...loadVersionedSubagentRunsInDatabase({ db }) };
+            }
+            if (command.scope.kind === "maintenance") {
+              const maintenance = loadSubagentMaintenanceRunsInDatabase({ db });
+              return {
+                type: command.type,
+                projection: "maintenance",
+                runs: maintenance.runs,
+                maintenanceDigest: maintenance.digest,
+              };
+            }
+            if (command.scope.kind === "descendants") {
+              const descendants = loadSubagentRunsForSessionsInDatabase(
+                { db },
+                command.scope.sessionKeys,
+                command.scope.liveTopology,
+              );
+              return {
+                type: command.type,
+                runs: descendants.runs,
+                descendantBasis: {
+                  digest: descendants.digest,
+                  sessionKeys: descendants.sessionKeys,
+                  runIds: descendants.runIds,
+                },
+              };
+            }
+            if (command.scope.kind === "ids") {
+              return {
+                type: command.type,
+                ...loadVersionedSubagentRunsInDatabase({ db }, command.scope.runIds),
+              };
+            }
+            const rows = loadSubagentRunsForSessionFromSqlite(command.scope.sessionKey, { db });
+            return {
+              type: command.type,
+              runs: new Map(rows.map((entry) => [entry.runId, entry])),
+            };
+          }
+          if (
+            command.type === "mcpOAuth.statuses" ||
+            command.type === "mcpOAuth.readOnly" ||
+            command.type === "mcpOAuth.keys" ||
+            command.type === "mcpOAuth.pending" ||
+            command.type === "mcpOAuth.countPrincipals"
+          ) {
+            return readMcpOAuthStateCommand(db, command);
+          }
+          if (command.type === "sessionGroups.snapshot") {
+            return {
+              type: command.type,
+              snapshot: readSessionGroupCatalogSnapshot(db),
+            };
+          }
+          if (command.type === "sessionGroups.members") {
+            return {
+              type: command.type,
+              snapshot: readSessionGroupMembership(command.cfg, input.context.environment),
+            };
+          }
+          if (command.type === "conversationBindings.inspect") {
+            return {
+              type: command.type,
+              record: inspectCurrentConversationBindingRecordInDatabase(db, command.conversation),
+            };
+          }
+          if (command.type === "backup.runs") {
+            return { type: command.type, runs: readBackupRunsInDatabase(db) };
+          }
+          if (isCronStateReadCommand(command)) {
+            return readCronStateCommandInDatabase(db, command);
+          }
+          if (
+            command.type === "devicePairing.list" ||
+            command.type === "devicePairing.lookup" ||
+            command.type === "devicePairing.pending" ||
+            command.type === "devicePairing.bootstrapContext"
+          ) {
+            return executeDevicePairingRead(db, input.databasePath, command);
+          }
+          if (command.type === "subagents.forChildSession") {
+            return {
+              type: command.type,
+              runs: loadSubagentRunsForChildSessionFromSqlite(command.childSessionKey, {
+                db,
+              }),
+            };
+          }
+          if (command.type === "pluginBlob.lookup") {
+            return {
+              type: command.type,
+              value: pluginBlobLookupInDatabase(db, {
+                ...command.input,
+                env: input.context.environment,
+                path: input.databasePath,
+              }),
+            };
+          }
+          if (isStateDiagnosticCommand(command)) {
+            return readStateDiagnosticCommand(db, command);
+          }
+          if (command.type === "pluginBlob.entries") {
+            return {
+              type: command.type,
+              value: pluginBlobEntriesInDatabase(db, {
+                ...command.input,
+                env: input.context.environment,
+                path: input.databasePath,
+              }),
+            };
+          }
+          if (command.type === "updateRuns.get") {
+            return {
+              type: command.type,
+              run: tableExists(db, "update_runs")
+                ? readUpdateRunRecord(db, command.runId)
+                : undefined,
+            };
+          }
+          if (command.type === "updateRuns.list") {
+            return {
+              type: command.type,
+              runs: readUpdateRuns(db, command.input),
+            };
+          }
+          if (command.type === "updateRuns.reconciliationCandidates") {
+            return {
+              type: command.type,
+              candidates: readUpdateRunReconciliationCandidates(db, command.input),
+            };
+          }
+          if (command.type === "updateRuns.reconciliationCandidate") {
+            const run = tableExists(db, "update_runs")
+              ? readUpdateRunRecord(db, command.runId)
+              : undefined;
+            return {
+              type: command.type,
+              candidate: run ? inspectUpdateRunReconciliation(db, run, {}) : undefined,
+            };
+          }
+          if (command.type === "updateRuns.status") {
+            return {
+              type: command.type,
+              status: runSqliteDeferredTransactionSync(db, () => readUpdateRunStatusInDatabase(db)),
+            };
+          }
+          if (command.type === "updateRuns.historyStatus") {
+            return {
+              type: command.type,
+              status: runSqliteDeferredTransactionSync(db, () =>
+                readUpdateRunHistoryStatusInDatabase(db),
+              ),
+            };
+          }
+          if (command.type === "updateRuns.interruptedCandidate") {
+            return {
+              type: command.type,
+              run: readInterruptedUpdateCandidate(db),
+            };
+          }
+          if (command.type === "exec-approvals.read") {
+            return {
+              type: command.type,
+              row: readExecApprovalsConfigRow(db),
+            };
+          }
+          if (command.type === "skills.library.descriptions") {
+            return {
+              type: command.type,
+              value: tableExists(db, "skill_library_entries")
+                ? selectSkillLibraryRevisionMetadataBatch(db, command.input)
+                : undefined,
+            };
+          }
+          if (command.type === "skills.library.manifests") {
+            return {
+              type: command.type,
+              value: tableExists(db, "skill_library_entries")
+                ? selectSkillLibraryRevisionManifestsBatch(db, command.input)
+                : undefined,
+            };
+          }
+          if (command.type === "operatorApprovals.history") {
+            return {
+              type: command.type,
+              history: listTerminalOperatorApprovalsInDatabase(command.input, db),
+            };
+          }
+          if (command.type === "operatorApprovals.validateCronGrant") {
+            return {
+              type: command.type,
+              result: lookupCronStandingGrantInDatabase(db, command.input, false),
+            };
+          }
+          if (command.type === "operatorApprovals.listCronGrants") {
+            return {
+              type: command.type,
+              grants: listCronStandingGrantsInDatabase(db, command.input),
+            };
+          }
+          if (command.type === "onboardingRecommendations.read") {
+            return {
+              type: command.type,
+              record: readOnboardingRecommendationsInDatabase(db, command.configKey),
+            };
+          }
+          if (isConfigMachineStateReadCommand(command)) {
+            return readConfigMachineStateCommandInDatabase(db, command);
+          }
+          if (command.type === "workspace.snapshot") {
+            return {
+              type: command.type,
+              snapshot: readWorkspaceStateSnapshotForDirectoryInDatabase({
+                workspaceDir: command.workspaceDir,
+                database: { db, path: input.databasePath },
+              }),
+            };
+          }
+          if (command.type === "githubPublication.lifecycle") {
+            return {
+              type: command.type,
+              lifecycle: readGitHubPublicationSessionLifecycle(command, db),
+            };
+          }
+          if (command.type === "githubPublication.sharedObservation") {
+            const { kind, session, selector, entry } = command.input;
+            return {
+              type: command.type,
+              row:
+                kind === "repository"
+                  ? readSharedRepositoryGitHubPublicationInDatabase(db, session, selector, entry)
+                  : readSharedGitHubPublicationRequestInDatabase(db, session, selector, entry),
+            };
+          }
+          if (command.type === "githubPublication.request") {
+            return {
+              type: command.type,
+              row: readGitHubPublicationRequest(db, { requestId: command.requestId }),
+            };
+          }
+          if (command.type === "githubRepository.request") {
+            return {
+              type: command.type,
+              row: readRepositoryGitHubPublicationInDatabase(db, command.requestId),
+            };
+          }
+          if (
+            command.type === "githubPublication.knownPullRequestUrls" ||
+            command.type === "githubRepository.knownPullRequestUrls"
+          ) {
+            return {
+              type: command.type,
+              urls:
+                command.type === "githubPublication.knownPullRequestUrls"
+                  ? readKnownGitHubPublicationPullRequestUrlsInDatabase(db, command.input)
+                  : readKnownRepositoryGitHubPublicationPullRequestUrlsInDatabase(
+                      db,
+                      command.input,
+                    ),
+            };
+          }
+          if (command.type === "userProfiles.authority.resolve") {
+            return {
+              type: command.type,
+              profile: readUserProfileAuthorityInDatabase(db, command.profileId),
+            };
+          }
+          if (
+            command.type === "userProfiles.githubIdentity.cached" ||
+            command.type === "userProfiles.githubAttribution.resolve"
+          ) {
+            return readUserProfileGitHubCommand(db, command);
+          }
+          if (command.type === "userProfiles.channelIdentity.list") {
+            return {
+              type: command.type,
+              result: readUserChannelIdentityResult(() =>
+                listUserChannelIdentitiesInDatabase(db, command.profileId),
+              ),
+            };
+          }
+          if (command.type === "userProfiles.channelIdentity.resolve") {
+            return {
+              type: command.type,
+              linked: resolveUserChannelIdentityInDatabase(db, command.identity),
+            };
+          }
+          if (command.type === "userProfiles.reconcile") {
+            const facts = runSqliteDeferredTransactionSync(db, () => ({
+              profile: selectProfileAccessEntries(db, [command.profileId])[0]?.[1],
+              emailBindings: readUserProfileEmailBindings(db, command.profileId),
+            }));
+            return { type: command.type, ...facts };
+          }
+          if (
+            command.type === "userProfiles.avatar.inspect" ||
+            command.type === "userProfiles.avatar.read"
+          ) {
+            return readUserProfileAvatarCommand(db, command);
+          }
+          if (command.type === "userProfiles.catalog") {
+            const facts = runSqliteDeferredTransactionSync(db, () => ({
+              profiles: tableExists(db, "user_profiles") ? selectProfileAccessEntries(db) : [],
+              emailBindings: readUserProfileEmailBindings(db),
+            }));
+            return { type: command.type, ...facts };
+          }
+          if (command.type === "userPreferences.values") {
+            return {
+              type: command.type,
+              values: selectUserPreferenceValues(db, command.profileIds, command.key),
+            };
+          }
+          if (command.type === "userModelAccounts.links") {
+            return {
+              type: command.type,
+              links: runSqliteDeferredTransactionSync(db, () =>
+                listUserProfileAuthLinksInDatabase(db, command.profileId),
+              ),
+            };
+          }
+          if (command.type === "userProfiles.email.resolve") {
+            return {
+              type: command.type,
+              profileId: runSqliteDeferredTransactionSync(db, () =>
+                readUserProfileIdForEmail(db, command.email),
+              ),
+            };
+          }
+          if (command.type === "sessionRepositoryWorkspaces.find") {
+            return {
+              type: command.type,
+              workspaces: runSqliteDeferredTransactionSync(db, () =>
+                command.owners.flatMap((owner) => {
+                  const workspace = findSessionRepositoryWorkspaceInDatabase(db, owner);
+                  return workspace ? [workspace] : [];
+                }),
+              ),
+            };
+          }
+          if (command.type === "workerPlacements.changeSnapshot") {
+            return {
+              type: command.type,
+              placements: readWorkerPlacementChangeSnapshotInDatabase(db, command.profileIds),
+            };
+          }
+          if (isWorkspaceJournalReadCommand(command)) {
+            return readWorkspaceJournalInDatabase(db, command);
+          }
+          if (command.type === "workers.placementRecoveryCandidates") {
+            return {
+              type: command.type,
+              candidates: readWorkerPlacementRecoveryCandidatesInDatabase(db),
+            };
+          }
+          if (command.type === "workers.placementPreservation") {
+            return {
+              type: command.type,
+              placements: readWorkerPlacementsForReconcileInDatabase(db),
+            };
+          }
+          if (command.type === "workers.placementPendingResults") {
+            return {
+              type: command.type,
+              pendingResults: listPendingWorkerWorkspaceResultsInDatabase(db, command.sessionId),
+            };
+          }
+          if (command.type === "workers.placementProjection") {
+            return {
+              type: command.type,
+              result: readWorkerSessionPlacementProjectionInDatabase(
+                db,
+                command.sessionIds,
+                command.conflictBindings,
+              ),
+            };
+          }
+          return isTuiLastSessionReadCommand(command)
+            ? readTuiLastSessionCommand(db, command)
+            : readStateRegistryCommand(db, command);
+        },
+        ...locationArgs,
+      );
+      return { ok: true, sourceAdmitted: true, ...result };
+    });
+    if (
+      !getSqliteRuntimeCapabilities().explicitSqliteCloseReleasesNativeResources &&
+      bunSqliteNativeCleanupPending
+    ) {
+      nativeCleanupFailure ??= { error: undefined };
     }
-  },
-  { closeResource: closeRetainedBranchStateReadConnections },
-);
+    return nativeCleanupFailure ? { ...reply, nativeCleanupFailure } : reply;
+  } catch (value) {
+    const error = toStringifiedError(value);
+    return {
+      ok: false,
+      sourceAdmitted,
+      message: error.message,
+      error: encodeBranchStateWorkerError(error, { includeOrdinary: true }),
+      ...(nativeCleanupFailure ? { nativeCleanupFailure } : {}),
+    };
+  }
+}
+
+/** Labels each shared-state read with its command, so slow holds name the read that caused them. */
+function readOwned(input: unknown): BranchStateReadReply | Promise<BranchStateReadReply> {
+  const operation = isReadRequest(input) ? input.command.type : "invalid";
+  return withSqliteReaderOwner({ operation: `state.${operation}`, ownerKind: "worker" }, () =>
+    readStateCommand(input),
+  );
+}
+
+serveOwnedWorkerTasks(readOwned, { closeResource: closeRetainedBranchStateReadConnections });

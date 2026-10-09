@@ -43,6 +43,7 @@ import {
 } from "./chat-history-budget.js";
 import { readChatHistoryDelta } from "./chat-history-delta.js";
 import { readChatHistoryPage } from "./chat-history-pages.js";
+import { ChatHistoryPhaseTimer } from "./chat-history-phase-timing.js";
 import {
   resolveEmbeddedAgentRunRecoverySnapshot,
   respondChatHistoryUnavailable,
@@ -59,7 +60,29 @@ import { resolveGatewayModelSelectionPolicy } from "./session-model-selection-po
 import type { GatewayRequestHandlerOptions, GatewayRequestHandlers } from "./types.js";
 import { assertValidParams } from "./validation.js";
 
-export async function handleChatHistoryRequest({
+export async function handleChatHistoryRequest(
+  options: GatewayRequestHandlerOptions & {
+    method: ChatHistoryMethod;
+    retainedTranscript?: {
+      sessionId: string;
+      requireCurrentSession?: boolean;
+      verifyRetainedState?: () => Promise<boolean>;
+    };
+  },
+): Promise<void> {
+  const timer = new ChatHistoryPhaseTimer();
+  try {
+    await runChatHistoryRequest({
+      ...options,
+      respond: timer.wrapRespond(options.respond),
+      timer,
+    });
+  } finally {
+    timer.report(options.context.logGateway, options.method);
+  }
+}
+
+async function runChatHistoryRequest({
   params,
   respond,
   client,
@@ -70,8 +93,10 @@ export async function handleChatHistoryRequest({
   retainedTranscript,
   acceptsSerializedJson,
   req,
+  timer,
 }: GatewayRequestHandlerOptions & {
   method: ChatHistoryMethod;
+  timer: ChatHistoryPhaseTimer;
   retainedTranscript?: {
     sessionId: string;
     requireCurrentSession?: boolean;
@@ -127,6 +152,7 @@ export async function handleChatHistoryRequest({
   if (!selection) {
     return;
   }
+  timer.mark("lookup");
   try {
     const { selectedSession, entry, queries, readCurrentSharing, rowProjection } = selection;
     const { cfg, agentId: sessionAgentId, storePath, canonicalKey } = selectedSession;
@@ -265,6 +291,7 @@ export async function handleChatHistoryRequest({
         ? [{ runId: receipt.runId, consumedByEventId: receipt.consumedByEventId }]
         : [],
     );
+    timer.mark("resolve");
     let historyPage: Awaited<ReturnType<typeof readChatHistoryPage>>;
     try {
       historyPage = cursor
@@ -308,6 +335,7 @@ export async function handleChatHistoryRequest({
       respondChatHistoryUnavailable(method, respond, unavailableMessage);
       return;
     }
+    timer.mark("dbRead");
     const responsePage = historyPage.encodedResponse
       ? {
           ...historyPage.encodedResponse,
@@ -329,6 +357,7 @@ export async function handleChatHistoryRequest({
     }
     const compatibilityOwnerAgentId = tryResolveSessionCompatibilityOwnerAgentId(cfg, sessionKey);
     const startupProjection = await (startupProjectionPromise ?? readStartupProjection());
+    timer.mark("projection");
     const startupMetadata = method === "chat.startup" ? startupProjection?.metadata : undefined;
     const { sessionModelCatalog, defaultModelCatalog } = startupProjection ?? {};
     const modelReadScope = {
@@ -620,6 +649,7 @@ export async function handleChatHistoryRequest({
       respond(true, projectOperatorModelRead(modelReadScope, payload));
       return undefined;
     });
+    timer.mark("sessionRows");
     await publishDelta?.();
   } finally {
     selection.release();
