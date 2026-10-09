@@ -34,8 +34,8 @@ export function ThreadColumn({ name, generalKey, openKey, items, onOpen }: Props
       <button type="button" className="v23-layout-button" aria-label={`How threads show: ${visible ? "Column" : "Hidden"}`} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>◫</button>
       <strong>{name}</strong><small>{threads.length} {threads.length === 1 ? "thread" : "threads"}</small>
       {menu ? <div className="v23-threads-menu" role="menu" aria-label="Threads show as">
-        <button type="button" role="menuitemradio" aria-checked={visible} onClick={() => { setVisible(true); setMenu(false); }}>Column</button>
-        <button type="button" role="menuitemradio" aria-checked={!visible} onClick={() => { setVisible(false); setMenu(false); }}>Hidden</button>
+        <button type="button" role="menuitemradio" aria-checked={visible} disabled={visible} title={visible ? "Threads already show as a column." : undefined} onClick={() => { setVisible(true); setMenu(false); }}>Column</button>
+        <button type="button" role="menuitemradio" aria-checked={!visible} disabled={!visible} title={!visible ? "Threads are already hidden." : undefined} onClick={() => { setVisible(false); setMenu(false); }}>Hidden</button>
       </div> : null}
     </div>
     {visible ? <>

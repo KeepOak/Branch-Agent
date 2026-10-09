@@ -101,8 +101,8 @@ export function PlusMenu(p: Props) {
         <Sep />
         <Head>Who answers here</Head>
         {p.trunks.map((t) => (
-          <MenuItem key={t.id} label={t.name} checked={t.id === p.trunkId} disabled={t.id !== p.trunkId && !p.onWhoAnswers}
-            reason={t.id !== p.trunkId && !p.onWhoAnswers ? "This conversation's Trunk is fixed after its first message." : undefined}
+          <MenuItem key={t.id} label={t.name} checked={t.id === p.trunkId} disabled={t.id === p.trunkId || !p.onWhoAnswers}
+            reason={t.id === p.trunkId ? `${t.name} already answers here.` : !p.onWhoAnswers ? "This conversation's Trunk is fixed after its first message." : undefined}
             onClick={t.id !== p.trunkId && p.onWhoAnswers ? run(() => p.onWhoAnswers?.(t.id)) : undefined} />
         ))}
         <Sep />

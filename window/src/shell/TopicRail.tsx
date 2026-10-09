@@ -83,7 +83,7 @@ export function TopicRail(p: TopicRailProps) {
   const menuTopic = p.items.find(({ topic }) => topic.key === menu)?.topic;
   const menuItems: MenuItem[] = menu === "layout" ? [
     { kind: "head", label: "Threads show as" },
-    ...(Object.entries(names) as [Layout, string][]).map(([choice, label]) => ({ label, checked: choice === layout, radio: true, run: () => changeLayout(choice) })),
+    ...(Object.entries(names) as [Layout, string][]).map(([choice, label]) => ({ label, checked: choice === layout, radio: true, disabled: choice === layout ? `Threads already show as ${label}.` : undefined, run: () => changeLayout(choice) })),
   ] : menuTopic ? [
     { kind: "head", label: displayTitle(menuTopic) },
     { label: menuTopic.pinnedAt ? "Unpin" : "Pin to top", icon: menuIcon("pin"), run: () => { void update(menuTopic, { pinned: !menuTopic.pinnedAt }).then((saved) => { if (saved) notify(menuTopic.pinnedAt ? "Unpinned." : "Pinned to the top."); }); } },
