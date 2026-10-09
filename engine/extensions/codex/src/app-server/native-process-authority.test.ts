@@ -200,6 +200,79 @@ it("native heavy-step cancellation retains the host slot until exact local clean
   }
 });
 
+it("native heavy steps retain background custody through running receipts and unavailable inventory", async () => {
+  const fixture = createFixtureLifetime();
+  vi.stubEnv("BRANCH_HEAVY_STEP_DIRECTORY", fixture.createTempDir("branch-native-background-"));
+  vi.stubEnv("BRANCH_HOST_HEAVY_STEP_OWNER", "");
+  vi.stubEnv("BRANCH_HEAVY_STEP_BUILD_MEMORY_MB", "0");
+  const client = createClientHarness();
+  const origin = source(false);
+  const controller = new AbortController();
+  const waiting = vi.fn();
+  origin.owner.bindTurn(client.client, command.threadId, command.turnId);
+  await origin.owner.admitHeavyStep(
+    client.client,
+    command,
+    assertActive,
+    "pnpm build",
+    undefined,
+    waiting,
+  );
+  const item = {
+    id: command.itemId,
+    type: "commandExecution",
+    processId: "background-build",
+    status: "inProgress",
+    exitCode: null,
+  };
+  client.send({ method: "item/completed", params: { ...command, item } });
+  client.send({
+    method: "turn/completed",
+    params: {
+      threadId: command.threadId,
+      turn: { id: command.turnId, status: "completed", items: [item] },
+    },
+  });
+  const pendingCommands = new Map([[command.itemId, "background-build"]]);
+  const retain = origin.owner.prepareBackgroundCommands(client.client, command, pendingCommands);
+  retain(new Map(), false);
+  origin.owner.release();
+  const pending = acquireHostHeavyStep("build", { signal: controller.signal, onWait: waiting });
+  try {
+    await vi.waitFor(() =>
+      expect(waiting).toHaveBeenCalledWith("Waiting for build slot: 1 build ahead"),
+    );
+    expect(origin.released).not.toHaveBeenCalled();
+    const confirm = origin.owner.prepareBackgroundCommands(client.client, command, pendingCommands);
+    confirm(pendingCommands);
+    client.send({
+      method: "item/completed",
+      params: {
+        ...command,
+        item: { ...item, processId: "other-process", status: "completed", exitCode: 0 },
+      },
+    });
+    expect(origin.released).not.toHaveBeenCalled();
+    client.send({
+      method: "item/completed",
+      params: { ...command, item: { ...item, status: "completed", exitCode: 0 } },
+    });
+    await (await pending).release();
+    await vi.waitFor(() => expect(origin.released).toHaveBeenCalledOnce());
+  } finally {
+    controller.abort();
+    origin.owner.settleTerminatedLocalTurn(client.client, command.threadId, command.turnId);
+    origin.owner.release();
+    await pending.then(
+      (handle) => handle.release(),
+      () => {},
+    );
+    await vi.waitFor(() => expect(origin.released).toHaveBeenCalledOnce());
+    client.client.close();
+    await fixture.cleanup();
+  }
+});
+
 describe("native process custody", () => {
   it("rechecks foreground permission before a pending spawn without closing background custody", () => {
     const client = createClientHarness();

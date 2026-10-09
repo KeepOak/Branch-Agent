@@ -73,7 +73,7 @@ export async function readCodexRetainedBackgroundCommands(params: {
       { signal: params.signal, timeoutMs: params.timeoutMs },
     )
     .catch((error: unknown) => {
-      retain?.(new Map());
+      retain?.(new Map(), false);
       throw error;
     });
   params.signal.throwIfAborted();
@@ -134,6 +134,11 @@ export class CodexNativeProcessClient {
           command?.turnId === turnId &&
           isJsonObject(item) &&
           item.type === "commandExecution" &&
+          (!command.heavyStep ||
+            typeof item.exitCode === "number" ||
+            item.status === "completed" ||
+            item.status === "failed" ||
+            item.status === "declined") &&
           (!command.background?.processId ||
             typeof item.processId !== "string" ||
             item.processId === command.background.processId)
@@ -425,19 +430,26 @@ export class CodexNativeProcessAuthority {
     client: CodexAppServerClient,
     turn: NativeTurn,
     pending: ReadonlyMap<string, string | null>,
-  ): (retained: Map<string, string>) => ReadonlyMap<string, string> {
+  ): (retained: Map<string, string>, inventoryConfirmed?: boolean) => ReadonlyMap<string, string> {
+    this.assertCurrent();
     const entries = new Map<string, CommandAdmission>();
     for (const [itemId, processId] of pending) {
-      const command = this.admit(
-        client,
-        { threadId: turn.threadId, turnId: turn.turnId, itemId },
-        () => this.assertCurrent(),
-      );
+      const command =
+        [...this.commands].find(
+          (entry) =>
+            entry.client === clients.get(client) &&
+            entry.threadId === turn.threadId &&
+            entry.turnId === turn.turnId &&
+            entry.itemId === itemId,
+        ) ??
+        this.admit(client, { threadId: turn.threadId, turnId: turn.turnId, itemId }, () =>
+          this.assertCurrent(),
+        );
       command.accepting = false;
-      command.background = { processId, confirmed: false };
+      command.background = { processId, confirmed: Boolean(command.heavyStep) };
       entries.set(itemId, command);
     }
-    return (retained) => {
+    return (retained, inventoryConfirmed = true) => {
       for (const [itemId, command] of entries) {
         const processId = retained.get(itemId);
         if (!this.commands.has(command)) {
@@ -445,7 +457,7 @@ export class CodexNativeProcessAuthority {
           retained.delete(itemId);
         } else if (processId) {
           command.background = { processId, confirmed: true };
-        } else {
+        } else if (inventoryConfirmed || !command.heavyStep) {
           command.background = undefined;
           command.client.closeAdmission(command);
         }
