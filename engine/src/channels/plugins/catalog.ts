@@ -297,7 +297,7 @@ function resolveOfficialCatalogDocsPath(
   if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) {
     return undefined;
   }
-  const origin = "https://docs.openclaw.ai";
+  const origin = "https://github.com";
   const url = new URL(value, origin);
   // Dot-segment normalization can turn a single-slash path into a network-path reference.
   return url.origin === origin && !url.pathname.startsWith("//")

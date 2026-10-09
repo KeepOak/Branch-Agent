@@ -86,7 +86,7 @@ function resolveFallbackModelOverridePolicy(params: {
   if (!policy?.allowModelOverride) {
     throw new Error(
       `plugin "${pluginId}" is not trusted for fallback provider/model override requests. ` +
-        "See https://docs.openclaw.ai/plugins/sdk-runtime#api-runtime-subagent and search for: " +
+        "See https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/sdk-runtime#api-runtime-subagent and search for: " +
         "plugins.entries.<id>.subagent.allowModelOverride",
     );
   }

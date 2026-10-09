@@ -123,7 +123,7 @@ export async function resolveChannelSetupState(deps: SystemAgentCommandDeps | un
 }
 
 export function formatChannelDocsUrl(docsPath: string): string {
-  return `https://docs.openclaw.ai${docsPath.startsWith("/") ? docsPath : `/${docsPath}`}`;
+  return `https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs${docsPath.startsWith("/") ? docsPath : `/${docsPath}`}`;
 }
 
 export function formatConfigValidationLine(snapshot: ConfigFileSnapshot): string {

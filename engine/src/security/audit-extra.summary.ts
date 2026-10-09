@@ -132,7 +132,7 @@ export function collectAttackSurfaceSummaryFindings(cfg: BranchConfig): Security
     `\n` +
     `browser control: ${browserEnabled ? "enabled" : "disabled"}` +
     `\n` +
-    "trust model: personal assistant (one trusted operator boundary), not hostile multi-tenant on one shared gateway. For multiple users or organizations, run one isolated Gateway cell per tenant: https://docs.openclaw.ai/gateway/multi-tenant-hosting";
+    "trust model: personal assistant (one trusted operator boundary), not hostile multi-tenant on one shared gateway. For multiple users or organizations, run one isolated Gateway cell per tenant: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/multi-tenant-hosting";
 
   const findings: SecurityAuditFinding[] = [
     {
@@ -244,7 +244,7 @@ export function collectCrossAgentSessionAccessFindings(
         [...reachers, ...nonReachers, "Incognito sessions remain hidden."].join("\n") +
         trustDetail,
       remediation:
-        'Set tools.sessions.visibility to "agent", "tree", or "self"; restrict tools.agentToAgent.allow to the intended requester and target ids; or set tools.agentToAgent.enabled: false. See https://docs.openclaw.ai/gateway/config-tools#tools-agenttoagent and https://docs.openclaw.ai/gateway/security#scope-one-trust-boundary-per-gateway.',
+        'Set tools.sessions.visibility to "agent", "tree", or "self"; restrict tools.agentToAgent.allow to the intended requester and target ids; or set tools.agentToAgent.enabled: false. See https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/config-tools#tools-agenttoagent and https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/security#scope-one-trust-boundary-per-gateway.',
     },
   ];
 }

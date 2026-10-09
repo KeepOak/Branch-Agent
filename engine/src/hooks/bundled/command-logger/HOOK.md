@@ -1,7 +1,7 @@
 ---
 name: command-logger
 description: "Log emitted command events to a centralized audit file"
-homepage: https://docs.openclaw.ai/automation/hooks#command-logger
+homepage: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/automation/hooks#command-logger
 metadata:
   {
     "branch":

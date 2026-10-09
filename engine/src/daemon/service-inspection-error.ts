@@ -27,7 +27,7 @@ const SERVICE_INSPECTION_MESSAGES = {
 } as const;
 
 const EXTERNAL_SERVICE_RECOVERY =
-  "If an external supervisor owns this Gateway, have its owner stop it, then run Doctor as the state-owning account with BRANCH_SERVICE_REPAIR_POLICY=external. This skips native maintenance inspection and service mutations, keeps Gateway/state coordinators and agent-database lease checks, and leaves shutdown/restart with the owner. See https://docs.openclaw.ai/gateway#existing-system-launchdaemons.";
+  "If an external supervisor owns this Gateway, have its owner stop it, then run Doctor as the state-owning account with BRANCH_SERVICE_REPAIR_POLICY=external. This skips native maintenance inspection and service mutations, keeps Gateway/state coordinators and agent-database lease checks, and leaves shutdown/restart with the owner. See https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway#existing-system-launchdaemons.";
 
 export type ServiceInspectionReason = keyof typeof SERVICE_INSPECTION_MESSAGES;
 

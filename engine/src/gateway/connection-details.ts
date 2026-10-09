@@ -201,7 +201,7 @@ export function buildGatewayConnectionDetailsWithResolvers(
           ? undefined
           : "Break-glass (trusted private networks only): set BRANCH_ALLOW_INSECURE_PRIVATE_WS=1",
         "Doctor: branch doctor --fix",
-        "Docs: https://docs.openclaw.ai/gateway/remote",
+        "Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/remote",
       ].join("\n"),
     );
   }

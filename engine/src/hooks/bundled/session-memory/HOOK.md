@@ -1,7 +1,7 @@
 ---
 name: session-memory
 description: "Save session context to memory on manual or automatic reset"
-homepage: https://docs.openclaw.ai/automation/hooks#session-memory
+homepage: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/automation/hooks#session-memory
 metadata:
   {
     "branch":
