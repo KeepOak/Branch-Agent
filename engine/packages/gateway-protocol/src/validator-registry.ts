@@ -493,6 +493,7 @@ export const validateSkillsUploadBeginParams = compile(S.SkillsUploadBeginParams
 export const validateSkillsUploadChunkParams = compile(S.SkillsUploadChunkParamsSchema);
 export const validateSkillsUploadCommitParams = compile(S.SkillsUploadCommitParamsSchema);
 export const validateSkillsUpdateParams = compile(S.SkillsUpdateParamsSchema);
+export const validateSkillsUninstallParams = compile(S.SkillsUninstallParamsSchema);
 export const validateSkillsSearchParams = compile(S.SkillsSearchParamsSchema);
 export const validateSkillsDetailParams = compile(S.SkillsDetailParamsSchema);
 export const validateSkillsGardenerStatusParams = compile(S.SkillsGardenerStatusParamsSchema);

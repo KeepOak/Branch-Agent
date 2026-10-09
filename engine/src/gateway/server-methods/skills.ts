@@ -64,6 +64,7 @@ import { handleSkillsInstall } from "./skills-install.js";
 import { skillsLibraryHandlers } from "./skills-library.js";
 import { skillProposalHistoryHandlers } from "./skills-proposal-history.js";
 import { buildRemoteAwareWorkspaceSkillStatus, handleSkillsStatus } from "./skills-status.js";
+import { handleSkillsUninstall } from "./skills-uninstall.js";
 import { skillsUploadHandlers } from "./skills-upload.js";
 import {
   resolveSkillsAgentWorkspace,
@@ -463,6 +464,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
       }).then(projectGatewaySkillProposalRecord),
   ),
   "skills.install": handleSkillsInstall,
+  "skills.uninstall": handleSkillsUninstall,
   "skills.update": async ({ params, respond, context }) => {
     if (!assertValidParams(params, validateSkillsUpdateParams, "skills.update", respond)) {
       return;
