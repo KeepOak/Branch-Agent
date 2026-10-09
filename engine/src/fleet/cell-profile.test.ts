@@ -131,7 +131,7 @@ describe("fleet image requirement", () => {
 
   it.each([undefined, "", "   "])("refuses a missing image (%j) with the --image instruction", (image) => {
     expect(() => requireFleetImage(image)).toThrow(
-      "No fleet container image set. Pass one with --image <ref>, using a Branch container image.",
+      "No fleet container image set. Pass one with --image <ref>. No Branch image is published yet, so pass your own.",
     );
   });
 });

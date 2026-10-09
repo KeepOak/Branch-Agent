@@ -70,7 +70,7 @@ export function validateTenantId(tenantId: string): string {
 export function requireFleetImage(image: string | undefined): string {
   if (image === undefined || image.trim() === "") {
     throw new Error(
-      "No fleet container image set. Pass one with --image <ref>, using a Branch container image.",
+      "No fleet container image set. Pass one with --image <ref>. No Branch image is published yet, so pass your own.",
     );
   }
   return validateFleetImage(image);
