@@ -161,7 +161,7 @@ describe("GitHub issue transport", () => {
         "--include",
         "--method",
         "POST",
-        "repos/branch/branch/issues",
+        "repos/KeepOak/Branch-Agent/issues",
         "--input",
         "-",
         "--jq",

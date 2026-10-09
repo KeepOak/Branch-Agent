@@ -64,7 +64,12 @@ export type ResolvedGlobalInstallTarget = ResolvedGlobalInstallCommand & {
 const PRIMARY_PACKAGE_NAME = "branch";
 const GLOBAL_RENAME_PREFIX = ".";
 /** npm-compatible spec used when the user asks to install the moving main branch. */
-const BRANCH_MAIN_PACKAGE_SPEC = "github:openclaw/openclaw#main";
+/**
+ * The main channel has no Branch package yet: the repository root is not an installable package, so a GitHub
+ * install of it would not produce a Branch CLI. Stop with a plain message instead of installing anything else.
+ */
+export const MAIN_CHANNEL_UNAVAILABLE_MESSAGE =
+  "The main channel is not published for Branch yet. Update Branch from the desktop app, or reinstall from https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/install/installer.md.";
 const COREPACK_ENABLE_DOWNLOAD_PROMPT_DEFAULT = "0";
 const NPM_GLOBAL_INSTALL_QUIET_FLAGS = ["--no-fund", "--no-audit", "--loglevel=error"] as const;
 const PNPM_BRANCH_BUILD_ALLOWLIST_FLAG = `--allow-build=${PRIMARY_PACKAGE_NAME}`;
@@ -547,7 +552,7 @@ export function resolveGlobalInstallSpec(params: {
   }
   const target = params.tag.trim();
   if (isMainPackageTarget(target)) {
-    return BRANCH_MAIN_PACKAGE_SPEC;
+    throw new Error(MAIN_CHANNEL_UNAVAILABLE_MESSAGE);
   }
   if (isExplicitPackageInstallSpec(target)) {
     return target;

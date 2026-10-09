@@ -170,7 +170,7 @@ export function parseUpdateTimeoutMs(
   return milliseconds;
 }
 
-const UPSTREAM_REPOSITORY_URL = "https://github.com/openclaw/openclaw.git";
+const UPSTREAM_REPOSITORY_URL = "https://github.com/KeepOak/Branch-Agent.git";
 // Keep the full commit graph for dev ref switching while deferring historical blobs.
 // A shallow clone would make older or non-default dev targets unreachable.
 const GIT_CLONE_BLOB_FILTER = "--filter=blob:none";

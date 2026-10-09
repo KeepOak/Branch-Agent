@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-/** Prepares and submits bounded issue content to openclaw/openclaw. */
+/** Prepares and submits bounded issue content to KeepOak/Branch-Agent. */
 import { createHash } from "node:crypto";
 import { truncateUtf8Prefix } from "../utils/utf8-truncate.js";
 
@@ -61,8 +61,8 @@ export type GithubIssueSubmitHooks = GithubIssueReconcileHooks & {
   beforeIssueCreate?: () => Promise<() => undefined> | (() => undefined);
 };
 
-const GITHUB_REPOSITORY = "github.com/openclaw/openclaw";
-const GITHUB_REPOSITORY_ISSUES_API = "repos/branch/branch/issues";
+const GITHUB_REPOSITORY = "github.com/KeepOak/Branch-Agent";
+const GITHUB_REPOSITORY_ISSUES_API = "repos/KeepOak/Branch-Agent/issues";
 const GITHUB_ISSUE_CREATE_TIMEOUT_MS = 30_000;
 const GITHUB_OUTPUT_MAX_BYTES = 1024 * 1024;
 const GITHUB_ISSUE_BODY_MAX_BYTES = 20_000;
@@ -87,7 +87,7 @@ function prepareGithubIssueBrowserFallback(
   body: string,
 ): GithubIssueBrowserFallback {
   const query = new URLSearchParams({ body, title });
-  const url = `https://github.com/openclaw/openclaw/issues/new?${query.toString()}`;
+  const url = `https://github.com/KeepOak/Branch-Agent/issues/new?${query.toString()}`;
   if (Buffer.byteLength(url, "utf8") > GITHUB_PREFILL_URL_MAX_BYTES) {
     return { reason: "url-too-long", status: "unavailable" };
   }

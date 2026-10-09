@@ -246,7 +246,7 @@ describe("update CLI shared helpers", () => {
             "git",
             "clone",
             "--filter=blob:none",
-            "https://github.com/openclaw/openclaw.git",
+            "https://github.com/KeepOak/Branch-Agent.git",
             expect.stringMatching(/[/\\]\.branch-clone-[^/\\]+[/\\]repository$/u),
           ],
           expect.objectContaining({ env: process.env, timeoutMs: 1_000 }),
