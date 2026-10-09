@@ -215,10 +215,25 @@ function transactionDiagnosticLabels(
   };
 }
 
+/** A one-table read that takes the shared lock and starts the snapshot, as the first real read would. */
+const DEFERRED_LOCK_PROBE_SQL = "SELECT 1 FROM sqlite_schema LIMIT 1";
+
+function timedDeferredLockAcquisition(db: DatabaseSync): number {
+  const startedAt = performance.now();
+  db.exec(DEFERRED_LOCK_PROBE_SQL);
+  return performance.now() - startedAt;
+}
+
+/**
+ * elapsedMs (Date clock) runs from after BEGIN to the end of COMMIT or ROLLBACK, so for DEFERRED it
+ * includes the lock wait. lockWaitMs and heldMs (performance clock) split the lock wait from the time
+ * the lock was held: heldMs runs from when the lock was acquired to the end of COMMIT or ROLLBACK.
+ */
 function logSlowTransactionHold(params: {
-  beginWaitMs: number;
   db: DatabaseSync;
   elapsedMs: number;
+  heldMs: number;
+  lockWaitMs: number;
   mode: SqliteTransactionMode;
   options?: SqliteTransactionOptions;
 }): void {
@@ -229,10 +244,11 @@ function logSlowTransactionHold(params: {
   }
   (params.options?.logger ?? transactionLog).warn("slow SQLite transaction hold", {
     async: false,
-    beginWaitMs: params.beginWaitMs,
     ...transactionDiagnosticLabels(params.db, params.options),
     elapsedMs: params.elapsedMs,
+    heldMs: params.heldMs,
     isMainThread,
+    lockWaitMs: params.lockWaitMs,
     mode: params.mode,
     pid: process.pid,
     threadId,
@@ -416,11 +432,17 @@ function runSqliteTransactionSync<T>(
     sql: mode === "immediate" ? "BEGIN IMMEDIATE" : "BEGIN",
     step: "begin",
   });
-  // Lock or busy wait for BEGIN; elapsedMs below is only the time the lock was held.
-  const beginWaitMs = performance.now() - beginStartedAt;
+  // IMMEDIATE takes its lock in BEGIN, so that wait is outside elapsedMs. DEFERRED takes it on
+  // the first read, which the probe below times; that wait is inside elapsedMs.
+  let lockWaitMs = performance.now() - beginStartedAt;
+  let lockAcquiredAt = performance.now();
   const transactionStartedAt = Date.now();
   let commitStarted = false;
   try {
+    if (mode === "deferred") {
+      lockWaitMs = timedDeferredLockAcquisition(db);
+      lockAcquiredAt = performance.now();
+    }
     // BEGIN may wait for a foreign writer. Admit its committed schema inside
     // rollback protection, then share that snapshot's facts with all kernels.
     const result = runSqliteReadOperationSync(db, operation, "fresh");
@@ -443,9 +465,10 @@ function runSqliteTransactionSync<T>(
     // Include COMMIT and failed holders: both keep other writers waiting too.
     try {
       logSlowTransactionHold({
-        beginWaitMs,
         db,
         elapsedMs: Date.now() - transactionStartedAt,
+        heldMs: performance.now() - lockAcquiredAt,
+        lockWaitMs,
         mode,
         options,
       });
