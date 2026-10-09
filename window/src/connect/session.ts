@@ -269,6 +269,14 @@ export class SaplingSession {
     return this.loadHistory();
   }
 
+  /** The Trunk got ready after this window stopped waiting for it: open the conversation again, with a fresh wait. */
+  retryOpen(): void {
+    const { status, sessionKey } = this.snapshot;
+    if (this.stopped || status.phase !== "connected" || !sessionKey) return;
+    this.preparationBackoff.reset();
+    void this.bootstrap(status, sessionKey);
+  }
+
   /** Any engine method, for the parts of the window that call the engine themselves. */
   request<T = unknown>(method: string, params?: unknown): Promise<T> {
     return this.gateway.request<T>(method, params);

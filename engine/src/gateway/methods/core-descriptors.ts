@@ -686,4 +686,9 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["backup.schedule.set", "backup", "operator.admin", "2026.9"],
   ["backup.schedule.clear", "backup", "operator.admin", "2026.9"],
   ["backup.run", "backup", "operator.admin", "2026.9"],
+  ["trunks.queue.add", "trunk-queue", "operator.write", "2026.10"],
+  ["trunks.queue.list", "trunk-queue", "operator.read", "2026.10"],
+  ["trunks.queue.done", "trunk-queue", "operator.write", "2026.10"],
+  ["trunks.queue.release", "trunk-queue", "operator.write", "2026.10"],
+  ["agents.retryStartup", "agents", "operator.write", "2026.10"],
 ] as const satisfies readonly CoreGatewayMethodSpecRow[];

@@ -144,5 +144,13 @@ declare module '@branch/gateway-client/browser' {
     stop(): void;
     request<T = unknown>(method: string, params?: unknown): Promise<T>;
     addEventListener(listener: (event: EventFrame) => void): () => void;
+    closeSocket(code?: number, reason?: string): void;
+  }
+
+  /** Connection-owned chat baselines (engine/packages/gateway-client/src/chat-stream-projection.ts). */
+  export class GatewayChatStreamProjection {
+    project<T extends { event: string; payload?: unknown }>(event: T): { event: T; missingBaseline: boolean };
+    retire(isRetired: (scope: { sessionKey: string; agentId: unknown }) => boolean): void;
+    clear(): void;
   }
 }

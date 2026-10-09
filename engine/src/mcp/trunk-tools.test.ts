@@ -114,6 +114,32 @@ describe("branch mcp serve Trunk tools", () => {
     ]);
   });
 
+  it("trunks_list says a Trunk whose startup stopped retrying needs attention", async () => {
+    const pending = (state: string) => ({
+      agentId: "x",
+      paths: ["db"],
+      code: "agent-database-inspection-pending",
+      reason: "pending",
+      repairHint: "wait",
+      preparation: { state, failures: 30, restarts: 4 },
+    });
+    const { gw } = fakeGateway({
+      "agents.list": () => ({
+        agents: [
+          { id: "spruce", name: "Spruce", admissionRefusal: pending("needs-attention") },
+          { id: "elm", name: "Elm", admissionRefusal: pending("retrying") },
+        ],
+      }),
+      "sessions.list": () => ({ sessions: [] }),
+      "contacts.list": () => ({ contacts: [] }),
+    });
+    const out = await call(await connect(gw), "trunks_list", {});
+    expect(out.trunks).toEqual([
+      { id: "spruce", name: "Spruce", state: "needs-attention" },
+      { id: "elm", name: "Elm", state: "idle" },
+    ]);
+  });
+
   it("trunk_send opens a new labelled thread and sends as the outside agent", async () => {
     const { gw, calls } = fakeGateway({
       "sessions.create": () => ({ ok: true }),

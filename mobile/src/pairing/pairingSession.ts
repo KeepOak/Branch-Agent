@@ -13,7 +13,11 @@ export type PairingState =
   | { step: 'loading' }
   | { step: 'unpaired' }
   | { step: 'connecting'; url: string }
-  | { step: 'approval'; url: string }
+  /**
+   * Waiting for Allow on the computer. `requestId` is the engine's pending request, whose check code the
+   * computer shows; `expiresAtMs` is when the pairing code stops working.
+   */
+  | { step: 'approval'; url: string; requestId?: string; expiresAtMs?: number }
   | { step: 'paired'; url: string; online: boolean; serverVersion?: string }
   | { step: 'failed'; url: string; message: string }
   /**
@@ -58,10 +62,10 @@ export const NEUTRAL_FAILURE_MESSAGE =
 export function failureMessage(code: string | undefined): string {
   switch (code) {
     case ConnectErrorDetailCodes.PAIRING_REJECTED:
-      return 'Your computer turned this phone away. Pair again if that was a mistake.';
+      return DENIED_MESSAGE;
     case ConnectErrorDetailCodes.PAIRING_EXPIRED:
     case ConnectErrorDetailCodes.AUTH_BOOTSTRAP_TOKEN_INVALID:
-      return 'This pairing code has expired or was already used. Make a new one on your computer and scan it again.';
+      return CODE_GONE_MESSAGE;
     case ConnectErrorDetailCodes.AUTH_DEVICE_TOKEN_MISMATCH:
     case ConnectErrorDetailCodes.DEVICE_IDENTITY_REQUIRED:
     case ConnectErrorDetailCodes.DEVICE_AUTH_INVALID:
@@ -81,6 +85,25 @@ export function failureMessage(code: string | undefined): string {
   }
 }
 
+/**
+ * The pairing code's record is gone on the computer: it ran out, was used, or was revoked. The engine
+ * (device-bootstrap.worker-kernel.ts verifyDeviceBootstrapToken) answers AUTH_BOOTSTRAP_TOKEN_INVALID and
+ * nothing brings the record back, so only a new code helps.
+ */
+export const CODE_GONE_MESSAGE = 'This code no longer works. Make a new one on your computer.';
+
+/**
+ * The owner chose Deny on the computer. The engine has no refusal code of its own for that: Deny removes the
+ * request and revokes the code (device-pairing-core.kernel.ts rejectDevicePairingInWorker), so the phone's
+ * next try is answered AUTH_BOOTSTRAP_TOKEN_INVALID while the code's own time hasn't run out.
+ */
+export const DENIED_MESSAGE = 'Your computer said no.';
+
+/** The engine's code for a pairing code whose record is gone. */
+function codeGone(code: string | undefined): boolean {
+  return code === ConnectErrorDetailCodes.PAIRING_EXPIRED || code === ConnectErrorDetailCodes.AUTH_BOOTSTRAP_TOKEN_INVALID;
+}
+
 /** Refusals that can clear up by themselves, so trying again makes sense. */
 function canRetryAfter(code: string | undefined): boolean {
   return code === ConnectErrorDetailCodes.AUTH_RATE_LIMITED;
@@ -94,8 +117,12 @@ export class PairingSession implements EngineLink {
   private gateway: PhoneGateway | null = null;
   private paired: PairingRecord | null = null;
   private openHello: HelloOk | null = null;
+  /** The code this pairing started from, for its expiry. */
+  private setup: SetupPayload | null = null;
+  /** The computer had this phone's request and was asked for Allow, so a code that stops working was turned down. */
+  private asked = false;
 
-  constructor(private readonly deps: PairingDeps) {}
+  constructor(private readonly deps: PairingDeps, private readonly now: () => number = Date.now) {}
 
   getState(): PairingState {
     return this.state;
@@ -122,13 +149,22 @@ export class PairingSession implements EngineLink {
   begin(setup: SetupPayload): void {
     this.stopGateway();
     this.paired = null;
+    this.setup = setup;
+    this.asked = false;
     this.set({ step: 'connecting', url: setup.url });
     this.connect(setup.url, setup.bootstrapToken);
+  }
+
+  /** Whether the code this pairing started from has run out by its own expiry time. */
+  private codeRanOut(): boolean {
+    const expires = this.setup?.expiresAtMs;
+    return expires !== undefined && expires <= this.now();
   }
 
   /** Stops a pairing that hasn't finished and goes back to the welcome. */
   cancel(): void {
     this.stopGateway();
+    this.setup = null;
     if (!this.paired) this.set({ step: 'unpaired' });
   }
 
@@ -167,6 +203,11 @@ export class PairingSession implements EngineLink {
 
   get hello(): HelloOk | null {
     return this.openHello;
+  }
+
+  /** A fresh random id, for a message's idempotency key. */
+  newId(): string {
+    return this.deps.createRequestId();
   }
 
   request<T = unknown>(method: string, params?: unknown): Promise<T> {
@@ -214,11 +255,15 @@ export class PairingSession implements EngineLink {
       case 'connecting':
         this.set(this.paired ? { step: 'paired', url, online: false } : { step: 'connecting', url });
         return;
-      case 'pairing':
-        this.set({ step: 'approval', url });
+      case 'pairing': {
+        this.asked = true;
+        const expiresAtMs = this.setup?.expiresAtMs;
+        this.set({ step: 'approval', url, ...(status.requestId ? { requestId: status.requestId } : {}), ...(expiresAtMs !== undefined ? { expiresAtMs } : {}) });
         return;
+      }
       case 'connected': {
         if (!this.paired) {
+          this.setup = null;
           this.paired = { version: 1, url, pairedAtMs: Date.now() };
           await this.deps.store.set(PAIRING_RECORD_KEY, JSON.stringify(this.paired));
         }
@@ -230,11 +275,11 @@ export class PairingSession implements EngineLink {
       case 'failed':
         // PhoneGateway only reports 'failed' once the engine's reconnect policy has stopped retrying, so a
         // saved pairing that fails here will not come back by itself.
-        this.set(
-          this.paired
-            ? { step: 'refused', url, message: failureMessage(status.code), canRetry: canRetryAfter(status.code) }
-            : { step: 'failed', url, message: failureMessage(status.code) },
-        );
+        if (this.paired) {
+          this.set({ step: 'refused', url, message: failureMessage(status.code), canRetry: canRetryAfter(status.code) });
+          return;
+        }
+        this.set({ step: 'failed', url, message: codeGone(status.code) && this.asked && !this.codeRanOut() ? DENIED_MESSAGE : failureMessage(status.code) });
     }
   }
 

@@ -5,6 +5,7 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
     "ios": {
       "supportsTablet": false,
       "infoPlist": {
@@ -15,6 +16,14 @@
       }
     },
     "android": {
+      "package": "com.keepoak.branch",
+      "permissions": [
+        "android.permission.CAMERA"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#4f46e5"
+      },
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -29,9 +38,12 @@
         }
       ],
       "expo-secure-store",
+      "expo-notifications",
       [
         "expo-splash-screen",
         {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160,
           "backgroundColor": "#f6f8f9",
           "dark": {
             "backgroundColor": "#0b0f12"

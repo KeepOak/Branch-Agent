@@ -7,6 +7,10 @@ import type { EngineLink } from '../pairing/pairingSession';
 
 export type ChatRow = {
   key: string;
+  /** The Trunk the chat belongs to, by id. */
+  agentId?: string;
+  /** When the chat was marked unread by hand, so opening it clears only that mark (sessions.patch). */
+  markedUnreadAt?: number;
   /** What the row is called: the chat's own name, else its Trunk's name. */
   title: string;
   /** The Trunk it belongs to, when the title is the chat's own name. */
@@ -15,6 +19,7 @@ export type ChatRow = {
   avatar: string;
   /** The last line said, on one line. */
   preview: string;
+  /** When the chat was last active (ms): the later of the engine's updatedAt and lastActivityAt. */
   updatedAt: number;
   /** A Trunk is answering in it right now. */
   working: boolean;
@@ -140,11 +145,14 @@ export function projectChat(raw: unknown, agents: Map<string, Agent>, mainKey: s
   const digest = rec(r.observerDigest);
   return {
     key,
+    ...(agentId ? { agentId } : {}),
+    ...(num(r.markedUnreadAt) ? { markedUnreadAt: num(r.markedUnreadAt) } : {}),
     title,
     ...(trunk && title !== trunk ? { trunkName: trunk } : {}),
     avatar: agent?.avatar ?? initial(title),
     preview: oneLine(str(r.lastMessagePreview)),
-    updatedAt: num(r.updatedAt),
+    // A finished reply sets lastActivityAt; a row whose updatedAt lags it still reads as active then.
+    updatedAt: Math.max(num(r.updatedAt), num(r.lastActivityAt)),
     working: r.hasActiveRun === true || activeRunIds.length > 0,
     unread: r.unread === true,
     pinned: r.pinned === true,
