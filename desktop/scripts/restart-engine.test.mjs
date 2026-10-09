@@ -25,6 +25,8 @@ async function freePort() {
 }
 function electronFixture() {
   let window; const windows = [], handlers = new Map(), app = new EventEmitter(), ipcMain = new EventEmitter(), errors = [];
+  // Seconds since the last keyboard or pointer input anywhere (Electron powerMonitor.getSystemIdleTime).
+  const input = { idleSeconds: 0 };
   Object.assign(app, { getVersion: () => "fixture", setPath() {}, setAppUserModelId() {},
     requestSingleInstanceLock: () => true, whenReady: async () => {}, quit() { app.emit("will-quit"); } });
   class BrowserWindow extends EventEmitter {
@@ -34,13 +36,22 @@ function electronFixture() {
         isDestroyed: () => this.destroyed, reload: () => { this.reloads++; this.webContents.emit("did-finish-load"); } }); }
     async loadURL(url) { this.url = url; this.webContents.mainFrame.url = url; this.webContents.emit("did-finish-load"); }
     setMenuBarVisibility() {} show() {} focus() {} hide() {} isMinimized() { return false; }
+    // A test sets `focused` to put the owner in this window; the page sets its title with page().
+    isFocused() { return this.focused ?? false; } getTitle() { return this.title ?? ""; } setTitle(title) { this.title = title; }
+    page(title) {
+      const event = { prevented: false, preventDefault() { this.prevented = true; } };
+      this.emit("page-title-updated", event, title, true);
+      if (!event.prevented) this.title = title;
+      return event.prevented;
+    }
     maximize() {} isMaximized() { return false; } isVisible() { return true; } isDestroyed() { return this.destroyed; }
     getNormalBounds() { return { x: 0, y: 0, width: 1280, height: 840 }; } getBounds() { return this.getNormalBounds(); }
     close() { if (this.destroyed) return; const event = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } }; this.emit("close", event); if (!event.defaultPrevented) this.destroy(); }
     destroy() { if (this.destroyed) return; this.destroyed = true; this.emit("closed"); }
   }
   class Tray extends EventEmitter { setToolTip() {} setContextMenu() {} destroy() {} }
-  return { app, ipcMain, handlers, windows, errors, get window() { return window; }, electron: { app, BrowserWindow, Tray,
+  return { app, ipcMain, handlers, windows, errors, input, get window() { return window; }, electron: { app, BrowserWindow, Tray,
+    powerMonitor: { getSystemIdleTime: () => input.idleSeconds },
     ipcMain: Object.assign(ipcMain, { handle(channel, fn) { handlers.set(channel, fn); } }), Menu: { buildFromTemplate: value => value },
     screen: { getAllDisplays: () => [], getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1280, height: 840 } }) },
     dialog: { showErrorBox: (...args) => errors.push(args) }, shell: { openExternal() {} },
@@ -1086,11 +1097,49 @@ test("automatic default handoff without a standby applies after the idle drain h
   assert.equal(alive(old), true);
   assert.equal((await starts()).length, 1, "idle hold started a replacement early");
   clock.skew = 61_000; offerStaged();
-  await eventually(() => sent.some(([channel]) => channel === "branch-desktop:update-applied"));
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("applied by restarting the engine"));
   assert.equal(alive(old), false);
   assert.equal((await starts()).length, 2);
   assert.match(await readFile(join(root, "desktop.log"), "utf8"), /engine swapped in place; /);
   assert.equal(sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"), false);
+  // The engine stopped and started: "Branch updated", never "Updated in place. Nothing restarted."
+  assert.equal(sent.some(([channel]) => channel === "branch-desktop:update-applied"), false);
+  assert.ok(sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "updated"));
+  runtime.window.webContents.emit("did-finish-load");
+  assert.equal(sent.some(([channel]) => channel === "branch-desktop:update-applied"), false, "a reload re-sent a stale in-place notice");
+}, false, false, false, "never", false, defaultHandoff));
+
+test("low-memory automatic update waits while the owner types, keeps the window title, and never says nothing restarted", () => fixture(async ({ root, runtime, starts, offerStaged, clock }) => {
+  // No standby fits (the low-memory Mac): the update can only stop and start the engine.
+  const sent = idleWindow(runtime), old = (await starts())[0], w = runtime.window;
+  const log = () => readFile(join(root, "desktop.log"), "utf8");
+  w.title = "Birch — Branch"; w.focused = true; runtime.input.idleSeconds = 5;
+  await stageFixtureUpdate(root); await writeFile(join(root, "release-ready"), "ready");
+  offerStaged();
+  await eventually(async () => (await log()).includes("auto-apply: waiting; the owner is using Branch"), 30_000);
+  for (const skew of [61_000, 122_000]) { clock.skew = skew; offerStaged(); await pause(300); }
+  assert.equal(alive(old), true, "the engine restarted while the owner was typing in Branch");
+  assert.equal((await starts()).length, 1);
+  assert.doesNotMatch(await log(), /auto-apply: (idle hold|restarting) for fixture-next/);
+  // While the swap hands the window the new engine, the page goes offline and briefly names the default Trunk.
+  const prevented = [];
+  const send = w.webContents.send;
+  w.webContents.send = (channel, value) => {
+    if (channel === "branch-desktop:engine-handoff") prevented.push(w.page("(Offline) Birch — Branch"), w.page("Sapling — Branch"));
+    send(channel, value);
+  };
+  // The owner moves to another app: the idle hold runs from then, and the update applies.
+  w.focused = false;
+  clock.skew = 183_000; offerStaged();
+  await eventually(async () => (await log()).includes("auto-apply: idle hold for fixture-next"), 30_000);
+  clock.skew = 244_000; offerStaged();
+  await eventually(async () => (await log()).includes("applied by restarting the engine"), 30_000);
+  assert.equal(alive(old), false);
+  assert.deepEqual(prevented, [true, true], "the window title showed (Offline) or another Trunk during the update");
+  assert.equal(w.page("Birch — Branch"), true, "the title hold ended before the page settled");
+  assert.equal(w.title, "Birch — Branch");
+  assert.equal(sent.some(([channel]) => channel === "branch-desktop:update-applied"), false);
+  assert.ok(sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "updated"));
 }, false, false, false, "never", false, defaultHandoff));
 
 for (const refusal of ["refuse-deactivate", "no-handoff"]) {
@@ -1106,7 +1155,8 @@ for (const refusal of ["refuse-deactivate", "no-handoff"]) {
     await eventually(() => failedStarts.slice(1).every(pid => !alive(pid)));
     assert.equal((await starts()).length, failedStarts.length);
     clock.skew = 61_000; offerStaged();
-    await eventually(() => sent.some(([channel]) => channel === "branch-desktop:update-applied"), 30_000);
+    await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("applied by restarting the engine"), 30_000);
+    assert.equal(sent.some(([channel]) => channel === "branch-desktop:update-applied"), false);
     assert.equal(alive(old), false);
     const launches = (await starts()).slice(failedStarts.length);
     assert.equal(launches.length, 1);
@@ -1152,7 +1202,8 @@ test("failed automatic flagged standby falls back to drain after idle without a 
   assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-update-failed"), []);
   clock.skew = 61_000; offerStaged();
   await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("failed 1 time(s)"), 30_000);
-  await eventually(() => sent.some(([channel]) => channel === "branch-desktop:update-applied"), 30_000);
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("applied by restarting the engine"), 30_000);
+  assert.equal(sent.some(([channel]) => channel === "branch-desktop:update-applied"), false);
   assert.equal(sent.filter(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept").length, 0);
 }, false, false, false, true, false, handoffOn()));
 test("two automatic busy-stop failures for one version never leave an updating bar", () => fixture(async ({ root, runtime, starts, offerStaged, clock }) => {
