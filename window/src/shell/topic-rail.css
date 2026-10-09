@@ -74,4 +74,4 @@
 .emoGridT5{display:grid;grid-template-columns:repeat(8,1fr);gap:2px;max-height:260px;overflow:auto;scrollbar-width:none}
 .emoGridT5 button{all:unset;cursor:pointer;font-size:22px;line-height:1;height:34px;display:grid;place-items:center;border-radius:8px}
 .emoGridT5 button:hover,.emoGridT5 button:focus-visible{background:var(--fill)}
-@media(max-width:640px){.conversation-column:has(> .topicsT5:not(.lay-tabs)){padding-left:0}.topicsT5:not(.lay-tabs):not(.listT5){display:none}.topicsT5.listT5{width:auto;right:0;z-index:20;border:0}}
+@media(width < 900px){.conversation-column:has(> .topicsT5:not(.lay-tabs)){padding-left:0}.topicsT5:not(.lay-tabs):not(.listT5){display:none}.topicsT5.listT5{width:auto;right:0;z-index:20;border:0}}

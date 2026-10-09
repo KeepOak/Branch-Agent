@@ -1144,7 +1144,7 @@ button.mi:focus-visible {
     width: 228px;
   }
 }
-@media (max-width: 760px) {
+@media (width < 900px) {
   .frame {
     grid-template-rows: 34px minmax(0, 1fr) var(--status-h);
     grid-template-columns: 0 minmax(0, 1fr);
@@ -1206,7 +1206,7 @@ button.mi:focus-visible {
 }
 /* at 760 px and below: three tools on the header row (computer, browser, ⋯), the window's buttons 10 px apart,
    and the living character in the header instead of the agent window (the preview's narrow chrome) */
-@media (max-width: 760px) {
+@media (width < 900px) {
   .head-row .head-tools [aria-label="Side panel"],
   .head-row .head-tools [aria-label="Find in this conversation"] {
     display: none;

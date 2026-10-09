@@ -10,6 +10,7 @@ import { CharacterFace } from "../face/CharacterFace";
 import { Face } from "../face/Face";
 import { trunkAppearance } from "../face/appearance";
 import { Icon } from "../shell/icons";
+import { useNarrow } from "../shell/use-narrow";
 import { LEVEL_LINES, levelFor, pageAtLevel, pageName, searchSettings, settingsGroups, type Level, type SearchRow } from "./settings-nav";
 import "./settings-frame.css";
 
@@ -198,6 +199,7 @@ function useRowJump(page: string) {
 /** The Settings frame (DESIGN-SPEC §4.7.0): the nav column with Back, search, "Settings for", page items, the save
  *  state and the level; one page on the right. */
 export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, askName }: Props) {
+  const compactNav = useNarrow("(max-width: 1000px)");
   const [chosen, setLevel] = useState<Level>(readLevel);
   const level = levelFor(page, chosen); // opening a page this level hides raises the level
   useEffect(() => {
@@ -267,7 +269,12 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, a
             onKeyDown={(e) => { if (e.key === "Escape" && query) { e.preventDefault(); setQuery(""); } else if (e.key === "Enter") { e.preventDefault(); first(); } }} />
         </label>
         {LV[level] >= 1 ? <ScopePicker engine={engine} scope={scope} onScope={setScope} /> : null}
-        {query.trim() ? <SearchResults query={query} level={level} shown={shown} onGo={go} /> : settingsGroups(level).map((g) => ({ ...g, pages: g.pages.filter((p) => maySetup || !HIDDEN_PAGES.includes(p.id)) })).map((g) => (
+        {compactNav ? <select className="inp set-page-select" aria-label="Settings page" value={shown} onChange={(e) => { setQuery(""); onPage(e.target.value); }}>
+          {settingsGroups(level).map((g) => <optgroup key={g.name} label={g.name}>
+            {g.pages.filter((p) => maySetup || !HIDDEN_PAGES.includes(p.id)).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </optgroup>)}
+        </select> : null}
+        {query.trim() ? <div className="set-search-results"><SearchResults query={query} level={level} shown={shown} onGo={go} /></div> : compactNav ? null : settingsGroups(level).map((g) => ({ ...g, pages: g.pages.filter((p) => maySetup || !HIDDEN_PAGES.includes(p.id)) })).map((g) => (
           <div key={g.name} className="set-group">
             <div className="grp">{g.name}</div>
             {g.pages.map((p) => (

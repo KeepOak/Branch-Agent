@@ -715,6 +715,7 @@ function createWindow(): BrowserWindow {
     width: 1280,
     height: 840,
     ...place.bounds,
+    minWidth: 880,
     show: false,
     icon: ICON,
     // Windows: no native title bar; the window's header carries the minimise, maximise and close buttons.
@@ -765,9 +766,10 @@ function openConversationWindow(key: string): void {
   const mainWidth = win && !win.isDestroyed() ? win.getBounds().width : 1280;
   const child = new BrowserWindow({
     title: TEST_COPY ? "Test — Branch Agent" : "Branch Agent",
-    width: Math.max(560, mainWidth - 292),
+    width: Math.max(880, mainWidth - 292),
     height: win && !win.isDestroyed() ? win.getBounds().height : 760,
     ...(place?.bounds ?? {}),
+    minWidth: 880,
     show: false,
     icon: ICON,
     ...titleBarOptions(),

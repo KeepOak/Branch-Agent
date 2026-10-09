@@ -32,7 +32,7 @@
 .list-filter select { border: 1px solid var(--line-2); background: var(--raise); border-radius: 8px; padding: 6px 8px; max-width: 55%; }
 .list-filter input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
 .filter-foot { display: flex; justify-content: flex-end; gap: 8px; padding-top: 16px; }
-@media(max-width:760px) { .side-resize { display:none; } .search-scrim { padding-top: 48px; } }
+@media(width < 900px) { .side-resize { display:none; } .search-scrim { padding-top: 48px; } }
 
 .frame .search { border: 0; }
 .frame .side-top { padding: 1px 12px 6px; }
