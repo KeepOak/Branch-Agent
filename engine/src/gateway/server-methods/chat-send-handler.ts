@@ -15,6 +15,10 @@ import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import { clearAgentRunContext } from "../../infra/agent-run-registry.js";
 import { emitDiagnosticsTimelineEvent } from "../../infra/diagnostics-timeline.js";
 import { formatErrorMessage } from "../../infra/errors.js";
+import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
+import { resolveDefaultAgentId } from "../../agents/agent-scope-config.js";
+import { graftDeviceId } from "../contacts/outside-agents.js";
+import { isJoinedTeammateKey, queueGraftedTeammateSend } from "../contacts/grafted-send.js";
 // chat.send owns admission, ACK timing, and detached dispatch handoff.
 import { isProgressCardRefreshInputProvenance } from "../../sessions/input-provenance.js";
 import {
@@ -644,7 +648,39 @@ export async function handleChatSend(
   onAdmissionOwned?: () => Promise<boolean>,
   externalAuthorityAdmission?: ChatSendExternalAuthorityAdmission,
 ): Promise<void> {
+  // A joined Branch's Trunk is not a session here. Sending it to the default agent answers in the wrong place.
+  const requested = (options.params ?? {}) as { sessionKey?: unknown };
+  if (typeof requested.sessionKey === "string" && isJoinedTeammateKey(requested.sessionKey)) {
+    routeChatSendToJoinedTeammate(options, requested.sessionKey);
+    return;
+  }
   await handleChatSendWithOptions(options, onAdmissionOwned, externalAuthorityAdmission);
+}
+
+/** Queues the message for the joined Branch's Trunk. The owner's default Trunk gets the reply. */
+function routeChatSendToJoinedTeammate(
+  options: GatewayRequestHandlerOptions,
+  teammateKey: string,
+): void {
+  const { params, respond, client, context } = options;
+  if (graftDeviceId(client)) {
+    respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, "A joined Branch cannot message a teammate."));
+    return;
+  }
+  const cfg = context.getRuntimeConfig();
+  const p = (params ?? {}) as { message?: unknown; idempotencyKey?: unknown };
+  const result = queueGraftedTeammateSend({
+    target: teammateKey,
+    text: typeof p.message === "string" ? p.message : "",
+    sourceSessionKey: `agent:${resolveDefaultAgentId(cfg)}:main`,
+    idempotencyKey: typeof p.idempotencyKey === "string" ? p.idempotencyKey : undefined,
+    cfg,
+  });
+  if (!result.ok) {
+    respond(false, undefined, errorShape(ErrorCodes[result.code], result.message));
+    return;
+  }
+  respond(true, { runId: result.id, status: "accepted" });
 }
 
 /** The ordinary chat owner retains the exact human-reviewed continuation through settlement. */

@@ -48,7 +48,8 @@ beforeEach(() => {
 afterEach(() => {
   if (previousState === undefined) delete process.env.BRANCH_STATE_DIR;
   else process.env.BRANCH_STATE_DIR = previousState;
-  fs.rmSync(stateDir, { recursive: true, force: true });
+  // Windows keeps the state files open for a moment after the gateway stops; retry instead of failing EPERM.
+  fs.rmSync(stateDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
 });
 
 const device = (id: string) => ({
@@ -72,7 +73,7 @@ async function call(method: string, params: Record<string, unknown>, client: unk
 }
 
 const branchB = { id: "branch-b", name: "Branch B", kind: "branch" };
-const scout = { id: "branch-b--scout", name: "Scout", kind: "trunk", via: "branch-b" };
+const scout = { id: "branch-b--scout", name: "Scout", kind: "trunk", via: "branch-b", trunkId: "scout" };
 
 describe("Branch-to-Branch graft on the host", () => {
   it("exposes saved links and rejects malformed window join requests", async () => {
@@ -207,5 +208,42 @@ describe("Branch-to-Branch graft on the host", () => {
     expect(result.ok).toBe(false);
     expect(result.error?.message).toContain("operator.pairing");
     expect(readOutsideAgentSettings().revoked).toEqual([]);
+  });
+
+  it("refuses a grafted Trunk hello without a trunkId, so no unroutable row is kept", async () => {
+    await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    const bad = await call(
+      "contacts.outside.hello",
+      { agent: { id: "branch-b--ghost", name: "Ghost", kind: "trunk", via: "branch-b" } },
+      device("dev-b"),
+    );
+    expect(bad.ok).toBe(false);
+    expect(bad.error?.message).toContain("trunkId");
+    expect(listOutsideAgents().map((row) => row.id)).not.toContain("branch-b--ghost");
+  });
+
+  it("says plainly that a teammate is no longer linked, not a raw lookup error", async () => {
+    await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    await call("contacts.outside.hello", { agent: { ...scout, trunkId: "scout" } }, device("dev-b"));
+    const sent = await call(
+      "graft.work.send",
+      { target: "a2a:branch-b--gone", text: "Ping", sourceSessionKey: "agent:juniper:main", idempotencyKey: "gone-1" },
+      owner,
+    );
+    expect(sent.ok).toBe(false);
+    expect(sent.error?.message).toBe("That teammate isn't linked anymore. Link the Branch again.");
+  });
+
+  it("says a disconnected teammate was disconnected, which is a different fix from a lost link", async () => {
+    await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    await call("contacts.outside.hello", { agent: { ...scout, trunkId: "scout" } }, device("dev-b"));
+    expect((await call("contacts.outside.set", { id: "branch-b", revoked: true }, owner)).ok).toBe(true);
+    const sent = await call(
+      "graft.work.send",
+      { target: "a2a:branch-b--scout", text: "Ping", sourceSessionKey: "agent:juniper:main", idempotencyKey: "rev-1" },
+      owner,
+    );
+    expect(sent.ok).toBe(false);
+    expect(sent.error?.message).toContain("disconnected");
   });
 });

@@ -6,6 +6,9 @@
 // pairing), the link stops and forgets the host; a new `branch graft join` brings it back.
 import { readConnectErrorDetailCode } from "../../packages/gateway-protocol/src/connect-error-details.js";
 import { listAgentEntries } from "../agents/agent-scope.js";
+
+/** Budget for each local gateway call while a joined job runs; the Trunk's own reply wait is separate. */
+const JOINED_JOB_CALL_TIMEOUT_MS = 60_000;
 import {
   GRAFT_DEVICE_SCOPES,
   graftBranchIdentity,
@@ -242,6 +245,59 @@ export async function createDeviceLinkClient(
 }
 
 /** Start the joined Branch's links to its saved hosts (the gateway's graft-link service). */
+/**
+ * Runs one job the host queued for a local Trunk: open its thread, send the text, wait for the reply.
+ * Each local gateway call gets its own budget, so a busy gateway is not mistaken for a failed Trunk.
+ */
+export async function runJoinedTrunkJob(
+  job: GraftWorkJob,
+  deps: {
+    callGateway: typeof import("../gateway/call.js").callGateway;
+    waitForAgentRunReply: typeof import("../agents/run-wait.js").waitForAgentRunReply;
+  },
+): Promise<{ reply?: string; error?: string }> {
+  const { callGateway, waitForAgentRunReply } = deps;
+  const key = `agent:${job.trunkId}:graft:${job.id}`;
+  try {
+    await callGateway({
+      method: "sessions.create",
+      params: { key, agentId: job.trunkId, label: job.text.slice(0, 60) },
+      timeoutMs: JOINED_JOB_CALL_TIMEOUT_MS,
+    });
+  } catch (error) {
+    // A reclaimed job may already have made its thread before the link dropped.
+    await callGateway({
+      method: "sessions.describe",
+      params: { key },
+      timeoutMs: JOINED_JOB_CALL_TIMEOUT_MS,
+    }).catch(() => {
+      throw error;
+    });
+  }
+  const sent = await callGateway<{ runId?: string }>({
+    method: "chat.send",
+    timeoutMs: JOINED_JOB_CALL_TIMEOUT_MS,
+    params: {
+      sessionKey: key,
+      agentId: job.trunkId,
+      message: job.text,
+      deliver: false,
+      idempotencyKey: `graft-work:${job.id}`,
+      outsideAgent: { id: "branch-host", name: "Host Branch" },
+    },
+  });
+  if (!sent.runId) return { error: "The joined Trunk did not accept the message." };
+  const result = await waitForAgentRunReply({
+    runId: sent.runId,
+    timeoutMs: 10 * 60_000,
+    callGateway,
+    untilTerminal: true,
+  });
+  return result.status === "ok"
+    ? { reply: result.replyText?.trim() || "The joined Trunk finished without a visible reply." }
+    : { error: result.error || `The joined Trunk ended with ${result.status}.` };
+}
+
 export function startGraftLinks(log: (line: string) => void): GraftLinkSupervisor {
   const supervisor: GraftLinkSupervisor = new GraftLinkSupervisor({
     links: () => readGraftLinks(),
@@ -256,34 +312,7 @@ export function startGraftLinks(log: (line: string) => void): GraftLinkSuperviso
             import("../gateway/call.js"),
             import("../agents/run-wait.js"),
           ]);
-          const key = `agent:${job.trunkId}:graft:${job.id}`;
-          try {
-            await callGateway({ method: "sessions.create", params: { key, agentId: job.trunkId, label: job.text.slice(0, 60) } });
-          } catch (error) {
-            // A reclaimed job may already have made its thread before the link dropped.
-            await callGateway({ method: "sessions.describe", params: { key } }).catch(() => { throw error; });
-          }
-          const sent = await callGateway<{ runId?: string }>({
-            method: "chat.send",
-            params: {
-              sessionKey: key,
-              agentId: job.trunkId,
-              message: job.text,
-              deliver: false,
-              idempotencyKey: `graft-work:${job.id}`,
-              outsideAgent: { id: "branch-host", name: "Host Branch" },
-            },
-          });
-          if (!sent.runId) return { error: "The joined Trunk did not accept the message." };
-          const result = await waitForAgentRunReply({
-            runId: sent.runId,
-            timeoutMs: 10 * 60_000,
-            callGateway: (request) => callGateway(request),
-            untilTerminal: true,
-          });
-          return result.status === "ok"
-            ? { reply: result.replyText?.trim() || "The joined Trunk finished without a visible reply." }
-            : { error: result.error || `The joined Trunk ended with ${result.status}.` };
+          return runJoinedTrunkJob(job, { callGateway, waitForAgentRunReply });
         },
         trunks: async () => {
           const [{ getRuntimeConfig }, { listGatewayAgentsBasic }] = await Promise.all([
