@@ -320,6 +320,8 @@ export const AgentParamsSchema = closedObject({
   // bundle MCP resources after the run instead of keeping them warm.
   cleanupBundleMcpOnRunEnd: Type.Optional(Type.Boolean()),
   modelRun: Type.Optional(Type.Boolean()),
+  /** Resource intent; ordinary chat is ungated, builders default to heavy. */
+  workKind: Type.Optional(Type.Union([Type.Literal("chat"), Type.Literal("heavy")])),
   promptMode: Type.Optional(
     Type.Union([Type.Literal("full"), Type.Literal("minimal"), Type.Literal("none")]),
   ),

@@ -489,13 +489,14 @@ function LiveRun({ view, offset }: { view: View; offset: number }) {
   }, [startedAt]);
   const usage = live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage");
   const waiting = live.some((b) => b.kind === "approval" && b.approval.state === "pending");
+  const memoryWaiting = live.find((b) => b.kind === "status" && b.phase === "waiting_for_memory");
   const typing = !waiting && !live.some((b) => b.kind === "text" || (view.showThinking && b.kind === "thinking") || b.kind === "step" || b.kind === "preamble" || b.kind === "plan");
   return (
     <div className="live-run" data-streaming="true">
       {/* While only the dots show, nothing sits above them (P47); the clock comes with the first real activity. */}
       {typing ? null : <header className="live-run-head">Working{elapsed >= 1000 ? ` · ${formatDuration(elapsed)}` : ""}{usage?.total ? ` · ${usage.total.toLocaleString()} tokens` : ""}</header>}
       {layout(live.filter((b) => b.kind !== "status"), offset).map((item) => <ItemView key={keyOf(item)} item={item} view={view} live />)}
-      {typing ? <Typing name={name} /> : null}
+      {memoryWaiting?.kind === "status" ? <div className="stamp" role="status" data-testid="memory-wait">Waiting for memory: {memoryWaiting.ahead ?? 0} ahead</div> : typing ? <Typing name={name} /> : null}
     </div>
   );
 }

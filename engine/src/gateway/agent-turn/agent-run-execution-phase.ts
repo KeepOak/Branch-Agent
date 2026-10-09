@@ -33,7 +33,6 @@ import { bindGatewayContextResolver } from "../../plugins/runtime/gateway-reques
 import { retainGatewayRootWorkAdmissionContinuation } from "../../process/gateway-work-admission.js";
 import { completeUserTurnProcessing } from "../../sessions/user-turn-transcript-processing.js";
 import { isOperatorUiClient } from "../../utils/message-channel.js";
-import { runWithChatAbortExecution } from "../chat-abort-lifecycle-internal.js";
 import { discardPreparedInboundMedia } from "../chat-attachments.js";
 import { errorShapeFromError } from "../error-shape.js";
 import { getGatewayLocalUserIngress } from "../local-user-ingress.js";
@@ -46,6 +45,10 @@ import { prepareSessionWorkspaceForRun } from "../server-methods/session-create-
 import { reactivateCompletedSubagentSession } from "../session-subagent-reactivation.js";
 import { prepareGatewaySkillAuthoring } from "../skill-library-authoring.js";
 import { captureGatewayUiCommandTarget } from "../ui-command-target.js";
+import {
+  acquireAgentRunMemory,
+  runAgentExecutionWithAbortOwner,
+} from "./agent-admission-controller.js";
 import {
   buildAbortedAgentPayload,
   setAbortedAgentDedupeEntries,
@@ -70,11 +73,7 @@ import {
 } from "./agent-run-user-turn.js";
 
 export async function startAgentRunExecution(params: StartAgentRunExecutionParams): Promise<void> {
-  return await runWithChatAbortExecution(
-    params.prepared.activeRunAbort.entry,
-    () => executeAgentRun(params),
-    params.prepared.activeRunAbort.cleanup,
-  );
+  return await runAgentExecutionWithAbortOwner(params, executeAgentRun);
 }
 
 async function executeAgentRun(params: StartAgentRunExecutionParams): Promise<void> {
@@ -93,6 +92,7 @@ async function executeAgentRun(params: StartAgentRunExecutionParams): Promise<vo
   let unpersistedOffloadedRefs = prepared.unpersistedOffloadedRefs;
   const releaseGatewayRootContinuation = retainGatewayRootWorkAdmissionContinuation() ?? undefined;
   let finishUndispatchedFollowup = false;
+  let releaseMemoryAdmission: (() => void) | undefined;
   try {
     await using runtimeResources = new AsyncDisposableStack();
     let preparedModelRuntimeLease = prepared.preparedModelRuntimeLease
@@ -266,6 +266,7 @@ async function executeAgentRun(params: StartAgentRunExecutionParams): Promise<vo
           return;
         }
 
+        releaseMemoryAdmission = await acquireAgentRunMemory(params, assertDispatchCurrent);
         if (prepared.acquireWorkspaceModelRuntime) {
           const entry = params.sessionEntry;
           if (!entry || !params.resolvedSessionKey || entry.sessionId !== abortEntry?.sessionId) {
@@ -706,6 +707,7 @@ async function executeAgentRun(params: StartAgentRunExecutionParams): Promise<vo
     });
   } finally {
     // Shutdown joins the execution through asynchronous runtime disposal, not just bookkeeping.
+    releaseMemoryAdmission?.();
     try {
       prepared.releaseCallerAuthority?.();
       releaseGatewayRootContinuation?.();

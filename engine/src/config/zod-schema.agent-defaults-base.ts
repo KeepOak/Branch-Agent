@@ -235,6 +235,16 @@ export const AgentDefaultsBaseSchema = z.strictObject({
   authInheritance: AgentOwnerTargetSchema,
   sessionStore: AgentOwnerTargetSchema,
   maxConcurrent: z.number().int().positive().optional(),
+  memoryAdmission: z
+    .strictObject({
+      enabled: z.boolean().optional(),
+      reserveMb: z.number().finite().nonnegative().optional(),
+      estimatedRunMb: z.number().finite().positive().optional(),
+    })
+    .optional()
+    .describe(
+      "Heavy-turn RAM admission is on by default; reserves up to 4 GB and budgets up to 4 GB per run until completion (each capped at a quarter of RAM). Chat-only turns bypass it.",
+    ),
   subagents: z
     .strictObject({
       delegationMode: z.enum(["suggest", "prefer"]).optional(),

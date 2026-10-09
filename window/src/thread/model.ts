@@ -93,7 +93,7 @@ export type Block =
   | { kind: "done"; key: string; runId: string; durationMs?: number; stopped?: boolean }
   | { kind: "error"; key: string; runId?: string; message: string }
   | { kind: "notice"; key: string; text: string; at?: number; topicKey?: string }
-  | { kind: "status"; key: string; phase: string; attempt?: number; maxAttempts?: number };
+  | { kind: "status"; key: string; phase: string; ahead?: number; attempt?: number; maxAttempts?: number };
 
 const record = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : {};
@@ -378,6 +378,7 @@ function lastStatus(events: readonly RunEvent[]): Extract<Block, { kind: "status
         kind: "status",
         key: `${e.runId}:status`,
         phase: str(e.data.phase),
+        ...(typeof e.data.ahead === "number" ? { ahead: Math.max(0, Math.floor(e.data.ahead)) } : {}),
         ...(typeof retry.attempt === "number" ? { attempt: retry.attempt } : {}),
         ...(typeof retry.maxAttempts === "number" ? { maxAttempts: retry.maxAttempts } : {}),
       };

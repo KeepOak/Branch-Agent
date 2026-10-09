@@ -39,6 +39,18 @@ async function render(live: Block[], history: Block[] = [{ kind: "user", key: "u
   return container;
 }
 
+it("memory queue status is plain text and clears when the run starts", async () => {
+  const waiting: RunEvent = { runId: "memory", seq: 1, stream: "run_status", ts: 1, data: { phase: "waiting_for_memory", ahead: 2 } };
+  const container = await render(projectRun([waiting], new Map()));
+  const status = container.querySelector('[data-testid="memory-wait"]');
+  expect(status?.textContent).toBe("Waiting for memory: 2 ahead");
+  expect(status?.querySelector("pre, code")).toBeNull();
+  expect(container.querySelector('[data-testid="typing"]')).toBeNull();
+  await act(async () => root!.render(<Thread name="Builder" history={[]} live={projectRun([waiting, { runId: "memory", seq: 2, stream: "assistant", ts: 2, data: { delta: "Started" } }], new Map())} pendingUser={null} running engine={engine} onAnswer={() => {}} />));
+  expect(container.querySelector('[data-testid="memory-wait"]')).toBeNull();
+  expect(container.textContent).toContain("Started");
+});
+
 it("renders Codex thinking, command input/output, changed files, and a ticking plan", async () => {
   const blocks = projectRun(events, new Map());
   expect(blocks.filter((block) => block.kind === "step")).toHaveLength(2);

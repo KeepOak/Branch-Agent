@@ -125,6 +125,7 @@ export function updateChatRunProgressSnapshot(
     event.stream === "run_status" &&
     [
       "waiting_for_state",
+      "waiting_for_memory",
       "preparing_workspace",
       "naming_worktree",
       "creating_worktree",

@@ -4,11 +4,12 @@ import {
   createAgentRunRestartAbortError,
   isAgentRunDirectAbortReason,
 } from "../../agents/run-termination.js";
-import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
+import { emitAgentEvent, getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import {
   beginSessionWorkAdmission,
   type SessionWorkAdmissionLease,
 } from "../../sessions/session-lifecycle-admission.js";
+import { runWithChatAbortExecution } from "../chat-abort-lifecycle-internal.js";
 import { registerChatAbortController } from "../chat-abort.js";
 import {
   assertExpectedExistingSession,
@@ -25,7 +26,39 @@ import {
   setAbortedAgentDedupeEntries,
 } from "./agent-dedupe.js";
 import { resolveAgentSessionWorkStartError } from "./agent-handler-helpers.js";
+import { acquireTurnMemoryAdmission, requiresHeavyTurnMemory } from "./agent-memory-admission.js";
+import type { StartAgentRunExecutionParams } from "./agent-run-execution-types.js";
 import type { AgentTurnContext, AgentTurnIo } from "./types.js";
+
+export function runAgentExecutionWithAbortOwner(
+  params: StartAgentRunExecutionParams,
+  execute: (params: StartAgentRunExecutionParams) => Promise<void>,
+): Promise<void> {
+  return runWithChatAbortExecution(
+    params.prepared.activeRunAbort.entry,
+    () => execute(params),
+    params.prepared.activeRunAbort.cleanup,
+  );
+}
+
+/** Wait after acceptance/abort registration, but before workspace or runtime work. */
+export function acquireAgentRunMemory(
+  params: StartAgentRunExecutionParams,
+  assertCurrent: () => void,
+): Promise<() => void> {
+  return acquireTurnMemoryAdmission({
+    heavy: requiresHeavyTurnMemory({ ...params.request, spawnedBy: params.spawnedBy }),
+    settings: (params.cfgForAgent ?? params.cfg).agents?.defaults?.memoryAdmission,
+    signal: params.prepared.activeRunAbort.controller.signal,
+    assertCurrent,
+    onWait: (ahead) =>
+      emitAgentEvent({
+        runId: params.runId,
+        stream: "run_status",
+        data: { phase: "waiting_for_memory", ahead },
+      }),
+  });
+}
 
 export function createAgentAdmissionController(params: {
   assertAdmissionCurrent?: () => void;
