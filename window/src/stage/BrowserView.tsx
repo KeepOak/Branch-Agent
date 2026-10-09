@@ -376,9 +376,9 @@ function BrowserPanel({ engine, gatewayUrl, blocks, name = "It", running = false
       at,
       items: [
         { kind: "head", label: "This page" },
-        { label: "Take a screenshot", disabled: tab ? undefined : "Nothing open.", run: () => void call("POST", "/screenshot", { targetId: tab?.targetId }).then((r) => setNote(`Saved the screenshot to ${String((r as { path?: unknown } | null)?.path ?? "the browser's folder")}.`), fail) },
-        { label: "Save as PDF", disabled: tab ? undefined : "Nothing open.", run: () => void call("POST", "/pdf", { targetId: tab?.targetId }).then((r) => setNote(`Saved the page as a PDF to ${String((r as { path?: unknown } | null)?.path ?? "the browser's folder")}.`), fail) },
-        { label: "Find on this page", disabled: tab ? undefined : "Nothing open.", run: () => setFind("") },
+        { label: "Take a screenshot", run: () => void call("POST", "/screenshot", { targetId: tab?.targetId }).then((r) => setNote(`Saved the screenshot to ${String((r as { path?: unknown } | null)?.path ?? "the browser's folder")}.`), fail) },
+        { label: "Save as PDF", run: () => void call("POST", "/pdf", { targetId: tab?.targetId }).then((r) => setNote(`Saved the page as a PDF to ${String((r as { path?: unknown } | null)?.path ?? "the browser's folder")}.`), fail) },
+        { label: "Find on this page", run: () => setFind("") },
         { kind: "info", label: "Screenshots black out password boxes." },
       ],
     });
@@ -409,13 +409,13 @@ function BrowserPanel({ engine, gatewayUrl, blocks, name = "It", running = false
     <div className="browser-st">
       {tab ? (
         <div className="bar-br" role="toolbar" aria-label="Browser tools">
-          <button type="button" className="btn ghost sm tb-br" aria-haspopup="menu" disabled={!showChrome} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); pageMenu({ x: r.left, y: r.bottom + 6 }); }}>
+          <button type="button" className="btn ghost sm tb-br" aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); pageMenu({ x: r.left, y: r.bottom + 6 }); }}>
             <SIcon name="doc" small />
             <span>Page</span>
             <SIcon name="down" small />
           </button>
           <span className="tb-grow" />
-          <button type="button" className="btn ghost sm tb-br" aria-pressed={drawer} disabled={!tab} onClick={() => setDrawer((v) => !v)}>
+          <button type="button" className="btn ghost sm tb-br" aria-pressed={drawer} onClick={() => setDrawer((v) => !v)}>
             <SIcon name="tools" small />
             <span>Tools</span>
           </button>

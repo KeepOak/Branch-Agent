@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { BrowserView, browserRemotePoint } from "./BrowserView";
+import browserPanelSource from "./BrowserView.tsx?raw";
 import type { WindowEngine } from "../connect/engine";
 import type { Block } from "../thread/model";
 const casts = vi.hoisted(() => ({
@@ -84,6 +85,20 @@ afterEach(async () => {
   document.body.innerHTML = "";
 });
 describe("scoped browser viewing", () => {
+  it("has no unreachable disabled branches in tab-only Page and Tools controls", async () => {
+    // Runtime sees these expressions as false in either version; inspect the
+    // source as well to guard the review's explicit dead-code requirement.
+    expect(browserPanelSource).not.toMatch(/disabled: tab \? undefined : "Nothing open\."/);
+    expect(browserPanelSource).not.toContain("disabled={!showChrome}");
+    expect(browserPanelSource).not.toContain("disabled={!tab}");
+    await render(owner(routed(() => new Promise(() => {})) as any));
+    const page = [...container.querySelectorAll("button")].find((b) => b.textContent === "Page")!;
+    const tools = [...container.querySelectorAll("button")].find((b) => b.textContent === "Tools")!;
+    expect(page.disabled).toBe(false);
+    expect(tools.disabled).toBe(false);
+    await act(async () => page.click());
+    for (const item of document.querySelectorAll('[role="menuitem"]')) expect(item.getAttribute("aria-disabled")).not.toBe("true");
+  });
   it("hides page navigation when the browser is stopped or has no tabs", async () => {
     for (const running of [false, true]) {
       await render(owner(vi.fn(async (_method: string, params: any) => params.path === "/" ? { running } : { tabs: [] }) as any), []);
