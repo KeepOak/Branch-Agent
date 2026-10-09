@@ -4,16 +4,14 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { FileLockHandle } from "@openclaw/fs-safe/file-lock";
-import {
-  DEFAULT_HEAVY_STEP_MEMORY_MB,
-  type HeavyStepKind,
-} from "./heavy-step-command.mts";
+import { availableMemoryBytes } from "./available-memory.mts";
 import {
   acquireDistArtifactOwnership,
   canReclaimDistArtifactOwner,
   readDistArtifactStartIdentity,
   resolveDistArtifactLockPath,
 } from "./dist-artifact-lock.mts";
+import { DEFAULT_HEAVY_STEP_MEMORY_MB, type HeavyStepKind } from "./heavy-step-command.mts";
 import { hasUnjoinedWork } from "./managed-child-process.mts";
 import { isRecord } from "./record-shared.mjs";
 
@@ -150,7 +148,7 @@ export async function acquireHostHeavyStep(
       // Reusing a slot must not skip a larger child step's memory requirement.
       const inheritedNeed = typeof inherited.need === "number" ? inherited.need : 0;
       if (need > inheritedNeed) {
-        while (os.freemem() < need) {
+        while (availableMemoryBytes() < need) {
           (options.onWait ?? console.error)("Waiting for memory: 0 builds ahead");
           await delay(500, undefined, { signal: options.signal });
         }
@@ -199,7 +197,7 @@ export async function acquireHostHeavyStep(
         return true;
       }).length;
       let lock: FileLockHandle | undefined;
-      if (ahead === 0 && os.freemem() >= need && !hasChildClaims(directory)) {
+      if (ahead === 0 && availableMemoryBytes() >= need && !hasChildClaims(directory)) {
         try {
           lock = await acquireDistArtifactOwnership(root, false, options.signal, false);
         } catch (error) {
@@ -218,7 +216,7 @@ export async function acquireHostHeavyStep(
         }
       }
       if (lock) {
-        if (os.freemem() >= need) {
+        if (availableMemoryBytes() >= need) {
           return {
             env: {
               ...env,
@@ -249,7 +247,7 @@ export async function acquireHostHeavyStep(
         (hasChildClaims(directory) || (active && !canReclaimDistArtifactOwner(active, directory))
           ? 1
           : 0);
-      const message = `Waiting for ${os.freemem() < need ? "memory" : "build slot"}: ${count} build${count === 1 ? "" : "s"} ahead`;
+      const message = `Waiting for ${availableMemoryBytes() < need ? "memory" : "build slot"}: ${count} build${count === 1 ? "" : "s"} ahead`;
       if (message !== previousMessage) {
         (options.onWait ?? console.error)(message);
         previousMessage = message;

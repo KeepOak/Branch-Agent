@@ -21,6 +21,10 @@ continue automatically. Chat, file reads, searches and other light tool turns do
 not enter this queue. The process timeout starts when execution starts, not while
 waiting; source cancellation still cancels a queued step.
 
+Available memory includes reclaimable inactive and purgeable pages on macOS and
+uses `MemAvailable` on Linux. Windows uses the operating system's available
+physical-memory counter, as before.
+
 Repository engine builds, engine tests and strict typechecks use the same
 dist-artifact ownership implementation as runtime admission. Joined child scripts
 inherit admission rather than competing against their own parent. Checkout artifact

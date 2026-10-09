@@ -2,6 +2,21 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { access, readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { availableMemoryBytes } from '../engine/scripts/lib/available-memory.mts';
+
+test('available memory includes reclaimable macOS pages instead of only unused pages', () => {
+  assert.equal(availableMemoryBytes({
+    platform: 'darwin', freemem: 0,
+    vmStat: 'Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free: 2.\nPages inactive: 400000.\nPages purgeable: 10000.\n',
+  }), 410002 * 16384);
+});
+
+test('available memory uses Linux MemAvailable and preserves the Windows counter', () => {
+  assert.equal(availableMemoryBytes({ platform: 'linux', freemem: 0,
+    meminfo: 'MemFree: 0 kB\nMemAvailable: 7000000 kB\n' }), 7000000 * 1024);
+  assert.equal(availableMemoryBytes({ platform: 'win32', freemem: 1234 }), 1234);
+  assert.equal(availableMemoryBytes({ platform: 'darwin', vmStat: 'unavailable', freemem: 5678 }), 5678);
+});
 
 test('native tooling loads host admission without a source-loader preload', () => {
   const entrypoint = new URL('../engine/scripts/lib/host-heavy-step.mts', import.meta.url);

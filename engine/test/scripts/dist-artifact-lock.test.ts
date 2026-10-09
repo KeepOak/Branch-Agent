@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as fileLock from "@openclaw/fs-safe/file-lock";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import * as availableMemory from "../../scripts/lib/available-memory.mts";
 import {
   acquireDistArtifactOwnership,
   resolveDistArtifactLockPath,
@@ -31,6 +32,7 @@ const actual = await vi.importActual<typeof import("@openclaw/fs-safe/file-lock"
 );
 beforeEach(() => {
   vi.mocked(fileLock.acquireFileLock).mockReset().mockImplementation(actual.acquireFileLock);
+  vi.spyOn(availableMemory, "availableMemoryBytes").mockImplementation(() => os.freemem());
 });
 const fixture = createFixtureLifetime();
 afterEach(async () => {
@@ -45,6 +47,30 @@ const createRoot = () => {
   fs.mkdirSync(path.join(root, ".git"));
   return root;
 };
+
+it("host admission uses reclaimable memory for root and larger inherited steps", async () => {
+  const root = createRoot();
+  vi.spyOn(os, "freemem").mockReturnValue(0);
+  vi.mocked(availableMemory.availableMemoryBytes).mockReturnValue(16 * 1024 ** 2);
+  const controller = new AbortController();
+  const waiting = vi.fn(() => controller.abort());
+  const owner = await acquireHostHeavyStep("build", {
+    env: { BRANCH_HEAVY_STEP_DIRECTORY: root, BRANCH_HEAVY_STEP_BUILD_MEMORY_MB: "8" },
+    signal: controller.signal,
+    onWait: waiting,
+  });
+  try {
+    const child = await acquireHostHeavyStep("test", {
+      env: { ...owner.env, BRANCH_HEAVY_STEP_TEST_MEMORY_MB: "12" },
+      signal: controller.signal,
+      onWait: waiting,
+    });
+    await child.release();
+    expect(waiting).not.toHaveBeenCalled();
+  } finally {
+    await owner.release();
+  }
+});
 
 it("host admission retries a Windows owner-file deletion race without ignoring retained owners", async () => {
   const root = createRoot();
@@ -81,8 +107,16 @@ it("host admission preserves FIFO when requests share a wall-clock millisecond",
   syncBuiltinESMExports();
   const firstWait = vi.fn();
   const secondWait = vi.fn();
-  const first = acquireHostHeavyStep("build", { env, signal: controller.signal, onWait: firstWait });
-  const second = acquireHostHeavyStep("build", { env, signal: controller.signal, onWait: secondWait });
+  const first = acquireHostHeavyStep("build", {
+    env,
+    signal: controller.signal,
+    onWait: firstWait,
+  });
+  const second = acquireHostHeavyStep("build", {
+    env,
+    signal: controller.signal,
+    onWait: secondWait,
+  });
   try {
     expect(firstWait).toHaveBeenCalledWith("Waiting for memory: 1 build ahead");
     expect(secondWait).toHaveBeenCalledWith("Waiting for memory: 2 builds ahead");
