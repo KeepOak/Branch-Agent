@@ -2,7 +2,7 @@
 // window brought, each row opening its place; a version waiting to install lists the engine's own update notes
 // (update.status updateAvailable.commits) and offers "Install when idle".
 import { useState } from "react";
-import { versionParts } from "../connect/branch-version";
+import { isNewerBranchVersion, versionParts } from "../connect/branch-version";
 import { installOnComputer } from "../connect/desktop-component-updates";
 import { Dialog } from "./Dialog";
 import { Icon, type IconName } from "./icons";
@@ -52,14 +52,15 @@ function Rows({ title, rows, close }: { title: string; rows: NewRow[]; close: ()
 }
 
 export function WhatsNew(p: Props) {
-  const ready = p.update?.latest && p.update.latest !== p.version ? p.update.latest : null;
+  const ready = p.version.trim() && p.update?.latest && isNewerBranchVersion(p.update.latest, p.version) ? p.update.latest : null;
   const [on, setOn] = useState<"installed" | "ready">(p.startOnReady && ready ? "ready" : "installed");
   const notes = ready ? (p.update?.notes ?? []) : [];
   const waiting: NewGroups = { New: [], Better: notes.map((n) => ({ icon: "check", title: n, line: "Read about it in Updates & about.", run: p.onOpenUpdates })), Fixed: [] };
-  const groups = on === "ready" ? waiting : p.installed;
+  const showingReady = on === "ready" && Boolean(ready);
+  const groups = showingReady ? waiting : p.installed;
   const footer = (
     <>
-      {on === "ready" && p.desktopInstall ? (
+      {showingReady && p.desktopInstall ? (
         <button type="button" className="btn" data-testid="wn-install" disabled={p.update?.installing} onClick={() => (p.onClose(), p.onInstall())}>
           Install when idle
         </button>
@@ -82,7 +83,7 @@ export function WhatsNew(p: Props) {
         </span>
       ) : null}
       <p className="hint wn-hint">{on === "ready" && ready ? p.desktopInstall ? `What Branch ${versionParts(ready).short} brings. It installs when nothing is running and keeps a safety copy first.` : installOnComputer(p.computerName ?? "") : `What Branch ${versionParts(p.version).short} brought, and where each part lives.`}</p>
-      {on === "ready" && !notes.length ? <p className="hint">The update didn't say what it changes.</p> : null}
+      {showingReady && !notes.length ? <p className="hint">The update didn't say what it changes.</p> : null}
       <Rows title="New" rows={groups.New} close={p.onClose} />
       <Rows title="Better" rows={groups.Better} close={p.onClose} />
       <Rows title="Fixed" rows={groups.Fixed} close={p.onClose} />

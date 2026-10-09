@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { setTimeout as sleep } from "node:timers/promises";
 import { isMainThread, threadId } from "node:worker_threads";
 import { isPromiseLike } from "@branch/normalization-core/promise-like";
+import { recordMainThreadWork } from "../logging/main-thread-work.js";
 import { createSubsystemLogger, type SubsystemLogger } from "../logging/subsystem.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 // The cache-state module keeps this lifecycle edge off the kysely value graph
@@ -407,6 +408,7 @@ function runSqliteTransactionSync<T>(
     }
   }
 
+  const transactionWorkStartedAt = performance.now();
   execTimedTransactionStep({
     db,
     options,
@@ -436,6 +438,12 @@ function runSqliteTransactionSync<T>(
     throw error;
   } finally {
     // Include COMMIT and failed holders: both keep other writers waiting too.
+    // Each thread keeps its own bounded tally; only the thread running the liveness sampler drains it.
+    recordMainThreadWork(
+      "sqlite",
+      options?.operationLabel || captureSqliteReaderOwner()?.operation || "unlabeled",
+      performance.now() - transactionWorkStartedAt,
+    );
     try {
       logSlowTransactionHold({
         db,
