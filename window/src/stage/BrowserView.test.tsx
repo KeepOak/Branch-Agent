@@ -61,6 +61,11 @@ const routed = (screencast: () => unknown) =>
   vi.fn(async (_method: string, params: any) =>
     params.path === "/" ? { running: true } : params.path === "/tabs" ? { tabs: [{ targetId: "tab-one", title: "Report", url: "https://example.test", type: "page" }] } : params.path === "/screencast" ? screencast() : {},
   );
+/** Types the way a person does: the native value setter, then an input event React listens for. */
+const typeInto = (input: HTMLInputElement, value: string) => {
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+};
 const flush = async () => {
   for (let i = 0; i < 4; i++) await act(async () => await Promise.resolve());
 };
@@ -253,6 +258,28 @@ describe("scoped browser viewing", () => {
     expect(input.value).toBe("https://example.test");
     await act(async () => input.form!.requestSubmit());
     expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ path: "/navigate", body: { url: "https://example.test", targetId: "tab-one" } }));
+  });
+  it("lets a person type an address before any tab is open, and opens it on Enter", async () => {
+    const request = vi.fn(async (_m: string, params: any) =>
+      params.path === "/" ? { running: true } : params.path === "/tabs" ? { tabs: [] } : params.path === "/tabs/open" ? { targetId: "tab-new" } : {},
+    );
+    await render(owner(request as any));
+    await flush();
+    const input = container.querySelector<HTMLInputElement>(".br-addr-st")!;
+    expect(input.disabled).toBe(false);
+    await act(async () => typeInto(input, "example.test/docs"));
+    expect(input.value).toBe("example.test/docs");
+    await act(async () => input.form!.requestSubmit());
+    expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ path: "/tabs/open", body: { url: "https://example.test/docs" } }));
+  });
+  it("reloads the page in front with the page's own reload", async () => {
+    const request = routed(() => new Promise(() => {}));
+    await render(owner(request as any));
+    await flush();
+    const reload = container.querySelector<HTMLButtonElement>('[aria-label="Reload"]')!;
+    expect(reload.disabled).toBe(false);
+    await act(async () => reload.click());
+    expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ path: "/act", body: { kind: "evaluate", fn: "() => location.reload()", targetId: "tab-one" } }));
   });
   it("maps clicks through letterboxing and ignores the margins", () => {
     const rect = { left: 0, top: 0, width: 400, height: 400 },

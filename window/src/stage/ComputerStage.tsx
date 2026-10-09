@@ -228,7 +228,10 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
     setMenu({
       at,
       label: "More for this view",
-      items: [{ label: "Disconnect", run: () => onClose(), disabled: connected ? undefined : "Nothing is connected." }],
+      items: [
+        { label: "Disconnect", run: () => onClose(), disabled: connected ? undefined : "Nothing is connected." },
+        { label: "Pause", run: () => undefined, disabled: NO_PAUSE },
+      ],
     });
   const title = `${name}’s ${browser ? "browser" : "computer"}`;
   return (
@@ -271,12 +274,11 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
                 Take over
               </button>
             ) : null}
-            <button type="button" className="btn sm" disabled title={NO_PAUSE}>
-              Pause
-            </button>
-            <button type="button" className="btn ghost sm" disabled={!running} title={running ? undefined : `${name} isn't working right now.`} onClick={stop}>
-              Stop
-            </button>
+            {running ? (
+              <button type="button" className="btn ghost sm" title={`Stops what ${name} is doing now`} onClick={stop}>
+                Stop
+              </button>
+            ) : null}
           </>
         )}
         {browser ? (
