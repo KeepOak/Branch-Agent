@@ -85,6 +85,32 @@ afterEach(async () => {
   document.body.innerHTML = "";
 });
 describe("scoped browser viewing", () => {
+  it("shows progress instead of stale empty states while starting and opening the first page", async () => {
+    let started = false, opened = false;
+    let finishStart!: () => void, finishOpen!: () => void;
+    const starting = new Promise<void>((resolve) => { finishStart = resolve; });
+    const opening = new Promise<void>((resolve) => { finishOpen = resolve; });
+    const request = vi.fn(async (_method: string, params: any) => {
+      if (params.path === "/") return { running: started };
+      if (params.path === "/start") { await starting; started = true; return {}; }
+      if (params.path === "/tabs/open") { await opening; opened = true; return { targetId: "owner-tab" }; }
+      if (params.path === "/tabs") return { tabs: opened ? [{ targetId: "owner-tab", title: "Example", url: "https://example.test" }] : [] };
+      return new Promise(() => {});
+    });
+    await render(owner(request as any), []);
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="New tab"]')!.click());
+    const assertProgress = () => {
+      expect(container.querySelector(".blank-st")?.textContent).toContain("Opening your page…");
+      expect(container.querySelector(".blank-st")?.textContent).not.toMatch(/isn't running|Nothing open/);
+    };
+    assertProgress();
+    await act(async () => finishStart());
+    await flush();
+    assertProgress();
+    await act(async () => finishOpen());
+    await flush();
+    expect(container.querySelector('canvas[aria-label="Live browser page"]')).not.toBeNull();
+  });
   it("has no unreachable disabled branches in tab-only Page and Tools controls", async () => {
     // Runtime sees these expressions as false in either version; inspect the
     // source as well to guard the review's explicit dead-code requirement.

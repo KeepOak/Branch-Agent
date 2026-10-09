@@ -391,7 +391,8 @@ function BrowserPanel({ engine, gatewayUrl, blocks, name = "It", running = false
   };
   const working = running && !control;
   let page: ReactNode;
-  if (browser.phase === "none") page = <Blank title="Nothing open" text={`${name} hasn't opened a page in this conversation.`} />;
+  if (opening && !tab) page = <Blank title="Opening your page…" text="Starting the browser if needed and opening your address." />;
+  else if (browser.phase === "none") page = <Blank title="Nothing open" text={`${name} hasn't opened a page in this conversation.`} />;
   else if (browser.phase === "loading" && !browser.tabs.length) page = <Blank title="Connecting to the browser…" text="Reading this conversation's tabs." />;
   else if (browser.phase === "error") page = <Blank title="Couldn't connect to the browser" text={browser.error ?? ""}><button type="button" className="btn sm" onClick={refresh}>Try again</button></Blank>;
   else if (browser.phase === "stopped")
