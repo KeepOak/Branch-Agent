@@ -130,14 +130,20 @@ export function ConversationMoreButton({
   );
 }
 
+function HistoryButton({ direction, onClick }: { direction: "Back" | "Forward"; onClick?: () => void }) {
+  return <button type="button" className="ib" aria-label={direction} disabled={!onClick}
+    title={onClick ? direction : direction === "Back" ? "No earlier page in this window." : "No later page in this window."}
+    onClick={onClick}><Icon name={direction === "Back" ? "back" : "forward"} /></button>;
+}
+
 /** The conversation header as its own row in the main column (narrow windows and focus mode, §3.2). */
 export function HeaderRow({ header, onCharacter, tools, onList, onBack, onForward }: { header: HeaderInfo; onCharacter?: () => void; tools?: ReactNode; onList?: () => void; onBack?: () => void; onForward?: () => void }) {
   const live = !header.room && ["think", "work", "search", "read", "wait"].includes(header.state);
   const tint = useHeaderTint(header);
   return (
     <div className={`head-row${live ? " live" : ""}${tint ? " tinted" : ""}`} style={tint ? ({ "--tint": tint } as CSSProperties) : undefined}>
-      <button type="button" className="ib" aria-label="Back" title="Back" onClick={onBack}><Icon name="back" /></button>
-      <button type="button" className="ib" aria-label="Forward" title="Forward" onClick={onForward}><Icon name="forward" /></button>
+      <HistoryButton direction="Back" onClick={onBack} />
+      <HistoryButton direction="Forward" onClick={onForward} />
       {onList ? <button type="button" className="ib" aria-label="Conversations" title="Conversations" data-testid="list-toggle" onClick={onList}><Icon name="menu" /></button> : null}
       <HeaderFace header={header} onCharacter={onCharacter} size={56} />
       {!header.room ? <span className="head-status-announcement" role="status" aria-live="polite" aria-atomic="true">{header.trunkName}: {stateWords(header)}</span> : null}
@@ -157,8 +163,8 @@ export function HeaderRow({ header, onCharacter, tools, onList, onBack, onForwar
 export function PlaceHead({ onList, onSettings, onBack, onForward }: { onList: () => void; onSettings: () => void; onBack?: () => void; onForward?: () => void }) {
   return (
     <div className="place-head" data-testid="place-head">
-      {onBack ? <button type="button" className="ib" aria-label="Back" title="Back" onClick={onBack}><Icon name="back" /></button> : null}
-      {onForward ? <button type="button" className="ib" aria-label="Forward" title="Forward" onClick={onForward}><Icon name="forward" /></button> : null}
+      <HistoryButton direction="Back" onClick={onBack} />
+      <HistoryButton direction="Forward" onClick={onForward} />
       <button type="button" className="ib" aria-label="Show conversations" title="Show conversations" onClick={onList}>
         <Icon name="menu" />
       </button>
@@ -192,8 +198,8 @@ export function TopBar({ compact, machine, header, dark, listHidden, onTheme, on
           <span className="head" />
         ) : header ? (
           <div className="head">
-            <button type="button" className="ib" aria-label="Back" title="Back" onClick={onBack}><Icon name="back" /></button>
-            <button type="button" className="ib" aria-label="Forward" title="Forward" onClick={onForward}><Icon name="forward" /></button>
+            <HistoryButton direction="Back" onClick={onBack} />
+            <HistoryButton direction="Forward" onClick={onForward} />
             <HeaderFace header={header} onCharacter={onCharacter} />
             <div className="head-text">
               <HeadName h={header} />
@@ -205,8 +211,8 @@ export function TopBar({ compact, machine, header, dark, listHidden, onTheme, on
           </div>
         ) : (
           <div className="head">
-            <button type="button" className="ib" aria-label="Back" title="Back" onClick={onBack}><Icon name="back" /></button>
-            <button type="button" className="ib" aria-label="Forward" title="Forward" onClick={onForward}><Icon name="forward" /></button>
+            <HistoryButton direction="Back" onClick={onBack} />
+            <HistoryButton direction="Forward" onClick={onForward} />
             {onSettings ? (
               <button type="button" className="ib" aria-label="Settings" title="Settings" data-testid="place-settings" onClick={onSettings}>
                 <Icon name="gear" />

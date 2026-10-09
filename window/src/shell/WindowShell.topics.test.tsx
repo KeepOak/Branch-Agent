@@ -98,6 +98,33 @@ async function show(openKey: string, topics: typeof trip[], history: HistoryLine
 const threadNavs = (host: HTMLElement) => [...host.querySelectorAll("nav")].filter((nav) => /Threads/.test(nav.getAttribute("aria-label") ?? ""));
 
 describe("preview topic row in the shell", () => {
+  it("enables Back and Forward only within the window's known history", async () => {
+    window.history.replaceState(null, "");
+    const host = await show("agent:oak:main", [trip], []);
+    const back = () => host.querySelector<HTMLButtonElement>('.head-row [aria-label="Back"]')!;
+    const forward = () => host.querySelector<HTMLButtonElement>('.head-row [aria-label="Forward"]')!;
+    expect(back().disabled).toBe(true);
+    expect(back().title).toBe("No earlier page in this window.");
+    expect(forward().disabled).toBe(true);
+    expect(forward().title).toBe("No later page in this window.");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await act(async () => host.querySelector<HTMLButtonElement>('.tpRowT5 .tpGoT5[aria-current="false"]')!.click());
+    expect(back().disabled).toBe(false);
+    expect(forward().disabled).toBe(true);
+    const end = window.history.state;
+    await act(async () => {
+      window.history.replaceState({ branchRoute: { kind: "chat", key: "agent:oak:main" }, branchIndex: 0 }, "");
+      window.dispatchEvent(new PopStateEvent("popstate", { state: window.history.state }));
+    });
+    expect(back().disabled).toBe(true);
+    expect(forward().disabled).toBe(false);
+    await act(async () => {
+      window.history.replaceState(end, "");
+      window.dispatchEvent(new PopStateEvent("popstate", { state: end }));
+    });
+    expect(back().disabled).toBe(false);
+    expect(forward().disabled).toBe(true);
+  });
   it("renders one Threads nav for a contact with topics, not TopicRail and ThreadColumn together", async () => {
     const host = await show("agent:oak:main", [trip], [{ kind: "text", key: "g1", text: "General last line", streaming: false }]);
     await vi.waitFor(() => expect(host.querySelector(".topicsT5")).toBeTruthy());
