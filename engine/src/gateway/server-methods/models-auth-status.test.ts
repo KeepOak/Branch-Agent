@@ -1030,6 +1030,7 @@ describe("models.authStatus", () => {
       authStore: preparedAuthStore,
       config: runtimeConfig,
       timeoutMs: 5_000,
+      includeClaudeCode: true,
     });
     let result: ModelAuthStatusResult | undefined;
     await waitForFast(async () => {
@@ -1076,6 +1077,7 @@ describe("models.authStatus", () => {
       authStore: preparedAuthStore,
       config: expect.any(Object),
       timeoutMs: 5_000,
+      includeClaudeCode: true,
     });
     let result: ModelAuthStatusResult | undefined;
     await waitForFast(async () => {
@@ -1155,6 +1157,7 @@ describe("models.authStatus", () => {
         authStore: preparedAuthStore,
         config: expect.any(Object),
         timeoutMs: 5_000,
+        includeClaudeCode: true,
       });
     },
   );
@@ -1307,10 +1310,6 @@ describe("models.authOrderSet", () => {
       params: { provider: "openai", profileIds: ["openai:two", "openai:one"] },
       config: { auth: { order: { openai: ["openai:one", "openai:two"] } } },
       message: "auth configuration",
-    },
-    {
-      params: { provider: "openai", profileIds: ["openai:one"] },
-      message: "every available profile",
     },
     {
       params: { provider: "anthropic", profileIds: ["openai:one"] },

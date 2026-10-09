@@ -3452,7 +3452,8 @@ describe("prepareCliRunContext", () => {
       resolveExecutionArgs: ({ baseArgs }) => [...baseArgs],
       prepareExecution: async () => ({ execute }),
       config: {
-        command: "/bin/sh",
+        // Any executable that resolves on every OS; the fake execute never spawns it.
+        command: process.execPath,
         args: [],
         input: "stdin",
         output: "jsonl",
@@ -3532,7 +3533,7 @@ describe("prepareCliRunContext", () => {
         const processRun = executePluginOwnedProcess({
           context,
           execute: target.execute,
-          executionCommand: "/bin/sh",
+          executionCommand: process.execPath,
           executionArgs: [],
           env: { PATH: "/bin:/usr/bin" },
           prompt: context.params.prompt,
@@ -4359,7 +4360,7 @@ describe("prepareCliRunContext", () => {
           : null;
       },
       config: {
-        command: "/bin/sh",
+        command: process.execPath,
         args: [],
         resumeArgs: ["--resume", "{sessionId}"],
         input: "stdin",
@@ -4886,8 +4887,9 @@ describe("prepareCliRunContext", () => {
       },
     });
 
-    expect(context.systemPrompt).not.toContain("cold-skill/SKILL.md");
-    expect(context.systemPrompt).toContain("healthy-skill/SKILL.md");
+    // The prompt lists skill files with this OS's path separator.
+    expect(context.systemPrompt).not.toContain(path.join("cold-skill", "SKILL.md"));
+    expect(context.systemPrompt).toContain(path.join("healthy-skill", "SKILL.md"));
   });
 
   it("keeps prompt skills when native plugin materialization returns no args", async () => {
@@ -5011,7 +5013,7 @@ describe("prepareCliRunContext", () => {
           resolveExecutionArgs: ({ baseArgs }) => [...baseArgs],
           autoSelectAuthProfile: false,
           config: {
-            command: "/bin/echo",
+            command: process.execPath,
             args: [],
             resumeArgs: ["--resume", "{sessionId}"],
             output: "jsonl",
