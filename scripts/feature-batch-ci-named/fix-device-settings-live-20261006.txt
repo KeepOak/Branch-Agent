@@ -1,3 +1,0 @@
-engine:src/cli/gateway-cli/run.option-collisions.test.ts
-engine:src/gateway/server-plugin-reload-cleanup.computer.test.ts
-window:src/places/settings/set2/computer-more.test.tsx

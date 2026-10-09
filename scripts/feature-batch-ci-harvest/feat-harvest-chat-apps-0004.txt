@@ -1,3 +1,0 @@
-# Desktop-only batch: desktop/scripts/gateway-supervisor.test.mjs and
-# desktop/scripts/restart-engine.test.mjs run in desktop-checks.yml.
-# Harvest currently supports engine and window Vitest files only.

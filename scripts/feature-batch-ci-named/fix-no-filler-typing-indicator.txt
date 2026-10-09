@@ -1,1 +1,0 @@
-window:src/thread/typing-indicator.test.tsx

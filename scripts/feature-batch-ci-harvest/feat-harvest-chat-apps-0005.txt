@@ -1,5 +1,0 @@
-engine:src/gateway/channel-health-monitor.test.ts
-engine:src/gateway/channel-health-policy.test.ts
-engine:src/gateway/server-channels.test.ts
-engine:src/gateway/server-methods/channels.status.test.ts
-window:src/places/settings/set1/chatapps.test.tsx

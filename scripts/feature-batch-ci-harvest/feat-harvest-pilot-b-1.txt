@@ -1,2 +1,0 @@
-engine:extensions/discord/src/monitor/discord-context-provider.test.ts
-engine:extensions/discord/src/monitor/message-handler.context.test.ts

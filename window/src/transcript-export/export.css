@@ -1,4 +1,0 @@
-.export-fields { display: grid; gap: 16px; }
-.export-fields label { display: flex; align-items: center; gap: 10px; }
-.export-fields input { accent-color: var(--accent); }
-.export-fields select { border: 1px solid var(--line); border-radius: 8px; background: var(--raise); color: var(--ink); padding: 6px 10px; font: inherit; }

@@ -1,3 +1,0 @@
-engine:src/gateway/contacts/outside-agents.test.ts
-window:src/rooms/room-thread.test.tsx
-window:src/rooms/rooms.test.ts

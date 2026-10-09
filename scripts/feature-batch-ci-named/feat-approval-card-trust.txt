@@ -1,2 +1,0 @@
-window:src/thread/ApprovalCard.trust.test.tsx
-window:src/thread/approval-trust.test.ts

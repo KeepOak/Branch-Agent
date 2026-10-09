@@ -1,8 +1,0 @@
-* text=auto eol=lf
-*.png binary
-*.webp binary
-*.webm binary
-*.gz binary
-*.blend binary
-docs/upstream/COPIED.csv merge=union
-

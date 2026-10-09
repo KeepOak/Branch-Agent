@@ -1,2 +1,0 @@
-engine:packages/gateway-protocol/src/legacy-theme-catalog.test.ts
-window:src/places/settings/set1/appearance.test.tsx

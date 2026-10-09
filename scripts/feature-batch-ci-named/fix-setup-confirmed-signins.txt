@@ -1,3 +1,0 @@
-engine:src/agents/model-auth.profiles.test.ts
-window:src/places/settings/config-store.test.ts
-window:src/setup/setup.test.tsx

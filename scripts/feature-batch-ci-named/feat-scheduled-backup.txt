@@ -1,3 +1,0 @@
-engine:src/commands/backup-no-secrets.test.ts
-engine:src/gateway/server-methods/backup-settings.test.ts
-window:src/places/settings/set2/backups.test.tsx

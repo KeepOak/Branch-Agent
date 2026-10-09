@@ -1,2 +1,0 @@
-window:src/connect/desktop-component-updates.test.tsx
-window:src/places/settings/set2/set2.test.tsx

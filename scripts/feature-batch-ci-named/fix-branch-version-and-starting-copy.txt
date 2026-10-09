@@ -1,2 +1,0 @@
-window:src/connect/branch-version.test.tsx
-window:src/setup/starting-connection.test.tsx
