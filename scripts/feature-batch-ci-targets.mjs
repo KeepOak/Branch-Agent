@@ -695,13 +695,15 @@ export function shardTests(tests, shard, weights) {
   return planShards(tests, shard.total, weights).files[shard.index];
 }
 
-// Pull requests stay at ten Linux shards. Main and nightly use these counts so each
-// shard's expected job, including setup and the Linux shard-1 typecheck, is at most
+// Pull requests stay at ten Linux shards. Main and nightly use six Linux, ten
+// Windows and nine macOS shards; four extra jobs add setup cost and queue time,
+// while max-parallel stays six. These counts keep each
+// shard's expected job, including setup and the Linux shard-1 typecheck, at most
 // 12 minutes. Windows and macOS scales are the median job-time / linux-test-weight
 // ratio from main-push successes on 2026-10-08 (1.50 and 1.35). Ubuntu weights are
 // already hot measurements, so that scale stays 1.
 export const pullRequestLinuxShardCount = 10;
-export const mainPushShardCounts = { ubuntu: 6, windows: 8, macos: 7 };
+export const mainPushShardCounts = { ubuntu: 6, windows: 10, macos: 9 };
 export const shardBudgetSeconds = 12 * 60;
 export const windowShardFileSeconds = 2;
 export const runnerTestScale = { ubuntu: 1, windows: 1.5, macos: 1.35 };

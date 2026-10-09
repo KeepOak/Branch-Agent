@@ -58,8 +58,8 @@ test('the 15-minute cap stays, and every planned shard fits the 12-minute budget
   assert.deepEqual(labels(pullRequest, 'ubuntu-latest'), Array.from({ length: pullRequestLinuxShardCount }, (_, index) => `${index + 1}/10`));
   assert.deepEqual(pullRequest.filter(row => row.os === 'windows-latest').map(row => row.label), ['touched']);
   assert.deepEqual(labels(main, 'ubuntu-latest'), Array.from({ length: mainPushShardCounts.ubuntu }, (_, index) => `${index + 1}/6`));
-  assert.deepEqual(labels(main, 'windows-latest'), Array.from({ length: mainPushShardCounts.windows }, (_, index) => `${index + 1}/8`));
-  assert.deepEqual(labels(main, 'macos-latest'), Array.from({ length: mainPushShardCounts.macos }, (_, index) => `${index + 1}/7`));
+  assert.deepEqual(labels(main, 'windows-latest'), Array.from({ length: mainPushShardCounts.windows }, (_, index) => `${index + 1}/${mainPushShardCounts.windows}`));
+  assert.deepEqual(labels(main, 'macos-latest'), Array.from({ length: mainPushShardCounts.macos }, (_, index) => `${index + 1}/${mainPushShardCounts.macos}`));
   const plans = [
     ['ubuntu', expectedShardSeconds(mainPushShardCounts.ubuntu, { typecheck: true, scale: runnerTestScale.ubuntu })],
     ['windows', expectedShardSeconds(mainPushShardCounts.windows, { typecheck: false, scale: runnerTestScale.windows })],
@@ -69,6 +69,15 @@ test('the 15-minute cap stays, and every planned shard fits the 12-minute budget
   for (const [name, loads] of plans) {
     const slowest = Math.max(...loads);
     assert.ok(slowest <= shardBudgetSeconds, `${name} shard is ${slowest}s, over the ${shardBudgetSeconds}s budget`);
+  }
+});
+
+test('macOS and Windows main-push shards keep ten percent budget headroom', () => {
+  for (const name of ['macos', 'windows']) {
+    const loads = expectedShardSeconds(mainPushShardCounts[name], { typecheck: false, scale: runnerTestScale[name] });
+    const slowest = Math.max(...loads);
+    const headroomBudget = shardBudgetSeconds * 0.9;
+    assert.ok(slowest <= headroomBudget, `${name} shard is ${slowest}s, over the ${headroomBudget}s headroom budget; add a shard for ${name}`);
   }
 });
 
