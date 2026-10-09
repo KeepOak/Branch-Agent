@@ -2,6 +2,7 @@
 // item carries the gutter face, as the approved design draws it: the Steps fold when the turn starts with steps,
 // else the first reply. A new user message or a new run always starts a new fold (preview stepsPB18 / threads.fixPB18).
 import type { Block } from "./model";
+import { isInternalStep } from "./internal-steps";
 
 type Step = Extract<Block, { kind: "step" }>;
 
@@ -42,6 +43,7 @@ export function layout(blocks: readonly Block[], offset = 0): Item[] {
   // A user message (or a later step from another run) must not join the fold that just closed.
   let sealSteps = false;
   blocks.forEach((block, i) => {
+    if (isInternalStep(block)) return;
     if (block.kind === "user") {
       replied = false;
       faced = false;
