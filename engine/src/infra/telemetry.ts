@@ -360,35 +360,24 @@ export async function checkTelemetryUpdate(
     let networkAttempted = false;
 
     try {
-      const featureStatsEnabled = isFeatureStatsOptedIn(config);
-      const headers: Record<string, string> = {
-        "User-Agent": buildTelemetryUserAgent(options.surface),
-      };
-      const init: RequestInit = {
-        method: featureStatsEnabled ? "POST" : "GET",
-        headers,
-      };
-      if (featureStatsEnabled) {
-        headers["Content-Type"] = "application/json";
-        init.body = JSON.stringify(
-          await prepareTelemetryPayload(config, { surface: options.surface }, context),
-        );
-      }
+      const payload = JSON.stringify(
+        await prepareTelemetryPayload(config, { surface: options.surface }, context),
+      );
+      // Re-check opt-in just before the request, so an opt-out or Do Not Track set mid-check sends nothing.
       const currentConfig = getConfig();
-      if (isUpdateCheckDisabled(currentConfig)) {
+      if (isUpdateCheckDisabled(currentConfig) || !isFeatureStatsOptedIn(currentConfig)) {
         return { update: cached, networkAttempted };
       }
-      if (
-        featureStatsEnabled &&
-        (currentConfig.telemetry?.enabled !== true || isDoNotTrackEnabled())
-      ) {
-        init.method = "GET";
-        delete headers["Content-Type"];
-        delete init.body;
-      }
-      init.signal = AbortSignal.timeout(TELEMETRY_TIMEOUT_MS);
       networkAttempted = true;
-      const response = await (options.fetchImpl ?? fetch)(endpoint, init);
+      const response = await (options.fetchImpl ?? fetch)(endpoint, {
+        method: "POST",
+        headers: {
+          "User-Agent": buildTelemetryUserAgent(options.surface),
+          "Content-Type": "application/json",
+        },
+        body: payload,
+        signal: AbortSignal.timeout(TELEMETRY_TIMEOUT_MS),
+      });
       if (response.status !== 200) {
         lastFailedAttempt = { at: nowMs, endpoint, stateDirectory };
         return { update: cached, networkAttempted };

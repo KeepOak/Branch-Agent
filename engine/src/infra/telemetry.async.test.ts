@@ -279,7 +279,7 @@ it.each(["do-not-track", "opt-out", "update-disabled", "still-enabled"] as const
       count.resolve(3);
       await checking;
     }
-    if (change === "update-disabled") {
+    if (change === "update-disabled" || change === "opt-out" || change === "do-not-track") {
       expect(fetchImpl).not.toHaveBeenCalled();
       expect(await checking).toBeNull();
     } else if (change === "still-enabled") {
@@ -292,14 +292,6 @@ it.each(["do-not-track", "opt-out", "update-disabled", "still-enabled"] as const
         throw new Error("Expected the telemetry JSON request body");
       }
       expect(JSON.parse(body)).toMatchObject({ features: { sessionsLast24h: 3 } });
-    } else {
-      expect(fetchImpl).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ method: "GET" }),
-      );
-      const request = fetchImpl.mock.calls[0]?.[1];
-      expect(request).not.toHaveProperty("body");
-      expect(request).not.toHaveProperty("headers.Content-Type");
     }
   },
 );
