@@ -295,6 +295,7 @@ function BrowserPanel({ engine, gatewayUrl, blocks, name = "It", running = false
   const browser = useBrowser(engine, route, tick + steps);
   const [picked, setPicked] = useState("");
   const [mine, setMine] = useState<Set<string>>(new Set());
+  const [closed, setClosed] = useState<Set<string>>(new Set());
   const [address, setAddress] = useState<{ for: string; text: string } | null>(null);
   const [drawer, setDrawer] = useState(false);
   const [menu, setMenu] = useState<{ at: MenuAnchor; items: MenuItem[] } | null>(null);
@@ -304,7 +305,8 @@ function BrowserPanel({ engine, gatewayUrl, blocks, name = "It", running = false
   const [find, setFind] = useState<string | null>(null);
   const [view, setView] = useState<{ url?: string; title?: string; phase: BrowserPhase }>({ phase: "empty" });
   const recordedNewest = entries.at(-1)?.tab.targetId;
-  const tab = browser.tabs.find((t) => t.targetId === picked) ?? browser.tabs.find((t) => t.targetId === recordedNewest) ?? browser.tabs[0];
+  const tabs = browser.tabs.filter((t) => !closed.has(t.targetId));
+  const tab = tabs.find((t) => t.targetId === picked) ?? tabs.find((t) => t.targetId === recordedNewest) ?? tabs[0];
   const entry: BrowserPresentation | null = route && tab ? { tab: { ...route, targetId: tab.targetId } as BrowserPresentation["tab"], revision: String(tick), url: tab.url, title: tab.title } : null;
   const onView = useCallback(
     (s: { phase: BrowserPhase; url?: string; title?: string }) => {
@@ -324,7 +326,7 @@ function BrowserPanel({ engine, gatewayUrl, blocks, name = "It", running = false
     return browserCall(engine, route, method, path, options);
   };
   const refresh = () => setTick((t) => t + 1);
-  const url = view.phase === "connected" && view.url ? view.url : tab?.url ?? "";
+  const url = tab && view.phase === "connected" && view.url ? view.url : tab?.url ?? "";
   const shownAddress = address && address.for === (tab?.targetId ?? "") ? address.text : url;
   const go = (raw: string) => {
     const target = raw.trim();
@@ -369,7 +371,13 @@ function BrowserPanel({ engine, gatewayUrl, blocks, name = "It", running = false
   };
   const closeTab = (id: string) => {
     onControl?.(true);
-    void call("DELETE", `/tabs/${encodeURIComponent(id)}`).then(refresh, fail);
+    // Retire the viewer before DELETE can close its stream. A failed close
+    // restores the tab rather than leaving a working page hidden.
+    setClosed((all) => new Set(all).add(id));
+    void call("DELETE", `/tabs/${encodeURIComponent(id)}`).then(refresh, (error) => {
+      setClosed((all) => { const next = new Set(all); next.delete(id); return next; });
+      fail(error);
+    });
   };
   const pageMenu = (at: MenuAnchor) =>
     setMenu({
@@ -393,7 +401,7 @@ function BrowserPanel({ engine, gatewayUrl, blocks, name = "It", running = false
   let page: ReactNode;
   if (opening && !tab) page = <Blank title="Opening your page…" text="Starting the browser if needed and opening your address." />;
   else if (browser.phase === "none") page = <Blank title="Nothing open" text={`${name} hasn't opened a page in this conversation.`} />;
-  else if (browser.phase === "loading" && !browser.tabs.length) page = <Blank title="Connecting to the browser…" text="Reading this conversation's tabs." />;
+  else if (browser.phase === "loading" && !tabs.length) page = <Blank title="Connecting to the browser…" text="Reading this conversation's tabs." />;
   else if (browser.phase === "error") page = <Blank title="Couldn't connect to the browser" text={browser.error ?? ""}><button type="button" className="btn sm" onClick={refresh}>Try again</button></Blank>;
   else if (browser.phase === "stopped")
     page = (
@@ -450,7 +458,7 @@ function BrowserPanel({ engine, gatewayUrl, blocks, name = "It", running = false
               {showChrome ? (
                 <div className="br-chrome-st">
                   <div className="br-tabs-st" role="tablist" aria-label="Tabs">
-                    {browser.tabs.map((t) => (
+                    {tabs.map((t) => (
                       <span key={t.targetId} className={t.targetId === tab?.targetId ? "br-tab-st on" : "br-tab-st"} title={mine.has(t.targetId) ? "Your tab" : `${name}'s tab`}>
                         <button type="button" role="tab" aria-selected={t.targetId === tab?.targetId} onClick={() => setPicked(t.targetId)}>
                           {mine.has(t.targetId) ? null : <i className="br-dot-st" />}
@@ -492,11 +500,11 @@ function BrowserPanel({ engine, gatewayUrl, blocks, name = "It", running = false
                 </div>
               ) : null}
               {page}
-              {control && view.phase === "connected" ? <span className="drive-st">You're driving</span> : null}
+              {control && tab && view.phase === "connected" ? <span className="drive-st">You're driving</span> : null}
             </div>
           </div>
           {drawer && route && tab ? (
-            <BrowserTools engine={engine} route={route} targetId={tab.targetId} name={name} level={level} host={hostOf(url)} tabs={browser.tabs} onPick={setPicked} onCloseTab={closeTab} onClose={() => setDrawer(false)} />
+            <BrowserTools engine={engine} route={route} targetId={tab.targetId} name={name} level={level} host={hostOf(url)} tabs={tabs} onPick={setPicked} onCloseTab={closeTab} onClose={() => setDrawer(false)} />
           ) : null}
         </div>
       </div>

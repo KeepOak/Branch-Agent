@@ -85,6 +85,20 @@ afterEach(async () => {
   document.body.innerHTML = "";
 });
 describe("scoped browser viewing", () => {
+  it("retires a closing tab before its stream can flash an error and restores it if closing fails", async () => {
+    let rejectClose!: (error: Error) => void;
+    const closing = new Promise((_, reject) => { rejectClose = reject; });
+    const route = routed(() => new Promise(() => {}));
+    const request = vi.fn((method: string, params: any) => params.method === "DELETE" ? closing : route(method, params));
+    await render(owner(request as any));
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Close tab"]')!.click());
+    expect(container.querySelector('canvas[aria-label="Live browser page"]')).toBeNull();
+    for (const label of ["Back", "Forward", "Reload"]) expect(container.querySelector(`[aria-label="${label}"]`)).toBeNull();
+    await act(async () => rejectClose(new Error("Couldn't close the tab")));
+    await flush();
+    expect(container.querySelector('canvas[aria-label="Live browser page"]')).not.toBeNull();
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("Couldn't close the tab");
+  });
   it("shows progress instead of stale empty states while starting and opening the first page", async () => {
     let started = false, opened = false;
     let finishStart!: () => void, finishOpen!: () => void;
