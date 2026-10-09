@@ -36,9 +36,9 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
   return <Page title={title} lede={lede}>
     <div className="s2-keeper"><KeeperMark size={64} /></div>
     {error || data.error ? <Status tone="bad" title="Branch couldn’t update">{error || data.error}</Status> : null}
-    <Status tone={stagedWaiting ? "ok" : "idle"} title={statusLine(data.status, stagedWaiting)}>
+    <Status tone={stagedWaiting ? "ok" : "idle"} title={statusLine(data.status, stagedWaiting, auto.state?.autoApplyUpdates !== false)}>
       {stagedWaiting ? installRequested
-        ? "Installing. Running work carries on for up to about 5 minutes, then Branch restarts and picks up anything interrupted."
+        ? "Updating Branch. Running work carries on for up to about 5 minutes, then Branch restarts and picks up anything interrupted."
         : "Downloaded and checked. Your conversations and settings stay in place." : running ? `You have Branch ${versionParts(running).detail}. Checks for a new verified Branch release.` : "Checks for a new verified Branch release."}
     </Status>
     <Sec title="Updating">
@@ -48,10 +48,10 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
       </Ctl>
       <Ctl title="Check for updates"><Btn sm disabled={busy} onClick={() => void run("check")}>{busy ? "Working…" : "Check now"}</Btn></Ctl>
       {data.status?.phase === "available" ? <Ctl title="Update available"><Btn disabled={busy} onClick={() => void run("stage")}>Download update</Btn></Ctl> : null}
-      {stagedWaiting && install ? <Ctl title="Install now" sub="Running work carries on for up to about 5 minutes, then Branch restarts and picks up anything interrupted.">
-        <Btn pri sm disabled={installRequested} onClick={() => { install(); setInstallRequested(true); }}>{installRequested ? "Installing…" : "Install now"}</Btn>
+      {stagedWaiting && install ? <Ctl title="Update now" sub="Running work carries on for up to about 5 minutes, then Branch restarts and picks up anything interrupted.">
+        <Btn pri sm disabled={installRequested} onClick={() => { install(); setInstallRequested(true); }}>{installRequested ? "Updating…" : "Update now"}</Btn>
       </Ctl> : null}
-      <Hint>Branch checks every 10 minutes. A ready update installs by itself once every Trunk is idle, which can take a long time on a busy computer. Install now doesn’t wait for that.</Hint>
+      <Hint>Branch checks every 10 minutes. A ready update applies by itself once every Trunk is idle, which can take a long time on a busy computer. Update now doesn’t wait for that.</Hint>
     </Sec>
   </Page>;
 }
@@ -75,9 +75,9 @@ function HourlyUpdates({ title, engine, reason }: Pick<SettingsPageProps, "title
   </Page>;
 }
 
-function statusLine(status: ComponentUpdateStatus | null, stagedWaiting: boolean): string {
+function statusLine(status: ComponentUpdateStatus | null, stagedWaiting: boolean, autoApply: boolean): string {
   if (!status) return "Reading desktop update status…";
-  if (stagedWaiting) return "Update ready to install";
+  if (stagedWaiting) return autoApply ? "Update ready, applying when your Trunks finish" : "Update ready";
   if (status.phase === "available") return "A Branch update is ready";
   if (status.phase === "current" || status.phase === "staged") return "Branch is up to date.";
   if (status.phase === "checking") return "Checking for updates…";
