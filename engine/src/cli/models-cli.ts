@@ -38,7 +38,7 @@ export function registerModelsCli(program: Command) {
     .addHelpText(
       "after",
       () =>
-        `\n${theme.muted("Docs:")} ${formatDocsLink("/cli/models", "docs.openclaw.ai/cli/models")}\n`,
+        `\n${theme.muted("Docs:")} ${formatDocsLink("/cli/models")}\n`,
     );
   const hasJsonOutput = (opts?: { json?: boolean }): boolean =>
     Boolean(opts?.json || models.opts<{ json?: boolean }>().json);

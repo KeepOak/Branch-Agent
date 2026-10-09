@@ -80,7 +80,7 @@ async function promptWebToolsConfig(
       "Web search lets your agent look things up online using the `web_search` tool.",
       "Codex-capable models can use native Codex web search.",
       "Other models use a separate web search provider, which you can configure here.",
-      "Docs: https://docs.openclaw.ai/tools/web",
+      "Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
     ].join("\n"),
     "Web search",
   );
@@ -169,7 +169,7 @@ async function promptWebToolsConfig(
           [
             "No web search providers are currently available under this plugin policy.",
             "Enable plugins or remove deny rules, then rerun configure.",
-            "Docs: https://docs.openclaw.ai/tools/web",
+            "Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
           ].join("\n"),
           "Web search",
         );
@@ -263,7 +263,7 @@ export async function runConfigureWizard(
           [
             ...snapshot.issues.map((iss) => `- ${iss.path}: ${iss.message}`),
             "",
-            "Docs: https://docs.openclaw.ai/gateway/configuration",
+            "Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/configuration",
           ].join("\n"),
           "Config issues",
         );
@@ -663,7 +663,7 @@ export async function runConfigureWizard(
       const remoteUrl = normalizeOptionalString(nextConfig.gateway?.remote?.url);
       if (remoteUrl) {
         note(
-          ["Remote Gateway:", remoteUrl, "Docs: https://docs.openclaw.ai/gateway/remote"].join(
+          ["Remote Gateway:", remoteUrl, "Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/remote"].join(
             "\n",
           ),
           "Gateway",
@@ -738,7 +738,7 @@ export async function runConfigureWizard(
         `Gateway WS: ${displayLinks.wsUrl}`,
         gatewayStatusLine,
         ...windowsFirewallLines,
-        "Docs: https://docs.openclaw.ai/web/control-ui",
+        "Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/web/control-ui",
       ].join("\n"),
       "Control UI",
     );

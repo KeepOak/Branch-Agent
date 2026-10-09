@@ -44,7 +44,7 @@ type SandboxExplainOptions = {
   json: boolean;
 };
 
-const SANDBOX_DOCS_URL = "https://docs.openclaw.ai/sandbox";
+const SANDBOX_DOCS_URL = "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/sandbox";
 
 function normalizeExplainSessionKey(params: {
   cfg: BranchConfig;
@@ -407,7 +407,7 @@ export async function sandboxExplainCommand(
   for (const keyLocal of payload.fixIt) {
     lines.push(`  - ${keyLocal}`);
   }
-  lines.push("", `${key("Docs:")} ${formatDocsLink("/sandbox", "docs.openclaw.ai/sandbox")}`);
+  lines.push("", `${key("Docs:")} ${formatDocsLink("/sandbox")}`);
 
   runtime.log(`${lines.join("\n")}\n`);
 }

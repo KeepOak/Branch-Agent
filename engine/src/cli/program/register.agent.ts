@@ -24,7 +24,7 @@ export function registerAgentsCommands(program: Command): void {
     .addHelpText(
       "after",
       () =>
-        `\n${theme.muted("Docs:")} ${formatDocsLink("/cli/agents", "docs.openclaw.ai/cli/agents")}\n`,
+        `\n${theme.muted("Docs:")} ${formatDocsLink("/cli/agents")}\n`,
     );
 
   agents

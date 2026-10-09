@@ -62,7 +62,7 @@ export function resolveDaemonInstallBlockMessage(
       "invoking user's manager. Rerun the same command without sudo. If [unsafe-permissions] " +
       "blocked the non-sudo command, repair the reported directory with `chmod go-w <path>` " +
       "and retry; do not use sudo or --force to bypass it. " +
-      "See https://docs.openclaw.ai/cli/gateway#install-identity."
+      "See https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli/gateway#install-identity."
     );
   }
   return undefined;

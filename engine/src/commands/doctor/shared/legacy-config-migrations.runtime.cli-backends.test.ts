@@ -27,5 +27,5 @@ it("retires CLI adapter maps while preserving model selection", () => {
     migration.apply(raw, changes);
   }
   expect(raw).toEqual({ agents: { defaults: { model: "anthropic/claude-sonnet-4-6" } } });
-  expect(changes.join("\n")).toContain("https://docs.openclaw.ai/plugins/cli-backend-plugins");
+  expect(changes.join("\n")).toContain("https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/plugins/cli-backend-plugins");
 });

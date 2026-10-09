@@ -1,6 +1,6 @@
 import { formatTerminalLink } from "./terminal-link.js";
 
-const DOCS_ROOT = "https://docs.openclaw.ai";
+const DOCS_ROOT = "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs";
 const ABSOLUTE_HTTP_URL_RE = /^https?:\/\//i;
 
 export function formatDocsLink(

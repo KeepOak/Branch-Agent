@@ -667,5 +667,5 @@ export function printDaemonStatus(status: DaemonStatus, opts: { json: boolean; d
   }
 
   defaultRuntime.log(`${label("Troubles:")} run ${formatCliCommand("branch status")}`);
-  defaultRuntime.log(`${label("Troubleshooting:")} https://docs.openclaw.ai/troubleshooting`);
+  defaultRuntime.log(`${label("Troubleshooting:")} https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/troubleshooting`);
 }
