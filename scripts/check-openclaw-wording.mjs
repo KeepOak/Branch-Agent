@@ -10,7 +10,7 @@ export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 
 export const REPLACEMENTS = [
   'OpenClaw / openclaw     → Branch Agent (product) or branch (CLI)',
-  'docs.openclaw.ai        → https://keepoak.com/help',
+  'docs.openclaw.ai        → https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs',
   'openclaw.ai             → https://keepoak.com',
   'github.com/openclaw/... → https://github.com/KeepOak/Branch-Agent',
 ];

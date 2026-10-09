@@ -121,7 +121,7 @@ describe("sandbox explain command", () => {
     };
 
     const parsed = await explain({ json: true, session: "agent:main:main" });
-    expect(parsed).toHaveProperty("docsUrl", "https://docs.openclaw.ai/sandbox");
+    expect(parsed).toHaveProperty("docsUrl", "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/sandbox");
     expect(parsed).toHaveProperty("sandbox.mode", "all");
     expect(parsed).toHaveProperty("sandbox.tools.sources.allow.source");
     expect(parsed.fixIt).toEqual([

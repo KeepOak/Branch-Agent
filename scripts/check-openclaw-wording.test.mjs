@@ -182,7 +182,7 @@ test('failure message tells the agent what to write instead', () => {
   const hits = checkAddedDiff(added('engine/src/prompts.ts', 4, 'Read https://docs.openclaw.ai/gateway'));
   const message = formatFailure(hits);
   assert.match(message, /Branch Agent/);
-  assert.match(message, /https:\/\/keepoak\.com\/help/);
+  assert.match(message, /https:\/\/github\.com\/KeepOak\/Branch-Agent\/tree\/main\/engine\/docs/);
   assert.match(message, /https:\/\/keepoak\.com/);
   assert.match(message, /https:\/\/github\.com\/KeepOak\/Branch-Agent/);
   assert.match(message, /engine\/src\/prompts\.ts:4:/);

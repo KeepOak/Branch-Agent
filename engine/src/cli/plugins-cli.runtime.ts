@@ -472,7 +472,7 @@ export async function runPluginsDoctorCommand(opts: PluginDoctorOptions = {}): P
           : healthyMessage;
         lines.push("", summary);
       }
-      const docs = formatDocsLink("/plugin", "docs.openclaw.ai/plugin");
+      const docs = formatDocsLink("/plugin");
       lines.push("");
       lines.push(`${theme.muted("Docs:")} ${docs}`);
       return lines.join("\n");

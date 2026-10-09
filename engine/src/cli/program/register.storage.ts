@@ -12,7 +12,7 @@ export function registerStorageCommand(program: Command): void {
     .option("--json", "Output JSON", false)
     .addHelpText(
       "after",
-      `\nDocs: ${formatDocsLink("/cli/storage", "docs.openclaw.ai/cli/storage")}\n`,
+      `\nDocs: ${formatDocsLink("/cli/storage")}\n`,
     );
   applyParentDefaultHelpAction(storage);
 

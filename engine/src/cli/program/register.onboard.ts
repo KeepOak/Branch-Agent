@@ -405,7 +405,7 @@ export function registerOnboardCommand(program: Command): void {
           rejectOption(
             [
               "Non-interactive setup requires explicit risk acknowledgement.",
-              "Read: https://docs.openclaw.ai/security",
+              "Read: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/security",
               `Re-run with: ${formatCliCommand("branch onboard --modern --non-interactive --accept-risk ...")}`,
             ].join("\n"),
           );

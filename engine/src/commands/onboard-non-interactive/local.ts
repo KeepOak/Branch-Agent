@@ -461,7 +461,7 @@ export async function runNonInteractiveLocalSetup(params: {
 
   if (!opts.json) {
     runtime.log(
-      `Tip: run \`${formatCliCommand("branch configure --section web")}\` to store your Brave API key for web_search. Docs: https://docs.openclaw.ai/tools/web`,
+      `Tip: run \`${formatCliCommand("branch configure --section web")}\` to store your Brave API key for web_search. Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web`,
     );
   }
 }
