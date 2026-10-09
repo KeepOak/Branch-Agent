@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Contact } from "@branch/gateway-protocol";
 import type { SaplingSession } from "../connect/session";
 import { WindowShell } from "./WindowShell";
+import { conversationLink } from "./own-window";
 
 vi.mock("../face/Face", () => ({ Face: () => null }));
 vi.mock("../face/Pebble", () => ({ Pebble: () => null }));
@@ -20,6 +21,7 @@ afterEach(async () => {
   localStorage.clear();
   sessionStorage.clear();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 const oak: Contact = {
@@ -98,6 +100,46 @@ async function show(openKey: string, topics: typeof trip[], history: HistoryLine
 const threadNavs = (host: HTMLElement) => [...host.querySelectorAll("nav")].filter((nav) => /Threads/.test(nav.getAttribute("aria-label") ?? ""));
 
 describe("preview topic row in the shell", () => {
+  it("opens the current conversation in its own window from the conversation menu", async () => {
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    localStorage.setItem("branch.route", JSON.stringify({ kind: "chat", key: "agent:oak:trip" }));
+    const host = await show("agent:oak:trip", [trip], []);
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="conversation-menu-button"]')!.click());
+    const ownWindow = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+      .find((item) => item.textContent?.trim() === "Open in its own window")!;
+    expect(ownWindow.disabled).toBe(false);
+    await act(async () => ownWindow.click());
+    expect(open).toHaveBeenCalledExactlyOnceWith(conversationLink("agent:oak:trip"), "_blank", "noopener");
+  });
+  it("enables Back and Forward only within the window's known history", async () => {
+    window.history.replaceState(null, "");
+    localStorage.setItem("branch.route", JSON.stringify({ kind: "chat", key: "agent:oak:main" }));
+    const host = await show("agent:oak:main", [trip], []);
+    const back = () => host.querySelector<HTMLButtonElement>('.head-row [aria-label="Back"]')!;
+    const forward = () => host.querySelector<HTMLButtonElement>('.head-row [aria-label="Forward"]')!;
+    expect(back().disabled).toBe(true);
+    expect(back().title).toBe("No earlier page in this window.");
+    expect(forward().disabled).toBe(true);
+    expect(forward().title).toBe("No later page in this window.");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await act(async () => host.querySelector<HTMLButtonElement>('.tpRowT5 .tpGoT5[aria-current="false"]')!.click());
+    expect(back().disabled).toBe(false);
+    expect(forward().disabled).toBe(true);
+    await act(async () => {
+      back().click();
+      await vi.waitFor(() => expect(window.history.state.branchIndex).toBe(0));
+    });
+    expect(window.history.state.branchRoute).toEqual({ kind: "chat", key: "agent:oak:main" });
+    expect(back().disabled).toBe(true);
+    expect(forward().disabled).toBe(false);
+    await act(async () => {
+      forward().click();
+      await vi.waitFor(() => expect(window.history.state.branchIndex).toBe(1));
+    });
+    expect(window.history.state.branchRoute).toEqual({ kind: "chat", key: "agent:oak:trip" });
+    expect(back().disabled).toBe(false);
+    expect(forward().disabled).toBe(true);
+  });
   it("renders one Threads nav for a contact with topics, not TopicRail and ThreadColumn together", async () => {
     const host = await show("agent:oak:main", [trip], [{ kind: "text", key: "g1", text: "General last line", streaming: false }]);
     await vi.waitFor(() => expect(host.querySelector(".topicsT5")).toBeTruthy());

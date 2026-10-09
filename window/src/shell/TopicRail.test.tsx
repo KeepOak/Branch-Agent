@@ -24,6 +24,15 @@ const render = async (onPatch = vi.fn(async (_topic: Topic, _change: Record<stri
 };
 
 describe("preview thread row", () => {
+  it("explains the selected layout instead of offering an inert Column action", async () => {
+    const t = await render();
+    await t.click("How threads show: Column");
+    const column = t.host.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]')!;
+    expect(column.disabled).toBe(true);
+    expect(column.title).toBe("Threads already show as Column.");
+    await t.click("Tabs above the chat");
+    expect(t.host.querySelector(".lay-tabs")).toBeTruthy();
+  });
   it("uses the preview's short title and switches between General and a real topic key", async () => {
     expect(shortTopicTitle("Plan the Lisbon trip · today")).toBe("Lisbon trip");
     expect(topicEmoji("Lisbon trip", "Flight options", new Set())).toBe("✈️");

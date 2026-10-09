@@ -360,6 +360,14 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const routeRef = useRef(route);
   routeRef.current = route;
   const historyIndexRef = useRef(Number(history.state?.branchIndex) || 0);
+  const [historyPosition, setHistoryPosition] = useState(() => {
+    const index = Number(history.state?.branchIndex) || 0;
+    let end = index;
+    try { if (history.state?.branchRoute) end = Math.max(index, Number(sessionStorage.getItem("branch.history-end")) || 0); } catch { /* storage blocked */ }
+    return { index, end };
+  });
+  const historyBack = historyPosition.index > 0 ? () => window.history.back() : undefined;
+  const historyForward = historyPosition.index < historyPosition.end ? () => window.history.forward() : undefined;
   const [draftTopic, setDraftTopic] = useState<{ agentId: string; nonce: string; options: Record<string, unknown> } | null>(null);
   const [draftEcho, setDraftEcho] = useState<string | null>(null);
   const [topicReturnKey, setTopicReturnKey] = useState<string | null>(null);
@@ -523,6 +531,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         const index = Number(history.state?.branchIndex) || 0;
         history.pushState({ branchRoute: next, branchIndex: index + 1 }, "");
         historyIndexRef.current = index + 1;
+        setHistoryPosition({ index: index + 1, end: index + 1 });
+        try { sessionStorage.setItem("branch.history-end", String(index + 1)); } catch { /* storage blocked */ }
       }
       draftTopicRef.current = null;
       setDraftTopic(null);
@@ -570,6 +580,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       const nextIndex = Number(event.state?.branchIndex) || 0;
       const navigate = () => {
         historyIndexRef.current = nextIndex;
+        setHistoryPosition((position) => ({ ...position, index: nextIndex }));
         setDraftTopic(null);
         setStage(null);
         setRoute(next);
@@ -1278,7 +1289,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     };
     main = draftTopic ? (
       <div className="conversation-column" data-testid="new-topic-draft" ref={setConversationColumn}>
-        {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} onList={toggleList} onBack={() => window.history.back()} onForward={() => window.history.forward()} tools={conversationTools} /> : null}
+        {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} onList={toggleList} onBack={historyBack} onForward={historyForward} tools={conversationTools} /> : null}
         <Thread
           name={trunkName(draftTopic.agentId)}
           history={[]}
@@ -1311,7 +1322,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       <>
         <StageConversation
         columnRef={setConversationColumn}
-        header={compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} onList={toggleList} onBack={() => window.history.back()} onForward={() => window.history.forward()} tools={conversationTools} /> : null}
+        header={compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} onList={toggleList} onBack={historyBack} onForward={historyForward} tools={conversationTools} /> : null}
         topics={topicContact && activeTopics.length ? <TopicRail
           contactId={topicContact.id}
           contactName={topicContact.name}
@@ -1438,7 +1449,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   } else if (route.kind === "place") {
     main = (
       <>
-        {isNarrow ? <PlaceHead onList={toggleList} onSettings={() => openSettings("general")} onBack={() => window.history.back()} onForward={() => window.history.forward()} /> : null}
+        {isNarrow ? <PlaceHead onList={toggleList} onSettings={() => openSettings("general")} onBack={historyBack} onForward={historyForward} /> : null}
         <PlaceView place={route.place} engine={session.engine} facts={{ running, waiting: waitingTotal }} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} startConversation={(agentId) => void startNew(agentId)} createTrunk={() => void newTrunk()} />
       </>
     );
@@ -1498,8 +1509,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         listHidden={isNarrow ? !slideOpen : rail || layout.hidden}
         onTheme={() => setTheme(toggleTheme(theme))}
         onToggleList={toggleList}
-        onBack={() => window.history.back()}
-        onForward={() => window.history.forward()}
+        onBack={historyBack}
+        onForward={historyForward}
         onCharacter={() => setCharacterShown((v) => !v)}
         onGuide={(e) => showMenu(e, "guide", guideItems(), "Guide")}
         conversationTools={conversationTools}

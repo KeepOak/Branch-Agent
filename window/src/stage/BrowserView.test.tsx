@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { BrowserView, browserRemotePoint } from "./BrowserView";
+import browserPanelSource from "./BrowserView.tsx?raw";
 import type { WindowEngine } from "../connect/engine";
 import type { Block } from "../thread/model";
 const casts = vi.hoisted(() => ({
@@ -36,7 +37,7 @@ const owner = (request: WindowEngine["request"], key = "agent:scout:one"): Windo
   onEvent: () => () => {},
   scopes: ["operator.admin"],
 });
-const render = async (engine: WindowEngine, viewBlocks = blocks, control = false) => {
+const render = async (engine: WindowEngine, viewBlocks = blocks, control = false, running = false) => {
   if (!root) {
     container = document.createElement("div");
     document.body.append(container);
@@ -50,12 +51,15 @@ const render = async (engine: WindowEngine, viewBlocks = blocks, control = false
         blocks={viewBlocks}
         name="Scout"
         control={control}
+        running={running}
+        onControl={onControl}
         onState={onState}
       />,
     ),
   );
 };
 const onState = vi.fn();
+const onControl = vi.fn();
 /** browser.request answers by path: running, one tab, then the given screencast answer. */
 const routed = (screencast: () => unknown) =>
   vi.fn(async (_method: string, params: any) =>
@@ -75,17 +79,159 @@ afterEach(async () => {
   root = undefined;
   casts.created.length = 0;
   onState.mockClear();
+  onControl.mockClear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   document.body.innerHTML = "";
 });
 describe("scoped browser viewing", () => {
-  it("makes no request without a complete recorded browser tab", async () => {
-    const request = vi.fn();
-    await render(owner(request), []);
-    expect(request).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("Nothing open");
-    expect(container.textContent).toContain("Scout hasn't opened a page in this conversation.");
+  it("retires a closing tab before its stream can flash an error and restores it if closing fails", async () => {
+    let rejectClose!: (error: Error) => void;
+    const closing = new Promise((_, reject) => { rejectClose = reject; });
+    const route = routed(() => new Promise(() => {}));
+    const request = vi.fn((method: string, params: any) => params.method === "DELETE" ? closing : route(method, params));
+    await render(owner(request as any));
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Close tab"]')!.click());
+    expect(container.querySelector('canvas[aria-label="Live browser page"]')).toBeNull();
+    for (const label of ["Back", "Forward", "Reload"]) expect(container.querySelector(`[aria-label="${label}"]`)).toBeNull();
+    await act(async () => rejectClose(new Error("Couldn't close the tab")));
+    await flush();
+    expect(container.querySelector('canvas[aria-label="Live browser page"]')).not.toBeNull();
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("Couldn't close the tab");
+  });
+  it("shows progress instead of stale empty states while starting and opening the first page", async () => {
+    let started = false, opened = false;
+    let finishStart!: () => void, finishOpen!: () => void;
+    const starting = new Promise<void>((resolve) => { finishStart = resolve; });
+    const opening = new Promise<void>((resolve) => { finishOpen = resolve; });
+    const request = vi.fn(async (_method: string, params: any) => {
+      if (params.path === "/") return { running: started };
+      if (params.path === "/start") { await starting; started = true; return {}; }
+      if (params.path === "/tabs/open") { await opening; opened = true; return { targetId: "owner-tab" }; }
+      if (params.path === "/tabs") return { tabs: opened ? [{ targetId: "owner-tab", title: "Example", url: "https://example.test" }] : [] };
+      return new Promise(() => {});
+    });
+    await render(owner(request as any), []);
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="New tab"]')!.click());
+    const assertProgress = () => {
+      expect(container.querySelector(".blank-st")?.textContent).toContain("Opening your page…");
+      expect(container.querySelector(".blank-st")?.textContent).not.toMatch(/isn't running|Nothing open/);
+    };
+    assertProgress();
+    await act(async () => finishStart());
+    await flush();
+    assertProgress();
+    await act(async () => finishOpen());
+    await flush();
+    expect(container.querySelector('canvas[aria-label="Live browser page"]')).not.toBeNull();
+  });
+  it("has no unreachable disabled branches in tab-only Page and Tools controls", async () => {
+    // Runtime sees these expressions as false in either version; inspect the
+    // source as well to guard the review's explicit dead-code requirement.
+    expect(browserPanelSource).not.toMatch(/disabled: tab \? undefined : "Nothing open\."/);
+    expect(browserPanelSource).not.toContain("disabled={!showChrome}");
+    expect(browserPanelSource).not.toContain("disabled={!tab}");
+    await render(owner(routed(() => new Promise(() => {})) as any));
+    const page = [...container.querySelectorAll("button")].find((b) => b.textContent === "Page")!;
+    const tools = [...container.querySelectorAll("button")].find((b) => b.textContent === "Tools")!;
+    expect(page.disabled).toBe(false);
+    expect(tools.disabled).toBe(false);
+    await act(async () => page.click());
+    for (const item of document.querySelectorAll('[role="menuitem"]')) expect(item.getAttribute("aria-disabled")).not.toBe("true");
+  });
+  it("hides page navigation when the browser is stopped or has no tabs", async () => {
+    for (const running of [false, true]) {
+      await render(owner(vi.fn(async (_method: string, params: any) => params.path === "/" ? { running } : { tabs: [] }) as any), []);
+      for (const label of ["Back", "Forward", "Reload"]) expect(container.querySelector(`[aria-label="${label}"]`)).toBeNull();
+      expect(container.querySelector<HTMLInputElement>(".br-addr-st")?.disabled).toBe(false);
+      expect(container.querySelector<HTMLButtonElement>('[aria-label="New tab"]')?.disabled).toBe(false);
+    }
+  });
+  it("offers an address and New tab before the Trunk has browsed", async () => {
+    const request = vi.fn(async () => ({ running: false }));
+    await render(owner(request as any), []);
+    expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({
+      target: "host", path: "/", query: { profile: "branch" }, tabScope: { sessionKey: "agent:scout:one" },
+    }));
+    expect(container.querySelector<HTMLInputElement>(".br-addr-st")?.disabled).toBe(false);
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="New tab"]')?.disabled).toBe(false);
+  });
+  it("starts the browser and opens the typed address with no recorded tab", async () => {
+    let started = false, opened = false;
+    const request = vi.fn(async (_method: string, params: any) => {
+      if (params.path === "/") return { running: started };
+      if (params.path === "/start") { started = true; return { ok: true }; }
+      if (params.path === "/tabs/open") { opened = true; return { targetId: "owner-tab" }; }
+      if (params.path === "/tabs") return { tabs: opened ? [{ targetId: "owner-tab", title: "Example", url: "https://example.test" }] : [] };
+      return new Promise(() => {});
+    });
+    await render(owner(request as any), []);
+    const input = container.querySelector<HTMLInputElement>(".br-addr-st")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "example.test");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => input.form!.requestSubmit());
+    await flush();
+    const calls = request.mock.calls.map(([, params]) => params);
+    expect(calls.findIndex((p) => p.path === "/start")).toBeLessThan(calls.findIndex((p) => p.path === "/tabs/open"));
+    expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({
+      target: "host", path: "/tabs/open", query: { profile: "branch" }, body: { url: "https://example.test" }, tabScope: { sessionKey: "agent:scout:one" },
+    }));
+    expect(container.querySelector('canvas[aria-label="Live browser page"]')).not.toBeNull();
+  });
+  it("opens a new tab in a running empty browser without restarting it", async () => {
+    const request = vi.fn(async (_method: string, params: any) => params.path === "/" ? { running: true } : params.path === "/tabs" ? { tabs: [] } : { targetId: "owner-tab" });
+    await render(owner(request as any), []);
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="New tab"]')!.click());
+    expect(request.mock.calls.some(([, p]) => p.path === "/start")).toBe(false);
+    expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ path: "/tabs/open", body: { url: "about:blank" } }));
+  });
+  it("hides unavailable browser toolbar and Page actions", async () => {
+    await render(owner(routed(() => new Promise(() => {})) as any));
+    for (const label of ["Reads", "Numbers", "Comment", "Record"]) expect(container.textContent).not.toContain(label);
+    const page = [...container.querySelectorAll("button")].find((b) => b.textContent === "Page")!;
+    await act(async () => page.click());
+    expect(document.body.textContent).toContain("Take a screenshot");
+    expect(document.body.textContent).not.toContain("Watch this page for changes");
+    expect(document.body.textContent).not.toContain("Borrow a tab from your Chrome");
+  });
+  it("keeps the typed address and explains a failed browser start", async () => {
+    const request = vi.fn(async (_method: string, params: any) => {
+      if (params.path === "/start") throw new Error("Browser is unavailable");
+      return { running: false };
+    });
+    await render(owner(request as any), []);
+    const input = container.querySelector<HTMLInputElement>(".br-addr-st")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "example.test");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => { input.form!.requestSubmit(); input.form!.requestSubmit(); });
+    expect(request.mock.calls.filter(([, p]) => p.path === "/start")).toHaveLength(1);
+    expect(request.mock.calls.some(([, p]) => p.path === "/tabs/open")).toBe(false);
+    expect(input.value).toBe("example.test");
+    expect(input.disabled).toBe(false);
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("Browser is unavailable");
+  });
+  it("retains Take over and sends page clicks only after owner control", async () => {
+    vi.stubGlobal("createImageBitmap", vi.fn(async () => ({ width: 100, height: 100, close: vi.fn() })));
+    const request = routed(() => ({ wsPath: "/stream/one", targetId: "tab-one" }));
+    const engine = owner(request as any);
+    await render(engine, blocks, false, true);
+    await flush();
+    await act(async () => casts.created[0].options.onFrame({ blob: new Blob(), cssWidth: 100, cssHeight: 100, url: "https://example.test" }));
+    expect(container.textContent).toContain("Scout is using this page.");
+    const canvas = container.querySelector("canvas")!;
+    vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0, width: 100, height: 100 } as DOMRect);
+    await act(async () => canvas.dispatchEvent(new MouseEvent("click", { clientX: 25, clientY: 40, bubbles: true })));
+    expect(request.mock.calls.some(([, p]) => p.path === "/act")).toBe(false);
+    await act(async () => [...container.querySelectorAll("button")].find((b) => b.textContent === "Take over")!.click());
+    expect(onControl).toHaveBeenLastCalledWith(true);
+    await render(engine, blocks, true, true);
+    await act(async () => canvas.dispatchEvent(new MouseEvent("click", { clientX: 25, clientY: 40, bubbles: true })));
+    expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ path: "/act", body: { kind: "clickCoords", x: 25, y: 40, targetId: "tab-one" } }));
+    expect(container.textContent).not.toContain("Take over");
   });
   it("drops a late stream response after navigating to another conversation", async () => {
     let resolve!: (v: any) => void;

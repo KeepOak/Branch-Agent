@@ -22,6 +22,24 @@ const shown = {
 const topic: Topic = { key: "agent:oak:trip", contactId: "trunk:oak", title: "Lisbon trip", status: "active", unread: false };
 
 describe("v23 thread column versus the preview topic row", () => {
+  it("explains the current layout while keeping the other layout actionable", async () => {
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root!.render(<ThreadColumn name="Oak" generalKey="agent:oak:main" openKey="agent:oak:main" items={[]} onOpen={() => {}} />));
+    const open = async () => act(async () => host.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!.click());
+    await open();
+    const column = host.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]')!;
+    expect(column.disabled).toBe(true);
+    expect(column.title).toBe("Threads already show as a column.");
+    await act(async () => host.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="false"]')!.click());
+    expect(host.querySelector(".v23-threads-hidden")).toBeTruthy();
+    await open();
+    const hidden = host.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]')!;
+    expect(hidden.disabled).toBe(true);
+    expect(hidden.title).toBe("Threads are already hidden.");
+    await act(async () => host.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="false"]')!.click());
+    expect(host.querySelector(".v23-threads-hidden")).toBeNull();
+  });
   it("keeps main's column when a contact has no topic row, and yields once the preview row is mounted", () => {
     expect(shouldShowThreadColumn(shown)).toBe(true);
     expect(shouldShowThreadColumn({ ...shown, topicRow: true })).toBe(false);
