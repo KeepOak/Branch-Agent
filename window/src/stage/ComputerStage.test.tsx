@@ -113,13 +113,35 @@ describe("conversation computer lifecycle", () => {
     expect(viewer.connect).toHaveBeenCalled();
     expect(container.textContent).toContain("Take over");
   });
-  it("never falls back to the host when this conversation has no placement", async () => {
-    const request = vi.fn(async () => ({ session: { key: "agent:scout:one" } }));
+  it("falls back to the gateway when this conversation has no placement and gateway has a desktop", async () => {
+    const gatewayEnv = { id: "gateway", label: "", desktop: true, status: "available", platform: "linux" };
+    viewer.connect.mockImplementation(async (options: any) => { options.onConnect(); return { disconnect: vi.fn() }; });
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.describe") return { session: { key: "agent:scout:one" } };
+      if (method === "environments.list") return { environments: [gatewayEnv], profiles: [] };
+      if (method === "environments.status") return gatewayEnv;
+      if (method === "desktop.observe") return { ...observed, wsPath: "/desktop/gateway" };
+      return {};
+    });
+    await render(engine(request as any));
+    await flush();
+    expect(request.mock.calls.map((c: unknown[]) => c[0])).toContain("desktop.observe");
+    expect(request.mock.calls.map((c: unknown[]) => c[0])).toContain("environments.status");
+    expect(container.textContent).toContain("This computer (watching)");
+    expect(viewer.connect).toHaveBeenCalled();
+  });
+  it("shows empty state when no placement and gateway has no desktop", async () => {
+    const gatewayEnv = { id: "gateway", label: "", desktop: false, status: "available", platform: "linux" };
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.describe") return { session: { key: "agent:scout:one" } };
+      if (method === "environments.list") return { environments: [gatewayEnv], profiles: [] };
+      return {};
+    });
     await render(engine(request as any));
     await flush();
     expect(request.mock.calls.map((c: unknown[]) => c[0])).not.toContain("desktop.observe");
-    expect(request.mock.calls.map((c: unknown[]) => c[0])).not.toContain("environments.status");
     expect(container.textContent).toContain("It can't see a screen");
+    expect(container.textContent).not.toContain("watching");
     expect(viewer.connect).not.toHaveBeenCalled();
   });
   it("releases a late observe response after closing without opening its socket", async () => {

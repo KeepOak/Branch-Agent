@@ -33,6 +33,12 @@ describe("stage computers", () => {
     expect(pickerLabel([one], "gateway")).toBe("This computer");
     expect(pickerLabel([one, two], "gateway")).toBe("2 computers");
   });
+  it("shows (watching) suffix when viewing a fallback computer", () => {
+    const one = readComputer({ id: "gateway", type: "local", status: "available", desktop: true } as EnvironmentSummary);
+    expect(pickerLabel([one], null, true)).toBe("This computer (watching)");
+    expect(pickerLabel([one], null, false)).toBe("This computer");
+    expect(pickerLabel([one], "gateway", false)).toBe("This computer");
+  });
 });
 
 describe("moving a conversation", () => {
