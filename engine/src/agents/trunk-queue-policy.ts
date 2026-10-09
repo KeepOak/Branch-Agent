@@ -19,3 +19,17 @@ export function isQueueEligibleTrunk(agentId: string, cfg: BranchConfig | undefi
   }
   return agentId.startsWith(BUILDER_TRUNK_PREFIX);
 }
+
+/** A Trunk whose startup stopped retrying after repeated failed starts cannot take a job until it is started again. */
+export function isTrunkStartupStalled(row: Record<string, unknown>): boolean {
+  const refusal = row.admissionRefusal;
+  if (!refusal || typeof refusal !== "object") {
+    return false;
+  }
+  const preparation = (refusal as Record<string, unknown>).preparation;
+  return (
+    Boolean(preparation) &&
+    typeof preparation === "object" &&
+    (preparation as Record<string, unknown>).state === "needs-attention"
+  );
+}

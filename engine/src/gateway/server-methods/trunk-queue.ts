@@ -1,7 +1,7 @@
 // Gateway side of the Trunk job queue (agents/trunk-queue.ts): the MCP queue_* tools call these methods, and the
 // agent-event subscription calls onTrunkRunLifecycle so an idle Trunk picks up the next job when its run ends.
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
-import { isQueueEligibleTrunk } from "../../agents/trunk-queue-policy.js";
+import { isQueueEligibleTrunk, isTrunkStartupStalled } from "../../agents/trunk-queue-policy.js";
 import {
   addQueueItem,
   listQueueItems,
@@ -54,6 +54,7 @@ function wakeEligibleTrunks(cfg: BranchConfig | undefined, log: (message: string
   void (async () => {
     const rows = rec(await localGateway.request("agents.list", {})).agents;
     const agentIds = (Array.isArray(rows) ? rows.map(rec) : [])
+      .filter((row) => !isTrunkStartupStalled(row))
       .map((row) => text(row.id))
       .filter((id) => id !== "" && isQueueEligibleTrunk(id, cfg));
     await wakeIdleTrunks({ agentIds, gateway: localGateway });

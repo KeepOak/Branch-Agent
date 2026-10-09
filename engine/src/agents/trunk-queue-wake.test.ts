@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { BranchConfig } from "../config/types.branch.js";
 import { onTrunkRunLifecycle } from "../gateway/server-methods/trunk-queue.js";
-import { isQueueEligibleTrunk } from "./trunk-queue-policy.js";
+import { isQueueEligibleTrunk, isTrunkStartupStalled } from "./trunk-queue-policy.js";
 import {
   addQueueItem,
   listQueueItems,
@@ -79,6 +79,21 @@ describe("Trunk queue eligibility", () => {
     const cfg: BranchConfig = { agents: { trunkQueue: { agents: ["mobile"] } } };
     expect(isQueueEligibleTrunk("mobile", cfg)).toBe(true);
     expect(isQueueEligibleTrunk("builder-ash", cfg)).toBe(false);
+  });
+});
+
+describe("Trunk startup state for queue pickup", () => {
+  it("treats a Trunk whose startup stopped retrying as stalled", () => {
+    expect(
+      isTrunkStartupStalled({ admissionRefusal: { preparation: { state: "needs-attention" } } }),
+    ).toBe(true);
+  });
+
+  it("does not treat a retrying or healthy Trunk as stalled", () => {
+    expect(
+      isTrunkStartupStalled({ admissionRefusal: { preparation: { state: "retrying" } } }),
+    ).toBe(false);
+    expect(isTrunkStartupStalled({ id: "builder-ash" })).toBe(false);
   });
 });
 
