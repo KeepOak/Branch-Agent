@@ -119,10 +119,7 @@ describe("SQLite transaction diagnostics", () => {
       const exec = db.exec.bind(db);
       vi.spyOn(db, "exec").mockImplementation((sql) => {
         exec(sql);
-        // The deferred lock probe is an instant read in this fake clock; only BEGIN and COMMIT step.
-        if (sql !== "SELECT 1 FROM sqlite_schema LIMIT 1") {
-          now += elapsedMs;
-        }
+        now += elapsedMs;
       });
 
       const run =

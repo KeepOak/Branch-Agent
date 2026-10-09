@@ -215,25 +215,18 @@ function transactionDiagnosticLabels(
   };
 }
 
-/** A one-table read that takes the shared lock and starts the snapshot, as the first real read would. */
-const DEFERRED_LOCK_PROBE_SQL = "SELECT 1 FROM sqlite_schema LIMIT 1";
-
-function timedDeferredLockAcquisition(db: DatabaseSync): number {
-  const startedAt = performance.now();
-  db.exec(DEFERRED_LOCK_PROBE_SQL);
-  return performance.now() - startedAt;
-}
-
 /**
- * elapsedMs (Date clock) runs from after BEGIN to the end of COMMIT or ROLLBACK, so for DEFERRED it
- * includes the lock wait. lockWaitMs and heldMs (performance clock) split the lock wait from the time
- * the lock was held: heldMs runs from when the lock was acquired to the end of COMMIT or ROLLBACK.
+ * elapsedMs (Date clock) runs from after BEGIN to the end of COMMIT or ROLLBACK. For DEFERRED
+ * transactions it includes any lock or busy wait, because the lock is taken by the first statement and
+ * that wait is not measured separately. For IMMEDIATE transactions the lock is taken by BEGIN, so
+ * lockWaitMs is that BEGIN wait (outside elapsedMs) and heldMs is the time the lock was held
+ * (performance clock).
  */
 function logSlowTransactionHold(params: {
   db: DatabaseSync;
   elapsedMs: number;
-  heldMs: number;
-  lockWaitMs: number;
+  heldMs?: number;
+  lockWaitMs?: number;
   mode: SqliteTransactionMode;
   options?: SqliteTransactionOptions;
 }): void {
@@ -245,10 +238,12 @@ function logSlowTransactionHold(params: {
   (params.options?.logger ?? transactionLog).warn("slow SQLite transaction hold", {
     async: false,
     ...transactionDiagnosticLabels(params.db, params.options),
+    elapsedIncludesLockWait: params.mode === "deferred",
     elapsedMs: params.elapsedMs,
-    heldMs: params.heldMs,
+    ...(params.mode === "immediate"
+      ? { heldMs: params.heldMs, lockWaitMs: params.lockWaitMs }
+      : {}),
     isMainThread,
-    lockWaitMs: params.lockWaitMs,
     mode: params.mode,
     pid: process.pid,
     threadId,
@@ -432,17 +427,14 @@ function runSqliteTransactionSync<T>(
     sql: mode === "immediate" ? "BEGIN IMMEDIATE" : "BEGIN",
     step: "begin",
   });
-  // IMMEDIATE takes its lock in BEGIN, so that wait is outside elapsedMs. DEFERRED takes it on
-  // the first read, which the probe below times; that wait is inside elapsedMs.
-  let lockWaitMs = performance.now() - beginStartedAt;
-  let lockAcquiredAt = performance.now();
+  // IMMEDIATE takes its lock in BEGIN, so its wait is measured here, outside elapsedMs. DEFERRED takes
+  // its lock on the first statement, which is not timed here, so that wait stays inside elapsedMs.
+  // Includes the write-admission service time spent inside BEGIN as well as the busy wait.
+  const lockWaitMs = mode === "immediate" ? performance.now() - beginStartedAt : undefined;
+  const heldStartedAt = performance.now();
   const transactionStartedAt = Date.now();
   let commitStarted = false;
   try {
-    if (mode === "deferred") {
-      lockWaitMs = timedDeferredLockAcquisition(db);
-      lockAcquiredAt = performance.now();
-    }
     // BEGIN may wait for a foreign writer. Admit its committed schema inside
     // rollback protection, then share that snapshot's facts with all kernels.
     const result = runSqliteReadOperationSync(db, operation, "fresh");
@@ -467,7 +459,7 @@ function runSqliteTransactionSync<T>(
       logSlowTransactionHold({
         db,
         elapsedMs: Date.now() - transactionStartedAt,
-        heldMs: performance.now() - lockAcquiredAt,
+        heldMs: performance.now() - heldStartedAt,
         lockWaitMs,
         mode,
         options,
