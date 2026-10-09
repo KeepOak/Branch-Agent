@@ -59,7 +59,9 @@ function props(request: (method: string) => Promise<unknown>): ConversationMenuP
 async function openKnown(host: HTMLElement) {
   if (document.querySelector("[data-testid=who-it-knows]")) await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=conversation-menu-button]")?.click());
   await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=conversation-menu-button]")?.click());
-  const who = [...document.querySelectorAll<HTMLButtonElement>("[data-testid=conversation-menu] button")].find((button) => button.textContent?.includes("Who Sapling knows"));
+  const more = [...document.querySelectorAll<HTMLButtonElement>("[data-testid=conversation-menu] button")].find((button) => button.textContent?.startsWith("More"));
+  await act(async () => more?.click());
+  const who = [...document.querySelectorAll<HTMLButtonElement>("[role=menu] button")].find((button) => button.textContent?.includes("Who Sapling knows"));
   await act(async () => who?.click());
 }
 
