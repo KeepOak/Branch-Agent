@@ -698,9 +698,17 @@ export function parseNamedTestList(text, source = 'scripts/feature-batch-ci-name
   return files;
 }
 
-export function coverageFromPrFiles(files, desktopWorkflow, extraNamed = [], handoffWorkflow = '', handoffConfig = '', extraDesktop = []) {
+export function coverageFromPrFiles(
+  files,
+  desktopWorkflow,
+  extraNamed = [],
+  handoffWorkflow = '',
+  handoffConfig = '',
+  extraDesktop = [],
+  lintBaselinesWorkflow = '',
+) {
   const changed = changedTestPaths(nameStatusFromPrFiles(files));
-  const covered = coverageTargets(desktopWorkflow, handoffWorkflow, handoffConfig);
+  const covered = coverageTargets(desktopWorkflow, handoffWorkflow, handoffConfig, lintBaselinesWorkflow);
   for (const entry of extraNamed) covered.add(`${entry.lane}/${entry.file}`);
   for (const file of extraDesktop) covered.add(file);
   const uncovered = uncoveredTests(changed, covered);
@@ -969,7 +977,17 @@ function runCoverage(files, extraNamed, repo, sha, token) {
   }
   const handoffWorkflow = readFileSync(path.join(root, HANDOFF_WORKFLOW_PATH), 'utf8');
   const handoffConfig = readFileSync(path.join(root, 'engine/test/vitest/vitest.desktop-handoff.config.ts'), 'utf8');
-  const { changed, uncovered } = coverageFromPrFiles(files, workflow, extraNamed, handoffWorkflow, handoffConfig);
+  // The base checkout's copy (trusted), like the handoff workflow above: a PR cannot edit which runs count.
+  const lintBaselinesWorkflow = readFileSync(path.join(root, '.github/workflows/engine-lint-baselines.yml'), 'utf8');
+  const { changed, uncovered } = coverageFromPrFiles(
+    files,
+    workflow,
+    extraNamed,
+    handoffWorkflow,
+    handoffConfig,
+    [],
+    lintBaselinesWorkflow,
+  );
   if (uncovered.length) {
     for (const file of uncovered) {
       console.error(`Uncovered changed test: ${file}\n  Add: ${additionFor(file)}`);
