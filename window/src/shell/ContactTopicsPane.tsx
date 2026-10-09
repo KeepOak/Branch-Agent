@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { TopicListItem, TopicMode } from "./contact-topics";
 import { groupContactTopics } from "./contact-topics";
+import { readableTitle } from "./topic-name";
 import "./contact-topics.css";
 
 export function ContactTopicsPane({ items, name, onOpen }: { items: TopicListItem[]; name: string; onOpen: (key: string) => void }) {
@@ -17,7 +18,7 @@ export function ContactTopicsPane({ items, name, onOpen }: { items: TopicListIte
     {groups.every((group) => !group.items.length) ? <p className="hint">No conversations here yet.</p> : groups.map((group) => <div key={group.label} className="contact-topics-group">
       {group.label ? <h3>{group.label}</h3> : null}
       {group.items.map(({ topic, preview }) => <button type="button" className="contact-topics-row" key={topic.key} onClick={() => onOpen(topic.key)}>
-        <span><strong>{topic.title}</strong>{topic.unread ? <i className="unread-dot" aria-label="Unread" /> : null}</span>
+        <span><strong>{readableTitle(topic.title)}</strong>{topic.unread ? <i className="unread-dot" aria-label="Unread" /> : null}</span>
         <small>{topic.status}{preview ? ` · ${preview}` : ""}</small>
       </button>)}
     </div>)}

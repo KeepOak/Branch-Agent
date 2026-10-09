@@ -112,3 +112,15 @@ describe("preview thread row", () => {
     expect(chosen[0]).toMatchObject({ kind: "notice", topicKey: topic.key, text: "🧪 Fix the parser for CSV" });
   });
 });
+
+describe("tab names", () => {
+  it("shows a readable a2a name in the tab, with the same text as its tooltip, and never the raw key", async () => {
+    localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "tabs", width: 280, per: {} }));
+    const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    const raw: Topic = { key: "agent:juniper:a2a:branch-nas-linux--tester", contactId: "trunk:juniper", title: "agent:juniper:a2a:branch-nas-linux--tester", status: "active", unread: false };
+    await act(async () => root!.render(<TopicRail contactId="trunk:juniper" contactName="Juniper" contactKey="agent:juniper:main" generalPreview="" generalUpdatedAt={0} currentKey="agent:juniper:main" items={[{ topic: raw, preview: "", updatedAt: 0 }]} onOpen={() => {}} onAll={() => {}} onPatch={async () => {}} />));
+    const tab = [...host.querySelectorAll("button")].find((button) => button.getAttribute("data-tip") === "Talk with Tester on Nas-linux");
+    expect(tab?.getAttribute("aria-label")).toBe("Talk with Tester on Nas-linux");
+    expect(host.textContent).not.toContain("a2a:");
+  });
+});
