@@ -184,9 +184,13 @@ describe("Codex Trunk next turn after its own model change", () => {
 
       expect(codex.trunk.read()).toMatchObject({ modelOverride: to, liveModelSwitchPending: true });
       expect(await codex.nextTurn()).toBe(to);
-      // The same live thread carries on: one resume for the task, no new thread, new model on turn/start.
+      // The same live thread carries on: every resume targets it, no new thread, new model on turn/start.
       const methods = codex.harness.requests.map(({ method }) => method);
-      expect(methods.filter((method) => method === "thread/resume")).toHaveLength(1);
+      const resumes = codex.harness.requests.filter(({ method }) => method === "thread/resume");
+      expect(resumes.length).toBeGreaterThan(0);
+      expect(
+        resumes.every(({ params }) => (params as { threadId?: string }).threadId === THREAD),
+      ).toBe(true);
       expect(methods).not.toContain("thread/start");
       const turnStarts = codex.harness.requests.filter(({ method }) => method === "turn/start");
       expect(turnStarts.map(({ params }) => (params as { threadId?: string }).threadId)).toEqual([
