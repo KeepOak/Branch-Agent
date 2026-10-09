@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import type { PairingState } from '../pairing/pairingSession';
 import { gatewayHost } from '../pairing/setupCode';
 import { ThemedText } from '../theme/ThemedText';
@@ -30,8 +30,16 @@ function Row({ label, value, last = false }: { label: string; value: string; las
 }
 
 /** Paired: whether the computer is reachable right now, what this phone may do, and a way to unpair. */
-export function PairedScreen({ state, onUnpair }: { state: Extract<PairingState, { step: 'paired' }>; onUnpair: () => void }) {
-  const { color, space, radius } = useTheme();
+export function PairedScreen({
+  state,
+  onUnpair,
+  onBack,
+}: {
+  state: Extract<PairingState, { step: 'paired' }>;
+  onUnpair: () => void;
+  onBack: () => void;
+}) {
+  const { color, space, radius, layout } = useTheme();
   const [confirming, setConfirming] = useState(false);
 
   return (
@@ -51,8 +59,20 @@ export function PairedScreen({ state, onUnpair }: { state: Extract<PairingState,
         )
       }
     >
+      <Pressable
+        testID="back-to-chats"
+        accessibilityRole="button"
+        accessibilityLabel="Back to Chats"
+        onPress={onBack}
+        hitSlop={8}
+        style={({ pressed }) => ({ alignSelf: 'flex-start', minHeight: layout.rowMinHeight, justifyContent: 'center', marginTop: -space.xl, opacity: pressed ? 0.6 : 1 })}
+      >
+        <ThemedText variant="body" tone="accentInk">
+          ‹ Chats
+        </ThemedText>
+      </Pressable>
       <ThemedText variant="largeTitle" accessibilityRole="header">
-        Branch
+        Your computer
       </ThemedText>
       <Card testID="connection-card">
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
