@@ -11,12 +11,14 @@ import { Button } from '../ui/Button';
 const AVATAR = 52;
 const SKELETON_ROWS = 6;
 
-function Avatar({ row }: { row: ChatRow }) {
+/** A chat's Trunk: its emoji or first letter, with a green dot while it works. */
+export function Avatar({ row, size = AVATAR }: { row: ChatRow; size?: number }) {
   const { color, radius, type } = useTheme();
+  const dot = size >= AVATAR ? 16 : 12;
   return (
-    <View style={{ width: AVATAR, height: AVATAR }}>
-      <View style={{ width: AVATAR, height: AVATAR, borderRadius: radius.pill, backgroundColor: color.accentTint, alignItems: 'center', justifyContent: 'center' }}>
-        <ThemedText variant="title2" tone="accentInk" style={{ lineHeight: type.title2.lineHeight }}>
+    <View style={{ width: size, height: size }}>
+      <View style={{ width: size, height: size, borderRadius: radius.pill, backgroundColor: color.accentTint, alignItems: 'center', justifyContent: 'center' }}>
+        <ThemedText variant={size >= AVATAR ? 'title2' : 'headline'} tone="accentInk" style={{ lineHeight: size >= AVATAR ? type.title2.lineHeight : type.headline.lineHeight }}>
           {row.avatar}
         </ThemedText>
       </View>
@@ -24,23 +26,25 @@ function Avatar({ row }: { row: ChatRow }) {
         <View
           testID={`working-${row.key}`}
           accessibilityLabel="Working now"
-          style={{ position: 'absolute', right: 0, bottom: 0, width: 16, height: 16, borderRadius: radius.pill, backgroundColor: color.ok, borderWidth: 3, borderColor: color.bg }}
+          style={{ position: 'absolute', right: 0, bottom: 0, width: dot, height: dot, borderRadius: radius.pill, backgroundColor: color.ok, borderWidth: dot === 16 ? 3 : 2, borderColor: color.bg }}
         />
       ) : null}
     </View>
   );
 }
 
-function ChatRowView({ row, now }: { row: ChatRow; now: number }) {
+function ChatRowView({ row, now, onOpen }: { row: ChatRow; now: number; onOpen?: (row: ChatRow) => void }) {
   const { color, space, radius, layout } = useTheme();
   const when = chatTime(row.updatedAt, now);
   const line = row.preview || (row.trunkName ? `With ${row.trunkName}` : 'No messages yet');
   return (
-    <View
+    <Pressable
       testID={`chat-${row.key}`}
-      accessible
+      accessibilityRole="button"
       accessibilityLabel={[row.title, row.unread ? 'unread' : '', row.needsYou ? 'needs you' : '', row.working ? 'working now' : '', line, when].filter(Boolean).join(', ')}
-      style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: layout.screenInset, paddingVertical: space.sm + 2, gap: space.md }}
+      onPress={onOpen ? () => onOpen(row) : undefined}
+      disabled={!onOpen}
+      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', paddingHorizontal: layout.screenInset, paddingVertical: space.sm + 2, gap: space.md, backgroundColor: pressed ? color.fill : 'transparent' })}
     >
       <Avatar row={row} />
       <View style={{ flex: 1, minWidth: 0 }}>
@@ -66,7 +70,7 @@ function ChatRowView({ row, now }: { row: ChatRow; now: number }) {
           {row.unread ? <View testID={`unread-${row.key}`} style={{ width: 10, height: 10, borderRadius: radius.pill, backgroundColor: color.accent }} /> : null}
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -83,16 +87,18 @@ function SectionHeader({ title }: { title: string }) {
 }
 
 /** One message that matched, under the chat it was said in. */
-function MessageHitView({ hit, row, now }: { hit: MessageHit; row: ChatRow | undefined; now: number }) {
-  const { space, layout } = useTheme();
+function MessageHitView({ hit, row, now, onOpen }: { hit: MessageHit; row: ChatRow | undefined; now: number; onOpen?: (row: ChatRow) => void }) {
+  const { color, space, layout } = useTheme();
   const title = row?.title ?? 'A chat';
   const when = chatTime(hit.at, now);
   return (
-    <View
+    <Pressable
       testID={`hit-${hit.key}-${hit.messageId}`}
-      accessible
+      accessibilityRole="button"
       accessibilityLabel={[title, hit.role === 'user' ? 'you said' : '', hit.snippet, when].filter(Boolean).join(', ')}
-      style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: layout.screenInset, paddingVertical: space.sm + 2, gap: space.md }}
+      onPress={row && onOpen ? () => onOpen(row) : undefined}
+      disabled={!row || !onOpen}
+      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', paddingHorizontal: layout.screenInset, paddingVertical: space.sm + 2, gap: space.md, backgroundColor: pressed ? color.fill : 'transparent' })}
     >
       {row ? <Avatar row={row} /> : <View style={{ width: AVATAR }} />}
       <View style={{ flex: 1, minWidth: 0 }}>
@@ -108,7 +114,7 @@ function MessageHitView({ hit, row, now }: { hit: MessageHit; row: ChatRow | und
           {hit.role === 'user' ? `You: ${hit.snippet}` : hit.snippet}
         </ThemedText>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -236,6 +242,7 @@ export function ChatsScreen({
   online,
   onRefresh,
   onComputer,
+  onOpen,
   searchMessages,
   now = Date.now(),
 }: {
@@ -243,6 +250,8 @@ export function ChatsScreen({
   online: boolean;
   onRefresh: () => Promise<void>;
   onComputer: () => void;
+  /** Opens a chat. */
+  onOpen?: (row: ChatRow) => void;
   /** Searches every chat's messages (sessions.search); without it, search matches names and last lines. */
   searchMessages?: (query: string) => Promise<unknown>;
   now?: number;
@@ -360,9 +369,9 @@ export function ChatsScreen({
           item.kind === 'header' ? (
             <SectionHeader title={item.title} />
           ) : item.kind === 'hit' ? (
-            <MessageHitView hit={item.hit} row={byKey.get(item.hit.key)} now={now} />
+            <MessageHitView hit={item.hit} row={byKey.get(item.hit.key)} now={now} onOpen={onOpen} />
           ) : (
-            <ChatRowView row={item.row} now={now} />
+            <ChatRowView row={item.row} now={now} onOpen={onOpen} />
           )
         }
         ListHeaderComponent={header}

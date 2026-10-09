@@ -3,13 +3,15 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { BackHandler } from 'react-native';
 import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-context';
-import { ChatList } from './src/chats/chatList';
+import { Conversation } from './src/chat/conversation';
+import { ChatList, type ChatRow } from './src/chats/chatList';
 import { messageSearcher } from './src/chats/messageSearch';
 import { createDeviceSession } from './src/pairing/createDeviceSession';
 import type { PairingSession } from './src/pairing/pairingSession';
 import type { SetupPayload } from './src/pairing/setupCode';
 import { usePairingState } from './src/pairing/usePairingState';
 import { ApprovalScreen } from './src/screens/ApprovalScreen';
+import { ChatScreen } from './src/screens/ChatScreen';
 import { ChatsScreen } from './src/screens/ChatsScreen';
 import { EnterCodeScreen } from './src/screens/EnterCodeScreen';
 import { PairedScreen } from './src/screens/PairedScreen';
@@ -22,13 +24,30 @@ import type { ColorScheme } from './src/theme/tokens';
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 type Route = 'welcome' | 'scan' | 'code';
-type PairedRoute = 'chats' | 'computer';
+type PairedRoute = { name: 'chats' } | { name: 'computer' } | { name: 'chat'; row: ChatRow };
+
+const CHATS: PairedRoute = { name: 'chats' };
+
+/** One open chat. Keyed by the chat, so opening another one starts fresh. */
+function OpenChat({ session, row, online, onBack }: { session: PairingSession; row: ChatRow; online: boolean; onBack: () => void }) {
+  const [conversation] = useState(() => new Conversation(row.key, session, () => session.newId()));
+  useEffect(() => {
+    conversation.attach();
+    return () => conversation.dispose();
+  }, [conversation]);
+  // Opening a chat reads it; the mark is cleared once, for the unread state it was opened with.
+  const [opened] = useState(row);
+  useEffect(() => {
+    void conversation.markRead(opened);
+  }, [conversation, opened]);
+  return <ChatScreen row={row} conversation={conversation} online={online} onBack={onBack} />;
+}
 
 function Shell({ session }: { session: PairingSession }) {
   const theme = useTheme();
   const state = usePairingState(session);
   const [route, setRoute] = useState<Route>('welcome');
-  const [pairedRoute, setPairedRoute] = useState<PairedRoute>('chats');
+  const [pairedRoute, setPairedRoute] = useState<PairedRoute>(CHATS);
   // One list for the whole session, so going to Your computer and back doesn't reload it.
   const [chats] = useState(() => new ChatList(session));
   const chatList = useSyncExternalStore(chats.subscribe, chats.getSnapshot);
@@ -43,17 +62,17 @@ function Shell({ session }: { session: PairingSession }) {
     if (state.step !== 'loading') void SplashScreen.hideAsync().catch(() => undefined);
     if (state.step === 'unpaired') {
       chats.reset();
-      setPairedRoute('chats');
+      setPairedRoute(CHATS);
       return;
     }
     setRoute('welcome');
   }, [state.step, chats]);
 
-  // Android's back gesture leaves Your computer for Chats, like the on-screen back button.
+  // Android's back gesture leaves Your computer or a chat for Chats, like the on-screen back button.
   useEffect(() => {
-    if (state.step !== 'paired' || pairedRoute !== 'computer') return;
+    if (state.step !== 'paired' || pairedRoute.name === 'chats') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      setPairedRoute('chats');
+      setPairedRoute(CHATS);
       return true;
     });
     return () => sub.remove();
@@ -89,12 +108,24 @@ function Shell({ session }: { session: PairingSession }) {
       screen = <ApprovalScreen state={state} onCancel={toWelcome} onScanAgain={scanAgain} />;
       break;
     case 'paired':
-      screen =
-        pairedRoute === 'computer' ? (
-          <PairedScreen state={state} onUnpair={() => void session.unpair()} onBack={() => setPairedRoute('chats')} />
-        ) : (
-          <ChatsScreen list={chatList} online={state.online} searchMessages={searchMessages} onRefresh={() => chats.refresh()} onComputer={() => setPairedRoute('computer')} />
+      if (pairedRoute.name === 'computer') {
+        screen = <PairedScreen state={state} onUnpair={() => void session.unpair()} onBack={() => setPairedRoute(CHATS)} />;
+      } else if (pairedRoute.name === 'chat') {
+        // The header follows the list live (a rename, the working dot); the row it was opened from fills in until then.
+        const row = chatList.rows.find((r) => r.key === pairedRoute.row.key) ?? pairedRoute.row;
+        screen = <OpenChat key={row.key} session={session} row={row} online={state.online} onBack={() => setPairedRoute(CHATS)} />;
+      } else {
+        screen = (
+          <ChatsScreen
+            list={chatList}
+            online={state.online}
+            searchMessages={searchMessages}
+            onRefresh={() => chats.refresh()}
+            onComputer={() => setPairedRoute({ name: 'computer' })}
+            onOpen={(row) => setPairedRoute({ name: 'chat', row })}
+          />
         );
+      }
   }
 
   return (

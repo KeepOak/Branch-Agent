@@ -7,6 +7,10 @@ import type { EngineLink } from '../pairing/pairingSession';
 
 export type ChatRow = {
   key: string;
+  /** The Trunk the chat belongs to, by id. */
+  agentId?: string;
+  /** When the chat was marked unread by hand, so opening it clears only that mark (sessions.patch). */
+  markedUnreadAt?: number;
   /** What the row is called: the chat's own name, else its Trunk's name. */
   title: string;
   /** The Trunk it belongs to, when the title is the chat's own name. */
@@ -140,6 +144,8 @@ export function projectChat(raw: unknown, agents: Map<string, Agent>, mainKey: s
   const digest = rec(r.observerDigest);
   return {
     key,
+    ...(agentId ? { agentId } : {}),
+    ...(num(r.markedUnreadAt) ? { markedUnreadAt: num(r.markedUnreadAt) } : {}),
     title,
     ...(trunk && title !== trunk ? { trunkName: trunk } : {}),
     avatar: agent?.avatar ?? initial(title),
