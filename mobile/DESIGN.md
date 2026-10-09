@@ -57,10 +57,16 @@ Grok Bot's calm, conversation-first feel, built with Apple's design language, wi
 
 All values live in `src/theme/tokens.ts` and screens read them through `useTheme()`. There are no hardcoded colours, and a test checks that every text colour passes WCAG AA (4.5:1) on every surface in both modes.
 
+## Preview first, then better
+
+Each screen PR starts from that screen's phone version in the Branch App Preview: `design/spec-v23/index.html` (the pass 15d phone part and the pass 18 phone apps in `70-surfaces.js`) and the Oct 8 export. Ours does everything the preview's screen does, then goes further, drawing on Grok Bot's feel, Apple's design rules and Hermes desktop. The fixes listed above still apply. Each screen PR's description has one line per screen: "Preview does X; ours does X plus Y, because Z."
+
+The preview's phone also has a Home tab (Needs you, Working now, What's left, quick actions, Finished) and an Inbox tab, under a Home / Chats / Inbox / More tab bar. Neither is in the build order below yet. They come after the four screens that make the app usable, once Chats, Chat and Approvals give them something real to show.
+
 ## Screens, in build order
 
 1. **Welcome and pairing.** A large-title welcome, one "Pair with your computer" button, a full-screen QR scanner, and a live "Waiting for you to approve on your computer…" step that turns into a tick by itself.
-2. **Chats.** An iMessage-style list of Trunks and Branch Agent with avatars, presence dots, the last line, and a relative time. Search collapses under the large title, and swipe actions are pin and mark read.
+2. **Chats.** An iMessage-style list of Trunks and Branch Agent with avatars, presence dots, the last line, and a relative time. A count of chats that want a look sits beside the large title. Chips for All, Trunks, Rooms, Needs you, Snoozed, Archived and Automations show only when they have chats behind them. Search finds chat names as you type and words inside messages (`sessions.search`). Pinned and Recent groups. Swipe actions are pin and mark read.
 3. **Chat.** Live streaming replies with a bottom-anchored composer that follows the keyboard. Tool steps fold into a single quiet "Worked for 12s" line you can expand.
 4. **Approvals and notifications.** Actionable notifications, plus an in-app sheet with the command, why it's needed, and Allow or Deny. Pending approvals pin to the top of Chats.
 5. **Trunk status and "typing…".** Presence on every avatar, a live "typing…" in the header and the list, and a Trunk detail sheet with its current task and model.

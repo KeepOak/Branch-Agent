@@ -48,7 +48,10 @@ declare module '@branch/gateway-client/browser' {
     protocol: number;
     server: { version: string };
     auth: { role: string; scopes: string[]; deviceToken?: string };
+    snapshot?: { sessionDefaults?: { mainSessionKey?: string } } & Record<string, unknown>;
   };
+
+  export type EventFrame = { type: 'event'; event: string; payload?: unknown; seq?: number };
 
   export type GatewayBrowserDeviceIdentity = {
     deviceId: string;
@@ -129,5 +132,7 @@ declare module '@branch/gateway-client/browser' {
     });
     start(): void;
     stop(): void;
+    request<T = unknown>(method: string, params?: unknown): Promise<T>;
+    addEventListener(listener: (event: EventFrame) => void): () => void;
   }
 }
