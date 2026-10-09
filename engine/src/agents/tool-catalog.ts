@@ -276,7 +276,7 @@ const CORE_TOOL_DEFINITIONS: CoreToolDefinition[] = [
   {
     id: "trunk_message",
     executionLocation: "gateway",
-    description: "Message another Trunk: joins its active run, or starts a turn if idle",
+    description: "Message another Trunk: joins its active task, or queues for its mailbox",
     sectionId: "sessions",
     profiles: ["coding", "messaging"],
     includeInBranchGroup: true,

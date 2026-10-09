@@ -97,7 +97,7 @@ export function buildMessagingSection(params: {
       : []),
     ...(params.availableTools.has("trunk_message")
       ? [
-          "- Another Trunk: `trunk_message(agentId, text)` joins its active run or starts a turn when it is idle. It never starts a second run beside a working one.",
+          "- Another Trunk: `trunk_message(agentId, text)` joins an active Trunk task. If it is busy in its owner's chat, the message is queued for its mailbox and never injected into that chat or run in parallel.",
         ]
       : []),
     ...(params.availableTools.has("room_post")
