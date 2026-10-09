@@ -15,7 +15,11 @@ export type TrunkQueueItem = {
   added_at: number;
   claimed_by?: string;
   claimed_at?: number;
-  /** Last run start or end of the claiming Trunk; a claim with none for STALE_CLAIM_MS is released. */
+  /** One claim attempt: dispatch and failure cleanup act only while the job still carries this id. */
+  claim_id?: string;
+  /** The new thread this claim attempt sends the brief to. */
+  thread_key?: string;
+  /** Last run activity seen for the claiming Trunk; with none for STALE_CLAIM_MS and no live run, it is released. */
   active_at?: number;
   done_at?: number;
   released_at?: number;
@@ -73,19 +77,17 @@ function release(row: TrunkQueueItem, now: number): void {
   row.released_at = now;
   delete row.claimed_by;
   delete row.claimed_at;
+  delete row.claim_id;
+  delete row.thread_key;
   delete row.active_at;
 }
 
-/** Puts claims with no run activity for STALE_CLAIM_MS back in the queue, marked released. */
-function releaseStale(rows: TrunkQueueItem[], now: number): boolean {
-  let changed = false;
-  for (const row of rows) {
-    if (isOpenClaim(row) && now - (row.active_at ?? row.claimed_at ?? now) >= STALE_CLAIM_MS) {
-      release(row, now);
-      changed = true;
-    }
-  }
-  return changed;
+function isPastStaleTime(row: TrunkQueueItem, now: number): boolean {
+  return now - (row.active_at ?? row.claimed_at ?? now) >= STALE_CLAIM_MS;
+}
+
+function isClaimable(row: TrunkQueueItem): boolean {
+  return !row.done_at && !row.claimed_by;
 }
 
 export function queueItemStatus(row: TrunkQueueItem): TrunkQueueStatus {
@@ -125,11 +127,7 @@ export function listQueueItems(
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
 ): Array<TrunkQueueItem & { status: TrunkQueueStatus }> {
-  const rows = read(env);
-  if (releaseStale(rows, now)) {
-    write(rows, now, env);
-  }
-  return rows
+  return read(env)
     .toSorted(byPriority)
     .map((row) => Object.assign(row, { status: queueItemStatus(row) }));
 }
@@ -150,11 +148,15 @@ export function markQueueItemDone(
   return row;
 }
 
-/** Puts a stuck claim back in the queue and returns the job as it was before. */
+/**
+ * Puts a stuck claim back in the queue and returns the job as it was before. With claimId, only that claim
+ * attempt is released, so a late failure never releases a newer claim on the same job.
+ */
 export function releaseQueueItem(
   id: string,
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
+  claimId?: string,
 ): TrunkQueueItem | undefined {
   const rows = read(env);
   const row = rows.find((candidate) => candidate.id === id);
@@ -162,7 +164,7 @@ export function releaseQueueItem(
     return undefined;
   }
   const before = { ...row };
-  if (isOpenClaim(row)) {
+  if (isOpenClaim(row) && (claimId === undefined || row.claim_id === claimId)) {
     release(row, now);
     write(rows, now, env);
   }
@@ -180,30 +182,39 @@ export function touchQueueClaim(agentId: string, env?: NodeJS.ProcessEnv, now = 
   write(rows, now, env);
 }
 
+/** True while the job is still held by this claim attempt (not done, released or reclaimed since). */
+export function isQueueClaimCurrent(id: string, claimId: string, env?: NodeJS.ProcessEnv): boolean {
+  return read(env).some((row) => row.id === id && isOpenClaim(row) && row.claim_id === claimId);
+}
+
+export type TrunkQueueClaim = TrunkQueueItem & { claimed_by: string; claim_id: string; thread_key: string };
+
 /**
  * Claims the top unclaimed job for a Trunk; nothing when the queue is empty or the Trunk already holds one.
- * Synchronous from read to write, so concurrent pickups in the gateway never claim the same job.
+ * Synchronous from read to write, so concurrent pickups in the gateway never claim the same job. Each claim
+ * gets its own id and new thread, so a job that was released and claimed again is a fresh dispatch.
  */
 export function claimNextQueueItem(
   agentId: string,
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
-): TrunkQueueItem | undefined {
+): TrunkQueueClaim | undefined {
   const rows = read(env);
-  const stale = releaseStale(rows, now);
   const holds = rows.some((row) => isOpenClaim(row) && row.claimed_by === agentId);
-  const next = holds
-    ? undefined
-    : rows.filter((row) => !row.done_at && !row.claimed_by).toSorted(byPriority)[0];
-  if (next) {
-    next.claimed_by = agentId;
-    next.claimed_at = now;
-    next.active_at = now;
+  const next = holds ? undefined : rows.filter(isClaimable).toSorted(byPriority)[0];
+  if (!next) {
+    return undefined;
   }
-  if (next || stale) {
-    write(rows, now, env);
-  }
-  return next;
+  const claimId = randomUUID();
+  const claim = Object.assign(next, {
+    claimed_by: agentId,
+    claimed_at: now,
+    claim_id: claimId,
+    thread_key: `agent:${agentId}:queue-${next.id}-${claimId.slice(0, 8)}`,
+    active_at: now,
+  });
+  write(rows, now, env);
+  return claim;
 }
 
 type Rec = Record<string, unknown>;
@@ -221,6 +232,44 @@ async function isTrunkWorking(gw: TrunkQueueGateway, agentId: string): Promise<b
 }
 
 /**
+ * Puts back claims that have had no run activity for STALE_CLAIM_MS. The recorded start/end time is only a
+ * hint: a claim is released only when its Trunk also has no live run now, so a run lasting longer than
+ * STALE_CLAIM_MS keeps its job. The gateway is called only when some claim is past that time.
+ */
+export async function releaseStaleQueueClaims(params: {
+  gateway: TrunkQueueGateway;
+  env?: NodeJS.ProcessEnv;
+  now?: () => number;
+}): Promise<void> {
+  const now = params.now ?? Date.now;
+  const candidates = read(params.env).filter(
+    (row) => isOpenClaim(row) && isPastStaleTime(row, now()),
+  );
+  for (const candidate of candidates) {
+    const agentId = candidate.claimed_by!;
+    const working = await isTrunkWorking(params.gateway, agentId);
+    const rows = read(params.env);
+    const row = rows.find(
+      (current) =>
+        current.id === candidate.id &&
+        isOpenClaim(current) &&
+        current.claimed_by === agentId &&
+        current.claim_id === candidate.claim_id,
+    );
+    const at = now();
+    if (!row || (!working && !isPastStaleTime(row, at))) {
+      continue;
+    }
+    if (working) {
+      row.active_at = at;
+    } else {
+      release(row, at);
+    }
+    write(rows, at, params.env);
+  }
+}
+
+/**
  * After a Trunk's run ends: when it is idle and holds no job, claim the top job and send its brief in a new
  * thread titled with the job title, as trunk_send does. Returns the job and thread, or undefined for no pickup.
  */
@@ -231,8 +280,10 @@ export async function pickUpQueuedWork(params: {
   now?: () => number;
 }): Promise<{ item: TrunkQueueItem; threadKey: string } | undefined> {
   const now = params.now ?? Date.now;
-  // Empty queue: no gateway call, no thread.
-  if (!read(params.env).some((row) => !row.done_at && !row.claimed_by)) {
+  // Abandoned claims go back first, so a queue holding only those still recovers.
+  await releaseStaleQueueClaims(params);
+  // Empty queue: no thread, no message.
+  if (!read(params.env).some(isClaimable)) {
     return undefined;
   }
   if (await isTrunkWorking(params.gateway, params.agentId)) {
@@ -242,22 +293,30 @@ export async function pickUpQueuedWork(params: {
   if (!item) {
     return undefined;
   }
-  const threadKey = `agent:${params.agentId}:queue-${item.id}`;
+  const { id, claim_id: claimId, thread_key: threadKey } = item;
+  // A claim released (or released and reclaimed) while a call was in flight sends nothing more.
+  const current = () => isQueueClaimCurrent(id, claimId, params.env);
   try {
+    if (!current()) {
+      return undefined;
+    }
     await params.gateway.request("sessions.create", {
       key: threadKey,
       agentId: params.agentId,
       label: item.title,
     });
+    if (!current()) {
+      return undefined;
+    }
     await params.gateway.request("chat.send", {
       sessionKey: threadKey,
       agentId: params.agentId,
       message: item.brief_text,
       deliver: false,
-      idempotencyKey: `trunk-queue-${item.id}`,
+      idempotencyKey: `trunk-queue-${id}-${claimId}`,
     });
   } catch (error) {
-    releaseQueueItem(item.id, params.env, now());
+    releaseQueueItem(id, params.env, now(), claimId);
     throw error;
   }
   return { item, threadKey };

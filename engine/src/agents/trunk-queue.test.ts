@@ -1,15 +1,17 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { onTrunkRunLifecycle } from "../gateway/server-methods/trunk-queue.js";
 import {
   addQueueItem,
+  claimNextQueueItem,
   listQueueItems,
   markQueueItemDone,
   pickUpQueuedWork,
+  releaseQueueItem,
+  releaseStaleQueueClaims,
   STALE_CLAIM_MS,
-  touchQueueClaim,
   type TrunkQueueGateway,
 } from "./trunk-queue.js";
 
@@ -76,7 +78,8 @@ describe("Trunk job queue pickup", () => {
 
     await onTrunkRunLifecycle({ agentId: "birch", terminal: true, gateway });
 
-    const thread = `agent:birch:queue-${high.id}`;
+    const thread = listQueueItems(env).find((item) => item.id === high.id)?.thread_key;
+    expect(thread).toMatch(new RegExp(`^agent:birch:queue-${high.id}-[0-9a-f]{8}$`));
     expect(calls.map((call) => call.method)).toEqual([
       "sessions.list",
       "sessions.create",
@@ -144,27 +147,112 @@ describe("Trunk job queue pickup", () => {
     expect(listQueueItems(env).find((item) => item.title === "B")?.status).toBe("queued");
   });
 
-  it("releases a claim with no run activity for 2 hours and shows it as released", async () => {
+  it("releases a claim with no run activity for 2 hours but keeps one whose run is still going", async () => {
     const start = 10_000;
     addQueueItem({ title: "Stuck", brief_text: "stuck", priority: 1 }, env, start);
-    addQueueItem({ title: "Busy", brief_text: "busy", priority: 0 }, env, start);
-    const { gateway } = fakeGateway();
-    await pickUpQueuedWork({ agentId: "ash", gateway, env, now: () => start });
-    await pickUpQueuedWork({ agentId: "birch", gateway, env, now: () => start });
-    // birch's run keeps going; ash's claim sees no run activity.
-    touchQueueClaim("birch", env, start + STALE_CLAIM_MS - 1);
+    addQueueItem({ title: "Long run", brief_text: "long", priority: 0 }, env, start);
+    claimNextQueueItem("ash", env, start);
+    claimNextQueueItem("birch", env, start);
+    // birch has one run going the whole time and no start/end since it claimed; ash has no run at all.
+    const { gateway } = fakeGateway(new Set(["birch"]));
+    const later = start + STALE_CLAIM_MS + 1;
 
-    const listed = listQueueItems(env, start + STALE_CLAIM_MS);
+    await releaseStaleQueueClaims({ gateway, env, now: () => later });
 
+    const listed = listQueueItems(env);
     expect(listed.find((item) => item.title === "Stuck")).toMatchObject({
       status: "released",
       released_from: "ash",
-      released_at: start + STALE_CLAIM_MS,
+      released_at: later,
     });
     expect(listed.find((item) => item.title === "Stuck")?.claimed_by).toBeUndefined();
-    expect(listed.find((item) => item.title === "Busy")).toMatchObject({
+    expect(listed.find((item) => item.title === "Long run")).toMatchObject({
       status: "claimed",
       claimed_by: "birch",
+      active_at: later,
     });
+  });
+
+  it("recovers a queue holding only an abandoned claim through pickup alone", async () => {
+    const start = 10_000;
+    const job = addQueueItem({ title: "Abandoned", brief_text: "pick me up" }, env, start);
+    claimNextQueueItem("ash", env, start);
+    const { gateway, calls } = fakeGateway();
+
+    const picked = await pickUpQueuedWork({
+      agentId: "birch",
+      gateway,
+      env,
+      now: () => start + STALE_CLAIM_MS + 1,
+    });
+
+    expect(picked?.item.id).toBe(job.id);
+    expect(calls.map((call) => [call.method, call.params.agentId ?? null])).toEqual([
+      ["sessions.list", "ash"],
+      ["sessions.list", "birch"],
+      ["sessions.create", "birch"],
+      ["chat.send", "birch"],
+    ]);
+    expect(listQueueItems(env)[0]).toMatchObject({ claimed_by: "birch", released_from: "ash" });
+  });
+
+  it("never lets a released claim's late failure release the next Trunk's claim", async () => {
+    const job = addQueueItem({ title: "Contested", brief_text: "contested" }, env);
+    let rejectAshSend: (error: Error) => void = () => {};
+    const sends: Array<Record<string, unknown>> = [];
+    const { gateway: idle } = fakeGateway();
+    const gateway: TrunkQueueGateway = {
+      async request<T>(method: string, params: Record<string, unknown>): Promise<T> {
+        if (method === "chat.send") {
+          sends.push(params);
+          if (params.agentId === "ash") {
+            return await new Promise<T>((_resolve, reject) => {
+              rejectAshSend = reject;
+            });
+          }
+        }
+        return await idle.request<T>(method, params);
+      },
+    };
+
+    const ash = pickUpQueuedWork({ agentId: "ash", gateway, env });
+    await vi.waitFor(() => expect(sends).toHaveLength(1));
+    expect(releaseQueueItem(job.id, env)?.claimed_by).toBe("ash");
+    const birch = await pickUpQueuedWork({ agentId: "birch", gateway, env });
+    expect(birch?.item.id).toBe(job.id);
+    rejectAshSend(new Error("ash's send failed late"));
+    await expect(ash).rejects.toThrow("ash's send failed late");
+
+    expect(listQueueItems(env)[0]).toMatchObject({ status: "claimed", claimed_by: "birch" });
+    // The reassigned job went to a new thread with its own run id, not ash's attempt.
+    expect(sends[1]!.sessionKey).not.toBe(sends[0]!.sessionKey);
+    expect(sends[1]!.idempotencyKey).not.toBe(sends[0]!.idempotencyKey);
+  });
+
+  it("sends nothing for a claim released while its thread was being created", async () => {
+    const job = addQueueItem({ title: "Released", brief_text: "released" }, env);
+    let finishCreate: () => void = () => {};
+    const { gateway: idle, calls } = fakeGateway();
+    const gateway: TrunkQueueGateway = {
+      async request<T>(method: string, params: Record<string, unknown>): Promise<T> {
+        if (method === "sessions.create") {
+          calls.push({ method, params });
+          await new Promise<void>((resolve) => {
+            finishCreate = resolve;
+          });
+          return {} as T;
+        }
+        return await idle.request<T>(method, params);
+      },
+    };
+
+    const ash = pickUpQueuedWork({ agentId: "ash", gateway, env });
+    await vi.waitFor(() => expect(calls.map((call) => call.method)).toContain("sessions.create"));
+    releaseQueueItem(job.id, env);
+    finishCreate();
+
+    expect(await ash).toBeUndefined();
+    expect(calls.map((call) => call.method)).not.toContain("chat.send");
+    expect(listQueueItems(env)[0]).toMatchObject({ status: "released", released_from: "ash" });
   });
 });

@@ -8,6 +8,7 @@ import {
   pickUpQueuedWork,
   queueItemStatus,
   releaseQueueItem,
+  releaseStaleQueueClaims,
   touchQueueClaim,
   type TrunkQueueGateway,
 } from "../../agents/trunk-queue.js";
@@ -57,7 +58,11 @@ export const trunkQueueHandlers: GatewayRequestHandlers = {
     const item = addQueueItem({ title, brief_text: briefText, priority });
     respond(true, { item: { ...item, status: queueItemStatus(item) } });
   },
-  "trunks.queue.list": async ({ respond }) => {
+  "trunks.queue.list": async ({ respond, context }) => {
+    // A failed run-activity check releases nothing; the list still shows every job.
+    await releaseStaleQueueClaims({ gateway: localGateway }).catch((error: unknown) =>
+      context.logGateway.warn(`trunk queue stale-claim check failed: ${String(error)}`),
+    );
     respond(true, { items: listQueueItems() });
   },
   "trunks.queue.done": async ({ params, respond, context }) => {
