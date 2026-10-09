@@ -3,7 +3,7 @@
   "kind": "plugin",
   "tier": "official",
   "id": "cerebras",
-  "summary": "Cerebras model provider. Calls the Cerebras API and uses your Cerebras API key.",
+  "summary": "Optional. Connects your Cerebras account. Needs a key from Cerebras.",
   "permissions": {
     "network": true,
     "files": "none",

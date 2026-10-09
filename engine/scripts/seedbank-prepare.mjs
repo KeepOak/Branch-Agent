@@ -11,6 +11,7 @@ import {
   resolveSeedbankPackageManifest,
   validatePackManifest,
 } from "./lib/seedbank-distribution.mjs";
+import { scanDirectoryWithSummary } from "../src/skills/security/scanner.ts";
 
 const PACK_FILE = "branch.pack.json";
 
@@ -55,8 +56,23 @@ function readPackSource(dir) {
   validatePackManifest(JSON.parse(text));
   return text;
 }
+// Community packs are scanned with the same skill scanner the ordinary installer uses. A blocked pack is refused here.
+async function scanRecord(dir) {
+  const summary = await scanDirectoryWithSummary(dir);
+  if (summary.critical > 0) {
+    throw new Error(`Pack refused by the scanner: ${summary.critical} critical finding(s).`);
+  }
+  return {
+    scanner: "branch-skill-scanner/v1",
+    scannedFiles: summary.scannedFiles,
+    critical: summary.critical,
+    warn: summary.warn,
+    info: summary.info,
+    truncated: summary.truncated,
+  };
+}
 // A skill is a folder with SKILL.md, branch.pack.json and package.json. It packs as-is; no plugin runtime build applies.
-function packSkill(token) {
+async function packSkill(token) {
   const skillDir = join(root, token.slice("skill:".length));
   const source = JSON.parse(readFileSync(join(skillDir, "package.json"), "utf8"));
   if (!existsSync(join(skillDir, "SKILL.md"))) {
@@ -66,6 +82,7 @@ function packSkill(token) {
   if (Array.isArray(source.files) && !source.files.includes(PACK_FILE)) {
     throw new Error(`${token}: add ${PACK_FILE} to package.json files.`);
   }
+  const scan = await scanRecord(skillDir);
   const packed = JSON.parse(
     run("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", destination], skillDir),
   );
@@ -74,11 +91,11 @@ function packSkill(token) {
   }
   process.stderr.write(`packed ${source.name}@${source.version}\n`);
   const filename = packed[0].filename;
-  packages.push({ filename, bytes: readFileSync(join(destination, filename)) });
+  packages.push({ filename, bytes: readFileSync(join(destination, filename)), scan });
 }
 for (const id of new Set(ids)) {
   if (SKILL_TOKEN.test(id)) {
-    packSkill(id);
+    await packSkill(id);
     continue;
   }
   const packageDir = join(root, "extensions", id);
@@ -89,6 +106,10 @@ for (const id of new Set(ids)) {
   process.stderr.write(
     run(process.execPath, ["scripts/lib/plugin-npm-runtime-build.mjs", `extensions/${id}`]),
   );
+  const scan =
+    JSON.parse(readPackSource(packageDir)).tier === "community"
+      ? await scanRecord(packageDir)
+      : undefined;
   withAugmentedPluginNpmManifestForPackage(
     { repoRoot: root, packageDir },
     ({ packageDir: cwd }) => {
@@ -129,7 +150,7 @@ for (const id of new Set(ids)) {
           throw new Error("Expected exactly one npm pack result.");
         }
         const filename = packed[0].filename;
-        packages.push({ filename, bytes: readFileSync(join(destination, filename)) });
+        packages.push({ filename, bytes: readFileSync(join(destination, filename)), scan });
       } finally {
         writeFileSync(file, original);
         if (packBefore) {

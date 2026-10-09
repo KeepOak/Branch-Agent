@@ -113,6 +113,15 @@ describe("Seedbank distribution", () => {
       const artifact = {
         filename: result.filename,
         bytes: readFileSync(join(directory, result.filename)),
+        // Community packs need a clean scan record; the fixture plugin is community-tier.
+        scan: {
+          scanner: "branch-skill-scanner/v1",
+          scannedFiles: 2,
+          critical: 0,
+          warn: 0,
+          info: 0,
+          truncated: false,
+        },
       };
       const params = {
         sourceSha: "a".repeat(40),

@@ -38,8 +38,15 @@ what the pack is and what it can reach:
 ```
 
 - `kind`: `skill` or `plugin`.
-- `tier`: `bundled`, `official` or `community`. Authors write `community`. A
-  maintainer changes the tier during review, and only the owner publishes `official`.
+- `tier`: `bundled`, `official` or `community`. Write `community`. Only the owner's
+  pipeline can mark a pack `official`, and only for a plugin id on the allowlist
+  `OFFICIAL_PLUGIN_IDS` in `engine/scripts/lib/seedbank-distribution.mjs`. Any other
+  tier value on a pack fails the build with "is set by the owner pipeline". Every
+  skill is community.
+- Community packs are scanned when they are built, with the same skill scanner the
+  installer uses. A pack with a critical finding, or a scan that was cut short, is
+  refused. The scan verdict (counts and scanner name, no file contents) is recorded in
+  the catalog entry as `scan`.
 - `id`: must equal the skill name (for a skill) or the plugin id (for a plugin).
 - `permissions`: all five keys are required, with the types shown. `files` is
   `none` or `workspace`. The catalog page turns these into plain sentences, for
@@ -70,6 +77,9 @@ Rules the catalog enforces:
 - The slug uses lowercase letters, digits and hyphens, and starts with a letter or
   digit. The `skill:seedbank-skills/<slug>` token rejects anything else.
 - Symlinks, absolute paths and `..` segments are refused.
+- Every file name must be safe on Windows: no `:` (alternate data streams), no
+  reserved device stems (CON, PRN, AUX, NUL, COM1-9, LPT1-9, with or without an
+  extension, any case), and no trailing dot or space in any path segment.
 
 A skill has no `branch.plugin.json`, so it is not run through the plugin runtime
 build. It packs with `npm pack --ignore-scripts`, which runs no install scripts.

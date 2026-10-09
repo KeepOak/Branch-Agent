@@ -26,6 +26,58 @@ const NO_PERMISSIONS = {
   secrets: false,
   computerControl: false,
 };
+// Only the owner's pipeline may mark a pack official. Plugin ids listed here may be official; nothing else may.
+export const OFFICIAL_PLUGIN_IDS = new Set(["cerebras"]);
+const WINDOWS_RESERVED_STEM = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/iu;
+
+export function permissionsEqual(left, right) {
+  return PERMISSION_KEYS.every((key) => left?.[key] === right?.[key]);
+}
+
+function isAllOff(permissions) {
+  return permissionsEqual(permissions, NO_PERMISSIONS);
+}
+
+// A community author may not claim a tier. Official status belongs to allowlisted owner plugins.
+export function assertTierAllowed({ kind, id, tier }) {
+  if (tier === "community") {
+    return;
+  }
+  if (tier === "official" && kind === "plugin" && OFFICIAL_PLUGIN_IDS.has(id)) {
+    return;
+  }
+  throw new Error(`Tier "${tier}" is set by the owner pipeline; this pack must be community.`);
+}
+
+// Community packs need a clean scan record before they enter the catalog.
+export function assertCleanScan({ tier, scan }) {
+  if (tier !== "community") {
+    return;
+  }
+  const clean =
+    scan !== undefined &&
+    scan !== null &&
+    scan.critical === 0 &&
+    scan.truncated === false &&
+    typeof scan.scanner === "string";
+  if (!clean) {
+    throw new Error("Community packs need a clean scan record before they enter the catalog.");
+  }
+}
+
+// Refuses names Windows cannot store safely: alternate streams, device names, trailing dots or spaces.
+export function assertPortablePath(relativePath) {
+  for (const segment of relativePath.split("/")) {
+    const stem = segment.split(".")[0].trimEnd();
+    if (
+      segment.includes(":") ||
+      WINDOWS_RESERVED_STEM.test(stem) ||
+      /[. ]$/u.test(segment)
+    ) {
+      throw new Error(`Seedbank path is not portable to Windows: ${relativePath}`);
+    }
+  }
+}
 
 // npm and branch are .cmd shims on Windows; spawn them through cmd.exe as docs-dev.mjs does.
 export function resolveCommandShim(command, args, platform = process.platform) {
@@ -110,7 +162,7 @@ export function validatePackManifest(manifest) {
   if (!valid) {
     throw new Error("Seedbank pack manifest is invalid.");
   }
-  if (manifest.kind === "skill" && JSON.stringify(manifest.permissions) !== JSON.stringify(NO_PERMISSIONS)) {
+  if (manifest.kind === "skill" && !isAllOff(manifest.permissions)) {
     throw new Error("Skills are instructions only and may not declare permissions.");
   }
   return manifest;
@@ -154,13 +206,18 @@ export function createSeedbankCatalog({ sourceSha, releaseTag, packages }) {
   }
   const identities = new Set();
   const entries = packages
-    .map(({ filename, bytes }) => {
+    .map(({ filename, bytes, scan }) => {
       const { inspected, pack, kind, id } = inspectSeedbankTarball(bytes);
       const manifest = inspected.packageManifest;
       if (!PACKAGE.test(manifest.name) || !VERSION.test(manifest.version)) {
         throw new Error("Seedbank catalog contains an invalid package identity.");
       }
       assertPackageIdentity({ kind, id }, manifest.name);
+      assertTierAllowed({ kind, id, tier: pack.tier });
+      assertCleanScan({ tier: pack.tier, scan });
+      for (const item of inspected.inventory) {
+        assertPortablePath(item.path.slice(PACKAGE_PREFIX.length));
+      }
       const expectedFilename = `${manifest.name.slice(1).replace("/", "-")}-${manifest.version}.tgz`;
       if (filename !== expectedFilename) {
         throw new Error("Seedbank tarball filename differs from its package identity.");
@@ -177,6 +234,7 @@ export function createSeedbankCatalog({ sourceSha, releaseTag, packages }) {
         tier: pack.tier,
         permissions: pack.permissions,
         summary: pack.summary ?? "",
+        scan: scan ?? null,
         ...(kind === "plugin" ? { pluginId: id } : { skillName: id }),
         description: manifest.description ?? "",
         npmSpec: identity,
@@ -247,7 +305,7 @@ export function verifySeedbankPackage(entry, bytes) {
     kind !== (entry.kind ?? "plugin") ||
     id !== expectedId ||
     pack.tier !== entry.tier ||
-    JSON.stringify(pack.permissions) !== JSON.stringify(entry.permissions)
+    !permissionsEqual(pack.permissions, entry.permissions)
   ) {
     throw new Error("Seedbank package integrity or identity mismatch; installation refused.");
   }
@@ -263,7 +321,9 @@ export function stageSeedbankSkill({ bytes, entry, parentDir }) {
   });
   const directory = resolve(parentDir, entry.skillName);
   for (const { path, content } of files) {
-    const target = resolve(directory, path.slice(PACKAGE_PREFIX.length));
+    const relative = path.slice(PACKAGE_PREFIX.length);
+    assertPortablePath(relative);
+    const target = resolve(directory, relative);
     if (!target.startsWith(`${directory}${sep}`)) {
       throw new Error("Seedbank skill path escapes its staging directory.");
     }

@@ -21,8 +21,10 @@ if (!catalogPath || !spec) {
 }
 const entry = resolveSeedbankEntry(JSON.parse(readFileSync(catalogPath, "utf8")), spec);
 const verifyOnly = options[0] === "--verify-archive";
-const bytes =
-  verifyOnly && options.length === 2 ? readFileSync(options[1]) : await downloadEntry(entry);
+if (verifyOnly && options.length !== 2) {
+  throw new Error("--verify-archive takes exactly one archive path; nothing was downloaded.");
+}
+const bytes = verifyOnly ? readFileSync(options[1]) : await downloadEntry(entry);
 verifySeedbankPackage(entry, bytes);
 if (verifyOnly) {
   console.log(`Verified ${entry.npmSpec} (${entry.sha256})`);
