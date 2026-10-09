@@ -37,6 +37,15 @@ vi.mock("./devices.js", () => ({
 const { contactHandlers } = await import("./contacts.js");
 const { hasEventScope } = await import("../server-broadcast-scopes.js");
 
+/** Windows can keep the gateway's state files open after a test; the OS clears that temp directory later. */
+function removeStateDir(dir: string): void {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+  } catch (error) {
+    if (process.platform !== "win32") throw error;
+  }
+}
+
 let stateDir = "";
 const previousState = process.env.BRANCH_STATE_DIR;
 beforeEach(() => {
@@ -48,8 +57,7 @@ beforeEach(() => {
 afterEach(() => {
   if (previousState === undefined) delete process.env.BRANCH_STATE_DIR;
   else process.env.BRANCH_STATE_DIR = previousState;
-  // Windows keeps the state files open for a moment after the gateway stops; retry instead of failing EPERM.
-  fs.rmSync(stateDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+  removeStateDir(stateDir);
 });
 
 const device = (id: string) => ({

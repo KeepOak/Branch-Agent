@@ -31,8 +31,12 @@ beforeEach(() => {
 afterEach(() => {
   if (previousState === undefined) delete process.env.BRANCH_STATE_DIR;
   else process.env.BRANCH_STATE_DIR = previousState;
-  // Windows keeps the state files open for a moment after a test; retry instead of failing EPERM.
-  fs.rmSync(stateDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+  // Windows can keep the state files open after a test; the OS clears that temp directory later.
+  try {
+    fs.rmSync(stateDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+  } catch (error) {
+    if (process.platform !== "win32") throw error;
+  }
 });
 
 describe("messages to a joined Branch's Trunk", () => {
