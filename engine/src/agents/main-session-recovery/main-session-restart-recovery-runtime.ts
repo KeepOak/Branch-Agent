@@ -434,8 +434,13 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
       signal: abortController.signal,
       attempt: async (finalAttempt) => {
         exhaustedTargets = new Map();
+        // The scan replaces the previous timer, but notifications received
+        // while it is in flight must survive its (possibly older) result.
+        retryAtMs = undefined;
         const result = await runRecoveryAttempt(exhaustedTargets, finalAttempt);
-        retryAtMs = result.retryAtMs;
+        if (result.retryAtMs !== undefined) {
+          retryAtMs = Math.min(retryAtMs ?? Infinity, result.retryAtMs);
+        }
         if (result.failed === 0) {
           return true;
         }

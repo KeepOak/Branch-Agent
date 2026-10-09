@@ -2185,14 +2185,11 @@ describe("main-session-restart-recovery", () => {
       });
       await recoverRestartAbortedMainSessions({ cfg: {}, stateDir: tmpDir });
       expect(callGateway).not.toHaveBeenCalled();
-      const dispatched = createDeferred();
-      vi.mocked(callGateway).mockImplementationOnce(async () => {
-        dispatched.resolve();
-        return { runId: "run-resumed" };
-      });
+      vi.mocked(callGateway).mockResolvedValueOnce({ runId: "run-resumed" });
       await vi.advanceTimersByTimeAsync(180_000);
-      await dispatched.promise;
-      expect(callGateway).toHaveBeenCalledOnce();
+      // Real SQLite work may finish after the single clock jump. Keep advancing
+      // the fake clock while waiting, with Vitest's standard bounded wait.
+      await vi.waitFor(() => expect(callGateway).toHaveBeenCalledOnce());
     } finally {
       dispatchSettlement.resolve();
       await recovery.stop();
