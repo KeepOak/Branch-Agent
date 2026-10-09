@@ -282,7 +282,7 @@ describe("Skill Workshop migration ownership", () => {
             opsMatches === 3 ? "candidate agents: main, ops" : "candidate agents: none",
           );
           expect(warning).toContain(
-            "https://docs.openclaw.ai/tools/skill-workshop/collection-review#when-an-older-backup-cannot-be-restored-automatically",
+            "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/skill-workshop/collection-review#when-an-older-backup-cannot-be-restored-automatically",
           );
           await expect(fs.readFile(manifestPath, "utf8")).resolves.toBe(manifest);
         }

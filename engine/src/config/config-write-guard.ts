@@ -3,7 +3,7 @@ import { resolveIsConfigReadOnly, resolveIsNixMode } from "./paths.js";
 /** Agent-first Nix install docs shown when runtime config writes are blocked. */
 const NIX_BRANCH_AGENT_FIRST_URL = "https://github.com/openclaw/nix-openclaw#quick-start";
 /** Public Branch Agent Nix overview shown with immutable-config errors. */
-const NIX_OVERVIEW_URL = "https://docs.openclaw.ai/install/nix";
+const NIX_OVERVIEW_URL = "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/install/nix";
 
 /** Error thrown when external management disables config mutation. */
 export class ConfigReadOnlyError extends Error {

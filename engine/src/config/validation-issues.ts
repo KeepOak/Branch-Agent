@@ -6,7 +6,7 @@ import { coerceSecretRef } from "./types.secrets.js";
 
 type UnknownIssueRecord = Record<string, unknown>;
 type ConfigPathSegment = string | number;
-const SECRETREF_POLICY_DOC_URL = "https://docs.openclaw.ai/reference/secretref-credential-surface";
+const SECRETREF_POLICY_DOC_URL = "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/reference/secretref-credential-surface";
 
 function toConfigPathSegments(path: unknown): ConfigPathSegment[] {
   if (!Array.isArray(path)) {

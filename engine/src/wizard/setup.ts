@@ -103,7 +103,7 @@ async function runSetupWizardOnce(
         [
           ...snapshot.issues.map((iss) => `- ${iss.path}: ${iss.message}`),
           "",
-          "Docs: https://docs.openclaw.ai/gateway/configuration",
+          "Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/configuration",
         ].join("\n"),
         "Config issues",
       );

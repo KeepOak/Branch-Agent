@@ -96,11 +96,11 @@ export const zh_TW = {
       trustedProxyLoopbackWarning:
         "任何本機程序都可以向 Gateway 傳送身分標頭，冒充回環反向代理。\n僅當反向代理是接收使用者流量的唯一本機監聽服務、Gateway 的直接存取已受限且你信任本機程序時，才啟用此選項。\n代理必須驗證使用者身分，並移除或覆寫用戶端提供的身分標頭。",
       trustedProxyLoopbackRefused:
-        "回環代理請求在執行時將被拒絕（trusted_proxy_loopback_source）。\n請使用非回環代理位址，或重新執行 Gateway 設定，在閱讀安全警告後明確允許回環。\n文件：https://docs.openclaw.ai/gateway/trusted-proxy-auth",
+        "回環代理請求在執行時將被拒絕（trusted_proxy_loopback_source）。\n請使用非回環代理位址，或重新執行 Gateway 設定，在閱讀安全警告後明確允許回環。\n文件：https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/trusted-proxy-auth",
       websocketUrl: "Gateway WebSocket URL",
     },
     gatewayTailscale: {
-      docsNote: "文件：\nhttps://docs.openclaw.ai/gateway/tailscale\nhttps://docs.openclaw.ai/web",
+      docsNote: "文件：\nhttps://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/tailscale\nhttps://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/web",
       funnel: "Funnel",
       funnelHint: "透過 Tailscale Funnel 暴露公開 HTTPS",
       missingBinNote:
@@ -293,7 +293,7 @@ export const zh_TW = {
       localGateway: "Gateway：在本機執行，僅供這台機器使用（token 認證）。",
       applyPrompt: "回覆 **yes**，我就會為你完成這些設定。",
       security:
-        "請注意：你的智慧代理將取得這台機器的實際存取權限 — https://docs.openclaw.ai/security",
+        "請注意：你的智慧代理將取得這台機器的實際存取權限 — https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/security",
       afterSetup:
         "完成後：輸入 `talk to agent`，就在這裡認識你的智慧代理。頻道是選用的：如果想從其他服務聊天，可以使用 `connect discord`、`connect slack`、`connect telegram`、`connect whatsapp`（或用 `channels` 檢視完整清單）。",
       setupModelNext:
@@ -315,7 +315,7 @@ export const zh_TW = {
     guided: {
       laneQuestion: "你想如何開始？",
       laneSecurityLine:
-        "Branch Agent 執行的 AI 代理程式擁有這台機器的實際存取權限。安全指南：https://docs.openclaw.ai/gateway/security",
+        "Branch Agent 執行的 AI 代理程式擁有這台機器的實際存取權限。安全指南：https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/security",
       laneQuickLabel: "快速開始（建議）",
       laneQuickHint: "尋找 AI 存取方式，由你選擇要驗證的連線，然後開啟網頁儀表板。",
       laneCustomLabel: "自訂設定",
@@ -516,7 +516,7 @@ export const zh_TW = {
         "在 Linux 容器中會隱藏僅支援 brew 的技能安裝項，因為官方映像檔不包含 Homebrew。",
       containerBrewManual: "請使用預先安裝 Homebrew 的自訂映像檔，或手動安裝這些依賴。",
       containerInstallsTitle: "容器技能安裝",
-      docsLine: "文件：https://docs.openclaw.ai/skills",
+      docsLine: "文件：https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/skills",
       enterEnv: "輸入 {env}",
       homebrewCommand: "顯示 Homebrew 安裝命令？",
       homebrewInstallTitle: "Homebrew 安裝",
@@ -1138,7 +1138,7 @@ export const zh_TW = {
       codexNativeSearchOnly: "僅用於支援 Codex 的模型。",
       codexNativeSearchTitle: "Codex 原生搜尋",
       controlUiTitle: "Control UI",
-      controlUiDocs: "文件：https://docs.openclaw.ai/web/control-ui",
+      controlUiDocs: "文件：https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/web/control-ui",
       dashboardCopyPaste: "在本機瀏覽器中複製/貼上這個 URL 來控制 Branch。",
       dashboardOpened: "已在瀏覽器中開啟。保留該分頁以控制 Branch。",
       dashboardOpenAnytime: "隨時開啟 dashboard：{command}",
@@ -1206,7 +1206,7 @@ export const zh_TW = {
       containerSystemdUnavailable:
         "此容器內沒有 systemd 使用者服務。Branch Agent 只會略過背景服務安裝；請以前景方式執行 Gateway，或使用你的容器 supervisor。",
       securityReminder:
-        "在你的電腦上執行 agent 存在風險，請加固設定：https://docs.openclaw.ai/security",
+        "在你的電腦上執行 agent 存在風險，請加固設定：https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/security",
       secretRefAuthFailed: "無法解析用於設定認證的 {field} SecretRef。",
       skipHealthNextTime: "下次也可略過此探測：{command}",
       skipControlUi: "略過 Control UI/TUI 提示。",
@@ -1220,7 +1220,7 @@ export const zh_TW = {
       sessionGatewayStarted: "本次工作階段的 Gateway 已啟動。",
       sessionGatewayStartFailed: "本次工作階段的 Gateway 啟動失敗。",
       terminalHatch: "在終端機中啟動（建議）",
-      webDocs: "文件：https://docs.openclaw.ai/tools/web",
+      webDocs: "文件：https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web",
       webSearchAutoDetected: "Web search 可透過 {provider} 使用（自動偵測）。",
       webSearchDisabled: "Web search（{provider}）已設定但被停用。",
       webSearchEnabled: "Web search 已啟用，agent 可在需要時線上查詢。",
@@ -1245,7 +1245,7 @@ export const zh_TW = {
       whatNow: '下一步：https://openclaw.ai/showcase（"What People Are Building"）。',
       whatNowTitle: "下一步",
       workspaceBackupTitle: "工作區備份",
-      workspaceDocs: "文件：https://docs.openclaw.ai/concepts/agent-workspace",
+      workspaceDocs: "文件：https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/concepts/agent-workspace",
       workspaceReady: "你的工作區已就緒。",
     },
     gatewayNotes: {

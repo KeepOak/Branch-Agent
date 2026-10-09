@@ -595,7 +595,7 @@ describe("packNpmSpecToArchive", () => {
     expectPackError(result, [
       "Package not found on npm",
       "@branch/whatsapp",
-      "docs.openclaw.ai/tools/plugin",
+      "github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/plugin",
     ]);
   });
 

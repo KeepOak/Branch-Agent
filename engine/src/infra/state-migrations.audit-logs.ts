@@ -62,7 +62,7 @@ type AuditLogMigrationResult = Pick<MigrationMessages, "changes" | "warnings"> &
 };
 
 const AUDIT_SKIP_RECOVERY_GUIDANCE =
-  "Preserve the legacy source and any sanitized companion for recovery; see https://docs.openclaw.ai/cli/update/repair-and-recovery#skipped-legacy-audit-recovery. Other repairs can continue; this warning repeats until the archive is resolved.";
+  "Preserve the legacy source and any sanitized companion for recovery; see https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli/update/repair-and-recovery#skipped-legacy-audit-recovery. Other repairs can continue; this warning repeats until the archive is resolved.";
 
 async function secureAuditArchiveFile(params: {
   root: AuditMigrationRoot;

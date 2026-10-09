@@ -50,7 +50,7 @@ describe("createNewerSqliteSchemaVersionError", () => {
     const error = createNewerSqliteSchemaVersionError("test database", "/tmp/test.sqlite", 12, 11);
 
     expect(error.name).toBe("SqliteSchemaVersionError");
-    expect(error.message).toContain("https://docs.openclaw.ai/reference/database-schemas");
+    expect(error.message).toContain("https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/reference/database-schemas");
   });
 
   it("names the refusing install and both schema versions", () => {

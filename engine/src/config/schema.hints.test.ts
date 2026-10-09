@@ -42,7 +42,7 @@ describe("section docs URLs", () => {
 
   it("maps every URL to an existing task-oriented docs page", () => {
     const hints = buildBaseHints();
-    const docsOrigin = "https://docs.openclaw.ai";
+    const docsOrigin = "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs";
 
     for (const [path, docsUrl] of Object.entries(SECTION_DOCS_URLS)) {
       const docsPath = docsUrl.slice(docsOrigin.length).replace(/^\//u, "");

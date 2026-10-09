@@ -1,0 +1,12 @@
+engine:src/config/schema.hints.test.ts
+engine:src/config/validation.policy.test.ts
+engine:src/config/zod-schema.telemetry.test.ts
+engine:src/infra/install-source-utils.test.ts
+engine:src/infra/sqlite-user-version.test.ts
+engine:src/infra/state-migrations.audit-skips.test.ts
+engine:src/infra/state-migrations.skill-workshop.test.ts
+engine:src/infra/update-failure-report-prepare.test.ts
+engine:src/plugins/web-provider-capture-lifetime.test.ts
+engine:src/shared/entry-status.test.ts
+engine:src/state/branch-agent-db.test.ts
+engine:src/state/branch-state-db.test.ts

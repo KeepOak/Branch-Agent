@@ -77,7 +77,7 @@ function formatMigrationArtifactRefusal(filePath: string, stat: fs.BigIntStats):
     `(nlink=${stat.nlink}, dev=${stat.dev}, inode=${stat.ino}): ` +
     "another hard link references this inode; the migration refuses aliased inputs so a snapshot copy cannot be rewritten in place. " +
     "Stop the Gateway and make a verified backup, then follow the recovery guidance: " +
-    "https://docs.openclaw.ai/cli/doctor/sqlite-maintenance#hard-linked-legacy-artifacts"
+    "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli/doctor/sqlite-maintenance#hard-linked-legacy-artifacts"
   );
 }
 
