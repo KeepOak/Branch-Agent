@@ -5,7 +5,7 @@ import { ConnectErrorDetailCodes, type GatewayBrowserDeviceIdentity } from '@bra
 import type { KeyValueStore } from '../storage/keyValueStore';
 import { createDeviceTokenStore } from '../connect/deviceTokenStore';
 import { OPERATOR_ROLE, PhoneGateway, phoneClient, type GatewayStatus, type PhoneGatewayOptions, type Platform } from '../connect/phoneGateway';
-import type { SetupPayload } from './setupCode';
+import { isGatewayUrl, type SetupPayload } from './setupCode';
 
 export const PAIRING_RECORD_KEY = 'branch.pairing.v1';
 
@@ -15,7 +15,13 @@ export type PairingState =
   | { step: 'connecting'; url: string }
   | { step: 'approval'; url: string }
   | { step: 'paired'; url: string; online: boolean; serverVersion?: string }
-  | { step: 'failed'; url: string; message: string };
+  | { step: 'failed'; url: string; message: string }
+  /**
+   * The computer this phone paired with turned it away for good (its device token was revoked or no
+   * longer matches, its permissions changed, or too many tries). The engine's client has stopped
+   * retrying, so the phone says why and offers to pair again instead of claiming it is reconnecting.
+   */
+  | { step: 'refused'; url: string; message: string; canRetry: boolean };
 
 export type PairingDeps = {
   store: KeyValueStore;
@@ -29,17 +35,44 @@ export type PairingDeps = {
 
 type PairingRecord = { version: 1; url: string; pairedAtMs: number };
 
-/** Plain words for the ways a first pairing can end, keyed by the engine's connect error codes. */
-export function failureMessage(status: Extract<GatewayStatus, { phase: 'failed' }>): string {
-  switch (status.code) {
+/** What the phone says for any refusal it has no specific words for. Never the engine's own text. */
+export const NEUTRAL_FAILURE_MESSAGE =
+  'Your computer couldn’t let this phone in. Make a new pairing code in Branch on your computer and pair again.';
+
+/**
+ * Plain words for the ways the computer can turn this phone away, keyed by the engine's connect error
+ * codes (ConnectErrorDetailCodes). The engine's message text is never shown: it is written for the
+ * command line and can carry technical detail.
+ */
+export function failureMessage(code: string | undefined): string {
+  switch (code) {
     case ConnectErrorDetailCodes.PAIRING_REJECTED:
       return 'Your computer turned this phone away. Pair again if that was a mistake.';
     case ConnectErrorDetailCodes.PAIRING_EXPIRED:
     case ConnectErrorDetailCodes.AUTH_BOOTSTRAP_TOKEN_INVALID:
       return 'This pairing code has expired or was already used. Make a new one on your computer and scan it again.';
+    case ConnectErrorDetailCodes.AUTH_DEVICE_TOKEN_MISMATCH:
+    case ConnectErrorDetailCodes.DEVICE_IDENTITY_REQUIRED:
+    case ConnectErrorDetailCodes.DEVICE_AUTH_INVALID:
+    case ConnectErrorDetailCodes.DEVICE_AUTH_DEVICE_ID_MISMATCH:
+    case ConnectErrorDetailCodes.DEVICE_AUTH_SIGNATURE_INVALID:
+    case ConnectErrorDetailCodes.DEVICE_AUTH_PUBLIC_KEY_INVALID:
+      return 'Your computer no longer recognises this phone. It may have been removed from Branch on your computer. Pair again to keep using it here.';
+    case ConnectErrorDetailCodes.AUTH_SCOPE_MISMATCH:
+      return 'Your computer changed what this phone is allowed to do. Pair again to pick up the new permissions.';
+    case ConnectErrorDetailCodes.AUTH_RATE_LIMITED:
+      return 'Your computer paused sign-ins after too many tries. Wait a minute, then try again.';
+    case ConnectErrorDetailCodes.PROTOCOL_MISMATCH:
+    case ConnectErrorDetailCodes.CLIENT_VERSION_MISMATCH:
+      return 'This phone and your computer are on different versions of Branch. Update Branch on both, then open it again.';
     default:
-      return `Your computer couldn't let this phone in: ${status.message}`;
+      return NEUTRAL_FAILURE_MESSAGE;
   }
+}
+
+/** Refusals that can clear up by themselves, so trying again makes sense. */
+function canRetryAfter(code: string | undefined): boolean {
+  return code === ConnectErrorDetailCodes.AUTH_RATE_LIMITED;
 }
 
 export class PairingSession {
@@ -83,6 +116,15 @@ export class PairingSession {
   cancel(): void {
     this.stopGateway();
     if (!this.paired) this.set({ step: 'unpaired' });
+  }
+
+  /** After the computer refused a saved pairing for a reason that can clear up: ask it again. */
+  retry(): void {
+    const record = this.paired;
+    if (!record || this.state.step !== 'refused') return;
+    this.stopGateway();
+    this.set({ step: 'paired', url: record.url, online: false });
+    this.connect(record.url);
   }
 
   /** Forgets the computer: closes the connection and deletes its address and device token here. */
@@ -143,7 +185,13 @@ export class PairingSession {
         return;
       }
       case 'failed':
-        this.set(this.paired ? { step: 'paired', url, online: false } : { step: 'failed', url, message: failureMessage(status) });
+        // PhoneGateway only reports 'failed' once the engine's reconnect policy has stopped retrying, so a
+        // saved pairing that fails here will not come back by itself.
+        this.set(
+          this.paired
+            ? { step: 'refused', url, message: failureMessage(status.code), canRetry: canRetryAfter(status.code) }
+            : { step: 'failed', url, message: failureMessage(status.code) },
+        );
     }
   }
 
@@ -157,7 +205,7 @@ export class PairingSession {
     if (!raw) return null;
     try {
       const value = JSON.parse(raw) as Partial<PairingRecord>;
-      return value.version === 1 && typeof value.url === 'string' ? (value as PairingRecord) : null;
+      return value.version === 1 && isGatewayUrl(value.url) ? (value as PairingRecord) : null;
     } catch {
       return null;
     }

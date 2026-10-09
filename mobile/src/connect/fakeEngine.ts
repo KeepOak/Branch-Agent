@@ -17,6 +17,10 @@ export type FakeEngine = {
   reject: () => void;
   /** Drops the phone's connection the way an engine restart does. */
   drop: () => void;
+  /** Revokes the device token it issued, as removing the phone in Branch on the computer does. */
+  revoke: () => void;
+  /** Turns every later connect away with this error (the engine's wire shape); null stops refusing. */
+  refuse: (refusal: { code: string; message: string } | null) => void;
   readonly openSockets: number;
 };
 
@@ -25,6 +29,8 @@ export function createFakeEngine(options: { version?: string; bootstrapToken?: s
   const bootstrapToken = options.bootstrapToken ?? 'boot-1';
   const deviceToken = options.deviceToken ?? 'device-token-1';
   let decision: 'pending' | 'approved' | 'rejected' = 'pending';
+  let revoked = false;
+  let refusal: { code: string; message: string } | null = null;
   const live = new Set<{ close: (code: number, reason: string) => void }>();
   const engine: FakeEngine = {
     connects: [],
@@ -38,6 +44,12 @@ export function createFakeEngine(options: { version?: string; bootstrapToken?: s
     },
     drop: () => {
       for (const socket of [...live]) socket.close(1012, 'engine restarting');
+    },
+    revoke: () => {
+      revoked = true;
+    },
+    refuse: (next) => {
+      refusal = next;
     },
     get openSockets() {
       return live.size;
@@ -86,6 +98,16 @@ export function createFakeEngine(options: { version?: string; bootstrapToken?: s
               device.signedAt === challengeTs &&
               verify(base64UrlToBytes(device.signature), utf8ToBytes(signed), base64UrlToBytes(device.publicKey)),
           );
+          if (refusal) {
+            reply({ type: 'res', id: frame.id, ok: false, error: { code: 'INVALID_REQUEST', message: refusal.message, details: { code: refusal.code } } });
+            return;
+          }
+          if (params.auth?.deviceToken && (revoked || params.auth.deviceToken !== deviceToken)) {
+            // The engine's words for this (engine/src/gateway/server/ws-connection/auth-messages.ts).
+            const message = 'unauthorized: device token mismatch (rotate/reissue device token)';
+            reply({ type: 'res', id: frame.id, ok: false, error: { code: 'INVALID_REQUEST', message, details: { code: 'AUTH_DEVICE_TOKEN_MISMATCH' } } });
+            return;
+          }
           const knownDevice = params.auth?.deviceToken === deviceToken;
           if (knownDevice || (params.auth?.bootstrapToken === bootstrapToken && decision === 'approved')) {
             reply({

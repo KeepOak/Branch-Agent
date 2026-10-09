@@ -3,8 +3,8 @@ import { bytesToBase64Url, utf8ToBytes } from '../connect/base64url';
 import { createFakeEngine } from '../connect/fakeEngine';
 import { PHONE_SCOPES } from '../connect/phoneGateway';
 import { memoryStore } from '../storage/keyValueStore';
-import { PAIRING_RECORD_KEY, PairingSession, type PairingState } from './pairingSession';
-import { decodeSetupCode, gatewayHost, SetupCodeError } from './setupCode';
+import { failureMessage, NEUTRAL_FAILURE_MESSAGE, PAIRING_RECORD_KEY, PairingSession, type PairingState } from './pairingSession';
+import { decodeSetupCode, gatewayHost, isGatewayUrl, SetupCodeError } from './setupCode';
 
 const encode = (value: unknown) => bytesToBase64Url(utf8ToBytes(JSON.stringify(value)));
 const randomBytes = (length: number) => crypto.getRandomValues(new Uint8Array(length));
@@ -53,6 +53,47 @@ describe('pairing code', () => {
       expect(() => decodeSetupCode(bad)).toThrow(SetupCodeError);
     }
     expect(() => decodeSetupCode(encode({ ...payload, urls: [] }))).toThrow('Invalid pairing setup code.');
+  });
+
+  it('turns away an address with a user name or password in it, in url and in urls', () => {
+    const withCredentials = 'ws://user:secret@computer.local:19031';
+    expect(() => decodeSetupCode(encode({ ...payload, url: withCredentials }), 1_000)).toThrow(new SetupCodeError('invalid'));
+    expect(() => decodeSetupCode(encode({ ...payload, url: 'ws://user@computer.local:19031' }), 1_000)).toThrow(new SetupCodeError('invalid'));
+    expect(() => decodeSetupCode(encode({ ...payload, urls: [payload.url, withCredentials] }), 1_000)).toThrow(new SetupCodeError('invalid'));
+    expect(() => decodeSetupCode(`oc-pair://${encode({ ...payload, url: withCredentials })}`, 1_000)).toThrow(new SetupCodeError('invalid'));
+  });
+
+  it('only accepts an address already in the form the engine writes, like the engine decoder', () => {
+    for (const good of ['ws://192.168.1.20:19031', 'wss://branch.example.ts.net', 'ws://[fd00::1]:19031', 'ws://computer.local:19031/branch']) {
+      expect(isGatewayUrl(good)).toBe(true);
+      expect(decodeSetupCode(encode({ ...payload, url: good, urls: [good] }), 1_000).url).toBe(good);
+    }
+    for (const bad of [
+      'WS://computer.local:19031',
+      'ws://Computer.local:19031',
+      'ws://computer.local:19031/',
+      'ws://computer.local:80',
+      'wss://computer.local:443',
+      'ws://computer.local:19031?x=1',
+      'ws://computer.local:19031#x',
+      'ws://computer.local:99999',
+      'ws:computer.local:19031',
+      'ws:///computer.local',
+      'http://computer.local:19031',
+      'ftp://computer.local',
+      'computer.local:19031',
+      'ws://exa mple.local',
+    ]) {
+      expect(isGatewayUrl(bad)).toBe(false);
+      expect(() => decodeSetupCode(encode({ ...payload, url: bad }), 1_000)).toThrow(SetupCodeError);
+      expect(() => decodeSetupCode(encode({ ...payload, urls: [bad] }), 1_000)).toThrow(SetupCodeError);
+    }
+  });
+
+  it('never shows a user name or password from an address', () => {
+    expect(gatewayHost('ws://user:secret@computer.local:19031')).toBe('computer.local:19031');
+    expect(gatewayHost('ws://user:secret@computer.local:19031/branch?token=x')).toBe('computer.local:19031');
+    expect(gatewayHost('not an address user:secret@')).toBe('your computer');
   });
 
   it('says when a code has expired', () => {
@@ -124,6 +165,100 @@ describe('pairing with the computer', () => {
     stale.session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'old-code' });
     expect(await until(stale.session, (s) => s.step === 'failed')).toMatchObject({ message: expect.stringContaining('expired or was already used') });
     stale.session.dispose();
+  });
+
+  it('ignores a saved computer whose address carries a user name or password', async () => {
+    const store = memoryStore();
+    await store.set(PAIRING_RECORD_KEY, JSON.stringify({ version: 1, url: 'ws://user:secret@computer.local:19031', pairedAtMs: 1 }));
+    const { session, engine } = sessionWith(createFakeEngine(), store);
+    await session.restore();
+    expect(session.getState()).toEqual({ step: 'unpaired' });
+    expect(engine.urls).toEqual([]);
+    session.dispose();
+  });
+
+  it('says to pair again, and stops trying, when the computer revokes the saved device token', async () => {
+    const first = sessionWith();
+    first.session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' });
+    first.engine.approve();
+    await until(first.session, (s) => s.step === 'paired' && s.online);
+    first.session.dispose();
+    first.engine.revoke();
+
+    // Next launch: the saved token no longer works.
+    const relaunch = sessionWith(first.engine, first.store);
+    await relaunch.session.restore();
+    const refused = await until(relaunch.session, (s) => s.step === 'refused');
+    expect(refused).toEqual({
+      step: 'refused',
+      url: 'ws://computer.local:19031',
+      message: expect.stringContaining('no longer recognises this phone'),
+      canRetry: false,
+    });
+    expect(JSON.stringify(refused)).not.toMatch(/unauthorized|token|rotate/i);
+    const connectsAtRefusal = first.engine.connects.length;
+    expect(first.engine.connects[connectsAtRefusal - 1].auth).toEqual({ deviceToken: 'device-token-1' });
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    expect(first.engine.connects.length).toBe(connectsAtRefusal);
+    expect(relaunch.session.getState().step).toBe('refused');
+
+    // Pairing again forgets the dead token and the saved computer.
+    await relaunch.session.unpair();
+    expect(relaunch.session.getState()).toEqual({ step: 'unpaired' });
+    expect(Object.keys(relaunch.store.dump())).toEqual([DEVICE_IDENTITY_KEY]);
+    relaunch.session.dispose();
+  });
+
+  it('says to pair again when the token is revoked while connected, not that it is reconnecting', async () => {
+    const { session, engine, states } = sessionWith();
+    session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' });
+    engine.approve();
+    await until(session, (s) => s.step === 'paired' && s.online);
+    engine.revoke();
+    engine.drop();
+    expect(await until(session, (s) => s.step === 'refused')).toMatchObject({ message: expect.stringContaining('Pair again'), canRetry: false });
+    expect(states[states.length - 1].step).toBe('refused');
+    session.dispose();
+  });
+
+  it('explains a permissions change on a saved pairing in plain words', async () => {
+    const { session, engine } = sessionWith();
+    session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' });
+    engine.approve();
+    await until(session, (s) => s.step === 'paired' && s.online);
+    engine.refuse({ code: 'AUTH_SCOPE_MISMATCH', message: 'unauthorized: device token scope mismatch (re-pair or approve scope upgrade)' });
+    engine.drop();
+    const refused = await until(session, (s) => s.step === 'refused');
+    expect(refused).toMatchObject({ message: 'Your computer changed what this phone is allowed to do. Pair again to pick up the new permissions.', canRetry: false });
+    session.dispose();
+  });
+
+  it('lets a rate-limited saved pairing try again once the computer accepts sign-ins', async () => {
+    const { session, engine } = sessionWith();
+    session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' });
+    engine.approve();
+    await until(session, (s) => s.step === 'paired' && s.online);
+    engine.refuse({ code: 'AUTH_RATE_LIMITED', message: 'unauthorized: too many failed authentication attempts (retry later)' });
+    engine.drop();
+    expect(await until(session, (s) => s.step === 'refused')).toMatchObject({ message: expect.stringContaining('too many tries'), canRetry: true });
+    engine.refuse(null);
+    session.retry();
+    await until(session, (s) => s.step === 'paired' && s.online);
+    session.dispose();
+  });
+
+  it('never shows the engine’s own error text; an unmapped refusal gets neutral words', async () => {
+    const secret = 'unauthorized: gateway password mismatch (set gateway.remote.password to hunter2 at C:\\Users\\owner\\.branch\\branch.json)';
+    const { session, engine } = sessionWith();
+    engine.refuse({ code: 'AUTH_PASSWORD_MISMATCH', message: secret });
+    session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' });
+    const failed = await until(session, (s) => s.step === 'failed');
+    expect(failed).toEqual({ step: 'failed', url: 'ws://computer.local:19031', message: NEUTRAL_FAILURE_MESSAGE });
+    expect(JSON.stringify(failed)).not.toMatch(/hunter2|Users|gateway\.remote|unauthorized/);
+    session.dispose();
+
+    expect(failureMessage('SOME_CODE_FROM_A_LATER_ENGINE')).toBe(NEUTRAL_FAILURE_MESSAGE);
+    expect(failureMessage(undefined)).toBe(NEUTRAL_FAILURE_MESSAGE);
   });
 
   it('shows the computer as offline while it restarts, then online again', async () => {

@@ -9,6 +9,7 @@ import { usePairingState } from './src/pairing/usePairingState';
 import { ApprovalScreen } from './src/screens/ApprovalScreen';
 import { EnterCodeScreen } from './src/screens/EnterCodeScreen';
 import { PairedScreen } from './src/screens/PairedScreen';
+import { RefusedScreen } from './src/screens/RefusedScreen';
 import { ScanScreen } from './src/screens/ScanScreen';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
@@ -40,6 +41,12 @@ function Shell({ session }: { session: PairingSession }) {
     setRoute('scan');
   };
 
+  // A fresh pairing forgets the refused one (its device token no longer works) and opens the scanner.
+  const pairAgain = () => {
+    setRoute('scan');
+    void session.unpair();
+  };
+
   let screen = null;
   switch (state.step) {
     case 'loading':
@@ -61,6 +68,9 @@ function Shell({ session }: { session: PairingSession }) {
       break;
     case 'paired':
       screen = <PairedScreen state={state} onUnpair={() => void session.unpair()} />;
+      break;
+    case 'refused':
+      screen = <RefusedScreen state={state} onPairAgain={pairAgain} onRetry={() => session.retry()} onForget={() => void session.unpair()} />;
   }
 
   return (
