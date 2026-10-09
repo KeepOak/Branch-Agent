@@ -9,7 +9,7 @@ import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const OS_LABEL = { mac: 'macOS', linux: 'Linux', windows: 'Windows' };
-// Timing findings from the Mac are load-affected while the machine runs other agents.
+// Timing findings from the Mac and Windows machines are load-affected while they run other agents.
 export const TIMING_KINDS = new Set(['slow-first-paint', 'slow', 'flicker', 'idle-churn', 'blank-before-content']);
 
 const ms = (value) => (value === null || value === undefined ? 'n/a' : `${Math.round(value)} ms`);
@@ -39,7 +39,8 @@ export function summarize(f) {
 /** Builds the line for one finding. */
 export function lineFor(f, id, os) {
   const label = OS_LABEL[os] || os;
-  const tag = TIMING_KINDS.has(f.kind) && os === 'mac' ? ' [load-affected]' : '';
+  // Timing findings from machines under load (the Mac and the Windows machine, both short on memory) are load-affected until reproduced on a quiet machine.
+  const tag = TIMING_KINDS.has(f.kind) && (os === 'mac' || os === 'windows') ? ' [load-affected]' : '';
   const place = `${f.root} › ${f.control}`;
   const repro = (f.repro || []).join(' → ');
   const evidence = (f.evidence || []).map((file) => basename(file)).join(', ') || 'none';
