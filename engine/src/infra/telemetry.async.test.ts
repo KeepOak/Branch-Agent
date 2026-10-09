@@ -218,7 +218,7 @@ it("does not treat another path's cached result as a network check for an uncach
   expect(checked).toEqual({ version: "2026.8.25" });
   expect(fetchImpl).toHaveBeenCalledExactlyOnceWith(
     endpoint,
-    expect.objectContaining({ method: "GET" }),
+    expect.objectContaining({ method: "POST" }),
   );
 });
 

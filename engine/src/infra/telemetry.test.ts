@@ -328,11 +328,13 @@ describe("anonymous telemetry", () => {
   it("sends at most one request per 24 hours and reuses the persisted update result", async () => {
     mockHttp.intercept({
       url: TELEMETRY_URL,
-      reply: { json: { version: "2026.8.24", note: "A newer release is available." } },
+      method: "POST",
+      reply: { json: { version: "2026.8.24", note: "A newer release is available." } },,
     });
     mockHttp.intercept({
       url: TELEMETRY_URL,
-      reply: { json: { version: "2026.8.25" } },
+      method: "POST",
+      reply: { json: { version: "2026.8.25" } },,
     });
     const options = { surface: "gateway" as const, fetchImpl: globalThis.fetch };
 
@@ -364,8 +366,12 @@ describe("anonymous telemetry", () => {
   it("retains a successful response through write failures and recovers without extending its throttle", async () => {
     const unblock = blockTelemetryPersistence();
     const update = { version: "2026.8.24", note: "A newer release is available." };
-    mockHttp.intercept({ url: TELEMETRY_URL, reply: { json: update } });
-    mockHttp.intercept({ url: TELEMETRY_URL, reply: { json: { version: "2026.8.25" } } });
+    mockHttp.intercept({ url: TELEMETRY_URL, method: "POST", reply: { json: update } });
+    mockHttp.intercept({
+      url: TELEMETRY_URL,
+      method: "POST",
+      reply: { json: { version: "2026.8.25" } },
+    });
     const options = { surface: "gateway" as const, fetchImpl: globalThis.fetch };
 
     const first = await checkTelemetryUpdate(() => OPTED_IN_CONFIG, { ...options, nowMs: NOW });
@@ -411,7 +417,8 @@ describe("anonymous telemetry", () => {
       const options = { surface: "gateway" as const, fetchImpl: globalThis.fetch };
       mockHttp.intercept({
         url: TELEMETRY_URL,
-        reply: { json: { version: "2026.8.24" } },
+        method: "POST",
+        reply: { json: { version: "2026.8.24" } },,
       });
       await checkTelemetryUpdate(() => OPTED_IN_CONFIG, { ...options, nowMs: NOW });
 
@@ -425,7 +432,11 @@ describe("anonymous telemetry", () => {
         deleteTestEnvValue("BRANCH_STATE_DIR");
         setTestEnvValue("BRANCH_HOME", testState.path("alternate-home"));
       }
-      mockHttp.intercept({ url: endpoint, reply: { json: { version: "2026.8.25" } } });
+      mockHttp.intercept({
+        url: endpoint,
+        method: "POST",
+        reply: { json: { version: "2026.8.25" } },
+      });
 
       await expect(
         checkTelemetryUpdate(() => OPTED_IN_CONFIG, { ...options, nowMs: NOW + 120_000 }),
@@ -444,7 +455,8 @@ describe("anonymous telemetry", () => {
     blockTelemetryPersistence();
     mockHttp.intercept({
       url: TELEMETRY_URL,
-      reply: { json: { version: "2026.8.24" } },
+      method: "POST",
+      reply: { json: { version: "2026.8.24" } },,
     });
     const options = { surface: "gateway" as const, fetchImpl: globalThis.fetch };
     await checkTelemetryUpdate(() => OPTED_IN_CONFIG, { ...options, nowMs: NOW });
@@ -489,7 +501,8 @@ describe("anonymous telemetry", () => {
     const unblock = blockTelemetryPersistence();
     mockHttp.intercept({
       url: TELEMETRY_URL,
-      reply: { json: { version: "2026.8.24" } },
+      method: "POST",
+      reply: { json: { version: "2026.8.24" } },,
     });
     const options = { surface: "gateway" as const, fetchImpl: globalThis.fetch };
     await checkTelemetryUpdate(() => OPTED_IN_CONFIG, { ...options, nowMs: NOW });
@@ -671,7 +684,11 @@ describe("anonymous telemetry", () => {
     const customEndpoint = "https://telemetry.example.invalid/api/latest-version";
     setTestEnvValue("CI", "true");
     setTestEnvValue("BRANCH_TELEMETRY_ENDPOINT", customEndpoint);
-    mockHttp.intercept({ url: customEndpoint, reply: { json: { version: "2026.8.24" } } });
+    mockHttp.intercept({
+      url: customEndpoint,
+      method: "POST",
+      reply: { json: { version: "2026.8.24" } },
+    });
 
     await expect(
       checkTelemetryUpdate(() => OPTED_IN_CONFIG, {
@@ -712,7 +729,8 @@ describe("anonymous telemetry", () => {
     setTestEnvValue("BRANCH_TELEMETRY_ENDPOINT", customEndpoint);
     mockHttp.intercept({
       url: customEndpoint,
-      reply: { json: { version: "2026.8.24" } },
+      method: "POST",
+      reply: { json: { version: "2026.8.24" } },,
     });
 
     await expect(
@@ -729,7 +747,7 @@ describe("anonymous telemetry", () => {
     { name: "invalid JSON", reply: { body: "{invalid" } },
     { name: "network failures", reply: new Error("network unavailable") },
   ])("fails silently on $name without stamping a successful ping", async ({ reply }) => {
-    mockHttp.intercept({ url: TELEMETRY_URL, reply });
+    mockHttp.intercept({ url: TELEMETRY_URL, method: "POST", reply });
 
     await expect(
       checkTelemetryUpdate(() => OPTED_IN_CONFIG, {
@@ -743,7 +761,8 @@ describe("anonymous telemetry", () => {
     expect(readConfigMachineState(TELEMETRY_STATE_KEY)).toBeUndefined();
     mockHttp.intercept({
       url: TELEMETRY_URL,
-      reply: { json: { version: "2026.8.24" } },
+      method: "POST",
+      reply: { json: { version: "2026.8.24" } },,
     });
     await expect(
       checkTelemetryUpdate(() => OPTED_IN_CONFIG, {
@@ -758,7 +777,8 @@ describe("anonymous telemetry", () => {
   it("bounds untrusted remote update notes before display or persistence", async () => {
     mockHttp.intercept({
       url: TELEMETRY_URL,
-      reply: { json: { version: "2026.8.24", note: "x".repeat(800) } },
+      method: "POST",
+      reply: { json: { version: "2026.8.24", note: "x".repeat(800) } },,
     });
 
     const result = await checkTelemetryUpdate(() => OPTED_IN_CONFIG, {
