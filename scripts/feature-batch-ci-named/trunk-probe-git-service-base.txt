@@ -1,0 +1,3 @@
+engine:src/cli/update-cli.git-service.test.ts
+engine:src/infra/update-global.test.ts
+engine:src/cli/update-cli/shared.command-runner.test.ts
