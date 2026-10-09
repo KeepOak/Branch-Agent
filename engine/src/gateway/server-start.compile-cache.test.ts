@@ -8,10 +8,11 @@ const mocks = vi.hoisted(() => ({
   lifecycle: { closePreludeStarted: false },
 }));
 
-vi.mock("node:module", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("node:module")>()),
-  flushCompileCache: mocks.flushCompileCache,
-}));
+vi.mock("node:module", async (importOriginal) =>
+  Object.assign({}, await importOriginal<typeof import("node:module")>(), {
+    flushCompileCache: mocks.flushCompileCache,
+  }),
+);
 vi.mock("./server-kernel.js", () => ({
   gatewayKernelLogs: {},
   prepareGatewayKernel: async () => ({

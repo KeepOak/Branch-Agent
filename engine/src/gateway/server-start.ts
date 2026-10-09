@@ -32,7 +32,9 @@ async function startGatewayServerWithSdkHost(
   sdkResourceHost: LegacyPluginSdkResourceHost,
 ): Promise<GatewayServer> {
   const { promise: postReadyWorkBarrier, resolve: releasePostReadyWork } = createDeferredCore();
-  if (!opts.startupConfigSnapshotRead && !opts.updateCanary) await assignTrunkCharactersAtStartup();
+  if (!opts.startupConfigSnapshotRead && !opts.updateCanary) {
+    await assignTrunkCharactersAtStartup();
+  }
   const preparedKernel = await prepareGatewayKernel(port, opts, {
     deferEarlyRuntime: true,
     sdkResourceHost,
