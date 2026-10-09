@@ -160,7 +160,7 @@ async function codexTrunk(tools: NonNullable<BranchConfig["tools"]>) {
     );
     await harness.completeTurn({ threadId: THREAD, turnId: "turn-1" });
     await run;
-    const turnStart = harness.requests.filter(({ method }) => method === "turn/start").at(-1);
+    const turnStart = harness.requests.findLast(({ method }) => method === "turn/start");
     return (turnStart?.params as { model?: string } | undefined)?.model;
   };
   /** The model the active run uses next: the pending switch, else the one it is on. */

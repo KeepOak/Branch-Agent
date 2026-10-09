@@ -109,7 +109,8 @@ async function runClaudeTurn(model: string): Promise<string | undefined> {
     buildPreparedCliRunContext({ provider: "claude-cli", model, runId: `run-${model}` }),
   );
   expect(output.text).toBe("ok");
-  const argv = (supervisorSpawnMock.mock.calls.at(-1)?.[0] as { argv?: string[] }).argv ?? [];
+  const spawned = supervisorSpawnMock.mock.calls.at(-1)?.[0] as { argv?: string[] } | undefined;
+  const argv = spawned?.argv ?? [];
   expect(argv[0]).toBe("claude");
   return argv[argv.indexOf("--model") + 1];
 }
