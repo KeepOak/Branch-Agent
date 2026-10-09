@@ -14,6 +14,19 @@ import { isJsonObject, type CodexThreadItem } from "./protocol.js";
 
 export type ToolTranscriptFailureInput = ToolTranscriptResultInput & { failureText?: string };
 
+function acknowledgesToolFailure(text: string, toolName: string): boolean {
+  const names = [toolName, toolName.replaceAll("_", " ")].map((name) =>
+    name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"),
+  );
+  const tool = `\\b(?:${names.join("|")})\\b`;
+  // Require a failure predicate attached to this tool, not an unrelated
+  // failure elsewhere in a sentence that happens to mention the tool.
+  return new RegExp(
+    `${tool}(?:\\s+(?:call|step|request|connection))?\\s+(?:(?:has|had|was|is)\\s+)?(?:failed|failure|error|blocked|denied|timed out|could not|couldn't|unable)\\b|\\b(?:could not|couldn't|unable to)\\s+(?:use|run|open|connect to)\\s+(?:the\\s+)?${tool}`,
+    "u",
+  ).test(text);
+}
+
 export function nativeCodexToolFailureText(
   item: CodexThreadItem,
   status: ReturnType<typeof itemStatus>,
@@ -75,17 +88,7 @@ export function summarizeUnmentionedCodexToolFailures(
       mentionedTexts.some(
         (text) =>
           text.includes(reason.toLowerCase()) ||
-          (!hasDistinctToolFailure &&
-            text
-              .split(/[.!?]/u)
-              .some(
-                (sentence) =>
-                  (sentence.includes(message.toolName.toLowerCase()) ||
-                    sentence.includes(message.toolName.replaceAll("_", " ").toLowerCase())) &&
-                  /\b(?:failed|failure|error|blocked|denied|timed out|could not|couldn't|unable)\b/u.test(
-                    sentence,
-                  ),
-              )),
+          (!hasDistinctToolFailure && acknowledgesToolFailure(text, message.toolName)),
       )
     ) {
       return [];

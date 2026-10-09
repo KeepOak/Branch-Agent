@@ -103,14 +103,35 @@ it("only lists unmentioned failures when multiple steps failed", async () => {
   ]);
 });
 
+it.each([
+  "I used browser to gather docs before the deployment failed.",
+  "I used browser to gather docs, but deployment failed.",
+  "The deployment failed before I used browser to gather docs.",
+  "The browserless deployment failed.",
+])("keeps the browser failure when only another operation failed: %s", async (text) => {
+  const projector = await createProjector();
+  recordStep(projector);
+  expect((await finish(projector, text)).assistantTexts).toEqual([
+    `${text}\n\n1 step failed: browser — Connection refused`,
+  ]);
+});
+
+it.each([
+  "The browser could not connect, so I used cached docs.",
+  "I was unable to use browser, so I used cached docs.",
+  "The browser connection failed, so I used cached docs.",
+])("preserves genuine tool failure paraphrases: %s", async (text) => {
+  const projector = await createProjector();
+  recordStep(projector);
+  expect((await finish(projector, text)).assistantTexts).toEqual([text]);
+});
+
 it("preserves a silent token and keeps the failure reason on the step", async () => {
   const projector = await createProjector();
   recordStep(projector);
   const result = await finish(projector, "NO_REPLY");
   expect(result.assistantTexts).toEqual(["NO_REPLY"]);
-  expect(result.currentAttemptAssistant?.content).toEqual([
-    { type: "text", text: "NO_REPLY" },
-  ]);
+  expect(result.currentAttemptAssistant?.content).toEqual([{ type: "text", text: "NO_REPLY" }]);
   expect(result.lastAssistant?.content).toEqual([{ type: "text", text: "NO_REPLY" }]);
   expect(result.messagesSnapshot.at(-1)?.content).toEqual([{ type: "text", text: "NO_REPLY" }]);
   expect(result.messagesSnapshot.find((message) => message.role === "toolResult")).toMatchObject({
