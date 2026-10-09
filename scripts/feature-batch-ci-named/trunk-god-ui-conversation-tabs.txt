@@ -1,0 +1,4 @@
+window:src/shell/ContactTopicsPane.test.tsx
+window:src/shell/TopicRail.test.tsx
+window:src/shell/topic-name.test.ts
+window:src/thread/internal-steps.test.ts
