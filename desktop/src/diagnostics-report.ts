@@ -49,7 +49,7 @@ export function reportReadme(minutes: number, nowIso: string): string {
   return [
     "Branch problem report",
     `Created: ${nowIso}`,
-    `Covers: the last ${minutes} minutes.`,
+    `Covers: up to the last ${minutes} minutes. A busy log can cover less, because only its end is read.`,
     "",
     "desktop.log   app lifecycle lines (start, update, engine start and stop)",
     "gateway.log   engine output for the same period",
