@@ -222,6 +222,18 @@ OAuth re-authentication preserves an existing profile id only when the provider'
 
 Prepared agent requests use their selected plugin metadata, configuration, workspace, and environment for auth profile eligibility, ordering, and environment credential evidence. An empty selected plugin set remains authoritative; another request’s plugin aliases cannot add profiles or change the credential owner.
 
+## Subscription-only mode
+
+`agents.defaults.subscriptionsOnly` (default `false`) controls whether stored API-key sign-ins are picked automatically. With the default, they are ordinary candidates on every path below. Set it to `true` to keep an installation subscription-only, which covers these paths:
+
+- Unpinned CLI-backend runs skip stored API-key sign-ins. A run with only API-key sign-ins fails to start.
+- The automatic sign-in order of embedded runs leaves out stored API-key sign-ins. A run with only API-key sign-ins has no automatic sign-in to use.
+- Rate-limit, auth-failure and failover rotations within a run pass over stored API-key sign-ins. Harness-owned runs are not filtered again here, because their attempt list is built without them.
+- Rate-limit account switching passes over stored API-key sign-ins.
+- Agents cannot move a session, or the sign-in order, onto a stored API-key sign-in.
+
+It does not change a sign-in the owner or user pins for a session, or a provider API key set in config or the environment, since those are not stored sign-ins. Owner order and session changes are never restricted by this setting.
+
 ## Model catalog discovery
 
 Stored-profile selection for model discovery follows the canonical auth order and

@@ -69,6 +69,7 @@ export const AgentDefaultsBaseSchema = z.strictObject({
   pdfMaxPages: z.number().int().positive().optional(),
   models: AgentModelMapSchema.optional(),
   modelPolicy: AgentModelPolicySchema.optional(),
+  subscriptionsOnly: z.boolean().optional(),
   workspace: z.string().optional(),
   cwd: z.string().optional(),
   skills: z.array(z.string()).optional(),

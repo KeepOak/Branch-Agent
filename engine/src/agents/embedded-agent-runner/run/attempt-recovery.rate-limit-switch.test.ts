@@ -147,6 +147,7 @@ async function recoverFromRateLimit(scenario: Scenario) {
   });
   const controller = createEmbeddedRunFailoverRetryController({
     runParams: {
+      config: { agents: { defaults: { subscriptionsOnly: true } } },
       runId: "run:rate-limit-switch",
       ...(scenario.pinned
         ? { authProfileId: candidates[0], authProfileIdSource: "user" as const }
@@ -181,7 +182,7 @@ async function recoverFromRateLimit(scenario: Scenario) {
   const recovery = await recoverEmbeddedRunAttempt({
     runInput: {
       runParams: {
-        config: {},
+        config: { agents: { defaults: { subscriptionsOnly: true } } },
         agentId: "main",
         sessionId: "session:rate-limit-switch",
         runId: "run:rate-limit-switch",
