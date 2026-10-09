@@ -360,7 +360,7 @@ describe("createCliJsonlStreamingParser", () => {
         },
         syntheticNoResponse(),
       ],
-      expected: { text: "" },
+      expected: { text: "", endedAfterToolCall: true },
     },
   ])("classifies $name without confusing legitimate empty replies", ({ frames, expected }) => {
     const parser = createClaudeParser();
@@ -696,4 +696,140 @@ it.each([
   finishFrames(parser, { type: "result", ...fields, branch_interim_result: true });
   expect(completed).toEqual([]);
   expect(parser.getOutput()?.errorText).toBeTruthy();
+});
+
+describe("Claude turns that end on a tool call (#847)", () => {
+  const narrationWithTool = {
+    type: "assistant",
+    message: {
+      id: "msg-narration",
+      role: "assistant",
+      content: [
+        { type: "text", text: "Running tests now" },
+        { type: "tool_use", id: "toolu-tests", name: "Bash", input: { command: "run-tests" } },
+      ],
+    },
+  };
+  const toolResult = {
+    type: "user",
+    message: {
+      role: "user",
+      content: [{ type: "tool_result", tool_use_id: "toolu-tests", content: "3 passed" }],
+    },
+  };
+  const closingMessage = {
+    type: "assistant",
+    message: {
+      id: "msg-closing",
+      role: "assistant",
+      content: [{ type: "text", text: "All 3 tests pass." }],
+    },
+  };
+  const emptySuccess = result("", { subtype: "success", session_id: "tool-final-session" });
+
+  it("flags a turn whose last output is a tool call and drops the pre-tool narration", () => {
+    const parser = createClaudeParser();
+    finishFrames(parser, narrationWithTool, toolResult, emptySuccess);
+    expect(parser.getOutput()).toEqual({
+      text: "",
+      endedAfterToolCall: true,
+      sessionId: "tool-final-session",
+      usage: undefined,
+    });
+  });
+
+  it("flags a streamed turn whose last output is a tool call", () => {
+    const parser = createClaudeParser();
+    finishFrames(
+      parser,
+      messageStart,
+      claudeTextDelta("Running tests now"),
+      toolStart("toolu-tests", 1),
+      messageStop,
+      toolResult,
+      emptySuccess,
+    );
+    expect(parser.getOutput()).toMatchObject({ text: "", endedAfterToolCall: true });
+  });
+
+  it("flags the turn when pre-tool narration was routed to commentary", () => {
+    const commentary: string[] = [];
+    const parser = createClaudeParser({ onCommentaryText: (text) => commentary.push(text) });
+    finishFrames(
+      parser,
+      messageStart,
+      claudeTextDelta("Running tests now"),
+      toolStart("toolu-tests", 1),
+      messageStop,
+      toolResult,
+      emptySuccess,
+    );
+    expect(commentary).toEqual(["Running tests now"]);
+    expect(parser.getOutput()).toMatchObject({ text: "", endedAfterToolCall: true });
+  });
+
+  it("keeps text written after the last tool result as a normal success", () => {
+    const parser = createClaudeParser();
+    finishFrames(
+      parser,
+      narrationWithTool,
+      toolResult,
+      closingMessage,
+      result("All 3 tests pass.", { subtype: "success", session_id: "tool-final-session" }),
+    );
+    const output = parser.getOutput();
+    expect(output?.text).toMatch(/All 3 tests pass\.$/);
+    expect(output?.endedAfterToolCall).toBeUndefined();
+    expect(output?.errorText).toBeUndefined();
+  });
+
+  it("keeps streamed post-tool text when the result envelope is empty", () => {
+    const parser = createClaudeParser();
+    finishFrames(
+      parser,
+      messageStart,
+      claudeTextDelta("Running tests now"),
+      toolStart("toolu-tests", 1),
+      messageStop,
+      toolResult,
+      messageStart,
+      claudeTextDelta("All 3 tests pass."),
+      messageStop,
+      emptySuccess,
+    );
+    const output = parser.getOutput();
+    expect(output?.text).toMatch(/All 3 tests pass\.$/);
+    expect(output?.endedAfterToolCall).toBeUndefined();
+  });
+
+  it("does not flag a snapshot-only turn whose closing snapshot has text", () => {
+    const parser = createClaudeParser();
+    finishFrames(parser, narrationWithTool, toolResult, closingMessage, emptySuccess);
+    expect(parser.getOutput()?.endedAfterToolCall).toBeUndefined();
+  });
+
+  it("fails a stopped turn that has only pre-tool text with its plain stop reason", () => {
+    const parser = createClaudeParser();
+    finishFrames(
+      parser,
+      messageStart,
+      claudeTextDelta("Running tests now"),
+      toolStart("toolu-tests", 1),
+      messageStop,
+      toolResult,
+      result("", {
+        subtype: "success",
+        is_error: false,
+        session_id: "hook-stopped",
+        stop_reason: "tool_use",
+        terminal_reason: "hook_stopped",
+      }),
+    );
+    expect(parser.getOutput()).toEqual({
+      text: "",
+      ...stoppedFailure,
+      sessionId: "hook-stopped",
+      usage: undefined,
+    });
+  });
 });
