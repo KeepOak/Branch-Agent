@@ -142,14 +142,14 @@ describe("GitHub issue transport", () => {
           started: true,
           status: 0,
           stdout: Buffer.from(
-            "HTTP/1.1 200 Connection established\r\n\r\nHTTP/2.0 201 Created\r\n\r\nhttps://github.com/openclaw/openclaw/issues/123\n",
+            "HTTP/1.1 200 Connection established\r\n\r\nHTTP/2.0 201 Created\r\n\r\nhttps://github.com/KeepOak/Branch-Agent/issues/123\n",
           ),
         }),
       );
 
     await expect(submitGithubIssue(issue, runGh)).resolves.toEqual({
       status: "created",
-      url: "https://github.com/openclaw/openclaw/issues/123",
+      url: "https://github.com/KeepOak/Branch-Agent/issues/123",
     });
     expect(runGh).toHaveBeenNthCalledWith(1, authArgs, { input: "" });
     expect(runGh).toHaveBeenNthCalledWith(
@@ -257,7 +257,7 @@ describe("GitHub issue transport", () => {
               {
                 body: issue.body,
                 title: issue.title,
-                url: "https://github.com/openclaw/openclaw/issues/456",
+                url: "https://github.com/KeepOak/Branch-Agent/issues/456",
               },
             ]),
           ),
@@ -266,7 +266,7 @@ describe("GitHub issue transport", () => {
 
     await expect(submitGithubIssue(issue, runGh)).resolves.toEqual({
       status: "created",
-      url: "https://github.com/openclaw/openclaw/issues/456",
+      url: "https://github.com/KeepOak/Branch-Agent/issues/456",
     });
     expect(runGh.mock.calls[2]?.[0]).toContain(`"${issue.marker}" in:body`);
   });
@@ -282,7 +282,7 @@ describe("GitHub issue transport", () => {
             {
               body: issue.body,
               title: issue.title,
-              url: "https://github.com/openclaw/openclaw/issues/456",
+              url: "https://github.com/KeepOak/Branch-Agent/issues/456",
             },
           ]),
         ),
@@ -291,7 +291,7 @@ describe("GitHub issue transport", () => {
 
     await expect(reconcileGithubIssue(issue, runGh)).resolves.toEqual({
       status: "created",
-      url: "https://github.com/openclaw/openclaw/issues/456",
+      url: "https://github.com/KeepOak/Branch-Agent/issues/456",
     });
     expect(runGh).toHaveBeenCalledOnce();
     expect(runGh.mock.calls[0]?.[0][0]).toBe("issue");
@@ -301,8 +301,8 @@ describe("GitHub issue transport", () => {
 
   it.each([
     "javascript:alert(1)",
-    "https://github.com.evil.example/openclaw/openclaw/issues/123",
-    "https://github.com/openclaw/openclaw/issues/123?token=secret",
+    "https://github.com.evil.example/KeepOak/Branch-Agent/issues/123",
+    "https://github.com/KeepOak/Branch-Agent/issues/123?token=secret",
   ])("does not expose or fall back after malformed created URL %s", async (url) => {
     const issue = prepare(url);
     const runGh = vi
@@ -350,7 +350,7 @@ describe("GitHub issue transport", () => {
               {
                 body: `${issue.body}\nchanged`,
                 title: issue.title,
-                url: "https://github.com/openclaw/openclaw/issues/999",
+                url: "https://github.com/KeepOak/Branch-Agent/issues/999",
               },
             ]),
           ),
@@ -373,7 +373,7 @@ describe("GitHub issue transport", () => {
         cliResult({
           started: true,
           status: 0,
-          stdout: Buffer.from("https://github.com/openclaw/openclaw/issues/789\n"),
+          stdout: Buffer.from("https://github.com/KeepOak/Branch-Agent/issues/789\n"),
         }),
       );
 
@@ -384,8 +384,8 @@ describe("GitHub issue transport", () => {
     releaseAuth?.(authSuccess);
 
     await expect(Promise.all([first, second])).resolves.toEqual([
-      { status: "created", url: "https://github.com/openclaw/openclaw/issues/789" },
-      { status: "created", url: "https://github.com/openclaw/openclaw/issues/789" },
+      { status: "created", url: "https://github.com/KeepOak/Branch-Agent/issues/789" },
+      { status: "created", url: "https://github.com/KeepOak/Branch-Agent/issues/789" },
     ]);
     expect(runGh).toHaveBeenCalledTimes(2);
   });
@@ -449,7 +449,7 @@ describe("GitHub issue transport", () => {
             if (args[0] === "api") {
               child.stdout.emit(
                 "data",
-                Buffer.from("https://github.com/openclaw/openclaw/issues/123\n"),
+                Buffer.from("https://github.com/KeepOak/Branch-Agent/issues/123\n"),
               );
             }
             child.emit("close", 0);
@@ -482,7 +482,7 @@ describe("GitHub issue transport", () => {
       } else {
         await expect(submission).resolves.toEqual({
           status: "created",
-          url: "https://github.com/openclaw/openclaw/issues/123",
+          url: "https://github.com/KeepOak/Branch-Agent/issues/123",
         });
         expect(authorityAtCreate).toBe(true);
       }
