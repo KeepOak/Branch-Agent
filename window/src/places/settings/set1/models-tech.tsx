@@ -36,12 +36,16 @@ export function PerConnection() {
 export function ConnectionsTechnical({ m }: { m: ModelsCtx }) {
   const save = useSaveRunner();
   const refresh = m.cfg.get(["models", "catalogRefresh", "enabled"]);
+  const subscriptionsOnly = m.cfg.get(["agents", "defaults", "subscriptionsOnly"]) === true;
   return (
     <Sec title="Connections, technical" group="Accounts">
       <Ctl title="Model services from plugins" sub="Add another model service through a plugin." help="A plugin can bring a way to reach a model service Branch doesn’t know yet." off={NONE}><Btn sm>See installed</Btn></Ctl>
       <Ctl title="Retired models and hiccups" sub="Try a named successor when a model is retired." help="Automatic: a retired model moves to its named successor, and a brief failure is tried again." off={NONE}><Btn sm>Last 7 days</Btn></Ctl>
       <Ctl title="Keep the model list and prices up to date" sub="Checks the public model list every few hours." help="Checks the public model list every few hours. Nothing about you is sent.">
         <Switch checked={refresh !== false} label="Keep the model list and prices up to date" onChange={(v) => void m.cfg.set(["models", "catalogRefresh", "enabled"], v)} />
+      </Ctl>
+      <Ctl title="Subscription sign-ins only" sub="Automatic choices skip API-key sign-ins." help="Off (default): API-key sign-ins work everywhere. On: unpinned runs skip API keys, agents can’t put one in the sign-in order or onto a session, and rate-limit switching passes over them.">
+        <Switch checked={subscriptionsOnly} label="Subscription sign-ins only" onChange={(v) => void m.cfg.set(["agents", "defaults", "subscriptionsOnly"], v)} />
       </Ctl>
       <Ctl title="Model list" sub={m.catalog.data?.refreshFailed === true ? "The last check failed. Try again." : undefined}>
         <Btn sm onClick={() => void save(async () => { await m.engine.request("models.list", { refresh: true, ...m.agent }); await m.catalog.reload(); })}>Check now</Btn>
