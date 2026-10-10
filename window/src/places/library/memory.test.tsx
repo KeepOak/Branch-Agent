@@ -198,14 +198,20 @@ describe("Library › Memory", () => {
   it("greys the head controls with their reasons and shows an empty line when nothing is remembered", async () => {
     const { engine } = engineOf(base((m, p) => m === "agents.files.get" ? { file: { name: String(p.name), missing: true } } : undefined));
     await mount(engine);
-    for (const label of ["Clearing", "Translate a document…", "Make pictures…"]) expect(button(label)!.disabled).toBe(true);
-    expect(button("Clearing")!.title).toBe("");
+    for (const label of ["Translate a document…", "Make pictures…"]) expect(button(label)!.disabled).toBe(true);
     for (const label of ["Translate a document…", "Make pictures…"]) expect(button(label)!.title).toBe("");
     expect(visibleDevNotes(host)).toEqual([]);
     expect(host.textContent).not.toContain("Canvas");
-    expect(button("Clearing")!.title).not.toMatch(/canvases/);
     expect(host.textContent).toContain("Nothing remembered yet.");
     expect(host.textContent).toContain("Nothing written about you yet.");
+  });
+  it("shows no Clearing pill under the Library heading (DA-42)", async () => {
+    const { engine } = engineOf(base());
+    await mount(engine);
+    expect(button("Clearing")).toBeUndefined();
+    expect(host.querySelector(".lib-canvas")).toBeNull();
+    expect(host.querySelector(".lib > h1")!.nextElementSibling!.className).toBe("lede");
+    expect(host.textContent).not.toContain("Clearing");
   });
   it("shows Nothing written about you yet when USER.md is still the template", async () => {
     const { engine } = engineOf(base((m, p) => m === "agents.files.get" && p.name === "USER.md"

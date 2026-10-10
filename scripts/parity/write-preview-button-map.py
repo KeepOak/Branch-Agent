@@ -1220,7 +1220,7 @@ add("lib-forget", "library", "Forget",
 add("lib-write", "library", "Write a new document",
     "Toasts: Opens a blank document a Trunk can help write.",
     "window/src/places/library/index.tsx", "LibraryPlace",
-    "Head actions Canvas / Translate / Make pictures are greyed (engine gaps). No toast-only Write button.",
+    "Head actions Translate / Make pictures are greyed (engine gaps). No Clearing pill and no toast-only Write button.",
     "different")
 add("lib-open", "library", "Open",
     "Toasts: Opens in its own app.",
@@ -1230,8 +1230,8 @@ add("lib-open", "library", "Open",
 add("lib-canvas", "library", "Canvas",
     "Later preview Clearings/canvas.",
     "window/src/places/library/index.tsx", "LibraryPlace",
-    "Greyed: needs an engine method that lists Clearings.",
-    "different")
+    "Not shown: a greyed Clearing pill told a person nothing (DA-42). Returns once the engine can list Clearings.",
+    "missing")
 
 # ---------- customize ----------
 add("cz-tab-trunks", "customize", "Trunks",
