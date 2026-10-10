@@ -85,13 +85,13 @@ function Rows({ row, data, level, edit, openPlace, showFiles }: { row: TrunkRow;
   return (
     <div className="tk-rows">
       <Row icon={<Icon name="monitor" small />} label="Its computer" value={where} onClick={() => edit("computers")} />
-      <Row icon={<LineIcon name="spark" />} label="Model" value={model} onClick={() => edit("may")} />
-      <Row icon={<LineIcon name="shield" />} label="May do" value={mayLine} onClick={() => edit("may")} />
+      <Row icon={<LineIcon name="spark" />} label="Model" value={model} onClick={() => edit("models")} />
+      <Row icon={<LineIcon name="shield" />} label="May do" value={mayLine} onClick={() => edit("permissions")} />
       <Row icon={<LineIcon name="plug" />} label="Its tools" value="Customize › Tools" onClick={openPlace && (() => openPlace("customize"))} />
       <Row icon={<Icon name="book" small />} label="What it remembers" value={data.facts === null ? "Library › Memory" : data.facts === 1 ? "1 fact" : `${data.facts} facts`} onClick={openPlace && (() => openPlace("library"))} />
       {shows(level, "advanced") && <Row icon={<LineIcon name="spark" />} label="Skills it may use" value={skillsLine(data, row.id)} onClick={openPlace && (() => openPlace("customize"))} />}
       {shows(level, "technical") && <Row icon={<Icon name="folder" small />} label="Its folder" value={row.workspace || "Not reported"} mono onClick={showFiles} />}
-      {shows(level, "technical") && <Row icon={<LineIcon name="bot" />} label="Runs on" value={!row.runtime || row.runtime === "branch" || row.runtime === "embedded" ? "Branch" : row.runtime} onClick={() => edit("may")} />}
+      {shows(level, "technical") && <Row icon={<LineIcon name="bot" />} label="Runs on" value={!row.runtime || row.runtime === "branch" || row.runtime === "embedded" ? "Branch" : row.runtime} onClick={() => edit("models")} />}
     </div>
   );
 }

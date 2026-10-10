@@ -7,8 +7,9 @@ import { Dialog } from "../../shell/Dialog";
 import type { WindowEngine } from "../../connect/engine";
 import { useResource } from "../library/data";
 import { sharedConnections } from "../overview/engine";
-import { ACTIVITY_WORD, activeProfiles, activityOf, deviceName, firstName, nameOf, ownerCounts, presence, presenceOf, profiles, rec, recs, rows, str, trunkNames, type Profile, type Row } from "./data";
+import { ACTIVITY_WORD, activeProfiles, activityOf, deviceName, firstName, nameOf, ownerCounts, presence, presenceOf, profiles, rec, recs, str, trunkNames, type Profile, type Row } from "./data";
 import { Avatar, Empty, Glyph, Status } from "./ui";
+import { workingRows } from "./working";
 
 /** No engine method lets someone ask to join another person's run yet. */
 export const ASK_TO_JOIN_OFF = "Needs the engine's ask-to-join method.";
@@ -26,7 +27,7 @@ export function LiveNow({ engine, users, runs, me, openConversation, onPerson }:
   const people = activeProfiles(profiles(users.data));
   const conns = presence(live.data);
   // a helper rides inside its parent run (the preview shows one card per run, never one per helper)
-  const working = rows(runs.data).filter(r => r.working && !r.helper);
+  const working = workingRows(runs.data);
   const names = trunkNames(trunks.data);
   const others = people.filter(p => p.id !== me && presenceOf(conns, p.id).length > 0);
   const tally = ownerCounts(counts.data);

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import type { Level } from "../../places-nav/level";
 import { PeoplePlace } from "./index";
+import { RUNS_PARAMS } from "./working";
 
 vi.mock("../../face/Face", () => ({ Face: ({ label, size }: { label?: string; size: number }) => <span role="img" aria-label={label} data-face-size={size} /> }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -27,10 +28,14 @@ export function fakeEngine(table: Record<string, Answer>, scopes = ["operator.ad
   const engine: WindowEngine = { request: request as unknown as WindowEngine["request"], onEvent: () => () => {}, sessionKey: null, scopes };
   return { engine, request };
 }
-export async function mount(engine: WindowEngine, level: Level = "regular") {
+export async function mount(engine: WindowEngine, level: Level = "regular", options: { admin?: boolean } = {}) {
   host = document.createElement("div"); document.body.append(host);
   root = createRoot(host);
   await act(async () => { root!.render(<PeoplePlace engine={engine} facts={{ running: 0, waiting: 0 }} openConversation={opened} openPlace={() => {}} openSettings={() => {}} level={level} />); });
+  await act(async () => { await Promise.resolve(); });
+  // The place opens on "You + invite"; these tests exercise the admin tabs, so they open Team admin first.
+  const admin = button("Team admin");
+  if (admin && options.admin !== false) await act(async () => { admin.click(); });
   await act(async () => { await Promise.resolve(); });
 }
 export const opened = vi.fn();
@@ -57,7 +62,7 @@ describe("People › Live now", () => {
     const { engine, request } = fakeEngine({ ...BASE, "sessions.list": sessions });
     await mount(engine);
     expect(request).toHaveBeenCalledWith("users.list", {});
-    expect(calls(request, "sessions.list")).toContainEqual({ activeOnly: true, includeDerivedTitles: true, includeLastMessage: true });
+    expect(calls(request, "sessions.list")).toContainEqual(RUNS_PARAMS);
     expect(calls(request, "sessions.list")).toContainEqual({ limit: 1, includeOwnerSessionCounts: true });
     const strip = host.querySelector('[role="group"]')!;
     expect(strip.textContent).toContain("Mira"); expect(strip.textContent).toContain("2 open · 1 running");
@@ -67,6 +72,29 @@ describe("People › Live now", () => {
     const ask = button("Ask to join")!; expect(ask.disabled).toBe(true); expect(ask.title).toBe(""); expect(visibleDevNotes(host)).toEqual([]);
     await click("Open"); expect(opened).toHaveBeenCalledWith("agent:main:b");
     expect(host.querySelector('[role="tab"][aria-selected="true"]')!.textContent).toBe("Live now2");
+  });
+
+  it("counts Live now with the Right now rule: archived, helper, system and idle rows are not working", async () => {
+    const work = (n: number, extra: Record<string, unknown> = {}) => ({ key: `agent:books:${n}`, agentId: "books", label: `Run ${n}`, hasActiveRun: true, ...extra });
+    const seven = [1, 2, 3, 4, 5, 6, 7].map((n) => work(n));
+    const noise = [work(8, { archived: true }), work(9, { classification: "system" }), work(10, { spawnedBy: "agent:books:1" }), work(11, { hasActiveRun: false })];
+    const { engine } = fakeEngine({ ...BASE, "sessions.list": (p: Record<string, unknown>) => (p.includeOwnerSessionCounts ? { sessions: [] } : { sessions: [...seven, ...noise] }) });
+    await mount(engine);
+    expect(host.querySelectorAll(".pp-run")).toHaveLength(7);
+    expect(host.textContent).not.toContain("Nothing is running right now");
+    expect(host.querySelector('[role="tab"][aria-selected="true"]')!.textContent).toBe("Live now7");
+  });
+
+  it("opens People on You and invite, with the admin tabs one click away", async () => {
+    const { engine } = fakeEngine({ ...BASE, "sessions.list": sessions });
+    await mount(engine, "regular", { admin: false });
+    expect(host.textContent).toContain("Rowan Vale");
+    expect(button("Invite someone")).toBeTruthy();
+    expect(host.querySelector('[role="tablist"]')).toBeNull();
+    await click("Team admin");
+    expect(host.querySelectorAll('[role="tab"]')).toHaveLength(9);
+    await click("Back to you");
+    expect(host.querySelector('[role="tablist"]')).toBeNull();
   });
 
   it("watches a run read-only through the engine's preview", async () => {

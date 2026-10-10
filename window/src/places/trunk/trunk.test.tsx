@@ -13,6 +13,7 @@ import { removeTrunk, updateParams } from "./api";
 import { readMay } from "./may";
 import { LOOKS, creationProblem, lookOf, readConfig } from "./model";
 import { readFacts, scheduleText } from "./profile-data";
+import { moved } from "./fallback-list";
 
 vi.mock("../../face/Face", () => ({ Face: ({ label, size }: { label?: string; size: number }) => <span role="img" aria-label={label} data-face-size={size} /> }));
 vi.mock("../../face/CharacterFace", () => ({ CharacterFace: ({ label, size }: { label?: string; size: number }) => <span role="img" aria-label={label} data-character-size={size} /> }));
@@ -76,6 +77,16 @@ describe("Trunk data", () => {
   });
 });
 
+describe("Trunk fallbacks", () => {
+  it("moves a row one place either way and leaves the list alone past either end", () => {
+    expect(moved(["a", "b", "c"], 0, 1)).toEqual(["b", "a", "c"]);
+    expect(moved(["a", "b", "c"], 2, 1)).toEqual(["a", "c", "b"]);
+    const list = ["a", "b", "c"];
+    expect(moved(list, 0, -1)).toBe(list);
+    expect(moved(list, 2, 3)).toBe(list);
+  });
+});
+
 describe("Trunk editor", () => {
   it("enables colour, shape, eyes and Shuffle on the Look tab", async () => {
     await mount(<TrunkEditor engine={engine(fake())} agentId="birch" level="regular" onClose={() => {}} />);
@@ -93,7 +104,7 @@ describe("Trunk editor", () => {
     await mount(<TrunkEditor engine={engine(request)} agentId="birch" level="regular" onClose={() => {}} />);
     await click(document.querySelector('[aria-label="Tock"]'));
     await type(document.querySelectorAll<HTMLInputElement>(".tk-split input")[1], "Money");
-    await click(byText("What it may do"));
+    await click(byText("Permissions"));
     await click(document.querySelector('[aria-label="Use the browser"]'));
     const send = [...document.querySelectorAll<HTMLElement>(".tk-ctl")].find(r => r.querySelector("b")?.textContent === "Send email and messages")!;
     expect(send.classList.contains("off")).toBe(true); expect(send.title).toBe("");
@@ -110,16 +121,42 @@ describe("Trunk editor", () => {
     await mount(<TrunkEditor engine={engine(fake())} agentId="oak" level="regular" onClose={() => {}} />);
     expect(byText("Shuffle").disabled).toBe(false);
     expect(document.querySelector<HTMLButtonElement>('[aria-label="Circle"]')?.disabled).toBe(false);
-    await click(byText("What it may do"));
+    await click(byText("Permissions"));
+    expect(document.body.textContent).not.toContain("Model for decisions");
+    await click(byText("Models"));
     expect(document.body.textContent).not.toContain("Model for decisions");
     await act(async () => root!.unmount()); root = null; document.body.innerHTML = "";
-    await mount(<TrunkEditor engine={engine(fake())} agentId="oak" level="advanced" tab="may" onClose={() => {}} />);
+    await mount(<TrunkEditor engine={engine(fake())} agentId="oak" level="advanced" tab="models" onClose={() => {}} />);
     expect(document.body.textContent).toContain("Model for decisions");
   });
   it("keeps Save off for a window without the owner's rights", async () => {
     await mount(<TrunkEditor engine={engine(fake(), [])} agentId="oak" level="regular" onClose={() => {}} />);
     await type(document.querySelectorAll<HTMLInputElement>(".tk-split input")[0], "Elm");
     expect(byText("Save").disabled).toBe(true);
+  });
+  it("clicks every editor tab and shows its panel", async () => {
+    await mount(<TrunkEditor engine={engine(fake())} agentId="oak" level="advanced" onClose={() => {}} />);
+    for (const label of ["Look", "Permissions", "Models", "GitHub", "Its computers", "Accounts"]) {
+      await click(byText(label));
+      expect(byText(label).getAttribute("aria-selected"), label).toBe("true");
+      expect(document.querySelector('[role="tabpanel"]')?.getAttribute("aria-label"), label).toBe(label);
+    }
+  });
+  it("moves a stand-in up and down with the same controls on every row, and marks the dialog unsaved", async () => {
+    const models = { models: [{ id: "one", provider: "p", name: "One", available: true }, { id: "two", provider: "p", name: "Two", available: true }, { id: "three", provider: "p", name: "Three", available: true }] };
+    const config = { hash: "h1", valid: true, config: { agents: { entries: { oak: { model: { primary: "p/one", fallbacks: ["p/two", "p/three"] } } } } } };
+    await mount(<TrunkEditor engine={engine(fake({ "models.list": models, "config.get": config }))} agentId="oak" level="advanced" tab="models" onClose={() => {}} />);
+    const order = () => [...document.querySelectorAll(".tk-fb .tk-grow")].map((el) => el.textContent);
+    expect(order()).toEqual(["Two", "Three"]);
+    expect(document.body.textContent).not.toContain("Unsaved changes");
+    expect((document.querySelector('[aria-label="Move Two up"]') as HTMLButtonElement).disabled).toBe(true);
+    await click(document.querySelector('[aria-label="Move Two down"]'));
+    expect(order()).toEqual(["Three", "Two"]);
+    expect(document.body.textContent).toContain("Unsaved changes");
+    expect(byText("Save").disabled).toBe(false);
+    expect((document.querySelector('[aria-label="Move Two down"]') as HTMLButtonElement).disabled).toBe(true);
+    await click(document.querySelector('[aria-label="Move Two up"]'));
+    expect(order()).toEqual(["Two", "Three"]);
   });
 });
 

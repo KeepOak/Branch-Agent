@@ -1,25 +1,27 @@
 // The Trunk editor (preview editTrunk + 12/15/30-trunks/31-trunksp): a wide dialog, the face and Shuffle on the left,
-// Look / What it may do / Its computers on the right; Cancel and Save. Save sends agents.update then one config.patch.
+// the tabs on the right. Every tab edits one draft, and one Save writes it: agents.update, then one config.patch.
+// The tabs stay reachable from the keyboard (arrow keys move between them); Save shows "Unsaved changes" until it runs.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
 import { notify } from "../../shell/notify";
-import type { Level } from "../../places-nav/level";
+import { shows, type Level } from "../../places-nav/level";
 import { saveTrunk, type Draft } from "./api";
 import { ComputersTab } from "./ComputersTab";
 import { AccountsTab } from "./AccountsTab";
 import { canWrite, loadTrunkData, useLoad, WRITE_WHY, type TrunkData } from "./data";
 import { COLOURS, EYES, LookTab, SHAPES } from "./LookTab";
 import { readMay } from "./may";
-import { MayTab } from "./MayTab";
+import { ModelsTab, PermissionsTab } from "./MayTab";
+import { GitHubTab } from "./GitHubTab";
 import { errorText, lookOf, LOOKS } from "./model";
 import { TrunkFace } from "./TrunkFace";
 import { Layer } from "./layer";
 import "./trunk.css";
 
-export type EditorTab = "look" | "may" | "computers" | "accounts";
-const TABS: [EditorTab, string][] = [["look", "Look"], ["may", "What it may do"], ["computers", "Its computers"], ["accounts", "Accounts"]];
+export type EditorTab = "look" | "permissions" | "models" | "github" | "computers" | "accounts";
+const TABS: [EditorTab, string][] = [["look", "Look"], ["permissions", "Permissions"], ["models", "Models"], ["github", "GitHub"], ["computers", "Its computers"], ["accounts", "Accounts"]];
 
 export type TrunkEditorProps = {
   engine: WindowEngine;
@@ -38,18 +40,24 @@ function draftOf(data: TrunkData, id: string): Draft | null {
   return { name: row.name, theme: row.theme, look: lookOf(row.avatar, row.name), emoji: row.emoji, colour: row.colour || COLOURS[0], shape: row.shape || SHAPES[0], eyes: row.eyes || EYES[0], model: row.model, may: readMay(data.snap, id) };
 }
 
-function TabRow({ tab, setTab }: { tab: EditorTab; setTab: (t: EditorTab) => void }) {
+/** The tabs this person sees: GitHub is an Advanced tab, the rest show at every level. */
+export function visibleTabs(level: Level): [EditorTab, string][] {
+  return TABS.filter(([t]) => t !== "github" || shows(level, "advanced"));
+}
+
+function TabRow({ tab, setTab, level }: { tab: EditorTab; setTab: (t: EditorTab) => void; level: Level }) {
+  const tabs = visibleTabs(level);
   const key = (e: KeyboardEvent) => {
     const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
     if (!step) return;
     e.preventDefault();
-    const next = TABS[(TABS.findIndex(([t]) => t === tab) + step + TABS.length) % TABS.length][0];
+    const next = tabs[(tabs.findIndex(([t]) => t === tab) + step + tabs.length) % tabs.length][0];
     setTab(next);
     (e.currentTarget.querySelector(`[data-tab="${next}"]`) as HTMLElement | null)?.focus();
   };
   return (
     <div className="tk-tabs" role="tablist" aria-label="Trunk editor" onKeyDown={key}>
-      {TABS.map(([t, l]) => <button key={t} type="button" role="tab" data-tab={t} className="tk-tab" aria-selected={tab === t} tabIndex={tab === t ? 0 : -1} onClick={() => setTab(t)}>{l}</button>)}
+      {tabs.map(([t, l]) => <button key={t} type="button" role="tab" data-tab={t} className="tk-tab" aria-selected={tab === t} tabIndex={tab === t ? 0 : -1} onClick={() => setTab(t)}>{l}</button>)}
     </div>
   );
 }
@@ -66,14 +74,21 @@ export function TrunkEditor(props: TrunkEditorProps) {
   return <EditorBody {...props} data={data.data} initial={initial} />;
 }
 
-function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, tab: first, data, initial }: TrunkEditorProps & { data: TrunkData; initial: Draft }) {
-  const [tab, setTab] = useState<EditorTab>(first ?? "look");
-  const [draft, setDraft] = useState(initial);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // The preview's editor redraws itself as it opens, so focus ends on the dialog, not on a control: nothing shows a
-  // ring and the body stays at its top (the shared dialog's first focus would scroll a narrow window down to Name).
-  // Escape still closes it and Tab moves to the first control.
+/** A new look for Shuffle: an unused look when one is free, otherwise any look but the current one. */
+function shuffledLook(draft: Draft, data: TrunkData, agentId: string): Partial<Draft> {
+  if (draft.look === "classic") {
+    const combinations = COLOURS.flatMap((colour) => SHAPES.flatMap((shape) => EYES.map((eyes) => ({ colour, shape, eyes }))));
+    const alternatives = combinations.filter((look) => look.colour !== draft.colour || look.shape !== draft.shape || look.eyes !== draft.eyes);
+    return alternatives[Math.floor(Math.random() * alternatives.length)];
+  }
+  const worn = new Set(data.roster.agents.filter((a) => a.id !== agentId).map((a) => lookOf(a.avatar, a.name)));
+  const free = LOOKS.filter((l) => l.id !== "classic" && l.id !== "branch" && l.id !== draft.look && !worn.has(l.id));
+  const pool = free.length ? free : LOOKS.filter((l) => l.id !== "classic" && l.id !== "branch" && l.id !== draft.look);
+  return { look: pool[Math.floor(Math.random() * pool.length)].id, emoji: "" };
+}
+
+/** The dialog opens without focus on a control, so the body stays at its top (the shared dialog's first focus scrolls a narrow window). */
+function useQuietFocus() {
   useEffect(() => {
     const dlg = document.querySelector<HTMLElement>('[data-testid="trunk-editor"]');
     if (!dlg) return;
@@ -82,19 +97,26 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
     const body = dlg.querySelector<HTMLElement>(".dlg-b");
     if (body) body.scrollTop = 0;
   }, []);
+}
+
+type PanelProps = { engine: WindowEngine; agentId: string; name: string; level: Level; tab: EditorTab; draft: Draft; data: TrunkData; set: (d: Partial<Draft>) => void; openSettings?: (page: string) => void };
+function Panel({ engine, agentId, name, level, tab, draft, data, set, openSettings }: PanelProps) {
+  if (tab === "look") return <LookTab draft={draft} set={set} />;
+  if (tab === "permissions") return <PermissionsTab draft={draft} set={set} />;
+  if (tab === "models") return <ModelsTab name={name} draft={draft} models={data.models} level={level} set={set} openSettings={openSettings} />;
+  if (tab === "github") return <GitHubTab engine={engine} agentId={agentId} />;
+  if (tab === "computers") return <ComputersTab name={name} draft={draft} computers={data.computers} set={set} openSettings={openSettings} />;
+  return <AccountsTab engine={engine} agentId={agentId} />;
+}
+
+function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, tab: first, data, initial }: TrunkEditorProps & { data: TrunkData; initial: Draft }) {
+  const [tab, setTab] = useState<EditorTab>(first ?? "look");
+  const [draft, setDraft] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useQuietFocus();
   const set = (d: Partial<Draft>) => setDraft((x) => ({ ...x, ...d }));
-  const shuffle = () => {
-    if (draft.look === "classic") {
-      const combinations = COLOURS.flatMap((colour) => SHAPES.flatMap((shape) => EYES.map((eyes) => ({ colour, shape, eyes }))));
-      const alternatives = combinations.filter((look) => look.colour !== draft.colour || look.shape !== draft.shape || look.eyes !== draft.eyes);
-      set(alternatives[Math.floor(Math.random() * alternatives.length)]);
-    } else {
-      const worn = new Set(data.roster.agents.filter((a) => a.id !== agentId).map((a) => lookOf(a.avatar, a.name)));
-      const free = LOOKS.filter((l) => l.id !== "classic" && l.id !== "branch" && l.id !== draft.look && !worn.has(l.id));
-      const pool = free.length ? free : LOOKS.filter((l) => l.id !== "classic" && l.id !== "branch" && l.id !== draft.look);
-      set({ look: pool[Math.floor(Math.random() * pool.length)].id, emoji: "" });
-    }
-  };
+  const shuffle = () => set(shuffledLook(draft, data, agentId));
   const changed = JSON.stringify(draft) !== JSON.stringify(initial);
   const save = async () => {
     setBusy(true); setError(null);
@@ -104,6 +126,7 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
   };
   const write = canWrite(engine);
   const footer = <>
+    {changed && <span className="tk-unsaved" role="status">Unsaved changes</span>}
     <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
     <button type="button" className="btn pri" disabled={busy || !changed || !write || !draft.name.trim()} title={write ? undefined : WRITE_WHY} onClick={() => void save()}>{busy ? "Saving…" : "Save"}</button>
   </>;
@@ -115,12 +138,9 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
           <button type="button" className="btn sm" onClick={shuffle}>Shuffle</button>
         </div>
         <div className="tk-col">
-          <TabRow tab={tab} setTab={setTab} />
+          <TabRow tab={tab} setTab={setTab} level={level} />
           <div role="tabpanel" aria-label={TABS.find(([t]) => t === tab)?.[1]}>
-            {tab === "look" && <LookTab draft={draft} set={set} />}
-            {tab === "may" && <MayTab engine={engine} agentId={agentId} name={initial.name} draft={draft} models={data.models} level={level} set={set} openSettings={openSettings} />}
-            {tab === "computers" && <ComputersTab name={initial.name} draft={draft} computers={data.computers} set={set} openSettings={openSettings} />}
-            {tab === "accounts" && <AccountsTab engine={engine} agentId={agentId} />}
+            <Panel engine={engine} agentId={agentId} name={initial.name} level={level} tab={tab} draft={draft} data={data} set={set} openSettings={openSettings} />
           </div>
           {data.partial.map((p) => <p key={p} className="tk-hint" role="status">{p}</p>)}
           {error && <p className="tk-error" role="alert">{error}</p>}
