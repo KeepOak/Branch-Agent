@@ -19,7 +19,7 @@ import { createDesktopControls, readSettings, registerDesktopControlsIpc } from 
 import { desktopOs, START_IN_TRAY } from "./desktop-os";
 import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import { registerClipboardIpc } from "./clipboard-ipc";
-import { placeWindow, readWindowState, trackWindowState } from "./window-state";
+import { keepWindowsOnScreen, placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate } from "./auto-apply-update";
 import { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes } from "./available-memory";
@@ -137,6 +137,8 @@ let server: Server | undefined;
 let win: BrowserWindow | undefined;
 const conversationWindows = new Map<string, BrowserWindow>();
 const branchWindows = (): BrowserWindow[] => [win, ...conversationWindows.values()].filter((w): w is BrowserWindow => Boolean(w && !w.isDestroyed()));
+// Brings windows back inside the visible screen when shown and after display changes; set once the app is ready.
+let fitWindowsOnScreen: ReturnType<typeof keepWindowsOnScreen> | undefined;
 const sendToBranchWindows = (channel: string, ...args: unknown[]): void => {
   for (const w of branchWindows()) w.webContents.send(channel, ...args);
 };
@@ -736,6 +738,7 @@ function createWindow(): BrowserWindow {
   });
   w.setMenuBarVisibility(false);
   if (place.maximized) w.once("show", () => w.maximize());
+  w.on("show", () => fitWindowsOnScreen?.());
   if (TEST_COPY) w.on("page-title-updated", (event, title) => { event.preventDefault(); w.setTitle(`Test — ${title}`); });
   if (!HIDDEN && !QUIET && !TEST_COPY) w.once("ready-to-show", () => (place.maximized ? w.maximize() : w.show()));
   trackWindowState(w, cfg.dataDir, (bounds) => screen.getDisplayMatching(bounds).bounds);
@@ -791,6 +794,7 @@ function openConversationWindow(key: string): void {
   });
   child.webContents.on("did-finish-load", () => offerWindowStatus(child));
   if (place?.maximized) child.once("show", () => child.maximize());
+  child.on("show", () => fitWindowsOnScreen?.());
   trackWindowState(child, cfg.dataDir, (bounds) => screen.getDisplayMatching(bounds).bounds,
     () => conversationStateFile([...conversationWindows].find(([, window]) => window === child)?.[0] ?? key));
   child.setMenuBarVisibility(false);
@@ -984,6 +988,7 @@ async function start(): Promise<void> {
   });
   registerClipboardIpc(ipcMain, e => ownedWebContents(e.sender), windowUrl(), clipboard);
   controls.apply();
+  fitWindowsOnScreen = keepWindowsOnScreen(screen, branchWindows);
   win = createWindow();
   await win.loadURL(STARTING);
   log(`starting page shown after ${Date.now() - launchStarted} ms`);

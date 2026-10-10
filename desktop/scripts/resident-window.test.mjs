@@ -42,7 +42,7 @@ function electronFixture() {
     setToolTip(value) { this.tooltip = value; } setContextMenu(value) { this.menu = value; }
     destroy() { this.destroyed = true; } }
   return { app, get window() { return window; }, get tray() { return tray; }, electron: { app, BrowserWindow, Tray,
-    Menu: { buildFromTemplate: value => value }, screen: { getAllDisplays: () => [], getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1280, height: 840 } }) }, ipcMain: Object.assign(new EventEmitter(), { handle() {} }), dialog: { showErrorBox: assert.fail },
+    Menu: { buildFromTemplate: value => value }, screen: Object.assign(new EventEmitter(), { getAllDisplays: () => [], getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1280, height: 840 } }) }), ipcMain: Object.assign(new EventEmitter(), { handle() {} }), dialog: { showErrorBox: assert.fail },
     session: { defaultSession: { setPermissionRequestHandler() {} } }, shell: { openExternal() {} } } };
 }
 async function fixture(run, hidden = false) {
