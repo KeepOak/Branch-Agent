@@ -75,6 +75,7 @@ async function prepareBuildArtifacts() {
 
 async function featureTestEnv(scratch) {
   const env = { ...process.env, BRANCH_TEST_ARTIFACT_DIR: path.join(scratch, 'fixtures'),
+    NODE_COMPILE_CACHE: path.join(scratch, 'node-compile'),
     BRANCH_BROWSER_SNAPSHOT_E2E: process.platform === 'linux' ? '1' : '0' };
   if (process.platform === 'linux' || process.platform === 'win32') {
     env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = await hostedChrome();

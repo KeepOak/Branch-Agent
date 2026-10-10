@@ -17,6 +17,7 @@ import * as updateTempRoot from "../infra/tmp-branch-dir.js";
 import * as handoffDatabase from "../infra/update-managed-service-handoff-database.js";
 import type { UpdateRunResult } from "../infra/update-runner-types.js";
 import * as windowsPrivateDirectory from "../infra/windows-private-directory.js";
+import * as spawnBrokerHost from "../process/spawn-broker/host.js";
 import { BRANCH_AGENT_SCHEMA_VERSION } from "../state/branch-agent-db-contract.js";
 import { BRANCH_STATE_SCHEMA_VERSION } from "../state/branch-state-db-contract.js";
 import { resolveBranchStateSqlitePath } from "../state/branch-state-db.paths.js";
@@ -246,6 +247,11 @@ export function registerUpdateCliLifecycle(fixture: UpdateCliLifecycleFixture): 
     // Keep actual PID/start reads, switching only their synchronous platform dispatch.
     vi.spyOn(pidAlive, "getFileLockProcessStartTime").mockImplementation((...args) =>
       withUpdateCliHostPlatform(() => readHostProcessStartTime(...args)),
+    );
+    // Real brokers must select the host socket transport even for foreign services.
+    const createHostBroker = spawnBrokerHost.createSpawnBrokerHost;
+    vi.spyOn(spawnBrokerHost, "createSpawnBrokerHost").mockImplementation((...args) =>
+      withUpdateCliHostPlatform(() => createHostBroker(...args)),
     );
     // Artifact locks own real host directories, not the service's simulated OS.
     // Retain actual acquisition, identity checks and exclusive release.
