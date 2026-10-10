@@ -1,0 +1,5 @@
+engine:src/agents/trunk-team-apply.test.ts
+engine:src/agents/trunk-team.test.ts
+engine:src/gateway/server-methods-list.test.ts
+engine:src/gateway/server-methods/trunk-team.lockdown.test.ts
+engine:src/gateway/server-methods/trunk-team.test.ts
