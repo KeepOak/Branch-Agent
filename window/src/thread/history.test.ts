@@ -156,5 +156,30 @@ describe("historyToBlocks: text-channel tool calls", () => {
     );
     expect(prose[0]).toMatchObject({ kind: "text", text: `Here is the call: ${JSON.stringify(spawn)}` });
   });
-});
 
+  it("gives a run no length when its first message has no time, never one counted from the epoch", () => {
+    const untimed = [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: [{ type: "text", text: "Hello." }], stopReason: "stop", timestamp: 1_790_000_000_000, __branch: { runId: "r" } },
+    ];
+    const done = historyToBlocks(untimed, [], "agent:a:main", null).find((b) => b.kind === "done");
+    expect(done).toBeDefined();
+    expect(done).not.toHaveProperty("durationMs");
+    const timed = [
+      { role: "user", content: "hi", timestamp: 1_000 },
+      { role: "assistant", content: [{ type: "text", text: "Hello." }], stopReason: "stop", timestamp: 61_000, __branch: { runId: "r" } },
+    ];
+    expect(historyToBlocks(timed, [], "agent:a:main", null).find((b) => b.kind === "done")).toMatchObject({ durationMs: 60_000 });
+  });
+
+  it("gives a later run whose message has no time no length, not the idle gap since the run before", () => {
+    const blocks = historyToBlocks([
+      { role: "user", content: "first", timestamp: 1_000 },
+      { role: "assistant", content: [{ type: "text", text: "Done." }], stopReason: "stop", timestamp: 5_000, __branch: { runId: "r1" } },
+      { role: "user", content: "later, untimed" },
+      { role: "assistant", content: [{ type: "text", text: "Also done." }], stopReason: "stop", timestamp: 1_790_000_000_000, __branch: { runId: "r2" } },
+    ], [], "agent:a:main", null);
+    const dones = blocks.filter((b) => b.kind === "done") as { durationMs?: number }[];
+    expect(dones.map((d) => d.durationMs)).toEqual([4_000, undefined]);
+  });
+});
