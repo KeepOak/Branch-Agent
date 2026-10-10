@@ -19,9 +19,9 @@ async function eventually(predicate, ms = 5000) {
   const end = Date.now() + ms;
   while (!await predicate()) { if (Date.now() > end) throw Error('Fixture deadline'); await pause(20); }
 }
-function electronFixture() {
+function electronFixture(configDir) {
   let window, tray, quitting = false; const app = new EventEmitter();
-  Object.assign(app, { getVersion: () => 'fixture', setPath() {}, setAppUserModelId() {},
+  Object.assign(app, { getVersion: () => 'fixture', getPath: () => configDir, isPackaged: false, setPath() {}, setAppUserModelId() {},
     requestSingleInstanceLock: () => true, whenReady: async () => {}, quit() {
       if (quitting) return; quitting = true;
       app.emit('before-quit'); window?.close(); app.emit('will-quit');
@@ -58,7 +58,7 @@ async function fixture(run, hidden = false) {
   await writeFile(join(root, 'desktop.json'), JSON.stringify(cfg));
   const previousData = process.env.BRANCH_DESKTOP_DATA, previousHidden = process.env.BRANCH_DESKTOP_HIDDEN;
   process.env.BRANCH_DESKTOP_DATA = root; process.env.BRANCH_DESKTOP_HIDDEN = hidden ? '1' : '0';
-  const runtime = electronFixture();
+  const runtime = electronFixture(root);
   Module._load = function(name, ...args) {
     if (name === 'electron') return runtime.electron;
     const loaded = originalLoad.call(this, name, ...args);
@@ -160,7 +160,7 @@ test('usage-off setTrayUsage restores the darwin template and never branch-48.pn
     const { createDesktopControls } = require(modules[2]);
     const seen = [];
     const controls = createDesktopControls(desktopOs(
-      { getLoginItemSettings: () => ({ openAtLogin: false }) },
+      { getLoginItemSettings: () => ({ openAtLogin: false }), getPath: () => root, isPackaged: false },
       { dataDir: root },
       () => ({ setImage(value) { seen.push(value); }, setToolTip() {} }),
       template,

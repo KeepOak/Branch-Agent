@@ -8,9 +8,10 @@ import { promisify } from "node:util";
 import type { DesktopConfig } from "./config";
 import { branchShim, branchShShim, editUserPath, pathHas, ringBitmap, type ControlDeps } from "./desktop-controls";
 import { menuBarIcon } from "./resident-window";
+import { linuxLogin } from "./linux-login";
 
 const run = promisify(execFile);
-/** Passed by the login item, so a start with Windows opens quietly in the tray. */
+/** Passed by the login item, so a login start opens quietly in the tray. */
 export const START_IN_TRAY = "--start-in-tray";
 
 async function powershell(command: string, env: Record<string, string> = {}): Promise<string> {
@@ -35,7 +36,7 @@ export function desktopOs(app: App, cfg: DesktopConfig, tray: () => Tray | undef
   const windowsOnly = (): void => { if (process.platform !== "win32") throw new Error("The branch command is added by the Windows app"); };
   return {
     settingsFile: join(cfg.dataDir, "desktop-settings.json"),
-    login: {
+    login: process.platform === "linux" ? linuxLogin(app.getPath("appData"), process.execPath, app.isPackaged) : {
       get: () => app.getLoginItemSettings(login).openAtLogin,
       set: (on) => app.setLoginItemSettings({ ...login, openAtLogin: on }),
     },

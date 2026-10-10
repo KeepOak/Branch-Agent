@@ -39,8 +39,8 @@ import { MacComputerDriver, describeDriverError, macScreenControlEnabled } from 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
 /** Scratch test copies: never grouped with, or mistaken for, the owner's app (they also start hidden). */
 const TEST_COPY = process.env.BRANCH_DESKTOP_TEST === "1";
-/** Started with Windows: open quietly in the tray (only where the tray exists). */
-const QUIET = process.platform === "win32" && process.argv.includes(START_IN_TRAY);
+/** Started at login: open quietly in the tray on Windows and Linux. */
+const QUIET = (process.platform === "win32" || process.platform === "linux") && process.argv.includes(START_IN_TRAY);
 const ICON = process.platform === "win32"
   ? join(__dirname, "..", "assets", "branch.ico")
   : join(__dirname, "..", "assets", "brand", "linux", "branch-48.png");

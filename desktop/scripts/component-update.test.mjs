@@ -478,7 +478,7 @@ test("actual desktop caller retains running engine and checks a failing engine b
   await writeFile(join(cfg.engineDir, "branch.mjs"), 'import http from "node:http"; process.on("message", m => { if(m.type?.startsWith("branch-desktop:")){ process.send({type:"branch-desktop:activity-result",id:m.id,idle:true,activeRuns:0,pendingReplies:0,totalActive:0}); if(m.type==="branch-desktop:stop-if-idle"||m.type==="branch-desktop:drain-stop")setTimeout(()=>process.exit(0),20); }}); setTimeout(()=>http.createServer((_req,res)=>res.writeHead(200).end()).listen(Number(process.argv[process.argv.indexOf("--port")+1]),"127.0.0.1"),1000);');
   await writeFile(join(cfg.dataDir, "desktop.json"), JSON.stringify(desktop));
   let relaunches = 0;
-  const app = new EventEmitter(); Object.assign(app, { getVersion: () => "fixture", setPath: () => {}, setAppUserModelId: () => {},
+  const app = new EventEmitter(); Object.assign(app, { getVersion: () => "fixture", getPath: () => cfg.dataDir, isPackaged: false, setPath: () => {}, setAppUserModelId: () => {},
     requestSingleInstanceLock: () => true, whenReady: () => Promise.resolve(), relaunch: () => { relaunches++; }, quit: () => app.emit("will-quit") });
   const ipcMain = Object.assign(new EventEmitter(), { handle() {} });
   let servedAt, ownerWindow, reloads = 0; const launchedAt = Date.now();
@@ -650,8 +650,8 @@ test("release maker uses a valid earlier ustar split for nested production depen
   assert.deepEqual(await readFile(join(extracted, relative)), await readFile(file));
 }));
 
-function coldCallerElectron(state) {
-  const app = new EventEmitter(); Object.assign(app, { getVersion: () => "fixture", setPath: () => {}, setAppUserModelId: () => {},
+function coldCallerElectron(state, configDir) {
+  const app = new EventEmitter(); Object.assign(app, { getVersion: () => "fixture", getPath: () => configDir, isPackaged: false, setPath: () => {}, setAppUserModelId: () => {},
     requestSingleInstanceLock: () => true, whenReady: () => Promise.resolve(), quit: () => app.emit("will-quit") });
   class BrowserWindow extends EventEmitter {
     static fromWebContents(sender) { return state.window?.webContents === sender ? state.window : null; }
@@ -678,7 +678,7 @@ async function coldDesktopCaller(cfg, state, releaseRequest) {
   const previousData = process.env.BRANCH_DESKTOP_DATA; const previousHidden = process.env.BRANCH_DESKTOP_HIDDEN;
   const main = join(process.env.BRANCH_DESKTOP_TEST_DIST, "main.js");
   const config = join(process.env.BRANCH_DESKTOP_TEST_DIST, "config.js");
-  const electron = coldCallerElectron(state);
+  const electron = coldCallerElectron(state, cfg.dataDir);
   const desktop = { ...cfg, nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort() };
   state.gatewayPort = desktop.gatewayPort;
   await mkdir(join(cfg.engineDir, "dist"), { recursive: true });

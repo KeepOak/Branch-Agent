@@ -23,9 +23,9 @@ async function freePort() {
   const server = createServer(); await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   const port = server.address().port; await new Promise(resolve => server.close(resolve)); return port;
 }
-function electronFixture() {
+function electronFixture(configDir) {
   let window; const windows = [], handlers = new Map(), app = new EventEmitter(), ipcMain = new EventEmitter(), errors = [];
-  Object.assign(app, { getVersion: () => "fixture", setPath() {}, setAppUserModelId() {},
+  Object.assign(app, { getVersion: () => "fixture", getPath: () => configDir, isPackaged: false, setPath() {}, setAppUserModelId() {},
     requestSingleInstanceLock: () => true, whenReady: async () => {}, quit() { app.emit("will-quit"); } });
   class BrowserWindow extends EventEmitter {
     static fromWebContents(sender) { return windows.find(w => w.webContents === sender) ?? null; }
@@ -104,7 +104,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
   process.env.BRANCH_DESKTOP_DATA = root;
   if (holdCandidate || standby === true) process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB = "0";
   else if (standby === "never") process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB = String(2 ** 40);
-  const runtime = electronFixture(), starts = async () => {
+  const runtime = electronFixture(root), starts = async () => {
     try { return JSON.parse(await readFile(join(root, "starts.json"), "utf8")); }
     // The fixture may be mid-write: an empty or partial file reads as "not yet", and eventually() polls again.
     catch (error) { if (error.code === "ENOENT" || error instanceof SyntaxError) return []; throw error; }
