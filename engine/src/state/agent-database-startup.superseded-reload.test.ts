@@ -14,6 +14,17 @@ import {
 } from "./branch-agent-db.js";
 import type { BranchDatabaseSchemaPreflight } from "./branch-database-preflight.types.js";
 
+// The journal read runs in a real worker, whose speed depends on the machine. A stage limit counts
+// that time, so on a slow runner the lane test expired attempts that had not hung. Answer at once:
+// these tests are about preparation and the lane, not the journal.
+vi.mock("./agent-deletion-journal.read.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./agent-deletion-journal.read.js")>();
+  return {
+    ...actual,
+    readAgentDeletionJournalStatusInWorker: async () => "absent" as const,
+  };
+});
+
 async function closeDatabases() {
   // Join worker ownership before Windows can remove the temporary state directory.
   await closeBranchAgentDatabasesAsync();
@@ -24,7 +35,10 @@ async function closeDatabases() {
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 afterEach(closeDatabases);
 
-async function startDeferredPreparation(prepareAgent: () => Promise<void>, extraEnv: Record<string, string> = {}) {
+async function startDeferredPreparation(
+  prepareAgent: () => Promise<void>,
+  extraEnv: Record<string, string> = {},
+) {
   const env = { BRANCH_STATE_DIR: tempDirs.make("branch-startup-superseded-"), ...extraEnv };
   const agentId = "tk";
   const path = openBranchAgentDatabase({ agentId, env }).path;
