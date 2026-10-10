@@ -39,7 +39,7 @@ function OwnerAccountsSwitch({ engine, agentId, onChanged }: { engine: WindowEng
       <input type="checkbox" role="switch" data-testid="use-owner-accounts" checked={on} disabled={busy || Boolean(why)} onChange={() => void toggle()} />{" "}
       Use my accounts
     </label>
-    <span className="tk-hint">{on ? "This Trunk can use the accounts you signed in." : "This Trunk uses only accounts signed in for it."}</span>
+    <p className="tk-hint">{on ? "This Trunk can use the accounts you signed in." : "This Trunk uses only accounts signed in for it."}</p>
     {error && <p className="tk-error" role="alert">{error}</p>}
   </div>;
 }
