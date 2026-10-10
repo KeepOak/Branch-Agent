@@ -63,16 +63,12 @@ export function ThisPc() {
     <Sec title="This computer" hint={copy.hint}>
       <Plist>
         {THIS_PC_ROWS.map(([t, icon, sub, open]) => (
-          <Prow key={t} icon={<span className="pm-tile">{icon}</span>} title={t} sub={t === "Installing tools" ? copy.install : sub}>
+          <Prow key={t} icon={<span className="pm-tile">{icon}</span>} title={t} sub={t === "Installing tools" ? copy.install : t === "Location" ? copy.locationHelp : sub}>
             {open && copy.open ? <Btn sm disabled title={copy.why}>{copy.open}</Btn> : null}
           </Prow>
         ))}
       </Plist>
       <Hint>{copy.why}</Hint>
-      <div className="sec pm-loc">
-        <Ctl title="Location access" sub="Lets a Trunk ask where this computer is when a tool needs it." help={copy.locationHelp} off={WHY.key}>{deadControl({ seg: ["Off", "While using", "Always"], v: "While using" }, "Location access")}</Ctl>
-        <Ctl title="Precise location" sub="The exact spot, not just the area." off={WHY.key}>{deadControl({ sw: true }, "Precise location")}</Ctl>
-      </div>
     </Sec>
   );
 }
