@@ -38,7 +38,6 @@ type Props = {
   person: string;
   theme: ThemeChoice;
   onTheme: (t: ThemeChoice) => void;
-  onSettings: () => void;
   onShortcuts: () => void;
   onApps: () => void;
   onAbout: () => void;
@@ -70,7 +69,7 @@ function Row({ icon, label, hint, onClick, testid }: { icon: Parameters<typeof I
   );
 }
 
-/** The person menu (DESIGN-SPEC §4.1.5): who is using Branch, Look, then Settings and help. */
+/** The person menu (DESIGN-SPEC §4.1.5): who is using Branch, Look, then help. */
 export function PersonMenu(p: Props) {
   const run = (f: () => void) => () => {
     p.onClose();
@@ -95,7 +94,6 @@ export function PersonMenu(p: Props) {
         <Segmented label="Look" value={p.theme} options={LOOK} onChange={p.onTheme} testid="look" />
       </div>
       <hr className="msep" />
-      <Row icon="gear" label="Settings" hint="Ctrl ," onClick={run(p.onSettings)} testid="person-settings" />
       <Row icon="menu" label="Keyboard shortcuts" hint="?" onClick={run(p.onShortcuts)} testid="person-shortcuts" />
       <Row icon="phone" label="Get the apps" onClick={run(p.onApps)} testid="person-apps" />
       <Row icon="help" label="Guide" onClick={run(p.onGuide)} testid="person-guide" />

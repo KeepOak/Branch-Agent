@@ -1450,7 +1450,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   } else if (route.kind === "place") {
     main = (
       <>
-        {isNarrow ? <PlaceHead onList={toggleList} onSettings={() => openSettings("general")} onBack={() => window.history.back()} onForward={() => window.history.forward()} /> : null}
+        {isNarrow ? <PlaceHead onList={toggleList} onBack={() => window.history.back()} onForward={() => window.history.forward()} /> : null}
         <PlaceView place={route.place} engine={session.engine} facts={{ running, waiting: waitingTotal }} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} startConversation={(agentId) => void startNew(agentId)} createTrunk={() => void newTrunk()} />
       </>
     );
@@ -1515,7 +1515,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         onGuide={(e) => showMenu(e, "guide", guideItems(), "Guide")}
         conversationTools={conversationTools}
         ask={route.kind === "settings" ? { name: defaultName, open: false, help: true, onToggle: () => window.dispatchEvent(new Event("branch-settings-help")) } : talkEntry}
-        onSettings={route.kind === "place" ? () => openSettings("general") : undefined}
       />
       <Sidebar
         home={home}
@@ -1728,7 +1727,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           theme={theme}
           onTheme={changeTheme}
           onClose={() => setOverlay(null)}
-          onSettings={() => openSettings("general")}
           onShortcuts={() => setOverlay({ kind: "shortcuts" })}
           onApps={() => setOverlay({ kind: "apps" })}
           onAbout={() => openSettings("updates")}
