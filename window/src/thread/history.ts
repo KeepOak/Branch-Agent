@@ -37,7 +37,8 @@ type Builder = {
   /** Code Mode wrappers (an `exec` whose code called real tools): their nested calls are the steps, not them. */
   wrappers: Set<string>;
   runId: string | null;
-  runStart: number;
+  /** When the run's first message was written; null when that message carries no time. */
+  runStart: number | null;
   runFinished: boolean;
   /** The run was stopped (an aborted partial the engine kept: `branchAbort`). */
   runStopped: boolean;
@@ -154,7 +155,9 @@ function attachmentsOf(content: unknown): Attachment[] {
 
 function closeRun(b: Builder, inFlightRunId: string | null): void {
   if (b.runId && b.runFinished && b.runId !== inFlightRunId) {
-    b.blocks.push({ kind: "done", key: `${b.runId}:done`, runId: b.runId, durationMs: Math.max(0, b.lastTs - b.runStart), ...(b.runStopped ? { stopped: true } : {}) });
+    // A run whose first message has no time has no length: subtracting an absent start (0) read as ~56 years.
+    const durationMs = b.runStart !== null && b.lastTs > b.runStart ? b.lastTs - b.runStart : undefined;
+    b.blocks.push({ kind: "done", key: `${b.runId}:done`, runId: b.runId, ...(durationMs ? { durationMs } : {}), ...(b.runStopped ? { stopped: true } : {}) });
   }
   b.runId = null;
   b.runFinished = false;
@@ -317,7 +320,7 @@ function onUser(b: Builder, m: Message, index: number, inFlightRunId: string | n
   }
   closeRun(b, inFlightRunId);
   // A message sent while the turn before still ran starts its own turn when that one ended.
-  b.runStart = Math.max(num(m.timestamp), b.lastTs);
+  b.runStart = typeof m.timestamp === "number" || b.lastTs > 0 ? Math.max(num(m.timestamp), b.lastTs) : null;
   if (isRestartResume(m)) {
     b.blocks.push({ kind: "notice", key: `h:${index}`, text: RESUMED_AFTER_RESTART });
     return;
@@ -343,7 +346,7 @@ export function historyToBlocks(
   inFlightRunId: string | null,
   options: { wholeOutput?: boolean } = {},
 ): Block[] {
-  const b: Builder = { blocks: [], steps: new Map(), wrappers: new Set(), runId: null, runStart: 0, runFinished: false, runStopped: false, lastTs: 0, wholeOutput: options.wholeOutput === true };
+  const b: Builder = { blocks: [], steps: new Map(), wrappers: new Set(), runId: null, runStart: null, runFinished: false, runStopped: false, lastTs: 0, wholeOutput: options.wholeOutput === true };
   for (const [index, raw] of messages.entries()) {
     const m = rec(raw);
     const runId = str(rec(m.__branch).runId) || null;
