@@ -6,6 +6,6 @@ import { Face } from "./Face";
 // sheet when something happens (§6.2). Face.tsx and player.ts do the drawing.
 
 /** Sapling's face. `size` is the face size in CSS pixels. */
-export function Pebble({ size, label, state, priority }: { size: number; label?: string; state?: AgentState; priority?: number }) {
-  return <Face size={size} label={label} state={state} priority={priority} />;
+export function Pebble({ size, label, state, priority, where }: { size: number; label?: string; state?: AgentState; priority?: number; where?: string }) {
+  return <Face size={size} label={label} state={state} priority={priority} where={where} />;
 }
