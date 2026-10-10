@@ -5,8 +5,16 @@ import { teamProgressPost } from "../../agents/trunk-team-progress.js";
 import { appendRoomEvent, getRoom } from "../rooms/store.js";
 import type { GatewayBroadcastFn } from "../server-broadcast-types.js";
 
+let broadcaster: GatewayBroadcastFn | undefined;
+
+/** Tells the open team cards that a proposal changed state. Silent until the gateway has attached its broadcast. */
+export function publishTeamChange(payload: Record<string, unknown>): void {
+  broadcaster?.("trunks.team.changed", payload, { dropIfSlow: true });
+}
+
 /** Attaches the gateway's one progress sink. Called once when the gateway starts its subscriptions. */
 export function attachTeamProgress(broadcast: GatewayBroadcastFn): void {
+  broadcaster = broadcast;
   setQueueTransitionListener((transition) => {
     const post = teamProgressPost(transition, (roomId) => Boolean(getRoom(roomId)));
     if (!post) {

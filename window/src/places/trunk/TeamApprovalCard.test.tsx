@@ -62,13 +62,22 @@ describe("TeamApprovalCard", () => {
     expect(onApprove).toHaveBeenCalledTimes(1);
   });
 
-  it("says approving goes to the Inbox while the answer is pending", () => {
-    const el = render(<TeamApprovalCard goal="Ship it" members={members} state="waiting" />);
+  it("disables both answers while the approval is still opening", () => {
+    const el = render(<TeamApprovalCard goal="Ship it" members={members} state="opening" />);
 
-    expect(el.querySelector('[role="status"]')?.textContent).toContain(
-      "Waiting for you in your Inbox",
+    expect(el.querySelector<HTMLButtonElement>('[data-testid="team-approve"]')?.disabled).toBe(
+      true,
     );
+    expect(el.textContent).toContain("Opening the approval");
+  });
+
+  it("says the team is being created once the owner has allowed it", () => {
+    const el = render(<TeamApprovalCard goal="Ship it" members={members} state="applying" />);
+
     expect(el.querySelector('[data-testid="team-approve"]')).toBeNull();
+    expect(el.querySelector('[role="status"]')?.textContent).toContain(
+      "Allowed. The team is being created now.",
+    );
   });
 
   it.each([
@@ -111,5 +120,27 @@ describe("TeamApprovalCard", () => {
       name: "Builder Scout",
       job: "Find three sources.",
     });
+  });
+
+  it("shows a failed create with the reason and Retry, which runs the same team again", () => {
+    const onRetry = vi.fn();
+    const el = render(
+      <TeamApprovalCard
+        goal="Ship it"
+        members={members}
+        state="failed"
+        choices={choices}
+        created={["Builder Scout"]}
+        message="Machine offline"
+        onRetry={onRetry}
+      />,
+    );
+
+    expect(el.querySelector('[data-state]')?.getAttribute("data-state")).toBe("failed");
+    expect(el.textContent).toContain("Machine offline");
+    expect(el.textContent).toContain("Builder Scout");
+    act(() => el.querySelector<HTMLButtonElement>('[data-testid="team-retry"]')?.click());
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(el.querySelector('[data-testid="team-approve"]')).toBeNull();
   });
 });
