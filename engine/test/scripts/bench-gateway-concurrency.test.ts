@@ -69,7 +69,7 @@ function createBenchmarkRun(overrides: Partial<BenchmarkRun> = {}): BenchmarkRun
         ),
       ),
     ),
-    turnEvidence: { toolTurns: 0, observerModelDigestTurns: 0 },
+    turnEvidence: { toolTurns: 0, observerModelDigestTurns: 0, firstTokenMs: [] },
     providerRequests: testing.summarizeProviderRequests([], 0, 0),
     turnAccounting: { launched: 8, terminalOk: 8, verified: 8 },
     agentWarmup: {
@@ -79,7 +79,7 @@ function createBenchmarkRun(overrides: Partial<BenchmarkRun> = {}): BenchmarkRun
       verified: 0,
       beforeOrdinal: 0,
       afterOrdinal: 0,
-      turnEvidence: { toolTurns: 0, observerModelDigestTurns: 0 },
+      turnEvidence: { toolTurns: 0, observerModelDigestTurns: 0, firstTokenMs: [] },
     },
     probeWarmup: { durationMs: 2, samples: [] },
     pluginMetadataScans: { count: 0, durationMs: null, totalDurationMs: 0 },
@@ -666,7 +666,7 @@ describe("gateway concurrency benchmark script", () => {
       if (delayed) {
         emitToolEvents();
       }
-      expect(evidence.finish()).toEqual({ toolTurns: 1, observerModelDigestTurns: 1 });
+      expect(evidence.finish()).toEqual({ toolTurns: 1, observerModelDigestTurns: 1, firstTokenMs: [] });
       expect(() =>
         evidence.onEvent({
           event: "session.tool",
@@ -738,8 +738,8 @@ describe("gateway concurrency benchmark script", () => {
         warmup,
       });
     }
-    expect(evidence.finish()).toEqual({ toolTurns: 1, observerModelDigestTurns: 1 });
-    expect(evidence.finish("warmup")).toEqual({ toolTurns: 1, observerModelDigestTurns: 1 });
+    expect(evidence.finish()).toEqual({ toolTurns: 1, observerModelDigestTurns: 1, firstTokenMs: [] });
+    expect(evidence.finish("warmup")).toEqual({ toolTurns: 1, observerModelDigestTurns: 1, firstTokenMs: [] });
     evidence.onEvent(toolResult(runs[0]!));
     expect(() => evidence.finish()).toThrow("duplicated");
     expect(() => evidence.finish("warmup")).toThrow("duplicated");
