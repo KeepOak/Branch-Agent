@@ -269,7 +269,8 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
       timeout: RUN_WAIT_MS,
     });
     const claim = (await list()).find((item) => item.id === queued.item.id);
-    expect(claim).toMatchObject({ status: "claimed", claimed_by: "builder-birch" });
+    // A fast run may already have completed the job; either way the idle Trunk took it.
+    expect(claim).toMatchObject({ claimed_by: "builder-birch" });
     const threads = await client().request<{ sessions: Array<{ key: string; label?: string }> }>(
       "sessions.list",
       { agentId: "builder-birch", limit: 50 },
