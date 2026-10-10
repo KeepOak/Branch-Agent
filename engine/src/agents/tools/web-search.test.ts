@@ -4,13 +4,16 @@ import { Value } from "typebox/value";
 import { describe, expect, it } from "vitest";
 import { compactToolOutputHint } from "../tool-schema-hints.js";
 import { normalizeWebSearchOutput, WebSearchOutputSchema } from "./web-search-output.js";
+import { WebSearchProviderError } from "../../web-search/runtime-error.js";
 import {
   MAX_SEARCH_COUNT,
+  WEB_SEARCH_HELP_URL,
   buildUnsupportedSearchFilterResponse,
   isoToPerplexityDate,
   normalizeToIsoDate,
   normalizeFreshness,
   parseWebSearchTimeFilters,
+  resolveWebSearchErrorDocs,
 } from "./web-search-provider-common.js";
 import { mergeScopedSearchConfig } from "./web-search-provider-config.js";
 import { createWebSearchTool } from "./web-search.js";
@@ -277,7 +280,7 @@ const normalizedProviderFixtures: Array<{
       provider: "brave",
       error: "provider_error",
       message: "missing_brave_api_key",
-      docs: "https://docs.openclaw.ai/tools/web",
+      docs: new URL(WEB_SEARCH_HELP_URL).href,
     },
   },
   {
@@ -603,7 +606,7 @@ describe("web_search time filter parsing", () => {
       error: "conflicting_time_filters",
       message:
         "freshness and date_after/date_before cannot be used together. Use either freshness (day/week/month/year) or a date range (date_after/date_before), not both.",
-      docs: "https://docs.openclaw.ai/tools/web",
+      docs: WEB_SEARCH_HELP_URL,
     });
   });
 
@@ -629,7 +632,7 @@ describe("web_search unsupported filter response", () => {
       error: "unsupported_country",
       message:
         "country filtering is not supported by the grok provider. Only Brave and Perplexity support country filtering.",
-      docs: "https://docs.openclaw.ai/tools/web",
+      docs: WEB_SEARCH_HELP_URL,
     });
   });
 
@@ -638,8 +641,42 @@ describe("web_search unsupported filter response", () => {
       error: "unsupported_date_filter",
       message:
         "date_after/date_before filtering is not supported by the kimi provider. Only Brave and Perplexity support date filtering.",
-      docs: "https://docs.openclaw.ai/tools/web",
+      docs: WEB_SEARCH_HELP_URL,
     });
+  });
+});
+
+describe("web_search user-visible error docs", () => {
+  it("keeps user-visible web-search error messages free of OpenClaw", () => {
+    const runtime = new WebSearchProviderError("brave", new Error("search failed")).toResult();
+    const unsupported = buildUnsupportedSearchFilterResponse({ country: "us" }, "grok");
+    const filters = parseWebSearchTimeFilters({
+      rawFreshness: "not-a-window",
+      freshnessProvider: "brave",
+      invalidFreshnessMessage: "freshness must be day, week, month, or year.",
+      invalidDateAfterMessage: "date_after must be YYYY-MM-DD format.",
+      invalidDateBeforeMessage: "date_before must be YYYY-MM-DD format.",
+      invalidDateRangeMessage: "date_after must be before date_before.",
+    });
+    const normalized = normalizeWebSearchOutput({
+      provider: "brave",
+      query: "missing key",
+      result: {
+        error: "missing_brave_api_key",
+        message: "web_search needs a Brave Search API key. Add it in Settings.",
+        docs: "https://docs.openclaw.ai/tools/web",
+      },
+    });
+
+    expect(resolveWebSearchErrorDocs("https://docs.openclaw.ai/tools/web")).toBe(
+      WEB_SEARCH_HELP_URL,
+    );
+    expect(resolveWebSearchErrorDocs("https://docs.OPENCLAW.ai/tools/exa-search")).toBe(
+      WEB_SEARCH_HELP_URL,
+    );
+    expect(JSON.stringify({ runtime, unsupported, filters, normalized }).toLowerCase()).not.toMatch(
+      /openclaw/,
+    );
   });
 });
 
