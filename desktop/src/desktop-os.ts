@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import type { DesktopConfig } from "./config";
 import { branchShim, branchShShim, editUserPath, pathHas, ringBitmap, type ControlDeps } from "./desktop-controls";
+import { menuBarIcon } from "./resident-window";
 
 const run = promisify(execFile);
 /** Passed by the login item, so a start with Windows opens quietly in the tray. */
@@ -71,7 +72,7 @@ export function desktopOs(app: App, cfg: DesktopConfig, tray: () => Tray | undef
           t.setImage(nativeImage.createFromBitmap(ringBitmap(left, 32), { width: 32, height: 32 }));
           t.setToolTip(`Branch Agent · ${Math.round(left)}% left`);
         } else {
-          t.setImage(icon);
+          t.setImage(menuBarIcon(icon, process.platform));
           t.setToolTip("Branch Agent is running");
         }
       },

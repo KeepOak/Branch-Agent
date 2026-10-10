@@ -3,6 +3,7 @@
 // (holder gone, PID reused, or older than SESSION_HANDOFF_LEASE_MAX_AGE_MS), or the bounded wait runs out. Every
 // other session runs at once. With no leases on disk this costs one directory read per second.
 import { toErrorObject } from "../infra/errors.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import {
   isLeaseHolderAlive,
@@ -26,6 +27,7 @@ export {
 } from "./session-handoff-lease-files.js";
 const RESCAN_MS = 1_000;
 const POLL_MS = 100;
+const log = createSubsystemLogger("gateway/handoff");
 
 export class SessionHandoffLeaseTimeoutError extends Error {
   constructor(lane: string, waitedMs: number) {
@@ -55,6 +57,10 @@ const gate = resolveGlobalSingleton(Symbol.for("branch.sessionHandoffLeaseGate")
   env: undefined as NodeJS.ProcessEnv | undefined,
   /** When this process started stepping down (its own hold), if it is. */
   ownHoldStartedAt: undefined as number | undefined,
+  /** Successor recovery hooks: a lane is free after its last predecessor died, expired, or released. */
+  releasedListeners: new Set<(lane: string) => void>(),
+  /** Releases that settled with no listener; replayed when a watcher registers. */
+  releasedWhileUnwatched: [] as string[],
 }));
 
 /**
@@ -155,7 +161,46 @@ function settleLane(lane: string, held: HeldLane): boolean {
   if (held.holders.size > 0) return false;
   gate.lanes.delete(lane);
   held.release();
+  if (gate.releasedListeners.size === 0) {
+    gate.releasedWhileUnwatched.push(lane);
+    return true;
+  }
+  for (const listener of gate.releasedListeners) {
+    try {
+      listener(lane);
+    } catch (error) {
+      log.warn(
+        `session handoff lease release hook failed (${lane}): ${String(error)}`,
+      );
+    }
+  }
   return true;
+}
+
+/**
+ * Fires once a predecessor lane is free (holder gone, lease expired, or the file was released).
+ * The successor uses this to recover conversations that were skipped by the startup orphan scan.
+ */
+export function onSessionHandoffLaneReleased(listener: (lane: string) => void): () => void {
+  gate.releasedListeners.add(listener);
+  const pending = gate.releasedWhileUnwatched.splice(0);
+  for (const lane of pending) {
+    try {
+      listener(lane);
+    } catch (error) {
+      log.warn(
+        `session handoff lease release hook failed (${lane}): ${String(error)}`,
+      );
+    }
+  }
+  return () => {
+    gate.releasedListeners.delete(listener);
+  };
+}
+
+/** Tests only: run the same poll that notices a dead or expired predecessor. */
+export function pollSessionHandoffLeasesForTest(): void {
+  pollSessionHandoffLeases();
 }
 
 function pollSessionHandoffLeases(): void {
@@ -259,4 +304,6 @@ export function resetSessionHandoffLeaseGateForTest(
   gate.maxWaitMs = maxWaitMs;
   gate.env = undefined;
   gate.ownHoldStartedAt = undefined;
+  gate.releasedListeners.clear();
+  gate.releasedWhileUnwatched.length = 0;
 }

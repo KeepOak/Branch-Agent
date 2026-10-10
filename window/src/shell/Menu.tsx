@@ -5,8 +5,8 @@ import "./menu.css";
 // Glass menus (DESIGN-SPEC §5.4): opened at a point, Up/Down move, a letter runs its row, Right opens a
 // submenu, Left or Escape closes; focus returns to what opened it.
 export type MenuItem =
-  | { kind?: "item"; label: string; run: () => void; letter?: string; hint?: string; danger?: boolean; disabled?: string; testid?: string; icon?: ReactNode; sub?: string; checked?: boolean }
-  | { kind: "sub"; label: string; items: MenuItem[]; letter?: string; hint?: string; testid?: string; icon?: ReactNode }
+  | { kind?: "item"; label: string; run: () => void; letter?: string; hint?: string; danger?: boolean; disabled?: string; testid?: string; icon?: ReactNode; sub?: string; checked?: boolean; radio?: boolean }
+  | { kind: "sub"; label: string; items: MenuItem[]; letter?: string; hint?: string; testid?: string; icon?: ReactNode; hover?: boolean }
   | { kind: "sep" }
   | { kind: "head"; label: string }
   | { kind: "info"; label: string; sub?: string; checked?: boolean; icon?: ReactNode }
@@ -136,7 +136,7 @@ function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: n
   if (it.kind === "sub") {
     return (
       <button key={i} type="button" role="menuitem" aria-haspopup="menu" aria-expanded={subOpen} className="mi" data-index={i} data-testid={it.testid}
-        onMouseEnter={(e) => openSub(i, e.currentTarget)}
+        onMouseEnter={it.hover === false ? undefined : (e) => openSub(i, e.currentTarget)}
         onClick={(e) => openSub(i, e.currentTarget)}
         onKeyDown={(e) => e.key === "ArrowRight" && (e.preventDefault(), openSub(i, e.currentTarget))}>
         {it.icon ? <i className="mi-ico" aria-hidden="true">{it.icon}</i> : null}
@@ -146,7 +146,7 @@ function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: n
     );
   }
   return (
-    <button key={i} type="button" role={it.checked !== undefined ? "menuitemcheckbox" : "menuitem"} aria-checked={it.checked} className={it.danger ? "mi bad" : "mi"} data-index={i} data-testid={it.testid} disabled={Boolean(it.disabled)} title={shownWhy(it.disabled)}
+    <button key={i} type="button" role={it.checked !== undefined ? it.radio ? "menuitemradio" : "menuitemcheckbox" : "menuitem"} aria-checked={it.checked} className={it.danger ? "mi bad" : "mi"} data-index={i} data-testid={it.testid} disabled={Boolean(it.disabled)} title={shownWhy(it.disabled)}
       onClick={() => {
         onClose();
         it.run();

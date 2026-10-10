@@ -102,7 +102,7 @@ it("keeps the admitted Gateway generation active through a different reply works
         { provider: "selected", modelId: "model", runtime: "selected-harness" },
       ],
     },
-    { catalogMode: "static", pluginGeneration },
+    { catalogMode: "static", pluginGeneration, rejoinSupersededPluginGeneration: true },
   );
   expect(mocks.prepareAdmission).toHaveBeenCalledOnce();
   expect(mocks.execute).toHaveBeenCalledOnce();

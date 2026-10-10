@@ -8,6 +8,7 @@ import {
   type ApplySummary, type ProviderPlan,
 } from "./memory-import";
 import { Row } from "./parts";
+import "../../stage/stage.css";
 
 /** Preview “Move in from another assistant”: plan, pick one, apply that fingerprint, then the summary. */
 export function BringInDialog({
@@ -76,13 +77,16 @@ export function BringInDialog({
             <button
               key={p.providerId}
               type="button"
-              className="lib-tool"
+              className="lib-tool prov-st"
               role="radio"
               aria-checked={pick === p.providerId}
               disabled={!p.found}
               onClick={() => setPick(p.providerId)}
             >
-              <span className="lib-grow"><b>{p.label}</b><small>{whatComesIn(p)}</small></span>
+              <span className="lib-grow">
+                <b>{p.label} {pick === p.providerId ? <span className="lib-pill work" aria-hidden="true">✓</span> : null}</b>
+                <small>{whatComesIn(p)}</small>
+              </span>
             </button>
           ))}
         </div>

@@ -17,6 +17,7 @@ on:
       - macOS checks for OS-specific changes
       - Visual tour
       - Engine build (PR)
+      - Gate files fresh
     types: [completed]
 
 permissions:

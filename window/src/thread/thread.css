@@ -61,17 +61,53 @@
   white-space: nowrap;
 }
 
+/* A suggested reply is a line you send, not a control: a dashed draft chip with a reply arrow, so it never reads as
+   an action that runs by itself. */
 .thread .suggestion-row button {
   flex: none;
-  border: 1px solid var(--line-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px dashed var(--line-2);
   border-radius: 999px;
-  background: var(--raise);
+  background: transparent;
   color: var(--ink-2);
-  padding: 7px 12px;
+  padding: 6px 12px;
   font: inherit;
   font-size: 12px;
   cursor: pointer;
 }
+.thread .suggestion-row button:hover {
+  border-style: solid;
+  color: var(--ink);
+}
+.thread .suggestion-row .sug-arrow {
+  flex: none;
+  opacity: 0.7;
+}
+
+/* Preview .fresh and #main .thread .sugT5: new messages rise, suggestion chips fade up. */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+}
+@keyframes sug-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-still]) .thread .fresh {
+    animation: rise var(--t-enter) var(--ease-enter) both;
+  }
+  :root:not([data-still]) .thread .suggestion-row {
+    animation: sug-in 0.3s var(--ease-enter) both 0.15s;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .thread .fresh,
+  .thread .suggestion-row { animation: none; }
+}
+:root[data-still] .thread .fresh,
+:root[data-still] .thread .suggestion-row { animation: none; }
 
 /* Messages and their hover bar (§4.2.6) */
 .thread .msg {
@@ -421,51 +457,68 @@
   gap: 7px;
 }
 
-.thread .step {
+/* Preview .steps-pb18 / .step-pb18 / .out-pb18 / .fch-* (spec-v23 ~4015–4034) and .stepsR118 (~6733). */
+.thread .steps-pb18 ol { list-style: none; }
+.thread .stepsR118 li { align-items: flex-start; }
+.thread .stepsR118 li > span { flex: 1; }
+.thread .stepsR118 li.errR118 > svg,
+.thread .step-pb18.errR118 > details > summary > svg { color: var(--bad, #c0392b); }
+
+.thread .step,
+.thread .step-pb18 {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-columns: 16px minmax(0, 1fr);
   gap: 8px;
+  align-items: start;
   font-size: 13px;
 }
 
-.thread .step > details { grid-column: 1 / -1; min-width: 0; }
-.thread .step > details > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; min-width: 0; }
-.thread .step > details > summary::-webkit-details-marker { display: none; }
-.thread .step > details > summary .step-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.thread .step > details > summary .step-state { margin-left: auto; flex: none; color: var(--ink-3); font-size: 11px; }
-.thread .step > details > .step-body { margin: 6px 0 0 26px; }
-.thread .step > details > summary .step-label { flex: none; white-space: nowrap; }
-.thread .step-input { margin: 0 0 4px; padding: 8px 10px; max-height: 160px; overflow: auto; border-radius: 10px; background: var(--fill); font: 12px/1.45 var(--mono); color: var(--ink-3); white-space: pre-wrap; overflow-wrap: anywhere; }
-.thread .changed-files { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: 12px; }
-.thread .changed-files details { padding: 4px 8px; border-radius: 6px; background: var(--fill); }
-.thread .changed-files summary { cursor: pointer; overflow-wrap: anywhere; }
-.thread .changed-files summary span { color: var(--ink-3); }
-.thread .changed-files pre { overflow: auto; max-height: 280px; font: 12px/1.45 var(--mono); white-space: pre-wrap; }
-.thread .live-run-head { margin-left: 38px; color: var(--ink-3); font-size: 12px; }
-
-.thread .step-mark {
-  color: var(--ok);
+.thread .step > details,
+.thread .step-pb18 > details { grid-column: 1 / -1; min-width: 0; }
+.thread .step-pb18 > details > summary {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  cursor: pointer;
+  list-style: none;
+  min-width: 0;
+}
+.thread .step > details > summary::-webkit-details-marker,
+.thread .step-pb18 > details > summary::-webkit-details-marker { display: none; }
+.thread .step-pb18 > details > summary > svg { color: var(--ink-3); margin-top: 3px; }
+.thread .step-pb18 > details > summary > span:first-of-type { min-width: 0; }
+.thread .step-pb18 .pill { vertical-align: 1px; }
+.thread .step > details > summary .step-detail,
+.thread .step-pb18 > details > summary .step-detail {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 12px/1.45 var(--mono);
+  color: var(--ink-3);
+}
+.thread .step > details > summary .step-state,
+.thread .step-pb18 > details > summary .step-state {
+  margin-left: 0;
+  flex: none;
+  color: var(--ink-3);
+  font-size: 11px;
   padding-top: 2px;
 }
+.thread .step > details > .step-body,
+.thread .step-pb18 > details > .step-body { margin: 6px 0 0 24px; }
+.thread .step > details > summary .step-label,
+.thread .step-pb18 > details > summary .step-label { white-space: nowrap; }
 
-.thread .step-mark.failed,
-.thread .step-mark.denied {
-  color: var(--bad);
+.thread .step-input {
+  margin: 0 0 4px;
+  font: 12px/1.45 var(--mono);
+  color: var(--ink-3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
-
-.thread .step-mark.running {
-  color: var(--accent);
-}
-
-.thread .step-mark.running svg {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
+.thread .live-run-head { margin-left: 38px; color: var(--ink-3); font-size: 12px; }
 
 .thread .step-body {
   display: flex;
@@ -481,31 +534,74 @@
   overflow-wrap: anywhere;
 }
 
-.thread .step-output pre {
+.thread .out-pb18 { margin-top: 6px; }
+.thread .out-pb18 pre,
+.thread .err-pb18,
+.thread .diff-pb18 {
   margin: 0;
-  padding: 8px 10px;
-  max-height: 220px;
-  overflow: auto;
+  font: 12px/1.5 var(--mono);
   background: var(--fill);
   border-radius: 10px;
-  font: 12px/1.45 var(--mono);
+  padding: 8px 10px;
+  overflow: auto;
+  white-space: pre;
   color: var(--ink-2);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
-
-.thread .step-output .row-buttons {
-  margin-top: 4px;
-}
-
-.thread .step-output {
-  margin-top: 4px;
-}
-
+.thread .out-pb18 .pill { margin-top: 6px; }
+.thread .out-pb18 .acts { margin-top: 6px; }
+.thread .nout-pb18,
 .thread .step-none {
   margin: 4px 0 0;
   font-size: 12px;
   color: var(--ink-3);
+}
+.thread .pill.no { background: var(--bad-tint); color: var(--bad); }
+
+.thread .fch-pb18 { margin-top: 8px; gap: 12px; max-width: 560px; padding: 12px 14px; }
+.thread .fch-pb18 .card-h { display: flex; align-items: center; gap: 8px; }
+.thread .fch-pb18 .card-h b { font-weight: 600; font-size: 13.5px; }
+.thread .fch-row-pb18 { display: grid; gap: 6px; }
+.thread .fch-top-pb18 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.thread .fch-top-pb18 code { font: 12px var(--mono); color: var(--ink); flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.thread .fch-n-pb18 { font: 12px var(--mono); }
+.thread .fch-n-pb18 .a { color: var(--ok); font-weight: 500; }
+.thread .fch-n-pb18 .d { color: var(--bad); font-weight: 500; }
+.thread .diff-pb18 span { display: block; }
+.thread .diff-pb18 .add { background: var(--ok-tint); color: var(--ink); }
+.thread .diff-pb18 .del { background: var(--bad-tint); color: var(--ink); }
+.thread .fch-top-pb18 .seg {
+  --n: 2;
+  display: inline-flex;
+  grid-template-columns: none;
+  width: auto;
+  height: 28px;
+  padding: 2px;
+  gap: 2px;
+}
+.thread .fch-top-pb18 .seg::before { display: none; }
+.thread .fch-top-pb18 .seg button {
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.thread .fch-top-pb18 .seg button[aria-pressed="true"] {
+  background: var(--raise);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .12);
+}
+
+.thread .step-output pre {
+  max-height: 220px;
+}
+.thread .step-output .row-buttons {
+  margin-top: 6px;
 }
 
 /* Thinking, live (§4.2.2 Thinking) */
@@ -652,6 +748,43 @@
   margin: 0;
   font-size: 12px;
   color: var(--ink-3);
+}
+
+/* Command-approval trust details (preview askline-pb18 / covers-pb18 / cmdbody-pb18 / lookonly-pb18). */
+.thread .askline-pb18 {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.thread .askline-pb18.warn-pb18 {
+  color: var(--warn);
+}
+
+.thread .covers-pb18 p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.thread .cmdbody-pb18 code {
+  font: 12px/1.5 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.thread .cmdbody-pb18[data-read-pb18] {
+  max-height: 3.2em;
+  overflow-y: auto;
+}
+
+.thread .lookonly-pb18 {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-2);
 }
 
 .thread .decided {

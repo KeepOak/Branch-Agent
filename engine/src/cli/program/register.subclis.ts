@@ -98,6 +98,7 @@ const entrySpecs: readonly CommandGroupDescriptorSpec<
   ],
   [["devices"], async (program) => (await import("../devices-cli.js")).registerDevicesCli(program)],
   [["users"], async (program) => (await import("../users-cli.js")).registerUsersCli(program)],
+  [["trunks"], async (program) => (await import("../trunks-cli.js")).registerTrunksCli(program)],
   [["node"], async (program) => (await import("../node-cli.js")).registerNodeCli(program)],
   [["connect"], async (program) => (await import("../connect-cli.js")).registerConnectCli(program)],
   [["worker"], async (program) => (await import("../worker-cli.js")).registerWorkerCli(program)],

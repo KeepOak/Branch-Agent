@@ -404,6 +404,22 @@ function cleanupPathCovers(
 
 export const agentsHandlers: GatewayRequestHandlers = {
   "agents.list": agentListHandler,
+  // A Trunk whose startup preparation failed starts it again from scratch now (the window's Retry).
+  "agents.retryStartup": async ({ params, respond }) => {
+    const raw =
+      params && typeof params === "object" ? (params as { agentId?: unknown }).agentId : undefined;
+    const normalized = typeof raw === "string" ? normalizeAgentIdStrict(raw) : undefined;
+    if (!normalized?.ok) {
+      respondAgentNotFound(respond, typeof raw === "string" ? raw : "");
+      return;
+    }
+    const { retryAgentDatabaseStartupPreparation } =
+      await import("../../state/agent-database-startup.js");
+    respond(true, {
+      agentId: normalized.value,
+      retrying: retryAgentDatabaseStartupPreparation(normalized.value),
+    });
+  },
   "agents.create": async ({ params, respond, client, context }) => {
     if (!assertValidParams(params, validateAgentsCreateParams, "agents.create", respond)) {
       return;

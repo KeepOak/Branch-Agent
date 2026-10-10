@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Children, cloneElement, Fragment, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactElement, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { Face } from "../face/Face";
 import { agentState } from "../face/agentState";
@@ -16,10 +16,14 @@ import { HelpersChip } from "./Helpers";
 import { HoverBar } from "./HoverBar";
 import { Rail } from "./Rail";
 import { Icon, ICONS } from "./icons";
-import { layout, shownApprovalIds, type Item } from "./layout";
+import { ComputerActivityCard } from "./ComputerActivityCard";
+import { turnDoneLines } from "./computer-card";
+import { isComputerStep, layout, shownApprovalIds, type Item } from "./layout";
+import { isInternalStep } from "./internal-steps";
 import { PlanCard, planAnchor } from "./PlanCard";
 import { useConversationPrefs } from "./prefs";
-import { isPreparationPending, preparationLabel } from "../connect/preparation-status";
+import { isPreparationPending, isPreparationStalled, preparationLabel, preparationNeedsAttentionLabel, preparationRetryingLabel } from "../connect/preparation-status";
+import { useStartupPreparation } from "../connect/startup-preparation";
 import { QuestionLine } from "./QuestionCard";
 import { anchorQuestions, type QuestionRecord } from "./questions";
 import type { Approval, ApprovalDecision, Block } from "./model";
@@ -40,6 +44,7 @@ import { dayStamp, formatDuration, fullTime, messageTime, modelName, stepLabel }
 import { TopicCard, TopicOrigin, topicPosition, type TopicUpdate } from "./TopicCard";
 import { suggestionsFor } from "./suggestions";
 import type { EarlierPage } from "../shell/useContactSegments";
+import { useScrollMemory } from "../places-nav/scroll-memory";
 
 type Props = {
   lockdown?: boolean;
@@ -47,6 +52,11 @@ type Props = {
   onOpenActivity?: () => void;
   name: string;
   history: Block[];
+  /**
+   * False while this conversation's transcript has not been read. Omitted means the
+   * caller already knows the history, so an empty list is still a new conversation.
+   */
+  historyReady?: boolean;
   live: Block[];
   pendingUser: string | null;
   /** Messages accepted but waiting for a turn (connect/session.ts queued). */
@@ -90,11 +100,33 @@ type Props = {
   loadingEarlier?: boolean;
   earlierError?: string;
   preparationError?: string | null;
+  /** The Trunk got ready after this conversation stopped waiting for it: read the conversation again. */
+  onStartupReady?: () => void;
   advancedDiagnostics?: boolean;
   onLoadEarlier?: () => void;
 };
 
-/** Distance from the end that still counts as "at the end", and that shows "Scroll to latest" (§4.2.2). */
+/** Watch/Take over props from the shell's pinned card, so each in-turn card can open the stage. */
+function computerCardProps(node: ReactNode): ComponentProps<typeof ComputerActivityCard> | undefined {
+  if (!isValidElement(node)) return undefined;
+  if (node.type === ComputerActivityCard) return node.props as ComponentProps<typeof ComputerActivityCard>;
+  const children = (node.props as { children?: ReactNode }).children;
+  let found: ComponentProps<typeof ComputerActivityCard> | undefined;
+  Children.forEach(children, (child) => {
+    found ??= computerCardProps(child);
+  });
+  return found;
+}
+
+/** Drops the conversation-wide computer card so it is not pinned under later replies. */
+function dropComputerCard(node: ReactNode): ReactNode {
+  if (!isValidElement(node)) return node;
+  if (node.type === ComputerActivityCard) return null;
+  const children = (node.props as { children?: ReactNode }).children;
+  if (children == null) return node;
+  return cloneElement(node as ReactElement<{ children?: ReactNode }>, undefined, Children.map(children, dropComputerCard));
+}
+
 /** The lastRunError the engine's restart recovery records when it could not carry a run on
  * (engine main-session-restart-recovery-store.ts tombstoneMainRestartRecoveryWithNotice). */
 const RESTART_NOT_RESUMED = "Interrupted by a restart. Continue?";
@@ -107,8 +139,10 @@ const LATEST_PX = 450;
 function useFollow(signature: string, sent: readonly (string | null | undefined)[]) {
   const scroller = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
-  const [distance, setDistance] = useState(0);
+  const distance = useRef(0);
+  const [showLatest, setShowLatest] = useState(false);
   const atEnd = useRef(true);
+  useScrollMemory(scroller, { atEnd });
   const lastSent = useRef(sent);
   const sentKey = sent.join("\u0000");
   useEffect(() => {
@@ -118,17 +152,24 @@ function useFollow(signature: string, sent: readonly (string | null | undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sentKey]);
   useEffect(() => {
-    if (atEnd.current) end.current?.scrollIntoView({ block: "end" });
+    if (!atEnd.current) return;
+    const id = requestAnimationFrame(() => {
+      const el = scroller.current;
+      if (atEnd.current && el) el.scrollTop = el.scrollHeight;
+    });
+    return () => cancelAnimationFrame(id);
   }, [signature, sentKey]);
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
     const d = el.scrollHeight - el.scrollTop - el.clientHeight;
     atEnd.current = d < NEAR_END_PX;
-    setDistance(d);
+    distance.current = d;
+    const latest = d > LATEST_PX;
+    setShowLatest((open) => (open === latest ? open : latest));
   };
   const toEnd = () => end.current?.scrollIntoView({ block: "end", behavior: "smooth" });
-  return { scroller, end, onScroll, showLatest: distance > LATEST_PX, toEnd };
+  return { scroller, end, onScroll, showLatest, toEnd };
 }
 
 /** Ctrl Enter allows once, Ctrl Shift Enter always allows, Ctrl D says no, on the first waiting card (§4.2.3 Keyboard);
@@ -209,14 +250,21 @@ export function Thread(props: Props) {
     setFindRequest((current) => ({ query, nonce: current.nonce + 1 }));
     props.onFindRequestHandled?.(props.findRequest.nonce);
   }, [props.findRequest?.nonce]);
-  const empty = !history.length && !pendingUser && !running && !props.questions?.length && !waitingCount;
+  const historyReady = props.historyReady !== false;
+  const empty = historyReady && !history.length && !pendingUser && !running && !props.questions?.length && !waitingCount;
   const lastReply = [...history].reverse().find((block) => block.kind === "text");
   const suggestionKey = lastReply ? `${props.sessionKey ?? ""}:${lastReply.key}` : null;
   const suggestions = props.onStart && !firstPending && suggestionKey !== usedSuggestion
     ? suggestionsFor(history, running, Boolean(pendingUser)) : [];
-  const preparationError = [props.preparationError, props.earlierError].find(isPreparationPending);
-  const anchors = anchorQuestions(history, props.questions ?? []);
-  const items: RoomItem[] = props.room ? foldTalks(layout(history), props.room.ownAgentId) : layout(history);
+  const preparationError = [props.preparationError, props.earlierError].find((error) => isPreparationPending(error) || isPreparationStalled(error));
+  const startup = useStartupPreparation(engine, Boolean(preparationError), isPreparationStalled(preparationError), props.onStartupReady);
+  const inRoom = Boolean(props.room);
+  const ownAgentId = props.room?.ownAgentId;
+  const anchors = useMemo(() => anchorQuestions(history, props.questions ?? []), [history, props.questions]);
+  const items = useMemo<RoomItem[]>(
+    () => (inRoom ? foldTalks(layout(history), ownAgentId) : layout(history)),
+    [history, inRoom, ownAgentId],
+  );
   const helperStartedAt = Math.min(...helpers.map((h) => h.createdAt ?? Number.POSITIVE_INFINITY));
   const helperUserAt = Number.isFinite(helperStartedAt) ? history.findLastIndex((b) => b.kind === "user" && typeof b.meta?.timestamp === "number" && b.meta.timestamp <= helperStartedAt) : -1;
   const helperNextUserAt = helperUserAt < 0 ? -1 : history.findIndex((b, i) => i > helperUserAt && b.kind === "user");
@@ -243,7 +291,9 @@ export function Thread(props: Props) {
       .find((node) => node.dataset.testid === `topic-card-${props.focusTopic?.key}`);
     target?.scrollIntoView({ block: "end" });
   }, [props.focusTopic, props.topicUpdates]);
-  const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser, showThinking: props.showThinking !== false, liveStartedAt: props.liveStartedAt ?? null, lockdown: props.lockdown };
+  const activity = computerCardProps(props.supplement);
+  const restSupplement = dropComputerCard(props.supplement);
+  const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser, showThinking: props.showThinking !== false, liveStartedAt: props.liveStartedAt ?? null, lockdown: props.lockdown, onOpenSession: props.onOpenSession, engine, onWatchComputer: activity?.onWatch ?? (() => undefined), gatewayUrl: activity?.gatewayUrl ?? engine?.gatewayUrl };
   const recoveryEntryId = history.findLast((block) =>
     (block.kind === "user" || block.kind === "text") && Boolean(block.meta?.entryId),
   );
@@ -272,8 +322,11 @@ export function Thread(props: Props) {
       <div className="scroll" ref={follow.scroller} tabIndex={-1} onScroll={(event) => { follow.onScroll(); if (event.currentTarget.scrollTop < 80 && props.hasEarlierPages && !props.loadingEarlier) props.onLoadEarlier?.(); }} data-testid="thread-scroll">
         <div className="thread" ref={threadRef}>
           {props.hasEarlierPages ? <button type="button" className="stamp segment-more" onClick={props.onLoadEarlier} disabled={props.loadingEarlier}>{props.loadingEarlier ? "Loading earlier pages…" : "Earlier pages"}</button> : null}
-          {preparationError ? <div className="stamp preparation-status" role="status">
-            <span className="preparation-spinner" aria-hidden="true" />{preparationLabel(name)}
+          {preparationError ? <div className="stamp preparation-status" role="status" data-testid="preparation-status">
+            {startup.state !== "needs-attention" ? <span className="preparation-spinner" aria-hidden="true" /> : null}
+            {startup.state === "needs-attention" ? preparationNeedsAttentionLabel(name) : startup.state === "retrying" ? preparationRetryingLabel(name) : isPreparationStalled(preparationError) ? preparationError : preparationLabel(name)}
+            {startup.state !== "preparing" ? <button type="button" className="btn sm" disabled={startup.busy} onClick={startup.retry}>{startup.busy ? "Retrying…" : startup.state === "needs-attention" ? "Retry" : "Retry now"}</button> : null}
+            {startup.error ? <span role="alert">Couldn't retry: {startup.error}</span> : null}
             {props.advancedDiagnostics ? <details><summary>Diagnostics</summary><code>{preparationError}</code></details> : null}
           </div> : null}
           {props.earlierError && !isPreparationPending(props.earlierError) ? <div className="stamp" role="status">Couldn't load earlier pages: {props.earlierError}</div> : null}
@@ -285,7 +338,12 @@ export function Thread(props: Props) {
             </div>)}
           </div>)}
           {(props.earlierPages?.length || props.hasEarlierPages) ? <div className="stamp">New start · {props.currentStartedAt ? new Date(props.currentStartedAt).toLocaleDateString() : "Current"}</div> : null}
-          {empty ? <EmptyState onOpenSession={props.onOpenSession} onStart={props.onStart} /> : null}
+          {empty ? <EmptyState onOpenSession={props.onOpenSession} onStart={props.onStart} /> : !historyReady && !history.length && !props.preparationError ? (
+            <div className="stamp preparation-status" role="status" data-testid="thread-opening">
+              <span className="preparation-spinner" aria-hidden="true" />
+              Opening this conversation…
+            </div>
+          ) : null}
           {renderTopicEvents(-1)}
           {items.map((item) =>
             item.type === "talk" ? (
@@ -323,9 +381,9 @@ export function Thread(props: Props) {
           {extras.filter((a) => !grouped.has(a.id)).map((a) => <ApprovalCard key={a.id} approval={a} details={details.get(a.id)} name={name} onAnswer={answer} disabled={props.lockdown} />)}
           {grouped.size === 2 ? <ApprovalGroup approvals={waitingTwo} details={details} name={name} onAnswer={answer} disabled={props.lockdown} /> : null}
           {helperNextUserAt < 0 ? helperChip : null}
-          {props.supplement}
+          {restSupplement}
           {suggestions.length ? <div className="suggestion-row" role="group" aria-label="Suggested replies" data-testid="suggestion-row">
-            {suggestions.map((text) => <button key={text} type="button" onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}>{text}</button>)}
+            {suggestions.map((text) => <button key={text} type="button" title={`Send “${text}” as your reply`} aria-label={`Reply: ${text}`} onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}><Icon d={ICONS.reply} size={12} className="sug-arrow" />{text}</button>)}
           </div> : null}
           {props.recoveryFailure === RESTART_NOT_RESUMED ? (
             <div className="pass-line restart-stop" role="status" data-testid="restart-stopped">Stopped by restart{recoveryEntryId ? <button type="button" className="btn pri sm" onClick={() => void continueInterrupted()}>Resume</button> : null}</div>
@@ -348,6 +406,7 @@ export function Thread(props: Props) {
 }
 
 type View = {
+  onOpenSession?: (key: string) => void;
   lockdown?: boolean;
   all: Block[];
   live: Block[];
@@ -368,7 +427,24 @@ type View = {
   lastUser: number;
   showThinking: boolean;
   liveStartedAt: number | null;
+  engine?: WindowEngine;
+  onWatchComputer: (mode: "Computer" | "Browser", takeOver?: boolean) => void;
+  gatewayUrl?: string;
 };
+
+function ActivityCard({ steps, view }: { steps: Extract<Block, { kind: "step" }>[]; view: View }) {
+  if (!steps.some(isComputerStep)) return null;
+  return (
+    <ComputerActivityCard
+      blocks={[...steps, ...turnDoneLines(steps, view.all)]}
+      running={view.running}
+      name={view.name}
+      engine={view.engine}
+      gatewayUrl={view.gatewayUrl}
+      onWatch={view.onWatchComputer}
+    />
+  );
+}
 
 /** A day stamp over the first message of each day that has a recorded time (§4.2.2 Stamp). */
 function dayStamps(history: readonly Block[]): Map<number, string> {
@@ -414,7 +490,7 @@ function LiveRun({ view, offset }: { view: View; offset: number }) {
   }, [startedAt]);
   const usage = live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage");
   const waiting = live.some((b) => b.kind === "approval" && b.approval.state === "pending");
-  const typing = !waiting && !live.some((b) => b.kind === "text" || (view.showThinking && b.kind === "thinking") || b.kind === "step" || b.kind === "preamble" || b.kind === "plan");
+  const typing = !waiting && !live.some((b) => b.kind === "text" || (view.showThinking && b.kind === "thinking") || (b.kind === "step" && !isInternalStep(b)) || b.kind === "preamble" || b.kind === "plan");
   return (
     <div className="live-run" data-streaming="true">
       {/* While only the dots show, nothing sits above them (P47); the clock comes with the first real activity. */}
@@ -450,12 +526,23 @@ function ItemView(props: { item: Item; view: View; live: boolean }) {
 
 function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean }) {
   if (item.type === "steps") {
-    if (!item.face) return <StepsFold steps={item.steps} live={live} run={item.run} />;
+    const card = <ActivityCard steps={item.steps} view={view} />;
+    if (!item.face) {
+      return (
+        <>
+          <StepsFold steps={item.steps} live={live} run={item.run} />
+          {card}
+        </>
+      );
+    }
     return (
-      <div className="msg reply steps-turn">
-        <span className="gutter"><span className={view.running && live ? "gutter-face working-ring" : "gutter-face"}>{faceFor(view, live)}</span></span>
-        <StepsFold steps={item.steps} live={live} run={item.run} />
-      </div>
+      <>
+        <div className="msg reply steps-turn">
+          <span className="gutter"><span className={view.running && live ? "gutter-face working-ring" : "gutter-face"}>{faceFor(view, live)}</span></span>
+          <StepsFold steps={item.steps} live={live} run={item.run} />
+        </div>
+        {card}
+      </>
     );
   }
   const { block, index, firstReply, face } = item;
@@ -477,7 +564,7 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
       while (start > 0 && view.all[start - 1].kind !== "user") start -= 1;
       const turn = view.all.slice(start, index);
       // "Done in" closes a task (a turn with steps), not every plain reply (owner decision 5, 2026-10-06).
-      if (!block.stopped && !turn.some((entry) => entry.kind === "step")) return null;
+      if (!block.stopped && !turn.some((entry) => entry.kind === "step" && !isInternalStep(entry))) return null;
       const words = turn.filter((entry): entry is Extract<Block, { kind: "text" }> => entry.kind === "text")
         .reduce((count, entry) => count + (entry.text.trim().match(/\S+/g)?.length ?? 0), 0);
       return <DoneLine block={block} name={view.name} words={words} />;
@@ -486,7 +573,7 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
       if (isPreparationPending(block.message)) return <div className="stamp" role="status">Branch retried a startup delay.</div>;
       return view.dismissed.has(block.key) ? null : <ErrorBlock block={block} onDismiss={() => view.setDismissed((s) => new Set(s).add(block.key))} />;
     case "notice":
-      return <Notice block={block} />;
+      return block.topicKey ? <div className="tpLblT5"><button type="button" onClick={() => view.onOpenSession?.(block.topicKey!)}>{block.text}</button></div> : <Notice block={block} />;
     case "steer":
       return <SteeredNote name={view.name} text={block.text} />;
     default:

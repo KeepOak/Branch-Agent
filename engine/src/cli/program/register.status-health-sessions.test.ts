@@ -254,6 +254,14 @@ describe("registerStatusHealthSessionsCommands", () => {
     expectOptions(mocks.sessionExportCommand, { sessionKey: key, agent: "work", format: "html",
       includeToolDetails: false, includeTimestamps: false, includeReasoning: true });
   });
+  it("conversation export --json selects the JSON format", async () => {
+    await run(`sessions --agent work export --session-key ${key} --json`);
+    expectOptions(mocks.sessionExportCommand, { sessionKey: key, agent: "work", format: "json" });
+  });
+  it("conversation recap --json asks for the recap as JSON", async () => {
+    await run(`sessions --agent work recap --session-key ${key} --json`);
+    expectOptions(mocks.sessionExportCommand, { sessionKey: key, agent: "work", format: "recap", json: true });
+  });
   it("forwards archive keys, inherited scope and RPC options", async () => {
     await run(
       `sessions --agent work --json archive ${key} agent:work:scratch --dry-run --url ws://gateway.test --token test-token --password test-password --timeout 45000`,

@@ -1,0 +1,1496 @@
+# Window cleanliness baseline. category, path, normalized snippet.
+# Do not add lines. Delete a line when that hit is gone from the window.
+# An edit on another line does not belong here: snippets have no line numbers.
+product-name	window/src/shell/topic-emoji.ts	goggles|🥾hiking boot|🥿flat shoe|🦀crab|🦁lion face|🦂scorpion|🦃turkey|🦄u
+product-name	window/src/shell/topic-emoji.ts	🦛hippopotamus|🦜parrot|🦝raccoon|🦞lobster|🦟mosquito|🦠microbe|🦡badger|🦢swa
+stale	window/src/places/office/pixel/webview-ui/src/office/layout/layoutSerializer.ts	* Migrate old layouts that use legacy tile types (TILE_FLOOR=1, WOOD_FLOO
+stale	window/src/places/office/pixel/webview-ui/src/office/layout/layoutSerializer.ts	// Not a legacy type — keep as-is
+stale	window/src/places/office/pixel/webview-ui/src/office/layout/layoutSerializer.ts	D value (was 8, now 255) — only for legacy layouts since FLOOR_8 reuses value
+stale	window/src/places/office/pixel/webview-ui/src/office/layout/layoutSerializer.ts	ault pets to empty array if absent (backward-compat for legacy layouts).
+stale	window/src/places/office/pixel/webview-ui/src/office/layout/layoutSerializer.ts	const LEGACY_TYPE_MAP: Record<string, string | null> = {
+stale	window/src/places/office/pixel/webview-ui/src/office/sprites/spriteData.ts	/** Create a transparent placeholder sprite of given dimensions */
+stale	window/src/places/office/pixel/webview-ui/src/office/sprites/spriteData.ts	// Fallback: return transparent placeholder sprites (16×32)
+stale	window/src/places/office/pixel/webview-ui/src/office/types.ts	placed in the office. Optional for backward-compat; migrateLayout coerces to []. */
+stale	window/src/places/settings/set1/appearance-legacy.ts	export const LEGACY_PAIRS: Record<string, { light: string[];
+stale	window/src/places/settings/set1/appearance-legacy.ts	export const LEGACY_THEMES = [
+stale	window/src/places/settings/set1/appearance-themes.tsx	const legacyGroups = new Map<string, string>(LEGACY_TH
+stale	window/src/places/settings/set2/agents.tsx	export function legacyOutsideId(id: string): string | undefined {
+stale	window/src/shell/Sidebar.tsx	/** Legacy prop for callers; contacts render o
+stale	window/src/shell/control-tower-data.ts	function dueFallback(at: number, now: number): string {
+theme	window/src/composer/composer.css	); border-color: var(--bad); color: #fff; }
+theme	window/src/composer/composer.css	-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
+theme	window/src/composer/composer.css	var(--raise); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform
+theme	window/src/composer/composer.css	{ background: var(--accent); color: #fff; box-shadow: 0 4px 12px -4px color-
+theme	window/src/composer/voice.css	color: #fff;
+theme	window/src/connect/title-bar.ts	color: token("--bg", "#f6f8f9"),
+theme	window/src/connect/title-bar.ts	symbolColor: token("--ink-2", "#3a4751"),
+theme	window/src/face/face.css	background: #fff;
+theme	window/src/face/face.css	l-gradient(circle, transparent 62%, #000 63%);
+theme	window/src/face/face.css	l-gradient(circle, transparent 62%, #000 63%);
+theme	window/src/places/automations/activity.css	d:var(--raise);box-shadow:0 1px 2px #0004}.activity-place .switch[aria-checke
+theme	window/src/places/automations/automations.css	var(--raise); box-shadow: 0 1px 2px rgba(0,0,0,.18); } .au-board { grid-templ
+theme	window/src/places/canopy/canopy.css	hover { box-shadow: 0 4px 14px -8px rgba(0,0,0,.25); }
+theme	window/src/places/canopy/cards-model.ts	"], ["Amber", "#B7791F"], ["Rose", "#C0467A"], ["Plum", "#8A5AA8"], ["Sand", "#
+theme	window/src/places/canopy/cards-model.ts	"], ["Moss", "#5E7D4A"], ["Amber", "#B7791F"], ["Rose", "#C0467A"], ["Plum", "#
+theme	window/src/places/canopy/cards-model.ts	"], ["Slate", "#6B7A86"], ["Blue", "#4F6FA8"], ["Teal", "#2F8C86"], ["Moss", "#
+theme	window/src/places/canopy/cards-model.ts	6"], ["Blue", "#4F6FA8"], ["Teal", "#2F8C86"], ["Moss", "#5E7D4A"], ["Amber", "
+theme	window/src/places/canopy/cards-model.ts	8"], ["Teal", "#2F8C86"], ["Moss", "#5E7D4A"], ["Amber", "#B7791F"], ["Rose", "
+theme	window/src/places/canopy/cards-model.ts	A"], ["Plum", "#8A5AA8"], ["Sand", "#9C8467"]];
+theme	window/src/places/canopy/cards-model.ts	F"], ["Rose", "#C0467A"], ["Plum", "#8A5AA8"], ["Sand", "#9C8467"]];
+theme	window/src/places/canopy/cards-model.ts	g][] = [["Default", ""], ["Slate", "#6B7A86"], ["Blue", "#4F6FA8"], ["Teal", "#
+theme	window/src/places/customize/common.tsx	, "#2f5f6f", "#6f2f5f", "#4f6f2f", "#5f4f3f"];
+theme	window/src/places/customize/common.tsx	, "#2f6f5b", "#8f3b4b", "#4b5b8f", "#7a6a2a", "#2f5f6f", "#6f2f5f", "#4f6f2f",
+theme	window/src/places/customize/common.tsx	, "#4b5b8f", "#7a6a2a", "#2f5f6f", "#6f2f5f", "#4f6f2f", "#5f4f3f"];
+theme	window/src/places/customize/common.tsx	, "#5b6b2f", "#8a4b2a", "#6d4c8f", "#2f6f5b", "#8f3b4b", "#4b5b8f", "#7a6a2a",
+theme	window/src/places/customize/common.tsx	, "#6d4c8f", "#2f6f5b", "#8f3b4b", "#4b5b8f", "#7a6a2a", "#2f5f6f", "#6f2f5f",
+theme	window/src/places/customize/common.tsx	, "#7a6a2a", "#2f5f6f", "#6f2f5f", "#4f6f2f", "#5f4f3f"];
+theme	window/src/places/customize/common.tsx	, "#8a4b2a", "#6d4c8f", "#2f6f5b", "#8f3b4b", "#4b5b8f", "#7a6a2a", "#2f5f6f",
+theme	window/src/places/customize/common.tsx	, "#8f3b4b", "#4b5b8f", "#7a6a2a", "#2f5f6f", "#6f2f5f", "#4f6f2f", "#5f4f3f"];
+theme	window/src/places/customize/common.tsx	["#3b6e8f", "#5b6b2f", "#8a4b2a", "#6d4c8f", "#2f6f5b", "#8f3b4b", "#4b5b8f",
+theme	window/src/places/customize/common.tsx	const TINTS = ["#3b6e8f", "#5b6b2f", "#8a4b2a", "#6d4c8f",
+theme	window/src/places/customize/common.tsx	const TINTS = ["#3b6e8f", "#5b6b2f", "#8a4b2a", "#6d4c8f", "#2f6f5b",
+theme	window/src/places/customize/common.tsx	nst TINTS = ["#3b6e8f", "#5b6b2f", "#8a4b2a", "#6d4c8f", "#2f6f5b", "#8f3b4b",
+theme	window/src/places/customize/connectors.tsx	0 .2.1.5.6.4A8 8 0 0 0 12 4z" fill="#fff"/>'],
+theme	window/src/places/customize/connectors.tsx	4.8H6l-3-4.8z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin
+theme	window/src/places/customize/connectors.tsx	[/^(google-?)?drive|^gdrive/i, "#1FA463", '<path d="M9 4.5h6l6 10.2-3 4.8H6
+theme	window/src/places/customize/connectors.tsx	[/^brave/i, "#FB542B", "B"],
+theme	window/src/places/customize/connectors.tsx	[/^github/i, "#181717", '<path d="M12 4a8 8 0 0 0-2.5 15.
+theme	window/src/places/customize/connectors.tsx	[/^outlook/i, "#0F6CBD", "O"],
+theme	window/src/places/customize/customize.css	-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
+theme	window/src/places/customize/customize.css	4%; border-radius: 50%; background: rgba(0,0,0,.72); }
+theme	window/src/places/customize/customize.css	idth: 15%; height: 24%; background: #fff; border-radius: 50%; transform: rot
+theme	window/src/places/customize/customize.css	var(--raise); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); }
+theme	window/src/places/customize/customize.css	x: none; border-radius: 9px; color: #fff; font-weight: 700; letter-spacing:
+theme	window/src/places/customize/customize.css	{ border-radius: 12px; background: #fff; padding: 8px; }
+theme	window/src/places/customize/jobs-data.ts	books refundable travel" , color: "#8A5AA8", shape: "62% 38% 50% 50% / 45% 55%
+theme	window/src/places/customize/jobs-data.ts	d builds monthly reports" , color: "#1785AF", shape: "46% 54% 42% 58% / 60% 44%
+theme	window/src/places/customize/jobs-data.ts	ek and chases loose ends" , color: "#56616B", shape: "62% 38% 50% 50% / 45% 55%
+theme	window/src/places/customize/jobs-data.ts	hort briefs with sources" , color: "#2F8C86", shape: "58% 42% 54% 46% / 52% 56%
+theme	window/src/places/customize/jobs-data.ts	report into exact steps" , color: "#B84A6B", shape: "42% 58% 58% 42% / 50% 42%
+theme	window/src/places/customize/jobs-data.ts	ts replies in your voice" , color: "#4F6FA8", shape: "50%" },
+theme	window/src/places/inbox/inbox.css	nt-weight:600; box-shadow:0 1px 2px #0001; }
+theme	window/src/places/library/library.css	-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
+theme	window/src/places/office/pixel/webview-ui/src/branch/branchLayout.ts	{ label: AREA_GUESTS, color: '#48dbfb' },
+theme	window/src/places/office/pixel/webview-ui/src/branch/branchLayout.ts	{ label: AREA_MEETING, color: '#1dd1a1' },
+theme	window/src/places/office/pixel/webview-ui/src/branch/branchLayout.ts	{ label: AREA_OFFICE, color: '#feca57' },
+theme	window/src/places/office/pixel/webview-ui/src/branch/lighting.ts	const MIDDAY = 'rgba(255, 255, 240, 0.03)';
+theme	window/src/places/office/pixel/webview-ui/src/branch/lighting.ts	const NIGHT = 'rgba(10, 10, 50, 0.30)';
+theme	window/src/places/office/pixel/webview-ui/src/branch/lighting.ts	g.addColorStop(0, `rgba(${GLOW}, ${strength})`);
+theme	window/src/places/office/pixel/webview-ui/src/branch/lighting.ts	g.addColorStop(1, `rgba(${GLOW}, 0)`);
+theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	.86); color: #1c1a16; border-color: rgba(0, 0, 0, 0.18); }
+theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	.pa-name-three { font-family: Consolas, monospace; font-weight: 700; font-size: .9em;
+theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	: rgba(255, 252, 244, 0.86); color: #1c1a16; border-color: rgba(0, 0, 0, 0.18);
+theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	background: rgba(16, 16, 28, 0.72);
+theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	border: 1px solid rgba(255, 255, 255, 0.18);
+theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	color: #1c1a16;
+theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	color: #fff;
+theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	color: #fff;
+theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	eme='light'] .pa-name { background: rgba(255, 252, 244, 0.86); color: #1c1a16
+theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	font-family: 'FS Pixel Sans', sans-serif;
+theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	theme='light'] .text-white { color: #fff; }
+theme	window/src/places/office/pixel/webview-ui/src/branch/trunkSprites.ts	orHint ?? '') ? agent.colorHint! : '#56616B';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	'#00ffff 50%, #0000ff 66.7%, #ff00ff 83.3%,
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	'#00ffff 50%, #0000ff 66.7%, #ff00ff 83.3%, #ff0000 100%)
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	'#00ffff 50%, #0000ff 66.7%, #ff00ff 83.3%, #ff0000 100%)';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	'#1dd1a1',
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	'#48dbfb',
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	'#54a0ff',
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	'#5f27cd',
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	'#feca57',
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	'#ff0000 0%, #ffff00 16.7%, #00ff00 33.3%, '
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	'#ff0000 0%, #ffff00 16.7%, #00ff00 33.3%, ' +
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	'#ff0000 0%, #ffff00 16.7%, #00ff00 33.3%, ' +
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	'#ff6b6b',
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	'#ff9ff3',
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	'#ffa502',
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	50%, #0000ff 66.7%, #ff00ff 83.3%, #ff0000 100%)';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	R_PICKER_MARKER_BORDER = '2px solid #fff';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	R_PICKER_MARKER_SHADOW = '0 0 0 1px rgba(0,0,0,0.6)';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	const AREA_LABEL_FALLBACK_COLOR = '#ffffff';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	const CANVAS_FALLBACK_TILE_COLOR = '#444';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	const CONTEXT_GAUGE_COLOR_DANGER = '#ff8800';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	const EMPTY_SPRITE_THUMBNAIL_BG = '#333';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	const GHOST_BORDER_HOVER_STROKE = 'rgba(60, 130, 220, 0.5)';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	const SELECTION_HIGHLIGHT_COLOR = '#007fd4';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	eenBright = (a: number): string => `rgba(0, 255, 65, ${a})`;
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	export const BUTTON_ICON_COLOR = '#fff';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	export const CONTEXT_GAUGE_BG = '#222';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	export const DELETE_BUTTON_BG = 'rgba(200, 50, 50, 0.85)';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	export const GHOST_BORDER_STROKE = 'rgba(255, 255, 255, 0.06)';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	export const GHOST_INVALID_TINT = '#ff0000';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	export const GHOST_VALID_TINT = '#00ff00';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	export const GRID_LINE_COLOR = 'rgba(255,255,255,0.12)';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	export const MATRIX_HEAD_COLOR = '#ccffcc';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	export const ROTATE_BUTTON_BG = 'rgba(50, 120, 200, 0.85)';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	export const SEAT_BUSY_COLOR = 'rgba(220, 50, 50, 0.35)';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	export const SEAT_OWN_COLOR = 'rgba(0, 127, 212, 0.35)';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	export const TEAM_LEAD_COLOR = '#ffd700';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	export const TEAM_ROLE_COLOR = '#66aaff';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	export const WALL_COLOR = '#3A3A5C';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	nst CONTEXT_GAUGE_COLOR_CRITICAL = '#ff2222';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	ort const CONTEXT_GAUGE_COLOR_OK = '#44cc44';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	rt const AREA_LABEL_SHADOW_COLOR = '#000000';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	rt const CANVAS_ERROR_TILE_COLOR = '#FF00FF';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	rt const GHOST_BORDER_HOVER_FILL = 'rgba(60, 130, 220, 0.25)';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	rt const VOID_TILE_OUTLINE_COLOR = 'rgba(255,255,255,0.08)';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	t const CONTEXT_GAUGE_COLOR_WARN = '#ffcc00';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	xGreenDim = (a: number): string => `rgba(0, 85, 20, ${a})`;
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	xGreenMid = (a: number): string => `rgba(0, 170, 40, ${a})`;
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	xport const FALLBACK_FLOOR_COLOR = '#808080';
+theme	window/src/places/office/pixel/webview-ui/src/constants.ts	xport const SEAT_AVAILABLE_COLOR = 'rgba(0, 200, 80, 0.35)';
+theme	window/src/places/office/pixel/webview-ui/src/office/sprites/branchBubbles.ts	const A = '#CCA700';
+theme	window/src/places/office/pixel/webview-ui/src/office/sprites/branchBubbles.ts	const B = '#555566';
+theme	window/src/places/office/pixel/webview-ui/src/office/sprites/branchBubbles.ts	const F = '#EEEEFF';
+theme	window/src/places/office/pixel/webview-ui/src/office/sprites/branchBubbles.ts	const M = '#3794FF';
+theme	window/src/places/office/pixel/webview-ui/src/office/sprites/spriteCache.ts	+ 1] === '') outline[er][ec + 1] = '#FFFFFF';
+theme	window/src/places/office/pixel/webview-ui/src/office/sprites/spriteCache.ts	- 1] === '') outline[er][ec - 1] = '#FFFFFF';
+theme	window/src/places/office/pixel/webview-ui/src/office/sprites/spriteCache.ts	[ec] === '') outline[er + 1][ec] = '#FFFFFF';
+theme	window/src/places/office/pixel/webview-ui/src/office/sprites/spriteCache.ts	[ec] === '') outline[er - 1][ec] = '#FFFFFF';
+theme	window/src/places/people/people.css	-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
+theme	window/src/places/people/people.css	enter; background: var(--c); color: #fff; font-weight: 600; line-height: 1;
+theme	window/src/places/people/people.css	var(--raise); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform
+theme	window/src/places/people/people.css	var(--raise); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); }
+theme	window/src/places/settings/kit.css	-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
+theme	window/src/places/settings/kit.css	r(--raise); box-shadow: 0 16px 40px rgba(0, 0, 0, .24); }
+theme	window/src/places/settings/kit.css	var(--raise); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform
+theme	window/src/places/settings/set1/appearance-editor.tsx	, "#2f8c86", "#4f6fa8", "#8a5aa8", "#c0467a", "#16212a"];
+theme	window/src/places/settings/set1/appearance-editor.tsx	, "#2f8f5b", "#2f8c86", "#4f6fa8", "#8a5aa8", "#c0467a", "#16212a"];
+theme	window/src/places/settings/set1/appearance-editor.tsx	, "#4f6fa8", "#8a5aa8", "#c0467a", "#16212a"];
+theme	window/src/places/settings/set1/appearance-editor.tsx	, "#e0a526", "#2f8f5b", "#2f8c86", "#4f6fa8", "#8a5aa8", "#c0467a", "#16212a"];
+theme	window/src/places/settings/set1/appearance-editor.tsx	["#484ce5", "#e0a526", "#2f8f5b", "#2f8c86", "#4f6fa8", "#8a5aa8", "#c0467a",
+theme	window/src/places/settings/set1/appearance-editor.tsx	export const ACCENTS = ["#484ce5", "#e0a526", "#2f8f5b", "#2f8c86",
+theme	window/src/places/settings/set1/appearance-editor.tsx	export const ACCENTS = ["#484ce5", "#e0a526", "#2f8f5b", "#2f8c86", "#4f6fa8",
+theme	window/src/places/settings/set1/appearance-editor.tsx	t ACCENTS = ["#484ce5", "#e0a526", "#2f8f5b", "#2f8c86", "#4f6fa8", "#8a5aa8",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#000000",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#002b36",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#005e28",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#00682d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#00682d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#00682d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#00682d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#00682d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#00682d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#00682d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#00682d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#00682d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#00682d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#00682d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#00682d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#00682d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#00682d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#00682d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#00682d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#011627",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#017232",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#017232",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#03140b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#03652c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#03652c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#03652c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#03652c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#03652c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#03652c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#04323d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#046e31",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#046e31",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#046e31",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#046e31",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#046f31",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#04892e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#04892e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#050a06",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#05612b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#05612b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#05612b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#06182b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#068470",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#068470",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#071b11",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#072238",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#076b30",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#076b30",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#076b30",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#076b30",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#076b30",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#076b30",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#076b30",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#076b30",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#076b30",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#076b30",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#076b30",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#09100a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0969da",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0969da",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0a2038",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0a8091",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0a8091",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0b0b0b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0b0e14",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0b1b2e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0b2a12",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0b67b2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0b67b2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0c0a05",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0d110c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0d1117",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0e1526",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0e1f19",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0f111a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0f172a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0f1b22",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0f2418",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0f2540",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#0f3b46",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#100f0f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#100f0f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#101010",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#10141c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#101811",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#102c44",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#111111",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#111d1f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#120f07",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#121d1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#12211a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#12261f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#122943",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#13171e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#13222a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#140e0c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#141414",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#141414",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#141813",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#141c30",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#151b22",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#161821",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#161d16",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#16232b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#16302a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#17142a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#171616",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#171b23",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#171b25",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#172e4c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#182235",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#18242c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#191724",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#192330",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#19404a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a160e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1a1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1b26",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a1f27",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a2f26",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a8759",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1a8759",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1b1512",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1b1b1b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1b1e28",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1b2030",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1b2b33",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1b2b34",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1c1921",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1c1e26",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1c201b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1c253a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1d1220",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1d1820",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1d1a33",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1d1b2a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1d3040",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1e1a12",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1e1a12",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1e1e2e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1e202a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1e2a39",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1e2c35",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1f0f14",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1f1a12",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1f1f28",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1f2328",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1f2430",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#1f2a23",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#20181d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#201913",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#201f1e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#20222c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#202333",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#211814",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#212121",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#212631",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#212c3e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#213128",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#213a5c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#221719",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#222529",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#222734",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#22d3ee",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#22d3ee",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#23180f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#232136",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#23343e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#233446",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#241d1a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#242233",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#24282e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#251729",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#251c17",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#25223c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#261319",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#26223a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#262335",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#262631",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#263343",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#268bd2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#268bd2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#268bd2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#268bd2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#27253c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#27353f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#282237",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#282828",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#282a35",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#282a36",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#282c34",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2848a9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2848a9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#292826",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#292c3d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#292d3e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#292e34",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#292e34",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#293748",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2959aa",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2959aa",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2a1e13",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2a231b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2a2622",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2a2a3c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2a2e29",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2a2f3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2a2f3c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2a3244",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2a3a34",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2aa298",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2aa298",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2ace53",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2b313f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2b363f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2b373d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2b7a99",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2b7a99",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2c2004",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2c211a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2c3038",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2d2a2e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2d353b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2e1e32",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2e303f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2e3440",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2e3440",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2f1a20",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2f2d44",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2f2f2f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2f2f3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2f81f7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#2f81f7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#30283f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#303045",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#303340",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#303945",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#312920",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#312b29",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#313b41",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#323e46",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#33141c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#33202a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#33261b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#333045",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#33313f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#33ff66",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#33ff66",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#33ff66",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#343231",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#343546",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#34363d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#343b58",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#34424c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#352921",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#353648",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#353a43",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#363d4b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#364049",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#372a21",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#38373b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#383a42",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#392e3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#39363a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#39384f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#393c4c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#394449",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#394e55",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3a3024",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3a3228",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3a3f47",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3aa7f5",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3aa7f5",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3b2a22",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3b2b30",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3b4940",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3c3836",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3c3a4f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3c484a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3c4f65",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3d2b5a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3d4845",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3db857",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3e332a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3e4253",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3f3c3a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3f4656",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3f6378",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#3f6378",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#403730",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#403e3c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#403f53",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#40464c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#413f3a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#414141",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#414150",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#414841",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#41555b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#42404f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#42464d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#424964",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#424d54",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#425852",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#434144",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#43454e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#435158",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#43525b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#443c33",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#45485a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#455b66",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#464261",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#464261",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#464a55",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#464b4d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4678a9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4678a9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#467ef9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#467ef9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#47444c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#474a63",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#474a63",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#474c57",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#475d76",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#48434b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#48453d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#484549",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#484854",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#49453d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4a453d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4a585e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4a625a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4b4348",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4b443e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4b534c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4c4244",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4c433f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4c4f53",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4c525d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4d5a51",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4d606b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4d699b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4d699b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4d71c1",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4d71c1",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4e5358",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4f4b45",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#4f4c61",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#514d48",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#515e60",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#525b53",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#525c70",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#525e5b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#53555c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#536060",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#545c64",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#55625a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#565667",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#56586d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#565b65",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#565c6b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#57476f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#57595f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#57636b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#584e42",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#58546f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#58546f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#585548",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#585858",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#585d62",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#594d44",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5a626a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5b4047",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5b675a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5c4a51",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5d554c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5d5751",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5d5875",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5d5963",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5de4c7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5de4c7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5e5962",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5e616b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5e7f53",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5e7f53",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5f5348",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5f555b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5f5b51",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5fc4e8",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5fc4e8",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5fd3a0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#5fd3a0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#605a51",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#61524a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#615456",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#615a51",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#61605b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#61686f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#61afef",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#61afef",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#625952",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#625e7b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#625e7b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#635440",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#635853",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6487b2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6487b2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6699cc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6699cc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#675543",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#684e04",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6c4fd8",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6c4fd8",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6c5000",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6c5000",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6c5000",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6e584c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6f5305",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6f5305",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6f5305",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6f5406",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6f5406",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6f5406",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6f5406",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6f5406",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6f5406",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6f5406",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6f5406",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6f5406",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#6fd087",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#719cd6",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#719cd6",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#725662",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#72d38a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#735601",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#735601",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#735601",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#735601",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#735601",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#735601",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#735601",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#735601",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#735601",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#735601",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#735601",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#735601",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#744f5a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#765906",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#765906",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#765906",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#765906",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#765906",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#765906",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#765906",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#765906",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#765906",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#76d78d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#77523b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#77523b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#7a5230",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#7a5230",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#7a5b01",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#7a5b01",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#7a5b01",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#7a5b01",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#7a5b01",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#7aa2f7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#7aa2f7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#7cdd93",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#7cdd93",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#7d5e07",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#7d5e07",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#7e9cd8",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#7e9cd8",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#82aaff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#82aaff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#82aaff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#82aaff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#82e499",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#855bbc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#855bbc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#85e79c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#86e89c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#8839ef",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#8839ef",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#88c0d0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#88c0d0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#8a6a12",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#8a6a12",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#8da101",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#8da101",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#8db082",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#8db082",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#8deea3",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#8e5bae",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#8e5bae",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#8e7100",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#8e7100",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#8f9b93",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#919aa4",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#92acc7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#942b2a"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#946d0a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#946d0a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#972e2d"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#972e2d"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#972e2d"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#97f8ac",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9a322f"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9a322f"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9a3230"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9a683c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9a683c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9a6a0b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9a6a0b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9a9a9a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9aa197",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9ba0ac",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9bbaad",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9c9a95",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9cb2bd",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9d3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9d3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9d3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9d3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9d3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9d3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9d3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9d3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9d3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9d3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9d3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9d3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9d3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9d3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9d3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9d3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9d3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9d3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9e3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9e3532"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9ea2b2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#9fb7be",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a0a4be",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a13835"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a13835"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a13835"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a13835"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a13835"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a13835"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a13835"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a13835"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a13835"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a13835"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a1a7b7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a1b4c3",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a3a3a3",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a43b38"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a43b38"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a43b38"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a43b38"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a43b38"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a43b38"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a43b38"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a59994",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a5abd6",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a5b0df",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a7acb6",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a7b6cb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a7c080",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a7c080",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a85a3f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a85a3f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a8a79f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#a9b5c6",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#aba5c7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#abc0d5",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#aca8c7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b0b3b6",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b0d0e0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b0d0e0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b1afa9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b1c5d0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b2bccf",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b4a2ff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b4a2ff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b4badc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b4bbc9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b4becc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b5b1d0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b6bee3",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b6c9cc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b73a98",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b73a98",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b7b29f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b7c3d0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b85207",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b85207",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b8a496",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b8b6ca",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b8c0e0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b8c7d5",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b9c0dc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b9c1e6",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#b9c8c1",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#bac1cf",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#bbc1c7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#bbc5cb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#bc5215",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#bc5215",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#bc949f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#bcc2cc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#bcc2e4",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#bd93f9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#bd93f9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#bec5bd",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#bed0d2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#bfbdb6",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#bfc3be",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c0c0bd",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c1bece",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c1cfd1",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c21e44",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c21e44",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c2532d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c2532d",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c2c0d6",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c2c4c5",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c39db1",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c3c9d0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c3cdc1",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c3d1c7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c5b19b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c5c1a8",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c6c0be",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c7355c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c7355c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c792ea",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c792ea",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c7b79e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c7d2d7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c9cff1",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#c9d1df",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ca9335",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#cba6f7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#cba6f7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#cbbfb1",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ccbbbf",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ccbdc3",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ccc1b8",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#cccac2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#cccccc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ccd4e2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#cdcecf",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#cdd6d8",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#cdd6f4",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#cdd6f4",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#cddafe",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#cebfa9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#cecdc3",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ced4df",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ced6d4",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#cfc6b6",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#cfcfcf",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#cfd1da",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#cfd5da",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d0d6d0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d0d7e2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d0d8db",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d1d4db",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d1dae3",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d2d0c8",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d3d7dd",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d4a73a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d4a73a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d4d3d7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d4ded9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d5d1c9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d5d3da",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d5d8da",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d5dbdf",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d65d0e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d65d0e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d6d2d9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d6d4cd",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d6deeb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d7827e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d7827e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d7827e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d7827e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d7d4cd",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d8d3cd",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d8d6d0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d8dee9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d9a06c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d9a06c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d9d2d6",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d9d3ce",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d9d7d9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#d9dbe2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#da702c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#da702c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#dad2cf",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#dad2d3",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#dad8e2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#dbd3c8",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#dbd6ae",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#dcd4c5",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#dcd7ba",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#dd582f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#dd582f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#dde7da",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ded8db",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#dedcd5",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#df8c70",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#df8c70",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e07033",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e07033",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e07033",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e07033",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0af3b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0ddd3",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0def4",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0def4",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e0e0e0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e1e1e2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e29c01",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e2d9b4",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e2d9d2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e2e2e3",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e2e8f0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e3b23f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e3b23f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e3b23f",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e3d4ac",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e3d5d8",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e3dddb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e3dddb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e3e3e5",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e3eef3",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e3eef9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e4ba94",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e4ba94",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e4d8d5",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e4e0d1",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e4f2eb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e5e1d1",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e5e6e7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e6b450",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e6b450",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e6e7ed",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e6edf3",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e6f0f5",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e7ebf1",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e8845a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e8845a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e8ebf0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e8eee4",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e95678",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e95678",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e9e2b4",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e9ecf1",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#e9f2f4",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ea9a97",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ea9a97",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#eab847",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#eaf0f2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#eaf2f0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ebbcba",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ebbcba",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ebdbb2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ebebea",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ebf1f6",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ece9f7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ecece7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#eceff4",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#eceff4",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ecf0eb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ecf0f7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ecf2ec",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#edbc4b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ede0c3",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ede5b7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#edebe3",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#edf0f6",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#edf0f7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#edf1ea",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#eeeff4",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#eef5fb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#eeffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#efe5d3",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#efeae2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#eff1f5",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f0bf4e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f0e2b9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f0e3c6",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f0f8f3",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f1eff6",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f1f5f9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f1f6ed",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f2ae49",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f2ae49",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f2ecbc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f2eef5",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f2f0e9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f2f7fa",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f3e4ba",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f3ece1",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f3edda",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f3edeb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f3f0e9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f3f3f4",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f3f7f8",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f4c252",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f4ecdd",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f4efe9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f4f1e8",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f4f4f4",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f5e8d7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f5eef2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f5efe7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f5efea",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f5f1eb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f5f3fb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f5faf9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f5fafb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f6ebe2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f6eeeb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f6eeef",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f6f0dd",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f6f2ee",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f6f4e9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f6f7f7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f6f7fc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f7e6ea",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f7f2dc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f7f7f8",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f7f9fb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f7faf7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f8e8ec",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f8f8f2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f8f8f8",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f8f8f8",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f8f9fb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f97316",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f97316",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f9f3e6",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f9f8fa",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f9f8fb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f9fafc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#f9fcfe",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fac85a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#faf4eb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#faf4ed",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#faf4ed",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#faf7f0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#faf8ed",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#faf8f7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#faf8f9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#faf9f5",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fafafa",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fafbfc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fafdfb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fbc959",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fbf1c7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fbf3ec",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fbf4ea",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fbf7e0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fbf8f5",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fbf8f7",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fbf8f8",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fbf9f2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fbf9f5",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fbfbfb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fbfcfd",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fcfbfe",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fcfcfa",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fcfcfc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fcfcfc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fcfdfc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fcfdfd",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fcfdfd",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fcfdfd",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fcfdfe",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fcfdfe",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdb5af"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdbfb9"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdc4c0"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdf2f4",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdf6e3",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdf6e3",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdf8f1",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdf8f1",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdf9f3",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdfbf5",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdfcfa",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdfcfb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdfdfc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdfdfc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdfdfc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdfdfc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdfdfe",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdfdfe",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdfefd",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdfefe",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fdfefe",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fe8019",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fe8019",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fea19a"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fea19a"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fea19a"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#feaaa3"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#feb0aa"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#febab3"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fec8c4"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fecd5c",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fecdc9"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fee0a4",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fef8f2",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fefbfb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fefdfc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fefdfc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fefdfc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fefdfc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fefdfc",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fefdfd",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fefdfd",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fefdfe",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fefefd",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fefefe",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff6b8a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff6b8a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff7edb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff7edb",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff8a5b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff8a5b",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff958e"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ff9b94"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffb000",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffb000",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffb000",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffc799",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffc799",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffcc66",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffcc66",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffd47e",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffd60a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffd60a",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffd866",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffd866",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffdbd7"
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fff4ee",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fffbf9",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fffcf0",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fffdfd",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#fffdfd",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-legacy.ts	"#ffffff",
+theme	window/src/places/settings/set1/appearance-sections.tsx	"], github: ["#cf222e", "#0a3069", "#6e7781"], monokai: ["#f92672", "#e6db74",
+theme	window/src/places/settings/set1/appearance-sections.tsx	(--ok)", "var(--ink-3)"], github: ["#cf222e", "#0a3069", "#6e7781"], monokai: [
+theme	window/src/places/settings/set1/appearance-sections.tsx	, "#0a3069", "#6e7781"], monokai: ["#f92672", "#e6db74", "#75715e"],
+theme	window/src/places/settings/set1/appearance-sections.tsx	, "#6e7781"], monokai: ["#f92672", "#e6db74", "#75715e"],
+theme	window/src/places/settings/set1/appearance-sections.tsx	9900", "#2aa198", "#93a1a1"], tm: ["#b5651d", "#3a7d44", "#888"],
+theme	window/src/places/settings/set1/appearance-sections.tsx	], monokai: ["#f92672", "#e6db74", "#75715e"],
+theme	window/src/places/settings/set1/appearance-sections.tsx	a198", "#93a1a1"], tm: ["#b5651d", "#3a7d44", "#888"],
+theme	window/src/places/settings/set1/appearance-sections.tsx	a1a1"], tm: ["#b5651d", "#3a7d44", "#888"],
+theme	window/src/places/settings/set1/appearance-sections.tsx	ar(--ink-3)"], github: ["#cf222e", "#0a3069", "#6e7781"], monokai: ["#f92672",
+theme	window/src/places/settings/set1/appearance-sections.tsx	solarized: ["#859900", "#2aa198", "#93a1a1"], tm: ["#b56
+theme	window/src/places/settings/set1/appearance-sections.tsx	solarized: ["#859900", "#2aa198", "#93a1a1"], tm: ["#b5651d", "#3a7
+theme	window/src/places/settings/set1/appearance-sections.tsx	solarized: ["#859900", "#2aa198", "#93a1a1"], tm: ["#b5651d", "#3a7d44", "#888
+theme	window/src/places/settings/set1/appearance.css	#2f8c86, #4f6fa8, #8a5aa8, #c0467a, #e0533a); }
+theme	window/src/places/settings/set1/appearance.css	#2f8f5b, #2f8c86, #4f6fa8, #8a5aa8, #c0467a, #e0533a); }
+theme	window/src/places/settings/set1/appearance.css	#e0533a, #e0a526, #2f8f5b, #2f8c86, #4f6fa8, #8a5aa8, #c0467a, #e0533a); }
+theme	window/src/places/settings/set1/appearance.css	#e0a526, #2f8f5b, #2f8c86, #4f6fa8, #8a5aa8, #c0467a, #e0533a); }
+theme	window/src/places/settings/set1/appearance.css	-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
+theme	window/src/places/settings/set1/appearance.css	.set-col .ap-math { font-family: Georgia, "Times New Roman", serif; }
+theme	window/src/places/settings/set1/appearance.css	background: conic-gradient(#e0533a, #e0a526, #2f8f5b, #2f8c86, #4f6fa8, #8a5aa8
+theme	window/src/places/settings/set1/appearance.css	c-pick { background: conic-gradient(#e0533a, #e0a526, #2f8f5b, #2f8c86, #4f6fa8
+theme	window/src/places/settings/set1/appearance.css	d: conic-gradient(#e0533a, #e0a526, #2f8f5b, #2f8c86, #4f6fa8, #8a5aa8, #c0467a
+theme	window/src/places/settings/set1/appearance.css	gradient(#e0533a, #e0a526, #2f8f5b, #2f8c86, #4f6fa8, #8a5aa8, #c0467a, #e0533a
+theme	window/src/places/settings/set1/chatapps-logo.tsx	-2.9-.8-4.5-2z" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin
+theme	window/src/places/settings/set1/chatapps-logo.tsx	1 0 3.7-13.8z" fill="none" stroke="#fff" stroke-width="1.7"/>'],
+theme	window/src/places/settings/set1/chatapps-logo.tsx	2.3 2.3.3-3.5 5.6-5.1-7 4.3z" fill="#fff"/>'],
+theme	window/src/places/settings/set1/chatapps-logo.tsx	discord: ["#5865F2", '<path d="M7.2 8.4c3-1.3 6.6-1.3
+theme	window/src/places/settings/set1/chatapps-logo.tsx	e cx="14.2" cy="12.6" r="1.1" fill="#fff"/>'],
+theme	window/src/places/settings/set1/chatapps-logo.tsx	le cx="9.8" cy="12.6" r="1.1" fill="#fff"/><circle cx="14.2" cy="12.6" r="1.
+theme	window/src/places/settings/set1/chatapps-logo.tsx	slack: ["#4A154B", '<path d="M9 5v14M15 5v14M5 9h14M
+theme	window/src/places/settings/set1/chatapps-logo.tsx	telegram: ["#2AABEE", '<path d="M4.8 11.6l13.4-5.2-2.3
+theme	window/src/places/settings/set1/chatapps-logo.tsx	v14M15 5v14M5 9h14M5 15h14" stroke="#fff" stroke-width="2" stroke-linecap="r
+theme	window/src/places/settings/set1/chatapps-logo.tsx	whatsapp: ["#25D366", '<path d="M12 4.6a7.4 7.4 0 0 0-6
+theme	window/src/places/settings/set1/people.css	var(--raise); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); }
+theme	window/src/places/settings/set1/service.tsx	"github-copilot": ["#181717", '<path d="M12 4a8 8 0 0 0-2.5 15.
+theme	window/src/places/settings/set1/service.tsx	-8.2-9-9 4.6-.8 8.2-4.4 9-9z" fill="#8AB4F8"/>'],
+theme	window/src/places/settings/set1/service.tsx	.2v4.4L12 16.4l-3.8-2.2V9.8z" fill="#fff"/>'],
+theme	window/src/places/settings/set1/service.tsx	.5-6.3 9.5s-6.3-4.5-6.3-9.5z" fill="#E7753F"/>'],
+theme	window/src/places/settings/set1/service.tsx	.5C4 7 7.6 5 12 5s8 2 8 5.5z" fill="#fff"/><path d="M5.7 11.5h12.6c0 5-2.7 9
+theme	window/src/places/settings/set1/service.tsx	0 .2.1.5.6.4A8 8 0 0 0 12 4z" fill="#fff"/>'],
+theme	window/src/places/settings/set1/service.tsx	1.2 11.2M17.6 6.4L6.4 17.6" stroke="#fff" stroke-width="2.2" stroke-linecap=
+theme	window/src/places/settings/set1/service.tsx	1B1A18", '<path d="M12 3v2" stroke="#fff" stroke-width="1.8"/><path d="M4 10
+theme	window/src/places/settings/set1/service.tsx	4.4 16.4V7.6z" fill="none" stroke="#fff" stroke-width="1.7"/><path d="M12 7
+theme	window/src/places/settings/set1/service.tsx	anthropic: ["#D97757", '<path d="M12 4v16M4 12h16M6.4 6.
+theme	window/src/places/settings/set1/service.tsx	google: ["#1E1F24", '<path d="M12 3c.8 4.6 4.4 8.2 9
+theme	window/src/places/settings/set1/service.tsx	keepoak: ["#1B1A18", '<path d="M12 3v2" stroke="#fff"
+theme	window/src/places/settings/set1/service.tsx	openai: ["#0F0F0F", '<path d="M12 3.2l7.6 4.4v8.8L12
+theme	window/src/places/settings/set1/service.tsx	openrouter: ["#6566F1", "OR"],
+theme	window/src/places/settings/set1/service.tsx	qwen: ["#615CED", "Q"],
+theme	window/src/places/settings/set2/achievements.css	: grid; place-items: center; color: #fff; }
+theme	window/src/places/settings/set2/agents.css	border: 1px solid var(--line, rgba(127, 127, 127, 0.35));
+theme	window/src/places/settings/set2/gateway.css	.set-col .gw-sw-amber { background: #C08A2A; } .set-col .gw-sw-purple { backgro
+theme	window/src/places/settings/set2/gateway.css	.set-col .gw-sw-blue { background: #4F6FA8; }
+theme	window/src/places/settings/set2/gateway.css	.set-col .gw-sw-coral { background: #D8612A; } .set-col .gw-sw-pink { backgroun
+theme	window/src/places/settings/set2/gateway.css	.set-col .gw-sw-green { background: #5E8C4A; } .set-col .gw-sw-red { background
+theme	window/src/places/settings/set2/gateway.css	.set-col .gw-sw-pink { background: #C2477A; } .set-col .gw-sw-blue { backgroun
+theme	window/src/places/settings/set2/gateway.css	.set-col .gw-sw-teal { background: #2F8C86; } .set-col .gw-sw-amber { backgrou
+theme	window/src/places/settings/set2/gateway.css	set-col .gw-sw-purple { background: #8A5AA8; }
+theme	window/src/places/settings/set2/gateway.css	} .set-col .gw-sw-red { background: #C0453A; } .set-col .gw-sw-grey { backgroun
+theme	window/src/places/settings/set2/set2.css	); border-color: var(--bad); color: #fff; }
+theme	window/src/places/settings/set2/set2.css	.set-col .s2-sw-amber { background: #e9a23b; } .set-col .s2-sw-purple { backgro
+theme	window/src/places/settings/set2/set2.css	.set-col .s2-sw-blue { background: #3a7bd5; }
+theme	window/src/places/settings/set2/set2.css	.set-col .s2-sw-coral { background: #e76f51; } .set-col .s2-sw-pink { backgroun
+theme	window/src/places/settings/set2/set2.css	.set-col .s2-sw-green { background: #43a047; } .set-col .s2-sw-red { background
+theme	window/src/places/settings/set2/set2.css	.set-col .s2-sw-grey { background: #8a8f98; }
+theme	window/src/places/settings/set2/set2.css	.set-col .s2-sw-pink { background: #d6609a; } .set-col .s2-sw-blue { backgroun
+theme	window/src/places/settings/set2/set2.css	.set-col .s2-sw-teal { background: #2a9d8f; } .set-col .s2-sw-amber { backgrou
+theme	window/src/places/settings/set2/set2.css	set-col .s2-sw-purple { background: #7c5cc4; }
+theme	window/src/places/settings/set2/set2.css	} .set-col .s2-sw-red { background: #d64545; } .set-col .s2-sw-grey { backgroun
+theme	window/src/places/settings/set2/usage.css	var(--line); box-shadow: 0 8px 24px rgba(0, 0, 0, .14); }
+theme	window/src/places/trunk/LookTab.tsx	, "#1785AF", "#8A5AA8", "#5E8C4A", "#4F6FA8", "#C9982E", "#B84A6B", "#56616B"];
+theme	window/src/places/trunk/LookTab.tsx	, "#4F6FA8", "#C9982E", "#B84A6B", "#56616B"];
+theme	window/src/places/trunk/LookTab.tsx	, "#5E8C4A", "#4F6FA8", "#C9982E", "#B84A6B", "#56616B"];
+theme	window/src/places/trunk/LookTab.tsx	, "#8A5AA8", "#5E8C4A", "#4F6FA8", "#C9982E", "#B84A6B", "#56616B"];
+theme	window/src/places/trunk/LookTab.tsx	["#2F8C86", "#1785AF", "#8A5AA8", "#5E8C4A", "#4F6FA8", "#C9982E", "#B84A6B",
+theme	window/src/places/trunk/LookTab.tsx	export const COLOURS = ["#2F8C86", "#1785AF", "#8A5AA8", "#5E8C4A",
+theme	window/src/places/trunk/LookTab.tsx	export const COLOURS = ["#2F8C86", "#1785AF", "#8A5AA8", "#5E8C4A", "#4F6FA8",
+theme	window/src/places/trunk/LookTab.tsx	t COLOURS = ["#2F8C86", "#1785AF", "#8A5AA8", "#5E8C4A", "#4F6FA8", "#C9982E",
+theme	window/src/places/trunk/trunk.css	10px; border: 1px solid var(--line, #ddd); border-radius: 8px; margin-bottom
+theme	window/src/places/trunk/trunk.css	parent; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); }
+theme	window/src/rooms/rooms.css	color: #fff;
+theme	window/src/setup/setup.css	background: #111518;
+theme	window/src/setup/setup.css	background: #161b1f;
+theme	window/src/setup/setup.css	background: #1e252a;
+theme	window/src/setup/setup.css	background: #eff3f5;
+theme	window/src/setup/setup.css	background: #f8fafb;
+theme	window/src/setup/setup.css	background: #ffffff;
+theme	window/src/setup/setup.css	background: linear-gradient(90deg, #f8fafb 50%, #161b1f 50%);
+theme	window/src/setup/setup.css	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+theme	window/src/setup/setup.css	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+theme	window/src/setup/setup.css	linear-gradient(90deg, #f8fafb 50%, #161b1f 50%);
+theme	window/src/setup/tool-logos.tsx	-6M4 7v10h16V7" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin
+theme	window/src/setup/tool-logos.tsx	0 .2.1.5.6.4A8 8 0 0 0 12 4z" fill="#fff"/>'],
+theme	window/src/setup/tool-logos.tsx	13h10.4l3.4 6" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin
+theme	window/src/setup/tool-logos.tsx	6H6.8l-3.4-6z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin
+theme	window/src/setup/tool-logos.tsx	drive: ["#1FA463", '<path d="M8.6 4h6.8l5.2 9-3.4 6H
+theme	window/src/setup/tool-logos.tsx	github: ["#181717", '<path d="M12 4a8 8 0 0 0-2.5 15.
+theme	window/src/setup/tool-logos.tsx	gmail: ["#EA4335", '<path d="M4 7l8 6 8-6M4 7v10h16V
+theme	window/src/setup/tool-logos.tsx	outlook: ["#0F6CBD", "O"],
+theme	window/src/shell/connect-elsewhere.css	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18), 0 0 0 1px var(--line
+theme	window/src/shell/controls.css	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+theme	window/src/shell/frame.css	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18), 0 0 0 1px var(--line
+theme	window/src/shell/group-drop.css	var(--ink); box-shadow: 0 8px 24px #0004, 0 0 0 1px color-mix(in srgb, var(-
+theme	window/src/shell/preview.css	-content:center;gap:12px;background:#0e1419;color:#8899a6;padding:20px;}.comput
+theme	window/src/shell/preview.css	ar(--line); box-shadow: 0 16px 40px rgba(0,0,0,.14); cursor: grab; touch-acti
+theme	window/src/shell/preview.css	border: 1px solid rgb(255 255 255 / 60%);
+theme	window/src/shell/preview.css	color: #fff;
+theme	window/src/shell/preview.css	ex;flex-direction:column;background:#0e1419;}.browser-address {height:42px;back
+theme	window/src/shell/preview.css	r;gap:12px;background:#0e1419;color:#8899a6;padding:20px;}.computer-card-screen
+theme	window/src/shell/preview.css	tain; filter: drop-shadow(0 2px 3px rgba(0,0,0,.18)); pointer-events: none; }
+theme	window/src/shell/preview.css	tive;flex:1;min-height:0;background:#0e1419;display:flex;align-items:center;jus
+theme	window/src/shell/row-look.tsx	{ id: "blue", hue: "#1785AF", name: "Sky" },
+theme	window/src/shell/row-look.tsx	{ id: "cyan", hue: "#2F8C86", name: "Teal" },
+theme	window/src/shell/row-look.tsx	{ id: "green", hue: "#5E8C4A", name: "Moss" },
+theme	window/src/shell/row-look.tsx	{ id: "orange", hue: "#C8742E", name: "Orange" },
+theme	window/src/shell/row-look.tsx	{ id: "pink", hue: "#B84A6B", name: "Rose" },
+theme	window/src/shell/row-look.tsx	{ id: "purple", hue: "#8A5AA8", name: "Plum" },
+theme	window/src/shell/row-look.tsx	{ id: "red", hue: "#B8483A", name: "Red" },
+theme	window/src/shell/row-look.tsx	{ id: "yellow", hue: "#C9982E", name: "Ochre" },
+theme	window/src/shell/rows.css	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+theme	window/src/shell/rows.css	box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+theme	window/src/shell/shell.css	color: #fff;
+theme	window/src/shell/topic-rail.css	.tpStT5.needs{background:#E0A13A}.tpStT5.done{background:color-mix(i
+theme	window/src/shell/topic-rail.css	:9px;background:var(--accent);color:#fff;font-size:11px;display:grid;place-i
+theme	window/src/shell/topic-rail.css	ckground:color-mix(in srgb,var(--ok,#3a9a5b) 80%,transparent)}
+theme	window/src/shell/walkthrough.css	box-shadow: 0 0 0 9999px rgba(8, 12, 16, 0.5);
+theme	window/src/stage/pane/pane.css	(--ok);border-color:var(--ok);color:#fff;}
+theme	window/src/stage/pane/pane.css	14px; overflow: hidden; background: #fff; }
+theme	window/src/stage/stage.css	(--ok);border-color:var(--ok);color:#fff;}
+theme	window/src/stage/stage.css	,0 0 0 1px var(--line-2);background:#0e1419;}
+theme	window/src/stage/stage.css	0 0;border-radius:9px 9px 0 0;color:#556666;max-width:220px;flex:0 1 auto;min-w
+theme	window/src/stage/stage.css	em {background:var(--accent);color:#fff;}
+theme	window/src/stage/stage.css	ex;flex-direction:column;background:#fff;}
+theme	window/src/stage/stage.css	hidden;box-shadow:0 30px 80px -30px rgba(0,0,0,.55),0 0 0 1px var(--line-2);b
+theme	window/src/stage/stage.css	ius:10px;overflow:hidden;background:#0e1419;cursor:pointer;}
+theme	window/src/stage/stage.css	lor:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12);}
+theme	window/src/stage/stage.css	lor:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12);}
+theme	window/src/stage/stage.css	nter;background:var(--accent);color:#fff;flex:none;box-shadow:0 4px 12px -4p
+theme	window/src/stage/stage.css	ow:hidden;cursor:pointer;background:#0e1419;border:0;padding:0;display:block;}
+theme	window/src/stage/stage.css	r(--accent) inset,0 30px 80px -30px rgba(0,0,0,.55);}
+theme	window/src/stage/stage.css	splay:grid;place-items:center;color:#8899a6;font-size:12.5px;}
+theme	window/src/stage/stage.css	t:hover:not([disabled]) {background:rgba(0,0,0,.06);}
+theme	window/src/stage/stage.css	tive;flex:1;min-height:0;background:#fff;}
+theme	window/src/stage/stage.css	var(--accent);color:var(--on-accent,#fff);font-size:12px;font-weight:600;whi
+theme	window/src/thread/activity-strip.css	18px; border: 1px solid var(--line, #8883); border-radius: 16px; background:
+theme	window/src/thread/activity-strip.css	8px; border: 1px solid var(--line, #8883); border-radius: 10px; }
+theme	window/src/thread/activity-strip.css	: 10px; accent-color: var(--accent, #d98642); }
+theme	window/src/thread/activity-strip.css	helper-error { color: var(--danger, #c54b4b); overflow-wrap: anywhere; }
+theme	window/src/thread/activity-strip.css	order-bottom: 1px solid var(--line, #8883); font-size: 12px; }
+theme	window/src/thread/activity-strip.css	s: 16px; background: var(--surface, #8881); }
+theme	window/src/thread/highlight.css	] pre { background: #272822; color: #f8f8f2; }
+theme	window/src/thread/highlight.css	] pre { background: #fdf6e3; color: #657b83; }
+theme	window/src/thread/highlight.css	olours="monokai"] pre { background: #272822; color: #f8f8f2; }
+theme	window/src/thread/highlight.css	ours="solarized"] pre { background: #fdf6e3; color: #657b83; }
+theme	window/src/thread/plan.css	color: #fff;
+theme	window/src/thread/thread.css	10px 12px; box-shadow: 0 12px 32px rgba(0,0,0,.22); font-size: 12.5px; line-
+theme	window/src/thread/thread.css	> summary > svg { color: var(--bad, #c0392b); }
+theme	window/src/thread/thread.css	at 40% 35%, #ffe6a8 0, #f39a3c 60%, #d9722b 100%);
+theme	window/src/thread/thread.css	background-color: #ff9f43;
+theme	window/src/thread/thread.css	background-color: #ffe58a;
+theme	window/src/thread/thread.css	background: rgba(0, 0, 0, 0.82);
+theme	window/src/thread/thread.css	box-shadow: 0 0 8px rgba(243, 154, 60, 0.55);
+theme	window/src/thread/thread.css	box-shadow: 0 1px 2px rgba(0, 0, 0, .12);
+theme	window/src/thread/thread.css	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18), 0 0 0 1px var(--line
+theme	window/src/thread/thread.css	color: #1b1f23;
+theme	window/src/thread/thread.css	color: #1b1f23;
+theme	window/src/thread/thread.css	dient(circle at 40% 35%, #ffe6a8 0, #f39a3c 60%, #d9722b 100%);
+theme	window/src/thread/thread.css	k-image: linear-gradient(to bottom, #000 70%, transparent);
+theme	window/src/thread/thread.css	radial-gradient(circle at 40% 35%, #ffe6a8 0, #f39a3c 60%, #d9722b 100%);
+theme	window/src/transcript-export/render.ts	.assistant { border-left: 4px solid #9c8cf4; }
+theme	window/src/transcript-export/render.ts	.error { border-left: 4px solid #f87171; }
+theme	window/src/transcript-export/render.ts	.model { margin: 8px 0 32px; color: #9ca3af; }
+theme	window/src/transcript-export/render.ts	.model, time { color: #6b7280; }
+theme	window/src/transcript-export/render.ts	.note { border-left: 4px solid #a78bfa; }
+theme	window/src/transcript-export/render.ts	.replaceAll("'", "&#039;");
+theme	window/src/transcript-export/render.ts	.user { border-left: 4px solid #9c8cf4; }
+theme	window/src/transcript-export/render.ts	body { background: #f9fafb; color: #111827; }
+theme	window/src/transcript-export/render.ts	body { background: #f9fafb; color: #111827; }
+theme	window/src/transcript-export/render.ts	body { margin: 0; background: #111827; color: #e5e7eb; line-height: 1.55;
+theme	window/src/transcript-export/render.ts	border-color: #d1d5db; background: #fff; }
+theme	window/src/transcript-export/render.ts	gin: 0; background: #111827; color: #e5e7eb; line-height: 1.55; }
+theme	window/src/transcript-export/render.ts	pre { background: #f3f4f6; color: #1f2937; }
+theme	window/src/transcript-export/render.ts	pre { background: #f3f4f6; color: #1f2937; }
+theme	window/src/transcript-export/render.ts	s: 10px; padding: 16px; background: #1f2937; }
+theme	window/src/transcript-export/render.ts	s: 7px; background: #111827; color: #d1d5db; white-space: pre-wrap; overflow-wr
+theme	window/src/transcript-export/render.ts	time { flex: none; color: #9ca3af; font-size: .75rem; font-weight: 40
+theme	window/src/transcript-export/render.ts	to; border-radius: 7px; background: #111827; color: #d1d5db; white-space: pre-w
+theme	window/src/transcript-export/render.ts	tool-summary, .note { border-color: #d1d5db; background: #fff; }
+theme	window/src/transcript-export/render.ts	{ margin: 16px 0; border: 1px solid #374151; border-radius: 10px; padding: 16px
+theme	window/src/transcript-export/replay-html.ts	top: 0; padding: 12px; background: #1f2937; display: flex; flex-wrap: wrap; ga

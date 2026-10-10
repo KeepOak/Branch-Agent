@@ -19,6 +19,13 @@ const fixture={
   request:async(method:string,params:any)=>{
     if(method==='sessions.subscribe')return {list:{sessions:rows}};
     if(method==='sessions.list' && params?.spawnedBy)return {sessions:[]};
+    if(method==='contacts.list')return {contacts:[
+      {id:'trunk:ada',kind:'trunk',name:'Ada',threadKey:'agent:ada:main',isDefault:false,lastActivityAt:Date.now(),preview:{kind:'message',text:'Ready when you are',at:Date.now()},working:false,needsYou:false,threadUnread:false,unreadTopics:0},
+      {id:'room:r1',kind:'group',name:'Design group',threadKey:'agent:ada:room:r1',roomId:'r1',isDefault:false,lastActivityAt:Date.now(),face:{members:['ada','scout']},preview:{kind:'message',text:'Scout is on it',at:Date.now()},working:false,needsYou:false,threadUnread:false,unreadTopics:0},
+    ]};
+    if(method==='rooms.list')return {rooms:[{roomId:'r1',name:'Design group',lead:'ada',rule:'lead',createdAt:Date.now(),members:[{kind:'trunk',id:'ada'},{kind:'trunk',id:'scout'}]}]};
+    if(method==='portal.list')return {portals:[{id:'p1',title:'Ledger app',port:3000,url:'http://localhost:3000',createdAtMs:Date.now()}]};
+    if(method==='a2a.peers.list')return {peers:[]};
     if(method==='agents.list')return agents;
     if(method==='sessions.list')return {sessions:rows,defaults:{modelProvider:'local',model:'fixture',thinkingLevel:'medium'}};
     if(method==='sessions.describe')return {session:{key:params.key,modelProvider:'local',model:'fixture',permissionMode:'full'}};

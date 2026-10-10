@@ -12,6 +12,40 @@ Supports foreground and background execution via `process`. If `process` is disa
 
 Completed calls return command output directly. Use `process` only when `exec` reports that a command is still running and provides a `sessionId`; an identifier printed by the command is ordinary output, not a process handle.
 
+## Heavy-step admission
+
+Builds, typechecks and test-file runs wait for free memory and a single heavy-step
+slot on their execution computer. Branch-managed exec and native Codex local shell
+calls publish a plain status such as `Waiting for memory: 2 builds ahead`, then
+continue automatically. Chat, file reads, searches and other light tool turns do
+not enter this queue. The process timeout starts when execution starts, not while
+waiting; source cancellation still cancels a queued step.
+
+Available memory includes reclaimable inactive and purgeable pages on macOS and
+uses `MemAvailable` on Linux. Windows uses the operating system's available
+physical-memory counter, as before.
+
+Repository engine builds, engine tests and strict typechecks use the same
+dist-artifact ownership implementation as runtime admission. Joined child scripts
+inherit admission rather than competing against their own parent. Checkout artifact
+ownership remains intact. Unverified child cleanup retains admission.
+
+The execution host can configure these environment settings:
+
+| Setting | Default |
+| --- | --- |
+| `BRANCH_HEAVY_STEP_BUILD_MEMORY_MB` | 4096 |
+| `BRANCH_HEAVY_STEP_TYPECHECK_MEMORY_MB` | 6144 |
+| `BRANCH_HEAVY_STEP_TEST_MEMORY_MB` | 6144 |
+
+Values are memory requirements, not limits on the process. Any nonnegative finite
+value is accepted; `0` disables the memory floor while preserving serialization.
+Without an override, each default is at most a quarter of total RAM, using the
+same load rule as the desktop update check.
+`BRANCH_HEAVY_STEP_DIRECTORY` selects the shared admission directory. Its default
+is scoped to the current operating-system user, independent of checkout, Trunk,
+thread or running Gateway. Use the same directory for runs on the same computer.
+
 ## Parameters
 
 <ParamField path="command" type="string" required>

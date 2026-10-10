@@ -1,0 +1,6 @@
+window:src/thread/blocks.reply-text-tool.test.tsx
+window:src/thread/blocks.steps.test.tsx
+window:src/thread/format.test.ts
+window:src/thread/icons.test.tsx
+window:src/thread/live-activity.test.tsx
+window:src/thread/text-tool-call.test.ts

@@ -11,7 +11,7 @@ import {
   cellDataDir,
   cellNetworkName,
   cellOwnerId,
-  DEFAULT_FLEET_IMAGE,
+  requireFleetImage,
   FLEET_ATTEMPT_LABEL,
   FLEET_OWNER_LABEL,
   FLEET_TENANT_LABEL,
@@ -174,7 +174,7 @@ export function createFleetService(options: FleetServiceOptions = {}) {
   return {
     async create(createOptions: FleetCreateOptions): Promise<FleetCreateResult> {
       const tenantId = validateTenantId(createOptions.tenant);
-      const image = validateFleetImage(createOptions.image ?? DEFAULT_FLEET_IMAGE);
+      const image = requireFleetImage(createOptions.image);
       const runtime = createOptions.runtime ?? "docker";
       const network = createOptions.network ?? "bridge";
       const diskSize =

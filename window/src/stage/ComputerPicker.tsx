@@ -1,11 +1,9 @@
-// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { Popover } from "../shell/Popover";
 import type { MenuAnchor } from "../shell/Menu";
 import type { Computer, Placement } from "./computers";
 import { SIcon } from "./stage-icons";
-import { shownWhy } from "../shell/shown-why";
 
 /** Where a picked row sends the conversation: the host, a paired device, a cloud profile or any free device. */
 export type MoveTarget = { kind: "gateway" } | { kind: "device"; deviceId: string } | { kind: "profile"; profileId: string } | { kind: "free" };
@@ -42,9 +40,9 @@ function Busy({ busy }: { busy: NonNullable<Computer["busy"]> }) {
   );
 }
 
-function Row({ c, checked, role, disabled, onPick }: { c: Computer; checked: boolean; role: "menuitemradio" | "menuitemcheckbox"; disabled?: string; onPick?: () => void }) {
+function Row({ c, checked, onPick }: { c: Computer; checked: boolean; onPick?: () => void }) {
   return (
-    <button type="button" className="mi pick-st" role={role} aria-checked={checked} disabled={Boolean(disabled) || !onPick} title={shownWhy(disabled)} onClick={onPick}>
+    <button type="button" className="mi pick-st" role="menuitemradio" aria-checked={checked} disabled={!onPick} onClick={onPick}>
       <span className="mi-tick">{checked ? <SIcon name="check" small /> : null}</span>
       <span className="mi-text">
         <span>{c.name}</span>
@@ -69,9 +67,7 @@ type Props = {
   onMoved: () => void;
 };
 
-const ALLOWED_GAP = "The engine doesn't keep a per-Trunk list of computers, so this can't be changed here.";
-
-/** The computer chip's popover: where this conversation runs, which computers the Trunk may use, add and manage. */
+/** The computer chip's popover: where this conversation runs, add and manage. */
 export function ComputerPicker({ at, engine, name, computers, profiles, placement, current, onClose, onAdd, onManage, onMoved }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -84,26 +80,26 @@ export function ComputerPicker({ at, engine, name, computers, profiles, placemen
         onMoved();
         onClose();
       },
-      (e: unknown) => {
+      () => {
         setBusy(false);
-        setError(e instanceof Error ? e.message : String(e));
+        setError(target.kind === "free" ? "No other computer is free right now." : "Couldn't move this conversation. Try again or pick another computer.");
       },
     );
   };
   const pickFor = (c: Computer): (() => void) | undefined =>
     busy ? undefined : c.id === current ? onClose : c.id === "gateway" ? () => move({ kind: "gateway" }) : c.deviceId ? () => move({ kind: "device", deviceId: c.deviceId! }) : undefined;
   const local = placement?.state !== "active";
+  const usable = (c: Computer) => c.available && (c.id === "gateway" || (c.deviceId && c.sessionHost === true && (!c.busy || c.busy.used < c.busy.total)));
+  const otherFree = computers.some((c) => c.id !== current && c.deviceId && usable(c));
   return (
     <Popover at={at} onClose={onClose} label={`${name}'s computers`} testid="computer-picker" width={330}>
       <div className="ph">This conversation uses</div>
-      {computers.map((c) => (
+      {computers.filter((c) => c.id === current || usable(c)).map((c) => (
         <Row
           key={c.id}
           c={c}
-          role="menuitemradio"
           checked={c.id === current}
           onPick={pickFor(c)}
-          disabled={c.id !== current && !c.deviceId && c.id !== "gateway" ? "A cloud computer is picked by its kind." : undefined}
         />
       ))}
       {profiles.map((p) => (
@@ -115,19 +111,13 @@ export function ComputerPicker({ at, engine, name, computers, profiles, placemen
           </span>
         </button>
       ))}
-      {local ? (
+      {local && otherFree ? (
         <button type="button" className="mi pick-st" role="menuitem" disabled={busy} onClick={() => move({ kind: "free" })}>
           <span className="mi-tick" />
           <span>Whichever is free</span>
         </button>
       ) : null}
       {error ? <p className="pp err-st" role="alert">{error}</p> : null}
-      <hr className="msep" />
-      <div className="ph">Allowed for {name}</div>
-      {computers.map((c) => (
-        <Row key={c.id} c={c} role="menuitemcheckbox" checked={c.id === current} disabled={ALLOWED_GAP} />
-      ))}
-      <p className="pp">{ALLOWED_GAP}</p>
       <hr className="msep" />
       <button type="button" className="mi" role="menuitem" onClick={onAdd}>
         <span className="mi-tick"><SIcon name="plus" small /></span>

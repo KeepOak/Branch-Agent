@@ -131,6 +131,42 @@ afterEach(() => {
 });
 
 describe("your own messages while a turn runs", () => {
+  it("keeps the first message of an empty conversation after send settles, before history arrives", async () => {
+    fake.sessionId = null;
+    fake.transcript = [];
+    fake.acks = [{ status: "ok" }];
+    const session = await connected();
+    expect(session.getSnapshot().history).toEqual([]);
+    const sending = session.send("What is 2+3? Answer in one word.");
+    expect(session.getSnapshot()).toMatchObject({ pendingUser: "What is 2+3? Answer in one word." });
+    await sending;
+    await settle();
+    expect(session.getSnapshot()).toMatchObject({ pendingUser: "What is 2+3? Answer in one word.", history: [], liveRunId: null });
+    const runId = fake.sent[0]!.idempotencyKey;
+    fake.sessionId = "s-new";
+    fake.transcript = [{ role: "user", content: "What is 2+3? Answer in one word.", timestamp: 1, idempotencyKey: `${runId}:user` }];
+    await emit("sessions.changed", { sessionKey: KEY });
+    await settle();
+    expect(session.getSnapshot().pendingUser).toBeNull();
+    expect(session.getSnapshot().history.some((block) => block.kind === "user" && block.text === "What is 2+3? Answer in one word.")).toBe(true);
+    session.stop();
+  });
+
+  it("opens a new conversation with the first-send echo already on screen", async () => {
+    fake.sessionId = null;
+    fake.transcript = [];
+    const session = await connected();
+    session.seedFirstSend("agent:main:topic-1", "What is 2+3? Answer in one word.", "echo-1");
+    await session.open("agent:main:topic-1");
+    await settle();
+    expect(session.getSnapshot()).toMatchObject({
+      sessionKey: "agent:main:topic-1",
+      pendingUser: "What is 2+3? Answer in one word.",
+      history: [],
+    });
+    session.stop();
+  });
+
   it("shows the turn working the moment you send, before the engine acknowledges it", async () => {
     fake.holdAck = true;
     const session = await connected();

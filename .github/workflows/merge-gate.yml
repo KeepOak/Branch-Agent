@@ -5,6 +5,7 @@ name: Merge gate
 # commit and fails if any of them failed. `main` requires only this check.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
@@ -12,8 +13,9 @@ permissions:
   actions: read
 
 concurrency:
+  # Body edits keep the same SHA; do not cancel the wait already running for this PR.
   group: merge-gate-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event.action != 'edited' }}
 
 jobs:
   changed-test-coverage:
@@ -34,6 +36,8 @@ jobs:
         run: node --test scripts/changed-test-coverage.test.mjs
       - name: Test the trusted merge-gate helper
         run: node --test scripts/merge-gate-trusted.test.mjs
+      - name: Test the rate-limit wait helper
+        run: node --test scripts/merge-gate-rate-limit.test.mjs scripts/check-gate-files-fresh.test.mjs
       - name: Require every changed test to run in CI
         run: node scripts/changed-test-coverage.mjs
       - name: Check merge command patterns in documentation
@@ -42,6 +46,20 @@ jobs:
         run: |
           node --test scripts/check-copied-csv.test.mjs scripts/feature-batch-ci-shard.test.mjs
           node scripts/check-copied-csv.mjs
+      - name: Test UI screenshot proof check
+        run: node --test scripts/check-ui-proof.test.mjs
+      - name: Require screenshots for window UI changes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/check-ui-proof.mjs
+      - name: Test the SELF-CHECK block check
+        run: node --test scripts/check-self-check.test.mjs
+      - name: Require a SELF-CHECK block on trunk/ pull requests
+        run: node scripts/check-self-check.mjs
+      - name: Test the window cleanliness check
+        run: node --test scripts/check-window-clean.test.mjs
+      - name: Fail new window cleanliness violations
+        run: node scripts/check-window-clean.mjs
 
   merge-gate:
     needs: changed-test-coverage
@@ -53,18 +71,173 @@ jobs:
         env:
           COVERAGE_RESULT: ${{ needs.changed-test-coverage.result }}
         run: test "$COVERAGE_RESULT" = success
+      - name: Check out the wait helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
       - name: Wait for the PR's other checks
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          MERGE_GATE_ACTION: ${{ github.event.action }}
         run: |
           set -euo pipefail
+          gh() {
+            if [ "${1:-}" = api ]; then
+              node scripts/merge-gate-rate-limit.mjs gh -- "$@"
+            else
+              command gh "$@"
+            fi
+          }
+          if [ "${MERGE_GATE_ACTION:-}" = edited ]; then
+            if node scripts/merge-gate-rate-limit.mjs skip-edited; then
+              echo "Skipping redundant edited merge-gate wait; another run for this SHA is in progress or succeeded."
+              exit 0
+            fi
+          fi
           # Give path-filtered workflows time to register their runs.
           sleep 30
+          # Workflow identity is immutable per check id. Fetch it only for
+          # duplicate job names, and reuse it on later polls.
+          attr_cache='{}'
+          identity_filter='if type == "object" and (.path | type == "string") and .path != "" then {path, event, headSha: .head_sha, checkSuiteId: .check_suite_id, pullRequests: [(.pull_requests // [])[] | {number, base: ((.base // {}).ref // null)}]} else null end'
           for attempt in $(seq 1 64); do
-            runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
-              --jq '[.check_runs[] | select(.name != "merge-gate" and .name != "merge-gate-trusted")]')
+            # Read every check-run page. One response is capped at 100.
+            page=1
+            pages='[]'
+            while :; do
+              page_json=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100&page=$page")
+              pages=$(jq -s '.[0] + [.[1]]' <<<"$pages"$'\n'"$page_json")
+              collected=$(jq '[.[].check_runs[]] | length' <<<"$pages")
+              total=$(jq '.[-1].total_count // 0' <<<"$pages")
+              if [ "$collected" -ge "$total" ]; then break; fi
+              page=$((page + 1))
+            done
+            combined=$(jq '{check_runs: [.[].check_runs[]]}' <<<"$pages")
+            runs=$(jq '[.check_runs[] | select(.name != "merge-gate" and .name != "merge-gate-trusted")]' <<<"$combined")
+            # Skip Visual tour's continue-on-error `comment` job only when
+            # check-suite or workflow-run attribution proves visual-tour.yml.
+            # A `comment` check from any other workflow is still waited on.
+            comment_paths='{}'
+            while IFS= read -r check; do
+              [ -z "$check" ] && continue
+              id=$(jq -r '.id' <<<"$check")
+              path=""
+              run_id=$(jq -r '(.details_url // .html_url // "") | capture("/actions/runs/(?<id>[0-9]+)")? | .id // empty' <<<"$check")
+              if [ -n "$run_id" ]; then
+                path=$(gh api "repos/$REPO/actions/runs/$run_id" | jq -r '.path // empty') || path=""
+              else
+                suite=$(jq -r '.check_suite.id // empty' <<<"$check")
+                if [ -n "$suite" ]; then
+                  path=$(gh api "repos/$REPO/actions/runs?check_suite_id=$suite&per_page=1" | jq -r '.workflow_runs[0].path // empty') || path=""
+                fi
+              fi
+              comment_paths=$(jq --arg id "$id" --arg path "$path" '. + {($id): $path}' <<<"$comment_paths")
+            done < <(jq -c '.[] | select(.name == "comment")' <<<"$runs")
+            runs=$(jq --argjson paths "$comment_paths" --arg tour '.github/workflows/visual-tour.yml' '
+              map(select(.name != "comment" or (($paths[.id | tostring] // "") != $tour)))
+            ' <<<"$runs")
+            # A close/reopen starts a new run on the same SHA. For each GitHub
+            # Actions app, workflow path, event, and job, keep every same-name
+            # check from the newest suite. Only a success, or a suite that is
+            # still running, replaces an earlier hard non-pass. A completed
+            # success/skipped/neutral suite supersedes cancelled-only suites of
+            # the same identity, even when the cancelled suite has a higher ID.
+            # A newer skipped or neutral run must not hide failure, timed_out,
+            # action_required, or startup_failure. Unattributed checks, and
+            # checks bound to another path, event, SHA, suite, or PR, never
+            # collapse.
+            dup_ids=$(jq -c '[group_by(.name)[] | select(length > 1) | .[].id]' <<<"$runs")
+            attrs='{}'
+            while IFS= read -r check; do
+              [ -z "$check" ] && continue
+              id=$(jq -r '.id' <<<"$check")
+              workflow=$(jq -c --arg id "$id" '.[$id] // empty' <<<"$attr_cache")
+              if [ -z "$workflow" ]; then
+                workflow=null
+                run_id=$(jq -r '(.details_url // .html_url // "") | capture("/actions/runs/(?<id>[0-9]+)")? | .id // empty' <<<"$check")
+                if [ -n "$run_id" ]; then
+                  workflow=$(gh api "repos/$REPO/actions/runs/$run_id" | jq -c "$identity_filter") || workflow=null
+                else
+                  suite=$(jq -r '.check_suite.id // empty' <<<"$check")
+                  if [ -n "$suite" ]; then
+                    workflow=$(gh api "repos/$REPO/actions/runs?check_suite_id=$suite&per_page=1" | jq -c ".workflow_runs[0] | $identity_filter") || workflow=null
+                  fi
+                fi
+                if [ "$workflow" != "null" ] && [ -n "$workflow" ]; then
+                  attr_cache=$(jq --arg id "$id" --argjson workflow "$workflow" '. + {($id): $workflow}' <<<"$attr_cache")
+                else
+                  workflow=null
+                fi
+              fi
+              if [ "$workflow" != "null" ]; then
+                attrs=$(jq --arg id "$id" --argjson workflow "$workflow" '. + {($id): $workflow}' <<<"$attrs")
+              fi
+            done < <(jq -c --argjson ids "$dup_ids" '.[] | select(.id as $id | any($ids[]; . == $id))' <<<"$runs")
+            runs=$(jq --argjson attrs "$attrs" --arg sha "$SHA" --arg pr "$PR_NUMBER" --arg base "$BASE_REF" '
+              def as_num:
+                if . == null then null
+                elif type == "number" then .
+                elif type == "string" then (try tonumber catch null)
+                else null end;
+              def bound($run):
+                ($attrs[$run.id | tostring] // null) as $w
+                | (try $run.app.id catch null) as $app
+                | $app != null
+                  and $w != null
+                  and (($w.path // "") != "")
+                  and ($w.event == "pull_request" or $w.event == "pull_request_target")
+                  and ($sha != "")
+                  and ($w.headSha == $sha)
+                  and (($w.checkSuiteId | as_num) != null)
+                  and (((try $run.check_suite.id catch null) | as_num) != null)
+                  and (($w.checkSuiteId | as_num) == ((try $run.check_suite.id catch null) | as_num))
+                  and ($pr != "")
+                  and (($w.pullRequests // []) | any((.number | as_num) == ($pr | as_num)))
+                  and ($base != "")
+                  and (($w.pullRequests // []) | all(.base == $base));
+              def identity($run):
+                [(try $run.app.id catch null), $attrs[$run.id | tostring].path, $attrs[$run.id | tostring].event, $run.name] | tojson;
+              def pass_conclusion:
+                . == "success" or . == "skipped" or . == "neutral";
+              def suite_supersedes:
+                all(.[]; (.status != "completed") or .conclusion == "success");
+              def suite_completed_pass:
+                length > 0 and all(.[]; .status == "completed" and (.conclusion | pass_conclusion));
+              def suite_only_cancelled_nonpasses:
+                all(.[];
+                  (.status != "completed")
+                  or (.conclusion | pass_conclusion)
+                  or .conclusion == "cancelled");
+              def keep_newest:
+                ([.[].check_suite.id | as_num] | max) as $suite
+                | [.[] | select((.check_suite.id | as_num) == $suite)] as $newest
+                | if ($newest | suite_supersedes) then $newest
+                  else
+                    ([group_by(.check_suite.id)[] | select(suite_completed_pass)] | last) as $pass
+                    | if $pass != null
+                        and ([.[] | select((.check_suite.id | as_num)
+                          != ($pass[0].check_suite.id | as_num))]
+                          | suite_only_cancelled_nonpasses)
+                      then $pass
+                      else . end
+                  end;
+              reduce .[] as $run ({unbound: [], groups: {}};
+                if bound($run) then
+                  .groups[identity($run)] = ((.groups[identity($run)] // []) + [$run])
+                else
+                  .unbound += [$run]
+                end)
+              | . as $acc
+              | [ $acc.groups[] | keep_newest ]
+              | add // []
+              | $acc.unbound + .
+            ' <<<"$runs")
             # CodeQL default setup can register Analyze after all other checks finish.
             pending=$(jq '([.[] | select(.status != "completed")] | length) + (if any(.[]; .name == "Analyze (actions)") then 0 else 1 end)' <<<"$runs")
             failed=$(jq -r '[.[] | select(.status == "completed" and (.conclusion | IN("success","skipped","neutral") | not)) | "\(.name): \(.conclusion)"] | .[]' <<<"$runs")
@@ -77,4 +250,7 @@ jobs:
             echo "Waiting for $pending check(s)…"
             if [ "$attempt" -lt 64 ]; then sleep 30; fi
           done
-          echo "Timed out waiting for checks."; exit 1
+          pending_names=$(jq -r '[.[] | select(.status != "completed") | .name] + (if any(.[]; .name == "Analyze (actions)") then [] else ["Analyze (actions)"] end) | unique | sort | join(", ")' <<<"$runs")
+          echo "Timed out waiting for: $pending_names"
+          echo "re-run merge-gate, do not merge main"
+          exit 1

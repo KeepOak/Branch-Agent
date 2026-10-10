@@ -9,9 +9,39 @@ import { Icon } from "../../../shell/icons";
 import { useLockdown } from "../../../shell/use-lockdown";
 import { notify } from "../../../shell/notify";
 import { MODE_ROWS, blockedReason, modeName, isEngineMode, type EngineMode } from "../../../composer/mode";
+import { platformName } from "../../../setup/steps-later";
 import { record, text, visible, type RecordValue } from "../adapter";
 import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec, Seg } from "../kit";
 import { WHY, deadControl, type Cfg, type Ctx } from "./permissions-rows";
+
+/** Wording and the open-settings label for This computer, from the real platform. Linux has no one settings app. */
+export function thisPcCopy(os = platformName()) {
+  if (os === "macOS") {
+    return {
+      hint: "macOS asks for very little. Branch asks before taking over.",
+      open: "Open System Settings",
+      install: "macOS asks for an administrator yes each time. Branch asks you first.",
+      why: "System Settings › Privacy & Security opens from the Branch app on your computer.",
+      locationHelp: "Lets a Trunk ask where this computer is when a tool needs it. On macOS it asks the first time a Trunk needs it.",
+    };
+  }
+  if (os === "Linux") {
+    return {
+      hint: "Linux uses the desktop portal for microphone, camera and notifications. Branch asks before taking over.",
+      open: null,
+      install: "Linux asks for an administrator yes each time. Branch asks you first.",
+      why: "Microphone and camera use PipeWire or the desktop portal. Notifications use this desktop. They open from the Branch app on your computer.",
+      locationHelp: "Lets a Trunk ask where this computer is when a tool needs it. On Linux it asks the first time a Trunk needs it.",
+    };
+  }
+  return {
+    hint: "Windows asks for very little. Branch asks before taking over.",
+    open: "Open Windows Settings",
+    install: "Windows asks for an administrator yes each time. Branch asks you first.",
+    why: WHY.os,
+    locationHelp: "Lets a Trunk ask where this computer is when a tool needs it. On Windows it asks the first time a Trunk needs it.",
+  };
+}
 
 const svg = (d: ReactNode) => <svg className="i s" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>;
 const MIC = svg(<><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></>);
@@ -28,19 +58,20 @@ export const THIS_PC_ROWS: [string, ReactNode, string, boolean][] = [
 ];
 
 export function ThisPc() {
+  const copy = thisPcCopy();
   return (
-    <Sec title="This computer" hint="Windows asks for very little. Branch asks before taking over.">
+    <Sec title="This computer" hint={copy.hint}>
       <Plist>
         {THIS_PC_ROWS.map(([t, icon, sub, open]) => (
-          <Prow key={t} icon={<span className="pm-tile">{icon}</span>} title={t} sub={sub}>
-            {open ? <Btn sm disabled title={WHY.os}>Open Windows Settings</Btn> : null}
+          <Prow key={t} icon={<span className="pm-tile">{icon}</span>} title={t} sub={t === "Installing tools" ? copy.install : sub}>
+            {open && copy.open ? <Btn sm disabled title={copy.why}>{copy.open}</Btn> : null}
           </Prow>
         ))}
       </Plist>
-      <Hint>{WHY.os}</Hint>
+      <Hint>{copy.why}</Hint>
       <div className="sec pm-loc">
-        <Ctl title="Location access" sub="Lets a Trunk ask where this computer is when a tool needs it." help="Lets a Trunk ask where this computer is when a tool needs it. On Windows it asks the first time a Trunk needs it." off={WHY.os}>{deadControl({ seg: ["Off", "While using", "Always"], v: "While using" }, "Location access")}</Ctl>
-        <Ctl title="Precise location" sub="The exact spot, not just the area." off={WHY.os}>{deadControl({ sw: true }, "Precise location")}</Ctl>
+        <Ctl title="Location access" sub="Lets a Trunk ask where this computer is when a tool needs it." help={copy.locationHelp} off={WHY.key}>{deadControl({ seg: ["Off", "While using", "Always"], v: "While using" }, "Location access")}</Ctl>
+        <Ctl title="Precise location" sub="The exact spot, not just the area." off={WHY.key}>{deadControl({ sw: true }, "Precise location")}</Ctl>
       </div>
     </Sec>
   );
@@ -104,6 +135,7 @@ export function Lockdown({ engine }: { engine: WindowEngine }) {
       <div><b>Lockdown</b><p>One switch that stops every Trunk from sending, changing or spending anything.</p></div>
       {/* Preview spec-v23 index.html:8553: danger-filled only while off; "Turn Lockdown off" is the plain button. */}
       <Btn className={lockdown.on ? undefined : "bad"} disabled={!lockdown.loaded || !lockdown.supported} title={lockdown.supported ? undefined : "This engine has no Lockdown switch yet."} onClick={toggleLockdown}>{lockdown.on ? "Turn Lockdown off" : "Turn Lockdown on"}</Btn>
+      {lockdown.confirmation}
     </div>
   );
 }

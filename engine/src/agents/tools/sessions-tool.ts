@@ -16,6 +16,7 @@ import { isIncognitoSessionKey, parseAgentSessionKey } from "../../routing/sessi
 import { getSessionWorkAdmissionRelease } from "../../sessions/session-lifecycle-admission.js";
 import type { AdmittedRunOperatorAuthority } from "../admitted-run-context.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
+import { resolveAgentFullAccess, type AgentFullAccessSource } from "./agent-full-access.js";
 import type { AnyAgentTool } from "./common.js";
 import {
   jsonResult,
@@ -82,7 +83,7 @@ type SessionsToolOptions = {
   config?: BranchConfig;
   callGateway?: AgentToolGatewayRequestCaller;
   hasInProcessGatewayContext?: () => boolean;
-};
+} & Omit<AgentFullAccessSource, "config">;
 
 function readBooleanParam(params: Record<string, unknown>, key: string): boolean | undefined {
   const value = params[key];
@@ -483,10 +484,27 @@ export function createSessionsTool(opts: SessionsToolOptions = {}): AnyAgentTool
       if (values.model !== undefined && !inProcessGatewayAvailable) {
         return jsonResult({ status: "forbidden", error: "Model patch needs in-process gateway." });
       }
-      const patchGateway: AgentToolGatewayRequestCaller = async (request) =>
-        values.model === undefined
-          ? await gatewayRequest(request)
-          : await withAgentSessionModelPatchOrigin(async () => await gatewayRequest(request));
+      const patchGateway: AgentToolGatewayRequestCaller = async (request) => {
+        if (values.model === undefined) {
+          return await gatewayRequest(request);
+        }
+        const context = resolveSessionToolContext(opts);
+        const fullAccess = resolveAgentFullAccess({
+          config: context.cfg,
+          agentId: resolveSessionAgentId({
+            sessionKey: context.effectiveRequesterKey,
+            config: context.cfg,
+            agentId: opts.requesterAgentIdOverride,
+          }),
+          sessionKey: context.effectiveRequesterKey,
+          execSession: opts.execSession,
+          execOverrides: opts.execOverrides,
+          fsPolicy: opts.fsPolicy,
+        });
+        return await withAgentSessionModelPatchOrigin(async () => await gatewayRequest(request), {
+          fullAccess,
+        });
+      };
       if (params.targets !== undefined) {
         return jsonResult(
           await runSessionsToolPatchMany({

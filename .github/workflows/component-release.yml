@@ -2,15 +2,18 @@ name: GitHub component release
 
 on:
   push:
+    branches: [main]
     tags: ['v[0-9]*.[0-9]*.[0-9]*']
   schedule:
-    # Every 30 minutes, offset from the top of the hour: batch merges into releases.
+    # Backup only. Scheduled slots are often dropped; the catch-up job releases merges
+    # that landed inside the 25-minute window. Offset from the top of the hour.
     - cron: '7,37 * * * *'
   pull_request:
     paths:
       - 'desktop/scripts/release-*'
       - 'desktop/scripts/make-component-release.mjs'
       - 'desktop/scripts/publish-component-release.mjs'
+      - 'desktop/scripts/component-release-readiness.mjs'
       - 'desktop/scripts/production-engine-smoke*'
       - 'desktop/scripts/bundle-node.mjs'
       - 'desktop/src/component-update*'
@@ -29,20 +32,26 @@ on:
 permissions:
   contents: read
 
-# Scheduled and manual releases run one at a time and never cancel each other: an in-flight release
-# always finishes; a queued run waits. Pull requests: a new push replaces the previous check.
+# Release runs share one group and never cancel an in-flight publish. Queued runs collapse to the
+# newest pending run. Push and schedule releases wait until the latest release is more than 25
+# minutes old. The catch-up job, in its own group, waits out that window and dispatches one
+# follow-up when main is still ahead. Pull requests: a new push replaces the previous check.
 concurrency:
   group: github-component-release-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   readiness:
-    if: github.repository == 'KeepOak/Branch-Agent'
+    if: github.repository == 'KeepOak/Branch-Agent' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
       commit: ${{ steps.check.outputs.commit }}
+      skip_reason: ${{ steps.check.outputs.skip_reason }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -52,57 +61,110 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
+          MERGE_GATE_WAIT_SECONDS: '240'
+        run: &component-release-readiness-check |
           set -euo pipefail
+          note() {
+            printf '%s\n' "$1" >&2
+            if [[ "${RECORD_SUMMARY:-}" == "1" && -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+              printf '%s\n' "$1" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          }
           decide_scheduled() {
             git fetch origin main
-            local main_commit latest_release latest_commit failed_checks
+            local main_commit latest_release latest_commit failed_checks latest_meta published_at
             main_commit="$(git rev-parse origin/main)"
-            latest_release=$(gh api repos/KeepOak/Branch-Agent/releases/latest --jq .tag_name 2>/dev/null || echo "")
+            latest_release=""
+            published_at=""
+            latest_meta=$(node scripts/merge-gate-rate-limit.mjs gh -- api repos/KeepOak/Branch-Agent/releases/latest --jq '[.tag_name,.published_at] | @tsv' 2>/dev/null || echo "")
+            if [[ -n "$latest_meta" ]]; then
+              latest_release="${latest_meta%%$'\t'*}"
+              published_at="${latest_meta#*$'\t'}"
+            fi
             if [[ -z "$latest_release" ]]; then
-              echo "No previous release found; proceeding with release" >&2
-              printf '%s %s\n' true "$main_commit"
+              note "No previous release found; proceeding with release"
+              printf '%s %s %s\n' true "$main_commit" ok
               return
             fi
             # Resolves lightweight and annotated tags to the commit they point at.
-            latest_commit=$(gh api repos/KeepOak/Branch-Agent/commits/"$latest_release" --jq .sha)
+            latest_commit=$(node scripts/merge-gate-rate-limit.mjs gh -- api repos/KeepOak/Branch-Agent/commits/"$latest_release" --jq .sha)
             if [[ "$main_commit" == "$latest_commit" ]]; then
-              echo "Main has not changed since $latest_release ($latest_commit); skipping release" >&2
-              printf '%s %s\n' false "$main_commit"
+              note "Main has not changed since $latest_release ($latest_commit); skipping release"
+              printf '%s %s %s\n' false "$main_commit" already-released
               return
+            fi
+            # Cooldown skips stay on the two calls above. Check runs are only for a release we may publish.
+            if [[ "$GITHUB_EVENT_NAME" == "push" || "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+              if ! node desktop/scripts/component-release-readiness.mjs "$published_at"; then
+                note "Latest release $latest_release was published at $published_at; waiting until it is more than 25 minutes old"
+                printf '%s %s %s\n' false "$main_commit" cooldown
+                return
+              fi
             fi
             # Skip only when a check on main's head actually failed. Missing or pending checks do not block.
-            failed_checks=$(gh api --paginate "repos/KeepOak/Branch-Agent/commits/$main_commit/check-runs" \
-              --jq '[.check_runs[] | select(.conclusion == "failure")] | length' | awk '{s+=$1} END {print s+0}')
+            # One rerun of failed jobs first; skip only if a check is still failing after that.
+            failed_decision="$(node desktop/scripts/component-release-readiness.mjs resolve-failed-checks --sha "$main_commit")"
+            failed_checks="$(node -p 'JSON.parse(process.argv[1]).failedCount' "$failed_decision")"
             if [[ "$failed_checks" != "0" ]]; then
-              echo "Main has $failed_checks failed check(s) at $main_commit; skipping release" >&2
-              printf '%s %s\n' false "$main_commit"
+              note "Main has $failed_checks failed check(s) at $main_commit; skipping release"
+              printf '%s %s %s\n' false "$main_commit" failed-checks
               return
             fi
-            echo "Main has new changes since $latest_release and no failed checks; proceeding with release" >&2
-            printf '%s %s\n' true "$main_commit"
+            note "Main has new changes since $latest_release and no failed checks; proceeding with release"
+            printf '%s %s %s\n' true "$main_commit" ok
           }
 
           should_release="false"
           commit=""
+          skip_reason=""
 
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             echo "scheduled rehearsal (does not decide this pull-request build):"
-            decide_scheduled >/dev/null
+            RECORD_SUMMARY=0 decide_scheduled >/dev/null || echo "scheduled rehearsal could not finish" >&2
+            node desktop/scripts/component-release-readiness.mjs "2000-01-01T00:00:00Z"
             should_release="true"
             commit="$(git rev-parse HEAD)"
           elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
             should_release="true"
             commit="$(git rev-parse HEAD)"
           else
-            read -r should_release commit < <(decide_scheduled)
+            RECORD_SUMMARY=1
+            read -r should_release commit skip_reason < <(decide_scheduled)
           fi
 
-          printf 'should_release=%s\ncommit=%s\n' "$should_release" "$commit" >> "$GITHUB_OUTPUT"
-  
+          if [[ "$skip_reason" != "cooldown" ]]; then
+            skip_reason=""
+          fi
+          printf 'should_release=%s\ncommit=%s\nskip_reason=%s\n' "$should_release" "$commit" "$skip_reason" >> "$GITHUB_OUTPUT"
+
+  # jobs.<id>.permissions only accepts read/write/none, not expressions, so PR
+  # rehearsal cannot share the write job. It checks out PR code and only counts.
+  readiness-rehearsal:
+    if: github.repository == 'KeepOak/Branch-Agent' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      commit: ${{ steps.check.outputs.commit }}
+      skip_reason: ${{ steps.check.outputs.skip_reason }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Check if a release is needed
+        id: check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_GATE_WAIT_SECONDS: '240'
+        run: *component-release-readiness-check
+
   identity:
-    needs: readiness
-    if: needs.readiness.outputs.should_release == 'true'
+    needs: [readiness, readiness-rehearsal]
+    if: always() && !cancelled() && ((needs.readiness.result == 'success' && needs.readiness.outputs.should_release == 'true') || (needs.readiness-rehearsal.result == 'success' && needs.readiness-rehearsal.outputs.should_release == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -111,7 +173,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ needs.readiness.outputs.commit }}
+          ref: ${{ needs.readiness.outputs.commit || needs.readiness-rehearsal.outputs.commit }}
           persist-credentials: false
       - name: Freeze exact source and release identity
         id: identity
@@ -133,8 +195,8 @@ jobs:
           fi
           printf 'commit=%s\nversion=%s\n' "$commit" "$version" >> "$GITHUB_OUTPUT"
   window:
-    needs: [readiness, identity]
-    if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+    needs: [readiness, readiness-rehearsal, identity]
+    if: always() && !cancelled() && needs.identity.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -158,12 +220,12 @@ jobs:
           if-no-files-found: error
           retention-days: 3
   # Wait for the shared renderer artifact before starting natives. Starting them in parallel
-  # burns the 15-minute clock while window is still queued, and the 10-minute poll then fails.
+  # burns the 35-minute clock while window is still queued, and the 10-minute poll then fails.
   native:
-    needs: [readiness, identity, window]
-    if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+    needs: [readiness, readiness-rehearsal, identity, window]
+    if: always() && !cancelled() && needs.identity.result == 'success' && needs.window.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 35
     permissions:
       contents: read
       actions: read
@@ -182,6 +244,10 @@ jobs:
       BRANCH_RELEASE_VERSION: ${{ needs.identity.outputs.version }}
       BRANCH_RELEASE_TARGET: ${{ matrix.target }}
       BRANCH_MACOS_SIGNING_IDENTITY: 30BBF0B68236AE05E063465C39DEA6C5B396B11C
+      PNPM_STORE_DIR: ${{ github.workspace }}/.cache/pnpm-store
+      PNPM_CONFIG_STORE_DIR: ${{ github.workspace }}/.cache/pnpm-store
+      ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+      ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -190,7 +256,29 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24.19.0'
-          package-manager-cache: false
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      # Reuse the engine pnpm store and Electron zips. Cache misses must not fail a release.
+      - name: Cache the engine pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ${{ github.workspace }}/.cache/pnpm-store
+          key: component-release-pnpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('engine/pnpm-lock.yaml') }}
+          restore-keys: |
+            component-release-pnpm-${{ runner.os }}-${{ runner.arch }}-
+      - name: Cache Electron downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: |
+            ${{ github.workspace }}/.cache/electron
+            ${{ github.workspace }}/.cache/electron-builder
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: component-release-electron-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('desktop/package-lock.json') }}
+          restore-keys: |
+            component-release-electron-${{ runner.os }}-${{ runner.arch }}-
       - name: Prepare stable macOS release signing identity
         if: matrix.target == 'darwin-arm64'
         shell: bash
@@ -265,6 +353,13 @@ jobs:
           fingerprint="$(openssl x509 -inform DER -in "$extracted/codesign0" -noout -fingerprint -sha1 | cut -d= -f2 | tr -d :)"
           test "$fingerprint" = "$BRANCH_MACOS_SIGNING_IDENTITY"
           codesign -dr - "$app" 2>&1 | grep -Fx 'designated => identifier "com.electron.branch-agent" and certificate root = H"30bbf0b68236ae05e063465c39dea6c5b396b11c"'
+          report="$RUNNER_TEMP/mac-signature-report.txt"
+          {
+            codesign -dv --verbose=4 "$app"
+            codesign -dr - "$app"
+          } >"$report" 2>&1
+          printf 'SHA1 Fingerprint=%s\n' "$fingerprint" >> "$report"
+          node --input-type=module -e 'import { readFileSync } from "node:fs"; import { pathToFileURL } from "node:url"; const mod = await import(pathToFileURL(process.argv[1])); if (process.env.BRANCH_MACOS_SIGNING_IDENTITY !== mod.macReleaseSigning.identitySha1) throw new Error("workflow signing identity differs from the pinned release identity"); const text = readFileSync(process.argv[2], "utf8"); const actual = (text.match(/SHA1 Fingerprint=([0-9A-Fa-f]+)/) || [])[1] || ""; mod.assertMacReleaseSignature(text, actual);' "$GITHUB_WORKSPACE/desktop/dist/mac-applications.js" "$report"
           # The self-signed identity is stable but not notarized; report Gatekeeper's assessment.
           spctl -a -vv "$app" || true
       - name: Check compiled startup and update rollback
@@ -297,8 +392,8 @@ jobs:
           echo "identity=${IDENTITY_RESULT}"
           echo "publish skipped"
   publish:
-    needs: [readiness, identity, native]
-    if: needs.readiness.outputs.should_release == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+    needs: [readiness, readiness-rehearsal, identity, native]
+    if: always() && !cancelled() && needs.identity.result == 'success' && needs.native.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -329,3 +424,98 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node desktop/scripts/publish-component-release.mjs "${{ runner.temp }}/release-assets" "${{ needs.identity.outputs.commit }}" "${{ needs.identity.outputs.version }}"
+  # Waits out the 25-minute batching window, then starts one release if main moved.
+  # The sleep is the catch-up, so this job is longer than the 15-minute check cap.
+  # A failed publish still enters this job. It continues only when that commit is
+  # still Latest; a rolled-back release exits here without dispatching.
+  catch-up:
+    needs: [readiness, identity, publish]
+    if: always() && !cancelled() && github.event_name != 'pull_request' && github.repository == 'KeepOak/Branch-Agent' && (needs.publish.result == 'success' || needs.publish.result == 'failure' || needs.readiness.outputs.skip_reason == 'cooldown')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: github-component-release-catch-up
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Wait for the release window, then dispatch if main is ahead
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_GATE_WAIT_SECONDS: '60'
+        run: |
+          set -euo pipefail
+          note() {
+            printf '%s\n' "$1" >&2
+            if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+              printf '%s\n' "$1" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+          load_main_and_release() {
+            git fetch origin main
+            main_commit="$(git rev-parse origin/main)"
+            latest_release=""
+            published_at=""
+            latest_commit=""
+            latest_meta=$(node scripts/merge-gate-rate-limit.mjs gh -- api repos/KeepOak/Branch-Agent/releases/latest --jq '[.tag_name,.published_at] | @tsv' 2>/dev/null || echo "")
+            if [[ -n "$latest_meta" ]]; then
+              latest_release="${latest_meta%%$'\t'*}"
+              published_at="${latest_meta#*$'\t'}"
+              latest_commit=$(node scripts/merge-gate-rate-limit.mjs gh -- api repos/KeepOak/Branch-Agent/commits/"$latest_release" --jq .sha)
+            fi
+          }
+          read_catch_up() {
+            local decision
+            decision="$(node desktop/scripts/component-release-readiness.mjs decide-catch-up --main "$main_commit" --latest "$latest_commit" --published-at "$published_at")"
+            catch_dispatch="$(node -p 'JSON.parse(process.argv[1]).dispatch ? "true" : "false"' "$decision")"
+            catch_wait_ms="$(node -p 'JSON.parse(process.argv[1]).waitMs' "$decision")"
+            catch_reason="$(node -p 'JSON.parse(process.argv[1]).reason' "$decision")"
+          }
+          main_commit=""
+          latest_commit=""
+          published_at=""
+          catch_dispatch="false"
+          catch_wait_ms="0"
+          catch_reason=""
+          load_main_and_release
+          if [[ "${{ needs.publish.result }}" == "failure" ]]; then
+            failed_gate="$(node desktop/scripts/component-release-readiness.mjs catch-up-after-failed-publish --latest "$latest_commit" --released "${{ needs.identity.outputs.commit }}")"
+            failed_proceed="$(node -p 'JSON.parse(process.argv[1]).proceed ? "true" : "false"' "$failed_gate")"
+            note "$(node -p 'JSON.parse(process.argv[1]).reason' "$failed_gate")"
+            if [[ "$failed_proceed" != "true" ]]; then
+              exit 0
+            fi
+          fi
+          read_catch_up
+          note "$catch_reason"
+          if [[ "$catch_dispatch" == "true" ]]; then
+            gh workflow run component-release.yml --ref main
+            note "Dispatched component-release.yml on main"
+            exit 0
+          fi
+          if ! [[ "$catch_wait_ms" =~ ^[0-9]+$ ]]; then
+            echo "Catch-up wait was not a number: ${catch_wait_ms}" >&2
+            exit 1
+          fi
+          max_sleep_seconds=$((26 * 60))
+          sleep_seconds=$(( (catch_wait_ms + 999) / 1000 ))
+          if (( sleep_seconds > max_sleep_seconds )); then
+            sleep_seconds=$max_sleep_seconds
+          fi
+          if (( sleep_seconds == 0 )); then
+            exit 0
+          fi
+          note "Sleeping ${sleep_seconds}s until the release window ends"
+          sleep "$sleep_seconds"
+          load_main_and_release
+          read_catch_up
+          note "$catch_reason"
+          if [[ "$catch_dispatch" != "true" ]]; then
+            exit 0
+          fi
+          gh workflow run component-release.yml --ref main
+          note "Dispatched component-release.yml on main"

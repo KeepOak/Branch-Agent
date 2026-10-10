@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { WindowEngine } from "../connect/engine";
 import type { RunEnd } from "../connect/session";
 import { agentState } from "../face/agentState";
-import { CHECK_STATUS_EVENT } from "./blocks";
+import { CHECK_STATUS_EVENT, isScreenControlSetupError } from "./blocks";
 import { DoneCheer } from "./DoneCheer";
 import { modelName } from "./format";
 import { historyToBlocks, markStopped } from "./history";
@@ -147,5 +147,23 @@ describe("Couldn't finish", () => {
     window.addEventListener(CHECK_STATUS_EVENT, () => opened++);
     await act(async () => [...strip.querySelectorAll("button")].find((b) => b.textContent === "Check status")!.click());
     expect(opened).toBe(1);
+  });
+
+  it("offers Open that switch when the computer tool names the screen-and-mouse setting", async () => {
+    const message = "no computer-control device is connected. Turn on Settings › Computer & browser › See the screen and use the mouse. Full access does not include this";
+    expect(isScreenControlSetupError(message)).toBe(true);
+    expect(isScreenControlSetupError("No API key found")).toBe(false);
+    const history: Block[] = [{ kind: "user", key: "u", text: "x" }, { kind: "error", key: "e", message }];
+    const container = await mount(<Thread name="Juniper" history={history} live={[]} pendingUser={null} running={false} engine={engine} onAnswer={() => {}} />);
+    const strip = container.querySelector('[data-testid="run-error"]')!;
+    expect([...strip.querySelectorAll("button")].map((b) => b.textContent || b.getAttribute("aria-label"))).toEqual(["Dismiss", "Copy error", "Open that switch", "Check status"]);
+    let page = "";
+    const listen = (event: Event) => {
+      page = (event as CustomEvent<{ page?: string }>).detail?.page ?? "";
+    };
+    window.addEventListener("branch:navigate-settings", listen);
+    await act(async () => strip.querySelector<HTMLButtonElement>("[data-testid=open-screen-control]")!.click());
+    window.removeEventListener("branch:navigate-settings", listen);
+    expect(page).toBe("computer");
   });
 });

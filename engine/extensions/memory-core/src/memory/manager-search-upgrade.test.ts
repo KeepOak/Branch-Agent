@@ -13,13 +13,14 @@ import { MEMORY_INDEX_PROVENANCE_VERSION, type MemoryIndexMeta } from "./manager
 const { closeAllMemorySearchManagers, getMemorySearchManager } = await import("./index.js");
 
 const versions = ["chunkingVersion", "provenanceVersion"] as const;
+const fixture = createManagerIndexFixture({
+  getMemorySearchManager,
+  stateLifetime: "file",
+  closeAllMemorySearchManagers,
+});
 describe.each(versions)("memory search after a %s upgrade", (versionKey) => {
   const currentVersion =
     versionKey === "chunkingVersion" ? MEMORY_CHUNKING_VERSION : MEMORY_INDEX_PROVENANCE_VERSION;
-  const fixture = createManagerIndexFixture({
-    getMemorySearchManager,
-    closeAllMemorySearchManagers,
-  });
 
   function createConfig(model = "mock-embed") {
     return fixture.createConfig({ model, vectorEnabled: false });
@@ -149,11 +150,13 @@ describe.each(versions)("memory search after a %s upgrade", (versionKey) => {
     expect(withDatabase(dbPath, readMeta)[versionKey]).toBe(currentVersion - 1);
   });
 
-  it("preserves configuration-only mismatch behavior", async () => {
+  it("serves lexical rows during a model-only configuration mismatch", async () => {
     await seedIndex(createConfig("old-model"), false);
     const manager = await fixture.getFreshManager(createConfig("new-model"));
 
-    await expect(manager.search("alpha", { lexicalOnly: true })).resolves.toEqual([]);
+    await expect(manager.search("alpha", { lexicalOnly: true })).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ path: "memory/2026-01-12.md" })]),
+    );
     expect(manager.status().custom?.indexIdentity).toMatchObject({
       status: "mismatched",
       code: "model",

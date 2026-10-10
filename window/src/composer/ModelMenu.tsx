@@ -40,7 +40,6 @@ type Props = {
   trunkId?: string;
 };
 
-const NO_PICK_ACCOUNT = "Picking one account for a single conversation isn't in the engine yet. Change the order in Accounts.";
 
 const accountsFor = (all: Account[], provider: string | undefined) => (provider ? all.filter((a) => a.p.provider === provider || a.p.authProvider === provider) : []);
 const UNAVAILABLE_LABELS: Record<AvailabilityReason, string> = {
@@ -117,7 +116,14 @@ export function ModelMenu(p: Props) {
             {p.error} <button type="button" className="c-link" onClick={p.onRetry}>Try again</button>
           </p>
         ) : null}
-        {!p.loading && !p.error && p.models.length === 0 ? <p className="c-pp">No models are allowed here.</p> : null}
+        {!p.loading && !p.error && p.models.length === 0 ? (
+          allAccounts.length > 0 ? <p className="c-pp">No models are allowed here.</p> : (
+            <p className="c-pp">
+              No model account connected yet.{" "}
+              <button type="button" className="c-link" disabled={!p.onOpen} title={p.onOpen ? undefined : NO_ROUTE} onClick={() => open("settings/accounts/add")}>Add an account</button>
+            </p>
+          )
+        ) : null}
         {p.models.length > 0 && groups.length === 0 ? <p className="c-pp">No models match.</p> : null}
         <div className="c-scroll">
           {groups.map((g) => (
@@ -158,9 +164,6 @@ export function ModelMenu(p: Props) {
             <Sep />
             <Head>Account</Head>
             <MenuItem label="Automatic" sub="Branch picks, and moves on when one runs low" checked />
-            {accounts.map((a) => (
-              <MenuItem key={a.a.profileId} label={accountName(a)} disabled reason={NO_PICK_ACCOUNT} />
-            ))}
             <LinkRow icon="users" label="Manage accounts…" target="settings/accounts" onOpen={p.onOpen} open={open} />
           </>
         ) : null}
@@ -171,7 +174,6 @@ export function ModelMenu(p: Props) {
           Thinking options depend on the model.
           {accounts.length > 1 ? ` When ${accountName(accounts[0])} runs out, Branch moves to ${accountName(accounts[1])}.` : ""}
         </p> : null}
-        {!p.embedded ? <LinkRow icon="users" label="Accounts and order…" target="settings/accounts" onOpen={p.onOpen} open={open} /> : null}
         {!p.embedded ? <LinkRow icon="sliders" label="Manage models…" target="settings/models" onOpen={p.onOpen} open={open} /> : null}
       </div>
   );
@@ -193,18 +195,22 @@ function ModelSettings(p: Props & { levels: { id: string; label: string }[]; spe
           />
         </div>
       ) : null}
+      {p.current ? (
+        <>
       <div className="c-row">
         <span>Speed</span>
         <Segmented
           label="Speed"
           items={p.speeds}
           value={speedOf(p.row)}
-          disabled={!p.current?.supportsFastMode}
-          reason={p.current?.supportsFastMode ? undefined : "This model has one speed."}
+          disabled={!p.current.supportsFastMode}
+          reason={p.current.supportsFastMode ? undefined : "This model has one speed."}
           onPick={(id) => void p.patch({ fastMode: id === "standard" ? false : id === "fast" ? true : "ultrafast" })}
         />
       </div>
-      <p className="c-pp c-pp-note">{p.current?.supportsFastMode ? "Faster answers use your plan’s limits faster." : "This model has one speed."}</p>
+      <p className="c-pp c-pp-note">{p.current.supportsFastMode ? "Faster answers use your plan’s limits faster." : "This model has one speed."}</p>
+        </>
+      ) : null}
       {p.advanced && ctx.length > 1 ? (
         <div className="c-row">
           <span>Context to plan for</span>

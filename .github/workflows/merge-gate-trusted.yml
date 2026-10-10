@@ -43,11 +43,23 @@ jobs:
           package-manager-cache: false
       - name: Test the trusted gate helper
         run: node --test scripts/merge-gate-trusted.test.mjs
+      - name: Test the rate-limit wait helper
+        run: node --test scripts/merge-gate-rate-limit.test.mjs scripts/check-gate-files-fresh.test.mjs
+      - name: Test the commit email checker
+        run: node --test scripts/check-commit-emails.test.mjs
+      - name: Check pull request commit emails
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/check-commit-emails.mjs
       - name: Wait for checks and run main's coverage and merge-command gates
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           GITHUB_RUN_ID: ${{ github.run_id }}

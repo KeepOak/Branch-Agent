@@ -2,8 +2,10 @@
 // and whether a new version waits. Each refreshes on the engine's own events, never on a made-up timer result.
 import { useEffect, useState } from "react";
 import type { SaplingSession } from "../connect/session";
-import { readLimits, type Limits, type UpdateInfo } from "./status-data";
+import { readLimits, usagePollResult, type Limits, type UpdateInfo } from "./status-data";
 import { componentDesktop, MANUAL_UPDATE_UNSUPPORTED, useDesktopComponentStatus } from "../connect/desktop-component-updates";
+
+import { isNewerBranchVersion } from "../connect/branch-version";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const RELEASE_URL = "https://api.github.com/repos/KeepOak/Branch-Agent/releases/latest";
@@ -65,16 +67,28 @@ export function useLimits(session: SaplingSession, ready: boolean): Limits | nul
     }
     const load = () =>
       session.request("usage.status", {}).then(
-        (r) => setLimits(readLimits(r)),
+        (r) => {
+          const next = readLimits(r);
+          setLimits(next);
+          window.dispatchEvent(new CustomEvent("branch:usage-checked", { detail: next }));
+        },
         (error: unknown) => console.warn("usage.status failed", error),
       );
     void load();
     const timer = setInterval(load, 5 * 60_000);
-    window.addEventListener("branch:usage-checked", load);
+    const onChecked = (event: Event) => {
+      const next = usagePollResult(event);
+      if (next) {
+        setLimits(next);
+        return;
+      }
+      void load();
+    };
+    window.addEventListener("branch:usage-checked", onChecked);
     const off = session.onGatewayEvent((event, payload) => {
       if (event === "chat" && rec(payload).state === "final") void load();
     });
-    return () => { clearInterval(timer); window.removeEventListener("branch:usage-checked", load); off(); };
+    return () => { clearInterval(timer); window.removeEventListener("branch:usage-checked", onChecked); off(); };
   }, [session, ready]);
   return limits;
 }
@@ -99,15 +113,17 @@ export function useUpdate(session: SaplingSession, ready: boolean, version: stri
   if (!ready) return null;
   if (desktop) {
     const status = native.status;
-    const available = status?.phase === "available" || status?.phase === "staged";
-    return { current: status?.currentVersion ?? version, latest: available ? status.latestVersion : null, notes: [],
-      installing: status?.phase === "staging" || status?.phase === "staged",
-      waiting: status?.phase === "staged" ? "Downloaded. Restart Branch when your work is ready."
+    const current = status?.currentVersion ?? version;
+    const newer = Boolean(current.trim()) && isNewerBranchVersion(status?.latestVersion, current);
+    const available = newer && (status?.phase === "available" || status?.phase === "staged");
+    return { current, latest: available ? status.latestVersion : null, notes: [],
+      installing: status?.phase === "staging" || (available && status?.phase === "staged"),
+      waiting: available && status?.phase === "staged" ? "Downloaded. Restart Branch when your work is ready."
         : status?.phase === "staging" ? "Downloading and checking the update." : null,
       statusMessage: !desktop.componentUpdates ? desktop.unavailableReason ?? MANUAL_UPDATE_UNSUPPORTED : native.error ??
         (status?.phase === "current" ? undefined : "Check for updates in Updates & about.") };
   }
-  return { current: version, latest: version && release.version !== version ? release.version : null,
+  return { current: version, latest: version.trim() && isNewerBranchVersion(release.version, version) ? release.version : null,
     notes: [], installing: false, waiting: null,
     statusMessage: release.error ?? (release.version ? undefined : "Checking Branch releases…") };
 }

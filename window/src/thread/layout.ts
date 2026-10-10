@@ -1,9 +1,29 @@
 // How the thread lays its blocks out: consecutive steps share one Steps fold, and each Trunk turn's first
 // item carries the gutter face, as the approved design draws it: the Steps fold when the turn starts with steps,
-// else the first reply.
+// else the first reply. A new user message or a new run always starts a new fold (preview stepsPB18 / threads.fixPB18).
 import type { Block } from "./model";
+import { isInternalStep } from "./internal-steps";
 
 type Step = Extract<Block, { kind: "step" }>;
+
+/** The run a step belongs to (`outputKey` is `${runId}:${step.key}` from projectRun / history). */
+export function stepRunId(step: Step): string | undefined {
+  const key = step.outputKey;
+  if (!key) return undefined;
+  const suffix = `:${step.key}`;
+  return key.endsWith(suffix) ? key.slice(0, -suffix.length) : undefined;
+}
+
+function sameStepRun(a: Step, b: Step): boolean {
+  const left = stepRunId(a);
+  const right = stepRunId(b);
+  return !left || !right || left === right;
+}
+
+/** Browser, computer, screen or desktop rows the conversation's activity card groups. */
+export function isComputerStep(block: Block): block is Step {
+  return block.kind === "step" && /browser|computer|screen|desktop/i.test(block.tool);
+}
 
 export type Item =
   | { type: "block"; block: Block; index: number; firstReply: boolean; face: boolean }
@@ -20,12 +40,21 @@ export function layout(blocks: readonly Block[], offset = 0): Item[] {
   let held: Item[] = [];
   let replied = false;
   let faced = false;
+  // A user message (or a later step from another run) must not join the fold that just closed.
+  let sealSteps = false;
   blocks.forEach((block, i) => {
+    if (isInternalStep(block)) return;
     if (block.kind === "user") {
       replied = false;
       faced = false;
+      sealSteps = true;
     }
     if (block.kind === "steer" && items.at(-1)?.type === "steps") {
+      held.push({ type: "block", block, index: offset + i, firstReply: false, face: false });
+      return;
+    }
+    // A Thinking row between two tool-call rounds of one run waits too, so the run's steps stay one fold.
+    if (block.kind === "thinking" && items.at(-1)?.type === "steps" && !sealSteps) {
       held.push({ type: "block", block, index: offset + i, firstReply: false, face: false });
       return;
     }
@@ -35,12 +64,16 @@ export function layout(blocks: readonly Block[], offset = 0): Item[] {
     }
     if (block.kind === "step") {
       const last = items[items.length - 1];
-      if (last?.type === "steps") {
+      const canMerge = last?.type === "steps" && !sealSteps && sameStepRun(last.steps[0], block);
+      if (canMerge) {
         last.steps.push(block);
       } else {
+        items.push(...held);
+        held = [];
         items.push({ type: "steps", key: `steps:${block.key}`, steps: [block], face: !faced, run: runLine(blocks, i) });
         faced = true;
       }
+      sealSteps = false;
       return;
     }
     const firstReply = block.kind === "text" && !replied;

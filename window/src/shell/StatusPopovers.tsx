@@ -5,11 +5,11 @@ import type { Conversation } from "../connect/conversations";
 import type { Level } from "../places-nav/settings-nav";
 import { Icon, type IconName } from "./icons";
 import { Popover, type Above } from "./Popover";
-import { ageWords, comingUp, monthParams, readLimits, readMonthSpend, readRoom, readRounds, sizeWords, uptimeWords, type Limits, type Room, type Round, type UpdateInfo } from "./status-data";
+import { ageWords, comingUp, readLimits, readRoom, readRounds, sizeWords, uptimeWords, type LimitRow, type Limits, type Room, type Round, type UpdateInfo } from "./status-data";
 import type { GatewayFacts } from "./use-status";
 import "./status.css";
 import { shownWhy } from "./shown-why";
-import { branchVersionDetail, branchVersionLabel } from "../connect/branch-version";
+import { branchVersionDetail, branchVersionLabel, isNewerBranchVersion } from "../connect/branch-version";
 import { installOnComputer } from "../connect/desktop-component-updates";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
@@ -84,16 +84,36 @@ export function GatewayPopover({ facts, level, onRestart, onSettings, ...base }:
   );
 }
 
-/** Every account keeps its own 5-hour and week windows; no totals are added across accounts. */
+function providerDot(row: LimitRow): string {
+  const raw = `${row.provider ?? ""} ${row.name}`.toLowerCase();
+  if (raw.includes("anthropic") || raw.includes("claude")) {
+    return "anthropic";
+  }
+  if (raw.includes("openai") || raw.includes("codex") || raw.includes("chatgpt")) {
+    return "openai";
+  }
+  return (row.provider ?? "").replace(/[^a-z0-9]+/gi, "").toLowerCase();
+}
+
+function accountRow(row: LimitRow) {
+  const fiveHour = row.windows.find((window) => /5-hour/i.test(window.name)) ?? row.windows[0];
+  const week = row.windows.find((window) => /week/i.test(window.name));
+  const used = fiveHour ? Math.max(0, 100 - fiveHour.left) : 0;
+  const weekUsed = week ? Math.max(0, 100 - week.left) : null;
+  const left = fiveHour ? `${fiveHour.left}% left${fiveHour.reset ? ` · ${fiveHour.reset}` : ""}` : null;
+  const label = row.email || row.name;
+  const detail = [label === row.name ? null : row.name, row.plan, weekUsed === null ? null : `this week ${weekUsed}% used`].filter(Boolean).join(" · ");
+  return { fiveHour, used, left, label, detail };
+}
+
+/** Every account is one flat list: provider dot, account, left · reset, meter, name · plan · this week. */
 export function UsagePopover({ limits, request, onOpenUsage, ...base }: Base & { limits: Limits | null; request: Request; onOpenUsage: () => void }) {
-  const spend = useRead(request, "usage.cost", monthParams(), readMonthSpend);
   const [checked, setChecked] = useState<Limits | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
   useEffect(() => setChecked(null), [limits]);
   const data = checked ?? limits;
   const rows = data?.rows ?? [];
-  const groups = Array.from(new Set(rows.map((row) => row.name)));
   const check = useCallback((refreshAuth = true) => {
     setChecking(true);
     setCheckError(null);
@@ -105,29 +125,26 @@ export function UsagePopover({ limits, request, onOpenUsage, ...base }: Base & {
   }, [request]);
   useEffect(() => { check(false); }, [check]);
   return (
-    <Popover at={{ x: 0, y: 0 }} label="Every account" testid="pop-usage" className="sp sp-wide" {...base}>
+    <Popover at={{ x: 0, y: 0 }} label="Every account" testid="pop-usage" className="sp sp-wide usePopT5" {...base}>
       <div className="lims">
         <div className="pt">Every account</div>
-        {groups.map((group) => <div key={group}>
-          <div className="ph sp-provider">{group}</div>
-          {rows.filter((row) => row.name === group).map((row) => {
-            const fiveHour = row.windows.find((window) => /5-hour/i.test(window.name)) ?? row.windows[0];
-            const week = row.windows.find((window) => /week/i.test(window.name));
-            return <div className="sp-account" key={row.id}>
-              <div className="sp-account-head"><span className="sp-email">{row.email || row.account || row.name}</span><span>{row.plan}</span>{row.inUse ? <span className="pill ok">used next</span> : null}<strong>{fiveHour ? `${fiveHour.left}% left` : "Not shared"}</strong></div>
-              {fiveHour ? <><span className="sp-account-track"><i style={{ width: `${fiveHour.left}%` }} /></span><small>5-hour {fiveHour.reset || "reset time unavailable"}{week ? ` · week ${week.left}% left` : ""}</small></> : <small>{row.line}</small>}
-            </div>;
-          })}
-        </div>)}
+        {rows.map((row) => {
+          const { fiveHour, used, left, label, detail } = accountRow(row);
+          return <div className={`acctT5${row.stale ? " staleT5" : ""}`} key={row.id} style={{ cursor: "default" }}>
+            <span className="aNameT5"><span className={`provT5 ${providerDot(row)}`} aria-hidden="true" /><span className="aLabelT5">{label}</span></span>
+            {row.inUse ? <span className="pill ok">used next</span> : null}
+            {left ? <span className="aLeftT5">{left}</span> : null}
+            {fiveHour ? <span className="meterT5"><i style={{ width: `${Math.max(used, 1)}%` }} /></span> : null}
+            {!fiveHour || row.stale ? <small className="aLineT5">{row.line}</small> : null}
+            {detail ? <small>{detail}</small> : null}
+          </div>;
+        })}
         {!limits ? <p className="sp-note">Asking each connection…</p> : null}
         {data && !rows.length ? <p className="sp-note">{data.refreshing ? "Asking each connection…" : "No account reports a limit yet."}</p> : null}
-        {data ? <p className="sp-note">Checked {ageWords(data.updatedAt, Date.now())}</p> : null}
         {checkError ? <p className="sp-note">Couldn’t check accounts right now. Branch will try again.</p> : null}
-        <div className="lim-foot">
-          {spend.data ? <span>This month: <b>{spend.data}</b></span> : null}
-          <Item icon="retry" label={checking ? "Checking…" : "Check every account now"} testid="usage-check" onClick={() => check()} off={checking ? "Checking accounts now." : undefined} />
-          <Item icon="gear" label="Accounts and usage…" testid="open-usage" onClick={onOpenUsage} />
-        </div>
+        <hr />
+        <Item icon="retry" label={checking ? "Checking…" : "Check every account now"} testid="usage-check" onClick={() => check()} off={checking ? "Checking accounts now." : undefined} />
+        <Item icon="gear" label="Accounts and usage…" testid="open-usage" onClick={onOpenUsage} />
       </div>
     </Popover>
   );
@@ -249,10 +266,10 @@ type VersionProps = Base & { update: UpdateInfo | null; version: string; desktop
 
 /** §4.9.8 Version and update menu: what's ready, What's new, Install when idle, Remind me tomorrow. */
 export function VersionPopover({ update, version, desktopPending, autoApply, desktopInstall, computerName = "", onWhatsNew, onInstall, onRemind, ...base }: VersionProps) {
-  const latest = update?.latest && update.latest !== version ? update.latest : null;
+  const latest = version.trim() && update?.latest && isNewerBranchVersion(update.latest, version) ? update.latest : null;
   return (
     <Popover at={{ x: 0, y: 0 }} label="Version and updates" testid="pop-version" className="sp" {...base}>
-      {desktopPending && autoApply ? <><div className="pt">Update ready, applying when your Trunks finish</div><p className="pp">{branchVersionLabel(desktopPending)}</p></> : null}
+      {version.trim() && desktopPending && autoApply && isNewerBranchVersion(desktopPending, version) ? <><div className="pt">Update ready, applying when your Trunks finish</div><p className="pp">{branchVersionLabel(desktopPending)}</p></> : null}
       {latest ? (
         <>
           <div className="pt sp-title"><span>{branchVersionLabel(latest)} is ready</span><small>You have {branchVersionDetail(version)}</small></div>

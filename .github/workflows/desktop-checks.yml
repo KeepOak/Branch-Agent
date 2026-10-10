@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'desktop/**'
+      - 'engine/scripts/lib/available-memory.*'
       - '.github/workflows/desktop-checks.yml'
       - '.github/workflows/source-build.yml'
       - '.github/workflows/component-release.yml'
@@ -11,6 +12,7 @@ on:
     branches: [main]
     paths:
       - 'desktop/**'
+      - 'engine/scripts/lib/available-memory.*'
       - '.github/workflows/desktop-checks.yml'
       - '.github/workflows/source-build.yml'
       - '.github/workflows/component-release.yml'
@@ -57,11 +59,19 @@ jobs:
         env:
           NODE_OPTIONS: '--max-old-space-size=256'
         run: npm run build
+      - name: Check available memory
+        env:
+          BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
+        run: node --test scripts/available-memory.test.mjs
+      - name: Check component release readiness
+        run: node --test scripts/component-release-readiness.test.mjs
+      - name: Check release publication order and public latest retries
+        run: node --test scripts/publish-component-release.test.mjs
       - name: Check updates, startup and owned process cleanup
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
           NODE_OPTIONS: '--max-old-space-size=96'
-        run: node --max-old-space-size=96 --test scripts/auto-apply-update.test.mjs scripts/component-update-ipc.test.mjs scripts/component-update.test.mjs scripts/desktop-controls.test.mjs scripts/desktop-update.test.mjs scripts/gateway-ready.test.mjs scripts/gateway-supervisor.test.mjs scripts/hidden-processes.test.mjs scripts/mac-computer-driver.test.mjs scripts/profile-migration.test.mjs scripts/resident-window.test.mjs scripts/restart-engine.test.mjs scripts/update-lock.test.mjs scripts/window-state.test.mjs
+        run: node --max-old-space-size=96 --test scripts/auto-apply-update.test.mjs scripts/available-memory.test.mjs scripts/component-update-ipc.test.mjs scripts/component-update.test.mjs scripts/desktop-controls.test.mjs scripts/desktop-update.test.mjs scripts/gateway-ready.test.mjs scripts/gateway-supervisor.test.mjs scripts/hidden-processes.test.mjs scripts/mac-computer-driver.test.mjs scripts/profile-migration.test.mjs scripts/resident-window.test.mjs scripts/restart-engine.test.mjs scripts/update-lock.test.mjs scripts/window-state.test.mjs
       - name: Check component release archive scale
         working-directory: ${{ github.workspace }}
         env:
@@ -74,7 +84,39 @@ jobs:
       - name: Check immutable release inventory and bootstrap targets
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
-        run: node --test scripts/brand-icons.test.mjs scripts/linux-launcher.test.mjs scripts/release-inventory.test.mjs scripts/production-engine-smoke.test.mjs scripts/release-source-freeze.test.mjs scripts/release-production-layout.test.mjs
+        run: node --test scripts/brand-icons.test.mjs scripts/linux-launcher.test.mjs scripts/mac-applications.test.mjs scripts/release-inventory.test.mjs scripts/production-engine-smoke.test.mjs scripts/release-source-freeze.test.mjs scripts/release-production-layout.test.mjs
+      - name: Check the diagnostics log, redaction, problem report and archive
+        env:
+          BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
+        run: node --test scripts/diagnostics.test.mjs
       - name: Check documentation merge command patterns
         working-directory: ${{ github.workspace }}
         run: node --test scripts/check-merge-command.test.mjs
+  mac-applications:
+    name: macOS Applications install
+    runs-on: macos-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: desktop
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Install desktop dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build strict desktop sources
+        env:
+          NODE_OPTIONS: '--max-old-space-size=256'
+        run: npm run build
+      - name: Install into Applications and check the bundle
+        run: node scripts/check-mac-bundle.mjs

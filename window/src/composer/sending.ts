@@ -36,6 +36,17 @@ export function sendTooltip(queueMode: string): string {
   return queueMode === "steer" || queueMode === "" ? "Enter: steer it now · Ctrl Enter: wait in line" : "Enter: wait in line · Ctrl Enter: steer it now";
 }
 
+/** Words to keep on screen the moment Send is pressed in an empty conversation (preview send()). */
+export function firstSendEcho(text: string): string | null {
+  const t = text.trim();
+  return t || null;
+}
+
+/** Keep that local echo until the engine's history holds the message, or the send failed for good. */
+export function shouldKeepFirstSendEcho(historyHasMessage: boolean, sendFailed: boolean): boolean {
+  return !historyHasMessage && !sendFailed;
+}
+
 export type Reply = { entryId: string; name: string; text: string };
 
 export function buildExtras(text: string, files: readonly DraftFile[], people: readonly Person[], queueMode?: string, reply?: Reply | null): SendExtras & { replyToId?: string } {

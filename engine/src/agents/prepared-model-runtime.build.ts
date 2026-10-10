@@ -3,6 +3,7 @@ import { setImmediate as nextTurn } from "node:timers/promises";
 import { toStringifiedError } from "@branch/normalization-core/error-coercion";
 import { captureRuntimeConfig } from "../config/runtime-source-projection.js";
 import type { BranchConfig } from "../config/types.branch.js";
+import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { runAbortableTimeout } from "../node-host/with-timeout.js";
 import { getPluginMetadataSnapshotCache } from "../plugins/plugin-cache.js";
 import { settlePluginNativeAdmissions } from "../plugins/plugin-native-admission-state.js";
@@ -457,6 +458,30 @@ async function buildSnapshotBatch(
   }
 }
 
+type LiveAgentBuild = Readonly<{ replace: (reason: Error) => void }>;
+/** Unsettled builds by completion map and agent directory, so one agent's stuck build can be replaced. */
+const liveAgentBuilds = new WeakMap<Map<string, Promise<void>>, Map<string, Set<LiveAgentBuild>>>();
+
+/**
+ * Replaces one agent directory's unsettled builds: each build that covers the directory is
+ * cancelled and its result discarded, even if its work never settles, and the directory's next
+ * build stops queueing behind them. A build shared with siblings is cancelled too: it cannot
+ * finish while this agent's part is stuck, and its siblings are built again by their next
+ * publication. Every replaced build keeps its close registration, so shutdown still joins it and
+ * disposes what it acquired. True when anything was replaced.
+ */
+export function replaceAgentDirectoryBuilds(
+  agentBuildCompletions: Map<string, Promise<void>>,
+  agentDir: string,
+  reason: Error,
+): boolean {
+  const builds = [...(liveAgentBuilds.get(agentBuildCompletions)?.get(agentDir) ?? [])];
+  for (const build of builds) {
+    build.replace(reason);
+  }
+  return agentBuildCompletions.delete(agentDir) || builds.length > 0;
+}
+
 export function startSerializedSnapshotBuildBatch(
   candidates: readonly PreparedModelRuntimeBuildCandidate[],
   agentBuildCompletions: Map<string, Promise<void>>,
@@ -475,9 +500,13 @@ export function startSerializedSnapshotBuildBatch(
   completion: Promise<void>;
 } {
   const cancellation = new AbortController();
-  const signal = acquisitionSignal
-    ? AbortSignal.any([acquisitionSignal, cancellation.signal])
-    : cancellation.signal;
+  // Ends only this build, for its agent's restart from scratch (`replaceAgentDirectoryBuilds`).
+  const replacement = new AbortController();
+  const signal = AbortSignal.any([
+    ...(acquisitionSignal ? [acquisitionSignal] : []),
+    cancellation.signal,
+    replacement.signal,
+  ]);
   const finished = createDeferredCore();
   const unregisterClose = registerPreparedModelRuntimeClose(async (error) => {
     cancellation.abort(error);
@@ -506,7 +535,13 @@ export function startSerializedSnapshotBuildBatch(
       retainPreparedPluginRegistry,
     );
     if (previousBuildCompletions.length > 0) {
-      await Promise.all(previousBuildCompletions);
+      // Only a replacement stops this wait; any other cancellation still serializes behind the
+      // previous build so a superseded generation never overlaps its successor.
+      await racePromiseWithAbortSignal(
+        Promise.all(previousBuildCompletions),
+        replacement.signal,
+        (aborted) => aborted.reason,
+      );
       // Queued publications register while the prior build settles. Recheck them here so a
       // retired owner cannot start expensive workspace preparation ahead of its replacement.
       assertPreparedModelRuntimeCandidatesCurrent(candidates);
@@ -538,10 +573,14 @@ export function startSerializedSnapshotBuildBatch(
     );
   })();
   let abandoned = false;
-  const pending = runAbortableTimeout(
-    () => startBuild,
-    buildTimeoutMs,
-    () => `prepared model runtime publication (${stage})`,
+  const pending = racePromiseWithAbortSignal(
+    runAbortableTimeout(
+      () => startBuild,
+      buildTimeoutMs,
+      () => `prepared model runtime publication (${stage})`,
+    ),
+    replacement.signal,
+    (aborted) => aborted.reason,
   ).catch((error: unknown) => {
     abandoned = true;
     throw error;
@@ -565,12 +604,14 @@ export function startSerializedSnapshotBuildBatch(
       () => {},
       () => {},
     );
+  const ownedCompletions = new Map<string, Promise<void>>();
   for (const agentDir of agentDirs) {
     const agentCompletion = agentCompletions?.get(agentDir);
     if (agentCompletion) {
       void completion.then(() => agentCompletion.resolve());
     }
     const ownedCompletion = agentCompletion?.promise ?? completion;
+    ownedCompletions.set(agentDir, ownedCompletion);
     agentBuildCompletions.set(agentDir, ownedCompletion);
     void ownedCompletion.then(() => {
       if (agentBuildCompletions.get(agentDir) === ownedCompletion) {
@@ -578,7 +619,35 @@ export function startSerializedSnapshotBuildBatch(
       }
     });
   }
+  let byAgentDir = liveAgentBuilds.get(agentBuildCompletions);
+  if (!byAgentDir) {
+    byAgentDir = new Map();
+    liveAgentBuilds.set(agentBuildCompletions, byAgentDir);
+  }
+  const live: LiveAgentBuild = {
+    replace: (reason) => {
+      replacement.abort(reason);
+      // None of its agents' next builds queue behind this one any more.
+      for (const [agentDir, ownedCompletion] of ownedCompletions) {
+        if (agentBuildCompletions.get(agentDir) === ownedCompletion) {
+          agentBuildCompletions.delete(agentDir);
+        }
+      }
+    },
+  };
+  for (const agentDir of agentDirs) {
+    const builds = byAgentDir.get(agentDir) ?? new Set();
+    builds.add(live);
+    byAgentDir.set(agentDir, builds);
+  }
   void completion.then(() => {
+    for (const agentDir of agentDirs) {
+      const builds = byAgentDir.get(agentDir);
+      builds?.delete(live);
+      if (builds?.size === 0) {
+        byAgentDir.delete(agentDir);
+      }
+    }
     unregisterClose();
     finished.resolve();
   });

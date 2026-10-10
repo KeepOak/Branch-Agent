@@ -19,11 +19,11 @@ describe("finish by talking", () => {
     expect(asksAgain(q, q.options[3])).toBe(false);
   });
   it("offers chat apps that aren't connected yet, and the phone", () => {
-    expect(talkQuestion(6, 0, state)!.options.map((o) => o.value)).toEqual(["app:discord", "phone", "none"]);
+    expect(talkQuestion(5, 0, state)!.options.map((o) => o.value)).toEqual(["app:discord", "phone", "none"]);
   });
   it("skips steps already done and ends at the health check", () => {
     expect(nextTalkStep(3, () => false)).toBe(4);
-    expect(nextTalkStep(4, (s) => s === 6)).toBe(7);
+    expect(nextTalkStep(4, (s) => s === 5)).toBe(7);
     expect(nextTalkStep(9, () => false)).toBe(10);
   });
 });

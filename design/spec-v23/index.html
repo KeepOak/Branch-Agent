@@ -42554,6 +42554,20 @@ ACTS.fileCopyT5 = async () => {
 
 render();
 scheduleScout(15000);
+/* Tour / parity hook: S and render stay inside this IIFE. */
+window.__preview = {
+  state: S,
+  setScreen(patch) {
+    if (!patch || typeof patch !== 'object') throw new Error('setScreen needs a state patch');
+    closePop();
+    closeDlg();
+    const { tabs, tools9, ...rest } = patch;
+    Object.assign(S, rest);
+    if (tabs) S.tabs = { ...S.tabs, ...tabs };
+    if (tools9) S.tools9 = { ...S.tools9, ...tools9 };
+    render();
+  },
+};
 })();
 </script>
 

@@ -127,7 +127,7 @@ function PersonItem({ ctx, p, current, onSel }: { ctx: People; p: Profile; curre
 const row = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "people", title, sec, group: sec, lv }));
 export const PEOPLE_ROWS: RowEntry[] = [
   ...row("You", 0, ["Your own instructions", "Your own accounts"]),
-  ...row("Each person", 0, ["Ask for a PIN when switching person", "Keep conversations separate"]),
+  ...row("Each person", 0, ["Ask for a PIN when switching person", "Keep conversations separate", "Open People"]),
   ...row("Records", 1, ["Signed household records"]),
   ...row("Signing in to Branch", 1, ["Passkeys", "Authenticator codes", "A link by email", "Google, GitHub or Apple", "Company sign-in", "New people", "Allowed email domains", "Check their email first", "A check against bots on the sign-in page", "Add people from your directory", "One-time sign-in links for other systems", "Pass company sign-in on to tools", "Let someone start as a guest", "Recovery key"]),
 ];

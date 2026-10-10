@@ -236,6 +236,10 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
       "agentId",
       "timeoutSeconds",
     ]),
+    trunk_message: displayTool("📨", "Trunk Message", ["agentId"]),
+    room_list: displayTool("💬", "Room List", []),
+    room_read: displayTool("💬", "Room Read", ["roomId", "cursor", "limit"]),
+    room_post: displayTool("💬", "Room Post", ["roomId"]),
     sessions_history: displayTool("🧾", "Session History", ["sessionKey", "limit", "includeTools"]),
     sessions_search: displayTool("🔎", "Session Search", ["query", "sessionKey", "limit"]),
     transcripts: {

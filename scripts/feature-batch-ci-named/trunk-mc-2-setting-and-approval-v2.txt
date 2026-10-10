@@ -1,0 +1,8 @@
+engine:extensions/codex/src/app-server/run-attempt.model-choice.test.ts
+engine:src/agents/branch-tools.session-status.gateway-model.test.ts
+engine:src/agents/branch-tools.session-status.test.ts
+engine:src/agents/cli-runner.model-choice.test.ts
+engine:src/agents/tools/sessions-spawn-tool.model-choice.test.ts
+engine:src/agents/tools/sessions-tool.model-approval.test.ts
+engine:src/gateway/server-methods/model-choice-approval.test.ts
+window:src/places/settings/set1/models.test.tsx

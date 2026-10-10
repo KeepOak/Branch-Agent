@@ -466,7 +466,8 @@ suite.define(() => {
         await qr.waitFor();
         await page.locator(".device-pair-setup__close").click();
         await dialog.waitFor({ state: "hidden" });
-        const nodeCommand = `branch node run --pair "oc-pair://${setupCode}"`;
+        const nodeCommand = "branch node run --pair -";
+        const nodeSetupCode = `oc-pair://${setupCode}`;
         const setup = page.locator(".device-pair-setup");
         for (const viewport of [
           { height: 900, width: 1280 },
@@ -482,9 +483,11 @@ suite.define(() => {
           await page.locator('input[name="device-pair-access"]').nth(2).check();
           await page.getByRole("button", { name: "Create setup code" }).click();
           await page.getByText(nodeCommand, { exact: true }).waitFor();
+          await page.getByText(nodeSetupCode, { exact: true }).waitFor();
+          await page.getByText("When prompted, paste this setup code:", { exact: true }).waitFor();
           await captureUiProof(page, `11-node-${viewport.width}.png`);
           await expectPairingLayout(page, "node");
-          const copy = setup.locator(".chat-copy-btn");
+          const copy = setup.locator(".chat-copy-btn").first();
           await copy.focus();
           expect(await copy.evaluate((element) => element === document.activeElement)).toBe(true);
           await page.evaluate(() => navigator.clipboard.writeText("before-copy"));

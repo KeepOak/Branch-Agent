@@ -1,0 +1,3 @@
+# Changed Control UI i18n verify tests for this PR.
+# Retrigger after CodeQL installation rate-limit cooldown.
+engine:test/scripts/control-ui-i18n.test.ts

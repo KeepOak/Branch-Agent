@@ -5,6 +5,7 @@ import {
 } from "branch/plugin-sdk/agent-harness-runtime";
 import type { AgentHarnessToolResultTelemetry } from "branch/plugin-sdk/agent-harness-tool-runtime";
 import { resolveCodexTtsProvenanceTransfer } from "branch/plugin-sdk/codex-mcp-projection";
+import { isSilentReplyPayloadText } from "branch/plugin-sdk/reply-chunking";
 import { attemptTerminal, type EmbeddedRunAttemptResult } from "./attempt-terminal.js";
 import { CodexAssistantProjection } from "./event-projector-assistant.js";
 import { CodexAsyncDeliveryProjection } from "./event-projector-async-delivery.js";
@@ -241,6 +242,27 @@ export abstract class CodexTurnProjection {
       promptError: initialPromptError,
       providerRefusal,
     };
+    const failureSummary =
+      !providerRefusal &&
+      !aborted &&
+      !yieldDetected &&
+      !isSilentReplyPayloadText(assistantTexts.at(-1) ?? "") &&
+      completedTurn?.status === "completed" &&
+      !initialPromptError
+        ? this.toolTranscriptProjection.unmentionedFailureSummary([
+            ...assistantTexts,
+            ...toolTelemetry.messagingToolSentTexts,
+          ])
+        : undefined;
+    if (failureSummary) {
+      const lastIndex = assistantTexts.length - 1;
+      const lastText = assistantTexts[lastIndex];
+      if (lastText !== undefined) {
+        assistantTexts[lastIndex] = `${lastText}\n\n${failureSummary}`;
+      } else {
+        assistantTexts.push(failureSummary);
+      }
+    }
     const lastAssistant = providerRefusal
       ? this.assistantProjection.createAssistantMessage("", assistantMessageOptions)
       : assistantTexts.length
@@ -249,9 +271,20 @@ export abstract class CodexTurnProjection {
             assistantMessageOptions,
           )
         : undefined;
-    const currentAttemptAssistant = providerRefusal
+    let currentAttemptAssistant = providerRefusal
       ? lastAssistant
       : this.assistantProjection.createCurrentAttemptAssistantMessage(assistantMessageOptions);
+    if (failureSummary) {
+      const currentText = currentAttemptAssistant?.content
+        .flatMap((block) => (block.type === "text" ? [block.text] : []))
+        .join("\n\n");
+      currentAttemptAssistant = this.assistantProjection.createAssistantMessage(
+        currentText && !isSilentReplyPayloadText(currentText)
+          ? `${currentText}\n\n${failureSummary}`
+          : failureSummary,
+        assistantMessageOptions,
+      );
+    }
     // Stable turn/item identities deduplicate retries and cross-turn replays
     // without collapsing identical text from distinct turns. Codex owns history;
     // this mirror supports Branch Agent history, search, and harness switching.

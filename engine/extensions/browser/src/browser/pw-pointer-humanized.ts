@@ -1,7 +1,10 @@
 /** Native portable input driver adapted from elizaOS/eliza@3f38e54495ba5518f84bcf9cc1e84e0dc3d60bbf. */
 import { sleepWithAbort } from "branch/plugin-sdk/runtime-env";
-import type { ElementHandle, Page } from "playwright-core";
-import { resolveActInteractionTimeoutMs } from "./act-policy.js";
+import type { ElementHandle, JSHandle, Page } from "playwright-core";
+import {
+  BROWSER_ACTION_NAVIGATION_GRACE_MS,
+  resolveActInteractionTimeoutMs,
+} from "./act-policy.js";
 import { MocapEngine } from "./pw-pointer-mocap.js";
 import type { MocapSequence } from "./pw-pointer-mocap.types.js";
 import { refLocator } from "./pw-session.js";
@@ -124,6 +127,76 @@ async function assertTargetUnmoved(handle: ElementHandle<Element>, box: Box, gua
   await fence(guard);
 }
 
+type TrustedClickJoin = { promise: Promise<void>; dispose: () => void };
+
+function isHumanClickJoinContextDestroyed(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Execution context was destroyed|Cannot find context with specified id|Frame (?:was |is )?detached|detached Frame|Node is detached from document/i.test(
+    message,
+  );
+}
+
+async function armTrustedClickJoin(
+  handle: ElementHandle<Element>,
+): Promise<JSHandle<TrustedClickJoin>> {
+  // Held only by this JSHandle: capture on the owner window/document so a
+  // stopped or retargeted click is still observed, without a page global.
+  return handle.evaluateHandle((el) => {
+    const root = el.ownerDocument.defaultView ?? el.ownerDocument;
+    let settled = false;
+    let resolve = () => {};
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve();
+    };
+    const promise = new Promise<void>((next) => {
+      resolve = next;
+    });
+    const onClick = () => {
+      // Resolve after the current click finishes so same-event navigations run.
+      queueMicrotask(finish);
+    };
+    root.addEventListener("click", onClick, { capture: true, once: true });
+    return {
+      promise,
+      dispose: () => {
+        root.removeEventListener("click", onClick, { capture: true });
+        finish();
+      },
+    };
+  });
+}
+
+async function releaseTrustedClickJoin(gate: JSHandle<TrustedClickJoin>): Promise<void> {
+  await gate.evaluate((joined) => joined.dispose()).catch(() => {});
+  await gate.dispose().catch(() => {});
+}
+
+async function waitTrustedClickJoin(
+  gate: JSHandle<TrustedClickJoin>,
+  signal: AbortSignal,
+): Promise<void> {
+  try {
+    await Promise.race([
+      gate.evaluate((joined) => joined.promise).catch((error: unknown) => {
+        if (!isHumanClickJoinContextDestroyed(error)) {
+          throw error;
+        }
+      }),
+      sleepWithAbort(BROWSER_ACTION_NAVIGATION_GRACE_MS, signal),
+    ]);
+  } catch (error) {
+    if (!isHumanClickJoinContextDestroyed(error)) {
+      throw error;
+    }
+  } finally {
+    await releaseTrustedClickJoin(gate);
+  }
+}
+
 async function clickAtTarget(
   page: Page,
   handle: ElementHandle<Element>,
@@ -137,7 +210,13 @@ async function clickAtTarget(
   await assertTargetUnmoved(handle, box, guard);
   await sleepWithAbort(60 + Math.random() * 50, guard.signal);
   await assertTargetUnmoved(handle, box, guard);
+  // CDP mouse.up resolves when the event is dispatched, not when page click
+  // listeners run. Join a short capture-phase click when it arrives so a
+  // click-triggered navigation is admitted to the request guard. A missing
+  // click falls back to the existing post-action grace; do not fail the click.
+  const clickJoin = await fenced(guard, () => armTrustedClickJoin(handle));
   let buttonHeld = false;
+  let joined = false;
   try {
     await fence(guard);
     await fenced(guard, () => {
@@ -148,10 +227,15 @@ async function clickAtTarget(
     await fence(guard);
     await fenced(guard, () => page.mouse.up());
     buttonHeld = false;
+    await fenced(guard, () => waitTrustedClickJoin(clickJoin, guard.signal));
+    joined = true;
   } finally {
     // Join release under the same navigation guard, even after cancellation.
     if (buttonHeld) {
       await page.mouse.up().catch(() => {});
+    }
+    if (!joined) {
+      await releaseTrustedClickJoin(clickJoin).catch(() => {});
     }
   }
 }

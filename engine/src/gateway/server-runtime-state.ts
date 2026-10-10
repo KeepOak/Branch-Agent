@@ -34,6 +34,7 @@ import { attachGatewayUpgradeHandler } from "./server-http-upgrades.js";
 import { createGatewayHttpServer } from "./server-http.js";
 import type { GatewayRequestContext } from "./server-methods/types.js";
 import type { HookClientIpConfig, HooksRequestHandler } from "./server/hooks-request-handler.js";
+import { scheduleConfiguredPortReclaim } from "./server/handoff-configured-port.js";
 import { listenGatewayHttpServer } from "./server/http-listen.js";
 import { runWithGatewayHttpWorkAdmission } from "./server/http-work-admission.js";
 import { startPluginLegacyListeners } from "./server/plugin-legacy-listeners.js";
@@ -575,6 +576,15 @@ export async function createGatewayHttpTransport(params: {
         });
       }
       startListeningComplete = true;
+      // A hand-over's successor is on a spare port. Once the predecessor exits, also
+      // serve the configured desktop port. A collision is logged; the spare port stays.
+      if (!params.updateCanary && !params.gatewayTls?.enabled) {
+        scheduleConfiguredPortReclaim({
+          httpServer,
+          currentPort: params.port,
+          log: params.log,
+        });
+      }
     })();
     await startListeningPromise;
   };

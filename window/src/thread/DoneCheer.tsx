@@ -8,6 +8,7 @@ import { Face } from "../face/Face";
 import { PRIORITY } from "../face/cap";
 import { formatDuration } from "./format";
 import type { Block } from "./model";
+import { isInternalStep } from "./internal-steps";
 
 const LEAVE_MS = 3800;
 const GONE_MS = 4300;
@@ -39,7 +40,7 @@ function useCheer(ended: RunEnd | null | undefined, history: readonly Block[]): 
   // The time only when the thread shows it too: a task's Done line (owner decision 5), never a plain reply's.
   let start = at;
   while (start > 0 && history[start - 1].kind !== "user") start -= 1;
-  const task = at >= 0 && history.slice(start, at).some((b) => b.kind === "step");
+  const task = at >= 0 && history.slice(start, at).some((b) => b.kind === "step" && !isInternalStep(b));
   return { done: done ? { durationMs: line && task && !line.stopped ? line.durationMs : undefined } : null, leaving };
 }
 

@@ -229,7 +229,8 @@ it("shows a tool's input when expanded, and no raw JSON as its title", async () 
   const step = container.querySelector('[data-testid="step"]') as HTMLElement;
   expect(step.querySelector(".step-label")?.textContent).toBe("Using github publish");
   expect(step.querySelector(".step-detail")?.textContent).toBe("KeepOak/x");
-  expect(step.querySelector('[data-testid="step-input"]')?.textContent).toContain('"draft": true');
+  expect(step.querySelector('[data-testid="step-input"]')?.textContent).toContain("draft: true");
+  expect(step.querySelector('[data-testid="step-input"]')?.textContent).not.toMatch(/[{}]/);
 });
 
 it("shows the real last lines of a long output by default", async () => {

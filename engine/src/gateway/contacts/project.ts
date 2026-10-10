@@ -118,6 +118,7 @@ export function projectContacts(input: ContactProjectionInput): {
           input.previews?.get(row.sessionKey) ?? "",
           input.titles?.get(row.sessionKey),
         ),
+        labelled: Boolean(entry.label?.trim() || entry.topicName?.trim()),
         anchor: {
           threadKey: entry.contactAnchor?.threadKey ?? threadKey,
           ...(entry.contactAnchor?.afterMessageId
@@ -168,14 +169,7 @@ export function projectContacts(input: ContactProjectionInput): {
       face: { agentId, ...(agent?.iconUrl ? { iconUrl: agent.iconUrl } : {}) },
       threadKey,
       isDefault: agentId === input.defaultAgentId,
-      ...([thread, ...children].some((row) => row?.entry.pinnedAt)
-        ? {
-            pinnedAt: Math.max(
-              thread?.entry.pinnedAt ?? 0,
-              ...children.map((row) => row.entry.pinnedAt ?? 0),
-            ),
-          }
-        : {}),
+      ...(thread?.entry.pinnedAt ? { pinnedAt: thread.entry.pinnedAt } : {}),
       ...(!agent || thread?.entry.archivedAt
         ? { archivedAt: thread?.entry.archivedAt ?? thread?.entry.updatedAt ?? 0 }
         : {}),
@@ -211,6 +205,7 @@ export function projectContacts(input: ContactProjectionInput): {
         input.previews?.get(child.sessionKey) ?? "",
         input.titles?.get(child.sessionKey),
       ),
+      labelled: Boolean(child.entry.label?.trim() || child.entry.topicName?.trim()),
       anchor: {
         threadKey,
         at: child.entry.createdAt ?? child.entry.updatedAt,
@@ -299,6 +294,7 @@ export function projectContacts(input: ContactProjectionInput): {
         input.previews?.get(row.sessionKey) ?? "",
         input.titles?.get(row.sessionKey),
       ),
+      labelled: Boolean(row.entry.label?.trim() || row.entry.topicName?.trim()),
       anchor: { threadKey, at: row.entry.createdAt ?? row.entry.updatedAt },
       status: row.entry.archivedAt
         ? "archived"
@@ -321,9 +317,6 @@ export function projectContacts(input: ContactProjectionInput): {
         ? { card: peer.card, face: peer.card.iconUrl ? { iconUrl: peer.card.iconUrl } : {} }
         : {}),
       ...(graftedTrunks.length ? { face: { trunks: graftedTrunks.map((trunk) => ({ name: trunk.card?.name ?? trunk.name, ...(trunk.avatar ? { avatar: trunk.avatar } : {}) })) } } : {}),
-      ...(rows.some((row) => row.entry.pinnedAt)
-        ? { pinnedAt: Math.max(...rows.map((row) => row.entry.pinnedAt ?? 0)) }
-        : {}),
       // W-outside supplies the aggregate view. Do not preview a context
       // that opening this contact key cannot show yet.
       lastActivityAt: 0,

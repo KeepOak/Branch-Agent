@@ -87,21 +87,26 @@ Every child process Branch starts on Windows (the engine, shells, probes, git, P
   ```
   Co-authored-by: Taofik Bishi <189563683+stabrea@users.noreply.github.com>
   ```
+
+  Commits dated 2026-10-08T04:05:00Z or later must use a GitHub noreply (or `cursoragent@cursor.com`) author, committer and `Co-authored-by` address; `merge-gate-trusted` fails the pull request otherwise.
+- Never force-push or rewrite pushed history on any branch, not even to change a commit message. GitHub ruleset 'No force-push on any branch' (all branches, no bypass) refuses it. Fix a bad commit with a new commit, or for a commit with a personal email, redo the work on a fresh branch from main as a new PR that supersedes the old one.
 - Open the pull request against `main`. Its body says what changed, why, and the exact test commands you ran with their pass counts. For a change with a visible effect, include screenshots of the changed flow (see [Self-testing a change](#self-testing-a-change)).
 - `main` is protected by the ruleset "main requires the merge gate": the only required check is `merge-gate`, and force-pushes and branch deletion are blocked. The other workflows are path-filtered, so `merge-gate` (`.github/workflows/merge-gate.yml`) waits for whichever of them started on the PR's head commit and fails if any of them failed.
 - After this lands, a second required check will replace it: `merge-gate-trusted` from `.github/workflows/merge-gate-trusted.yml`. That workflow is `pull_request_target`, so GitHub always runs **main's copy** and checks out the default branch (current main), never the PR's recorded base SHA or head. It never checks out or executes the pull request. Permissions are read-only (`contents`, `checks`, `actions`, `pull-requests`) and it uses no secrets. The job waits for the other checks with the same rules as `merge-gate`, fails if `merge-gate` is missing or unsuccessful, fails if a path-filtered core workflow never started, fails if any other workflow posts a check named `merge-gate-trusted`, and re-runs the changed-test-coverage and merge-command scripts from main against the PR file list fetched through the API. Reviewers see workflow, gate-script, and `package.json` changes in the job summary. **Two-step switch:** merge this workflow first and watch it on a few PRs, then the repo admin changes the required check from `merge-gate` to `merge-gate-trusted`. Until that switch, `merge-gate` remains the required check.
-- After review, merge with a merge commit (never squash or rebase), pinned to the reviewed head SHA so a new push blocks the merge:
+- `gate-files-fresh` (`.github/workflows/gate-files-fresh.yml`) fails a PR that edits a merge-gate file but dropped a line main added since the PR forked; merge main in and keep main's version of this file.
+- Only the PR reviewer (Branch PR Closer) adds the `gate-change-reviewed: <full head SHA>` marker, after reviewing the workflow and gate-file changes on that exact head. Fixers and authors never add it.
+- After review, Branch PR Closer merges by hand with a merge commit (never squash or rebase), pinned to the reviewed head SHA so a new push blocks the merge:
 
   ```bash
-  gh pr merge <number> --auto --merge --match-head-commit <reviewed-sha>
+  gh pr merge <number> --merge --match-head-commit <reviewed-sha>
   ```
 
-  The pull request then merges as soon as `merge-gate` passes. Don't force-push to `main`, and don't re-enable auto-merge on a pull request a reviewer paused.
+  The repository allows merge commits only and has auto-merge turned off. A workflow opens one tracking issue if anything lands on main as a squash or rebase. Don't force-push to `main`.
 - **CI has a hard 15-minute cap.** Every check job sets `timeout-minutes: 15` or less; the merge-gate job allows up to 35 because it waits for the others. A change that makes CI slower than the cap gets split, sharded or cut, never given a longer timeout.
 
 ## Releases and component updates
 
-`.github/workflows/component-release.yml` publishes a GitHub release on a 30-minute schedule at :07 and :37 past each hour, for a source-version tag, or from a manual run — not on each merge. Scheduled and manual runs skip when main has not moved since the last release or when a check on main's head has failed. A published release has four components:
+`.github/workflows/component-release.yml` publishes a GitHub release on a 30-minute schedule at :07 and :37 past each hour, from a push to main when the latest release is more than 25 minutes old, for a source-version tag, or from a manual run — not on each merge. Scheduled, manual, and push-backup runs skip when main has not moved since the last release or when a check on main's head is still failing after one rerun of its failed jobs. A published release has four components:
 
 | Component | Asset |
 |---|---|

@@ -200,7 +200,8 @@ for (const [label, options, expected] of [
 test("public latest readback rejects stale aliases, inaccessible manifests and changed bytes", () => fixture(async ({ assets }) => {
   const proof = await verifyReleaseDirectory(assets, commit, version);
   const latest = () => JSON.stringify({ draft: false, prerelease: false, target_commitish: commit, tag_name: `v${version}` });
-  await assert.rejects(verifyPublicLatest(assets, commit, version, proof, async () => latest().replace(`v${version}`, "v0.1.0")), /not GitHub latest/);
-  await assert.rejects(verifyPublicLatest(assets, commit, version, proof, async () => latest(), async () => new Response("", { status: 404 })), /not publicly downloadable/);
-  await assert.rejects(verifyPublicLatest(assets, commit, version, proof, async () => latest(), async () => new Response("altered")), /Expected values|differs/);
+  const noRetry = { budgetMs: 0, sleep: async () => {} };
+  await assert.rejects(verifyPublicLatest(assets, commit, version, proof, async () => latest().replace(`v${version}`, "v0.1.0"), fetch, noRetry), /not GitHub latest/);
+  await assert.rejects(verifyPublicLatest(assets, commit, version, proof, async () => latest(), async () => new Response("", { status: 404 }), noRetry), /not publicly downloadable/);
+  await assert.rejects(verifyPublicLatest(assets, commit, version, proof, async () => latest(), async () => new Response("altered"), noRetry), /Expected values|differs/);
 }));

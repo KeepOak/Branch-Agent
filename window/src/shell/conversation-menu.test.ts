@@ -79,6 +79,16 @@ describe("P54 conversation header menu", () => {
     expect(calls.at(-1)).toBe("tower");
     expect(shape(conversationMenuItems(ctx("regular", true, { towerVisible: true })))).toContain("Hide the Control tower");
   });
+
+  it("keeps this contact's thread layout behind a click-only View row above Side panel", () => {
+    const items = conversationMenuItems(ctx("regular", true, { threadView: { contactName: "Researcher", layout: "column", set: () => undefined } }));
+    const view = items.find((i) => i.kind === "sub" && i.label === "View") as Extract<MenuItem, { kind: "sub" }>;
+    expect(view.hover).toBe(false);
+    const labels = shape(items);
+    expect(labels.indexOf("View ›") + 1).toBe(labels.indexOf("Side panel"));
+    expect(labels).toContain("Open the browser");
+    expect(shape(view.items)).toEqual(["[Researcher’s threads show as]", "Column", "Emoji rail", "Side tabs", "Tabs above the chat"]);
+  });
 });
 
 describe("the menu's engine reads", () => {

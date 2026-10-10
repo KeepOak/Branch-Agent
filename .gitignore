@@ -7,5 +7,7 @@ dist/
 /output/library-live/
 /output/isolated-process/
 /window/output/
+/button-crawl-output/
 
 __pycache__/
+frame-qa-output/

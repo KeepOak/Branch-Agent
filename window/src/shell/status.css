@@ -231,19 +231,36 @@
 
 /* The bar's own items (§4.9.1) */
 .statusbar .status-symbol { min-width: 24px; justify-content: center; padding: 0 6px; gap: 4px; }
-.status-glyph { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; color: var(--ink-2); flex: none; }
+.status-glyph, .gT5 { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; color: var(--ink-2); flex: none; }
 .status-glyph-context { width: 20px; }
 .status-number { font: 500 11px/1 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .status-ring { gap: 6px; }
+.statusbar .useT5 { display: inline-flex; align-items: center; gap: 6px; overflow: hidden; }
+.statusbar .useT5 .useTxtT5 { display: inline-block; max-width: 340px; white-space: nowrap; overflow: hidden; transition: max-width .35s ease, opacity .25s; }
+.statusbar .useT5.collapsedT5 .useTxtT5 { max-width: 0; opacity: 0; }
 .status-ring-label { display: inline-block; max-width: 340px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; transition: max-width .35s ease, opacity .25s; }
 .status-ring-label.collapsed { max-width: 0; opacity: 0; }
+.pop.usePopT5 { width: min(360px, calc(100vw - 24px)); }
+/* Name, badge and reading wrap onto the next line instead of squeezing each other; a label longer than the row breaks, never hides. */
+.usePopT5 .lims { grid-template-columns: minmax(0, 1fr); }
+.acctT5 { box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: 3px 8px; padding: 6px; margin: 0 -6px; width: calc(100% + 12px); min-width: 0; border-radius: 8px; font-size: 12.5px; }
+.aNameT5 { display: flex; gap: 6px; align-items: center; min-width: 0; max-width: 100%; }
+.aLabelT5 { min-width: 0; overflow-wrap: anywhere; }
+.acctT5 > .pill { flex: none; }
+.provT5 { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--ink-2); }
+.provT5.anthropic { background: transparent; box-shadow: inset 0 0 0 1.5px var(--ink-2); }
+.aLeftT5 { flex: none; margin-left: auto; font: 11.5px var(--mono, ui-monospace); color: var(--ink-3); white-space: nowrap; }
+.meterT5 { flex: 1 0 100%; height: 5px; border-radius: 5px; background: var(--line); overflow: hidden; }
+.meterT5 i { display: block; height: 100%; background: var(--ok); transition: width .6s; }
+.acctT5 small { flex: 1 0 100%; color: var(--ink-3); font-size: 11.5px; }
+.staleT5 .meterT5 i { background: var(--ink-3); }
 @media (prefers-reduced-motion: no-preference) {
   .sb-gw[data-state="on"] .status-gateway-pulse { animation: status-link-pulse 1.6s ease-in-out infinite; }
   .status-running-ring { stroke-dasharray: 26 13; transform-origin: 8px 8px; animation: status-run-spin 1.6s linear infinite; }
 }
 @keyframes status-link-pulse { 0% { transform: translateX(-3px); opacity: .3; } 50% { opacity: 1; } 100% { transform: translateX(3px); opacity: .3; } }
 @keyframes status-run-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .status-ring-label { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .status-ring-label, .statusbar .useT5 .useTxtT5 { transition: none; } }
 .sb.usage {
   gap: 7px;
   color: var(--ink-2);
@@ -368,3 +385,8 @@
 .r618-pick { display: grid; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: none; color: var(--ink); font: inherit; cursor: pointer; }
 .r618-pick:hover { background: var(--fill); }
 .r618-pick small { color: var(--ink-3); }
+
+/* Context room left: a labelled bar that drains as the conversation fills (replaces the battery glyph). */
+.sb-room { gap: 6px; }
+.ctx-meter { display: inline-block; width: 40px; height: 6px; border-radius: 3px; background: var(--line-2); overflow: hidden; }
+.ctx-meter-fill { display: block; height: 100%; border-radius: 3px; transition: width .3s ease; }

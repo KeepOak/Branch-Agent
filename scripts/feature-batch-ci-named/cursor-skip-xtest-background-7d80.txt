@@ -1,0 +1,2 @@
+engine:extensions/cua-computer/src/commands.test.ts
+engine:extensions/cua-computer/src/input-routing.test.ts

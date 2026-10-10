@@ -1,7 +1,10 @@
 import { resolveConfiguredGitHubToolIdentity } from "../agents/github-tool-identity.js";
 import { installSessionPlacementAdmissionProvider } from "../agents/session-placement-admission.js";
 import { getRuntimeConfig } from "../config/config.js";
-import { registerSessionMaintenancePreserveKeysProvider } from "../config/sessions/store-maintenance-preserve.js";
+import {
+  registerSessionMaintenancePreserveKeysProvider,
+  SessionMaintenancePreservationChangedError,
+} from "../config/sessions/store-maintenance-preserve.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import type { GatewayScheduler } from "../infra/gateway-scheduler.js";
@@ -386,11 +389,23 @@ export function createGatewayWorkerPlacementRuntime(
       () => preservationKeys(params.placements.listForReconcile()),
       async () => {
         const prepared = await params.placements.prepareMaintenancePlacements();
+        const assertPlacementsCurrent = () => {
+          try {
+            prepared.assertCurrent();
+          } catch (error) {
+            // Any placement write (or a seamless engine swap) between preparation and commit
+            // lands here. The session write committed nothing and prepares placements again.
+            throw new SessionMaintenancePreservationChangedError(
+              error instanceof Error ? error.message : String(error),
+              { cause: error },
+            );
+          }
+        };
         return {
           capture() {
-            prepared.assertCurrent();
+            assertPlacementsCurrent();
             const keys = preservationKeys(prepared.placements);
-            prepared.assertCurrent();
+            assertPlacementsCurrent();
             return keys;
           },
           dispose: prepared.release,

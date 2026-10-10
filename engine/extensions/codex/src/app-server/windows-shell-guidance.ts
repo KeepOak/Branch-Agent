@@ -5,11 +5,13 @@ import path from "node:path";
 // when it exists and falls back to Windows PowerShell 5.1. Codex already sets [Console]::OutputEncoding to UTF-8,
 // but 5.1's Get-Content/Set-Content/Out-File still read and write ANSI by default, so UTF-8 source (›, ’, §)
 // comes back garbled and can be pasted into patches that way.
+export const WINDOWS_SHELL_GUIDANCE =
+  "PowerShell does not expand `*`/`?` for native programs: use `rg -g '<glob>' <pattern> <dir>`, `Get-ChildItem -Filter`, or explicit paths; never pass `dir/*` to rg, git or node. " +
+  "A final probe (`Get-Process -ErrorAction SilentlyContinue`, `Test-Path`, `Select-String`, `rg` with no match) can exit 1 without stderr: not found, not failure. End probes with output or `; exit 0`.";
+
 export const WINDOWS_POWERSHELL_51_GUIDANCE =
-  "Shell: commands here run in Windows PowerShell 5.1, whose file cmdlets default to ANSI, not UTF-8. " +
-  "Read text with `Get-Content -Raw -Encoding UTF8` (or `rg`, `git show`), write it with `-Encoding UTF8`, " +
-  "and make file edits with apply_patch. Never copy text read through a plain Get-Content into an edit; " +
-  "characters such as ›, ’ and § come back garbled (Â§, â€™).";
+  "Shell: Windows PowerShell 5.1 file cmdlets default to ANSI, not UTF-8. Read with `Get-Content -Raw -Encoding UTF8` (or `rg`, `git show`), write with `-Encoding UTF8`, and edit with apply_patch. Never copy plain Get-Content text into edits: ›, ’ and § become garbled (Â§, â€™)." +
+  " Windows PowerShell 5.1 strips embedded double quotes in native arguments: never put `\\\"` in one. Run node via a temp `.mjs` file; pass JSON/long bodies via files (`gh api --input file`, `jq -f file`).";
 
 export type PowerShellProbe = {
   platform: NodeJS.Platform;
@@ -32,8 +34,10 @@ export function hasPowerShell7(probe: PowerShellProbe): boolean {
 export function buildWindowsShellGuidance(
   probe: PowerShellProbe = { platform: process.platform, env: process.env, exists: fs.existsSync },
 ): string | undefined {
-  if (probe.platform !== "win32" || hasPowerShell7(probe)) {
+  if (probe.platform !== "win32") {
     return undefined;
   }
-  return WINDOWS_POWERSHELL_51_GUIDANCE;
+  return hasPowerShell7(probe)
+    ? WINDOWS_SHELL_GUIDANCE
+    : `${WINDOWS_SHELL_GUIDANCE} ${WINDOWS_POWERSHELL_51_GUIDANCE}`;
 }

@@ -28,6 +28,7 @@
 .st7-screen {position:relative;border-radius:14px;overflow:hidden;box-shadow:0 30px 80px -30px rgba(0,0,0,.55),0 0 0 1px var(--line-2);background:#0e1419;}
 /* The preview's fitStage: 18 px clear on each side, as wide as fits the wrap at 16:10. */
 .st7-screen.live-st {width:min(calc(100cqw - 36px),calc((100cqh - 36px) * 1.6));aspect-ratio:16/10;}
+.native-screen {width:100%;height:100%;object-fit:contain;display:block;}
 .st7-screen.ctl-st {box-shadow:0 0 0 4px var(--accent) inset,0 30px 80px -30px rgba(0,0,0,.55);}
 .st7-screen .stage-screen {position:absolute;inset:0;width:100%;height:100%;overflow:hidden;}
 .st7-screen .stage-empty {position:absolute;inset:0;}
@@ -130,16 +131,16 @@
 .br-left-st {display:flex;flex-direction:column;min-width:0;min-height:0;}
 .br-left-st > .st7-wrap {flex:1;}
 .st7-screen.br-screen-st {width:min(calc(100cqw - 36px),calc((100cqh - 36px) * 1.6));height:auto;aspect-ratio:16/10;display:flex;flex-direction:column;background:#fff;}
-.br-chrome-st {flex:none;color:#3b4650;}
-.br-tabs-st {display:flex;align-items:flex-end;gap:2px;height:38px;padding:0 10px;background:#e4e8ec;font-size:13px;overflow-x:auto;scrollbar-width:none;}
+.br-chrome-st {flex:none;color:var(--ink-2);}
+.br-tabs-st {display:flex;align-items:flex-end;gap:2px;height:38px;padding:0 10px;background:var(--fill-2);font-size:13px;overflow-x:auto;scrollbar-width:none;}
 .br-tab-st {display:inline-flex;align-items:center;gap:2px;height:32px;padding:0 4px 0 0;border-radius:9px 9px 0 0;color:#556666;max-width:220px;flex:0 1 auto;min-width:0;}
-.br-tab-st.on {background:#fff;color:#1b1f23;}
+.br-tab-st.on {background:var(--bg);color:var(--ink);}
 .br-tab-st > button {border:0;background:none;font:inherit;color:inherit;display:inline-flex;align-items:center;gap:6px;padding:0 10px;height:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .br-x-st {padding:0 4px !important;opacity:.6;}
 .br-x-st:hover {opacity:1;}
 .br-dot-st {width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none;}
 .br-new-st {border:0;background:none;font-size:20px;line-height:1;padding:0 12px 6px;color:inherit;}
-.br-url-st {display:flex;align-items:center;gap:6px;height:40px;padding:0 12px;border-bottom:1px solid #e6e9ec;font-size:14px;background:#fff;}
+.br-url-st {display:flex;align-items:center;gap:6px;height:40px;padding:0 12px;border-bottom:1px solid var(--line);font-size:14px;background:var(--bg);}
 .br-nav-st {border:0;background:none;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:inherit;}
 .br-nav-st:hover:not([disabled]) {background:rgba(0,0,0,.06);}
 .br-nav-st[disabled] {opacity:.35;}
@@ -147,9 +148,9 @@
 .br-addr-st:focus {box-shadow:0 0 0 2px var(--accent);border-radius:6px;}
 .br-page-st {position:relative;flex:1;min-height:0;background:#fff;}
 .br-page-st canvas {position:absolute;inset:0;width:100%;height:100%;object-fit:contain;outline:none;}
-.blank-st {position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:8px;padding:16px;text-align:center;color:#6a747c;background:#fff;}
+.blank-st {position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:8px;padding:16px;overflow:auto;text-align:center;color:var(--ink-2);background:var(--bg);}
 .blank-st > .icon {width:40px;height:40px;}
-.blank-st b {color:#1b1f23;font-size:15px;}
+.blank-st b {color:var(--ink);font-size:15px;}
 .blank-st small {font-size:13px;max-width:420px;}
 .drw-br {border-top:1px solid var(--line);background:var(--bg);display:grid;grid-template-rows:auto minmax(0,1fr);max-height:38vh;min-height:0;flex:none;}
 .drw-tabs-br {display:flex;align-items:center;gap:2px;padding:4px 8px;border-bottom:1px solid var(--line);overflow-x:auto;}
@@ -179,7 +180,7 @@
 .tabs-br .link {flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 @media (max-width:760px) {.tb-br span {display:none;} .drw-br {max-height:46vh;}}
 
-/* The computer card in the conversation: live (picture, Watch full size, Take over) and "Used … · N actions" */
+/* The computer card in the conversation: Working / You have control / Stopped / Done, and "Used … · N actions" */
 .card-st {max-width:min(100%,82ch);margin:0 0 0 38px;border:1px solid var(--hair17);border-radius:var(--r3-17,16px);background:var(--raise);overflow:hidden;font-size:13px;}
 .comp-card-st {display:grid;gap:10px;padding:16px;}
 .card-h-st {display:flex;align-items:center;gap:8px;}
@@ -187,6 +188,9 @@
 .card-h-st .pill {margin-left:auto;}
 .card-st .pill.work {background:var(--accent-tint);color:var(--accent-ink);}
 .card-st .pill.work i {animation:blink 1.2s ease-in-out infinite;}
+.card-st .pill.you {background:var(--fill-2);color:var(--ink);}
+.card-st .pill.done {background:var(--ok-tint);color:var(--ok);}
+.card-st .pill.no {background:var(--bad-tint);color:var(--bad);}
 .card-sub-st {margin:0;color:var(--ink-2);}
 .comp-thumb-st {position:relative;display:block;width:100%;aspect-ratio:16/10;max-height:320px;border:0;padding:0;border-radius:10px;overflow:hidden;background:#0e1419;cursor:pointer;}
 .comp-thumb-st .stage-screen {position:absolute;inset:0;}

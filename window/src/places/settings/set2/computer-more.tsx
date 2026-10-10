@@ -27,7 +27,7 @@ export type Opt = { v: unknown; l: string; off?: string };
  *  code (copyable text), btn, val (a fixed value), info (no control), hint (a paragraph), custom (render). */
 export type Spec = {
   t: string; k: "sw" | "seg" | "pick" | "num" | "text" | "list" | "cmd" | "arg" | "code" | "btn" | "val" | "info" | "copy" | "change" | "hint" | "custom";
-  sub?: string; lv?: Lv; key?: string | string[]; def?: unknown; on?: unknown; offV?: unknown; is?: (v: unknown) => boolean;
+  sub?: string; help?: string; lv?: Lv; key?: string | string[]; def?: unknown; on?: unknown; offV?: unknown; is?: (v: unknown) => boolean;
   opts?: Opt[]; unit?: string; ph?: string; val?: string; tone?: "ok" | "warn" | "bad" | "idle"; btns?: string[]; bare?: boolean; upTo?: Lv; min?: number; max?: number; csv?: boolean; off?: string; btn?: string; tag?: string;
   code?: string; cmds?: string[]; danger?: boolean; arg?: string; render?: (c: Ctx) => ReactNode;
 };
@@ -41,7 +41,7 @@ const NODE_IMAGE = "node:24.21.0-slim";
 const SCREEN_DRIVER = "Needs the screen driver to report this.";
 
 const ON_COMPUTER: SecSpec = { t: "On a computer", lv: 0, rows: [
-  { t: "See the screen and use the mouse", k: "sw", key: "plugins.entries.cua-computer.enabled", def: false, sub: "Needed for apps without a connection. Turn it on to let Trunks use this screen and mouse. You can always take over." },
+  { t: "See the screen and use the mouse", k: "sw", key: "plugins.entries.cua-computer.enabled", def: false, sub: "Needed for apps without a connection. Turn it on to let Trunks use this screen and mouse. Full access does not turn this on. You can always take over." },
   { t: "Ask before opening an app it hasn’t used", sub: "Once per app, per Trunk. Off until you choose: apps open without asking each one.", k: "sw", off: "Needs the engine to keep the apps each Trunk has opened." },
   { t: "Use the camera", k: "cmd", cmds: ["camera.snap", "camera.clip"], danger: true, sub: "A Trunk can take a photo or a short clip with a computer’s camera. Applies to every paired computer and phone." },
   { t: "Cameras", sub: "Each camera on this computer, and what it can do.", k: "btn", lv: 1, btn: "See", off: "Needs the engine to list this computer’s cameras." },
@@ -288,7 +288,7 @@ function CfgRow({ s, c }: { s: Spec; c: Ctx }) {
   else if (s.k === "pick") control = <Pick label={s.t} value={at === "-1" ? str(cur) : at} options={opts} disabled={cfg.loading} onChange={pickOpt} />;
   else if (s.k === "num") control = <Num label={s.t} value={typeof raw === "number" ? raw : undefined} placeholder={s.ph ?? (s.def === undefined ? undefined : String(s.def))} unit={s.unit} min={s.min} max={s.max} disabled={cfg.loading} onCommit={save} />;
   else if (s.k === "text") control = <TextCtl s={s} raw={raw} save={save} />;
-  return <Ctl title={s.t} sub={subOf(s)}>{control}</Ctl>;
+  return <Ctl title={s.t} sub={subOf(s)} help={s.help}>{control}</Ctl>;
 }
 
 function TextCtl({ s, raw, save }: { s: Spec; raw: unknown; save: (v: unknown) => void }) {

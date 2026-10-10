@@ -717,6 +717,33 @@ describe("chrome.ts internal", () => {
       },
     );
 
+    it("launches Auto/unset managed Chrome headless even when a Linux display is present", async () => {
+      stubBrowserExecutableAndPrefs("present");
+      spawnMock.mockImplementation(() => makeFakeProc());
+
+      await withMockChromeCdpServer({
+        wsPath: "/devtools/browser/HEADLESS_AUTO",
+        run: async (baseUrl) => {
+          const port = Number(new URL(baseUrl).port);
+          const running = await launchBranchChrome(
+            makeResolved({ headless: false, headlessSource: "default" }),
+            makeProfile(port, {
+              driver: "branch",
+              attachOnly: false,
+              headless: false,
+              headlessSource: "default",
+            }),
+            {
+              platform: "linux",
+              env: { DISPLAY: ":0", WAYLAND_DISPLAY: undefined },
+            },
+          );
+          expect(requireSpawnCall()[1]).toEqual(expect.arrayContaining(["--headless=new"]));
+          running.proc.kill?.("SIGTERM");
+        },
+      });
+    });
+
     it("completes successfully when Chrome reports /json/version and CDP is reachable", async () => {
       // Mock executable discovery to a truthy path.
       stubBrowserExecutableAndPrefs("present");

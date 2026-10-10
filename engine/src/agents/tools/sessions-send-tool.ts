@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { isRequesterParentOfBackgroundAcpSession } from "@branch/acp-core/session-interaction-mode";
 import { finiteSecondsToTimerSafeMilliseconds } from "@branch/normalization-core/number-coercion";
 import { isRecord } from "@branch/normalization-core/record-coerce";
@@ -40,7 +39,10 @@ import {
 import { ToolInputError } from "../tool-input-error.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readNonNegativeIntegerParam, readToolStringParam } from "./common.js";
-import { wrapGatewayPersonalToolExecution } from "./gateway-caller-context.js";
+import {
+  getGatewayToolCallerIdentity,
+  wrapGatewayPersonalToolExecution,
+} from "./gateway-caller-context.js";
 import { callAgentToolGatewayRequest } from "./in-process-gateway.js";
 import {
   resolveSessionToolTargetAgentId,
@@ -66,6 +68,7 @@ import { sendFailure } from "./sessions-send-helpers.js";
 import { startSessionsSendReplyFlow } from "./sessions-send-reply-flow.js";
 import { captureSessionsSendResumeCaller, resumeSessionsSendTask } from "./sessions-send-resume.js";
 import {
+  buildSessionsSendOperationKey,
   createConfiguredAgentMainSession,
   isConfiguredAgentMainSessionKey,
   notifySessionsSendSession,
@@ -91,7 +94,7 @@ export function createSessionsSendTool(opts?: SessionsSendToolOptions): AnyAgent
       : describeSessionsSendTool(),
     parameters: opts?.workerPlacement ? PlacedSessionsSendSchema : SessionsSendToolSchema,
     outputSchema: SessionsSendOutputSchema,
-    execute: wrapGatewayPersonalToolExecution(async (_toolCallId, args) => {
+    execute: wrapGatewayPersonalToolExecution(async (toolCallId, args) => {
       const params = isRecord(args) ? args : {};
       const promptedAt = Date.now();
       const gatewayCall = opts?.callGateway ?? callAgentToolGatewayRequest;
@@ -124,6 +127,21 @@ export function createSessionsSendTool(opts?: SessionsSendToolOptions): AnyAgent
         sessionVisibility,
         a2aPolicy,
       } = resolveSessionToolContext(opts);
+      // Worker callers supply a durable backend operation scope. Callers with no
+      // run identity (gateway tools.invoke over HTTP or RPC, MCP plugin tools)
+      // fall back to the session scope: their tool call id is already unique per
+      // call (`mcp-<uuid>`, `<prefix>-<origin>-<Date.now()>`) or is the client's
+      // own idempotency key, which must dedupe a retry. Neither may randomize the
+      // same call on retry.
+      const operationKey = buildSessionsSendOperationKey(
+        opts?.requesterTurnRunId ??
+          getGatewayToolCallerIdentity()?.operationalRunInstance?.runId ??
+          opts?.idempotencyKey ??
+          opts?.agentSessionId ??
+          effectiveRequesterKey,
+        toolCallId,
+        params,
+      );
       let requesterAgentId: string;
       try {
         requesterAgentId = resolveSessionAgentId({
@@ -243,15 +261,36 @@ export function createSessionsSendTool(opts?: SessionsSendToolOptions): AnyAgent
       // A joined Branch's Trunk is a contact, not a session in this gateway's store. Its outbound graft
       // connection polls durable work and brings the result back to this requester.
       if (/^a2a:branch-[a-z0-9-]+--[a-z0-9-]+$/.test(sessionKey)) {
-        if (restrictToSpawned) return sendFailure("forbidden", "Sandboxed sessions_send cannot address a joined Branch.", sessionKey);
-        if (mode && mode !== "followup") return sendFailure("error", "Joined Trunks accept new work only; use mode=followup or omit mode.", sessionKey);
+        if (restrictToSpawned)
+          return sendFailure(
+            "forbidden",
+            "Sandboxed sessions_send cannot address a joined Branch.",
+            sessionKey,
+          );
+        if (mode && mode !== "followup")
+          return sendFailure(
+            "error",
+            "Joined Trunks accept new work only; use mode=followup or omit mode.",
+            sessionKey,
+          );
         try {
           const accepted = await gatewayCall<{ id: string }>({
             method: "graft.work.send",
-            params: { target: sessionKey, text: message, sourceSessionKey: effectiveRequesterKey, idempotencyKey: _toolCallId },
+            params: {
+              target: sessionKey,
+              text: message,
+              sourceSessionKey: effectiveRequesterKey,
+              idempotencyKey: operationKey,
+            },
             timeoutMs: 10_000,
           });
-          return jsonResult({ runId: accepted.id, status: "accepted", sessionKey, targetDisposition: "queued", delivery: { status: "pending" } });
+          return jsonResult({
+            runId: accepted.id,
+            status: "accepted",
+            sessionKey,
+            targetDisposition: "queued",
+            delivery: { status: "pending" },
+          });
         } catch (error) {
           return sendFailure("error", formatErrorMessage(error), sessionKey);
         }
@@ -421,7 +460,7 @@ export function createSessionsSendTool(opts?: SessionsSendToolOptions): AnyAgent
           floorSeconds: true,
         }) ?? 0;
       const replyTimeoutMs = timeoutSeconds === 0 ? 30_000 : timeoutMs;
-      const idempotencyKey = opts?.idempotencyKey ?? crypto.randomUUID();
+      const idempotencyKey = operationKey;
       let runId: string = idempotencyKey;
       const sameSession = requesterSessionKey === resolvedKey && targetAgentId === requesterAgentId;
       // Fire-and-forget self-send remains a channel-delivery path. A synchronous
@@ -614,6 +653,7 @@ export function createSessionsSendTool(opts?: SessionsSendToolOptions): AnyAgent
             expectedSessionId,
           };
           const replyContext: Parameters<typeof dispatchSessionsSendFollowup>[1] = {
+            operationKey,
             callGateway: gatewayCall,
             targetSessionKey: resolvedKey,
             targetAgentId,

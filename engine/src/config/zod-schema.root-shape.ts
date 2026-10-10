@@ -231,6 +231,11 @@ export const BranchSchemaShape = {
           enabled: z.boolean().optional(),
         })
         .optional(),
+      /**
+       * Quiet minutes before Branch Agent closes an idle engine-launched headless
+       * Chrome. Default: 5. Set 0 to keep that process until shutdown.
+       */
+      idleTimeoutMinutes: z.number().int().min(0).optional(),
       /** Chrome extension relay authentication compatibility settings. */
       extensionRelay: z
         .strictObject({

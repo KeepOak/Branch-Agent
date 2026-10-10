@@ -1,0 +1,5 @@
+engine:src/agents/branch-tools.registration.test.ts
+engine:src/agents/tools/trunk-message-tool.test.ts
+engine:src/agents/tools/trunk-room-tools.test.ts
+engine:src/gateway/server-methods-list.test.ts
+engine:src/gateway/server-methods/rooms-trunk.test.ts

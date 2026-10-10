@@ -36,7 +36,7 @@ describe("setup model", () => {
   it("has the spec's 11 steps", () => {
     expect(STEPS).toHaveLength(11);
     expect(STEPS[2]).toBe("Models");
-    expect(STEPS.slice(4, 10)).toEqual(["Your first Trunks", "Tools", "Reach it anywhere", "Keep it running", "People", "A few extras"]);
+    expect(STEPS.slice(4, 10)).toEqual(["Your first Trunks", "Reach it anywhere", "Tools", "Keep it running", "People", "Two more things"]);
     expect([...doneSteps({ promise: false, where: false, model: null, jobs: [], autoUpdate: null }, false)]).toEqual([]);
   });
   it("reads detect, tests and the record", () => {
@@ -263,6 +263,13 @@ describe("setup flow", () => {
     expect(dialog?.textContent?.toLowerCase()).not.toContain("claude setup-token");
     expect(params(request, "models.authStatus")).toEqual([{ agentId: "main" }]);
   });
+  it("Make it yours says Full access does not include the screen switch", async () => {
+    const { engine: e } = engine({});
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={3} onClose={() => {}} onLocalModel={() => {}} />);
+    expect(host.querySelector("h2")?.textContent).toBe("Make it yours");
+    expect(host.textContent).toContain("Full access");
+    expect(host.textContent).toContain("Seeing the screen and using the mouse is a separate switch in Settings › Computer & browser");
+  });
   it("Welcome holds Start until the promise is ticked and has no Skip", async () => {
     const { engine: e } = engine({});
     const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" onClose={() => {}} onLocalModel={() => {}} />);
@@ -376,9 +383,9 @@ describe("setup flow", () => {
     const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={3} onClose={() => {}} onLocalModel={() => {}} />);
     expect(host.textContent).not.toContain("as the engine ships it");
     await act(async () => host.querySelectorAll<HTMLButtonElement>(".ob-rail li button")[5].click());
-    expect(host.textContent).toContain("No command-line tools found yet");
-    await act(async () => host.querySelectorAll<HTMLButtonElement>(".ob-rail li button")[6].click());
     expect(host.textContent).toContain("No chat apps are available yet");
+    await act(async () => host.querySelectorAll<HTMLButtonElement>(".ob-rail li button")[6].click());
+    expect(host.textContent).toContain("No command-line tools found yet");
   });
   it("routes a failed model check to the shared Add account dialog", async () => {
     const { engine: e } = engine({ "branch.setup.verify": { ok: false, error: "No agent model is configured. Run 'branch onboard' first." }, health: { ok: true }, "system.info": { diskAvailableBytes: 2 * 1024 ** 3 } });
@@ -555,7 +562,7 @@ describe("setup's Reach step", () => {
       "wizard.start": { sessionId: "w1", done: false, step: { id: "s1", type: "text", message: "Paste the bot token" } },
       "device.pair.setupCode": { setupId: "p1", setupCode: "ABCD-2345", qrDataUrl: "" },
     });
-    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={6} onClose={() => {}} onLocalModel={() => {}} />);
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={5} onClose={() => {}} onLocalModel={() => {}} />);
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(tid(host, "setup-app-slack").getAttribute("aria-pressed")).toBe("true");
     await act(async () => tid(host, "setup-app-telegram").click());

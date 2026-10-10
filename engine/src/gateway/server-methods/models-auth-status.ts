@@ -449,6 +449,9 @@ export const modelsAuthStatusHandlers: GatewayRequestHandlers = {
           profiles: prov.profiles.map((prof) => {
             const metadata = resolveAuthProfileMetadata({ cfg, store, profileId: prof.profileId });
             const lastUsedAt = store.usageStats?.[prof.profileId]?.lastUsed;
+            const blockedUntil = asDateTimestampMs(
+              store.usageStats?.[prof.profileId]?.blockedUntil,
+            );
             const profile: ModelAuthStatusProvider["profiles"][number] = {
               profileId: prof.profileId,
               type: prof.type,
@@ -483,6 +486,9 @@ export const modelsAuthStatusHandlers: GatewayRequestHandlers = {
             }
             if (logoutProfileIds.has(prof.profileId)) {
               profile.logoutSupported = true;
+            }
+            if (blockedUntil !== undefined && blockedUntil > now) {
+              profile.limitedUntil = blockedUntil;
             }
             return profile;
           }),

@@ -1,6 +1,7 @@
 // Rebuild the native icons from KeepOak's approved app-icon tile without image-tool dependencies.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { deflateSync, inflateSync } from "node:zlib";
 
 const root = resolve(import.meta.dirname, "..");
@@ -23,7 +24,7 @@ function chunk(type, data) {
   out.writeUInt32BE(crc(out.subarray(4, out.length - 4)), out.length - 4);
   return out;
 }
-function decode(png) {
+export function decode(png) {
   if (!png.subarray(0, 8).equals(signature)) throw new Error("Expected PNG");
   let width, height, depth, color, interlace;
   const compressed = [];
@@ -78,29 +79,50 @@ function resize(source, size) {
   }
   return encode(size, pixels);
 }
-const originals = new Map([16, 32, 48, 512].map(size => [size, readFileSync(join(brand, `keepoak-app-icon-${size}.png`))]));
-const source = decode(originals.get(512));
-const png = size => originals.get(size) ?? resize(source, size);
-const images = sizes.map(png);
-const header = Buffer.alloc(6 + sizes.length * 16);
-header.writeUInt16LE(1, 2); header.writeUInt16LE(sizes.length, 4);
-let offset = header.length;
-for (let i = 0; i < sizes.length; i++) {
-  const at = 6 + i * 16, size = sizes[i];
-  header[at] = size === 256 ? 0 : size; header[at + 1] = size === 256 ? 0 : size;
-  header.writeUInt16LE(1, at + 4); header.writeUInt16LE(32, at + 6);
-  header.writeUInt32LE(images[i].length, at + 8); header.writeUInt32LE(offset, at + 12);
-  offset += images[i].length;
+const BACKGROUND = [21, 58, 40];
+function keyed(source, template) {
+  const pixels = Buffer.from(source.pixels);
+  for (let at = 0; at < pixels.length; at += 4) {
+    const background = pixels[at] === BACKGROUND[0] && pixels[at + 1] === BACKGROUND[1] && pixels[at + 2] === BACKGROUND[2];
+    if (background) {
+      pixels[at] = 0; pixels[at + 1] = 0; pixels[at + 2] = 0; pixels[at + 3] = 0;
+    } else if (template) {
+      pixels[at] = 0; pixels[at + 1] = 0; pixels[at + 2] = 0; pixels[at + 3] = 255;
+    }
+  }
+  return { size: source.size, pixels };
 }
-writeFileSync(join(root, "assets/branch.ico"), Buffer.concat([header, ...images]));
-const icnsTypes = new Map([[16, "icp4"], [32, "icp5"], [64, "icp6"], [128, "ic07"], [256, "ic08"], [512, "ic09"], [1024, "ic10"]]);
-const icns = [...icnsTypes].map(([size, type]) => {
-  const data = png(size), entry = Buffer.alloc(8 + data.length);
-  entry.write(type); entry.writeUInt32BE(entry.length, 4); data.copy(entry, 8);
-  return entry;
-});
-const icnsHeader = Buffer.alloc(8); icnsHeader.write("icns"); icnsHeader.writeUInt32BE(8 + icns.reduce((n, part) => n + part.length, 0), 4);
-writeFileSync(join(root, "assets/branch.icns"), Buffer.concat([icnsHeader, ...icns]));
-const linux = join(brand, "linux"); mkdirSync(linux, { recursive: true });
-for (const size of [16, 24, 32, 48, 64, 128, 256, 512]) writeFileSync(join(linux, `branch-${size}.png`), png(size));
-writeFileSync(join(linux, "branch-16@2x.png"), png(32));
+function buildBrandIcons() {
+  const tile = keyed(decode(readFileSync(join(brand, "keepoak-app-icon-512.png"))), false);
+  const mark = keyed(decode(readFileSync(join(brand, "keepoak-app-icon-512.png"))), true);
+  const png = size => resize(tile, size);
+  const templatePng = size => resize(mark, size);
+  const images = sizes.map(png);
+  const header = Buffer.alloc(6 + sizes.length * 16);
+  header.writeUInt16LE(1, 2); header.writeUInt16LE(sizes.length, 4);
+  let offset = header.length;
+  for (let i = 0; i < sizes.length; i++) {
+    const at = 6 + i * 16, size = sizes[i];
+    header[at] = size === 256 ? 0 : size; header[at + 1] = size === 256 ? 0 : size;
+    header.writeUInt16LE(1, at + 4); header.writeUInt16LE(32, at + 6);
+    header.writeUInt32LE(images[i].length, at + 8); header.writeUInt32LE(offset, at + 12);
+    offset += images[i].length;
+  }
+  writeFileSync(join(root, "assets/branch.ico"), Buffer.concat([header, ...images]));
+  const icnsTypes = [[16, "icp4"], [32, "icp5"], [64, "icp6"], [128, "ic07"], [256, "ic08"], [512, "ic09"], [1024, "ic10"], [32, "ic11"], [64, "ic12"], [256, "ic13"], [512, "ic14"]];
+  const icns = icnsTypes.map(([size, type]) => {
+    const data = png(size), entry = Buffer.alloc(8 + data.length);
+    entry.write(type); entry.writeUInt32BE(entry.length, 4); data.copy(entry, 8);
+    return entry;
+  });
+  const icnsHeader = Buffer.alloc(8); icnsHeader.write("icns"); icnsHeader.writeUInt32BE(8 + icns.reduce((n, part) => n + part.length, 0), 4);
+  writeFileSync(join(root, "assets/branch.icns"), Buffer.concat([icnsHeader, ...icns]));
+  const linux = join(brand, "linux"); mkdirSync(linux, { recursive: true });
+  for (const size of [16, 24, 32, 48, 64, 128, 256, 512]) writeFileSync(join(linux, `branch-${size}.png`), png(size));
+  writeFileSync(join(linux, "branch-16@2x.png"), png(32));
+  writeFileSync(join(linux, "branchTemplate.png"), templatePng(16));
+  writeFileSync(join(linux, "branchTemplate@2x.png"), templatePng(32));
+  writeFileSync(join(linux, "branch-32Template.png"), templatePng(32));
+  writeFileSync(join(linux, "branch-32Template@2x.png"), templatePng(64));
+}
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) buildBrandIcons();

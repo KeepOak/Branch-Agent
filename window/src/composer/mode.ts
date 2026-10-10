@@ -43,7 +43,7 @@ export const MODE_ROWS: readonly ModeRow[] = [
     engine: "full",
     name: "Full access",
     icon: "unlock",
-    line: "Does anything on this computer without asking: files, commands, the internet.",
+    line: "Does anything on this computer without asking: files, commands, the internet. Seeing the screen and using the mouse is a separate switch in Settings › Computer & browser.",
   },
 ];
 
