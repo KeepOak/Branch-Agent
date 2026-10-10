@@ -2,6 +2,7 @@
 // Name, What it's for, and the pebble's Colour, Shape and Eyes.
 import { useState } from "react";
 import { Face } from "../../face/Face";
+import { CommitInput, Saved } from "./EditControls";
 import { EMOJI, LOOKS } from "./model";
 import type { Draft } from "./api";
 
@@ -42,7 +43,7 @@ function Emojis({ draft, set }: { draft: Draft; set: (d: Partial<Draft>) => void
   const pick = (emoji: string) => set(emoji ? { emoji, look: "classic" } : { emoji: "" });
   return (
     <div className="tk-emo">
-      <b>Or an emoji face</b>
+      <b>Or an emoji face</b><Saved field="emoji" />
       <div className="tk-emo-row" role="radiogroup" aria-label="Emoji face"
         onKeyDown={(e) => { const i = EMOJI.indexOf(draft.emoji); const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0; if (step) { e.preventDefault(); pick(EMOJI[(i + step + EMOJI.length) % EMOJI.length]); } }}>
         {EMOJI.map((e, i) => <button key={e} type="button" role="radio" aria-checked={draft.emoji === e} tabIndex={draft.emoji === e || (!draft.emoji && i === 0) ? 0 : -1} onClick={() => pick(e)}>{e}</button>)}
@@ -57,15 +58,15 @@ function PebbleFields({ draft, set }: { draft: Draft; set: (d: Partial<Draft>) =
   return (
     <>
       <div className="tk-field">
-        <span className="tk-label">Colour</span>
+        <span className="tk-label">Colour</span><Saved field="colour" />
         <div className="tk-swatches">{COLOURS.map((c) => <button key={c} type="button" className="tk-swatch" style={{ background: c }} aria-label={`Colour ${c}`} aria-pressed={draft.colour === c} onClick={() => set({ colour: c })} />)}</div>
       </div>
       {classic && <div className="tk-field">
-        <span className="tk-label">Shape</span>
+        <span className="tk-label">Shape</span><Saved field="shape" />
         <div className="tk-shapes">{SHAPES.map((s, i) => <button key={s} type="button" className="tk-shape" aria-label={s} title={s} aria-pressed={draft.shape === s} onClick={() => set({ shape: s })}><span style={{ borderRadius: RADII[i], background: draft.colour }} /></button>)}</div>
       </div>}
       {classic && <div className="tk-field">
-        <span className="tk-label">Eyes</span>
+        <span className="tk-label">Eyes</span><Saved field="eyes" />
         <span className="tk-seg">{EYES.map((e) => <button key={e} type="button" aria-pressed={draft.eyes === e} onClick={() => set({ eyes: e })}>{e}</button>)}</span>
       </div>}
     </>
@@ -77,14 +78,14 @@ export function LookTab({ draft, set }: { draft: Draft; set: (d: Partial<Draft>)
   return (
     <div className="tk-look-tab">
       <section>
-        <h3 className="tk-h">How it looks</h3>
+        <h3 className="tk-h">How it looks <Saved field="look" /></h3>
         <p className="tk-hint">It moves by itself: thinking, searching, reading, working, waiting for you, celebrating, resting. You never pick an animation; it follows what the Trunk is doing.</p>
         <Gallery draft={draft} set={set} fresh={fresh} />
       </section>
       <Emojis draft={draft} set={set} />
       <div className="tk-split">
-        <label className="tk-field"><span className="tk-label">Name</span><input className="inp" value={draft.name} onChange={(e) => set({ name: e.target.value })} /></label>
-        <label className="tk-field"><span className="tk-label">What it’s for</span><input className="inp" value={draft.theme} onChange={(e) => set({ theme: e.target.value })} /></label>
+        <label className="tk-field"><span className="tk-label">Name</span><Saved field="name" /><CommitInput label="Name" value={draft.name} onCommit={(name) => set({ name })} /></label>
+        <label className="tk-field"><span className="tk-label">What it’s for</span><Saved field="theme" /><CommitInput label="What it’s for" value={draft.theme} onCommit={(theme) => set({ theme })} /></label>
       </div>
       <PebbleFields draft={draft} set={set} />
     </div>

@@ -2,7 +2,6 @@
 // engine can give, one row per thing to change (each opens the editor where it changes), its automations, then
 // Pause / Make default / Edit. It loads its own data, so any place (the thread header too) can open it by id.
 import { useState, type ReactNode } from "react";
-import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
 import { Icon } from "../../shell/icons";
@@ -23,7 +22,8 @@ import { TrunkFiles } from "./TrunkFiles";
 import { Layer } from "./layer";
 import "./trunk.css";
 
-// TODO(engine-lane): pausing a Trunk (Customize › Trunks › Pause, Trunk profile) needs the engine's pause for a Trunk.
+
+// Shared with Customize › Trunks, which still shows its own greyed Pause until that place removes it.
 export const PAUSE_WHY = "Needs the engine’s pause for a Trunk.";
 
 export type TrunkProfileProps = {
@@ -85,13 +85,13 @@ function Rows({ row, data, level, edit, openPlace, showFiles }: { row: TrunkRow;
   return (
     <div className="tk-rows">
       <Row icon={<Icon name="monitor" small />} label="Its computer" value={where} onClick={() => edit("computers")} />
-      <Row icon={<LineIcon name="spark" />} label="Model" value={model} onClick={() => edit("may")} />
-      <Row icon={<LineIcon name="shield" />} label="May do" value={mayLine} onClick={() => edit("may")} />
+      <Row icon={<LineIcon name="spark" />} label="Model" value={model} onClick={() => edit("models")} />
+      <Row icon={<LineIcon name="shield" />} label="May do" value={mayLine} onClick={() => edit("permissions")} />
       <Row icon={<LineIcon name="plug" />} label="Its tools" value="Customize › Tools" onClick={openPlace && (() => openPlace("customize"))} />
       <Row icon={<Icon name="book" small />} label="What it remembers" value={data.facts === null ? "Library › Memory" : data.facts === 1 ? "1 fact" : `${data.facts} facts`} onClick={openPlace && (() => openPlace("library"))} />
       {shows(level, "advanced") && <Row icon={<LineIcon name="spark" />} label="Skills it may use" value={skillsLine(data, row.id)} onClick={openPlace && (() => openPlace("customize"))} />}
       {shows(level, "technical") && <Row icon={<Icon name="folder" small />} label="Its folder" value={row.workspace || "Not reported"} mono onClick={showFiles} />}
-      {shows(level, "technical") && <Row icon={<LineIcon name="bot" />} label="Runs on" value={!row.runtime || row.runtime === "branch" || row.runtime === "embedded" ? "Branch" : row.runtime} onClick={() => edit("may")} />}
+      {shows(level, "technical") && <Row icon={<LineIcon name="bot" />} label="Runs on" value={!row.runtime || row.runtime === "branch" || row.runtime === "embedded" ? "Branch" : row.runtime} onClick={() => edit("models")} />}
     </div>
   );
 }
@@ -119,7 +119,6 @@ function ProfileBody({ engine, level, onClose, openPlace, data, row, reload, edi
   const block = defaultBlock(data.roster, row.id), write = canWrite(engine);
   const toDefault = () => makeDefault(engine, data.roster, row.id).then(() => { notify(`${row.name} is now your default Trunk. Unrouted chats go to it.`); reload(); }, (e: unknown) => setError(errorText(e)));
   const footer = <>
-    <button type="button" className="btn ghost tk-pf-pause" disabled title={shownWhy(PAUSE_WHY)}>Pause {row.name}</button>
     {!isDefault && <button type="button" className="btn ghost" disabled={!!block || !write} title={block || (write ? undefined : WRITE_WHY)} onClick={() => void toDefault()}>Make default</button>}
     {!isDefault && <button type="button" className="btn ghost" disabled={!write} title={write ? undefined : WRITE_WHY} onClick={remove}>Remove {row.name}…</button>}
     <button type="button" className="btn pri" onClick={() => edit("look")}>Edit {row.name}</button>

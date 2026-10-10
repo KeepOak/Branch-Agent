@@ -21,6 +21,8 @@
 .tk-big { display: grid; place-items: center; gap: 8px; padding: 14px; border-radius: 14px; background: var(--fill); }
 .tk-col { display: grid; gap: 14px; min-width: 0; }
 .tk-tabs { display: flex; flex-wrap: wrap; gap: 4px; min-height: 34px; padding-bottom: 2px; }
+/* The tab row stays on screen while the editor body scrolls, so a tab is always there to click */
+.tk-col > .tk-tabs { position: sticky; top: 0; z-index: 1; background: var(--glass2-17); padding-top: 2px; }
 .tk-tab { background: none; height: 32px; padding: 0 14px; border-radius: 999px; font-size: 13px; color: var(--ink-2); border: 1px solid transparent; white-space: nowrap; }
 .tk-tab:hover { color: var(--ink); background: var(--wash17); }
 .tk-tab[aria-selected="true"] { background: var(--fill-2); color: var(--ink); font-weight: 600; }
@@ -187,3 +189,6 @@ button.tk-prow:disabled:hover { background: none; }
 .tk-accounts-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 10px; border: 1px solid var(--line, #ddd); border-radius: 8px; margin-bottom: 6px; }
 .tk-accounts-list li[draggable="true"] { cursor: grab; }
 .tk-accounts-list label { display: flex; align-items: center; gap: 7px; min-width: 0; overflow-wrap: anywhere; }
+/* Each change applies at once: a quiet tick beside the control that changed, and one Undo line for a removal */
+.tk-saved { margin-left: 8px; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.tk-undo { display: flex; align-items: center; gap: 10px; margin: 10px 0 0; font-size: 12.5px; color: var(--ink-2); }

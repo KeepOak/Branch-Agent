@@ -3,6 +3,7 @@
 // run is the Trunk's tools.exec host/node.
 import { Segmented } from "../../shell/Popover";
 import { Icon } from "../../shell/icons";
+import { Saved } from "./EditControls";
 import { LineIcon } from "./TrunkFace";
 import type { Draft } from "./api";
 import type { Computer } from "./data";
@@ -42,6 +43,7 @@ export function ComputersTab({ name, draft, computers, set, openSettings }: Prop
       <div className="tk-its-ctl">
         <span><b>A new conversation starts on</b><small>{offline ? "You can change it in the conversation’s computer menu. An offline computer can be picked once it’s back." : "You can change it in the conversation’s computer menu."}</small></span>
         <Segmented label="A new conversation starts on" value={draft.may.startOn} options={options} onChange={(startOn) => setMay({ startOn })} />
+        <Saved field="startOn" />
       </div>
       <div className="tk-offer" role="note">
         <span className="tk-ico"><LineIcon name="cloud" /></span>

@@ -33,7 +33,7 @@ function fixture(scopes = ["operator.admin"]) {
   return { engine, request };
 }
 async function mount(engine: WindowEngine, scope: string | null = null, onClose = vi.fn()) {
-  await act(async () => root.render(<KitProvider scope={scope} level={1} report={report}><TrunkEditor engine={engine} agentId="birch" level="advanced" tab="may" onClose={onClose} /></KitProvider>));
+  await act(async () => root.render(<KitProvider scope={scope} level={1} report={report}><TrunkEditor engine={engine} agentId="birch" level="advanced" tab="github" onClose={onClose} /></KitProvider>));
 }
 function button(text: string) { const found = Array.from(document.body.querySelectorAll("button")).find(b => b.textContent === text); expect(found).toBeTruthy(); return found!; }
 async function click(text: string) { await act(async () => button(text).click()); }
@@ -42,8 +42,7 @@ it.each([null, "oak"])("pins mounted editor GitHub reads and sign-in to edited B
   const { engine, request } = fixture(); await mount(engine, scope);
   expect(request).toHaveBeenCalledWith("tools.github.status", { agentId: "birch", selectedScope: "agent" });
   expect(document.body.textContent).toContain("@birch-github");
-  expect(document.body.textContent).toContain("GitHub connection changes save immediately for Birch");
-  expect(button("Save").disabled).toBe(true);
+  expect(document.body.textContent).toContain("Connecting or disconnecting GitHub applies right away.");
   await click("Change account");
   expect(request).toHaveBeenCalledWith("tools.github.authorize.start", { agentId: "birch", scope: "agent" });
   expect(document.body.textContent).toContain(device.userCode);
@@ -52,21 +51,28 @@ it.each([null, "oak"])("pins mounted editor GitHub reads and sign-in to edited B
   expect(request.mock.calls.some(([method]) => method === "tools.github.authorize.poll")).toBe(false);
 });
 
-it("inherits immediately for Birch without saving other editor drafts when cancelled", async () => {
+it("inherits immediately for Birch, and a browser switch already applied stays applied when the editor closes", async () => {
   const { engine, request } = fixture(); const closed = vi.fn(); await mount(engine, null, closed);
+  await click("Permissions");
   await act(async () => (document.body.querySelector('[aria-label="Use the browser"]') as HTMLButtonElement).click());
-  expect(button("Save").disabled).toBe(false);
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { birch: { tools: { deny: ["browser"] } } } } }) });
+  await click("GitHub");
   await click("Use shared account");
   expect(request).toHaveBeenCalledWith("tools.github.configure", { agentId: "birch", scope: "agent", mode: "inherit" });
   expect(document.body.textContent).toContain("@shared-github");
-  await click("Cancel"); expect(closed).toHaveBeenCalledTimes(1);
-  expect(request.mock.calls.some(([method]) => method === "agents.update" || method === "config.patch")).toBe(false);
+  await act(async () => (document.querySelector('button[aria-label="Close"]') as HTMLButtonElement).click());
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  expect(closed).toHaveBeenCalledTimes(1);
 });
 
-it("saves ordinary editor changes against fresh revision after an immediate GitHub change", async () => {
+it("applies ordinary editor changes against the fresh revision after an immediate GitHub change", async () => {
   const { engine, request } = fixture(); await mount(engine);
+  await click("GitHub");
+  await click("Use shared account");
+  await click("Permissions");
   await act(async () => (document.body.querySelector('[aria-label="Use the browser"]') as HTMLButtonElement).click());
-  await click("Use shared account"); await click("Save");
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
   const patch = request.mock.calls.find(([method]) => method === "config.patch");
   expect(patch).toBeTruthy();
   expect(patch).toEqual(["config.patch", { baseHash: "h2", raw: JSON.stringify({ agents: { entries: { birch: { tools: { deny: ["browser"] } } } } }) }]);

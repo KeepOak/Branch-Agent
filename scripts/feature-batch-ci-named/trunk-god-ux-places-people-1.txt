@@ -1,0 +1,5 @@
+# One file per PR or feature: engine:<engine-relative test file> or window:<window-relative test file>, one per line.
+window:src/places/people/people.test.tsx
+window:src/places/trunk/github-entry.test.tsx
+window:src/places/trunk/trunk-characters.test.tsx
+window:src/places/trunk/trunk.test.tsx

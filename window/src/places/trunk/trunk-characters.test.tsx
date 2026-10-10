@@ -37,7 +37,7 @@ it("previews an unused character and nature name, then Shuffle changes both befo
   expect(request).toHaveBeenCalledWith("agents.create", choice);
 });
 
-it("enables and saves Colour, Shape and Eyes; Shuffle changes a character and a pebble", async () => {
+it("enables Colour, Shape and Eyes and applies each one as it changes; Shuffle changes a character and a pebble", async () => {
   const request = vi.fn(async (method: string, _params?: unknown) => method === "agents.list" ? { defaultId: "tk", agents: [
     { id: "tk", identity: { name: "TK" } }, { id: "ash", identity: { name: "Ash", avatar: "branch:bolt" } },
   ] } : method === "config.get" ? { hash: "h1", valid: true, config: { agents: { entries: { ash: {} } } } } : method === "models.list" ? { models: [] } : method === "node.list" ? { nodes: [] } : { ok: true });
@@ -49,8 +49,10 @@ it("enables and saves Colour, Shape and Eyes; Shuffle changes a character and a 
   await click(document.querySelector('[aria-label="Stone"]'));
   await click(button("Wide"));
   expect(document.querySelector<HTMLButtonElement>('[aria-label="Stone"]')?.disabled).toBe(false);
-  await click(button("Save"));
-  expect(request.mock.calls.some(([method, params]) => { const look = params as Record<string, unknown> | undefined; return method === "agents.update" && Boolean(look?.colour && look.shape && look.eyes); })).toBe(true);
+  const sent = request.mock.calls.filter(([method]) => method === "agents.update").map(([, params]) => params as Record<string, unknown>);
+  expect(sent.some((params) => params.colour === "#1785AF")).toBe(true);
+  expect(sent.some((params) => params.shape === "Stone")).toBe(true);
+  expect(sent.some((params) => params.eyes === "Wide")).toBe(true);
   const selected = () => [...document.querySelectorAll<HTMLButtonElement>(".tk-swatch[aria-pressed='true'],.tk-shape[aria-pressed='true'],.tk-seg button[aria-pressed='true']")].map((el) => el.getAttribute("aria-label") || el.textContent).join("|");
   const before = selected();
   await click(button("Shuffle"));
