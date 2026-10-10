@@ -4,7 +4,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { httpStatusOf, isRateLimitError, isTransientGitHubError } from './merge-gate-rate-limit.mjs';
-import { ghApi } from './merge-gate-trusted.mjs';
+import { ghApi, ghApiWithRetry } from './merge-gate-trusted.mjs';
 
 export const CUTOFF_ISO = '2026-10-08T04:05:00Z';
 export const CUTOFF_MS = Date.parse(CUTOFF_ISO);
@@ -154,13 +154,31 @@ function shortSha(sha) {
 
 export const COMMIT_EMAIL_WAIT_SECONDS = 600;
 
-// The email check waits out installation rate limits (reset or retry-after) inside its step budget,
-// instead of giving up after the default six retries.
-export function emailCheckApi(repo, token, requestPath, options = {}) {
-  return ghApi(repo, token, requestPath, { ...options, retries: Number.POSITIVE_INFINITY });
+// One rate-limit budget for the whole job: every page shares one start time, so two rate-limited pages
+// cannot each get 600 s (the job has a 15-minute limit).
+export function createEmailCheckApi({
+  budgetSeconds = COMMIT_EMAIL_WAIT_SECONDS,
+  now = Date.now,
+  requestWithRetry = ghApiWithRetry,
+} = {}) {
+  const startedAt = now();
+  return function emailCheckApi(repo, token, requestPath, options = {}) {
+    const remaining = budgetSeconds - (now() - startedAt) / 1000;
+    if (remaining < 1) {
+      throw Object.assign(new Error(`rate-limit wait budget of ${budgetSeconds}s used up before ${requestPath}`), {
+        budgetExhausted: true,
+      });
+    }
+    return requestWithRetry(repo, token, requestPath, {
+      ...options, retries: Number.POSITIVE_INFINITY, startedAt, budgetSeconds, now,
+    });
+  };
 }
 
 export function apiFailureLine(error, prNumber) {
+  if (error?.budgetExhausted) {
+    return `GitHub API rate-limit wait ran out of its ${COMMIT_EMAIL_WAIT_SECONDS}s job budget while reading commits for PR #${prNumber}. Not a commit-email failure; re-run the check.`;
+  }
   const status = httpStatusOf(error);
   const label = status ? `HTTP ${status}` : 'error (no HTTP status)';
   let why = 'not retried (not a rate limit or a transient error)';
@@ -169,7 +187,7 @@ export function apiFailureLine(error, prNumber) {
   return `GitHub API ${label} while reading commits for PR #${prNumber}; ${why}. Not a commit-email failure.`;
 }
 
-export function runCommitEmailCheck({ repo, prNumber, token, api = emailCheckApi }) {
+export function runCommitEmailCheck({ repo, prNumber, token, api = createEmailCheckApi() }) {
   let commits;
   try {
     commits = fetchPrCommitsWithApi({ repo, prNumber, token, api });

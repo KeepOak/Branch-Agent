@@ -4,6 +4,8 @@ import test from 'node:test';
 import {
   CUTOFF_ISO,
   COMMIT_EMAIL_WAIT_SECONDS,
+  apiFailureLine,
+  createEmailCheckApi,
   evaluateCommits,
   fetchPrCommits,
   fetchPrCommitsWithApi,
@@ -270,4 +272,37 @@ test('a far-off reset is capped per wait and the email budget still ends the wai
   }), /rate limit exceeded/);
   assert.ok(sleeps.every((seconds) => seconds <= 120), `each wait capped at 120s: ${sleeps}`);
   assert.ok(sleeps.reduce((sum, seconds) => sum + seconds, 0) <= COMMIT_EMAIL_WAIT_SECONDS);
+});
+
+test('the email check shares one job budget across pages: two rate-limited pages cannot exceed it', () => {
+  let clock = 1_790_000_000_000;
+  const sleeps = [];
+  const now = () => clock;
+  const api = createEmailCheckApi({
+    budgetSeconds: COMMIT_EMAIL_WAIT_SECONDS,
+    now,
+    requestWithRetry: (_repo, _token, _path, options) => withRateLimitRetry(() => {
+      throw httpError('gh: API rate limit exceeded for installation (HTTP 403)');
+    }, {
+      sleep: (seconds) => { sleeps.push(seconds); clock += seconds * 1000; },
+      now,
+      startedAt: options.startedAt,
+      budgetSeconds: options.budgetSeconds,
+      maxRetries: Number.POSITIVE_INFINITY,
+      random: () => 0.5,
+    }),
+  });
+  assert.throws(() => api('o', 't', 'pulls/1/commits?page=1'), /rate limit/);
+  let secondError;
+  try {
+    api('o', 't', 'pulls/1/commits?page=2');
+  } catch (error) {
+    secondError = error;
+  }
+  assert.ok(secondError, 'the second page must not get a fresh budget');
+  const total = sleeps.reduce((sum, seconds) => sum + seconds, 0);
+  assert.ok(total <= COMMIT_EMAIL_WAIT_SECONDS, `waited ${total}s, over the ${COMMIT_EMAIL_WAIT_SECONDS}s job budget`);
+  assert.equal(secondError.budgetExhausted, true);
+  assert.match(apiFailureLine(secondError, '1'), /job budget/);
+  assert.match(apiFailureLine(secondError, '1'), /Not a commit-email failure/);
 });
