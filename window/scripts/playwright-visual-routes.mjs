@@ -7,6 +7,8 @@
 // Routes (names and descriptions in scripts/visual-routes.mjs):
 //   room-menu      the group room's ⋯ conversation menu
 //   stage-preview  the side panel's Preview tab with the Ledger app portal
+//   team-approval-before  the group room, no team card (the before shot for the team card)
+//   team-approval  the team proposal card, asking state
 // The fixture (visual-harness.tsx) supplies the group "Design group" and the portal "Ledger app".
 // Writes <outDir>/<route>-<label>.png (label defaults to "current"); pass "before" or "after" for a PR.
 // Add a route by adding a name in visual-routes.mjs and a step below.
@@ -28,6 +30,14 @@ async function openGroup(page) {
 }
 
 const steps = {
+  "team-approval-before": async (page) => {
+    await openGroup(page);
+    return page.locator("#root");
+  },
+  "team-approval": async (page) => {
+    await page.goto(`${base}/scripts/visual-harness.html?team=asking`);
+    return page.getByTestId("team-approval-card");
+  },
   "room-menu": async (page) => {
     await openGroup(page);
     await page.getByTestId("conversation-menu-button").click();

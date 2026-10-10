@@ -1,0 +1,9 @@
+.team-approval { border: 1px solid var(--line, #d9d9d9); border-radius: 12px; padding: 16px; max-width: 520px; background: var(--surface, #fff); color: var(--ink, #1b1b1b); font: 14px/1.45 system-ui, sans-serif; }
+.team-approval h3 { margin: 0 0 12px; font-size: 16px; }
+.team-approval-members { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.team-approval-member { border-top: 1px solid var(--line, #e5e5e5); padding-top: 10px; }
+.team-approval-role { margin-left: 8px; color: var(--muted, #6b6b6b); }
+.team-approval-member p { margin: 4px 0; }
+.team-approval-member small { color: var(--muted, #6b6b6b); }
+.team-approval-actions { display: flex; gap: 8px; margin-top: 14px; }
+.team-approval-hint, .team-approval-answer { margin: 12px 0 0; color: var(--muted, #6b6b6b); }
