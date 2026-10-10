@@ -49,7 +49,7 @@ export function natureLook(name: string): PebbleLook {
 }
 
 /** A look with its gaps filled from the name's nature look, so a face never falls back to the grey placeholder. */
-export function withNatureFallback(look: PebbleLook | undefined, name: string | undefined): PebbleLook {
+export function completePebbleLook(look: PebbleLook | undefined, name: string | undefined): PebbleLook {
   const nature = natureLook(name ?? "");
   return { colour: look?.colour ?? nature.colour, shape: look?.shape ?? nature.shape, eyes: look?.eyes ?? nature.eyes };
 }

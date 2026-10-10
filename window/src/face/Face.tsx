@@ -3,7 +3,7 @@ import type { AgentState } from "./agentState";
 import { SHEET } from "./painter";
 import { FacePlayer } from "./player";
 import "./face.css";
-import { useTrunkAppearance, useTrunkPebbleLook, useTrunkEmojiFace, withNatureFallback, type PebbleLook } from "./appearance";
+import { useTrunkAppearance, useTrunkPebbleLook, useTrunkEmojiFace, completePebbleLook, type PebbleLook } from "./appearance";
 import { CharacterFace } from "./CharacterFace";
 import { useLookPrefs, type LookPrefs } from "./look-prefs";
 
@@ -69,7 +69,7 @@ export function Face(props: Props) {
   const appearance = useTrunkAppearance(props.label);
   const contextLook = useTrunkPebbleLook(props.label);
   // Every pebble gets its colour, shape and eyes, falling back to the name's nature look (never the grey placeholder).
-  const pebbleLook = withNatureFallback(props.pebbleLook ?? contextLook, props.label);
+  const pebbleLook = completePebbleLook(props.pebbleLook ?? contextLook, props.label);
   const emoji = useTrunkEmojiFace(props.label);
   const look = useLookPrefs();
   const shown = { ...props, state: shownState(props.state ?? "idle", look), reactive: Boolean(props.reactive) && look.reactsToTouch };

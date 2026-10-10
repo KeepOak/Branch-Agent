@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { identityKey, natureLook, withNatureFallback } from "./appearance";
+import { identityKey, natureLook, completePebbleLook } from "./appearance";
 import { Face } from "./Face";
 
 describe("the nature look for a Trunk or grafted agent with no look of its own", () => {
@@ -19,7 +19,7 @@ describe("the nature look for a Trunk or grafted agent with no look of its own",
   });
 
   it("keeps the fields a look already has and fills only the gaps", () => {
-    const filled = withNatureFallback({ colour: "#123456" }, "Maple");
+    const filled = completePebbleLook({ colour: "#123456" }, "Maple");
     expect(filled.colour).toBe("#123456");
     expect(filled.shape).toBe(natureLook("Maple").shape);
     expect(filled.eyes).toBe("Round");
