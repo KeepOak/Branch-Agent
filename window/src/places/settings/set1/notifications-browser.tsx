@@ -2,7 +2,7 @@
 // engine through push.web.vapidPublicKey / push.web.subscribe / push.web.unsubscribe, its device overrides through
 // push.web.preferences.get / .set (scope "device") and a test through push.web.test. Copied from the engine's own
 // Control UI (ui/src/app/web-push.runtime.ts, pages/config/notifications-section.ts).
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { errorText, list, record, visible } from "../adapter";
 import { Btn, Ctl, Field, Hint, Pick, Sec, Switch, useSaveRunner, type Opt } from "../kit";
@@ -47,8 +47,9 @@ function keyBytes(base64: string): Uint8Array {
 }
 
 /** Why this device's own rows can't change yet, or undefined once this browser is registered. */
-export function deviceOff(p: PushState): string | undefined {
+export function deviceOff(p: PushState & { busy?: boolean }): string | undefined {
   if (p.loading) return "Checking this browser…";
+  if (p.busy) return "Saving this browser’s settings…";
   if (!p.supported) return "This browser can’t show notifications.";
   if (!p.reg) return "This window can’t receive notifications yet: it has no service worker.";
   if (!p.device) return "Turn on notifications in This browser first.";
@@ -66,10 +67,29 @@ async function subscribe(engine: WindowEngine, reg: ServiceWorkerRegistration) {
   await engine.request("push.web.subscribe", { endpoint: json.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth } });
 }
 
+/** Keeps browser actions disabled until the real permission/subscription save completes. */
+function usePushMutation(setState: Dispatch<SetStateAction<PushState>>) {
+  const run = useSaveRunner();
+  const pending = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const mutate = (save: () => Promise<unknown>) => {
+    if (pending.current) return Promise.resolve(false);
+    pending.current = true;
+    setBusy(true);
+    setState((s) => ({ ...s, error: undefined }));
+    return run(async () => {
+      try { await save(); }
+      catch (error) { setState((s) => ({ ...s, ...facts(), error: visible(errorText(error)) })); throw error; }
+      finally { pending.current = false; setBusy(false); }
+    });
+  };
+  return { busy, mutate };
+}
+
 /** This browser's push subscription and its device choices, read from the browser and the engine. */
 export function useWebPush(engine: WindowEngine) {
-  const run = useSaveRunner();
   const [state, setState] = useState<PushState>({ ...facts(), reg: null, sub: null, device: null, loading: true });
+  const { busy, mutate } = usePushMutation(setState);
   const latest = useRef<DevicePrefs | null>(null);
   const load = useCallback(async () => {
     const base = facts();
@@ -84,12 +104,12 @@ export function useWebPush(engine: WindowEngine) {
     }
   }, [engine]);
   useEffect(() => { void load(); }, [load]);
-  const turnOn = () => run(async () => { if (state.reg) await subscribe(engine, state.reg); await load(); });
-  const turnOff = () => run(async () => {
+  const turnOn = () => mutate(async () => { if (state.reg) await subscribe(engine, state.reg); await load(); });
+  const turnOff = () => mutate(async () => {
     if (state.sub) { await engine.request("push.web.unsubscribe", { endpoint: state.sub.endpoint }); await state.sub.unsubscribe(); }
     await load();
   });
-  const setDevice = (edit: (d: DevicePrefs) => DevicePrefs) => run(async () => {
+  const setDevice = (edit: (d: DevicePrefs) => DevicePrefs) => mutate(async () => {
     if (!state.sub || !latest.current) throw new Error("Turn on notifications in This browser first.");
     const next = normalizeDevice(edit(latest.current));
     latest.current = next;
@@ -101,7 +121,7 @@ export function useWebPush(engine: WindowEngine) {
       throw error;
     }
   });
-  return { ...state, turnOn, turnOff, setDevice, reload: load };
+  return { ...state, busy, turnOn, turnOff, setDevice, reload: load };
 }
 export type WebPush = ReturnType<typeof useWebPush>;
 
@@ -176,12 +196,14 @@ export function ThisBrowser({ engine, push }: { engine: WindowEngine; push: WebP
       <dl className="kv nt-kv">
         <dt>Browser support</dt><dd>{push.supported ? "Available" : "Not supported"}</dd>
         <dt>Permission</dt><dd>{PERM_WORD[push.permission]}</dd>
-        <dt>Status</dt><dd>{push.loading ? "Checking…" : on ? "On" : "Off"}</dd>
+        <dt>Status</dt><dd>{push.loading ? "Checking…" : push.busy ? "Updating…" : on ? "On" : "Off"}</dd>
       </dl>
       <div className="acts nt-acts">
-        <Btn sm disabled={Boolean(why) || on} title={shownWhy(why)} onClick={() => void push.turnOn()}>Turn on notifications</Btn>
-        <Btn sm ghost disabled={!push.sub} title={push.sub ? undefined : "This browser isn’t registered."} onClick={() => void push.turnOff()}>Turn off here</Btn>
-        <Btn sm ghost disabled={!on || test.busy} title={on ? undefined : "Turn on notifications here first."} onClick={() => void test.send()}>Send test</Btn>
+      <div className="acts nt-acts">
+        <Btn sm disabled={Boolean(why) || on || push.busy} title={shownWhy(why)} onClick={() => void push.turnOn()}>Turn on notifications</Btn>
+        <Btn sm ghost disabled={!push.sub || push.busy} title={push.sub ? undefined : "This browser isn't registered."} onClick={() => void push.turnOff()}>Turn off here</Btn>
+        <Btn sm ghost disabled={!on || test.busy || push.busy} title={on ? undefined : "Turn on notifications here first."} onClick={() => void test.send()}>Send test</Btn>
+      </div>
       </div>
       {why && why !== hint ? <Hint>{why}</Hint> : null}
       {hint ? <Hint>{hint}</Hint> : null}
