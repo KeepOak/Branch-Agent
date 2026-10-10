@@ -10,8 +10,9 @@ import { useLockdown } from "../../../shell/use-lockdown";
 import { notify } from "../../../shell/notify";
 import { MODE_ROWS, blockedReason, modeName, isEngineMode, type EngineMode } from "../../../composer/mode";
 import { platformName } from "../../../setup/steps-later";
+import { useOsPermissions, type OsPermission, type OsPermissionStatus } from "../../../connect/os-permissions";
 import { record, text, visible, type RecordValue } from "../adapter";
-import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec, Seg } from "../kit";
+import { Btn, Ctl, Empty, Hint, Pick, Pill, Plist, Prow, Sec, Seg } from "../kit";
 import { WHY, deadControl, type Cfg, type Ctx } from "./permissions-rows";
 
 /** Wording and the open-settings label for This computer, from the real platform. Linux has no one settings app. */
@@ -57,18 +58,52 @@ export const THIS_PC_ROWS: [string, ReactNode, string, boolean][] = [
   ["Installing tools", TOOL, "Windows asks for an administrator yes each time. Branch asks you first.", false],
 ];
 
+/** What each system answer reads as on its row. "unknown" shows no pill: the app can't read it, so it doesn't guess. */
+export const STATUS_PILL: Record<Exclude<OsPermissionStatus, "unknown">, { label: string; tone: "ok" | "bad" | "idle" }> = {
+  allowed: { label: "Allowed", tone: "ok" },
+  denied: { label: "Not allowed", tone: "bad" },
+  "not-asked": { label: "Not asked yet", tone: "idle" },
+};
+const CANT_READ = "Branch can’t read this one; System Settings shows whether it’s allowed.";
+
+/** The right side of one permission row: its status, then one action (Allow when the system can still ask, else open settings). */
+function PermissionState({ name, status, openLabel, busy, onAllow, onOpen }: {
+  name: OsPermission; status: OsPermissionStatus; openLabel: string | null; busy: boolean; onAllow: () => void; onOpen: () => void;
+}) {
+  const pill = status === "unknown" ? null : STATUS_PILL[status];
+  // Only macOS shows an app's own prompt, and only before it has asked once.
+  const canAsk = status === "not-asked" && (name === "microphone" || name === "camera") && platformName() === "macOS";
+  return (
+    <>
+      {pill ? <Pill tone={pill.tone}>{pill.label}</Pill> : null}
+      {canAsk ? <Btn sm pri disabled={busy} onClick={onAllow}>Allow</Btn>
+        : status !== "allowed" && openLabel ? <Btn sm title={status === "unknown" ? CANT_READ : undefined} onClick={onOpen}>{openLabel}</Btn>
+        : null}
+    </>
+  );
+}
+
+const OS_NAME: Record<string, OsPermission> = { Microphone: "microphone", Camera: "camera", Location: "location", Notifications: "notifications" };
+
 export function ThisPc() {
   const copy = thisPcCopy();
+  const perms = useOsPermissions();
   return (
     <Sec title="This computer" hint={copy.hint}>
       <Plist>
-        {THIS_PC_ROWS.map(([t, icon, sub, open]) => (
-          <Prow key={t} icon={<span className="pm-tile">{icon}</span>} title={t} sub={t === "Installing tools" ? copy.install : sub}>
-            {open && copy.open ? <Btn sm disabled title={copy.why}>{copy.open}</Btn> : null}
-          </Prow>
-        ))}
+        {THIS_PC_ROWS.map(([t, icon, sub, open]) => {
+          const name = OS_NAME[t];
+          const status = name && perms.state ? perms.state[name] : undefined;
+          return (
+            <Prow key={t} icon={<span className="pm-tile">{icon}</span>} title={t} sub={t === "Installing tools" ? copy.install : sub}>
+              {name && status ? (
+                <PermissionState name={name} status={status} openLabel={copy.open} busy={perms.busy === name} onAllow={() => void perms.request(name)} onOpen={() => void perms.open(name)} />
+              ) : open && copy.open ? <Btn sm disabled title={copy.why}>{copy.open}</Btn> : null}
+            </Prow>
+          );
+        })}
       </Plist>
-      <Hint>{copy.why}</Hint>
+      {perms.error ? <Hint>{perms.error}</Hint> : perms.state ? null : <Hint>{copy.why}</Hint>}
       <div className="sec pm-loc">
         <Ctl title="Location access" sub="Lets a Trunk ask where this computer is when a tool needs it." help={copy.locationHelp} off={WHY.key}>{deadControl({ seg: ["Off", "While using", "Always"], v: "While using" }, "Location access")}</Ctl>
         <Ctl title="Precise location" sub="The exact spot, not just the area." off={WHY.key}>{deadControl({ sw: true }, "Precise location")}</Ctl>

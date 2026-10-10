@@ -115,6 +115,12 @@ if (info) {
         return () => { ipcRenderer.removeListener("branch-desktop:open-usage", handler); };
       },
     },
+    // This computer's microphone, camera, location and notification permissions (os-permissions.ts).
+    permissions: {
+      get: () => ipcRenderer.invoke("branch-desktop:permissions:get"),
+      request: (name: string) => ipcRenderer.invoke("branch-desktop:permissions:request", name),
+      open: (name: string) => ipcRenderer.invoke("branch-desktop:permissions:open", name),
+    },
   });
   window.addEventListener("DOMContentLoaded", () => {
     fillTokenForm(info);
