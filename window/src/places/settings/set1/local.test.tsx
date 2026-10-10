@@ -33,11 +33,31 @@ async function render(engine: WindowEngine, level: 0 | 1 | 2 = 0) {
 const button = (label: string) => [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes(label));
 
 describe("Settings › On this computer", () => {
-  it("draws the hardware tiles from system.info, and greys the graphics card", async () => {
+  it("draws the hardware tiles from system.info, without a permanently greyed graphics tile", async () => {
     await render(engineOf().engine);
     const tiles = [...host.querySelectorAll(".hw-c-k")].map((t) => t.textContent);
-    expect(tiles).toEqual(["ProcessorTest CPU 9000", "Memory64 GB", "GraphicsNot read yet", "Free space500 GB", "RuntimeOllama"]);
-    expect(host.querySelector(".hw-c-k.off-k")?.getAttribute("title")).toContain("graphics card");
+    expect(tiles).toEqual(["ProcessorTest CPU 9000", "Memory64 GB", "Free space500 GB", "RuntimeOllama"]);
+    expect(host.querySelector(".hw-c-k.off-k")).toBeNull();
+  });
+
+  it("stops saying Looking after 20 seconds when the engine does not answer, and a late answer still lands", async () => {
+    vi.useFakeTimers();
+    try {
+      let answer: (v: unknown) => void = () => undefined;
+      const late = new Promise((resolve) => { answer = resolve; });
+      await render(engineOf({ "branch.setup.detect": late }).engine);
+      expect(host.querySelector(".hw-c-k:last-child")?.textContent).toBe("RuntimeLooking…");
+      await act(async () => { vi.advanceTimersByTime(20_000); });
+      expect(host.querySelector(".hw-c-k:last-child")?.textContent).toBe("RuntimeCouldn’t check");
+      expect(host.textContent).toContain("The engine didn’t answer in time.");
+      expect(host.textContent).not.toContain("Nothing to set up on this computer yet.");
+      expect(host.textContent.split("Couldn’t check this computer.").length - 1).toBe(2);
+      expect(button("Try again")).toBeDefined();
+      await act(async () => { answer(DETECT); });
+      expect(host.querySelector(".prow[data-row=\"Ollama\"] .pill.ok")?.textContent).toBe("Found");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows the models on this computer and the engine's setup options; Set up runs the prepare wizard", async () => {
@@ -46,11 +66,21 @@ describe("Settings › On this computer", () => {
     const cards = [...host.querySelectorAll(".lm-k b")].map((b) => b.textContent);
     expect(cards).toEqual(["Model Seven", "Managed local server"]);
     expect(host.textContent).toContain("sees pictures");
-    expect(host.textContent).toContain("128k words of memory");
+    expect(host.textContent).toContain("131K-token context");
     await act(async () => button("Set up model")!.click());
     const start = request.mock.calls.find(([m]) => m === "branch.setup.prepare.start") as unknown as [string, Record<string, unknown>];
     expect(start[1]).toMatchObject({ authChoice: "llama-cpp" });
     expect(typeof start[1].sessionId).toBe("string");
+  });
+
+  it("leads with Ollama and keeps the other runtimes behind More runtimes", async () => {
+    await render(engineOf().engine);
+    const more = host.querySelector<HTMLDetailsElement>("details.rt-more")!;
+    expect(more.querySelector("summary")?.textContent).toBe("More runtimes (6)");
+    expect(more.open).toBe(false);
+    expect(host.querySelector('.rows.rt-k > .prow[data-row="Ollama"]')).not.toBeNull();
+    expect(more.querySelector('.prow[data-row="Ollama"]')).toBeNull();
+    expect(host.textContent).not.toContain("placeholder key");
   });
 
   it("marks found runtimes; Look for it runs detection again and says not found in place", async () => {
@@ -63,7 +93,8 @@ describe("Settings › On this computer", () => {
     expect(request.mock.calls.filter(([m]) => m === "branch.setup.detect").length).toBe(before + 1);
     expect(row("vLLM").textContent).toContain("Not found on this computer. Branch can use it as soon as it runs.");
     expect(row("vLLM").textContent).toContain("Look again");
-    expect([...row("Jan").querySelectorAll("button")][0].disabled).toBe(true);
+    expect(row("Jan").querySelectorAll("button").length).toBe(0);
+    expect(row("Jan").textContent).toContain("Add it in Accounts as your own service.");
   });
 
   it("gates Advanced: the share switch under Ollama and the endpoint switch save to the engine config", async () => {
