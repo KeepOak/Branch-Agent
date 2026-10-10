@@ -201,7 +201,11 @@ describe("Seedbank skill distribution", () => {
     });
   });
 
-  it.each(["references/a:b.md", "references/CON.md", "references/NUL .txt", "references/trailing."])(
+  // On Windows these names cannot be created on disk (streams or device names), so the pack cannot
+  // contain them. The assertPortablePath unit test below covers the same rules on every platform.
+  it.skipIf(process.platform === "win32").each(
+    ["references/a:b.md", "references/CON.md", "references/NUL .txt", "references/trailing."],
+  )(
     "refuses a Windows-unsafe file name in a pack: %s",
     async (name) => {
       await withTestDir({ prefix: "seedbank-skill-portable-" }, async (dir) => {
