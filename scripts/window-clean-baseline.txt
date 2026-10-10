@@ -1,8 +1,6 @@
 # Window cleanliness baseline. category, path, normalized snippet.
 # Do not add lines. Delete a line when that hit is gone from the window.
 # An edit on another line does not belong here: snippets have no line numbers.
-product-name	window/src/shell/topic-emoji.ts	goggles|🥾hiking boot|🥿flat shoe|🦀crab|🦁lion face|🦂scorpion|🦃turkey|🦄u
-product-name	window/src/shell/topic-emoji.ts	🦛hippopotamus|🦜parrot|🦝raccoon|🦞lobster|🦟mosquito|🦠microbe|🦡badger|🦢swa
 stale	window/src/places/office/pixel/webview-ui/src/office/layout/layoutSerializer.ts	* Migrate old layouts that use legacy tile types (TILE_FLOOR=1, WOOD_FLOO
 stale	window/src/places/office/pixel/webview-ui/src/office/layout/layoutSerializer.ts	// Not a legacy type — keep as-is
 stale	window/src/places/office/pixel/webview-ui/src/office/layout/layoutSerializer.ts	D value (was 8, now 255) — only for legacy layouts since FLOOR_8 reuses value
