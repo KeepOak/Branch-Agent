@@ -5,7 +5,6 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { sha256Hex } from "../../infra/crypto-digest.js";
-import type { Message } from "../../llm/types.js";
 import { openBranchStateDatabase } from "../../state/branch-state-db.js";
 import { createBranchTestState, type BranchTestState } from "../../test-utils/branch-test-state.js";
 import { createTrackedTempDirs } from "../../test-utils/tracked-temp-dirs.js";
@@ -14,12 +13,10 @@ import { createSkillExperienceReviewScheduler } from "./experience-review-schedu
 import { claimExperienceSignalCooldown } from "./experience-review-signal-cooldown.js";
 
 const KEY_FILENAME = "experience-signal-claims.key";
-import { createExperienceReviewCandidate } from "./experience-review.test-support.js";
 
 const config: BranchConfig = { skills: { workshop: { autonomous: { mode: "propose" } } } };
 const hourMs = 60 * 60 * 1000;
 const startMs = 1_800_000_000_000;
-const modelId = "gpt-test";
 const tempDirs = createTrackedTempDirs();
 let state: BranchTestState;
 
@@ -87,26 +84,43 @@ async function scheduleRun(
   runId: string,
   messages: unknown[],
 ): Promise<boolean> {
+  const sessionKey = `agent:main:${runId}`;
   const workspaceDir = await tempDirs.make("branch-experience-cooldown-run-");
-  const candidate = await createExperienceReviewCandidate(runId, messages as Message[], {
-    workspaceDir,
-    modelId,
-  });
   const armedBefore = timers.setTimer.mock.calls.length;
   const clearedBefore = timers.clearTimer.mock.calls.length;
+  // The scheduler never reads the source transcript, so an anchor is enough. No session is opened,
+  // which keeps the state cleanup free of session drains.
   scheduler.schedule({
     event: { messages, success: true },
     ctx: {
       runId,
-      sessionKey: candidate.source.sessionKey,
+      sessionKey,
       workspaceDir,
       modelProviderId: "openai",
-      modelId,
-      foregroundPromptContext: candidate.ctx.foregroundPromptContext,
+      modelId: "gpt-test",
+      foregroundPromptContext: {
+        agentId: "main",
+        agentDir: workspaceDir,
+        workspaceDir,
+        cwd: workspaceDir,
+        sandboxSessionKey: sessionKey,
+        trigger: "user",
+        reasoningLevel: "on",
+      },
       skillWorkshopAvailable: true,
     },
     config,
-    source: candidate.source,
+    source: {
+      agentId: "main",
+      sessionId: `session-${runId}`,
+      sessionKey,
+      storePath: "/session-store",
+      entryId: "completed-message",
+      generation: "generation-1",
+      rawSeq: 1,
+      effectiveParentId: null,
+      activeMessagePosition: 0,
+    },
   });
   const armed = timers.setTimer.mock.calls.length > armedBefore;
   const withdrawn = timers.clearTimer.mock.calls.length > clearedBefore;
@@ -258,7 +272,10 @@ describe("repeated-failure signal cooldown", () => {
     timers.scheduler.clear();
     const keyPath = path.join(path.dirname(openBranchStateDatabase().path), KEY_FILENAME);
     const key = fs.readFileSync(keyPath);
-    expect(fs.statSync(keyPath).mode & 0o777).toBe(0o600);
+    // Windows does not apply POSIX mode bits, so the mode check runs only where they exist.
+    if (process.platform !== "win32") {
+      expect(fs.statSync(keyPath).mode & 0o777).toBe(0o600);
+    }
     expect(key.length).toBe(32);
     const stored = readClaimsRow().value_json;
     expect(stored).not.toContain(key.toString("hex"));
