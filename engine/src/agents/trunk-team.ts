@@ -94,7 +94,11 @@ export function describeTeamProposal(proposal: TeamProposal): string {
     (member) =>
       `${member.name} (${member.role}): ${member.job} Runs on ${member.machine}, model ${member.model}.`,
   );
-  return [`Team for "${proposal.goal}"`, ...lines, "Nothing is created until you approve."].join(
-    "\n",
-  );
+  const model = proposal.members[0]?.model ?? "your model";
+  return [
+    `Team for "${proposal.goal}"`,
+    ...lines,
+    "Nothing is created until you approve.",
+    `Approving starts the team. Each job uses your ${model} account.`,
+  ].join("\n");
 }
