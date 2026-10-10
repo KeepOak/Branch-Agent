@@ -68,13 +68,11 @@ describe("P54 one composer symbol", () => {
     expect(request.mock.calls.some(([method]) => method === "sessions.create")).toBe(true);
   });
 
-  it("branches from a real message id and opens the new conversation", async () => {
-    const { host, request, conversation } = await mount();
+  it("keeps Branch out of the model popover: each message's Branch in the hover bar makes the copy", async () => {
+    const { host, request } = await mount();
     await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="tune-button"]')?.click());
-    const branch = [...host.querySelectorAll<HTMLButtonElement>(".c-tune-line button")].find((b) => b.textContent === "Branch");
-    await act(async () => branch?.click());
-    expect(request).toHaveBeenCalledWith("sessions.fork", { sessionKey: "agent:research:main", entryId: "entry-1" });
-    expect(conversation).toHaveBeenCalledWith("agent:research:fork");
+    expect([...host.querySelectorAll<HTMLButtonElement>(".c-tune-line button")].some((b) => b.textContent === "Branch")).toBe(false);
+    expect(request).not.toHaveBeenCalledWith("sessions.fork", expect.anything());
   });
 
   it("updates the model label after a pick and returns access to As set", async () => {

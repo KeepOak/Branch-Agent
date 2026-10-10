@@ -1,0 +1,2 @@
+engine:src/infra/telemetry.async.test.ts
+engine:src/infra/telemetry.test.ts

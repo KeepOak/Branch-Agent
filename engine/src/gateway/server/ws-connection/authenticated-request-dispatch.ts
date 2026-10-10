@@ -20,6 +20,7 @@ import {
   parseDiagnosticTraceparent,
   runWithDiagnosticTraceContext,
 } from "../../../infra/diagnostic-trace-context.js";
+import { recordMainThreadWork } from "../../../logging/main-thread-work.js";
 import { runOutsideGatewayRootWorkAdmission } from "../../../process/gateway-work-admission.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
 import { createLazyPromise } from "../../../shared/lazy-runtime.js";
@@ -31,11 +32,11 @@ import {
   hasCurrentGatewayOperatorAccess,
 } from "../../operator-access-policy.js";
 import { onOperatorRolePolicyChanged } from "../../operator-role-policy.js";
+import { createRequestErrorCorrelation } from "../../request-error-correlation.js";
 import { bindWebSocketRequestMutationAuthority } from "../../server-methods/session-mutation-guards.js";
 import type { GatewayRequestEntry } from "../../server-request-entry.js";
 import { SharedGatewaySessionGenerationState } from "../../server-shared-auth-generation.js";
 import { classifyGatewayStaleInstall } from "../../stale-install.js";
-import { createRequestErrorCorrelation } from "../../request-error-correlation.js";
 import { formatForLog, logWs, summarizeSessionListForWsLog } from "../../ws-log.js";
 import {
   hasCurrentGatewayPolicyClientSource,
@@ -45,7 +46,7 @@ import {
 } from "../ws-policy-close.js";
 import type { GatewayWsClient } from "../ws-types.js";
 import type { GatewayWsMessageHandlerParams } from "./message-handler-types.js";
-import { createGatewayRpcDiagnostics } from "./request-diagnostics.js";
+import { createGatewayRpcDiagnostics, gatewayRpcCatalogLabel } from "./request-diagnostics.js";
 import { scheduleGatewayRequestStart } from "./request-start.js";
 import { isUnauthorizedRoleError, UnauthorizedFloodGuard } from "./unauthorized-flood-guard.js";
 
@@ -260,7 +261,13 @@ export function createGatewayAuthenticatedRequestDispatcher(params: {
         try {
           let responseOk = ok;
           let responseError = error;
+          const sendStartedAt = performance.now();
           let sendResult = sendResponse({ type: "res", id: req.id, ok, payload, error });
+          recordMainThreadWork(
+            "rpc-send",
+            gatewayRpcCatalogLabel(req.method, getMethodRegistry, extraHandlers),
+            performance.now() - sendStartedAt,
+          );
           if (sendResult.kind === "serialization") {
             const detail = formatForLog(sendResult.error);
             logGateway.error(`response serialization failed method=${req.method}: ${detail}`);
@@ -472,9 +479,10 @@ export function createGatewayAuthenticatedRequestDispatcher(params: {
           respondWithAuthority(
             false,
             undefined,
-            staleInstall?.error ?? errorShape(ErrorCodes.UNAVAILABLE, detail, {
-              details: correlation!.details,
-            }),
+            staleInstall?.error ??
+              errorShape(ErrorCodes.UNAVAILABLE, detail, {
+                details: correlation!.details,
+              }),
           );
         } finally {
           settled.resolve();
