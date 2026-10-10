@@ -2,11 +2,16 @@ import { describe, expect, it } from "vitest";
 import { levelFor, pageAtLevel, pageLevel, pageName, searchSettings, settingsGroups } from "./settings-nav";
 
 describe("settings nav", () => {
-  it("has 21, 22 and 23 pages by level (Grafts is in Safety, Backups in Care)", () => {
+  it("has 23, 24 and 25 pages by level (Grafts is in Safety, Backups in Care)", () => {
     const count = (l: "regular" | "advanced" | "technical") => settingsGroups(l).reduce((n, g) => n + g.pages.length, 0);
-    expect([count("regular"), count("advanced"), count("technical")]).toEqual([21, 22, 23]);
+    expect([count("regular"), count("advanced"), count("technical")]).toEqual([23, 24, 25]);
     expect(settingsGroups("regular").map((g) => g.name)).toEqual(["General", "Your Trunks", "Safety", "Care"]);
   });
+  it("Pet and Layout are their own pages in This app, after Appearance", () => {
+    const names = settingsGroups("regular")[0].pages.map((p) => p.id);
+    expect(names).toEqual(["general", "people", "appearance", "pet", "layout", "notifications"]);
+  });
+
   it("a level drop moves a hidden page to General", () => {
     expect(pageAtLevel("developer", "advanced")).toBe("general");
     expect(pageAtLevel("advanced", "regular")).toBe("general");
