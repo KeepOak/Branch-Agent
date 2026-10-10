@@ -14,6 +14,48 @@ export class StageTimeoutError extends Error {
   }
 }
 
+/**
+ * An open that expired too often while it held its permit. Its permit is released so the other agents
+ * keep opening, and this agent fails: a hung open cannot be cancelled, so only doctor or a restart clears it.
+ */
+export class AgentOpenHungError extends Error {
+  constructor(agentId: string, expiries: number) {
+    super(`Agent ${agentId} open hung after ${expiries} expiries; run doctor or restart.`);
+  }
+}
+
+/** One open of an agent: when it settles, the permit it holds, and how often it has expired. */
+export type OpeningRecord = { settled: Promise<void>; release?: () => void; expiries: number };
+
+/** Expiries of one open before it is treated as hung: its permit is released and its agent fails. */
+const HUNG_OPEN_EXPIRIES_BEFORE_QUARANTINE = 3;
+
+/** What an expired open does: retry while it has not expired too often; otherwise release its permit and fail its agent. */
+export function openingExpiry(
+  agentId: string,
+  record: OpeningRecord,
+  abortAttempt: (reason: unknown) => void,
+): (error: StageTimeoutError) => void {
+  return (error) => {
+    record.expiries += 1;
+    if (record.expiries < HUNG_OPEN_EXPIRIES_BEFORE_QUARANTINE) {
+      log.warn("agent database open expired while it holds its permit; retrying", {
+        agentId,
+        expiries: record.expiries,
+        permitHeld: record.release !== undefined,
+      });
+      abortAttempt(error);
+      return;
+    }
+    log.warn("agent database open hung; releasing its permit and failing the agent", {
+      agentId,
+      expiries: record.expiries,
+    });
+    record.release?.();
+    abortAttempt(new AgentOpenHungError(agentId, record.expiries));
+  };
+}
+
 export type StageOptions<T> = {
   signal: AbortSignal;
   /** Runs when the stage expires, before its rejection reaches the caller: an attempt aborts itself here. */

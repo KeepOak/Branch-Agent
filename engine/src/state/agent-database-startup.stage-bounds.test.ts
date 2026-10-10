@@ -226,18 +226,70 @@ describe("agent database startup stages that could hang", () => {
     }
   });
 
-  it("holds a hung open's agent: its retry waits behind the open, named as previous open, and never opens twice", async () => {
+  it("quarantines a hung open after its expiries: its permit is released, and its agent fails with open hung", async () => {
+    permits.outstanding = 0;
     const started = await startAdmission([{ agentId: "tk" }], {}, async () => {
-      // Never settles: the retry must not start a second open of the same agent.
+      // Never settles: a hung open cannot be cancelled, so only its expiries can end its agent.
       await new Promise(() => {});
     });
     try {
       await vi.waitFor(
-        () => expect(started.refusal("tk")?.reason).toContain("Stage: previous open."),
+        () =>
+          expect(started.refusal("tk")).toMatchObject({
+            code: "agent-database-inspection-failed",
+            reason: expect.stringContaining("open hung after 3 expiries; run doctor or restart."),
+          }),
         { timeout: 5000 },
       );
       expect(started.openAgent).toHaveBeenCalledTimes(1);
       expect(started.prepares.get("tk")).not.toHaveBeenCalled();
+      // The hung open's permit went back to the pool on quarantine, although the open never settled.
+      await vi.waitFor(() => expect(permits.outstanding).toBe(0), { timeout: 5000 });
+    } finally {
+      await started.stop();
+    }
+  });
+
+  it("two hung opens do not block a third agent's open: their permits are released on quarantine", async () => {
+    permits.outstanding = 0;
+    const hung = new Set(["tk", "builder-ash"]);
+    const started = await startAdmission(
+      [
+        { agentId: "tk" },
+        { agentId: "builder-ash" },
+        {
+          agentId: "builder-elm",
+          // Its inspection finishes after both hung opens have taken the two permits, so its
+          // permit request queues behind them until they are quarantined.
+          inspection: new Promise<BranchDatabaseSchemaPreflight>((resolve) => {
+            setTimeout(() => {
+              resolve(CLEAN);
+            }, 100);
+          }),
+        },
+      ],
+      {},
+      async ({ agentId }) => {
+        if (hung.has(agentId)) {
+          await new Promise(() => {});
+        }
+      },
+    );
+    try {
+      await started.admitted("builder-elm");
+      expect(started.openAgent.mock.calls.filter(([input]) => input.agentId === "builder-elm")).toHaveLength(1);
+      expect(started.prepares.get("builder-elm")).toHaveBeenCalledTimes(1);
+      for (const agentId of hung) {
+        await vi.waitFor(
+          () =>
+            expect(started.refusal(agentId)).toMatchObject({
+              code: "agent-database-inspection-failed",
+              reason: expect.stringContaining("open hung"),
+            }),
+          { timeout: 5000 },
+        );
+      }
+      await vi.waitFor(() => expect(permits.outstanding).toBe(0), { timeout: 5000 });
     } finally {
       await started.stop();
     }

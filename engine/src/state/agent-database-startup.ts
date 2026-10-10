@@ -23,7 +23,10 @@ import {
 } from "./agent-database-admission.js";
 import { readAgentDeletionJournalStatusInWorker } from "./agent-deletion-journal.read.js";
 import {
+  AgentOpenHungError,
   boundStage,
+  type OpeningRecord,
+  openingExpiry,
   recordStage,
   StageTimeoutError,
   waitForStage,
@@ -158,6 +161,8 @@ function firstRetryMs(env: NodeJS.ProcessEnv): number {
 }
 
 const log = createSubsystemLogger("state/agent-admission");
+
+
 const startupAdmission = new AsyncLocalStorage<AgentDatabaseStartupAdmission>();
 /** Admissions the running Gateway adopted; a retry request reaches their pending agents. */
 const adoptedAdmissions = new Set<AgentDatabaseStartupAdmission>();
@@ -182,7 +187,7 @@ class AgentDatabaseStartupAdmission {
   private preparation: Promise<void> = Promise.resolve();
   private readonly opening = createPermitPool(AGENT_DATABASE_PREFLIGHT_CONCURRENCY);
   /** The open still running for each agent, so a retry never opens an agent while its late open runs. */
-  private readonly openings = new Map<string, Promise<void>>();
+  private readonly openings = new Map<string, OpeningRecord>();
   private preparedSchemaHeaders?: PreparedSchemaHeaders;
 
   get signal(): AbortSignal {
@@ -403,6 +408,7 @@ class AgentDatabaseStartupAdmission {
             const signal = AbortSignal.any([this.signal, controller.signal]);
             // A stage that expires aborts the attempt, so its late work sees the abort and cannot publish.
             const expire = (error: StageTimeoutError) => controller.abort(error);
+            const abortAttempt = (reason: unknown) => controller.abort(reason);
             const assertAttemptCurrent = () => {
               signal.throwIfAborted();
               assertCurrent();
@@ -424,9 +430,9 @@ class AgentDatabaseStartupAdmission {
                     const previousOpen = this.openings.get(agentId);
                     if (previousOpen) {
                       // A late open of this agent still runs: wait for it, so two opens never overlap.
-                      await boundStage("previous open", previousOpen, attemptLimitMs, {
+                      await boundStage("previous open", previousOpen.settled, attemptLimitMs, {
                         signal,
-                        onExpire: expire,
+                        onExpire: openingExpiry(agentId, previousOpen, abortAttempt),
                       });
                     }
                     // Queue time is not stage time: the open's clock starts when its permit is granted.
@@ -437,25 +443,30 @@ class AgentDatabaseStartupAdmission {
                       MAX_PREPARATION_ATTEMPT_MS,
                       { signal, onExpire: expire, release: (granted) => granted?.() },
                     );
-                    let opening: Promise<void> | undefined;
+                    let record: OpeningRecord | undefined;
                     try {
                       assertAttemptCurrent();
                       const started = activation.openAgent(input);
-                      opening = started.then(
-                        () => {},
-                        () => {},
-                      );
-                      this.openings.set(agentId, opening);
+                      record = {
+                        settled: started.then(
+                          () => {},
+                          () => {},
+                        ),
+                        release: release ?? undefined,
+                        expiries: 0,
+                      };
+                      this.openings.set(agentId, record);
                       await boundStage("open", started, attemptLimitMs, {
                         signal,
-                        onExpire: expire,
+                        onExpire: openingExpiry(agentId, record, abortAttempt),
                       });
                     } finally {
                       // The permit covers the open until the open itself settles, even after its
-                      // stage expired, so the cap of concurrent opens holds.
-                      const settled = opening;
-                      void (settled ?? Promise.resolve()).then(() => {
-                        if (settled && this.openings.get(agentId) === settled) {
+                      // stage expired, so the cap of concurrent opens holds. A hung open's permit was
+                      // already released on quarantine; the release is idempotent.
+                      const opened = record;
+                      void (opened?.settled ?? Promise.resolve()).then(() => {
+                        if (opened && this.openings.get(agentId) === opened) {
                           this.openings.delete(agentId);
                         }
                         release?.();
@@ -502,7 +513,9 @@ class AgentDatabaseStartupAdmission {
                 attemptLimitMs = Math.min(attemptLimitMs * 2, MAX_PREPARATION_ATTEMPT_MS);
               }
               const stageExpiry = controller.signal.reason;
-              throw stageExpiry instanceof StageTimeoutError ? stageExpiry : error;
+              const failure =
+                stageExpiry instanceof StageTimeoutError || stageExpiry instanceof AgentOpenHungError;
+              throw failure ? stageExpiry : error;
             });
           };
           try {
@@ -590,6 +603,10 @@ class AgentDatabaseStartupAdmission {
                 } catch (error) {
                   running = undefined;
                   if (this.stopped) {
+                    throw error;
+                  }
+                  // A hung open is not retried: its agent fails, and only doctor or a restart clears it.
+                  if (error instanceof AgentOpenHungError) {
                     throw error;
                   }
                   assertCurrent();
