@@ -14,6 +14,10 @@ import {
 } from "./agent-tools.policy.js";
 import { isToolAllowedByPolicyName } from "./tool-policy-match.js";
 import { listToolsetIds } from "./tool-toolsets.js";
+import { listCoreToolFactoryDescriptors } from "./core-tool-factory-descriptors.js";
+import { listCoreToolSections } from "./tool-catalog.js";
+import { applyToolPolicyPipeline, buildDefaultToolPolicyPipelineSteps } from "./tool-policy-pipeline.js";
+import { resolveToolProfilePolicy } from "./tool-policy.js";
 
 vi.mock("../channels/plugins/session-conversation.js", () => ({
   resolveSessionConversation: ({ rawId }: { rawId: string }) => ({
@@ -324,5 +328,57 @@ describe("resolveEffectiveToolPolicy with agent toolsets", () => {
     const { agentPolicy } = resolveEffectiveToolPolicy({ config, agentId: "ops" });
     expect(isToolAllowedByPolicyName("exec", agentPolicy)).toBe(false);
     expect(isToolAllowedByPolicyName("read", agentPolicy)).toBe(true);
+  });
+});
+
+describe("agent toolsets through the tool policy pipeline", () => {
+  const rosterWith = (entry: Record<string, unknown>) =>
+    ({ agents: { entries: { ops: entry } } }) as unknown as BranchConfig;
+  // The same steps the gateway applies to the registered tools (src/gateway/tool-resolution.ts).
+  const builtInToolNames = [
+    ...new Set([
+      ...listCoreToolSections({ swarmEnabled: true, personalInstructionsEnabled: true }).flatMap((section) =>
+        section.tools.map((tool) => tool.id),
+      ),
+      ...listCoreToolFactoryDescriptors().map((descriptor) => descriptor.name),
+    ]),
+  ];
+  const offeredThroughPipeline = (config: BranchConfig): string[] => {
+    const effective = resolveEffectiveToolPolicy({ config, agentId: "ops" });
+    const steps = buildDefaultToolPolicyPipelineSteps({
+      profilePolicy: resolveToolProfilePolicy(effective.profile),
+      profile: effective.profile,
+      globalPolicy: effective.globalPolicy,
+      agentPolicy: effective.agentPolicy,
+      agentId: "ops",
+    });
+    return applyToolPolicyPipeline({
+      tools: builtInToolNames.map((name) => ({ name })),
+      toolMeta: () => undefined,
+      warn: () => {},
+      steps,
+    }).map((tool) => tool.name);
+  };
+
+  it("removes exec, process, terminal and code_execution when the shell toolset is off", () => {
+    const offered = offeredThroughPipeline(
+      rosterWith({ toolsets: { shell: false } }),
+    );
+    for (const name of ["exec", "process", "terminal", "code_execution"]) {
+      expect(offered, name).not.toContain(name);
+    }
+    expect(offered).toContain("read");
+    expect(offered).toContain("message");
+  });
+
+  it("removes the browser for a legacy deny on the agent's tools", () => {
+    const offered = offeredThroughPipeline(rosterWith({ tools: { deny: ["browser"] } }));
+    expect(offered).not.toContain("browser");
+    expect(offered).toContain("read");
+  });
+
+  it("keeps every built-in tool when no toolset is off and no deny is set", () => {
+    const offered = offeredThroughPipeline(rosterWith({}));
+    expect(offered.toSorted()).toEqual([...builtInToolNames].toSorted());
   });
 });

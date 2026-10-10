@@ -158,7 +158,7 @@ Each agent can switch named toolsets on or off with `agents.entries.<id>.toolset
 }
 ```
 
-Toolsets: `browser`, `files`, `shell`, `computer`, `interface`, `web`, `memory`, `messaging`, `sessions`, `github`, `media`, `automation`, `skills`, `thinking`, `goals`, `secrets`. Always on: `message`, `ask_user`, `session_status`, `heartbeat_respond`, `structured_output`. Unknown names fail config validation.
+Toolsets: `browser`, `files`, `shell`, `computer`, `interface`, `web`, `memory`, `messaging`, `sessions`, `github`, `media`, `automation`, `skills`, `thinking`, `goals`, `secrets`. Always on: `message`, `ask_user`, `session_status`, `heartbeat_respond`, `structured_output`. Unknown names fail config validation. Plugin and MCP tools are not in any toolset and are not switched by these settings.
 
 ### Per-agent access profiles
 

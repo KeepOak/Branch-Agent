@@ -79,7 +79,9 @@ type ToolsetRow = { id: string; label: string; description: string; offered?: bo
 
 const NOT_OFFERED = "Its own tool list leaves these tools out, so this switch has no effect.";
 /** Until tools.catalog answers, or when it doesn't, the browser switch stays available on its own. */
-const BROWSER_ONLY: ToolsetRow[] = [{ id: "browser", label: "Browser", description: "Open pages, click, type and read them in the built-in browser." }];
+const BROWSER_ONLY: ToolsetRow[] = [
+  { id: "browser", label: "Browser", description: "Open pages, click, type and read them in the built-in browser." },
+];
 
 /** One switch per toolset the engine offers (tools.catalog). Each switch shows the state the Trunk's own tool list allows. */
 function ToolsSection({ engine, agentId, may, setMay }: { engine: WindowEngine; agentId: string; may: May; setMay: (m: Partial<May>) => void }) {

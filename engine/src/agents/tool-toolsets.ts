@@ -5,7 +5,8 @@
  *
  * A switched-off toolset only adds denies. It never adds an allow, so profiles,
  * Lockdown and exec approvals keep their say. Every built-in tool belongs to exactly
- * one toolset or to ALWAYS_ON_TOOL_IDS (enforced by tool-toolsets.test.ts).
+ * one toolset or to ALWAYS_ON_TOOL_IDS (enforced by tool-toolsets.test.ts). Plugin and
+ * MCP tools are not in any toolset, so these switches do not change them.
  */
 import { AUTOMATIONS_TOOL_NAME } from "./tools/automations-tool-name.js";
 
@@ -35,7 +36,8 @@ export const TOOLSETS: readonly ToolsetDefinition[] = [
   {
     id: "files",
     label: "Files",
-    description: "Read, search, create and edit files in the Trunk's workspace.",
+    description:
+      "Read, search, create and edit files in the Trunk's workspace. Off also removes reading files in Documents and Downloads.",
     tools: ["ls", "glob", "read", "write", "edit", "apply_patch"],
   },
   {
