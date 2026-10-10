@@ -8,8 +8,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkSelfCheck } from './check-self-check.mjs';
 import { checkUIProof } from './check-ui-proof.mjs';
-import { ALLOWED_SUFFIX, FIX_LINES, evaluateCommits } from './check-commit-emails.mjs';
-import { loadProtectedGatePaths, touchedProtectedFiles } from './merge-gate-trusted.mjs';
+import { ALLOWED_SUFFIX, FIX_LINES, evaluateCommits, fetchPrCommitsWithApi } from './check-commit-emails.mjs';
+import {
+  changedFilesFromPrFiles,
+  fetchFileText,
+  fetchPrFiles,
+  loadProtectedGatePaths,
+  touchedProtectedFiles,
+} from './merge-gate-trusted.mjs';
 import { checkWindowClean, scanTree } from './check-window-clean.mjs';
 
 const PERSONAL_PATTERNS = [
@@ -212,10 +218,74 @@ function shardResultFor(cwd) {
   }
 }
 
+export function namedListPathFor(branch) {
+  return `scripts/feature-batch-ci-named/${branch.replace(/\//g, '-')}.txt`;
+}
+
+// Added lines from one file's patch, with their line numbers in the new file.
+export function addedLinesFromPatch(file, patch) {
+  const added = [];
+  let line = 0;
+  for (const raw of String(patch ?? '').split('\n')) {
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)/.exec(raw);
+    if (hunk) line = Number(hunk[1]);
+    else if (raw.startsWith('+')) { added.push({ file, line, text: raw.slice(1) }); line += 1; }
+    else if (raw.startsWith(' ')) line += 1;
+  }
+  return added;
+}
+
+function commitFromApi(c) {
+  return {
+    sha: c.sha,
+    message: c.commit?.message ?? '',
+    authorEmail: c.commit?.author?.email ?? '',
+    committerEmail: c.commit?.committer?.email ?? '',
+    date: c.commit?.committer?.date ?? '',
+  };
+}
+
+// CI mode: the same inputs preflight builds locally, read from the pull request's API data.
+// `api` is injectable so the assembly is testable without the network.
+export function inputFromApi({ headBranch, headSha, files, commits, listText }) {
+  return {
+    branch: headBranch,
+    headSha,
+    dirtyCount: 0,
+    commits: commits.map(commitFromApi),
+    changedFiles: changedFilesFromPrFiles(files),
+    addedLines: files.flatMap((f) => addedLinesFromPatch(f.filename, f.patch)),
+    listPath: namedListPathFor(headBranch),
+    listText: listText ?? null,
+    windowResult: null,
+    shardResult: null,
+  };
+}
+
+function apiInputFromEnv(env, body) {
+  const repo = env.REPO;
+  const prNumber = env.PR_NUMBER;
+  const token = env.GITHUB_TOKEN;
+  const headSha = env.HEAD_SHA;
+  const headBranch = env.HEAD_BRANCH;
+  if (!repo || !prNumber || !token || !headSha || !headBranch) {
+    throw new Error('CI mode needs REPO, PR_NUMBER, GITHUB_TOKEN, HEAD_SHA and HEAD_BRANCH');
+  }
+  const files = fetchPrFiles(repo, prNumber, token);
+  const commits = fetchPrCommitsWithApi({ repo, prNumber, token });
+  const listText = fetchFileText(repo, headSha, token, namedListPathFor(headBranch));
+  return { ...inputFromApi({ headBranch, headSha, files, commits, listText }), body };
+}
+
 // Exported so tests can drive the real CLI wiring against a temporary repository.
-export function runCli(argv, cwd) {
+export function runCli(argv, cwd, env = process.env) {
   if (!argv.includes('--body')) {
     return { exitCode: 2, text: 'preflight: pass --body <draft PR body file>. Preflight checks the body you are about to submit.' };
+  }
+  if (argv.includes('--ci')) {
+    const body = readFileSync(argValue('--body', argv), 'utf8');
+    const problems = runPreflight({ ...apiInputFromEnv(env, body), cloudAgent: false });
+    return { exitCode: problems.length ? 1 : 0, text: formatProblems(problems) };
   }
   const input = gatherInputs({ argv, cwd });
   input.windowResult = windowResultFor(cwd);

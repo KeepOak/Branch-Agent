@@ -4,7 +4,15 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { formatProblems, cloudAgentTrailer, runCli, runPreflight } from './pr-preflight.mjs';
+import {
+  addedLinesFromPatch,
+  cloudAgentTrailer,
+  formatProblems,
+  inputFromApi,
+  namedListPathFor,
+  runCli,
+  runPreflight,
+} from './pr-preflight.mjs';
 
 const SHA = 'a'.repeat(40);
 const BRANCH = 'trunk/pr-preflight';
@@ -214,4 +222,32 @@ test('the CLI refuses to run without a body file', () => {
   const result = runCli([], process.cwd());
   assert.equal(result.exitCode, 2);
   assert.match(result.text, /--body/);
+});
+
+// CI mode: the same checks, fed from the pull request's API data (no PR code runs).
+test('addedLinesFromPatch numbers added lines in the new file, counting context lines', () => {
+  const patch = '@@ -1,2 +1,3 @@\n a\n+new one\n b';
+  assert.deepEqual(addedLinesFromPatch('docs/x.md', patch), [{ file: 'docs/x.md', line: 2, text: 'new one' }]);
+});
+
+test('namedListPathFor maps a branch to its named-test list', () => {
+  assert.equal(namedListPathFor('trunk/god-ux-chat-9'), 'scripts/feature-batch-ci-named/trunk-god-ux-chat-9.txt');
+});
+
+test('CI input from API data flags a personal path in a patch and a missing named list', () => {
+  const files = [
+    { filename: 'scripts/x.mjs', patch: '@@ -0,0 +1 @@\n+see /Users/example/Desktop/x' },
+    { filename: 'engine/src/b.test.ts', patch: '@@ -0,0 +1 @@\n+x' },
+  ];
+  const commits = [{ sha: 'abc1234', commit: { message: 'feat: x', author: { email: NOREPLY }, committer: { email: NOREPLY, date: '2026-10-09T12:00:00Z' } } }];
+  const input = inputFromApi({ headBranch: BRANCH, headSha: SHA, files, commits, listText: null });
+  const problems = runPreflight({ ...input, body: BODY, protectedPaths: PROTECTED });
+  assert.deepEqual(checksOf(problems).sort(), ['named-tests', 'personal-info']);
+});
+
+test('CI input from clean API data passes', () => {
+  const files = [{ filename: 'scripts/x.mjs', patch: '@@ -0,0 +1 @@\n+export const x = 1;' }];
+  const commits = [{ sha: 'abc1234', commit: { message: 'feat: x', author: { email: NOREPLY }, committer: { email: NOREPLY, date: '2026-10-09T12:00:00Z' } } }];
+  const input = inputFromApi({ headBranch: BRANCH, headSha: SHA, files, commits, listText: null });
+  assert.deepEqual(runPreflight({ ...input, body: BODY, protectedPaths: PROTECTED }), []);
 });
