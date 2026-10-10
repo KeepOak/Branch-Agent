@@ -3,7 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { resolveAgentMainSessionKey } from "../config/sessions/main-session.js";
-import { loadSessionEntry, loadTranscriptEvents } from "../config/sessions/session-accessor.js";
+import {
+  appendTranscriptMessage,
+  loadSessionEntry,
+  loadTranscriptEvents,
+} from "../config/sessions/session-accessor.js";
 import { useTempSessionsFixture } from "../config/sessions/test-helpers.js";
 import {
   FIRST_RUN_GREETING_TEXT,
@@ -129,21 +133,48 @@ describe("owner name in the greeting", () => {
 });
 
 describe("the owner's first reply on the seeded session", () => {
-  it("lands on the same session the window opens, and a second seed keeps that session", async () => {
+  it("stores the reply after the greeting on the same session, once", async () => {
     const storePath = fixture.storePath();
     const cfg = {};
     const sessionKey = resolveAgentMainSessionKey({ cfg, agentId: "main" });
     const ownerWorkspaceDir = ownerWorkspace();
 
     await seedFirstRunGreeting({ cfg, agentId: "main", storePath, ownerWorkspaceDir });
-    const first = loadSessionEntry({ agentId: "main", sessionKey, storePath });
-    await seedFirstRunGreeting({ cfg, agentId: "main", storePath, ownerWorkspaceDir });
-    const second = loadSessionEntry({ agentId: "main", sessionKey, storePath });
+    const seeded = loadSessionEntry({ agentId: "main", sessionKey, storePath });
+    const sessionId = seeded?.sessionId ?? "";
+    expect(sessionId).toBeTruthy();
+    expect(seeded?.chatType).toBe("direct");
 
-    expect(first?.sessionId).toBeTruthy();
-    expect(first?.chatType).toBe("direct");
-    expect(second?.sessionId).toBe(first?.sessionId);
-    expect(sessionKey).toBe("agent:main:main");
+    await appendTranscriptMessage(
+      { agentId: "main", sessionId, sessionKey, storePath },
+      {
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Good, you?" }],
+          timestamp: Date.now(),
+        },
+        idempotencyKey: "owner-reply-1",
+      },
+    );
+    await seedFirstRunGreeting({ cfg, agentId: "main", storePath, ownerWorkspaceDir });
+
+    const after = loadSessionEntry({ agentId: "main", sessionKey, storePath });
+    expect(after?.sessionId).toBe(sessionId);
+    const events = await loadTranscriptEvents({
+      agentId: "main",
+      sessionId,
+      sessionKey,
+      storePath,
+    });
+    const turns = events.flatMap((event) => {
+      const message = (event as { message?: { role?: string; content?: unknown } }).message;
+      if (message?.role !== "assistant" && message?.role !== "user") {
+        return [];
+      }
+      const block = Array.isArray(message.content) ? message.content[0] : undefined;
+      return [`${message.role}:${(block as { text?: string } | undefined)?.text ?? ""}`];
+    });
+    expect(turns).toEqual([`assistant:${FIRST_RUN_GREETING_TEXT}`, "user:Good, you?"]);
   });
 });
 

@@ -6,6 +6,7 @@ import { resolveAgentMainSessionKey } from "../config/sessions/main-session.js";
 import { loadSessionEntry, upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { appendAssistantMessageToSessionTranscript } from "../config/sessions/transcript.js";
 import type { BranchConfig } from "../config/types.branch.js";
+import { formatErrorMessage } from "../infra/errors.js";
 
 /** The first line a new Trunk says. Static on purpose: no model turn, no tokens, one question. */
 export const FIRST_RUN_GREETING_TEXT =
@@ -128,7 +129,7 @@ export function scheduleFirstRunGreeting(params: {
         params.warn(`agent ${agentId} first-run greeting was not saved`);
       }
     } catch (error) {
-      params.warn(`agent ${agentId} first-run greeting failed: ${String(error)}`);
+      params.warn(`agent ${agentId} first-run greeting failed: ${formatErrorMessage(error)}`);
     }
   })();
 }
