@@ -111,6 +111,29 @@ describe("Settings › Chat apps", () => {
     expect(host.querySelector('[data-sec="Who answers"]')).toBeNull();
   });
 
+  it.each([0, 1, 2] as const)("offers setup without irrelevant settings for an empty catalogue at level %s", async (level) => {
+    const { engine, request } = engineOf({ "channels.status": {} });
+    await render(engine, level);
+    expect(host.textContent).toContain("Message your Trunks from Telegram, WhatsApp, Slack");
+    expect(host.textContent).not.toContain("All 0 chat apps");
+    expect(host.querySelector("[data-sec]")).toBeNull();
+    const connect = button("Connect a chat app", host);
+    expect(connect).toBeTruthy();
+    expect(connect.disabled).toBe(false);
+    await act(async () => connect.click());
+    expect(request).toHaveBeenCalledWith("wizard.start", { flow: "channels" });
+    expect(document.querySelector(".dlg")?.textContent).toContain("Bot token");
+  });
+
+  it("offers setup before any app is configured even when the catalogue is populated", async () => {
+    const { engine, request } = engineOf({ "channels.status": { ...STATUS, channels: {}, channelAccounts: {} } });
+    await render(engine, 1);
+    expect(host.querySelector('[data-sec="Commands in chat apps"]')).toBeNull();
+    expect(button("All 3 chat apps", host)).toBeTruthy();
+    await act(async () => button("Connect a chat app", host).click());
+    expect(request).toHaveBeenCalledWith("wizard.start", { flow: "channels" });
+  });
+
   it("approves a request through channels.pairing.approve, telling them when asked", async () => {
     const { engine, request } = engineOf();
     await render(engine);

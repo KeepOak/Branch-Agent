@@ -60,10 +60,10 @@ export function ChatAppsPage(props: SettingsPageProps) {
   const jump = (id: string) => setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: "start" }), 0);
   return (
     <Page title={props.title} lede="Where you can message your Trunks, and how each chat app behaves.">
-      <Connected loading={status.loading && !status.data} error={status.error} apps={apps} count={all.length} onOpen={(id) => setOpen({ manage: id })} onAll={() => setOpen({ all: true })} />
+      <Connected loading={status.loading && !status.data} error={status.error} apps={apps} count={all.length} onOpen={(id) => setOpen({ manage: id })} onAll={() => setOpen({ all: true })} onConnect={() => setOpen({ connect: null })} />
       <Asking engine={props.engine} apps={apps} pairing={pairing.data} error={pairing.error} reload={pairing.reload} filter={filter} setFilter={setFilter} trunkFor={trunkFor} />
       <WhoAnswers engine={props.engine} apps={apps} cfg={cfg} trunks={trunks} defaultId={defaultId} />
-      {level >= 1 ? <More level={level} cfg={cfg} apps={apps} all={all} trunks={trunks} engine={props.engine} /> : null}
+      {apps.length > 0 && level >= 1 ? <More level={level} cfg={cfg} apps={apps} all={all} trunks={trunks} engine={props.engine} /> : null}
       {managed ? <ManageDialog engine={props.engine} app={managed} cfg={cfg} trunks={trunks} defaultId={defaultId} pairing={pairing.data} reload={reloadAll}
         onReview={(app, acct) => { setFilter({ app, acct }); setOpen({}); jump("chatapps-asking"); }} onPerChat={() => { setOpen({}); jump("chatapps-who"); }}
         onSetup={() => setOpen({ connect: managed })} onClose={() => setOpen({})} /> : null}
@@ -73,8 +73,8 @@ export function ChatAppsPage(props: SettingsPageProps) {
   );
 }
 
-type ConnectedProps = { loading: boolean; error?: string; apps: App[]; count: number; onOpen: (id: string) => void; onAll: () => void };
-function Connected({ loading, error, apps, count, onOpen, onAll }: ConnectedProps) {
+type ConnectedProps = { loading: boolean; error?: string; apps: App[]; count: number; onOpen: (id: string) => void; onAll: () => void; onConnect: () => void };
+function Connected({ loading, error, apps, count, onOpen, onAll, onConnect }: ConnectedProps) {
   if (loading) return <Status tone="idle" title="Reading your chat apps…" />;
   return (
     <>
@@ -86,8 +86,8 @@ function Connected({ loading, error, apps, count, onOpen, onAll }: ConnectedProp
             <Btn sm onClick={() => onOpen(a.id)}>Open</Btn>
           </Prow>
         ))}</Plist>
-      ) : error ? null : <Empty>No chat app is connected yet.</Empty>}
-      <Acts><Btn disabled={!count} onClick={onAll}>{`All ${count} chat apps`}</Btn></Acts>
+      ) : error ? null : <Empty>No chat app is connected yet. Message your Trunks from Telegram, WhatsApp, Slack… Connect one to get started.</Empty>}
+      <Acts><Btn pri onClick={onConnect}>Connect a chat app</Btn>{count > 0 ? <Btn onClick={onAll}>{`All ${count} chat apps`}</Btn> : null}</Acts>
     </>
   );
 }
