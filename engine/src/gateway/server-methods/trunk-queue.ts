@@ -124,6 +124,7 @@ export function startTrunkQueueSweep(params: {
       gateway,
       agentIds: () => readyEligibleAgentIds(gateway, params.getConfig()),
       availability,
+      log: params.log,
     })
       .catch((error: unknown) => params.log(`trunk queue sweep failed: ${String(error)}`))
       .finally(() => {

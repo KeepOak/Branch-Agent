@@ -44,6 +44,8 @@ export const STALE_CLAIM_MS = 2 * 60 * 60_000;
 export const ORPHAN_CLAIM_GRACE_MS = 2 * 60_000;
 /** Failed claim attempts after which a job is blocked, so a broken job cannot re-dispatch forever. */
 export const MAX_CLAIM_FAILURES = 3;
+/** A claim whose run has shown no activity this long is dead in practice, whatever its run status says. */
+export const HARD_CLAIM_CAP_MS = 4 * 60 * 60_000;
 /** Live sessions requested per query. The query selects running sessions before the limit applies. */
 const LIVE_SESSION_LIMIT = 500;
 const RETAIN_DONE_MS = 7 * 24 * 60 * 60_000;
@@ -499,6 +501,7 @@ export async function releaseStaleQueueClaims(params: {
   gateway: TrunkQueueGateway;
   env?: NodeJS.ProcessEnv;
   now?: () => number;
+  log?: (message: string) => void;
 }): Promise<void> {
   const now = params.now ?? Date.now;
   const candidates = read(params.env).filter(
@@ -517,7 +520,18 @@ export async function releaseStaleQueueClaims(params: {
         current.claim_id === candidate.claim_id,
     );
     const at = now();
-    if (!row || (!working && !isPastStaleTime(row, at))) {
+    if (!row) {
+      continue;
+    }
+    if (at - (row.active_at ?? row.claimed_at ?? at) >= HARD_CLAIM_CAP_MS) {
+      release(row, at);
+      write(rows, at, params.env);
+      params.log?.(
+        `trunk queue: released job "${row.title}" (${row.id}) from ${agentId}: its run had no activity for 4 hours`,
+      );
+      continue;
+    }
+    if (!working && !isPastStaleTime(row, at)) {
       continue;
     }
     if (working) {
@@ -683,6 +697,7 @@ export async function wakeIdleTrunks(params: {
   env?: NodeJS.ProcessEnv;
   now?: () => number;
   availability?: TrunkAvailability;
+  log?: (message: string) => void;
 }): Promise<string[]> {
   await releaseStaleQueueClaims(params);
   const woken: string[] = [];
@@ -757,6 +772,7 @@ export async function reconcileTrunkQueue(params: {
   env?: NodeJS.ProcessEnv;
   now?: () => number;
   availability?: TrunkAvailability;
+  log?: (message: string) => void;
 }): Promise<void> {
   const rows = read(params.env);
   if (!rows.some((row) => isOpenClaim(row) || isClaimable(row))) {

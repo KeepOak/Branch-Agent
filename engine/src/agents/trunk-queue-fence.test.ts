@@ -10,10 +10,14 @@ import {
   pickUpQueuedWork,
   reconcileTrunkQueue,
   releaseOrphanQueueClaims,
+  releaseStaleQueueClaims,
   type TrunkQueueGateway,
 } from "./trunk-queue.js";
 
 type Call = { method: string; params: Record<string, unknown> };
+
+/** The four-hour cap, spelled out so the test checks the behavior rather than a constant that may not exist. */
+const FOUR_HOURS_MS = 4 * 60 * 60_000;
 
 /**
  * A gateway whose claim thread never shows as live (the case that let a reaper free a job while its run was still
@@ -122,6 +126,45 @@ describe("Trunk queue fenced claims", () => {
       gateway,
       env,
       now: () => 1_000 + ORPHAN_CLAIM_GRACE_MS + 1,
+    });
+
+    expect(listQueueItems(env)[0]).toMatchObject({
+      status: "claimed",
+      claimed_by: "builder-birch",
+    });
+  });
+
+  it("releases a current-epoch claim silent for 4 hours, with a warning naming the job and builder", async () => {
+    addQueueItem({ title: "silent job", brief_text: "silent brief" }, env, 1);
+    claimNextQueueItem("builder-birch", env, 1_000);
+    const { gateway } = fenceGateway("pending");
+    const logs: string[] = [];
+
+    await releaseStaleQueueClaims({
+      gateway,
+      env,
+      now: () => 1_000 + FOUR_HOURS_MS,
+      log: (message) => logs.push(message),
+    });
+
+    expect(listQueueItems(env)[0]).toMatchObject({
+      status: "released",
+      released_from: "builder-birch",
+    });
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toContain('"silent job"');
+    expect(logs[0]).toContain("builder-birch");
+  });
+
+  it("keeps a current-epoch claim with a pending run until the 4-hour cap", async () => {
+    addQueueItem({ title: "patient job", brief_text: "patient brief" }, env, 1);
+    claimNextQueueItem("builder-birch", env, 1_000);
+    const { gateway } = fenceGateway("pending");
+
+    await releaseStaleQueueClaims({
+      gateway,
+      env,
+      now: () => 1_000 + FOUR_HOURS_MS - 1,
     });
 
     expect(listQueueItems(env)[0]).toMatchObject({
