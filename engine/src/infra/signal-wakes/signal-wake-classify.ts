@@ -1,7 +1,10 @@
 const TRUNK_HEAD_PREFIX = "trunk/";
-const FIX_VERDICT = /^\s*FIX\b/;
+// The verdict line is the first line of the comment: `branch-verdict: MERGE|FIX head=<40-hex sha>`.
+const VERDICT_LINE = /^branch-verdict:\s*(MERGE|FIX)\s+head=([0-9a-f]{40})(?:\s.*)?$/;
 const FAILING_CONCLUSIONS = new Set(["failure", "timed_out", "startup_failure"]);
-const EXCERPT_MAX_CHARS = 160;
+
+export type BranchVerdict = { verdict: "MERGE" | "FIX"; headSha: string };
+export type LatestVerdict = BranchVerdict & { id: number };
 
 /** Maps a PR head branch `trunk/<trunkId>-...` to the longest matching configured Trunk id. */
 export function trunkForHeadRef(headRef: string, trunkIds: readonly string[]): string | undefined {
@@ -19,9 +22,28 @@ export function trunkForHeadRef(headRef: string, trunkIds: readonly string[]): s
   return best;
 }
 
-/** A verdict comment opens with the bare word FIX; FIXED, Fix or a leading word do not count. */
-export function isFixVerdict(body: string): boolean {
-  return FIX_VERDICT.test(body);
+/** Reads the verdict from a comment's first line. Anything else is not a verdict. */
+export function parseBranchVerdict(body: string): BranchVerdict | undefined {
+  const firstLine = (body.trim().split("\n")[0] ?? "").trim();
+  const match = VERDICT_LINE.exec(firstLine);
+  if (!match) {
+    return undefined;
+  }
+  return { verdict: match[1] === "FIX" ? "FIX" : "MERGE", headSha: match[2] ?? "" };
+}
+
+/** The newest comment (highest id) whose first line is a verdict. */
+export function latestBranchVerdict(
+  comments: readonly { id: number; body: string }[],
+): LatestVerdict | undefined {
+  let latest: LatestVerdict | undefined;
+  for (const comment of comments) {
+    const verdict = parseBranchVerdict(comment.body);
+    if (verdict && (latest === undefined || comment.id > latest.id)) {
+      latest = { ...verdict, id: comment.id };
+    }
+  }
+  return latest;
 }
 
 export type CheckRunSummary = { name: string; status: string; conclusion: string | null };
@@ -31,12 +53,4 @@ export function failingCheckNames(runs: readonly CheckRunSummary[]): string[] {
   return runs
     .filter((run) => run.status === "completed" && FAILING_CONCLUSIONS.has(run.conclusion ?? ""))
     .map((run) => run.name);
-}
-
-/** First line of a comment, trimmed and capped, so the wake text stays short. */
-export function commentExcerpt(body: string): string {
-  const firstLine = body.trim().split("\n")[0] ?? "";
-  return firstLine.length > EXCERPT_MAX_CHARS
-    ? `${firstLine.slice(0, EXCERPT_MAX_CHARS - 1)}…`
-    : firstLine;
 }

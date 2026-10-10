@@ -1,5 +1,6 @@
 import { listAgentIds } from "../agents/agent-scope.js";
 import { isQueueEligibleTrunk } from "../agents/trunk-queue-policy.js";
+import { resolveStateDir } from "../config/state-dir.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { dispatchSignalWake } from "../infra/signal-wakes/signal-wake-dispatch.js";
 import { createSignalWakeGitHub, type RepoRef } from "../infra/signal-wakes/signal-wake-github.js";
@@ -7,6 +8,10 @@ import {
   startSignalWakePoller,
   type SignalPoller,
 } from "../infra/signal-wakes/signal-wake-poller.js";
+import {
+  createFileSignalStateStore,
+  signalWakeStatePath,
+} from "../infra/signal-wakes/signal-wake-state.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { githubApiToken } from "./github-public-api.js";
 
@@ -47,6 +52,7 @@ export function startSignalWakePollerForGateway(params: {
     repos,
     trunkIds: () => configuredTrunkIds(params.getRuntimeConfig()),
     notify: (signal) => dispatchSignalWake(params.getRuntimeConfig(), signal),
+    store: createFileSignalStateStore(signalWakeStatePath(resolveStateDir(process.env))),
     onError: params.onError,
   });
 }
