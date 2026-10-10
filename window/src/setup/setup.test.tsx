@@ -415,7 +415,7 @@ describe("setup flow", () => {
     expect(closed).toHaveBeenCalledWith(false);
   });
   it("Finish by talking reaches the required first Trunk, then records setup", async () => {
-    const { engine: e, request } = engine({ "config.get": { hash: "h", config: {} }, "config.patch": { ok: true }, "agents.create": { ok: true, agentId: "fern" }, "agents.list": { agents: [{ id: "fern", name: "Fern" }] } });
+    const { engine: e, request } = engine({ "config.get": { hash: "h", config: { agents: { defaults: { model: "openai/gpt" } } } }, "config.patch": { ok: true }, "agents.create": { ok: true, agentId: "fern" }, "agents.list": { agents: [{ id: "fern", name: "Fern" }] } });
     const onTalk = vi.fn();
     const closed = vi.fn();
     const host = await show(<SetupFlow engine={e} version="1" trunkNames={[]} requireContact defaultAgentId="bootstrap" defaultName="Branch" startAt={2} onTalk={onTalk} onClose={closed} onLocalModel={() => {}} />);
@@ -441,6 +441,36 @@ describe("setup flow", () => {
     await recordSetup(e, freshChoices("system"), "1.0", false);
     const raw = JSON.parse(String(params(request, "config.patch")[0]?.raw));
     expect(raw.update).toEqual({ auto: { enabled: false }, checkOnStart: null });
+  });
+  it("Finish by talking cannot finish without a model: it opens Models and records nothing", async () => {
+    const { engine: e, request } = engine({ "config.get": { hash: "h", config: {} }, "config.patch": { ok: true } });
+    const onTalk = vi.fn();
+    const closed = vi.fn();
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={3} onTalk={onTalk} onClose={closed} onLocalModel={() => {}} />);
+    await act(async () => tid(host, "setup-talk").click());
+    const handle = onTalk.mock.calls.find(([value]) => value)?.[0] as TalkHandle;
+    await act(async () => handle.finish());
+    expect(closed).not.toHaveBeenCalled();
+    expect(host.querySelector("h2")?.textContent).toBe("Which models should answer?");
+    expect(params(request, "config.patch").some((patch) => Boolean(JSON.parse(String(patch.raw)).wizard?.lastRunAt))).toBe(false);
+  });
+  it("a fresh Branch keeps its update and start-with-computer defaults when a model is found after setup started", async () => {
+    const { engine: e, request } = engine({
+      "config.get": { hash: "h", config: {} },
+      "config.patch": { ok: true },
+      "branch.setup.detect": { candidates: [{ kind: "existing-model", modelRef: "openai/gpt", label: "ChatGPT", detail: "", recommended: true, credentials: true }], configuredModel: "openai/gpt" },
+      health: { ok: true },
+      "system.info": { diskAvailableBytes: 2 * 1024 ** 3 },
+      "branch.setup.verify": { ok: true, modelRef: "openai/gpt", latencyMs: 900 },
+    });
+    const closed = vi.fn();
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={4} onClose={closed} onLocalModel={() => {}} />);
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    await act(async () => tid(host, "setup-finish").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(closed).toHaveBeenCalledWith(true);
+    const raw = JSON.parse(String(params(request, "config.patch").find((patch) => Boolean(JSON.parse(String(patch.raw)).wizard?.lastRunAt))?.raw));
+    expect(raw.update).toEqual({ auto: { enabled: true }, checkOnStart: null });
   });
   it("the health check shows real answers, then finishing makes the picked Trunks", async () => {
     const { engine: e, request } = engine({

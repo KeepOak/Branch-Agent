@@ -48,6 +48,7 @@ const TITLES: Record<number, [string, string?]> = {
   4: ["Ready", "Branch checks everything before you start."],
 };
 
+const MODELS_STEP = STEPS.indexOf("Models");
 /** Start goes past the steps an already set-up Branch has done, to the first one left. */
 function firstUndone(done: Set<number>, from: number): number {
   for (let i = from; i < LAST; i++) {
@@ -81,6 +82,13 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
   const chat = useChatApps(p.engine);
   const apps = chat.apps;
   const known = useKnown(p.engine, models.detected, p.trunkNames);
+  // Whether this is a fresh Branch is read once, before anything on this screen can change it (a sign-in on Models
+  // changes the detected model, and must not turn a fresh install into an existing one at finish).
+  const startKnown = useKnown(p.engine, null, p.trunkNames);
+  const freshInstall = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (startKnown && freshInstall.current === null) freshInstall.current = !startKnown.where && !startKnown.model;
+  }, [startKnown]);
   const done = known ? doneSteps(known) : new Set<number>();
   const [prefilled, setPrefilled] = useState(false);
   useEffect(() => {
@@ -120,9 +128,8 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
         const selected = await testModel(p.engine, models.detected!, choices.modelsOff, known?.model ?? null);
         setTest(selected);
       }
-      // A fresh Branch (no finished setup, no model yet) keeps itself up to date and starts with the computer; an
-      // existing one keeps what it has.
-      const fresh = finished && !known?.where && !known?.model;
+      // A fresh Branch keeps itself up to date and starts with the computer; an existing one keeps what it has.
+      const fresh = finished && freshInstall.current === true;
       await recordSetup(p.engine, choices, p.version, fresh ? true : null);
       const desk = desktopControls();
       if (fresh && "bridge" in desk) await desk.bridge.set("startWithWindows", true);
@@ -136,6 +143,26 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
       setBusy(false);
     }
   };
+  // The one way out of setup: Finish and "Open Branch" on the talk card both come here, so no path skips the model gate.
+  const doneChecks = checks.filter((c) => c.state !== "checking").length;
+  // The model row is named for the model once it answers, so it is found by the step its fix opens.
+  const modelChecked = checks.some((c) => c.state === "ok" && c.fix === MODELS_STEP);
+  const hasModel = modelChecked || Boolean(known?.model) || Boolean(models.detected && firstOn(models.detected, choices.modelsOff));
+  const modelNeedsConnection = checks.some((c) => c.name === "The model" && c.state === "bad") && !hasModel;
+  const finishSetup = () => {
+    if (!hasModel) {
+      setStep(MODELS_STEP);
+      setLogin({ agentId: p.defaultAgentId ?? p.engine.agentId ?? "", provider: "", choiceId: "", method: SECRET });
+      return;
+    }
+    if (doneChecks < checks.length) {
+      setStep(LAST);
+      return;
+    }
+    void close(true);
+  };
+  const finishRef = useRef(finishSetup);
+  finishRef.current = finishSetup;
   const answer = (q: TalkQuestion, o: TalkOption) => {
     if (STEPS[q.step] === "Your first Trunks" && o.value !== "enough") setChoices((c) => ({ ...c, jobs: [...c.jobs, Number(o.value)] }));
   };
@@ -147,15 +174,11 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
       done: (i) => done.has(i),
       answer,
       steps: (i) => { setTalking(false); setStep(i); p.onTalk?.(null); },
-      finish: () => { setTalking(false); p.onTalk?.(null); void close(true); },
+      finish: () => { setTalking(false); p.onTalk?.(null); finishRef.current(); },
     });
     // Published once when talking starts; the card keeps its own place from there.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [talking]);
-  const doneChecks = checks.filter((c) => c.state !== "checking").length;
-  const modelNeedsConnection = checks.some((c) => c.name === "The model" && c.state === "bad")
-    && !known?.model
-    && !(models.detected && firstOn(models.detected, choices.modelsOff));
   const body = renderStep(step, { p, choices, set, models, inUse: known?.model ?? null, test, setTest, setLogin, checks, setStep });
   const [title, lede] = TITLES[step];
   const footer = (
@@ -172,7 +195,7 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
         </button>
       ) : null}
       {step === LAST ? (
-        <button type="button" className="btn pri" data-testid="setup-finish" disabled={busy || doneChecks < checks.length} onClick={() => modelNeedsConnection ? (setStep(2), setLogin({ agentId: p.defaultAgentId ?? p.engine.agentId ?? "", provider: "", choiceId: "", method: SECRET })) : void close(true)}>
+        <button type="button" className="btn pri" data-testid="setup-finish" disabled={busy || doneChecks < checks.length} onClick={finishSetup}>
           {modelNeedsConnection ? "Connect a model" : doneChecks < checks.length ? `Checking… ${doneChecks} of ${checks.length}` : "Open Branch and take the walkthrough"}
         </button>
       ) : (
