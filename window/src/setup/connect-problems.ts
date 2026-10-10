@@ -42,7 +42,7 @@ export function connectProblem(code: string | undefined, host: string): Problem 
         "This connects by itself once access is given.",
       ]);
     case "CONTROL_UI_ORIGIN_NOT_ALLOWED":
-      return plain("This address isn't allowed", "That computer refused this window's origin.", ["Add it to gateway.controlUi.allowedOrigins, using full origins, then restart the gateway."]);
+      return plain("That computer won't let this window in", "It only talks to windows it has been told about, and this one hasn't been.", ["Ask whoever runs that computer to let this window in.", "Then choose Connect again."]);
     case "PROTOCOL_MISMATCH":
     case "CLIENT_VERSION_MISMATCH":
     case "CONTROL_UI_BUILD_MISMATCH":

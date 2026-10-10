@@ -136,9 +136,10 @@ describe("connect-problems logic", () => {
 
     it("CONTROL_UI_ORIGIN_NOT_ALLOWED means origin not allowed", () => {
       const p = connectProblem("CONTROL_UI_ORIGIN_NOT_ALLOWED", "locked:9000");
-      expect(p.title).toBe("This address isn't allowed");
-      expect(p.line).toBe("That computer refused this window's origin.");
-      expect(p.steps).toEqual(["Add it to gateway.controlUi.allowedOrigins, using full origins, then restart the gateway."]);
+      expect(p.title).toBe("That computer won't let this window in");
+      expect(p.line).toBe("It only talks to windows it has been told about, and this one hasn't been.");
+      expect(p.steps).toEqual(["Ask whoever runs that computer to let this window in.", "Then choose Connect again."]);
+      expect([p.title, p.line, ...p.steps].join("\n")).not.toMatch(/gateway\.|allowedOrigins|restart the gateway/);
       expect(p.needsKey).toBe(false);
     });
 
