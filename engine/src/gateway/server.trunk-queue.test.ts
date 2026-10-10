@@ -222,7 +222,8 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
         process.env,
         longAgo,
       );
-      claimNextQueueItem("ash", process.env, longAgo);
+      // A claim left by a gateway that has since exited: its run cannot still be live, so it is released.
+      claimNextQueueItem("ash", process.env, longAgo, "exited-gateway-epoch");
 
       const listed = await list();
 
