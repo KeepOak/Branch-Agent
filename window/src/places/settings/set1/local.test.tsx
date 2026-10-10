@@ -46,7 +46,7 @@ describe("Settings › On this computer", () => {
     const cards = [...host.querySelectorAll(".lm-k b")].map((b) => b.textContent);
     expect(cards).toEqual(["Model Seven", "Managed local server"]);
     expect(host.textContent).toContain("sees pictures");
-    expect(host.textContent).toContain("128k words of memory");
+    expect(host.textContent).toContain("131K-token context");
     await act(async () => button("Set up model")!.click());
     const start = request.mock.calls.find(([m]) => m === "branch.setup.prepare.start") as unknown as [string, Record<string, unknown>];
     expect(start[1]).toMatchObject({ authChoice: "llama-cpp" });
