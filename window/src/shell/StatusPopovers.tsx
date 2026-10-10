@@ -8,6 +8,7 @@ import { Popover, type Above } from "./Popover";
 import { ageWords, comingUp, readLimits, readRoom, readRounds, sizeWords, uptimeWords, type LimitRow, type Limits, type Room, type Round, type UpdateInfo } from "./status-data";
 import type { GatewayFacts } from "./use-status";
 import "./status.css";
+import { keyHint } from "./key-hint";
 import { shownWhy } from "./shown-why";
 import { branchVersionDetail, branchVersionLabel, isNewerBranchVersion } from "../connect/branch-version";
 import { installOnComputer } from "../connect/desktop-component-updates";
@@ -44,7 +45,7 @@ function Item({ icon, label, hint, onClick, off, testid }: { icon: IconName; lab
     <button type="button" className="mi" role="menuitem" data-testid={testid} disabled={Boolean(off)} title={shownWhy(off)} onClick={onClick}>
       <Icon name={icon} small />
       <span className="mi-label">{label}</span>
-      {hint ? <span className="mi-hint">{hint}</span> : null}
+      {hint ? <span className="mi-hint">{typeof hint === "string" ? keyHint(hint) : hint}</span> : null}
     </button>
   );
 }
