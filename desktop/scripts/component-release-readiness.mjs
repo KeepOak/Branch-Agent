@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mergeCheckRunPages, PASS_CONCLUSIONS, runGhWithRetry } from "../../scripts/merge-gate-rate-limit.mjs";
+import { mergeCheckRunPages, PASS_CONCLUSIONS } from "../../scripts/merge-gate-rate-limit.mjs";
 import { actionsRunIdFromCheckRun } from "../../scripts/merge-gate-trusted.mjs";
 
 export const PUSH_BACKUP_MIN_AGE_MS = 25 * 60 * 1000;
@@ -10,8 +10,6 @@ export const CATCH_UP_MAX_WAIT_MS = 26 * 60 * 1000;
 // boundary so the dispatched run does not still observe a closed window.
 export const CATCH_UP_WINDOW_BUFFER_MS = 5 * 1000;
 // Readiness is a 5-minute job. Three minutes leaves room for checkout and API calls.
-export const FAILED_CHECK_RERUN_WAIT_MS = 3 * 60 * 1000;
-export const FAILED_CHECK_RERUN_POLL_MS = 15 * 1000;
 
 export function pushBackupShouldRelease(publishedAt, now = Date.now()) {
   if (publishedAt == null || publishedAt === "") return true;
@@ -176,8 +174,9 @@ function defaultSleep(ms) {
   execFileSync("sleep", [String(ms / 1000)], { windowsHide: true });
 }
 
+// One plain gh call. No retry loop: a retry loop spends the shared installation quota (escalation, 2026-10-10).
 function defaultGh(args) {
-  return runGhWithRetry(args);
+  return execFileSync("gh", args, { encoding: "utf8", windowsHide: true, env: process.env });
 }
 
 function parseJson(raw, fallback) {
@@ -195,6 +194,16 @@ export function listCommitCheckRuns(repo, sha, { gh = defaultGh } = {}) {
     if (merged.complete) return merged.checkRuns;
     if (!(payload.check_runs?.length)) return merged.checkRuns;
   }
+}
+
+// One request, one page of up to 100 check runs. Anything beyond that is reported, never guessed at.
+export function listCommitCheckRunsOnce(repo, sha, { gh = defaultGh } = {}) {
+  const payload = parseJson(gh(["api", `repos/${repo}/commits/${sha}/check-runs?per_page=100`]), {});
+  const runs = payload.check_runs ?? [];
+  if ((payload.total_count ?? runs.length) > runs.length) {
+    throw new Error(`check runs for ${sha} span more than one page`);
+  }
+  return runs;
 }
 
 export function getWorkflowRun(repo, runId, { gh = defaultGh } = {}) {
@@ -220,23 +229,26 @@ function uniqueWorkflowRunIds(checkRuns) {
 export function resolveFailedReleaseChecks({
   sha,
   repo = process.env.GITHUB_REPOSITORY || "KeepOak/Branch-Agent",
-  now = Date.now,
-  sleep = defaultSleep,
   log = console.error,
-  waitMs = FAILED_CHECK_RERUN_WAIT_MS,
-  pollMs = FAILED_CHECK_RERUN_POLL_MS,
   allowRerun = process.env.GITHUB_EVENT_NAME !== "pull_request",
   listCheckRuns,
   readWorkflowRun,
   rerunFailedJobs,
   gh = defaultGh,
 } = {}) {
-  const list = listCheckRuns ?? (() => listCommitCheckRuns(repo, sha, { gh }));
+  const list = listCheckRuns ?? (() => listCommitCheckRunsOnce(repo, sha, { gh }));
   const readRun = readWorkflowRun ?? (runId => getWorkflowRun(repo, runId, { gh }));
   const rerun = rerunFailedJobs ?? (runId => rerunFailedWorkflowJobs(repo, runId, { gh }));
 
-  const firstListed = list();
-  const firstBlocking = blockingCheckRuns(firstListed, { readWorkflowRun: readRun });
+  // One listing decides. A failed listing skips this release, and the next scheduled run tries again.
+  let listed;
+  try {
+    listed = list();
+  } catch (error) {
+    log(`Could not list checks at ${sha}: ${error?.message ?? error}; skipping this release`);
+    return { skip: true, failedCount: 0, reran: [], alreadyRetried: [], reason: "checks-unavailable" };
+  }
+  const firstBlocking = blockingCheckRuns(listed, { readWorkflowRun: readRun });
   if (firstBlocking.length === 0) {
     return { skip: false, failedCount: 0, reran: [], alreadyRetried: [], reason: "no-failed-checks" };
   }
@@ -245,9 +257,11 @@ export function resolveFailedReleaseChecks({
     return { skip: true, failedCount: firstBlocking.length, reran: [], alreadyRetried: [], reason: "failed-checks" };
   }
 
+  // At most one rerun per failed workflow run. Nothing waits here: a rerun requested now is decided by the
+  // next scheduled run, so this job never polls.
   const reran = [];
   const alreadyRetried = [];
-  const firstFailed = failedCheckRuns(firstListed);
+  const firstFailed = failedCheckRuns(listed);
   for (const runId of uniqueWorkflowRunIds(firstFailed)) {
     const names = firstFailed.filter((check) => workflowRunIdFromCheck(check) === runId).map((check) => check.name);
     let run = null;
@@ -257,50 +271,25 @@ export function resolveFailedReleaseChecks({
       log(`Could not load workflow run ${runId} (${names.join(", ")}): ${error?.message ?? error}`);
     }
     if (!shouldRerunFailedWorkflow(run)) {
-      log(`Not rerunning ${names.join(", ")} (run ${runId}): already attempt ${run.run_attempt}`);
-      alreadyRetried.push({ runId, attempt: Number(run.run_attempt), names });
+      log(`Not rerunning ${names.join(", ")} (run ${runId}): already attempt ${run?.run_attempt}`);
+      alreadyRetried.push({ runId, attempt: Number(run?.run_attempt), names });
       continue;
     }
     try {
-      log(`Rerunning failed jobs for ${names.join(", ")} (run ${runId}, attempt ${run?.run_attempt ?? 1})`);
+      log(`Rerunning failed jobs for ${names.join(", ")} (run ${runId}, attempt ${run?.run_attempt ?? 1}); the next scheduled run decides`);
       rerun(runId);
       reran.push({ runId, attempt: Number(run?.run_attempt ?? 1), names });
     } catch (error) {
       log(`Could not rerun failed jobs for ${names.join(", ")} (run ${runId}): ${error?.message ?? error}`);
     }
   }
-
-  if (reran.length > 0) {
-    const deadline = now() + waitMs;
-    const pending = new Set(reran.map((item) => item.runId));
-    while (pending.size > 0 && now() < deadline) {
-      for (const runId of [...pending]) {
-        try {
-          const run = readRun(runId);
-          log(`Rerun of run ${runId} is ${run?.status ?? "unknown"} (conclusion ${run?.conclusion ?? "none"}, attempt ${run?.run_attempt ?? "?"})`);
-          if (run?.status === "completed") pending.delete(runId);
-        } catch (error) {
-          log(`Could not poll workflow run ${runId}: ${error?.message ?? error}`);
-        }
-      }
-      if (pending.size === 0) break;
-      const remaining = deadline - now();
-      if (remaining <= 0) break;
-      sleep(Math.min(pollMs, remaining));
-    }
-    if (pending.size > 0) {
-      log(`Wait budget ended with ${pending.size} rerun(s) still running; skipping release`);
-      return { skip: true, failedCount: pending.size, reran, alreadyRetried, reason: "rerun-pending" };
-    }
-  }
-
-  const stillBlocking = blockingCheckRuns(list(), { readWorkflowRun: readRun });
-  if (stillBlocking.length === 0) {
-    if (reran.length > 0) log(`Failed checks at ${sha} cleared after rerun; proceeding`);
-    return { skip: false, failedCount: 0, reran, alreadyRetried, reason: reran.length ? "cleared-after-rerun" : "no-failed-checks" };
-  }
-  log(`Main still has ${stillBlocking.length} failed check(s) at ${sha} after retry: ${stillBlocking.map((check) => check.name).join(", ")}`);
-  return { skip: true, failedCount: stillBlocking.length, reran, alreadyRetried, reason: "failed-checks" };
+  return {
+    skip: true,
+    failedCount: firstBlocking.length,
+    reran,
+    alreadyRetried,
+    reason: reran.length > 0 ? "rerun-requested" : "failed-checks",
+  };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
