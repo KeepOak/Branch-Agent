@@ -3,3 +3,7 @@ engine:extensions/memory-core/src/memory/embeddings.test.ts
 engine:extensions/memory-core/src/memory/manager-provider-change.test.ts
 engine:extensions/memory-core/src/memory/manager-registry.test.ts
 engine:src/agents/memory-search.test.ts
+engine:src/commands/doctor/shared/legacy-config-migrate.test.ts
+engine:src/config/schema.help.quality.test.ts
+engine:src/gateway/server-methods/doctor.memory-provider.test.ts
+window:src/places/settings/set2/advanced.test.tsx
