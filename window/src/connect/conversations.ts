@@ -1,6 +1,7 @@
 // The conversation list (DESIGN-SPEC §4.1.1): the engine's sessions, read with sessions.subscribe and
 // sessions.list and refreshed on every sessions.changed event, the way OpenClaw's ui/src/lib/sessions does.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+import { cleanName } from "../shell/plain-words";
 import { agentIdOf } from "./session";
 import type { RoomPick } from "../rooms/RoomFaces";
 
@@ -100,15 +101,35 @@ export const LIST_PARAMS = {
   limit: 200,
 } as const;
 
+/** A group's members by name. Ids are never shown, so a member with no name is left out. */
+type GroupMember = { kind: "trunk" | "person"; id: string; name: string };
+function groupMembers(participants: unknown[]): GroupMember[] {
+  return participants.flatMap((p): GroupMember[] => {
+    const identity = rec(rec(p).identity);
+    const name = cleanName(str(identity.name) || str(rec(p).label));
+    return name ? [{ kind: str(identity.type) === "profile" ? "person" : "trunk", id: str(identity.id), name }] : [];
+  });
+}
+const memberPick = (m: GroupMember): RoomPick => (m.kind === "person" ? { kind: "person", id: m.id, name: m.name } : { kind: "trunk", name: m.name });
+/** A group with no name reads as who is in it, never as one member's name. */
+const groupTitle = (members: GroupMember[]): string => `Group with ${members.slice(0, 3).map((m) => m.name).join(", ")}`;
+
+/** Group conversations: a stored group, or a conversation with more than one person in it. */
+export function isGroupRow(row: Pick<Conversation, "kind" | "groupChat">): boolean {
+  return row.kind === "group" || row.kind === "chatGroup" || row.groupChat === true;
+}
+
 /** One engine row (a sessions.list `sessions[]` item) as the sidebar reads it. */
 export function projectConversation(raw: unknown, mainKey: string | null): Conversation {
   const r = rec(raw);
   const key = str(r.key);
   const label = str(r.label) || undefined;
-  const title = label || str(r.displayName) || str(r.derivedTitle) || "";
   const activeRunIds = Array.isArray(r.activeRunIds) ? r.activeRunIds.filter((id): id is string => typeof id === "string" && Boolean(id)) : [];
   const classification = str(r.classification);
   const participants = Array.isArray(r.participants) ? r.participants : [];
+  const members = groupMembers(participants);
+  const groupChat = str(r.kind) === "group" || participants.some((p) => str(rec(rec(p).identity).type) === "profile");
+  const title = label || str(r.displayName) || str(r.derivedTitle) || (groupChat && members.length ? groupTitle(members) : "");
   return {
     key,
     title,
@@ -130,7 +151,8 @@ export function projectConversation(raw: unknown, mainKey: string | null): Conve
     classification,
     spawnDepth: num(r.spawnDepth),
     helper: Boolean(r.spawnedBy) || num(r.spawnDepth) > 0,
-    groupChat: str(r.kind) === "group" || participants.some((p) => str(rec(rec(p).identity).type) === "profile"),
+    groupChat,
+    ...(groupChat && members.length ? { roomPicks: members.slice(0, 2).map(memberPick) } : {}),
     label,
     ...(str(r.sessionId) ? { sessionId: str(r.sessionId) } : {}),
     ...(typeof r.markedUnreadAt === "number" ? { markedUnreadAt: r.markedUnreadAt } : {}),
