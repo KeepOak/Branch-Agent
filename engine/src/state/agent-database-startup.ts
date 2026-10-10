@@ -23,6 +23,12 @@ import {
 } from "./agent-database-admission.js";
 import { readAgentDeletionJournalStatusInWorker } from "./agent-deletion-journal.read.js";
 import {
+  boundStage,
+  recordStage,
+  StageTimeoutError,
+  waitForStage,
+} from "./agent-database-startup.stages.js";
+import {
   AGENT_DATABASE_PREFLIGHT_CONCURRENCY,
   BRANCH_AGENT_SCHEMA_VERSION,
 } from "./branch-agent-db-contract.js";
@@ -312,11 +318,12 @@ class AgentDatabaseStartupAdmission {
     const refusals: AgentDatabaseAdmissionRefusal[] = [];
     for (const [agentId, inspections] of grouped) {
       const paths = [...new Set(inspections.map(({ target }) => target.path))];
+      const statusReason = `Agent ${agentId} has not completed startup inspection and preparation. ${params.reason}`;
       const refusal = createAgentDatabaseInspectionRefusal({
         agentId,
         paths,
         pending: true,
-        reason: `Agent ${agentId} has not completed startup inspection and preparation. ${params.reason}`,
+        reason: statusReason,
       });
       this.pending.set(agentId, refusal);
       refusals.push(refusal);
@@ -332,8 +339,23 @@ class AgentDatabaseStartupAdmission {
       // records the pending decisions and the Gateway accepts their lifetime.
       const checked = Promise.allSettled(inspections.map(({ result }) => result));
       const recovery = (async () => {
-        const results = await checked;
-        const activation = await this.activation.promise;
+        const limitMs = preparationAttemptLimitMs(env);
+        const results = await waitForStage({
+          agentId,
+          stage: "inspection",
+          work: checked,
+          limitMs,
+          signal: this.signal,
+          onExpired: () => recordStage(refusal, statusReason, "inspection"),
+        });
+        const activation = await waitForStage({
+          agentId,
+          stage: "gateway activation",
+          work: this.activation.promise,
+          limitMs,
+          signal: this.signal,
+          onExpired: () => recordStage(refusal, statusReason, "gateway activation"),
+        });
         if (!activation || this.stopped) {
           return;
         }
@@ -352,7 +374,12 @@ class AgentDatabaseStartupAdmission {
           };
           const assertNotDeleted = async (signal: AbortSignal) => {
             assertCurrent();
-            const deletion = await readAgentDeletionJournalStatusInWorker(agentId, { env }, signal);
+            const deletion = await boundStage(
+              "deletion-journal read",
+              readAgentDeletionJournalStatusInWorker(agentId, { env }, signal),
+              attemptLimitMs,
+              signal,
+            );
             assertCurrent();
             if (deletion !== "absent") {
               throw new Error(`Agent ${agentId} was deleted during startup inspection`);
@@ -382,10 +409,21 @@ class AgentDatabaseStartupAdmission {
                       signal,
                       assertCurrent: assertAttemptCurrent,
                     };
-                    const release = await this.opening.acquire({ signal });
+                    const release = await boundStage(
+                      "opening permit",
+                      this.opening.acquire({ signal }),
+                      attemptLimitMs,
+                      signal,
+                      (granted) => granted?.(),
+                    );
                     try {
                       assertAttemptCurrent();
-                      await activation.openAgent(input);
+                      await boundStage(
+                        "open",
+                        activation.openAgent(input),
+                        attemptLimitMs,
+                        signal,
+                      );
                     } finally {
                       release?.();
                     }
@@ -395,7 +433,8 @@ class AgentDatabaseStartupAdmission {
                     const previous = this.preparation;
                     this.preparation = completion.promise;
                     try {
-                      await previous;
+                      // A holder's own stages are bounded, so a longer wait means the lane is stuck.
+                      await boundStage("preparation lane", previous, MAX_PREPARATION_ATTEMPT_MS, signal);
                       const timer = setTimeout(() => {
                         log.warn("agent database preparation watchdog: attempt expired; retrying", {
                           agentId,
@@ -538,6 +577,12 @@ class AgentDatabaseStartupAdmission {
                   }
                   const attention = restart && failedStarts >= FAILED_STARTS_BEFORE_ATTENTION;
                   const reason = formatErrorMessage(error);
+                  recordStage(
+                    refusal,
+                    statusReason,
+                    error instanceof StageTimeoutError ? error.stage : "preparation",
+                    reason,
+                  );
                   const replacement = new Error(`Agent ${agentId} preparation: ${reason}`);
                   log.warn(
                     attention
