@@ -15,7 +15,10 @@ import {
   readAgentDatabaseAdmissionRefusal,
   recordAgentDatabaseAdmissions,
 } from "../state/agent-database-admission.js";
-import { withAgentDatabaseStartupAdmission } from "../state/agent-database-startup.js";
+import {
+  retryAgentDatabaseStartupPreparation,
+  withAgentDatabaseStartupAdmission,
+} from "../state/agent-database-startup.js";
 import {
   closeBranchAgentDatabasesAsync,
   closeBranchAgentDatabasesForTest,
@@ -145,8 +148,10 @@ describe("startup preparation of a Trunk whose model build never settles", () =>
     const hung = Promise.withResolvers<void>();
     releaseHungBuild = () => hung.resolve();
     let stuckBuilds = 0;
+    const stuckStarted = Promise.withResolvers<void>();
     mocks.prepareStaticCatalog.mockImplementation(async (...args: unknown[]) => {
       if (workspaceOf(args).includes("stuck") && ++stuckBuilds === 1) {
+        stuckStarted.resolve();
         // The first build of this Trunk never settles and ignores every abort signal.
         await hung.promise;
       }
@@ -155,7 +160,9 @@ describe("startup preparation of a Trunk whose model build never settles", () =>
     const env = {
       BRANCH_STATE_DIR: tempDirs.make("startup-model-replacement-"),
       BRANCH_AGENT_PREPARATION_RETRY_MS: "1",
-      BRANCH_AGENT_PREPARATION_ATTEMPT_MS: "400",
+      // Deliberately large: only the retry requested below ends the hung attempt, so a slow
+      // machine cannot expire a healthy attempt and change the attempt count.
+      BRANCH_AGENT_PREPARATION_ATTEMPT_MS: "60000",
     };
     const paths = new Map(
       ["stuck", "sibling"].map((agentId) => [
@@ -198,6 +205,10 @@ describe("startup preparation of a Trunk whose model build never settles", () =>
       });
     });
     try {
+      // The hung build is the first attempt of "stuck". A retry request ends that attempt; the
+      // retry replaces the build before the next attempt starts.
+      await stuckStarted.promise;
+      expect(retryAgentDatabaseStartupPreparation("stuck")).toBe(true);
       // Both get ready on their own: the stuck build is replaced before the stuck Trunk's next
       // attempt, so neither it nor the sibling publications that cover it wait behind it.
       await expect
@@ -208,9 +219,9 @@ describe("startup preparation of a Trunk whose model build never settles", () =>
         .toBeUndefined();
       expect(replaced).toContain("stuck");
       expect(stuckBuilds).toBeGreaterThanOrEqual(2);
-      // Recovered well before a restart from scratch (six failures in a row).
-      expect(attempts.get("stuck")).toBeLessThan(6);
-      expect(attempts.get("sibling")).toBeLessThan(6);
+      // Exactly one hung attempt and one replacement attempt: no failure, no restart from scratch.
+      expect(attempts.get("stuck")).toBe(2);
+      expect(attempts.get("sibling")).toBeLessThanOrEqual(2);
       expect(getPreparedModelRuntimeSnapshot(inputFor("stuck"))).toBeDefined();
       expect(getPreparedModelRuntimeSnapshot(inputFor("sibling"))).toBeDefined();
     } finally {
