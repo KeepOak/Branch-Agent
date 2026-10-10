@@ -216,6 +216,34 @@ describe("Settings › Seasons", () => {
     expect(request).toHaveBeenCalledWith("doctor.memory.dedupeDreamDiary", { agentId: "main" });
     expect(document.body.textContent).toContain("Removed 4 repeats.");
   });
+  it("Look at skills now runs the skill collection review and shows its outcome", async () => {
+    const review = { id: "r1", name: "skill-collection-review-main", displayName: "Skill collection review (main)", enabled: true, state: {} };
+    let entries: unknown[] = [];
+    const { engine, request } = engineWith({ "doctor.memory.status": RINGS_STATUS, "cron.list": { jobs: [review], hasMore: false }, "cron.run": { ok: true, enqueued: true, runId: "run1" }, "cron.runs": () => ({ entries }) });
+    let emit: (e: { event: string }) => void = () => {};
+    engine.onEvent = ((fn: (e: { event: string }) => void) => { emit = fn; return () => {}; }) as WindowEngine["onEvent"];
+    await show("seasons", engine);
+    expect(request).toHaveBeenCalledWith("cron.list", { includeDisabled: true, agentId: "main", limit: 200 });
+    await click("Look now");
+    expect(request).toHaveBeenCalledWith("cron.run", { id: "r1", mode: "force" });
+    expect(document.body.textContent).toContain("Looking at skills now.");
+    expect(button("Looking…").disabled).toBe(true);
+    entries = [{ ts: Date.now(), jobId: "r1", action: "finished", status: "ok", runId: "run1", summary: "Merged two release skills into one." }];
+    await act(async () => emit({ event: "cron" }));
+    await flush();
+    expect(document.body.textContent).toContain("Last look today");
+    expect(document.body.textContent).toContain("it finished.");
+    await click("What it did");
+    expect(document.querySelector(".dlg")?.textContent).toContain("Merged two release skills into one.");
+  });
+  it("greys Look now with the review's reason and no longer shows the retired skill resting rows", async () => {
+    const { engine, request } = engineWith({ "doctor.memory.status": RINGS_STATUS, "cron.list": { jobs: [{ id: "r1", name: "skill-collection-review-main", enabled: false, state: {} }], hasMore: false } });
+    await show("seasons", engine, "technical");
+    expect(document.body.textContent).toContain("Reviews run only while skill learning may change skills by itself.");
+    await click("Look now");
+    expect(request).not.toHaveBeenCalledWith("cron.run", expect.anything());
+    for (const gone of ["Look after skills", "Rest a skill after", "Set it aside after", "Gardener", "retired"]) expect(document.body.textContent).not.toContain(gone);
+  });
 });
 
 describe("Settings › Gateway", () => {

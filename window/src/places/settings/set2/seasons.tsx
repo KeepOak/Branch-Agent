@@ -1,18 +1,22 @@
 // Settings › Seasons (DESIGN-SPEC §4.7.16.1): Rings on the memory engine's config
 // (plugins.entries.memory-core.config.rings.*) and its doctor.memory.* readouts and actions, Budding on the skill
 // workshop (skills.workshop.autonomous.mode, skills.proposals.list), the season's changes, and session backfill.
-// The Gardener's skill resting is retired in the engine, so its rows say so.
+// Skill maintenance is the engine's weekly skill collection review (a system cron job per Trunk): Look now runs it
+// with cron.run and shows its last outcome from cron.runs. Resting and setting skills aside is retired in the engine.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import type { SettingsPageProps } from "../index";
 import { Btn, Ctl, Empty, Hint, Num, Page, Pick, Prow, Sec, Seg, Status, Switch, useConfig, useScope, type RowEntry } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
+import { runOutcome } from "../../automations/act";
 import { CallLine, CodeRow, lvOf, rec, str, useCall, useLive, when, type RecordValue } from "./common";
 
 const RINGS = "plugins.entries.memory-core.config.rings";
 const LEDE = "How Branch gets better by itself: tidying memory overnight, keeping skills in shape and learning what a Trunk couldn’t do. Every change is shown and can be undone.";
-const NO_GARDENER = "Automatic skill maintenance is retired in this engine.";
+const REVIEW_JOB = "skill-collection-review-";
+const REVIEW_SUB = "Reads every skill this Trunk wrote, merges repeats and retires what’s out of date. It runs once a week.";
+const REVIEW_STATUS: Record<string, string> = { ok: "finished", error: "failed", skipped: "was skipped" };
 const NO_UNDO = "Undoing a change needs the engine’s roll back.";
 const TERMINAL = "Runs from a terminal; Technical shows the command.";
 const NIGHT: Record<string, string> = { "0 1 * * *": "1", "0 3 * * *": "3", "0 5 * * *": "5" };
@@ -20,10 +24,10 @@ const ZONES = ["America/New_York", "America/Chicago", "America/Denver", "America
 
 export const ROWS: RowEntry[] = [
   ["Tidy memory at night with Rings", "Rings", 0], ["Night window", "Rings", 0], ["Rings diary", "Rings", 0],
-  ["Look after skills", "Skill maintenance", 0], ["Look at skills now", "Skill maintenance", 0],
+  ["Look at skills now", "Skill maintenance", 0],
   ["Learn what a Trunk can’t do yet", "Skill learning", 0], ["Highest step it may take", "Skill learning", 0],
   ["Keep a change only if it does better by", "Keeping a change", 0], ["Use paid models at night", "Keeping a change", 0],
-  ["Rest a skill after", "Seasons, more", 1], ["Set it aside after", "Seasons, more", 1], ["What each night costs", "Seasons, more", 1],
+  ["What each night costs", "Seasons, more", 1],
   ["Clear replayed notes", "Seasons, more", 1], ["What Rings is weighing", "Seasons, more", 1], ["Time zone for the night window", "Seasons, more", 1],
   ["Model that writes the diary", "Seasons, more", 1], ["Where Rings writes what it keeps", "Seasons, more", 1], ["Keep reports out of memory", "Seasons, more", 1],
   ["Keep notes for good now", "Rings, by hand", 1], ["Try a night without keeping anything", "Rings, by hand", 1], ["Fill in from past conversations", "Rings, by hand", 1],
@@ -47,10 +51,7 @@ export function SeasonsPage(props: SettingsPageProps) {
     <Page title={props.title} lede={LEDE}>
       <SeasonStatus rings={ctx.status} proposals={list(rec(proposals.data).proposals)} error={status.error} />
       <RingsSec {...ctx} />
-      <Sec title="Skill maintenance">
-        <Ctl title="Look after skills" sub="Rests skills unused for 14 days and sets them aside at 30." help="Rests skills unused for 14 days and sets them aside at 30. Nothing is deleted, and built-in skills are never touched." off={NO_GARDENER}><Switch label="Look after skills" checked={false} onChange={() => undefined} /></Ctl>
-        <Ctl title="Look at skills now" off={NO_GARDENER}><Btn sm>Look now</Btn></Ctl>
-      </Sec>
+      <SkillReview {...ctx} />
       <Budding {...ctx} />
       <Sec title="Keeping a change">
         <Ctl title="Keep a change only if it does better by" sub="Measured on practice runs of your recent tasks." off="Needs the engine’s practice runs."><Num label="Keep a change only if it does better by" value={undefined} unit="%" onCommit={() => undefined} /></Ctl>
@@ -125,6 +126,44 @@ function Budding({ config }: Ctx) {
   );
 }
 
+/** Skill maintenance: the Trunk's skill collection review job (engine cron/skill-collection-review-monitor). */
+function SkillReview({ engine, agent }: Ctx) {
+  const jobs = useLive<RecordValue>(engine, "cron.list", agent ? { includeDisabled: true, agentId: agent, limit: 200 } : { includeDisabled: true, limit: 200 }, ["cron"]);
+  const all = list(rec(jobs.data).jobs);
+  const job = all.find((j) => str(j.name) === `${REVIEW_JOB}${agent}`) ?? (agent ? undefined : all.find((j) => str(j.name).startsWith(REVIEW_JOB)));
+  const off = jobs.error ? `Branch couldn’t read the review: ${jobs.error}`
+    : !jobs.data ? "Reading the review…"
+    : !job ? "This Trunk has no skill review."
+    : job.enabled === false ? (str(job.displayName).startsWith("[no-rooted-runtime]") ? "This Trunk’s model can’t run the review in its skill folder." : "Reviews run only while skill learning may change skills by itself.")
+    : undefined;
+  return (
+    <Sec title="Skill maintenance">
+      {job && !off ? <ReviewNow engine={engine} job={job} /> : <Ctl title="Look at skills now" sub={REVIEW_SUB} off={off}><Btn sm>Look now</Btn></Ctl>}
+    </Sec>
+  );
+}
+
+function ReviewNow({ engine, job }: Pick<SettingsPageProps, "engine"> & { job: RecordValue }) {
+  const id = str(job.id);
+  const runs = useLive<RecordValue>(engine, "cron.runs", { scope: "job", id, limit: 1, sortDir: "desc" }, ["cron"]);
+  const [started, setStarted] = useState("");
+  const [read, setRead] = useState(false);
+  const call = useCall();
+  const last = list(rec(runs.data).entries)[0];
+  const running = typeof rec(job.state).runningAtMs === "number" || (started !== "" && str(last?.runId) !== started);
+  const look = () => void call.run(async () => { const r = rec(await engine.request("cron.run", { id, mode: "force" })); runOutcome(r); setStarted(str(r.runId)); return r; });
+  const outcome = last ? `Last look ${when(last.ts)}: it ${REVIEW_STATUS[str(last.status)] ?? "finished"}.` : "";
+  const sub = call.error ?? (running ? "Looking at skills now. It can take a few minutes." : outcome || REVIEW_SUB);
+  const text = last ? str(last.summary) || str(last.error) : "";
+  return (
+    <Ctl title="Look at skills now" sub={sub} help={REVIEW_SUB}>
+      {text && !running ? <Btn sm ghost onClick={() => setRead(true)}>What it did</Btn> : null}
+      <Btn sm disabled={call.busy || running} onClick={look}>{running ? "Looking…" : "Look now"}</Btn>
+      {read ? <Dialog title="Skill review" wide onClose={() => setRead(false)}><p className="hint">{outcome}</p><pre className="s2-pre">{text}</pre></Dialog> : null}
+    </Ctl>
+  );
+}
+
 type Change = { id: string; who: "rings" | "budding"; text: string; at: number; note?: string };
 function changes(rings: RecordValue, proposals: RecordValue[]): Change[] {
   const kept = list(rings.promotedEntries).map((e, i): Change => ({ id: `r${i}`, who: "rings", text: `Kept “${str(e.snippet) || str(e.key)}” for good`, at: Date.parse(str(e.promotedAt) || str(e.lastRecalledAt)) || 0, note: str(e.path) }));
@@ -138,7 +177,7 @@ function ThisSeason({ rings, proposals }: { rings: RecordValue; proposals: Recor
   const shown = all.filter((c) => filter === "all" || c.who === filter);
   return (
     <Sec title="This season">
-      <div className="acts s2-filter">{[["all", "All"], ["rings", "Rings"], ["gardener", "Gardener"], ["budding", "Budding"]].map(([id, label]) => <button key={id} type="button" className="chip6" aria-pressed={filter === id} onClick={() => setFilter(id)}>{label}</button>)}</div>
+      <div className="acts s2-filter">{[["all", "All"], ["rings", "Rings"], ["budding", "Budding"]].map(([id, label]) => <button key={id} type="button" className="chip6" aria-pressed={filter === id} onClick={() => setFilter(id)}>{label}</button>)}</div>
       {shown.length ? (
         <ol className="s2-tl s2-season">
           {shown.map((c) => (
@@ -148,7 +187,7 @@ function ThisSeason({ rings, proposals }: { rings: RecordValue; proposals: Recor
             </li>
           ))}
         </ol>
-      ) : <Empty>{filter === "gardener" ? NO_GARDENER : "No changes yet this season."}</Empty>}
+      ) : <Empty>No changes yet this season.</Empty>}
     </Sec>
   );
 }
@@ -164,8 +203,6 @@ function More({ engine, config, agent, status, reload }: Ctx) {
   const opts = list(rec(models.data).models).filter((m) => m.available !== false).map((m) => ({ id: `${str(m.provider)}/${str(m.id)}`, label: str(m.name) || str(m.id) }));
   return (
     <Sec title="Seasons, more" group="Seasons">
-      <Ctl title="Rest a skill after" sub="Unused this long, a skill rests: it stays installed but isn’t offered." off={NO_GARDENER}><Num label="Rest a skill after" value={14} unit="days" onCommit={() => undefined} /></Ctl>
-      <Ctl title="Set it aside after" sub="Set-aside skills move to Customize › Tools › Skills › Set aside." off={NO_GARDENER}><Num label="Set it aside after" value={30} unit="days" onCommit={() => undefined} /></Ctl>
       <Ctl title="What each night costs" sub="Shows what each night’s model use costs." help="Each night’s model use: free on this computer, or the plan it used when paid models are allowed." off="Needs the engine to record each night’s model use."><Btn sm>See the nights</Btn></Ctl>
       <Ctl title="Clear replayed notes" sub={clear.note ?? clear.error ?? "Removes the notes Rings pulled back from older daily logs and is still weighing. Nothing already kept is touched."}>
         <Btn sm disabled={clear.busy} onClick={() => void clear.run(() => engine.request<RecordValue>("doctor.memory.resetGroundedShortTerm", agent ? { agentId: agent } : {}), (r) => { reload(); return `Cleared ${str(rec(r).removedShortTermEntries) || "0"} notes.`; })}>Clear</Btn>
