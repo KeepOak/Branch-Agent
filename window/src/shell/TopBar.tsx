@@ -219,7 +219,7 @@ export function TopBar({ compact, machine, header, dark, listHidden, onToggleLis
           {onHelp ? <button type="button" className="ib help-btn" title="Help" aria-haspopup="menu" data-testid="help" onClick={onHelp}><Icon name="help" small /><span>Help</span></button> : null}
           {ask ? (
             <button type="button" className="ib talk-btn" aria-label={`Ask ${ask.name}`} title={`Ask ${ask.name}`} aria-pressed={ask.open} data-testid="ask-default" onClick={ask.onToggle}>
-              <Icon name="ask" small />
+              <Icon name="chat" small />
             </button>
           ) : null}
           {!compact ? <button
