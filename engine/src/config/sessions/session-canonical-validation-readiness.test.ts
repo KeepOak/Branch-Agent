@@ -17,6 +17,7 @@ import {
   openBranchAgentDatabase,
 } from "../../state/branch-agent-db.js";
 import { runBranchAgentWriteAdmission } from "../../state/branch-agent-write-admission.js";
+import { listBranchSessionRowQuarantines } from "../../state/branch-quarantine-store.js";
 import { withBranchTestState } from "../../test-utils/branch-test-state.js";
 import { sessionNativeProcessEntrypoints } from "./native-process-runtime.test-support.js";
 import * as archiveWorker from "./session-accessor.sqlite-archive.js";
@@ -201,6 +202,7 @@ it.each(["row changed", "receipt revoked", "startup revoked"] as const)(
       }
       let changed = false;
       let markerRetainedAfterFirstBatch = false;
+      let firstBatchSettled = false;
       const createWorker = archiveWorker.createSqliteTranscriptArchiveWorker;
       vi.spyOn(archiveWorker, "createSqliteTranscriptArchiveWorker").mockImplementation((data) => {
         const worker = createWorker(data);
@@ -215,7 +217,8 @@ it.each(["row changed", "receipt revoked", "startup revoked"] as const)(
               changed = true;
             }
           } else if (message.type === "reclaimed") {
-            if (change === "row changed") {
+            if (change === "row changed" && !firstBatchSettled) {
+              firstBatchSettled = true;
               markerRetainedAfterFirstBatch = hasPendingCanonicalSessionValidation(database);
             } else if (change === "receipt revoked") {
               invalidateBranchAgentDatabaseValidation(database.path);
@@ -232,25 +235,41 @@ it.each(["row changed", "receipt revoked", "startup revoked"] as const)(
               }
             }
           : undefined;
-      await expect(
-        certifySessionCanonicalValidationPending(options, undefined, assertCurrentOwner),
-      ).rejects.toThrow(
-        {
-          "row changed": "invalid persisted session row",
-          "receipt revoked": "database owner is no longer current",
-          "startup revoked": "startup preparation was superseded",
-        }[change],
+      const result = certifySessionCanonicalValidationPending(
+        options,
+        undefined,
+        assertCurrentOwner,
       );
+      if (change === "row changed") {
+        await result;
+      } else {
+        await expect(result).rejects.toThrow(
+          {
+            "receipt revoked": "database owner is no longer current",
+            "startup revoked": "startup preparation was superseded",
+          }[change],
+        );
+      }
       if (change !== "receipt revoked") {
         expect(changed).toBe(true);
-        expect(hasPendingCanonicalSessionValidation(database)).toBe(true);
       }
       if (change === "row changed") {
+        // The changed bytes were never certified; the next batch set the invalid row aside.
         expect(markerRetainedAfterFirstBatch).toBe(true);
+        expect(hasPendingCanonicalSessionValidation(database)).toBe(false);
         expect(database.db.prepare("SELECT parent_session_key FROM session_nodes").get()).toEqual({
-          parent_session_key: "agent:main:changed",
+          parent_session_key: null,
         });
+        expect(
+          listBranchSessionRowQuarantines(database.path).map((entry) => [
+            entry.sessionKey,
+            entry.row.parent_session_key,
+          ]),
+        ).toEqual([["agent:main:pending-0", "agent:main:changed"]]);
       } else {
+        if (change === "startup revoked") {
+          expect(hasPendingCanonicalSessionValidation(database)).toBe(true);
+        }
         expect(hasBranchAgentCanonicalValidation(database)).toBe(false);
       }
     });
@@ -281,16 +300,18 @@ it.each([false, true])(
       const copied = openBranchAgentDatabase(copiedOptions);
       expect(hasPendingCanonicalSessionValidation(copied)).toBe(false);
       expect(hasBranchAgentCanonicalValidation(copied)).toBe(false);
-      const result = certifySessionCanonicalValidationPending(copiedOptions);
-      if (invalid) {
-        await expect(result).rejects.toThrow("invalid persisted session row");
-        expect(hasBranchAgentCanonicalValidation(copied)).toBe(false);
-        expect(hasPendingCanonicalSessionValidation(copied)).toBe(true);
-      } else {
-        await result;
-        expect(hasBranchAgentCanonicalValidation(copied)).toBe(true);
-        expect(hasPendingCanonicalSessionValidation(copied)).toBe(false);
-      }
+      await certifySessionCanonicalValidationPending(copiedOptions);
+      expect(hasBranchAgentCanonicalValidation(copied)).toBe(true);
+      expect(hasPendingCanonicalSessionValidation(copied)).toBe(false);
+      // An invalid row no longer refuses the store: its original is kept, then it is rewritten.
+      expect(listBranchSessionRowQuarantines(copiedPath).map((entry) => entry.sessionKey)).toEqual(
+        invalid ? ["agent:main:pending-0"] : [],
+      );
+      expect(
+        copied.db
+          .prepare("SELECT parent_session_key FROM session_nodes WHERE session_key = ?")
+          .get("agent:main:pending-0"),
+      ).toEqual({ parent_session_key: null });
     });
   },
 );
@@ -306,12 +327,14 @@ it("forces a fresh worker to revalidate a canonical receipt revoked by its paren
       DELETE FROM session_canonical_validation_pending;
     `);
     invalidateBranchAgentDatabaseValidation(database.path);
-    await expect(
-      withSqliteCanonicalValidationWorker((withWorker) =>
-        certifySessionCanonicalValidationPending(options, withWorker),
-      ),
-    ).rejects.toThrow("invalid persisted session row");
-    expect(hasPendingCanonicalSessionValidation(database)).toBe(true);
+    await withSqliteCanonicalValidationWorker((withWorker) =>
+      certifySessionCanonicalValidationPending(options, withWorker),
+    );
+    // The fresh worker revalidated every row instead of trusting the revoked receipt.
+    expect(hasPendingCanonicalSessionValidation(database)).toBe(false);
+    expect(listBranchSessionRowQuarantines(database.path).map((entry) => entry.sessionKey)).toEqual(
+      ["agent:main:pending-0"],
+    );
   });
 });
 
@@ -363,7 +386,10 @@ it("shares active runtime certification without retaining success or failure", a
       await certifySessionCanonicalValidationPending(options);
       expect(hasPendingCanonicalSessionValidation(database)).toBe(false);
       expect(jobs).toHaveBeenCalledTimes(2);
-      database.db.exec("UPDATE session_nodes SET parent_session_key = 'agent:main:changed'");
+      // A non-canonical key still needs Doctor's merge, so it keeps refusing readiness.
+      database.db.exec(
+        "UPDATE session_nodes SET session_key = 'agent:main:pending-0 ' WHERE session_key = 'agent:main:pending-0'",
+      );
       const failures = await Promise.allSettled(
         Array.from({ length: 3 }, () => certifySessionCanonicalValidationPending(options)),
       );
@@ -371,13 +397,15 @@ it("shares active runtime certification without retaining success or failure", a
         Array.from({ length: 3 }, () => ({
           status: "rejected",
           reason: expect.objectContaining({
-            message: expect.stringContaining("invalid persisted session row"),
+            message: expect.stringContaining("non-canonical persisted row"),
           }),
         })),
       );
       expect(jobs).toHaveBeenCalledTimes(3);
       expect(hasPendingCanonicalSessionValidation(database)).toBe(true);
-      database.db.exec("UPDATE session_nodes SET parent_session_key = NULL");
+      database.db.exec(
+        "UPDATE session_nodes SET session_key = 'agent:main:pending-0' WHERE session_key = 'agent:main:pending-0 '",
+      );
       await certifySessionCanonicalValidationPending(options);
       expect(hasPendingCanonicalSessionValidation(database)).toBe(false);
       expect(jobs).toHaveBeenCalledTimes(4);

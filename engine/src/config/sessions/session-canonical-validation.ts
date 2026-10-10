@@ -17,6 +17,7 @@ import {
   readCanonicalSessionMainKey,
 } from "./session-canonical-key.js";
 import {
+  InvalidPersistedSessionRowError,
   validateCanonicalSessionRow,
   type CanonicalSessionValidationRow,
 } from "./session-canonical-row.js";
@@ -32,8 +33,16 @@ export type CanonicalSessionValidationBatch = {
   oversizedRows: number;
 };
 
+/** A row that failed validation under its own canonical key, with the exact bytes that failed. */
+export type InvalidCanonicalSessionRow = Readonly<{
+  row: Readonly<CanonicalSessionValidationRow>;
+  reason: string;
+}>;
+
 const validatedBatch = Symbol("validatedCanonicalSessionBatch");
 export type ValidatedCanonicalSessionValidationBatch = Readonly<CanonicalSessionValidationBatch> & {
+  /** Rows set aside for repair; other validation failures still refuse the whole batch. */
+  readonly invalidRows: readonly InvalidCanonicalSessionRow[];
   readonly [validatedBatch]: true;
 };
 
@@ -148,14 +157,26 @@ export function readPendingCanonicalSessionValidationBatch(
 export function validateCanonicalSessionValidationBatch(
   batch: CanonicalSessionValidationBatch,
 ): ValidatedCanonicalSessionValidationBatch {
-  const rows = batch.rows.map((row) => {
-    const snapshot = { ...row };
-    validateCanonicalSessionRow(snapshot);
-    return Object.freeze(snapshot);
-  });
+  const rows: CanonicalSessionValidationRow[] = [];
+  const invalidRows: InvalidCanonicalSessionRow[] = [];
+  for (const row of batch.rows) {
+    const snapshot = Object.freeze({ ...row });
+    try {
+      validateCanonicalSessionRow(snapshot);
+      rows.push(snapshot);
+    } catch (error) {
+      // One bad row must not keep the whole agent from starting (#360). A non-canonical key
+      // still needs Doctor's cross-row merge, so only same-key row failures are set aside.
+      if (!(error instanceof InvalidPersistedSessionRowError)) {
+        throw error;
+      }
+      invalidRows.push(Object.freeze({ row: snapshot, reason: error.message }));
+    }
+  }
   const validated: ValidatedCanonicalSessionValidationBatch = {
     ...batch,
     rows: Object.freeze(rows),
+    invalidRows: Object.freeze(invalidRows),
     absentKeys: Object.freeze([...batch.absentKeys]),
     [validatedBatch]: true,
   };
@@ -178,10 +199,15 @@ function sameCanonicalRow(
   );
 }
 
-/** Settle only exact validated inputs; changed rows stay pending for the next owner admission. */
+/**
+ * Settle only exact validated inputs; changed rows stay pending for the next owner admission.
+ * An unchanged invalid row is handed to `repairInvalidRow`, which must rewrite and certify it in
+ * this transaction; without one, the batch refuses as before.
+ */
 export function compareAndCertifyCanonicalSessionValidationBatch(
   database: ValidationDatabase,
   batch: ValidatedCanonicalSessionValidationBatch,
+  repairInvalidRow?: (invalid: InvalidCanonicalSessionRow) => void,
 ): number {
   if (!database.db.isTransaction) {
     throw new Error("Canonical validation certification requires write admission");
@@ -192,7 +218,11 @@ export function compareAndCertifyCanonicalSessionValidationBatch(
   ) {
     return 0;
   }
-  const keys = [...batch.rows.map((row) => row.session_key), ...batch.absentKeys];
+  const keys = [
+    ...batch.rows.map((row) => row.session_key),
+    ...batch.invalidRows.map(({ row }) => row.session_key),
+    ...batch.absentKeys,
+  ];
   if (keys.length === 0) {
     return 0;
   }
@@ -211,8 +241,24 @@ export function compareAndCertifyCanonicalSessionValidationBatch(
     return candidate && sameCanonicalRow(row, candidate) ? [row.session_key] : [];
   });
   certifiedKeys.push(...batch.absentKeys.filter((key) => !current.has(key)));
+  let repairedRows = 0;
+  for (const invalid of batch.invalidRows) {
+    const candidate = current.get(invalid.row.session_key);
+    if (!candidate || !sameCanonicalRow(invalid.row, candidate)) {
+      // A changed row is validated again by the next batch; a removed one leaves nothing to fix.
+      if (!candidate) {
+        certifiedKeys.push(invalid.row.session_key);
+      }
+      continue;
+    }
+    if (!repairInvalidRow) {
+      validateCanonicalSessionRow(candidate);
+    }
+    repairInvalidRow?.(invalid);
+    repairedRows += 1;
+  }
   if (certifiedKeys.length === 0) {
-    return 0;
+    return repairedRows;
   }
   const result = executeSqliteQuerySync(
     database.db,
@@ -220,7 +266,7 @@ export function compareAndCertifyCanonicalSessionValidationBatch(
       .deleteFrom("session_canonical_validation_pending")
       .where("session_key", "in", sqliteStringSet(certifiedKeys)),
   );
-  return Number(result.numAffectedRows ?? 0n);
+  return Number(result.numAffectedRows ?? 0n) + repairedRows;
 }
 
 function prepareCanonicalWriterQueries(database: Pick<ValidationDatabase, "db">) {

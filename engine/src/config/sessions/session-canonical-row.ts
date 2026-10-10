@@ -1,5 +1,8 @@
 import { parseAgentSessionKey } from "../../routing/session-key.js";
-import { SessionCanonicalKeyMigrationRequiredError } from "./session-canonical-key-error.js";
+import {
+  InvalidPersistedSessionRowError,
+  SessionCanonicalKeyMigrationRequiredError,
+} from "./session-canonical-key-error.js";
 import { parseSqliteSessionEntryRecord } from "./session-entry-json.js";
 import { projectCanonicalSessionEntryShape } from "./store-entry-shape.js";
 import {
@@ -19,7 +22,10 @@ export type CanonicalSessionValidationRow = {
   retained_window_id: string | null;
 };
 
-export { SessionCanonicalKeyMigrationRequiredError } from "./session-canonical-key-error.js";
+export {
+  InvalidPersistedSessionRowError,
+  SessionCanonicalKeyMigrationRequiredError,
+} from "./session-canonical-key-error.js";
 
 export function canonicalSessionKeyMigrationRequiredError(
   detail: string,
@@ -61,9 +67,7 @@ export function validateCanonicalSessionRowEntry(
   }
   // Raw writes clear writer proof; selected reads still validate their current source bytes.
   if (!entry || (row.entry_valid !== 1 && (mode !== "read" || row.entry_valid !== 0))) {
-    throw canonicalSessionKeyMigrationRequiredError(
-      `invalid persisted session row requires repair for ${row.session_key}`,
-    );
+    throw new InvalidPersistedSessionRowError(row.session_key);
   }
   if (
     (row.parent_session_key ?? undefined) !==
@@ -71,9 +75,7 @@ export function validateCanonicalSessionRowEntry(
     (row.spawned_by ?? undefined) !== (entry.spawnedBy ?? undefined) ||
     (row.fork_source_session_key ?? undefined) !== (entry.forkSource?.sessionKey ?? undefined)
   ) {
-    throw canonicalSessionKeyMigrationRequiredError(
-      `invalid persisted session row requires repair for ${row.session_key}`,
-    );
+    throw new InvalidPersistedSessionRowError(row.session_key);
   }
   const deliveryCanonicalKey = resolveDeliveryProvenCanonicalSessionKey(row.session_key, entry);
   if (deliveryCanonicalKey !== row.session_key) {

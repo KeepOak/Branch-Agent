@@ -269,6 +269,10 @@ export async function runReclamationWorkerPort(
               request.type === "canonical-validation"
                 ? await import("./session-canonical-validation.js")
                 : undefined;
+            const rowQuarantine =
+              request.type === "canonical-validation"
+                ? await import("./session-canonical-row-quarantine.js")
+                : undefined;
             let prepared: ValidatedCanonicalSessionValidationBatch | undefined;
             if (
               canonical &&
@@ -380,6 +384,13 @@ export async function runReclamationWorkerPort(
                                 canonical.compareAndCertifyCanonicalSessionValidationBatch(
                                   transactionDatabase,
                                   prepared,
+                                  rowQuarantine &&
+                                    ((invalid) =>
+                                      rowQuarantine.quarantineInvalidCanonicalSessionRow(
+                                        transactionDatabase,
+                                        invalid,
+                                        options.env ?? process.env,
+                                      )),
                                 );
                               counts.validatedRows = prepared.rows.length;
                               counts.oversizedRows = prepared.oversizedRows;
