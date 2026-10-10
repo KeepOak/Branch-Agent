@@ -44,6 +44,17 @@ export type TrunkQueueConfig = {
   agents?: string[];
 };
 
+/**
+ * Gardener: a code-only pass that turns signals into queue jobs. Off by default. Board issues are filed only
+ * when enabled is true and repo names an owner/name repository; enabled without repo is a config error.
+ */
+export type GardenerConfig = {
+  /** The pass runs and writes only when true. Unset or false means dry run: drafts only, no writes. */
+  enabled?: boolean;
+  /** Repository for board-issue drafts, as owner/name. No default. Required when enabled is true. */
+  repo?: string;
+};
+
 /** Shared durable memory between Trunks: team memory search reads only these agents. */
 export type TeamMemoryConfig = {
   /** Trunk ids that share durable notes with each other. Opt-in: unset means no Trunk shares. Linked outside Branches are never included. */
@@ -58,6 +69,7 @@ export type AgentsConfig = {
   defaults?: AgentDefaultsConfig;
   entries?: Record<string, AgentEntryConfig>;
   trunkQueue?: TrunkQueueConfig;
+  gardener?: GardenerConfig;
   signalWakes?: SignalWakesConfig;
   teamMemory?: TeamMemoryConfig;
 };
