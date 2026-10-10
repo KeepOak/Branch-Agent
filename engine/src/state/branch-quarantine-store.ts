@@ -356,6 +356,11 @@ function withQuarantineWriter<T>(env: NodeJS.ProcessEnv, operation: (db: Databas
       app_version TEXT NOT NULL, verified_at INTEGER NOT NULL,
       clean_close INTEGER NOT NULL CHECK (clean_close IN (0, 1))
     ) STRICT;`);
+    database.exec(`CREATE TABLE IF NOT EXISTS quarantined_session_rows (
+      id INTEGER PRIMARY KEY, path TEXT NOT NULL, session_key TEXT NOT NULL,
+      row_json TEXT NOT NULL, reason TEXT NOT NULL, quarantined_at INTEGER NOT NULL,
+      writer_app_version TEXT
+    ) STRICT;`);
     const result = operation(database);
     completed = true;
     return result;
@@ -544,6 +549,99 @@ export function recordBranchDatabaseQuarantine(options: {
     );
   } catch {
     return false;
+  }
+}
+
+export type BranchSessionRowQuarantine = {
+  path: string;
+  sessionKey: string;
+  /** The stored session_nodes row exactly as it failed validation, before its repair. */
+  row: Record<string, unknown>;
+  reason: string;
+  quarantinedAt: number;
+};
+
+/**
+ * Keep the exact bytes of one session row that failed validation before startup rewrites it, so
+ * Doctor or the owner can restore anything the rewrite could not carry over. Throws on failure:
+ * the caller must not rewrite a row whose original was not recorded.
+ */
+export function recordBranchSessionRowQuarantine(options: {
+  env?: NodeJS.ProcessEnv;
+  path: string;
+  sessionKey: string;
+  row: Record<string, unknown>;
+  reason: string;
+}): void {
+  const env = options.env ?? process.env;
+  withQuarantineWriter(env, (database) =>
+    runSqliteImmediateTransactionSync(
+      database,
+      () => {
+        database
+          .prepare(
+            `INSERT INTO quarantined_session_rows (
+              path, session_key, row_json, reason, quarantined_at, writer_app_version
+            ) VALUES (?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            path.resolve(options.path),
+            options.sessionKey,
+            JSON.stringify(options.row, (_key, value: unknown) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+            options.reason,
+            Date.now(),
+            VERSION,
+          );
+      },
+      {
+        databaseLabel: resolveQuarantineStorePath(env),
+        operationLabel: "quarantine.session-row",
+      },
+    ),
+  );
+}
+
+/** Session rows set aside for one agent database, oldest first; never creates the store. */
+export function listBranchSessionRowQuarantines(
+  pathname: string,
+  options: { env?: NodeJS.ProcessEnv } = {},
+): BranchSessionRowQuarantine[] {
+  const storePath = resolveQuarantineStorePath(options.env ?? process.env);
+  if (!existsSync(storePath)) {
+    return [];
+  }
+  const database = openNodeSqliteDatabase(storePath);
+  try {
+    database.exec(`PRAGMA busy_timeout = ${BRANCH_QUARANTINE_BUSY_TIMEOUT_MS};`);
+    const table = database
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'quarantined_session_rows'")
+      .get();
+    if (!table) {
+      return [];
+    }
+    const rows = database
+      .prepare(
+        `SELECT path, session_key, row_json, reason, quarantined_at
+         FROM quarantined_session_rows WHERE path = ? ORDER BY id`,
+      )
+      .all(path.resolve(pathname)) as Array<{
+      path: string;
+      session_key: string;
+      row_json: string;
+      reason: string;
+      quarantined_at: number;
+    }>;
+    return rows.map((row) => ({
+      path: row.path,
+      sessionKey: row.session_key,
+      row: JSON.parse(row.row_json) as Record<string, unknown>,
+      reason: row.reason,
+      quarantinedAt: row.quarantined_at,
+    }));
+  } finally {
+    database.close();
   }
 }
 

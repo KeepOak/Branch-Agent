@@ -1,0 +1,2 @@
+engine:src/config/sessions/session-canonical-validation-readiness.test.ts
+engine:src/gateway/server-agent-database-startup.invalid-row.test.ts
