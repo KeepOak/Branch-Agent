@@ -597,7 +597,7 @@ describe("setup's Two more things", () => {
     expect(host.textContent).toContain("Brought in 2 from Claude Code.");
     expect(host.textContent).toContain("Sapling reads it from now on.");
     expect(host.textContent).not.toContain("Each Trunk reads it");
-    expect((host.querySelector('[data-testid="setup-otherconv"]') as HTMLInputElement).checked).toBe(true);
+    expect((host.querySelector('[data-testid="setup-otherconv"]') as HTMLInputElement).checked).toBe(false);
     const box = host.querySelector('[aria-label="A boring task"]') as HTMLInputElement;
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(box, "Sort the receipts");
