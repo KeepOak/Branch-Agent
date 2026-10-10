@@ -51,6 +51,18 @@ jobs:
           MERGE_GATE_WAIT_SECONDS: '600'
         run: node scripts/check-commit-emails.mjs
 
+      - name: Preflight the pull request body, commits and files with the local checks
+        # The body is read live from the API, never from the event payload. All of its API calls share one
+        # 120 s budget, and this 15-minute job bounds the step. Depends on #1000 (the script is on main only then).
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PREFLIGHT_WAIT_SECONDS: '120'
+        run: node scripts/pr-preflight.mjs --ci
   merge-gate-trusted:
     permissions:
       contents: read

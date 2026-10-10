@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { GROUP_REASONS, NewGroupChat, readChoices, startGroupChat, type GroupProgress } from "./NewGroupChat";
+import { GROUP_REASONS, NewGroupChat, openNewGroupChat, readChoices, readGroupPrefill, startGroupChat, type GroupProgress } from "./NewGroupChat";
 import type { WindowEngine } from "../connect/engine";
 import { useShellRoom, type ShellRoom } from "./useShellRoom";
 
@@ -74,6 +74,28 @@ describe("New group chat", () => {
     expect(c.peers).toEqual([{ id: "helper", name: "helper" }]);
   });
 
+  it("opens with both dropped chats already filled in", async () => {
+    const request = vi.fn(async (method: string) => responses[method]);
+    const engine = { request, onEvent: () => () => undefined, sessionKey: null, scopes: [] } as unknown as WindowEngine;
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => root!.render(<NewGroupChat engine={engine} onClose={() => {}} onOpen={() => {}} prefill={{ name: "Scout and Ledger", trunk: "birch", people: ["p-2"] }} />));
+    await act(async () => undefined);
+    expect(document.querySelector<HTMLInputElement>(".rm-fld input")?.value).toBe("Scout and Ledger");
+    const chip = (label: string) => [...document.querySelectorAll<HTMLButtonElement>(".rm-chip")].find((b) => b.textContent === label)!;
+    expect(chip("Birch").getAttribute("aria-pressed")).toBe("true");
+    expect(chip("Oak").getAttribute("aria-pressed")).toBe("false");
+    expect(chip("Rowan").getAttribute("aria-pressed")).toBe("true");
+    const event = new CustomEvent("branch:new-group-chat", { detail: { name: "Scout and Ledger", trunk: "birch", people: ["p-2"] } });
+    expect(readGroupPrefill(event)).toEqual({ name: "Scout and Ledger", trunk: "birch", people: ["p-2"] });
+    const heard: unknown[] = [];
+    const onEvent = (next: Event) => heard.push((next as CustomEvent).detail);
+    window.addEventListener("branch:new-group-chat", onEvent);
+    openNewGroupChat({ name: "Scout and Ledger", trunk: "birch", people: ["p-2"] });
+    expect(heard).toEqual([{ name: "Scout and Ledger", trunk: "birch", people: ["p-2"] }]);
+    window.removeEventListener("branch:new-group-chat", onEvent);
+  });
   it("makes the conversation with the chosen Trunk, adds each person, and opens it", async () => {
     const request = vi.fn(async (method: string) => responses[method]);
     const engine = { request, onEvent: () => () => undefined, sessionKey: null, scopes: [] } as unknown as WindowEngine;

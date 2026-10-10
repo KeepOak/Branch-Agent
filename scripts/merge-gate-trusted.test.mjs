@@ -2898,3 +2898,12 @@ test('the ordinary merge gate skips only the recheck job proven by its workflow 
   assert.match(yaml, /\.github\/workflows\/merge-gate-recheck\.yml/);
   assert.doesNotMatch(yaml, /and \.name != "recheck"\)\]/);
 });
+
+test('the trusted preflight step reads the live body under one job budget and not the event payload', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate-trusted.yml', import.meta.url), 'utf8');
+  const step = yaml.slice(yaml.indexOf('name: Preflight the pull request body'));
+  const block = step.slice(0, step.indexOf('\n      - name:', 10) > 0 ? step.indexOf('\n      - name:', 10) : step.length);
+  assert.match(block, /PREFLIGHT_WAIT_SECONDS: '120'/);
+  assert.match(block, /run: node scripts\/pr-preflight\.mjs --ci/);
+  assert.doesNotMatch(block, /PR_BODY|github\.event\.pull_request\.body/);
+});
