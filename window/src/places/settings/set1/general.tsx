@@ -8,6 +8,7 @@ import { list, record, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Icon } from "../../../shell/icons";
 import { ShortcutsDialog } from "../../../shell/ShortcutsDialog";
+import { currentKeys, keyActions, onMac, readCustomKeys, shownInline } from "../../../shell/keymap";
 import { Btn, Ctl, Empty, Page, Plist, Prow, Sec, Status, Switch, useLevel, usePinsKit, type Lv, type RowEntry } from "../kit";
 import { PinnedSection } from "../pins";
 import { useDesktopControls } from "../../../connect/desktop-controls";
@@ -73,12 +74,18 @@ function ProjectRow({ engine, project }: { engine: SettingsPageProps["engine"]; 
   );
 }
 
+/** The two most-used shortcuts in a sentence, written the way the Show all dialog writes them on this computer. */
+export function keyboardSub(mac: boolean): string {
+  const keys = currentKeys(keyActions(""), readCustomKeys());
+  return `${shownInline(keys.palette, mac)} to find anything, ${shownInline(keys.newConversation, mac)} for a new conversation.`;
+}
+
 function Keyboard() {
   const [open, setOpen] = useState(false);
   return (
     <>
       <Sec title="Keyboard">
-        <Ctl title="Keyboard shortcuts" sub="Ctrl K to find anything, Ctrl N for a new conversation.">
+        <Ctl title="Keyboard shortcuts" sub={keyboardSub(onMac())}>
           <Btn sm onClick={() => setOpen(true)}>Show all</Btn>
         </Ctl>
       </Sec>
