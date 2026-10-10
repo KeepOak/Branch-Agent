@@ -1,5 +1,5 @@
 // Library › Memory, the sections under the list (preview 94-g4p secR418 + 42-placesbp "How it learns"):
-// How it learns [A], Memory health, What to remember, Pinned memories, About you, Waiting for your yes [T].
+// How it learns [A], Memory health, What to remember, About you, Waiting for your yes [T].
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import { downloadTranscript } from "../../transcript-export/ExportDialog";
@@ -8,7 +8,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
 import { fileOf, num, optStr, rec, useOperation, useResource, trunkName, type Trunk } from "./data";
 import { aboutYouSummary } from "./memory-about";
-import type { Fact } from "./memory-data";
+import { inline } from "../../thread/markdown";
 import { Grey, GreySwitch, plural, Row, Section, when } from "./parts";
 import { BringInDialog } from "./memory-bring-dialog";
 import { BRING_IN_WRITE_REASON } from "./memory-import";
@@ -32,7 +32,6 @@ export function statusOf(raw: unknown): MemoryStatus {
 export const REASONS = {
   whatsapp: "Needs the engine’s chat-export import method.",
   rules: "Needs the engine’s what-to-remember rules.",
-  pin: "Needs the engine’s pinned-memory method.",
   interview: "Needs the engine’s interview flow for About you.",
   hold: "Needs the engine’s hold-for-my-yes setting and review list.",
   habits: "Needs the engine’s noticed-habits list.",
@@ -122,12 +121,6 @@ export function WhatToRemember() {
   </Section>;
 }
 
-export function Pinned({ facts }: { facts: Fact[] }) {
-  return <Section title="Pinned memories" hint="Pinned memories always go with a message, like a standing rule, and rank first when Trunks share." testid="pinned">
-    <div className="lib-form"><select className="inp" disabled aria-label="A memory to pin" title={shownWhy(REASONS.pin)}>{facts.map(f => <option key={f.agentId + f.start}>{f.text}</option>)}</select><Grey label="Pin" reason={REASONS.pin} /></div>
-  </Section>;
-}
-
 export function AboutYou({ engine, agentId }: { engine: WindowEngine; agentId: string }) {
   const user = useResource<unknown>(engine, agentId ? "agents.files.get" : null, { agentId, name: "USER.md" });
   const file = user.data ? fileOf(user.data) : null;
@@ -135,7 +128,7 @@ export function AboutYou({ engine, agentId }: { engine: WindowEngine; agentId: s
   return <Section title="About you" hint="A short summary Trunks keep of you from what they remember. Edit it by changing the memories it comes from." testid="about-you">
     {user.loading && <p className="lib-hint" role="status">Loading…</p>}
     {user.error && <p className="lib-bad" role="alert">{user.error}</p>}
-    {user.data !== null && (text ? <p className="lib-about">{text}</p> : <p className="lib-hint">Nothing written about you yet.</p>)}
+    {user.data !== null && (text ? <p className="lib-about">{inline(text)}</p> : <p className="lib-hint">Nothing written about you yet.</p>)}
     <div className="lib-acts"><Grey label="Let it interview you" reason={REASONS.interview} /></div>
   </Section>;
 }
