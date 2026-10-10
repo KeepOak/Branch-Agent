@@ -1,1 +1,2 @@
 window:src/places/automations/Proposal.test.tsx
+window:src/places/automations/scheduled.test.tsx
