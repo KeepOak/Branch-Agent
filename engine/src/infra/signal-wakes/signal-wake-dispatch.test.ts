@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BranchConfig } from "../../config/types.branch.js";
-import { requestSignalWake } from "../heartbeat-wake.js";
 import { peekSystemEventEntries, resetSystemEventsForTest } from "../system-events.js";
 import { dispatchSignalWake } from "./signal-wake-dispatch.js";
+import { requestSignalWake } from "./signal-wake-internal.js";
 
-vi.mock("../heartbeat-wake.js", () => ({ requestSignalWake: vi.fn() }));
+vi.mock("./signal-wake-internal.js", () => ({ requestSignalWake: vi.fn() }));
 
 const CFG = {} as BranchConfig;
 const SIGNAL = {

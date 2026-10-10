@@ -168,6 +168,18 @@ function shouldRetain(
   );
 }
 
+/** Only the signal poller's internal entry may send a `signal` wake. Every enqueue passes this check. */
+export type WakeAuthority = "signal-poller";
+
+export function assertWakeSourceAuthorized(
+  options: { source: string },
+  authority?: WakeAuthority,
+): void {
+  if (options.source === "signal" && authority !== "signal-poller") {
+    throw new Error("signal wakes are internal to the signal poller and cannot be requested here");
+  }
+}
+
 function createSessionEventWakeRuntime() {
   const pending = new Map<string, WakeGroup>();
   const active = new Map<string, ActiveWake>();
@@ -579,7 +591,12 @@ function createSessionEventWakeRuntime() {
     };
   }
 
-  function enqueueRequest(options: RequestOptions, settlement?: Settlement): void {
+  function enqueueRequest(
+    options: RequestOptions,
+    settlement?: Settlement,
+    authority?: WakeAuthority,
+  ): void {
+    assertWakeSourceAuthorized(options, authority);
     const now = performance.now();
     const { coalesceMs, ...wake } = options;
     const normalized = {
@@ -623,11 +640,16 @@ function createSessionEventWakeRuntime() {
   function requestSessionEventWake(options: RequestOptions): void {
     enqueueRequest(options);
   }
+  /** Internal: the signal poller's dispatch only. Pinned by a static importer test. */
+  function requestSignalSessionEventWake(options: RequestOptions): void {
+    enqueueRequest(options, undefined, "signal-poller");
+  }
   function requestSessionEventWakeAndWait(
     options: RequestOptions,
     lifecycle?: SessionEventWakeWaitOptions,
   ): Promise<SessionEventWakeResult> {
     return new Promise((resolve) => {
+      assertWakeSourceAuthorized(options);
       const signal = lifecycle?.abortSignal;
       const settlement: Settlement = {
         active: true,
@@ -695,6 +717,7 @@ function createSessionEventWakeRuntime() {
     setSessionEventWakeHandler,
     requestSessionEventWake,
     requestSessionEventWakeAndWait,
+    requestSignalSessionEventWake,
     getSessionEventWakeAbortSignal: () => attempts.getStore()?.signal,
     markSessionEventWakeWorkStarted,
     deferSessionEventWakePoll,
@@ -711,6 +734,7 @@ export const {
   setSessionEventWakeHandler,
   requestSessionEventWake,
   requestSessionEventWakeAndWait,
+  requestSignalSessionEventWake,
   getSessionEventWakeAbortSignal,
   markSessionEventWakeWorkStarted,
   deferSessionEventWakePoll,
