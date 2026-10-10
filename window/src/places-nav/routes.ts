@@ -1,24 +1,26 @@
 // Where the window can be (DESIGN-SPEC §3.3 saved layout, §4.6 Places, §4.7 Settings): a conversation,
-// one of the seven places, or a Settings page. The last route is kept on this computer and reopened at launch.
+// one of the six places, or a Settings page. The last route is kept on this computer and reopened at launch.
 import type { IconName } from "../shell/icons";
 
-export type PlaceId = "overview" | "canopy" | "inbox" | "automations" | "library" | "people" | "customize" | "office";
+export type PlaceId = "overview" | "inbox" | "automations" | "library" | "people" | "customize" | "office";
 
 export type Route =
   | { kind: "chat"; key: string | null }
   | { kind: "place"; place: PlaceId }
   | { kind: "settings"; page: string };
 
-/** The seven places, in the sidebar's order (§4.1.1 Place rows). */
+/** The six places, in the sidebar's order (§4.1.1 Place rows). */
 export const PLACES: { id: PlaceId; name: string; icon: IconName }[] = [
   { id: "overview", name: "Overview", icon: "home" },
-  { id: "canopy", name: "Canopy", icon: "panel" },
   { id: "inbox", name: "Inbox", icon: "inbox" },
   { id: "automations", name: "Automations", icon: "clock" },
   { id: "library", name: "Library", icon: "book" },
   { id: "people", name: "People", icon: "users" },
   { id: "customize", name: "Customize", icon: "sliders" },
 ];
+
+/** Places that were removed from the sidebar. Their deep links and card opens go to Automations > Board (WindowShell). */
+export const REMOVED_PLACES: readonly string[] = ["canopy"];
 
 const KEY = "branch.route";
 

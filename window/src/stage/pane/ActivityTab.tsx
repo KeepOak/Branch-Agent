@@ -165,7 +165,7 @@ export function ActivityTab({ engine, name, blocks, running, focusHelpers = 0, o
             <SIcon name="layout" small />
           </span>
           <span className="grow">
-            <b>In Canopy: {card.title}</b>
+            <b>On the board: {card.title}</b>
           </span>
           <span className="pill idle">{CARD_STATE[card.status] ?? card.status}</span>
         </div>

@@ -12,6 +12,7 @@ import { money, runLength, whenWord } from "./format";
 import { PersonRow, type PersonLine } from "./People";
 import { FinishSetup } from "./Setup";
 import "./overview.css";
+import { openBoard } from "../automations/board-route";
 
 export const PAUSE_ALL_GAP = "Needs the engine's pause-all method.";
 export const MILESTONES_GAP = "Needs the engine's milestones method.";
@@ -102,7 +103,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
   const recent = recentActivity(rows, runList);
   return <PlaceFrame title="Overview" lede="What’s happening across your Trunks, at a glance." wide="overview" top={<FinishSetup engine={engine} openSettings={openSettings} />} before={<button type="button" className="btn sm" onClick={() => openPlace("office")}>Grove</button>}>
     <div className="ov-grid">
-      <Tile title="Now" action={<button type="button" className="ov-link" onClick={() => openPlace("canopy")}>Open Canopy</button>}>
+      <Tile title="Now" action={<button type="button" className="ov-link" onClick={() => openBoard()}>Open the board</button>}>
         {status("sessions", "running conversations")}
         {running.map(row => <button key={row.key} type="button" className="ov-now" onClick={() => openConversation(row.key)}><Face size={34} state="work" label={agentName(trunks.list, row.agentId)} /><span className="ov-grow"><b>{agentName(trunks.list, row.agentId)}</b><small>{row.preview || row.title}</small></span></button>)}
         {tiles.sessions.value !== undefined && !running.length ? <p>Nothing is running right now.</p> : null}

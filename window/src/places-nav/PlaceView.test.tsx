@@ -7,7 +7,6 @@ import { PlaceView } from "./PlaceView";
 import type { PlaceId } from "./routes";
 
 vi.mock("../places/automations", () => ({ AutomationsPlace: () => <div data-testid="place-automations" /> }));
-vi.mock("../places/canopy", () => ({ CanopyPlace: () => <div data-testid="place-canopy" /> }));
 vi.mock("../places/customize", () => ({ CustomizePlace: () => <div data-testid="place-customize" /> }));
 vi.mock("../places/inbox", () => ({ InboxPlace: () => <div data-testid="place-inbox" /> }));
 vi.mock("../places/library", () => ({ LibraryPlace: () => <div data-testid="place-library" /> }));

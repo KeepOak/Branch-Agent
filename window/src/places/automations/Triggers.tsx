@@ -23,13 +23,6 @@ import { errorText, rec, rows, str, usePlaceData, type Row } from "./runtime";
 
 export const TRIGGER_NEEDS = {
   words: "Needs the engine to write the check from your words; at Technical you can write the check yourself.",
-  tellApp: "Needs the engine’s web addresses for task events.",
-  afterAnswer: "Needs the engine’s after-answer hook setup.",
-  gmail: "Needs the engine’s Gmail watch setup method.",
-  address: "Needs the engine’s method to make a web address and its key.",
-  feeds: "Needs the engine’s feeds store.",
-  page: "Needs the engine’s public pages.",
-  packs: "Needs the plugin installer’s hook packs.",
 };
 
 type Card = { task: string; agentId: string; every: string; script: string; once: boolean };
@@ -72,7 +65,7 @@ function HooksDialog({ engine, canWrite, onClose }: { engine: WindowEngine; canW
   const state = usePlaceData(engine, loadHooks), { busy, run } = useAct(state.refresh);
   const [onlyReady, setOnlyReady] = useState(false);
   const hooks = state.data ?? [], ready = hooks.filter(h => hookPill(h) === "Ready").length;
-  return <Dialog wide title="Hooks" onClose={onClose} footer={<><button type="button" className="btn sm" disabled title={shownWhy(TRIGGER_NEEDS.packs)}>Add a hook pack…</button></>}>
+  return <Dialog wide title="Hooks" onClose={onClose}>
     <p className="au-hint">Small programs that run when something happens in Branch: a command, a message, a conversation starting or being shortened, the Gateway starting. They run with full access to the Gateway’s computer.</p>
     {state.error && <p className="au-error" role="alert">{state.error}</p>}
     {hooks.length > 0 && <SwitchRow title={`${ready} of ${hooks.length} ready`} sub="Only ready ones" on={onlyReady} change={setOnlyReady} />}
@@ -88,11 +81,7 @@ function HooksDialog({ engine, canWrite, onClose }: { engine: WindowEngine; canW
 function Hooks({ engine, level, canWrite }: { engine: WindowEngine; level: Level; canWrite: boolean }) {
   const [open, setOpen] = useState(false), { run } = useAct(async () => undefined);
   return <Section title="Hooks">
-    <ToolRow icon="globe" title="Tell another app when something happens" sub="An address Branch calls when a task finishes, needs you, or fails." button="Add one" reason={TRIGGER_NEEDS.tellApp} />
     <ToolRow icon="term" title="Before and after each step" sub="A script of yours that runs when a task starts, before a tool runs, or when it ends." button="See hooks" run={() => setOpen(true)} />
-    <ToolRow icon="chat" title="After each answer" sub="Runs something every time a Trunk finishes a reply, such as copying it to your notes." button="Set one up" reason={TRIGGER_NEEDS.afterAnswer} />
-    <ToolRow icon="mail" title="New Gmail mail, the moment it arrives" sub="A Trunk starts as soon as a new email lands, without checking on a timer." button="Set up" reason={TRIGGER_NEEDS.gmail} />
-    <ToolRow icon="globe" title="Start work from a web address" sub="Another app calls an address and a Trunk starts." button="Add one" reason={TRIGGER_NEEDS.address} />
     {shows(level, "technical") && <div className="au-tool"><span className="au-grow"><small>The hooks section of the settings file.</small></span><button type="button" className="btn ghost sm" disabled={!canWrite} title={canWrite ? undefined : "Needs an owner"} onClick={() => void run(async () => { const r = rec(await engine.request("config.openFile", {})); if (r.ok !== true) throw new Error(str(r.error) || "The settings file couldn’t be opened."); return r; }, "Opened the settings file on the Gateway’s computer.")}>Edit as text</button></div>}
     {open && <HooksDialog engine={engine} canWrite={canWrite} onClose={() => setOpen(false)} />}
   </Section>;
@@ -121,8 +110,6 @@ export function TriggersTab({ engine, level, openConversation }: { engine: Windo
     {data && (jobs.length ? <div className="au-list">{jobs.map(job => <JobRow key={str(job.id)} job={job} trunk={trunkNameOf(data.trunks, job.agentId, data.defaultId)} runs={data.runs.get(str(job.id))?.entries ?? []} total={data.runs.get(str(job.id))?.total} level={level} canWrite={write} busy={busy} checkReadout actions={{ open: j => setOpen({ kind: "sheet", job: j }), toggle: j => void act("cron.update", { id: j.id, ...(j.configRevision ? { expectedConfigRevision: j.configRevision } : {}), patch: { enabled: j.enabled !== true } }, j.enabled ? `Paused ${jobName(j)}.` : `${jobName(j)} is on.`), menu: (j, at) => setOpen({ kind: "menu", job: j, at }) }} />)}</div>
       : <EmptyLine icon={<Glyph name="pulse" size={22} />}>Nothing starts on its own yet. Describe what should start it above.</EmptyLine>)}
     {adv && <Hooks engine={engine} level={level} canWrite={write} />}
-    {adv && <Section title="Feeds into a chat" hint="Each new item is posted once, never repeated."><ToolRow icon="rss" title="An RSS, Reddit or YouTube address" sub="New items go to a conversation you pick." button="Add" reason={TRIGGER_NEEDS.feeds} /></Section>}
-    {adv && <Section title="A page anyone can fill in"><ToolRow icon="form" title="A page anyone can fill in" sub="A form or a small chat page of its own; whoever fills it in starts the automation and sees its answer." button="Make one" reason={TRIGGER_NEEDS.page} /></Section>}
     {open?.kind === "menu" && <Menu at={open.at} label={`More for ${jobName(open.job)}`} items={menu} onClose={() => setOpen(null)} />}
     {open?.kind === "remove" && <RemoveDialog job={open.job} act={act} busy={busy} onClose={() => setOpen(null)} />}
     {open?.kind === "sheet" && <Sheet engine={engine} job={open.job} level={level} trunks={data?.trunks ?? []} models={[]} canWrite={write} busy={busy} onClose={() => setOpen(null)} openConversation={openConversation} save={d => run(() => saveDraft(engine, d), r => str(r.message))} />}

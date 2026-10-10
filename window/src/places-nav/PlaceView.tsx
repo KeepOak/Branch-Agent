@@ -1,6 +1,5 @@
 import { lazy, Suspense } from "react";
 import { AutomationsPlace } from "../places/automations";
-import { CanopyPlace } from "../places/canopy";
 import { CustomizePlace } from "../places/customize";
 import { InboxPlace } from "../places/inbox";
 import { LibraryPlace } from "../places/library";
@@ -15,7 +14,6 @@ const OfficePlace = lazy(() => import("../places/office").then(m => ({ default: 
 
 const MOUNTS: Record<PlaceId, (p: PlaceProps) => React.ReactNode> = {
   overview: OverviewPlace,
-  canopy: CanopyPlace,
   inbox: InboxPlace,
   automations: AutomationsPlace,
   library: LibraryPlace,

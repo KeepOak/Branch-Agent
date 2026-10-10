@@ -17,7 +17,8 @@ import { PlaceView } from "../places-nav/PlaceView";
 import { handleOfficeNavigation } from "../places/office/navigation";
 import { SettingsFrame } from "../places-nav/SettingsFrame";
 import { lookStore } from "../places/settings/set1/appearance-store";
-import { loadRoute, parseRoute, saveRoute, windowTitle, PLACES, type PlaceId, type Route } from "../places-nav/routes";
+import { loadRoute, parseRoute, REMOVED_PLACES, saveRoute, windowTitle, PLACES, type PlaceId, type Route } from "../places-nav/routes";
+import { openBoard } from "../places/automations/board-route";
 import { pageName } from "../places-nav/settings-nav";
 import { effectiveDark, readThemeChoice, setThemeChoice, toggleTheme, type ThemeChoice } from "../theme/theme";
 import { BannerView, raiseBanner } from "./Banner";
@@ -714,6 +715,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     // "branch:place-tab" event once it shows (places that have tabs listen for it).
     const navigate = (event: Event) => {
       const detail = (event as CustomEvent<{ place?: string; tab?: string }>).detail;
+      // A removed place (Canopy) opens Automations > Board, where its cards now are. The board request waits for that place to mount.
+      if (REMOVED_PLACES.includes(detail?.place ?? "")) { openBoard(); return; }
       const place = PLACES.find((p) => p.id === detail?.place)?.id;
       if (place) {
         openPlace(place);

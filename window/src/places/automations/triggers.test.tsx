@@ -43,11 +43,12 @@ describe("Automations › Triggers", () => {
   });
   it("Advanced: Hooks lists hooks.status and a switch patches hooks.internal.entries", async () => {
     const request = await mount("advanced");
-    expect(byText("Set up").disabled).toBe(true); expect(byText("Set up").title).toBe(""); expect(visibleDevNotes(host)).toEqual([]);
-    expect(byText("Make one").disabled).toBe(true);
+    expect(visibleDevNotes(host)).toEqual([]);
+    for (const unbuilt of ["Set up", "Make one", "Add one", "Tell another app", "After each answer", "Gmail mail", "Feeds into a chat", "A page anyone can fill in"]) expect(host.textContent).not.toContain(unbuilt);
     await click(byText("See hooks"));
     expect(request).toHaveBeenCalledWith("hooks.status", {});
     expect(document.body.textContent).toContain("1 of 2 ready");
+    expect(document.body.textContent).not.toContain("Add a hook pack");
     await click(document.querySelector("[aria-label='boot-md on or off']")!);
     expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h", raw: JSON.stringify({ hooks: { internal: { enabled: true, entries: { "boot-md": { enabled: true } } } } }) });
   });

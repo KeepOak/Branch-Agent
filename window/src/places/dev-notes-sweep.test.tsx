@@ -8,7 +8,6 @@ import type { WindowEngine } from "../connect/engine";
 import { visibleDevNotes } from "../shell/shown-why.testing";
 import type { PlaceProps } from "../places-nav/PlaceFrame";
 import { AutomationsPlace } from "./automations";
-import { CanopyPlace } from "./canopy";
 import { CustomizePlace } from "./customize";
 import { InboxPlace } from "./inbox";
 import { LibraryPlace } from "./library";
@@ -49,7 +48,7 @@ async function sweep(node: ReactNode): Promise<{ notes: string[]; greyed: number
 }
 
 const props = (): PlaceProps => ({ engine: engine(), facts: { running: 0, waiting: 0 }, openConversation: () => undefined, openPlace: () => undefined, openSettings: () => undefined, startConversation: () => undefined, level: "technical" });
-const PLACES = { overview: OverviewPlace, canopy: CanopyPlace, inbox: InboxPlace, automations: AutomationsPlace, library: LibraryPlace, people: PeoplePlace, customize: CustomizePlace };
+const PLACES = { overview: OverviewPlace, inbox: InboxPlace, automations: AutomationsPlace, library: LibraryPlace, people: PeoplePlace, customize: CustomizePlace };
 const PAGES = ["general", "people", "appearance", "notifications", "instructions", "models", "local", "accounts", "voice", "chatapps", "permissions", "computer", "secrets", "usage", "backups", "gateway", "self", "seasons", "updates", "achievements", "advanced", "developer"];
 
 describe("developer notes stay out of sight", () => {

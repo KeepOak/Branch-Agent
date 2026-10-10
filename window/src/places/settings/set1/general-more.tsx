@@ -13,7 +13,7 @@ export const NO_KEY = "Branch has no setting for this yet.";
 const noop = () => undefined;
 
 const LANGS = ["Same as my message", "English", "Español", "Français", "Deutsch", "Português", "Yorùbá", "العربية", "日本語", "中文"].map((l) => ({ id: l, label: l }));
-const LANDING = ["The last conversation", "Overview", "Canopy", "Inbox", "Automations"].map((l) => ({ id: l, label: l }));
+const LANDING = ["The last conversation", "Overview", "Inbox", "Automations"].map((l) => ({ id: l, label: l }));
 const AFTER_PLAN = ["Ask to carry it out", "In a fresh conversation", "Don’t ask"].map((l) => ({ id: l, label: l }));
 
 /** Overview's "Finish setting up" checklist: the person's own choice, kept in their look ("checklist"). */

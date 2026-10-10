@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PLACES, loadRoute, parseRoute, saveRoute, windowTitle } from "./routes";
+import { PLACES, REMOVED_PLACES, loadRoute, parseRoute, saveRoute, windowTitle } from "./routes";
 
 describe("routes", () => {
   it("parses saved routes and refuses damaged ones", () => {
@@ -10,8 +10,13 @@ describe("routes", () => {
     expect(parseRoute("{not json")).toBeNull();
     expect(parseRoute(null)).toBeNull();
   });
-  it("lists the seven places in the sidebar's order", () => {
-    expect(PLACES.map((p) => p.name)).toEqual(["Overview", "Canopy", "Inbox", "Automations", "Library", "People", "Customize"]);
+  it("lists the six places in the sidebar's order", () => {
+    expect(PLACES.map((p) => p.name)).toEqual(["Overview", "Inbox", "Automations", "Library", "People", "Customize"]);
+  });
+  it("lists Canopy as removed, and a saved Canopy route opens the default conversation", () => {
+    expect(REMOVED_PLACES).toContain("canopy");
+    expect(PLACES.map((p) => p.id)).not.toContain("canopy");
+    expect(parseRoute(JSON.stringify({ kind: "place", place: "canopy" }))).toBeNull();
   });
   it("window title", () => {
     expect(windowTitle("Sapling", 0, false)).toBe("Sapling — Branch");

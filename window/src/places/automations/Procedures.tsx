@@ -13,13 +13,8 @@ import { useAct } from "./act";
 import { patchConfig } from "./data";
 import { Glyph } from "./glyphs";
 import { SwitchRow } from "./Proposal";
-import { Section, ToolRow } from "./Sections";
+import { Section } from "./Sections";
 import { rec, str, usePlaceData, type Row } from "./runtime";
-
-export const PROCEDURE_NEEDS = {
-  store: "Needs the engine’s procedure store.",
-  prompts: "Needs the engine’s saved-prompts store.",
-};
 
 type Native = "auto" | "on" | "off";
 const toNative = (v: unknown): Native => (v === true ? "on" : v === false ? "off" : "auto");
@@ -71,14 +66,7 @@ export function ProceduresTab({ engine, level }: { engine: WindowEngine; level: 
   const canWrite = engine.scopes.includes("operator.admin");
   return <div className="au-tab">
     <p className="au-hint">Saved steps a Trunk can run again.</p>
-    <div className="au-actions"><button type="button" className="btn" disabled title={shownWhy(PROCEDURE_NEEDS.store)}><Glyph name="teach" size={14} />Show a Trunk how, once</button></div>
-    <EmptyLine icon={<Glyph name="flow" size={22} />}>No procedures yet. Show a Trunk how once, and it saves the steps to run again.</EmptyLine>
-    <Section title="Your saved prompts" hint="Things you ask for often. Each has its own command that works in the window, on the phone, in the terminal and in chat apps.">
-      <ToolRow icon="star" title="New prompt" sub="A prompt with blanks to fill in, and its own command." button="New prompt" reason={PROCEDURE_NEEDS.prompts} />
-    </Section>
+    <EmptyLine icon={<Glyph name="flow" size={22} />}>No saved procedures yet.</EmptyLine>
     {shows(level, "technical") && <CommandsTechnical engine={engine} canWrite={canWrite} />}
-    {shows(level, "technical") && <Section title="Recipes" hint="Shareable files with the steps, settings and what a procedure asks for.">
-      <ToolRow icon="form" title="Save a procedure as a recipe…" sub="A recipe’s link opens it in Branch." button="Save" reason={PROCEDURE_NEEDS.store} />
-    </Section>}
   </div>;
 }

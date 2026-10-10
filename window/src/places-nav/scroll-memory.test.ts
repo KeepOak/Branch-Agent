@@ -8,7 +8,6 @@ import { resetScrollMemoryForTests, useScrollMemory } from "./scroll-memory";
 import { Thread } from "../thread/Thread";
 import type { Block } from "../thread/model";
 import { LibraryPlace } from "../places/library";
-import { CanopyPlace } from "../places/canopy";
 
 vi.mock("../face/Face", () => ({ Face: ({ label }: { label?: string }) => createElement("span", { "data-face": label }) }));
 
@@ -249,20 +248,19 @@ describe("place scroll memory", () => {
     expect(scroller.scrollTop).toBe(0);
   });
 
-  it("Library and Canopy restore their own .place-scroll after Back", async () => {
+  it("Library restores its own .place-scroll after Back", async () => {
     for (const [name, node] of [
       ["Library", createElement(LibraryPlace, placeProps)],
-      ["Canopy", createElement(CanopyPlace, placeProps)],
     ] as const) {
       resetScrollMemoryForTests();
-      push(1, { kind: "place" as const, place: name === "Library" ? "library" : "canopy" });
+      push(1, { kind: "place" as const, place: "library" });
       const first = await remount(node);
       const scroller = first.querySelector<HTMLElement>(".place-scroll")!;
       expect(scroller, name).toBeTruthy();
       await saveScroll(scroller, 600);
       push(2, placeB);
       await remount(placeNode());
-      popTo(1, { kind: "place", place: name === "Library" ? "library" : "canopy" });
+      popTo(1, { kind: "place", place: "library" });
       const again = await remount(node);
       const restored = again.querySelector<HTMLElement>(".place-scroll")!;
       await flushFrame();
