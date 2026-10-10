@@ -68,10 +68,10 @@ const owner = {
 type Reply = { ok: boolean; payload?: any; error?: { message?: string } };
 
 /** A context whose runtime methods never settle: any call that waits on the engine hangs the test. */
-function busyContext() {
+function busyContext(broadcast: (...args: unknown[]) => void = () => undefined) {
   const hung = () => new Promise<never>(() => {});
   const base = {
-    broadcast: () => undefined,
+    broadcast,
     getRuntimeConfig: () => ({}),
     getSessionEventSubscriberConnIds: () => [],
     mentionInbox: { invalidateAsync: () => undefined },
@@ -136,6 +136,13 @@ describe("read state does not wait on agent readiness", () => {
     const second = await call("contacts.markAllRead", { mutationId: "mark-all-retry" });
     expect(first.payload.applied).toBe(true);
     expect(second.payload).toMatchObject({ applied: false, readThroughMs: first.payload.readThroughMs });
+  });
+
+  it("tells open windows the contact roster changed, so thread lists reload", async () => {
+    const broadcast = vi.fn();
+    const reply = await call("contacts.markAllRead", { mutationId: "broadcast-1" }, busyContext(broadcast));
+    expect(reply.ok).toBe(true);
+    expect(broadcast).toHaveBeenCalledWith("contacts.changed", expect.any(Object), expect.any(Object));
   });
 
   it("answers mark all read in well under 50 ms with an agent still starting", async () => {

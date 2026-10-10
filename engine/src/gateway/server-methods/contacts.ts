@@ -501,6 +501,9 @@ export const contactHandlers: GatewayRequestHandlers = {
       for (const sessionKey of params.sessionKeys) {
         emitSessionsChanged(context, { sessionKey, reason: "read" });
       }
+    } else if (result.applied) {
+      // Every thread changed, so open windows must reload the contact roster and thread lists.
+      context.broadcast("contacts.changed", { ts: Date.now() }, { dropIfSlow: true });
     }
     respond(true, result);
   },
