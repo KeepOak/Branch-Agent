@@ -1,10 +1,16 @@
 // Gateway side of the Trunk job queue (agents/trunk-queue.ts): the MCP queue_* tools call these methods, and the
 // agent-event subscription calls onTrunkRunLifecycle so an idle Trunk picks up the next job when its run ends.
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
+import {
+  extractStoredAssistantText,
+  stripToolMessages,
+} from "../../agents/tools/chat-history-text.js";
 import { isQueueEligibleTrunk, isTrunkStartupPending } from "../../agents/trunk-queue-policy.js";
 import {
   addQueueItem,
   closeQueueClaimForThread,
+  hasOpenQueueClaimForThread,
+  hasPullRequestLink,
   listQueueItems,
   markQueueItemDone,
   pickUpQueuedWork,
@@ -34,30 +40,149 @@ const localGateway: TrunkQueueGateway = {
 /** How long a run end waits for its own run to stop counting as active before pickup gives up. */
 const RUN_END_IDLE_WAIT_MS = 30_000;
 
+/** Recent thread messages read for the final message of a claim's run. */
+const FINAL_MESSAGE_HISTORY_LIMIT = 20;
+
+type BranchMessageMeta = { id?: unknown; truncated?: unknown };
+const branchMeta = (message: unknown): BranchMessageMeta => rec(rec(message)["__branch"]);
+
 /**
- * Run start or end in a Trunk's thread: keep its claim fresh. A clean end completes the job and an error puts it
- * back; then an idle eligible Trunk takes the next job. A run in any other thread leaves the claim alone.
+ * The final message of the run that just ended in a claim's thread. The run's own terminal reply wins when the
+ * lifecycle event carries one; otherwise it is the thread's last assistant text, read in full when the history
+ * shortened it. Undefined when the run left no message (it ended empty).
+ */
+async function readFinalMessage(
+  gateway: TrunkQueueGateway,
+  agentId: string,
+  threadKey: string,
+  data: Rec | undefined,
+): Promise<string | undefined> {
+  if (data?.terminalReply !== undefined) {
+    const reply = rec(data.terminalReply);
+    return reply.disposition === "visible" ? text(reply.text) || undefined : undefined;
+  }
+  const history = rec(
+    await gateway.request("chat.history", {
+      sessionKey: threadKey,
+      agentId,
+      limit: FINAL_MESSAGE_HISTORY_LIMIT,
+    }),
+  );
+  const messages = stripToolMessages(Array.isArray(history.messages) ? history.messages : []);
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const found = extractStoredAssistantText(messages[i])?.trim();
+    if (!found) {
+      continue;
+    }
+    const meta = branchMeta(messages[i]);
+    if (meta.truncated !== true || typeof meta.id !== "string" || !meta.id) {
+      return found;
+    }
+    const full = rec(
+      await gateway
+        .request("chat.message.get", { sessionKey: threadKey, agentId, messageId: meta.id })
+        .catch(() => ({})),
+    );
+    return (
+      (full.ok === true ? extractStoredAssistantText(full.message)?.trim() : undefined) ?? found
+    );
+  }
+  return undefined;
+}
+
+/**
+ * How a claim's run ended: "failed" on an error; "completed" when its final message links a PR; "empty" when it
+ * left no final message or one without a PR link. Undefined while the thread is still working: a run that yielded
+ * to wait for its sub-agents continues in a later run of the same thread.
+ */
+async function claimRunOutcome(params: {
+  agentId: string;
+  threadKey: string;
+  outcome: "completed" | "failed";
+  data?: Rec;
+  gateway: TrunkQueueGateway;
+}): Promise<"completed" | "failed" | "empty" | undefined> {
+  if (params.outcome === "failed") {
+    return "failed";
+  }
+  if (params.data?.yielded === true) {
+    return undefined;
+  }
+  const finalMessage = await readFinalMessage(
+    params.gateway,
+    params.agentId,
+    params.threadKey,
+    params.data,
+  );
+  return hasPullRequestLink(finalMessage) ? "completed" : "empty";
+}
+
+/**
+ * Run start or end in a Trunk's thread: keep its claim fresh. When the run in a claim's own thread ends, the claim
+ * closes in the same turn: a final message with a PR link completes the job; an error or an empty ending puts it
+ * back and hands it straight to an idle eligible builder. Then the Trunk whose run ended takes the next job when it
+ * is idle. A run in any other thread leaves the claim alone.
  */
 export async function onTrunkRunLifecycle(params: {
   agentId: string;
   terminal: boolean;
   threadKey?: string;
   outcome?: "completed" | "failed";
+  /** The terminal lifecycle event's data (terminalReply, yielded). */
+  data?: Record<string, unknown>;
   cfg?: BranchConfig;
   gateway?: TrunkQueueGateway;
+  log?: (message: string) => void;
 }): Promise<void> {
+  const gateway = params.gateway ?? localGateway;
+  const log = params.log ?? (() => undefined);
   if (params.threadKey) {
     touchQueueClaim(params.threadKey);
   }
-  if (params.terminal && params.threadKey && params.outcome) {
-    closeQueueClaimForThread(params.threadKey, params.outcome);
+  if (
+    params.terminal &&
+    params.threadKey &&
+    params.outcome &&
+    hasOpenQueueClaimForThread(params.threadKey)
+  ) {
+    const threadKey = params.threadKey;
+    const outcome = await claimRunOutcome({
+      agentId: params.agentId,
+      threadKey,
+      outcome: params.outcome,
+      data: params.data,
+      gateway,
+    }).catch((error: unknown) => {
+      // The claim stays open; the orphan pass puts it back once its thread has no live run.
+      log(`trunk queue could not read the final message of ${threadKey}: ${String(error)}`);
+      return undefined;
+    });
+    const closed = outcome ? closeQueueClaimForThread(threadKey, outcome) : undefined;
+    if (closed === "released") {
+      // The job is claimable again: an idle builder takes it now, not at the next sweep.
+      await wakeOtherIdleTrunks(params.agentId, gateway, params.cfg).catch((error: unknown) =>
+        log(`trunk queue wake failed: ${String(error)}`),
+      );
+    }
   }
   if (params.terminal && isQueueEligibleTrunk(params.agentId, params.cfg)) {
     await pickUpQueuedWork({
       agentId: params.agentId,
-      gateway: params.gateway ?? localGateway,
+      gateway,
       idleWaitMs: RUN_END_IDLE_WAIT_MS,
     });
+  }
+}
+
+/** Hands queued work to idle eligible builders other than the one whose run just ended (it may still show active). */
+async function wakeOtherIdleTrunks(
+  endedAgentId: string,
+  gateway: TrunkQueueGateway,
+  cfg: BranchConfig | undefined,
+): Promise<void> {
+  const agentIds = (await readyEligibleAgentIds(gateway, cfg)).filter((id) => id !== endedAgentId);
+  if (agentIds.length > 0) {
+    await wakeIdleTrunks({ agentIds, gateway });
   }
 }
 

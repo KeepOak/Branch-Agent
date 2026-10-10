@@ -78,6 +78,135 @@ afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+/**
+ * Two idle builders. chat.history answers each thread with its stored replies (none by default), the way a run
+ * whose output was lost leaves its thread.
+ */
+function twoBuilderGateway(replies: Record<string, string[]> = {}) {
+  const calls: Call[] = [];
+  const gateway: TrunkQueueGateway = {
+    async request<T>(method: string, params: Record<string, unknown>): Promise<T> {
+      calls.push({ method, params });
+      if (method === "sessions.list") {
+        return { sessions: [] } as T;
+      }
+      if (method === "agents.list") {
+        return { agents: [{ id: "builder-ash" }, { id: "builder-birch" }] } as T;
+      }
+      if (method === "chat.history") {
+        const messages = (replies[String(params.sessionKey)] ?? []).map((text) => ({
+          role: "assistant",
+          content: [{ type: "text", text }],
+        }));
+        return { messages } as T;
+      }
+      return {} as T;
+    },
+  };
+  return { gateway, calls };
+}
+
+describe("Trunk queue claim closes by how its run ended", () => {
+  it("marks the job done when the run's final message links a PR", async () => {
+    const job = addQueueItem({ title: "job", brief_text: "b", priority: 1 });
+    const claim = claimNextQueueItem("builder-ash");
+    const { gateway, calls } = twoBuilderGateway({
+      [claim!.thread_key]: [
+        "Working on it.",
+        "Final message: PR https://github.com/KeepOak/Branch-Agent/pull/999 | head 0123abcd",
+      ],
+    });
+
+    await onTrunkRunLifecycle({
+      agentId: "builder-ash",
+      terminal: true,
+      threadKey: claim!.thread_key,
+      outcome: "completed",
+      gateway,
+    });
+
+    expect(rowById(job.id)?.status).toBe("done");
+    expect(briefedThreads(calls)).toEqual([]);
+  });
+
+  it("releases a failed run's job and hands it to an idle builder at once", async () => {
+    const job = addQueueItem({ title: "job", brief_text: "b", priority: 1 });
+    const claim = claimNextQueueItem("builder-ash");
+    const { gateway, calls } = twoBuilderGateway();
+
+    await onTrunkRunLifecycle({
+      agentId: "builder-ash",
+      terminal: true,
+      threadKey: claim!.thread_key,
+      outcome: "failed",
+      gateway,
+    });
+
+    const row = rowById(job.id);
+    expect(row?.failures).toBe(1);
+    expect(row?.status).toBe("claimed");
+    expect(row?.claimed_by).toBe("builder-birch");
+    expect(briefedThreads(calls)).toEqual([row?.thread_key]);
+  });
+
+  it("releases a run that ended empty instead of marking it done, and an idle builder takes it", async () => {
+    const job = addQueueItem({ title: "job", brief_text: "b", priority: 1 });
+    const claim = claimNextQueueItem("builder-ash");
+    const { gateway, calls } = twoBuilderGateway();
+
+    await onTrunkRunLifecycle({
+      agentId: "builder-ash",
+      terminal: true,
+      threadKey: claim!.thread_key,
+      outcome: "completed",
+      gateway,
+    });
+
+    const row = rowById(job.id);
+    expect(row?.done_at).toBeUndefined();
+    expect(row?.failures).toBe(1);
+    expect(row?.claimed_by).toBe("builder-birch");
+    expect(briefedThreads(calls)).toEqual([row?.thread_key]);
+  });
+
+  it("releases a run whose final message has no PR link", async () => {
+    const job = addQueueItem({ title: "job", brief_text: "b", priority: 1 });
+    const claim = claimNextQueueItem("builder-ash");
+    const { gateway } = twoBuilderGateway();
+
+    await onTrunkRunLifecycle({
+      agentId: "builder-ash",
+      terminal: true,
+      threadKey: claim!.thread_key,
+      outcome: "completed",
+      data: { terminalReply: { disposition: "visible", text: "I looked into it." } },
+      gateway,
+    });
+
+    expect(rowById(job.id)?.done_at).toBeUndefined();
+    expect(rowById(job.id)?.claimed_by).toBe("builder-birch");
+  });
+
+  it("keeps the claim open when the run yielded to wait for its sub-agents", async () => {
+    const job = addQueueItem({ title: "job", brief_text: "b", priority: 1 });
+    const claim = claimNextQueueItem("builder-ash");
+    const { gateway, calls } = twoBuilderGateway();
+
+    await onTrunkRunLifecycle({
+      agentId: "builder-ash",
+      terminal: true,
+      threadKey: claim!.thread_key,
+      outcome: "completed",
+      data: { yielded: true },
+      gateway,
+    });
+
+    expect(rowById(job.id)?.claimed_by).toBe("builder-ash");
+    expect(rowById(job.id)?.thread_key).toBe(claim!.thread_key);
+    expect(briefedThreads(calls)).toEqual([]);
+  });
+});
+
 describe("Trunk queue claim closes at its own run end", () => {
   it("completes the claim when its own thread's run ends cleanly, then gives the builder the next job", async () => {
     const first = addQueueItem({ title: "first", brief_text: "one", priority: 2 });
@@ -90,6 +219,7 @@ describe("Trunk queue claim closes at its own run end", () => {
       terminal: true,
       threadKey: claim?.thread_key,
       outcome: "completed",
+      data: { terminalReply: { disposition: "visible", text: "Final message: PR #12 | head abc" } },
       gateway,
     });
 

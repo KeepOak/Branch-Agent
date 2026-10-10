@@ -46,6 +46,7 @@ export const MAX_CLAIM_FAILURES = 3;
 const LIVE_SESSION_LIMIT = 500;
 const RETAIN_DONE_MS = 7 * 24 * 60 * 60_000;
 const RUN_ERROR_REASON = "the run ended with an error";
+const RUN_EMPTY_REASON = "the run ended without a final message and PR link";
 
 /** Claim ids whose brief is still being sent. A claim is never called orphaned while its dispatch is in flight. */
 const dispatchingClaimIds = new Set<string>();
@@ -221,30 +222,41 @@ export function touchQueueClaim(
   write(rows, now, env);
 }
 
+/** A final message links a PR when it holds a GitHub pull URL or "PR #<number>". */
+export function hasPullRequestLink(text: string | undefined): boolean {
+  return Boolean(text && (/\/pull\/\d+/.test(text) || /\bPR\s*#\d+/i.test(text)));
+}
+
+/** True while this thread is the thread of an open claim. */
+export function hasOpenQueueClaimForThread(threadKey: string, env?: NodeJS.ProcessEnv): boolean {
+  return read(env).some((row) => isOpenClaim(row) && row.thread_key === threadKey);
+}
+
 /**
- * The run in a claim's own thread ended. A clean end completes the job; an error counts a failed attempt and
- * puts it back. Runs in other threads do not touch the claim. Returns whether a claim was closed.
+ * The run in a claim's own thread ended. "completed" (a final message with a PR link) completes the job. "failed"
+ * (an error) and "empty" (no final message, or one without a PR link) count a failed attempt and put the job back,
+ * so another builder can take it. Runs in other threads do not touch the claim. Returns how the claim was closed.
  */
 export function closeQueueClaimForThread(
   threadKey: string,
-  outcome: "completed" | "failed",
+  outcome: "completed" | "failed" | "empty",
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
-): boolean {
+): "done" | "released" | undefined {
   const rows = read(env);
   const row = rows.find(
     (candidate) => isOpenClaim(candidate) && candidate.thread_key === threadKey,
   );
   if (!row) {
-    return false;
+    return undefined;
   }
   if (outcome === "completed") {
     row.done_at = now;
   } else {
-    failClaim(row, now, RUN_ERROR_REASON);
+    failClaim(row, now, outcome === "failed" ? RUN_ERROR_REASON : RUN_EMPTY_REASON);
   }
   write(rows, now, env);
-  return true;
+  return outcome === "completed" ? "done" : "released";
 }
 
 function errorText(error: unknown): string {
