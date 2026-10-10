@@ -15,6 +15,7 @@ import { layoutShiftFindings, scrollResetFindings } from './analyze.mjs';
 import { analyzeWindow, saveFrame, startScreencast, waitQuiet } from './capture.mjs';
 import { clickPoint, describeActive, installProbes, scanClipped, scanContrast, tagScrollables } from './probes.mjs';
 import { traverse, VisitedGraph } from './traverse.mjs';
+import { openRootContext } from './browser-options.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../..');
@@ -120,8 +121,8 @@ class HarnessAdapter {
     this.warnings = [];
     this.failed = [];
     const safe = rootEntry.id.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '');
-    this.context = await this.browser.newContext({ viewport: { width: 1440, height: 900 }, recordVideo: { dir: join(this.out, 'videos', safe), size: { width: 1440, height: 900 } } });
-    await this.context.tracing.start({ screenshots: true, snapshots: true });
+    // openRootContext starts the trace with snapshots and no screenshots, which keeps traces small.
+    this.context = await openRootContext(this.browser, { out: this.out, safe });
     await this.context.addInitScript(`(${installProbes.toString()})();`);
     this.page = await this.context.newPage();
     this.attach(this.page);
@@ -159,6 +160,13 @@ class HarnessAdapter {
   }
 
   /** Shortcut and wheel probes change the screen, so they run after the walk, never before it. */
+  /** Reopens a root after its page crashed, and records the crash. The walk replays the path from there. */
+  async recover(rootEntry, reason) {
+    this.record({ kind: 'browser-crash', root: rootEntry.id, place: rootEntry.id, control: '(page)', detail: `renderer crashed, root reopened: ${reason.slice(0, 160)}`, evidence: [] });
+    await this.closeContext();
+    await this.beginRoot(rootEntry);
+  }
+
   async endRoot(rootEntry) {
     if (this.page) {
       await this.shortcutChecks(rootEntry);

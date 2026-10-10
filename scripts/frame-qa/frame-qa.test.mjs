@@ -7,6 +7,7 @@ import { blankFrames, findFlickers, firstChangeMs, frameIntervalMedian, idleChur
 import { auditContrast, contrastRatio, parseColor, requiredRatio } from './contrast.mjs';
 import { auditLines, lineFor, uniqueFindings } from './audit-lines.mjs';
 import { VisitedGraph, controlId, orderControls, traverse } from './traverse.mjs';
+import { TRACE_OPTIONS, VIDEO_SIZE, contextOptions, openRootContext } from './browser-options.mjs';
 
 const frames = (pairs) => pairs.map(([t, hash, bytes = 40000]) => ({ t, hash, bytes }));
 
@@ -176,4 +177,76 @@ test('audit lines are unique per finding and numbered per OS', () => {
   const base = { kind: 'dead-end', root: 'place:a', control: 'X', repro: ['click X'], detail: {}, evidence: [] };
   assert.equal(uniqueFindings([base, base]).length, 1);
   assert.match(auditLines([base], 'linux')[0], /^- QA-LINUX-001 /);
+});
+
+test('a crashed page is recorded and recovered, and the walk continues with the next control', async () => {
+  const adapter = fakeAdapter();
+  const original = adapter.act;
+  let recovered = 0;
+  adapter.act = async (control) => {
+    if (control.name === 'Go') throw new Error('Target crashed');
+    return original(control);
+  };
+  adapter.recover = async () => { recovered += 1; };
+  const graph = new VisitedGraph();
+  await traverse({ roots: [{ id: 'home', route: { kind: 'place', place: 'home' } }], adapter, graph, maxDepth: 3, now: () => 0 });
+  const go = [...graph.nodes.values()].find((n) => n.label === 'Go');
+  assert.deepEqual(go.problems, ['browser-crash']);
+  assert.equal(recovered, 1);
+  assert.ok([...graph.nodes.values()].some((n) => n.label === 'Menu' && n.status === 'pass'), 'controls after the crash are still walked');
+});
+
+test('page-level findings with the same text collapse to one line across roots and overlays', () => {
+  const a = { kind: 'contrast', root: 'place:a', control: '(screen)', repro: ['open place:a'], detail: '"Nothing" 3.4:1, needs 4.5:1', evidence: [] };
+  const b = { ...a, root: 'place:b', control: '(overlay of X)', repro: ['open place:b'] };
+  assert.equal(uniqueFindings([a, b]).length, 1);
+});
+
+test('node findings with different controls stay separate', () => {
+  const a = { kind: 'dead-end', root: 'place:a', control: 'X', repro: ['click X'], detail: {}, evidence: [] };
+  const b = { ...a, control: 'Y', repro: ['click Y'] };
+  assert.equal(uniqueFindings([a, b]).length, 2);
+});
+
+test('if recovery itself throws, the crash is recorded a second time and the walk continues', async () => {
+  const adapter = fakeAdapter();
+  const original = adapter.act;
+  adapter.act = async (control) => {
+    if (control.name === 'Go') throw new Error('Target crashed');
+    return original(control);
+  };
+  adapter.recover = async () => { throw new Error('reopen failed'); };
+  const graph = new VisitedGraph();
+  await traverse({ roots: [{ id: 'home', route: { kind: 'place', place: 'home' } }], adapter, graph, maxDepth: 3, now: () => 0 });
+  const go = [...graph.nodes.values()].find((n) => n.label === 'Go');
+  assert.deepEqual(go.problems, ['browser-crash', 'recover-failed']);
+  assert.ok([...graph.nodes.values()].some((n) => n.label === 'Menu' && n.status === 'pass'), 'controls after a failed reopen are still walked');
+});
+
+test('traces keep snapshots but drop screenshots', () => {
+  assert.equal(TRACE_OPTIONS.screenshots, false);
+  assert.equal(TRACE_OPTIONS.snapshots, true);
+});
+
+test('a root context starts its trace with the trace options, and the context gets the capped video', async () => {
+  const calls = [];
+  const fakeBrowser = {
+    async newContext(options) {
+      calls.push({ call: 'newContext', options });
+      return { tracing: { async start(opts) { calls.push({ call: 'tracing.start', options: opts }); } } };
+    },
+  };
+  await openRootContext(fakeBrowser, { out: '/tmp/out', safe: 'place-overview' });
+  const trace = calls.find((c) => c.call === 'tracing.start');
+  assert.deepEqual(trace.options, TRACE_OPTIONS, 'tracing.start is called with the trace options');
+  assert.equal(trace.options.screenshots, false);
+  const ctx = calls.find((c) => c.call === 'newContext');
+  assert.deepEqual(ctx.options.recordVideo.size, VIDEO_SIZE);
+});
+
+test('video is capped at 960x600 for every root context', () => {
+  assert.ok(VIDEO_SIZE.width <= 960 && VIDEO_SIZE.height <= 600);
+  const options = contextOptions({ out: '/tmp/out', safe: 'place-overview' });
+  assert.deepEqual(options.recordVideo.size, VIDEO_SIZE);
+  assert.match(options.recordVideo.dir, /videos[\\/]place-overview$/);
 });
