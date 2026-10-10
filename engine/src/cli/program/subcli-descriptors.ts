@@ -94,6 +94,12 @@ const subCliCommandDescriptors = [
     parentDefaultHelp: true,
   },
   {
+    name: "trunks",
+    description: "Export a Trunk to a template, or create a Trunk from one",
+    hasSubcommands: true,
+    parentDefaultHelp: true,
+  },
+  {
     name: "node",
     description: "Run and manage the headless node host service",
     hasSubcommands: true,
