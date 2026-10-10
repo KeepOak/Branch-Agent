@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { createConnection, createServer } from "node:net";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { MacComputerDriver, describeDriverError, macScreenControlEnabled } from "../dist/mac-computer-driver.js";
+import { mkdtempSync } from "node:fs";
+// Every test runs with a temporary home, so the driver never writes the real ~/.cua-driver/config.json.
+process.env.HOME = mkdtempSync(join(tmpdir(), "branch-driver-home-"));
+const { ensureUpdateCheckOff, MacComputerDriver, describeDriverError, macScreenControlEnabled } = await import("../dist/mac-computer-driver.js");
 
 test("Mac screen control remains off until explicitly enabled", async () => {
   const dir = await mkdtemp(join(tmpdir(), "branch-mac-screen-setting-"));
@@ -142,5 +145,43 @@ test("a rejected embedded configuration surfaces the SDK's reason, not just its 
     assert.ok(error, "start should reject when the SDK rejects the configuration");
     assert.equal(describeDriverError(error), "rejected for test");
     assert.equal(describeDriverError(new Error("plain")), "Error: plain");
+  } finally { await driver.stop(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test("the driver's update check is off by default, keeps other settings, and respects an explicit choice", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "branch-driver-config-"));
+  const file = join(dir, ".cua-driver", "config.json");
+  try {
+    assert.equal(ensureUpdateCheckOff(file), "written");
+    assert.deepEqual(JSON.parse(await readFile(file, "utf8")), { update_check_enabled: false });
+    await writeFile(file, JSON.stringify({ max_image_dimension: 1024 }));
+    assert.equal(ensureUpdateCheckOff(file), "written");
+    assert.deepEqual(JSON.parse(await readFile(file, "utf8")), { max_image_dimension: 1024, update_check_enabled: false });
+    await writeFile(file, JSON.stringify({ update_check_enabled: true }));
+    assert.equal(ensureUpdateCheckOff(file), "kept");
+    assert.deepEqual(JSON.parse(await readFile(file, "utf8")), { update_check_enabled: true });
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("an unreadable driver config is left untouched", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "branch-driver-config-bad-"));
+  const file = join(dir, "config.json");
+  try {
+    await writeFile(file, "{ not json");
+    assert.equal(ensureUpdateCheckOff(file), "unreadable");
+    assert.equal(await readFile(file, "utf8"), "{ not json");
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("starting the Mac driver writes the update-check setting before the SDK starts", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "branch-driver-start-"));
+  await writeFile(join(dir, "cua-driver"), "fixture");
+  const configPath = join(dir, "home", ".cua-driver", "config.json");
+  const events = [];
+  const driver = new MacComputerDriver(() => {}, () => allowlistedSdk(events), () => "ai.branch.mac", configPath);
+  try {
+    assert.equal(JSON.parse(await driver.start(dir)).v, 2);
+    assert.deepEqual(JSON.parse(await readFile(configPath, "utf8")), { update_check_enabled: false });
+    assert.deepEqual(events, ["start"]);
   } finally { await driver.stop(); await rm(dir, { recursive: true, force: true }); }
 });
