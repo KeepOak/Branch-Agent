@@ -46,12 +46,20 @@ export type GardenerStateStore = {
   cooldownUntil(fingerprint: string): number | undefined;
   /** ttlMs only lets the store drop old rows; the pass compares against its own clock. */
   setCooldownUntil(fingerprint: string, until: number, ttlMs: number): void;
+  /** Local record of issues already created: the issue number for a fingerprint. Persisted, never expired. */
+  issueNumber(fingerprint: string): number | undefined;
+  setIssueNumber(fingerprint: string, issueNumber: number): void;
 };
 
 export function createMemoryGardenerStore(): GardenerStateStore {
   const cooldowns = new Map<string, number>();
+  const issues = new Map<string, number>();
   let lastRun: number | undefined;
   return {
+    issueNumber: (fingerprint) => issues.get(fingerprint),
+    setIssueNumber: (fingerprint, issueNumber) => {
+      issues.set(fingerprint, issueNumber);
+    },
     lastRunAt: () => lastRun,
     setLastRunAt: (at) => {
       lastRun = at;
@@ -72,7 +80,7 @@ export type GardenerPassParams = {
   inputs: GardenerInputs;
   store: GardenerStateStore;
   /** The only GitHub write. Called once per planned issue, and only when the pass is enabled with a repo. */
-  writeIssue: (draft: GardenerIssueDraft) => Promise<void>;
+  writeIssue: (draft: GardenerIssueDraft) => Promise<number | void>;
   /**
    * Whether an issue for this fingerprint already exists. When it does, the pass does not create another one, so a
    * retry after a failed job write leaves exactly one issue. Omitted means the pass cannot tell, and writes.
@@ -222,11 +230,21 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Writes the issue only when none exists yet for this fingerprint. */
+/**
+ * One issue per source. A local record of an issue already created wins outright. The GitHub search is only the
+ * fallback when there is no record, because search lags right after a create.
+ */
 async function ensureIssue(repo: string, signal: GardenerSignal, sink: CommitSink): Promise<void> {
+  if (sink.store.issueNumber(signal.fingerprint) !== undefined) {
+    return;
+  }
   const exists = sink.findIssue ? await sink.findIssue(signal.fingerprint) : false;
-  if (!exists) {
-    await sink.writeIssue(issueDraftFor(repo, signal));
+  if (exists) {
+    return;
+  }
+  const created = await sink.writeIssue(issueDraftFor(repo, signal));
+  if (typeof created === "number") {
+    sink.store.setIssueNumber(signal.fingerprint, created);
   }
 }
 

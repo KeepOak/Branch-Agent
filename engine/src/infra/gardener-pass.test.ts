@@ -304,3 +304,54 @@ describe("issue idempotency and failure reporting", () => {
     expect(warn.mock.calls[0]?.[0]).toContain("gardener write failed for parity:skills-ui");
   });
 });
+
+describe("local issue record", () => {
+  it("a local record stops a second issue even when search lags and finds nothing", async () => {
+    const issueWrites: string[] = [];
+    const errors: string[] = [];
+    let failJob = true;
+    const enqueue = (item: { title: string; brief_text: string; priority: number }) => {
+      if (failJob && item.title.includes("parity:skills-ui")) {
+        throw new Error("queue unavailable");
+      }
+      addQueueItem(item, env, clock);
+    };
+    const base = {
+      cfg: enabledCfg,
+      env,
+      store,
+      now,
+      writeIssue: async (draft: GardenerIssueDraft) => {
+        issueWrites.push(draft.fingerprint);
+        return 101;
+      },
+      findIssue: async () => false,
+      enqueue,
+      onError: (message: string) => errors.push(message),
+    };
+    await runGardenerPass({ ...base, inputs: parityGap });
+    expect(errors).toHaveLength(1);
+
+    failJob = false;
+    clock += 31 * MINUTE;
+    await runGardenerPass({ ...base, inputs: parityGap });
+    expect(issueWrites.filter((fingerprint) => fingerprint === "parity:skills-ui")).toHaveLength(1);
+    expect(listQueueItems(env)).toHaveLength(1);
+  });
+
+  it("the search fallback is used when there is no local record", async () => {
+    const issueWrites: string[] = [];
+    await runGardenerPass({
+      cfg: enabledCfg,
+      env,
+      store,
+      now,
+      inputs: parityGap,
+      writeIssue: async (draft: GardenerIssueDraft) => {
+        issueWrites.push(draft.fingerprint);
+      },
+      findIssue: async () => true,
+    });
+    expect(issueWrites).toHaveLength(0);
+  });
+});

@@ -7,6 +7,7 @@ const OWNER_ID = "core:gardener";
 const NAMESPACE = "gardener-state";
 const MAX_ENTRIES = 1_000;
 const LAST_RUN_KEY = "last-run-at";
+const issueKey = (fingerprint: string) => `issue:${fingerprint}`;
 
 export function openGardenerStateStore(env?: NodeJS.ProcessEnv): GardenerStateStore {
   const store = createCorePluginStateSyncKeyedStore<number>({
@@ -23,6 +24,10 @@ export function openGardenerStateStore(env?: NodeJS.ProcessEnv): GardenerStateSt
       store.register(LAST_RUN_KEY, at);
     },
     cooldownUntil: (fingerprint) => store.lookup(cooldownKey(fingerprint)),
+    issueNumber: (fingerprint) => store.lookup(issueKey(fingerprint)),
+    setIssueNumber: (fingerprint, issueNumber) => {
+      store.register(issueKey(fingerprint), issueNumber);
+    },
     setCooldownUntil: (fingerprint, until, ttlMs) => {
       store.register(cooldownKey(fingerprint), until, { ttlMs });
     },

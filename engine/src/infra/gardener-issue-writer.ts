@@ -56,7 +56,7 @@ export function createGardenerIssueFinder(
 
 export function createGardenerIssueWriter(
   options: GardenerIssueWriterOptions,
-): (draft: GardenerIssueDraft) => Promise<void> {
+): (draft: GardenerIssueDraft) => Promise<number | undefined> {
   const base = options.apiBase ?? GITHUB_REST_BASE;
   const exists = createGardenerIssueFinder(options);
   return async (draft) => {
@@ -75,5 +75,8 @@ export function createGardenerIssueWriter(
     if (!response.ok) {
       throw new GardenerIssueWriteError(response.status);
     }
+    // The created issue number is the local record the pass keeps; it is absent only if GitHub omits it.
+    const created = (await response.json()) as { number?: unknown };
+    return typeof created.number === "number" ? created.number : undefined;
   };
 }
