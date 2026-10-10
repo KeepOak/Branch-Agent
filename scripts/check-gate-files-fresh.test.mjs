@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { GATE_SCRIPTS } from './merge-gate-trusted.mjs';
 import {
+  DEFAULT_GATE_FILES_BUDGET_SECONDS,
+  formatGateFilesError,
+  gateFilesBudgetSeconds,
   COMPARE_FILES_JQ,
   COMPARE_SLIM_JQ,
   GATE_WORKFLOW_FILES,
@@ -257,6 +260,19 @@ test('fetchCompare fails closed when GitHub truncates the compare file list', ()
   }), /Merge main so the fork point is recent/);
 });
 
+test('the gate-files-fresh job timeout outlasts the helper wait budget', () => {
+  // The helper sleeps through installation rate limits for up to MERGE_GATE_WAIT_SECONDS. When the job
+  // timeout is shorter, GitHub kills the job at that timeout and the run shows as cancelled, not failed.
+  const yml = readFileSync(new URL('../.github/workflows/gate-files-fresh.yml', import.meta.url), 'utf8');
+  const timeoutMinutes = Number(/timeout-minutes:\s*(\d+)/.exec(yml)?.[1]);
+  const waitSeconds = Number(/MERGE_GATE_WAIT_SECONDS:\s*'(\d+)'/.exec(yml)?.[1]);
+  assert.ok(Number.isFinite(timeoutMinutes) && Number.isFinite(waitSeconds));
+  assert.ok(
+    timeoutMinutes * 60 >= waitSeconds + 150,
+    `timeout ${timeoutMinutes}m must exceed the ${waitSeconds}s wait budget plus 150 s of setup and calls`,
+  );
+});
+
 test('fetchCompare pages the commit list, so a branch 125 commits behind main is not too large', () => {
   const shas = Array.from({ length: 125 }, (_, index) => `c${index}`);
   const calls = [];
@@ -305,4 +321,28 @@ test('the fork-to-main attribution compare is non-fatal, so a stale fork point c
   assert.equal(result.ok, false);
   assert.equal(result.results[0].dropped[0].line, 'added-on-main');
   assert.equal(result.results[0].dropped[0].commit, null);
+});
+
+test('the gate-files-fresh wait budget comes from MERGE_GATE_WAIT_SECONDS and defaults safely', () => {
+  assert.equal(gateFilesBudgetSeconds({ MERGE_GATE_WAIT_SECONDS: '120' }), 120);
+  assert.equal(gateFilesBudgetSeconds({}), DEFAULT_GATE_FILES_BUDGET_SECONDS);
+  assert.equal(gateFilesBudgetSeconds({ MERGE_GATE_WAIT_SECONDS: 'soon' }), DEFAULT_GATE_FILES_BUDGET_SECONDS);
+  assert.equal(gateFilesBudgetSeconds({ MERGE_GATE_WAIT_SECONDS: '0' }), DEFAULT_GATE_FILES_BUDGET_SECONDS);
+});
+
+test('an exhausted rate-limit budget fails closed with a clear message, not as a gate-file failure', () => {
+  const rateLimited = Object.assign(new Error('gh: API rate limit exceeded for installation (HTTP 403)'), {
+    stderr: 'gh: API rate limit exceeded for installation (HTTP 403)',
+  });
+  const message = formatGateFilesError(rateLimited, 120);
+  assert.match(message, /120s wait budget/);
+  assert.match(message, /not a gate-file failure/);
+  assert.match(formatGateFilesError(new Error('gh: Server Error (HTTP 502)'), 120), /could not read GitHub/);
+});
+
+test('gate-files-fresh bounds its own API waits with one shared budget read from the job environment', () => {
+  const source = readFileSync(new URL('./check-gate-files-fresh.mjs', import.meta.url), 'utf8');
+  assert.match(source, /gateApiBudget\.budgetSeconds = budgetSeconds;/);
+  assert.match(source, /gateApiBudget\.startedAt = Date\.now\(\);/);
+  assert.match(source, /process\.exit\(1\);\s*\}/);
 });

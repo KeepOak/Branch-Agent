@@ -729,8 +729,19 @@ export function isRateLimitError(error) {
   return /rate limit exceeded/i.test(text);
 }
 
+// Shared rate-limit budget for one process. When budgetSeconds is set (gate-files-fresh), every call draws
+// from one deadline and retries until it runs out, so the job cannot wait longer than its budget. Unset keeps
+// each call's own default budget.
+export const gateApiBudget = { budgetSeconds: undefined, startedAt: undefined };
+
 export function ghApi(repo, token, requestPath, { paginate = false, retries = 6 } = {}) {
-  return ghApiWithRetry(repo, token, requestPath, { paginate, retries });
+  const bounded = gateApiBudget.budgetSeconds != null;
+  return ghApiWithRetry(repo, token, requestPath, {
+    paginate,
+    retries: bounded ? Number.POSITIVE_INFINITY : retries,
+    budgetSeconds: gateApiBudget.budgetSeconds,
+    startedAt: gateApiBudget.startedAt,
+  });
   const args = ['api', `repos/${repo}/${requestPath}`, '-H', 'Accept: application/vnd.github+json'];
   if (paginate) args.splice(1, 0, '--paginate');
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -838,8 +849,15 @@ export function formatTimeoutMessage(pending, { missingAnalyze = false, unregist
   return `Timed out waiting for: ${waitingOn}\n${TIMEOUT_RERUN_LINE}`;
 }
 
-export function fetchPrFiles(repo, prNumber, token) {
-  const payload = ghApi(repo, token, `pulls/${prNumber}/files?per_page=100`, { paginate: true });
+// The file list waits out installation rate limits inside its own 10-minute cap (AGENTS rule 13).
+// The job keeps its 35-minute limit: the poll budget below counts from job start, so this wait is not extra time.
+export const PR_FILES_WAIT_SECONDS = 600;
+
+export function fetchPrFiles(repo, prNumber, token, {
+  request = (requestPath, options) => ghApiWithRetry(repo, token, requestPath, options),
+  budgetSeconds = PR_FILES_WAIT_SECONDS,
+} = {}) {
+  const payload = request(`pulls/${prNumber}/files?per_page=100`, { paginate: true, budgetSeconds });
   return Array.isArray(payload) ? payload : [];
 }
 
@@ -1232,6 +1250,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exit(1);
   }
 
+  const jobStartedAt = Date.now();
   const files = fetchPrFiles(repo, prNumber, token);
   const changedFiles = changedFilesFromPrFiles(files);
   const body = fetchPrBody(repo, prNumber, token);
@@ -1268,6 +1287,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   process.exit(pollTrustedGate({
     repo, sha, token, changedFiles, coreWorkflows,
     currentRunId: process.env.GITHUB_RUN_ID, prNumber, baseRef, maxAttempts, pollSeconds,
-    waitBudgetSeconds,
+    waitBudgetSeconds, startedAt: jobStartedAt,
   }));
 }
