@@ -160,7 +160,7 @@ function Buttons({ approval, details, name, onAnswer, disabled, open, setOpen, h
           </button>
         ) : null}
         <button type="button" className="btn ghost" data-action="open" aria-expanded={open} onClick={() => setOpen(!open)}>
-          {open ? "Close" : "Open"}
+          {open ? "Hide command" : "Show command"}
         </button>
         <button type="button" className="btn ghost" data-action="deny" title="Don’t · Ctrl D" onClick={() => onAnswer(approval.id, "deny")}>
           Don’t
