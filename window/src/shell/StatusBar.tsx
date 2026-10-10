@@ -88,7 +88,6 @@ function GatewayStatus(p: Pick<Props, "gateway" | "open" | "onItem">) {
       data-hide="gateway" data-state={p.gateway} aria-expanded={p.open === "gateway"} aria-haspopup="dialog"
       onClick={(e) => p.onItem("gateway", e)}>
       <StatusGlyph kind="gateway" colour={colour} />
-      <span className="status-label">Gateway</span>
     </button>
   );
 }
@@ -113,7 +112,8 @@ export function StatusBar(p: Props) {
     return () => window.clearTimeout(timer);
   }, [usageExpanded, p.open]);
   const connectionWord = WORDS[p.connection] || "Online";
-  const connectionLabel = p.connection === "connected" ? "Online" : `${connectionWord} · ${p.machineName}`;
+  // The computer's name lives in the top bar's switcher; here the label says only the state.
+  const connectionLabel = p.connection === "connected" ? "Online · you are here" : connectionWord;
   const connectionColour = p.connection === "connected" ? "var(--ok)" : p.connection === "connecting" ? "var(--warn)" : "var(--bad)";
   const left = p.roomUsed === null ? null : Math.max(0, Math.round((1 - p.roomUsed) * 100));
   const roomTip = left === null ? "Context" : `Context: ${left}% left. The room this conversation has for new messages. Click for details.`;
