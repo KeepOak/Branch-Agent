@@ -48,10 +48,10 @@ function keyBytes(base64: string): Uint8Array {
 
 /** Why this device's own rows can't change yet, or undefined once this browser is registered. */
 export function deviceOff(p: PushState): string | undefined {
-  if (p.loading) return "Checking this browser…";
-  if (!p.supported) return "This browser can’t show notifications.";
-  if (!p.reg) return "This window can’t receive notifications yet: it has no service worker.";
-  if (!p.device) return "Turn on notifications in This browser first.";
+  if (p.loading) return "Checking this computer…";
+  if (!p.supported) return "This computer can’t show notifications.";
+  if (!p.reg) return "This computer isn’t set up for notifications yet.";
+  if (!p.device) return "Turn on notifications on this computer first.";
   return undefined;
 }
 
@@ -62,7 +62,7 @@ async function subscribe(engine: WindowEngine, reg: ServiceWorkerRegistration) {
   if (typeof vapidPublicKey !== "string" || !vapidPublicKey) throw new Error("The engine didn’t give a push key.");
   const sub = (await reg.pushManager.getSubscription()) ?? await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(vapidPublicKey).buffer as ArrayBuffer });
   const json = sub.toJSON();
-  if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) throw new Error("This browser gave an incomplete subscription.");
+  if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) throw new Error("Notification setup on this computer is incomplete. Try again.");
   await engine.request("push.web.subscribe", { endpoint: json.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth } });
 }
 
@@ -90,7 +90,7 @@ export function useWebPush(engine: WindowEngine) {
     await load();
   });
   const setDevice = (edit: (d: DevicePrefs) => DevicePrefs) => run(async () => {
-    if (!state.sub || !latest.current) throw new Error("Turn on notifications in This browser first.");
+    if (!state.sub || !latest.current) throw new Error("Turn on notifications on this computer first.");
     const next = normalizeDevice(edit(latest.current));
     latest.current = next;
     setState((s) => ({ ...s, device: next }));
@@ -116,7 +116,7 @@ export function useTestSend(engine: WindowEngine) {
       setLine({ busy: false, text: `Sent to ${ok} ${ok === 1 ? "device" : "devices"}.` });
     } catch (error) {
       const why = errorText(error);
-      setLine({ busy: false, text: /no web push subscriptions/i.test(why) ? "No browser or phone has notifications on yet." : visible(why) });
+      setLine({ busy: false, text: /no web push subscriptions/i.test(why) ? "No computer or phone has notifications on yet." : visible(why) });
     }
   };
   return { ...line, send };
@@ -168,26 +168,26 @@ const PERM_WORD: Record<Perm, string> = { granted: "Allowed", denied: "Blocked",
 export function ThisBrowser({ engine, push }: { engine: WindowEngine; push: WebPush }) {
   const test = useTestSend(engine);
   const ios = typeof navigator !== "undefined" && /iPhone|iPad/.test(navigator.userAgent);
-  const why = push.loading ? "Checking this browser…" : !push.supported ? "This browser can’t show notifications." : push.permission === "denied" ? "Notifications are blocked for this site." : !push.reg ? "This window can’t receive notifications yet: it has no service worker." : undefined;
-  const hint = !push.supported ? "This browser can’t show notifications." : ios ? "Use Share › Add to Home Screen, then open Branch from there." : push.permission === "denied" ? "Allow notifications for this site in the browser’s settings, then reload." : "";
+  const why = push.loading ? "Checking this computer…" : !push.supported ? "This computer can’t show notifications." : push.permission === "denied" ? "Notifications are off for Branch in System Settings." : !push.reg ? "This computer isn’t set up for notifications yet." : undefined;
+  const hint = !push.supported ? "This computer can’t show notifications." : ios ? "Use Share › Add to Home Screen, then open Branch from there." : push.permission === "denied" ? "Open System Settings and allow notifications for Branch." : "";
   const on = Boolean(push.device);
   return (
-    <Sec title="This browser">
+    <Sec title="This computer">
       <dl className="kv nt-kv">
-        <dt>Browser support</dt><dd>{push.supported ? "Available" : "Not supported"}</dd>
+        <dt>Notification support</dt><dd>{push.supported ? "Available" : "Not supported"}</dd>
         <dt>Permission</dt><dd>{PERM_WORD[push.permission]}</dd>
         <dt>Status</dt><dd>{push.loading ? "Checking…" : on ? "On" : "Off"}</dd>
       </dl>
       <div className="acts nt-acts">
         <Btn sm disabled={Boolean(why) || on} title={shownWhy(why)} onClick={() => void push.turnOn()}>Turn on notifications</Btn>
-        <Btn sm ghost disabled={!push.sub} title={push.sub ? undefined : "This browser isn’t registered."} onClick={() => void push.turnOff()}>Turn off here</Btn>
-        <Btn sm ghost disabled={!on || test.busy} title={on ? undefined : "Turn on notifications here first."} onClick={() => void test.send()}>Send test</Btn>
+        <Btn sm ghost disabled={!push.sub} title={push.sub ? undefined : "This computer isn’t set up for notifications yet."} onClick={() => void push.turnOff()}>Turn off here</Btn>
+        <Btn sm ghost disabled={!on || test.busy} title={on ? undefined : "Turn on notifications on this computer first."} onClick={() => void test.send()}>Send test</Btn>
       </div>
       {why && why !== hint ? <Hint>{why}</Hint> : null}
       {hint ? <Hint>{hint}</Hint> : null}
       {push.error ? <Hint>{push.error}</Hint> : null}
       {test.text ? <Hint>{test.text}</Hint> : null}
-      <p className="hint nt-tight">The browser asks you first.</p>
+      <p className="hint nt-tight">Branch asks for permission before showing notifications.</p>
     </Sec>
   );
 }
