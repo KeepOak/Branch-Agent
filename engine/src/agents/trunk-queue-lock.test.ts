@@ -10,7 +10,7 @@ import { addQueueItem, listQueueItems } from "./trunk-queue.js";
 
 const execFileAsync = promisify(execFile);
 const ENGINE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const TSX_LOADER = path.join(ENGINE_ROOT, "scripts", "tsx.mjs");
+const TSX_LOADER = pathToFileURL(path.join(ENGINE_ROOT, "scripts", "tsx.mjs")).href;
 const QUEUE_MODULE = pathToFileURL(path.join(ENGINE_ROOT, "src", "agents", "trunk-queue.ts")).href;
 
 let dir = "";
