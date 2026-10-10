@@ -17,7 +17,14 @@ export function summarizeRuns(runs) {
       .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     return [name, named[0] ?? null];
   }));
-  const content = runs.filter((run) => !GATE_NAMES.includes(run.workflowName));
+  // Only the newest run per workflow counts: a cancelled or failed older run is superseded by its rerun or its replacement.
+  const newest = new Map();
+  for (const run of runs) {
+    if (GATE_NAMES.includes(run.workflowName)) continue;
+    const current = newest.get(run.workflowName);
+    if (!current || String(run.createdAt).localeCompare(String(current.createdAt)) > 0) newest.set(run.workflowName, run);
+  }
+  const content = [...newest.values()];
   return {
     gates,
     contentPending: content.some((run) => run.status !== 'completed'),
@@ -65,6 +72,28 @@ function listRuns(repo, sha) {
   }));
 }
 
+// Returns the exit code. A failed run listing reports "Attribution lookup failed" instead of crashing.
+export function runRecheck({
+  repo, sha, trigger, list = listRuns, rerun = rerunGate, log = console.log, error = console.error,
+}) {
+  let plan;
+  try {
+    plan = recheckPlan({ trigger, runs: list(repo, sha) });
+  } catch (err) {
+    error(`Attribution lookup failed: could not list the runs for ${sha}: ${String(err?.message ?? err).split('\n')[0]}`);
+    return 1;
+  }
+  for (const step of plan) {
+    log(`${step.gate}: ${step.action} (${step.reason})`);
+    if (step.action === 'rerun') rerun(repo, step.id);
+  }
+  return 0;
+}
+
+function rerunGate(repo, id) {
+  execFileSync('gh', ['run', 'rerun', String(id), '-R', repo], { stdio: 'inherit', env: process.env });
+}
+
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const repo = process.env.REPO;
   const sha = process.env.SHA;
@@ -75,8 +104,5 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     attempt: Number(process.env.TRIGGER_ATTEMPT ?? 1),
     name: process.env.TRIGGER_NAME,
   };
-  for (const step of recheckPlan({ trigger, runs: listRuns(repo, sha) })) {
-    console.log(`${step.gate}: ${step.action} (${step.reason})`);
-    if (step.action === 'rerun') execFileSync('gh', ['run', 'rerun', String(step.id), '-R', repo], { stdio: 'inherit', env: process.env });
-  }
+  process.exitCode = runRecheck({ repo, sha, trigger });
 }

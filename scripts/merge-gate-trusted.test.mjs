@@ -2154,11 +2154,10 @@ test('trusted coverage counts the real-engine handoff e2e from engine-handoff-ch
   assert.ok(!withHandoff.uncovered.includes('engine/test/gateway-desktop-handoff.e2e.test.ts'));
 });
 
-test('merge-gate recheck fires when Visual tour and Engine build complete', () => {
+test('merge-gate recheck fires on every completed run, so no check can drift out of its filter', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate-recheck.yml', import.meta.url), 'utf8');
-  assert.match(yaml, /^\s+-\s+Visual tour\s*$/m);
-  assert.match(yaml, /^\s+-\s+Engine build \(PR\)\s*$/m);
-  assert.match(yaml, /^\s+-\s+Gate files fresh\s*$/m);
+  assert.doesNotMatch(yaml, /^\s+workflows:/m);
+  assert.match(yaml, /types: \[completed\]/);
 });
 
 test('ordinary JS waiter additions stay aligned with the yaml jq filters', () => {
@@ -2744,4 +2743,25 @@ test('a skipped feature-batch job is missing, not a pass, when its paths changed
     coreWorkflows: [featureBatch],
   });
   assert.equal(passed.filter((item) => item.includes('feature-batch-checks.yml')).length, 0);
+});
+
+test('regression: an outage listing the head runs falls back to per-check lookups instead of crashing', () => {
+  const checks = [{ id: 601, name: 'merge-gate-trusted', check_suite: { id: 204 } }];
+  const workflows = gate.resolveWorkflowsForCheckRuns('example/repo', 'unused', checks, {
+    attributionCache: new Map(),
+    fetchRuns: () => { throw new Error('gh: API rate limit exceeded (HTTP 403)'); },
+    resolveWorkflow: () => earlierTrustedWorkflow,
+  });
+  assert.deepEqual(workflows, { 601: earlierTrustedWorkflow });
+});
+
+test('regression: an outage on both the listing and the per-check lookups is pending, not forged', () => {
+  const checks = [{ id: 602, name: 'merge-gate-trusted', check_suite: { id: 205 } }];
+  const workflows = gate.resolveWorkflowsForCheckRuns('example/repo', 'unused', checks, {
+    attributionCache: new Map(),
+    fetchRuns: () => { throw new Error('gh: Server Error (HTTP 502)'); },
+    resolveWorkflow: () => { throw new Error('gh: Server Error (HTTP 502)'); },
+  });
+  assert.equal(workflows[602].lookupFailed, true);
+  assert.equal(gate.findForeignTrustedChecks(checks, workflows, { allowedRunId: CURRENT_RUN_ID }).length, 0);
 });

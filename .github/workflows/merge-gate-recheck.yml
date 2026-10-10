@@ -5,21 +5,7 @@ name: Merge gate recheck
 # so the gates never need to poll for long. scripts/merge-gate-recheck.mjs decides which gates to rerun.
 on:
   workflow_run:
-    workflows:
-      - Feature batch checks
-      - Harvest checks
-      - Capability feature checks
-      - Feature slice checks
-      - Priority capability checks
-      - Writing quality checks
-      - Desktop checks
-      - GitHub component release
-      - macOS checks for OS-specific changes
-      - Visual tour
-      - Engine build (PR)
-      - Gate files fresh
-      - Merge gate
-      - Merge gate trusted
+    # No workflow filter: every completed run on a pull request head counts, the same as the ordinary gate.
     types: [completed]
 
 permissions:

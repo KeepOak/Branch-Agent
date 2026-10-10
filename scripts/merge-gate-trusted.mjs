@@ -934,14 +934,22 @@ export function resolveWorkflowsForCheckRuns(repo, token, checkRuns, {
 } = {}) {
   const workflowsByCheckId = {};
   const unresolved = checkRuns.filter((run) => !attributionCache.has(run.id));
-  const byId = runsById ?? (unresolved.length ? fetchRuns(repo, token, checkRuns[0]?.head_sha) : new Map());
+  // The one listing is guarded like the per-check lookups. An outage falls back to per-check lookups, and a
+  // lookup that still fails stays pending (below), so an outage never crashes the gate or counts as forged.
+  let byId = null;
+  try {
+    byId = runsById ?? (unresolved.length ? fetchRuns(repo, token, checkRuns[0]?.head_sha) : new Map());
+  } catch {
+    byId = null;
+  }
   for (const run of checkRuns) {
     if (attributionCache.has(run.id)) {
       workflowsByCheckId[run.id] = attributionCache.get(run.id);
       continue;
     }
     try {
-      const workflow = attributeFromRunList(run, byId) ?? resolveWorkflow(repo, token, run);
+      const fromList = byId ? attributeFromRunList(run, byId) : null;
+      const workflow = fromList ?? resolveWorkflow(repo, token, run);
       if (workflow) {
         workflowsByCheckId[run.id] = workflow;
         // Attribution is immutable for a check ID; status/conclusion still come from each poll.

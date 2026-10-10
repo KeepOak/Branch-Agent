@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { recheckPlan, summarizeRuns } from './merge-gate-recheck.mjs';
+import { recheckPlan, runRecheck, summarizeRuns } from './merge-gate-recheck.mjs';
 
 const run = (workflowName, status, conclusion, id = 1, createdAt = '2026-10-10T02:00:00Z') => ({ id, workflowName, status, conclusion, createdAt });
 const actions = (plan) => Object.fromEntries(plan.map((step) => [step.gate, step.action]));
@@ -102,13 +102,40 @@ test('the newest gate run is the one that decides', () => {
   assert.equal(summarizeRuns([older, newer, content('success')]).gates['Merge gate'].id, 2);
 });
 
-test('the recheck workflow lists one run per head, reacts to gate completion, and calls the script', () => {
+test('the recheck workflow has no workflow filter, reacts to every completed run, and calls the script', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate-recheck.yml', import.meta.url), 'utf8');
-  assert.match(yaml, /- Merge gate\n/);
-  assert.match(yaml, /- Merge gate trusted\n/);
+  assert.doesNotMatch(yaml, /^\s+workflows:/m);
+  assert.match(yaml, /types: \[completed\]/);
   assert.match(yaml, /node scripts\/merge-gate-recheck\.mjs/);
   assert.match(yaml, /TRIGGER_KIND: content|TRIGGER_KIND: \$\{\{/);
   assert.doesNotMatch(yaml, /gh run rerun "\$id"/);
+});
+
+test('regression: a cancelled older run of a check does not count once its newer run passed', () => {
+  const older = { id: 70, workflowName: 'Feature batch checks', status: 'completed', conclusion: 'cancelled', createdAt: '2026-10-10T01:00:00Z' };
+  const newer = { id: 71, workflowName: 'Feature batch checks', status: 'completed', conclusion: 'success', createdAt: '2026-10-10T02:00:00Z' };
+  const plan = recheckPlan({
+    trigger: { kind: 'content', conclusion: 'success' },
+    runs: [gate('failure'), older, newer],
+  });
+  assert.equal(actions(plan)['Merge gate'], 'rerun');
+});
+
+test('an outage listing the runs reports "Attribution lookup failed" and does not crash or rerun', () => {
+  const logged = [];
+  const reruns = [];
+  const code = runRecheck({
+    repo: 'example/repo',
+    sha: 'abc123',
+    trigger: { kind: 'content', conclusion: 'success' },
+    list: () => { throw new Error('gh: API rate limit exceeded (HTTP 403)'); },
+    rerun: (_repo, id) => reruns.push(id),
+    log: (line) => logged.push(line),
+    error: (line) => logged.push(line),
+  });
+  assert.equal(code, 1);
+  assert.match(logged.join('\n'), /Attribution lookup failed/);
+  assert.deepEqual(reruns, []);
 });
 
 test('the trusted gate and the aggregator are single-shot: no poll loop in either workflow', () => {
