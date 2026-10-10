@@ -4,7 +4,7 @@
 // is hidden, under reduced motion or "Keep things still", or without a slot in the shared cap.
 import { ACTION_STATES, ARRIVAL_STATES, type AgentState } from "./agentState";
 import { faceCap } from "./cap";
-import { SHEETS, inkColour, loadLayers, paintFrame, type Layers, type SheetState } from "./painter";
+import { SHEETS, inkColour, loadLayers, paintFrame, paintableColour, type Layers, type SheetState } from "./painter";
 
 let nextId = 1;
 
@@ -149,6 +149,6 @@ export class FacePlayer {
   }
 
   private paint(layers: Layers, frame: number): void {
-    paintFrame(this.canvas, layers, frame, this.look.colour || inkColour(this.canvas));
+    paintFrame(this.canvas, layers, frame, this.look.colour ? paintableColour(this.canvas, this.look.colour) : inkColour(this.canvas));
   }
 }

@@ -109,7 +109,7 @@ import { ControlTower } from "./ControlTower";
 import { StagePip } from "../stage/StagePip";
 import { AddComputer } from "../stage/AddComputer";
 import { computersChanged } from "../stage/computers";
-import { TrunkAppearances, TrunkPebbleLooks, TrunkEmojiFaces, rosterPebbleLooks, trunkAppearance, type Appearance } from "../face/appearance";
+import { TrunkAppearances, TrunkPebbleLooks, TrunkEmojiFaces, rosterPebbleLooks, themeColour, trunkAppearance, type Appearance } from "../face/appearance";
 import { CharacterPanel } from "../face/CharacterPanel";
 import { useShellRoom } from "../rooms/useShellRoom";
 import { NewGroupChatHost } from "../rooms/NewGroupChat";
@@ -1492,7 +1492,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     topicRow: Boolean(topicContact && activeTopics.length),
   });
   const showTower = route.kind === "chat" && ready && towerOn && !pane && !layout.focus && !stage && !draftTopic && firstRun.step === null;
-  const pebbleLooks = useMemo(() => rosterPebbleLooks(trunks.list), [trunks.list]);
+  const pebbleLooks = useMemo(() => rosterPebbleLooks(trunks.list, themeColour), [trunks.list]);
   const mainClass = route.kind === "chat" ? `main${pane ? " with-pane" : ""}${showThreadColumn || showTower ? " v23-layout" : ""}` : talkShown ? (talk.dock === "bottom" ? "main with-talk talk-bottom" : "main with-talk") : "main";
 
   return (

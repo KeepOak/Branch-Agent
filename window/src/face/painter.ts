@@ -60,6 +60,12 @@ export function inkColour(el: Element): string {
   return getComputedStyle(el).getPropertyValue("--ink-2").trim();
 }
 
+/** A colour a canvas can paint: a theme token such as `var(--trunk-3)` becomes the value it holds on `el`. */
+export function paintableColour(el: Element, colour: string): string {
+  const token = /^var\((--[\w-]+)\)$/.exec(colour.trim());
+  return token ? getComputedStyle(el).getPropertyValue(token[1]).trim() || inkColour(el) : colour;
+}
+
 /** Draws one frame (`frame` -1 means the still images, which hold one frame each). */
 export function paintFrame(canvas: HTMLCanvasElement, layers: Layers, frame: number, colour: string): void {
   const ctx = canvas.getContext("2d");
