@@ -14,7 +14,6 @@ import { formatMoney } from "../../../format/money";
 import "./gateway.css";
 
 const LEDE = "A small helper that keeps Branch running in the background, starts it again if it stops, and carries interrupted work on.";
-const APP = "Set by the Branch app on this computer.";
 const CONN = "This window’s connection is set by the Branch app; another computer is picked with the switcher at the top of the list.";
 const BIND = [{ id: "loopback", label: "This computer" }, { id: "lan", label: "My network" }, { id: "tailnet", label: "Tailscale" }, { id: "custom", label: "One address" }, { id: "auto", label: "Automatic" }];
 const BIND_LINE: Record<string, string> = { loopback: "Only this computer.", lan: "Any device on your network.", tailnet: "Your Tailscale devices, and this computer.", custom: "One address you choose, and this computer.", auto: "This computer if it can, otherwise every network." };
@@ -23,16 +22,15 @@ const COLORS = ["teal", "amber", "purple", "coral", "pink", "blue", "green", "re
 const DEFAULT_PORT = 18789;
 
 export const ROWS: RowEntry[] = [
-  ["Gateway", "Keep Branch running", 0], ["Keep working when the window closes", "Keep Branch running", 0], ["Carry on interrupted work by itself", "Keep Branch running", 0], ["Show the gateway in the tray", "Keep Branch running", 0],
-  ["Ask before quitting while work runs", "Keep Branch running", 0], ["A terminal where the Gateway runs", "What it has been doing", 1],
-  ["Who can reach the Gateway", "Reach", 1], ["Port", "Reach", 2], ["Sign-in", "Reach", 2], ["Through Cloudflare", "Reach", 1], ["Tailscale", "Reach", 1],
+  ["Keep working when the window closes", "Keep Branch running", 0],
+  ["Who can reach the Gateway", "Reach", 1], ["Port", "Reach", 2], ["Sign-in", "Reach", 2],
   ["Tailscale access", "Reach", 1], ["Serve Branch’s page to browsers", "Reach", 2], ["Label this computer", "How it’s reached", 1], ["Branch in your browser", "How it’s reached", 1],
-  ["Web address path", "How it’s reached", 2], ["Gateway address", "Connection", 2], ["Session key or password", "Connection", 2],
+  ["Web address path", "How it’s reached", 2], ["Gateway address", "Connection", 2],
   ["How to reach it", "Another computer", 1], ["Check the SSH host key", "Another computer", 2], ["Sign in through a proxy", "Another computer", 2],
-  ["Pause a chat app from the chat", "Chat apps, more", 1], ["Canary, journal and rollback", "Never break", 1], ["Apply settings changes", "Technical", 2], ["Only join a running Gateway", "Technical", 2],
+  ["Apply settings changes", "Technical", 2],
   ["Infrastructure settings", "Technical", 2], ["Accept files and pictures", "Exposure", 2], ["HSTS header", "Exposure", 2], ["HTTPS for the Gateway", "Exposure", 2], ["Allowed browser addresses", "Exposure", 2],
   ["Trust the Host header for origins", "Exposure", 2], ["Wrong sign-ins allowed", "Limits", 2], ["Then lock that address for", "Limits", 2], ["Never lock out this computer", "Limits", 2],
-  ["Reach previews from other devices", "App previews", 2], ["Send a message", "From scripts", 2], ["Connect a chat app", "From scripts", 2],
+  ["Send a message", "From scripts", 2], ["Connect a chat app", "From scripts", 2],
 ].map(([title, sec, lv]) => ({ page: "gateway", title: String(title), sec: String(sec), group: ({ Reach: "Connection", "How it’s reached": "Connection", Exposure: "Connection", Limits: "Connection", Technical: "Connection", "From scripts": "Connection", "Never break": "If it stops", "Chat apps, more": "Chat apps" } as Record<string, string>)[String(sec)] ?? String(sec), lv: lv as 0 | 1 | 2 }));
 
 type Config = ReturnType<typeof useConfig>;
@@ -54,7 +52,6 @@ export function GatewayPage(props: SettingsPageProps) {
       {ctx.lv >= 2 ? <Technical {...ctx} /> : null}
       {ctx.lv >= 2 ? <Exposure {...ctx} /> : null}
       {ctx.lv >= 2 ? <Limits {...ctx} /> : null}
-      {ctx.lv >= 2 ? <Previews /> : null}
       {ctx.lv >= 1 ? <Another {...ctx} /> : null}
       {ctx.lv >= 1 ? <ChatApps lv={ctx.lv} /> : null}
     </Page>
@@ -91,15 +88,9 @@ function KeepRunning() {
   const desk = useDesktopControls();
   return (
     <Sec title="Keep Branch running">
-      <Ctl title="Gateway" sub="Recommended: On." help="Recommended: On. Telegram, your phone and automations keep working when the window is closed." off={APP}>
-        <Seg label="Gateway" value="on" onChange={() => undefined} options={[{ id: "off", label: "Off" }, { id: "when-needed", label: "When needed" }, { id: "on", label: "On" }]} />
-      </Ctl>
       <Ctl title="Keep working when the window closes" sub="Trunks finish what they started." off={desk.off}>
         <Switch checked={desk.state?.keepWorking ?? false} disabled={desk.busy !== null} label="Keep working when the window closes" onChange={(on) => void desk.set("keepWorking", on)} />
       </Ctl>
-      <Ctl title="Carry on interrupted work by itself" sub="After a restart, safe steps carry on." help="After a restart, safe steps carry on. Anything that sends or changes something asks you first." off="The engine carries safe steps on by itself; there is no switch for it."><Switch label="Carry on interrupted work by itself" checked onChange={() => undefined} /></Ctl>
-      <Ctl title="Show the gateway in the tray" sub="A small Branch icon by the clock with Restart and Quit." off={APP}><Switch label="Show the gateway in the tray" checked onChange={() => undefined} /></Ctl>
-      <Ctl title="Ask before quitting while work runs" sub="Quit asks first while a Trunk is working." help="Quit asks first while a Trunk is working. Off until you choose: Branch quits at once." off={APP}><Switch label="Ask before quitting while work runs" checked={false} onChange={() => undefined} /></Ctl>
     </Sec>
   );
 }
@@ -125,8 +116,6 @@ function Reach({ config, lv }: Ctx) {
           </Ctl>
         </>
       ) : null}
-      <Ctl title="Through Cloudflare" sub="A public https address with Cloudflare sign-in in front." help="A public https address with Cloudflare sign-in in front. The Gateway stays on this computer and no port opens. Off until you choose: it puts Branch on a public address behind Cloudflare sign-in." off="Needs a Cloudflare tunnel set up outside Branch."><Btn sm>Set up</Btn></Ctl>
-      <Ctl title="Tailscale" sub="Reach Branch from your other devices over Tailscale." help="Reach Branch from your other devices over Tailscale. Off until you choose: it opens Branch to other devices." off="Branch can’t read Tailscale’s state from this engine." />
       <Ctl title="Tailscale access" sub="Branch doesn’t set Tailscale up.">
         <Seg label="Tailscale access" value={ts} disabled={config.loading} onChange={(v) => void config.set("gateway.tailscale.mode", v)} options={[{ id: "off", label: "Off" }, { id: "serve", label: "My tailnet" }, { id: "funnel", label: "Public" }]} />
       </Ctl>
@@ -177,14 +166,13 @@ function Reached(ctx: Ctx) {
       <ReachedStatus {...ctx} title={`${bind} · ${label || str(sys.machineName) || "This computer"}`} />
       <Acts>
         <Btn sm disabled={!page} title={page ? undefined : "Turn on Branch in your browser first."} onClick={open}>Open in a browser</Btn>
-        <Btn sm disabled title="Opens a terminal on your computer, from the Branch app.">Open a terminal here</Btn>
       </Acts>
       <Ctl title="Label this computer" sub="Shows which computer a window talks to." help="Off until you set a label: shows which computer a window talks to when you use more than one. 1 to 24 characters."
         after={<span className="gw-swatches" role="radiogroup" aria-label="Label colour">{COLORS.map((c) => <button key={c} type="button" role="radio" className={`gw-sw-${c}`} aria-label={c} aria-checked={Boolean(label) && c === color} disabled={!label} title={label ? c : "Set a label first."} onClick={() => void config.set("gateway.controlUi.environment", { label, color: c })} />)}</span>}>
         <Field label="Label this computer" value={label} placeholder="For example Staging" onCommit={(v) => void config.set("gateway.controlUi.environment", v.trim() ? { label: v.trim().slice(0, 24), color } : null)} />
       </Ctl>
       <Ctl title="Branch in your browser" sub="The Gateway also serves this window to a local browser." help="The gateway also shows this window to a browser on this computer, at the local address. Links Branch hands out open that page there. It works while the gateway runs."
-        after={<div className="gw-x"><Acts><Btn sm disabled={!page} onClick={open}>Open in browser</Btn></Acts></div>}>
+        >
         <Switch label="Branch in your browser" checked={page} disabled={config.loading} onChange={(on) => void config.set("gateway.controlUi.enabled", on)} />
       </Ctl>
       {lv >= 2 ? (
@@ -208,7 +196,6 @@ function Doing({ engine, health, sys, lv }: Ctx) {
       </ol>
       <Acts><Btn onClick={go} disabled={restart.busy}><Icon name="retry" small />Restart the engine</Btn></Acts>
       <CallLine call={restart} />
-      {lv >= 1 ? <Ctl title="A terminal where the Gateway runs" sub="Opens a terminal here in WSL or remotely over SSH." help="Opens a terminal on the Gateway’s computer: in WSL here, or over SSH on another computer." off="Open it from a conversation’s side panel (Terminal)."><Btn sm disabled>Open terminal</Btn></Ctl> : null}
     </Sec>
   );
 }
@@ -251,11 +238,6 @@ function Connection({ engine, config, sys: first }: Ctx) {
       <Ctl title="Gateway address" sub="Use wss:// for another computer or a secure remote address." help="Use wss:// behind HTTPS or Tailscale, and for any computer that isn’t this one." off={CONN}>
         <input className="inp" aria-label="Gateway address" value={address} readOnly spellCheck={false} />
       </Ctl>
-      <Ctl title="Session key or password" sub="The session key is kept for this window." help="The session key is kept for this window. Passwords are never stored. A phone setup code works here too." off={CONN}>
-        <input className="inp" type="password" aria-label="Session key or password" autoComplete="off" readOnly />
-        <button type="button" className="ib" aria-label="Show the key" disabled><Icon name="eye" small /></button>
-      </Ctl>
-      <Acts><Btn sm disabled title={CONN}>Reconnect</Btn></Acts>
       <h3 className="s2-h3">Gateway ping</h3>
       <Kv rows={[["Latest", pings.length ? `${Math.round(pings[pings.length - 1])} ms` : ""], ["Average", pings.length ? `${Math.round(pings.reduce((a, b) => a + b, 0) / pings.length)} ms` : ""], ["p50", pct(sorted, 50)], ["p95", pct(sorted, 95)], ["p99", pct(sorted, 99)]]} />
       <Hint>{`Pings kept: ${pings.length}/100${missed ? ` · ${missed} missed` : ""} · every 5 s while this page is open`}</Hint>
@@ -274,7 +256,6 @@ function Technical({ config, sys, openSettings }: Ctx) {
         <Seg label="Apply settings changes" value={reload} disabled={config.loading} onChange={(v) => void config.set("gateway.reload.mode", v)} options={[{ id: "hybrid", label: "Live" }, { id: "off", label: "Only on restart" }]} />
       </Ctl>
       <Kv rows={[["mode", str(config.get("gateway.mode")) || "local"], ["Address", `${str(config.get("gateway.bind")) || "loopback"} : ${Number(config.get("gateway.port")) || Number(sys.port) || DEFAULT_PORT}`], ["Sign-in", AUTH.find((a) => a.id === (str(config.get("gateway.auth.mode")) || "token"))?.label ?? ""], ["Process", str(sys.pid)]]} />
-      <Ctl title="Only join a running Gateway" sub="For people who run the Gateway themselves." help="For people who run the Gateway themselves. Off until you choose: nothing keeps Branch running when the window closes." off={APP}><Switch label="Only join a running Gateway" checked={false} onChange={() => undefined} /></Ctl>
       <Ctl title="Infrastructure settings" sub="Settings for the Gateway, browser and connected computers." help="Every setting for the Gateway, the browser, computers that join, finding computers nearby and the agent protocol.">
         <Btn sm disabled={!openSettings} onClick={() => openSettings?.("developer")}>Open</Btn>
       </Ctl>
@@ -352,16 +333,6 @@ function Limits({ config }: Ctx) {
   );
 }
 
-function Previews() {
-  return (
-    <Sec title="App previews">
-      <Ctl title="Reach previews from other devices" sub="Previews show on this computer only. Changing it restarts the gateway." off="Needs the engine’s preview server settings.">
-        <Seg label="Reach previews from other devices" value="here" onChange={() => undefined} options={[{ id: "here", label: "Directly" }, { id: "tailscale", label: "Private Tailscale" }, { id: "own", label: "My own address" }]} />
-      </Ctl>
-    </Sec>
-  );
-}
-
 /** A labelled input under "Another computer" that saves on blur; secrets are written but never read back. */
 function RemoteField({ label, value, placeholder, secret, onCommit }: { label: string; value: string; placeholder?: string; secret?: boolean; onCommit: (v: string) => void }) {
   const [draft, setDraft] = useState(value);
@@ -401,48 +372,22 @@ function Another({ config, lv }: Ctx) {
             </Ctl>
           </>
         ) : null}
-        <Acts><Btn pri sm disabled title="Connects from the Branch app on your computer.">Connect</Btn></Acts>
       </div>
     </Sec>
   );
 }
 
-/** The chat-app sections: what the engine has is a copy row; the rest says where it lives or why not. */
+/** Copyable commands for scripts and terminals, at Technical only. Chat-app controls live on the Chat apps page. */
 function ChatApps({ lv }: { lv: number }) {
-  const demo = "Needs the engine’s chat-app records.";
+  if (lv < 2) return null;
   return (
-    <>
-      <Sec title="Chat apps, more" group="Chat apps">
-        <Ctl title="Pause a chat app from the chat" sub="/pause and /resume in that app." off="Pausing from the chat needs the engine’s chat command."><Switch label="Pause a chat app from the chat" checked={false} onChange={() => undefined} /></Ctl>
-      </Sec>
-      {lv >= 2 ? (
-        <Sec title="From scripts" group="Connection" showHeading={false}>
-          <CodeRow title="Send a message" code={'branch message send --channel telegram --target @me --message "Backup done"'} sub="From any script or scheduled job." />
-          <CodeRow title="Connect a chat app" code="branch channels add --channel telegram --token <token>" sub="In one command." />
-          <CodeRow title="Send to several chats" code={'branch message broadcast --targets telegram:@me slack:channel:C123 --message "Backup done"'} sub="Each target gets it; any that fails is named." />
-          <CodeRow title="Ask a poll" code={'branch message poll --channel telegram --target @team --poll-question "Lunch?" --poll-option Pizza --poll-option Sushi'} sub="2 to 12 options, in the chat apps that have polls." />
-          <CodeRow title="Everything else in a chat" code="branch message --help" sub="Reply, react, edit and pin through a chat app." help="Reply, react, edit, pin, threads and more, per chat app. Add --dry-run to see it first." />
-        </Sec>
-      ) : null}
-      <Sec title="Chat apps, even more" group="Chat apps" showHeading={false}>
-        <Ctl title="Send files into chats" sub="A Trunk can reply with the file itself, not a link." off="Set per chat app in Chat apps."><Switch label="Send files into chats" checked onChange={() => undefined} /></Ctl>
-        <Ctl title="Relay for chat-app accounts" sub="The relay delivers messages using your phone number." help="Your phone number passes through the relay to deliver messages and is never saved. Off until you choose: your number would go through the relay." off="Needs the engine’s chat relay."><Switch label="Relay for chat-app accounts" checked={false} onChange={() => undefined} /></Ctl>
-        <Ctl title="Push to your phone and browser" sub="When a Trunk needs you and no chat app is set up." off="Set in Notifications."><Switch label="Push to your phone and browser" checked onChange={() => undefined} /></Ctl>
-      </Sec>
-      <Sec title="Never break" group="If it stops">
-        <Ctl title="Canary, journal and rollback" sub="Tries changes on a copy and rolls back bad ones." help="Every change to how Branch runs is tried on a copy first; a bad one is rolled back by itself." off="Needs the engine’s change journal."><Btn sm>Open the journal</Btn></Ctl>
-      </Sec>
-      <Sec title="Chat apps, in depth" group="Chat apps" showHeading={false}>
-        <Ctl title="Telegram, in depth" sub="Mentions in groups, long replies, live typing and approval buttons." off="Set per chat app in Chat apps."><Btn sm>See all</Btn></Ctl>
-        <Ctl title="Messages that always arrive" sub="Retries outgoing messages until the chat app takes them." help="Every outgoing message is written down and tried again until the app takes it." off={demo}><Btn sm>See the record</Btn></Ctl>
-        <Ctl title="Messages that didn’t get through" sub="Messages a chat app sent that failed after every retry." help="Messages a chat app sent that failed after every retry. Fix the cause, then send one through again." off="Listed from a terminal, below."><Btn sm>See them</Btn></Ctl>
-        {lv >= 2 ? <CodeRow title="From a terminal" code="branch channels dead-letters list --channel telegram" sub="Add resubmit <id> to send one again." /> : null}
-        <Ctl title="Voice notes from chat apps" sub="Transcribes Telegram and WhatsApp voice notes here." help="A voice note sent in Telegram or WhatsApp is turned into words on this computer." off="Set in Voice."><Btn sm>Show one</Btn></Ctl>
-        <Ctl title="Send to several chats" sub="One message, or a daily digest, to several chats at once." off="From a terminal: From scripts."><Btn sm>Set up a digest</Btn></Ctl>
-        <Ctl title="Which Trunk answers" sub="Routes chat-app messages to the right Trunk." help="Rules that send a chat-app message to the right Trunk, or answer simple ones by themselves." off="Set per chat app in Chat apps (Who answers)."><Btn sm>See rules</Btn></Ctl>
-        <Ctl title="Several Trunks in one chat" sub="Choose which Trunks answer a chat-app conversation." help="Pick a chat-app conversation and the Trunks that all answer it, each in its own conversation." off={demo}><Btn sm>Set up</Btn></Ctl>
-        <Ctl title="Addresses for chat apps" sub="Each chat app reaches Branch at its own address." help="Each chat app reaches Branch at its own address. Change one if it leaks." off={demo}><Btn sm>See addresses</Btn></Ctl>
-      </Sec>
-    </>
+    <Sec title="From scripts" group="Connection" showHeading={false}>
+      <CodeRow title="Send a message" code={'branch message send --channel telegram --target @me --message "Backup done"'} sub="From any script or scheduled job." />
+      <CodeRow title="Connect a chat app" code="branch channels add --channel telegram --token <token>" sub="In one command." />
+      <CodeRow title="Send to several chats" code={'branch message broadcast --targets telegram:@me slack:channel:C123 --message "Backup done"'} sub="Each target gets it; any that fails is named." />
+      <CodeRow title="Ask a poll" code={'branch message poll --channel telegram --target @team --poll-question "Lunch?" --poll-option Pizza --poll-option Sushi'} sub="2 to 12 options, in the chat apps that have polls." />
+      <CodeRow title="Everything else in a chat" code="branch message --help" sub="Reply, react, edit and pin through a chat app." help="Reply, react, edit, pin, threads and more, per chat app. Add --dry-run to see it first." />
+      <CodeRow title="Messages that didn’t get through" code="branch channels dead-letters list --channel telegram" sub="Add resubmit <id> to send one again." />
+    </Sec>
   );
 }
