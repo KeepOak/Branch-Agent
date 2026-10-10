@@ -67,7 +67,7 @@ export function CanopyPlace({ engine, openConversation, openPlace, level }: Plac
         {state.notice ? <p role="status" className="cn-notice">{state.notice}</p> : null}
         {ctx ? <>
           <Strip ctx={ctx} runs={all} f={f} setF={setF} /><FilterRow ctx={ctx} f={f} setF={setF} />
-          {tab === "now" ? <NowTab ctx={ctx} all={all} list={filterRuns(all, f)} />
+          {tab === "now" ? <NowTab ctx={ctx} all={all} list={filterRuns(all, f)} filtered={!!(f.trunk.length || f.person.length || f.comp.length)} clear={() => setF(NO_FILTERS)} />
             : d && isCardsOff(d.cardsError) ? <CardsOff ctx={ctx} refresh={() => void state.refresh()} />
             : d?.cardsError ? <p role="alert" className="cn-err">Cards: {d.cardsError}</p>
             : <CardsTab ctx={ctx} trunks={f.trunk} setTrunks={t => setF({ ...f, trunk: t })} sheet={c => setSheet(String(c.id))} />}

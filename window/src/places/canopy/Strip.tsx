@@ -11,6 +11,9 @@ import { anchorOf, ChoiceMenu, TrunkFace, type Ctx } from "./ui";
 
 const WORD: Record<Computer["state"], string> = { ok: "Online", sleep: "Asleep · wakes when asked", off: "Offline" };
 
+/** A chip names a run count only when runs are tied to it: Canopy sees only this Gateway's runs, so "0 running" isn't a fact. */
+const runningOn = (live: Run[], c: Computer) => c.counted === false ? 0 : live.filter(r => r.comp === c.id).length;
+
 export function Strip({ ctx, runs, f, setF }: { ctx: Ctx; runs: Run[]; f: Filters; setF: (f: Filters) => void }) {
   const [menu, setMenu] = useState<{ id: string; at: MenuAnchor } | null>(null);
   const live = runs.filter(r => r.col === "working" || r.col === "waiting");
@@ -23,7 +26,7 @@ export function Strip({ ctx, runs, f, setF }: { ctx: Ctx; runs: Run[]; f: Filter
           onClick={() => pick(c.id)}
           onContextMenu={e => { if (!shows(ctx.level, "advanced")) return; e.preventDefault(); more(c.id, e.currentTarget); }}
           onKeyDown={e => { if (e.key === "F10" && e.shiftKey) { e.preventDefault(); more(c.id, e.currentTarget); } }}>
-          <Icon name="monitor" /><b>{c.name}</b><span className={`cn-cdot ${c.state}`} role="img" aria-label={WORD[c.state]} />{c.counted === false ? null : <small>{live.filter(r => r.comp === c.id).length} running</small>}
+          <Icon name="monitor" /><b>{c.name}</b><span className={`cn-cdot ${c.state}`} role="img" aria-label={WORD[c.state]} />{runningOn(live, c) ? <small>{runningOn(live, c)} running</small> : null}
         </button>
       ))}
       {menu ? <OnComputer ctx={ctx} id={menu.id} at={menu.at} close={() => setMenu(null)} /> : null}
