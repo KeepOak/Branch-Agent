@@ -245,9 +245,6 @@ export const engineStrictFiles = [
   'src/infra/host-env-security-policy.d.ts',
   'src/agents/cli-output-stream.ts',
   'src/agents/cli-output-stream.test.ts',
-  // Startup model publication supersession tests (PR #908).
-  'src/agents/prepared-model-runtime.startup-replacement.test.ts',
-  'src/agents/prepared-model-runtime.supersession-retry.test.ts',
   // Native browser, workspace glob, media and provider metadata capabilities.
   'extensions/browser/src/browser/act-policy.ts',
   'extensions/browser/src/browser/client-actions.types.ts',
