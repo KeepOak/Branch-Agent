@@ -69,7 +69,7 @@ function Row({ icon, label, hint, onClick, testid }: { icon: Parameters<typeof I
   );
 }
 
-/** The person menu (DESIGN-SPEC §4.1.5): who is using Branch, Look, then Settings and help. */
+/** The person menu (DESIGN-SPEC §4.1.5): who is using Branch, Settings first, then Look, then help. */
 export function PersonMenu(p: Props) {
   const run = (f: () => void) => () => {
     p.onClose();
@@ -89,12 +89,13 @@ export function PersonMenu(p: Props) {
         </button>
       </div>
       <hr className="msep" />
+      <Row icon="gear" label="Settings" hint="Ctrl ," onClick={run(p.onSettings)} testid="person-settings" />
+      <hr className="msep" />
       <div className="fs-row">
         <span>Look</span>
         <Segmented label="Look" value={p.theme} options={LOOK} onChange={p.onTheme} testid="look" />
       </div>
       <hr className="msep" />
-      <Row icon="gear" label="Settings" hint="Ctrl ," onClick={run(p.onSettings)} testid="person-settings" />
       {p.updateTo && p.onUpdate ? (
         <button type="button" className="mi" data-testid="person-update" onClick={run(p.onUpdate)}>
           <Icon name="spark" small />

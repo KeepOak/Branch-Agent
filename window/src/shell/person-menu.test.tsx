@@ -28,9 +28,11 @@ async function show(updateTo: string | null, f = fns()) {
 
 const labels = (host: HTMLElement) => [...host.querySelectorAll<HTMLButtonElement>("button.mi")].map((b) => b.querySelector(".mi-label")?.textContent ?? "");
 
-it("lists Settings once, then Help, the apps and Lock; no Achievements or Set up rows", async () => {
+it("lists Settings first with its gear, then Look, Help, the apps and Lock; no Achievements or Set up rows", async () => {
   const host = await show(null);
   expect(labels(host)).toEqual(["Settings", "Guide", "Keyboard shortcuts", "About Branch", "Get the apps", "Lock Branch"]);
+  expect(host.querySelector("[data-testid=person-settings] svg")).not.toBeNull();
+  expect(host.querySelector("button.mi")?.getAttribute("data-testid")).toBe("person-settings");
   expect(host.textContent).not.toContain("Achievements");
   expect(host.textContent).not.toContain("Set up Branch");
 });
