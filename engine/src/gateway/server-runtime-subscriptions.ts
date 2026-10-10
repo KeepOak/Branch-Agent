@@ -149,6 +149,9 @@ export function startGatewayEventSubscriptions(params: {
       signal: params.signal,
     }),
   );
+  void import("./server-methods/trunk-team-progress.js").then(({ attachTeamProgress }) =>
+    attachTeamProgress(params.broadcast),
+  );
   const sessionActivitySummaries = createSessionActivitySummaries({
     scheduler: params.scheduler,
     getConfig: getRuntimeConfig,

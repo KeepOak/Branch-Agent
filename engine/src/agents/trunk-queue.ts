@@ -112,6 +112,7 @@ function failClaim(row: TrunkQueueItem, now: number, reason: string): void {
     row.blocked_reason =
       `Stopped after ${MAX_CLAIM_FAILURES} failed attempts (last: ${reason}). ` +
       "Check the Trunk, then queue_release this job to run it again.";
+    announce({ kind: "blocked", item: { ...row } });
   }
 }
 
@@ -160,6 +161,28 @@ export function listQueueItems(
 }
 
 /** Marks a job finished and returns it (with the Trunk that held it). */
+/** A real change in a job's state. Refreshes and no-op calls produce none. */
+export type QueueTransition = {
+  kind: "claimed" | "done" | "released" | "blocked";
+  item: TrunkQueueItem;
+  agentId?: string;
+};
+type QueueTransitionListener = (transition: QueueTransition) => void;
+let transitionListener: QueueTransitionListener | undefined;
+
+/** The gateway sets one listener for progress lines. Clearing it (undefined) stops them. */
+export function setQueueTransitionListener(listener: QueueTransitionListener | undefined): void {
+  transitionListener = listener;
+}
+
+function announce(transition: QueueTransition): void {
+  try {
+    transitionListener?.(transition);
+  } catch {
+    // A progress line must never fail the queue operation that produced it.
+  }
+}
+
 export function markQueueItemDone(
   id: string,
   env?: NodeJS.ProcessEnv,
@@ -170,8 +193,12 @@ export function markQueueItemDone(
   if (!row) {
     return undefined;
   }
+  const firstCompletion = row.done_at === undefined;
   row.done_at ??= now;
   write(rows, now, env);
+  if (firstCompletion) {
+    announce({ kind: "done", item: { ...row } });
+  }
   return row;
 }
 
@@ -193,8 +220,10 @@ export function releaseQueueItem(
   }
   const before = { ...row };
   if (isOpenClaim(row) && (claimId === undefined || row.claim_id === claimId)) {
+    const claimant = row.claimed_by;
     release(row, now);
     write(rows, now, env);
+    announce({ kind: "released", item: { ...row }, agentId: claimant });
   } else if (!row.claimed_by && row.blocked_reason) {
     delete row.blocked_reason;
     row.failures = 0;
@@ -304,6 +333,7 @@ export function claimNextQueueItem(
     active_at: now,
   });
   write(rows, now, env);
+  announce({ kind: "claimed", item: { ...claim }, agentId });
   return claim;
 }
 
