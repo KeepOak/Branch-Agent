@@ -39,6 +39,7 @@ export const validateRoomsMembersAddParams = compile(S.RoomsMembersAddParamsSche
 export const validateRoomsMembersRemoveParams = compile(S.RoomsMembersRemoveParamsSchema);
 export const validateRoomsRuleSetParams = compile(S.RoomsRuleSetParamsSchema);
 export const validateRoomsArchiveParams = compile(S.RoomsArchiveParamsSchema);
+export const validateRoomsMergeRecordParams = compile(S.RoomsMergeRecordParamsSchema);
 export const validateCommandsListParams = compile(S.CommandsListParamsSchema);
 export const validateBackupStatusParams = compile(S.BackupStatusParamsSchema);
 export const validateBackupScheduleSetParams = compile(S.BackupScheduleSetParamsSchema);

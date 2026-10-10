@@ -273,7 +273,7 @@ export function appendRoomEvent(
   kind: string,
   actorId: string,
   payload: unknown,
-  eventId = randomUUID(),
+  eventId: string = randomUUID(),
 ): RoomEvent {
   requireText(kind, "event kind", 64);
   requireText(actorId, "actor id", 128);
