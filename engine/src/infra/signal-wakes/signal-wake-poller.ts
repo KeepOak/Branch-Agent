@@ -38,8 +38,10 @@ export type SignalPollerOptions = {
 
 type PollContext = {
   options: SignalPollerOptions;
-  /** Loaded from the store on the first tick, then kept in memory and written after each tick. */
+  /** Committed state. Loaded from the store on the first tick, then advanced only after a durable write. */
   states?: SignalStateMap;
+  /** True until the first tick after a record-only load completes. Such a tick never wakes. */
+  recordOnly: boolean;
 };
 
 function repoKey(repo: RepoRef): string {
@@ -65,6 +67,7 @@ async function tickPr(
   pull: PullSummary,
   trunkId: string,
   prs: Map<number, PrSignalState>,
+  pending: SignalDecision[],
 ): Promise<void> {
   const github = ctx.options.github;
   const checks = await github.listCheckRuns(repo, pull.headSha);
@@ -84,9 +87,8 @@ async function tickPr(
     failingChecks: failingCheckNames(checks),
     latestVerdict: latestBranchVerdict(comments),
   });
-  // Notify before recording state: a failed notify is retried on the next tick.
-  diff.signals.forEach(ctx.options.notify);
   prs.set(pull.number, diff.next);
+  pending.push(...diff.signals);
 }
 
 function forgetClosedPrs(prs: Map<number, PrSignalState>, pulls: readonly PullSummary[]): void {
@@ -98,7 +100,12 @@ function forgetClosedPrs(prs: Map<number, PrSignalState>, pulls: readonly PullSu
   }
 }
 
-async function tickRepo(ctx: PollContext, repo: RepoRef, states: SignalStateMap): Promise<void> {
+async function tickRepo(
+  ctx: PollContext,
+  repo: RepoRef,
+  states: SignalStateMap,
+  pending: SignalDecision[],
+): Promise<void> {
   const key = repoKey(repo);
   const prs = states.get(key) ?? new Map<number, PrSignalState>();
   states.set(key, prs);
@@ -107,7 +114,7 @@ async function tickRepo(ctx: PollContext, repo: RepoRef, states: SignalStateMap)
   for (const pull of pulls) {
     const trunkId = trunkForHeadRef(pull.headRef, trunkIds);
     if (trunkId !== undefined) {
-      await tickPr(ctx, repo, pull, trunkId, prs).catch((error: unknown) =>
+      await tickPr(ctx, repo, pull, trunkId, prs, pending).catch((error: unknown) =>
         reportError(ctx, error),
       );
     }
@@ -118,9 +125,14 @@ async function tickRepo(ctx: PollContext, repo: RepoRef, states: SignalStateMap)
 async function loadStates(ctx: PollContext): Promise<SignalStateMap | undefined> {
   if (ctx.states === undefined) {
     try {
-      ctx.states = await ctx.options.store.read();
+      const load = await ctx.options.store.read();
+      ctx.states = load.states;
+      ctx.recordOnly = load.recordOnly;
+      if (load.warning !== undefined) {
+        ctx.options.onError?.(load.warning);
+      }
     } catch (error: unknown) {
-      // Without the persisted state, a tick could re-wake old signals, so it does nothing.
+      // Without the persisted state a tick could re-wake old signals, so it does nothing.
       reportError(ctx, error);
       return undefined;
     }
@@ -128,20 +140,48 @@ async function loadStates(ctx: PollContext): Promise<SignalStateMap | undefined>
   return ctx.states;
 }
 
+/** Sends each signal. A failed send is reported; its state is already durable, so it is not replayed. */
+function sendSignals(ctx: PollContext, signals: readonly SignalDecision[]): void {
+  for (const signal of signals) {
+    try {
+      ctx.options.notify(signal);
+    } catch (error: unknown) {
+      reportError(ctx, error);
+    }
+  }
+}
+
+/**
+ * One tick works on a copy. It records the new state durably first, then sends the wakes. A crash
+ * between the two cannot replay a wake, and a failed write sends nothing and is retried next tick.
+ */
 async function runTick(ctx: PollContext): Promise<void> {
-  const states = await loadStates(ctx);
-  if (states === undefined) {
+  const loaded = await loadStates(ctx);
+  if (loaded === undefined) {
     return;
   }
+  const next: SignalStateMap = structuredClone(loaded);
+  const pending: SignalDecision[] = [];
   for (const repo of ctx.options.repos) {
-    await tickRepo(ctx, repo, states).catch((error: unknown) => reportError(ctx, error));
+    await tickRepo(ctx, repo, next, pending).catch((error: unknown) => reportError(ctx, error));
   }
-  await ctx.options.store.write(states).catch((error: unknown) => reportError(ctx, error));
+  try {
+    await ctx.options.store.write(next);
+  } catch (error: unknown) {
+    reportError(ctx, error);
+    return;
+  }
+  ctx.states = next;
+  const recordOnly = ctx.recordOnly;
+  ctx.recordOnly = false;
+  if (!recordOnly) {
+    sendSignals(ctx, pending);
+  }
 }
 
 /** Starts one poller per gateway. Ticks never overlap; the timer is unref'd and stops on request. */
 export function startSignalWakePoller(options: SignalPollerOptions): SignalPoller {
-  const ctx: PollContext = { options };
+  const ctx: PollContext = { options, recordOnly: false };
   let inFlight: Promise<void> | undefined;
   const tick = (): Promise<void> => {
     inFlight ??= runTick(ctx).finally(() => {
