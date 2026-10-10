@@ -108,8 +108,10 @@ it("computer popover lists saved computers but not linked teammates", () => {
   expect(rows.find((row) => "label" in row && row.label === "Other computer")).toMatchObject({ sub: "Saved computer" });
   expect(rows.find((row) => "label" in row && row.label === "teammate.example.test")).toBeUndefined();
   expect(rows.some((row) => "label" in row && row.label === "Workspace")).toBe(false);
+  const add = rows.find((row) => "label" in row && row.label === "Add a computer or phone");
+  expect(add).toMatchObject({ kind: "sub" });
   for (const row of rows) if ("run" in row && row.run) row.run();
-  expect(openSettings).toHaveBeenCalledWith("computer");
+  if (add && "items" in add) for (const row of add.items) if ("run" in row && row.run) row.run();
   expect(openSettings).toHaveBeenCalledWith("gateway");
   expect(elsewhere).toHaveBeenCalledOnce();
   expect(onLinkBranch).toHaveBeenCalledOnce();
