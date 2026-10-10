@@ -198,7 +198,7 @@ describe("model runtime publication supersession", () => {
     await expect(dispatch).resolves.toMatchObject({ agentId: "worker" });
   });
 
-  it("reports a publication that a superseding refresh drops, so startup can publish it again", async () => {
+  it("reports a publication that a superseding refresh drops before its auth drain (the queued task's currency check), so startup can publish it again", async () => {
     const config = {};
     mocks.configuredAgentIds = ["worker"];
     const started = createDeferred();
@@ -272,6 +272,71 @@ describe("model runtime publication supersession", () => {
     expect(attempts).toBe(2);
     expect(republished).toBe(1);
     expect(getPreparedModelRuntimeSnapshot(fixture.agentInput("worker", config))).toBeDefined();
+  });
+
+  it("republishes a publication whose gate a newer scoped refresh replaces during its auth drain (commitReplacement's replaced-gate branch)", async () => {
+    const config = {};
+    mocks.configuredAgentIds = ["worker"];
+    await refreshPreparedModelRuntimeSnapshots(config, { gatewayLifecycle: true });
+    const worker = fixture.agentInput("worker", config);
+    const buildStarted = createDeferred();
+    const releaseBuild = createDeferred();
+    const drainStarted = createDeferred();
+    const releaseDrain = createDeferred();
+    let draining = false;
+    mocks.ensureBranchModelsJson
+      .mockImplementationOnce(async (_config, agentDir) => {
+        buildStarted.resolve();
+        await releaseBuild.promise;
+        return { agentDir: String(agentDir), wrote: false };
+      })
+      .mockImplementationOnce(async (_config, agentDir) => {
+        // The auth drain's rebuild runs after the publication's last currency check.
+        draining = true;
+        drainStarted.resolve();
+        await releaseDrain.promise;
+        return { agentDir: String(agentDir), wrote: false };
+      });
+    const scoped = { agentIds: new Set(["worker"]), gatewayLifecycle: true };
+    let attempts = 0;
+    let republished = 0;
+    let firstOutcome: Promise<unknown> | undefined;
+    let successor: Promise<void> | undefined;
+    await publishStartupModelsUntilUnskipped({
+      assertCurrent: () => undefined,
+      onRepublish: () => {
+        republished += 1;
+      },
+      publishOnce: async (onSkipped) => {
+        attempts += 1;
+        await successor;
+        const publication = refreshPreparedModelRuntimeSnapshots(config, {
+          ...scoped,
+          onPublicationSkipped: onSkipped,
+        });
+        if (attempts === 1) {
+          firstOutcome = publication.then(
+            () => "resolved",
+            (error: unknown) => error,
+          );
+          await buildStarted.promise;
+          // An auth change during the build joins this publication's gate, so it drains it.
+          mocks.mutationListener?.({ agentDir: worker.agentDir, affectsInheritedStores: false });
+          releaseBuild.resolve();
+          await drainStarted.promise;
+          // A newer scoped refresh replaces the pending gate while the drain runs.
+          successor = refreshPreparedModelRuntimeSnapshots(config, scoped);
+          releaseDrain.resolve();
+        }
+        await publication;
+      },
+    });
+    expect(draining).toBe(true);
+    // The replaced-gate branch returns quietly; the not-current branch rejects as superseded.
+    await expect(firstOutcome).resolves.toBe("resolved");
+    expect(attempts).toBe(2);
+    expect(republished).toBe(1);
+    expect(getPreparedModelRuntimeSnapshot(worker)).toBeDefined();
   });
 
   it("fails a startup publication whose config or secrets change while it is republished", async () => {
