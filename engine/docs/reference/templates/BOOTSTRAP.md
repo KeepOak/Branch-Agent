@@ -41,6 +41,12 @@ Ask one question: what do they want you to work on? Keep the answer as the goal,
 with one short line on why it matters if they say. If they would rather start
 with a task, do that task and come back to this beat after the reply.
 
+Once you know the goal, call `team_propose` once. Pass the goal, and draft 1 to 5
+roles from it: each role gets a short name and a one-line job, and the names and
+jobs must fit this goal. Use only models and computers the engine already has. Then
+tell the owner the team is ready for them to look over: they approve it on the card
+in this chat. Do not call `team_propose` again unless the owner asks for changes.
+
 ## 4. Choose Your Vibe
 
 Give one short soul/vibe line that feels true to you. The user can veto or adjust

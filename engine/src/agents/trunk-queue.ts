@@ -3,6 +3,7 @@
 // Branch's state folder and only the gateway writes it: each read-modify-write is synchronous, so two Trunks that
 // finish together can never claim the same job. Same storage pattern as gateway/contacts/graft-work.ts.
 import { randomUUID } from "node:crypto";
+import { teamState } from "./trunk-team-registry.js";
 import { isClaimThreadLive, probeWorking, waitForTrunkIdle } from "./trunk-queue-probe.js";
 import {
   claimMayRelease,
@@ -109,6 +110,63 @@ function releaseClaimAnnounced(
   return released;
 }
 
+/** A team job is claimable only by a member of that team; any other job is open to every eligible Trunk. */
+function mayClaim(row: TrunkQueueItem, agentId: string, env?: NodeJS.ProcessEnv): boolean {
+  if (!row.team) {
+    return true;
+  }
+  const state = teamState(row.team, env);
+  return state.status === "members" && state.members.includes(agentId);
+}
+
+/** The plain reason a team job waits when its team is not set up on this computer. */
+function unsetTeamReason(team: string): string {
+  return `Team ${team} isn't set up on this computer. Set the team up again; the job then runs.`;
+}
+
+/** The reason a team job waits while the registry cannot be read. Recognised by its prefix when it clears. */
+const PAUSED_PREFIX = "Team jobs are paused. ";
+
+/**
+ * Keeps each team job's block in step with its team. A job whose team is not registered is blocked with a plain reason,
+ * and unblocked when the team is registered again. While the registry cannot be read, team jobs carry the pause reason
+ * and clear it once the registry reads again. Other blocks are left alone. Returns whether any row changed.
+ */
+function refreshTeamBlocks(rows: TrunkQueueItem[], env?: NodeJS.ProcessEnv): boolean {
+  const states = new Map<string, ReturnType<typeof teamState>>();
+  let changed = false;
+  for (const row of rows) {
+    if (!row.team || row.done_at || row.claimed_by) {
+      continue;
+    }
+    if (!states.has(row.team)) {
+      states.set(row.team, teamState(row.team, env));
+    }
+    const state = states.get(row.team)!;
+    const reason = row.blocked_reason;
+    if (state.status === "paused") {
+      const wanted = PAUSED_PREFIX + state.problem;
+      if (reason !== wanted && (!reason || reason.startsWith(PAUSED_PREFIX))) {
+        row.blocked_reason = wanted;
+        changed = true;
+      }
+      continue;
+    }
+    if (reason?.startsWith(PAUSED_PREFIX)) {
+      delete row.blocked_reason;
+      changed = true;
+    }
+    if (state.status === "unregistered" && !row.blocked_reason) {
+      row.blocked_reason = unsetTeamReason(row.team);
+      changed = true;
+    } else if (state.status === "members" && row.blocked_reason === unsetTeamReason(row.team)) {
+      delete row.blocked_reason;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 /** Returns true when this failure blocked the job; the caller announces it after its lock is released. */
 function failClaim(row: TrunkQueueItem, now: number, reason: string): boolean {
   row.failures = (row.failures ?? 0) + 1;
@@ -136,7 +194,7 @@ export function queueItemStatus(row: TrunkQueueItem): TrunkQueueStatus {
 }
 
 export function addQueueItem(
-  input: { title: string; brief_text: string; priority?: number },
+  input: { title: string; brief_text: string; priority?: number; team?: string },
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
 ): TrunkQueueItem {
@@ -148,6 +206,7 @@ export function addQueueItem(
       brief_text: input.brief_text,
       priority: input.priority ?? 0,
       added_at: now,
+      ...(input.team ? { team: input.team } : {}),
     };
     rows.push(item);
     write(rows, now, env);
@@ -366,8 +425,15 @@ export function claimNextQueueItem(
 ): TrunkQueueClaim | undefined {
   const claimed = withQueueLock(env, () => {
     const rows = read(env);
+    if (refreshTeamBlocks(rows, env)) {
+      write(rows, now, env);
+    }
     const holds = rows.some((row) => isOpenClaim(row) && row.claimed_by === agentId);
-    const next = holds ? undefined : rows.filter(isClaimable).toSorted(byPriority)[0];
+    const next = holds
+      ? undefined
+      : rows
+          .filter((row) => isClaimable(row) && mayClaim(row, agentId, env))
+          .toSorted(byPriority)[0];
     if (!next) {
       return undefined;
     }

@@ -7,7 +7,9 @@ export type TeamApplyDeps = {
   hasRoom: (roomId: string) => boolean;
   createRoom: (input: { roomId: string; name: string; members: string[] }) => void;
   hasJob: (briefText: string) => boolean;
-  addJob: (input: { title: string; brief_text: string }) => void;
+  addJob: (input: { title: string; brief_text: string; team: string }) => void;
+  /** Records the team's members, so the queue lets only them claim its jobs. */
+  registerTeam: (teamId: string, record: { roomId: string; members: string[] }) => void;
 };
 
 export type TeamApplyResult = { created: string[]; skipped: string[] };
@@ -30,6 +32,10 @@ export async function applyTeamProposal(
     await deps.createAgent(member);
     created.push(member.agentId);
   }
+  deps.registerTeam(proposal.teamId, {
+    roomId: proposal.roomId,
+    members: proposal.members.map((member) => member.agentId),
+  });
   if (deps.hasRoom(proposal.roomId)) {
     skipped.push(proposal.roomId);
   } else {
@@ -45,7 +51,7 @@ export async function applyTeamProposal(
       skipped.push(job.title);
       continue;
     }
-    deps.addJob({ title: job.title, brief_text: job.briefText });
+    deps.addJob({ title: job.title, brief_text: job.briefText, team: proposal.teamId });
     created.push(job.title);
   }
   return { created, skipped };

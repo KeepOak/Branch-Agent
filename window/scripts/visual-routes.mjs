@@ -6,4 +6,6 @@ export const ROUTES = {
   "side-panel-tabs": "The side panel's tab row at its 352 px default width. The capture fails if a tab label is clipped or the row overflows.",
   "team-approval-before": "The group room as it is on main, with no team proposal card (fixture: Design group).",
   "team-approval": "The team proposal card in its asking state, with Approve team and Not now (fixture: Ship the Q3 newsletter).",
+  "team-thread":
+    "The team proposal as a block in a Trunk's thread, with Approve, Edit and Not now (fixture: Ship the Q3 newsletter).",
 };
