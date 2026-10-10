@@ -245,6 +245,24 @@ importers:
       '@branch/ai':
         specifier: workspace:*
         version: link:packages/ai
+      '@branch/media-core':
+        specifier: workspace:*
+        version: link:packages/media-core
+      '@branch/model-catalog-core':
+        specifier: workspace:*
+        version: link:packages/model-catalog-core
+      '@branch/net-policy':
+        specifier: workspace:*
+        version: link:packages/net-policy
+      '@branch/normalization-core':
+        specifier: workspace:*
+        version: link:packages/normalization-core
+      '@branch/retry':
+        specifier: workspace:*
+        version: link:packages/retry
+      '@branch/worker-runtime':
+        specifier: workspace:*
+        version: link:packages/worker-runtime
       '@clack/core':
         specifier: 1.5.1
         version: 1.5.1

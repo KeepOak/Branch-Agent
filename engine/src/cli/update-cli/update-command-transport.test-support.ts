@@ -210,7 +210,6 @@ export async function createUpdateUtf8CommandTransportFixture(
   transport: Parameters<typeof createUpdateCommandTransportFixture>[0] & { exec: typeof runExec },
   run: typeof runUtf8CommandWithTimeout,
 ): Promise<typeof runUtf8CommandWithTimeout> {
-  const hostPlatform = process.platform;
   const { spawnSync: spawnMetadata } =
     await vi.importActual<typeof import("node:child_process")>("node:child_process");
   const runDoctorFixture = await createUpdateCommandTransportFixture(transport);
@@ -255,8 +254,7 @@ export async function createUpdateUtf8CommandTransportFixture(
       const input: unknown = JSON.parse(String(options.input));
       const metadataRequest =
         argv.includes("--eval") && isRecord(input) && Array.isArray(input.files);
-      const foreignPlatformSqlite =
-        process.platform !== hostPlatform &&
+      const sqliteRequest =
         isRecord(input) &&
         ((argv.includes("--eval") && typeof input.directory === "string") ||
           (stateWorker &&
@@ -268,8 +266,8 @@ export async function createUpdateUtf8CommandTransportFixture(
               "database-generations",
               "database-restore-preparation",
             ].includes(String(input.mode))));
-      if (metadataRequest || foreignPlatformSqlite) {
-        // SQLite workers use the real host executable/VFS even when service tests simulate Windows.
+      if (metadataRequest || sqliteRequest) {
+        // Real SQLite workers and progress probes need host streams, not service-child doubles.
         const metadata = spawnMetadata(
           expectDefined(argv[0], "metadata executable"),
           argv.slice(1),
@@ -279,6 +277,7 @@ export async function createUpdateUtf8CommandTransportFixture(
             cwd: options.cwd ?? transport.hostCwd,
             env: { ...transport.hostEnv, ...options.baseEnv, ...options.env },
             encoding: "utf8",
+            windowsHide: true,
           },
         );
         if (metadata.error) {

@@ -420,6 +420,8 @@ function shouldAlwaysBundleDependency(id: string): boolean {
     id.startsWith("@branch/worker-runtime/") ||
     id === "@branch/media-core" ||
     id.startsWith("@branch/media-core/") ||
+    id === "@branch/net-policy" ||
+    id.startsWith("@branch/net-policy/") ||
     ["@branch/acp-core", "@branch/session-url-contract", "@branch/canopy-contract"].includes(id) ||
     id.startsWith("@branch/acp-core/") ||
     id === "zod" ||

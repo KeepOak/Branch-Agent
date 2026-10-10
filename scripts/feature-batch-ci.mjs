@@ -47,10 +47,30 @@ async function prepareBuildArtifacts() {
     'const { withDistArtifactOwnership } = await import("./scripts/lib/dist-artifact-ownership.mts");\n' +
     'const { ensureKyselyTypes } = await import("./scripts/generate-kysely-types.mts");\n' +
     'await withDistArtifactOwnership(process.cwd(), () => ensureKyselyTypes(process.cwd()));'], engineRoot);
-  for (const name of ['gateway-protocol', 'gateway-client']) {
+  for (const name of ['normalization-core', 'worker-runtime', 'net-policy', 'retry',
+    'model-catalog-core', 'media-core', 'llm-core', 'gateway-protocol', 'gateway-client']) {
     await run(process.execPath, ['--import', './scripts/tsx.mjs',
       'scripts/build-workspace-package.mts', name], engineRoot);
   }
+  await run(process.execPath, ['--import', './scripts/tsx.mjs',
+    'scripts/tsdown-build.mts', '--config', 'tsdown.ai.config.ts'], engineRoot);
+  // SQLite worker children use native package resolution, not Vitest/TSX aliases.
+  await run(process.execPath, ['--input-type=module', '--eval',
+    'import assert from "node:assert/strict";\n' +
+    'import { asRecord } from "@branch/normalization-core/record-coerce";\n' +
+    'import { createRetainedOperation } from "@branch/worker-runtime/lifecycle";\n' +
+    'await import("@branch/net-policy/redact-sensitive-url");\n' +
+    'await import("@branch/retry");\n' +
+    'await import("@branch/model-catalog-core/model-catalog-refs");\n' +
+    'await import("@branch/media-core/constants");\n' +
+    'await import("@branch/ai/diagnostics");\n' +
+    'assert.deepEqual(asRecord({ probe: true }), { probe: true });\n' +
+    'assert.equal(typeof createRetainedOperation, "function");\n' +
+    'console.log("PASS: SQLite worker native package resolution");'], path.join(engineRoot, 'src/infra'));
+  // The update-state child also reaches agent-core's existing llm-core dependency.
+  await run(process.execPath, ['--input-type=module', '--eval',
+    'await import("@branch/llm-core/types");\n' +
+    'console.log("PASS: update-state native package resolution");'], path.join(engineRoot, 'packages/agent-core/src'));
 }
 
 async function featureTestEnv(scratch) {
@@ -92,9 +112,18 @@ async function runFeatureTests(scratch) {
     console.log(`${lane}: ${tests.length} named test files in shard ${shard.index + 1}/${shard.total}`);
     const browserTests = lane === 'engine' ? tests.filter(file => file.endsWith('.browser.test.ts')) : [];
     const regularTests = tests.filter(file => !browserTests.includes(file));
-    if (regularTests.length) {
+    const nativeWorkerTests = lane === 'engine'
+      ? regularTests.filter(file => file === 'src/cli/update-cli.git-service.test.ts') : [];
+    const directTests = regularTests.filter(file => !nativeWorkerTests.includes(file));
+    if (nativeWorkerTests.length) {
+      // Keep this native-worker consumer under the repository's compiled-code owner.
+      await run(process.execPath, [path.join(engineRoot, 'scripts/run-vitest.mjs'),
+        'run', '--config', config, ...nativeWorkerTests], root,
+        { ...env, NODE_COMPILE_CACHE: path.join(scratch, 'node-compile') });
+    }
+    if (directTests.length) {
       await run(process.execPath, [path.join(root, 'node_modules/vitest/vitest.mjs'),
-        'run', '--config', config, ...regularTests], root, env);
+        'run', '--config', config, ...directTests], root, env);
     }
     if (browserTests.length) {
       if (process.platform !== 'linux') {

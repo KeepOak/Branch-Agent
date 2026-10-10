@@ -104,7 +104,13 @@ describe("update-cli", () => {
     vi.mocked(resolveGatewayInstallEntrypoint).mockResolvedValue(entrypoint);
     mockGitUpdateAfterMutation(makeOkUpdateResult({ mode: "git", root: process.cwd() }));
 
-    await updateCommand({ yes: true });
+    await updateCommand({ yes: true }).catch((error: unknown) => {
+      // Preserve the real worker diagnostic when RuntimeEnv.exit becomes an ExitError.
+      console.error(getErrorOutput());
+      console.error(getLogOutput());
+      console.error(lastWriteJsonCall());
+      throw error;
+    });
 
     expect(serviceStop.mock.calls.length).toBe(1);
     expect(vi.mocked(runDaemonInstall).mock.calls.length).toBe(0);
@@ -200,9 +206,7 @@ describe("update-cli", () => {
         detail: "privileged wrapper owner",
       });
       const { resolveExecutablePath } = await import("../infra/executable-path.js");
-      expect(
-        resolveExecutablePath("branch", { env: serviceCommand.environment }),
-      ).toBeUndefined();
+      expect(resolveExecutablePath("branch", { env: serviceCommand.environment })).toBeUndefined();
       const envSnapshot = captureEnv(Object.keys(serviceCommand.environment));
       mockGitUpdateAfterMutation(makeOkUpdateResult({ mode: "git", root }));
       vi.mocked(resolveGatewayInstallEntrypoint).mockResolvedValue(entrypoint);
