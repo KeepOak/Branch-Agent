@@ -75,7 +75,7 @@ function ProjectRow({ engine, project }: { engine: SettingsPageProps["engine"]; 
 }
 
 /** The two most-used shortcuts in a sentence, written the way the Show all dialog writes them on this computer. */
-export function keyboardSub(mac: boolean): string {
+function keyboardSub(mac: boolean): string {
   const keys = currentKeys(keyActions(""), readCustomKeys());
   return `${shownInline(keys.palette, mac)} to find anything, ${shownInline(keys.newConversation, mac)} for a new conversation.`;
 }
