@@ -42,7 +42,6 @@ const BASE: SettingsGroup[] = [
       { id: "self", name: "Branch itself" },
       { id: "seasons", name: "Seasons" },
       { id: "updates", name: "Updates & about" },
-      { id: "achievements", name: "Achievements" },
     ],
   },
 ];
