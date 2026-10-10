@@ -1,0 +1,16 @@
+/* Skeleton rows while a list or a screen loads (DA-106). Soft fill, a slow shimmer, still when motion is off. */
+.skel-rows { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
+.skel-row { display: flex; align-items: center; gap: 12px; min-height: 44px; }
+.skel-dot { flex: none; width: 26px; height: 26px; border-radius: 8px; background: var(--fill-2); }
+.skel-lines { display: flex; flex: 1; flex-direction: column; gap: 7px; }
+.skel-line { display: block; width: 46%; height: 10px; border-radius: 5px; background: var(--fill-2); }
+.skel-line.short { width: 72%; height: 8px; background: var(--fill); }
+.skel-screen { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 12px; padding: 18px; background: var(--bg); }
+.skel-bar { display: block; height: 18px; border-radius: 6px; background: var(--fill-2); }
+.skel-block { display: block; flex: 1; border-radius: 10px; background: var(--fill); }
+.skel-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@keyframes skel-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+:root:not([data-still]) .skel-dot, :root:not([data-still]) .skel-line, :root:not([data-still]) .skel-bar, :root:not([data-still]) .skel-block { animation: skel-pulse 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .skel-dot, .skel-line, .skel-bar, .skel-block { animation: none !important; }
+}

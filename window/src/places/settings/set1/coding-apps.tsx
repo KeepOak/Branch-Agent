@@ -3,7 +3,9 @@
 // two follow their own sign-in on this computer.
 import type { WindowEngine } from "../../../connect/engine";
 import { list, text, visible, type RecordValue } from "../adapter";
+import { useState } from "react";
 import { useResource } from "../hooks";
+import { SkeletonRows, useDeadline } from "../../../shell/Skeleton";
 import { Btn, Ctl, Sec, Switch, useConfig, useScope } from "../kit";
 import { Logo } from "./service";
 
@@ -22,6 +24,9 @@ export function foundState(app: App, detect: RecordValue | undefined): Found {
   return { state: "missing", reason: gone ? visible(gone.reason) : undefined };
 }
 
+/** How long the scan may look before it says it didn't finish; a late answer still replaces that. */
+export const SCAN_DEADLINE_MS = 20_000;
+
 const PILL: Record<Found["state"], [string, string]> = { ready: ["ok", "Models ready"], signin: ["warn", "Sign-in needed"], missing: ["idle", "Not found"] };
 
 function sub(app: App, f: Found, on: boolean): string {
@@ -36,21 +41,36 @@ export function CodingApps({ engine }: { engine: WindowEngine }) {
   const usage = useResource<RecordValue>(engine, "usage.status");
   const claude = list(usage.data?.providers).find((row) => row.provider === "claude-code");
   const cfg = useConfig(engine);
+  const [attempt, setAttempt] = useState(0);
+  const stuck = useDeadline(detect.loading, SCAN_DEADLINE_MS, attempt);
+  const failed = !detect.loading && Boolean(detect.error);
+  const noneFound = !detect.loading && !failed && APPS.every((app) => foundState(app, detect.data).state === "missing");
+  const checkAgain = () => { setAttempt((n) => n + 1); void detect.reload(); };
+  const result = stuck
+    ? "The check didn’t finish. This computer didn’t answer in 20 seconds."
+    : failed
+      ? `Couldn’t check this computer: ${detect.error}`
+      : noneFound
+        ? "Not found on this computer."
+        : "";
   return (
     <Sec title="Coding apps on this computer" hint="Each app keeps its own account and permissions." help="Each app keeps its own account and permissions. Turning one on doesn’t sign you in.">
-      {APPS.map((app) => {
+      {detect.loading && !stuck ? <SkeletonRows rows={APPS.length} label="Looking on this computer…" /> : APPS.map((app) => {
         const f = foundState(app, detect.data);
-        const [tone, word] = detect.loading ? ["idle", "Looking…"] : PILL[f.state];
+        const [tone, word] = stuck || failed ? ["warn", "Couldn’t check"] : PILL[f.state];
         const pluginOn = app.plugin ? cfg.get(`plugins.entries.${app.plugin}.enabled`) === true : f.state === "ready";
         return (
-          <Ctl key={app.kind} id={app.name} title={<>{app.name}{app.kind === "claude-cli" && claude?.accountEmail ? ` · ${text(claude.accountEmail)}` : ""}<span className={`pill ${tone}`}><i />{word}</span></>} icon={<Logo id={app.brand} size={22} />} sub={detect.loading ? "Looking on this computer…" : sub(app, f, pluginOn)}>
+          <Ctl key={app.kind} id={app.name} title={<>{app.name}{app.kind === "claude-cli" && claude?.accountEmail ? ` · ${text(claude.accountEmail)}` : ""}<span className={`pill ${tone}`}><i />{word}</span></>} icon={<Logo id={app.brand} size={22} />} sub={stuck || failed ? `Branch couldn’t look for ${app.name}. Check again.` : sub(app, f, pluginOn)}>
             {app.plugin
               ? <Switch checked={pluginOn} label={`Use ${app.name}`} disabled={cfg.loading} onChange={(v) => void cfg.set(`plugins.entries.${app.plugin}.enabled`, v)} />
               : <span title={`Follows ${app.name}’s own sign-in on this computer.`}><Switch checked={pluginOn} label={`Use ${app.name}`} disabled onChange={() => undefined} /></span>}
           </Ctl>
         );
       })}
-      <div className="acts"><Btn sm disabled={detect.loading} onClick={() => void detect.reload()}>Check again</Btn></div>
+      <div className="acts">
+        {result ? <span className="hint" role="status" data-testid="scan-result">{result}</span> : null}
+        <Btn sm disabled={detect.loading && !stuck} onClick={checkAgain}>Check again</Btn>
+      </div>
     </Sec>
   );
 }
