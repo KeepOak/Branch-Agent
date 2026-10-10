@@ -22,6 +22,9 @@ function fakeGateway(working: Set<string> = new Set()) {
   const gateway: TrunkQueueGateway = {
     async request<T>(method: string, params: Record<string, unknown>): Promise<T> {
       calls.push({ method, params });
+      if (method === "agent.wait") {
+        return { runId: params.runId, status: "ok" } as T;
+      }
       if (method === "sessions.list") {
         const busy = working.has(String(params.agentId));
         return {
@@ -228,6 +231,8 @@ describe("Trunk job queue pickup", () => {
     expect(picked?.item.id).toBe(job.id);
     expect(calls.map((call) => [call.method, call.params.agentId ?? null])).toEqual([
       ["sessions.list", "ash"],
+      // The stale claim is freed only after its run is confirmed ended in this gateway epoch.
+      ["agent.wait", null],
       ["sessions.list", "birch"],
       ["sessions.create", "birch"],
       ["chat.send", "birch"],

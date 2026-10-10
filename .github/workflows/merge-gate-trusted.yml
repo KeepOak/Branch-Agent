@@ -90,6 +90,9 @@ jobs:
       - name: Wait for checks and run main's coverage and merge-command gates
         env:
           GH_TOKEN: ${{ github.token }}
+          # One evaluation, no poll loop: a pending result fails the run, and merge-gate-recheck reruns it
+          # when the checks it waits for finish.
+          MERGE_GATE_WAIT_SECONDS: '0'
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.pull_request.head.sha }}
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
