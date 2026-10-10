@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./icons";
-import { filterPalette, moveSelection, paletteEmptyLine, type PaletteRow } from "./palette-model";
+import { filterPalette, GROUPS, moveSelection, paletteEmptyLine, type PaletteRow } from "./palette-model";
 import { readMessageHits, type MessageHit } from "./search-model";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
@@ -61,9 +61,12 @@ export function messagePaletteRows(hits: MessageHit[], query: string, rowName: (
   return hits.map((hit, i) => ({ id: `msg:${i}`, group: "Messages", label: hit.snippet, hint: rowName(hit.key), run: () => open(hit.key, query) }));
 }
 
-/** Message rows go after the local rows, so rows already on screen keep their place while the message search runs. */
+/** Message rows take their GROUPS slot, just before Trunks. Rows already listed keep their order; message rows only insert. */
 export function paletteShown(base: PaletteRow[], messageRows: PaletteRow[]): PaletteRow[] {
-  return [...base, ...messageRows];
+  if (messageRows.length === 0) return base;
+  const messagesRank = GROUPS.indexOf("Messages");
+  const at = base.findIndex((r) => GROUPS.indexOf(r.group) > messagesRank);
+  return at < 0 ? [...base, ...messageRows] : [...base.slice(0, at), ...messageRows, ...base.slice(at)];
 }
 
 /** Find anything (DESIGN-SPEC §4.1.7): the field, the grouped list, Up/Down/Enter/Escape, and the footer. */
