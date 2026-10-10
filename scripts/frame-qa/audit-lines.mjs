@@ -25,6 +25,7 @@ export function summarize(f) {
     case 'blank-before-content': return `flat frames before content; content after ${ms(d.blankBefore?.contentAfterMs)}`;
     case 'layout-shift': return `layout shift without input: value ${d.shifts?.[0]?.value ?? '?'} at ${d.shifts?.[0]?.node ?? '?'}`;
     case 'scroll-reset': return `scrollTop jumped ${d.jumps?.[0]?.from ?? '?'} to ${d.jumps?.[0]?.to ?? '?'} with no input on ${d.jumps?.[0]?.el ?? '?'}`;
+    case 'focus-loss': return typeof f.detail === 'string' ? `${f.detail} (candidate: a non-modal popup can let Tab leave it)` : 'focus fell to body';
     case 'dead-end': return 'click changed nothing visible within 2 s (no route, dialog, menu, text, focus or hash change)';
     case 'click-intercepted': return `click at the control's centre landed on ${d.clickPoint || 'another element'}`;
     case 'console-error': return `console error: ${(d.errors || [])[0] || 'see run log'}`;
@@ -45,11 +46,15 @@ export function lineFor(f, id, os) {
   return `- ${id} | ${place} | ${label} (Chromium on ${os}) | ${f.kind}${tag}: ${summarize(f)} | repro: ${repro || `open ${f.root}`} | evidence: ${evidence}`;
 }
 
-/** Deduplicates findings by kind, place, control, repro and detail, keeping the first. */
+/** One line per distinct problem: page-level findings by text, node findings by kind, place, control and repro. */
 export function uniqueFindings(findings) {
   const seen = new Set();
   return findings.filter((f) => {
-    const key = [f.kind, f.root, f.control, (f.repro || []).join('>'), typeof f.detail === 'string' ? f.detail : ''].join('|');
+    // Page-level problems (contrast, clipped text) repeat under every overlay. Keep one line per distinct text.
+    const pageLevel = typeof f.detail === 'string' && f.kind !== 'idle-churn';
+    const key = pageLevel
+      ? [f.kind, f.detail].join('|')
+      : [f.kind, f.root, f.control, (f.repro || []).join('>')].join('|');
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
