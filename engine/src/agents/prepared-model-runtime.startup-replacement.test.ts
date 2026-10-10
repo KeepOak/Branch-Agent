@@ -58,12 +58,12 @@ const mocks = getPreparedModelRuntimeMocks();
 
 // The Gateway's startup preparation refreshes the active secrets snapshot and migrates sessions
 // first; this fixture has neither, so those two steps succeed and the model publication is real.
-const secrets = vi.hoisted(() => ({ active: false, revision: 0, authDatabasePath: "" }));
+const secrets = vi.hoisted(() => ({ active: false, revision: 0, authDatabasePaths: [] as string[] }));
 vi.mock("../secrets/runtime.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../secrets/runtime.js")>();
   const snapshot = () => ({
     sourceConfig: {},
-    authStores: [{ databasePath: secrets.authDatabasePath }],
+    authStores: secrets.authDatabasePaths.map((databasePath) => ({ databasePath })),
   });
   return {
     ...actual,
@@ -246,7 +246,7 @@ describe("startup preparation of a Trunk whose model build never settles", () =>
     const env = { ...process.env, BRANCH_AGENT_PREPARATION_RETRY_MS: "60000" };
     const path = openBranchAgentDatabase({ agentId: "tk", env }).path;
     await closeDatabases();
-    secrets.authDatabasePath = resolveAuthProfileDatabasePath(fixture.state.agentDir("tk"));
+    secrets.authDatabasePaths = [resolveAuthProfileDatabasePath(fixture.state.agentDir("tk"))];
     secrets.active = true;
     const siblingStarted = Promise.withResolvers<void>();
     const gate = Promise.withResolvers<void>();
@@ -342,7 +342,7 @@ describe("startup preparation of a Trunk whose model build never settles", () =>
     await closeDatabases();
     // Read outside the preparation guard: a read inside it runs the guard's currency check.
     const tkInput = inputFor("tk");
-    secrets.authDatabasePath = resolveAuthProfileDatabasePath(fixture.state.agentDir("tk"));
+    secrets.authDatabasePaths = [resolveAuthProfileDatabasePath(fixture.state.agentDir("tk"))];
     secrets.active = true;
     const siblingStarted = Promise.withResolvers<void>();
     const gate = Promise.withResolvers<void>();
@@ -445,4 +445,93 @@ describe("startup preparation of a Trunk whose model build never settles", () =>
       await stop?.();
     }
   });
+
+  it("keeps three agents' startup publications from retiring each other's owners while they are still preparing", async () => {
+    // Each covering wait of an attempt is followed by a peer's reload from outside the attempt, as
+    // a peer's publication is. On main the reload widens to the roster and deletes the owner the
+    // attempt just built, so every attempt fails "has not published" and the three keep retrying.
+    const agents = ["builder-elm", "dev", "builder-maple"];
+    mocks.configuredAgentIds = agents;
+    const env = { ...process.env, BRANCH_AGENT_PREPARATION_RETRY_MS: "1" };
+    const paths = new Map(
+      agents.map((agentId) => [agentId, openBranchAgentDatabase({ agentId, env }).path]),
+    );
+    await closeDatabases();
+    secrets.authDatabasePaths = agents.map((agentId) =>
+      resolveAuthProfileDatabasePath(fixture.state.agentDir(agentId)),
+    );
+    secrets.active = true;
+    const peerOf = (agentId: string) => agents[(agents.indexOf(agentId) + 1) % agents.length]!;
+    // More reloads than the publication loop's rounds: an unfixed attempt runs out of rounds.
+    const reloadsPerAgent = 8;
+    const reloads = new Map(agents.map((agentId) => [agentId, 0]));
+    const outsidePreparation = AsyncLocalStorage.snapshot();
+    const clean: BranchDatabaseSchemaPreflight = { incompatible: [], indeterminate: [] };
+    const failedAttempts: string[] = [];
+    let stop: (() => Promise<void>) | undefined;
+    try {
+      await withAgentDatabaseStartupAdmission(async (admission) => {
+        const refusals = admission.defer({
+          env,
+          inspections: agents.map((agentId) => ({
+            target: { agentId, path: paths.get(agentId)! },
+            result: Promise.resolve(clean),
+          })),
+          reason: "Inspection continues after the Gateway listener binds.",
+        });
+        recordAgentDatabaseAdmissions(refusals, { env, source: "startup" });
+        stop = admission.adopt().stop;
+        activateGatewayAgentDatabaseStartup({
+          admission: {
+            activate: (activation: Parameters<typeof admission.activate>[0]) =>
+              admission.activate({
+                ...activation,
+                openAgent: async () => {},
+                prepareAgent: async (input) => {
+                  try {
+                    await activation.prepareAgent(input);
+                  } catch (error) {
+                    failedAttempts.push(String(error));
+                    throw error;
+                  }
+                },
+              }),
+          } as unknown as Parameters<typeof activateGatewayAgentDatabaseStartup>[0]["admission"],
+          preparationReady: Promise.resolve(),
+          getConfig: () => config,
+          getPluginRegistry: () => createEmptyPluginRegistry(),
+          getPluginMetadataSnapshot: () => undefined,
+          isCurrent: () => true,
+          log: { info: () => {}, warn: () => {} },
+          afterCoveringWait: (agentId) => {
+            const done = reloads.get(agentId) ?? 0;
+            if (done >= reloadsPerAgent) {
+              return;
+            }
+            reloads.set(agentId, done + 1);
+            return outsidePreparation(() =>
+              refreshPreparedModelRuntimeSnapshots(config, {
+                agentIds: new Set([peerOf(agentId)]),
+                catalogMode: "static",
+                allowGatewaySubagentBinding: true,
+                gatewayLifecycle: true,
+              }),
+            ).catch(() => undefined);
+          },
+        });
+      });
+      await expect
+        .poll(() => agents.some((agentId) => readAgentDatabaseAdmissionRefusal(agentId, { env })), {
+          timeout: 30000,
+        })
+        .toBe(false);
+      expect(failedAttempts).toEqual([]);
+      for (const agentId of agents) {
+        expect(getPreparedModelRuntimeSnapshot(inputFor(agentId))).toBeDefined();
+      }
+    } finally {
+      secrets.active = false;
+      await stop?.();
+    }
+  }, 60000);
 });
