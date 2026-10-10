@@ -11,10 +11,11 @@ import { checkUIProof } from './check-ui-proof.mjs';
 import { ALLOWED_SUFFIX, FIX_LINES, evaluateCommits, fetchPrCommitsWithApi } from './check-commit-emails.mjs';
 import {
   changedFilesFromPrFiles,
+  coverageFromPrFiles,
+  evaluateGateChangeReview,
   fetchFileText,
   fetchPrFiles,
   loadProtectedGatePaths,
-  touchedProtectedFiles,
 } from './merge-gate-trusted.mjs';
 import { checkWindowClean, scanTree } from './check-window-clean.mjs';
 
@@ -25,7 +26,18 @@ const PERSONAL_PATTERNS = [
 ];
 // Test files carry synthetic fixtures (example addresses, sample paths) on purpose, so they are exempt.
 const FIXTURE_FILE = /\.test\.(mjs|ts|tsx)$/;
-const TEST_FILE = /^(engine|window)\/.+\.test\.(?:ts|tsx|mjs|mts)$/;
+const WINDOW_INPUTS = /^(window\/|scripts\/window-clean)/;
+const SHARD_INPUTS = /^(scripts\/feature-batch-ci|\.github\/workflows\/feature-batch-checks\.yml|scripts\/feature-batch-ci-named\/)/;
+// Which slow local checks a change needs: the window-clean scan and the shard-budget test.
+export function scopedChecks(changedFiles) {
+  return {
+    window: changedFiles.some((f) => WINDOW_INPUTS.test(f)),
+    shard: changedFiles.some((f) => SHARD_INPUTS.test(f)),
+  };
+}
+
+const ENGINE_OR_WINDOW_TEST = /^(engine|window)\/.+\.test\.(?:ts|tsx|mjs|mts)$/;
+const TEST_FILE = /^(engine|window|desktop)\/.+\.test\.(?:ts|tsx|mjs|mts)$/;
 
 const problem = (check, message, fix) => ({ check, message, fix });
 
@@ -74,7 +86,7 @@ export function selfCheckProblems({ branch, headSha, body }) {
 
 // Named-test list: every changed engine or window test file must appear in the branch's list, sorted.
 export function namedListProblems({ changedFiles, listText, listPath }) {
-  const wanted = changedFiles.filter((f) => TEST_FILE.test(f)).map((f) => f.replace(/^(engine|window)\//, '$1:')).sort();
+  const wanted = changedFiles.filter((f) => ENGINE_OR_WINDOW_TEST.test(f)).map((f) => f.replace(/^(engine|window)\//, '$1:')).sort();
   if (wanted.length === 0) return [];
   if (listText == null) {
     return [problem('named-tests', `no named-test list for ${wanted.length} changed test file(s)`, `create ${listPath} with these lines: ${wanted.join(' ')}`)];
@@ -105,11 +117,26 @@ export function shardProblems(shardResult) {
   return [problem('shard-budget', `scripts/feature-batch-ci-shard.test.mjs fails: ${shardResult.detail}`, 'split the new tests or move them to a shard with headroom; rerun node --test scripts/feature-batch-ci-shard.test.mjs')];
 }
 
-// Protected gate files come from the gate itself: its workflows, CODEOWNERS, and the scripts its workflows invoke.
-export function gateFileProblems(changedFiles, protectedPaths) {
-  const touched = touchedProtectedFiles(changedFiles, protectedPaths);
-  if (touched.length === 0) return [];
-  return [problem('gate-files', `protected gate file(s) changed: ${touched.join(', ')}`, 'open this as its own PR; the gate needs a gate-change-reviewed marker for the head SHA')];
+// The gate's own review: protected files (its workflows, CODEOWNERS, invoked scripts) need the reviewer marker for this head.
+export function gateFileProblems({ changedFiles, body, headSha, protectedPaths }) {
+  const review = evaluateGateChangeReview({ changedFiles, body: body ?? '', headSha, protectedPaths });
+  if (review.ok) return [];
+  return [problem(
+    'gate-files',
+    `protected gate file(s) changed without a reviewer marker for this head: ${review.protectedFiles.join(', ')}`,
+    'this change needs a non-author review of this exact head; GOD adds the gate-change-reviewed marker after approval. Do not add it yourself',
+  )];
+}
+
+// Desktop tests are covered by desktop-checks.yml, not by a named list. The gate's own coverage rule decides.
+export function desktopCoverageProblems({ files, desktopWorkflow }) {
+  if (desktopWorkflow == null) return [];
+  const { uncovered } = coverageFromPrFiles(files, desktopWorkflow);
+  return uncovered.filter((file) => file.startsWith('desktop/')).map((file) => problem(
+    'desktop-tests',
+    `${file} is not run by desktop-checks.yml`,
+    'add a node --test step for it to .github/workflows/desktop-checks.yml, as the gate requires',
+  ));
 }
 
 export function personalInfoProblems(addedLines) {
@@ -150,7 +177,8 @@ export function runPreflight(input) {
     ...uiProofProblems({ changedFiles, body }),
     ...windowCleanProblems(input.windowResult),
     ...shardProblems(input.shardResult),
-    ...gateFileProblems(changedFiles, protectedPaths),
+    ...gateFileProblems({ changedFiles, body, headSha: input.headSha, protectedPaths }),
+    ...desktopCoverageProblems({ files: input.files ?? [], desktopWorkflow: input.desktopWorkflow ?? null }),
     ...personalInfoProblems(input.addedLines ?? []),
     ...unverifiedPatchProblems(input.unverifiedFiles ?? []),
   ];
@@ -174,6 +202,22 @@ function gitCommits(base, cwd) {
     const [sha, , authorEmail, , committerEmail, date, ...msg] = r.split('\x1f');
     return { sha, authorEmail, committerEmail, date, message: msg.join('\x1f') };
   });
+}
+
+// File statuses in the shape the gate's coverage rule reads (renames count as added, as in the gate).
+export function filesFromNameStatus(text) {
+  return String(text ?? '').split('\n').filter(Boolean).flatMap((line) => {
+    const parts = line.split('\t');
+    const code = parts[0];
+    if (code.startsWith('R')) return [{ filename: parts[2], status: 'added' }];
+    if (code === 'D') return [{ filename: parts[1], status: 'removed' }];
+    if (code === 'A') return [{ filename: parts[1], status: 'added' }];
+    return [{ filename: parts[1], status: 'modified' }];
+  });
+}
+
+function readIfExists(file) {
+  return existsSync(file) ? readFileSync(file, 'utf8') : null;
 }
 
 function gitAddedLines(base, cwd) {
@@ -208,6 +252,8 @@ function gatherInputs({ argv, cwd }) {
     dirtyCount: git(['status', '--porcelain'], cwd).split('\n').filter(Boolean).length,
     commits: gitCommits(base, cwd),
     changedFiles: git(['diff', '--name-only', `${base}...HEAD`], cwd).split('\n').filter(Boolean),
+    files: filesFromNameStatus(git(['diff', '--name-status', `${base}...HEAD`], cwd)),
+    desktopWorkflow: readIfExists(path.join(cwd, '.github/workflows/desktop-checks.yml')),
     addedLines: gitAddedLines(base, cwd),
     cloudAgent: argv.includes('--cloud-agent'),
     listPath,
@@ -268,10 +314,12 @@ export function unverifiedFileNames(files) {
     .map((f) => f.filename);
 }
 
-export function inputFromApi({ headBranch, headSha, files, commits, listText }) {
+export function inputFromApi({ headBranch, headSha, files, commits, listText, desktopWorkflow = null }) {
   return {
     branch: headBranch,
     headSha,
+    files,
+    desktopWorkflow,
     dirtyCount: 0,
     commits: commits.map(commitFromApi),
     changedFiles: changedFilesFromPrFiles(files),
@@ -296,7 +344,8 @@ function apiInputFromEnv(env, body) {
   const files = fetchPrFiles(repo, prNumber, token);
   const commits = fetchPrCommitsWithApi({ repo, prNumber, token });
   const listText = fetchFileText(repo, headSha, token, namedListPathFor(headBranch));
-  return { ...inputFromApi({ headBranch, headSha, files, commits, listText }), body };
+  const desktopWorkflow = fetchFileText(repo, headSha, token, '.github/workflows/desktop-checks.yml');
+  return { ...inputFromApi({ headBranch, headSha, files, commits, listText, desktopWorkflow }), body };
 }
 
 // Exported so tests can drive the real CLI wiring against a temporary repository.
@@ -310,9 +359,10 @@ export function runCli(argv, cwd, env = process.env) {
     return { exitCode: problems.length ? 1 : 0, text: [...ciSkippedLines(), formatProblems(problems)].join('\n') };
   }
   const input = gatherInputs({ argv, cwd });
-  input.windowResult = windowResultFor(cwd);
-  const changesTests = input.changedFiles.some((f) => TEST_FILE.test(f));
-  input.shardResult = changesTests ? shardResultFor(cwd) : null;
+  // Both checks are slow (a whole-tree scan, a test run), so each runs only when its own inputs changed.
+  const scope = scopedChecks(input.changedFiles);
+  input.windowResult = scope.window ? windowResultFor(cwd) : null;
+  input.shardResult = scope.shard ? shardResultFor(cwd) : null;
   const problems = runPreflight(input);
   return { exitCode: problems.length ? 1 : 0, text: formatProblems(problems) };
 }

@@ -14,6 +14,7 @@ import {
   namedListPathFor,
   runCli,
   runPreflight,
+  scopedChecks,
 } from './pr-preflight.mjs';
 
 const SHA = 'a'.repeat(40);
@@ -154,10 +155,33 @@ test('a shard that breaks the 12-minute budget fails', () => {
   assert.match(problems[0].message, /760s/);
 });
 
-test('a changed protected gate file is flagged for its own PR and marker', () => {
+test('a changed protected gate file needs the reviewer marker for this head', () => {
   const problems = runPreflight(withInput({ changedFiles: ['scripts/merge-gate-trusted.test.mjs'] }));
   assert.deepEqual(checksOf(problems), ['gate-files']);
-  assert.match(problems[0].fix, /its own PR/);
+  assert.match(problems[0].message, /reviewer marker for this head/);
+  assert.match(problems[0].fix, /Do not add it yourself/);
+});
+
+test('the gate marker for this exact head satisfies the gate-file rule; a marker for another head does not', () => {
+  const gated = { changedFiles: ['scripts/merge-gate-trusted.test.mjs'] };
+  assert.deepEqual(checksOf(runPreflight(withInput({ ...gated, body: `${BODY}
+gate-change-reviewed: ${SHA}` }))), []);
+  assert.deepEqual(checksOf(runPreflight(withInput({ ...gated, body: `${BODY}
+gate-change-reviewed: ${'b'.repeat(40)}` }))), ['gate-files']);
+});
+
+test('a desktop test that desktop-checks.yml does not run fails, and one it runs passes (the gate rule, not a copy)', () => {
+  const files = [{ filename: 'desktop/src/x.test.mjs', status: 'added' }];
+  const withoutRun = runPreflight(withInput({ changedFiles: ['desktop/src/x.test.mjs'], files, desktopWorkflow: 'on:\n  pull_request:\njobs:\n  desktop:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n' }));
+  assert.deepEqual(checksOf(withoutRun), ['desktop-tests']);
+  const withRun = runPreflight(withInput({ changedFiles: ['desktop/src/x.test.mjs'], files, desktopWorkflow: 'on:\n  pull_request:\njobs:\n  desktop:\n    runs-on: ubuntu-latest\n    steps:\n      - run: node --test desktop/src/x.test.mjs\n' }));
+  assert.deepEqual(checksOf(withRun), []);
+});
+
+test('the slow local checks run only when their inputs changed', () => {
+  assert.deepEqual(scopedChecks(['docs/notes.md']), { window: false, shard: false });
+  assert.deepEqual(scopedChecks(['window/src/a.tsx']), { window: true, shard: false });
+  assert.deepEqual(scopedChecks(['scripts/feature-batch-ci-named/x.txt']), { window: false, shard: true });
 });
 
 test('the gate decides what is protected: workflows, CODEOWNERS and invoked scripts all count', () => {
