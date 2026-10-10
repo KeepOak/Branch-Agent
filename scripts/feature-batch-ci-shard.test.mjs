@@ -2,8 +2,12 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { expectedShardSeconds, featureTestWeight, featureTestWeightKeys, firstShardReserveSeconds, harvestE2eError, harvestMatrix, harvestTestFiles, harvestTests, mainPushShardCounts, namedTests, planShards, plannedSlowestSeconds, pullRequestLinuxShardCount, resolvedShardCounts, runnerTestScale, shardBudgetFor, shardBudgetSeconds, shardCountFor, shardOf, shardTests, touchedHarvestTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
-import { featureBatchMatrix } from './feature-batch-ci-matrix.mjs';
+import { expectedShardSeconds, featureTestWeight, featureTestWeightKeys, firstShardReserveSeconds, harvestE2eError, harvestMatrix, harvestTestFiles, harvestTests, mainPushShardCounts, namedTests, planShards, plannedSlowestSeconds, setNamedListDir, pullRequestLinuxShardCount, resolvedShardCounts, runnerTestScale, shardBudgetFor, shardBudgetSeconds, shardCountFor, shardOf, shardTests, touchedHarvestTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
+import { featureBatchMatrix, validateFeatureBatchMatrix } from './feature-batch-ci-matrix.mjs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 test('no FEATURE_SHARD runs everything in one job', () => {
   assert.deepEqual(shardOf(''), { index: 0, total: 1 });
@@ -135,4 +139,34 @@ test('Harvest lists reject e2e files that Harvest vitest excludes', () => {
   assert.equal(harvestE2eError('engine', 'src/commands/doctor.test.ts'), undefined);
   const all = [...harvestTests('engine'), ...harvestTests('window')];
   assert.equal(all.find(file => harvestE2eError('engine', file) || harvestE2eError('window', file)), undefined);
+});
+
+test('an empty feature-batch matrix fails closed instead of skipping every feature job', () => {
+  assert.throws(() => validateFeatureBatchMatrix({ include: [] }, 'push'), /matrix is empty/);
+  assert.throws(() => validateFeatureBatchMatrix({}, 'push'), /matrix is empty/);
+  assert.throws(() => validateFeatureBatchMatrix({ include: [] }, 'pull_request'), /matrix is empty/);
+});
+
+test('a feature-batch matrix below the shard floors fails closed', () => {
+  const real = featureBatchMatrix({ event: 'push' });
+  const fewerWindows = { include: real.include.filter((row) => row.os !== 'windows-latest') };
+  assert.throws(() => validateFeatureBatchMatrix(fewerWindows, 'push'), /windows-latest shard\(s\), below the floor/);
+  const fewerLinux = { include: real.include.slice(mainPushShardCounts.ubuntu - 1) };
+  assert.throws(() => validateFeatureBatchMatrix(fewerLinux, 'push'), /ubuntu-latest shard\(s\), below the floor/);
+  assert.equal(validateFeatureBatchMatrix(real, 'push'), real);
+});
+
+test('the planner reads the PR named lists as data, from the directory it is given', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'named-lists-'));
+  writeFileSync(path.join(dir, 'pr-added.txt'), 'engine:src/pr-added-data.test.ts\n');
+  const before = namedTests('engine');
+  try {
+    setNamedListDir(dir);
+    const after = namedTests('engine');
+    // The PR's directory is the only named-list source now: its file is read, and the repo's named lists are not.
+    assert.ok(after.includes('src/pr-added-data.test.ts'));
+    assert.ok(after.length < before.length, 'the repo named lists are not read from the PR directory');
+  } finally {
+    setNamedListDir(fileURLToPath(new URL('./feature-batch-ci-named/', import.meta.url)));
+  }
 });

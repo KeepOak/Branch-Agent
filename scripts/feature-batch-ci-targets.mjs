@@ -1,4 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
@@ -474,7 +476,12 @@ export const windowStrictFiles = [
 // A PR adds its named tests in its own file, scripts/feature-batch-ci-named/<topic>.txt, one
 // `engine:<file>` or `window:<file>` per line (# comments allowed), instead of editing the shared
 // lists above, so parallel PRs never conflict on them.
-const NAMED_DIR = new URL('./feature-batch-ci-named/', import.meta.url);
+let NAMED_DIR = new URL('./feature-batch-ci-named/', import.meta.url);
+
+// The plan job loads this planner from the default branch and reads the PR's named lists as data.
+export function setNamedListDir(dirPath) {
+  NAMED_DIR = pathToFileURL(`${path.resolve(dirPath)}${path.sep}`);
+}
 
 export function namedTestFiles(lane, only) {
   let names = [];

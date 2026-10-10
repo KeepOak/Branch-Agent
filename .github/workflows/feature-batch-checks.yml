@@ -39,9 +39,17 @@ jobs:
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
-      - name: Check out the feature commit
+      - name: Check out the default branch (the planner comes only from here)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: base
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Check out the pull request commit (its named lists are read as data only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: pr
           fetch-depth: 1
           persist-credentials: false
       - name: Set up reviewed Node
@@ -50,11 +58,11 @@ jobs:
           node-version: '24.19.0'
           package-manager-cache: false
       - id: plan
-        # Shard counts come from the test weights (scripts/feature-batch-ci-matrix.mjs), so a PR that adds
-        # named tests adds shards here instead of failing the budget check.
+        # Shard counts come from the default branch's planner and weights. The PR's named lists add tests as
+        # data. An empty matrix or one below the floors fails this job, so the feature jobs cannot be skipped.
         env:
           EVENT_NAME: ${{ github.event_name }}
-        run: node scripts/feature-batch-ci-matrix.mjs "$EVENT_NAME" >> "$GITHUB_OUTPUT"
+        run: node base/scripts/feature-batch-ci-matrix.mjs "$EVENT_NAME" --named-dir "$GITHUB_WORKSPACE/pr/scripts/feature-batch-ci-named" >> "$GITHUB_OUTPUT"
 
   feature-batch:
     needs: plan
