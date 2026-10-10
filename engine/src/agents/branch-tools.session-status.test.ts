@@ -18,7 +18,7 @@ const updateSessionStoreMock = vi.fn();
 const callGatewayMock = vi.fn();
 const agentToolGatewayCallMock = vi.fn();
 const buildStatusMessageMock = vi.hoisted(() =>
-  vi.fn((_params?: unknown) => "Branch\n🧠 Model: GPT-5.4"),
+  vi.fn((_params?: unknown) => "Branch Agent\n🧠 Model: GPT-5.4"),
 );
 const resolveQueueSettingsMock = vi.hoisted(() =>
   vi.fn((_params?: unknown) => ({ mode: "interrupt" })),
@@ -46,6 +46,8 @@ const emptyPluginMetadataSnapshot = {
 };
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
+const FULL_ACCESS_EXEC = { security: "full", ask: "off", host: "gateway" };
+
 const createMockConfig = () => ({
   session: { mainKey: "main", scope: "per-sender" },
   agents: {
@@ -56,6 +58,8 @@ const createMockConfig = () => ({
   },
   tools: {
     agentToAgent: { enabled: false },
+    exec: FULL_ACCESS_EXEC,
+    modelChoice: { enabled: true },
   },
 });
 
@@ -73,7 +77,11 @@ function fixedStoreConfig() {
       },
       entries: { ops: {}, research: {} },
     },
-    tools: { agentToAgent: { enabled: false } },
+    tools: {
+      agentToAgent: { enabled: false },
+      exec: FULL_ACCESS_EXEC,
+      modelChoice: { enabled: true },
+    },
   };
 }
 
@@ -264,7 +272,7 @@ function createCommandsStatusRuntimeModuleMock() {
         includeTranscriptUsage: params.includeTranscriptUsage,
         workspaceDir: params.workspaceDir,
       });
-      return `Branch\n🧠 Model: ${primary}`;
+      return `Branch Agent\n🧠 Model: ${primary}`;
     },
   };
 }
@@ -1006,6 +1014,49 @@ describe("session_status tool", () => {
       liveModelSwitchPending: true,
     });
     expect(saved.sessionId).toMatch(UUID_RE);
+  });
+
+  it("refuses an agent model change while Trunk model choice is off and writes nothing", async () => {
+    const store: Record<string, SessionEntry> = {
+      main: fixtureSession("s1", { providerOverride: "openai", modelOverride: "gpt-5.4" }),
+    };
+    resetSessionStore(store);
+    mockConfig = {
+      ...mockConfig,
+      tools: { agentToAgent: { enabled: false }, exec: FULL_ACCESS_EXEC },
+    };
+
+    await expect(
+      getSessionStatusTool().execute("call-session-status-choice-off", {
+        model: "anthropic/claude-sonnet-4-6",
+      }),
+    ).rejects.toThrow('"Trunks may switch their own model" is off');
+
+    expect(updateSessionStoreMock).not.toHaveBeenCalled();
+    expect(store.main).toMatchObject({ providerOverride: "openai", modelOverride: "gpt-5.4" });
+  });
+
+  it("without Full access and no approval prompt a standalone model change writes nothing", async () => {
+    const store: Record<string, SessionEntry> = {
+      main: fixtureSession("s1", { providerOverride: "openai", modelOverride: "gpt-5.4" }),
+    };
+    resetSessionStore(store);
+    mockConfig = {
+      ...mockConfig,
+      tools: {
+        agentToAgent: { enabled: false },
+        exec: { ...FULL_ACCESS_EXEC, ask: "always" },
+        modelChoice: { enabled: true },
+      },
+    };
+
+    await expect(
+      getSessionStatusTool().execute("call-session-status-choice-ask", {
+        model: "anthropic/claude-sonnet-4-6",
+      }),
+    ).rejects.toThrow("switching the model needs the person's approval");
+
+    expect(updateSessionStoreMock).not.toHaveBeenCalled();
   });
 
   it("rejects model changes for model-locked sessions", async () => {

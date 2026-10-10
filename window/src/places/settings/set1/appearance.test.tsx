@@ -239,7 +239,7 @@ describe("Settings › Appearance", () => {
     const { engine } = engineOf({ prefs: { "ui.window.look": { "show.usage": false } } });
     await render(engine);
     expect(sw("The usage ring").checked).toBe(false);
-    expect(sw("The pet").checked).toBe(true);
+    expect(sw("Let it roam").checked).toBe(false);
   });
 
   it("theme codes and engine palettes keep every colour", () => {

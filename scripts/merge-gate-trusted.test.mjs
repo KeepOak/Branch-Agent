@@ -1623,6 +1623,20 @@ test('PR-only named list entry covers a changed test', () => {
   assert.ok(!withList.uncovered.includes('engine/src/pr-only.test.ts'));
 });
 
+test('trusted coverage credits the post-merge generated i18n test through the lint-baselines run line', () => {
+  const generated = 'engine/test/scripts/control-ui-i18n.generated.test.ts';
+  const files = [{ filename: generated, status: 'modified' }];
+  const workflow = readFileSync(new URL('../.github/workflows/desktop-checks.yml', import.meta.url), 'utf8');
+  const lintBaselines = readFileSync(
+    new URL('../.github/workflows/engine-lint-baselines.yml', import.meta.url),
+    'utf8',
+  );
+  assert.ok(coverageFromPrFiles(files, workflow).uncovered.includes(generated));
+  assert.ok(
+    !coverageFromPrFiles(files, workflow, [], '', '', [], lintBaselines).uncovered.includes(generated),
+  );
+});
+
 function prDesktopJob(body) {
   return ['on:\n  pull_request:\njobs:\n  desktop:\n', body].join('');
 }
@@ -1905,9 +1919,11 @@ test('summarizeGateFileChanges lists workflows, gate scripts, and package.json f
     'package.json',
     'engine/src/gateway/contacts.ts',
   ];
+  // scripts/feature-batch-ci.mjs runs the feature tests from the PR checkout, so it is protected too.
   assert.deepEqual(summarizeGateFileChanges(files), [
     '.github/workflows/merge-gate.yml',
     'package.json',
+    'scripts/feature-batch-ci.mjs',
     'scripts/merge-gate-trusted.mjs',
   ]);
   assert.match(formatGateChangeSummary(['README.md']), /No /);
@@ -2624,4 +2640,27 @@ test('merge-gate-trusted still reruns when the pull request body is edited', () 
   assert.match(source, /evaluateGateChangeReview\(\{ changedFiles, body, headSha: sha, baselineGrew \}\)/);
   assert.match(source, /writeSummary\(formatGateChangeReviewSummary\(review\)\)/);
   assert.match(source, /if \(!review\.ok\)/);
+});
+
+test('a skipped feature-batch job is missing, not a pass, when its paths changed', () => {
+  const featureBatch = {
+    path: '.github/workflows/feature-batch-checks.yml',
+    pullRequestPaths: ['engine/**', 'window/**'],
+  };
+  const checkRun = (conclusion) => ({ id: 9001, name: 'Named feature tests on ubuntu-latest (1/7)', status: 'completed', conclusion });
+  const workflows = { 9001: { id: 7, path: '.github/workflows/feature-batch-checks.yml', event: 'pull_request' } };
+  const skipped = missingCoreWorkflows({
+    checkRuns: [checkRun('skipped')],
+    workflowsByCheckId: workflows,
+    changedFiles: ['engine/src/gateway/contacts.ts'],
+    coreWorkflows: [featureBatch],
+  });
+  assert.ok(skipped.some((item) => item.includes('feature-batch-checks.yml') && item.includes('skipped')), skipped.join('\n'));
+  const passed = missingCoreWorkflows({
+    checkRuns: [checkRun('success')],
+    workflowsByCheckId: workflows,
+    changedFiles: ['engine/src/gateway/contacts.ts'],
+    coreWorkflows: [featureBatch],
+  });
+  assert.equal(passed.filter((item) => item.includes('feature-batch-checks.yml')).length, 0);
 });

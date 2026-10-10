@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Branch Agent catalog</title>
+<style>body{font:16px system-ui;max-width:900px;margin:3rem auto;padding:0 1rem;background:#10221b;color:#edf5ef}a{color:#a4e5b6}article{padding:1.5rem;margin:1rem 0;border:1px solid #42634e;border-radius:12px}input{font:inherit;width:95%;padding:1rem}small{color:#bdccc1;overflow-wrap:anywhere}#status{overflow-wrap:anywhere}*{box-sizing:border-box}article{min-width:0}</style>
+<h1>Branch Agent catalog</h1>
+<p>Skills and plugins for Branch Agent. Install them from the Get capabilities page in the app.</p>
+<label>Find a pack <input id="filter" type="search" placeholder="Search by name or description"></label>
+<p id="status"></p><main id="packs"></main>
+<script id="catalog" type="application/json">__SEEDBANK_CATALOG__</script>
+<script>
+const catalog = JSON.parse(document.getElementById('catalog').textContent);
+const container = document.getElementById('packs');
+// Plain words for what a pack can reach. A skill is instructions only, so it reaches nothing.
+function permissionSentence(p) {
+  const x = p.permissions;
+  if (!x) return 'Permissions not declared.';
+  const reach = [x.network && 'the network', x.files !== 'none' && 'your files', x.runCommands && 'run commands', x.secrets && 'your secrets', x.computerControl && 'control your computer'].filter(Boolean);
+  return reach.length ? `Can reach: ${reach.join(', ')}.` : 'Reaches nothing outside Branch Agent.';
+}
+function scanSentence(p) {
+  if (!p.scan) return 'Official pack, published by the Branch Agent maintainers.';
+  return `Community pack. Scanned before listing: ${p.scan.critical} critical findings, ${p.scan.warn} warnings.`;
+}
+function render() {
+  const query = document.getElementById('filter').value.toLowerCase();
+  container.replaceChildren();
+  const entries = catalog.packages.filter(p => `${p.name} ${p.description} ${p.summary || ''}`.toLowerCase().includes(query));
+  document.getElementById('status').textContent = `${entries.length} packs`;
+  for (const p of entries) {
+    const article = document.createElement('article');
+    const kind = p.kind === 'skill' ? 'skill' : 'plugin';
+    const lines = [['h2',p.name],['small',`${kind} · ${p.tier}`],['p',p.summary || p.description],['p',permissionSentence(p)],['p',scanSentence(p)],['small',`SHA-256: ${p.sha256}`]];
+    for (const [tag, text] of lines) {
+      const element = document.createElement(tag); element.textContent = text; article.append(element);
+    }
+    const a = document.createElement('a'); a.href = p.tarball; a.textContent = 'Download the package file'; a.rel = 'noopener'; article.append(document.createElement('br'),a);
+    container.append(article);
+  }
+}
+document.getElementById('filter').addEventListener('input',render);render();
+</script>
+</html>

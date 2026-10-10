@@ -79,7 +79,7 @@ async function deployEngine(pnpm, scratch, identity) {
 async function packageDesktop(scratch, output, identity) {
   const npmDirectory = process.platform === "win32" ? dirname(process.execPath) : join(dirname(process.execPath), "../lib");
   await run(process.execPath, [join(npmDirectory, "node_modules/npm/bin/npm-cli.js"), "ci", "--no-audit", "--no-fund"], desktopRoot);
-  await run(process.execPath, [join(desktopRoot, "node_modules/typescript/bin/tsc"), "-p", join(desktopRoot, "tsconfig.json")], desktopRoot);
+  await run(process.execPath, [join(desktopRoot, "scripts/build.mjs")], desktopRoot);
   const packageJson = JSON.parse(await readFile(join(desktopRoot, "package.json"), "utf8"));
   delete packageJson.devDependencies; delete packageJson.scripts;
   const appDirectory = join(scratch, "desktop-app"); await mkdir(appDirectory);

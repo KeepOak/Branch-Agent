@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { emitAgentEvent } from "branch/plugin-sdk/agent-harness-runtime";
 import type {
   BeforeToolCallFailureDisposition,
   EmbeddedRunAttemptParamsV2 as EmbeddedRunAttemptParams,
@@ -25,6 +26,7 @@ import type { CodexNativeModelInputTools } from "./native-model-input-tools.js";
 import type { CodexNativeProcessAuthority } from "./native-process-authority.js";
 import { codexNativeSubagentMonitorRuntime } from "./native-subagent-monitor.js";
 import { isJsonObject, type JsonObject, type JsonValue } from "./protocol.js";
+import { applyCodexManagedShellEnvironment } from "./thread-shell-environment.js";
 import { resolveCodexToolAbortTerminalReason } from "./tool-abort-terminal-reason.js";
 
 const CODEX_NATIVE_HOOK_RELAY_EVENTS: readonly NativeHookRelayEvent[] = [
@@ -328,12 +330,52 @@ export function createCodexNativeHookRelay(params: {
                   "Codex native process admission requires exact thread, turn, and tool identities",
                 );
               }
-              params.nativeProcessAuthority!.owner.admit(
-                params.nativeProcessAuthority!.client(),
-                { threadId, turnId: invocation.turnId, itemId: invocation.toolUseId },
-                assertAdmissionCurrent,
-                childThreadId ? rootThreadId : undefined,
-              );
+              const input =
+                isJsonObject(payload) && isJsonObject(payload.tool_input)
+                  ? payload.tool_input
+                  : undefined;
+              let waited = false;
+              const report = (summary: string, phase: "update" | "end", status: string) =>
+                emitAgentEvent({
+                  runId: params.runId,
+                  sessionKey: params.sessionKey,
+                  stream: "item",
+                  data: {
+                    itemId: `heavy-step:${invocation.toolUseId}`,
+                    kind: "command",
+                    name: "exec_command",
+                    meta: summary,
+                    phase,
+                    status,
+                    summary,
+                  },
+                });
+              try {
+                await params.nativeProcessAuthority!.owner.admitHeavyStep(
+                  params.nativeProcessAuthority!.client(),
+                  { threadId, turnId: invocation.turnId, itemId: invocation.toolUseId },
+                  assertAdmissionCurrent,
+                  typeof input?.cmd === "string"
+                    ? input.cmd
+                    : typeof input?.command === "string"
+                      ? input.command
+                      : "",
+                  preparation.signal,
+                  (message) => {
+                    waited = true;
+                    report(message, "update", "running");
+                  },
+                  childThreadId ? rootThreadId : undefined,
+                );
+                if (waited) {
+                  report("Starting heavy step", "end", "completed");
+                }
+              } catch (error) {
+                if (waited) {
+                  report("Heavy step did not start", "end", "failed");
+                }
+                throw error;
+              }
               return undefined;
             },
           }
@@ -549,6 +591,8 @@ export function buildCodexNativeHookRelayConfig(params: {
   events?: readonly NativeHookRelayEvent[];
   hookTimeoutSec?: number;
   clearOmittedEvents?: boolean;
+  heavyStepEnvironment?: Record<string, string>;
+  heavyStepTimeoutSec?: number;
 }): JsonObject {
   const events = params.events?.length ? params.events : CODEX_NATIVE_HOOK_RELAY_EVENTS;
   const selectedEvents = new Set<NativeHookRelayEvent>(events);
@@ -573,7 +617,10 @@ export function buildCodexNativeHookRelayConfig(params: {
       }
       continue;
     }
-    const timeout = normalizeHookTimeoutSec(params.hookTimeoutSec);
+    const timeout =
+      event === "pre_tool_use" && params.heavyStepEnvironment
+        ? Math.max(normalizeHookTimeoutSec(params.hookTimeoutSec), params.heavyStepTimeoutSec ?? 0)
+        : normalizeHookTimeoutSec(params.hookTimeoutSec);
     const command = params.relay.commandForEvent(event, {
       timeoutMs: resolveCodexNativeHookRelayCommandTimeoutMs(timeout),
     });
@@ -605,7 +652,7 @@ export function buildCodexNativeHookRelayConfig(params: {
     }
   }
   config["hooks.state"] = hookState;
-  return config;
+  return applyCodexManagedShellEnvironment(config, params.heavyStepEnvironment);
 }
 
 export function buildCodexNativeHookRelayDisabledConfig(): JsonObject {

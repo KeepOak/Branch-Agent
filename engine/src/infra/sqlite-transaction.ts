@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { setTimeout as sleep } from "node:timers/promises";
 import { isMainThread, threadId } from "node:worker_threads";
 import { isPromiseLike } from "@branch/normalization-core/promise-like";
+import { recordMainThreadWork } from "../logging/main-thread-work.js";
 import { createSubsystemLogger, type SubsystemLogger } from "../logging/subsystem.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 // The cache-state module keeps this lifecycle edge off the kysely value graph
@@ -420,7 +421,8 @@ function runSqliteTransactionSync<T>(
     }
   }
 
-  const beginStartedAt = performance.now();
+  // One start mark feeds both the main-thread work tally and the BEGIN lock wait.
+  const transactionWorkStartedAt = performance.now();
   execTimedTransactionStep({
     db,
     options,
@@ -430,7 +432,7 @@ function runSqliteTransactionSync<T>(
   // IMMEDIATE takes its lock in BEGIN, so its wait is measured here, outside elapsedMs. DEFERRED takes
   // its lock on the first statement, which is not timed here, so that wait stays inside elapsedMs.
   // Includes the write-admission service time spent inside BEGIN as well as the busy wait.
-  const lockWaitMs = mode === "immediate" ? performance.now() - beginStartedAt : undefined;
+  const lockWaitMs = mode === "immediate" ? performance.now() - transactionWorkStartedAt : undefined;
   const heldStartedAt = performance.now();
   const transactionStartedAt = Date.now();
   let commitStarted = false;
@@ -455,6 +457,12 @@ function runSqliteTransactionSync<T>(
     throw error;
   } finally {
     // Include COMMIT and failed holders: both keep other writers waiting too.
+    // Each thread keeps its own bounded tally; only the thread running the liveness sampler drains it.
+    recordMainThreadWork(
+      "sqlite",
+      options?.operationLabel || captureSqliteReaderOwner()?.operation || "unlabeled",
+      performance.now() - transactionWorkStartedAt,
+    );
     try {
       logSlowTransactionHold({
         db,

@@ -2,10 +2,15 @@ import { describe, expect, it } from "vitest";
 import { levelFor, pageAtLevel, pageLevel, pageName, searchSettings, settingsGroups } from "./settings-nav";
 
 describe("settings nav", () => {
-  it("has 21, 22 and 23 pages by level (Grafts is in Safety, Backups in Care)", () => {
+  it("has 20, 21 and 22 pages by level (Grafts is in Safety, Backups in Care)", () => {
     const count = (l: "regular" | "advanced" | "technical") => settingsGroups(l).reduce((n, g) => n + g.pages.length, 0);
-    expect([count("regular"), count("advanced"), count("technical")]).toEqual([21, 22, 23]);
+    expect([count("regular"), count("advanced"), count("technical")]).toEqual([20, 21, 22]);
     expect(settingsGroups("regular").map((g) => g.name)).toEqual(["General", "Your Trunks", "Safety", "Care"]);
+  });
+  it("hides Achievements until it counts real achievements", () => {
+    const ids = (l: "regular" | "advanced" | "technical") => settingsGroups(l).flatMap((g) => g.pages.map((p) => p.id));
+    expect(ids("technical")).not.toContain("achievements");
+    expect(pageAtLevel("achievements", "technical")).toBe("general");
   });
   it("a level drop moves a hidden page to General", () => {
     expect(pageAtLevel("developer", "advanced")).toBe("general");

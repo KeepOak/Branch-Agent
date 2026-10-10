@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'desktop/**'
+      - 'engine/scripts/lib/available-memory.*'
       - '.github/workflows/desktop-checks.yml'
       - '.github/workflows/source-build.yml'
       - '.github/workflows/component-release.yml'
@@ -11,6 +12,7 @@ on:
     branches: [main]
     paths:
       - 'desktop/**'
+      - 'engine/scripts/lib/available-memory.*'
       - '.github/workflows/desktop-checks.yml'
       - '.github/workflows/source-build.yml'
       - '.github/workflows/component-release.yml'
@@ -83,6 +85,10 @@ jobs:
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
         run: node --test scripts/brand-icons.test.mjs scripts/linux-launcher.test.mjs scripts/mac-applications.test.mjs scripts/release-inventory.test.mjs scripts/production-engine-smoke.test.mjs scripts/release-source-freeze.test.mjs scripts/release-production-layout.test.mjs
+      - name: Check the diagnostics log, redaction, problem report and archive
+        env:
+          BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
+        run: node --test scripts/diagnostics.test.mjs
       - name: Check documentation merge command patterns
         working-directory: ${{ github.workspace }}
         run: node --test scripts/check-merge-command.test.mjs
