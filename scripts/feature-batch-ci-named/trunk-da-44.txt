@@ -1,0 +1,2 @@
+window:src/places/library/memory.test.tsx
+window:src/places/settings/set2/set2.test.tsx

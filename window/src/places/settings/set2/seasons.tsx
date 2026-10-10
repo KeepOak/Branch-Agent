@@ -19,7 +19,7 @@ const NIGHT: Record<string, string> = { "0 1 * * *": "1", "0 3 * * *": "3", "0 5
 const ZONES = ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "Europe/London", "Europe/Berlin", "Africa/Lagos", "Asia/Kolkata", "Asia/Tokyo", "Australia/Sydney"];
 
 export const ROWS: RowEntry[] = [
-  ["Tidy memory at night with Rings", "Rings", 0], ["Night window", "Rings", 0], ["Rings diary", "Rings", 0],
+  ["Clean up memory overnight", "Overnight memory cleanup", 0], ["Night window", "Overnight memory cleanup", 0], ["What it changed", "Overnight memory cleanup", 0],
   ["Look after skills", "Skill maintenance", 0], ["Look at skills now", "Skill maintenance", 0],
   ["Learn what a Trunk can’t do yet", "Skill learning", 0], ["Highest step it may take", "Skill learning", 0],
   ["Keep a change only if it does better by", "Keeping a change", 0], ["Use paid models at night", "Keeping a change", 0],
@@ -30,7 +30,7 @@ export const ROWS: RowEntry[] = [
   ["Exact schedule", "Rings, in depth", 2], ["Log each pass in detail", "Rings, in depth", 2],
   ["Fill the diary from past notes", "Rings, maintenance", 2], ["Remove filled-in entries", "Rings, maintenance", 2],
   ["Remove repeated diary entries", "Rings, maintenance", 2], ["Repair Rings’ files", "Rings, maintenance", 2],
-].map(([title, sec, lv]) => ({ page: "seasons", title: String(title), sec: String(sec), group: ({ "Rings, by hand": "Rings", "Rings, in depth": "Rings", "Rings, maintenance": "Rings", "Seasons, more": "Seasons" } as Record<string, string>)[String(sec)] ?? String(sec), lv: lv as 0 | 1 | 2 }));
+].map(([title, sec, lv]) => ({ page: "seasons", title: String(title), sec: String(sec), group: ({ "Rings, by hand": "Overnight memory cleanup", "Rings, in depth": "Overnight memory cleanup", "Rings, maintenance": "Overnight memory cleanup", "Seasons, more": "Seasons" } as Record<string, string>)[String(sec)] ?? String(sec), lv: lv as 0 | 1 | 2 }));
 
 type Config = ReturnType<typeof useConfig>;
 type Ctx = SettingsPageProps & { config: Config; agent: string; status: RecordValue; reload: () => void };
@@ -54,7 +54,7 @@ export function SeasonsPage(props: SettingsPageProps) {
       <Budding {...ctx} />
       <Sec title="Keeping a change">
         <Ctl title="Keep a change only if it does better by" sub="Measured on practice runs of your recent tasks." off="Needs the engine’s practice runs."><Num label="Keep a change only if it does better by" value={undefined} unit="%" onCommit={() => undefined} /></Ctl>
-        <Ctl title="Use paid models at night" sub="Rings uses your usual model while you sleep." help="Rings uses your usual model while you sleep. Off: Seasons uses only the model on this computer." off="Choose the model that writes the diary in Seasons, more."><Switch label="Use paid models at night" checked onChange={() => undefined} /></Ctl>
+        <Ctl title="Use paid models at night" sub="Overnight cleanup uses your usual model while you sleep." help="Overnight cleanup uses your usual model while you sleep. Off: Seasons uses only the model on this computer." off="Choose the model that writes the diary in Seasons, more."><Switch label="Use paid models at night" checked onChange={() => undefined} /></Ctl>
       </Sec>
       <ThisSeason rings={ctx.status} proposals={list(rec(proposals.data).proposals)} />
       {lv >= 1 ? <More {...ctx} /> : null}
@@ -66,13 +66,13 @@ export function SeasonsPage(props: SettingsPageProps) {
 }
 
 function SeasonStatus({ rings, proposals, error }: { rings: RecordValue; proposals: RecordValue[]; error?: string }) {
-  if (error) return <Status tone="bad" title="Branch couldn’t read Rings">{error}</Status>;
+  if (error) return <Status tone="bad" title="Branch couldn’t read overnight memory cleanup">{error}</Status>;
   if (!rings.phases) return null;
   const kept = Number(rings.promotedTotal) || 0;
   const learned = proposals.filter((p) => p.status === "applied").length;
   const next = rec(rec(rings.phases).deep).nextRunAtMs;
-  const bits = [rings.lastPromotedAt ? `Rings last kept a note ${when(Date.parse(str(rings.lastPromotedAt)))}` : "Rings hasn’t kept a note yet",
-    rings.enabled === false ? "Rings is off" : next ? `next night ${when(next)}` : "", learned ? `${learned} new ${learned === 1 ? "ability" : "abilities"}` : ""].filter(Boolean);
+  const bits = [rings.lastPromotedAt ? `Overnight memory cleanup last ran ${when(Date.parse(str(rings.lastPromotedAt)))}` : "Overnight memory cleanup hasn’t run yet",
+    rings.enabled === false ? "it’s off" : next ? `next night ${when(next)}` : "", learned ? `${learned} new ${learned === 1 ? "ability" : "abilities"}` : ""].filter(Boolean);
   return <Status tone={rings.enabled === false ? "idle" : "ok"} title={`This season: ${kept + learned} ${kept + learned === 1 ? "change" : "changes"} kept`}>{bits.join(" · ")}.</Status>;
 }
 
@@ -82,15 +82,15 @@ function RingsSec({ engine, config, agent }: Ctx) {
   const cron = str(config.get(`${RINGS}.frequency`)) || "0 3 * * *";
   const night = NIGHT[cron] ?? "custom";
   return (
-    <Sec title="Rings">
-      <Ctl title="Tidy memory at night with Rings" sub="Merges repeats, keeps what matters and lets go of what’s unused." help="Merges repeats, keeps what matters and lets go of what’s unused. Every change is in the diary.">
-        <Switch label="Tidy memory at night with Rings" checked={enabled} disabled={config.loading} onChange={(on) => void config.set(`${RINGS}.enabled`, on)} />
+    <Sec title="Overnight memory cleanup">
+      <Ctl title="Clean up memory overnight" sub="Merges repeats, keeps what matters and lets go of what’s unused." help="Merges repeats, keeps what matters and lets go of what’s unused. Every change is listed in What it changed.">
+        <Switch label="Clean up memory overnight" checked={enabled} disabled={config.loading} onChange={(on) => void config.set(`${RINGS}.enabled`, on)} />
       </Ctl>
-      <Ctl title="Night window" sub={night === "custom" ? `Custom: ${cron}. Rings starts when the window opens and runs until it is done.` : "Rings starts when the window opens and runs until it is done."}>
+      <Ctl title="Night window" sub={night === "custom" ? `Custom: ${cron}. Cleanup starts when the window opens and runs until it is done.` : "Cleanup starts when the window opens and runs until it is done."}>
         <Seg label="Night window" value={night} disabled={config.loading || !enabled} onChange={(h) => void config.set(`${RINGS}.frequency`, `0 ${h} * * *`)}
           options={[{ id: "1", label: "1 AM" }, { id: "3", label: "3 AM" }, { id: "5", label: "5 AM" }, ...(night === "custom" ? [{ id: "custom", label: "Custom", off: "Set in Rings, in depth." }] : [])]} />
       </Ctl>
-      <Ctl title="Rings diary" sub="Every merge and every fact let go, night by night."><Btn sm onClick={() => setDiary(true)}>Read it</Btn></Ctl>
+      <Ctl title="What it changed" sub="Every merge and every fact let go, night by night."><Btn sm onClick={() => setDiary(true)}>See what it changed</Btn></Ctl>
       {diary ? <DiaryDialog engine={engine} agent={agent} onClose={() => setDiary(false)} /> : null}
     </Sec>
   );
@@ -100,10 +100,10 @@ function DiaryDialog({ engine, agent, onClose }: Pick<SettingsPageProps, "engine
   const diary = useLive<RecordValue>(engine, "doctor.memory.dreamDiary", agent ? { agentId: agent } : {}, []);
   const d = rec(diary.data);
   return (
-    <Dialog title="Rings diary" wide onClose={onClose}>
+    <Dialog title="What overnight cleanup changed" wide onClose={onClose}>
       {diary.error ? <p className="s2-err" role="alert">{diary.error}</p> : null}
       {diary.loading && !diary.data ? <p>Loading…</p> : null}
-      {diary.data && d.found !== true ? <p className="hint">The diary is empty. Rings writes in it after its first night.</p> : null}
+      {diary.data && d.found !== true ? <p className="hint">Nothing yet. It writes down what it changed after its first night.</p> : null}
       {d.found === true ? <pre className="s2-pre s2-diary">{str(d.content)}</pre> : null}
       {d.path ? <p className="hint">{str(d.path)}</p> : null}
     </Dialog>

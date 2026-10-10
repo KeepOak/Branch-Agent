@@ -197,6 +197,10 @@ describe("Settings › Seasons", () => {
     const { engine, request } = engineWith({ "doctor.memory.status": RINGS_STATUS, "skills.proposals.list": { proposals: [] }, "config.get": { hash: "h", valid: true, config: {} }, "config.patch": { ok: true, hash: "h2", config: {} } });
     await show("seasons", engine);
     expect(document.body.textContent).toContain("This season: 3 changes kept");
+    expect(document.body.textContent).toContain("Overnight memory cleanup hasn’t run yet");
+    expect(document.querySelector('[aria-label="Clean up memory overnight"]')).toBeTruthy();
+    expect(document.querySelector('[data-row="What it changed"]')).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/Rings diary|Tidy memory at night with Rings|Rings hasn’t/);
     await click("1 AM");
     const patch = request.mock.calls.find(([m]) => m === "config.patch");
     expect(JSON.parse(String((patch?.[1] as { raw: string }).raw))).toEqual({ plugins: { entries: { "memory-core": { config: { rings: { frequency: "0 1 * * *" } } } } } });

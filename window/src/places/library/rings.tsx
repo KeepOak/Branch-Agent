@@ -10,6 +10,10 @@ import type { MemoryStatus } from "./memory-more";
 import { Grey, IcoTile, when } from "./parts";
 
 export const UNDO_NIGHT_REASON = "Needs the engine’s undo-last-night method for Rings.";
+/** The reason the person sees on the greyed undo; UNDO_NIGHT_REASON stays on the button as the engine-lane note. */
+const UNDO_NIGHT_WHY = "Undo isn’t available yet. See what it changed lists every change from last night.";
+/** "Rings" is the internal name; the person reads what it does. */
+const CLEANUP = "Overnight memory cleanup";
 
 type Props = { engine: WindowEngine; level: Level; scope: string; status: { data: MemoryStatus | null }; openSettings?: (page: string) => void };
 
@@ -18,18 +22,20 @@ export function RingsRow({ engine, level, scope, status, openSettings }: Props) 
   const rings = status.data?.rings;
   if (!status.data) return null;
   if (!rings?.enabled) return <div className="lib-rows lib-rings" data-testid="rings-row">
-    <div className="lib-row"><IcoTile icon="clock" /><span className="lib-grow"><b>Rings · not run yet</b><small>It tidies memory overnight.</small></span>
+    <div className="lib-row"><IcoTile icon="clock" /><span className="lib-grow">{rings?.enabled === false
+      ? <><b>{CLEANUP}: off</b><small>Turn it on to tidy memory while you sleep.</small></>
+      : <><b>{CLEANUP}: hasn’t run yet</b><small>It tidies memory while you sleep.</small></>}</span>
       {openSettings && <button type="button" className="link" onClick={() => openSettings("seasons")}>Seasons settings</button>}</div>
   </div>;
   const last = rings.lastPromotedAt ? Date.parse(rings.lastPromotedAt) : NaN;
-  const lastWords = Number.isFinite(last) ? `last ran ${when(last)}` : "not run yet";
+  const lastWords = Number.isFinite(last) ? `last ran ${when(last)}` : "hasn’t run yet";
   const kept = rings.promotedToday ?? 0, waiting = rings.shortTermCount ?? 0;
   return <div className="lib-rows lib-rings" data-testid="rings-row">
     <div className="lib-row"><IcoTile icon="clock" />
-      <span className="lib-grow"><b>Rings · {lastWords}</b><small>{kept} kept for good today · {waiting} waiting to be sorted</small>
+      <span className="lib-grow"><b>{CLEANUP}: {lastWords}</b><small>{kept} kept for good today · {waiting} waiting to be sorted</small>
         {shows(level, "advanced") && <small className="lib-mono">Kept for good today {kept} · in all {rings.promotedTotal ?? 0} · waiting to be sorted {waiting} · signals {(rings.lightPhaseHitCount ?? 0) + (rings.remPhaseHitCount ?? 0)} (sort {rings.lightPhaseHitCount ?? 0}, reflect {rings.remPhaseHitCount ?? 0})</small>}</span>
-      <button type="button" className="btn sm" onClick={() => setDiary(true)}>Read the diary</button>
-      <Grey ghost label="Undo last night" reason={UNDO_NIGHT_REASON} />
+      <button type="button" className="btn sm" onClick={() => setDiary(true)}>See what it changed</button>
+      <Grey ghost label="Undo last night’s cleanup" reason={UNDO_NIGHT_REASON} why={UNDO_NIGHT_WHY} />
     </div>
     {diary && <Diary engine={engine} level={level} agentId={scope} onClose={() => setDiary(false)} />}
   </div>;
@@ -53,10 +59,10 @@ function Diary({ engine, level, agentId, onClose }: { engine: WindowEngine; leve
       <button type="button" className="btn ghost sm" disabled={op.busy} onClick={() => act("doctor.memory.dedupeDreamDiary", r => `${n(r.removedEntries)} repeats removed.`)}>Remove repeats</button>
     </>}
   </>;
-  return <Dialog title="Rings diary" wide onClose={onClose} footer={footer} testid="rings-diary">
+  return <Dialog title="What overnight cleanup changed" wide onClose={onClose} footer={footer} testid="rings-diary">
     {diary.loading && <p className="lib-hint" role="status">Loading…</p>}
     {diary.error && <p className="lib-bad" role="alert">{diary.error}</p>}
-    {diary.data && (diary.data.found && diary.data.content ? <pre className="lib-pre">{diary.data.content}</pre> : <p className="lib-hint">No diary yet. Rings writes one after a night’s sorting.</p>)}
+    {diary.data && (diary.data.found && diary.data.content ? <pre className="lib-pre">{diary.data.content}</pre> : <p className="lib-hint">Nothing yet. It writes down what it changed after its first night.</p>)}
     {done && <p role="status" className="lib-hint">{done}</p>}
     {op.error && <p className="lib-bad" role="alert">{op.error}</p>}
   </Dialog>;
