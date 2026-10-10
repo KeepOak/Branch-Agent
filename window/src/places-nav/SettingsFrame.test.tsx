@@ -55,6 +55,25 @@ describe("settings frame level", () => {
     expect(onPage).toHaveBeenCalledWith("general");
   });
 
+  it("resets the shared scroller on every Settings page change", async () => {
+    await open("general");
+    const scroll = document.querySelector<HTMLElement>(".set-scroll")!;
+    for (const page of ["notifications", "models", "general"]) {
+      scroll.scrollTop = 420;
+      await act(async () => root?.render(<SettingsFrame page={page} backName="Sapling" engine={engine} onPage={vi.fn()} onBack={() => {}} />));
+      expect(document.querySelector(".set-scroll")).toBe(scroll);
+      expect(scroll.scrollTop).toBe(0);
+    }
+  });
+
+  it("does not reset scroll on a same-page render", async () => {
+    await open("notifications");
+    const scroll = document.querySelector<HTMLElement>(".set-scroll")!;
+    scroll.scrollTop = 310;
+    await act(async () => root?.render(<SettingsFrame page="notifications" backName="Sapling" engine={engine} onPage={vi.fn()} onBack={() => {}} />));
+    expect(scroll.scrollTop).toBe(310);
+  });
+
   it("keeps the page scroll position when changing its detail level", async () => {
     await open("general");
     const scroll = document.querySelector<HTMLElement>(".set-scroll")!;
