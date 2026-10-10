@@ -23,7 +23,7 @@
 /* a top tab's own views (Team, Access): a quieter segmented row under the four top tabs */
 .pp-tabs.sub { display: inline-flex; max-width: 100%; gap: 2px; margin: 0 0 8px; padding: 2px; border-radius: 10px; background: var(--fill); }
 .pp-tabs.sub .pp-tab { height: 26px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; }
-.pp-tabs.sub .pp-tab[aria-selected="true"], .pp-tabs.sub .pp-tab[aria-selected="true"]:hover { background: var(--raise); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
+.pp-tabs.sub .pp-tab[aria-selected="true"], .pp-tabs.sub .pp-tab[aria-selected="true"]:hover { background: var(--raise); box-shadow: var(--sh1-17); }
 .pp-tab:focus-visible, .ppl button:focus-visible, .ppl input:focus-visible, .ppl select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* avatars */
