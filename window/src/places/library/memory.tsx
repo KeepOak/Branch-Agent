@@ -78,9 +78,10 @@ function MemoryCard({ engine, level, files, scope, status, check }: CardProps) {
   const line = `${sizes.size > 1 ? "Up to " : ""}${fmt(loaded)}${limit ? ` of ${fmt(limit)}` : ""} characters load at the start of each conversation.`;
   const s = status.data;
   return <div className="lib-card" data-testid="memory-card">
-    <Ring part={loaded} whole={limit} label={line} />
+    {/* DA-43: a ring at zero reads as a loading spinner, so it only shows once something loads. */}
+    {loaded > 0 && <Ring part={loaded} whole={limit} label={line} />}
     <div className="lib-grow">
-      <b>{status.error ? "Memory needs attention" : plural(count, "memory", "memories") + (notes ? ` · ${plural(notes, "daily note", "daily notes")}` : "")}</b>
+      <b>{status.error ? "Memory needs attention" : (count ? plural(count, "memory", "memories") : "No memories yet") + (notes ? ` · ${plural(notes, "daily note", "daily notes")}` : "")}</b>
       <p>{status.error ? status.error : line}</p>
       {failed.filter(f => shownWhy(f.error)).map(f => <p key={f.agentId} className="lib-bad" role="alert">{f.trunk}: {f.error}</p>)}
       {shows(level, "advanced") && s && !status.error && <small className="lib-third">{engineName(s.provider)} · {s.embedding.ok ? "searches by meaning and words" : "searches by words only"}</small>}
