@@ -14,6 +14,7 @@ import {
   releaseOrphanQueueClaims,
   releaseStaleQueueClaims,
   type TrunkQueueGateway,
+  wakeIdleTrunks,
 } from "./trunk-queue.js";
 
 type Call = { method: string; params: Record<string, unknown> };
@@ -28,7 +29,7 @@ const FOUR_HOURS_MS = 4 * 60 * 60_000;
  */
 function fenceGateway(
   runStatus: string,
-  options: { abortWorks?: boolean; missingRunIds?: Set<string> } = {},
+  options: { abortWorks?: boolean; missingRunIds?: Set<string>; onAbort?: () => void } = {},
 ) {
   const calls: Call[] = [];
   const state = { runStatus };
@@ -39,6 +40,7 @@ function fenceGateway(
         return { sessions: [] } as T;
       }
       if (method === "sessions.abort") {
+        options.onAbort?.();
         if (options.abortWorks !== false) {
           state.runStatus = "aborted";
         }
@@ -187,17 +189,60 @@ describe("Trunk queue fenced claims", () => {
     expect(listQueueItems(env)[0]).toMatchObject({
       status: "released",
       released_from: "builder-birch",
-      fence: 1,
     });
     expect(logs).toEqual([
       "Stopped silent job on builder-birch after 4 hours without finishing; it is back in the queue.",
     ]);
   });
 
-  it("keeps a silent claim held, and asks for attention, when the stop cannot be confirmed", async () => {
-    addQueueItem({ title: "stuck job", brief_text: "stuck brief" }, env, 1);
+  it("counts unconfirmed stops, then marks the claim as needing a person and stops retrying", async () => {
+    const job = addQueueItem({ title: "stuck job", brief_text: "stuck brief" }, env, 1);
     claimNextQueueItem("builder-birch", env, 1_000);
-    const { gateway } = fenceGateway("pending", { abortWorks: false });
+    const { gateway, calls } = fenceGateway("pending", { abortWorks: false });
+    const logs: string[] = [];
+    const pass = () =>
+      releaseStaleQueueClaims({
+        gateway,
+        env,
+        now: () => 1_000 + FOUR_HOURS_MS,
+        log: (message) => logs.push(message),
+      });
+    const aborts = () => calls.filter((call) => call.method === "sessions.abort").length;
+
+    await pass();
+    expect(listQueueItems(env)[0]).toMatchObject({ status: "claimed", stop_attempts: 1 });
+    expect(listQueueItems(env)[0].attention_reason).toBeUndefined();
+    await pass();
+    expect(listQueueItems(env)[0]).toMatchObject({ status: "claimed", stop_attempts: 2 });
+    await pass();
+
+    // Third unconfirmed stop: the claim is marked and shows as needing a person, in plain English.
+    expect(listQueueItems(env)[0]).toMatchObject({
+      status: "needs_attention",
+      claimed_by: "builder-birch",
+      stop_attempts: 3,
+      attention_reason: "Couldn't stop stuck job on builder-birch; needs a person.",
+    });
+    expect(logs).toEqual(["Couldn't stop stuck job on builder-birch; needs a person."]);
+
+    // A fourth pass does not try again, and the job is not handed to another builder.
+    const attemptsSoFar = aborts();
+    await pass();
+    expect(aborts()).toBe(attemptsSoFar);
+    expect(listQueueItems(env).find((row) => row.id === job.id)).toMatchObject({
+      status: "needs_attention",
+    });
+  });
+
+  it("keeps the job done when its run finishes during the stop, and does not re-queue it", async () => {
+    const job = addQueueItem({ title: "finished job", brief_text: "finished brief" }, env, 1);
+    const claim = claimNextQueueItem("builder-birch", env, 1_000);
+    const { gateway, calls } = fenceGateway("pending", {
+      // The run completes while the abort is in flight, and its completion lands in the queue.
+      onAbort: () => {
+        closeQueueClaimForThread(claim!.thread_key, "completed", env, 1_500);
+      },
+    });
     const logs: string[] = [];
 
     await releaseStaleQueueClaims({
@@ -207,13 +252,24 @@ describe("Trunk queue fenced claims", () => {
       log: (message) => logs.push(message),
     });
 
-    expect(listQueueItems(env)[0]).toMatchObject({
-      status: "claimed",
-      claimed_by: "builder-birch",
+    const row = listQueueItems(env).find((candidate) => candidate.id === job.id);
+    expect(row).toMatchObject({ status: "done" });
+    expect(row?.released_at).toBeUndefined();
+    expect(logs).toEqual([]);
+
+    // Nothing hands the finished job out again.
+    await wakeIdleTrunks({
+      agentIds: ["builder-oak"],
+      gateway,
+      env,
+      now: () => 2_000 + FOUR_HOURS_MS,
     });
-    expect(logs).toEqual([
-      "Could not stop stuck job on builder-birch after 4 hours without finishing; it stays claimed. Needs attention.",
-    ]);
+    expect(briefsSent(calls).filter((call) => call.params.agentId === "builder-oak")).toHaveLength(
+      0,
+    );
+    expect(listQueueItems(env).find((candidate) => candidate.id === job.id)).toMatchObject({
+      status: "done",
+    });
   });
 
   it("fences out a late result from a stopped run after the job went to another builder", async () => {

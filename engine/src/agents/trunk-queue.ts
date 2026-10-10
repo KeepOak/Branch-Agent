@@ -3,118 +3,58 @@
 // Branch's state folder and only the gateway writes it: each read-modify-write is synchronous, so two Trunks that
 // finish together can never claim the same job. Same storage pattern as gateway/contacts/graft-work.ts.
 import { randomUUID } from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
-import { resolveStateDir } from "../config/paths.js";
+import { isClaimThreadLive, probeWorking, waitForTrunkIdle } from "./trunk-queue-probe.js";
+import {
+  claimMayRelease,
+  GATEWAY_EPOCH,
+  queueRunId,
+  stopSilentClaim,
+} from "./trunk-queue-run-fence.js";
+import {
+  errorText,
+  isTrunkUnavailableError,
+  type TrunkAvailability,
+} from "./trunk-queue-status.js";
+import {
+  byPriority,
+  claimRef,
+  type ClaimRef,
+  findClaim,
+  isClaimable,
+  isOpenClaim,
+  isPastStaleTime,
+  MAX_CLAIM_FAILURES,
+  read,
+  release,
+  type TrunkQueueGateway,
+  type TrunkQueueItem,
+  type TrunkQueueStatus,
+  updateClaim,
+  write,
+} from "./trunk-queue-store.js";
+export type { TrunkQueueGateway, TrunkQueueItem, TrunkQueueStatus } from "./trunk-queue-store.js";
+export { MAX_CLAIM_FAILURES, STALE_CLAIM_MS } from "./trunk-queue-store.js";
+export { GATEWAY_EPOCH, queueRunId } from "./trunk-queue-run-fence.js";
+export {
+  isTrunkUnavailableError,
+  trunkAvailabilityLogger,
+  type TrunkAvailability,
+  type TrunkAvailabilityStatus,
+} from "./trunk-queue-status.js";
 
-export type TrunkQueueItem = {
-  id: string;
-  title: string;
-  brief_text: string;
-  priority: number;
-  added_at: number;
-  claimed_by?: string;
-  claimed_at?: number;
-  /** One claim attempt: dispatch and failure cleanup act only while the job still carries this id. */
-  claim_id?: string;
-  /** The new thread this claim attempt sends the brief to. */
-  thread_key?: string;
-  /** Last run activity seen for the claiming Trunk; with none for STALE_CLAIM_MS and no live run, it is released. */
-  active_at?: number;
-  done_at?: number;
-  released_at?: number;
-  released_from?: string;
-  /** Claim attempts that ended in an error or a failed dispatch. At MAX_CLAIM_FAILURES the job is blocked. */
-  failures?: number;
-  /** Plain reason a job stopped after MAX_CLAIM_FAILURES. Shown in the queue list; cleared by queue_release. */
-  blocked_reason?: string;
-  /** The gateway process (epoch) that made this claim. Its run cannot outlive that process. */
-  gateway_epoch?: string;
-  /** Bumped each time a claim is stopped by the hard cap, so the stopped attempt is fenced off for good. */
-  fence?: number;
-};
-
-export type TrunkQueueStatus = "queued" | "claimed" | "released" | "blocked" | "done";
-
-/** The gateway calls a pickup needs: the Trunk's threads (is it idle?) and a new thread with the brief. */
-export type TrunkQueueGateway = {
-  request<T = Record<string, unknown>>(method: string, params: Record<string, unknown>): Promise<T>;
-};
-
-export const STALE_CLAIM_MS = 2 * 60 * 60_000;
 /** A claim with no run activity for this long and no live run lost its run without a run-end event. */
 export const ORPHAN_CLAIM_GRACE_MS = 2 * 60_000;
-/** Failed claim attempts after which a job is blocked, so a broken job cannot re-dispatch forever. */
-export const MAX_CLAIM_FAILURES = 3;
 /** A claim whose run has shown no activity this long is dead in practice, whatever its run status says. */
 export const HARD_CLAIM_CAP_MS = 4 * 60 * 60_000;
-/** Live sessions requested per query. The query selects running sessions before the limit applies. */
-const LIVE_SESSION_LIMIT = 500;
-const RETAIN_DONE_MS = 7 * 24 * 60 * 60_000;
+/** Stop attempts for a silent claim before it is marked as needing a person and not retried. */
+export const MAX_STOP_ATTEMPTS = 3;
 const RUN_ERROR_REASON = "the run ended with an error";
-/** Identifies this gateway process. A claim from another epoch was made by a process that has since exited. */
-export const GATEWAY_EPOCH = randomUUID();
 /** After a Trunk refuses work as not ready, it is not tried again until this much time has passed. */
 export const UNAVAILABLE_RETRY_MS = 60_000;
 
 /** Claim ids whose brief is still being sent. A claim is never called orphaned while its dispatch is in flight. */
 const dispatchingClaimIds = new Set<string>();
 
-function file(env: NodeJS.ProcessEnv = process.env): string {
-  return path.join(resolveStateDir(env), "trunks", "queue.json");
-}
-
-function read(env?: NodeJS.ProcessEnv): TrunkQueueItem[] {
-  try {
-    const rows = JSON.parse(fs.readFileSync(file(env), "utf8")) as unknown;
-    return Array.isArray(rows)
-      ? rows.filter(
-          (row): row is TrunkQueueItem =>
-            Boolean(row) &&
-            typeof row.id === "string" &&
-            typeof row.title === "string" &&
-            typeof row.brief_text === "string" &&
-            typeof row.priority === "number" &&
-            typeof row.added_at === "number",
-        )
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function write(rows: TrunkQueueItem[], now: number, env?: NodeJS.ProcessEnv): void {
-  const target = file(env);
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  const tmp = `${target}.${process.pid}.tmp`;
-  const kept = rows.filter((row) => !row.done_at || now - row.done_at < RETAIN_DONE_MS);
-  fs.writeFileSync(tmp, `${JSON.stringify(kept, null, 2)}\n`);
-  fs.renameSync(tmp, target);
-}
-
-function isOpenClaim(row: TrunkQueueItem): boolean {
-  return Boolean(row.claimed_by) && !row.done_at;
-}
-
-function release(row: TrunkQueueItem, now: number): void {
-  row.released_from = row.claimed_by;
-  row.released_at = now;
-  delete row.claimed_by;
-  delete row.claimed_at;
-  delete row.claim_id;
-  delete row.thread_key;
-  delete row.active_at;
-}
-
-function isPastStaleTime(row: TrunkQueueItem, now: number): boolean {
-  return now - (row.active_at ?? row.claimed_at ?? now) >= STALE_CLAIM_MS;
-}
-
-function isClaimable(row: TrunkQueueItem): boolean {
-  return !row.done_at && !row.claimed_by && (row.failures ?? 0) < MAX_CLAIM_FAILURES;
-}
-
-/** Counts a failed attempt and puts the job back. At the cap the job is blocked with a plain reason. */
 function failClaim(row: TrunkQueueItem, now: number, reason: string): void {
   row.failures = (row.failures ?? 0) + 1;
   release(row, now);
@@ -130,17 +70,12 @@ export function queueItemStatus(row: TrunkQueueItem): TrunkQueueStatus {
     return "done";
   }
   if (row.claimed_by) {
-    return "claimed";
+    return row.attention_reason ? "needs_attention" : "claimed";
   }
   if (row.blocked_reason) {
     return "blocked";
   }
   return row.released_at ? "released" : "queued";
-}
-
-/** Highest priority first; the oldest job wins a tie. */
-function byPriority(a: TrunkQueueItem, b: TrunkQueueItem): number {
-  return b.priority - a.priority || a.added_at - b.added_at;
 }
 
 export function addQueueItem(
@@ -257,10 +192,6 @@ export function closeQueueClaimForThread(
   return true;
 }
 
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 /**
  * The Trunk refused the brief because it is not ready. The job is not at fault, so it goes back without a failed
  * attempt, and only if this claim still holds it.
@@ -338,282 +269,92 @@ export function claimNextQueueItem(
   return claim;
 }
 
-type Rec = Record<string, unknown>;
-const rec = (v: unknown): Rec => (v && typeof v === "object" ? (v as Rec) : {});
-
-/**
- * A Trunk that has not finished startup refuses work with UNAVAILABLE. That describes the Trunk, not the job, so
- * it never counts as a failed attempt.
- */
-export function isTrunkUnavailableError(error: unknown): boolean {
-  const shape = rec(error);
-  return (
-    shape.gatewayCode === "UNAVAILABLE" ||
-    shape.code === "UNAVAILABLE" ||
-    /has not completed startup inspection/.test(errorText(error))
-  );
-}
-
-export type TrunkAvailabilityStatus = "available" | "unavailable" | "failed";
-
-/** What a sweep remembers across passes: which Trunks are not ready, and until when they are left alone. */
-export type TrunkAvailability = {
-  unavailable: Map<string, { detail: string; retryAt: number }>;
-  report?: (agentId: string, status: TrunkAvailabilityStatus, detail: string) => void;
-};
-
-/**
- * Logs a Trunk's availability only when it changes. A Trunk that stays not ready is named once, not on every pass.
- */
-export function trunkAvailabilityLogger(
-  log: (message: string) => void,
-): NonNullable<TrunkAvailability["report"]> {
-  const last = new Map<string, TrunkAvailabilityStatus>();
-  return (agentId, status, detail) => {
-    if (last.get(agentId) === status) {
-      return;
-    }
-    last.set(agentId, status);
-    if (status === "unavailable") {
-      log(`trunk queue: ${agentId} is not ready (${detail}); its queued jobs wait until it is`);
-    } else if (status === "available") {
-      log(`trunk queue: ${agentId} is ready again`);
-    } else {
-      log(`trunk queue: ${agentId} could not take a job: ${detail}`);
-    }
-  };
-}
-
-/** A session row counts as live when it reports a run in progress. */
-function isLiveRow(row: Rec): boolean {
-  return (
-    row.hasActiveRun === true ||
-    row.status === "running" ||
-    (typeof row.activeWriterRunId === "string" && row.activeWriterRunId !== "")
-  );
-}
-
-/**
- * Live sessions of one Trunk, selected before pagination so the limit cannot hide a running session. A page
- * that comes back full is treated as live, so an unseen run is never released by mistake.
- */
-async function liveSessionRows(gw: TrunkQueueGateway, agentId: string): Promise<Rec[] | "full"> {
-  const rows = rec(
-    await gw.request("sessions.list", {
-      agentId,
-      activeOnly: true,
-      limit: LIVE_SESSION_LIMIT,
-    }),
-  ).sessions;
-  const list = Array.isArray(rows) ? rows.map(rec) : [];
-  return list.length >= LIVE_SESSION_LIMIT ? "full" : list;
-}
-
-/** A Trunk is working while any of its threads has a run: the same test trunks_list uses. */
-async function isTrunkWorking(gw: TrunkQueueGateway, agentId: string): Promise<boolean> {
-  const rows = await liveSessionRows(gw, agentId);
-  return rows === "full" || rows.some(isLiveRow);
-}
-
-/**
- * The run a claim attempt starts. Its id is the chat idempotency key, so it is known from the claim alone and a
- * reaper can ask the gateway whether that exact run has ended.
- */
-export function queueRunId(id: string, claimId: string): string {
-  return `trunk-queue-${id}-${claimId}`;
-}
-
-const ENDED_RUN_STATUSES = new Set(["ok", "error", "aborted"]);
-
-/** The gateway no longer has this run: it finished long ago, or its record was lost. */
-function isRunNotFoundError(error: unknown): boolean {
-  return /agent run was not found/.test(errorText(error));
-}
-
-/**
- * What the gateway says about the claim's run: its status, "gone" when the record is missing, or undefined when the
- * Trunk is not ready to answer.
- */
-async function observeRun(
-  gw: TrunkQueueGateway,
-  row: TrunkQueueItem,
-): Promise<{ status: string | undefined } | "gone" | undefined> {
-  try {
-    const result = rec(
-      await gw.request("agent.wait", {
-        runId: queueRunId(row.id, row.claim_id ?? ""),
-        timeoutMs: 0,
-      }),
-    );
-    return { status: typeof result.status === "string" ? result.status : undefined };
-  } catch (error) {
-    if (isRunNotFoundError(error)) {
-      return "gone";
-    }
-    if (isTrunkUnavailableError(error)) {
-      return undefined;
-    }
-    throw error;
-  }
-}
-
-/**
- * Whether a reaper may free this claim. A claim from an earlier gateway epoch cannot still be running, so it is
- * freed whatever the answer. Within the current epoch it is freed only when its run has ended (a terminal status) or
- * the gateway no longer has the run. Pending, timed-out or unknown keeps it held.
- */
-async function claimMayRelease(gw: TrunkQueueGateway, row: TrunkQueueItem): Promise<boolean> {
-  if (!row.claim_id) {
-    return false;
-  }
-  if (row.gateway_epoch !== GATEWAY_EPOCH) {
-    return true;
-  }
-  const observed = await observeRun(gw, row);
-  if (observed === "gone") {
-    return true;
-  }
-  return (
-    observed !== undefined &&
-    observed.status !== undefined &&
-    ENDED_RUN_STATUSES.has(observed.status)
-  );
-}
-
-/**
- * Stops a claim whose run has been silent past the hard cap. The abort is confirmed by the run's own status before the
- * claim is freed. Returns "stopped" when the run is confirmed ended or gone, otherwise "unconfirmed".
- */
-async function stopSilentClaim(
-  gw: TrunkQueueGateway,
-  row: TrunkQueueItem,
-): Promise<"stopped" | "unconfirmed"> {
-  if (!row.claim_id || !row.claimed_by) {
-    return "unconfirmed";
-  }
-  try {
-    await gw.request("sessions.abort", {
-      key: row.thread_key,
-      runId: queueRunId(row.id, row.claim_id),
-      agentId: row.claimed_by,
-    });
-  } catch (error) {
-    if (!isRunNotFoundError(error)) {
-      return "unconfirmed";
-    }
-  }
-  const observed = await observeRun(gw, row);
-  if (observed === "gone") {
-    return "stopped";
-  }
-  return observed !== undefined &&
-    observed.status !== undefined &&
-    ENDED_RUN_STATUSES.has(observed.status)
-    ? "stopped"
-    : "unconfirmed";
-}
-
-/** Whether the Trunk has a live run, or undefined when it is not ready to answer. Other errors still throw. */
-async function probeWorking(gw: TrunkQueueGateway, agentId: string): Promise<boolean | undefined> {
-  try {
-    return await isTrunkWorking(gw, agentId);
-  } catch (error) {
-    if (isTrunkUnavailableError(error)) {
-      return undefined;
-    }
-    throw error;
-  }
-}
-
-/** Whether one claim's own thread has a live run. Matched on the exact stored thread key. */
-async function isClaimThreadLive(
-  gw: TrunkQueueGateway,
-  agentId: string,
-  threadKey: string,
-): Promise<boolean> {
-  const rows = await liveSessionRows(gw, agentId);
-  return rows === "full" || rows.some((row) => row.key === threadKey && isLiveRow(row));
-}
-
-const IDLE_POLL_MS = 500;
-
-/** True once the Trunk has no running thread, checking again every IDLE_POLL_MS for up to waitMs. */
-async function waitForTrunkIdle(
-  gw: TrunkQueueGateway,
-  agentId: string,
-  waitMs: number,
-): Promise<boolean> {
-  for (let waited = 0; ; waited += IDLE_POLL_MS) {
-    if (!(await isTrunkWorking(gw, agentId))) {
-      return true;
-    }
-    if (waited + IDLE_POLL_MS > waitMs) {
-      return false;
-    }
-    await new Promise((resolve) => {
-      setTimeout(resolve, IDLE_POLL_MS);
-    });
-  }
-}
-
-/**
- * Puts back claims that have had no run activity for STALE_CLAIM_MS. The recorded start/end time is only a
- * hint: a claim is released only when its Trunk also has no live run now, so a run lasting longer than
- * STALE_CLAIM_MS keeps its job. The gateway is called only when some claim is past that time.
- */
-export async function releaseStaleQueueClaims(params: {
+type ReaperParams = {
   gateway: TrunkQueueGateway;
   env?: NodeJS.ProcessEnv;
   now?: () => number;
   log?: (message: string) => void;
-}): Promise<void> {
+};
+
+/**
+ * A claim silent past the hard cap: stop its run first and free the job only once the run reports its end. A stop that
+ * does not confirm is counted; after MAX_STOP_ATTEMPTS the claim is marked as needing a person and not retried.
+ */
+async function reapSilentClaim(params: ReaperParams, claim: ClaimRef): Promise<void> {
+  const before = findClaim(params.env, claim);
+  if (!before || (before.stop_attempts ?? 0) >= MAX_STOP_ATTEMPTS) {
+    return;
+  }
+  const outcome = await stopSilentClaim(params.gateway, before);
+  // Re-read after the stop: the run may have finished during it, which marks the job done and leaves it done.
+  const after = findClaim(params.env, claim);
+  if (!after) {
+    return;
+  }
+  const at = (params.now ?? Date.now)();
+  if (outcome === "stopped") {
+    updateClaim(params.env, claim, at, (row) => release(row, at));
+    params.log?.(
+      `Stopped ${after.title} on ${claim.claimed_by} after 4 hours without finishing; it is back in the queue.`,
+    );
+    return;
+  }
+  const attempts = (after.stop_attempts ?? 0) + 1;
+  const reason = `Couldn't stop ${after.title} on ${claim.claimed_by}; needs a person.`;
+  updateClaim(params.env, claim, at, (row) => {
+    row.stop_attempts = attempts;
+    if (attempts >= MAX_STOP_ATTEMPTS) {
+      row.attention_reason = reason;
+    }
+  });
+  if (attempts >= MAX_STOP_ATTEMPTS) {
+    params.log?.(reason);
+  }
+}
+
+/** A claim with no run activity for the stale window: freed once its run has ended, or while its Trunk is working, kept. */
+async function reapAbandonedClaim(
+  params: ReaperParams,
+  claim: ClaimRef,
+  working: boolean,
+): Promise<void> {
+  const now = (params.now ?? Date.now)();
+  const before = findClaim(params.env, claim);
+  if (!before) {
+    return;
+  }
+  if (working) {
+    updateClaim(params.env, claim, now, (row) => {
+      row.active_at = now;
+    });
+    return;
+  }
+  if (!isPastStaleTime(before, now) || !(await claimMayRelease(params.gateway, before))) {
+    return;
+  }
+  const at = (params.now ?? Date.now)();
+  updateClaim(params.env, claim, at, (row) => release(row, at));
+}
+
+/** Each pass: finds claims past the stale window and handles each one, re-reading the queue after every await. */
+export async function releaseStaleQueueClaims(params: ReaperParams): Promise<void> {
   const now = params.now ?? Date.now;
   const candidates = read(params.env).filter(
     (row) => isOpenClaim(row) && isPastStaleTime(row, now()),
   );
   for (const candidate of candidates) {
-    const agentId = candidate.claimed_by!;
+    const claim = claimRef(candidate);
     // A Trunk that is not answering has no run we can see; its claim then goes only after the stale window.
-    const working = (await probeWorking(params.gateway, agentId)) ?? false;
-    const rows = read(params.env);
-    const row = rows.find(
-      (current) =>
-        current.id === candidate.id &&
-        isOpenClaim(current) &&
-        current.claimed_by === agentId &&
-        current.claim_id === candidate.claim_id,
-    );
-    const at = now();
+    const working = (await probeWorking(params.gateway, candidate.claimed_by!)) ?? false;
+    const row = findClaim(params.env, claim);
     if (!row) {
       continue;
     }
-    if (at - (row.active_at ?? row.claimed_at ?? at) >= HARD_CLAIM_CAP_MS) {
-      if ((await stopSilentClaim(params.gateway, row)) === "unconfirmed") {
-        params.log?.(
-          `Could not stop ${row.title} on ${agentId} after 4 hours without finishing; it stays claimed. Needs attention.`,
-        );
-        continue;
-      }
-      row.fence = (row.fence ?? 0) + 1;
-      release(row, at);
-      write(rows, at, params.env);
-      params.log?.(
-        `Stopped ${row.title} on ${agentId} after 4 hours without finishing; it is back in the queue.`,
-      );
-      continue;
-    }
-    if (!working && !isPastStaleTime(row, at)) {
-      continue;
-    }
-    if (working) {
-      row.active_at = at;
+    if (now() - (row.active_at ?? row.claimed_at ?? now()) >= HARD_CLAIM_CAP_MS) {
+      await reapSilentClaim(params, claim);
     } else {
-      if (!(await claimMayRelease(params.gateway, row))) {
-        continue;
-      }
-      release(row, at);
+      await reapAbandonedClaim(params, claim, working);
     }
-    write(rows, at, params.env);
   }
 }
 
