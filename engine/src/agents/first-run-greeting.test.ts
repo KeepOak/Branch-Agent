@@ -1,12 +1,28 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveAgentMainSessionKey } from "../config/sessions/main-session.js";
 import { loadSessionEntry, loadTranscriptEvents } from "../config/sessions/session-accessor.js";
 import { useTempSessionsFixture } from "../config/sessions/test-helpers.js";
 import {
   FIRST_RUN_GREETING_TEXT,
+  firstRunGreetingText,
+  readOwnerNameFromProfile,
   seedFirstRunGreeting,
   shouldSeedFirstRunGreeting,
 } from "./first-run-greeting.js";
+
+function ownerWorkspace(userMd?: string): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "first-run-owner-"));
+  if (userMd !== undefined) {
+    fs.writeFileSync(path.join(dir, "USER.md"), userMd);
+  }
+  return dir;
+}
+
+const NAMED_PROFILE =
+  "# USER.md\n\n<!-- observed: 2026-10-10 | status: active -->\n\n- Always address the owner as Taofik.\n";
 
 const fixture = useTempSessionsFixture("first-run-greeting-test-");
 
@@ -50,7 +66,12 @@ describe("seedFirstRunGreeting", () => {
     const cfg = {};
     const sessionKey = resolveAgentMainSessionKey({ cfg, agentId: "main" });
 
-    const outcome = await seedFirstRunGreeting({ cfg, agentId: "main", storePath });
+    const outcome = await seedFirstRunGreeting({
+      cfg,
+      agentId: "main",
+      storePath,
+      ownerWorkspaceDir: ownerWorkspace(),
+    });
 
     expect(outcome).toBe("seeded");
     expect(await assistantTexts(storePath, "main", sessionKey)).toEqual([FIRST_RUN_GREETING_TEXT]);
@@ -61,9 +82,39 @@ describe("seedFirstRunGreeting", () => {
     const cfg = {};
     const sessionKey = resolveAgentMainSessionKey({ cfg, agentId: "main" });
 
-    await seedFirstRunGreeting({ cfg, agentId: "main", storePath });
-    await seedFirstRunGreeting({ cfg, agentId: "main", storePath });
+    const ownerWorkspaceDir = ownerWorkspace();
+    await seedFirstRunGreeting({ cfg, agentId: "main", storePath, ownerWorkspaceDir });
+    await seedFirstRunGreeting({ cfg, agentId: "main", storePath, ownerWorkspaceDir });
 
     expect(await assistantTexts(storePath, "main", sessionKey)).toHaveLength(1);
+  });
+});
+
+describe("owner name in the greeting", () => {
+  it("reads the name the ritual saved to the owner profile", async () => {
+    expect(await readOwnerNameFromProfile(ownerWorkspace(NAMED_PROFILE))).toBe("Taofik");
+  });
+
+  it("uses the owner's name when the shared profile has it", async () => {
+    const storePath = fixture.storePath();
+    const cfg = {};
+    const sessionKey = resolveAgentMainSessionKey({ cfg, agentId: "main" });
+
+    await seedFirstRunGreeting({
+      cfg,
+      agentId: "main",
+      storePath,
+      ownerWorkspaceDir: ownerWorkspace(NAMED_PROFILE),
+    });
+
+    expect(await assistantTexts(storePath, "main", sessionKey)).toEqual([
+      "Hey Taofik, I just came online. How are you doing?",
+    ]);
+  });
+
+  it("falls back to the plain greeting without a profile or with an unsafe name", async () => {
+    expect(firstRunGreetingText()).toBe(FIRST_RUN_GREETING_TEXT);
+    expect(firstRunGreetingText("<b>Taofik</b>")).toBe(FIRST_RUN_GREETING_TEXT);
+    expect(await readOwnerNameFromProfile(ownerWorkspace())).toBeUndefined();
   });
 });
