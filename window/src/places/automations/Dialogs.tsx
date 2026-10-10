@@ -1,13 +1,13 @@
 // The schedule row menu's dialogs (§4.6.3.1): Remove…, Change where it sends… and When it fails….
 // Each sends one cron.remove / cron.update with only its own field.
 import { useState } from "react";
-import { shownWhy } from "../../shell/shown-why";
+import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
 import { Segmented } from "../../shell/Popover";
 import { shows, type Level } from "../../places-nav/level";
-import { draftFromJob, failureParams, failurePolicy, sendsToParams, type Draft, type FailurePolicy, type SendsTo } from "./draft";
+import { draftFromJob, failureParams, failurePolicy, sendsToParams, type Draft, type FailurePolicy } from "./draft";
 import { jobName } from "./model";
-import { CHATS_REASON, Field, SwitchRow, type Trunk } from "./Proposal";
+import { Field, SendsToFields, type Trunk } from "./Proposal";
 import { errorText, str, type Row } from "./runtime";
 
 type Act = (method: string, params: Row, message: string) => Promise<boolean>;
@@ -19,20 +19,12 @@ export function RemoveDialog({ job, act, onClose, busy }: { job: Row; act: Act; 
   </Dialog>;
 }
 
-export function SendsDialog({ job, act, onClose, busy, level, trunks }: { job: Row; act: Act; onClose: () => void; busy: boolean; level: Level; trunks: Trunk[] }) {
+export function SendsDialog({ job, act, onClose, busy, level, trunks, engine }: { job: Row; act: Act; onClose: () => void; busy: boolean; level: Level; trunks: Trunk[]; engine?: WindowEngine }) {
   const [d, setD] = useState<Draft>(() => draftFromJob(job, "copy")), [error, setError] = useState("");
   const trunk = trunks.find(t => t.id === str(job.agentId))?.name || trunks[0]?.name || "the Trunk";
-  const adv = shows(level, "advanced");
   const save = () => { try { setError(""); void act("cron.update", sendsToParams(job, d), "Saved where it sends.").then(ok => ok && onClose()); } catch (e) { setError(errorText(e)); } };
   return <Dialog title={`Where ${jobName(job)} sends`} onClose={onClose} footer={<><button type="button" className="btn ghost sm" onClick={onClose}>Cancel</button><button type="button" className="btn pri sm" disabled={busy} onClick={save}>Save</button></>}>
-    <Field label="Sends to"><select className="inp" aria-label="Sends to" value={d.sendsTo} onChange={e => setD({ ...d, sendsTo: e.target.value as SendsTo })}>
-      <option value="conversation">{trunk}’s conversation</option>
-      <option value="" disabled title={shownWhy(CHATS_REASON)}>Chats in your chat apps</option>
-      {adv && <option value="nowhere">Nowhere: keep it in History</option>}
-      {adv && <option value="webhook">Another app (web address)</option>}
-    </select></Field>
-    {d.sendsTo === "webhook" && <Field label="Web address" hint="Each result is posted to this address."><input className="inp" aria-label="Web address" placeholder="https://example.com/hook" value={d.webhook} onChange={e => setD({ ...d, webhook: e.target.value })} /></Field>}
-    {adv && d.sendsTo !== "nowhere" && <SwitchRow title="Count it as done even if sending fails" sub="The task still counts as done when its result couldn’t be sent." on={d.bestEffort} change={bestEffort => setD({ ...d, bestEffort })} />}
+    <SendsToFields draft={d} change={p => setD(old => ({ ...old, ...p }))} level={level} trunk={trunk} engine={engine} />
     {d.sendsTo === "conversation" && <p className="au-hint">Other people in that chat will see each result.</p>}
     {error && <p className="au-error" role="alert">{error}</p>}
   </Dialog>;

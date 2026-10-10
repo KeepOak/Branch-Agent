@@ -4,7 +4,15 @@
 import { emptyForm, formToSchedule, guessFromWords, scheduleToForm, type ScheduleForm } from "./model";
 import { rec, str, type Row } from "./runtime";
 
-export type SendsTo = "keep" | "conversation" | "nowhere" | "webhook";
+export type SendsTo = "keep" | "conversation" | "chats" | "nowhere" | "webhook";
+
+/** Announce delivery that names a chat-app account or a specific app (not “last”). */
+export function isChatDelivery(delivery: Row): boolean {
+  if (str(delivery.mode) !== "announce") return false;
+  if (str(delivery.accountId)) return true;
+  const channel = str(delivery.channel);
+  return Boolean(channel && channel !== "last");
+}
 export type Draft = {
   mode: "new" | "edit" | "copy";
   id?: string; revision?: string; original?: Row;
@@ -49,7 +57,7 @@ export function draftFromJob(job: Row, mode: "edit" | "copy", name = str(job.nam
     model: str(payload.model), thinking: str(payload.thinking),
     timeout: typeof payload.timeoutSeconds === "number" ? String(payload.timeoutSeconds) : "",
     lightContext: payload.lightContext === true,
-    sendsTo: mode === "edit" ? "keep" : delivery.mode === "none" ? "nowhere" : delivery.mode === "webhook" ? "webhook" : "conversation",
+    sendsTo: isChatDelivery(delivery) ? "chats" : mode === "edit" ? "keep" : delivery.mode === "none" ? "nowhere" : delivery.mode === "webhook" ? "webhook" : "conversation",
     webhook: delivery.mode === "webhook" ? str(delivery.to) : "",
     recipient: delivery.mode === "announce" ? str(delivery.to) : "",
     account: str(delivery.accountId), bestEffort: delivery.bestEffort === true,
