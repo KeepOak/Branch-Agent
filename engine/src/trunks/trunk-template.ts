@@ -3,6 +3,7 @@
  * branch.trunk-template.json. Pure data and functions. The exporter reads a Trunk and
  * hands only the fields below to buildTrunkTemplate, so nothing else can leave.
  */
+import { ALWAYS_ON_TOOL_IDS, listToolsetIds } from "../agents/tool-toolsets.js";
 
 export const TRUNK_TEMPLATE_FILE_NAME = "branch.trunk-template.json";
 export const TRUNK_TEMPLATE_FORMAT = "branch.trunk-template";
@@ -29,7 +30,7 @@ export type TrunkTemplate = {
   persona: { agentsMd: string; soulMd?: string };
   /** Catalog ids, `seedbank:@branch-agent/<slug>` with an optional `@version`. */
   skills: string[];
-  /** Named toolset switches carried by the file. Not applied by this build. */
+  /** Named toolset switches carried by the file, applied to the new Trunk on create. */
   toolsets: Record<string, boolean>;
   /** A model family such as "gpt-5.5". Never an account, key or auth profile. */
   model?: { family: string };
@@ -77,7 +78,7 @@ export function validateSkillIds(ids: readonly string[]): { ids: string[]; warni
   return { ids: [...kept], warnings };
 }
 
-/** Keeps explicit boolean switches only. Names are checked against the toolset list once it lands. */
+/** Keeps explicit boolean switches only. Names are checked in parseTrunkTemplate. */
 function toolsetSwitches(toolsets: Record<string, boolean> | undefined): Record<string, boolean> {
   return Object.fromEntries(
     Object.entries(toolsets ?? {}).filter((pair): pair is [string, boolean] => typeof pair[1] === "boolean"),
@@ -163,11 +164,16 @@ export function parseTrunkTemplate(raw: unknown): TrunkTemplateParse {
   }
   const warnings: string[] = [];
   const toolsets: Record<string, boolean> = {};
+  const known = new Set(listToolsetIds());
   for (const [id, on] of Object.entries(raw.toolsets)) {
-    if (typeof on === "boolean") {
-      toolsets[id] = on;
+    if (typeof on !== "boolean") {
+      warnings.push("One toolset switch is not true or false and was skipped.");
+    } else if (ALWAYS_ON_TOOL_IDS.includes(id)) {
+      warnings.push("One toolset switch is for a tool that is always on and was skipped.");
+    } else if (!known.has(id)) {
+      warnings.push("One toolset switch names no known toolset and was skipped.");
     } else {
-      warnings.push(`Toolset "${id}" must be true or false and was skipped.`);
+      toolsets[id] = on;
     }
   }
   const skills = validateSkillIds(raw.skills as string[]);
