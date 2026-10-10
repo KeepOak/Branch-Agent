@@ -3,7 +3,7 @@
 import type { WindowEngine } from "../../connect/engine";
 import { GitHubSettings } from "../settings/GitHubSettings";
 
-export const GITHUB_NOTE = "Connecting or disconnecting GitHub applies right away, not on Save.";
+export const GITHUB_NOTE = "Connecting or disconnecting GitHub applies right away.";
 
 export function GitHubTab({ engine, agentId }: { engine: WindowEngine; agentId: string }) {
   return <div className="kit-page"><p className="tk-hint">{GITHUB_NOTE}</p><GitHubSettings engine={engine} agentId={agentId} /></div>;

@@ -3,6 +3,7 @@ import { act } from "react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { visibleDevNotes } from "../../shell/shown-why.testing";
+import { getToasts } from "../../shell/notify";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
@@ -16,13 +17,14 @@ import { readMay } from "./may";
 import { LOOKS, creationProblem, lookOf, readConfig } from "./model";
 import { readFacts, scheduleText } from "./profile-data";
 import { moved } from "./fallback-list";
+import { REMOVE_DELAY_MS } from "./RemoveTrunk";
 
 vi.mock("../../face/Face", () => ({ Face: ({ label, size }: { label?: string; size: number }) => <span role="img" aria-label={label} data-face-size={size} /> }));
 vi.mock("../../face/CharacterFace", () => ({ CharacterFace: ({ label, size }: { label?: string; size: number }) => <span role="img" aria-label={label} data-character-size={size} /> }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let root: Root | null = null;
-afterEach(async () => { if (root) await act(async () => root!.unmount()); root = null; document.body.innerHTML = ""; localStorage.clear(); });
+afterEach(async () => { vi.useRealTimers(); if (root) await act(async () => root!.unmount()); root = null; document.body.innerHTML = ""; localStorage.clear(); });
 async function mount(node: React.ReactNode) {
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => { root!.render(node); });
@@ -34,6 +36,11 @@ async function click(el: Element | null | undefined) { expect(el).toBeTruthy(); 
 async function type(el: HTMLInputElement, value: string) {
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, value); el.dispatchEvent(new Event("input", { bubbles: true })); });
 }
+/** Leaves a text field, which is when the editor applies it. */
+async function leave(el: HTMLInputElement) { await act(async () => { el.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); }); await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); }
+/** Runs fake time forward; the removal window is 5 s of it. */
+async function elapse(ms: number) { await act(async () => { await vi.advanceTimersByTimeAsync(ms); }); }
+const removeButton = () => document.querySelector<HTMLButtonElement>('[data-testid="trunk-remove"] .btn.bad')!;
 
 const ROSTER = { defaultId: "oak", mainKey: "main", agents: [{ id: "oak", identity: { name: "Oak", theme: "Helps" } }, { id: "birch", identity: { name: "Birch", theme: "Reads", avatar: "branch:ember" }, model: { primary: "p/one" } }] };
 const CONFIG = { hash: "h1", valid: true, config: { agents: { entries: { oak: { default: true }, birch: { tools: { deny: ["exec"] } } } } } };
@@ -101,21 +108,34 @@ describe("Trunk editor", () => {
     expect(byText("Shuffle").disabled).toBe(false); expect(byText("Shuffle").title).toBe("");
     expect(visibleDevNotes(document.body)).toEqual([]);
   });
-  it("saves the look through agents.update, then what it's for and its rules in one config.patch", async () => {
+  it("applies each change the moment it is made, with no Save step", async () => {
     const request = fake();
     await mount(<TrunkEditor engine={engine(request)} agentId="birch" level="regular" onClose={() => {}} />);
     await click(document.querySelector('[aria-label="Tock"]'));
-    await type(document.querySelectorAll<HTMLInputElement>(".tk-split input")[1], "Money");
+    expect(request).toHaveBeenCalledWith("agents.update", { agentId: "birch", avatar: "branch:tock" });
+    expect(document.querySelector(".tk-saved")?.textContent).toContain("Saved");
+    const theme = document.querySelectorAll<HTMLInputElement>(".tk-split input")[1];
+    await type(theme, "Money");
+    expect(request.mock.calls.some(([m]) => m === "config.patch")).toBe(false);
+    await leave(theme);
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { birch: { identity: { theme: "Money" } } } } }) });
     await click(byText("Permissions"));
-    await click(document.querySelector('[aria-label="Use the browser"]'));
     expect(document.body.textContent).not.toContain("Send email and messages"); expect(document.body.textContent).not.toContain("Keep its own notes");
     expect(visibleDevNotes(document.body)).toEqual([]);
+    await click(document.querySelector('[aria-label="Use the browser"]'));
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { birch: { tools: { deny: ["exec", "browser"] } } } } }) });
+    expect(document.body.textContent).toContain("The browser is off");
     await click(byText("Its computers"));
     await click(document.querySelector('[data-value="n1"]'));
-    await click(byText("Save"));
-    expect(request).toHaveBeenCalledWith("agents.update", { agentId: "birch", avatar: "branch:tock" });
-    const patch = request.mock.calls.find(([m]) => m === "config.patch")!;
-    expect(patch[1]).toEqual({ baseHash: "h1", raw: JSON.stringify({ agents: { entries: { birch: { tools: { deny: ["exec", "browser"], exec: { host: "node", node: "n1" } }, identity: { theme: "Money" } } } } }) });
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { birch: { tools: { exec: { host: "node", node: "n1" } } } } } }) });
+  });
+  it("sends nothing without the owner's rights", async () => {
+    const request = fake();
+    await mount(<TrunkEditor engine={engine(request, [])} agentId="oak" level="regular" onClose={() => {}} />);
+    expect(document.querySelectorAll<HTMLInputElement>(".tk-split input")[0].disabled).toBe(true);
+    expect(document.body.textContent).toContain("Only the owner of this Branch can change Trunks.");
+    await click(document.querySelector('[aria-label="Tock"]'));
+    expect(request.mock.calls.some(([m]) => m === "agents.update" || m === "config.patch")).toBe(false);
   });
   it("enables pebble controls and shows Advanced rows only from Advanced", async () => {
     await mount(<TrunkEditor engine={engine(fake())} agentId="oak" level="regular" onClose={() => {}} />);
@@ -128,11 +148,6 @@ describe("Trunk editor", () => {
     await act(async () => root!.unmount()); root = null; document.body.innerHTML = "";
     await mount(<TrunkEditor engine={engine(fake())} agentId="oak" level="advanced" tab="models" onClose={() => {}} />);
     expect(document.body.textContent).toContain("Model for decisions");
-  });
-  it("keeps Save off for a window without the owner's rights", async () => {
-    await mount(<TrunkEditor engine={engine(fake(), [])} agentId="oak" level="regular" onClose={() => {}} />);
-    await type(document.querySelectorAll<HTMLInputElement>(".tk-split input")[0], "Elm");
-    expect(byText("Save").disabled).toBe(true);
   });
   it("keeps the tab row on screen while the editor body scrolls", async () => {
     const css = readFileSync(resolve("src/places/trunk/trunk.css"), "utf8");
@@ -148,21 +163,27 @@ describe("Trunk editor", () => {
       expect(document.querySelector('[role="tabpanel"]')?.getAttribute("aria-label"), label).toBe(label);
     }
   });
-  it("moves a stand-in up and down with the same controls on every row, and marks the dialog unsaved", async () => {
+  it("applies a stand-in move at once, and removing one offers Undo that puts it back", async () => {
     const models = { models: [{ id: "one", provider: "p", name: "One", available: true }, { id: "two", provider: "p", name: "Two", available: true }, { id: "three", provider: "p", name: "Three", available: true }] };
     const config = { hash: "h1", valid: true, config: { agents: { entries: { oak: { model: { primary: "p/one", fallbacks: ["p/two", "p/three"] } } } } } };
-    await mount(<TrunkEditor engine={engine(fake({ "models.list": models, "config.get": config }))} agentId="oak" level="advanced" tab="models" onClose={() => {}} />);
+    const oakRoster = { ...ROSTER, agents: [{ id: "oak", identity: { name: "Oak", theme: "Helps" }, model: { primary: "p/one" } }, ROSTER.agents[1]] };
+    const request = fake({ "agents.list": oakRoster, "models.list": models, "config.get": config });
+    await mount(<TrunkEditor engine={engine(request)} agentId="oak" level="advanced" tab="models" onClose={() => {}} />);
     const order = () => [...document.querySelectorAll(".tk-fb .tk-grow")].map((el) => el.textContent);
     expect(order()).toEqual(["Two", "Three"]);
-    expect(document.body.textContent).not.toContain("Unsaved changes");
+    expect(document.querySelector(".tk-saved")).toBeNull();
     expect((document.querySelector('[aria-label="Move Two up"]') as HTMLButtonElement).disabled).toBe(true);
     await click(document.querySelector('[aria-label="Move Two down"]'));
     expect(order()).toEqual(["Three", "Two"]);
-    expect(document.body.textContent).toContain("Unsaved changes");
-    expect(byText("Save").disabled).toBe(false);
-    expect((document.querySelector('[aria-label="Move Two down"]') as HTMLButtonElement).disabled).toBe(true);
-    await click(document.querySelector('[aria-label="Move Two up"]'));
-    expect(order()).toEqual(["Two", "Three"]);
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { oak: { model: { primary: "p/one", fallbacks: ["p/three", "p/two"] } } } } }) });
+    expect(document.querySelector(".tk-saved")?.textContent).toContain("Saved");
+    expect(document.body.textContent).not.toContain("Undo");
+    await click(document.querySelector('[aria-label="Remove Three"]'));
+    expect(order()).toEqual(["Two"]);
+    expect(document.body.textContent).toContain("Stand-in removed");
+    await click(byText("Undo"));
+    expect(order()).toEqual(["Three", "Two"]);
+    expect(document.body.textContent).not.toContain("Stand-in removed");
   });
 });
 
@@ -222,16 +243,36 @@ describe("Customize › Trunks", () => {
     expect(document.querySelector('[data-testid="trunk-profile"]')).toBeTruthy();
     expect(request.mock.calls.some(([m]) => m === "sessions.create")).toBe(false);
   });
-  it("removes a Trunk from its row menu after a confirm, with no Undo", async () => {
+  it("removes a Trunk five seconds after Remove, and Undo keeps it", async () => {
     const request = fake();
     await mount(tab(request));
     const row = document.querySelectorAll(".tk-row")[1];
     await act(async () => { row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })); });
     await click(byText("Remove Birch…"));
     expect(document.body.textContent).toContain("move to the Trash");
-    await click(document.querySelector('[data-testid="trunk-remove"] .btn.bad'));
+    vi.useFakeTimers();
+    await act(async () => { removeButton().click(); });
+    await elapse(0);
+    expect(request).not.toHaveBeenCalledWith("agents.delete", expect.anything());
+    const undo = getToasts().find((t) => t.action?.label === "Undo");
+    expect(undo?.text).toContain("Birch will be removed in 5 seconds.");
+    undo!.action!.run();
+    await elapse(REMOVE_DELAY_MS);
+    expect(request).not.toHaveBeenCalledWith("agents.delete", expect.anything());
+    expect(getToasts().some((t) => t.text === "Birch is kept.")).toBe(true);
+  });
+  it("removes a Trunk when the five-second window ends without Undo", async () => {
+    const request = fake();
+    await mount(tab(request));
+    const row = document.querySelectorAll(".tk-row")[1];
+    await act(async () => { row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })); });
+    await click(byText("Remove Birch…"));
+    vi.useFakeTimers();
+    await act(async () => { removeButton().click(); });
+    await elapse(REMOVE_DELAY_MS - 1);
+    expect(request).not.toHaveBeenCalledWith("agents.delete", expect.anything());
+    await elapse(1);
     expect(request).toHaveBeenCalledWith("agents.delete", { agentId: "birch" });
-    expect(document.body.textContent).not.toContain("Undo");
   });
   it("blocks the default Trunk and reports each failed file move", async () => {
     const request = fake({ "agents.delete": { ok: true, failed: [{ path: "notes.md", reason: "locked" }], purgeFailed: true } });
@@ -242,8 +283,10 @@ describe("Customize › Trunks", () => {
     const row = document.querySelectorAll(".tk-row")[1];
     await act(async () => { row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })); });
     await click(byText("Remove Birch…"));
-    await click(document.querySelector('[data-testid="trunk-remove"] .btn.bad'));
-    expect(document.body.textContent).not.toContain("Undo");
+    vi.useFakeTimers();
+    await act(async () => { removeButton().click(); });
+    await elapse(REMOVE_DELAY_MS);
+    expect(getToasts().some((t) => t.text === "Removed Birch, but cleanup needs attention.")).toBe(true);
     expect(await removeTrunk(engine(request), "birch")).toEqual({ failed: ["notes.md: locked"], purgeFailed: true });
   });
   it("saves the contact default in one patch, including explicit ownership", async () => {
@@ -311,7 +354,9 @@ describe("Trunk profile and studio", () => {
     await mount(<TrunkProfile engine={engine(request)} agentId="birch" level="regular" onClose={() => {}} />);
     await click(byText("Remove Birch…"));
     expect(document.querySelector('[data-testid="trunk-remove"]')).toBeTruthy();
-    await click(document.querySelector('[data-testid="trunk-remove"] .btn.bad'));
+    vi.useFakeTimers();
+    await act(async () => { removeButton().click(); });
+    await elapse(REMOVE_DELAY_MS);
     expect(request).toHaveBeenCalledWith("agents.delete", { agentId: "birch" });
   });
   it("lists its automations from cron.list, toggles one, and shows the ID only at Technical", async () => {

@@ -34,8 +34,8 @@ export function configChanges(snap: ConfigSnapshot, id: string, was: Draft, now:
   return out;
 }
 
-/** Saves the editor: agents.update first (it writes IDENTITY.md too), then one config.patch on a fresh revision. */
-export async function saveTrunk(engine: WindowEngine, id: string, was: Draft, now: Draft): Promise<void> {
+/** Applies one editor change: agents.update first (it writes IDENTITY.md too), then one config.patch on a fresh revision. */
+export async function applyTrunk(engine: WindowEngine, id: string, was: Draft, now: Draft): Promise<void> {
   const update = updateParams(id, was, now);
   if (update) refused(await engine.request("agents.update", update), "The engine did not save the Trunk.");
   const fresh = readConfig(await engine.request("config.get", {}));
@@ -73,11 +73,16 @@ export async function createReadyTrunk(engine: WindowEngine, name: string, curre
   return id;
 }
 
-/** agents.delete removes the Trunk and moves its files to the OS Trash. */
-export async function removeTrunk(engine: WindowEngine, id: string): Promise<{ failed: string[]; purgeFailed: boolean }> {
+/** Refuses what agents.delete would refuse. Checked when Remove is chosen and again when the removal commits. */
+export async function checkRemovable(engine: WindowEngine, id: string): Promise<void> {
   const roster = await loadRoster(engine);
   if (roster.defaultId === id) throw new Error("The default Trunk cannot be removed.");
   if (!roster.agents.some((agent) => agent.id === id)) throw new Error("This Trunk no longer exists.");
+}
+
+/** agents.delete removes the Trunk and moves its files to the OS Trash. */
+export async function removeTrunk(engine: WindowEngine, id: string): Promise<{ failed: string[]; purgeFailed: boolean }> {
+  await checkRemovable(engine, id);
   const result = rec(await engine.request("agents.delete", { agentId: id }));
   refused(result, "The engine did not remove the Trunk.");
   const failed = Array.isArray(result.failed) ? result.failed.map((entry) => {

@@ -189,5 +189,6 @@ button.tk-prow:disabled:hover { background: none; }
 .tk-accounts-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 10px; border: 1px solid var(--line, #ddd); border-radius: 8px; margin-bottom: 6px; }
 .tk-accounts-list li[draggable="true"] { cursor: grab; }
 .tk-accounts-list label { display: flex; align-items: center; gap: 7px; min-width: 0; overflow-wrap: anywhere; }
-/* Editor footer: the unsaved marker sits left of Cancel and Save, so it reads as pending, not as a button */
-.tk-unsaved { margin-right: auto; align-self: center; font-size: 12.5px; color: var(--ink-2); }
+/* Each change applies at once: a quiet tick beside the control that changed, and one Undo line for a removal */
+.tk-saved { margin-left: 8px; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.tk-undo { display: flex; align-items: center; gap: 10px; margin: 10px 0 0; font-size: 12.5px; color: var(--ink-2); }

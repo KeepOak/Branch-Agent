@@ -1,23 +1,24 @@
 // The Trunk editor (preview editTrunk + 12/15/30-trunks/31-trunksp): a wide dialog, the face and Shuffle on the left,
-// the tabs on the right. Every tab edits one draft, and one Save writes it: agents.update, then one config.patch.
-// The tabs stay reachable from the keyboard (arrow keys move between them); Save shows "Unsaved changes" until it runs.
+// the tabs on the right. There is no Save: every change applies the moment it is made (useApply), and the control
+// that changed shows a quiet "Saved" tick. Removals offer Undo for 5 seconds. The tabs stay reachable from the keyboard.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
-import { notify } from "../../shell/notify";
 import { shows, type Level } from "../../places-nav/level";
-import { saveTrunk, type Draft } from "./api";
+import type { Draft } from "./api";
 import { ComputersTab } from "./ComputersTab";
 import { AccountsTab } from "./AccountsTab";
 import { canWrite, loadTrunkData, useLoad, WRITE_WHY, type TrunkData } from "./data";
+import { EditContext, UndoLine } from "./EditControls";
 import { COLOURS, EYES, LookTab, SHAPES } from "./LookTab";
 import { readMay } from "./may";
 import { ModelsTab, PermissionsTab } from "./MayTab";
 import { GitHubTab } from "./GitHubTab";
-import { errorText, lookOf, LOOKS } from "./model";
+import { lookOf, LOOKS } from "./model";
 import { TrunkFace } from "./TrunkFace";
 import { Layer } from "./layer";
+import { useApply } from "./useApply";
 import "./trunk.css";
 
 export type EditorTab = "look" | "permissions" | "models" | "github" | "computers" | "accounts";
@@ -69,7 +70,7 @@ export function TrunkEditor(props: TrunkEditorProps) {
   const name = initial?.name || agentId;
   if (!data.data || !initial) {
     const line = data.error || (data.loading ? "Reading this Trunk…" : "This Trunk is no longer in the engine’s list.");
-    return <Layer><Dialog title={`Edit ${name}`} wide onClose={onClose} testid="trunk-editor" footer={<button type="button" className="btn ghost" onClick={onClose}>Cancel</button>}><p className={data.error ? "tk-error" : "tk-hint"} role={data.error ? "alert" : "status"}>{line}</p></Dialog></Layer>;
+    return <Layer><Dialog title={`Edit ${name}`} wide onClose={onClose} testid="trunk-editor"><p className={data.error ? "tk-error" : "tk-hint"} role={data.error ? "alert" : "status"}>{line}</p></Dialog></Layer>;
   }
   return <EditorBody {...props} data={data.data} initial={initial} />;
 }
@@ -111,41 +112,31 @@ function Panel({ engine, agentId, name, level, tab, draft, data, set, openSettin
 
 function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, tab: first, data, initial }: TrunkEditorProps & { data: TrunkData; initial: Draft }) {
   const [tab, setTab] = useState<EditorTab>(first ?? "look");
-  const [draft, setDraft] = useState(initial);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  useQuietFocus();
-  const set = (d: Partial<Draft>) => setDraft((x) => ({ ...x, ...d }));
-  const shuffle = () => set(shuffledLook(draft, data, agentId));
-  const changed = JSON.stringify(draft) !== JSON.stringify(initial);
-  const save = async () => {
-    setBusy(true); setError(null);
-    try { await saveTrunk(engine, agentId, initial, draft); notify(`${draft.name.trim() || initial.name} is saved.`); onSaved?.(); onClose(); }
-    catch (e) { setError(errorText(e)); }
-    finally { setBusy(false); }
-  };
   const write = canWrite(engine);
-  const footer = <>
-    {changed && <span className="tk-unsaved" role="status">Unsaved changes</span>}
-    <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-    <button type="button" className="btn pri" disabled={busy || !changed || !write || !draft.name.trim()} title={write ? undefined : WRITE_WHY} onClick={() => void save()}>{busy ? "Saving…" : "Save"}</button>
-  </>;
+  const edit = useApply(engine, agentId, initial, write);
+  useQuietFocus();
+  const shuffle = () => edit.set(shuffledLook(edit.draft, data, agentId));
+  const close = () => void edit.settled().then((touched) => { if (touched) onSaved?.(); onClose(); });
   return (
-    <Layer><Dialog title={`Edit ${initial.name}`} wide onClose={onClose} footer={footer} testid="trunk-editor">
-      <div className="tk-editor">
-        <div className="tk-big">
-          <TrunkFace name={draft.name || initial.name} look={draft.look} emoji={draft.emoji} pebbleLook={draft} size={84} draft />
-          <button type="button" className="btn sm" onClick={shuffle}>Shuffle</button>
-        </div>
-        <div className="tk-col">
-          <TabRow tab={tab} setTab={setTab} level={level} />
-          <div role="tabpanel" aria-label={TABS.find(([t]) => t === tab)?.[1]}>
-            <Panel engine={engine} agentId={agentId} name={initial.name} level={level} tab={tab} draft={draft} data={data} set={set} openSettings={openSettings} />
+    <Layer><Dialog title={`Edit ${initial.name}`} wide onClose={close} testid="trunk-editor">
+      <EditContext.Provider value={{ saved: edit.saved, write }}>
+        <div className="tk-editor">
+          <div className="tk-big">
+            <TrunkFace name={edit.draft.name || initial.name} look={edit.draft.look} emoji={edit.draft.emoji} pebbleLook={edit.draft} size={84} draft />
+            <button type="button" className="btn sm" onClick={shuffle}>Shuffle</button>
           </div>
-          {data.partial.map((p) => <p key={p} className="tk-hint" role="status">{p}</p>)}
-          {error && <p className="tk-error" role="alert">{error}</p>}
+          <div className="tk-col">
+            <TabRow tab={tab} setTab={setTab} level={level} />
+            <div role="tabpanel" aria-label={TABS.find(([t]) => t === tab)?.[1]}>
+              <Panel engine={engine} agentId={agentId} name={initial.name} level={level} tab={tab} draft={edit.draft} data={data} set={edit.set} openSettings={openSettings} />
+            </div>
+            {data.partial.map((p) => <p key={p} className="tk-hint" role="status">{p}</p>)}
+            {!write && <p className="tk-hint" role="status">{WRITE_WHY}</p>}
+            {edit.undo && <UndoLine label={edit.undo.label} onUndo={edit.undoLast} />}
+            {edit.error && <p className="tk-error" role="alert">{edit.error}</p>}
+          </div>
         </div>
-      </div>
+      </EditContext.Provider>
     </Dialog></Layer>
   );
 }
