@@ -190,6 +190,33 @@ describe("Settings › General", () => {
     }
   });
 
+  it("writes the Keyboard shortcuts the way the Show all dialog does on this computer (DA-80)", async () => {
+    const { engine } = engineOf();
+    const prev = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
+    const sub = () => row("Keyboard shortcuts").textContent ?? "";
+    try {
+      Object.defineProperty(Navigator.prototype, "platform", { configurable: true, get: () => "MacIntel" });
+      await render(engine, 1);
+      expect(sub()).toContain("⌘K to find anything, ⌘N for a new conversation.");
+      expect(sub()).not.toContain("Ctrl");
+      expect(row("Send with").textContent).toContain("⌘Enter");
+      localStorage.setItem("branch.keys", JSON.stringify({ palette: "Ctrl Shift P" }));
+      await render(engine, 0);
+      await act(async () => root.render(<></>));
+      await render(engine, 0);
+      expect(sub()).toContain("⌘⇧P to find anything, ⌘N for a new conversation.");
+      localStorage.clear();
+      Object.defineProperty(Navigator.prototype, "platform", { configurable: true, get: () => "Win32" });
+      await act(async () => root.render(<></>));
+      await render(engine, 0);
+      expect(sub()).toContain("Ctrl K to find anything, Ctrl N for a new conversation.");
+      expect(sub()).not.toContain("⌘");
+    } finally {
+      if (prev) Object.defineProperty(Navigator.prototype, "platform", prev);
+      else delete (Navigator.prototype as { platform?: string }).platform;
+    }
+  });
+
   it("Starting up uses the real platform name, like setup", async () => {
     const { engine } = engineOf();
     const prev = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
