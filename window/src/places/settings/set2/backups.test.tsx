@@ -50,10 +50,11 @@ const SCHEDULED = {
 };
 
 describe("Settings › Backups", () => {
-  it("saves a private Git repository as the destination, every day by default", async () => {
+  it("saves a private Git repository as the destination, every day by default (Advanced)", async () => {
     const { engine, request } = engineWith({ "backup.status": EMPTY, "backup.schedule.set": { id: "job-1" } });
-    await show(engine);
+    await show(engine, "advanced");
     expect(button("Back up now").disabled).toBe(true);
+    await click("A Git repository");
     await act(async () => window.dispatchEvent(new Event("branch-settings-help")));
     expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Passwords, keys and sign-ins are never included");
     expect(document.querySelector('[role="dialog"]')?.textContent).toContain("you/branch-backups");
@@ -102,5 +103,24 @@ describe("Settings › Backups", () => {
     await show(engine, "advanced");
     await type("Largest media file", "20");
     expect(calls(request, "backup.schedule.set").at(-1)).toEqual({ destination: { kind: "git", url: "https://github.com/you/branch-backups.git" }, everyMs: 86_400_000, enabled: true, mediaMaxFileMb: 20 });
+  });
+
+  it("keeps Git out of the regular level and starts from the Documents folder the engine suggests", async () => {
+    const suggested = "/home/me/Documents/Branch Backups";
+    const { engine, request } = engineWith({ "backup.status": { ...EMPTY, suggestedFolder: suggested }, "backup.schedule.set": { id: "job-1" } });
+    await show(engine);
+    expect(document.querySelector('[data-row="Where backups go"]')!.textContent).not.toContain("A Git repository");
+    expect(document.querySelector<HTMLInputElement>('input[aria-label="Folder"]')!.value).toBe(suggested);
+    await click("Save");
+    expect(calls(request, "backup.schedule.set")).toEqual([{ destination: { kind: "folder", path: suggested }, everyMs: 86_400_000, enabled: true }]);
+  });
+
+  it("says backups are off, and turns on a daily backup to the saved folder", async () => {
+    const off = { ...SCHEDULED, schedules: SCHEDULED.schedules.map((x) => ({ ...x, enabled: false })) };
+    const { engine, request } = engineWith({ "backup.status": off, "backup.schedule.set": { id: "job-1" } });
+    await show(engine);
+    expect(document.body.textContent).toContain("Backups are off");
+    await click("Turn on daily backup");
+    expect(calls(request, "backup.schedule.set").at(-1)).toMatchObject({ enabled: true, everyMs: 86_400_000 });
   });
 });

@@ -3,7 +3,7 @@
 // backup.schedule.clear / backup.run; every backup made here leaves out passwords, keys and sign-ins.
 import { useEffect, useState } from "react";
 import type { SettingsPageProps } from "../index";
-import { Acts, Btn, Ctl, Field, Hint, Num, Page, Pill, Sec, Seg, type RowEntry } from "../kit";
+import { Acts, Btn, Ctl, Field, Hint, Num, Page, Pill, Sec, Seg, Status, type RowEntry } from "../kit";
 import { list } from "../adapter";
 import { CallLine, lvOf, rec, str, useCall, useLive, when, type RecordValue } from "./common";
 
@@ -15,6 +15,7 @@ const LEDE_HELP = "A copy of your conversations, memory, Trunk workspaces (Libra
 const MEDIA_FILE_MB = 50;
 const MEDIA_TOTAL_MB = 1024;
 const GIT_HINT = "A private Git repository you own, such as https://github.com/you/branch-backups.git. Branch pushes to its backups branch with your Git sign-in.";
+const FOLDER_HINT = "A folder on this computer. Branch keeps a Git history of your backups there, so each one can be restored.";
 
 export const ROWS: RowEntry[] = [
   ["Where backups go", "Where", 0], ["How often", "When", 0], ["Back up now", "When", 0], ["Last backup", "When", 0],
@@ -45,6 +46,7 @@ export function BackupsPage(props: SettingsPageProps) {
   const saved = destinationOf(schedule);
   const save = useCall(); const run = useCall();
   const lv = lvOf(props.level);
+  const suggested = str(rec(status.data).suggestedFolder);
   const media: MediaLimits = {
     ...(typeof schedule?.mediaMaxFileMb === "number" ? { mediaMaxFileMb: schedule.mediaMaxFileMb } : {}),
     ...(typeof schedule?.mediaMaxTotalMb === "number" ? { mediaMaxTotalMb: schedule.mediaMaxTotalMb } : {}),
@@ -60,11 +62,16 @@ export function BackupsPage(props: SettingsPageProps) {
     if (v === null) delete next[key]; else next[key] = Math.round(v);
     void save.run(() => set(saved, everyOf(schedule), next), () => "Saved.");
   };
+  const off = everyOf(schedule) === "off";
   return (
     <Page title={props.title} lede={LEDE} help={LEDE_HELP}>
       {status.error ? <p className="hint s2-err" role="alert">{status.error}</p> : null}
+      {off ? <Status tone="warn" title="Backups are off" help="Nothing is copied on a schedule until you turn it on.">
+        {saved ? "Turn on a daily backup to keep your conversations and settings copied." : "Choose a folder below and save it. Nothing is copied until then."}
+        {saved ? <Acts><Btn sm pri disabled={save.busy} onClick={() => void save.run(() => set(saved, "day"), () => "Saved.")}>Turn on daily backup</Btn></Acts> : null}
+      </Status> : null}
       <Sec title="Where">
-        <Where saved={saved} busy={save.busy} onSave={(d) => void save.run(() => set(d, saved ? everyOf(schedule) : "day"), () => "Saved.")}
+        <Where saved={saved} suggested={suggested} advanced={lv >= 1} busy={save.busy} onSave={(d) => void save.run(() => set(d, saved ? everyOf(schedule) : "day"), () => "Saved.")}
           onForget={() => void save.run(async () => { await props.engine.request("backup.schedule.clear", {}); await status.reload(); }, () => "Branch no longer backs up there.")} />
         <CallLine call={save} />
       </Sec>
@@ -95,22 +102,25 @@ export function BackupsPage(props: SettingsPageProps) {
   );
 }
 
-function Where({ saved, busy, onSave, onForget }: { saved?: Destination; busy: boolean; onSave: (d: Destination) => void; onForget: () => void }) {
-  const [kind, setKind] = useState<Kind>(saved?.kind ?? "git");
+function Where({ saved, suggested, advanced, busy, onSave, onForget }: { saved?: Destination; suggested: string; advanced: boolean; busy: boolean; onSave: (d: Destination) => void; onForget: () => void }) {
+  const [kind, setKind] = useState<Kind>(saved?.kind ?? "folder");
   const savedValue = saved ? (saved.kind === "git" ? saved.url : saved.path) : "";
-  const [value, setValue] = useState(savedValue);
+  const [value, setValue] = useState(savedValue || suggested);
   const savedKind = saved?.kind;
   useEffect(() => { if (savedKind) { setKind(savedKind); setValue(savedValue); } }, [savedKind, savedValue]);
+  // The engine's suggestion can arrive after the first render: fill it in while nothing is saved or typed.
+  useEffect(() => { if (!saved && suggested) setValue((current) => current || suggested); }, [saved, suggested]);
   const destination: Destination = kind === "git" ? { kind, url: value.trim() } : { kind, path: value.trim() };
   const changed = value.trim() !== "" && (kind !== saved?.kind || value.trim() !== savedValue);
+  const options = [{ id: "folder", label: "A folder on this computer" }, ...(advanced || kind === "git" ? [{ id: "git", label: "A Git repository" }] : [])];
   return (
     <>
-      <Ctl title="Where backups go" sub={kind === "git" ? "A private Git repository you own." : "A private folder on this computer."} help={kind === "git" ? GIT_HINT : "A private folder on this computer, outside Branch’s own data. It becomes a Git history of your backups."}>
-        <Seg label="Where backups go" value={kind} disabled={busy} options={[{ id: "git", label: "A Git repository" }, { id: "folder", label: "A folder on this computer" }]} onChange={(v) => setKind(v as Kind)} />
+      <Ctl title="Where backups go" sub={kind === "git" ? "A private Git repository you own." : "A folder on this computer."} help={kind === "git" ? GIT_HINT : FOLDER_HINT}>
+        <Seg label="Where backups go" value={kind} disabled={busy} options={options} onChange={(v) => setKind(v as Kind)} />
       </Ctl>
       <Ctl title={kind === "git" ? "Repository address" : "Folder"} stack>
         <Field wide label={kind === "git" ? "Repository address" : "Folder"} value={value} disabled={busy}
-          placeholder={kind === "git" ? "https://github.com/you/branch-backups.git" : "C:\\Users\\you\\Backups\\Branch"} onCommit={setValue} />
+          placeholder={kind === "git" ? "https://github.com/you/branch-backups.git" : suggested || "A folder on this computer"} onCommit={setValue} />
         <Acts>
           <Btn sm pri disabled={busy || !changed} onClick={() => onSave(destination)}>Save</Btn>
           {saved ? <Btn sm ghost disabled={busy} onClick={onForget}>Stop backing up here</Btn> : null}
