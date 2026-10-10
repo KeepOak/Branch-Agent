@@ -3,7 +3,7 @@
 // The report never prints a full personal email; only a short SHA, field, and masked domain.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { httpStatusOf } from './merge-gate-rate-limit.mjs';
+import { httpStatusOf, isRateLimitError, isTransientGitHubError } from './merge-gate-rate-limit.mjs';
 import { ghApi } from './merge-gate-trusted.mjs';
 
 export const CUTOFF_ISO = '2026-10-08T04:05:00Z';
@@ -152,6 +152,37 @@ function shortSha(sha) {
   return value.length > 7 ? value.slice(0, 7) : value || 'unknown';
 }
 
+export const COMMIT_EMAIL_WAIT_SECONDS = 600;
+
+// The email check waits out installation rate limits (reset or retry-after) inside its step budget,
+// instead of giving up after the default six retries.
+export function emailCheckApi(repo, token, requestPath, options = {}) {
+  return ghApi(repo, token, requestPath, { ...options, retries: Number.POSITIVE_INFINITY });
+}
+
+export function apiFailureLine(error, prNumber) {
+  const status = httpStatusOf(error);
+  const label = status ? `HTTP ${status}` : 'error (no HTTP status)';
+  let why = 'not retried (not a rate limit or a transient error)';
+  if (isRateLimitError(error)) why = 'waited out the rate limit within the step budget, then gave up';
+  else if (isTransientGitHubError(error)) why = 'retried with backoff, then gave up';
+  return `GitHub API ${label} while reading commits for PR #${prNumber}; ${why}. Not a commit-email failure.`;
+}
+
+export function runCommitEmailCheck({ repo, prNumber, token, api = emailCheckApi }) {
+  let commits;
+  try {
+    commits = fetchPrCommitsWithApi({ repo, prNumber, token, api });
+  } catch (error) {
+    return { exitCode: 2, lines: [apiFailureLine(error, prNumber)] };
+  }
+  const failures = evaluateCommits(commits);
+  if (failures.length === 0) {
+    return { exitCode: 0, lines: [`Checked ${commits.length} commit(s); all in-scope addresses are allowed.`] };
+  }
+  return { exitCode: 1, lines: [formatReport(failures)] };
+}
+
 async function main() {
   const repo = process.env.REPO || process.env.GITHUB_REPOSITORY;
   const prNumber = process.env.PR_NUMBER;
@@ -161,23 +192,12 @@ async function main() {
     process.exitCode = 2;
     return;
   }
-  let commits;
-  try {
-    commits = fetchPrCommitsWithApi({ repo, prNumber, token });
-  } catch (error) {
-    // An API failure is infrastructure, not a commit verdict. Print the status so the log shows why.
-    const status = httpStatusOf(error);
-    console.error(`GitHub API ${status ? `HTTP ${status}` : 'error (no HTTP status)'} while reading commits for PR #${prNumber}; retries exhausted. Not a commit-email failure.`);
-    process.exitCode = 2;
-    return;
+  const result = runCommitEmailCheck({ repo, prNumber, token });
+  for (const line of result.lines) {
+    if (result.exitCode === 0) console.log(line);
+    else console.error(line);
   }
-  const failures = evaluateCommits(commits);
-  if (failures.length === 0) {
-    console.log(`Checked ${commits.length} commit(s); all in-scope addresses are allowed.`);
-    return;
-  }
-  console.error(formatReport(failures));
-  process.exitCode = 1;
+  process.exitCode = result.exitCode;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

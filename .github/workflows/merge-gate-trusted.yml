@@ -28,7 +28,7 @@ jobs:
       actions: read
       pull-requests: read
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     steps:
       - name: Check out the default branch only
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -53,6 +53,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          MERGE_GATE_WAIT_SECONDS: '600'
         run: node scripts/check-commit-emails.mjs
       - name: Wait for checks and run main's coverage and merge-command gates
         env:
