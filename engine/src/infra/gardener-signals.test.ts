@@ -1,59 +1,47 @@
 import { describe, expect, it } from "vitest";
 import { STALE_CLAIM_MS, type TrunkQueueItem } from "../agents/trunk-queue.js";
 import {
-  failingMainSignals,
+  failingMainCheckSignals,
   parityGapSignals,
   recurringFailstatsSignals,
   stalledFixSignals,
   staleClaimSignals,
-  type CiRunRecord,
 } from "./gardener-signals.js";
 
 const HOUR = 60 * 60_000;
 const NOW = Date.parse("2026-10-10T12:00:00Z");
-
-function run(overrides: Partial<CiRunRecord>): CiRunRecord {
-  return {
-    workflow_id: 7,
-    name: "Engine tests",
-    head_branch: "main",
-    conclusion: "failure",
-    created_at: "2026-10-10T10:00:00Z",
-    html_url: "https://github.com/KeepOak/Branch-Agent/actions/runs/1",
-    ...overrides,
-  };
-}
+const SHA = "0123456789abcdef0123456789abcdef01234567";
 
 function queueItem(overrides: Partial<TrunkQueueItem>): TrunkQueueItem {
   return { id: "j1", title: "Job", brief_text: "Brief", priority: 0, added_at: NOW, ...overrides };
 }
 
-describe("failingMainSignals", () => {
-  it("emits a fingerprint keyed on workflow id when the newest main run failed", () => {
-    const signals = failingMainSignals([run({})]);
-    expect(signals.map((signal) => signal.fingerprint)).toEqual(["ci-main:7"]);
-    expect(signals[0]?.job.title).toContain("Engine tests");
-    expect(signals[0]?.job.brief_text).toContain("/actions/runs/1");
+describe("failingMainCheckSignals", () => {
+  it("emits a fingerprint keyed on the check name for each failing check on main", () => {
+    const signals = failingMainCheckSignals([{ checkName: "engine-tests", headSha: SHA }]);
+    expect(signals.map((signal) => signal.fingerprint)).toEqual(["ci-main:engine-tests"]);
+    expect(signals[0]?.job.title).toContain("engine-tests");
+    expect(signals[0]?.job.brief_text).toContain("0123456");
   });
 
-  it("ignores failures on non-main branches", () => {
-    expect(failingMainSignals([run({ head_branch: "trunk/god-x" })])).toEqual([]);
-  });
-
-  it("clears when a newer main run for the same workflow is green", () => {
-    const signals = failingMainSignals([
-      run({ conclusion: "failure", created_at: "2026-10-10T10:00:00Z" }),
-      run({ conclusion: "success", created_at: "2026-10-10T11:00:00Z" }),
-    ]);
-    expect(signals).toEqual([]);
-  });
-
-  it("keeps the same fingerprint across new red runs of one workflow", () => {
-    const first = failingMainSignals([run({ html_url: ".../runs/1" })]);
-    const second = failingMainSignals([
-      run({ html_url: ".../runs/2", created_at: "2026-10-10T11:00:00Z" }),
+  it("keeps the same fingerprint when main moves to a new red sha", () => {
+    const first = failingMainCheckSignals([{ checkName: "engine-tests", headSha: SHA }]);
+    const second = failingMainCheckSignals([
+      { checkName: "engine-tests", headSha: "fedcba9876543210fedcba9876543210fedcba98" },
     ]);
     expect(second[0]?.fingerprint).toBe(first[0]?.fingerprint);
+  });
+
+  it("collapses a repeated check name to one signal", () => {
+    const signals = failingMainCheckSignals([
+      { checkName: "lint", headSha: SHA },
+      { checkName: "lint", headSha: SHA },
+    ]);
+    expect(signals).toHaveLength(1);
+  });
+
+  it("emits nothing when no check fails", () => {
+    expect(failingMainCheckSignals([])).toEqual([]);
   });
 });
 
@@ -96,40 +84,43 @@ describe("recurringFailstatsSignals", () => {
 describe("stalledFixSignals", () => {
   const stallMs = 2 * HOUR;
 
+  const verdict = (overrides: Partial<Parameters<typeof stalledFixSignals>[0][number]>) => ({
+    repo: "example-owner/example-repo",
+    pr: 12,
+    headSha: "abc123",
+    verdictAt: NOW - stallMs,
+    lastPushAt: NOW - 3 * HOUR,
+    ...overrides,
+  });
+
   it("emits at exactly two hours with no push after the verdict", () => {
-    const signals = stalledFixSignals(
-      [{ pr: 12, headSha: "abc123", verdictAt: NOW - stallMs }],
-      NOW,
-      stallMs,
-    );
-    expect(signals.map((signal) => signal.fingerprint)).toEqual(["fix-stale:12:abc123"]);
+    const signals = stalledFixSignals([verdict({})], NOW, stallMs);
+    expect(signals.map((signal) => signal.fingerprint)).toEqual([
+      "fix-stale:example-owner/example-repo#12:abc123",
+    ]);
   });
 
   it("does not emit one millisecond before two hours", () => {
-    const signals = stalledFixSignals(
-      [{ pr: 12, headSha: "abc123", verdictAt: NOW - stallMs + 1 }],
-      NOW,
-      stallMs,
-    );
+    const signals = stalledFixSignals([verdict({ verdictAt: NOW - stallMs + 1 })], NOW, stallMs);
     expect(signals).toEqual([]);
   });
 
   it("does not emit when the branch was pushed after the verdict", () => {
     const signals = stalledFixSignals(
-      [{ pr: 12, headSha: "abc123", verdictAt: NOW - 3 * HOUR, lastPushAt: NOW - HOUR }],
+      [verdict({ verdictAt: NOW - 3 * HOUR, lastPushAt: NOW - HOUR })],
       NOW,
       stallMs,
     );
     expect(signals).toEqual([]);
   });
 
-  it("emits when the last push came before the verdict", () => {
+  it("keys the fingerprint by repo, so the same PR number in two repos does not collide", () => {
     const signals = stalledFixSignals(
-      [{ pr: 12, headSha: "abc123", verdictAt: NOW - 3 * HOUR, lastPushAt: NOW - 4 * HOUR }],
+      [verdict({}), verdict({ repo: "other-owner/other-repo" })],
       NOW,
       stallMs,
     );
-    expect(signals).toHaveLength(1);
+    expect(new Set(signals.map((signal) => signal.fingerprint)).size).toBe(2);
   });
 });
 

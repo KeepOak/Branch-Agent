@@ -6,16 +6,18 @@ import { listQueueItems } from "../agents/trunk-queue.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { AgentsSchema } from "../config/zod-schema.agents.js";
 import {
-  resetGardenerStateForTests,
+  createMemoryGardenerStore,
   resolveGardenerConfig,
   runGardenerPass,
   type GardenerInputs,
   type GardenerIssueDraft,
+  type GardenerStateStore,
 } from "./gardener-pass.js";
 
 const MINUTE = 60_000;
 const START = Date.parse("2026-10-10T12:00:00Z");
 const REPO = "example-owner/example-repo";
+const SHA = "0123456789abcdef0123456789abcdef01234567";
 
 const enabledCfg = { agents: { gardener: { enabled: true, repo: REPO } } } as BranchConfig;
 const disabledWithRepoCfg = {
@@ -24,29 +26,21 @@ const disabledWithRepoCfg = {
 const enabledNoRepoCfg = { agents: { gardener: { enabled: true } } } as BranchConfig;
 
 const failingMain: GardenerInputs = {
-  ciRuns: [
-    {
-      workflow_id: 7,
-      name: "Engine tests",
-      head_branch: "main",
-      conclusion: "failure",
-      created_at: "2026-10-10T11:00:00Z",
-      html_url: `https://github.com/${REPO}/actions/runs/1`,
-    },
-  ],
+  mainCheckFailures: [{ checkName: "engine-tests", headSha: SHA }],
 };
 const parityGap: GardenerInputs = { parityGaps: [{ key: "skills-ui", summary: "Skills differs" }] };
 
 let dir = "";
 let env: NodeJS.ProcessEnv = {};
 let clock = START;
+let store: GardenerStateStore;
 const now = () => clock;
 
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "gardener-pass-"));
   env = { BRANCH_STATE_DIR: dir };
   clock = START;
-  resetGardenerStateForTests();
+  store = createMemoryGardenerStore();
 });
 
 afterEach(() => {
@@ -62,6 +56,7 @@ function passParams(
     cfg,
     inputs,
     env,
+    store,
     now,
     writeIssue: async (draft: GardenerIssueDraft) => {
       writes.push(draft);
@@ -77,7 +72,10 @@ describe("default config (agents.gardener unset)", () => {
     });
     expect(result.status).toBe("ran");
     expect(result.dryRun).toBe(true);
-    expect(result.jobs.map((job) => job.fingerprint)).toEqual(["ci-main:7", "parity:skills-ui"]);
+    expect(result.jobs.map((job) => job.fingerprint)).toEqual([
+      "ci-main:engine-tests",
+      "parity:skills-ui",
+    ]);
     expect(result.issues).toEqual([]);
     expect(writes).toEqual([]);
     expect(listQueueItems(env)).toEqual([]);
@@ -91,7 +89,7 @@ describe("default config (agents.gardener unset)", () => {
     );
     expect(result.dryRun).toBe(true);
     expect(result.issues.map((issue) => issue.fingerprint)).toEqual([
-      "ci-main:7",
+      "ci-main:engine-tests",
       "parity:skills-ui",
     ]);
     expect(writes).toEqual([]);
@@ -107,7 +105,10 @@ describe("enabled with a repo", () => {
       passParams(enabledCfg, { ...failingMain, ...parityGap }, writes),
     );
     expect(result.dryRun).toBe(false);
-    expect(writes.map((draft) => draft.fingerprint)).toEqual(["ci-main:7", "parity:skills-ui"]);
+    expect(writes.map((draft) => draft.fingerprint)).toEqual([
+      "ci-main:engine-tests",
+      "parity:skills-ui",
+    ]);
     expect(writes.every((draft) => draft.repo === REPO)).toBe(true);
     const queued = listQueueItems(env);
     expect(queued).toHaveLength(2);
@@ -117,8 +118,7 @@ describe("enabled with a repo", () => {
   it("puts the fingerprint in the issue body", async () => {
     const writes: GardenerIssueDraft[] = [];
     await runGardenerPass(passParams(enabledCfg, failingMain, writes));
-    expect(writes[0]?.body).toContain("ci-main:7");
-    expect(writes[0]?.body).toContain(`/${REPO}/actions/runs/1`);
+    expect(writes[0]?.body).toContain("ci-main:engine-tests");
   });
 
   it("collapses duplicate signals inside one run to one job", async () => {
@@ -144,7 +144,9 @@ describe("cooldown and rate limit", () => {
     expect(second.status).toBe("ran");
     expect(second.jobs).toEqual([]);
     expect(second.issues).toEqual([]);
-    expect(second.suppressed).toEqual([{ fingerprint: "ci-main:7", reason: "cooldown" }]);
+    expect(second.suppressed).toEqual([
+      { fingerprint: "ci-main:engine-tests", reason: "cooldown" },
+    ]);
     expect(writes).toHaveLength(1);
     expect(listQueueItems(env)).toHaveLength(1);
   });
@@ -154,7 +156,7 @@ describe("cooldown and rate limit", () => {
     await runGardenerPass(passParams(enabledCfg, failingMain, writes));
     clock += 6 * 60 * MINUTE + 31 * MINUTE;
     const later = await runGardenerPass(passParams(enabledCfg, failingMain, writes));
-    expect(later.jobs.map((job) => job.fingerprint)).toEqual(["ci-main:7"]);
+    expect(later.jobs.map((job) => job.fingerprint)).toEqual(["ci-main:engine-tests"]);
     expect(writes).toHaveLength(2);
   });
 
@@ -169,13 +171,15 @@ describe("cooldown and rate limit", () => {
     expect(listQueueItems(env)).toHaveLength(1);
   });
 
-  it("a restart does not repeat a job that is still inside the cooldown", async () => {
+  it("a cooldown held only in the queue marker still suppresses a repeat", async () => {
     const writes: GardenerIssueDraft[] = [];
     await runGardenerPass(passParams(enabledCfg, failingMain, writes));
-    resetGardenerStateForTests();
+    store = createMemoryGardenerStore();
     clock += 31 * MINUTE;
-    const afterRestart = await runGardenerPass(passParams(enabledCfg, failingMain, writes));
-    expect(afterRestart.suppressed).toEqual([{ fingerprint: "ci-main:7", reason: "recent-job" }]);
+    const afterReset = await runGardenerPass(passParams(enabledCfg, failingMain, writes));
+    expect(afterReset.suppressed).toEqual([
+      { fingerprint: "ci-main:engine-tests", reason: "recent-job" },
+    ]);
     expect(writes).toHaveLength(1);
     expect(listQueueItems(env)).toHaveLength(1);
   });

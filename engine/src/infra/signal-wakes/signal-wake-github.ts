@@ -8,13 +8,21 @@ const COMMENT_PAGE_SIZE = 50;
 
 export type RepoRef = { owner: string; name: string };
 export type PullSummary = { number: number; authorLogin: string; headRef: string; headSha: string };
-export type CommentSummary = { id: number; authorLogin: string; body: string };
+export type CommentSummary = { id: number; authorLogin: string; body: string; createdAt?: string };
 
 /** Read-only GitHub access for the signal poller. Conditional GETs that return 304 are served from cache. */
 export type SignalWakeGitHub = {
   listOpenPulls(repo: RepoRef): Promise<PullSummary[]>;
   listCheckRuns(repo: RepoRef, headSha: string): Promise<CheckRunSummary[]>;
   listComments(repo: RepoRef, pullNumber: number): Promise<CommentSummary[]>;
+};
+
+/** The same client plus two reads the Gardener needs. They go through the same ETag cache. */
+export type SignalWakeGitHubReads = SignalWakeGitHub & {
+  /** Tip sha of heads/<branch>, or undefined when the ref body has no sha. */
+  getBranchSha(repo: RepoRef, branch: string): Promise<string | undefined>;
+  /** Committer time of a commit in epoch ms, or undefined when the body has no date. */
+  getCommitTime(repo: RepoRef, sha: string): Promise<number | undefined>;
 };
 
 export type SignalWakeGitHubOptions = {
@@ -44,6 +52,11 @@ const commentSchema = z.object({
   id: z.number().int(),
   user: z.object({ login: z.string() }).nullish(),
   body: z.string().nullish(),
+  created_at: z.string().nullish(),
+});
+const refSchema = z.object({ object: z.object({ sha: z.string() }) });
+const commitSchema = z.object({
+  commit: z.object({ committer: z.object({ date: z.string() }).nullish() }),
 });
 
 /** Keeps well-formed items and drops the rest, so one odd item cannot blind the whole poll. */
@@ -99,11 +112,24 @@ function repoPath(repo: RepoRef): string {
   return `/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`;
 }
 
-export function createSignalWakeGitHub(options: SignalWakeGitHubOptions): SignalWakeGitHub {
+export function createSignalWakeGitHub(options: SignalWakeGitHubOptions): SignalWakeGitHubReads {
   const cache = new Map<string, CacheEntry>();
   const base = options.apiBase ?? GITHUB_REST_BASE;
   const getJson = (path: string) => conditionalGetJson(options, cache, `${base}${path}`);
   return {
+    async getBranchSha(repo, branch) {
+      const parsed = refSchema.safeParse(
+        await getJson(`${repoPath(repo)}/git/ref/heads/${encodeURIComponent(branch)}`),
+      );
+      return parsed.success ? parsed.data.object.sha : undefined;
+    },
+    async getCommitTime(repo, sha) {
+      const parsed = commitSchema.safeParse(
+        await getJson(`${repoPath(repo)}/commits/${encodeURIComponent(sha)}`),
+      );
+      const date = parsed.success ? parsed.data.commit.committer?.date : undefined;
+      return date === undefined ? undefined : Date.parse(date) || undefined;
+    },
     async listOpenPulls(repo) {
       const pulls = parseItems(
         pullSchema,
@@ -136,11 +162,17 @@ export function createSignalWakeGitHub(options: SignalWakeGitHubOptions): Signal
           `${repoPath(repo)}/issues/${pullNumber}/comments?sort=created&direction=desc&per_page=${COMMENT_PAGE_SIZE}`,
         ),
       );
-      return comments.map((comment) => ({
-        id: comment.id,
-        authorLogin: comment.user?.login ?? "",
-        body: comment.body ?? "",
-      }));
+      return comments.map((comment) => {
+        const summary: CommentSummary = {
+          id: comment.id,
+          authorLogin: comment.user?.login ?? "",
+          body: comment.body ?? "",
+        };
+        if (comment.created_at) {
+          summary.createdAt = comment.created_at;
+        }
+        return summary;
+      });
     },
   };
 }

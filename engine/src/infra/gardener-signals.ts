@@ -8,56 +8,38 @@ const HOUR = 60 * 60_000;
 export type GardenerJobDraft = { title: string; brief_text: string; priority: number };
 export type GardenerSignal = { fingerprint: string; job: GardenerJobDraft };
 
-/** One Actions run, in the field names the CI read uses (gateway/github-actions-read.ts). */
-export type CiRunRecord = {
-  workflow_id: number;
-  name: string | null;
-  head_branch: string | null;
-  conclusion: string | null;
-  created_at: string;
-  html_url: string;
-};
+/** A check run that failed on main's current head. Read through the shared client's branch-sha and check-run calls. */
+export type MainCheckFailure = { checkName: string; headSha: string };
 /** One failstats occurrence. The lane-failstats producer maps its own rows into this shape. */
 export type FailstatsEvent = { cause: string; at: number };
 export type FailstatsOptions = { windowMs: number; threshold: number };
-/** An open FIX verdict on a PR, and the last push to that PR branch if there was one. Supplied by the verdict poller. */
+/** An open FIX verdict on a PR, with the time of its head commit. Built from the PR 2 poll's observations. */
 export type FixVerdictRecord = {
+  repo: string;
   pr: number;
   headSha: string;
   verdictAt: number;
-  lastPushAt?: number;
+  /** Committer time of the head commit. A value after verdictAt means the branch was pushed since the verdict. */
+  lastPushAt: number;
 };
 export type ParityGapRecord = { key: string; summary: string };
 
 const PRIORITY = { ci: 90, fix: 70, failstats: 60, claim: 50, parity: 40 } as const;
 
-/** The newest main-branch run per workflow. Runs on other branches never count. */
-function latestMainRunPerWorkflow(runs: readonly CiRunRecord[]): CiRunRecord[] {
-  const latest = new Map<number, CiRunRecord>();
-  for (const run of runs) {
-    if (run.head_branch !== "main") {
-      continue;
-    }
-    const seen = latest.get(run.workflow_id);
-    if (!seen || Date.parse(run.created_at) > Date.parse(seen.created_at)) {
-      latest.set(run.workflow_id, run);
-    }
+/** A check that is failing on main. The fingerprint is the check name, so a new red sha keeps the same job. */
+export function failingMainCheckSignals(failures: readonly MainCheckFailure[]): GardenerSignal[] {
+  const byName = new Map<string, MainCheckFailure>();
+  for (const failure of failures) {
+    byName.set(failure.checkName, failure);
   }
-  return [...latest.values()];
-}
-
-/** A workflow whose newest main run failed. The fingerprint is the workflow, so each new red run keeps the same job. */
-export function failingMainSignals(runs: readonly CiRunRecord[]): GardenerSignal[] {
-  return latestMainRunPerWorkflow(runs)
-    .filter((run) => run.conclusion === "failure")
-    .map((run) => ({
-      fingerprint: `ci-main:${run.workflow_id}`,
-      job: {
-        title: `Fix failing main workflow ${run.name ?? run.workflow_id}`,
-        brief_text: `The newest main run failed: ${run.html_url}. Find the cause, fix it on a branch and open a PR.`,
-        priority: PRIORITY.ci,
-      },
-    }));
+  return [...byName.values()].map((failure) => ({
+    fingerprint: `ci-main:${failure.checkName}`,
+    job: {
+      title: `Fix failing check on main: ${failure.checkName}`,
+      brief_text: `The check "${failure.checkName}" fails on main at ${failure.headSha.slice(0, 7)}. Find the cause, fix it on a branch and open a PR.`,
+      priority: PRIORITY.ci,
+    },
+  }));
 }
 
 /** A failure cause that reaches the threshold inside the window. Events outside the window do not count. */
@@ -95,15 +77,13 @@ export function stalledFixSignals(
   const hours = Math.round(stallMs / HOUR);
   return verdicts
     .filter(
-      (verdict) =>
-        now - verdict.verdictAt >= stallMs &&
-        (verdict.lastPushAt === undefined || verdict.lastPushAt <= verdict.verdictAt),
+      (verdict) => now - verdict.verdictAt >= stallMs && verdict.lastPushAt <= verdict.verdictAt,
     )
     .map((verdict) => ({
-      fingerprint: `fix-stale:${verdict.pr}:${verdict.headSha}`,
+      fingerprint: `fix-stale:${verdict.repo}#${verdict.pr}:${verdict.headSha}`,
       job: {
-        title: `Push the FIX for PR #${verdict.pr}`,
-        brief_text: `PR #${verdict.pr} has had a FIX verdict and no push for ${hours}h. Make the requested changes and push, or ask for a new review.`,
+        title: `Push the FIX for ${verdict.repo} PR #${verdict.pr}`,
+        brief_text: `PR #${verdict.pr} in ${verdict.repo} has had a FIX verdict and no push for ${hours}h. Make the requested changes and push, or ask for a new review.`,
         priority: PRIORITY.fix,
       },
     }));

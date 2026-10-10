@@ -2,9 +2,14 @@ import { listAgentIds } from "../agents/agent-scope.js";
 import { isQueueEligibleTrunk } from "../agents/trunk-queue-policy.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { dispatchSignalWake } from "../infra/signal-wakes/signal-wake-dispatch.js";
-import { createSignalWakeGitHub, type RepoRef } from "../infra/signal-wakes/signal-wake-github.js";
+import {
+  createSignalWakeGitHub,
+  type RepoRef,
+  type SignalWakeGitHubReads,
+} from "../infra/signal-wakes/signal-wake-github.js";
 import {
   startSignalWakePoller,
+  type PrObservation,
   type SignalPoller,
 } from "../infra/signal-wakes/signal-wake-poller.js";
 import { normalizeAgentId } from "../routing/session-key.js";
@@ -27,9 +32,20 @@ export function configuredTrunkIds(cfg: BranchConfig): string[] {
     .filter((id) => isQueueEligibleTrunk(id, cfg));
 }
 
-/** Starts the single gateway poller only when agents.signalWakes.repos names a repository. */
+/** The gateway's one GitHub reader, shared by the signal poller and the Gardener. Undefined without a token. */
+export function createGatewayGitHubReads(cfg: BranchConfig): SignalWakeGitHubReads | undefined {
+  const token = githubApiToken(process.env, cfg);
+  return token ? createSignalWakeGitHub({ fetchImpl: fetch, token }) : undefined;
+}
+
+/**
+ * Starts the single gateway poller only when agents.signalWakes.repos names a repository. It reads through the
+ * shared client, and `observe` taps each poll's data for the Gardener without a second read.
+ */
 export function startSignalWakePollerForGateway(params: {
   getRuntimeConfig: () => BranchConfig;
+  github: SignalWakeGitHubReads | undefined;
+  observe?: (observation: PrObservation) => void;
   onError: (message: string) => void;
 }): SignalPoller {
   const cfg = params.getRuntimeConfig();
@@ -37,16 +53,16 @@ export function startSignalWakePollerForGateway(params: {
   if (repos.length === 0) {
     return NOOP_POLLER;
   }
-  const token = githubApiToken(process.env, cfg);
-  if (!token) {
+  if (!params.github) {
     params.onError("signal wakes are configured but no GitHub token is available");
     return NOOP_POLLER;
   }
   return startSignalWakePoller({
-    github: createSignalWakeGitHub({ fetchImpl: fetch, token }),
+    github: params.github,
     repos,
     trunkIds: () => configuredTrunkIds(params.getRuntimeConfig()),
     notify: (signal) => dispatchSignalWake(params.getRuntimeConfig(), signal),
+    ...(params.observe ? { observe: params.observe } : {}),
     onError: params.onError,
   });
 }

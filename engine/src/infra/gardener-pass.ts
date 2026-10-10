@@ -4,16 +4,16 @@
 import { addQueueItem, listQueueItems, type TrunkQueueItem } from "../agents/trunk-queue.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import {
-  failingMainSignals,
+  failingMainCheckSignals,
   parityGapSignals,
   recurringFailstatsSignals,
   stalledFixSignals,
   staleClaimSignals,
-  type CiRunRecord,
   type FailstatsEvent,
   type FixVerdictRecord,
   type GardenerJobDraft,
   type GardenerSignal,
+  type MainCheckFailure,
   type ParityGapRecord,
 } from "./gardener-signals.js";
 
@@ -31,11 +31,35 @@ export const GARDENER_DEFAULTS = {
 export type GardenerOptions = typeof GARDENER_DEFAULTS;
 
 export type GardenerInputs = {
-  ciRuns?: CiRunRecord[];
+  mainCheckFailures?: MainCheckFailure[];
   failstats?: FailstatsEvent[];
   fixVerdicts?: FixVerdictRecord[];
   parityGaps?: ParityGapRecord[];
 };
+
+/** Where the rate-limit stamp and the cooldowns live. Production uses the state store; tests use memory. */
+export type GardenerStateStore = {
+  lastRunAt(): number | undefined;
+  setLastRunAt(at: number): void;
+  cooldownUntil(fingerprint: string): number | undefined;
+  /** ttlMs only lets the store drop old rows; the pass compares against its own clock. */
+  setCooldownUntil(fingerprint: string, until: number, ttlMs: number): void;
+};
+
+export function createMemoryGardenerStore(): GardenerStateStore {
+  const cooldowns = new Map<string, number>();
+  let lastRun: number | undefined;
+  return {
+    lastRunAt: () => lastRun,
+    setLastRunAt: (at) => {
+      lastRun = at;
+    },
+    cooldownUntil: (fingerprint) => cooldowns.get(fingerprint),
+    setCooldownUntil: (fingerprint, until) => {
+      cooldowns.set(fingerprint, until);
+    },
+  };
+}
 
 export type GardenerIssueDraft = { repo: string; fingerprint: string; title: string; body: string };
 export type GardenerPlannedJob = GardenerJobDraft & { fingerprint: string };
@@ -44,6 +68,7 @@ export type GardenerSuppression = { fingerprint: string; reason: "cooldown" | "r
 export type GardenerPassParams = {
   cfg: BranchConfig | undefined;
   inputs: GardenerInputs;
+  store: GardenerStateStore;
   /** The only GitHub write. Called once per planned issue, and only when the pass is enabled with a repo. */
   writeIssue: (draft: GardenerIssueDraft) => Promise<void>;
   env?: NodeJS.ProcessEnv;
@@ -84,15 +109,6 @@ export function resolveGardenerConfig(cfg: BranchConfig | undefined): GardenerCo
   return repo === undefined ? { ok: true, enabled } : { ok: true, enabled, repo };
 }
 
-/** In-memory state: the last enabled run and the per-fingerprint cooldown. Cleared only by the test reset. */
-const cooldownUntil = new Map<string, number>();
-let lastRunAt: number | undefined;
-
-export function resetGardenerStateForTests(): void {
-  cooldownUntil.clear();
-  lastRunAt = undefined;
-}
-
 /** A job title carries this marker, so a restart can still see a job it made inside the cooldown. */
 function markerFor(fingerprint: string): string {
   return `[gardener:${fingerprint}]`;
@@ -105,7 +121,7 @@ function collectSignals(
   queued: readonly TrunkQueueItem[],
 ): GardenerSignal[] {
   return [
-    ...failingMainSignals(inputs.ciRuns ?? []),
+    ...failingMainCheckSignals(inputs.mainCheckFailures ?? []),
     ...recurringFailstatsSignals(inputs.failstats ?? [], now, {
       windowMs: options.failstatsWindowMs,
       threshold: options.failstatsThreshold,
@@ -116,20 +132,23 @@ function collectSignals(
   ];
 }
 
-/** A fingerprint is held back by the in-memory cooldown, or by a job with its marker added inside the cooldown. */
+/** A fingerprint is held back by a stored cooldown, or by a job with its marker added inside the cooldown. */
 function suppressionReason(
   fingerprint: string,
   now: number,
-  options: GardenerOptions,
-  queued: readonly TrunkQueueItem[],
+  params: {
+    options: GardenerOptions;
+    queued: readonly TrunkQueueItem[];
+    store: GardenerStateStore;
+  },
 ): GardenerSuppression["reason"] | undefined {
-  const until = cooldownUntil.get(fingerprint);
+  const until = params.store.cooldownUntil(fingerprint);
   if (until !== undefined && now < until) {
     return "cooldown";
   }
   const marker = markerFor(fingerprint);
-  const recent = queued.some(
-    (item) => item.title.startsWith(marker) && now - item.added_at < options.cooldownMs,
+  const recent = params.queued.some(
+    (item) => item.title.startsWith(marker) && now - item.added_at < params.options.cooldownMs,
   );
   return recent ? "recent-job" : undefined;
 }
@@ -138,8 +157,11 @@ function suppressionReason(
 function planSignals(
   signals: readonly GardenerSignal[],
   now: number,
-  options: GardenerOptions,
-  queued: readonly TrunkQueueItem[],
+  params: {
+    options: GardenerOptions;
+    queued: readonly TrunkQueueItem[];
+    store: GardenerStateStore;
+  },
 ): { planned: GardenerSignal[]; suppressed: GardenerSuppression[] } {
   const seen = new Set<string>();
   const planned: GardenerSignal[] = [];
@@ -149,7 +171,7 @@ function planSignals(
       continue;
     }
     seen.add(signal.fingerprint);
-    const reason = suppressionReason(signal.fingerprint, now, options, queued);
+    const reason = suppressionReason(signal.fingerprint, now, params);
     if (reason) {
       suppressed.push({ fingerprint: signal.fingerprint, reason });
     } else {
@@ -175,28 +197,33 @@ function plannedJobFor(signal: GardenerSignal): GardenerPlannedJob {
 
 /**
  * Writes one planned item at a time. The issue is written first: if that write fails, no job and no cooldown are
- * recorded, so the next run retries. The cooldown is set only after both writes succeed.
+ * recorded, so the next run retries. The cooldown is stored only after both writes succeed.
  */
 async function commitPlan(
   planned: readonly GardenerSignal[],
   repo: string,
-  writeIssue: GardenerPassParams["writeIssue"],
-  env: NodeJS.ProcessEnv,
-  now: number,
-  options: GardenerOptions,
+  params: Required<Pick<GardenerPassParams, "writeIssue" | "store">> & {
+    env: NodeJS.ProcessEnv;
+    now: number;
+    options: GardenerOptions;
+  },
 ): Promise<void> {
   for (const signal of planned) {
-    await writeIssue(issueDraftFor(repo, signal));
+    await params.writeIssue(issueDraftFor(repo, signal));
     addQueueItem(
       {
         title: `${markerFor(signal.fingerprint)} ${signal.job.title}`,
         brief_text: signal.job.brief_text,
         priority: signal.job.priority,
       },
-      env,
-      now,
+      params.env,
+      params.now,
     );
-    cooldownUntil.set(signal.fingerprint, now + options.cooldownMs);
+    params.store.setCooldownUntil(
+      signal.fingerprint,
+      params.now + params.options.cooldownMs,
+      params.options.cooldownMs,
+    );
   }
 }
 
@@ -216,19 +243,30 @@ export async function runGardenerPass(params: GardenerPassParams): Promise<Garde
   const env = params.env ?? process.env;
   const now = (params.now ?? Date.now)();
   const options: GardenerOptions = { ...GARDENER_DEFAULTS, ...params.options };
-  if (config.enabled && lastRunAt !== undefined && now - lastRunAt < options.intervalMs) {
+  const last = params.store.lastRunAt();
+  if (config.enabled && last !== undefined && now - last < options.intervalMs) {
     return { status: "rate-limited", dryRun: false, jobs: [], issues: [], suppressed: [] };
   }
   const queued = listQueueItems(env);
   const signals = collectSignals(params.inputs, now, options, queued);
-  const { planned, suppressed } = planSignals(signals, now, options, queued);
+  const { planned, suppressed } = planSignals(signals, now, {
+    options,
+    queued,
+    store: params.store,
+  });
   const repo = config.repo;
   const issues = repo ? planned.map((signal) => issueDraftFor(repo, signal)) : [];
   const jobs = planned.map(plannedJobFor);
   if (!config.enabled || repo === undefined) {
     return { status: "ran", dryRun: true, jobs, issues, suppressed };
   }
-  lastRunAt = now;
-  await commitPlan(planned, repo, params.writeIssue, env, now, options);
+  params.store.setLastRunAt(now);
+  await commitPlan(planned, repo, {
+    writeIssue: params.writeIssue,
+    store: params.store,
+    env,
+    now,
+    options,
+  });
   return { status: "ran", dryRun: false, jobs, issues, suppressed };
 }

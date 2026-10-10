@@ -1,11 +1,26 @@
 import { failingCheckNames, isFixVerdict, trunkForHeadRef } from "./signal-wake-classify.js";
 import { diffPrSignals, type PrSignalState, type SignalDecision } from "./signal-wake-decide.js";
-import type { PullSummary, RepoRef, SignalWakeGitHub } from "./signal-wake-github.js";
+import type {
+  CommentSummary,
+  PullSummary,
+  RepoRef,
+  SignalWakeGitHub,
+} from "./signal-wake-github.js";
 
 export const SIGNAL_POLL_INTERVAL_MS = 5 * 60_000;
 
 /** `tick` runs one poll now, or joins the poll already in flight. */
 export type SignalPoller = { tick(): Promise<void>; stop(): Promise<void> };
+
+/** What one poll read for one Trunk-authored PR. Handed to `observe`; nothing is re-read for it. */
+export type PrObservation = {
+  repo: RepoRef;
+  pullNumber: number;
+  authorLogin: string;
+  headSha: string;
+  trunkId: string;
+  comments: readonly CommentSummary[];
+};
 
 export type SignalPollerOptions = {
   github: SignalWakeGitHub;
@@ -13,6 +28,8 @@ export type SignalPollerOptions = {
   /** Configured Trunk ids on this machine, read on every tick. */
   trunkIds: () => readonly string[];
   notify: (signal: SignalDecision) => void;
+  /** Optional read-only tap on each PR the poll reads. Used by the Gardener; no extra GitHub call. */
+  observe?: (observation: PrObservation) => void;
   onError?: (message: string) => void;
   intervalMs?: number;
 };
@@ -44,6 +61,14 @@ async function tickPr(
   const github = ctx.options.github;
   const checks = await github.listCheckRuns(repo, pull.headSha);
   const comments = await github.listComments(repo, pull.number);
+  ctx.options.observe?.({
+    repo,
+    pullNumber: pull.number,
+    authorLogin: pull.authorLogin,
+    headSha: pull.headSha,
+    trunkId,
+    comments,
+  });
   const diff = diffPrSignals(state.prs.get(pull.number), {
     number: pull.number,
     authorLogin: pull.authorLogin,
