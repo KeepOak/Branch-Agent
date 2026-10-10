@@ -454,6 +454,7 @@ export const validateModelsAuthSetApiKeyParams = compile(S.ModelsAuthSetApiKeyPa
 export const validateModelsAuthSetApiKeyResult = compile(S.ModelsAuthSetApiKeyResultSchema);
 export const validateModelsAuthLogoutParams = compile(S.ModelsAuthLogoutParamsSchema);
 export const validateModelsAuthOrderSetParams = compile(S.ModelsAuthOrderSetParamsSchema);
+export const validateModelsAuthPauseSetParams = compile(S.ModelsAuthPauseSetParamsSchema);
 export const validateModelsAuthRefreshParams = compile(S.ModelsAuthRefreshParamsSchema);
 export const validateModelsAuthStatusParams = compile(S.ModelsAuthStatusParamsSchema);
 export const validateModelsListParams = compile(S.ModelsListParamsSchema);

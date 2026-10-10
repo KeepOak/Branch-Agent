@@ -19,6 +19,7 @@ import {
 import {
   ensureAuthProfileStoreWithoutExternalProfiles,
   externalCliDiscoveryForConfigStatus,
+  isProfilePausedByUser,
   listProfilesForProvider,
   resolveAuthProfileMetadata,
   resolveExplicitAuthOrderSelection,
@@ -489,6 +490,10 @@ export const modelsAuthStatusHandlers: GatewayRequestHandlers = {
             }
             if (blockedUntil !== undefined && blockedUntil > now) {
               profile.limitedUntil = blockedUntil;
+            }
+            const pause = store.usageStats?.[prof.profileId]?.paused;
+            if (isProfilePausedByUser(store.usageStats?.[prof.profileId], now)) {
+              profile.paused = pause?.until === undefined ? {} : { until: pause.until };
             }
             return profile;
           }),

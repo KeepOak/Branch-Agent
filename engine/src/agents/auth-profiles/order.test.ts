@@ -53,11 +53,13 @@ vi.mock("./external-auth.js", async (importOriginal) => ({
 
 import { createFailedOAuthRefreshFence, createOAuthRefreshFence } from "./oauth-refresh-marker.js";
 import {
+  isProfilePausedByUser,
   isStoredCredentialCompatibleWithAuthProvider,
   resolveAuthProfileEligibility,
   resolveAuthProfileOrder,
   resolveAuthProfileOrderWithMetadata,
 } from "./order.js";
+import { coerceProfileUsageStats } from "./profile-usage-stats.js";
 import { markAuthProfileSuccess } from "./profiles.js";
 
 describe("resolveAuthProfileOrder", () => {
@@ -934,4 +936,120 @@ describe("resolveAuthProfileOrder", () => {
       ).toEqual({ eligible: expectedModeReason === "ok", reasonCode: expectedModeReason });
     },
   );
+});
+
+describe("user pauses on accounts", () => {
+  const pausedStore = (paused: Record<string, { until?: number }>): AuthProfileStore => ({
+    version: 1,
+    profiles: {
+      "fixture-provider:first": createApiKeyCredential("fixture-provider", "sk-first"),
+      "fixture-provider:second": createApiKeyCredential("fixture-provider", "sk-second"),
+      "fixture-provider:third": createApiKeyCredential("fixture-provider", "sk-third"),
+    },
+    order: {
+      "fixture-provider": [
+        "fixture-provider:first",
+        "fixture-provider:second",
+        "fixture-provider:third",
+      ],
+    },
+    usageStats: Object.fromEntries(
+      Object.entries(paused).map(([profileId, pause]) => [profileId, { paused: pause }]),
+    ),
+  });
+
+  it("skips a paused account even when it is first in the explicit order", () => {
+    const store = pausedStore({ "fixture-provider:first": {} });
+    expect(resolveAuthProfileOrder({ store, provider: "fixture-provider" })).toStrictEqual([
+      "fixture-provider:second",
+      "fixture-provider:third",
+    ]);
+  });
+
+  it("keeps a paused account out even when every other account has failed", () => {
+    const store = pausedStore({ "fixture-provider:first": {} });
+    store.usageStats = {
+      ...store.usageStats,
+      "fixture-provider:second": {
+        cooldownUntil: Date.now() + 60_000,
+        cooldownReason: "rate_limit",
+      },
+    };
+    expect(resolveAuthProfileOrder({ store, provider: "fixture-provider" })).toStrictEqual([
+      "fixture-provider:third",
+      "fixture-provider:second",
+    ]);
+  });
+
+  it("resumes a timed pause once its end time has passed", () => {
+    const store = pausedStore({ "fixture-provider:first": { until: Date.now() - 1_000 } });
+    expect(resolveAuthProfileOrder({ store, provider: "fixture-provider" })).toStrictEqual([
+      "fixture-provider:first",
+      "fixture-provider:second",
+      "fixture-provider:third",
+    ]);
+  });
+
+  it("keeps a timed pause out until its end time", () => {
+    const store = pausedStore({ "fixture-provider:first": { until: Date.now() + 3_600_000 } });
+    expect(resolveAuthProfileOrder({ store, provider: "fixture-provider" })).not.toContain(
+      "fixture-provider:first",
+    );
+  });
+
+  it("does not pin a paused account for the session", () => {
+    const store = pausedStore({ "fixture-provider:second": {} });
+    expect(
+      resolveAuthProfileOrder({
+        store,
+        provider: "fixture-provider",
+        preferredProfile: "fixture-provider:second",
+      }),
+    ).toStrictEqual(["fixture-provider:first", "fixture-provider:third"]);
+  });
+
+  it("leaves no usable account when every account is paused", () => {
+    const store = pausedStore({
+      "fixture-provider:first": {},
+      "fixture-provider:second": {},
+      "fixture-provider:third": {},
+    });
+    expect(resolveAuthProfileOrder({ store, provider: "fixture-provider" })).toStrictEqual([]);
+  });
+
+  it("is per account and leaves the store's order untouched", () => {
+    const store = pausedStore({ "fixture-provider:second": {} });
+    resolveAuthProfileOrder({ store, provider: "fixture-provider" });
+    expect(store.order?.["fixture-provider"]).toStrictEqual([
+      "fixture-provider:first",
+      "fixture-provider:second",
+      "fixture-provider:third",
+    ]);
+    expect(store.profiles["fixture-provider:second"]).toBeDefined();
+  });
+});
+
+describe("paused accounts in persisted usage stats", () => {
+  it("keeps an open pause and a timed pause", () => {
+    expect(coerceProfileUsageStats({ paused: {} })?.paused).toStrictEqual({});
+    expect(coerceProfileUsageStats({ paused: { until: 1_700_000_000_000 } })?.paused).toStrictEqual(
+      {
+        until: 1_700_000_000_000,
+      },
+    );
+  });
+
+  it("drops a malformed pause instead of pausing the account", () => {
+    expect(coerceProfileUsageStats({ paused: true })?.paused).toBeUndefined();
+    expect(coerceProfileUsageStats({ paused: "1 hour" })?.paused).toBeUndefined();
+  });
+
+  it("reads an open pause as paused and a timed pause only before its end", () => {
+    const now = 1_000;
+    expect(isProfilePausedByUser({ paused: {} }, now)).toBe(true);
+    expect(isProfilePausedByUser({ paused: { until: 2_000 } }, now)).toBe(true);
+    expect(isProfilePausedByUser({ paused: { until: 500 } }, now)).toBe(false);
+    expect(isProfilePausedByUser({}, now)).toBe(false);
+    expect(isProfilePausedByUser(undefined, now)).toBe(false);
+  });
 });

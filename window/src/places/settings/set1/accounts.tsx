@@ -11,13 +11,14 @@ import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Status, Swit
 import { Logo, serviceName } from "./service";
 import { AddAccountDialog, type AddStart } from "./add-account";
 import { CodingApps } from "./coding-apps";
+import { isPausedNow, orderAfterDrop, orderAfterMove, pauseEnd, pauseLabel, usableCountFor, type Pause, type PauseChoice } from "./accounts-order";
 import { OwnAccounts } from "./own-accounts";
 import { GitHubSettings } from "../GitHubSettings";
 import { AccountsMore } from "./accounts-more";
 import { BulkBar, SelectBox, SelectLink } from "./accounts-select";
 import "./set1.css";
 
-export type Profile = { profileId: string; type: string; status: string; displayName?: string; email?: string; lastUsedAt?: number; logoutSupported?: boolean; source?: string; reasonCode?: string; externallyManaged?: boolean; expiry?: { label?: string }; limitedUntil?: number };
+export type Profile = { profileId: string; type: string; status: string; displayName?: string; email?: string; lastUsedAt?: number; logoutSupported?: boolean; source?: string; reasonCode?: string; externallyManaged?: boolean; expiry?: { label?: string }; limitedUntil?: number; paused?: { until?: number } };
 export type Provider = { provider: string; authProvider?: string; displayName: string; status: string; profiles: Profile[]; profileOrder?: string[]; lastGoodProfileId?: string; profileOrderLocked?: string; usage?: { plan?: string; accountEmail?: string; windows?: Array<{ label?: string; usedPercent?: number }> } };
 /** models.authStatus providers, each with its accounts as a list even when the engine leaves them out. */
 export function providersOf(value: unknown): Provider[] {
@@ -34,6 +35,7 @@ export function limitedLabel(until: number): string {
 }
 
 const UP = <svg className="i s" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+const DOWN = <svg className="i s" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 const MORE = <svg className="i s" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="6" cy="12" r="1.4" fill="currentColor" /><circle cx="12" cy="12" r="1.4" fill="currentColor" /><circle cx="18" cy="12" r="1.4" fill="currentColor" /></svg>;
 
 /** Each provider's accounts in the engine's order (explicit order first, the rest after), one list across providers. */
@@ -75,10 +77,7 @@ function accountSub(acc: Account): string {
 
 /** The order with this account moved up one place within its provider. */
 export function movedUp(acc: Account, all: Account[]): string[] {
-  const ids = all.filter((x) => x.p === acc.p).map((x) => x.a.profileId);
-  const i = ids.indexOf(acc.a.profileId);
-  if (i > 0) [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]];
-  return ids;
+  return orderAfterMove(acc, all, "up");
 }
 
 export function AccountsPage(props: SettingsPageProps) {
@@ -121,56 +120,107 @@ function AccountsStatus({ loading, error, count, unavailable }: { loading: boole
 }
 
 type OrderProps = SettingsPageProps & { all: Account[]; reload: () => Promise<void>; onAdd: (s: AddStart) => void; agent: { agentId?: string } };
+type PendingPause = { acc: Account; pause: Pause };
+
+/** A pause from a choice: an open pause for "until I turn it back on", or a timed one. */
+function pauseFrom(choice: PauseChoice, now = new Date()): Pause {
+  const until = pauseEnd(choice, now);
+  return until === undefined ? {} : { until };
+}
+
 function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
   const save = useSaveRunner();
   const lv = useLevel();
   const [menu, setMenu] = useState<{ at: MenuAnchor; acc: Account } | null>(null);
   const [picked, setPicked] = useState<string[] | null>(null);
+  const [pending, setPending] = useState<PendingPause | null>(null);
+  const [dragging, setDragging] = useState<Account | null>(null);
   const setOrder = (acc: Account, ids: string[]) => save(async () => {
     await engine.request("models.authOrderSet", { provider: acc.p.authProvider ?? acc.p.provider, profileIds: ids, ...agent });
     await reload();
   });
+  const sendPause = (acc: Account, pause: Pause | null) => save(async () => {
+    const until = pause?.until;
+    await engine.request("models.authPauseSet", {
+      provider: acc.p.authProvider ?? acc.p.provider, profileId: acc.a.profileId, paused: pause !== null,
+      ...(until !== undefined ? { until } : {}), ...agent,
+    });
+    await reload();
+  });
+  /** Pausing the last account Branch can use would leave a provider with nothing to answer, so it asks first. */
+  const askPause = (acc: Account, choice: PauseChoice) => {
+    const pause = pauseFrom(choice);
+    if (!isPausedNow(acc.a.paused) && usableCountFor(acc, all) === 1) setPending({ acc, pause });
+    else void sendPause(acc, pause);
+  };
   const brands = [...new Map(all.map((x) => [x.p.provider, x.p])).values()];
   const selecting = lv >= 1 && picked !== null;
   const right = lv >= 1 && all.length ? <SelectLink on={selecting} onToggle={() => setPicked(selecting ? null : [])} /> : undefined;
+  const dropOn = (target: Account) => {
+    if (!dragging || dragging.p !== target.p || dragging.a.profileId === target.a.profileId) return;
+    void setOrder(dragging, orderAfterDrop(all, target.p, dragging.a.profileId, target.a.profileId));
+  };
   return (
     <Sec title="Order Branch uses them in" right={right}>
       {selecting ? <BulkBar engine={engine} all={all} picked={picked ?? []} agent={agent} reload={reload} done={() => setPicked(null)} /> : null}
+      {pending ? (
+        <Status tone="warn" title={`Pause the last account Branch can use for ${serviceName(pending.acc.p.provider, pending.acc.p.displayName)}?`}
+          action={<><Btn sm pri onClick={() => { const next = pending; setPending(null); void sendPause(next.acc, next.pause); }}>Pause it</Btn><Btn sm onClick={() => setPending(null)}>Keep it on</Btn></>}>
+          Until you resume one, Branch has no {serviceName(pending.acc.p.provider, pending.acc.p.displayName)} account to answer with.
+        </Status>
+      ) : null}
       {all.length ? (
         <Plist>
-          {all.map((acc) => (
-            <Prow key={`${acc.p.provider}/${acc.a.profileId}`} icon={<>{selecting ? <SelectBox acc={acc} name={accountName(acc)} picked={picked ?? []} onPick={setPicked} /> : null}<Logo id={acc.p.provider} size={32} /></>} title={accountName(acc)} sub={accountSub(acc)}>
-              {acc.ordered && acc.next ? <Pill tone="ok">used next</Pill> : null}
-              {isLimited(acc.a) ? <Pill tone="warn">{limitedLabel(acc.a.limitedUntil ?? 0)}</Pill> : null}
-              {acc.a.status === "expired" || acc.a.status === "missing" ? <Pill tone="warn">Sign in again</Pill> : null}
-              <button type="button" className="icon-btn" aria-label="Move up" title={acc.first ? `First for ${serviceName(acc.p.provider, acc.p.displayName)} already` : acc.p.profileOrderLocked ? "The order is set in the settings file" : "Move up"} disabled={acc.first || Boolean(acc.p.profileOrderLocked)} onClick={() => void setOrder(acc, movedUp(acc, all))}>{UP}</button>
-              <button type="button" className="icon-btn" aria-label={`More for ${accountName(acc)}`} aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ at: { x: r.right - 200, y: r.bottom + 4 }, acc }); }}>{MORE}</button>
-            </Prow>
-          ))}
+          {all.map((acc) => {
+            const paused = isPausedNow(acc.a.paused);
+            const locked = Boolean(acc.p.profileOrderLocked);
+            return (
+              <div key={`${acc.p.provider}/${acc.a.profileId}`} draggable={!selecting && !locked} className={`acc-drag${paused ? " is-paused" : ""}`}
+                onDragStart={() => setDragging(acc)} onDragOver={(e) => { if (dragging?.p === acc.p) e.preventDefault(); }}
+                onDrop={(e) => { e.preventDefault(); dropOn(acc); setDragging(null); }} onDragEnd={() => setDragging(null)}>
+                <Prow icon={<>{selecting ? <SelectBox acc={acc} name={accountName(acc)} picked={picked ?? []} onPick={setPicked} /> : null}<Logo id={acc.p.provider} size={32} /></>}
+                  title={accountName(acc)} sub={[accountSub(acc), pauseLabel(acc.a.paused)].filter(Boolean).join(" · ")}>
+                  {acc.ordered && acc.next && !paused ? <Pill tone="ok">used next</Pill> : null}
+                  {paused ? <Pill tone="warn">Paused</Pill> : null}
+                  {isLimited(acc.a) ? <Pill tone="warn">{limitedLabel(acc.a.limitedUntil ?? 0)}</Pill> : null}
+                  {acc.a.status === "expired" || acc.a.status === "missing" ? <Pill tone="warn">Sign in again</Pill> : null}
+                  <Switch checked={!paused} label={`Use ${accountName(acc)}`} onChange={(on) => (on ? void sendPause(acc, null) : askPause(acc, "indefinite"))} />
+                  <button type="button" className="icon-btn" aria-label="Move up" title={acc.first ? `First for ${serviceName(acc.p.provider, acc.p.displayName)} already` : locked ? "The order is set in the settings file" : "Move up"} disabled={acc.first || locked} onClick={() => void setOrder(acc, orderAfterMove(acc, all, "up"))}>{UP}</button>
+                  <button type="button" className="icon-btn" aria-label="Move down" title={acc.last ? `Last for ${serviceName(acc.p.provider, acc.p.displayName)} already` : locked ? "The order is set in the settings file" : "Move down"} disabled={acc.last || locked} onClick={() => void setOrder(acc, orderAfterMove(acc, all, "down"))}>{DOWN}</button>
+                  <button type="button" className="icon-btn" aria-label={`More for ${accountName(acc)}`} aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ at: { x: r.right - 200, y: r.bottom + 4 }, acc }); }}>{MORE}</button>
+                </Prow>
+              </div>
+            );
+          })}
         </Plist>
       ) : <Empty>No account yet. Add one, and Branch uses it for every Trunk.</Empty>}
-      {all.some((x) => !x.first) ? <Hint>When one account runs low, Branch moves to the next.</Hint> : null}
+      {all.some((x) => !x.first) ? <Hint>When one account runs low, Branch moves to the next. Drag an account to change its place.</Hint> : null}
       <Acts>
         <Btn pri onClick={() => onAdd({})}><Icon name="plus" small />Add an account</Btn>
         <Btn onClick={() => onAdd({ provider: "anthropic" })}>Add a Claude account</Btn>
         {brands.filter((p) => p.provider !== "anthropic").map((p) => <Btn key={p.provider} onClick={() => onAdd({ provider: p.provider })}>Another {serviceName(p.provider, p.displayName)} account</Btn>)}
       </Acts>
-      {menu ? <AccountMenu engine={engine} acc={menu.acc} all={all} at={menu.at} agent={agent} reload={reload} setOrder={setOrder} onClose={() => setMenu(null)} /> : null}
+      {menu ? <AccountMenu engine={engine} acc={menu.acc} all={all} at={menu.at} agent={agent} reload={reload} setOrder={setOrder}
+        pause={(choice) => askPause(menu.acc, choice)} resume={() => void sendPause(menu.acc, null)} onClose={() => setMenu(null)} /> : null}
     </Sec>
   );
 }
 
-export type MenuProps = { engine: SettingsPageProps["engine"]; acc: Account; all: Account[]; at: MenuAnchor; agent: { agentId?: string }; reload: () => Promise<void>; setOrder: (a: Account, ids: string[]) => Promise<boolean>; onClose: () => void };
-export function AccountMenu({ engine, acc, all, at, agent, reload, setOrder, onClose }: MenuProps) {
+export type MenuProps = { engine: SettingsPageProps["engine"]; acc: Account; all: Account[]; at: MenuAnchor; agent: { agentId?: string }; reload: () => Promise<void>; setOrder: (a: Account, ids: string[]) => Promise<boolean>; pause?: (choice: PauseChoice) => void; resume?: () => void; onClose: () => void };
+export function AccountMenu({ engine, acc, all, at, agent, reload, setOrder, pause, resume, onClose }: MenuProps) {
   const save = useSaveRunner();
   const provider = acc.p.authProvider ?? acc.p.provider;
-  const ids = all.filter((x) => x.p === acc.p).map((x) => x.a.profileId);
+  const locked = acc.p.profileOrderLocked ? "The order is set in the settings file." : undefined;
   const outWhy = acc.a.logoutSupported ? undefined : acc.a.source === "config" ? "This sign-in is set in the settings file." : acc.a.source === "external" || acc.a.externallyManaged ? "Its own app keeps this sign-in; sign out there." : "This sign-in can’t be removed from here.";
+  const paused = isPausedNow(acc.a.paused);
+  const pauseItems: MenuItem[] = pause && resume ? (paused
+    ? [{ label: "Resume this account", run: resume }]
+    : [{ label: "Pause for 1 hour", run: () => pause("hour") }, { label: "Pause until tomorrow", run: () => pause("tomorrow") }, { label: "Pause until I turn it back on", run: () => pause("indefinite") }]) : [];
   const items: MenuItem[] = [
     { label: "Test it", run: () => void save(async () => { const r = record(await engine.request("models.probe", { provider, profileId: acc.a.profileId, ...agent })); if (r.ok === false || (r.status && r.status !== "ok")) throw new Error(visible(r.error ?? r.status ?? "The test didn’t pass.")); }) },
-    { label: "Answer first", disabled: acc.first && acc.ordered ? "It answers first already." : acc.p.profileOrderLocked ? "The order is set in the settings file." : undefined, run: () => void setOrder(acc, [acc.a.profileId, ...ids.filter((id) => id !== acc.a.profileId)]) },
-    { label: "Rename", disabled: "Branch can’t rename an account yet.", run: () => undefined },
-    { label: "Which Trunks use it", disabled: "Every Trunk uses this account, in this order.", run: () => undefined },
+    { label: "Move to top", disabled: acc.first ? "It is first already." : locked, run: () => void setOrder(acc, orderAfterMove(acc, all, "top")) },
+    { label: "Move to bottom", disabled: acc.last ? "It is last already." : locked, run: () => void setOrder(acc, orderAfterMove(acc, all, "bottom")) },
+    ...(pauseItems.length ? [{ kind: "sep" as const }, ...pauseItems] : []),
     { kind: "sep" },
     { label: "Sign out", danger: true, disabled: outWhy, run: () => void save(async () => { await engine.request("models.authLogout", { provider, profileIds: [acc.a.profileId], ...agent }); await reload(); }) },
   ];

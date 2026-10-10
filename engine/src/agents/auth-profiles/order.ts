@@ -21,7 +21,7 @@ import { resolveExplicitAuthOrderSelection } from "./explicit-order.js";
 import { isPendingOAuthRefreshFence } from "./oauth-refresh-marker.js";
 import { dedupeProfileIds } from "./profile-list.js";
 import { isSetupCredentialAccessible } from "./setup-access.js";
-import type { AuthProfileCredential, AuthProfileStore } from "./types.js";
+import type { AuthProfileCredential, AuthProfileStore, ProfileUsageStats } from "./types.js";
 import {
   clearExpiredCooldowns,
   isProfileInCooldown,
@@ -102,6 +102,15 @@ export function isConfiguredAwsSdkAuthProfileForProvider(params: {
   return (
     findNormalizedProviderValue(params.cfg?.models?.providers, providerAuthKey)?.auth === "aws-sdk"
   );
+}
+
+/** True while the owner's pause on a profile holds: an open pause until the owner resumes it, or a timed one before its end. */
+export function isProfilePausedByUser(stats: ProfileUsageStats | undefined, now: number): boolean {
+  const paused = stats?.paused;
+  if (!paused) {
+    return false;
+  }
+  return paused.until === undefined || now < paused.until;
 }
 
 /** Resolves whether a profile can be used for a provider right now. */
@@ -302,7 +311,10 @@ export function resolveAuthProfileOrderWithMetadata(
     repairedFallbackToStoreProfiles = true;
   }
 
-  const deduped = dedupeProfileIds(filtered);
+  // A paused account is removed outright, not demoted: it must not answer even as a last resort.
+  const deduped = dedupeProfileIds(filtered).filter(
+    (profileId) => !isProfilePausedByUser(store.usageStats?.[profileId], now),
+  );
   const cooldownModel = params.cooldownScope === "all-models" ? null : forModel;
   const isInCooldown = (profileId: string) =>
     isProfileInCooldown(store, profileId, now, cooldownModel);
