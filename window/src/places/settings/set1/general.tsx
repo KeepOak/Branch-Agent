@@ -11,6 +11,7 @@ import { ShortcutsDialog } from "../../../shell/ShortcutsDialog";
 import { Btn, Ctl, Empty, Page, Plist, Prow, Sec, Status, Switch, useLevel, usePinsKit, type Lv, type RowEntry } from "../kit";
 import { PinnedSection } from "../pins";
 import { useDesktopControls } from "../../../connect/desktop-controls";
+import { isDevNote } from "../../../shell/shown-why";
 import { ClipboardHistory, Controllers, CoverScreen, ThisComputer, Writing, OS } from "./general-more";
 import { Conversation } from "./general-conversation";
 import { OlderTurns, SummariesMore, SummariesTechnical, WaitingLine } from "./general-summaries";
@@ -37,9 +38,13 @@ export function GeneralPage(props: SettingsPageProps) {
   );
 }
 
+/** Said under Start with … when the Branch app on this computer is too old to change it (DA-78): the app's own note is a
+ *  developer note that is never shown, so a greyed switch would otherwise sit there with no reason. */
+const START_NEEDS_UPDATE = "Update the Branch app on this computer to change this.";
+
 function StartingUp() {
   const desk = useDesktopControls();
-  const why = desk.off;
+  const why = desk.off && isDevNote(desk.off) ? START_NEEDS_UPDATE : desk.off;
   const start = `Start with ${OS()}`;
   return (
     <Sec title="Starting up">
