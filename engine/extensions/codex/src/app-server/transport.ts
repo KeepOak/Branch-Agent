@@ -116,10 +116,12 @@ function beginCodexAppServerTransportClose(
           ? (options.windowsTreeKill ?? terminateWindowsCodexAppServerTree)
           : undefined;
       finishCodexAppServerTransportClose(child, options, () => {
-        forceKill();
+        // Tree first: taskkill /T walks from the root's parent link, which is gone once the
+        // root is killed, so the root must still be alive when the tree is ended.
         if (treeKill && pid !== undefined) {
           treeKill(pid);
         }
+        forceKill();
       });
       return "uncertain";
     }

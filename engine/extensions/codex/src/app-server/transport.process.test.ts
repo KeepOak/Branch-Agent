@@ -508,7 +508,7 @@ describe("Codex app-server Windows close ordering", () => {
         vi.advanceTimersByTime(999);
         expect(events).toEqual(["eof"]);
         vi.advanceTimersByTime(1);
-        expect(events).toEqual(["eof", "kill", "tree:4242"]);
+        expect(events).toEqual(["eof", "tree:4242", "kill"]);
       } finally {
         vi.useRealTimers();
       }
