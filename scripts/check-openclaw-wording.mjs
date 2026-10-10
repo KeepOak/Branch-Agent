@@ -112,7 +112,7 @@ export const ALLOWLIST = [
     id: 'display-name-map',
     why: 'single display-name map; engine keys only, never rendered',
     file: /^window\/src\/display-names\.ts$/,
-    re: /\/OpenClaw\/gi/,
+    re: /\["openclaw", "Branch"\]/,
   },
   {
     id: 'about-credit',

@@ -14,7 +14,7 @@ const BASE: SettingsGroup[] = [
     ],
   },
   {
-    name: "Your helpers",
+    name: "Your Trunks",
     pages: [
       { id: "instructions", name: "Instructions & personality" },
       { id: "models", name: "Models" },

@@ -1,6 +1,7 @@
 // The composer (DESIGN-SPEC §4.3): the message box, +, the plug, the model and mode chips, voice and Send/Stop,
 // the dock row above it and the menus, all wired to the engine through the shared handle (connect/engine.ts).
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
+import { engineInvocation } from "../display-names";
 import { PASTED_TEXT_CHIP_CHARS } from "./attachments";
 import { isPreparationPending, preparationLabel } from "../connect/preparation-status";
 import { DockRow, type Goal } from "./DockRow";
@@ -152,7 +153,10 @@ export function Composer(props: Props) {
   const toast = useCallback((text: string) => onToast?.(text), [onToast]);
 
   const deliver = useCallback(
-    (text: string, files = draft.files, people = draft.people, queue?: string) => onSend(text, buildExtras(text, files, people, queue, props.replyTo)),
+    (typed: string, files = draft.files, people = draft.people, queue?: string) => {
+      const text = engineInvocation(typed);
+      return onSend(text, buildExtras(text, files, people, queue, props.replyTo));
+    },
     [onSend, draft.files, draft.people, props.replyTo],
   );
   const line = useWaitingLine(engine?.sessionKey ?? null, working, Boolean(props.offline), (item, steer) => {

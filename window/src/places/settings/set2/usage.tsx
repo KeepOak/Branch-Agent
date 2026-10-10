@@ -873,7 +873,7 @@ function ManageDialog({ engine, onClose }: { engine: WindowEngine; onClose: () =
 }
 
 const SUITES: [string, string][] = [
-  ["Right actions", "Picks the right tools, helpers and safety steps · Exact and judge graders · passes at 90%"],
+  ["Right actions", "Picks the right tools, Trunks and safety steps · Exact and judge graders · passes at 90%"],
   ["Memory recall", "Answers from what it remembers, and how fast · Judge model · passes at 90%"],
   ["Recall after tidying up", "What survives when a long conversation is tidied · Judge model · passes at 90%"],
   ["Does it follow the skill", "Steps a skill requires, checked in the tool calls · From each skill · Tool-call grader · passes at 90%"],
@@ -947,7 +947,7 @@ function MovingInOut({ engine, lv }: { engine: WindowEngine; lv: number }) {
         <Switch label="Show other assistants’ conversations" checked={all} disabled={busy || !present.length} onChange={(v) => void setAll(v)} />
       </Ctl>
       {plugins.error ? <p className="hint s2-err" role="alert">{plugins.error}</p> : null}
-      <Ctl title="Take everything with you" sub="Your helpers, skills, procedures, memory and settings as one file." help="Your helpers, skills, procedures, memory and settings as one file. Keys never go in it." off={NO_EXPORT}><Btn sm>Export…</Btn></Ctl>
+      <Ctl title="Take everything with you" sub="Your Trunks, skills, procedures, memory and settings as one file." help="Your Trunks, skills, procedures, memory and settings as one file. Keys never go in it." off={NO_EXPORT}><Btn sm>Export…</Btn></Ctl>
       {lv >= 1 ? (
         <>
           <Hint>Show the conversations other coding apps keep, from this computer and your paired computers, in the sidebar. Applies to everyone on this Gateway.</Hint>

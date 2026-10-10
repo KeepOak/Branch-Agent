@@ -158,7 +158,7 @@ export function AgentsPage(props: SettingsPageProps) {
   return (
     <Page title={props.title} lede={LEDE}>
       <Sec title="">
-        <Ctl title="Let other agents work with Branch" sub="Connected agents may message your helpers and join groups." help="Claude Code, Codex, Hermes and other connected agents may see your helpers, message them and join group chats. Off turns every one of them away." off={live.error ? String(live.error) : undefined}>
+        <Ctl title="Let other agents work with Branch" sub="Connected agents may message your Trunks and join groups." help="Claude Code, Codex, Hermes and other connected agents may see your Trunks, message them and join group chats. Off turns every one of them away." off={live.error ? String(live.error) : undefined}>
           <Switch label="Let other agents work with Branch" checked={enabled} disabled={live.loading || call.busy} onChange={(on) => void call.run(async () => { await props.engine.request("contacts.outside.set", { enabled: on }); reload(); })} />
         </Ctl>
       </Sec>

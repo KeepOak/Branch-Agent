@@ -1,61 +1,103 @@
 import { describe, expect, it } from "vitest";
-import { displayName } from "./display-names";
+import { displayName, engineInvocation, invocationName } from "./display-names";
 import { visible } from "./places/settings/adapter";
-import { readSkillRows } from "./places/customize/skills";
+import { readSkillRows, skillInstallParams } from "./places/customize/skills";
 
-const RAW_ENGINE_NAMES = ["OpenClaw", "Dreaming", "Lobster", "Lobsterdex", "clawhub", "ClawHub", "clawpack", "Crabbox", "Molty", "Workboard", "Peekaboo", "ClawRouter", "ClawSweeper"];
+const PRODUCT_PAIRS: Array<[string, string]> = [
+  ["OpenClaw", "Branch"],
+  ["Crabbox", "Cuttings"],
+  ["ClawHub", "Seedbank"],
+  ["clawhub", "Seedbank"],
+  ["Peekaboo", "Knothole"],
+  ["Lobsterdex", "Trellis index"],
+  ["Lobster", "Trellis"],
+  ["ClawRouter", "Model router"],
+  ["ClawSweeper", "Rake"],
+  ["clawpack", "Seedpod"],
+  ["Molty", "Sprig"],
+  ["Workboard", "Canopy"],
+  ["Dreaming", "Rings"],
+];
 
-describe("one display-name map", () => {
-  it("maps each engine product name to its Branch name", () => {
-    expect(displayName("clawhub")).toBe("Seedbank");
-    expect(displayName("ClawHub")).toBe("Seedbank");
-    expect(displayName("Dreaming")).toBe("Seasons");
-    expect(displayName("OpenClaw")).toBe("Branch");
-    expect(displayName("Lobster")).toBe("Trellis");
-    expect(displayName("Lobsterdex")).toBe("Trellis index");
-    expect(displayName("clawpack")).toBe("Seedpod");
+describe("displayName: exact engine identifiers only", () => {
+  it("maps each whole engine identifier to its Branch name, in any case", () => {
+    for (const [raw, shown] of PRODUCT_PAIRS) {
+      expect(displayName(raw)).toBe(shown);
+      expect(displayName(raw.toUpperCase())).toBe(shown);
+    }
   });
 
-  it("leaves text without an engine name unchanged", () => {
+  it("leaves free text alone, so a sentence keeps its ordinary words", () => {
+    expect(displayName("I was dreaming about it")).toBe("I was dreaming about it");
+    expect(displayName("Dreaming on")).toBe("Dreaming on");
+    expect(displayName("Keeps OpenClaw Dreaming notes")).toBe("Keeps OpenClaw Dreaming notes");
+  });
+
+  it("does not rely on object keys, so prototype names pass through", () => {
+    expect(displayName("constructor")).toBe("constructor");
+    expect(displayName("toString")).toBe("toString");
+  });
+
+  it("returns ordinary labels unchanged", () => {
     expect(displayName("Weekly report")).toBe("Weekly report");
     expect(displayName("")).toBe("");
   });
+});
 
-  it("is not an identity function: every raw engine name changes", () => {
-    for (const raw of RAW_ENGINE_NAMES) {
-      expect(displayName(raw)).not.toBe(raw);
-    }
+describe("skill invocations", () => {
+  it("shows clawhub as seedbank and sends the raw key", () => {
+    expect(invocationName("clawhub")).toBe("seedbank");
+    expect(invocationName("file-receipts")).toBe("file-receipts");
+    expect(engineInvocation("/seedbank summarize this")).toBe("/clawhub summarize this");
+    expect(engineInvocation("please use /seedbank now")).toBe("please use /clawhub now");
   });
 
-  it("never lets a raw engine name through", () => {
-    for (const raw of RAW_ENGINE_NAMES) {
-      expect(displayName(`Uses ${raw} for planning.`)).not.toMatch(/OpenClaw|Dreaming|Lobster|claw|Molty|Workboard|Crabbox|Peekaboo/i);
-    }
+  it("keeps /clawhub working as a hidden alias", () => {
+    expect(engineInvocation("/clawhub summarize this")).toBe("/clawhub summarize this");
+  });
+
+  it("does not rewrite a word that is not a slash invocation", () => {
+    expect(engineInvocation("ask the seedbank team")).toBe("ask the seedbank team");
+    expect(engineInvocation("visit /seedbanks")).toBe("visit /seedbanks");
   });
 });
 
-describe("settings values go through the same map", () => {
-  it("visible() renders engine product names as Branch names", () => {
+describe("settings values go through the same rule", () => {
+  it("visible() renders an exact engine identifier as its Branch name", () => {
     expect(visible("ClawHub")).toBe("Seedbank");
-    expect(visible("Dreaming on")).toBe("Seasons on");
+    expect(visible("Dreaming")).toBe("Rings");
+  });
+
+  it("visible() leaves free text unchanged", () => {
+    expect(visible("Dreaming on")).toBe("Dreaming on");
   });
 });
 
-describe("Customize > Skills rows use the same map for display", () => {
-  it("shows Seedbank for a clawhub skill and keeps the raw key and name for engine calls", () => {
+describe("Customize > Skills", () => {
+  it("shows Seedbank for a clawhub skill and keeps the raw key for engine calls", () => {
     const [row] = readSkillRows({
-      skills: [{ name: "clawhub", skillKey: "clawhub", description: "Find skills in the Seedbank catalog" }],
+      skills: [{ name: "clawhub", skillKey: "clawhub", description: "Find skills in the ClawHub catalog" }],
     });
     expect(row).toMatchObject({ key: "clawhub", rawName: "clawhub", name: "Seedbank" });
     expect(row.name).not.toMatch(/claw/i);
-    expect(row.description).toBe("Find skills in the Seedbank catalog");
   });
 
-  it("maps dreaming and OpenClaw in skill descriptions and never shows them raw", () => {
+  it("leaves a skill description as written", () => {
     const [row] = readSkillRows({
       skills: [{ name: "night-notes", skillKey: "night-notes", description: "Keeps OpenClaw Dreaming notes" }],
     });
-    expect(row.description).toBe("Keeps Branch Seasons notes");
-    expect(row.description).not.toMatch(/OpenClaw|Dreaming/);
+    expect(row.description).toBe("Keeps OpenClaw Dreaming notes");
+  });
+
+  it("sends the raw skill name to skills.install, never the display name", () => {
+    const [row] = readSkillRows({
+      skills: [{ name: "clawhub", skillKey: "clawhub", install: [{ id: "install-1", label: "Install" }] }],
+    });
+    expect(row.name).toBe("Seedbank");
+    expect(skillInstallParams({ agentId: "sapling" }, row, "install-1")).toEqual({
+      agentId: "sapling",
+      name: "clawhub",
+      installId: "install-1",
+    });
   });
 });
