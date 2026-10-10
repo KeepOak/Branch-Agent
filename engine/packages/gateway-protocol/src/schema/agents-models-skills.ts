@@ -47,9 +47,28 @@ const AgentCreatedViaSchema = Type.Union([
   Type.Literal("grove"),
 ]);
 
-const AgentColourSchema = Type.Union([Type.Literal("#2F8C86"), Type.Literal("#1785AF"), Type.Literal("#8A5AA8"), Type.Literal("#5E8C4A"), Type.Literal("#4F6FA8"), Type.Literal("#C9982E"), Type.Literal("#B84A6B"), Type.Literal("#56616B")]);
-const AgentShapeSchema = Type.Union([Type.Literal("Circle"), Type.Literal("Stone"), Type.Literal("Leaf"), Type.Literal("Acorn"), Type.Literal("Shield")]);
-const AgentEyesSchema = Type.Union([Type.Literal("Round"), Type.Literal("Wide"), Type.Literal("Sleepy")]);
+const AgentColourSchema = Type.Union([
+  Type.Literal("#2F8C86"),
+  Type.Literal("#1785AF"),
+  Type.Literal("#8A5AA8"),
+  Type.Literal("#5E8C4A"),
+  Type.Literal("#4F6FA8"),
+  Type.Literal("#C9982E"),
+  Type.Literal("#B84A6B"),
+  Type.Literal("#56616B"),
+]);
+const AgentShapeSchema = Type.Union([
+  Type.Literal("Circle"),
+  Type.Literal("Stone"),
+  Type.Literal("Leaf"),
+  Type.Literal("Acorn"),
+  Type.Literal("Shield"),
+]);
+const AgentEyesSchema = Type.Union([
+  Type.Literal("Round"),
+  Type.Literal("Wide"),
+  Type.Literal("Sleepy"),
+]);
 
 /** Condensed agent record returned by list APIs. */
 export const AgentSummarySchema = closedObject({
@@ -222,6 +241,16 @@ export const ModelsAuthLogoutParamsSchema = closedObject({
 export const ModelsAuthOrderSetParamsSchema = closedObject({
   provider: NonEmptyString,
   profileIds: Type.Optional(Type.Array(NonEmptyString, { minItems: 1, uniqueItems: true })),
+  agentId: Type.Optional(Type.String()),
+});
+
+/** Pauses one signed-in account (it stays signed in and is skipped in the order), or resumes it when `paused` is false.
+ *  Without `until` a pause lasts until the owner turns it back on. */
+export const ModelsAuthPauseSetParamsSchema = closedObject({
+  provider: NonEmptyString,
+  profileId: NonEmptyString,
+  paused: Type.Boolean(),
+  until: Type.Optional(Type.Integer({ minimum: 1 })),
   agentId: Type.Optional(Type.String()),
 });
 
@@ -1100,6 +1129,7 @@ export type ModelsAuthSetApiKeyResult = Static<typeof ModelsAuthSetApiKeyResultS
 export type ModelsAuthStatusParams = Static<typeof ModelsAuthStatusParamsSchema>;
 export type ModelsAuthLogoutParams = Static<typeof ModelsAuthLogoutParamsSchema>;
 export type ModelsAuthOrderSetParams = Static<typeof ModelsAuthOrderSetParamsSchema>;
+export type ModelsAuthPauseSetParams = Static<typeof ModelsAuthPauseSetParamsSchema>;
 export type ModelsAuthRefreshParams = Static<typeof ModelsAuthRefreshParamsSchema>;
 export type AuthProbeStatus = Static<typeof AuthProbeStatusSchema>;
 export type ModelsProbeParams = Static<typeof ModelsProbeParamsSchema>;

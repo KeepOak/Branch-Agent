@@ -46,6 +46,15 @@ function normalizeFailureCounts(raw: unknown): ProfileUsageStats["failureCounts"
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
+/** A pause is an object (`{}` for until-resumed, `{ until }` for a timed pause); anything else is not paused. */
+function normalizePause(raw: unknown): ProfileUsageStats["paused"] {
+  if (!isRecord(raw)) {
+    return undefined;
+  }
+  const until = asFiniteNumber(raw.until);
+  return until !== undefined && until > 0 ? { until } : {};
+}
+
 /** Normalizes one credential owner's persisted cooldown and usage record. */
 export function coerceProfileUsageStats(raw: unknown): ProfileUsageStats | undefined {
   if (!isRecord(raw)) {
@@ -84,5 +93,6 @@ export function coerceProfileUsageStats(raw: unknown): ProfileUsageStats | undef
   setStat("failureCounts", normalizeFailureCounts(raw.failureCounts));
   setStat("lastFailureAt", asFiniteNumber(raw.lastFailureAt));
   setStat("lastProbeAt", asFiniteNumber(raw.lastProbeAt));
+  setStat("paused", normalizePause(raw.paused));
   return Object.keys(stats).length > 0 ? stats : undefined;
 }
