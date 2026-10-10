@@ -9,6 +9,7 @@ import {
   validateSystemAgentSetupActivateStartParams,
   validateSystemAgentSetupAuthStartParams,
   validateSystemAgentSetupDetectParams,
+  validateSystemAgentCodingAppsParams,
   validateSystemAgentSetupVerifyParams,
   type SystemAgentChatQuestion,
 } from "../../../packages/gateway-protocol/src/index.js";
@@ -147,6 +148,15 @@ export const systemAgentHandlers: GatewayRequestHandlers = {
     async ({ params, respond }) => {
       const { detectSetupInference } = await import("../../system-agent/setup-inference.js");
       respond(true, await detectSetupInference({}, params.agentId), undefined);
+    },
+  ),
+  "branch.setup.codingApps": defineValidatedGatewayHandler(
+    "branch.setup.codingApps",
+    validateSystemAgentCodingAppsParams,
+    async ({ respond }) => {
+      const { codingAppsOf, detectInferenceBackends } = await import("../../commands/onboard-inference.js");
+      const candidates = await detectInferenceBackends();
+      respond(true, { apps: codingAppsOf(candidates) }, undefined);
     },
   ),
   "branch.setup.verify": defineValidatedGatewayHandler(

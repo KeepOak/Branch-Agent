@@ -40,6 +40,20 @@ async function render(engine: WindowEngine, level: 0 | 1 | 2 = 0) {
 }
 
 describe("Settings › Accounts", () => {
+  it("checks coding apps separately from setup discovery and distinguishes installed from signed in", async () => {
+    const { engine, request } = engineOf({ "branch.setup.codingApps": { apps: [
+      { kind: "claude-cli", installed: true },
+      { kind: "codex-cli", installed: false },
+      { kind: "gemini-cli", installed: true, credentials: true },
+    ] } });
+    await render(engine);
+    expect(request).toHaveBeenCalledWith("branch.setup.codingApps", {});
+    const text = host.textContent ?? "";
+    expect(text).toContain("Claude CodeInstalled");
+    expect(text).toContain("CodexNot detected");
+    expect(text).toContain("Gemini CLIModels ready");
+  });
+
   it("opens Add directly when the no-model action routes here", async () => {
     sessionStorage.setItem("branch.openAddAccount", "1");
     const { engine } = engineOf({});

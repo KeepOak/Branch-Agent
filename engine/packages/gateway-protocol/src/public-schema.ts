@@ -371,6 +371,8 @@ export {
   SystemChangesListResultSchema,
   SystemAgentSetupDetectParamsSchema,
   SystemAgentSetupDetectResultSchema,
+  SystemAgentCodingAppsParamsSchema,
+  SystemAgentCodingAppsResultSchema,
   SystemAgentSetupVerifyParamsSchema,
   SystemAgentSetupVerifyResultSchema,
   SystemAgentSetupActivateParamsSchema,

@@ -32,6 +32,19 @@ export {
   type InferenceBackendKind,
 } from "./onboard-inference-ambient.js";
 
+/** Settings needs only local CLI presence; provider setup discovery is separate. */
+export function codingAppsOf(candidates: InferenceBackendCandidate[]) {
+  const kinds = ["claude-cli", "codex-cli", "gemini-cli"] as const;
+  return kinds.map((kind) => {
+    const candidate = candidates.find((entry) => entry.kind === kind);
+    return {
+      kind,
+      installed: Boolean(candidate),
+      ...(candidate?.credentials === undefined ? {} : { credentials: candidate.credentials }),
+    };
+  });
+}
+
 /**
  * Onboarding treats inference as the one required step: reuse whatever the
  * machine already has without activating providers. CLI version and credential
@@ -84,8 +97,8 @@ async function probeCodexCommand(params: {
   const home = params.env.HOME?.trim() || os.homedir();
   const appExecutables = new Set(
     CODEX_MACOS_APP_NAMES.flatMap((appName) => [
-      path.join("/Applications", appName, "Contents", "Resources", "codex"),
-      path.join(home, "Applications", appName, "Contents", "Resources", "codex"),
+      path.posix.join("/Applications", appName, "Contents", "Resources", "codex"),
+      path.posix.join(home, "Applications", appName, "Contents", "Resources", "codex"),
     ]),
   );
   for (const executable of appExecutables) {
