@@ -1,6 +1,6 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BrowserView, NO_MARKUP, type BrowserPhase } from "./BrowserView";
+import { BrowserView, type BrowserPhase } from "./BrowserView";
 import { profileLine, recordedBrowserTabs, routeOf } from "./browser-route";
 import { readLevel } from "../places-nav/SettingsFrame";
 import type { Block } from "../thread/model";
@@ -19,11 +19,6 @@ import "./stage.css";
 
 export type StageMode = "Computer" | "Browser";
 
-const NO_PAUSE = "The engine has no per-run pause and resume method.";
-const NO_NUMBERS = "The engine can't number what it may click on a computer screen yet.";
-const NO_RECORD = "The engine can't record what you do on a computer yet.";
-const NO_WINDOW = "The engine can't show one window of a computer yet.";
-const OWN_WINDOW = "This window can't open the computer in a window of its own yet.";
 
 type Where = { placement: Placement | undefined; computers: Computer[]; profiles: { id: string; name: string }[]; loaded: boolean; error?: string };
 
@@ -63,19 +58,13 @@ function StepStrip({ steps, controlling, running, connected, onWatch, watchOpen,
       </span>
       {tools ? (
         <span className="tools-st" role="group" aria-label="The computer view's tools">
-          <button type="button" className="st7-chip tool-st" aria-haspopup="menu" aria-expanded={watchOpen} aria-label="What to watch: Whole screen" disabled={!connected} title={connected ? undefined : "Nothing is connected."} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); onWatch({ x: r.left, y: r.top - 8 }); }}>
-            <SIcon name="window" small />
-            <span className="tlab-st">Whole screen</span>
-            <SIcon name="down" small />
-          </button>
-          <button type="button" className="st7-chip tool-st" aria-label="Number what it can click" disabled title={NO_NUMBERS}>
-            <SIcon name="hash" small />
-            <span className="tlab-st">Numbers</span>
-          </button>
-          <button type="button" className="st7-chip tool-st" aria-label="Record what you do" disabled title={NO_RECORD}>
-            <SIcon name="record" small />
-            <span className="tlab-st">Record</span>
-          </button>
+{connected ? (
+            <button type="button" className="st7-chip tool-st" aria-haspopup="menu" aria-expanded={watchOpen} aria-label="What to watch: Whole screen" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); onWatch({ x: r.left, y: r.top - 8 }); }}>
+              <SIcon name="window" small />
+              <span className="tlab-st">Whole screen</span>
+              <SIcon name="down" small />
+            </button>
+) : null}
         </span>
       ) : null}
     </div>
@@ -219,16 +208,15 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
       items: [
         { kind: "head", label: `What to watch on ${view.title || viewed?.name || "this computer"}` },
         { kind: "info", label: "Whole screen", checked: true },
-        { kind: "sep" },
-        { kind: "head", label: "One window" },
-        { label: "Pick a window", run: () => undefined, disabled: NO_WINDOW },
       ],
     });
   const moreMenu = (at: MenuAnchor) =>
     setMenu({
       at,
       label: "More for this view",
-      items: [{ label: "Disconnect", run: () => onClose(), disabled: connected ? undefined : "Nothing is connected." }],
+      items: [
+        { label: "Disconnect", run: () => onClose() },
+      ],
     });
   const title = `${name}’s ${browser ? "browser" : "computer"}`;
   return (
@@ -271,19 +259,13 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
                 Take over
               </button>
             ) : null}
-            <button type="button" className="btn sm" disabled title={NO_PAUSE}>
-              Pause
-            </button>
-            <button type="button" className="btn ghost sm" disabled={!running} title={running ? undefined : `${name} isn't working right now.`} onClick={stop}>
-              Stop
-            </button>
+            {running ? (
+              <button type="button" className="btn ghost sm" title={`Stops what ${name} is doing now`} onClick={stop}>
+                Stop
+              </button>
+            ) : null}
           </>
         )}
-        {browser ? (
-          <button type="button" className="ib" aria-label="Mark up the page" title={NO_MARKUP} disabled>
-            <SIcon name="edit" />
-          </button>
-        ) : null}
         <span className="st7-sw" role="group" aria-label="Show">
           {(["Computer", "Browser"] as const).map((m) => (
             <button type="button" key={m} aria-pressed={mode === m} onClick={() => { setControl(false); onMode(m); }}>
@@ -292,12 +274,11 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
             </button>
           ))}
         </span>
-        <button type="button" className="ib" aria-label="Shrink to a small window" title={native ? "This screen is shown in the Computer panel." : "Picture in picture"} disabled={native || !onPip || (!browser && !viewing)} onClick={() => (browser ? onPip?.({ kind: "browser", id: "browser", name: "browser" }) : viewing && onPip?.({ kind: "computer", id: viewing, name: viewed?.name ?? view.title ?? viewing }))}>
-          <SIcon name="pip" />
-        </button>
-        <button type="button" className="ib" aria-label="Open in its own window" title={OWN_WINDOW} disabled>
-          <SIcon name="window" />
-        </button>
+        {!(native || !onPip || (!browser && !viewing)) ? (
+          <button type="button" className="ib" aria-label="Shrink to a small window" title={native ? "This screen is shown in the Computer panel." : "Picture in picture"} disabled={native || !onPip || (!browser && !viewing)} onClick={() => (browser ? onPip?.({ kind: "browser", id: "browser", name: "browser" }) : viewing && onPip?.({ kind: "computer", id: viewing, name: viewed?.name ?? view.title ?? viewing }))}>
+            <SIcon name="pip" />
+          </button>
+        ) : null}
         <button type="button" className="ib" aria-haspopup="menu" aria-label="More for this view" title="More" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); moreMenu({ x: r.right - 220, y: r.bottom + 6 }); }}>
           <SIcon name="more" />
         </button>

@@ -147,6 +147,27 @@ describe("conversation computer lifecycle", () => {
     expect(request).toHaveBeenCalledWith("desktop.release", { wsPath: "/desktop/one" });
     expect(viewer.connect).not.toHaveBeenCalled();
   });
+  it("hides Stop while idle and keeps the never-working Pause out of the header", async () => {
+    const request = vi.fn(async (method: string) =>
+      method === "sessions.describe" ? placed : method === "environments.status" ? environment : {},
+    );
+    await render(engine(request as any), "Browser");
+    await flush();
+    const labels = [...container.querySelectorAll("button")].map((button) => button.textContent?.trim());
+    expect(labels).not.toContain("Pause");
+    expect(labels).not.toContain("Stop");
+  });
+  it("shows no greyed-out stubs in the stage header", async () => {
+    const request = vi.fn(async (method: string) =>
+      method === "sessions.describe" ? placed : method === "environments.status" ? environment : {},
+    );
+    await render(engine(request as any), "Browser");
+    await flush();
+    expect(container.querySelectorAll(".st7-top button:disabled")).toHaveLength(0);
+    await render(engine(request as any), "Computer");
+    await flush();
+    expect(container.querySelectorAll(".st7-top button:disabled")).toHaveLength(0);
+  });
   it("starts view-only and retires the previous viewer on session change", async () => {
     const disconnect = vi.fn();
     viewer.connect.mockImplementation(async (options: any) => {

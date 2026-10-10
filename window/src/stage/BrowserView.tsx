@@ -29,11 +29,6 @@ export function browserRemotePoint(
 }
 
 export type BrowserPhase = "loading" | "empty" | "connected" | "error";
-const NO_READS = "Choosing how it reads pages isn't wired in this window yet.";
-const NO_NUMBERS = "The engine can't show its numbers on the live page yet.";
-const NO_COMMENT = "The engine can't take comments pinned to a page yet.";
-const NO_RECORD = "The engine can't record what you do in the browser yet.";
-export const NO_MARKUP = "Marking up a page needs a way to send the drawing to the chat, which the window doesn't have yet.";
 
 type Browser = { key: string; phase: "none" | "loading" | "stopped" | "ready" | "error"; tabs: LiveTab[]; error?: string };
 
@@ -320,12 +315,27 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   };
   const refresh = () => setTick((t) => t + 1);
   const url = view.phase === "connected" && view.url ? view.url : tab?.url ?? "";
-  const shownAddress = address && address.for === tab?.targetId ? address.text : url;
+  // Keyed by tab id ("" before any tab), so a typed address survives until the person submits or switches tab.
+  const shownAddress = address && address.for === (tab?.targetId ?? "") ? address.text : url;
+  const openTab = (target: string) => {
+    onControl?.(true);
+    void call("POST", "/tabs/open", { body: { url: target } }).then((r) => {
+      const id = String((r as { targetId?: unknown } | null)?.targetId ?? "");
+      if (id) {
+        setMine((m) => new Set(m).add(id));
+        setPicked(id);
+      }
+      setAddress(null);
+      refresh();
+    }, fail);
+  };
   const go = (raw: string) => {
     const target = raw.trim();
-    if (!target || !tab) return;
+    if (!target) return;
+    const next = /^[a-z][a-z0-9+.-]*:/i.test(target) ? target : `https://${target}`;
+    if (!tab) return openTab(next);
     onControl?.(true);
-    void call("POST", "/navigate", { targetId: tab.targetId, body: { url: /^[a-z][a-z0-9+.-]*:/i.test(target) ? target : `https://${target}` } }).then(() => {
+    void call("POST", "/navigate", { targetId: tab.targetId, body: { url: next } }).then(() => {
       setAddress(null);
       refresh();
     }, fail);
@@ -335,35 +345,33 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     onControl?.(true);
     void call("POST", "/act", { targetId: tab.targetId, body: { kind: "evaluate", fn: `() => history.${step}()` } }).then(refresh, fail);
   };
-  const newTab = () => {
+  const reload = () => {
+    if (!tab) return;
     onControl?.(true);
-    void call("POST", "/tabs/open", { body: { url: "about:blank" } }).then((r) => {
-      const id = String((r as { targetId?: unknown } | null)?.targetId ?? "");
-      if (id) {
-        setMine((m) => new Set(m).add(id));
-        setPicked(id);
-      }
-      refresh();
-    }, fail);
+    void call("POST", "/act", { targetId: tab.targetId, body: { kind: "evaluate", fn: "() => location.reload()" } }).then(refresh, fail);
   };
+  const newTab = () => openTab("about:blank");
   const closeTab = (id: string) => {
     onControl?.(true);
     void call("DELETE", `/tabs/${encodeURIComponent(id)}`).then(refresh, fail);
   };
-  const pageMenu = (at: MenuAnchor) =>
+  const moreMenu = (at: MenuAnchor) => {
+    const pageItems: MenuItem[] = tab
+      ? [
+          { label: "Take a screenshot", run: () => void call("POST", "/screenshot", { targetId: tab.targetId }).then((r) => setNote(`Saved the screenshot to ${String((r as { path?: unknown } | null)?.path ?? "the browser's folder")}.`), fail) },
+          { label: "Save as PDF", run: () => void call("POST", "/pdf", { targetId: tab.targetId }).then((r) => setNote(`Saved the page as a PDF to ${String((r as { path?: unknown } | null)?.path ?? "the browser's folder")}.`), fail) },
+          { label: "Find on this page", run: () => setFind("") },
+        ]
+      : [];
     setMenu({
       at,
       items: [
-        { kind: "head", label: "This page" },
-        { label: "Take a screenshot", disabled: tab ? undefined : "Nothing open.", run: () => void call("POST", "/screenshot", { targetId: tab?.targetId }).then((r) => setNote(`Saved the screenshot to ${String((r as { path?: unknown } | null)?.path ?? "the browser's folder")}.`), fail) },
-        { label: "Save as PDF", disabled: tab ? undefined : "Nothing open.", run: () => void call("POST", "/pdf", { targetId: tab?.targetId }).then((r) => setNote(`Saved the page as a PDF to ${String((r as { path?: unknown } | null)?.path ?? "the browser's folder")}.`), fail) },
-        { label: "Find on this page", disabled: tab ? undefined : "Nothing open.", run: () => setFind("") },
-        { label: "Watch this page for changes", run: () => undefined, disabled: "The engine can't watch a page for changes yet." },
-        { kind: "sep" },
-        { label: "Borrow a tab from your Chrome…", run: () => undefined, disabled: "Borrowing one of your own Chrome tabs isn't wired in this window yet." },
-        { kind: "info", label: "Screenshots black out password boxes." },
+        ...(pageItems.length ? [{ kind: "head" as const, label: "This page" }, ...pageItems] : []),
+        ...(tab ? [{ kind: "sep" as const }, { label: drawer ? "Hide tools" : "Show tools", run: () => setDrawer((v) => !v) }] : []),
+        ...(pageItems.length || tab ? [{ kind: "info" as const, label: "Screenshots black out password boxes." }] : []),
       ],
     });
+  };
   const findText = (text: string) => {
     if (!tab || !text) return;
     void call("POST", "/act", { targetId: tab.targetId, body: { kind: "evaluate", fn: `() => window.find(${JSON.stringify(text)})` } }).then(
@@ -384,43 +392,25 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
         </button>
       </Blank>
     );
-  else if (!tab) page = <Blank title="Nothing open" text={`${name} hasn't opened a page in this conversation.`} />;
+  else if (!tab)
+    page = (
+      <Blank
+        title="Nothing open"
+        text={browser.phase === "ready" ? "Type an address above and press Enter to open a page." : `${name} hasn't opened a page in this conversation.`}
+      />
+    );
   else page = <Screencast key={entry ? `${routeKey(route)}:${tab.targetId}` : "none"} engine={engine} gatewayUrl={gatewayUrl} entry={entry} interact={control} onState={onView} />;
   const showChrome = browser.phase === "ready" || (browser.phase === "loading" && browser.tabs.length > 0);
   return (
     <div className="browser-st">
       {route ? (
-        <div className="bar-br" role="toolbar" aria-label="Browser tools">
-          <span className="lbl-br">Reads</span>
-          <span className="seg-br" role="group" aria-label="How it reads the page" title={NO_READS}>
-            {["Page", "Picture", "Both"].map((m) => (
-              <button key={m} type="button" disabled aria-pressed={false}>
-                {m}
-              </button>
-            ))}
-          </span>
-          <button type="button" className="btn ghost sm tb-br" disabled title={NO_NUMBERS}>
-            <SIcon name="hash" small />
-            <span>Numbers</span>
-          </button>
-          <button type="button" className="btn ghost sm tb-br" disabled title={NO_COMMENT}>
-            <SIcon name="comment" small />
-            <span>Comment</span>
-          </button>
-          <button type="button" className="btn ghost sm tb-br" disabled title={NO_RECORD}>
-            <SIcon name="record" small />
-            <span>Record</span>
-          </button>
-          <button type="button" className="btn ghost sm tb-br" aria-haspopup="menu" disabled={!showChrome} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); pageMenu({ x: r.left, y: r.bottom + 6 }); }}>
-            <SIcon name="doc" small />
-            <span>Page</span>
-            <SIcon name="down" small />
-          </button>
+        <div className="bar-br" role="toolbar" aria-label="Browser actions">
           <span className="tb-grow" />
-          <button type="button" className="btn ghost sm tb-br" aria-pressed={drawer} disabled={!tab} onClick={() => setDrawer((v) => !v)}>
-            <SIcon name="tools" small />
-            <span>Tools</span>
-          </button>
+          {showChrome ? (
+            <button type="button" className="btn ghost sm tb-br" aria-haspopup="menu" aria-label="More browser actions" title="More" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); moreMenu({ x: r.right, y: r.bottom + 6 }); }}>
+              <span aria-hidden="true">⋯</span>
+            </button>
+          ) : null}
         </div>
       ) : null}
       {working && view.phase === "connected" ? (
@@ -467,15 +457,19 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
                     </button>
                   </div>
                   <form className="br-url-st" onSubmit={(e) => { e.preventDefault(); go(shownAddress); }}>
-                    <button type="button" className="br-nav-st" aria-label="Back" title="Back" disabled={!tab} onClick={() => history("back")}>
-                      <SIcon name="back" small />
-                    </button>
-                    <button type="button" className="br-nav-st" aria-label="Forward" title="Forward" disabled={!tab} onClick={() => history("forward")}>
-                      <SIcon name="forward" small />
-                    </button>
-                    <button type="button" className="br-nav-st" aria-label="Reload" title="Reload" disabled={!tab || !url} onClick={() => go(url)}>
-                      <SIcon name="reload" small />
-                    </button>
+                    {tab ? (
+                      <>
+                        <button type="button" className="br-nav-st" aria-label="Back" title="Back" onClick={() => history("back")}>
+                          <SIcon name="back" small />
+                        </button>
+                        <button type="button" className="br-nav-st" aria-label="Forward" title="Forward" onClick={() => history("forward")}>
+                          <SIcon name="forward" small />
+                        </button>
+                        <button type="button" className="br-nav-st" aria-label="Reload" title="Reload" onClick={reload}>
+                          <SIcon name="reload" small />
+                        </button>
+                      </>
+                    ) : null}
                     <SIcon name="lock" small />
                     <input
                       className="br-addr-st"
@@ -485,7 +479,6 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
                       aria-label="Enter an address and press Enter"
                       spellCheck={false}
                       autoComplete="off"
-                      disabled={!tab}
                     />
                   </form>
                 </div>
