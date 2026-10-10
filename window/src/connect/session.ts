@@ -252,6 +252,7 @@ export class SaplingSession {
   getSnapshot = (): SessionSnapshot => this.snapshot;
 
   private engineCache: { key: string | null; hello: HelloOk | null; engine: WindowEngine } | null = null;
+  private connectionEpoch = 0;
 
   /** The shared engine handle for the open conversation (rebuilt when the conversation or connection changes). */
   get engine(): WindowEngine {
@@ -429,6 +430,7 @@ export class SaplingSession {
   }
 
   private onStatus(status: GatewayStatus): void {
+    this.connectionEpoch += 1;
     if (status.phase !== "connected") {
       // The engine no longer knows this device: its pairing there is gone, and so are its records for it. (A request
       // for more scopes keeps the pairing.)
@@ -465,6 +467,8 @@ export class SaplingSession {
   }
 
   private async bootstrap(status: GatewayStatus, sessionKey: string | null): Promise<void> {
+    const epoch = this.connectionEpoch;
+    const current = () => !this.stopped && epoch === this.connectionEpoch;
     if (!sessionKey) {
       this.set({ status, error: "The engine did not say which conversation is the default Trunk's." });
       return;
@@ -474,11 +478,14 @@ export class SaplingSession {
         this.gateway.request("agents.list", {}),
         this.gateway.request("sessions.subscribe", { limit: 20 }),
       ]);
+      if (!current()) return;
       this.set({ name: readAgentName(agents) });
       await Promise.all([this.backfillApprovals().catch(() => undefined), this.loadHistory()]);
+      if (!current()) return;
       this.set({ status, error: null });
       if (this.engineKey) this.unconfirmed.connected(this.engineKey);
     } catch (error) {
+      if (!current()) return;
       this.set({ status, error: error instanceof Error ? error.message : String(error) });
     }
   }
@@ -994,6 +1001,8 @@ function buildEngine(session: SaplingSession, sessionKey: string | null, hello: 
   const agentId = sessionKey ? agentIdOf(sessionKey) : undefined;
   return {
     gatewayUrl: session.gatewayUrl,
+    connected: hello !== null,
+    reconnect: () => session.reconnectNow(),
     // With several Trunks, owned calls that name none go to the open conversation's Trunk (the default one).
     request: (method, params) => session.request(method, withOwner(method, params, agentId)),
     onEvent: (listener) => session.onGatewayEvent((event, payload) => listener({ event, payload })),

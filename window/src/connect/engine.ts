@@ -2,6 +2,10 @@
 // from the live connection; `sessionKey` is the open conversation.
 import type { MediaPicture } from "./session";
 export type WindowEngine = {
+  /** The same socket connection state used by the status bar. */
+  connected?: boolean;
+  /** Retry the same gateway connection immediately, without resetting the conversation. */
+  reconnect?: () => void;
   /** Actual connection address, used to distinguish the owned desktop gateway from Connect elsewhere. */
   gatewayUrl?: string;
   request<T = unknown>(method: string, params?: unknown): Promise<T>;
