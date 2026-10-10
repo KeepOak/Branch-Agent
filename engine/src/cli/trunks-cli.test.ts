@@ -111,7 +111,7 @@ describe("branch trunks create", () => {
     expect(callGatewayFromCli).toHaveBeenCalledWith(
       "trunks.template.create",
       expect.any(Object),
-      { templatePath: "/abs/scout.trunk-template.json", name: "Scout" },
+      { templatePath: path.resolve("/abs/scout.trunk-template.json"), name: "Scout" },
       { scopes: ["operator.admin"] },
     );
   });
