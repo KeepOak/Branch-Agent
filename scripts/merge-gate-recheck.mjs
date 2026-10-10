@@ -6,6 +6,8 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 export const GATE_NAMES = ['Merge gate', 'Merge gate trusted'];
+const ORDINARY_GATE = 'Merge gate';
+const TRUSTED_GATE = 'Merge gate trusted';
 const PASS = new Set(['success', 'skipped', 'neutral']);
 
 // runs: every run on the head, as { id, workflowName, status, conclusion, createdAt }.
@@ -24,23 +26,33 @@ export function summarizeRuns(runs) {
 }
 
 // trigger: { kind: 'content' | 'gate', conclusion, attempt, name }.
+// The attempt guard is scoped to the gate that triggered the event. Each gate reruns at most once, and the
+// trusted gate waits for the ordinary gate to pass first, so the two reruns cannot race each other.
 export function recheckPlan({ trigger, runs }) {
   const state = summarizeRuns(runs);
   const skipAll = (reason) => GATE_NAMES.map((name) => ({ gate: name, action: 'skip', reason }));
   if (trigger.kind === 'content') {
     if (trigger.conclusion !== 'success') return skipAll('the triggering check did not succeed');
   } else if (trigger.kind === 'gate') {
-    if (trigger.attempt >= 2) return skipAll('a rerun of a gate is not rerun again');
+    if (!trigger.name && trigger.attempt >= 2) return skipAll('a rerun of a gate is not rerun again');
   } else {
     return skipAll('unknown trigger');
   }
+  const isRerunOfTrigger = (name) => trigger.kind === 'gate' && trigger.name === name && trigger.attempt >= 2;
   return GATE_NAMES.map((name) => {
     const run = state.gates[name];
     if (!run) return { gate: name, action: 'skip', reason: 'no run for this commit' };
     if (run.status !== 'completed') return { gate: name, action: 'wait', reason: `running (${run.status}); its completion triggers a recheck`, id: run.id };
     if (run.conclusion === 'success') return { gate: name, action: 'skip', reason: 'already passed', id: run.id };
+    if (isRerunOfTrigger(name)) return { gate: name, action: 'skip', reason: 'this gate attempt was itself a rerun', id: run.id };
     if (state.contentPending) return { gate: name, action: 'wait', reason: 'other checks still running; the last one to finish decides', id: run.id };
     if (state.contentFailed) return { gate: name, action: 'skip', reason: 'a check failed; the commit is red', id: run.id };
+    if (name === TRUSTED_GATE) {
+      const ordinary = state.gates[ORDINARY_GATE];
+      if (ordinary?.status !== 'completed' || ordinary.conclusion !== 'success') {
+        return { gate: name, action: 'wait', reason: 'waits for Merge gate to pass; its completion triggers this recheck', id: run.id };
+      }
+    }
     return { gate: name, action: 'rerun', reason: `ended ${run.conclusion} with every other check passed`, id: run.id };
   });
 }

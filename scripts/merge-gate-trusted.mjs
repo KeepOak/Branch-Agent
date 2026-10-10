@@ -238,6 +238,7 @@ export function findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
   return checkRuns.filter((run) => run.name === jobName).filter((run) => {
     const urlRunId = actionsRunIdFromCheckRun(run);
     const workflow = lookupWorkflow(workflowsByCheckId, run.id);
+    if (isLookupFailure(workflow)) return false;
     if (currentId != null && Number.isFinite(currentId) && urlRunId === currentId) {
       // API outages are pending, never self-attributed or accepted as genuine.
       if (!workflow) return false;
@@ -428,6 +429,8 @@ export function evaluateTrustedGate({
     && actionsRunIdFromCheckRun(run) === Number(currentRunId)
     && !lookupWorkflow(workflowsByCheckId, run.id));
   const missingAnalyze = !others.some((run) => run.name === 'Analyze (actions)');
+  const lookupFailed = checkRuns.filter((run) => run.name === TRUSTED_JOB
+    && isLookupFailure(lookupWorkflow(workflowsByCheckId, run.id)));
   const foreignTrusted = findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
     allowedRunId: currentRunId,
     sha,
@@ -469,9 +472,10 @@ export function evaluateTrustedGate({
     missingCore,
     unregisteredCore,
     unresolvedCurrent,
-    ready: pending.length === 0 && unresolvedCurrent.length === 0 && !missingAnalyze
+    lookupFailed,
+    ready: pending.length === 0 && unresolvedCurrent.length === 0 && lookupFailed.length === 0 && !missingAnalyze
       && unregisteredCore.length === 0,
-    ok: errors.length === 0 && pending.length === 0 && unresolvedCurrent.length === 0 && !missingAnalyze,
+    ok: errors.length === 0 && pending.length === 0 && unresolvedCurrent.length === 0 && lookupFailed.length === 0 && !missingAnalyze,
     errors,
   };
 }
@@ -935,11 +939,21 @@ export function resolveWorkflowsForCheckRuns(repo, token, checkRuns, {
         // Attribution is immutable for a check ID; status/conclusion still come from each poll.
         attributionCache.set(run.id, workflow);
       }
-    } catch {
-      // Fail closed later if a trusted-job name cannot be attributed.
+    } catch (error) {
+      // A failed lookup is not a forged check. It is retried on the next poll (never cached) and the
+      // gate fails closed with an "attribution lookup failed" message if it is still unresolved at the budget.
+      workflowsByCheckId[run.id] = { lookupFailed: true, error: firstLine(error) };
     }
   }
   return workflowsByCheckId;
+}
+
+export function isLookupFailure(workflow) {
+  return Boolean(workflow?.lookupFailed);
+}
+
+function firstLine(error) {
+  return String(error?.message ?? error).split('\n')[0];
 }
 
 function sleepSeconds(seconds) {
@@ -1213,6 +1227,10 @@ export function pollTrustedGateWithBudget({
   }
 
   const analyze = (last.others ?? []).find((run) => run.name === 'Analyze (actions)');
+  if (last.lookupFailed?.length) {
+    error(`Attribution lookup failed for ${TRUSTED_JOB} check(s) ${last.lookupFailed.map((run) => run.id).join(', ')}. `
+      + 'Not counted as forged; re-run merge-gate once the GitHub API is available.');
+  }
   error(formatTimeoutMessage(last.pending, {
     missingAnalyze: !analyze,
     unregisteredCore: last.unregisteredCore ?? unregisteredPathFilterMisses(last.missingCore),

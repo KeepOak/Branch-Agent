@@ -36,6 +36,8 @@ jobs:
         run: node --test scripts/changed-test-coverage.test.mjs
       - name: Test the trusted merge-gate helper
         run: node --test scripts/merge-gate-trusted.test.mjs
+      - name: Test the event-driven gate recheck planner
+        run: node --test scripts/merge-gate-recheck.test.mjs
       - name: Test the rate-limit wait helper
         run: node --test scripts/merge-gate-rate-limit.test.mjs scripts/check-gate-files-fresh.test.mjs
       - name: Require every changed test to run in CI

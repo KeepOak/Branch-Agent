@@ -1590,7 +1590,10 @@ test('failed or missing workflow lookups are retried instead of cached as unattr
       },
     };
     const first = resolveWorkflowsForCheckRuns('example/repo', 'unused', checks, options);
-    assert.equal(findForeignTrustedChecks(checks, first, { allowedRunId: CURRENT_RUN_ID }).length, 1);
+    // A thrown lookup is pending (not forged); a lookup that finds no workflow is still forged.
+    const failedLookup = unavailable instanceof Error;
+    assert.equal(findForeignTrustedChecks(checks, first, { allowedRunId: CURRENT_RUN_ID }).length, failedLookup ? 0 : 1);
+    assert.equal(first[501]?.lookupFailed === true, failedLookup);
     const second = resolveWorkflowsForCheckRuns('example/repo', 'unused', checks, options);
     assert.deepEqual(second, { 501: earlierTrustedWorkflow });
     assert.equal(findForeignTrustedChecks(checks, second, { allowedRunId: CURRENT_RUN_ID, ...prContext }).length, 0);
@@ -2671,4 +2674,49 @@ test('an incomplete head listing is not trusted: every check falls back to its o
   assert.equal(gate.fetchRunsByIdForHead('o/r', 't', 'abc', { api }).size, 0);
   const complete = () => ({ total_count: 1, workflow_runs: [attrRun] });
   assert.equal(gate.fetchRunsByIdForHead('o/r', 't', 'abc', { api: complete }).get('555').id, 555);
+});
+
+test('regression: a thrown attribution lookup is never reported as a forged trusted check', () => {
+  const checkRuns = [...passCheckRuns, {
+    id: 777, name: 'merge-gate-trusted', status: 'completed', conclusion: 'success',
+    check_suite: { id: 909 }, details_url: 'https://github.com/example/repo/actions/runs/304/job/777',
+  }];
+  const result = evaluateTrustedGate({
+    checkRuns,
+    workflowsByCheckId: { ...passWorkflows, 777: { lookupFailed: true, error: 'API rate limit exceeded' } },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(result.foreignTrusted.length, 0);
+  assert.deepEqual(result.lookupFailed.map((run) => run.id), [777]);
+  assert.equal(result.ready, false);
+  assert.equal(result.ok, false);
+  assert.doesNotMatch(result.errors.join('\n'), /Forged/);
+});
+
+test('regression: a lookup still failing at the budget fails closed with an attribution message, not forged', () => {
+  const checkRuns = [...passCheckRuns, {
+    id: 777, name: 'merge-gate-trusted', status: 'completed', conclusion: 'success',
+    check_suite: { id: 909 }, details_url: 'https://github.com/example/repo/actions/runs/304/job/777',
+  }];
+  let clock = 0;
+  const logged = [];
+  const code = gate.pollTrustedGateWithBudget({
+    repo: 'example/repo', sha: 'abc', token: 'unused', changedFiles: ['README.md'], coreWorkflows,
+    currentRunId: CURRENT_RUN_ID, prNumber: '1', baseRef: 'main', maxAttempts: 64, pollSeconds: 30,
+    waitBudgetSeconds: 60, startedAt: 0,
+  }, {
+    fetchChecks: () => checkRuns,
+    resolveWorkflows: () => ({ ...passWorkflows, 777: { lookupFailed: true, error: 'API rate limit exceeded' } }),
+    sleep: (seconds) => { clock += seconds * 1000; },
+    now: () => clock,
+    log: () => {},
+    error: (message) => logged.push(message),
+  });
+  assert.equal(code, 1);
+  const text = logged.join('\n');
+  assert.match(text, /Attribution lookup failed for merge-gate-trusted check\(s\) 777/);
+  assert.doesNotMatch(text, /Forged/);
 });

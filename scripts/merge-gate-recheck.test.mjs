@@ -19,8 +19,47 @@ test('a content check that did not succeed reruns nothing', () => {
 test('a gate that ended unsuccessfully is rerun once every other check has passed', () => {
   const runs = [gate('cancelled'), trusted('failure'), content('success')];
   const plan = recheckPlan({ trigger: { kind: 'content', conclusion: 'success' }, runs });
+  assert.equal(actions(plan)['Merge gate'], 'rerun');
+  assert.equal(plan.find((step) => step.gate === 'Merge gate').id, 50);
+});
+
+test('the trusted gate reruns only after Merge gate has passed', () => {
+  const runs = [gate('success', 'completed', 51), trusted('failure'), content('success')];
+  const plan = recheckPlan({ trigger: { kind: 'gate', conclusion: 'success', attempt: 2, name: 'Merge gate' }, runs });
   assert.equal(actions(plan)['Merge gate trusted'], 'rerun');
   assert.equal(plan.find((step) => step.gate === 'Merge gate trusted').id, 60);
+});
+
+test('regression: the two-gate rerun sequence cannot strand the trusted gate', () => {
+  // 1. Content passes; both gates failed on attempt 1. Ordinary reruns, trusted waits for it.
+  const first = recheckPlan({
+    trigger: { kind: 'content', conclusion: 'success' },
+    runs: [gate('failure'), trusted('failure'), content('success')],
+  });
+  assert.equal(actions(first)['Merge gate'], 'rerun');
+  assert.equal(actions(first)['Merge gate trusted'], 'wait');
+  // 2. The ordinary rerun (attempt 2) passes. Its completion reruns the trusted gate, not the other way.
+  const second = recheckPlan({
+    trigger: { kind: 'gate', conclusion: 'success', attempt: 2, name: 'Merge gate' },
+    runs: [gate('success', 'completed', 51), trusted('failure'), content('success')],
+  });
+  assert.equal(actions(second)['Merge gate trusted'], 'rerun');
+  // 3. The trusted rerun (attempt 2) fails. It is a rerun, so it is not rerun again.
+  const third = recheckPlan({
+    trigger: { kind: 'gate', conclusion: 'failure', attempt: 2, name: 'Merge gate trusted' },
+    runs: [gate('success', 'completed', 51), trusted('failure', 'completed', 61), content('success')],
+  });
+  assert.equal(actions(third)['Merge gate trusted'], 'skip');
+  assert.equal(actions(third)['Merge gate'], 'skip');
+});
+
+test('a gate rerun does not stop the other gate from its own rerun', () => {
+  const plan = recheckPlan({
+    trigger: { kind: 'gate', conclusion: 'failure', attempt: 2, name: 'Merge gate trusted' },
+    runs: [gate('failure'), trusted('failure', 'completed', 61), content('success')],
+  });
+  assert.equal(actions(plan)['Merge gate trusted'], 'skip');
+  assert.equal(actions(plan)['Merge gate'], 'rerun');
 });
 
 test('the race: a gate still running when the last check passes is left to its own completion', () => {
