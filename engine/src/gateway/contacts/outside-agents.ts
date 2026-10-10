@@ -81,6 +81,21 @@ export function listOutsideAgents(env?: NodeJS.ProcessEnv): OutsideAgentRecord[]
 }
 
 /**
+ * The ids and grafted-Trunk ids of every outside agent, and nothing else from the registry. Team memory uses this
+ * to keep outside Branches out of team membership without exposing device ids, activity or project folders.
+ */
+export function listOutsideAgentIdentityIds(env?: NodeJS.ProcessEnv): string[] {
+  const ids = new Set<string>();
+  for (const record of listOutsideAgents(env)) {
+    ids.add(record.id);
+    if (record.trunkId) {
+      ids.add(record.trunkId);
+    }
+  }
+  return [...ids].toSorted();
+}
+
+/**
  * The id this running client gets: its stable id, unless another process is online under it right now; then
  * the first free `<id>-2`, `<id>-3`, ... (an offline row, or one this same process holds, is free).
  */
