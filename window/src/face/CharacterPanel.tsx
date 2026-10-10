@@ -17,7 +17,7 @@ const CORNERS: { corner: "bottom-right" | "bottom-left" | "top-right" | "top-lef
 
 /** The Trunk card is the one pet on screen: its name and state, and a popover for the few things to do with it. */
 export function CharacterPanel({ name, state, onClose, onShow, onOpenTrunk, onChangePet, others = [], column }: {
-  name: string; state: AgentState; onClose: () => void; onShow: () => void; onOpenTrunk: () => void; onChangePet: () => void; others?: string[]; column: HTMLElement | null;
+  name: string; state: AgentState; onClose: () => void; onShow: () => void; onOpenTrunk?: () => void; onChangePet: () => void; others?: string[]; column: HTMLElement | null;
 }) {
   const { agentSize } = useLookPrefs();
   const panel = useRef<HTMLElement>(null);
@@ -100,7 +100,7 @@ export function CharacterPanel({ name, state, onClose, onShow, onOpenTrunk, onCh
   };
   const items: MenuItem[] = [
     { kind: "head", label: `${name} · ${STATE_LABEL[state]}` },
-    { label: "Open Trunk", run: onOpenTrunk, testid: "character-open" },
+    ...(onOpenTrunk ? [{ label: "Open Trunk", run: onOpenTrunk, testid: "character-open" }] : []),
     { label: "Change pet…", run: onChangePet, testid: "character-change-pet" },
     { kind: "sep" },
     { kind: "sub", label: "Position", items: [
