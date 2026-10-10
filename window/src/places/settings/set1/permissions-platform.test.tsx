@@ -78,3 +78,66 @@ describe("Settings › Permissions › This computer", () => {
     expect(precise?.textContent).not.toContain("PipeWire");
   });
 });
+
+describe("Settings › Permissions › This computer status (PE1)", () => {
+  type Status = "allowed" | "denied" | "not-asked" | "unknown";
+  function fakeDesktop(start: Record<string, Status>) {
+    const state = { ...start };
+    const calls: string[] = [];
+    (window as unknown as { branchDesktop?: unknown }).branchDesktop = {
+      permissions: {
+        get: async () => ({ ...state }),
+        request: async (name: string) => { calls.push(`request:${name}`); state[name] = "allowed"; return { ...state }; },
+        open: async (name: string) => { calls.push(`open:${name}`); },
+      },
+    };
+    return calls;
+  }
+  afterEach(() => { delete (window as unknown as { branchDesktop?: unknown }).branchDesktop; });
+  const row = (name: string) => host.querySelector<HTMLElement>(`[data-row="${name}"]`)!;
+  const rowButton = (name: string, label: string) => [...row(name).querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === label);
+
+  it("shows what macOS already allows and one Allow that asks", async () => {
+    const calls = fakeDesktop({ microphone: "allowed", camera: "not-asked", location: "unknown", notifications: "unknown" });
+    await show("MacIntel");
+    expect(row("Microphone").textContent).toContain("Allowed");
+    expect(row("Microphone").querySelector("button")).toBeNull();
+    expect(row("Camera").textContent).toContain("Not asked yet");
+    const allow = rowButton("Camera", "Allow");
+    expect(allow?.disabled).toBe(false);
+    await act(async () => allow!.click());
+    expect(calls).toContain("request:camera");
+    expect(row("Camera").textContent).toContain("Allowed");
+    expect(rowButton("Camera", "Allow")).toBeUndefined();
+  });
+
+  it("says Not allowed and opens System Settings for a refused permission", async () => {
+    const calls = fakeDesktop({ microphone: "denied", camera: "denied", location: "unknown", notifications: "unknown" });
+    await show("MacIntel");
+    expect(row("Microphone").textContent).toContain("Not allowed");
+    const open = rowButton("Microphone", "Open System Settings");
+    expect(open?.disabled).toBe(false);
+    await act(async () => open!.click());
+    expect(calls).toEqual(["open:microphone"]);
+  });
+
+  it("does not guess location or notifications; their settings page opens", async () => {
+    const calls = fakeDesktop({ microphone: "allowed", camera: "allowed", location: "unknown", notifications: "unknown" });
+    await show("MacIntel");
+    for (const name of ["Location", "Notifications"]) {
+      expect(row(name).querySelector(".pill")).toBeNull();
+      expect(rowButton(name, "Open System Settings")?.disabled).toBe(false);
+    }
+    await act(async () => rowButton("Notifications", "Open System Settings")!.click());
+    expect(calls).toEqual(["open:notifications"]);
+    expect(host.textContent).not.toContain("opens from the Branch app on your computer");
+  });
+
+  it("never offers Allow on Windows, where apps can't show the prompt", async () => {
+    fakeDesktop({ microphone: "not-asked", camera: "denied", location: "unknown", notifications: "unknown" });
+    await show("Win32");
+    expect(row("Microphone").textContent).toContain("Not asked yet");
+    expect(rowButton("Microphone", "Allow")).toBeUndefined();
+    expect(rowButton("Microphone", "Open Windows Settings")?.disabled).toBe(false);
+  });
+});
