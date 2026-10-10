@@ -1,5 +1,6 @@
 // What the shell reads from the engine besides the open conversation: the conversation list, the Trunks
 // (agents.list), pending approvals (exec.approval.list + events) and this computer (system.info).
+import { personName } from "./person-name";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ConversationList, type ConversationsSnapshot } from "../connect/conversations";
 import type { SaplingSession } from "../connect/session";
@@ -193,7 +194,7 @@ export function useListPeople(session: SaplingSession, ready: boolean): ListPeop
       Promise.allSettled([session.request("users.self", {}), session.request("users.list", {})]).then(([self, list]) => {
         if (!live) return;
         const profiles = list.status === "fulfilled" && Array.isArray(rec(list.value).profiles) ? (rec(list.value).profiles as unknown[]).map(rec) : [];
-        const names = new Map(profiles.map((p) => [str(p.id), str(p.displayName) || str(p.name) || str(p.id)] as [string, string]).filter(([id]) => id));
+        const names = new Map(profiles.map((p) => [str(p.id), personName(p, str(p.id))] as [string, string]).filter(([id]) => id));
         const selfId = self.status === "fulfilled" ? str(rec(rec(self.value).profile).id) || null : null;
         setPeople({ selfId, names });
       });
