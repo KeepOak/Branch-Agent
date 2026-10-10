@@ -10,6 +10,12 @@ export const TRUNK_TEMPLATE_VERSION = 1;
 
 const SEEDBANK_SKILL_PREFIX = "seedbank:@branch-agent/";
 const SKILL_ID_PATTERN = /^seedbank:@branch-agent\/([a-z0-9][a-z0-9-]*)(?:@\S+)?$/;
+const MODEL_FAMILY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const PEM_BLOCK_PATTERN = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g;
+const PEM_HEADER_PATTERN = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/g;
+const WINDOWS_USER_PATH_PATTERN = /[A-Za-z]:\\Users\\[^\\\s"'`]+/g;
+const MAC_USER_PATH_PATTERN = /\/Users\/[^/\s"'`]+/g;
+const LINUX_HOME_PATH_PATTERN = /\/home\/[^/\s"'`]+/g;
 export const NO_RESTRICTIONS_PERMISSION =
   "This template sets no tool restrictions. Tool switches are set per Trunk after creating it.";
 
@@ -63,7 +69,7 @@ export function validateSkillIds(ids: readonly string[]): { ids: string[]; warni
   const warnings: string[] = [];
   for (const id of ids) {
     if (skillSlugForId(id) === undefined) {
-      warnings.push(`Skill "${id}" is not a catalog id and was skipped.`);
+      warnings.push("One skill entry is not a catalog id and was skipped.");
     } else {
       kept.add(id);
     }
@@ -84,6 +90,10 @@ export function buildTrunkTemplate(source: TrunkTemplateSource): {
   warnings: string[];
 } {
   const skills = validateSkillIds((source.skillSlugs ?? []).map(skillIdForSlug));
+  const modelFamily = source.modelFamily && MODEL_FAMILY_PATTERN.test(source.modelFamily) ? source.modelFamily : undefined;
+  if (source.modelFamily && !modelFamily) {
+    skills.warnings.push("The model family was not a plain model name and was skipped.");
+  }
   const template: TrunkTemplate = {
     format: TRUNK_TEMPLATE_FORMAT,
     version: TRUNK_TEMPLATE_VERSION,
@@ -95,7 +105,7 @@ export function buildTrunkTemplate(source: TrunkTemplateSource): {
     },
     skills: skills.ids,
     toolsets: toolsetSwitches(source.toolsets),
-    ...(source.modelFamily ? { model: { family: source.modelFamily } } : {}),
+    ...(modelFamily ? { model: { family: modelFamily } } : {}),
     ...(source.automations?.length ? { automations: source.automations } : {}),
     permissions: source.permissions?.length ? source.permissions : [NO_RESTRICTIONS_PERMISSION],
   };
@@ -118,7 +128,12 @@ export function redactPersonaText(
   for (const [from, to] of replacements.toSorted((a, b) => b[0].length - a[0].length)) {
     out = out.split(from).join(to);
   }
-  return out;
+  return out
+    .replace(PEM_BLOCK_PATTERN, "<redacted key>")
+    .replace(PEM_HEADER_PATTERN, "<redacted key header>")
+    .replace(WINDOWS_USER_PATH_PATTERN, "~")
+    .replace(MAC_USER_PATH_PATTERN, "~")
+    .replace(LINUX_HOME_PATH_PATTERN, "~");
 }
 
 export type TrunkTemplateParse =
@@ -157,7 +172,7 @@ export function parseTrunkTemplate(raw: unknown): TrunkTemplateParse {
   }
   const skills = validateSkillIds(raw.skills as string[]);
   warnings.push(...skills.warnings);
-  const { template } = buildTrunkTemplate({
+  const built = buildTrunkTemplate({
     name: raw.name,
     description: typeof raw.description === "string" ? raw.description : "",
     agentsMd: raw.persona.agentsMd,
@@ -170,7 +185,8 @@ export function parseTrunkTemplate(raw: unknown): TrunkTemplateParse {
       ? (raw.permissions as string[])
       : undefined,
   });
-  return { ok: true, template, warnings };
+  warnings.push(...built.warnings);
+  return { ok: true, template: built.template, warnings };
 }
 
 /** Warnings for catalog skills this engine has not installed. The Trunk still gets created without them. */

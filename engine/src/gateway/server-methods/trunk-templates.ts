@@ -1,9 +1,8 @@
 // Gateway RPCs for Trunk templates: export one Trunk, or create a Trunk from a template.
 // Both methods respond exactly once, including when something throws.
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ErrorCodes, errorShape, validateTrunkTemplateCreateParams, validateTrunkTemplateExportParams } from "../../../packages/gateway-protocol/src/index.js";
-import { resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
 import { resolveBundledSkillsDir } from "../../skills/loading/bundled-dir.js";
 import { exportTrunkTemplate } from "../../trunks/trunk-template-export.js";
 import {
@@ -36,18 +35,36 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function loadTemplateSource(params: { templateId?: string; templatePath?: string }) {
+const TEMPLATE_PATH_SUFFIX = ".trunk-template.json";
+const TEMPLATE_FILE_LIMIT_BYTES = 256 * 1024;
+
+type TemplateSource = { ok: true; text: string } | { ok: false; error: string } | undefined;
+
+/** Bundled ids and absolute template paths only. Paths need the template suffix and stay under the size cap. */
+async function loadTemplateSource(params: { templateId?: string; templatePath?: string }): Promise<TemplateSource> {
   if (params.templateId) {
     const dir = resolveBundledSkillsDir();
     if (!dir || /[\\/]/.test(params.templateId)) {
       return undefined;
     }
-    return readFile(path.join(dir, "trunk-templates", `${params.templateId}${TEMPLATE_SUFFIX}`), "utf8").catch(() => undefined);
+    const text = await readFile(path.join(dir, "trunk-templates", `${params.templateId}${TEMPLATE_SUFFIX}`), "utf8").catch(() => undefined);
+    return text === undefined ? undefined : { ok: true, text };
   }
-  if (params.templatePath && path.isAbsolute(params.templatePath)) {
-    return readFile(params.templatePath, "utf8").catch(() => undefined);
+  if (!params.templatePath || !path.isAbsolute(params.templatePath)) {
+    return undefined;
   }
-  return undefined;
+  if (!params.templatePath.endsWith(TEMPLATE_PATH_SUFFIX)) {
+    return { ok: false, error: `A template file must end with ${TEMPLATE_PATH_SUFFIX}.` };
+  }
+  const size = await stat(params.templatePath).then((info) => info.size).catch(() => undefined);
+  if (size === undefined) {
+    return undefined;
+  }
+  if (size > TEMPLATE_FILE_LIMIT_BYTES) {
+    return { ok: false, error: "The template file is larger than 256 KB." };
+  }
+  const text = await readFile(params.templatePath, "utf8").catch(() => undefined);
+  return text === undefined ? undefined : { ok: true, text };
 }
 
 function parseTemplateText(text: string): TrunkTemplateParse | undefined {
@@ -66,6 +83,9 @@ function notAppliedWarnings(template: TrunkTemplate): string[] {
   }
   for (const id of template.skills) {
     warnings.push(`Skill "${id}" was not attached. Attach it from the skills page.`);
+  }
+  if (template.automations?.length) {
+    warnings.push("Automations in this template were not created. Add them in Automations after creating the Trunk.");
   }
   if (Object.keys(template.toolsets).length > 0) {
     warnings.push("Tool switches in this template were not applied. Set them in What it may do.");
@@ -87,9 +107,13 @@ async function createTrunkFromTemplate(
   options: GatewayRequestHandlerOptions,
   respond: RespondFn,
 ): Promise<void> {
-  const { params, context } = options;
+  const { params } = options;
   const source = await loadTemplateSource(params);
-  const parsed = source === undefined ? undefined : parseTemplateText(source);
+  if (source?.ok === false) {
+    respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, source.error));
+    return;
+  }
+  const parsed = source === undefined ? undefined : parseTemplateText(source.text);
   if (!parsed) {
     respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Trunk template not found or not JSON. Give a bundled templateId or an absolute templatePath."));
     return;
@@ -103,10 +127,12 @@ async function createTrunkFromTemplate(
     respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "agents.create is not available."));
     return;
   }
-  const outcome: { agentId?: string } = {};
+  const outcome: { agentId?: string; workspace?: string } = {};
   const capture: RespondFn = (ok, payload, error) => {
     if (ok) {
-      outcome.agentId = (payload as { agentId?: string } | undefined)?.agentId;
+      const created = payload as { agentId?: string; workspace?: string } | undefined;
+      outcome.agentId = created?.agentId;
+      outcome.workspace = created?.workspace;
     } else {
       respond(false, undefined, error);
     }
@@ -116,8 +142,14 @@ async function createTrunkFromTemplate(
     respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, CREATE_DID_NOT_RETURN));
     return;
   }
-  await writePersona(resolveAgentWorkspaceDir(context.getRuntimeConfig(), outcome.agentId), parsed.template);
-  respond(true, { ok: true, agentId: outcome.agentId, warnings: [...parsed.warnings, ...notAppliedWarnings(parsed.template)] }, undefined);
+  const workspace = outcome.workspace ?? "";
+  try {
+    await writePersona(workspace, parsed.template);
+  } catch (error) {
+    respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, `The Trunk was created, but its persona files could not be written: ${messageOf(error)}`));
+    return;
+  }
+  respond(true, { ok: true, agentId: outcome.agentId, workspace, warnings: [...parsed.warnings, ...notAppliedWarnings(parsed.template)] }, undefined);
 }
 
 export const trunkTemplatesHandlers: GatewayRequestHandlers = {

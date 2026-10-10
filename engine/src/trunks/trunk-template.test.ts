@@ -190,7 +190,7 @@ describe("trunk templates", () => {
       throw new Error(exported.error);
     }
     expect(exported.template.skills).toEqual([skillIdForSlug("summarize-pdf")]);
-    expect(exported.warnings).toEqual([expect.stringContaining("Bad Slug")]);
+    expect(exported.warnings).toEqual(["One skill entry is not a catalog id and was skipped."]);
     const imported = parseTrunkTemplate({
       format: "branch.trunk-template",
       version: 1,
@@ -203,6 +203,86 @@ describe("trunk templates", () => {
       throw new Error(imported.error);
     }
     expect(imported.template.skills).toEqual(exported.template.skills);
-    expect(imported.warnings).toEqual([expect.stringContaining("Bad Slug")]);
+    expect(imported.warnings).toEqual(["One skill entry is not a catalog id and was skipped."]);
+  });
+
+  it.each([
+    ["Windows user path", "C:\\Users\\alice\\notes\\plan.md", "alice"],
+    ["macOS user path", "see /Users/alice/notes/plan.md", "alice"],
+    ["Linux home path", "see /home/alice/notes/plan.md", "alice"],
+  ])("redacts a %s to ~", (_label, text, name) => {
+    const redacted = redactPersonaText(text, {});
+    expect(redacted).toContain("~");
+    expect(redacted).not.toContain(name);
+  });
+
+  it("redacts PEM private key blocks and headers", () => {
+    const block = "-----BEGIN RSA PRIVATE KEY-----\nMIIEabc\n-----END RSA PRIVATE KEY-----";
+    expect(redactPersonaText(block, {})).toBe("<redacted key>");
+    expect(redactPersonaText("-----BEGIN PRIVATE KEY-----", {})).toBe("<redacted key header>");
+  });
+
+  it("accepts a plain model family token and drops anything else with a warning", () => {
+    const plain = buildTrunkTemplate({ name: "Scout", modelFamily: "gpt-5.5" });
+    expect(plain.template.model).toEqual({ family: "gpt-5.5" });
+    const pathLike = buildTrunkTemplate({ name: "Scout", modelFamily: "../etc/passwd" });
+    expect(pathLike.template.model).toBeUndefined();
+    expect(pathLike.warnings).toEqual(["The model family was not a plain model name and was skipped."]);
+  });
+
+  it("never echoes a path-shaped skill slug, on export or on import", async () => {
+    const workspace = mkdtempSync(path.join(os.tmpdir(), "trunk-template-path-slug-"));
+    writeFileSync(path.join(workspace, "AGENTS.md"), "# Ops\n");
+    const cfg = { agents: { entries: { ops: { name: "Ops", workspace, skills: ["/Users/alice/secret-skill"] } } } } as unknown as BranchConfig;
+    const exported = await exportTrunkTemplate({ cfg, agentId: "ops", env: {} });
+    if (!exported.ok) {
+      throw new Error(exported.error);
+    }
+    expect(exported.template.skills).toEqual([]);
+    expect(JSON.stringify(exported)).not.toContain("/Users/alice");
+    const imported = parseTrunkTemplate({
+      format: "branch.trunk-template",
+      version: 1,
+      name: "Ops",
+      persona: { agentsMd: "" },
+      skills: ["/Users/alice/secret-skill"],
+      toolsets: {},
+    });
+    if (!imported.ok) {
+      throw new Error(imported.error);
+    }
+    expect(JSON.stringify(imported)).not.toContain("/Users/alice");
+  });
+
+  it("refuses export when persona text contains a private key block", async () => {
+    const workspace = mkdtempSync(path.join(os.tmpdir(), "trunk-template-pem-"));
+    writeFileSync(path.join(workspace, "SOUL.md"), "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n");
+    const cfg = { agents: { entries: { ops: { name: "Ops", workspace } } } } as unknown as BranchConfig;
+    const result = await exportTrunkTemplate({ cfg, agentId: "ops", env: {} });
+    expect(result.ok).toBe(false);
+  });
+
+  it("counts persona bytes, not characters, when it cuts a long file", async () => {
+    const workspace = mkdtempSync(path.join(os.tmpdir(), "trunk-template-bytes-"));
+    // Two-byte characters: fewer than 64K characters, but more than 64 KB of bytes.
+    writeFileSync(path.join(workspace, "AGENTS.md"), "\u00e9".repeat(40_000));
+    const cfg = { agents: { entries: { ops: { name: "Ops", workspace } } } } as unknown as BranchConfig;
+    const result = await exportTrunkTemplate({ cfg, agentId: "ops", env: {} });
+    if (!result.ok) {
+      throw new Error(result.error);
+    }
+    expect(Buffer.byteLength(result.template.persona.agentsMd, "utf8")).toBeLessThanOrEqual(64 * 1024);
+    expect(result.warnings).toEqual(["AGENTS.md was cut to 64 KB for the template."]);
+  });
+
+  it("treats a Trunk with fs.workspaceOnly set as tool-limited", async () => {
+    const workspace = mkdtempSync(path.join(os.tmpdir(), "trunk-template-fs-"));
+    writeFileSync(path.join(workspace, "AGENTS.md"), "# Ops\n");
+    const cfg = { agents: { entries: { ops: { name: "Ops", workspace, tools: { fs: { workspaceOnly: true } } } } } } as unknown as BranchConfig;
+    const result = await exportTrunkTemplate({ cfg, agentId: "ops", env: {} });
+    if (!result.ok) {
+      throw new Error(result.error);
+    }
+    expect(result.template.permissions).toEqual([expect.stringContaining("has its own tool list")]);
   });
 });

@@ -22,6 +22,7 @@ const RESTRICTED_PERMISSION =
   "This Trunk has its own tool list or tool switches. The template does not carry them: set them after creating the Trunk.";
 const GLOBAL_RESTRICTED_PERMISSION =
   "Tool limits from this computer's settings are not in the template: set the tools you want after creating the Trunk.";
+const PRIVATE_KEY_HEADER = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/;
 const SECRET_REFUSAL =
   "Persona text looks like it contains a secret (a token or key). Remove it from AGENTS.md or SOUL.md, then export again.";
 
@@ -29,10 +30,16 @@ export type TrunkTemplateExport =
   | { ok: true; template: TrunkTemplate; warnings: string[] }
   | { ok: false; error: string };
 
-async function readPersonaFile(filePath: string): Promise<string | undefined> {
+/** Reads at most PERSONA_FILE_LIMIT_BYTES bytes. Reports whether the file was cut. */
+async function readPersonaFile(
+  filePath: string,
+): Promise<{ text: string; truncated: boolean } | undefined> {
   try {
-    const text = await readFile(filePath, "utf8");
-    return text.slice(0, PERSONA_FILE_LIMIT_BYTES);
+    const bytes = await readFile(filePath);
+    return {
+      text: bytes.subarray(0, PERSONA_FILE_LIMIT_BYTES).toString("utf8"),
+      truncated: bytes.length > PERSONA_FILE_LIMIT_BYTES,
+    };
   } catch {
     return undefined;
   }
@@ -50,7 +57,13 @@ function hasToolLimit(tools: unknown): boolean {
     (key) => Array.isArray(limits[key]) && (limits[key] as unknown[]).length > 0,
   );
   const byProvider = limits.byProvider as Record<string, unknown> | undefined;
-  return listed || Boolean(limits.profile) || Boolean(byProvider && Object.keys(byProvider).length);
+  const fs = limits.fs as Record<string, unknown> | undefined;
+  return (
+    listed ||
+    Boolean(limits.profile) ||
+    Boolean(byProvider && Object.keys(byProvider).length) ||
+    fs?.workspaceOnly === true
+  );
 }
 
 /** Permission lines in plain words, from what the Trunk's own settings and the computer's settings limit. */
@@ -81,12 +94,20 @@ export async function exportTrunkTemplate(params: {
   const paths = { workspaceDir, homeDir: os.homedir() };
   const agentsMd = await readPersonaFile(path.join(workspaceDir, "AGENTS.md"));
   const soulMd = await readPersonaFile(path.join(workspaceDir, "SOUL.md"));
-  const agentsText = agentsMd === undefined ? "" : redactPersonaText(agentsMd, paths);
-  const soulText = soulMd === undefined ? undefined : redactPersonaText(soulMd, paths);
+  const rawPersona = [agentsMd?.text ?? "", soulMd?.text ?? ""];
+  if (rawPersona.some((text) => PRIVATE_KEY_HEADER.test(text))) {
+    return { ok: false, error: SECRET_REFUSAL };
+  }
+  const agentsText = agentsMd === undefined ? "" : redactPersonaText(agentsMd.text, paths);
+  const soulText = soulMd === undefined ? undefined : redactPersonaText(soulMd.text, paths);
   const scanned = [agentsText, soulText ?? ""];
   if (scanned.some((text) => redactSensitiveText(text) !== text)) {
     return { ok: false, error: SECRET_REFUSAL };
   }
+  const cut = [
+    agentsMd?.truncated ? "AGENTS.md" : undefined,
+    soulMd?.truncated ? "SOUL.md" : undefined,
+  ].filter((name): name is string => name !== undefined);
   const modelRef = typeof agent.model === "string" ? agent.model : agent.model?.primary;
   const { template, warnings } = buildTrunkTemplate({
     name: agent.name ?? params.agentId,
@@ -96,5 +117,6 @@ export async function exportTrunkTemplate(params: {
     modelFamily: modelFamilyFromRef(modelRef),
     permissions: permissionsFor(params.cfg, params.agentId),
   });
-  return { ok: true, template, warnings };
+  const truncation = cut.map((name) => `${name} was cut to 64 KB for the template.`);
+  return { ok: true, template, warnings: [...warnings, ...truncation] };
 }
