@@ -113,13 +113,9 @@ describe("TeamProposalBlock", () => {
       "trunks.team.propose",
       expect.objectContaining({ goal: "Ship it" }),
     );
-    expect(
-      (
-        request.mock.calls.find(([method]) => method === "trunks.team.propose")?.[1] as {
-          roles: Array<{ job: string }>;
-        }
-      ).roles[0]?.job,
-    ).toBe("Find three topics.");
+    const calls = request.mock.calls as unknown as Array<[string, { roles: Array<{ job: string }> }?]>;
+    const proposed = calls.find(([method]) => method === "trunks.team.propose")?.[1];
+    expect(proposed?.roles[0]?.job).toBe("Find three topics.");
   });
 
   it("shows the engine's refusal of a draft instead of approving it", async () => {
