@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { liveContext, readLivePullRequest } from './live-pull-request.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -134,8 +135,18 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const event = readEvent();
   const repo = process.env.GITHUB_REPOSITORY;
   const number = event?.pull_request?.number;
+  // The live body when CI configures it: a body edited after the push is not in the payload.
+  const ctx = liveContext({ ...process.env, REPO: process.env.REPO || repo, PR_NUMBER: process.env.PR_NUMBER || number });
   let body = prBodyFromEvent(event);
-  if (!event?.pull_request && repo && number) body = bodyFromGh(repo, number);
+  if (ctx) {
+    try {
+      body = readLivePullRequest(ctx).body;
+    } catch (error) {
+      console.error(`Could not read the pull request body from GitHub (${String(error?.message ?? error).split('\n')[0]}). This is not a screenshot failure; re-run the check.`);
+      process.exit(1);
+    }
+  }
+  else if (!event?.pull_request && repo && number) body = bodyFromGh(repo, number);
   let files;
   try {
     files = filesFromGit();
