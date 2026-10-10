@@ -1218,7 +1218,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     onTower: () => setTowerOn((on) => { try { localStorage.setItem("branch.controlTower", on ? "hidden" : "shown"); } catch { /* current window only */ } return !on; }),
     towerVisible: towerOn,
     onList: toggleList,
-    onTheme: () => setTheme(toggleTheme(theme)),
     onComputer: () => setStage("Computer"),
     onBrowser: () => setStage("Browser"),
     onGuide: () => { const rect = document.querySelector<HTMLElement>("[data-testid=conversation-menu-button]")?.getBoundingClientRect(); setOverlay({ kind: "menu", id: "guide", at: { x: rect?.left ?? 8, y: (rect?.bottom ?? 48) + 4 }, items: guideItems(), label: "Guide" }); },
