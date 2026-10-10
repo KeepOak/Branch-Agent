@@ -41,7 +41,9 @@ describe("rooms methods", () => {
       client: null,
     } as unknown as GatewayRequestHandlerOptions);
     const [ok, payload, error] = respond.mock.calls.at(-1)!;
-    if (!ok) throw new Error(error?.message ?? `${method} failed`);
+    if (!ok) {
+      throw new Error(error?.message ?? `${method} failed`);
+    }
     return payload as Record<string, any>;
   }
   beforeEach(() => {
@@ -64,8 +66,11 @@ describe("rooms methods", () => {
   });
   afterEach(() => {
     closeBranchStateDatabaseForTest();
-    if (previous === undefined) delete process.env.BRANCH_STATE_DIR;
-    else process.env.BRANCH_STATE_DIR = previous;
+    if (previous === undefined) {
+      delete process.env.BRANCH_STATE_DIR;
+    } else {
+      process.env.BRANCH_STATE_DIR = previous;
+    }
     rmSync(directory, { recursive: true, force: true });
   });
 
@@ -217,7 +222,9 @@ describe("rooms methods", () => {
     it("C01: one human post gets three distinct replies without overlapping Trunk turns", async () => {
       const pending = new Map<string, () => void>();
       mocks.wait.mockImplementation(async (options: GatewayRequestHandlerOptions) => {
-        await new Promise<void>((resolve) => pending.set(options.params.runId as string, resolve));
+        await new Promise<void>((resolve) => {
+          pending.set(options.params.runId as string, resolve);
+        });
         options.respond(true, {
           status: "ok",
           terminalReply: { disposition: "visible", text: `Reply ${options.params.runId}` },
@@ -316,7 +323,9 @@ describe("rooms methods", () => {
         options.respond(true, { runStarted: true, runId });
       });
       mocks.wait.mockImplementation(async (options: GatewayRequestHandlerOptions) => {
-        await new Promise((resolve) => setTimeout(resolve, 1));
+        await new Promise((resolve) => {
+          setTimeout(resolve, 1);
+        });
         running -= 1;
         const agentId = runs.get(options.params.runId as string)!;
         options.respond(true, {
