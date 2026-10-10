@@ -1,0 +1,9 @@
+engine:src/infra/provider-usage.fetch.claude.test.ts
+window:src/places/settings/set2/usage.test.tsx
+window:src/shell/Popover.focus.test.tsx
+window:src/shell/StatusExtras.test.ts
+window:src/shell/StatusPopovers.test.tsx
+window:src/shell/status-data.test.ts
+window:src/shell/status-gateway.test.tsx
+window:src/shell/status-redesign.test.tsx
+window:src/shell/usage-every-account.test.tsx

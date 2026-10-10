@@ -10,6 +10,12 @@ type Props = { at: MenuAnchor; onClose: () => void; label: string; children: Rea
 export function Popover({ at, onClose, label, children, testid, width, above, className }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState(at);
+  // The parent passes a new onClose on every render. Read it through a ref so the focus effect below runs once,
+  // not on each re-render, which would scroll a long list back to its first control.
+  const closeRef = useRef(onClose);
+  useLayoutEffect(() => {
+    closeRef.current = onClose;
+  });
   useLayoutEffect(() => {
     const r = ref.current?.getBoundingClientRect();
     if (r) {
@@ -21,12 +27,13 @@ export function Popover({ at, onClose, label, children, testid, width, above, cl
   useEffect(() => {
     const back = document.activeElement as HTMLElement | null;
     const trigger = back && back !== document.body ? back : null;
-    ref.current?.querySelector<HTMLElement>("button, input, select")?.focus();
+    // preventScroll: opening must show the top of the popover, not scroll the first control into view.
+    ref.current?.querySelector<HTMLElement>("button, input, select")?.focus({ preventScroll: true });
     const away = (e: PointerEvent) => {
       // A flyout opened from inside the popover (Filter and sort's choices) counts as inside.
       const inFly = Boolean((e.target as Element).closest?.(".pop.fly"));
       if (!ref.current?.contains(e.target as Node) && !trigger?.contains(e.target as Node) && !inFly) {
-        onClose();
+        closeRef.current();
       }
     };
     document.addEventListener("pointerdown", away, true);
@@ -38,7 +45,7 @@ export function Popover({ at, onClose, label, children, testid, width, above, cl
         back?.focus?.();
       }
     };
-  }, [onClose]);
+  }, []);
   return (
     <div
       ref={ref}

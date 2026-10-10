@@ -92,6 +92,14 @@ function GatewayStatus(p: Pick<Props, "gateway" | "open" | "onItem">) {
   );
 }
 
+/** "maria@example.com · 40% left · resets 6 PM", or "… · usage unknown" when the account has no reading yet. */
+export function usageWords(usage: RingReading | null): string {
+  if (!usage) return "Usage";
+  const who = usage.email || usage.name;
+  if (usage.left === null) return `${who} · usage unknown`;
+  return `${who} · ${usage.left}% left${usage.reset ? ` · ${usage.reset}` : ""}`;
+}
+
 /** The status bar (DESIGN-SPEC §4.9.1): connection, gateway, room left, running, then the usage ring and version. */
 export function StatusBar(p: Props) {
   const [usageExpanded, setUsageExpanded] = useState(true);
@@ -110,7 +118,8 @@ export function StatusBar(p: Props) {
   const left = p.roomUsed === null ? null : Math.max(0, Math.round((1 - p.roomUsed) * 100));
   const roomTip = left === null ? "Context" : `Context: ${left}% left. The room this conversation has for new messages. Click for details.`;
   const item = (id: StatusItem) => ({ "aria-expanded": p.open === id, "aria-haspopup": "dialog" as const, onClick: (e: MouseEvent<HTMLElement>) => p.onItem(id, e) });
-  const usageLine = p.usage ? `${p.usage.name} · ${p.usage.left}% left${p.usage.reset ? ` · ${p.usage.reset}` : ""}` : "Usage";
+  // One tracker: the account used next, by email, with its share left and reset time, or "usage unknown" when it has no reading.
+  const usageLine = usageWords(p.usage);
   const usageLabel = p.usage ? `${usageLine}. Enter opens every account.` : "Usage · no account limits yet. Enter opens every account.";
   const openUsage = (e: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => {
     setUsageExpanded(true);
@@ -139,7 +148,7 @@ export function StatusBar(p: Props) {
       ) : null}
       <button type="button" className="sb status-symbol" title={p.running ? `${p.running} running` : "Nothing running"} aria-label={p.running ? `${p.running} running` : "Nothing running"} data-testid="sb-running" {...item("running")}>
         <StatusGlyph kind="running" colour={p.running ? "var(--ok)" : "currentColor"} value={p.running} />
-        <span className="status-number">{p.running}</span>
+        <span className="status-number">{p.running ? `${p.running} running` : "Idle"}</span>
       </button>
       {p.extras?.left}
       <span className="sb-spacer" />

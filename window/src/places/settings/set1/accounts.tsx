@@ -88,9 +88,11 @@ export function AccountsPage(props: SettingsPageProps) {
   const agent = owner ? { agentId: owner } : {};
   const status = useResource<RecordValue>(props.engine, "models.authStatus", agent);
   const [add, setAdd] = useState<AddStart | null>(() => {
-    if (sessionStorage.getItem("branch.openAddAccount") !== "1") return null;
+    const asked = sessionStorage.getItem("branch.openAddAccount");
+    if (!asked) return null;
     sessionStorage.removeItem("branch.openAddAccount");
-    return {};
+    // "1" opens the picker; a provider id opens that provider's sign-in (for example "Sign in again" for Claude usage).
+    return asked === "1" ? {} : { provider: asked };
   });
   const providers = providersOf(status.data?.providers);
   const caps = list(status.data?.providerCapabilities);
