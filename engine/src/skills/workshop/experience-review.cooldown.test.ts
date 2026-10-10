@@ -1,9 +1,12 @@
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BranchConfig } from "../../config/types.branch.js";
+import { sha256Hex } from "../../infra/crypto-digest.js";
 import type { Message } from "../../llm/types.js";
 import { openBranchStateDatabase } from "../../state/branch-state-db.js";
 import { createBranchTestState, type BranchTestState } from "../../test-utils/branch-test-state.js";
 import { createTrackedTempDirs } from "../../test-utils/tracked-temp-dirs.js";
+import { recordSkillExperienceReviewOutcomeInDatabase } from "./collection-review.kernel.js";
 import { createSkillExperienceReviewScheduler } from "./experience-review-scheduler.js";
 import { claimExperienceSignalCooldown } from "./experience-review-signal-cooldown.js";
 import { createExperienceReviewCandidate } from "./experience-review.test-support.js";
@@ -61,19 +64,21 @@ function createClock(): { now: number } {
 
 function createScheduler() {
   const setTimer = vi.fn((callback: () => void, delayMs: number) => setTimeout(callback, delayMs));
+  const clearTimer = vi.fn((timer: ReturnType<typeof setTimeout>) => clearTimeout(timer));
   const scheduler = createSkillExperienceReviewScheduler({
     isSystemActive: () => false,
     runReview: async () => {},
     setTimer,
+    clearTimer,
     claimSignalCooldown: claimExperienceSignalCooldown,
   });
-  return { scheduler, setTimer };
+  return { scheduler, setTimer, clearTimer };
 }
 
-/** Returns true when the run armed a review timer, which is what scheduling means here. */
+/** True when the run's review is still queued: armed, and not withdrawn by a denied claim. */
 async function scheduleRun(
-  scheduler: ReturnType<typeof createSkillExperienceReviewScheduler>,
-  setTimer: ReturnType<typeof createScheduler>["setTimer"],
+  scheduler: ReturnType<typeof createScheduler>["scheduler"],
+  timers: Pick<ReturnType<typeof createScheduler>, "setTimer" | "clearTimer">,
   runId: string,
   messages: unknown[],
 ): Promise<boolean> {
@@ -82,7 +87,8 @@ async function scheduleRun(
     workspaceDir,
     modelId,
   });
-  const armedBefore = setTimer.mock.calls.length;
+  const armedBefore = timers.setTimer.mock.calls.length;
+  const clearedBefore = timers.clearTimer.mock.calls.length;
   scheduler.schedule({
     event: { messages, success: true },
     ctx: {
@@ -97,7 +103,9 @@ async function scheduleRun(
     config,
     source: candidate.source,
   });
-  return setTimer.mock.calls.length > armedBefore;
+  const armed = timers.setTimer.mock.calls.length > armedBefore;
+  const withdrawn = timers.clearTimer.mock.calls.length > clearedBefore;
+  return armed && !withdrawn;
 }
 
 describe("repeated-failure signal cooldown", () => {
@@ -107,7 +115,7 @@ describe("repeated-failure signal cooldown", () => {
     expect(
       await scheduleRun(
         first.scheduler,
-        first.setTimer,
+        first,
         "cooldown-1",
         recoveryMessages("tilectl publish --manifest a.json"),
       ),
@@ -119,7 +127,7 @@ describe("repeated-failure signal cooldown", () => {
     expect(
       await scheduleRun(
         restarted.scheduler,
-        restarted.setTimer,
+        restarted,
         "cooldown-2",
         recoveryMessages("tilectl publish --manifest b.json"),
       ),
@@ -129,29 +137,31 @@ describe("repeated-failure signal cooldown", () => {
 
   it("schedules a different identity inside the cooldown window", async () => {
     const clock = createClock();
-    const { scheduler, setTimer } = createScheduler();
+    const timers = createScheduler();
+    const { scheduler } = timers;
     expect(
       await scheduleRun(
         scheduler,
-        setTimer,
+        timers,
         "other-1",
         recoveryMessages("tilectl publish --manifest a.json"),
       ),
     ).toBe(true);
     clock.now = startMs + hourMs;
     expect(
-      await scheduleRun(scheduler, setTimer, "other-2", recoveryMessages("tilectl status")),
+      await scheduleRun(scheduler, timers, "other-2", recoveryMessages("tilectl status")),
     ).toBe(true);
     scheduler.clear();
   });
 
   it("allows the same identity again once 24 hours have passed", async () => {
     const clock = createClock();
-    const { scheduler, setTimer } = createScheduler();
+    const timers = createScheduler();
+    const { scheduler } = timers;
     expect(
       await scheduleRun(
         scheduler,
-        setTimer,
+        timers,
         "expiry-1",
         recoveryMessages("tilectl publish --manifest a.json"),
       ),
@@ -160,7 +170,7 @@ describe("repeated-failure signal cooldown", () => {
     expect(
       await scheduleRun(
         scheduler,
-        setTimer,
+        timers,
         "expiry-2",
         recoveryMessages("tilectl publish --manifest b.json"),
       ),
@@ -168,25 +178,92 @@ describe("repeated-failure signal cooldown", () => {
     scheduler.clear();
   });
 
-  it("claims only the first recovered identity of a run and keeps command text out of state", async () => {
+  it("claims only the first recovered identity of a run", async () => {
     createClock();
-    const { scheduler, setTimer } = createScheduler();
+    const timers = createScheduler();
+    const { scheduler } = timers;
     expect(
       await scheduleRun(
         scheduler,
-        setTimer,
+        timers,
         "multi-1",
         recoveryMessages("tilectl publish --manifest a.json", "tilectl status"),
       ),
     ).toBe(true);
     expect(
-      await scheduleRun(scheduler, setTimer, "multi-2", recoveryMessages("tilectl status")),
+      await scheduleRun(scheduler, timers, "multi-2", recoveryMessages("tilectl status")),
     ).toBe(true);
     scheduler.clear();
-    const row = openBranchStateDatabase()
-      .db.prepare("SELECT value_json FROM config_machine_state WHERE state_key = ?")
-      .get("skills.gardenerState") as { value_json: string } | undefined;
-    expect(row?.value_json).toContain("experienceSignalClaims");
-    expect(row?.value_json).not.toContain("tilectl");
+  });
+
+  it("keeps claims through a rewrite of the gardener review row", async () => {
+    createClock();
+    const timers = createScheduler();
+    const { scheduler } = timers;
+    expect(
+      await scheduleRun(
+        scheduler,
+        timers,
+        "rewrite-1",
+        recoveryMessages("tilectl publish --manifest a.json"),
+      ),
+    ).toBe(true);
+    scheduler.clear();
+    recordSkillExperienceReviewOutcomeInDatabase(openBranchStateDatabase(), {
+      agentId: "main",
+      workspaceDir: "/workspace",
+      review: { attemptedAtMs: startMs, outcome: "nothing" },
+    });
+    expect(
+      claimExperienceSignalCooldown({
+        agentId: "main",
+        identity: JSON.stringify(["exec", "tilectl publish"]),
+        nowMs: startMs + hourMs,
+      }),
+    ).toBe(false);
+  });
+
+  it("stores only keyed hashes of identities, never command text", async () => {
+    createClock();
+    const timers = createScheduler();
+    const { scheduler } = timers;
+    await scheduleRun(
+      scheduler,
+      timers,
+      "privacy-1",
+      recoveryMessages("tilectl publish --manifest a.json"),
+    );
+    scheduler.clear();
+    const stored = readClaimsRow();
+    expect(stored.value_json).not.toContain("tilectl");
+    expect(stored.value_json).not.toContain("publish");
+    const plainKey = sha256Hex(`main\0${JSON.stringify(["exec", "tilectl publish"])}`);
+    expect(Object.keys(JSON.parse(stored.value_json).claims)).not.toContain(plainKey);
+  });
+
+  it("fails closed when the claim lock is held past its budget", () => {
+    const holder = new DatabaseSync(openBranchStateDatabase().path);
+    const identity = JSON.stringify(["exec", "tilectl publish"]);
+    holder.exec("BEGIN IMMEDIATE");
+    try {
+      const started = Date.now();
+      const claimed = claimExperienceSignalCooldown({ agentId: "main", identity, nowMs: startMs });
+      expect(claimed).toBe(false);
+      expect(Date.now() - started).toBeLessThan(2_000);
+    } finally {
+      holder.exec("ROLLBACK");
+      holder.close();
+    }
+    expect(claimExperienceSignalCooldown({ agentId: "main", identity, nowMs: startMs })).toBe(true);
   });
 });
+
+function readClaimsRow(): { value_json: string } {
+  const row = openBranchStateDatabase()
+    .db.prepare("SELECT value_json FROM config_machine_state WHERE state_key = ?")
+    .get("skills.experienceSignalClaims") as { value_json: string } | undefined;
+  if (!row) {
+    throw new Error("No claims row was written.");
+  }
+  return row;
+}

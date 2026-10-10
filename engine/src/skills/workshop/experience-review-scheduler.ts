@@ -112,19 +112,6 @@ function isEligibleContext(ctx: ExperienceReviewAgentContext): boolean {
     .some((segment) => EXPERIENCE_REVIEW_BLOCKED_SESSION_SEGMENTS.has(segment));
 }
 
-/** At most one repeated-failure review per run, gated by the persisted per-identity cooldown. */
-function claimRepeatedFailureSignal(
-  deps: ExperienceReviewSchedulerDeps,
-  agentId: string,
-  turnMessages: readonly unknown[],
-): boolean {
-  const identity = findOvercomeRepeatedFailureIdentity(turnMessages);
-  if (identity === undefined || deps.claimSignalCooldown === undefined) {
-    return false;
-  }
-  return deps.claimSignalCooldown({ agentId, identity, nowMs: Date.now() });
-}
-
 export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSchedulerDeps) {
   const pendingBySession = new Map<string, PendingExperienceReview>();
   let reviewInFlight = false;
@@ -169,6 +156,25 @@ export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSched
     const timer = runInDetachedAsyncContext(() => setTimer(timerCallback, delayMs));
     pending.timer = timer;
     timer.unref?.();
+  };
+
+  // Undoes a queued review whose claim was denied. A replaced pending candidate is restored.
+  const withdraw = (
+    key: string,
+    pending: PendingExperienceReview,
+    previous: ExperienceReviewCandidate | undefined,
+  ) => {
+    if (pending.timer) {
+      clearTimer(pending.timer);
+    }
+    pending.timer = undefined;
+    pending.generation += 1;
+    if (previous) {
+      pending.candidate = previous;
+      arm(key, pending, EXPERIENCE_REVIEW_IDLE_MS);
+    } else {
+      pendingBySession.delete(key);
+    }
   };
 
   return {
@@ -233,10 +239,16 @@ export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSched
           : Number.isSafeInteger(reportedModelIterations) && reportedModelIterations >= 0
             ? reportedModelIterations
             : 0;
-      if (
+      const belowDepthBar =
         modelIterations < EXPERIENCE_REVIEW_MIN_MODEL_ITERATIONS &&
-        !hasExplicitDurableTeaching(turnMessages) &&
-        !claimRepeatedFailureSignal(deps, params.ctx.foregroundPromptContext.agentId, turnMessages)
+        !hasExplicitDurableTeaching(turnMessages);
+      // One signal per run: the first identity the run recovered. Nothing is claimed here.
+      const signalIdentity = belowDepthBar
+        ? findOvercomeRepeatedFailureIdentity(turnMessages)
+        : undefined;
+      if (
+        belowDepthBar &&
+        (signalIdentity === undefined || deps.claimSignalCooldown === undefined)
       ) {
         log.debug(
           `experience review skipped: reason=below-depth-bar iterations=${modelIterations} session=${sessionKey}`,
@@ -273,9 +285,24 @@ export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSched
         turnAborted: !params.event.success,
       };
       const pending = existing ?? { candidate, generation: 0 };
+      const previousCandidate = existing?.candidate;
       pending.candidate = candidate;
       pendingBySession.set(key, pending);
       arm(key, pending, EXPERIENCE_REVIEW_IDLE_MS);
+      // Claim only after the review is queued, so a run that never queues consumes nothing.
+      const signalClaim =
+        signalIdentity === undefined
+          ? undefined
+          : {
+              agentId: params.ctx.foregroundPromptContext.agentId,
+              identity: signalIdentity,
+              nowMs: Date.now(),
+            };
+      if (signalClaim !== undefined && deps.claimSignalCooldown?.(signalClaim) !== true) {
+        withdraw(key, pending, previousCandidate);
+        log.debug(`experience review skipped: reason=signal-cooldown session=${sessionKey}`);
+        return;
+      }
       log.debug(
         `experience review scheduled: session=${sessionKey} iterations=${modelIterations} aborted=${!params.event.success}`,
       );

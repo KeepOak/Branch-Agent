@@ -840,6 +840,58 @@ describe("skill experience review repeated-failure trigger", () => {
     scheduler.clear();
   });
 
+  it("claims only after the review is queued", async () => {
+    vi.useFakeTimers();
+    const claimSignalCooldown = vi.fn(() => true);
+    const scheduler = createSkillExperienceReviewScheduler({
+      isSystemActive: () => false,
+      runReview: vi.fn(async () => {}),
+      claimSignalCooldown,
+      setTimer: () => {
+        throw new Error("timer unavailable");
+      },
+    });
+    const params = completedRun({ modelIterations: 3 });
+    params.event.messages = repeatedFailureRecoveryMessages();
+    expect(() => scheduler.schedule(params)).toThrow("timer unavailable");
+    expect(claimSignalCooldown).not.toHaveBeenCalled();
+    scheduler.clear();
+  });
+
+  it("withdraws the queued review when the claim is denied", async () => {
+    vi.useFakeTimers();
+    const runReview = vi.fn(async () => {});
+    const scheduler = createSkillExperienceReviewScheduler({
+      isSystemActive: () => false,
+      runReview,
+      claimSignalCooldown: () => false,
+    });
+    const params = completedRun({ modelIterations: 3 });
+    params.event.messages = repeatedFailureRecoveryMessages();
+    scheduler.schedule(params);
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.runAllTimersAsync();
+    expect(runReview).not.toHaveBeenCalled();
+    scheduler.clear();
+  });
+
+  it("does not claim a run that has no source to review", async () => {
+    vi.useFakeTimers();
+    const claimSignalCooldown = vi.fn(() => true);
+    const scheduler = createSkillExperienceReviewScheduler({
+      isSystemActive: () => false,
+      runReview: vi.fn(async () => {}),
+      claimSignalCooldown,
+    });
+    const params = completedRun({ modelIterations: 3 });
+    params.event.messages = repeatedFailureRecoveryMessages();
+    params.source = undefined;
+    scheduler.schedule(params);
+    await vi.runAllTimersAsync();
+    expect(claimSignalCooldown).not.toHaveBeenCalled();
+    scheduler.clear();
+  });
+
   it.each(["heartbeat", "cron", "memory", "overflow"] as const)(
     "keeps %s-triggered runs excluded even with a repeated-failure recovery",
     async (trigger) => {

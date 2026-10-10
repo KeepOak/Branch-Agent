@@ -17,8 +17,6 @@ type SkillGardenerState = {
   lastResult: {
     collectionReviews?: Record<string, SkillCollectionReviewStatus>;
     experienceReviews?: Record<string, SkillExperienceReviewStatus>;
-    /** Hashed agent and identity keys mapped to the time their repeated-failure review was claimed. */
-    experienceSignalClaims?: Record<string, number>;
   };
 };
 
@@ -95,52 +93,6 @@ export function recordSkillExperienceReviewOutcomeInDatabase(
     },
     now,
   );
-}
-
-export const EXPERIENCE_SIGNAL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-
-export type ClaimExperienceSignalCooldownInput = {
-  agentId: string;
-  identity: string;
-  nowMs: number;
-};
-
-/**
- * Claims the repeated-failure review for an agent and call identity. Returns false while
- * an earlier claim is inside the cooldown. The identity is stored only as a hash, so
- * command text never reaches the state database.
- */
-export function claimExperienceSignalCooldownInDatabase(
-  database: StateDatabase,
-  input: ClaimExperienceSignalCooldownInput,
-): boolean {
-  const claimKey = sha256Hex(`${input.agentId}\0${input.identity}`);
-  let claimed = false;
-  updateConfigMachineStateInDatabase<SkillGardenerState>(
-    database.db,
-    "skills.gardenerState",
-    (current) => {
-      const state = current?.lastResult;
-      const claims = Object.fromEntries(
-        Object.entries(state?.experienceSignalClaims ?? {}).filter(
-          ([, claimedAtMs]) => input.nowMs - claimedAtMs < EXPERIENCE_SIGNAL_COOLDOWN_MS,
-        ),
-      );
-      claimed = claims[claimKey] === undefined;
-      if (claimed) {
-        claims[claimKey] = input.nowMs;
-      }
-      return {
-        lastAttemptAtMs: 0,
-        lastSuccessAtMs: null,
-        lastError: null,
-        ...current,
-        lastResult: { ...state, experienceSignalClaims: claims },
-      };
-    },
-    input.nowMs,
-  );
-  return claimed;
 }
 
 function parseStoredNames(value: string, field: string): string[] {
