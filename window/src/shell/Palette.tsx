@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./icons";
+import { keyLabel } from "./key-label";
 import { filterPalette, GROUPS, moveSelection, paletteEmptyLine, type PaletteRow } from "./palette-model";
 import { readMessageHits, type MessageHit } from "./search-model";
 
@@ -130,7 +131,7 @@ export function Palette({ rows, request, rowName, onOpenMessage, onClose }: Prop
                   onClick={() => run(row)}
                 >
                   <span className="pal-label">{row.label}</span>
-                  <span className="pal-hint">{row.hint}</span>
+                  <span className="pal-hint">{keyLabel(row.hint)}</span>
                 </button>
               </div>
             );

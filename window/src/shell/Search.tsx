@@ -3,6 +3,7 @@ import type { Conversation } from "../connect/conversations";
 import { agentIdOf } from "../connect/session";
 import { Pebble } from "../face/Pebble";
 import { Icon } from "./icons";
+import { keyLabel } from "./key-label";
 import { rowTime } from "./list-model";
 import {
   CHIPS,
@@ -65,7 +66,6 @@ type BoxProps = { query: string; onQuery: (q: string) => void; rail?: boolean };
 /** The search field (§4.1.2 Field, Shortcut hint, Clear). Escape empties it and brings the list back. */
 export function SearchBox({ query, onQuery }: BoxProps) {
   const ref = useRef<HTMLInputElement>(null);
-  const mac = /Mac|iPhone|iPad/.test(navigator.platform);
   return (
     <label className="search" data-testid="search" title="Search chats, Trunks, messages and past sessions">
       <Icon name="search" small />
@@ -98,7 +98,7 @@ export function SearchBox({ query, onQuery }: BoxProps) {
           <Icon name="x" size={12} />
         </button>
       ) : (
-        <kbd>{mac ? "⌘K" : "Ctrl K"}</kbd>
+        <kbd>{keyLabel("Ctrl K")}</kbd>
       )}
     </label>
   );

@@ -30,6 +30,7 @@ import { SessionUnreadPatchGuard } from "../connect/unread-guard";
 import { useContacts, useConversations, useListPeople, useMachine, usePendingApprovals, useTrunks } from "./engine-data";
 import { FilterButton, FilterSortPopover, readPrefs, savePrefs } from "./FilterSort";
 import { Icon } from "./icons";
+import { keyLabel } from "./key-label";
 import { clearFilters, emptyLineFor, filterRows, filterSummary, hasFolders, homeRow, owners, roomUsed, type ListPrefs } from "./list-model";
 import { buildContactSections, contactRow, contactRowsFor, listContactTopics, markContactRead, missingConversation, openContactRow, pinContact, projectContact, type Contact } from "./contacts-model";
 import { GroupDropPopover, groupHint, groupPlan, mergeRoomNotices, moveContactToProject, roomContact, useGroupRooms, useRoomNotices, type GroupDrop } from "./group-drop";
@@ -1645,7 +1646,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         {lockdown.on ? <LockdownBanner onTurnOff={toggleLockdown} /> : null}
         {layout.focus ? (
           <button type="button" className="btn sm focus-exit" onClick={() => setLayout({ focus: false })}>
-            Leave focus mode · Ctrl+.
+            {keyLabel("Leave focus mode · Ctrl+.")}
           </button>
         ) : null}
         {showThreadColumn && threadGeneralKey ? <ThreadColumn key={topicContact?.id ?? threadGeneralKey} name={topicContact?.name ?? defaultName} generalKey={threadGeneralKey} openKey={openKey} items={topicItems} onOpen={(key) => key === threadGeneralKey ? openConversation(key) : openTopic(key)}
