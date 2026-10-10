@@ -46,6 +46,7 @@ const fake = vi.hoisted(() => {
     MAIN,
     PONG,
     EMPTY,
+    REMOTE: "a2a:branch-remote--builder",
     options: null as { onStatus: (status: unknown) => void } | null,
     holds,
     transcript,
@@ -99,6 +100,10 @@ vi.mock("../connect/gateway", () => ({
             id: "trunk:researcher", kind: "trunk", name: "Researcher", threadKey: fake.MAIN, isDefault: true,
             lastActivityAt: 30, preview: { kind: "message", text: "General hello", at: 30 },
             unreadTopics: 0, threadUnread: false, needsYou: false, working: false, topicCount: 2,
+          }, {
+            id: "a2a:branch-remote--builder", kind: "outside", name: "Remote Builders", threadKey: fake.REMOTE, isDefault: false,
+            lastActivityAt: 0, preview: { kind: "message", text: "", at: 0 },
+            unreadTopics: 0, threadUnread: false, needsYou: false, working: false, topicCount: 0,
           }],
         };
       }
@@ -405,4 +410,20 @@ it("paints a warm conversation in one step, and header back and forward do the s
 
   await assertCachedStep(() => headerButton("Forward").click(), { head: "Pong-check-1842", message: "Serve the pong" });
   fake.releaseAll();
+});
+
+
+it("keeps the grafted contact identity in the empty state, composer and character card", async () => {
+  await showResearcher();
+  await act(async () => { await session!.open(fake.REMOTE); });
+  await vi.waitFor(() => {
+    expect(document.querySelector(".empty-title")?.textContent).toBe("What should Remote Builders do?");
+    const composer = document.querySelector('textarea[aria-label="Message Remote Builders"]');
+    expect(composer?.getAttribute("placeholder")).toBe("Message Remote Builders");
+  });
+  expect(document.querySelector('[data-testid="where-chips"]')).toBeNull();
+  const character = document.querySelector(".character-panel")!;
+  expect(character.getAttribute("aria-label")).toMatch(/^Remote Builders, /);
+  await act(async () => { character.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true })); });
+  expect(document.querySelector('[data-testid="character-open"]')).toBeNull();
 });
