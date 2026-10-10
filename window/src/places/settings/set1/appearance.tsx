@@ -11,7 +11,7 @@ import { ThemeEditor, type EditStart } from "./appearance-editor";
 import { DEFAULT_THEME, SLATE, toPalette, type Pair } from "./appearance-look";
 import { AppearanceMore } from "./appearance-more";
 import { PetSec } from "./appearance-pet";
-import { AgentsSec, BackgroundSec, LanguageSec, ReadingSec, ShownSec, TraySec, WindowSec, type Look } from "./appearance-sections";
+import { AgentsSec, BackgroundSec, ReadingSec, ShownSec, WindowSec, type Look } from "./appearance-sections";
 import { useLook } from "./appearance-store";
 import { localId, newThemeId, themeName, ThemesDialog, useThemes, type Extra, type ThemeDesc, type Themes } from "./appearance-themes";
 import { LightDarkSec, ThemeSec, useThemeChoice, useTrunk } from "./appearance-top";
@@ -44,10 +44,8 @@ export function AppearancePage(props: SettingsPageProps) {
       <ReadingSec look={look} />
       <PetSec look={look} openSettings={props.openSettings} />
       <ShownSec look={look} />
-      <LanguageSec />
-      <TraySec />
       <WindowSec look={look} />
-      <AppearanceMore engine={props.engine} look={look} trunk={trunk} openSettings={props.openSettings} />
+      <AppearanceMore look={look} />
       {open?.kind === "gallery" ? (
         <ThemesDialog themes={themes} currentId={currentId} mode={mode} contrast={look.val("contrast", false) === true}
           onContrast={(on) => void look.store.set("contrast", on ? true : null)} onPick={acts.pick} onMake={() => make(false)} onImport={acts.add} onDelete={acts.remove}

@@ -106,7 +106,7 @@ describe("Settings › Appearance", () => {
     await render(engine);
     expect(host.querySelector(".theme-now .grow > b")?.textContent).toBe("Branch Slate");
     expect(button("Browse all 3 themes")).toBeTruthy();
-    expect([...host.querySelectorAll(".mirror b")].map((b) => b.textContent)).toEqual(["Light · live mirror of Birch", "Dark · live mirror of Birch", "Match this computer"]);
+    expect([...host.querySelectorAll(".mirror b")].map((b) => b.textContent)).toEqual(["Light · preview of Birch’s chat", "Dark · preview of Birch’s chat", "Match this computer"]);
     expect(host.querySelectorAll(".pet-c12").length).toBe(43);
   });
 
@@ -202,8 +202,9 @@ describe("Settings › Appearance", () => {
     await act(async () => root.unmount());
     root = createRoot(host);
     await render(engine, 2);
-    expect(rows()).toEqual(expect.arrayContaining(["Interface font", "How faces are drawn", "Window frame", "Headlines for working conversations"]));
-    expect(host.querySelector('[data-row="Window frame"]')?.getAttribute("aria-disabled")).toBe("true");
+    expect(rows()).toEqual(expect.arrayContaining(["Interface font", "Headlines for working conversations"]));
+    expect(rows()).not.toContain("How faces are drawn");
+    expect(rows()).not.toContain("Window frame");
   });
 
   it("with no signed-in profile the look is kept on this computer", async () => {
@@ -248,6 +249,6 @@ describe("Settings › Appearance", () => {
     expect(readThemeCode("{}")).toBeNull();
     expect(fromPalette(toPalette(SLATE.dark), "dark")).toEqual(SLATE.dark);
     expect(contrast("#000000", "#ffffff")).toBeCloseTo(21);
-    expect(APPEARANCE_ROWS.find((r) => r.title === "Window frame")?.lv).toBe(2);
+    expect(APPEARANCE_ROWS.find((r) => r.title === "Interface font")?.lv).toBe(1);
   });
 });

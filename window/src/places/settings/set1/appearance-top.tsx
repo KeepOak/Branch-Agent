@@ -64,7 +64,7 @@ export function LightDarkSec({ engine, pair, trunk, profile }: TopProps) {
   return (
     <Sec title="Light or dark">
       <div className="mirrors ap-k" data-row="Match this computer">
-        {(["light", "dark"] as const).map((m) => <Mirror key={m} c={pair[m]} label={`${m === "dark" ? "Dark" : "Light"}${trunk ? ` · live mirror of ${trunk}` : ""}`} words={words} on={choice === m} onPick={() => pick(m)} />)}
+        {(["light", "dark"] as const).map((m) => <Mirror key={m} c={pair[m]} label={`${m === "dark" ? "Dark" : "Light"}${trunk ? ` · preview of ${trunk}’s chat` : ""}`} words={words} on={choice === m} onPick={() => pick(m)} />)}
         <button className="mirror" type="button" aria-pressed={choice === "system"} onClick={() => pick("system")}>
           <span className="mm mm-split"><span style={{ background: pair.light.bg }} /><span style={{ background: pair.dark.bg }} /></span>
           <b>Match this computer</b>
