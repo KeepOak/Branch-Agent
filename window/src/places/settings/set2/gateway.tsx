@@ -63,7 +63,10 @@ export function GatewayPage(props: SettingsPageProps) {
 
 function channelNames(health: RecordValue): string[] {
   const labels = rec(health.channelLabels);
-  return Object.entries(rec(health.channels)).filter(([, v]) => rec(v).connected === true || rec(v).running === true).map(([id]) => str(labels[id]) || id);
+  return Object.entries(rec(health.channels)).filter(([, v]) => {
+    const channel = rec(v);
+    return channel.connected === true || (channel.connected !== false && channel.running === true);
+  }).map(([id]) => str(labels[id]) || id);
 }
 
 /** "just now", "4 min ago", "2 h ago", or the day and time. */
@@ -77,7 +80,8 @@ function ago(ms: unknown, now = Date.now()): string {
 
 function GatewayStatus({ health, sys, healthError }: Ctx) {
   if (healthError) return <Status tone="bad" title="The gateway isn’t answering">{healthError} Branch keeps trying; Restart the engine below if it stays this way.</Status>;
-  if (!health.ok && !health.ts) return null;
+  if (health.ok === false) return <Status tone="bad" title="The gateway needs attention">The gateway answered, but its health check failed. Restart the engine below if it stays this way.</Status>;
+  if (health.ok !== true) return <Status tone="idle" title="Gateway health not reported">Waiting for a health result from the gateway.</Status>;
   const up = span(sys.uptimeMs);
   const chats = channelNames(health);
   return (
@@ -204,7 +208,7 @@ function Doing({ engine, health, sys, lv }: Ctx) {
     <Sec title="What it has been doing">
       <ol className="gw-tl">
         {started ? <li className="ok"><Icon name="check" small /><span>Started<small>{when(started)}</small></span></li> : null}
-        {health.ts ? <li className="ok"><Icon name="check" small /><span>Health check<small>{`${typeof health.durationMs === "number" ? `Answered in ${health.durationMs} ms` : "Answered"} ${ago(health.ts)}`}</small></span></li> : null}
+        {health.ts ? <li className={health.ok === true ? "ok" : undefined}><Icon name={health.ok === true ? "check" : "clock"} small /><span>Health check<small>{`${health.ok === false ? "Failed" : health.ok === true ? "Passed" : "Result not reported"}${typeof health.durationMs === "number" ? ` in ${health.durationMs} ms` : ""} ${ago(health.ts)}`}</small></span></li> : null}
       </ol>
       <Acts><Btn onClick={go} disabled={restart.busy}><Icon name="retry" small />Restart the engine</Btn></Acts>
       <CallLine call={restart} />
