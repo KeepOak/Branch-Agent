@@ -7,7 +7,7 @@ import { optStr, rec, trunksOf, useResource } from "./data";
 import { DocumentsTab } from "./documents";
 import { MeetingsTab } from "./meetings";
 import { MadeTab } from "./made";
-import { useMemoryFiles } from "./memory-data";
+import { savedNotes, useMemoryFiles } from "./memory-data";
 import { MemoryTab } from "./memory";
 import { Grey } from "./parts";
 import { LogbookTab } from "./logbook";
@@ -60,7 +60,7 @@ export function LibraryPlace({ engine, level, openSettings, openConversation }: 
   const list = useMemo(() => (trunks.data === null ? null : trunksOf(trunks.data)), [trunks.data]);
   const memory = useMemoryFiles(engine, list);
   const defaultId = engine.agentId || optStr(rec(trunks.data).defaultId) || list?.[0]?.id || "";
-  const facts = memory.files?.reduce((n, f) => n + f.facts.length, 0);
+  const facts = memory.files?.reduce((n, f) => n + f.facts.length + savedNotes(f).length, 0);
   return <PlaceScroll><div className="place lib">
     <h1>Library</h1>
     <Grey label="Clearing" reason={HEAD_REASONS.canvas} className="lib-canvas" />
