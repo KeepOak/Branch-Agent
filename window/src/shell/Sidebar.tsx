@@ -1,7 +1,7 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { Pebble } from "../face/Pebble";
 import { RoomFaces } from "../rooms/RoomFaces";
-import type { Conversation } from "../connect/conversations";
+import { isGroupRow, type Conversation } from "../connect/conversations";
 import type { PlaceId } from "../places-nav/routes";
 import { ConversationRow, type RowExtras, type RowState } from "./ConversationRow";
 import { Icon } from "./icons";
@@ -121,7 +121,7 @@ function Row({ p, row, kids, depth = 0, child = false }: { p: SidebarProps; row:
         selected={p.selected?.has(row.key)}
         pinDraggable={p.rail && row.pinned}
         pinFixed={row.key === p.home?.key}
-        fallbackLine={row.key === p.home?.key ? "Chief of Staff" : row.kind === "group" || row.kind === "chatGroup" ? "Group" : row.kind === "outside" ? "Grafted" : row.kind === "trunk" ? "Trunk" : undefined}
+        fallbackLine={row.key === p.home?.key ? "Chief of Staff" : isGroupRow(row) ? "Group" : row.kind === "outside" ? "Grafted" : row.kind === "trunk" ? "Trunk" : undefined}
         onOpen={(e) => {
           if ((e.altKey || e.shiftKey) && p.onSelect?.(row, e)) return;
           p.onOpen(row.key);
@@ -153,14 +153,14 @@ function PinnedTile({ p, row }: { p: SidebarProps; row: Conversation }) {
   useEffect(() => { seenPinned.add(row.key); }, [row.key]);
   const state = p.rowState(row);
   const current = row.key === p.openKey && p.currentPlace === null;
-  const role = row.kind === "group" || row.kind === "chatGroup" ? "Group" : row.kind === "outside" ? "Grafted" : row.key === p.home?.key ? "Chief of Staff" : "Trunk";
+  const role = isGroupRow(row) ? "Group" : row.kind === "outside" ? "Grafted" : row.key === p.home?.key ? "Chief of Staff" : "Trunk";
   return <div className={fresh ? "pin-tile pin-new" : "pin-tile"} role="listitem" data-pin-key={row.key} data-drag-key={row.key} data-pin-fixed={row.key === p.home?.key ? "true" : undefined}>
     <button type="button" className="pin-open" aria-current={current ? "true" : undefined} aria-selected={p.selected?.has(row.key) || undefined}
       aria-label={`${row.title}, ${role}${row.unread ? ", unread" : ""}${state.working ? ", working" : ""}`}
       title={row.title} onClick={(e) => { if ((e.altKey || e.shiftKey) && p.onSelect?.(row, e)) return; p.onOpen(row.key); }}
       onContextMenu={(e) => { e.preventDefault(); p.onMenu(row, e); }}
       onKeyDown={(e) => { if (e.key === "F10" && e.shiftKey) { e.preventDefault(); p.onMenu(row, e as unknown as MouseEvent<HTMLElement>); } }}>
-      <span className="pin-face">{row.roomPicks ? <RoomFaces picks={row.roomPicks} size={60} /> : <Pebble size={60} label={row.kind === "group" || row.kind === "chatGroup" || row.kind === "outside" ? row.title : p.trunkName(row.agentId)} state={state.waiting ? "wait" : state.working ? "work" : "idle"} priority={state.working || state.waiting ? 200 : 100} />}
+      <span className="pin-face">{row.roomPicks ? <RoomFaces picks={row.roomPicks} size={60} /> : <Pebble size={60} label={isGroupRow(row) || row.kind === "outside" ? row.title : p.trunkName(row.agentId)} state={state.waiting ? "wait" : state.working ? "work" : "idle"} priority={state.working || state.waiting ? 200 : 100} />}
         {row.unread && !current ? <i className="pin-unread" aria-label="Unread" /> : null}
         {state.waiting ? <i className="needs-you" aria-label="Waiting for you" /> : null}
       </span>

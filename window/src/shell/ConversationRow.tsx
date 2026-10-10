@@ -1,5 +1,5 @@
 import type { MouseEvent, ReactNode } from "react";
-import type { Conversation, RunMark } from "../connect/conversations";
+import { isGroupRow, type Conversation, type RunMark } from "../connect/conversations";
 import { Pebble } from "../face/Pebble";
 import { RoomFaces } from "../rooms/RoomFaces";
 import { Icon, type IconName } from "./icons";
@@ -169,7 +169,7 @@ export function ConversationRow(p: Props) {
           onKeyDown={(e) => { if (e.key === "F10" && e.shiftKey) { e.preventDefault(); p.onMenu(e as unknown as MouseEvent<HTMLElement>); } }}
           onFocus={(e) => e.currentTarget.matches(":focus-visible") && card(e.currentTarget.parentElement)} onBlur={() => card(null)}>
           <span className={state.working ? "row-av working-ring" : "row-av"} data-working={state.working ? "true" : undefined}>
-            {row.roomPicks ? <RoomFaces picks={row.roomPicks} size={twoLine ? 40 : 28} /> : <Pebble size={twoLine ? 40 : 28} label={row.kind === "group" || row.kind === "chatGroup" || row.kind === "outside" ? row.title : p.trunkName} state={state.waiting ? "wait" : state.working ? "work" : "idle"} priority={state.working || state.waiting ? 200 : 100} />}
+            {row.roomPicks ? <RoomFaces picks={row.roomPicks} size={twoLine ? 40 : 28} /> : <Pebble size={twoLine ? 40 : 28} label={isGroupRow(row) || row.kind === "outside" ? row.title : p.trunkName} state={state.waiting ? "wait" : state.working ? "work" : "idle"} priority={state.working || state.waiting ? 200 : 100} />}
             {row.unread && !current ? <i className="rail-unread" aria-label="Unread" /> : null}
             {state.waiting ? <i className="needs-you" aria-label="Waiting for you" /> : null}
             {p.selected ? <span className="sel-tick" aria-hidden="true"><Icon name="tick" size={11} /></span> : null}
