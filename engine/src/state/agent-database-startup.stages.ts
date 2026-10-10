@@ -14,35 +14,44 @@ export class StageTimeoutError extends Error {
   }
 }
 
+export type StageOptions<T> = {
+  signal: AbortSignal;
+  /** Runs when the stage expires, before its rejection reaches the caller: an attempt aborts itself here. */
+  onExpire?: (error: StageTimeoutError) => void;
+  /** Receives a value that arrives after the limit, so a permit granted late is handed straight back. */
+  release?: (value: T) => void;
+};
+
 /**
- * Bounds one startup stage. A stage whose work ignores its abort still ends at its limit, and a value
- * that arrives after the limit goes to `release`, so a permit granted late is not leaked.
+ * Bounds one startup stage. A stage whose work ignores its abort still ends at its limit; the caller
+ * decides what its expiry does (an attempt aborts itself, so its open sees the abort too).
  */
 export function boundStage<T>(
   stage: string,
   work: Promise<T>,
   limitMs: number,
-  signal: AbortSignal,
-  release?: (value: T) => void,
+  options: StageOptions<T>,
 ): Promise<T> {
   let expired = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const limit = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       expired = true;
-      reject(new StageTimeoutError(stage, limitMs));
+      const error = new StageTimeoutError(stage, limitMs);
+      reject(error);
+      options.onExpire?.(error);
     }, limitMs);
     timer.unref?.();
   });
   work.then(
     (value) => {
       if (expired) {
-        release?.(value);
+        options.release?.(value);
       }
     },
     () => {},
   );
-  return racePromiseWithAbortSignal(Promise.race([work, limit]), signal).finally(() => {
+  return racePromiseWithAbortSignal(Promise.race([work, limit]), options.signal).finally(() => {
     clearTimeout(timer);
   });
 }
@@ -74,7 +83,9 @@ export async function waitForStage<T>(params: {
 }): Promise<T> {
   for (;;) {
     try {
-      return await boundStage(params.stage, params.work, params.limitMs, params.signal);
+      return await boundStage(params.stage, params.work, params.limitMs, {
+        signal: params.signal,
+      });
     } catch (error) {
       if (!(error instanceof StageTimeoutError) || params.signal.aborted) {
         throw error;
