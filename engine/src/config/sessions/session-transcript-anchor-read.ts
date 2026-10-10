@@ -12,6 +12,11 @@ import { runBranchAgentWriteAdmission } from "../../state/branch-agent-write-adm
 import { captureBranchStateReadWorkerContext } from "../../state/branch-state-worker-context.js";
 import type { SessionTranscriptReadScope } from "./session-accessor.sqlite-contract.js";
 import {
+  validateSessionTranscriptContextAdmission,
+  validateSessionTranscriptContextAnchor,
+  validateSessionTranscriptContextVersion,
+} from "./session-accessor.sqlite-model-context.js";
+import {
   prepareSqliteTranscriptReadScope,
   resolveSqliteTranscriptScope,
   toDatabaseOptions,
@@ -31,6 +36,41 @@ import { withSessionHistoryWorkerDatabase } from "./session-transcript-worker-ru
 import { captureSessionTranscriptStorageEnvironment } from "./transcript-target-binding.js";
 
 type AnchorScope = SessionTranscriptReadScope & { sessionKey: string };
+
+/** Attempts before an inconclusive witness is reported as a fence failure (backoff ~0.5 s total). */
+const READ_WITNESS_ATTEMPTS = 8;
+
+type WitnessedAnchorRead = { facts: SessionTranscriptAnchorFacts; witnessed: boolean };
+
+async function waitBeforeWitnessRetry(attempt: number, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
+  await new Promise((resolve) => {
+    setTimeout(resolve, 2 ** attempt);
+  });
+  signal?.throwIfAborted();
+}
+
+/**
+ * Re-checks only this session's fence, with the same rules as the in-transaction validation.
+ * Throws on a real change; returns false when the read carries no fence to check.
+ */
+function assertSessionStillDescribed(
+  scope: SessionTranscriptReadScope & { sessionKey: string },
+  validation: SessionTranscriptAnchorSelection["contextValidation"],
+): boolean {
+  if (!validation) {
+    return false;
+  }
+  if (validation.admission) {
+    validateSessionTranscriptContextAdmission(scope, validation.admission);
+  } else if (!validation.through) {
+    validateSessionTranscriptContextVersion(scope, validation.version);
+  }
+  if (validation.through) {
+    validateSessionTranscriptContextAnchor(scope, validation.through);
+  }
+  return true;
+}
 
 /** Capture the physical source before discovery or history admission can yield. */
 export async function readSessionTranscriptAnchorsAsync(
@@ -103,10 +143,12 @@ export async function readSessionTranscriptAnchorsAsync(
     return withSessionHistoryWorkerDatabase(
       { ...options, requestedPath: storePath },
       async (owner) => {
-        const read = async () => {
+        // The witness below is per database handle, so another session's write can make it
+        // inconclusive. Retry the read (the version check inside the transaction still runs).
+        const read = async (): Promise<WitnessedAnchorRead> => {
           const native = onRead ? getBranchAgentDatabaseIfOpen(options) : undefined;
           if (native?.db.isTransaction) {
-            return { anchors: [] };
+            return { facts: { anchors: [] }, witnessed: false };
           }
           const revision = native && readSqliteNativeMutationRevision(native.db);
           const facts = await owner.readAnchors(
@@ -119,35 +161,52 @@ export async function readSessionTranscriptAnchorsAsync(
           );
           assertCurrent();
           owner.assertCurrent();
-          // Legacy synchronous writers cannot await the FIFO. Its existing native
-          // mutation witness also catches unpublished writes through that handle.
-          if (
-            onRead &&
+          // Legacy synchronous writers cannot await the FIFO. The handle's mutation revision
+          // is a fast path. It is shared by every session, so when it moved, re-check only
+          // this session's own fence (throws on a real change) before accepting the read.
+          const handleStable =
             getBranchAgentDatabaseIfOpen(options) === native &&
             (!native ||
               (!native.db.isTransaction &&
                 revision !== undefined &&
-                readSqliteNativeMutationRevision(native.db) === revision))
-          ) {
-            onRead(facts);
+                readSqliteNativeMutationRevision(native.db) === revision));
+          const witnessed =
+            !onRead ||
+            (handleStable ||
+              (getBranchAgentDatabaseIfOpen(options) === native &&
+                !native?.db.isTransaction &&
+                assertSessionStillDescribed(captured, request.contextValidation)));
+          if (witnessed) {
+            onRead?.(facts);
           }
-          return facts;
+          return { facts, witnessed };
         };
-        try {
-          return onRead
-            ? await runBranchAgentWriteAdmission(
+        const readOnce = (): Promise<WitnessedAnchorRead> =>
+          onRead
+            ? runBranchAgentWriteAdmission(
                 options,
                 async (_identity, assertSource) => {
                   assertCurrent();
-                  const facts = await read();
+                  const result = await read();
                   assertSource();
-                  return facts;
+                  return result;
                 },
                 true,
                 undefined,
                 signal,
               )
-            : await read();
+            : read();
+        try {
+          let outcome = await readOnce();
+          for (
+            let attempt = 1;
+            !outcome.witnessed && attempt < READ_WITNESS_ATTEMPTS;
+            attempt += 1
+          ) {
+            await waitBeforeWitnessRetry(attempt, signal);
+            outcome = await readOnce();
+          }
+          return outcome.facts;
         } finally {
           assertCurrent();
           owner.assertCurrent();
