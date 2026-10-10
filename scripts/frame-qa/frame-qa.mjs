@@ -15,6 +15,7 @@ import { layoutShiftFindings, scrollResetFindings } from './analyze.mjs';
 import { analyzeWindow, saveFrame, startScreencast, waitQuiet } from './capture.mjs';
 import { clickPoint, describeActive, installProbes, scanClipped, scanContrast, tagScrollables } from './probes.mjs';
 import { traverse, VisitedGraph } from './traverse.mjs';
+import { TRACE_OPTIONS, contextOptions } from './browser-options.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../..');
@@ -120,9 +121,9 @@ class HarnessAdapter {
     this.warnings = [];
     this.failed = [];
     const safe = rootEntry.id.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '');
-    this.context = await this.browser.newContext({ viewport: { width: 1440, height: 900 }, recordVideo: { dir: join(this.out, 'videos', safe), size: { width: 960, height: 600 } } });
+    this.context = await this.browser.newContext(contextOptions({ out: this.out, safe }));
     // Snapshots without screenshots keep traces small; frames are captured separately by screencast.
-    await this.context.tracing.start({ screenshots: false, snapshots: true });
+    await this.context.tracing.start(TRACE_OPTIONS);
     await this.context.addInitScript(`(${installProbes.toString()})();`);
     this.page = await this.context.newPage();
     this.attach(this.page);

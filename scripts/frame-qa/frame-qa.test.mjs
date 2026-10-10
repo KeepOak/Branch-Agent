@@ -7,6 +7,7 @@ import { blankFrames, findFlickers, firstChangeMs, frameIntervalMedian, idleChur
 import { auditContrast, contrastRatio, parseColor, requiredRatio } from './contrast.mjs';
 import { auditLines, lineFor, uniqueFindings } from './audit-lines.mjs';
 import { VisitedGraph, controlId, orderControls, traverse } from './traverse.mjs';
+import { TRACE_OPTIONS, VIDEO_SIZE, contextOptions } from './browser-options.mjs';
 
 const frames = (pairs) => pairs.map(([t, hash, bytes = 40000]) => ({ t, hash, bytes }));
 
@@ -193,4 +194,43 @@ test('a crashed page is recorded and recovered, and the walk continues with the 
   assert.deepEqual(go.problems, ['browser-crash']);
   assert.equal(recovered, 1);
   assert.ok([...graph.nodes.values()].some((n) => n.label === 'Menu' && n.status === 'pass'), 'controls after the crash are still walked');
+});
+
+test('page-level findings with the same text collapse to one line across roots and overlays', () => {
+  const a = { kind: 'contrast', root: 'place:a', control: '(screen)', repro: ['open place:a'], detail: '"Nothing" 3.4:1, needs 4.5:1', evidence: [] };
+  const b = { ...a, root: 'place:b', control: '(overlay of X)', repro: ['open place:b'] };
+  assert.equal(uniqueFindings([a, b]).length, 1);
+});
+
+test('node findings with different controls stay separate', () => {
+  const a = { kind: 'dead-end', root: 'place:a', control: 'X', repro: ['click X'], detail: {}, evidence: [] };
+  const b = { ...a, control: 'Y', repro: ['click Y'] };
+  assert.equal(uniqueFindings([a, b]).length, 2);
+});
+
+test('if recovery itself throws, the crash is recorded a second time and the walk continues', async () => {
+  const adapter = fakeAdapter();
+  const original = adapter.act;
+  adapter.act = async (control) => {
+    if (control.name === 'Go') throw new Error('Target crashed');
+    return original(control);
+  };
+  adapter.recover = async () => { throw new Error('reopen failed'); };
+  const graph = new VisitedGraph();
+  await traverse({ roots: [{ id: 'home', route: { kind: 'place', place: 'home' } }], adapter, graph, maxDepth: 3, now: () => 0 });
+  const go = [...graph.nodes.values()].find((n) => n.label === 'Go');
+  assert.deepEqual(go.problems, ['browser-crash', 'recover-failed']);
+  assert.ok([...graph.nodes.values()].some((n) => n.label === 'Menu' && n.status === 'pass'), 'controls after a failed reopen are still walked');
+});
+
+test('traces keep snapshots but drop screenshots', () => {
+  assert.equal(TRACE_OPTIONS.screenshots, false);
+  assert.equal(TRACE_OPTIONS.snapshots, true);
+});
+
+test('video is capped at 960x600 for every root context', () => {
+  assert.ok(VIDEO_SIZE.width <= 960 && VIDEO_SIZE.height <= 600);
+  const options = contextOptions({ out: '/tmp/out', safe: 'place-overview' });
+  assert.deepEqual(options.recordVideo.size, VIDEO_SIZE);
+  assert.match(options.recordVideo.dir, /videos[\\/]place-overview$/);
 });

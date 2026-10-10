@@ -87,10 +87,18 @@ export async function traverse({ roots, adapter, graph = new VisitedGraph(), max
   const expired = () => now() > deadlineMs;
   const rec = (node) => { graph.add(node); onNode(node); return node; };
 
-  /** A crashed page is recovered by reopening the root; the walk then continues with the next control. */
+  /**
+   * A crashed page is recovered by reopening the root. Returns false when the reopen itself throws,
+   * so the walk records a second crash and goes on with the next control.
+   */
   async function recoverFrom(node, error) {
-    if (!adapter.recover) throw error;
-    await adapter.recover(node.root, String(error && error.message ? error.message : error));
+    if (!adapter.recover) return false;
+    try {
+      await adapter.recover(node.root, String(error && error.message ? error.message : error));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async function restoreBase(node) {
@@ -112,8 +120,8 @@ export async function traverse({ roots, adapter, graph = new VisitedGraph(), max
     try {
       obs = await adapter.act(control);
     } catch (error) {
-      await recoverFrom(node, error);
-      return Object.assign(entry, { status: 'flag', problems: ['browser-crash'] });
+      const recovered = await recoverFrom(node, error);
+      return Object.assign(entry, { status: 'flag', problems: recovered ? ['browser-crash'] : ['browser-crash', 'recover-failed'] });
     }
     Object.assign(entry, { observation: obs, problems: obs.problems, status: obs.dead ? 'dead-end' : obs.problems.length ? 'flag' : 'pass' });
     if (obs.navigated) graph.link(id, `route:${obs.route}`, 'navigate');
