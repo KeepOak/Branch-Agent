@@ -3,6 +3,7 @@ import { normalizeOptionalString } from "@branch/normalization-core/string-coerc
 import { normalizeUniqueStringEntries } from "@branch/normalization-core/string-normalization";
 import { z } from "zod";
 import { getBlockedNetworkModeReason } from "../agents/sandbox/network-mode.js";
+import { ALWAYS_ON_TOOL_IDS, listToolsetIds } from "../agents/tool-toolsets.js";
 import { parseDurationMs } from "../cli/parse-duration.js";
 import {
   resolveExactExecModeFromPolicy,
@@ -671,6 +672,28 @@ const AgentToolsSchema = z
   })
   .optional();
 
+/** Per-Trunk on/off switches for named toolsets; absent means every toolset is on. */
+export const AgentToolsetsSchema = z
+  .record(z.string(), z.boolean())
+  .superRefine((value, ctx) => {
+    for (const name of Object.keys(value)) {
+      if (ALWAYS_ON_TOOL_IDS.includes(name)) {
+        ctx.addIssue({
+          code: "custom",
+          path: [name],
+          message: `"${name}" is always on and cannot be switched off.`,
+        });
+      } else if (!listToolsetIds().includes(name)) {
+        ctx.addIssue({
+          code: "custom",
+          path: [name],
+          message: `Unknown toolset "${name}". Known toolsets: ${listToolsetIds().join(", ")}.`,
+        });
+      }
+    }
+  })
+  .optional();
+
 export const AgentEntrySchema = AgentEntryBaseSchema.extend({
   memory: z
     .strictObject({
@@ -687,6 +710,7 @@ export const AgentEntrySchema = AgentEntryBaseSchema.extend({
   groupChat: GroupChatSchema.unwrap().omit({ visibleReplies: true }).optional(),
   sandbox: AgentSandboxSchema,
   tools: AgentToolsSchema,
+  toolsets: AgentToolsetsSchema,
 }).strict();
 
 export const ToolsSchema = z

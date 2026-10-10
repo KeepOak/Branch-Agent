@@ -62,7 +62,9 @@ describe("What's shown", () => {
     const heading = document.body.appendChild(document.createElement("button"));
     heading.dataset.hide = "projects";
     expect(hideTarget(heading)).toBe("projects");
-    heading.dataset.hide = "pet"; // nothing the window draws hides that way
+    heading.dataset.hide = "unknown"; // a part the window does not know cannot be hidden
+    expect(hideTarget(heading)).toBeNull();
+    heading.dataset.hide = "pet"; // the pet is not a What's shown part any more: the card is the pet
     expect(hideTarget(heading)).toBeNull();
     const ran: string[] = [];
     const items = hideMenuItems(() => ran.push("hide"), () => ran.push("choose"));

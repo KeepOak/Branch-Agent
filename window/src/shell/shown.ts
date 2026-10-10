@@ -40,12 +40,13 @@ export function hideMenuItems(hide: () => void, choose: () => void): MenuItem[] 
   ];
 }
 
-/** The pet as Appearance sets it (look keys pet and petName). */
-export function usePetLook(engine: WindowEngine): { id: string; name: string } {
+/** The pet as Appearance sets it (look keys pet, petName, roam). */
+export function usePetLook(engine: WindowEngine): { id: string; name: string; roam: boolean } {
   const store = lookStore(engine);
   const look = useSyncExternalStore((fn) => store.subscribe(fn), () => store.snap.look, () => store.snap.look);
   return {
     id: typeof look.pet === "string" ? look.pet : "px-squirrel",
     name: typeof look.petName === "string" && look.petName ? look.petName : "Hazel",
+    roam: look.roam === true,
   };
 }

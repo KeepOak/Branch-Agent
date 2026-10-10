@@ -10,7 +10,7 @@ type Props = { name: string; look: string; emoji: string; size: number; draft?: 
 /** `draft`: the face being chosen in the editor, so the shell's saved look must not show through. */
 export function TrunkFace({ name, look, emoji, size, draft, pebbleLook }: Props) {
   const appearance = look === "classic" ? undefined : trunkAppearance(`branch:${look}`, name, pebbleLook?.colour);
-  if (appearance) return <CharacterFace appearance={appearance} size={size} label={name} />;
+  if (appearance) return <span className="tk-character-fit" style={{ width: size, height: size }}><CharacterFace appearance={appearance} size={size} label={name} /></span>;
   if (emoji) {
     const style = { width: size, height: size, fontSize: Math.round(size * 0.56) } as CSSProperties;
     return <span className="tk-emoji-face" style={style} role="img" aria-label={name}><i>{emoji}</i></span>;
