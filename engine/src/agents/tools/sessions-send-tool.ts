@@ -260,19 +260,22 @@ export function createSessionsSendTool(opts?: SessionsSendToolOptions): AnyAgent
       }
       // A joined Branch's Trunk is a contact, not a session in this gateway's store. Its outbound graft
       // connection polls durable work and brings the result back to this requester.
-      if (/^a2a:branch-[a-z0-9-]+--[a-z0-9-]+$/.test(sessionKey)) {
-        if (restrictToSpawned)
+      // graftBranchIdentity also emits the bare "branch" id when its name has no slug.
+      if (/^a2a:branch(?:-[a-z0-9-]+)?--[a-z0-9-]+$/.test(sessionKey)) {
+        if (restrictToSpawned) {
           return sendFailure(
             "forbidden",
             "Sandboxed sessions_send cannot address a joined Branch.",
             sessionKey,
           );
-        if (mode && mode !== "followup")
+        }
+        if (mode && mode !== "followup") {
           return sendFailure(
             "error",
             "Joined Trunks accept new work only; use mode=followup or omit mode.",
             sessionKey,
           );
+        }
         try {
           const accepted = await gatewayCall<{ id: string }>({
             method: "graft.work.send",
