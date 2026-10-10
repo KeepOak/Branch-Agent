@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GraftLink } from "./graft-join.js";
 import {
+  FALLBACK_ADDRESSES_VERIFIED,
   GraftLinkRunner,
   GraftLinkSupervisor,
   isHostRefusal,
@@ -109,6 +110,70 @@ describe("the joined Branch's link to its host", () => {
     expect(runner.state).toBe("connected");
     expect(fake.get().calls).toHaveLength(2);
     expect(forget).not.toHaveBeenCalled();
+    runner.stop();
+  });
+
+  it("says why a link that never connects can't reach its host, and not on every retry", async () => {
+    const fake = fakeClient();
+    const lines: string[] = [];
+    const runner = new GraftLinkRunner({
+      link,
+      trunks: async () => [],
+      createClient: fake.create,
+      forget: vi.fn(),
+      log: (line) => lines.push(line),
+    });
+    runner.start();
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      fake.get().handlers.onConnectError?.(new Error("connect ETIMEDOUT 10.0.0.5:19031"));
+    }
+    expect(runner.state).toBe("connecting");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("can't reach ws://127.0.0.1:41010");
+    expect(lines[0]).toContain("connect ETIMEDOUT");
+    expect(lines[0]).toContain("rejoin");
+    runner.stop();
+  });
+  it("never sends the device link to a saved fallback address while fallback addresses are unverified", async () => {
+    const created: string[] = [];
+    const fake = fakeClient();
+    const runner = new GraftLinkRunner({
+      link: { url: "ws://10.0.0.5:41010", urls: ["ws://100.64.0.7:41010", "ws://10.0.0.5:41010"], name: "Branch B", joinedAt: 1 },
+      trunks: async () => [],
+      createClient: (handlers, url) => {
+        created.push(url);
+        return fake.create(handlers);
+      },
+      forget: vi.fn(),
+      log: () => undefined,
+    });
+    runner.start();
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      fake.get().handlers.onConnectError?.(new Error("connect ETIMEDOUT 10.0.0.5:41010"));
+    }
+    fake.get().handlers.onConnectError?.(new Error("connect ECONNREFUSED 100.64.0.7:41010"));
+    expect(FALLBACK_ADDRESSES_VERIFIED).toBe(false);
+    expect(created).toEqual(["ws://10.0.0.5:41010"]);
+    expect(runner.state).toBe("connecting");
+    runner.stop();
+  });
+
+  it("never switches addresses for a link that has only one", async () => {
+    const created: string[] = [];
+    const fake = fakeClient();
+    const runner = new GraftLinkRunner({
+      link,
+      trunks: async () => [],
+      createClient: (handlers, url) => {
+        created.push(url);
+        return fake.create(handlers);
+      },
+      forget: vi.fn(),
+      log: () => undefined,
+    });
+    runner.start();
+    fake.get().handlers.onConnectError?.(new Error("connect ECONNREFUSED"));
+    expect(created).toEqual(["ws://127.0.0.1:41010"]);
     runner.stop();
   });
 

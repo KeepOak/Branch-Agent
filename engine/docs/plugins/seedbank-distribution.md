@@ -32,6 +32,17 @@ copyright notices remain intact; a missing package-local MIT license is copied
 from the engine license. Original manifests, README files, and license files are
 restored even if packing fails.
 
+## Skills
+
+Skills use the same catalog, digest binding and release backup. The catalog unit
+is a pack with a `branch.pack.json` manifest (kind, tier, id and a permissions
+block). A skill is a folder with `SKILL.md`, `package.json` and `branch.pack.json`,
+packed with the `skill:` token of `seedbank-prepare.mjs`. Catalog entries record
+`kind`, `tier`, `permissions` and `skillName`. A skill declares no permissions.
+Installing a skill stages its verified files and hands them to
+`branch skills install <folder> --as <slug>`, so the ordinary skill install
+policy still runs. Authoring steps are in [publishing.md](publishing.md).
+
 ## Install
 
 Normal npm installation after publication:

@@ -107,6 +107,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "agents.entries.*.contextLimits": "Agent Context Limits",
   "agents.entries.*.contextLimits.memoryGetMaxChars": "Agent memory_get Max Chars",
   "agents.entries.*.contextLimits.postCompactionMaxChars": "Agent Post-compaction Max Chars",
+  "agents.entries.*.toolsets": "Agent Toolsets",
   cloudWorkers: "Cloud Workers",
   ...CLOUD_WORKER_FIELD_LABELS,
   ...STORAGE_FIELD_LABELS,

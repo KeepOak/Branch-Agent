@@ -25,7 +25,12 @@ if (!catalog.packages?.length) {
 }
 const packages = catalog.packages.map((entry) => {
   resolveSeedbankEntry(catalog, entry.seedbankSpec);
-  return { filename: entry.filename, bytes: readFileSync(join(root, entry.filename)) };
+  // The scan record cannot be re-derived from the tarball, so the stored record is carried forward as-is.
+  return {
+    filename: entry.filename,
+    bytes: readFileSync(join(root, entry.filename)),
+    scan: entry.scan ?? undefined,
+  };
 });
 const regenerated = createSeedbankCatalog({
   sourceSha: catalog.sourceSha,

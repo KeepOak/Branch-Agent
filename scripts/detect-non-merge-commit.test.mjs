@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
+  GH_RATE_LIMIT_BUDGET_SECONDS,
   ISSUE_INTRO,
+  runGh,
   TRACKING_ISSUE_TITLE,
   associatedPulls,
   buildIssueBody,
@@ -128,4 +130,60 @@ test('does not restore a write-permission pull_request_target auto-merge workflo
   assert.equal(existsSync(new URL('../.github/workflows/disable-auto-merge.yml', import.meta.url)), false);
   assert.doesNotMatch(trackWorkflow, /pull_request_target/);
   assert.doesNotMatch(trackWorkflow, /auto_merge_enabled/);
+});
+
+test('runGh gives gh a buffer large enough for a landing commit with every patch', () => {
+  const seen = [];
+  const out = runGh(['api', 'repos/example/repo/commits/abc'], { GH_TOKEN: 'unused' }, {
+    exec: (_bin, _args, options) => {
+      seen.push(options.maxBuffer);
+      return '{"sha":"abc"}';
+    },
+  });
+  assert.equal(out, '{"sha":"abc"}');
+  assert.equal(seen.length, 1);
+  assert.ok(seen[0] >= 64 * 1024 * 1024, `maxBuffer ${seen[0]} is below 64 MiB`);
+});
+
+test('runGh waits out a rate limit and retries instead of failing the workflow', () => {
+  let calls = 0;
+  const waits = [];
+  const out = runGh(['issue', 'list'], {}, {
+    exec: () => {
+      calls += 1;
+      if (calls === 1) {
+        throw Object.assign(new Error('gh: API rate limit exceeded for installation (HTTP 403)'), {
+          stderr: 'gh: API rate limit exceeded for installation (HTTP 403)',
+        });
+      }
+      return '[]';
+    },
+    sleep: (seconds) => waits.push(seconds),
+  });
+  assert.equal(out, '[]');
+  assert.equal(calls, 2);
+  assert.equal(waits.length, 1);
+});
+
+test('rate-limit waits share one job deadline across every gh call', () => {
+  let clock = 1_000_000;
+  const now = () => clock;
+  const waits = [];
+  const sleep = (seconds) => {
+    waits.push(seconds);
+    clock += seconds * 1000;
+  };
+  const budget = { startedAt: null };
+  const limited = () => {
+    throw Object.assign(new Error('gh: API rate limit exceeded for installation (HTTP 403)'), {
+      stderr: 'gh: API rate limit exceeded for installation (HTTP 403)',
+    });
+  };
+  const options = { exec: limited, sleep, now, budget };
+  assert.throws(() => runGh(['api', 'repos/example/repo/commits/abc'], {}, options), /rate limit/);
+  const afterFirst = waits.reduce((total, seconds) => total + seconds, 0);
+  assert.throws(() => runGh(['issue', 'list'], {}, options), /rate limit/);
+  const total = waits.reduce((sum, seconds) => sum + seconds, 0);
+  assert.ok(total <= GH_RATE_LIMIT_BUDGET_SECONDS, `waited ${total}s, over the ${GH_RATE_LIMIT_BUDGET_SECONDS}s job budget`);
+  assert.equal(total, afterFirst, 'the second call had no budget left to wait with');
 });
