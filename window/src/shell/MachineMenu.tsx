@@ -24,10 +24,14 @@ export function MachineSwitcher({ name = "This computer", online, connecting, on
 
 type Ctx = { machineName: string; currentUrl: string; homeUrl: string; online: boolean; level: Level; roundTripMs: number | null; openSettings: (page: string) => void; onLinkBranch: () => void; onSwitch: (url: string) => void };
 
+/** A round trip above this reads as "Slow" in the computer menu. */
+const SLOW_MS = 1500;
+
 /** The computer menu shows only the selected, gateway-backed computer and navigation actions. */
 export function machineMenuItems(c: Ctx): MenuItem[] {
   const status = c.online ? "Online · here" : "Offline";
-  const trip = c.level === "technical" && c.online && c.roundTripMs !== null ? ` · ${c.roundTripMs} ms` : "";
+  // A raw round trip means nothing to a person; say "Slow" only when the link actually is.
+  const trip = c.online && c.roundTripMs !== null && c.roundTripMs > SLOW_MS ? " · Slow" : "";
   const saved = readSavedTargets().filter(row => row.url !== c.homeUrl && row.url !== c.currentUrl);
   return [
     { kind: "head", label: "Talk to the assistant on…" },
@@ -37,9 +41,16 @@ export function machineMenuItems(c: Ctx): MenuItem[] {
     ...(c.currentUrl !== c.homeUrl ? [{ kind: "info" as const, label: c.machineName || "Another computer", sub: `${status}${trip}`, checked: true }] : []),
     ...saved.map(row => ({ label: row.name, sub: "Saved computer", run: () => c.onSwitch(row.url), testid: "machine-saved" })),
     { kind: "sep" },
-    { label: "Add a computer or phone…", run: () => c.openSettings("computer"), testid: "machine-add" },
-    { label: "Link another Branch…", run: c.onLinkBranch, testid: "machine-link-branch" },
-    { label: "Connect to a Branch elsewhere…", run: () => window.dispatchEvent(new CustomEvent("branch:connect-elsewhere")), testid: "machine-elsewhere" },
+    {
+      kind: "sub",
+      label: "Add a computer or phone",
+      testid: "machine-add",
+      items: [
+        { label: "Pair a computer or phone…", run: () => window.dispatchEvent(new CustomEvent("branch:add-computer")), testid: "machine-add-pair" },
+        { label: "Link another Branch…", run: c.onLinkBranch, testid: "machine-link-branch" },
+        { label: "Connect to a Branch elsewhere…", run: () => window.dispatchEvent(new CustomEvent("branch:connect-elsewhere")), testid: "machine-elsewhere" },
+      ],
+    },
     { label: "Computer settings…", run: () => c.openSettings("gateway"), testid: "machine-settings" },
   ];
 }
