@@ -43,16 +43,24 @@ export type GardenerIssueDraft = { repo: string; fingerprint: string; title: str
 export type GardenerPlannedJob = GardenerJobDraft & { fingerprint: string };
 export type GardenerSuppression = { fingerprint: string; reason: "cooldown" | "recent-job" };
 
+/** The local record of created issues: fingerprint to issue number. A persisted store supplies the durable version. */
+export type IssueRecords = {
+  get(fingerprint: string): number | undefined;
+  set(fingerprint: string, issueNumber: number): void;
+};
+
 export type GardenerPassParams = {
   cfg: BranchConfig | undefined;
   inputs: GardenerInputs;
   /** The only GitHub write. Called once per planned issue, and only when the pass is enabled with a repo. */
-  writeIssue: (draft: GardenerIssueDraft) => Promise<void>;
+  writeIssue: (draft: GardenerIssueDraft) => Promise<number | void>;
   /**
    * Whether an issue for this fingerprint already exists. When it does, the pass does not create another one, so a
    * retry after a failed job write leaves exactly one issue. Omitted means the pass cannot tell, and writes.
    */
   findIssue?: (fingerprint: string) => Promise<boolean>;
+  /** Local record of issues already created, by fingerprint. Checked before any search. Defaults to memory. */
+  issueRecords?: IssueRecords;
   /** Queue write. Defaults to addQueueItem on the pass's env and clock. */
   enqueue?: (item: { title: string; brief_text: string; priority: number }) => void;
   /** Where a failed write is reported. Defaults to the gardener logger at warn level. */
@@ -100,9 +108,17 @@ export function resolveGardenerConfig(cfg: BranchConfig | undefined): GardenerCo
 /** In-memory state: the last enabled run and the per-fingerprint cooldown. Cleared only by the test reset. */
 const cooldownUntil = new Map<string, number>();
 let lastRunAt: number | undefined;
+const createdIssues = new Map<string, number>();
+const memoryIssueRecords: IssueRecords = {
+  get: (fingerprint) => createdIssues.get(fingerprint),
+  set: (fingerprint, issueNumber) => {
+    createdIssues.set(fingerprint, issueNumber);
+  },
+};
 
 export function resetGardenerStateForTests(): void {
   cooldownUntil.clear();
+  createdIssues.clear();
   lastRunAt = undefined;
 }
 
@@ -189,6 +205,7 @@ function plannedJobFor(signal: GardenerSignal): GardenerPlannedJob {
 type CommitSink = {
   writeIssue: GardenerPassParams["writeIssue"];
   findIssue?: GardenerPassParams["findIssue"];
+  issues: IssueRecords;
   enqueue: (item: { title: string; brief_text: string; priority: number }) => void;
   report: (message: string) => void;
   now: number;
@@ -199,11 +216,21 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Writes the issue only when none exists yet for this fingerprint. */
+/**
+ * One issue per source. A local record of an issue already created wins outright. The GitHub search is only the
+ * fallback when there is no record, because search lags right after a create.
+ */
 async function ensureIssue(repo: string, signal: GardenerSignal, sink: CommitSink): Promise<void> {
+  if (sink.issues.get(signal.fingerprint) !== undefined) {
+    return;
+  }
   const exists = sink.findIssue ? await sink.findIssue(signal.fingerprint) : false;
-  if (!exists) {
-    await sink.writeIssue(issueDraftFor(repo, signal));
+  if (exists) {
+    return;
+  }
+  const created = await sink.writeIssue(issueDraftFor(repo, signal));
+  if (typeof created === "number") {
+    sink.issues.set(signal.fingerprint, created);
   }
 }
 
@@ -265,6 +292,7 @@ export async function runGardenerPass(params: GardenerPassParams): Promise<Garde
   await commitPlan(planned, repo, {
     writeIssue: params.writeIssue,
     findIssue: params.findIssue,
+    issues: params.issueRecords ?? memoryIssueRecords,
     enqueue,
     report: params.onError ?? ((message) => logger.warn(message)),
     now,
