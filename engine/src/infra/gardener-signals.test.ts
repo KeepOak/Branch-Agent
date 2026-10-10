@@ -228,3 +228,25 @@ describe("Gardener claims and quoted data", () => {
     expect(quoteData("a".repeat(500)).length).toBeLessThan(200);
   });
 });
+
+describe("quoteData strips format and bidi characters", () => {
+  it("removes bidi overrides, isolates, zero-width spaces and line separators", () => {
+    const hostile = "tests‮ evil⁦ injected line​ end";
+    expect(quoteData(hostile)).toBe('"tests evil injected line end"');
+  });
+
+  it("keeps a hostile bidi workflow name out of the job title", () => {
+    const runs = [
+      {
+        workflow_id: 3,
+        name: "build‮fdp.exe ",
+        head_branch: "main",
+        conclusion: "failure",
+        created_at: "2026-10-10T11:00:00Z",
+        html_url: "https://github.com/example-owner/example-repo/actions/runs/3",
+      },
+    ];
+    const [signal] = failingMainSignals(runs);
+    expect(signal?.job.title).toBe('Fix failing main workflow "build fdp.exe"');
+  });
+});
