@@ -65,6 +65,7 @@ function passParams(
     now,
     writeIssue: async (draft: GardenerIssueDraft) => {
       writes.push(draft);
+      return writes.length;
     },
   };
 }
@@ -149,13 +150,14 @@ describe("cooldown and rate limit", () => {
     expect(listQueueItems(env)).toHaveLength(1);
   });
 
-  it("a fingerprint is allowed again after the six-hour cooldown", async () => {
+  it("a fingerprint is planned again after the six-hour cooldown, without a second issue", async () => {
     const writes: GardenerIssueDraft[] = [];
     await runGardenerPass(passParams(enabledCfg, failingMain, writes));
     clock += 6 * 60 * MINUTE + 31 * MINUTE;
     const later = await runGardenerPass(passParams(enabledCfg, failingMain, writes));
     expect(later.jobs.map((job) => job.fingerprint)).toEqual(["ci-main:7"]);
-    expect(writes).toHaveLength(2);
+    // The issue for this source already exists, so the job returns without a second issue.
+    expect(writes).toHaveLength(1);
   });
 
   it("a second run inside the rate-limit interval is blocked", async () => {
@@ -268,6 +270,7 @@ describe("issue idempotency and failure reporting", () => {
       writeIssue: async (draft: GardenerIssueDraft) => {
         issueWrites.push(draft.fingerprint);
         issued.add(draft.fingerprint);
+        return 100 + issueWrites.length;
       },
       findIssue: async (fingerprint: string) => issued.has(fingerprint),
       enqueue,
@@ -290,7 +293,7 @@ describe("issue idempotency and failure reporting", () => {
       inputs: parityGap,
       env,
       now,
-      writeIssue: async () => {},
+      writeIssue: async () => 1,
       enqueue: () => {
         throw new Error("queue unavailable");
       },
@@ -343,9 +346,27 @@ describe("local issue record", () => {
       inputs: parityGap,
       writeIssue: async (draft: GardenerIssueDraft) => {
         issueWrites.push(draft.fingerprint);
+        return 1;
       },
       findIssue: async () => true,
     });
     expect(issueWrites).toHaveLength(0);
+  });
+});
+
+describe("issue number contract", () => {
+  it("a write that returns no issue number is a failed write, reported and retried", async () => {
+    const errors: string[] = [];
+    await runGardenerPass({
+      cfg: enabledCfg,
+      env,
+      now,
+      inputs: parityGap,
+      writeIssue: async () => undefined as unknown as number,
+      onError: (message: string) => errors.push(message),
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("parity:skills-ui");
+    expect(listQueueItems(env)).toHaveLength(0);
   });
 });

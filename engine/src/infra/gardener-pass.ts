@@ -53,7 +53,8 @@ export type GardenerPassParams = {
   cfg: BranchConfig | undefined;
   inputs: GardenerInputs;
   /** The only GitHub write. Called once per planned issue, and only when the pass is enabled with a repo. */
-  writeIssue: (draft: GardenerIssueDraft) => Promise<number | void>;
+  /** Resolves to the created issue's number. A missing number counts as a failed write. */
+  writeIssue: (draft: GardenerIssueDraft) => Promise<number>;
   /**
    * Whether an issue for this fingerprint already exists. When it does, the pass does not create another one, so a
    * retry after a failed job write leaves exactly one issue. Omitted means the pass cannot tell, and writes.
@@ -228,10 +229,11 @@ async function ensureIssue(repo: string, signal: GardenerSignal, sink: CommitSin
   if (exists) {
     return;
   }
-  const created = await sink.writeIssue(issueDraftFor(repo, signal));
-  if (typeof created === "number") {
-    sink.issues.set(signal.fingerprint, created);
+  const created = (await sink.writeIssue(issueDraftFor(repo, signal))) as number | undefined;
+  if (typeof created !== "number") {
+    throw new Error("GitHub returned no issue number for the created issue");
   }
+  sink.issues.set(signal.fingerprint, created);
 }
 
 /**
