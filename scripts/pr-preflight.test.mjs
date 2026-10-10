@@ -210,6 +210,43 @@ test('formatProblems prints one line per problem plus a count', () => {
   assert.equal(lines.at(-1), `preflight: ${problems.length} problem(s)`);
 });
 
+// Prior art: fix, perf and refactor PRs must name what they checked before changing code.
+const PRIOR_ART_OK = `${BODY}\nPrior art: upstream project sessions_send, the old steer path it replaces`;
+const priorArtProblemsOf = (overrides) => runPreflight(withInput(overrides)).filter((p) => p.check === 'prior-art');
+
+test('a fix, perf or refactor title needs a Prior art line in the body', () => {
+  for (const title of ['fix: stop the queue stall', 'fix(gateway): stop the queue stall', 'perf: cut lane waits', 'refactor(mcp): split the tool']) {
+    const problems = priorArtProblemsOf({ title, body: BODY });
+    assert.equal(problems.length, 1, title);
+    assert.match(problems[0].fix, /Prior art:/);
+  }
+});
+
+test('a Prior art line that names what was checked passes', () => {
+  assert.deepEqual(priorArtProblemsOf({ title: 'fix: stop the queue stall', body: PRIOR_ART_OK }), []);
+  assert.deepEqual(priorArtProblemsOf({ title: 'refactor: split the tool', body: `${BODY}\nPrior art: the old tool code it replaces and peer agents' steer paths` }), []);
+});
+
+test('none found passes only when it says what was checked', () => {
+  assert.deepEqual(priorArtProblemsOf({ title: 'fix: x', body: `${BODY}\nPrior art: none found: checked upstream project and hermes` }), []);
+  assert.equal(priorArtProblemsOf({ title: 'fix: x', body: `${BODY}\nPrior art: none found:` }).length, 1);
+});
+
+test('a Prior art line that names no source fails, and a heading alone does not satisfy the rule', () => {
+  assert.equal(priorArtProblemsOf({ title: 'fix: x', body: `${BODY}\nPrior art: looked around a bit` }).length, 1);
+  assert.equal(priorArtProblemsOf({ title: 'fix: x', body: `${BODY}\n## Prior art\nSee the notes.` }).length, 1);
+});
+
+test('feat and docs titles are exempt from the Prior art rule', () => {
+  assert.deepEqual(priorArtProblemsOf({ title: 'feat: add a view', body: BODY }), []);
+  assert.deepEqual(priorArtProblemsOf({ title: 'docs: fix the readme', body: BODY }), []);
+});
+
+test('the CI input carries the PR title, so the Prior art rule runs in CI too', () => {
+  const input = inputFromApi({ headBranch: BRANCH, headSha: SHA, files: [], commits: [], listText: null, title: 'fix: x' });
+  assert.equal(input.title, 'fix: x');
+});
+
 // CLI wiring: drive the real runCli against a temporary git repository.
 function fixtureRepo({ branchMessage, branchEmail, body }) {
   const dir = mkdtempSync(path.join(tmpdir(), 'preflight-cli-'));
@@ -250,6 +287,20 @@ test('the CLI reports a personal commit email from the real git log', () => {
   const result = runCli(['--body', bodyPath, '--base', 'HEAD~1'], dir);
   assert.equal(result.exitCode, 1);
   assert.match(result.text, /\[commit-email\]/);
+});
+
+test('the CLI fails a fix commit whose body has no Prior art line', () => {
+  const { dir, bodyPath } = fixtureRepo({ branchMessage: 'fix: stop the stall', branchEmail: NOREPLY, body: (head) => BODY.replace(SHA, head) });
+  const result = runCli(['--body', bodyPath, '--base', 'HEAD~1'], dir);
+  assert.equal(result.exitCode, 1);
+  assert.match(result.text, /preflight FAIL \[prior-art\]/);
+});
+
+test('the CLI passes a fix commit whose body names what it checked', () => {
+  const body = (head) => `${BODY.replace(SHA, head)}\nPrior art: upstream project sessions_send, the old steer path`;
+  const { dir, bodyPath } = fixtureRepo({ branchMessage: 'fix: stop the stall', branchEmail: NOREPLY, body });
+  const result = runCli(['--body', bodyPath, '--base', 'HEAD~1'], dir);
+  assert.equal(result.exitCode, 0, result.text);
 });
 
 test('the CLI refuses to run without a body file', () => {
