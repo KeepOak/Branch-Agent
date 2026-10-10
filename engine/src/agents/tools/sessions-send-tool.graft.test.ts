@@ -41,7 +41,9 @@ it.each(["Branch", "🌳", "Example Branch"])(
     const contact = graftTrunkIdentity(graftBranchIdentity(name, ""), { id: "tester" });
     const sessionKey = `a2a:${contact.id}`;
     const callGateway = vi.fn(async ({ method }: { method: string }) => {
-      if (method === "graft.work.send") return { id: "remote-job-2" };
+      if (method === "graft.work.send") {
+        return { id: "remote-job-2" };
+      }
       throw new Error("Session key is not resolvable");
     });
     const tool = createSessionsSendTool({
