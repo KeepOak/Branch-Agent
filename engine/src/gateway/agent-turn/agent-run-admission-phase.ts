@@ -12,6 +12,7 @@ import {
 import { repairMainSessionRecoveryMutation } from "../../agents/main-session-recovery/main-session-recovery-lifecycle.js";
 import { scheduleMainSessionRecoveryPendingTarget } from "../../agents/main-session-recovery/main-session-recovery-owner-release.js";
 import type { MainSessionRecoveryPendingTarget } from "../../agents/main-session-recovery/main-session-recovery-store.js";
+import { createPreparedModelRuntimeAdmissionBudget } from "../../agents/prepared-model-runtime-admission-budget.js";
 import {
   acquireAgentRunPreparedModelRuntime,
   loadPublishedGatewayReplyDispatchRuntime,
@@ -47,8 +48,10 @@ import { canPrepareAgentSessionWorktree } from "./agent-handler-helpers.js";
 import { resolveAgentRunAdmissionModel } from "./agent-run-admission-model.js";
 import {
   createAgentRunAdmissionRevalidator,
+  rebindAgentRunReplyDispatchRuntime,
   releaseFailedAgentRunAdmission,
   resolveAgentRunAdmissionError,
+  waitForAgentRunRuntimePublication,
 } from "./agent-run-admission-revalidation.js";
 import type {
   PrepareAgentRunDispatchParams,
@@ -356,11 +359,20 @@ export async function prepareAgentRunDispatch(
   });
   let replyDispatchRuntime: PreparedReplyDispatchRuntime;
   let preparedModelRuntime: PreparedAgentRunModelRuntime;
+  const modelAdmissionBudget = createPreparedModelRuntimeAdmissionBudget(
+    activeRunAbort.controller.signal,
+  );
   try {
-    const publishedRuntime = await loadPublishedGatewayReplyDispatchRuntime({
-      agentId: params.activeSessionAgentId,
-      abortSignal: activeRunAbort.controller.signal,
-    });
+    const publishedRuntime = await waitForAgentRunRuntimePublication(
+      modelAdmissionBudget,
+      activeRunAbort.controller.signal,
+      (abortSignal) =>
+        loadPublishedGatewayReplyDispatchRuntime({
+          agentId: params.activeSessionAgentId,
+          abortSignal,
+          admissionBudget: modelAdmissionBudget,
+        }),
+    );
     const publishedAdmission = revalidateAdmission();
     if (publishedAdmission !== true) {
       return publishedAdmission;
@@ -387,6 +399,7 @@ export async function prepareAgentRunDispatch(
         },
         {
           catalogMode: "static",
+          admissionBudget: modelAdmissionBudget,
           pluginGeneration: replyDispatchRuntime.pluginGeneration,
           // Pre-accept admission has not run anything under this generation; a sibling Trunk's
           // preparation may publish a successor first, and the turn joins it rather than failing.
@@ -403,10 +416,10 @@ export async function prepareAgentRunDispatch(
       if (runtimeAdmission !== true) {
         return runtimeAdmission;
       }
-      replyDispatchRuntime = Object.freeze({
-        ...replyDispatchRuntime,
-        pluginGeneration: preparedModelRuntimeLease.pluginGeneration,
-      });
+      replyDispatchRuntime = rebindAgentRunReplyDispatchRuntime(
+        replyDispatchRuntime,
+        preparedModelRuntimeLease,
+      );
     }
   } catch (err) {
     const failedAdmission = revalidateAdmission();

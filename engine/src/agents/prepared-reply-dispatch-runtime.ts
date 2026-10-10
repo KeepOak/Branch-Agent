@@ -2,6 +2,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { BranchConfig } from "../config/types.branch.js";
 import { createAbortError, racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { resolvePublishedModelCatalogOwner } from "./prepared-model-catalog-owner.js";
+import type { PreparedModelRuntimeAdmissionBudget } from "./prepared-model-runtime-admission-budget.js";
 import { assertPreparedModelRuntimeAdmissionCanWait } from "./prepared-model-runtime-admission.js";
 import {
   PreparedModelRuntimeOwnerNotPublishedError,
@@ -119,17 +120,30 @@ export class PreparedReplyDispatchPublicationOwner {
   readonly load = async ({
     agentId,
     abortSignal,
+    admissionBudget,
   }: {
     agentId: string;
     abortSignal?: AbortSignal;
+    admissionBudget?: PreparedModelRuntimeAdmissionBudget;
   }): Promise<PreparedReplyDispatchRuntime | undefined> => {
     let supersededSince: number | undefined;
+    let lastPublication: Promise<unknown> | undefined;
+    const publicationProgress = (publication: Promise<unknown>) => {
+      if (publication !== lastPublication) {
+        admissionBudget?.progress();
+        lastPublication = publication;
+      }
+    };
     const waitForSuccessor = async (error: PreparedModelRuntimePublicationSupersededError) => {
       supersededSince ??= Date.now();
-      if (Date.now() - supersededSince >= 120_000) throw error;
+      admissionBudget?.recordSuperseded(error);
+      if (!admissionBudget && Date.now() - supersededSince >= 120_000) {
+        throw error;
+      }
       await racePromiseWithAbortSignal(delay(250), abortSignal);
     };
     for (;;) {
+      admissionBudget?.assert();
       if (abortSignal?.aborted) {
         throw createAbortError("Prepared reply dispatch admission aborted", {
           cause: abortSignal.reason,
@@ -140,29 +154,38 @@ export class PreparedReplyDispatchPublicationOwner {
       }
       const replacement = this.host.getPendingReplacement();
       if (replacement) {
+        publicationProgress(replacement);
         assertPreparedModelRuntimeAdmissionCanWait();
         try {
           await racePromiseWithAbortSignal(replacement, abortSignal);
         } catch (error) {
-          if (!(error instanceof PreparedModelRuntimePublicationSupersededError)) throw error;
+          if (!(error instanceof PreparedModelRuntimePublicationSupersededError)) {
+            throw error;
+          }
           await waitForSuccessor(error);
         }
         continue;
       }
       const pendingOwner = this.host.getConfiguredOwner(agentId);
       if (pendingOwner?.pending) {
+        publicationProgress(pendingOwner.pending);
         assertPreparedModelRuntimeAdmissionCanWait(pendingOwner);
         try {
           await racePromiseWithAbortSignal(pendingOwner.pending, abortSignal);
         } catch (error) {
-          if (!(error instanceof PreparedModelRuntimePublicationSupersededError)) throw error;
+          if (!(error instanceof PreparedModelRuntimePublicationSupersededError)) {
+            throw error;
+          }
           await waitForSuccessor(error);
         }
         continue;
       }
       const runtime = this.#publication.find((candidate) => candidate.agentId === agentId);
       if (!runtime) {
-        if (supersededSince && Date.now() - supersededSince < 120_000) {
+        if (
+          supersededSince !== undefined &&
+          (admissionBudget || Date.now() - supersededSince < 120_000)
+        ) {
           // A retired publication can settle before its replacement is queued.
           await racePromiseWithAbortSignal(delay(250), abortSignal);
           continue;
