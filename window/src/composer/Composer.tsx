@@ -8,7 +8,7 @@ import { isAdmin, num, rec, str, type SendExtras, type WindowEngine } from "./en
 import { Icon, StopMark } from "./icons";
 import { replaceToken } from "./mention";
 import { isEngineMode, modeName, nextMode, type EngineMode } from "./mode";
-import { chipLabel, currentModelRef, currentThinking } from "./model";
+import { composerChipLabel, currentModelRef, currentThinking } from "./model";
 import { ModelMenu } from "./ModelMenu";
 import { Popover } from "./Popover";
 import { serviceName } from "../places/settings/set1/service";
@@ -139,6 +139,8 @@ export function Composer(props: Props) {
   const modelAccount = currentModelAccount(modelAccounts, current?.provider ?? currentRef.split("/")[0] ?? "", row);
   const accountEmail = shortAccountEmail(modelAccount);
   const thinking = currentThinking(row, conv.defaults);
+  const chip = composerChipLabel(current, thinking, conv.modelsLoaded);
+  const chipName = composerChipLabel(current, "", conv.modelsLoaded);
   // No model set up: the engine names a default model but none is connected (models.list has none usable), or none at all.
   const noModel = hasNoModel(conv, currentRef);
   const admin = isAdmin(engine?.scopes ?? []);
@@ -530,8 +532,8 @@ export function Composer(props: Props) {
         </span>
         {engine ? (
           <button ref={anchors.tune} type="button" className={`c-btn c-tune-button${props.lockdown ? " lockdown" : (mode ?? asSet) === "full" ? " full" : ""}`} data-testid="tune-button" aria-haspopup="dialog" aria-expanded={menu === "tune"}
-            aria-label={`Model, access and usage: ${chipLabel(current?.name ?? currentRef.split("/").pop() ?? "", thinking)} · ${props.lockdown ? "Lockdown" : modeName(mode ?? asSet) || "As set"}${cost !== undefined ? ` · $${cost.toFixed(2)} so far` : ""}`}
-            title={`${current?.name ?? currentRef} · ${props.lockdown ? "Lockdown" : modeName(mode ?? asSet) || "As set"}${accountEmail ? ` · ${accountEmail}` : ""}`}
+            aria-label={`Model, access and usage: ${chip} · ${props.lockdown ? "Lockdown" : modeName(mode ?? asSet) || "As set"}${cost !== undefined ? ` · $${cost.toFixed(2)} so far` : ""}`}
+            title={`${chipName} · ${props.lockdown ? "Lockdown" : modeName(mode ?? asSet) || "As set"}${accountEmail ? ` · ${accountEmail}` : ""}`}
             onClick={() => setMenu(menu === "tune" ? null : "tune")}>
             <Icon name={props.lockdown ? "lock" : "sliders"} />
             {props.lockdown ? <span>Lockdown</span> : (mode ?? asSet) === "full" ? <Icon name="lock" size={10} /> : null}
@@ -634,23 +636,13 @@ export function Composer(props: Props) {
           />
             <div className="c-tune-line"><span>Runs on {current?.local ? "this computer" : current ? serviceName(current.provider) : "no model"}{modelAccount ? ` · ${modelAccount.a.displayName || modelAccount.a.profileId}` : ""}{modelAccount?.a.email ? <small>{modelAccount.a.email}</small> : null}</span>
               <button type="button" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => { setMenu(null); onOpen?.("settings/accounts"); }}>Change</button></div>
-            <div className="c-tune-line"><button type="button" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => { setMenu(null); onOpen?.("settings/models"); }}>Manage models…</button>
-              <button type="button" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => { setMenu(null); onOpen?.("settings/accounts"); }}>Accounts and order…</button></div>
+            <div className="c-tune-line"><button type="button" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => { setMenu(null); onOpen?.("settings/models"); }}>Manage models…</button></div>
             </section>
             <section className="c-tune-section"><h3>Access</h3>
               <ModeMenu embedded anchor={anchors.tune} onClose={() => setMenu(null)} mode={mode} asSet={asSet} canSelectFull={admin} lockdown={props.lockdown} onToggleLockdown={props.onToggleLockdown} onPick={(m) => void pickMode(m)} onOpen={onOpen} row={row} onElevated={(level) => void patch({ elevatedLevel: level })} />
             </section>
             <section className="c-tune-section"><h3>Thread</h3>
               <div className="c-tune-line"><span>Start as a job<small>Your next message gets its own card and progress.</small></span><button type="button" aria-pressed={nextAsJob} onClick={() => setNextAsJob((v) => !v)}>{nextAsJob ? "On" : "Off"}</button></div>
-              <div className="c-tune-line"><span>Branch from here<small>A copy of this conversation to try another way.</small></span><button type="button" disabled={!engine?.sessionKey || !props.lastUserEntryId} title={!props.lastUserEntryId ? "Send a message before branching this conversation." : undefined} onClick={async () => {
-                if (!engine?.sessionKey || !props.lastUserEntryId) return;
-                try {
-                  const made = await engine.request<{ sessionKey?: string }>("sessions.fork", { sessionKey: engine.sessionKey, entryId: props.lastUserEntryId });
-                  if (!made.sessionKey) throw new Error("The engine did not create the copy.");
-                  setMenu(null);
-                  props.onOpenConversation?.(made.sessionKey);
-                } catch (error) { setProblem(error instanceof Error ? error.message : String(error)); }
-              }}>Branch</button></div>
             </section>
             <section className="c-tune-section"><h3>Status</h3>
               {bg.jobs.filter((job) => job.running).length ? <div className="c-tune-line"><span>{bg.jobs.filter((job) => job.running).length} in the background</span><button type="button" onClick={() => { setMenu(null); props.onOpenConversation?.(bg.jobs.find((job) => job.running)?.key ?? ""); }}>Open</button></div> : null}

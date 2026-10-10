@@ -581,6 +581,21 @@ mark {
   place-items: center;
   color: var(--ink-2);
 }
+/* Preview headDotT5: warn dot on the chat header ⋯ when this conversation needs you. */
+.ib.dotsT5 {
+  position: relative;
+}
+.ib .dotsDotT5 {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
 .branch-link-modes { display: flex; gap: 8px; }
 .branch-link-modes > button { flex: 1; }
 .branch-link-modes > button[aria-pressed="true"] { background: var(--raise); font-weight: 600; }

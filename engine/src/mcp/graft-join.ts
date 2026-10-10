@@ -1,9 +1,10 @@
 // Branch-to-Branch: this Branch grafts into another Branch (the host) as a scoped device, with upstream's setup-code
 // pairing. The host issues a setup code (`branch graft invite`, the same device.pair.setupCode a phone pairs with);
-// `branch graft join <code>` connects with this Branch's own device identity and the code's one-time bootstrap
-// token, asking only for read + write. The host approves it like any device (silently for a Branch on the same
-// computer unless gateway.nodes.pairing.autoApproveLocal is false; otherwise `branch devices approve <id>`), and
-// hands back a device token this Branch keeps. `branch graft --host <url>` then works with the host as that device.
+// `branch graft join` (stdin prompt or `--code-file`) connects with this Branch's own device identity and the
+// code's one-time bootstrap token, asking only for read + write. The host approves it like any device (silently
+// for a Branch on the same computer unless gateway.nodes.pairing.autoApproveLocal is false; otherwise
+// `branch devices approve <id>`), and hands back a device token this Branch keeps. `branch graft --host <url>`
+// then works with the host as that device.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -20,7 +21,8 @@ const RETRY_MS = 3_000;
 
 /** An outside identity a grafted Branch says hello as (contacts.outside.hello accepts kind and via). */
 export type GraftIdentity = OutsideAgentIdentity & { kind?: "branch" | "trunk"; via?: string };
-export type GraftLink = { url: string; tlsFingerprint?: string; name: string; joinedAt: number };
+/** `url` is the address the link starts with; `urls` are the host's other addresses, tried in order when it fails. */
+export type GraftLink = { url: string; urls?: string[]; tlsFingerprint?: string; name: string; joinedAt: number };
 export type ConnectOutcome =
   | { ok: true; deviceId?: string; scopes: string[] }
   | { ok: false; pendingRequestId?: string; message: string };
@@ -140,7 +142,7 @@ export function resolveGraftLink(host: string, env?: NodeJS.ProcessEnv): GraftLi
     throw new Error(
       links.length
         ? `This Branch has not joined ${host || "a single host"}; joined: ${links.map((row) => row.url).join(", ")}`
-        : "This Branch has not joined another Branch yet; run `branch graft join <setup-code>` first.",
+        : "This Branch has not joined another Branch yet; run `branch graft join` (stdin prompt) or `branch graft join --code-file` first.",
     );
   }
   return match;

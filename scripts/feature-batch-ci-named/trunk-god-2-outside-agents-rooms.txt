@@ -1,0 +1,2 @@
+engine:src/gateway/rooms/outside-members.test.ts
+engine:src/mcp/room-identity.test.ts

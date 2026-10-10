@@ -286,6 +286,13 @@
   color: var(--on-btn);
 }
 
+:where(.connect, .connect *) {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+:where(.connect, .connect *):hover {
+  scrollbar-color: var(--line-2) transparent;
+}
 .connect {
   margin: 12vh auto 0;
   max-width: 420px;

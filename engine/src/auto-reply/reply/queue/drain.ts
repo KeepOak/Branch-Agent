@@ -36,6 +36,12 @@ import {
   previewQueueSummaryPrompt,
   waitForQueueDebounce,
 } from "../../../utils/queue-helpers.js";
+import { REPLY_OPERATION_EXPIRED_AS_STALE } from "../reply-run-registry.contracts.js";
+import {
+  forceClearReplyOperation,
+  isLiveReplyOperation,
+  replyRunState,
+} from "../reply-run-registry.state.js";
 import { isRoutableChannel } from "../route-reply.js";
 import { resolveCollectedRun } from "./collected-run.js";
 import {
@@ -75,7 +81,37 @@ const FOLLOWUP_DRAIN_CALLBACKS_KEY = Symbol.for("branch.followupDrainCallbacks")
 const FOLLOWUP_RUN_CALLBACKS = resolveGlobalMap<string, (run: FollowupRun) => Promise<void>>(
   FOLLOWUP_DRAIN_CALLBACKS_KEY,
 );
+const MAX_STALE_EXPIRED_FOLLOWUP_DRAIN_ATTEMPTS = 2;
 let followedRestartDrainSignal: AbortSignal | undefined;
+
+export function isReplyOperationExpiredAsStaleError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes(REPLY_OPERATION_EXPIRED_AS_STALE)) {
+    return true;
+  }
+  if (error && typeof error === "object" && "cause" in error) {
+    return isReplyOperationExpiredAsStaleError(error.cause);
+  }
+  return false;
+}
+
+function clearStaleExpiredReplyOwner(key: string): void {
+  const operation = replyRunState.activeRunsByKey.get(key);
+  if (operation && !isLiveReplyOperation(operation)) {
+    forceClearReplyOperation(operation, new Error(REPLY_OPERATION_EXPIRED_AS_STALE));
+  }
+}
+
+function dropStaleExpiredFollowupOwner(key: string): boolean {
+  const operation = replyRunState.activeRunsByKey.get(key);
+  if (isLiveReplyOperation(operation)) {
+    return false;
+  }
+  clearStaleExpiredReplyOwner(key);
+  clearFollowupQueue(key);
+  clearFollowupDrainCallback(key);
+  return true;
+}
 
 function bindFollowupRestartDrainSignal(): void {
   const signal = getGatewayRestartDrainSignal();
@@ -1240,6 +1276,16 @@ export function scheduleFollowupDrain(
           // A reversible signal fence may reopen. One-way abort synchronously
           // retires the queue above; rollback leaves it here for normal retry.
           await waitForGatewayRestartFenceSettlement();
+        } else if (isReplyOperationExpiredAsStaleError(err)) {
+          queue.staleExpiryDrainAttempts = (queue.staleExpiryDrainAttempts ?? 0) + 1;
+          clearStaleExpiredReplyOwner(key);
+          if (queue.staleExpiryDrainAttempts >= MAX_STALE_EXPIRED_FOLLOWUP_DRAIN_ATTEMPTS) {
+            if (dropStaleExpiredFollowupOwner(key)) {
+              defaultRuntime.error?.(
+                `followup queue drain dropped stale-expired owner for ${key}`,
+              );
+            }
+          }
         } else {
           defaultRuntime.error?.(`followup queue drain failed for ${key}: ${String(err)}`);
         }

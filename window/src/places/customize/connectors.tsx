@@ -1,11 +1,12 @@
 // Tools › Connectors: the MCP servers in the engine's config (mcp.servers.<name>). On/off, which Trunks may use
 // it (a "<server>__*" entry in that Trunk's tools.deny) and each tool's Allowed / Never (toolFilter.exclude),
 // all through config.patch. Tools a server offers come from tools.effective for the open conversation.
-// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+// TODO(engine-lane): Test it / Check for updates stay greyed until the engine has a connector test method and update check.
 import { useState } from "react";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { shows } from "../../places-nav/level";
 import { Dialog } from "../../shell/Dialog";
+import { shownWhy } from "../../shell/shown-why";
 import { Switch } from "../../shell/Popover";
 import { useResource } from "../library/data";
 import { Status } from "../library/ui";
@@ -59,6 +60,23 @@ export function connectorCount(ctx: ToolsCtx): number | null {
   return readServers(data.live, data.file).filter(s => s.enabled && (!ctx.whose || mayUse(ctx, s.name, ctx.whose))).length;
 }
 
+/** Person-facing reasons for the greyed Test it / Check for updates controls (shownWhy keeps developer notes out of sight). */
+export const NO_SERVER_WHY = "Add a server first";
+export const TEST_WHY = "This connector cannot be tested yet.";
+export const UPDATE_WHY = "This connector cannot be checked for updates yet.";
+
+function ConnectorActs({ server, onRemove }: { server?: Server; onRemove?: () => void }) {
+  const testWhy = server ? TEST_WHY : NO_SERVER_WHY;
+  const updateWhy = server ? UPDATE_WHY : NO_SERVER_WHY;
+  return <div className="cz-acts">
+    <Grey reason={testWhy}>Test it</Grey>
+    <Grey reason={updateWhy}>Check for updates</Grey>
+    {onRemove && <><span className="cz-grow" /><button type="button" className="btn ghost sm" onClick={onRemove}>Remove</button></>}
+    {shownWhy(testWhy) && <span className="cz-hint">{shownWhy(testWhy)}</span>}
+    {shownWhy(updateWhy) && updateWhy !== testWhy && <span className="cz-hint">{shownWhy(updateWhy)}</span>}
+  </div>;
+}
+
 export function Connectors({ ctx }: { ctx: ToolsCtx }) {
   const { config } = ctx;
   const servers = config.data ? readServers(config.data.live, config.data.file) : [];
@@ -77,7 +95,7 @@ export function Connectors({ ctx }: { ctx: ToolsCtx }) {
       {config.data && <div className="cz-bar"><button type="button" className="btn ghost sm" disabled={config.loading} onClick={() => { config.reload(); setReloaded(true); }}>Reload connectors</button>
         {reloaded && !config.loading && <small role="status">Reloaded {servers.length} connectors from settings just now. Nothing restarted.</small>}</div>}
     </div>
-    {server ? <ConnectorDetail key={server.name} ctx={ctx} server={server} /> : <div className="t9-detail cz-empty-detail" />}
+    {server ? <ConnectorDetail key={server.name} ctx={ctx} server={server} /> : <div className="t9-detail cz-empty-detail"><ConnectorActs /></div>}
   </>;
 }
 
@@ -101,8 +119,7 @@ function ConnectorDetail({ ctx, server }: { ctx: ToolsCtx; server: Server }) {
       <div className="cz-line"><span>Several calls at once</span><Switch label="Several calls at once" on={server.parallel} onChange={on => setServer({ supportsParallelToolCalls: on })} /></div>
       {!server.local && <div className="cz-line"><span>Check the server’s certificate</span><Switch label="Check the server’s certificate" on={server.sslVerify} onChange={on => setServer({ sslVerify: on })} /></div>}
     </Sec>}
-    <div className="cz-acts"><Grey reason="Needs the engine's connector test method.">Test it</Grey><Grey reason="Needs the engine's connector update check.">Check for updates</Grey>
-      <span className="cz-grow" /><button type="button" className="btn ghost sm" onClick={() => setRemoving(true)}>Remove</button></div>
+    <ConnectorActs server={server} onRemove={() => setRemoving(true)} />
     {removing && <Dialog title={`Remove ${server.name}?`} onClose={() => setRemoving(false)} footer={<><button type="button" className="btn ghost" onClick={() => setRemoving(false)}>Cancel</button><button type="button" className="btn bad" disabled={config.busy} onClick={() => { void config.patch({ mcp: { servers: { [server.name]: null } } }).then(ok => ok && setRemoving(false)); }}>Remove</button></>}>
       <p className="dlg-p">Trunks stop using it. Its settings are taken out of Branch’s settings file.</p>{config.writeError && <p role="alert" className="cz-error">{config.writeError}</p>}
     </Dialog>}

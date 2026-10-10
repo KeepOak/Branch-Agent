@@ -29,6 +29,7 @@ import {
   forceClearReplyOperation,
   getAttachedBackend,
   hasReplyOperationExecutionStarted,
+  isLiveReplyOperation,
   isReplyOperationPreBackendPhase,
   isReplyRunCompacting,
   isReplyRunEvidenceStale,
@@ -493,7 +494,23 @@ export function captureGatewayReplyRunRestartAbort(resolveGatewayContext: Gatewa
 }
 
 export function getActiveReplyRunCount(): number {
-  return replyRunState.activeRunsByKey.size;
+  let count = 0;
+  for (const operation of replyRunState.activeRunsByKey.values()) {
+    if (isLiveReplyOperation(operation)) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+export function listLiveReplyRunSessionIds(): string[] {
+  const sessionIds: string[] = [];
+  for (const [sessionKey, sessionId] of replyRunState.activeSessionIdsByKey) {
+    if (isLiveReplyOperation(replyRunState.activeRunsByKey.get(sessionKey))) {
+      sessionIds.push(sessionId);
+    }
+  }
+  return sessionIds;
 }
 
 export function listActiveReplyRunSessionIds(): string[] {

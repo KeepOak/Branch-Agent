@@ -17,7 +17,10 @@ it("offers a persistent node service after pairing a computer", async () => {
   try {
     await act(async () => root.render(<AddComputer engine={{ request } as unknown as WindowEngine} onClose={() => undefined} onAdded={() => undefined} />));
     await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.includes("Another computer with Branch"))!.click());
-    expect(host.textContent).toContain("branch node run --pair PAIR-CODE");
+    expect(host.textContent).toContain("branch node run --pair -");
+    expect(host.textContent).toContain("PAIR-CODE");
+    expect(host.textContent).toContain("Copy setup code");
+    expect(host.textContent).not.toContain("branch node run --pair PAIR-CODE");
     await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
     expect(host.textContent).toContain("branch node install");
     expect(host.textContent).toContain("branch node status");

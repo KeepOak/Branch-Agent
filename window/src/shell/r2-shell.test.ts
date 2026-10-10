@@ -124,7 +124,16 @@ describe("the conversation header and cards", () => {
   it("header state words as the preview's statusLine", () => {
     expect(stateWords({ state: "idle", isDefaultTrunk: true, trunkName: "Sapling" })).toBe("Your Trunk on this computer · ready");
     expect(stateWords({ state: "idle", isDefaultTrunk: false, trunkName: "Fern", role: "Research" })).toBe("Research · ready");
-    expect(stateWords({ state: "work", isDefaultTrunk: false, trunkName: "Fern" })).toBe("Working · using the computer");
+    for (const [state, words] of [
+      ["think", "Thinking it over"],
+      ["work", "Working on it"],
+      ["search", "Searching"],
+      ["read", "Reading"],
+    ] as const) {
+      expect(stateWords({ state, isDefaultTrunk: false, trunkName: "Fern" })).toBe(words);
+      expect(stateWords({ state, paused: true, isDefaultTrunk: false, trunkName: "Fern" })).toBe("Paused · won’t start anything new");
+      expect(stateWords({ state, isDefaultTrunk: false, trunkName: "Fern", room: { faces: () => null, line: "Project · take turns" } })).toBe("Project · take turns");
+    }
     expect(stateWords({ state: "wait", isDefaultTrunk: false, trunkName: "Fern" })).toBe("Waiting for you");
     expect(stateWords({ state: "sleep", paused: true, isDefaultTrunk: false, trunkName: "Fern" })).toBe("Paused · won’t start anything new");
     for (const state of ["idle", "talk", "yay", "oops", "sleep"] as const) {

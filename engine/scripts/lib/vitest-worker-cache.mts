@@ -173,10 +173,26 @@ async function transferRoots(
     throw new Error(`Compiled subprocess transfer target already exists: ${name}`);
   }
   for (const name of roots) {
-    if (!(await verifyHeld())) {
-      throw new Error("Compiled subprocess cache transfer lock changed");
+    for (let attempt = 0; attempt < 5; attempt++) {
+      if (!(await verifyHeld())) {
+        throw new Error("Compiled subprocess cache transfer lock changed");
+      }
+      try {
+        await fs.promises.rename(path.join(source, name), path.join(target, name));
+        break;
+      } catch (error) {
+        if (
+          attempt === 4 ||
+          !["EPERM", "EBUSY", "EACCES"].includes((error as NodeJS.ErrnoException).code ?? "")
+        ) {
+          throw error;
+        }
+        if (!(await verifyHeld())) {
+          throw new Error("Compiled subprocess cache transfer lock changed", { cause: error });
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50 * 2 ** attempt));
+      }
     }
-    await fs.promises.rename(path.join(source, name), path.join(target, name));
   }
 }
 

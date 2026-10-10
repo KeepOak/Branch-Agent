@@ -73,7 +73,7 @@ The `Source builds` workflow runs only when a maintainer dispatches it on `main`
 
 `Desktop checks` runs on pull requests, relevant pushes to `main`, and manual dispatch. Hosted Windows, macOS and Linux jobs install the desktop lockfile with `npm ci`, compile strict TypeScript, and run the two named update/readiness checks at 96 MiB. These jobs build only the desktop sources and skip the Electron binary download. They do not build the engine, launch a visible app, or call model providers.
 
-Saved `dist/` outputs are source build artifacts. `Source builds` does not create installers or publish releases; its artifact retention is three days. Releases come from the `GitHub component release` workflow on a 30-minute schedule at :07 and :37 when main has moved since the last release and no check on main's head has failed; see [Releases and component updates](CONTRIBUTING.md#releases-and-component-updates).
+Saved `dist/` outputs are source build artifacts. `Source builds` does not create installers or publish releases; its artifact retention is three days. Releases come from the `GitHub component release` workflow on a 30-minute schedule at :07 and :37, or from a push to main when the latest release is more than 25 minutes old, when main has moved since the last release and no check on main's head has failed; see [Releases and component updates](CONTRIBUTING.md#releases-and-component-updates).
 
 ## Working on Branch
 

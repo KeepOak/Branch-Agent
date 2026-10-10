@@ -1,5 +1,6 @@
-import crypto from "node:crypto";
+import { createHash } from "node:crypto";
 import { asOptionalRecord } from "@branch/normalization-core/record-coerce";
+import { stableStringify } from "@branch/normalization-core/stable-stringify";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { runWithInProcessGatewaySessionMutation } from "../../gateway/server-plugin-in-process-dispatch.js";
 import type { GatewaySessionStoreTarget } from "../../gateway/session-utils-store.types.js";
@@ -42,6 +43,18 @@ import {
   type AgentToolGatewayRequestCaller,
 } from "./in-process-gateway.js";
 import { queueSessionsSendSteeringWithCustody } from "./sessions-send-tool.steering.js";
+
+/** One logical tool call owns admission, fallback and source-reply idempotency. */
+export function buildSessionsSendOperationKey(
+  runId: string,
+  toolCallId: string,
+  args: unknown,
+): string {
+  const argsDigest = createHash("sha256").update(stableStringify(args)).digest("hex");
+  return createHash("sha256")
+    .update(stableStringify([runId, toolCallId, argsDigest]))
+    .digest("hex");
+}
 
 export async function notifySessionsSendSession(params: {
   message: string;
@@ -291,7 +304,6 @@ export async function startSessionsSendAgentRun(
         ? {
             ...sendParams,
             sessionKey: fallbackSessionKey,
-            idempotencyKey: crypto.randomUUID(),
           }
         : sendParams,
       timeoutMs: 10_000,

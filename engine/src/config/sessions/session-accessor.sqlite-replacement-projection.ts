@@ -50,6 +50,7 @@ import { withSessionHistoryWorkerDatabase } from "./session-transcript-worker-ru
 import {
   captureSessionMaintenancePreservation,
   prepareSessionMaintenancePreservation,
+  retryAfterSessionMaintenancePreservationChange,
 } from "./store-maintenance-preserve.js";
 import { resolveMaintenanceConfig } from "./store-maintenance-runtime.js";
 
@@ -246,123 +247,124 @@ async function applySqliteSessionEntryReplacementProjection<T, TReplacement>(
       });
       return {
         deletedEntries: deletedOwners,
-        commit: async (assertSourceCurrent) => {
-          // Native companions and process-held stores retain their synchronous transaction view.
-          const workerCommit = useWorker && !hasPreparedNativeSessionDeletion();
-          const preparedPreservation =
-            params.skipMaintenance === false && workerCommit
-              ? await prepareSessionMaintenancePreservation(params.storePath)
-              : undefined;
-          try {
-            const capturePreservation = () =>
-              preparedPreservation
-                ? preparedPreservation.capture()
-                : captureSessionMaintenancePreservation(params.storePath);
-            const maintenance =
-              params.skipMaintenance === false
-                ? {
-                    activeSessionKey: params.activeSessionKey ?? "",
-                    archiveDirectory: resolveSqliteTranscriptArchiveDirectory(resolved),
-                    maintenance: resolveMaintenanceConfig(),
-                    preservation: capturePreservation(),
-                    storePath: params.storePath,
-                  }
+        commit: (assertSourceCurrent) =>
+          retryAfterSessionMaintenancePreservationChange(async () => {
+            // Native companions and process-held stores retain their synchronous transaction view.
+            const workerCommit = useWorker && !hasPreparedNativeSessionDeletion();
+            const preparedPreservation =
+              params.skipMaintenance === false && workerCommit
+                ? await prepareSessionMaintenancePreservation(params.storePath)
                 : undefined;
-            const assertCurrent = () => {
-              assertSourceCurrent?.();
-              params.assertCommitAllowed?.();
-              if (
-                maintenance &&
-                !isDeepStrictEqual(maintenance.preservation, capturePreservation())
-              ) {
-                throw new Error("Session maintenance protection changed before replacement");
-              }
-            };
-            const input: SessionEntryReplacementCommit = {
-              expectedRows,
-              labelOwnerKeys,
-              includeLabelOwners: params.includeLabelOwners,
-              validationKeys: [...validationKeys],
-              replacements: applicable,
-              checkPendingArchiveRecovery: params.checkPendingArchiveRecovery,
-              consumePendingReset: params.consumePendingReset,
-              ownerAssignment: params.ownerAssignment,
-              labelClaim: params.labelClaim,
-              preparedTranscript: params.preparedTranscript,
-              maintenance,
-              maintenanceRunBasis: preparedPreservation?.subagentRunBasis,
-            };
-            if (!workerCommit) {
-              return await withSqliteSessionDatabase(
-                databaseOptions,
-                (owned) =>
-                  withNativeSessionCommitContext(
-                    owned,
-                    resolved.env,
-                    (source) => {
-                      const committed = runBranchAgentWriteTransaction(
-                        (database) => {
-                          if (params.onLifecycleCommitted) {
-                            deferBranchAgentPostCommitPublication(database, () =>
-                              params.onLifecycleCommitted?.(result.pendingArchiveRecovery),
-                            );
-                          }
-                          const result = commitSessionEntryReplacementsInDatabase(
-                            database,
-                            input,
-                            () => {
-                              assertCurrent();
-                              source?.assertCurrent();
-                            },
-                          );
-                          return {
-                            ...result,
-                            publish: prepareSessionIdentityPublication(
+            try {
+              const capturePreservation = () =>
+                preparedPreservation
+                  ? preparedPreservation.capture()
+                  : captureSessionMaintenancePreservation(params.storePath);
+              const maintenance =
+                params.skipMaintenance === false
+                  ? {
+                      activeSessionKey: params.activeSessionKey ?? "",
+                      archiveDirectory: resolveSqliteTranscriptArchiveDirectory(resolved),
+                      maintenance: resolveMaintenanceConfig(),
+                      preservation: capturePreservation(),
+                      storePath: params.storePath,
+                    }
+                  : undefined;
+              const assertCurrent = () => {
+                assertSourceCurrent?.();
+                params.assertCommitAllowed?.();
+                if (
+                  maintenance &&
+                  !isDeepStrictEqual(maintenance.preservation, capturePreservation())
+                ) {
+                  throw new Error("Session maintenance protection changed before replacement");
+                }
+              };
+              const input: SessionEntryReplacementCommit = {
+                expectedRows,
+                labelOwnerKeys,
+                includeLabelOwners: params.includeLabelOwners,
+                validationKeys: [...validationKeys],
+                replacements: applicable,
+                checkPendingArchiveRecovery: params.checkPendingArchiveRecovery,
+                consumePendingReset: params.consumePendingReset,
+                ownerAssignment: params.ownerAssignment,
+                labelClaim: params.labelClaim,
+                preparedTranscript: params.preparedTranscript,
+                maintenance,
+                maintenanceRunBasis: preparedPreservation?.subagentRunBasis,
+              };
+              if (!workerCommit) {
+                return await withSqliteSessionDatabase(
+                  databaseOptions,
+                  (owned) =>
+                    withNativeSessionCommitContext(
+                      owned,
+                      resolved.env,
+                      (source) => {
+                        const committed = runBranchAgentWriteTransaction(
+                          (database) => {
+                            if (params.onLifecycleCommitted) {
+                              deferBranchAgentPostCommitPublication(database, () =>
+                                params.onLifecycleCommitted?.(result.pendingArchiveRecovery),
+                              );
+                            }
+                            const result = commitSessionEntryReplacementsInDatabase(
                               database,
-                              resolved.agentId,
-                              result.previous,
-                              result.current,
-                            ),
-                          };
-                        },
-                        databaseOptions,
-                        { operationLabel: "session.entry-replacements" },
-                      );
-                      committed.publish();
-                      return {
-                        maintenancePlans: committed.maintenancePlans,
-                        result: operation.result,
-                      };
-                    },
-                    params.afterCommitted
-                      ? (source) => params.afterCommitted!(operation.result, source)
-                      : undefined,
-                  ),
+                              input,
+                              () => {
+                                assertCurrent();
+                                source?.assertCurrent();
+                              },
+                            );
+                            return {
+                              ...result,
+                              publish: prepareSessionIdentityPublication(
+                                database,
+                                resolved.agentId,
+                                result.previous,
+                                result.current,
+                              ),
+                            };
+                          },
+                          databaseOptions,
+                          { operationLabel: "session.entry-replacements" },
+                        );
+                        committed.publish();
+                        return {
+                          maintenancePlans: committed.maintenancePlans,
+                          result: operation.result,
+                        };
+                      },
+                      params.afterCommitted
+                        ? (source) => params.afterCommitted!(operation.result, source)
+                        : undefined,
+                    ),
+                  assertCurrent,
+                );
+              }
+              if (typeof snapshot.databaseIdentity !== "string") {
+                throw new Error("Session replacement requires its durable database identity");
+              }
+              const committed = await commitSessionEntryReplacementsInWorker(
+                databaseOptions,
+                snapshot.databaseIdentity,
+                { ...input, initializeTranscript: creation?.initializeTranscript },
                 assertCurrent,
+                {
+                  identityAgentId: resolved.agentId,
+                  onLifecycleCommitted: params.onLifecycleCommitted,
+                  afterCommitted: params.afterCommitted
+                    ? (context) => params.afterCommitted!(operation.result, context)
+                    : undefined,
+                },
+                params.retainedExecution,
               );
+              return { maintenancePlans: committed.maintenancePlans, result: operation.result };
+            } finally {
+              preparedPreservation?.dispose();
             }
-            if (typeof snapshot.databaseIdentity !== "string") {
-              throw new Error("Session replacement requires its durable database identity");
-            }
-            const committed = await commitSessionEntryReplacementsInWorker(
-              databaseOptions,
-              snapshot.databaseIdentity,
-              { ...input, initializeTranscript: creation?.initializeTranscript },
-              assertCurrent,
-              {
-                identityAgentId: resolved.agentId,
-                onLifecycleCommitted: params.onLifecycleCommitted,
-                afterCommitted: params.afterCommitted
-                  ? (context) => params.afterCommitted!(operation.result, context)
-                  : undefined,
-              },
-              params.retainedExecution,
-            );
-            return { maintenancePlans: committed.maintenancePlans, result: operation.result };
-          } finally {
-            preparedPreservation?.dispose();
-          }
-        },
+          }),
       };
     },
     "session.entry-replacements",

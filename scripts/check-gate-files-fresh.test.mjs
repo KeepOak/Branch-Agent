@@ -3,10 +3,14 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { GATE_SCRIPTS } from './merge-gate-trusted.mjs';
 import {
+  COMPARE_FILES_JQ,
+  COMPARE_SLIM_JQ,
   GATE_WORKFLOW_FILES,
   KEEP_MAIN_MESSAGE,
   checkPullRequest,
+  compareTooLargeMessage,
   evaluateGateFiles,
+  fetchCompare,
   forkPointSha,
   formatReport,
   listedGateFiles,
@@ -148,6 +152,8 @@ test('listed gate files include the merge-gate workflows and GATE_SCRIPTS', () =
   for (const file of [...GATE_WORKFLOW_FILES, ...GATE_SCRIPTS]) {
     assert.ok(listed.includes(file), file);
   }
+  assert.ok(listed.includes('.github/workflows/gate-files-fresh.yml'));
+  assert.ok(listed.includes('scripts/check-gate-files-fresh.mjs'));
 });
 
 test('gate-files-fresh workflow checks out the default branch read-only', () => {
@@ -199,4 +205,54 @@ test('checkPullRequest fails a stale head and names the main commit that added t
   assert.equal(result.ok, false);
   assert.equal(result.results[0].dropped[0].line, 'added-on-main');
   assert.equal(result.results[0].dropped[0].commit, 'mainadd1');
+});
+
+test('fetchCompare paginates filenames from a large compare without buffering the payload', () => {
+  const files = Array.from({ length: 250 }, (_, index) => `path/file-${index}.js`);
+  const calls = [];
+  const result = fetchCompare('example/repo', 'unused', '83a339c', 'main', {
+    api: (_repo, _token, requestPath, options = {}) => {
+      calls.push({ requestPath, jq: options.jq });
+      const page = Number(new URL(`https://example/${requestPath}`).searchParams.get('page') ?? 1);
+      const slice = files.slice((page - 1) * 100, page * 100);
+      if (page === 1) {
+        assert.equal(options.jq, COMPARE_SLIM_JQ);
+        return {
+          merge_base_sha: '83a339c',
+          commits: ['c1', 'c2'],
+          truncated: false,
+          total_commits: 2,
+          files: slice,
+        };
+      }
+      assert.equal(options.jq, COMPARE_FILES_JQ);
+      return slice;
+    },
+  });
+  assert.equal(calls.length, 3);
+  assert.match(calls[0].requestPath, /compare\/83a339c\.\.\.main\?per_page=100&page=1/);
+  assert.match(calls[1].requestPath, /page=2/);
+  assert.match(calls[2].requestPath, /page=3/);
+  assert.deepEqual(result.files.map((file) => file.filename), files);
+  assert.deepEqual(result.commits.map((commit) => commit.sha), ['c1', 'c2']);
+  assert.equal(result.merge_base_commit.sha, '83a339c');
+});
+
+test('fetchCompare fails closed when GitHub truncates the compare file list', () => {
+  const names = Array.from({ length: 300 }, (_, index) => `big-${index}.js`);
+  assert.throws(() => fetchCompare('example/repo', 'unused', 'old', 'main', {
+    api: () => ({
+      merge_base_sha: 'old',
+      commits: Array.from({ length: 250 }, (_, index) => `c${index}`),
+      truncated: true,
+      total_commits: 400,
+      files: names,
+    }),
+  }), /too large or truncated/);
+  assert.match(compareTooLargeMessage('old', 'main', {
+    truncated: true,
+    fileCount: 300,
+    commitCount: 250,
+    totalCommits: 400,
+  }), /Merge main so the fork point is recent/);
 });

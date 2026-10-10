@@ -126,6 +126,40 @@ describe("fetchClaudeUsage", () => {
     expect(pulls).toBeLessThan(64);
   });
 
+  it("asks as Claude Code and backs off a rate-limited account", async () => {
+    const reset = "2026-10-09T03:00:00Z";
+    const ok = createProviderUsageFetch(async (_url, init) => {
+      expect(new Headers(init?.headers).get("User-Agent")).toMatch(/^claude-code\/\d+\.\d+\.\d+$/);
+      return makeResponse(200, { five_hour: { utilization: 31, resets_at: reset } });
+    });
+    expect((await fetchClaudeUsage("account-one", 5000, ok)).windows).toEqual([
+      { label: "5h", usedPercent: 31, resetAt: Date.parse(reset) },
+    ]);
+
+    const limited = createProviderUsageFetch(
+      async () =>
+        new Response(
+          JSON.stringify({ error: { message: "Rate limited. Please try again later." } }),
+          {
+            status: 429,
+            headers: { "content-type": "application/json", "retry-after": "0" },
+          },
+        ),
+    );
+    const first = await fetchClaudeUsage("account-two", 5000, limited);
+    expect(first.error).toBe("HTTP 429: Rate limited. Please try again later.");
+    expect((await fetchClaudeUsage("account-two", 5000, limited)).error).toBe(first.error);
+    expect(limited).toHaveBeenCalledOnce();
+    expect((await fetchClaudeUsage("account-three", 5000, ok)).error).toBeUndefined();
+
+    const later = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 5 * 60_000 + 1);
+    try {
+      expect((await fetchClaudeUsage("account-two", 5000, ok)).windows).toHaveLength(1);
+    } finally {
+      later.mockRestore();
+    }
+  });
+
   it("reports malformed successful JSON", async () => {
     const result = await fetchUsage("{not json");
     expect(result.error).toBe("Malformed usage response");

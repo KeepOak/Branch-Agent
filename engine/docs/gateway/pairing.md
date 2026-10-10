@@ -74,11 +74,24 @@ previously approved capabilities are separate from that pending request.
 ## One-paste node pairing
 
 In the Control UI Devices page, open the pairing dialog, choose **Node host**,
-and copy the generated command to the device:
+and copy the generated command to the device. The command prompts for the setup
+code with hidden input to avoid exposing it in shell history or process lists:
 
 ```bash
-branch node run --pair "oc-pair://<setup-code>"
+branch node run --pair -
+# Setup code: [paste from UI, hidden input]
 ```
+
+For non-interactive use, save the code to a file with mode `0600`:
+
+```bash
+chmod 600 /path/to/code.txt
+branch node run --pair-file /path/to/code.txt
+```
+
+Sources are resolved in this order: stdin, file, `BRANCH_PAIRING_CODE`, then a
+deprecated argv value. `BRANCH_PAIRING_CODE` is a fallback for non-interactive
+automation and is visible to same-user processes. The code is never logged.
 
 The setup link carries the Gateway endpoint, a short-lived single-use bootstrap
 token, and a TLS certificate pin when the Gateway directly serves a pinnable

@@ -67,7 +67,8 @@ export function renderDevicePairSetup(props: DevicePairSetupProps) {
   const gatewayUrls = setup?.gatewayUrls ?? (setup ? [setup.gatewayUrl] : []);
   const isNodeSetup = lifecycle.access === "node";
   const pairingDocsUrl = isNodeSetup ? NODE_PAIRING_DOCS_URL : MOBILE_PAIRING_DOCS_URL;
-  const nodeCommand = setup ? `branch node run --pair "oc-pair://${setup.setupCode}"` : "";
+  const nodeCommand = "branch node run --pair -";
+  const nodeSetupCode = setup ? `oc-pair://${setup.setupCode}` : "";
   const setupExpired = Boolean(setup && setup.expiresAtMs <= props.nowMs);
   const showAccessChoices =
     lifecycle.phase !== "success" &&
@@ -184,6 +185,13 @@ export function renderDevicePairSetup(props: DevicePairSetupProps) {
                               : html`<div class="login-gate__command">
                                   <code>${nodeCommand}</code>
                                   ${renderCopyButton(nodeCommand, t("connection.help.copyCommand"))}
+                                </div>
+                                <p class="device-pair-setup__hint">
+                                  When prompted, paste this setup code:
+                                </p>
+                                <div class="login-gate__command">
+                                  <code>${nodeSetupCode}</code>
+                                  ${renderCopyButton(nodeSetupCode, copyLabel)}
                                 </div>`
                           }
                           <p class="device-pair-setup__waiting" role="timer" aria-live="off">

@@ -79,12 +79,23 @@ export function currentThinking(row: Rec, defaults: Rec): string {
   return str(row.thinkingLevel) || str(row.thinkingDefault) || str(defaults.thinkingDefault);
 }
 
+/** Preview §4.3.4 / rule 13: the chip when no usable model is connected. */
+export const NO_MODEL_CHIP = "No model";
+
 /** "<model> · <thinking>" in lower case for the level (§4.3.4 rule 1). */
 export function chipLabel(modelName: string, thinking: string): string {
   if (!modelName) {
     return "";
   }
   return thinking ? `${modelName} · ${thinking.toLowerCase()}` : modelName;
+}
+
+/** The composer chip names a model only when that model is in models.list and available. */
+export function composerChipLabel(current: ModelChoice | undefined, thinking: string, modelsLoaded: boolean): string {
+  if (current?.available) {
+    return chipLabel(current.name, thinking);
+  }
+  return modelsLoaded ? NO_MODEL_CHIP : "";
 }
 
 /** The service a model belongs to, as the group label in the model menu. */

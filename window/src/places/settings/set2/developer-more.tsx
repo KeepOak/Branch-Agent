@@ -11,6 +11,7 @@ import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
 import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import { CallLine, CopyBtn, Kv, bytes, rec, str, useCall, useLive, when, type RecordValue } from "./common";
+import { rerunSetup } from "../../../setup/setup-model";
 import "./developer.css";
 
 export const DEFAULT_PORT = 18789;
@@ -409,7 +410,7 @@ export function Troubleshooting(ctx: Ctx) {
       <Greyed rows={TROUBLE_OFF.slice(0, 1)} />
       <Ctl title="Copy for support" sub={support.error ?? support.note ?? "Plain text with keys left out."}><Btn sm disabled={support.busy} onClick={copySupport}>Copy…</Btn></Ctl>
       <Greyed rows={TROUBLE_OFF.slice(2)} />
-      <div className="acts s2developer-acts"><Btn sm disabled title={APP}>Restart the app</Btn><Btn sm disabled title={APP}>Run setup again</Btn></div>
+      <div className="acts s2developer-acts"><Btn sm disabled title={APP}>Restart the app</Btn><Btn sm data-testid="run-setup-again" onClick={rerunSetup}>Run setup again</Btn></div>
       <div className="acts s2developer-acts"><Btn sm ghost onClick={openFile} disabled={open.busy}>Open the settings file</Btn>{APP_BTNS.slice(0, 2).map((b) => <Btn key={b} sm ghost disabled title={APP}>{b}</Btn>)}</div>
       <CallLine call={open} />
       <div className="acts s2developer-acts">{APP_BTNS.slice(2).map((b) => <Btn key={b} sm ghost disabled title={APP}>{b}</Btn>)}</div>

@@ -151,6 +151,40 @@ export async function prepareSessionMaintenancePreservation(storePath: string): 
   }
 }
 
+/**
+ * A storage-backed protection source (for example, worker placements) changed between preparation
+ * and commit. The write committed nothing, so it may prepare its protection again.
+ */
+export class SessionMaintenancePreservationChangedError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "SessionMaintenancePreservationChangedError";
+  }
+}
+
+function isSessionMaintenancePreservationChange(error: unknown): boolean {
+  for (let current = error; current instanceof Error; current = current.cause) {
+    if (current instanceof SessionMaintenancePreservationChangedError) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Re-prepares protection once when a source changed before commit; a second change still fails. */
+export async function retryAfterSessionMaintenancePreservationChange<T>(
+  commit: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await commit();
+  } catch (error) {
+    if (!isSessionMaintenancePreservationChange(error)) {
+      throw error;
+    }
+    return await commit();
+  }
+}
+
 /** Collects runtime, active-work, and lifecycle keys protected from automatic maintenance. */
 export function collectSessionMaintenancePreserveKeysForStore(params: {
   storePath: string;

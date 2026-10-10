@@ -1,0 +1,2 @@
+window:src/shell/conversation-row-typing.test.tsx
+window:src/shell/pet-row-redesign.test.tsx

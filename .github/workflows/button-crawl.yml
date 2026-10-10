@@ -1,0 +1,39 @@
+name: Button crawl
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: button-crawl-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - run: npm install --global pnpm@12.5.1
+      - run: node scripts/install-worktree.mjs both
+      - run: pnpm -C engine/packages/gateway-protocol run build && pnpm -C engine/packages/gateway-client run build
+      - run: pnpm -C window exec playwright install chromium
+      - run: node --test scripts/button-crawl/crawl.test.mjs
+      - run: node scripts/button-crawl/crawl.mjs
+        env:
+          BUTTON_CRAWL_PORT: '5653'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: button-crawl
+          path: button-crawl-output/
+          if-no-files-found: ignore

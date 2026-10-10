@@ -42,6 +42,17 @@ export const AgentsSchema = z
         AgentEntryConfigSchema,
       )
       .optional(),
+    trunkQueue: z
+      .strictObject({
+        enabled: z.boolean().optional(),
+        agents: z.array(z.string().min(1).max(64)).optional(),
+      })
+      .optional(),
+    teamMemory: z
+      .strictObject({
+        agents: z.array(z.string().min(1).max(64)).optional(),
+      })
+      .optional(),
   })
   .superRefine((value, ctx) => {
     const entries = Object.entries(value.entries ?? {});

@@ -1,0 +1,3792 @@
+[
+  {
+    "id": "titlebar-guide",
+    "screen": "titlebar",
+    "label": "Guide",
+    "previewAction": "Opens the Guide popover (design notes / critique pins) and toggles the notes layer.",
+    "appFile": "window/src/shell/guide-links.ts",
+    "appComponent": "Guide menu (TopBar + PersonMenu)",
+    "appAction": "Opens the Guide menu: What's new, Set up Branch, walkthrough, Docs, Get help, Community \u2014 not the prototype notes layer.",
+    "status": "different"
+  },
+  {
+    "id": "titlebar-theme",
+    "screen": "titlebar",
+    "label": "Switch light or dark",
+    "previewAction": "Toggles document theme between light and dark.",
+    "appFile": "window/src/shell/TopBar.tsx",
+    "appComponent": "TopBar",
+    "appAction": "Toggles light/dark. Shown on place/settings headers; chat uses the conversation \u22ef or person menu Look instead.",
+    "status": "different"
+  },
+  {
+    "id": "titlebar-focus",
+    "screen": "titlebar",
+    "label": "Clear the view (Ctrl .)",
+    "previewAction": "Toggles focus mode (hides sidebar and status bar).",
+    "appFile": "window/src/shell/WindowShell.tsx",
+    "appComponent": "WindowShell",
+    "appAction": "Focus mode exists via Ctrl+. and Leave focus mode. No titlebar eye button.",
+    "status": "missing"
+  },
+  {
+    "id": "titlebar-minimize",
+    "screen": "titlebar",
+    "label": "Minimize",
+    "previewAction": "Shows a toast: Branch keeps working from the tray.",
+    "appFile": "window/src/connect/title-bar.ts",
+    "appComponent": "syncTitleBar (Electron chrome)",
+    "appAction": "Minimize is the OS/Electron window button, not a React control. In a browser there is no minimize control.",
+    "status": "different"
+  },
+  {
+    "id": "titlebar-window-focus",
+    "screen": "titlebar",
+    "label": "Focus mode",
+    "previewAction": "Same as Clear the view: toggles focus mode.",
+    "appFile": "window/src/shell/WindowShell.tsx",
+    "appComponent": "WindowShell",
+    "appAction": "No maximize/focus window button in the React chrome; focus is Ctrl+.",
+    "status": "missing"
+  },
+  {
+    "id": "titlebar-quit",
+    "screen": "titlebar",
+    "label": "Quit",
+    "previewAction": "If a Trunk is working, opens a quit-while-working dialog; otherwise toasts that Branch closes to the tray.",
+    "appFile": "window/src/connect/title-bar.ts",
+    "appComponent": "syncTitleBar (Electron chrome)",
+    "appAction": "Close is the OS/Electron window button. Settings \u203a Gateway has a greyed 'Ask before quitting while work runs' row.",
+    "status": "different"
+  },
+  {
+    "id": "titlebar-focus-exit",
+    "screen": "titlebar",
+    "label": "Leave focus mode \u00b7 Ctrl+.",
+    "previewAction": "Turns focus mode off.",
+    "appFile": "window/src/shell/WindowShell.tsx",
+    "appComponent": "WindowShell",
+    "appAction": "Same: leaves focus mode.",
+    "status": "same"
+  },
+  {
+    "id": "sidebar-machine",
+    "screen": "sidebar",
+    "label": "This computer",
+    "previewAction": "Opens the machine switcher menu (talk to the assistant on another computer).",
+    "appFile": "window/src/shell/MachineMenu.tsx",
+    "appComponent": "MachineSwitcher / MachineMenu",
+    "appAction": "Opens the machine switcher. On wide layouts it sits in the top bar, not the sidebar top.",
+    "status": "different"
+  },
+  {
+    "id": "sidebar-search",
+    "screen": "sidebar",
+    "label": "Search",
+    "previewAction": "Focuses sidebar search / opens Find in the list.",
+    "appFile": "window/src/shell/Sidebar.tsx",
+    "appComponent": "Sidebar search slot",
+    "appAction": "Focuses the list search (Ctrl G). Ctrl K opens Find anything instead.",
+    "status": "same"
+  },
+  {
+    "id": "sidebar-new",
+    "screen": "sidebar",
+    "label": "New",
+    "previewAction": "Opens the + new menu.",
+    "appFile": "window/src/shell/Sidebar.tsx",
+    "appComponent": "Sidebar onNew \u2192 newMenuItems",
+    "appAction": "Opens the + new menu.",
+    "status": "same"
+  },
+  {
+    "id": "sidebar-filter-sort",
+    "screen": "sidebar",
+    "label": "Filter and sort",
+    "previewAction": "Opens filter/sort popover for the conversation list.",
+    "appFile": "window/src/shell/FilterSort.tsx",
+    "appComponent": "FilterSort",
+    "appAction": "Opens filter and sort.",
+    "status": "same"
+  },
+  {
+    "id": "sidebar-row-sapling",
+    "screen": "sidebar",
+    "label": "Sapling",
+    "previewAction": "Opens the Sapling (default assistant) conversation.",
+    "appFile": "window/src/shell/ConversationRow.tsx",
+    "appComponent": "ConversationRow",
+    "appAction": "Opens the default Trunk's main conversation.",
+    "status": "same"
+  },
+  {
+    "id": "sidebar-row-scout",
+    "screen": "sidebar",
+    "label": "Scout",
+    "previewAction": "Opens the Scout conversation.",
+    "appFile": "window/src/shell/ConversationRow.tsx",
+    "appComponent": "ConversationRow",
+    "appAction": "Opens that Trunk's conversation.",
+    "status": "same"
+  },
+  {
+    "id": "sidebar-row-ledger",
+    "screen": "sidebar",
+    "label": "Ledger",
+    "previewAction": "Opens the Ledger conversation.",
+    "appFile": "window/src/shell/ConversationRow.tsx",
+    "appComponent": "ConversationRow",
+    "appAction": "Opens that Trunk's conversation.",
+    "status": "same"
+  },
+  {
+    "id": "sidebar-row-room",
+    "screen": "sidebar",
+    "label": "Supplier quotes",
+    "previewAction": "Opens the room conversation.",
+    "appFile": "window/src/shell/ConversationRow.tsx",
+    "appComponent": "ConversationRow",
+    "appAction": "Opens that group/room conversation.",
+    "status": "same"
+  },
+  {
+    "id": "sidebar-row-ada",
+    "screen": "sidebar",
+    "label": "Ada",
+    "previewAction": "Opens the Ada conversation.",
+    "appFile": "window/src/shell/ConversationRow.tsx",
+    "appComponent": "ConversationRow",
+    "appAction": "Opens that Trunk's conversation.",
+    "status": "same"
+  },
+  {
+    "id": "sidebar-row-fieldnotes",
+    "screen": "sidebar",
+    "label": "Fieldnotes",
+    "previewAction": "Opens the Fieldnotes conversation.",
+    "appFile": "window/src/shell/ConversationRow.tsx",
+    "appComponent": "ConversationRow",
+    "appAction": "Opens that Trunk's conversation.",
+    "status": "same"
+  },
+  {
+    "id": "sidebar-row-new-trunk",
+    "screen": "sidebar",
+    "label": "New Trunk",
+    "previewAction": "Opens the just-made Trunk's setup conversation.",
+    "appFile": "window/src/shell/NewTrunkFlow.tsx",
+    "appComponent": "NewTrunkFlow",
+    "appAction": "New Trunk is a + menu / Customize action that starts a setup conversation, not a standing demo row.",
+    "status": "different"
+  },
+  {
+    "id": "sidebar-row-context-menu",
+    "screen": "sidebar",
+    "label": "Conversation row context menu",
+    "previewAction": "Right-click / \u22ef on a row opens pin, rename, pause, archive, copy, delete.",
+    "appFile": "window/src/shell/row-menu.ts",
+    "appComponent": "rowMenuItems",
+    "appAction": "Opens the row menu with pin, snooze, archive, copy, rename, and more. Pause is listed but greyed (no engine method).",
+    "status": "different"
+  },
+  {
+    "id": "sidebar-show-more-kids",
+    "screen": "sidebar",
+    "label": "Show N more",
+    "previewAction": "Expands the rest of a parent's child conversations.",
+    "appFile": "window/src/shell/Sidebar.tsx",
+    "appComponent": "Sidebar",
+    "appAction": "Same: expands remaining child rows.",
+    "status": "same"
+  },
+  {
+    "id": "sidebar-projects",
+    "screen": "sidebar",
+    "label": "Projects",
+    "previewAction": "Toggles the projects fold and opens a project view.",
+    "appFile": "window/src/shell/Projects.tsx",
+    "appComponent": "ProjectsSection",
+    "appAction": "Folds projects and lists their conversations. Opening a project is a conversation filter, not a separate project screen.",
+    "status": "different"
+  },
+  {
+    "id": "sidebar-place-overview",
+    "screen": "sidebar",
+    "label": "Overview",
+    "previewAction": "Navigates to the Overview place.",
+    "appFile": "window/src/places/overview/index.tsx",
+    "appComponent": "OverviewPlace",
+    "appAction": "Navigates to Overview.",
+    "status": "same"
+  },
+  {
+    "id": "sidebar-place-canopy",
+    "screen": "sidebar",
+    "label": "Canopy",
+    "previewAction": "Later preview passes add Canopy as a place (runs from above).",
+    "appFile": "window/src/places/canopy/index.tsx",
+    "appComponent": "CanopyPlace",
+    "appAction": "Navigates to Canopy. Early preview chrome listed Overview without Canopy; current preview and app both have it.",
+    "status": "same"
+  },
+  {
+    "id": "sidebar-place-inbox",
+    "screen": "sidebar",
+    "label": "Inbox",
+    "previewAction": "Navigates to Inbox (Needs you).",
+    "appFile": "window/src/places/inbox/index.tsx",
+    "appComponent": "InboxPlace",
+    "appAction": "Navigates to Inbox.",
+    "status": "same"
+  },
+  {
+    "id": "sidebar-place-automations",
+    "screen": "sidebar",
+    "label": "Automations",
+    "previewAction": "Navigates to Automations (Scheduled).",
+    "appFile": "window/src/places/automations/index.tsx",
+    "appComponent": "AutomationsPlace",
+    "appAction": "Navigates to Automations.",
+    "status": "same"
+  },
+  {
+    "id": "sidebar-place-library",
+    "screen": "sidebar",
+    "label": "Library",
+    "previewAction": "Navigates to Library (Memory).",
+    "appFile": "window/src/places/library/index.tsx",
+    "appComponent": "LibraryPlace",
+    "appAction": "Navigates to Library.",
+    "status": "same"
+  },
+  {
+    "id": "sidebar-place-people",
+    "screen": "sidebar",
+    "label": "People",
+    "previewAction": "Navigates to People / team.",
+    "appFile": "window/src/places/people/index.tsx",
+    "appComponent": "PeoplePlace",
+    "appAction": "Navigates to People.",
+    "status": "same"
+  },
+  {
+    "id": "sidebar-place-customize",
+    "screen": "sidebar",
+    "label": "Customize",
+    "previewAction": "Navigates to Customize (Trunks).",
+    "appFile": "window/src/places/customize/index.tsx",
+    "appComponent": "CustomizePlace",
+    "appAction": "Navigates to Customize.",
+    "status": "same"
+  },
+  {
+    "id": "sidebar-person",
+    "screen": "sidebar",
+    "label": "Owner",
+    "previewAction": "Opens the person / owner menu.",
+    "appFile": "window/src/shell/PersonMenu.tsx",
+    "appComponent": "PersonMenu",
+    "appAction": "Opens the person menu.",
+    "status": "same"
+  },
+  {
+    "id": "sidebar-update-chip",
+    "screen": "sidebar",
+    "label": "Update chip",
+    "previewAction": "On the person row, a copper Update chip opens the update menu.",
+    "appFile": "window/src/shell/PersonMenu.tsx",
+    "appComponent": "PersonMenu",
+    "appAction": "Update to Branch <version> is a person-menu row, not a chip on the sidebar row.",
+    "status": "missing"
+  },
+  {
+    "id": "sidebar-hide-list",
+    "screen": "sidebar",
+    "label": "Hide or show the list",
+    "previewAction": "Ctrl B toggles the sidebar.",
+    "appFile": "window/src/shell/TopBar.tsx",
+    "appComponent": "TopBar list-toggle",
+    "appAction": "Same shortcut and a top-bar button (Ctrl+B).",
+    "status": "same"
+  },
+  {
+    "id": "chat-show-conversations",
+    "screen": "chat-header",
+    "label": "Show conversations",
+    "previewAction": "On a narrow window, opens the sliding sidebar.",
+    "appFile": "window/src/shell/WindowShell.tsx",
+    "appComponent": "WindowShell slide",
+    "appAction": "Narrow layout slides the list over. No menu-only hamburger in the wide header.",
+    "status": "same"
+  },
+  {
+    "id": "chat-header-face",
+    "screen": "chat-header",
+    "label": "Trunk face",
+    "previewAction": "Decorative in early preview; later opens the character / profile.",
+    "appFile": "window/src/shell/TopBar.tsx",
+    "appComponent": "HeaderFace",
+    "appAction": "Opens the Trunk profile (or shows/hides the character panel).",
+    "status": "same"
+  },
+  {
+    "id": "chat-header-name",
+    "screen": "chat-header",
+    "label": "Conversation name",
+    "previewAction": "Shows the name; rename replaces it with an input (Enter saves, Esc cancels).",
+    "appFile": "window/src/shell/TopBar.tsx",
+    "appComponent": "HeadName",
+    "appAction": "Click opens the Trunk profile. Rename uses the same in-header field.",
+    "status": "different"
+  },
+  {
+    "id": "chat-computer-view",
+    "screen": "chat-header",
+    "label": "Computer view",
+    "previewAction": "Toggles the side panel on the Computer tab.",
+    "appFile": "window/src/shell/WindowShell.tsx",
+    "appComponent": "conversationTools",
+    "appAction": "Opens Computer full-size / the Computer pane, not only a pressed icon in the header.",
+    "status": "different"
+  },
+  {
+    "id": "chat-side-panel",
+    "screen": "chat-header",
+    "label": "Side panel",
+    "previewAction": "Toggles the side panel on Activity (or closes it if already a non-computer pane).",
+    "appFile": "window/src/stage/SidePane.tsx",
+    "appComponent": "SidePane",
+    "appAction": "Toggles the side panel (Ctrl Shift K). Header uses conversation \u22ef \u203a Side panel more than a dedicated icon.",
+    "status": "different"
+  },
+  {
+    "id": "chat-more",
+    "screen": "chat-header",
+    "label": "More for <name>",
+    "previewAction": "Opens the conversation \u22ef menu.",
+    "appFile": "window/src/shell/ConversationMenu.tsx",
+    "appComponent": "ConversationMenu",
+    "appAction": "Opens the conversation \u22ef menu.",
+    "status": "same"
+  },
+  {
+    "id": "chat-back",
+    "screen": "chat-header",
+    "label": "Back",
+    "previewAction": "Not in the early preview header.",
+    "appFile": "window/src/shell/TopBar.tsx",
+    "appComponent": "TopBar",
+    "appAction": "History back. Preview has no back/forward in the chat header.",
+    "status": "extra"
+  },
+  {
+    "id": "chat-forward",
+    "screen": "chat-header",
+    "label": "Forward",
+    "previewAction": "Not in the early preview header.",
+    "appFile": "window/src/shell/TopBar.tsx",
+    "appComponent": "TopBar",
+    "appAction": "History forward.",
+    "status": "extra"
+  },
+  {
+    "id": "lock-banner-off",
+    "screen": "chat-header",
+    "label": "Turn it off",
+    "previewAction": "Turns Lockdown off from the red banner.",
+    "appFile": "window/src/shell/LockdownBanner.tsx",
+    "appComponent": "LockdownBanner",
+    "appAction": "Turns Lockdown off.",
+    "status": "same"
+  },
+  {
+    "id": "teach-stop",
+    "screen": "chat-header",
+    "label": "I'm done, save it",
+    "previewAction": "Stops teach mode and saves a procedure under Automations \u203a Procedures.",
+    "appFile": "window/src/shell/conversation-menu.ts",
+    "appComponent": "conversationMenuItems",
+    "appAction": "Show it how, once is listed and greyed: needs an engine method.",
+    "status": "different"
+  },
+  {
+    "id": "call-mute",
+    "screen": "chat-header",
+    "label": "Mute",
+    "previewAction": "Toasts that the Trunk can't hear you.",
+    "appFile": "window/src/composer/VoiceParts.tsx",
+    "appComponent": "VoiceParts",
+    "appAction": "Live call has real mute/camera controls, not a toast-only Mute on a header bar.",
+    "status": "different"
+  },
+  {
+    "id": "call-pause",
+    "screen": "chat-header",
+    "label": "Pause",
+    "previewAction": "Toasts Paused.",
+    "appFile": "window/src/composer/VoiceParts.tsx",
+    "appComponent": "VoiceScreen",
+    "appAction": "No header call Pause button. Live voice is a composer overlay.",
+    "status": "missing"
+  },
+  {
+    "id": "call-end",
+    "screen": "chat-header",
+    "label": "End",
+    "previewAction": "Ends the talk-out-loud call and toasts that a transcript is in Files.",
+    "appFile": "window/src/composer/VoiceParts.tsx",
+    "appComponent": "VoiceParts",
+    "appAction": "Ends the live voice session.",
+    "status": "same"
+  },
+  {
+    "id": "composer-plus",
+    "screen": "composer",
+    "label": "Add",
+    "previewAction": "Opens the + menu (attach, mention, skills, temporary, check with me, thinking).",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Opens the + menu. Extra rows exist; some are greyed with a reason.",
+    "status": "same"
+  },
+  {
+    "id": "composer-dictate",
+    "screen": "composer",
+    "label": "Dictate",
+    "previewAction": "Replaces the textarea with a listening bar.",
+    "appFile": "window/src/composer/Composer.tsx",
+    "appComponent": "Composer",
+    "appAction": "Starts dictation when voice is on; otherwise disabled with a Settings \u203a Voice reason.",
+    "status": "same"
+  },
+  {
+    "id": "composer-dictate-done",
+    "screen": "composer",
+    "label": "Done",
+    "previewAction": "Leaves dictation and focuses the message box.",
+    "appFile": "window/src/composer/Composer.tsx",
+    "appComponent": "Composer",
+    "appAction": "Stops dictation.",
+    "status": "same"
+  },
+  {
+    "id": "composer-send",
+    "screen": "composer",
+    "label": "Send",
+    "previewAction": "Sends the draft. If empty and a Trunk is working, the same control is Stop.",
+    "appFile": "window/src/composer/Composer.tsx",
+    "appComponent": "Composer",
+    "appAction": "Sends the draft; becomes Stop while a run is active and the box is empty.",
+    "status": "same"
+  },
+  {
+    "id": "composer-stop",
+    "screen": "composer",
+    "label": "Stop",
+    "previewAction": "Stops the current run and posts a Stopped line.",
+    "appFile": "window/src/composer/Composer.tsx",
+    "appComponent": "Composer",
+    "appAction": "Stops the current run (also Ctrl Shift S).",
+    "status": "same"
+  },
+  {
+    "id": "composer-enter",
+    "screen": "composer",
+    "label": "Enter in message box",
+    "previewAction": "Sends (Shift+Enter inserts a newline). If a mention/slash menu is open, accepts the first item.",
+    "appFile": "window/src/composer/Composer.tsx",
+    "appComponent": "Composer",
+    "appAction": "Same send / newline / mention accept behaviour.",
+    "status": "same"
+  },
+  {
+    "id": "composer-mention-trigger",
+    "screen": "composer",
+    "label": "@",
+    "previewAction": "Typing @ opens the mention popover.",
+    "appFile": "window/src/composer/mention.ts",
+    "appComponent": "mention",
+    "appAction": "Opens mention suggestions.",
+    "status": "same"
+  },
+  {
+    "id": "composer-slash-trigger",
+    "screen": "composer",
+    "label": "/",
+    "previewAction": "Typing / opens the skills popover.",
+    "appFile": "window/src/composer/slash.ts",
+    "appComponent": "slash",
+    "appAction": "Opens slash/skill suggestions.",
+    "status": "same"
+  },
+  {
+    "id": "composer-model-chip",
+    "screen": "composer",
+    "label": "Model chip",
+    "previewAction": "Later preview: a model/access/usage chip opens the model menu.",
+    "appFile": "window/src/composer/Composer.tsx",
+    "appComponent": "Composer model chip",
+    "appAction": "Opens model, access and usage.",
+    "status": "same"
+  },
+  {
+    "id": "composer-talk-live",
+    "screen": "composer",
+    "label": "Talk live with voice",
+    "previewAction": "Preview talk-out-loud is on the conversation \u22ef menu (Talk out loud).",
+    "appFile": "window/src/composer/Composer.tsx",
+    "appComponent": "Composer",
+    "appAction": "Starts a live voice session from a composer icon (Ctrl Shift V).",
+    "status": "different"
+  },
+  {
+    "id": "composer-dont-reply",
+    "screen": "composer",
+    "label": "Don't reply",
+    "previewAction": "Clears an in-progress reply target.",
+    "appFile": "window/src/composer/Composer.tsx",
+    "appComponent": "Composer",
+    "appAction": "Clears the reply target.",
+    "status": "same"
+  },
+  {
+    "id": "empty-sugg-tidy",
+    "screen": "composer",
+    "label": "Tidy my Downloads folder",
+    "previewAction": "Fills the draft with the chip text and sends.",
+    "appFile": "window/src/thread/Thread.tsx",
+    "appComponent": "suggestion-row",
+    "appAction": "Suggested replies insert/send. Empty-chat chips in the preview are four fixed demos; the app uses live suggestions.",
+    "status": "different"
+  },
+  {
+    "id": "empty-sugg-flight",
+    "screen": "composer",
+    "label": "Find a cheap refundable flight to Lisbon in March",
+    "previewAction": "Fills the draft and sends.",
+    "appFile": "window/src/thread/Thread.tsx",
+    "appComponent": "suggestion-row",
+    "appAction": "Live suggestions, not this fixed chip.",
+    "status": "different"
+  },
+  {
+    "id": "empty-sugg-pdfs",
+    "screen": "composer",
+    "label": "Summarise the PDFs on my desktop",
+    "previewAction": "Fills the draft and sends.",
+    "appFile": "window/src/thread/Thread.tsx",
+    "appComponent": "suggestion-row",
+    "appAction": "Live suggestions, not this fixed chip.",
+    "status": "different"
+  },
+  {
+    "id": "empty-sugg-week",
+    "screen": "composer",
+    "label": "Plan my week from my calendar",
+    "previewAction": "Fills the draft and sends.",
+    "appFile": "window/src/thread/Thread.tsx",
+    "appComponent": "suggestion-row",
+    "appAction": "Live suggestions, not this fixed chip.",
+    "status": "different"
+  },
+  {
+    "id": "empty-ask-trunk",
+    "screen": "composer",
+    "label": "Ask <Trunk>",
+    "previewAction": "Opens that Trunk's conversation from the empty-chat row.",
+    "appFile": "window/src/shell/new-menu.ts",
+    "appComponent": "newMenuItems",
+    "appAction": "New conversation \u203a with <Trunk> starts a conversation. Empty chat does not list Trunk faces.",
+    "status": "different"
+  },
+  {
+    "id": "plus-attach",
+    "screen": "plus-menu",
+    "label": "Attach files",
+    "previewAction": "Opens a file picker (later attachB18).",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Opens the file picker.",
+    "status": "same"
+  },
+  {
+    "id": "plus-folder",
+    "screen": "plus-menu",
+    "label": "Add a folder",
+    "previewAction": "Adds a folder to the draft.",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Adds a folder.",
+    "status": "same"
+  },
+  {
+    "id": "plus-screenshot",
+    "screen": "plus-menu",
+    "label": "Take a screenshot",
+    "previewAction": "Disabled in the preview with a note that the Branch app can capture.",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Disabled: screen capture needs the desktop app.",
+    "status": "same"
+  },
+  {
+    "id": "plus-mention",
+    "screen": "plus-menu",
+    "label": "Mention a Trunk",
+    "previewAction": "Inserts @ and opens the mention popover.",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Inserts @.",
+    "status": "same"
+  },
+  {
+    "id": "plus-skill",
+    "screen": "plus-menu",
+    "label": "Use a skill",
+    "previewAction": "Inserts / and opens the skills popover.",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Inserts /.",
+    "status": "same"
+  },
+  {
+    "id": "plus-temporary",
+    "screen": "plus-menu",
+    "label": "Temporary conversation",
+    "previewAction": "Toggles temporary on the current conversation (unsaved, not remembered).",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Starts a new temporary conversation when the engine supports incognito create; otherwise greyed. Does not flip the open conversation.",
+    "status": "different"
+  },
+  {
+    "id": "plus-check-with-me",
+    "screen": "plus-menu",
+    "label": "Check with me",
+    "previewAction": "Toggles ask-questions-first on this conversation.",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Greyed: the engine has no ask-questions-first switch.",
+    "status": "different"
+  },
+  {
+    "id": "plus-think-quick",
+    "screen": "plus-menu",
+    "label": "Quick",
+    "previewAction": "Sets thinking to Quick and keeps the + menu open.",
+    "appFile": "window/src/composer/Composer.tsx",
+    "appComponent": "model chip",
+    "appAction": "Thinking depth lives on the model chip, not as Quick/Normal/Deep in +.",
+    "status": "different"
+  },
+  {
+    "id": "plus-think-normal",
+    "screen": "plus-menu",
+    "label": "Normal",
+    "previewAction": "Sets thinking to Normal.",
+    "appFile": "window/src/composer/Composer.tsx",
+    "appComponent": "model chip",
+    "appAction": "Thinking is on the model chip.",
+    "status": "different"
+  },
+  {
+    "id": "plus-think-deep",
+    "screen": "plus-menu",
+    "label": "Deep",
+    "previewAction": "Sets thinking to Deep.",
+    "appFile": "window/src/composer/Composer.tsx",
+    "appComponent": "model chip",
+    "appAction": "Thinking is on the model chip.",
+    "status": "different"
+  },
+  {
+    "id": "plus-who-answers",
+    "screen": "plus-menu",
+    "label": "Whoever fits",
+    "previewAction": "In a room, picks who answers (Whoever fits / Scout / Ledger).",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Who answers here lists Trunks; the conversation's Trunk is often fixed after the first message.",
+    "status": "different"
+  },
+  {
+    "id": "plus-google-drive",
+    "screen": "plus-menu",
+    "label": "From Google Drive",
+    "previewAction": "Not in the early + menu.",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Listed and greyed: Google's picker opens in the desktop app.",
+    "status": "extra"
+  },
+  {
+    "id": "plus-onedrive",
+    "screen": "plus-menu",
+    "label": "From OneDrive or SharePoint",
+    "previewAction": "Not in the early + menu.",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Listed and greyed.",
+    "status": "extra"
+  },
+  {
+    "id": "plus-photo",
+    "screen": "plus-menu",
+    "label": "Take a photo",
+    "previewAction": "Later preview adds a photo capture row.",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Opens the photo dialog.",
+    "status": "same"
+  },
+  {
+    "id": "plus-voice-note",
+    "screen": "plus-menu",
+    "label": "Record a voice note",
+    "previewAction": "Later preview / Settings \u203a Voice.",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Records when the microphone is on; otherwise greyed.",
+    "status": "same"
+  },
+  {
+    "id": "plus-saved-prompts",
+    "screen": "plus-menu",
+    "label": "Saved prompts",
+    "previewAction": "Later preview has a prompts picker.",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Greyed: engine keeps no saved prompts.",
+    "status": "different"
+  },
+  {
+    "id": "plus-goal",
+    "screen": "plus-menu",
+    "label": "Set a goal",
+    "previewAction": "Inserts /goal.",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Inserts /goal.",
+    "status": "same"
+  },
+  {
+    "id": "plus-picture",
+    "screen": "plus-menu",
+    "label": "Make a picture",
+    "previewAction": "Opens the make-a-picture dialog.",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Opens Make a picture when a model is connected; otherwise greyed.",
+    "status": "same"
+  },
+  {
+    "id": "plus-office-doc",
+    "screen": "plus-menu",
+    "label": "Write a document, spreadsheet or slides",
+    "previewAction": "Later preview office-make row.",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Greyed: no document command.",
+    "status": "different"
+  },
+  {
+    "id": "plus-gif",
+    "screen": "plus-menu",
+    "label": "Find a GIF\u2026",
+    "previewAction": "Later preview GIF search.",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Greyed: no GIF search.",
+    "status": "different"
+  },
+  {
+    "id": "plus-improve",
+    "screen": "plus-menu",
+    "label": "Improve my draft",
+    "previewAction": "Later preview rewrite-draft.",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Greyed: can't rewrite without sending.",
+    "status": "different"
+  },
+  {
+    "id": "plus-background",
+    "screen": "plus-menu",
+    "label": "Run it in the background",
+    "previewAction": "Inserts /bg.",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Inserts /bg.",
+    "status": "same"
+  },
+  {
+    "id": "plus-phone-call",
+    "screen": "plus-menu",
+    "label": "Phone call\u2026",
+    "previewAction": "Later preview phone-call row.",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Greyed; click goes to Settings \u203a Voice.",
+    "status": "different"
+  },
+  {
+    "id": "plus-meeting",
+    "screen": "plus-menu",
+    "label": "Join a meeting\u2026",
+    "previewAction": "Later preview meeting row.",
+    "appFile": "window/src/composer/PlusMenu.tsx",
+    "appComponent": "PlusMenu",
+    "appAction": "Greyed; click goes to Settings \u203a Voice.",
+    "status": "different"
+  },
+  {
+    "id": "new-conversation",
+    "screen": "new-menu",
+    "label": "New conversation",
+    "previewAction": "Creates a new conversation with Sapling (Ctrl N).",
+    "appFile": "window/src/shell/new-menu.ts",
+    "appComponent": "newMenuItems",
+    "appAction": "Submenu: New conversation with each Trunk (default marked). Ctrl N still starts one.",
+    "status": "different"
+  },
+  {
+    "id": "new-trunk",
+    "screen": "new-menu",
+    "label": "New Trunk",
+    "previewAction": "Opens the New Trunk setup conversation.",
+    "appFile": "window/src/shell/new-menu.ts",
+    "appComponent": "newMenuItems",
+    "appAction": "Starts New Trunk setup.",
+    "status": "same"
+  },
+  {
+    "id": "new-group",
+    "screen": "new-menu",
+    "label": "New group chat",
+    "previewAction": "Opens the new group chat flow (people, Trunks, agents).",
+    "appFile": "window/src/rooms/NewGroupChat.tsx",
+    "appComponent": "openNewGroupChat",
+    "appAction": "Opens the new group chat dialog.",
+    "status": "same"
+  },
+  {
+    "id": "new-automation",
+    "screen": "new-menu",
+    "label": "New automation",
+    "previewAction": "Goes to Automations \u203a Scheduled.",
+    "appFile": "window/src/shell/new-menu.ts",
+    "appComponent": "newMenuItems",
+    "appAction": "Opens Automations (Scheduled).",
+    "status": "same"
+  },
+  {
+    "id": "new-from-job",
+    "screen": "new-menu",
+    "label": "A Trunk from a job\u2026",
+    "previewAction": "Goes to Customize \u203a Trunks (job templates).",
+    "appFile": "window/src/shell/new-menu.ts",
+    "appComponent": "newMenuItems",
+    "appAction": "Opens Customize.",
+    "status": "same"
+  },
+  {
+    "id": "new-make-trunk",
+    "screen": "new-menu",
+    "label": "Have Branch make a Trunk",
+    "previewAction": "Opens a dialog; Propose it posts a make-Trunk card in the Branch conversation.",
+    "appFile": "window/src/shell/new-menu.ts",
+    "appComponent": "newMenuItems",
+    "appAction": "Runs the make-Trunk flow.",
+    "status": "same"
+  },
+  {
+    "id": "new-quick-ask",
+    "screen": "new-menu",
+    "label": "Quick ask",
+    "previewAction": "Later preview: Quick ask overlay (Ctrl Shift Space).",
+    "appFile": "window/src/shell/QuickAsk.tsx",
+    "appComponent": "QuickAsk",
+    "appAction": "Opens Quick ask.",
+    "status": "same"
+  },
+  {
+    "id": "person-look-light",
+    "screen": "person-menu",
+    "label": "Light",
+    "previewAction": "Sets the light theme.",
+    "appFile": "window/src/shell/PersonMenu.tsx",
+    "appComponent": "PersonMenu",
+    "appAction": "Sets Light.",
+    "status": "same"
+  },
+  {
+    "id": "person-look-dark",
+    "screen": "person-menu",
+    "label": "Dark",
+    "previewAction": "Sets the dark theme.",
+    "appFile": "window/src/shell/PersonMenu.tsx",
+    "appComponent": "PersonMenu",
+    "appAction": "Sets Dark.",
+    "status": "same"
+  },
+  {
+    "id": "person-look-auto",
+    "screen": "person-menu",
+    "label": "Auto",
+    "previewAction": "Follows the computer theme.",
+    "appFile": "window/src/shell/PersonMenu.tsx",
+    "appComponent": "PersonMenu",
+    "appAction": "Sets Auto / system.",
+    "status": "same"
+  },
+  {
+    "id": "person-switch",
+    "screen": "person-menu",
+    "label": "Switch person",
+    "previewAction": "Cycles the demo person (Owner \u2194 Guest) and toasts.",
+    "appFile": "window/src/shell/PersonMenu.tsx",
+    "appComponent": "PersonMenu",
+    "appAction": "No Switch person row. Add opens inviting another person.",
+    "status": "missing"
+  },
+  {
+    "id": "person-add",
+    "screen": "person-menu",
+    "label": "Add",
+    "previewAction": "Not in the early owner menu (Invite lives in Settings \u203a People).",
+    "appFile": "window/src/shell/PersonMenu.tsx",
+    "appComponent": "PersonMenu",
+    "appAction": "Add person.",
+    "status": "extra"
+  },
+  {
+    "id": "person-settings",
+    "screen": "person-menu",
+    "label": "Settings",
+    "previewAction": "Opens Settings (Ctrl ,).",
+    "appFile": "window/src/shell/PersonMenu.tsx",
+    "appComponent": "PersonMenu",
+    "appAction": "Opens Settings.",
+    "status": "same"
+  },
+  {
+    "id": "person-achievements",
+    "screen": "person-menu",
+    "label": "Achievements",
+    "previewAction": "Later owner menu: opens Settings \u203a Achievements.",
+    "appFile": "window/src/shell/PersonMenu.tsx",
+    "appComponent": "PersonMenu",
+    "appAction": "Opens Settings \u203a Achievements.",
+    "status": "same"
+  },
+  {
+    "id": "person-shortcuts",
+    "screen": "person-menu",
+    "label": "Keyboard shortcuts",
+    "previewAction": "Opens the shortcuts dialog (?).",
+    "appFile": "window/src/shell/PersonMenu.tsx",
+    "appComponent": "PersonMenu",
+    "appAction": "Opens the shortcuts dialog.",
+    "status": "same"
+  },
+  {
+    "id": "person-help",
+    "screen": "person-menu",
+    "label": "Help and design notes",
+    "previewAction": "Toggles the prototype Guide/notes layer.",
+    "appFile": "window/src/shell/PersonMenu.tsx",
+    "appComponent": "PersonMenu",
+    "appAction": "Guide opens the product Guide menu, not design-critique pins.",
+    "status": "different"
+  },
+  {
+    "id": "person-apps",
+    "screen": "person-menu",
+    "label": "Get the apps",
+    "previewAction": "Later owner menu: Get the apps sheet.",
+    "appFile": "window/src/shell/GetApps.tsx",
+    "appComponent": "GetApps",
+    "appAction": "Opens Get the apps.",
+    "status": "same"
+  },
+  {
+    "id": "person-update",
+    "screen": "person-menu",
+    "label": "Update to 0.20.0",
+    "previewAction": "Goes to Settings \u203a Updates.",
+    "appFile": "window/src/shell/PersonMenu.tsx",
+    "appComponent": "PersonMenu",
+    "appAction": "Goes to Settings \u203a Updates when an update is waiting.",
+    "status": "same"
+  },
+  {
+    "id": "person-about",
+    "screen": "person-menu",
+    "label": "About Branch",
+    "previewAction": "Opens the About dialog (demo version line).",
+    "appFile": "window/src/shell/PersonMenu.tsx",
+    "appComponent": "PersonMenu",
+    "appAction": "Opens About Branch with the real version.",
+    "status": "same"
+  },
+  {
+    "id": "person-replay",
+    "screen": "person-menu",
+    "label": "Replay the first run",
+    "previewAction": "Replays the first-run / setup flow.",
+    "appFile": "window/src/shell/PersonMenu.tsx",
+    "appComponent": "PersonMenu",
+    "appAction": "Label is Set up Branch; opens setup, not a design-preview first-run slideshow.",
+    "status": "different"
+  },
+  {
+    "id": "person-lock",
+    "screen": "person-menu",
+    "label": "Lock Branch",
+    "previewAction": "Shows the lock screen (PIN demo).",
+    "appFile": "window/src/shell/PersonMenu.tsx",
+    "appComponent": "PersonMenu",
+    "appAction": "Locks; with no PIN it opens Settings \u203a Permissions \u203a App lock.",
+    "status": "same"
+  },
+  {
+    "id": "cmenu-pin",
+    "screen": "conversation-menu",
+    "label": "Pin to top",
+    "previewAction": "Pins or unpins the conversation.",
+    "appFile": "window/src/shell/conversation-menu.ts",
+    "appComponent": "conversationMenuItems",
+    "appAction": "Pins or unpins.",
+    "status": "same"
+  },
+  {
+    "id": "cmenu-pause",
+    "screen": "conversation-menu",
+    "label": "Pause this Trunk",
+    "previewAction": "Pauses the Trunk so it won't start anything new.",
+    "appFile": "window/src/shell/conversation-menu.ts",
+    "appComponent": "conversationMenuItems",
+    "appAction": "Listed and greyed: pausing needs an engine method.",
+    "status": "different"
+  },
+  {
+    "id": "cmenu-rename",
+    "screen": "conversation-menu",
+    "label": "Rename",
+    "previewAction": "Puts the header name in an edit field.",
+    "appFile": "window/src/shell/conversation-menu.ts",
+    "appComponent": "conversationMenuItems",
+    "appAction": "Renames the thread or opens Edit Trunk for the default Trunk.",
+    "status": "same"
+  },
+  {
+    "id": "cmenu-edit",
+    "screen": "conversation-menu",
+    "label": "Edit Trunk\u2026",
+    "previewAction": "Opens the Edit Trunk dialog (look + what it may do).",
+    "appFile": "window/src/shell/conversation-menu.ts",
+    "appComponent": "conversationMenuItems",
+    "appAction": "Opens the Trunk editor / People profile edit.",
+    "status": "same"
+  },
+  {
+    "id": "cmenu-teach",
+    "screen": "conversation-menu",
+    "label": "Show it how, once",
+    "previewAction": "Starts teach mode on that Trunk.",
+    "appFile": "window/src/shell/conversation-menu.ts",
+    "appComponent": "conversationMenuItems",
+    "appAction": "Listed and greyed.",
+    "status": "different"
+  },
+  {
+    "id": "cmenu-talk",
+    "screen": "conversation-menu",
+    "label": "Talk out loud",
+    "previewAction": "Starts a talk-out-loud header bar.",
+    "appFile": "window/src/shell/conversation-menu.ts",
+    "appComponent": "conversationMenuItems",
+    "appAction": "Talk live; greyed when voice is off.",
+    "status": "same"
+  },
+  {
+    "id": "cmenu-inspect",
+    "screen": "conversation-menu",
+    "label": "Look inside the last reply",
+    "previewAction": "Opens the inspect / look-inside view of the last reply.",
+    "appFile": "window/src/shell/conversation-menu.ts",
+    "appComponent": "conversationMenuItems",
+    "appAction": "Looks inside the last reply; greyed if there is no reply.",
+    "status": "same"
+  },
+  {
+    "id": "cmenu-export",
+    "screen": "conversation-menu",
+    "label": "Export conversation",
+    "previewAction": "Toasts that it saved Markdown to Library \u203a Documents.",
+    "appFile": "window/src/transcript-export/ExportDialog.tsx",
+    "appComponent": "ExportDialog",
+    "appAction": "Opens Export (Markdown, HTML, HTML replay). Not a toast-only save.",
+    "status": "different"
+  },
+  {
+    "id": "cmenu-remove",
+    "screen": "conversation-menu",
+    "label": "Remove Trunk\u2026",
+    "previewAction": "Opens a confirm dialog; Remove archives for 30 days.",
+    "appFile": "window/src/shell/conversation-menu.ts",
+    "appComponent": "conversationMenuItems",
+    "appAction": "Remove <Trunk>\u2026 when more than one Trunk exists.",
+    "status": "same"
+  },
+  {
+    "id": "cmenu-room-add",
+    "screen": "conversation-menu",
+    "label": "Add a Trunk to this room",
+    "previewAction": "Toasts pick-a-Trunk (stub).",
+    "appFile": "window/src/rooms/room-menu.ts",
+    "appComponent": "room menu",
+    "appAction": "Room menu has real add/rename/leave rows where the engine supports them.",
+    "status": "different"
+  },
+  {
+    "id": "cmenu-room-rename",
+    "screen": "conversation-menu",
+    "label": "Rename room",
+    "previewAction": "Renames the room.",
+    "appFile": "window/src/rooms/room-menu.ts",
+    "appComponent": "room menu",
+    "appAction": "Rename this group\u2026",
+    "status": "same"
+  },
+  {
+    "id": "cmenu-room-rules",
+    "screen": "conversation-menu",
+    "label": "Room rules",
+    "previewAction": "Toasts a stub about who answers first.",
+    "appFile": "window/src/rooms/room-menu.ts",
+    "appComponent": "room menu",
+    "appAction": "Room rules exist as real rows when the engine has them; not a toast.",
+    "status": "different"
+  },
+  {
+    "id": "cmenu-room-leave",
+    "screen": "conversation-menu",
+    "label": "Leave and archive",
+    "previewAction": "Toasts Archived. Find it in search.",
+    "appFile": "window/src/shell/conversation-menu.ts",
+    "appComponent": "conversationMenuItems",
+    "appAction": "Archive / leave is a real engine action, not a toast.",
+    "status": "different"
+  },
+  {
+    "id": "cmenu-search",
+    "screen": "conversation-menu",
+    "label": "Search in this conversation",
+    "previewAction": "Later preview Find in conversation (Ctrl F).",
+    "appFile": "window/src/thread/FindBar.tsx",
+    "appComponent": "FindBar",
+    "appAction": "Opens find in this conversation (Ctrl F).",
+    "status": "same"
+  },
+  {
+    "id": "cmenu-side-panel",
+    "screen": "conversation-menu",
+    "label": "Side panel",
+    "previewAction": "Toggles the side panel.",
+    "appFile": "window/src/shell/conversation-menu.ts",
+    "appComponent": "conversationMenuItems",
+    "appAction": "Toggles the side panel (Ctrl Shift K).",
+    "status": "same"
+  },
+  {
+    "id": "cmenu-list",
+    "screen": "conversation-menu",
+    "label": "Hide or show the list",
+    "previewAction": "Toggles the sidebar (Ctrl B).",
+    "appFile": "window/src/shell/conversation-menu.ts",
+    "appComponent": "conversationMenuItems",
+    "appAction": "Toggles the list (Ctrl B).",
+    "status": "same"
+  },
+  {
+    "id": "cmenu-own-window",
+    "screen": "conversation-menu",
+    "label": "Open in its own window",
+    "previewAction": "Later preview own-window.",
+    "appFile": "window/src/shell/own-window.ts",
+    "appComponent": "ownWindow",
+    "appAction": "Opens the conversation in its own window when the desktop app allows it.",
+    "status": "same"
+  },
+  {
+    "id": "cmenu-computer",
+    "screen": "conversation-menu",
+    "label": "Open its computer",
+    "previewAction": "Opens Computer full size.",
+    "appFile": "window/src/shell/conversation-menu.ts",
+    "appComponent": "conversationMenuItems",
+    "appAction": "Opens Computer.",
+    "status": "same"
+  },
+  {
+    "id": "cmenu-browser",
+    "screen": "conversation-menu",
+    "label": "Open the browser",
+    "previewAction": "Opens Browser full size.",
+    "appFile": "window/src/shell/conversation-menu.ts",
+    "appComponent": "conversationMenuItems",
+    "appAction": "Opens the browser stage.",
+    "status": "same"
+  },
+  {
+    "id": "machines-this",
+    "screen": "machines-menu",
+    "label": "This computer",
+    "previewAction": "Selects this computer as the assistant host.",
+    "appFile": "window/src/shell/MachineMenu.tsx",
+    "appComponent": "MachineMenu",
+    "appAction": "Selects this computer.",
+    "status": "same"
+  },
+  {
+    "id": "machines-other",
+    "screen": "machines-menu",
+    "label": "Other computer row",
+    "previewAction": "Switches to that machine and toasts Now talking to the assistant on <name>. Offline rows are disabled.",
+    "appFile": "window/src/shell/MachineMenu.tsx",
+    "appComponent": "MachineMenu",
+    "appAction": "Switches the gateway target when the engine knows another computer.",
+    "status": "same"
+  },
+  {
+    "id": "machines-add",
+    "screen": "machines-menu",
+    "label": "Add a computer\u2026",
+    "previewAction": "Toasts: open Branch on the other computer and scan the code.",
+    "appFile": "window/src/shell/WindowShell.tsx",
+    "appComponent": "AddComputer",
+    "appAction": "Opens the Add a computer dialog (pairing), not a toast.",
+    "status": "different"
+  },
+  {
+    "id": "mode-ask-everything",
+    "screen": "mode-menu",
+    "label": "Ask for everything",
+    "previewAction": "Sets approval mode to ask every step.",
+    "appFile": "window/src/composer/mode.ts",
+    "appComponent": "mode menu / Settings \u203a Permissions",
+    "appAction": "Sets the exec mode when the engine supports it.",
+    "status": "same"
+  },
+  {
+    "id": "mode-ask-first",
+    "screen": "mode-menu",
+    "label": "Ask first",
+    "previewAction": "Sets Ask first (default).",
+    "appFile": "window/src/composer/mode.ts",
+    "appComponent": "mode menu",
+    "appAction": "Sets Ask first.",
+    "status": "same"
+  },
+  {
+    "id": "mode-just-do-it",
+    "screen": "mode-menu",
+    "label": "Just do it",
+    "previewAction": "Sets Just do it; Lockdown still stops it.",
+    "appFile": "window/src/composer/mode.ts",
+    "appComponent": "mode menu",
+    "appAction": "Sets full-access / just-do-it when the engine allows it.",
+    "status": "same"
+  },
+  {
+    "id": "mode-scope-here",
+    "screen": "mode-menu",
+    "label": "This conversation",
+    "previewAction": "Applies the mode only to this conversation.",
+    "appFile": "window/src/composer/mode.ts",
+    "appComponent": "mode menu",
+    "appAction": "Per-conversation mode when the engine has it.",
+    "status": "same"
+  },
+  {
+    "id": "mode-scope-everywhere",
+    "screen": "mode-menu",
+    "label": "Everywhere",
+    "previewAction": "Applies the mode everywhere.",
+    "appFile": "window/src/composer/mode.ts",
+    "appComponent": "mode menu",
+    "appAction": "Global mode.",
+    "status": "same"
+  },
+  {
+    "id": "mode-lockdown",
+    "screen": "mode-menu",
+    "label": "Lockdown",
+    "previewAction": "Toggles Lockdown.",
+    "appFile": "window/src/shell/use-lockdown.ts",
+    "appComponent": "useLockdown",
+    "appAction": "Toggles Lockdown.",
+    "status": "same"
+  },
+  {
+    "id": "mode-all-permissions",
+    "screen": "mode-menu",
+    "label": "All permissions\u2026",
+    "previewAction": "Opens Settings \u203a Permissions.",
+    "appFile": "window/src/places/settings/set1/permissions-top.tsx",
+    "appComponent": "Permissions page",
+    "appAction": "Opens Settings \u203a Permissions.",
+    "status": "same"
+  },
+  {
+    "id": "model-local",
+    "screen": "model-menu",
+    "label": "Qwen3.6 35B",
+    "previewAction": "Selects the on-this-computer model (demo).",
+    "appFile": "window/src/composer/model.ts",
+    "appComponent": "model menu",
+    "appAction": "Selects a connected model; labels come from the engine, not the demo name.",
+    "status": "same"
+  },
+  {
+    "id": "model-chatgpt",
+    "screen": "model-menu",
+    "label": "Your ChatGPT account",
+    "previewAction": "Toasts that ChatGPT answers from now on.",
+    "appFile": "window/src/composer/model.ts",
+    "appComponent": "model menu",
+    "appAction": "Selects that account's model.",
+    "status": "same"
+  },
+  {
+    "id": "model-claude",
+    "screen": "model-menu",
+    "label": "Your Claude account",
+    "previewAction": "Toasts that Claude answers from now on.",
+    "appFile": "window/src/composer/model.ts",
+    "appComponent": "model menu",
+    "appAction": "Selects that account's model.",
+    "status": "same"
+  },
+  {
+    "id": "model-second-opinion",
+    "screen": "model-menu",
+    "label": "Second opinion on hard questions",
+    "previewAction": "Toggles a demo second-opinion switch (plain toast).",
+    "appFile": "window/src/places/settings/set1/models.tsx",
+    "appComponent": "ModelsPage",
+    "appAction": "Second opinion is a Settings \u203a Models control, not a status-bar menu switch.",
+    "status": "different"
+  },
+  {
+    "id": "model-manage",
+    "screen": "model-menu",
+    "label": "Manage models\u2026",
+    "previewAction": "Opens Settings \u203a Models.",
+    "appFile": "window/src/places/settings/set1/models.tsx",
+    "appComponent": "ModelsPage",
+    "appAction": "Opens Settings \u203a Models.",
+    "status": "same"
+  },
+  {
+    "id": "room-tidy",
+    "screen": "room-menu",
+    "label": "Tidy up this conversation",
+    "previewAction": "Toasts Older parts summarised. 94% free.",
+    "appFile": "window/src/shell/StatusPopovers.tsx",
+    "appComponent": "StatusPopover room",
+    "appAction": "Context / room-left popover. Tidy is not a toast-only stub when compaction exists; otherwise unknown.",
+    "status": "unknown"
+  },
+  {
+    "id": "spend-usage",
+    "screen": "spend-menu",
+    "label": "Data & usage\u2026",
+    "previewAction": "Opens Settings \u203a Data & usage.",
+    "appFile": "window/src/places/settings/set2/usage.tsx",
+    "appComponent": "Usage page",
+    "appAction": "Status usage ring opens every-account usage; Settings \u203a Data & usage is the full page.",
+    "status": "same"
+  },
+  {
+    "id": "update-install",
+    "screen": "update-menu",
+    "label": "Install when nothing is running",
+    "previewAction": "Toasts that 0.20.0 will install, with Undo that cancels.",
+    "appFile": "window/src/connect/desktop-component-updates.ts",
+    "appComponent": "desktop component updates",
+    "appAction": "Applies the waiting update through the desktop updater, not a demo toast.",
+    "status": "different"
+  },
+  {
+    "id": "update-remind",
+    "screen": "update-menu",
+    "label": "Remind me tomorrow",
+    "previewAction": "Closes the popover and toasts We\u2019ll remind you tomorrow.",
+    "appFile": "window/src/shell/StatusPopovers.tsx",
+    "appComponent": "version / update popover",
+    "appAction": "Remind tomorrow is a real preference when an update is waiting.",
+    "status": "same"
+  },
+  {
+    "id": "status-connection",
+    "screen": "status-bar",
+    "label": "Connected \u00b7 this computer",
+    "previewAction": "Opens the machines menu.",
+    "appFile": "window/src/shell/StatusBar.tsx",
+    "appComponent": "StatusBar",
+    "appAction": "Opens the connection popover (machine + gateway), not only the machines menu.",
+    "status": "different"
+  },
+  {
+    "id": "status-mode",
+    "screen": "status-bar",
+    "label": "Ask first",
+    "previewAction": "Opens the how-much-may-Trunks-do menu.",
+    "appFile": "window/src/shell/StatusExtras.tsx",
+    "appComponent": "StatusLeftExtras",
+    "appAction": "Mode/Lockdown is a status extra, not always a dedicated Ask first chip.",
+    "status": "different"
+  },
+  {
+    "id": "status-model",
+    "screen": "status-bar",
+    "label": "Qwen3.6 35B \u00b7 this computer",
+    "previewAction": "Opens the model menu.",
+    "appFile": "window/src/composer/Composer.tsx",
+    "appComponent": "Composer model chip",
+    "appAction": "Model lives on the composer chip, not a status-bar model button.",
+    "status": "different"
+  },
+  {
+    "id": "status-room",
+    "screen": "status-bar",
+    "label": "Room left 86%",
+    "previewAction": "Opens the room-left popover.",
+    "appFile": "window/src/shell/StatusBar.tsx",
+    "appComponent": "StatusBar",
+    "appAction": "Opens the context-left popover.",
+    "status": "same"
+  },
+  {
+    "id": "status-spend",
+    "screen": "status-bar",
+    "label": "Today $0.00",
+    "previewAction": "Opens the spend popover.",
+    "appFile": "window/src/shell/StatusBar.tsx",
+    "appComponent": "StatusBar usage",
+    "appAction": "Usage ring opens every-account usage (hover expands). Not a Today $0.00 text chip.",
+    "status": "different"
+  },
+  {
+    "id": "status-pet",
+    "screen": "status-bar",
+    "label": "Acorn companion",
+    "previewAction": "Cycles a tip toast while any Trunk works.",
+    "appFile": "window/src/shell/SidebarPet.tsx",
+    "appComponent": "SidebarPet",
+    "appAction": "The acorn lives at the foot of the list (and can sit in status extras). Click still reacts / tips.",
+    "status": "different"
+  },
+  {
+    "id": "status-version",
+    "screen": "status-bar",
+    "label": "0.19.4",
+    "previewAction": "Opens the update menu.",
+    "appFile": "window/src/shell/StatusBar.tsx",
+    "appComponent": "StatusBar",
+    "appAction": "Opens the version / update popover with the real version.",
+    "status": "same"
+  },
+  {
+    "id": "status-running",
+    "screen": "status-bar",
+    "label": "Nothing running",
+    "previewAction": "Later preview running indicator.",
+    "appFile": "window/src/shell/StatusBar.tsx",
+    "appComponent": "StatusBar",
+    "appAction": "Opens the running popover.",
+    "status": "same"
+  },
+  {
+    "id": "status-gateway",
+    "screen": "status-bar",
+    "label": "Gateway",
+    "previewAction": "Later preview gateway chip.",
+    "appFile": "window/src/shell/StatusBar.tsx",
+    "appComponent": "StatusBar",
+    "appAction": "Opens the gateway popover.",
+    "status": "same"
+  },
+  {
+    "id": "pane-tab-computer",
+    "screen": "side-pane",
+    "label": "Computer",
+    "previewAction": "Shows the Computer pane tab.",
+    "appFile": "window/src/stage/SidePane.tsx",
+    "appComponent": "SidePane",
+    "appAction": "Computer is a full-size stage and/or a pane tab, depending on layout.",
+    "status": "different"
+  },
+  {
+    "id": "pane-tab-activity",
+    "screen": "side-pane",
+    "label": "Activity",
+    "previewAction": "Shows Activity (tool steps).",
+    "appFile": "window/src/stage/SidePane.tsx",
+    "appComponent": "SidePane",
+    "appAction": "Shows Activity.",
+    "status": "same"
+  },
+  {
+    "id": "pane-tab-plan",
+    "screen": "side-pane",
+    "label": "Plan",
+    "previewAction": "Shows the plan.",
+    "appFile": "window/src/stage/SidePane.tsx",
+    "appComponent": "SidePane",
+    "appAction": "Plan is in the thread and/or pane; tab set differs (Activity, Files, Memory, Terminal, Side chat, \u2026).",
+    "status": "different"
+  },
+  {
+    "id": "pane-tab-files",
+    "screen": "side-pane",
+    "label": "Files",
+    "previewAction": "Shows files touched in this conversation.",
+    "appFile": "window/src/stage/SidePane.tsx",
+    "appComponent": "SidePane",
+    "appAction": "Shows Files (Ctrl Shift B).",
+    "status": "same"
+  },
+  {
+    "id": "pane-tab-memory",
+    "screen": "side-pane",
+    "label": "Memory",
+    "previewAction": "Shows memories used here.",
+    "appFile": "window/src/stage/SidePane.tsx",
+    "appComponent": "SidePane",
+    "appAction": "Shows Memory.",
+    "status": "same"
+  },
+  {
+    "id": "pane-tab-terminal",
+    "screen": "side-pane",
+    "label": "Terminal",
+    "previewAction": "Shows a read-only terminal log.",
+    "appFile": "window/src/stage/SidePane.tsx",
+    "appComponent": "SidePane",
+    "appAction": "Shows Terminal (Ctrl `).",
+    "status": "same"
+  },
+  {
+    "id": "pane-close",
+    "screen": "side-pane",
+    "label": "Close panel",
+    "previewAction": "Closes the side panel.",
+    "appFile": "window/src/stage/SidePane.tsx",
+    "appComponent": "SidePane",
+    "appAction": "Closes the panel.",
+    "status": "same"
+  },
+  {
+    "id": "pane-add-tab",
+    "screen": "side-pane",
+    "label": "Add a tab",
+    "previewAction": "Later preview + Add a tab.",
+    "appFile": "window/src/stage/SidePane.tsx",
+    "appComponent": "SidePane",
+    "appAction": "Opens Add a tab (Side chat, Changes, \u2026; later tabs greyed).",
+    "status": "same"
+  },
+  {
+    "id": "pane-file-open",
+    "screen": "side-pane",
+    "label": "File row",
+    "previewAction": "Opens that file (fileOpen).",
+    "appFile": "window/src/stage/SidePane.tsx",
+    "appComponent": "Files tab",
+    "appAction": "Opens or previews the file.",
+    "status": "same"
+  },
+  {
+    "id": "pane-memory-forget",
+    "screen": "side-pane",
+    "label": "Forget",
+    "previewAction": "Toasts Forgotten. It won\u2019t use this again.",
+    "appFile": "window/src/places/library/memory.tsx",
+    "appComponent": "MemoryTab",
+    "appAction": "Forget is a Library / memory action, not only a pane toast.",
+    "status": "different"
+  },
+  {
+    "id": "pane-takeover",
+    "screen": "side-pane",
+    "label": "Take over",
+    "previewAction": "Gives you the mouse; Scout pauses.",
+    "appFile": "window/src/thread/ComputerActivityCard.tsx",
+    "appComponent": "ComputerActivityCard",
+    "appAction": "Take over / open computer full size. Exact handoff is the stage, not only the pane.",
+    "status": "same"
+  },
+  {
+    "id": "pane-handback",
+    "screen": "side-pane",
+    "label": "Hand back",
+    "previewAction": "Returns control to Scout.",
+    "appFile": "window/src/thread/ComputerActivityCard.tsx",
+    "appComponent": "ComputerActivityCard",
+    "appAction": "Hands back / continues the computer run.",
+    "status": "same"
+  },
+  {
+    "id": "msg-edit",
+    "screen": "thread",
+    "label": "Edit",
+    "previewAction": "Edits the user message (rewind / rewrite).",
+    "appFile": "window/src/thread/HoverBar.tsx",
+    "appComponent": "HoverBar",
+    "appAction": "Edits the user message when the engine allows it.",
+    "status": "same"
+  },
+  {
+    "id": "msg-branch",
+    "screen": "thread",
+    "label": "Branch from here",
+    "previewAction": "Toasts: Starts a new conversation from this point.",
+    "appFile": "window/src/thread/HoverBar.tsx",
+    "appComponent": "HoverBar",
+    "appAction": "Branches when the engine supports it; otherwise greyed. Not toast-only.",
+    "status": "different"
+  },
+  {
+    "id": "msg-copy",
+    "screen": "thread",
+    "label": "Copy",
+    "previewAction": "Copies the reply.",
+    "appFile": "window/src/thread/HoverBar.tsx",
+    "appComponent": "HoverBar",
+    "appAction": "Copies the message.",
+    "status": "same"
+  },
+  {
+    "id": "msg-retry",
+    "screen": "thread",
+    "label": "Try again",
+    "previewAction": "Retries the last reply.",
+    "appFile": "window/src/thread/HoverBar.tsx",
+    "appComponent": "HoverBar",
+    "appAction": "Retries the reply.",
+    "status": "same"
+  },
+  {
+    "id": "msg-inspect",
+    "screen": "thread",
+    "label": "Look inside",
+    "previewAction": "Opens look-inside for that reply.",
+    "appFile": "window/src/thread/HoverBar.tsx",
+    "appComponent": "HoverBar",
+    "appAction": "Looks inside when available.",
+    "status": "same"
+  },
+  {
+    "id": "msg-flag",
+    "screen": "thread",
+    "label": "Report a problem",
+    "previewAction": "Opens the flag dialog.",
+    "appFile": "window/src/thread/HoverBar.tsx",
+    "appComponent": "HoverBar",
+    "appAction": "Greyed: you can't flag replies here yet.",
+    "status": "different"
+  },
+  {
+    "id": "msg-reply",
+    "screen": "thread",
+    "label": "Reply",
+    "previewAction": "Later hover bar: reply to this message.",
+    "appFile": "window/src/thread/HoverBar.tsx",
+    "appComponent": "HoverBar",
+    "appAction": "Sets the composer reply target.",
+    "status": "same"
+  },
+  {
+    "id": "msg-react",
+    "screen": "thread",
+    "label": "React",
+    "previewAction": "Later hover bar: emoji reactions.",
+    "appFile": "window/src/thread/HoverBar.tsx",
+    "appComponent": "HoverBar",
+    "appAction": "Adds a reaction.",
+    "status": "same"
+  },
+  {
+    "id": "thread-steps",
+    "screen": "thread",
+    "label": "Tool steps summary",
+    "previewAction": "Expands/collapses the folded step list.",
+    "appFile": "window/src/thread/blocks.tsx",
+    "appComponent": "step details",
+    "appAction": "Expands/collapses steps.",
+    "status": "same"
+  },
+  {
+    "id": "thread-takeover",
+    "screen": "thread",
+    "label": "Take over",
+    "previewAction": "Takes the computer; Scout pauses.",
+    "appFile": "window/src/thread/ComputerActivityCard.tsx",
+    "appComponent": "ComputerActivityCard",
+    "appAction": "Opens/takes the computer.",
+    "status": "same"
+  },
+  {
+    "id": "thread-watch-pane",
+    "screen": "thread",
+    "label": "Watch in the side panel",
+    "previewAction": "Opens the Computer pane.",
+    "appFile": "window/src/thread/ComputerActivityCard.tsx",
+    "appComponent": "ComputerActivityCard",
+    "appAction": "Opens computer full size / the stage; wording differs.",
+    "status": "different"
+  },
+  {
+    "id": "thread-handback",
+    "screen": "thread",
+    "label": "Hand back to Scout",
+    "previewAction": "Returns control to Scout.",
+    "appFile": "window/src/thread/ComputerActivityCard.tsx",
+    "appComponent": "ComputerActivityCard",
+    "appAction": "Hands back / continues.",
+    "status": "same"
+  },
+  {
+    "id": "thread-ask-send",
+    "screen": "thread",
+    "label": "Send it",
+    "previewAction": "Allows the pending email/action.",
+    "appFile": "window/src/thread/ApprovalCard.tsx",
+    "appComponent": "ApprovalCard",
+    "appAction": "Allows the pending approval.",
+    "status": "same"
+  },
+  {
+    "id": "thread-ask-always",
+    "screen": "thread",
+    "label": "Always allow for Ledger",
+    "previewAction": "Allows and remembers for that Trunk.",
+    "appFile": "window/src/thread/ApprovalCard.tsx",
+    "appComponent": "ApprovalCard",
+    "appAction": "Always-allow when the engine has a trust/always path.",
+    "status": "same"
+  },
+  {
+    "id": "thread-ask-dont",
+    "screen": "thread",
+    "label": "Don't send",
+    "previewAction": "Denies the pending action.",
+    "appFile": "window/src/thread/ApprovalCard.tsx",
+    "appComponent": "ApprovalCard",
+    "appAction": "Denies the approval.",
+    "status": "same"
+  },
+  {
+    "id": "thread-choice",
+    "screen": "thread",
+    "label": "Choice option (A\u2013E)",
+    "previewAction": "Picks a setup/choice option and continues the conversation.",
+    "appFile": "window/src/thread/QuestionCard.tsx",
+    "appComponent": "QuestionCard",
+    "appAction": "Picks an option.",
+    "status": "same"
+  },
+  {
+    "id": "thread-choice-own",
+    "screen": "thread",
+    "label": "Reply",
+    "previewAction": "Submits a typed own answer on a choice card.",
+    "appFile": "window/src/thread/QuestionCard.tsx",
+    "appComponent": "QuestionCard",
+    "appAction": "Submits the typed answer.",
+    "status": "same"
+  },
+  {
+    "id": "thread-file-open",
+    "screen": "thread",
+    "label": "File card",
+    "previewAction": "Navigates to Library \u203a Made for you.",
+    "appFile": "window/src/thread/blocks.tsx",
+    "appComponent": "file / files-changed",
+    "appAction": "Opens the file or Files pane, not always Library.",
+    "status": "different"
+  },
+  {
+    "id": "thread-art-larger",
+    "screen": "thread",
+    "label": "Open larger",
+    "previewAction": "Opens the chart in a wide dialog.",
+    "appFile": "window/src/thread/MdImage.tsx",
+    "appComponent": "picture / art",
+    "appAction": "Opens a larger view when the block supports it.",
+    "status": "same"
+  },
+  {
+    "id": "thread-art-copy",
+    "screen": "thread",
+    "label": "Copy code",
+    "previewAction": "Copies the chart code.",
+    "appFile": "window/src/thread/CodeBlock.tsx",
+    "appComponent": "CodeBlock",
+    "appAction": "Copies code.",
+    "status": "same"
+  },
+  {
+    "id": "thread-art-save",
+    "screen": "thread",
+    "label": "Save to Library",
+    "previewAction": "Saves the chart to Library.",
+    "appFile": "window/src/places/library/index.tsx",
+    "appComponent": "Library",
+    "appAction": "Save-to-Library on made artifacts when the engine supports it.",
+    "status": "unknown"
+  },
+  {
+    "id": "thread-ckpt-undo",
+    "screen": "thread",
+    "label": "Put it all back",
+    "previewAction": "Restores the checkpoint (with toast Undo).",
+    "appFile": "window/src/thread/blocks.tsx",
+    "appComponent": "checkpoint / files-changed",
+    "appAction": "Checkpoint restore when the engine exposes it.",
+    "status": "unknown"
+  },
+  {
+    "id": "thread-mem-keep",
+    "screen": "thread",
+    "label": "Remember",
+    "previewAction": "Keeps the suggested memory.",
+    "appFile": "window/src/places/library/memory.tsx",
+    "appComponent": "MemoryTab",
+    "appAction": "Memory keep/forget is in Library; a thread card may also offer it.",
+    "status": "same"
+  },
+  {
+    "id": "thread-mem-forget",
+    "screen": "thread",
+    "label": "Don't",
+    "previewAction": "Rejects the suggested memory.",
+    "appFile": "window/src/places/library/memory.tsx",
+    "appComponent": "MemoryTab",
+    "appAction": "Rejects the memory.",
+    "status": "same"
+  },
+  {
+    "id": "thread-suggest-yes",
+    "screen": "thread",
+    "label": "Every Friday at 5 PM",
+    "previewAction": "Adds a scheduled automation and toasts.",
+    "appFile": "window/src/places/automations/Proposal.tsx",
+    "appComponent": "Proposal",
+    "appAction": "Accepts an automation proposal.",
+    "status": "same"
+  },
+  {
+    "id": "thread-suggest-no",
+    "screen": "thread",
+    "label": "Not now",
+    "previewAction": "Dismisses the routine offer.",
+    "appFile": "window/src/places/automations/Proposal.tsx",
+    "appComponent": "Proposal",
+    "appAction": "Dismisses the proposal.",
+    "status": "same"
+  },
+  {
+    "id": "thread-to-latest",
+    "screen": "thread",
+    "label": "Scroll to latest",
+    "previewAction": "Jumps to the latest message.",
+    "appFile": "window/src/thread/Thread.tsx",
+    "appComponent": "Thread",
+    "appAction": "Scrolls to latest.",
+    "status": "same"
+  },
+  {
+    "id": "thread-find-prev",
+    "screen": "thread",
+    "label": "Previous",
+    "previewAction": "Find previous match (Ctrl F).",
+    "appFile": "window/src/thread/FindBar.tsx",
+    "appComponent": "FindBar",
+    "appAction": "Previous match.",
+    "status": "same"
+  },
+  {
+    "id": "thread-find-next",
+    "screen": "thread",
+    "label": "Next",
+    "previewAction": "Find next match.",
+    "appFile": "window/src/thread/FindBar.tsx",
+    "appComponent": "FindBar",
+    "appAction": "Next match.",
+    "status": "same"
+  },
+  {
+    "id": "thread-plan-refresh",
+    "screen": "thread",
+    "label": "Refresh",
+    "previewAction": "Later plan card refresh.",
+    "appFile": "window/src/thread/PlanCard.tsx",
+    "appComponent": "PlanCard",
+    "appAction": "Refreshes the plan.",
+    "status": "same"
+  },
+  {
+    "id": "thread-error-dismiss",
+    "screen": "thread",
+    "label": "Dismiss",
+    "previewAction": "Dismisses a run-error strip.",
+    "appFile": "window/src/thread/blocks.tsx",
+    "appComponent": "run-error",
+    "appAction": "Dismisses the error.",
+    "status": "same"
+  },
+  {
+    "id": "thread-open-screen-control",
+    "screen": "thread",
+    "label": "Open screen control",
+    "previewAction": "Later: open screen control switch.",
+    "appFile": "window/src/thread/blocks.tsx",
+    "appComponent": "open-screen-control",
+    "appAction": "Opens screen control.",
+    "status": "same"
+  },
+  {
+    "id": "overview-grove",
+    "screen": "overview",
+    "label": "Grove",
+    "previewAction": "Later preview: opens the pixel office / grove.",
+    "appFile": "window/src/places/overview/index.tsx",
+    "appComponent": "OverviewPlace",
+    "appAction": "Opens the office/grove place.",
+    "status": "same"
+  },
+  {
+    "id": "overview-pause-all",
+    "screen": "overview",
+    "label": "Pause all Trunks",
+    "previewAction": "Pauses or resumes every Trunk.",
+    "appFile": "window/src/places/overview/index.tsx",
+    "appComponent": "OverviewPlace",
+    "appAction": "Listed and greyed: needs the engine's pause-all method.",
+    "status": "different"
+  },
+  {
+    "id": "overview-lockdown",
+    "screen": "overview",
+    "label": "Turn Lockdown on",
+    "previewAction": "Toggles Lockdown from Overview controls.",
+    "appFile": "window/src/places/overview/index.tsx",
+    "appComponent": "OverviewPlace",
+    "appAction": "Toggles Lockdown.",
+    "status": "same"
+  },
+  {
+    "id": "overview-open-run",
+    "screen": "overview",
+    "label": "Recent activity row",
+    "previewAction": "Opens that conversation.",
+    "appFile": "window/src/places/overview/index.tsx",
+    "appComponent": "OverviewPlace",
+    "appAction": "Opens the conversation.",
+    "status": "same"
+  },
+  {
+    "id": "overview-finish-setup",
+    "screen": "overview",
+    "label": "Finish setup",
+    "previewAction": "Continues first-run / setup.",
+    "appFile": "window/src/places/overview/Setup.tsx",
+    "appComponent": "FinishSetup",
+    "appAction": "Opens setup.",
+    "status": "same"
+  },
+  {
+    "id": "inbox-tab-needs",
+    "screen": "inbox",
+    "label": "Needs you",
+    "previewAction": "Shows pending approvals.",
+    "appFile": "window/src/places/inbox/index.tsx",
+    "appComponent": "InboxPlace",
+    "appAction": "Shows Needs you.",
+    "status": "same"
+  },
+  {
+    "id": "inbox-tab-finished",
+    "screen": "inbox",
+    "label": "Finished",
+    "previewAction": "Shows finished tasks.",
+    "appFile": "window/src/places/inbox/index.tsx",
+    "appComponent": "InboxPlace",
+    "appAction": "Shows Finished.",
+    "status": "same"
+  },
+  {
+    "id": "inbox-tab-history",
+    "screen": "inbox",
+    "label": "History",
+    "previewAction": "Shows the run history with search.",
+    "appFile": "window/src/places/inbox/index.tsx",
+    "appComponent": "InboxPlace",
+    "appAction": "Shows History.",
+    "status": "same"
+  },
+  {
+    "id": "inbox-tab-later",
+    "screen": "inbox",
+    "label": "Later",
+    "previewAction": "Not in the early preview inbox tabs.",
+    "appFile": "window/src/places/inbox/index.tsx",
+    "appComponent": "InboxPlace",
+    "appAction": "Shows Later (snoozed).",
+    "status": "extra"
+  },
+  {
+    "id": "inbox-allow-all",
+    "screen": "inbox",
+    "label": "Allow all N\u2026",
+    "previewAction": "Opens a confirm dialog then allows every pending item.",
+    "appFile": "window/src/places/inbox/NeedsYou.tsx",
+    "appComponent": "NeedsYou",
+    "appAction": "Bulk allow when the engine supports it.",
+    "status": "same"
+  },
+  {
+    "id": "inbox-open",
+    "screen": "inbox",
+    "label": "Open",
+    "previewAction": "Opens the conversation that needs you.",
+    "appFile": "window/src/places/inbox/NeedsYou.tsx",
+    "appComponent": "NeedsYou",
+    "appAction": "Opens the conversation.",
+    "status": "same"
+  },
+  {
+    "id": "inbox-allow",
+    "screen": "inbox",
+    "label": "Allow",
+    "previewAction": "Allows that pending item.",
+    "appFile": "window/src/places/inbox/NeedsYou.tsx",
+    "appComponent": "NeedsYou",
+    "appAction": "Allows the item.",
+    "status": "same"
+  },
+  {
+    "id": "inbox-dont",
+    "screen": "inbox",
+    "label": "Don't",
+    "previewAction": "Denies an install/tool request.",
+    "appFile": "window/src/places/inbox/NeedsYou.tsx",
+    "appComponent": "NeedsYou",
+    "appAction": "Denies the item.",
+    "status": "same"
+  },
+  {
+    "id": "inbox-watch-again",
+    "screen": "inbox",
+    "label": "Watch again",
+    "previewAction": "Toasts: Plays the task back step by step.",
+    "appFile": "window/src/places/inbox/History.tsx",
+    "appComponent": "History",
+    "appAction": "Replay/open the run when the engine has it; not a toast-only stub.",
+    "status": "different"
+  },
+  {
+    "id": "inbox-mark-all-read",
+    "screen": "inbox",
+    "label": "Mark all read",
+    "previewAction": "Later preview / list action.",
+    "appFile": "window/src/places/inbox/index.tsx",
+    "appComponent": "InboxPlace",
+    "appAction": "Marks all Inbox items read.",
+    "status": "same"
+  },
+  {
+    "id": "inbox-bell",
+    "screen": "inbox",
+    "label": "Notices bell",
+    "previewAction": "Later preview notices.",
+    "appFile": "window/src/places/inbox/Bell.tsx",
+    "appComponent": "NoticesBell",
+    "appAction": "Opens notices.",
+    "status": "same"
+  },
+  {
+    "id": "place-settings-gear",
+    "screen": "places",
+    "label": "Settings",
+    "previewAction": "Place header gear opens Settings.",
+    "appFile": "window/src/shell/TopBar.tsx",
+    "appComponent": "TopBar",
+    "appAction": "Opens Settings.",
+    "status": "same"
+  },
+  {
+    "id": "place-ask-default",
+    "screen": "places",
+    "label": "Ask <default Trunk>",
+    "previewAction": "Later preview: talk beside the place.",
+    "appFile": "window/src/shell/TopBar.tsx",
+    "appComponent": "TopBar ask",
+    "appAction": "Shows the default Trunk beside the page.",
+    "status": "same"
+  },
+  {
+    "id": "auto-tab-scheduled",
+    "screen": "automations",
+    "label": "Scheduled",
+    "previewAction": "Shows scheduled jobs.",
+    "appFile": "window/src/places/automations/index.tsx",
+    "appComponent": "AutomationsPlace",
+    "appAction": "Shows Scheduled.",
+    "status": "same"
+  },
+  {
+    "id": "auto-tab-procedures",
+    "screen": "automations",
+    "label": "Procedures",
+    "previewAction": "Shows saved procedures.",
+    "appFile": "window/src/places/automations/index.tsx",
+    "appComponent": "AutomationsPlace",
+    "appAction": "Shows Procedures.",
+    "status": "same"
+  },
+  {
+    "id": "auto-tab-triggers",
+    "screen": "automations",
+    "label": "Triggers",
+    "previewAction": "Shows event triggers.",
+    "appFile": "window/src/places/automations/index.tsx",
+    "appComponent": "AutomationsPlace",
+    "appAction": "Shows Triggers.",
+    "status": "same"
+  },
+  {
+    "id": "auto-tab-checkins",
+    "screen": "automations",
+    "label": "Check-ins",
+    "previewAction": "Later preview check-ins.",
+    "appFile": "window/src/places/automations/Checkins.tsx",
+    "appComponent": "Checkins",
+    "appAction": "Shows Check-ins.",
+    "status": "same"
+  },
+  {
+    "id": "auto-tab-board",
+    "screen": "automations",
+    "label": "Board",
+    "previewAction": "Later preview board.",
+    "appFile": "window/src/places/automations/Board.tsx",
+    "appComponent": "BoardTab",
+    "appAction": "Shows Board.",
+    "status": "same"
+  },
+  {
+    "id": "auto-add",
+    "screen": "automations",
+    "label": "Add",
+    "previewAction": "Adds a scheduled/trigger job from a natural-language line (stays off until confirmed).",
+    "appFile": "window/src/places/automations/Scheduled.tsx",
+    "appComponent": "ScheduledTab",
+    "appAction": "Creates a real cron/schedule job through the engine.",
+    "status": "same"
+  },
+  {
+    "id": "auto-toggle",
+    "screen": "automations",
+    "label": "<job> on or off",
+    "previewAction": "Toggles the job and toasts on/off.",
+    "appFile": "window/src/places/automations/Scheduled.tsx",
+    "appComponent": "ScheduledTab",
+    "appAction": "Enables or disables the job.",
+    "status": "same"
+  },
+  {
+    "id": "auto-run-now",
+    "screen": "automations",
+    "label": "Run now",
+    "previewAction": "Toasts Running <name>\u2026",
+    "appFile": "window/src/places/automations/Scheduled.tsx",
+    "appComponent": "ScheduledTab",
+    "appAction": "Runs the job now through the engine, not a toast-only stub.",
+    "status": "different"
+  },
+  {
+    "id": "auto-open",
+    "screen": "automations",
+    "label": "Open",
+    "previewAction": "Opens the procedure flow.",
+    "appFile": "window/src/places/automations/Procedures.tsx",
+    "appComponent": "ProceduresTab",
+    "appAction": "Opens the procedure.",
+    "status": "same"
+  },
+  {
+    "id": "auto-teach",
+    "screen": "automations",
+    "label": "Show a Trunk how, once",
+    "previewAction": "Starts teach mode.",
+    "appFile": "window/src/places/automations/Procedures.tsx",
+    "appComponent": "ProceduresTab",
+    "appAction": "Teach-from-watching is missing or greyed (no engine method).",
+    "status": "different"
+  },
+  {
+    "id": "lib-tab-memory",
+    "screen": "library",
+    "label": "Memory",
+    "previewAction": "Shows remembered items.",
+    "appFile": "window/src/places/library/index.tsx",
+    "appComponent": "LibraryPlace",
+    "appAction": "Shows Memory.",
+    "status": "same"
+  },
+  {
+    "id": "lib-tab-documents",
+    "screen": "library",
+    "label": "Documents",
+    "previewAction": "Shows documents.",
+    "appFile": "window/src/places/library/index.tsx",
+    "appComponent": "LibraryPlace",
+    "appAction": "Shows Documents.",
+    "status": "same"
+  },
+  {
+    "id": "lib-tab-made",
+    "screen": "library",
+    "label": "Made for you",
+    "previewAction": "Shows made artifacts.",
+    "appFile": "window/src/places/library/index.tsx",
+    "appComponent": "LibraryPlace",
+    "appAction": "Shows Made for you.",
+    "status": "same"
+  },
+  {
+    "id": "lib-tab-meetings",
+    "screen": "library",
+    "label": "Meetings",
+    "previewAction": "Not in the early preview library tabs.",
+    "appFile": "window/src/places/library/index.tsx",
+    "appComponent": "LibraryPlace",
+    "appAction": "Shows Meetings.",
+    "status": "extra"
+  },
+  {
+    "id": "lib-tab-logbook",
+    "screen": "library",
+    "label": "Logbook",
+    "previewAction": "Not in the early preview library tabs.",
+    "appFile": "window/src/places/library/index.tsx",
+    "appComponent": "LibraryPlace",
+    "appAction": "Shows Logbook.",
+    "status": "extra"
+  },
+  {
+    "id": "lib-forget",
+    "screen": "library",
+    "label": "Forget",
+    "previewAction": "Removes a memory with Undo toast.",
+    "appFile": "window/src/places/library/memory.tsx",
+    "appComponent": "MemoryTab",
+    "appAction": "Forgets the memory.",
+    "status": "same"
+  },
+  {
+    "id": "lib-write",
+    "screen": "library",
+    "label": "Write a new document",
+    "previewAction": "Toasts: Opens a blank document a Trunk can help write.",
+    "appFile": "window/src/places/library/index.tsx",
+    "appComponent": "LibraryPlace",
+    "appAction": "Head actions Canvas / Translate / Make pictures are greyed (engine gaps). No toast-only Write button.",
+    "status": "different"
+  },
+  {
+    "id": "lib-open",
+    "screen": "library",
+    "label": "Open",
+    "previewAction": "Toasts: Opens in its own app.",
+    "appFile": "window/src/places/library/documents.tsx",
+    "appComponent": "DocumentsTab",
+    "appAction": "Opens the document when the engine can; not a toast-only stub.",
+    "status": "different"
+  },
+  {
+    "id": "lib-canvas",
+    "screen": "library",
+    "label": "Canvas",
+    "previewAction": "Later preview Clearings/canvas.",
+    "appFile": "window/src/places/library/index.tsx",
+    "appComponent": "LibraryPlace",
+    "appAction": "Greyed: needs an engine method that lists Clearings.",
+    "status": "different"
+  },
+  {
+    "id": "cz-tab-trunks",
+    "screen": "customize",
+    "label": "Trunks",
+    "previewAction": "Shows Trunks and job templates.",
+    "appFile": "window/src/places/customize/index.tsx",
+    "appComponent": "CustomizePlace",
+    "appAction": "Shows Trunks.",
+    "status": "same"
+  },
+  {
+    "id": "cz-tab-skills",
+    "screen": "customize",
+    "label": "Skills",
+    "previewAction": "Shows skill toggles.",
+    "appFile": "window/src/places/customize/tools.tsx",
+    "appComponent": "ToolsTab",
+    "appAction": "Skills live under Tools, not a top-level Customize tab.",
+    "status": "different"
+  },
+  {
+    "id": "cz-tab-specialists",
+    "screen": "customize",
+    "label": "Specialists",
+    "previewAction": "Shows specialists.",
+    "appFile": "window/src/places/customize/specialists.tsx",
+    "appComponent": "SpecialistsTab",
+    "appAction": "Shows Specialists.",
+    "status": "same"
+  },
+  {
+    "id": "cz-tab-plugins",
+    "screen": "customize",
+    "label": "Plugins",
+    "previewAction": "Shows plugin toggles.",
+    "appFile": "window/src/places/customize/tools.tsx",
+    "appComponent": "ToolsTab",
+    "appAction": "Plugins live under Tools.",
+    "status": "different"
+  },
+  {
+    "id": "cz-tab-connections",
+    "screen": "customize",
+    "label": "Connections",
+    "previewAction": "Shows app connections.",
+    "appFile": "window/src/places/customize/tools.tsx",
+    "appComponent": "ToolsTab",
+    "appAction": "Connectors live under Tools.",
+    "status": "different"
+  },
+  {
+    "id": "cz-tab-channels",
+    "screen": "customize",
+    "label": "Channels",
+    "previewAction": "Shows chat apps + pair a phone.",
+    "appFile": "window/src/places/customize/channels.tsx",
+    "appComponent": "ChannelsTab",
+    "appAction": "Tab label is Chat apps.",
+    "status": "different"
+  },
+  {
+    "id": "cz-tab-everywhere",
+    "screen": "customize",
+    "label": "Everywhere",
+    "previewAction": "Later preview everywhere tab.",
+    "appFile": "window/src/places/customize/everywhere.tsx",
+    "appComponent": "EverywhereTab",
+    "appAction": "Shows Everywhere.",
+    "status": "same"
+  },
+  {
+    "id": "cz-new-trunk",
+    "screen": "customize",
+    "label": "A new Trunk",
+    "previewAction": "Opens the New Trunk conversation.",
+    "appFile": "window/src/places/customize/trunks.tsx",
+    "appComponent": "TrunksTab",
+    "appAction": "Starts a new Trunk.",
+    "status": "same"
+  },
+  {
+    "id": "cz-new-group",
+    "screen": "customize",
+    "label": "New group chat",
+    "previewAction": "Opens new group chat.",
+    "appFile": "window/src/places/customize/trunks.tsx",
+    "appComponent": "TrunksTab",
+    "appAction": "Opens new group chat.",
+    "status": "same"
+  },
+  {
+    "id": "cz-edit-trunk",
+    "screen": "customize",
+    "label": "Edit",
+    "previewAction": "Opens Edit Trunk.",
+    "appFile": "window/src/places/customize/trunks.tsx",
+    "appComponent": "TrunksTab",
+    "appAction": "Opens the Trunk editor.",
+    "status": "same"
+  },
+  {
+    "id": "cz-pause-trunk",
+    "screen": "customize",
+    "label": "Pause",
+    "previewAction": "Pauses or resumes that Trunk.",
+    "appFile": "window/src/places/customize/trunks.tsx",
+    "appComponent": "TrunksTab",
+    "appAction": "Pause is missing or greyed (no engine method).",
+    "status": "different"
+  },
+  {
+    "id": "cz-job-template",
+    "screen": "customize",
+    "label": "Job template tile",
+    "previewAction": "Creates a Trunk from a job and opens its intro conversation.",
+    "appFile": "window/src/places/customize/jobs.tsx",
+    "appComponent": "jobs",
+    "appAction": "Starts a Trunk from a job.",
+    "status": "same"
+  },
+  {
+    "id": "cz-channel-setup",
+    "screen": "customize",
+    "label": "Set up",
+    "previewAction": "Toasts a two-minute setup stub, or Manage if already connected.",
+    "appFile": "window/src/places/customize/channels.tsx",
+    "appComponent": "ChannelsTab",
+    "appAction": "Starts the real chat-app setup / manage flow.",
+    "status": "different"
+  },
+  {
+    "id": "cz-pair-phone",
+    "screen": "customize",
+    "label": "Pair a phone",
+    "previewAction": "Opens the pair-a-phone QR dialog (demo code).",
+    "appFile": "window/src/places/customize/pairing.tsx",
+    "appComponent": "pairing",
+    "appAction": "Opens device pairing.",
+    "status": "same"
+  },
+  {
+    "id": "cz-connect",
+    "screen": "customize",
+    "label": "Connect",
+    "previewAction": "Toasts sign-in-on-their-site, or Manage if connected.",
+    "appFile": "window/src/places/customize/connectors.tsx",
+    "appComponent": "connectors",
+    "appAction": "Starts the connector sign-in / manage flow.",
+    "status": "different"
+  },
+  {
+    "id": "cz-skill-toggle",
+    "screen": "customize",
+    "label": "Skill switch",
+    "previewAction": "Toggles a demo skill (plain switch, no toast).",
+    "appFile": "window/src/places/customize/tools.tsx",
+    "appComponent": "ToolsTab",
+    "appAction": "Toggles that tool/skill for the chosen Trunks.",
+    "status": "same"
+  },
+  {
+    "id": "people-tab-live",
+    "screen": "people",
+    "label": "Live now",
+    "previewAction": "Later People place tab.",
+    "appFile": "window/src/places/people/index.tsx",
+    "appComponent": "PeoplePlace",
+    "appAction": "Shows Live now.",
+    "status": "same"
+  },
+  {
+    "id": "people-tab-people",
+    "screen": "people",
+    "label": "People",
+    "previewAction": "People list tab.",
+    "appFile": "window/src/places/people/index.tsx",
+    "appComponent": "PeoplePlace",
+    "appAction": "Shows People.",
+    "status": "same"
+  },
+  {
+    "id": "people-invite",
+    "screen": "people",
+    "label": "Invite someone",
+    "previewAction": "Opens the invite dialog (copy-once link).",
+    "appFile": "window/src/places/people/person-dialogs.tsx",
+    "appComponent": "invite dialogs",
+    "appAction": "Invites a person.",
+    "status": "same"
+  },
+  {
+    "id": "canopy-tab-now",
+    "screen": "canopy",
+    "label": "Now",
+    "previewAction": "Shows live runs.",
+    "appFile": "window/src/places/canopy/index.tsx",
+    "appComponent": "CanopyPlace",
+    "appAction": "Shows Now.",
+    "status": "same"
+  },
+  {
+    "id": "canopy-tab-cards",
+    "screen": "canopy",
+    "label": "Cards",
+    "previewAction": "Shows canopy cards.",
+    "appFile": "window/src/places/canopy/index.tsx",
+    "appComponent": "CanopyPlace",
+    "appAction": "Shows Cards.",
+    "status": "same"
+  },
+  {
+    "id": "canopy-office-view",
+    "screen": "canopy",
+    "label": "Office view",
+    "previewAction": "Opens the pixel office.",
+    "appFile": "window/src/places/canopy/index.tsx",
+    "appComponent": "CanopyPlace",
+    "appAction": "Opens the office place.",
+    "status": "same"
+  },
+  {
+    "id": "office-desk",
+    "screen": "office",
+    "label": "Trunk desk",
+    "previewAction": "Clicks a desk to open that Trunk (pixel-office.global.js).",
+    "appFile": "window/src/places/office/index.tsx",
+    "appComponent": "OfficePlace",
+    "appAction": "Opens that Trunk's conversation / profile.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-general",
+    "screen": "settings",
+    "label": "General",
+    "previewAction": "Opens Settings \u203a General.",
+    "appFile": "window/src/places-nav/SettingsFrame.tsx",
+    "appComponent": "SettingsFrame",
+    "appAction": "Opens Settings \u203a General.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-people",
+    "screen": "settings",
+    "label": "People",
+    "previewAction": "Opens Settings \u203a People.",
+    "appFile": "window/src/places-nav/SettingsFrame.tsx",
+    "appComponent": "SettingsFrame",
+    "appAction": "Opens Settings \u203a People.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-appearance",
+    "screen": "settings",
+    "label": "Appearance",
+    "previewAction": "Opens Settings \u203a Appearance.",
+    "appFile": "window/src/places-nav/SettingsFrame.tsx",
+    "appComponent": "SettingsFrame",
+    "appAction": "Opens Settings \u203a Appearance.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-notifications",
+    "screen": "settings",
+    "label": "Notifications",
+    "previewAction": "Opens Settings \u203a Notifications.",
+    "appFile": "window/src/places-nav/SettingsFrame.tsx",
+    "appComponent": "SettingsFrame",
+    "appAction": "Opens Settings \u203a Notifications.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-instructions",
+    "screen": "settings",
+    "label": "Instructions & personality",
+    "previewAction": "Opens Settings \u203a Instructions & personality.",
+    "appFile": "window/src/places-nav/SettingsFrame.tsx",
+    "appComponent": "SettingsFrame",
+    "appAction": "Opens Settings \u203a Instructions & personality.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-models",
+    "screen": "settings",
+    "label": "Models",
+    "previewAction": "Opens Settings \u203a Models.",
+    "appFile": "window/src/places-nav/SettingsFrame.tsx",
+    "appComponent": "SettingsFrame",
+    "appAction": "Opens Settings \u203a Models.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-accounts",
+    "screen": "settings",
+    "label": "Accounts",
+    "previewAction": "Opens Settings \u203a Accounts.",
+    "appFile": "window/src/places-nav/SettingsFrame.tsx",
+    "appComponent": "SettingsFrame",
+    "appAction": "Opens Settings \u203a Accounts.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-voice",
+    "screen": "settings",
+    "label": "Voice",
+    "previewAction": "Opens Settings \u203a Voice.",
+    "appFile": "window/src/places-nav/SettingsFrame.tsx",
+    "appComponent": "SettingsFrame",
+    "appAction": "Opens Settings \u203a Voice.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-permissions",
+    "screen": "settings",
+    "label": "Permissions",
+    "previewAction": "Opens Settings \u203a Permissions.",
+    "appFile": "window/src/places-nav/SettingsFrame.tsx",
+    "appComponent": "SettingsFrame",
+    "appAction": "Opens Settings \u203a Permissions.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-computer",
+    "screen": "settings",
+    "label": "Computer & browser",
+    "previewAction": "Opens Settings \u203a Computer & browser.",
+    "appFile": "window/src/places-nav/SettingsFrame.tsx",
+    "appComponent": "SettingsFrame",
+    "appAction": "Opens Settings \u203a Computer & browser.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-secrets",
+    "screen": "settings",
+    "label": "Saved sign-ins",
+    "previewAction": "Opens Settings \u203a Saved sign-ins.",
+    "appFile": "window/src/places-nav/SettingsFrame.tsx",
+    "appComponent": "SettingsFrame",
+    "appAction": "Opens Settings \u203a Saved sign-ins.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-usage",
+    "screen": "settings",
+    "label": "Data & usage",
+    "previewAction": "Opens Settings \u203a Data & usage.",
+    "appFile": "window/src/places-nav/SettingsFrame.tsx",
+    "appComponent": "SettingsFrame",
+    "appAction": "Opens Settings \u203a Data & usage.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-updates",
+    "screen": "settings",
+    "label": "Updates & about",
+    "previewAction": "Opens Settings \u203a Updates & about.",
+    "appFile": "window/src/places-nav/SettingsFrame.tsx",
+    "appComponent": "SettingsFrame",
+    "appAction": "Opens Settings \u203a Updates & about.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-local",
+    "screen": "settings",
+    "label": "On this computer",
+    "previewAction": "Later SET_NAV: opens Settings \u203a On this computer.",
+    "appFile": "window/src/places/settings/set1/local.tsx",
+    "appComponent": "LocalPage",
+    "appAction": "Opens Settings \u203a On this computer.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-chatapps",
+    "screen": "settings",
+    "label": "Chat apps",
+    "previewAction": "Later SET_NAV: Chat apps.",
+    "appFile": "window/src/places/settings/pages/set2.tsx",
+    "appComponent": "Chat apps page",
+    "appAction": "Opens Settings \u203a Chat apps.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-gateway",
+    "screen": "settings",
+    "label": "Gateway",
+    "previewAction": "Later SET_NAV: Gateway.",
+    "appFile": "window/src/places/settings/set2/gateway.tsx",
+    "appComponent": "Gateway page",
+    "appAction": "Opens Settings \u203a Gateway.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-self",
+    "screen": "settings",
+    "label": "Branch itself",
+    "previewAction": "Later SET_NAV: Branch itself.",
+    "appFile": "window/src/places/settings/pages/set3.tsx",
+    "appComponent": "Branch itself page",
+    "appAction": "Opens Settings \u203a Branch itself.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-achievements",
+    "screen": "settings",
+    "label": "Achievements",
+    "previewAction": "Later SET_NAV: Achievements.",
+    "appFile": "window/src/places/settings/pages/set3.tsx",
+    "appComponent": "Achievements page",
+    "appAction": "Opens Settings \u203a Achievements.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-grafts",
+    "screen": "settings",
+    "label": "Grafts",
+    "previewAction": "Later SET_NAV graftsT5.",
+    "appFile": "window/src/places-nav/settings-nav.ts",
+    "appComponent": "settingsGroups",
+    "appAction": "Nav id is agents, label Grafts.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-backups",
+    "screen": "settings",
+    "label": "Backups",
+    "previewAction": "Later SET_NAV backupsT5.",
+    "appFile": "window/src/places-nav/settings-nav.ts",
+    "appComponent": "settingsGroups",
+    "appAction": "Opens Settings \u203a Backups.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-seasons",
+    "screen": "settings",
+    "label": "Seasons",
+    "previewAction": "Not in the preview SET_NAV.",
+    "appFile": "window/src/places-nav/settings-nav.ts",
+    "appComponent": "settingsGroups",
+    "appAction": "Opens Settings \u203a Seasons. Preview has no Seasons page.",
+    "status": "extra"
+  },
+  {
+    "id": "set-nav-advanced",
+    "screen": "settings",
+    "label": "Advanced",
+    "previewAction": "Shown when Show everything / level is on.",
+    "appFile": "window/src/places-nav/SettingsFrame.tsx",
+    "appComponent": "SettingsFrame",
+    "appAction": "Shown at Advanced or Technical level.",
+    "status": "same"
+  },
+  {
+    "id": "set-nav-developer",
+    "screen": "settings",
+    "label": "Developer",
+    "previewAction": "Shown at the highest show-everything level.",
+    "appFile": "window/src/places-nav/SettingsFrame.tsx",
+    "appComponent": "SettingsFrame",
+    "appAction": "Shown at Technical level.",
+    "status": "same"
+  },
+  {
+    "id": "set-search",
+    "screen": "settings",
+    "label": "Search settings",
+    "previewAction": "Filters the settings nav as you type.",
+    "appFile": "window/src/places-nav/SettingsFrame.tsx",
+    "appComponent": "SettingsFrame",
+    "appAction": "Searches settings (pages + rows).",
+    "status": "same"
+  },
+  {
+    "id": "set-show-everything",
+    "screen": "settings",
+    "label": "Show everything",
+    "previewAction": "Toggles extra pages (Advanced, Developer). Off drops those pages back to General.",
+    "appFile": "window/src/places-nav/SettingsFrame.tsx",
+    "appComponent": "SettingsFrame",
+    "appAction": "Level control is a three-way Regular / Advanced / Technical segmented control, not a single checkbox.",
+    "status": "different"
+  },
+  {
+    "id": "set-start-with-os",
+    "screen": "settings-general",
+    "label": "Start with Windows",
+    "previewAction": "Toggles start-with-OS (demo switch toasts on/off).",
+    "appFile": "window/src/places/settings/set1/general.tsx",
+    "appComponent": "GeneralPage",
+    "appAction": "Toggles start with the OS via desktop controls; greyed in a browser.",
+    "status": "same"
+  },
+  {
+    "id": "set-keep-working",
+    "screen": "settings-general",
+    "label": "Keep working when the window closes",
+    "previewAction": "Demo switch (toast).",
+    "appFile": "window/src/places/settings/set2/gateway.tsx",
+    "appComponent": "Gateway page",
+    "appAction": "Keep-working / tray is on Gateway and desktop controls, not this General row.",
+    "status": "different"
+  },
+  {
+    "id": "set-project-edit",
+    "screen": "settings-general",
+    "label": "Edit",
+    "previewAction": "Toasts: Edit this project's instructions.",
+    "appFile": "window/src/places/settings/set1/general.tsx",
+    "appComponent": "GeneralPage",
+    "appAction": "Edit is disabled: can't open a project's instructions from here yet.",
+    "status": "different"
+  },
+  {
+    "id": "set-shortcuts-show",
+    "screen": "settings-general",
+    "label": "Show all",
+    "previewAction": "Opens the keyboard shortcuts dialog.",
+    "appFile": "window/src/places/settings/set1/general.tsx",
+    "appComponent": "GeneralPage",
+    "appAction": "Opens ShortcutsDialog.",
+    "status": "same"
+  },
+  {
+    "id": "set-people-edit",
+    "screen": "settings-people",
+    "label": "Edit",
+    "previewAction": "Toasts: Change what <person> may do.",
+    "appFile": "window/src/places/settings/set1/people.tsx",
+    "appComponent": "PeoplePage",
+    "appAction": "Edits the person when the engine allows; some rows greyed.",
+    "status": "different"
+  },
+  {
+    "id": "set-people-invite",
+    "screen": "settings-people",
+    "label": "Invite someone",
+    "previewAction": "Opens the invite dialog.",
+    "appFile": "window/src/places/settings/set1/people.tsx",
+    "appComponent": "PeoplePage",
+    "appAction": "Invites someone.",
+    "status": "same"
+  },
+  {
+    "id": "set-people-pin",
+    "screen": "settings-people",
+    "label": "Ask for a PIN when switching person",
+    "previewAction": "Demo switch.",
+    "appFile": "window/src/places/settings/set1/people.tsx",
+    "appComponent": "PeoplePage",
+    "appAction": "App lock / PIN lives under Permissions and People; wiring differs.",
+    "status": "different"
+  },
+  {
+    "id": "set-people-separate",
+    "screen": "settings-people",
+    "label": "Keep conversations separate",
+    "previewAction": "Demo switch.",
+    "appFile": "window/src/places/settings/set1/people-more.tsx",
+    "appComponent": "people-more",
+    "appAction": "Row exists; may be greyed (engine gap).",
+    "status": "different"
+  },
+  {
+    "id": "set-theme-light",
+    "screen": "settings-appearance",
+    "label": "Light",
+    "previewAction": "Sets the light theme tile.",
+    "appFile": "window/src/places/settings/set1/appearance.tsx",
+    "appComponent": "AppearancePage",
+    "appAction": "Sets Light.",
+    "status": "same"
+  },
+  {
+    "id": "set-theme-dark",
+    "screen": "settings-appearance",
+    "label": "Dark",
+    "previewAction": "Sets the dark theme tile.",
+    "appFile": "window/src/places/settings/set1/appearance.tsx",
+    "appComponent": "AppearancePage",
+    "appAction": "Sets Dark.",
+    "status": "same"
+  },
+  {
+    "id": "set-theme-system",
+    "screen": "settings-appearance",
+    "label": "Match this computer",
+    "previewAction": "Follows the OS theme.",
+    "appFile": "window/src/places/settings/set1/appearance.tsx",
+    "appComponent": "AppearancePage",
+    "appAction": "Sets Auto / match this computer.",
+    "status": "same"
+  },
+  {
+    "id": "set-text-size",
+    "screen": "settings-appearance",
+    "label": "Text size",
+    "previewAction": "Sets small / Regular / large on every screen.",
+    "appFile": "window/src/places/settings/set1/appearance.tsx",
+    "appComponent": "AppearancePage",
+    "appAction": "Sets text size.",
+    "status": "same"
+  },
+  {
+    "id": "set-pet",
+    "screen": "settings-appearance",
+    "label": "Acorn companion",
+    "previewAction": "Shows or hides the acorn.",
+    "appFile": "window/src/places/settings/set1/appearance.tsx",
+    "appComponent": "AppearancePage",
+    "appAction": "Toggles the companion.",
+    "status": "same"
+  },
+  {
+    "id": "set-still",
+    "screen": "settings-appearance",
+    "label": "Keep things still",
+    "previewAction": "Stops working-ring / cursor / acorn motion.",
+    "appFile": "window/src/places/settings/set1/appearance.tsx",
+    "appComponent": "AppearancePage",
+    "appAction": "Toggles reduced motion / still.",
+    "status": "same"
+  },
+  {
+    "id": "set-scenery",
+    "screen": "settings-appearance",
+    "label": "Scenery behind the list",
+    "previewAction": "Toggles the pixel oak at the foot of the list.",
+    "appFile": "window/src/places/settings/set1/appearance.tsx",
+    "appComponent": "AppearancePage",
+    "appAction": "Toggles scenery.",
+    "status": "same"
+  },
+  {
+    "id": "set-skins",
+    "screen": "settings-appearance",
+    "label": "Browse skins",
+    "previewAction": "Opens the skin gallery.",
+    "appFile": "window/src/places/settings/set1/appearance.tsx",
+    "appComponent": "AppearancePage",
+    "appAction": "Browse themes / skins on Appearance.",
+    "status": "same"
+  },
+  {
+    "id": "set-language",
+    "screen": "settings-appearance",
+    "label": "Language",
+    "previewAction": "Toasts that the prototype stays in English.",
+    "appFile": "window/src/places/settings/set1/appearance.tsx",
+    "appComponent": "AppearancePage",
+    "appAction": "Language select exists; switching languages is real or limited \u2014 not a prototype-stays-English toast.",
+    "status": "different"
+  },
+  {
+    "id": "set-notif-need",
+    "screen": "settings-notifications",
+    "label": "A Trunk needs a yes",
+    "previewAction": "Demo notify switch.",
+    "appFile": "window/src/places/settings/set1/notifications.tsx",
+    "appComponent": "NotificationsPage",
+    "appAction": "Toggles that notification.",
+    "status": "same"
+  },
+  {
+    "id": "set-notif-done",
+    "screen": "settings-notifications",
+    "label": "A long task finishes",
+    "previewAction": "Demo notify switch.",
+    "appFile": "window/src/places/settings/set1/notifications.tsx",
+    "appComponent": "NotificationsPage",
+    "appAction": "Toggles that notification.",
+    "status": "same"
+  },
+  {
+    "id": "set-notif-sound",
+    "screen": "settings-notifications",
+    "label": "Play a sound",
+    "previewAction": "Demo notify switch.",
+    "appFile": "window/src/places/settings/set1/notifications.tsx",
+    "appComponent": "NotificationsPage",
+    "appAction": "Toggles sound.",
+    "status": "same"
+  },
+  {
+    "id": "set-notif-days-off",
+    "screen": "settings-notifications",
+    "label": "Days off",
+    "previewAction": "Segmented Sat / Sun / None.",
+    "appFile": "window/src/places/settings/set1/notifications.tsx",
+    "appComponent": "NotificationsPage",
+    "appAction": "Quiet days control.",
+    "status": "same"
+  },
+  {
+    "id": "set-file-toggle",
+    "screen": "settings-instructions",
+    "label": "Read SOUL.md",
+    "previewAction": "Demo switch for whether Trunks read that file.",
+    "appFile": "window/src/places/settings/set1/instructions.tsx",
+    "appComponent": "InstructionsPage",
+    "appAction": "Toggles whether that instruction file is used.",
+    "status": "same"
+  },
+  {
+    "id": "set-file-edit",
+    "screen": "settings-instructions",
+    "label": "Edit",
+    "previewAction": "Opens the file editor dialog and Save toasts that every Trunk reads it.",
+    "appFile": "window/src/places/settings/set1/instructions.tsx",
+    "appComponent": "InstructionsPage",
+    "appAction": "Edits the file through the engine.",
+    "status": "same"
+  },
+  {
+    "id": "set-models-tab",
+    "screen": "settings-models",
+    "label": "Connections / Defaults / On this computer / Second opinion / Media",
+    "previewAction": "Switches Models sub-tabs.",
+    "appFile": "window/src/places/settings/set1/models.tsx",
+    "appComponent": "ModelsPage",
+    "appAction": "Models is one page with sections; On this computer is also its own nav page.",
+    "status": "different"
+  },
+  {
+    "id": "set-models-signin",
+    "screen": "settings-models",
+    "label": "Sign in",
+    "previewAction": "Toasts sign-in-on-their-site.",
+    "appFile": "window/src/places/settings/account-login.ts",
+    "appComponent": "account login",
+    "appAction": "Starts the real provider sign-in.",
+    "status": "different"
+  },
+  {
+    "id": "set-models-use",
+    "screen": "settings-models",
+    "label": "Use this",
+    "previewAction": "Toasts that the local model is now the default.",
+    "appFile": "window/src/places/settings/set1/local.tsx",
+    "appComponent": "LocalPage",
+    "appAction": "Selects that local model.",
+    "status": "different"
+  },
+  {
+    "id": "set-models-download",
+    "screen": "settings-models",
+    "label": "Get another model",
+    "previewAction": "Opens the download-model dialog (demo progress).",
+    "appFile": "window/src/places/settings/set1/local.tsx",
+    "appComponent": "LocalPage",
+    "appAction": "Starts a local-model download through desktop/engine, not a fake progress bar.",
+    "status": "different"
+  },
+  {
+    "id": "set-voice-listen",
+    "screen": "settings-voice",
+    "label": "Listening",
+    "previewAction": "Segmented Off / Push to talk / Wake word.",
+    "appFile": "window/src/places/settings/pages/set2.tsx",
+    "appComponent": "Voice page",
+    "appAction": "Sets how listening works.",
+    "status": "same"
+  },
+  {
+    "id": "set-voice-ptt",
+    "screen": "settings-voice",
+    "label": "Change",
+    "previewAction": "Toasts: Press the key you want to use.",
+    "appFile": "window/src/shell/ShortcutsDialog.tsx",
+    "appComponent": "ShortcutsDialog",
+    "appAction": "Push-to-talk / Talk live keys are set in Keyboard shortcuts, not a toast.",
+    "status": "different"
+  },
+  {
+    "id": "set-voice-speak",
+    "screen": "settings-voice",
+    "label": "Voice",
+    "previewAction": "Segmented Oak / Birch / Off.",
+    "appFile": "window/src/places/settings/pages/set2.tsx",
+    "appComponent": "Voice page",
+    "appAction": "Sets speak-back voice.",
+    "status": "same"
+  },
+  {
+    "id": "set-voice-dict",
+    "screen": "settings-voice",
+    "label": "Dictation in the message box",
+    "previewAction": "Demo switch.",
+    "appFile": "window/src/places/settings/pages/set2.tsx",
+    "appComponent": "Voice page",
+    "appAction": "Toggles dictation.",
+    "status": "same"
+  },
+  {
+    "id": "set-perm-read",
+    "screen": "settings-permissions",
+    "label": "Read files in Documents and Downloads",
+    "previewAction": "Demo switch (toast).",
+    "appFile": "window/src/places/settings/set1/permissions-top.tsx",
+    "appComponent": "Permissions page",
+    "appAction": "Toggles that permission through config when the engine has it.",
+    "status": "same"
+  },
+  {
+    "id": "set-perm-browse",
+    "screen": "settings-permissions",
+    "label": "Use the browser on this computer",
+    "previewAction": "Demo switch.",
+    "appFile": "window/src/places/settings/set1/permissions-top.tsx",
+    "appComponent": "Permissions page",
+    "appAction": "Toggles browser use.",
+    "status": "same"
+  },
+  {
+    "id": "set-perm-send",
+    "screen": "settings-permissions",
+    "label": "Send email and messages",
+    "previewAction": "Demo switch.",
+    "appFile": "window/src/places/settings/set1/permissions-top.tsx",
+    "appComponent": "Permissions page",
+    "appAction": "Toggles send permission.",
+    "status": "same"
+  },
+  {
+    "id": "set-perm-install",
+    "screen": "settings-permissions",
+    "label": "Install tools and packages",
+    "previewAction": "Demo switch.",
+    "appFile": "window/src/places/settings/set1/permissions-top.tsx",
+    "appComponent": "Permissions page",
+    "appAction": "Toggles install permission.",
+    "status": "same"
+  },
+  {
+    "id": "set-perm-record",
+    "screen": "settings-permissions",
+    "label": "Record tasks so you can watch them again",
+    "previewAction": "Demo switch.",
+    "appFile": "window/src/places/settings/set1/permissions-top.tsx",
+    "appComponent": "Permissions page",
+    "appAction": "Toggles recording if the engine has it; otherwise greyed.",
+    "status": "unknown"
+  },
+  {
+    "id": "set-perm-tools-when",
+    "screen": "settings-permissions",
+    "label": "When tools are loaded",
+    "previewAction": "Advanced: Never / When needed / Always.",
+    "appFile": "window/src/places/settings/set1/permissions-top.tsx",
+    "appComponent": "Permissions page",
+    "appAction": "Tool-loading policy when shown at Advanced.",
+    "status": "same"
+  },
+  {
+    "id": "set-perm-trusted",
+    "screen": "settings-permissions",
+    "label": "Add",
+    "previewAction": "Toasts: Add a folder Trunks may change without asking.",
+    "appFile": "window/src/places/settings/set1/permissions-top.tsx",
+    "appComponent": "Permissions page",
+    "appAction": "Trusted folders are real or greyed \u2014 not a toast-only Add.",
+    "status": "different"
+  },
+  {
+    "id": "set-perm-lockdown",
+    "screen": "settings-permissions",
+    "label": "Turn Lockdown on",
+    "previewAction": "Toggles Lockdown (danger button).",
+    "appFile": "window/src/places/settings/set1/permissions-top.tsx",
+    "appComponent": "Permissions page",
+    "appAction": "Toggles Lockdown.",
+    "status": "same"
+  },
+  {
+    "id": "set-comp-scripts",
+    "screen": "settings-computer",
+    "label": "Where scripts run",
+    "previewAction": "Sealed box / This computer.",
+    "appFile": "window/src/places/settings/pages/set2.tsx",
+    "appComponent": "Computer & browser page",
+    "appAction": "Sets the sandbox / where scripts run.",
+    "status": "same"
+  },
+  {
+    "id": "set-comp-screen",
+    "screen": "settings-computer",
+    "label": "See the screen and use the mouse",
+    "previewAction": "Demo switch.",
+    "appFile": "window/src/places/settings/pages/set2.tsx",
+    "appComponent": "Computer & browser page",
+    "appAction": "Toggles screen control.",
+    "status": "same"
+  },
+  {
+    "id": "set-comp-browser",
+    "screen": "settings-computer",
+    "label": "Which browser",
+    "previewAction": "Branch's own / Your Chrome.",
+    "appFile": "window/src/places/settings/pages/set2.tsx",
+    "appComponent": "Computer & browser page",
+    "appAction": "Sets the browser profile.",
+    "status": "same"
+  },
+  {
+    "id": "set-comp-manage",
+    "screen": "settings-computer",
+    "label": "Manage",
+    "previewAction": "Toasts Manage <computer>.",
+    "appFile": "window/src/places/settings/pages/set2.tsx",
+    "appComponent": "Computer & browser page",
+    "appAction": "Manages that node/computer when the engine lists it.",
+    "status": "different"
+  },
+  {
+    "id": "set-secrets-remove",
+    "screen": "settings-secrets",
+    "label": "Remove",
+    "previewAction": "Toasts that the sign-in was removed.",
+    "appFile": "window/src/places/settings/pages/set2.tsx",
+    "appComponent": "Saved sign-ins page",
+    "appAction": "Removes that fillable sign-in when the engine supports it.",
+    "status": "different"
+  },
+  {
+    "id": "set-usage-keep",
+    "screen": "settings-usage",
+    "label": "Keep conversations",
+    "previewAction": "30 days / 1 year / Forever.",
+    "appFile": "window/src/places/settings/set2/usage.tsx",
+    "appComponent": "Usage page",
+    "appAction": "Sets retention.",
+    "status": "same"
+  },
+  {
+    "id": "set-usage-backup",
+    "screen": "settings-usage",
+    "label": "Back up",
+    "previewAction": "Toasts Backed up to a demo path.",
+    "appFile": "window/src/places/settings/pages/set3.tsx",
+    "appComponent": "Backups page",
+    "appAction": "Back up is on Settings \u203a Backups and runs a real backup, not a toast to a demo path.",
+    "status": "different"
+  },
+  {
+    "id": "set-usage-ckpt",
+    "screen": "settings-usage",
+    "label": "See all",
+    "previewAction": "Toasts 3 checkpoints kept this week.",
+    "appFile": "window/src/places/settings/set2/usage.tsx",
+    "appComponent": "Usage page",
+    "appAction": "Lists checkpoints when the engine has them.",
+    "status": "different"
+  },
+  {
+    "id": "set-accounts-share",
+    "screen": "settings-accounts",
+    "label": "Share",
+    "previewAction": "Toasts a stub about sharing the account on this computer.",
+    "appFile": "window/src/places/settings/set1/accounts.tsx",
+    "appComponent": "AccountsPage",
+    "appAction": "Share is missing or a real share flow \u2014 not the demo toast.",
+    "status": "different"
+  },
+  {
+    "id": "set-accounts-signout",
+    "screen": "settings-accounts",
+    "label": "Sign out",
+    "previewAction": "Toasts Signed out of <account>.",
+    "appFile": "window/src/places/settings/set1/accounts.tsx",
+    "appComponent": "AccountsPage",
+    "appAction": "Signs out that account.",
+    "status": "different"
+  },
+  {
+    "id": "set-accounts-add",
+    "screen": "settings-accounts",
+    "label": "Add an account",
+    "previewAction": "Opens Sign in to Gemini (demo continue-on-their-site).",
+    "appFile": "window/src/places/settings/set1/accounts.tsx",
+    "appComponent": "AccountsPage",
+    "appAction": "Starts Add an account / provider login.",
+    "status": "same"
+  },
+  {
+    "id": "set-accounts-low",
+    "screen": "settings-accounts",
+    "label": "Warn me at 80% of the plan",
+    "previewAction": "Demo switch.",
+    "appFile": "window/src/places/settings/set1/accounts.tsx",
+    "appComponent": "AccountsPage",
+    "appAction": "Toggles the low-plan warning.",
+    "status": "same"
+  },
+  {
+    "id": "set-accounts-fallback",
+    "screen": "settings-accounts",
+    "label": "Fall back to this computer",
+    "previewAction": "Demo switch.",
+    "appFile": "window/src/places/settings/set1/accounts.tsx",
+    "appComponent": "AccountsPage",
+    "appAction": "Toggles local fallback.",
+    "status": "same"
+  },
+  {
+    "id": "set-adv-restart",
+    "screen": "settings-advanced",
+    "label": "Restart",
+    "previewAction": "Toasts <service> restarted.",
+    "appFile": "window/src/places/settings/diagnostics.tsx",
+    "appComponent": "diagnostics",
+    "appAction": "Restarts that service when the supervisor allows it; not a toast-only stub.",
+    "status": "different"
+  },
+  {
+    "id": "set-adv-logs",
+    "screen": "settings-advanced",
+    "label": "Open logs",
+    "previewAction": "Toasts Logs open in a new window.",
+    "appFile": "window/src/places/settings/pages/set4.tsx",
+    "appComponent": "Advanced / Developer",
+    "appAction": "Opens logs when the desktop app can.",
+    "status": "different"
+  },
+  {
+    "id": "set-dev-copy",
+    "screen": "settings-developer",
+    "label": "Copy",
+    "previewAction": "Toasts Copied (local address).",
+    "appFile": "window/src/places/settings/pages/set4.tsx",
+    "appComponent": "Developer page",
+    "appAction": "Copies the local address.",
+    "status": "same"
+  },
+  {
+    "id": "set-dev-new-key",
+    "screen": "settings-developer",
+    "label": "Make a new one",
+    "previewAction": "Toasts that a new session key was made.",
+    "appFile": "window/src/places/settings/pages/set4.tsx",
+    "appComponent": "Developer page",
+    "appAction": "Rotates the session key when the engine allows it.",
+    "status": "different"
+  },
+  {
+    "id": "set-upd-install",
+    "screen": "settings-updates",
+    "label": "Install when nothing is running",
+    "previewAction": "Same as the update menu install toast.",
+    "appFile": "window/src/connect/desktop-component-updates.ts",
+    "appComponent": "desktop component updates",
+    "appAction": "Applies the waiting update.",
+    "status": "different"
+  },
+  {
+    "id": "set-upd-auto",
+    "screen": "settings-updates",
+    "label": "Keep Branch up to date by itself",
+    "previewAction": "Demo switch.",
+    "appFile": "window/src/places/settings/pages/set3.tsx",
+    "appComponent": "Updates page",
+    "appAction": "Toggles auto-apply via desktop controls.",
+    "status": "same"
+  },
+  {
+    "id": "set-upd-undo",
+    "screen": "settings-updates",
+    "label": "Undo",
+    "previewAction": "Toasts Goes back to the previous version from the safety copy.",
+    "appFile": "window/src/places/settings/pages/set3.tsx",
+    "appComponent": "Updates page",
+    "appAction": "Undo last update when the updater supports it.",
+    "status": "different"
+  },
+  {
+    "id": "palette-open",
+    "screen": "palette",
+    "label": "Find anything",
+    "previewAction": "Opens the command palette (Ctrl K).",
+    "appFile": "window/src/shell/Palette.tsx",
+    "appComponent": "Palette",
+    "appAction": "Opens Find anything.",
+    "status": "same"
+  },
+  {
+    "id": "palette-item",
+    "screen": "palette",
+    "label": "Palette row",
+    "previewAction": "Runs that action / opens that conversation, place, or settings page.",
+    "appFile": "window/src/shell/palette-rows.ts",
+    "appComponent": "paletteRows",
+    "appAction": "Runs the matching action. Action labels differ (Set up Branch vs Replay the first run; Browse themes vs Browse skins; Take the walkthrough vs Take the tour).",
+    "status": "different"
+  },
+  {
+    "id": "dlg-close",
+    "screen": "dialogs",
+    "label": "Close",
+    "previewAction": "Closes the open dialog (also Esc / scrim click).",
+    "appFile": "window/src/shell/Dialog.tsx",
+    "appComponent": "Dialog",
+    "appAction": "Closes the dialog.",
+    "status": "same"
+  },
+  {
+    "id": "dlg-scrim",
+    "screen": "dialogs",
+    "label": "Scrim",
+    "previewAction": "Clicking the dimmed backdrop closes the dialog.",
+    "appFile": "window/src/shell/Dialog.tsx",
+    "appComponent": "Dialog",
+    "appAction": "Scrim click closes.",
+    "status": "same"
+  },
+  {
+    "id": "shortcuts-dialog",
+    "screen": "dialogs",
+    "label": "Keyboard shortcuts",
+    "previewAction": "Lists the fixed shortcut table. Later: click a row, press keys to rebind.",
+    "appFile": "window/src/shell/ShortcutsDialog.tsx",
+    "appComponent": "ShortcutsDialog",
+    "appAction": "Shows settable + fixed shortcuts; rows can be rebound.",
+    "status": "same"
+  },
+  {
+    "id": "pair-cancel",
+    "screen": "dialogs",
+    "label": "Cancel",
+    "previewAction": "Closes Pair a phone.",
+    "appFile": "window/src/places/customize/pairing.tsx",
+    "appComponent": "pairing",
+    "appAction": "Closes pairing.",
+    "status": "same"
+  },
+  {
+    "id": "edit-trunk-shuffle",
+    "screen": "dialogs",
+    "label": "Shuffle",
+    "previewAction": "Randomizes colour, shape, and eyes.",
+    "appFile": "window/src/places/trunk/TrunkEditor.tsx",
+    "appComponent": "TrunkEditor",
+    "appAction": "Randomizes colour, shape and eyes on a pebble look, or picks another unused character look.",
+    "status": "same"
+  },
+  {
+    "id": "edit-trunk-save",
+    "screen": "dialogs",
+    "label": "Save",
+    "previewAction": "Saves the Trunk look / permissions.",
+    "appFile": "window/src/places/trunk/TrunkEditor.tsx",
+    "appComponent": "TrunkEditor",
+    "appAction": "Footer Save writes the Trunk look, name and permissions, then closes the editor.",
+    "status": "same"
+  },
+  {
+    "id": "edit-trunk-cancel",
+    "screen": "dialogs",
+    "label": "Cancel",
+    "previewAction": "Closes Edit Trunk without saving.",
+    "appFile": "window/src/shell/Dialog.tsx",
+    "appComponent": "Dialog",
+    "appAction": "Cancels.",
+    "status": "same"
+  },
+  {
+    "id": "lock-pin",
+    "screen": "lock-screen",
+    "label": "PIN digits",
+    "previewAction": "Four PIN boxes; filling them unlocks (demo).",
+    "appFile": "window/src/places/settings/set1/permissions-top.tsx",
+    "appComponent": "App lock",
+    "appAction": "App lock PIN is in Settings \u203a Permissions; the lock screen unlocks with the set PIN.",
+    "status": "same"
+  },
+  {
+    "id": "first-next",
+    "screen": "first-run",
+    "label": "Next",
+    "previewAction": "Advances the first-run slideshow.",
+    "appFile": "window/src/setup/SetupFlow.tsx",
+    "appComponent": "SetupFlow",
+    "appAction": "Setup is a real first-run, not the preview slideshow. Next advances the current setup step.",
+    "status": "different"
+  },
+  {
+    "id": "first-skip",
+    "screen": "first-run",
+    "label": "Skip",
+    "previewAction": "Exits the first-run slideshow.",
+    "appFile": "window/src/setup/SetupFlow.tsx",
+    "appComponent": "SetupFlow",
+    "appAction": "Skip / later exits or defers setup.",
+    "status": "same"
+  },
+  {
+    "id": "tour-start",
+    "screen": "dialogs",
+    "label": "Take the tour",
+    "previewAction": "Starts the in-preview product tour.",
+    "appFile": "window/src/shell/palette-rows.ts",
+    "appComponent": "paletteRows",
+    "appAction": "Take the walkthrough starts the app walkthrough.",
+    "status": "same"
+  },
+  {
+    "id": "key-find-anything",
+    "screen": "keyboard",
+    "label": "Ctrl K",
+    "previewAction": "Opens Find anything.",
+    "appFile": "window/src/shell/use-shortcuts.ts",
+    "appComponent": "useShortcuts",
+    "appAction": "Opens Find anything.",
+    "status": "same"
+  },
+  {
+    "id": "key-new-conversation",
+    "screen": "keyboard",
+    "label": "Ctrl N",
+    "previewAction": "Starts a new conversation.",
+    "appFile": "window/src/shell/use-shortcuts.ts",
+    "appComponent": "useShortcuts",
+    "appAction": "Starts a new conversation.",
+    "status": "same"
+  },
+  {
+    "id": "key-settings",
+    "screen": "keyboard",
+    "label": "Ctrl ,",
+    "previewAction": "Opens Settings \u203a Appearance.",
+    "appFile": "window/src/shell/use-shortcuts.ts",
+    "appComponent": "useShortcuts",
+    "appAction": "Opens Settings (last page / General), not hard-wired to Appearance.",
+    "status": "different"
+  },
+  {
+    "id": "key-side-panel",
+    "screen": "keyboard",
+    "label": "Ctrl Shift K",
+    "previewAction": "Toggles the side panel on a chat.",
+    "appFile": "window/src/shell/use-shortcuts.ts",
+    "appComponent": "useShortcuts",
+    "appAction": "Toggles the side panel.",
+    "status": "same"
+  },
+  {
+    "id": "key-focus",
+    "screen": "keyboard",
+    "label": "Ctrl .",
+    "previewAction": "Toggles focus mode.",
+    "appFile": "window/src/shell/use-shortcuts.ts",
+    "appComponent": "useShortcuts",
+    "appAction": "Toggles focus mode.",
+    "status": "same"
+  },
+  {
+    "id": "key-newline",
+    "screen": "keyboard",
+    "label": "Shift Enter",
+    "previewAction": "Inserts a newline in the message box.",
+    "appFile": "window/src/composer/Composer.tsx",
+    "appComponent": "Composer",
+    "appAction": "Inserts a newline.",
+    "status": "same"
+  },
+  {
+    "id": "key-shortcuts-list",
+    "screen": "keyboard",
+    "label": "?",
+    "previewAction": "Opens the shortcuts dialog when not typing.",
+    "appFile": "window/src/shell/use-shortcuts.ts",
+    "appComponent": "useShortcuts",
+    "appAction": "Opens the shortcuts dialog.",
+    "status": "same"
+  },
+  {
+    "id": "key-escape",
+    "screen": "keyboard",
+    "label": "Esc",
+    "previewAction": "Closes popover, then dialog, then notes, then focus mode, then the sliding sidebar.",
+    "appFile": "window/src/shell/use-shortcuts.ts",
+    "appComponent": "useShortcuts",
+    "appAction": "Closes the topmost overlay / leaves focus.",
+    "status": "same"
+  },
+  {
+    "id": "key-toggle-list",
+    "screen": "keyboard",
+    "label": "Ctrl B",
+    "previewAction": "Toggles the sidebar.",
+    "appFile": "window/src/shell/use-shortcuts.ts",
+    "appComponent": "useShortcuts",
+    "appAction": "Toggles the list.",
+    "status": "same"
+  },
+  {
+    "id": "key-inbox",
+    "screen": "keyboard",
+    "label": "Ctrl I",
+    "previewAction": "Later preview: open Inbox.",
+    "appFile": "window/src/shell/use-shortcuts.ts",
+    "appComponent": "useShortcuts",
+    "appAction": "Opens Inbox.",
+    "status": "same"
+  },
+  {
+    "id": "key-quick-ask",
+    "screen": "keyboard",
+    "label": "Ctrl Shift Space",
+    "previewAction": "Later preview: Quick ask.",
+    "appFile": "window/src/shell/use-shortcuts.ts",
+    "appComponent": "useShortcuts",
+    "appAction": "Opens Quick ask.",
+    "status": "same"
+  },
+  {
+    "id": "key-find-in-chat",
+    "screen": "keyboard",
+    "label": "Ctrl F",
+    "previewAction": "Later preview: find in this conversation.",
+    "appFile": "window/src/thread/FindBar.tsx",
+    "appComponent": "FindBar",
+    "appAction": "Opens find in this conversation.",
+    "status": "same"
+  },
+  {
+    "id": "key-list-search",
+    "screen": "keyboard",
+    "label": "Ctrl G",
+    "previewAction": "Later preview: focus list search.",
+    "appFile": "window/src/shell/use-shortcuts.ts",
+    "appComponent": "useShortcuts",
+    "appAction": "Focuses list search.",
+    "status": "same"
+  },
+  {
+    "id": "key-lockdown",
+    "screen": "keyboard",
+    "label": "Ctrl Shift L",
+    "previewAction": "Later preview: toggle Lockdown.",
+    "appFile": "window/src/shell/use-shortcuts.ts",
+    "appComponent": "useShortcuts",
+    "appAction": "Toggles Lockdown.",
+    "status": "same"
+  },
+  {
+    "id": "key-stop",
+    "screen": "keyboard",
+    "label": "Ctrl Shift S",
+    "previewAction": "Later preview: stop the current task.",
+    "appFile": "window/src/shell/use-shortcuts.ts",
+    "appComponent": "useShortcuts",
+    "appAction": "Stops the current task.",
+    "status": "same"
+  },
+  {
+    "id": "key-talk-live",
+    "screen": "keyboard",
+    "label": "Ctrl Shift V",
+    "previewAction": "Later preview: talk live.",
+    "appFile": "window/src/shell/use-shortcuts.ts",
+    "appComponent": "useShortcuts",
+    "appAction": "Starts talk live.",
+    "status": "same"
+  },
+  {
+    "id": "key-archive",
+    "screen": "keyboard",
+    "label": "Ctrl Shift A",
+    "previewAction": "Later preview: archive this conversation.",
+    "appFile": "window/src/shell/use-shortcuts.ts",
+    "appComponent": "useShortcuts",
+    "appAction": "Archives the open conversation.",
+    "status": "same"
+  },
+  {
+    "id": "key-next-conversation",
+    "screen": "keyboard",
+    "label": "Ctrl Tab",
+    "previewAction": "Later preview: next conversation.",
+    "appFile": "window/src/shell/use-shortcuts.ts",
+    "appComponent": "useShortcuts",
+    "appAction": "Goes to the next conversation.",
+    "status": "same"
+  },
+  {
+    "id": "key-talk-beside",
+    "screen": "keyboard",
+    "label": "Ctrl Shift H",
+    "previewAction": "Later preview: talk to the default Trunk beside a page.",
+    "appFile": "window/src/shell/use-shortcuts.ts",
+    "appComponent": "useShortcuts",
+    "appAction": "Toggles talk-beside.",
+    "status": "same"
+  },
+  {
+    "id": "key-pane-terminal",
+    "screen": "keyboard",
+    "label": "Ctrl `",
+    "previewAction": "Later preview: Terminal pane.",
+    "appFile": "window/src/shell/use-shortcuts.ts",
+    "appComponent": "paneKeyFor",
+    "appAction": "Opens Terminal.",
+    "status": "same"
+  },
+  {
+    "id": "key-pane-files",
+    "screen": "keyboard",
+    "label": "Ctrl Shift B",
+    "previewAction": "Later preview: Files pane.",
+    "appFile": "window/src/shell/use-shortcuts.ts",
+    "appComponent": "paneKeyFor",
+    "appAction": "Opens Files.",
+    "status": "same"
+  },
+  {
+    "id": "key-stage-browser",
+    "screen": "keyboard",
+    "label": "Ctrl Alt Shift U",
+    "previewAction": "Later preview: Browser full size.",
+    "appFile": "window/src/shell/keymap.ts",
+    "appComponent": "keyActions",
+    "appAction": "Ctrl Alt Shift U opens Browser full size (toggles it closed if already open).",
+    "status": "same"
+  },
+  {
+    "id": "key-stage-computer",
+    "screen": "keyboard",
+    "label": "Ctrl Alt Shift D",
+    "previewAction": "Later preview: Computer full size.",
+    "appFile": "window/src/shell/keymap.ts",
+    "appComponent": "keyActions",
+    "appAction": "Ctrl Alt Shift D opens Computer full size (toggles it closed if already open).",
+    "status": "same"
+  },
+  {
+    "id": "key-talk-any-app",
+    "screen": "keyboard",
+    "label": "Ctrl Alt Shift V",
+    "previewAction": "Later preview: talk live from any app.",
+    "appFile": "window/src/shell/keymap.ts",
+    "appComponent": "keyActions",
+    "appAction": "Greyed: keys that work from any app belong to the desktop app, which doesn't offer them yet.",
+    "status": "different"
+  },
+  {
+    "id": "key-settings-any-app",
+    "screen": "keyboard",
+    "label": "Ctrl Alt ;",
+    "previewAction": "Later preview: settings from any app.",
+    "appFile": "window/src/shell/keymap.ts",
+    "appComponent": "keyActions",
+    "appAction": "Greyed: desktop-app-only.",
+    "status": "different"
+  },
+  {
+    "id": "toast-undo",
+    "screen": "dialogs",
+    "label": "Undo",
+    "previewAction": "On a toast that offers Undo, restores the previous state.",
+    "appFile": "window/src/shell/notify.ts",
+    "appComponent": "notify",
+    "appAction": "Undo on toasts that register an undo callback.",
+    "status": "same"
+  }
+]

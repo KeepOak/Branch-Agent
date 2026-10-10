@@ -1,0 +1,8 @@
+engine:src/agents/tools/computer-tool-bindings.screen-switch.test.ts
+engine:src/agents/tools/computer-tool.node-resolution.test.ts
+engine:src/agents/tools/computer-tool.test.ts
+window:src/composer/composer-logic.test.ts
+window:src/places/settings/set1/permissions.test.tsx
+window:src/places/settings/set2/computer-more.test.tsx
+window:src/setup/setup.test.tsx
+window:src/thread/run-outcome.test.tsx

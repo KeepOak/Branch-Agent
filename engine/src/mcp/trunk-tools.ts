@@ -3,6 +3,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { EventFrame } from "../../packages/gateway-protocol/src/index.js";
 import { extractFirstTextBlock } from "../shared/chat-message-content.js";
+import { registerQueueMcpTools } from "./queue-tools.js";
+import { registerSigninMcpTools } from "./signin-tools.js";
+import { registerTrunkStatusTools } from "./trunk-status-tools.js";
 
 /**
  * Trunk tools for `branch mcp serve`: an outside agent sees and drives Trunks the way the owner's window does.
@@ -165,10 +168,12 @@ export async function listTrunks(gw: TrunkGateway): Promise<Rec[]> {
           row.hasActiveRun === true || row.status === "running" || str(row.activeWriterRunId),
       );
       const state = running ? await threadState(gw, running) : undefined;
+      // Startup stopped retrying this Trunk's preparation on its own (agents.retryStartup starts it again).
+      const attention = rec(rec(agent.admissionRefusal).preparation).state === "needs-attention";
       return {
         id,
         name: str(rec(agent.identity).name) ?? str(agent.name) ?? id,
-        state: running ? "working" : "idle",
+        state: attention ? "needs-attention" : running ? "working" : "idle",
         ...(running ? { thread: running.key, ...state } : {}),
         model: str(rec(agent.model).primary) ?? str(agent.model) ?? str(rows[0]?.model),
         account: str(running?.authProfileOverride) ?? str(rows[0]?.authProfileOverride),
@@ -218,7 +223,10 @@ export function registerTrunkMcpTools(
   gw: TrunkGateway,
   opts: TrunkToolsOptions,
 ): void {
+  registerSigninMcpTools(server, gw);
+  registerQueueMcpTools(server, gw);
   registerTrunkReadTools(server, gw);
+  registerTrunkStatusTools(server, gw);
   registerTrunkWriteTools(server, gw, opts);
   registerRunTools(server, gw);
   registerRoomTools(server, gw, opts);
@@ -227,7 +235,7 @@ export function registerTrunkMcpTools(
 function registerTrunkReadTools(server: McpServer, gw: TrunkGateway): void {
   server.tool(
     "trunks_list",
-    "List Branch Trunks and contacts with live status: working or idle, the thread in use, model and account.",
+    "List Branch Trunks and contacts with live status: working, idle or needs-attention (its startup stopped retrying), the thread in use, model and account.",
     {},
     async () => {
       const trunks = await listTrunks(gw);
@@ -388,7 +396,14 @@ function registerTrunkWriteTools(
           label: title ?? text.slice(0, 60),
         });
       }
-      const sent = await chatSend(gw, opts, { sessionKey: key, agentId: agent_id, message: text });
+      // A send queues behind the thread's active run. It never starts a parallel run, whatever
+      // queue mode the session or config sets. trunk_steer is the path that joins the run.
+      const sent = await chatSend(gw, opts, {
+        sessionKey: key,
+        agentId: agent_id,
+        message: text,
+        queueMode: "followup",
+      });
       return ok(`sent to ${key}`, {
         thread_key: key,
         run_id: sent.runId ?? null,
@@ -524,8 +539,11 @@ function registerRoomTools(server: McpServer, gw: TrunkGateway, opts: TrunkTools
     { room_id: z.string().min(1) },
     async ({ room_id }) => {
       const agent = await opts.outsideAgent();
-      if (!agent)
-        throw new Error("This Branch gateway does not know outside agents yet; update Branch.");
+      if (!agent) {
+        throw new Error(
+          "Branch has not registered this outside agent. Reconnect Graft and try room_join again.",
+        );
+      }
       const result = await gw.request("rooms.members.add", {
         roomId: room_id,
         kind: "a2a",
@@ -543,10 +561,15 @@ function registerRoomTools(server: McpServer, gw: TrunkGateway, opts: TrunkTools
     async ({ room_id, text }) => {
       opts.activity?.(`Posting in group chat ${room_id}`);
       const agent = await opts.outsideAgent();
+      if (!agent) {
+        throw new Error(
+          "Branch has not registered this outside agent. Reconnect Graft and try room_join before posting.",
+        );
+      }
       const result = await gw.request("rooms.send", {
         roomId: room_id,
         message: text,
-        ...(agent ? { outsideAgent: agent } : {}),
+        outsideAgent: agent,
       });
       return ok("posted", { result });
     },

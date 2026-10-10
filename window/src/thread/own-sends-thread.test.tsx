@@ -82,6 +82,14 @@ describe("your own messages in the thread", () => {
     expect(rows[1]!.compareDocumentPosition(typing) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
   });
 
+  it("shows the first message of an empty conversation at once and drops the empty page", async () => {
+    const container = await render({ pendingUser: "What is 2+3? Answer in one word.", running: true });
+    expect(container.querySelector('[data-testid="empty-state"]')).toBeNull();
+    expect(container.textContent).not.toContain("What should");
+    expect(container.querySelector('[data-testid="message"][data-role="user"]')?.textContent).toContain("What is 2+3? Answer in one word.");
+    expect(container.querySelector('[data-testid="typing"]')).toBeTruthy();
+  });
+
   it("puts your message over the new reply, with only one copy of it, while the turn runs", async () => {
     const container = await render({ pendingUser: "Write an essay", running: true, live: [{ kind: "text", key: "t", text: "Lighthouses", streaming: true }] });
     expect(container.querySelectorAll('[data-testid="message"][data-role="user"]')).toHaveLength(1);

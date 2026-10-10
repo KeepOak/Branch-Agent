@@ -22,6 +22,7 @@ const PATHS = {
   eye: <><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" /><circle cx="12" cy="12" r="2.5" /></>,
   list: <path d="M8 6.5h11M8 12h11M8 17.5h11M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01" />,
   pin: <path d="M9 4h6l-1 5 3.5 3.5h-11L10 9zM12 12.5V20" />,
+  bell: <><path d="M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5zM10 20h4" /></>,
   pause: <path d="M9 5.5v13M15 5.5v13" />,
   edit: <path d="M4 20h4L19 9l-4-4L4 16z" />,
   sliders: <><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>,

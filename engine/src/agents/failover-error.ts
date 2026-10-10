@@ -1,8 +1,5 @@
 import { parseStrictNonNegativeInteger } from "@branch/normalization-core/number-coercion";
-import {
-  asOptionalObjectRecord,
-  readStringField,
-} from "@branch/normalization-core/record-coerce";
+import { asOptionalObjectRecord, readStringField } from "@branch/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
 import { containsAsciiControlCharacter } from "@branch/normalization-core/string-normalization";
 import { formatCliCommand } from "../cli/command-format.js";
@@ -128,7 +125,11 @@ function findCliFailoverError<T extends FailoverError>(
 
 // Codes for turns the CLI backend ended itself. Their tool effects already ran,
 // so replay, model rotation, and generic failure copy must all defer to them.
-const CLI_TERMINAL_STOP_CODES = new Set(["cli_max_turns", "cli_turn_stopped"]);
+const CLI_TERMINAL_STOP_CODES = new Set([
+  "cli_max_turns",
+  "cli_turn_stopped",
+  "cli_ended_after_tool_call",
+]);
 
 export function isCliTerminalStopCode(code: string | undefined): boolean {
   return code !== undefined && CLI_TERMINAL_STOP_CODES.has(code);

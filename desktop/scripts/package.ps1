@@ -16,7 +16,7 @@ $versionRoot = [IO.Path]::GetFullPath((Join-Path $OutputRoot "v$($package.versio
 if (Test-Path -LiteralPath $versionRoot) { throw "Version folder already exists: $versionRoot. Bump the version first." }
 $baseExe = Join-Path $BaseRuntime 'Branch Agent.exe'
 if (!(Test-Path -LiteralPath $baseExe)) { throw "Missing approved Electron runtime: $baseExe" }
-& node (Join-Path $desktopRoot 'node_modules\typescript\bin\tsc') -p (Join-Path $desktopRoot 'tsconfig.json')
+& node (Join-Path $desktopRoot 'scripts\build.mjs')
 if ($LASTEXITCODE -ne 0) { throw 'Desktop TypeScript build failed.' }
 $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
 $stage = [IO.Path]::GetFullPath((Join-Path $tempRoot ("branch-desktop-package-" + [guid]::NewGuid())))

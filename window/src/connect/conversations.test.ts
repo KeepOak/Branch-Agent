@@ -225,4 +225,11 @@ describe("projectConversation", () => {
   it("tolerates junk", () => {
     expect(projectConversation(null, null)).toMatchObject({ key: "", title: "", pinned: false, snoozedUntil: null });
   });
+
+  it("marks a session waiting-on-user or in provider review as needsYou", () => {
+    expect(projectConversation({ key: "k", observerDigest: { health: "waiting-on-user", headline: "Needs a yes" } }, null).needsYou).toBe(true);
+    expect(projectConversation({ key: "k", providerReview: { status: "pending" } }, null).needsYou).toBe(true);
+    expect(projectConversation({ key: "k", needsYou: true }, null).needsYou).toBe(true);
+    expect(projectConversation({ key: "k", observerDigest: { health: "on-track" } }, null).needsYou).toBeUndefined();
+  });
 });

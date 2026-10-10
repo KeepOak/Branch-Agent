@@ -220,6 +220,9 @@ For any other client, use the stdio server `branch` with the arguments
 | `trunk_threads`  | A Trunk's threads with their status.                                                                           |
 | `rooms_list`, `room_read`, `room_join`, `room_post` | Group chats: list them, read the log, join as an outside agent, post.                                         |
 | `usage_status`   | Plan usage and which accounts each Trunk can use.                                                              |
+| `skills_status`  | Skills a Trunk can see, with names, sources and enabled/eligible flags. No paths. Not a pure read: starts the skills watcher and prepares remote skill connections on each call. |
+| `memory_status`  | A Trunk's memory provider: ready or degraded, provider, model, file and chunk counts. No paths. Not a pure read: opens the provider for the call and closes it. |
+| `computer_status` | Whether computer control is configured and available, and its supported actions. Takes no screenshot and does not act. Error text is not returned. |
 
 A typical round trip: `trunks_list`, then `trunk_send` with
 `agent_id: "builder-oak"`, then `run_wait` with the returned `run_id` and
@@ -346,7 +349,14 @@ scoped device. It uses the same setup-code pairing a phone uses.
    (`plugins.entries.bonjour.enabled`; on by default only on macOS), the other
    Branch finds the host with `branch gateway discover`. On Windows it browses
    with its own mDNS query, since Windows has no `dns-sd` or `avahi-browse`.
-3. On the joining Branch, run `branch graft join <setup-code> --name "Studio Laptop"`.
+3. On the joining Branch, pass the setup code securely (stdin or file) to avoid
+   exposing it in shell history or process lists:
+   ```bash
+   branch graft join --name "Studio Laptop"
+   # Setup code: [paste when prompted, hidden input]
+   # or with a file:
+   branch graft join --code-file /path/to/code.txt --name "Studio Laptop"
+   ```
    It connects with the joining Branch's own device identity and asks for
    `operator.read` and `operator.write` only. It never asks for admin, approvals
    or pairing. Plain `ws://` to a LAN address needs a TLS gateway (`wss://`), or

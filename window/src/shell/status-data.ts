@@ -59,8 +59,15 @@ export function ageWords(at: number, now: number): string {
 
 export type LimitWindow = { name: string; left: number; reset: string; low: boolean };
 export type LimitPill = "Measured" | "Not published";
-export type LimitRow = { id: string; name: string; provider?: string; email?: string; plan?: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string; inUse?: boolean };
+export type LimitRow = { id: string; name: string; provider?: string; email?: string; plan?: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string; inUse?: boolean; stale?: boolean };
 export type Limits = { rows: LimitRow[]; updatedAt: number; refreshing: boolean };
+
+/** Limits carried on branch:usage-checked when the status-bar poll got a result. */
+export function usagePollResult(event: Event): Limits | null {
+  const detail = (event as CustomEvent).detail;
+  if (!detail || typeof detail !== "object" || !Array.isArray((detail as Limits).rows)) return null;
+  return detail as Limits;
+}
 
 /** Usage endpoints return diagnostic text; the status bar only shows human-facing status words. */
 export function usageStatusWords(error: unknown, provider: string): string {
@@ -69,6 +76,11 @@ export function usageStatusWords(error: unknown, provider: string): string {
   if (/\b429\b|rate.?limit/i.test(raw)) return `${provider} didn't share what's left right now. Branch checks again in 5 min.`;
   if (/\b401\b|\b403\b|unauthori[sz]ed|forbidden/i.test(raw)) return `${provider} needs you to sign in again to check usage.`;
   return `${provider} couldn't share usage right now. Branch will try again.`;
+}
+
+/** A reading the engine kept because the latest check was rate limited or timed out: say how old it is and why. */
+export function staleReadingWords(reason: unknown, age: string): string {
+  return /\b429\b|rate.?limit/i.test(str(reason)) ? `Rate limited · last reading ${age}. Branch checks again in 5 min.` : `No answer · last reading ${age}. Branch will try again.`;
 }
 
 function limitRow(p: Record<string, unknown>, updatedAt: number, now: number, accountNumber: number): LimitRow {
@@ -82,9 +94,11 @@ function limitRow(p: Record<string, unknown>, updatedAt: number, now: number, ac
   const measured = windows.length > 0;
   const provider = str(p.provider);
   const service = str(p.displayName) || provider;
-  const name = provider === "openai-codex" || /^ChatGPT plan$/i.test(service) ? `ChatGPT · Account ${accountNumber}` : service.replace(/\s+plan$/i, "");
-  const line = p.error === "Usage not reported" ? "Usage not reported" : p.error ? usageStatusWords(p.error, name) : measured ? `as of ${ageWords(updatedAt, now)}` : str(p.summary) === "Usage not reported" ? "Usage not reported" : usageStatusWords(undefined, name);
-  return { id: `${str(p.provider)}:${str(p.authProfileId) || str(p.accountEmail) || account}`, name, provider: str(p.provider), email: str(p.accountEmail), plan: str(p.plan), account, pill: measured ? "Measured" : "Not published", windows, line, inUse: p.inUse === true };
+  const name = provider === "openai-codex" || /^ChatGPT plan$/i.test(service) ? `ChatGPT · Account ${accountNumber}` : provider === "anthropic" ? `Claude · Account ${accountNumber}` : service.replace(/\s+plan$/i, "");
+  const readingAt = num(p.readingAt);
+  const stale = measured && readingAt > 0;
+  const line = stale ? staleReadingWords(p.staleReason, ageWords(readingAt, now)) : p.error === "Usage not reported" ? "Usage not reported" : p.error ? usageStatusWords(p.error, name) : measured ? `as of ${ageWords(updatedAt, now)}` : str(p.summary) === "Usage not reported" ? "Usage not reported" : usageStatusWords(undefined, name);
+  return { id: `${str(p.provider)}:${str(p.authProfileId) || str(p.accountEmail) || account}`, name, provider: str(p.provider), email: str(p.accountEmail), plan: str(p.plan), account, pill: measured ? "Measured" : "Not published", windows, line, inUse: p.inUse === true, ...(stale ? { stale } : {}) };
 }
 
 /** usage.status: one row per connection and account, never added together (§4.9.4 rule 1). */
@@ -103,13 +117,23 @@ export function readLimits(result: unknown, now = Date.now()): Limits {
 
 export type RingReading = { name: string; left: number; reset: string; low: boolean };
 
-/** The bar shows the first measured account's 5-hour reading (FINAL-PASS C1). */
+function readingFrom(row: LimitRow): RingReading | null {
+  const w = row.windows.find((window) => /5-hour/i.test(window.name)) ?? row.windows[0];
+  return w ? { name: row.name, left: w.left, reset: w.reset, low: w.low } : null;
+}
+
+/** The ring shows the account used next when it has a reading; otherwise the first measured account. */
 export function ringReading(limits: Limits | null): RingReading | null {
   const rows = limits?.rows ?? [];
+  const usedNext = rows.find((row) => row.inUse);
+  const preferred = usedNext ? readingFrom(usedNext) : null;
+  if (preferred) {
+    return preferred;
+  }
   for (const row of rows) {
-    const w = row.windows.find((window) => /5-hour/i.test(window.name)) ?? row.windows[0];
-    if (w) {
-      return { name: row.name, left: w.left, reset: w.reset, low: w.low };
+    const reading = readingFrom(row);
+    if (reading) {
+      return reading;
     }
   }
   return null;

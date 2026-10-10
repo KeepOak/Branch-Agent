@@ -1,6 +1,9 @@
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
 import { sortUniqueStrings, uniqueValues } from "@branch/normalization-core/string-normalization";
+import type { SourceReplyDeliveryMode } from "../../auto-reply/get-reply-options.types.js";
 import type { ChatType } from "../../channels/chat-type.js";
+import type { InboundEventKind } from "../../channels/inbound-event/kind.js";
+import type { ConversationReadInvocationOrigin } from "../../channels/plugins/conversation-read-origin.js";
 import { resolveChannelDefaultAccountId } from "../../channels/plugins/helpers.js";
 import {
   getChannelPlugin,
@@ -20,15 +23,62 @@ import {
 } from "../../channels/plugins/message-action-discovery.js";
 import type { ChannelMessageCapability } from "../../channels/plugins/message-capabilities.js";
 import type { ChannelMessageActionName } from "../../channels/plugins/types.public.js";
+import type { resolveCommandSecretRefsViaGateway } from "../../cli/command-secret-gateway.js";
+import type { getScopedChannelsCommandSecretTargets } from "../../cli/command-secret-targets.js";
 import { readExactSessionDeliveryContext } from "../../config/sessions/delivery-info.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { stripTargetProviderPrefix } from "../../infra/outbound/channel-target-prefix.js";
+import type { runMessageAction } from "../../infra/outbound/message-action-runner.js";
 import { actionHasTarget } from "../../infra/outbound/message-action-spec.js";
 import { resolveAllowedMessageActions } from "../../infra/outbound/outbound-policy.js";
 import { normalizeAccountId, parseSessionDeliveryRoute } from "../../routing/session-key.js";
 import { INTERNAL_MESSAGE_CHANNEL, normalizeMessageChannel } from "../../utils/message-channel.js";
 import { listAllChannelSupportedActions, listChannelSupportedActions } from "../channel-tools.js";
+import type { SandboxFsBridge } from "../sandbox/fs-bridge.js";
 import { buildMessageToolSchemaFromActions } from "./message-tool-schema.js";
+export type MessageToolOptions = {
+  agentAccountId?: string;
+  agentSessionKey?: string;
+  runSessionKey?: string;
+  runId?: string;
+  sessionId?: string;
+  agentId?: string;
+  config?: BranchConfig;
+  preparedMessageToolCatalog?: PreparedMessageToolCatalog;
+  getRuntimeConfig?: () => BranchConfig;
+  admitScheduledInvocation?: () => BranchConfig;
+  getScopedChannelsCommandSecretTargets?: typeof getScopedChannelsCommandSecretTargets;
+  resolveCommandSecretRefsViaGateway?: typeof resolveCommandSecretRefsViaGateway;
+  runMessageAction?: typeof runMessageAction;
+  currentChannelId?: string;
+  currentChatType?: ChatType;
+  currentMessagingTarget?: string;
+  messageActionTurnCapability?: string;
+  currentChannelProvider?: string;
+  currentThreadTs?: string;
+  agentThreadId?: string | number;
+  currentMessageId?: string | number;
+  currentInboundAudio?: boolean;
+  hasCurrentInboundAudio?: () => boolean;
+  replyToMode?: "off" | "first" | "all" | "batched";
+  hasRepliedRef?: { value: boolean };
+  sameChannelThreadRequired?: boolean;
+  sandboxRoot?: string;
+  sandboxContainerWorkdir?: string;
+  sandboxFsBridge?: SandboxFsBridge;
+  sandboxReadOnlyResourceMounts?: readonly { hostPath: string; containerPath: string }[];
+  sandboxWorkspaceMediaReadAllowed?: boolean;
+  requireExplicitTarget?: boolean;
+  sourceReplyDeliveryMode?: SourceReplyDeliveryMode;
+  /** Process-local completion authority: send only to the current source route. */
+  sourceReplyOnly?: boolean;
+  inboundEventKind?: InboundEventKind;
+  requesterSenderId?: string;
+  senderIsOwner?: boolean;
+  conversationReadOrigin?: ConversationReadInvocationOrigin;
+  workspaceDir?: string;
+};
+
 export type MessageToolDiscoveryParams = {
   cfg: BranchConfig;
   currentChatType?: ChatType;
@@ -257,6 +307,9 @@ function resolveMessageToolSchemaActions(params: MessageToolDiscoveryParams): st
       buildMessageActionDiscoveryInput(params, currentChannel),
     );
     const allActions = new Set<string>(["send", ...scopedActions]);
+    if (currentChannel === INTERNAL_MESSAGE_CHANNEL && params.sessionKey && params.sessionId) {
+      allActions.add("react");
+    }
     // Include actions from other configured channels so isolated/cron agents
     // can invoke cross-channel actions without validation errors.
     const channels = params.preparedMessageToolCatalog?.channels ?? listChannelPlugins();

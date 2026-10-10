@@ -1,0 +1,2 @@
+window:src/connect/open-history.test.tsx
+window:src/shell/open-thread-frames.test.tsx

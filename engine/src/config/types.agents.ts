@@ -31,6 +31,20 @@ export type AgentConfig = Omit<
 
 export type AgentEntryConfig = Omit<AgentConfig, "id">;
 
+/** Shared Trunk job queue: whether idle Trunks take queued jobs, and which Trunks may. */
+export type TrunkQueueConfig = {
+  /** Idle Trunks take queued jobs unless this is false. */
+  enabled?: boolean;
+  /** Trunk ids allowed to take queued jobs. Unset means every builder-* Trunk. */
+  agents?: string[];
+};
+
+/** Shared durable memory between Trunks: team memory search reads only these agents. */
+export type TeamMemoryConfig = {
+  /** Trunk ids that share durable notes with each other. Opt-in: unset means no Trunk shares. Linked outside Branches are never included. */
+  agents?: string[];
+};
+
 export type AgentsConfig = {
   ownership?: "explicit";
   /** Contact Trunk used by unrouted conversations; explicit bindings take precedence. */
@@ -38,4 +52,6 @@ export type AgentsConfig = {
   characterAssignmentVersion?: 1;
   defaults?: AgentDefaultsConfig;
   entries?: Record<string, AgentEntryConfig>;
+  trunkQueue?: TrunkQueueConfig;
+  teamMemory?: TeamMemoryConfig;
 };

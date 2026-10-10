@@ -11,6 +11,11 @@ import { createPluginStateKeyedStoreForTests } from "branch/plugin-sdk/plugin-st
 import { clearEmbeddingProviders as clearRegistry } from "branch/plugin-sdk/plugin-test-runtime";
 import { upsertSessionEntry } from "branch/plugin-sdk/session-store-runtime";
 import { appendSessionTranscriptMessageByIdentity } from "branch/plugin-sdk/session-transcript-runtime";
+import {
+  closeBranchAgentDatabasesAsync,
+  closeBranchStateDatabaseAsync,
+  closeBranchStateDatabaseForTest,
+} from "branch/plugin-sdk/sqlite-runtime-testing";
 import { createBranchTestState, type BranchTestState } from "branch/plugin-sdk/test-state";
 import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
 import {
@@ -386,12 +391,15 @@ vi.mock("./embeddings.js", async (importOriginal) => {
 export function createManagerIndexFixture(deps: {
   getMemorySearchManager: GetMemorySearchManager;
   closeAllMemorySearchManagers: typeof import("./index.js").closeAllMemorySearchManagers;
+  /** Keep publication workers on one fixture-state owner across cases. */
+  stateLifetime?: "case" | "file";
 }): ManagerIndexFixture {
   const provider = Object.assign(providerState, { createLocalWorkerExitError });
   let root = "";
   let workspace = "";
   let memory = "";
   let state: BranchTestState;
+  let fileStateInitialized = false;
   let workerState: BranchTestState | undefined;
   const managers = new Set<MemoryIndexManager>();
 
@@ -545,13 +553,24 @@ export function createManagerIndexFixture(deps: {
     vi.useRealTimers();
     await Promise.all(Array.from(managers).map((manager) => manager.close()));
     await deps.closeAllMemorySearchManagers();
-    await state.cleanup();
+    if (deps.stateLifetime !== "file") {
+      await state.cleanup();
+    }
     resetMemoryCoreRingsStateForTests();
     clearRegistry();
     managers.clear();
   });
 
   afterAll(async () => {
+    if (fileStateInitialized) {
+      // Join shared publication workers before removing either fixture root.
+      await closeBranchAgentDatabasesAsync();
+      await closeBranchStateDatabaseAsync();
+      closeBranchStateDatabaseForTest();
+      await workerState?.cleanup();
+      await state.cleanup();
+      return;
+    }
     await workerState?.cleanup();
   });
 
@@ -584,10 +603,13 @@ export function createManagerIndexFixture(deps: {
     providerState.providerCalls = [];
     providerState.forceNoProvider = false;
 
-    state = await createBranchTestState({
-      prefix: "branch-mem-fixtures-",
-      layout: "state-only",
-    });
+    if (deps.stateLifetime !== "file" || !fileStateInitialized) {
+      state = await createBranchTestState({
+        prefix: "branch-mem-fixtures-",
+        layout: "state-only",
+      });
+      fileStateInitialized = deps.stateLifetime === "file";
+    }
     root = state.root;
     workspace = state.workspaceDir;
     memory = path.join(workspace, "memory");

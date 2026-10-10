@@ -324,13 +324,35 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
         state.chunkingVersionOnly === true &&
         this.fts.enabled &&
         this.fts.available;
+      const embeddingIdentityOnlyKeywordFallback = (state: MemoryIndexIdentityState): boolean =>
+        state.status === "mismatched" &&
+        state.owner === "configuration" &&
+        (state.code === "model" ||
+          state.code === "provider" ||
+          state.code === "provider_settings" ||
+          state.code === "vector_dims") &&
+        this.fts.enabled &&
+        this.fts.available &&
+        this.refreshKeywordFallbackIndexIdentity(indexState).status === "valid";
+      const embeddingKeywordFallback = embeddingIdentityOnlyKeywordFallback(repairedIndexIdentity);
       if (repairedIndexIdentity.status !== "valid") {
-        if (!chunkingUpgradePendingKeywordOnly(repairedIndexIdentity)) {
+        if (
+          !chunkingUpgradePendingKeywordOnly(repairedIndexIdentity) &&
+          !embeddingKeywordFallback
+        ) {
           return [];
         }
-        log.warn(
-          "memory search: chunking upgrade rebuild is pending; serving the existing keyword index",
-        );
+        if (embeddingKeywordFallback) {
+          log.warn(
+            "memory search: embedding configuration changed; serving keyword results until the rebuild finishes",
+          );
+          this.dirty = true;
+          this.memoryFullRetryDirty = true;
+        } else {
+          log.warn(
+            "memory search: chunking upgrade rebuild is pending; serving the existing keyword index",
+          );
+        }
       }
       // No watcher can observe later edits after kernel capacity exhaustion.
       // Record a fresh generation at the search boundary so detached maintenance
@@ -367,7 +389,8 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
         effectiveIdentity = leasedIdentity;
         if (
           leasedIdentity.status === "valid" ||
-          chunkingUpgradePendingKeywordOnly(leasedIdentity)
+          chunkingUpgradePendingKeywordOnly(leasedIdentity) ||
+          embeddingIdentityOnlyKeywordFallback(leasedIdentity)
         ) {
           break;
         }
@@ -396,10 +419,20 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
       const keywordOnly =
         embeddingBootstrapKeywordOnly ||
         chunkingUpgradePendingKeywordOnly(effectiveIdentity) ||
+        embeddingIdentityOnlyKeywordFallback(effectiveIdentity) ||
         !this.provider ||
         opts?.lexicalOnly;
-      if (chunkingUpgradePendingKeywordOnly(effectiveIdentity)) {
-        opts?.onDebug?.({ backend: "builtin", effectiveMode: "keyword-only" });
+      if (
+        chunkingUpgradePendingKeywordOnly(effectiveIdentity) ||
+        embeddingIdentityOnlyKeywordFallback(effectiveIdentity)
+      ) {
+        opts?.onDebug?.({
+          backend: "builtin",
+          effectiveMode: "keyword-only",
+          ...(embeddingIdentityOnlyKeywordFallback(effectiveIdentity)
+            ? { keywordFallbackContentScopeValid: true as const }
+            : {}),
+        });
       }
       const loadKeywordResults = async () => {
         const initialResult = preparedKeyword;

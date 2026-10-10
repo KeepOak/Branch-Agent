@@ -86,18 +86,25 @@ describe("contact projection", () => {
         key: "agent:gone:window:task",
         contactId: "trunk:gone",
         title: "Task",
+        labelled: true,
       }),
     );
   });
 
-  it("keeps a pinned topic reachable by pinning its parent contact", () => {
+  it("keeps a thread pin separate from its parent contact pin", () => {
     const result = projectContacts({
       agents: [{ id: "scout", name: "Scout" }],
       defaultAgentId: "scout",
       sessions: [row("agent:scout:window:task", { pinnedAt: 150 })],
     });
-    expect(result.contacts[0]?.pinnedAt).toBe(150);
+    expect(result.contacts[0]?.pinnedAt).toBeUndefined();
     expect(result.topics[0]?.pinnedAt).toBe(150);
+    const mainPinned = projectContacts({
+      agents: [{ id: "scout", name: "Scout" }],
+      defaultAgentId: "scout",
+      sessions: [row("agent:scout:main", { pinnedAt: 200 }), row("agent:scout:window:task", { pinnedAt: 150 })],
+    });
+    expect(mainPinned.contacts[0]?.pinnedAt).toBe(200);
   });
 
   it("previews a topic update card in the main thread when that topic is newer", () => {
@@ -157,6 +164,7 @@ describe("contact projection", () => {
     const first = row("agent:scout:a2a:remote:direct:peer:context-a", {
       createdAt: 10,
       lastActivityAt: 20,
+      pinnedAt: 15,
     });
     const second = row("agent:scout:a2a:remote:direct:peer:context-b", {
       createdAt: 30,
@@ -188,6 +196,8 @@ describe("contact projection", () => {
       preview: { kind: "message", text: "", at: 0 },
       topicCount: 2,
     });
+    expect(result.contacts.find((contact) => contact.id === "a2a:peer")?.pinnedAt).toBeUndefined();
+    expect(result.topics.find((topic) => topic.key === first.sessionKey)?.pinnedAt).toBe(15);
     expect(result.topics).toContainEqual(
       expect.objectContaining({ key: first.sessionKey, contactId: "a2a:peer" }),
     );

@@ -126,6 +126,64 @@ test('hidden native fixtures retain close policy without creating a visible tray
   app.quit(); assert.equal(window.destroyed, true);
   await eventually(() => { try { process.kill(pid, 0); return false; } catch { return true; } });
 }, true));
+test('usage-off setTrayUsage restores the darwin template and never branch-48.png', async () => {
+  const desktop = join(process.env.BRANCH_DESKTOP_TEST_DIST, '..');
+  const main = await readFile(join(desktop, 'src/main.ts'), 'utf8');
+  const osSource = await readFile(join(desktop, 'src/desktop-os.ts'), 'utf8');
+  assert.match(main, /desktopOs\(app, cfg, \(\) => tray, TRAY_ICON\)/);
+  assert.match(osSource, /t\.setImage\(menuBarIcon\(icon, process\.platform\)\)/);
+  const template = join(desktop, 'assets', 'brand', 'linux', 'branchTemplate.png');
+  Module._load = function (name, ...args) {
+    if (name !== 'electron') return originalLoad.call(this, name, ...args);
+    return {
+      nativeImage: {
+        createFromPath: (file) => ({ path: file, template: false, setTemplateImage(on) { this.template = on; } }),
+        createFromBitmap: () => ({ kind: 'ring' }),
+      },
+      powerSaveBlocker: { start: () => 1, isStarted: () => false, stop() {} },
+      shell: { openExternal() {} },
+      Menu: { buildFromTemplate: value => value },
+      Tray: class {},
+    };
+  };
+  const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
+  const modules = ['resident-window.js', 'desktop-os.js', 'desktop-controls.js'].map(name => join(dist, name));
+  for (const path of modules) delete require.cache[path];
+  const root = await mkdtemp(join(tmpdir(), 'branch-tray-template-'));
+  try {
+    const { menuBarIcon } = require(modules[0]);
+    const restored = menuBarIcon(template, 'darwin');
+    assert.equal(restored.template, true);
+    assert.match(restored.path, /branchTemplate\.png$/);
+    assert.doesNotMatch(restored.path, /branch-48\.png/);
+    const { desktopOs } = require(modules[1]);
+    const { createDesktopControls } = require(modules[2]);
+    const seen = [];
+    const controls = createDesktopControls(desktopOs(
+      { getLoginItemSettings: () => ({ openAtLogin: false }) },
+      { dataDir: root },
+      () => ({ setImage(value) { seen.push(value); }, setToolTip() {} }),
+      template,
+    ));
+    controls.trayUsage(40);
+    await controls.set('trayUsage', true);
+    controls.trayUsage(12);
+    await controls.set('trayUsage', false);
+    assert.equal(seen.length, 4);
+    for (const value of [seen[0], seen[3]]) {
+      const path = typeof value === 'string' ? value : value.path;
+      assert.match(path, /branchTemplate\.png$/);
+      assert.doesNotMatch(path, /branch-48\.png/);
+      if (value && typeof value === 'object') assert.equal(value.template, true);
+    }
+    for (const value of [seen[1], seen[2]]) assert.equal(value.kind, 'ring');
+    assert.equal(JSON.stringify(seen).includes('branch-48.png'), false);
+  } finally {
+    Module._load = originalLoad;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('macOS and Linux keep the gateway resident after the window closes', () => {
   const { keepWindowResident } = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'resident-window.js'));
   for (const platform of ['darwin', 'linux']) {

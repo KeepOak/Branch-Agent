@@ -6,6 +6,7 @@ import { shows } from "../../places-nav/level";
 import { Icon } from "../../shell/icons";
 import { stepLabel } from "../../thread/format";
 import { readFileChanges, resultText, type Block, type FileChange } from "../../thread/model";
+import { displayToolOutput } from "../../thread/tool-output-display";
 import { rec, str, type Row } from "../automations/runtime";
 import { isRunning, sessionTitle, trunkName } from "./data";
 import { anchorOf, ChoiceMenu, clock, Pill, TrunkFace, type Ctx } from "./ui";
@@ -33,7 +34,7 @@ function useSteps(ctx: Ctx) {
     setSteps(list => {
       if (d.phase === "start") return [{ key, session: str(p.sessionKey), tool: str(d.name) || "step", changes: readFileChanges(d.args), hidden: Object.keys(rec(d.args)).length, st: "Running" as const, out: "", at: Date.now() }, ...list.filter(s => s.key !== key)].slice(0, KEEP);
       if (d.phase !== "result" || !list.some(x => x.key === key)) return list;
-      return list.map(s => s.key === key ? { ...s, st: d.isError ? "Error" as const : "Done" as const, out: resultText(d.result).slice(0, 120) } : s);
+      return list.map(s => s.key === key ? { ...s, st: d.isError ? "Error" as const : "Done" as const, out: displayToolOutput({ tool: s.tool, text: resultText(d.result) }).slice(0, 120) } : s);
     });
   }), [ctx.engine]);
   return [steps, setSteps] as const;

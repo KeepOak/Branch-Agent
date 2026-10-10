@@ -572,7 +572,7 @@ export function prepareCodexAttemptResources(prompt: CodexAttemptPrompt) {
     await previousRelay?.drain();
     connection.assertCurrent();
     const requiresProcessAdmission =
-      nativeProcessAuthority?.requiresProcessAdmission && runtime.nativeToolSurfaceEnabled;
+      nativeProcessAuthority !== undefined && runtime.nativeToolSurfaceEnabled;
     const requiresModelAdmission =
       nativeModelAdmission !== undefined && decision.nativeModelInputTools !== undefined;
     const requiresExecutionAdmission = requiresProcessAdmission || requiresModelAdmission;
@@ -675,6 +675,8 @@ export function prepareCodexAttemptResources(prompt: CodexAttemptPrompt) {
             relay: state.nativeHookRelay,
             events: relayEvents,
             hookTimeoutSec: options.nativeHookRelay?.hookTimeoutSec,
+            heavyStepEnvironment: nativeProcessAuthority?.heavyStepEnvironment,
+            heavyStepTimeoutSec: Math.ceil(params.timeoutMs / 1000),
           })
         : options.nativeHookRelay?.enabled === false
           ? buildCodexNativeHookRelayDisabledConfig()

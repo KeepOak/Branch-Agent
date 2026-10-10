@@ -142,6 +142,13 @@ export function startGatewayEventSubscriptions(params: {
     }
   };
   reconcileAuditPolicy(getRuntimeConfig());
+  void import("./server-methods/trunk-queue.js").then(({ startTrunkQueueSweep }) =>
+    startTrunkQueueSweep({
+      getConfig: getRuntimeConfig,
+      log: (message) => params.log.warn(message),
+      signal: params.signal,
+    }),
+  );
   const sessionActivitySummaries = createSessionActivitySummaries({
     scheduler: params.scheduler,
     getConfig: getRuntimeConfig,
@@ -436,6 +443,7 @@ export function startGatewayEventSubscriptions(params: {
     }
     let failedDispatchCleanup: (() => void) | undefined;
     let terminalPreparation: Promise<void> | undefined;
+    let terminalPersistence: Promise<void> | undefined;
     let terminalEntries: ChatAbortControllerEntry[] | undefined;
     sessionObserver.handleEvent(evt);
     sessionActivitySummaries.handleEvent(evt);
@@ -547,6 +555,7 @@ export function startGatewayEventSubscriptions(params: {
         if (canPersistTerminal) {
           if (knownSessionKey) {
             const persistence = prepareTerminalPersistence(knownSessionKey);
+            terminalPersistence = persistence;
             writeContext?.track(persistence);
           } else {
             // Context cleanup can precede a terminal event. Resolve its persisted
@@ -590,6 +599,34 @@ export function startGatewayEventSubscriptions(params: {
     bindChatAbortTerminalDispatch(terminalEntries, dispatch, terminalDispatch);
     agentEventDispatches.add(dispatch);
     void dispatch.then(() => agentEventDispatches.delete(dispatch));
+    const queueTerminal =
+      (lifecyclePhase === "end" || lifecyclePhase === "error") &&
+      isDefinitiveRunLifecycle({ phase: lifecyclePhase, data: evt.data });
+    const queueAgentId =
+      lifecyclePhase === "start" || queueTerminal
+        ? (params.chatRunState.registry.peek(evt.runId)?.agentId ??
+          evt.agentId ??
+          getAgentRunContext(evt.runId)?.agentId)
+        : undefined;
+    if (queueAgentId && !params.signal.aborted) {
+      // Once the run's end is published and persisted, an idle Trunk picks up the next queued job.
+      void Promise.allSettled([dispatch, terminalPreparation, terminalPersistence])
+        .then(() => import("./server-methods/trunk-queue.js"))
+        .then(({ onTrunkRunLifecycle }) =>
+          params.signal.aborted
+            ? undefined
+            : onTrunkRunLifecycle({
+                agentId: queueAgentId,
+                terminal: queueTerminal,
+                threadKey: evt.sessionKey ?? evt.deliverySessionKey,
+                outcome: lifecyclePhase === "end" ? "completed" : "failed",
+                cfg: getRuntimeConfig(),
+              }),
+        )
+        .catch((error: unknown) =>
+          params.log.warn("Trunk queue pickup failed", { agentId: queueAgentId, error }),
+        );
+    }
   });
   const agentUnsub = async () => {
     auditPolicyClosed = true;

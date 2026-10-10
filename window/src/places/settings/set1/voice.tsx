@@ -5,8 +5,9 @@
 import type { SettingsPageProps } from "../index";
 import { list, text, visible, type RecordValue } from "../adapter";
 import { Ctl, Page, Sec, useLevel, useSaveRunner, type Opt, type RowEntry } from "../kit";
-import { APP, Choice, Greyed, isMac, providersOf, useKept, type Kept } from "./voice-kit";
+import { APP, Choice, Greyed, providersOf, useKept, type Kept } from "./voice-kit";
 import { VoiceAdvanced } from "./voice-more";
+import { platformName } from "../../../setup/steps-later";
 import "./voice.css";
 
 /** The first wake word, quoted, for the sub-lines (the engine's own list; never a made-up phrase). */
@@ -17,6 +18,7 @@ export function wakeWordOf(wake: RecordValue | undefined): string {
 
 export function VoicePage(props: SettingsPageProps) {
   const lv = useLevel();
+  const platform = platformName();
   const tts = useKept<RecordValue>(props.engine, "tts.status", {});
   const voices = useKept<RecordValue>(props.engine, "tts.providers", {});
   const wake = useKept<RecordValue>(props.engine, "voicewake.get", {});
@@ -26,7 +28,7 @@ export function VoicePage(props: SettingsPageProps) {
       <Sec title="Talking">
         <Greyed why={APP} rows={[
           { t: "Listening", sub: `Push to talk holds the key; wake word listens for ${word}.`, c: { seg: ["Off", "Push to talk", "Wake word"], v: "Off" } },
-          { t: "Push-to-talk key", sub: isMac() ? "Hold it anywhere on this Mac." : "Hold it anywhere in Windows.", c: { btn: "Change" } },
+          { t: "Push-to-talk key", sub: platform === "macOS" ? "Hold it anywhere on this Mac." : platform === "Windows" ? "Hold it anywhere in Windows." : "Hold it anywhere on this computer.", c: { btn: "Change" } },
           { t: "Microphone", sub: "Used for dictation, push to talk, the wake word and live voice. A change applies to the next dictation or call.", c: { pick: ["System default"], extra: "Refresh" } },
           { t: "Test the microphone", sub: "Watch the level as you speak, and try the wake word.", c: { btn: "Test" } },
         ]} />

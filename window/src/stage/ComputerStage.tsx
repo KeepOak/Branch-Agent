@@ -9,9 +9,12 @@ import type { ProgressCard } from "../thread/PlanCard";
 import { Menu, type MenuAnchor, type MenuItem } from "../shell/Menu";
 import { SIcon } from "./stage-icons";
 import { useDesktopView, type DesktopView } from "./use-desktop";
+import { announceComputerControl, listenComputerControl } from "../thread/computer-card";
 import { describePlacement, listComputers, pickerLabel, placementComputer, planSteps, stagePill, type Computer, type Placement, type PlanStep } from "./computers";
 import { ComputerPicker } from "./ComputerPicker";
 import { AddComputer } from "./AddComputer";
+import { configStore } from "../places/settings/config-store";
+import { NativeScreen } from "./NativeScreen";
 import "./stage.css";
 
 export type StageMode = "Computer" | "Browser";
@@ -79,7 +82,7 @@ function StepStrip({ steps, controlling, running, connected, onWatch, watchOpen,
   );
 }
 
-function Screen({ view, target, onRetry, onChoose, controlling }: { view: DesktopView; target: React.RefObject<HTMLDivElement | null>; onRetry: () => void; onChoose: () => void; controlling: boolean }) {
+function Screen({ view, target, onRetry, onChoose, controlling, onEnable, enabling, enableError }: { view: DesktopView; target: React.RefObject<HTMLDivElement | null>; onRetry: () => void; onChoose: () => void; controlling: boolean; onEnable?: () => void; enabling?: boolean; enableError?: string }) {
   return (
     <div className="st7-wrap">
       <div className={controlling ? "st7-screen live-st ctl-st" : "st7-screen live-st"}>
@@ -93,17 +96,18 @@ function Screen({ view, target, onRetry, onChoose, controlling }: { view: Deskto
                 ? "Connecting to this conversation's computer…"
                 : view.phase === "error"
                   ? "Couldn't connect to the computer"
-                  : "It can't see a screen or use a mouse. Pick a computer to let it."}
+                  : "It can't see a screen or use a mouse."}
             </b>
             {view.message ? <p role="alert">{view.message}</p> : null}
+            {enableError ? <p role="alert">{enableError}</p> : null}
             {view.phase === "error" ? (
               <button type="button" className="btn" onClick={onRetry}>
                 Try again
               </button>
             ) : null}
             {view.phase !== "loading" ? (
-              <button type="button" className="btn" onClick={onChoose}>
-                Computer settings
+              <button type="button" className="btn" disabled={enabling} onClick={onEnable ?? onChoose}>
+                {onEnable ? enabling ? "Turning on screen access…" : "See the screen and use the mouse" : "Computer settings"}
               </button>
             ) : null}
           </div>
@@ -164,6 +168,10 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
   const [adding, setAdding] = useState(false);
   const [stopError, setStopError] = useState("");
   const [browserPhase, setBrowserPhase] = useState<BrowserPhase>("empty");
+  const [enabling, setEnabling] = useState(false);
+  const [enableError, setEnableError] = useState("");
+  const [nativeLive, setNativeLive] = useState(false);
+  const [nativeSelected, setNativeSelected] = useState(false);
   const target = useRef<HTMLDivElement>(null);
   const where = useWhere(engine, tick);
   useEffect(() => {
@@ -171,19 +179,35 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
     window.addEventListener("branch:computers-changed", changed);
     return () => window.removeEventListener("branch:computers-changed", changed);
   }, []);
+  useEffect(() => {
+    announceComputerControl(control);
+  }, [control]);
+  useEffect(() => listenComputerControl((next) => setControl((cur) => (cur === next ? cur : next))), []);
+  useEffect(() => () => announceComputerControl(false), []);
   const current = placementComputer(where.placement);
   const screens = where.computers.filter((c) => c.desktop || c.id === current);
   const viewing = picked === "grid" ? null : picked ?? current;
   const viewed = where.computers.find((c) => c.id === viewing);
-  const view = useDesktopView(engine, gatewayUrl, mode === "Computer" && picked !== "grid" && where.loaded ? viewing : null, target, control, retry);
+  const native = mode === "Computer" && nativeSelected && viewing === "gateway" && where.loaded && !viewed?.desktop;
+  const view = useDesktopView(engine, gatewayUrl, mode === "Computer" && !native && picked !== "grid" && where.loaded ? viewing : null, target, control, retry);
   const screenView: DesktopView = !where.loaded ? { phase: "loading" } : where.error && !viewing ? { phase: "error", message: where.error } : view;
   const steps = planSteps(card);
   const browser = mode === "Browser";
   const controlling = browser ? control : view.phase === "connected" && view.controlling === true;
-  const connected = browser ? browserPhase === "connected" : view.phase === "connected";
+  const connected = browser ? browserPhase === "connected" : native ? nativeLive : view.phase === "connected";
   const browserLine = useMemo(() => profileLine(routeOf(recordedBrowserTabs(blocks))), [blocks]);
   const pill = stagePill(running, controlling, steps);
   const onBrowserState = useCallback((phase: BrowserPhase) => setBrowserPhase(phase), []);
+  const enableScreen = () => {
+    if (enabling) return;
+    setEnabling(true);
+    setEnableError("");
+    void configStore(engine).set("plugins.entries.cua-computer.enabled", true).then(() => {
+      setNativeSelected(true);
+      setPicked("gateway");
+      setRetry((value) => value + 1);
+    }, () => setEnableError("Couldn't turn on screen access. Open Computer settings and try again.")).finally(() => setEnabling(false));
+  };
   const stop = () => {
     setStopError("");
     engine.request("sessions.abort", { key: engine.sessionKey }).catch((e: unknown) => setStopError(e instanceof Error ? e.message : String(e)));
@@ -204,7 +228,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
     setMenu({
       at,
       label: "More for this view",
-      items: [{ label: "Disconnect", run: () => onClose(), disabled: view.phase === "connected" ? undefined : "Nothing is connected." }],
+      items: [{ label: "Disconnect", run: () => onClose(), disabled: connected ? undefined : "Nothing is connected." }],
     });
   const title = `${name}’s ${browser ? "browser" : "computer"}`;
   return (
@@ -226,7 +250,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
           ) : (
             <button type="button" className="st7-pick" aria-haspopup="dialog" aria-expanded={picker !== null} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setPicker(picker ? null : { x: r.left, y: r.bottom + 6 }); }}>
               <SIcon name="layers" small />
-              {where.loaded ? pickerLabel(where.computers, current) : "Computers"}
+              {native ? "This computer (viewing)" : where.loaded ? pickerLabel(where.computers, current) : "Computers"}
               <SIcon name="down" small />
             </button>
           )}
@@ -242,7 +266,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
           </button>
         ) : (
           <>
-            {connected ? (
+            {connected && !native ? (
               <button type="button" className="btn pri sm" onClick={() => setControl(true)}>
                 Take over
               </button>
@@ -268,7 +292,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
             </button>
           ))}
         </span>
-        <button type="button" className="ib" aria-label="Shrink to a small window" title="Picture in picture" disabled={!onPip || (!browser && !viewing)} onClick={() => (browser ? onPip?.({ kind: "browser", id: "browser", name: "browser" }) : viewing && onPip?.({ kind: "computer", id: viewing, name: viewed?.name ?? view.title ?? viewing }))}>
+        <button type="button" className="ib" aria-label="Shrink to a small window" title={native ? "This screen is shown in the Computer panel." : "Picture in picture"} disabled={native || !onPip || (!browser && !viewing)} onClick={() => (browser ? onPip?.({ kind: "browser", id: "browser", name: "browser" }) : viewing && onPip?.({ kind: "computer", id: viewing, name: viewed?.name ?? view.title ?? viewing }))}>
           <SIcon name="pip" />
         </button>
         <button type="button" className="ib" aria-label="Open in its own window" title={OWN_WINDOW} disabled>
@@ -317,13 +341,15 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
               ))}
             </div>
           </div>
+        ) : native ? (
+          <NativeScreen engine={engine} retry={retry} onLive={setNativeLive} onRetry={() => setRetry((value) => value + 1)} />
         ) : (
-          <Screen view={screenView} target={target} controlling={controlling} onRetry={() => { setRetry((v) => v + 1); if (where.error) setTick((v) => v + 1); }} onChoose={onChooseComputer} />
+          <Screen view={screenView} target={target} controlling={controlling} onRetry={() => { setRetry((v) => v + 1); if (where.error) setTick((v) => v + 1); }} onChoose={onChooseComputer} onEnable={where.loaded && !where.error && (!viewing || viewing === "gateway") ? enableScreen : undefined} enabling={enabling} enableError={enableError} />
         )}
       </div>
       )}
       {steps.length || connected || running ? (
-        <StepStrip steps={steps} controlling={controlling} running={running} connected={connected} tools={!browser} watchOpen={menu?.label === "What to watch"} onWatch={watchMenu} />
+        <StepStrip steps={steps} controlling={controlling} running={running} connected={connected} tools={!browser && !native} watchOpen={menu?.label === "What to watch"} onWatch={watchMenu} />
       ) : null}
       {picker ? (
         <ComputerPicker

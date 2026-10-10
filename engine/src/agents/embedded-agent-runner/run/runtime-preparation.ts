@@ -363,8 +363,12 @@ export async function prepareEmbeddedRunRuntime(input: {
     allowTransientCooldownProbe: params.allowTransientCooldownProbe === true,
   });
   let didTransientCooldownProbe = false;
-  const advancePluginHarnessAuthAttempt = async (): Promise<boolean> => {
-    if (!pluginHarnessOwnsTransport) {
+  const advancePluginHarnessAuthAttempt = async (options?: {
+    accept?: (profileId: string | undefined) => boolean;
+  }): Promise<boolean> => {
+    // Harness-owned auth can't pass over a profile without preparing it, so a filtered move
+    // (to the next subscription only) stays on the current profile instead.
+    if (!pluginHarnessOwnsTransport || options?.accept) {
       return false;
     }
     let nextIndex = authState.profileIndex + 1;

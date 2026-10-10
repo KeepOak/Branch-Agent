@@ -7,7 +7,7 @@ import { useState } from "react";
 import type { SettingsPageProps } from "../index";
 import { list, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
-import { Page, useConfig, type RowEntry } from "../kit";
+import { Acts, Btn, Hint, Page, useConfig, type RowEntry } from "../kit";
 import { ApprovalsDialog } from "./permissions-approvals";
 import { THIS_PC } from "./permissions-commands";
 import { useApprovalsFile } from "./permissions-file";
@@ -43,6 +43,12 @@ export function PermissionsPage(props: SettingsPageProps) {
       <LockdownStatus cfg={cfg} />
       <ThisPc />
       <ModeEverywhere cfg={cfg} agents={agents.data} reload={agents.reload} />
+      <Hint>Full access does not turn on seeing the screen or using the mouse. That is a separate switch in Settings › Computer & browser › See the screen and use the mouse.</Hint>
+      {props.openSettings ? (
+        <Acts>
+          <Btn sm onClick={() => props.openSettings?.("computer")}>Open that switch</Btn>
+        </Acts>
+      ) : null}
       <SectionView s={WITHOUT} x={x} />
       {LOWER.map((s) => <SectionView key={s.title} s={s} x={x} />)}
       {approvals ? <ApprovalsDialog engine={props.engine} onClose={() => setApprovals(false)} /> : null}
@@ -55,7 +61,7 @@ const TOP: RowEntry[] = [
   { page: "permissions", title: "Location access", sec: "This computer", group: "This computer", lv: 0 },
   { page: "permissions", title: "Precise location", sec: "This computer", group: "This computer", lv: 0 },
   { page: "permissions", title: "Lockdown", sec: "Locks and records", group: "Locks and records", lv: 0, words: "stop everything" },
-  { page: "permissions", title: "Access", group: "Access", lv: 0, words: "auto ask first plan first read only full access mode" },
+  { page: "permissions", title: "Access", group: "Access", lv: 0, words: "auto ask first plan first read only full access mode screen mouse computer browser" },
 ];
 const COMMAND_ROWS: RowEntry[] = ["Ask before a command", "When nobody can be asked", "Let skill programs run"].map((title) => ({ page: "permissions", title, sec: "Commands, by default", group: "Rules and checks", lv: 1 }));
 

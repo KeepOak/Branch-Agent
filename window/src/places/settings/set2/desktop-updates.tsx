@@ -5,7 +5,7 @@ import { Btn, Ctl, Hint, Page, Sec, Status, Switch } from "../kit";
 import { useDesktopControls } from "../../../connect/desktop-controls";
 import { componentDesktop, DESKTOP_CHECKS_HOURLY, MANUAL_UPDATE_UNSUPPORTED, useDesktopComponentStatus, type ComponentUpdateStatus } from "../../../connect/desktop-component-updates";
 import { rec, str, useLive, type RecordValue } from "./common";
-import { useBranchVersion, versionParts } from "../../../connect/branch-version";
+import { isNewerBranchVersion, runningBranchVersion, useBranchVersion, useShippedWindowVersion, versionParts } from "../../../connect/branch-version";
 
 const OS: Record<string, string> = { win32: "Windows", darwin: "macOS", linux: "Linux" };
 
@@ -14,6 +14,7 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
   const desktop = componentDesktop(engine.gatewayUrl);
   const bridge = desktop?.componentUpdates;
   const data = useDesktopComponentStatus(engine.gatewayUrl);
+  const shipped = useShippedWindowVersion();
   const auto = useDesktopControls();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,15 +26,16 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
     finally { setBusy(false); }
   };
   if (!bridge) return <HourlyUpdates title={title} engine={engine} reason={desktop?.unavailableReason} />;
-  const current = data.status?.currentVersion;
-  const lede = current ? `Branch ${versionParts(current).short} on this computer.` : "Updates for Branch on this computer.";
+  const running = runningBranchVersion(data.status?.currentVersion, shipped);
+  const stagedWaiting = Boolean(data.status?.phase === "staged" && isNewerBranchVersion(data.status.pendingVersion ?? data.status.latestVersion, running));
+  const lede = running ? `Branch ${versionParts(running).detail} on this computer.` : "Updates for Branch on this computer.";
   return <Page title={title} lede={lede}>
     <div className="s2-keeper"><KeeperMark size={64} /></div>
     {error || data.error ? <Status tone="bad" title="Branch couldn’t update">{error || data.error}</Status> : null}
-    <Status tone={data.status?.phase === "staged" ? "ok" : "idle"} title={statusLine(data.status, auto.state?.autoApplyUpdates !== false)}>
-      {data.status?.phase === "staged" ? auto.state?.autoApplyUpdates === false
+    <Status tone={stagedWaiting ? "ok" : "idle"} title={statusLine(data.status, auto.state?.autoApplyUpdates !== false, stagedWaiting)}>
+      {stagedWaiting ? auto.state?.autoApplyUpdates === false
         ? "Restart Branch when your work is ready. Your conversations and settings stay in place."
-        : "Your conversations and settings stay in place." : current ? `You have Branch ${versionParts(current).detail}. Checks for a new verified Branch release.` : "Checks for a new verified Branch release."}
+        : "Your conversations and settings stay in place." : running ? `You have Branch ${versionParts(running).detail}. Checks for a new verified Branch release.` : "Checks for a new verified Branch release."}
     </Status>
     <Sec title="Updating">
       <Ctl title="Apply updates automatically" off={auto.off}>
@@ -53,7 +55,7 @@ function HourlyUpdates({ title, engine, reason }: Pick<SettingsPageProps, "title
   const version = useBranchVersion(engine.gatewayUrl);
   const sys = useLive<RecordValue>(engine, "system.info", {}, []);
   const os = OS[str(rec(sys.data).platform)] ?? str(rec(sys.data).osLabel);
-  const lede = version ? `Branch ${versionParts(version).short}${os ? ` on ${os}` : ""}.` : "Updates for Branch on this computer.";
+  const lede = version ? `Branch ${versionParts(version).detail}${os ? ` on ${os}` : ""}.` : "Updates for Branch on this computer.";
   return <Page title={title} lede={lede}>
     <div className="s2-keeper"><KeeperMark size={64} /></div>
     {reason
@@ -66,12 +68,12 @@ function HourlyUpdates({ title, engine, reason }: Pick<SettingsPageProps, "title
   </Page>;
 }
 
-function statusLine(status: ComponentUpdateStatus | null, autoApply: boolean): string {
+function statusLine(status: ComponentUpdateStatus | null, autoApply: boolean, stagedWaiting: boolean): string {
   if (!status) return "Reading desktop update status…";
-  if (status.phase === "staged") return autoApply ? "Update staged; waiting for a safe switch" : "A Branch update is ready; restart to finish";
+  if (stagedWaiting) return autoApply ? "Update staged; waiting for a safe switch" : "A Branch update is ready; restart to finish";
   if (status.phase === "available") return "A Branch update is ready";
-  if (status.phase === "current") return "Branch is up to date.";
+  if (status.phase === "current" || status.phase === "staged") return "Branch is up to date.";
   if (status.phase === "checking") return "Checking for updates…";
   if (status.phase === "staging") return "Downloading and checking the update…";
-  return status.currentVersion ? `Branch ${versionParts(status.currentVersion).short}` : "Check for updates";
+  return status.currentVersion ? `Branch ${versionParts(status.currentVersion).detail}` : "Check for updates";
 }
