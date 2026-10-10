@@ -170,3 +170,17 @@ test('the planner reads the PR named lists as data, from the directory it is giv
     setNamedListDir(fileURLToPath(new URL('./feature-batch-ci-named/', import.meta.url)));
   }
 });
+
+test('the plan job uses the default-branch planner when it exists, and only a reviewed fallback literal before', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/feature-batch-checks.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /if \[ -f base\/scripts\/feature-batch-ci-matrix\.mjs \]; then/);
+  const literals = [...yaml.matchAll(/echo 'matrix=(\{.*?\})' >> "\$GITHUB_OUTPUT"/g)].map((m) => JSON.parse(m[1]));
+  assert.equal(literals.length, 2, 'one fallback for pull requests, one for pushes');
+  const [pr, push] = literals;
+  assert.doesNotThrow(() => validateFeatureBatchMatrix(pr, 'pull_request'));
+  assert.doesNotThrow(() => validateFeatureBatchMatrix(push, 'push'));
+  assert.equal(pr.include.filter((row) => row.os === 'ubuntu-latest').length, pullRequestLinuxShardCount);
+  assert.equal(push.include.filter((row) => row.os === 'windows-latest').length, mainPushShardCounts.windows);
+  assert.equal(push.include.filter((row) => row.os === 'macos-latest').length, mainPushShardCounts.macos);
+  assert.equal(push.include.filter((row) => row.os === 'ubuntu-latest').length, mainPushShardCounts.ubuntu);
+});
