@@ -391,3 +391,8 @@
 .mem-meter-fill { display: block; height: 100%; border-radius: 3px; background: var(--ok); }
 .mem-meter-fill.tone-warn { background: var(--warn); }
 .mem-meter-fill.tone-bad { background: var(--bad); }
+
+/* Context room left: a labelled bar that drains as the conversation fills (replaces the battery glyph). */
+.sb-room { gap: 6px; }
+.ctx-meter { display: inline-block; width: 40px; height: 6px; border-radius: 3px; background: var(--line-2); overflow: hidden; }
+.ctx-meter-fill { display: block; height: 100%; border-radius: 3px; transition: width .3s ease; }

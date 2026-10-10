@@ -1,0 +1,1 @@
+window:src/stage/BrowserView.test.tsx

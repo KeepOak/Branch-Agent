@@ -1,3 +1,4 @@
+import { recordPlace } from "../diagnostics/ui-log";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from "react";
 import type { Conversation } from "../connect/conversations";
 import type { Topic } from "@branch/gateway-protocol";
@@ -345,6 +346,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const projects = useProjects(session, ready);
   const [newProject, setNewProject] = useState(false);
   const [route, setRoute] = useState<Route>(loadRoute);
+  useEffect(() => { recordPlace(route.kind === "place" ? route.place : route.kind); }, [route]);
   const firstRun = useFirstRun(session, ready, () => document.querySelector(".scrim, .pop, [data-testid=setup]") !== null, trunks.loaded ? trunks.list.length : null, route.kind === "settings");
   const contactRows = contactRowsFor(gatewayContacts, contactsLoaded, trunks.list, lists.rows, s.mainKey, firstRun.isFirstRun,
     firstRun.isFirstRun && firstRun.requiresContact ? trunks.bootstrapDefault : undefined);
@@ -1497,7 +1499,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         header={header}
         dark={dark}
         listHidden={isNarrow ? !slideOpen : rail || layout.hidden}
-        onTheme={() => setTheme(toggleTheme(theme))}
         onToggleList={toggleList}
         onBack={() => window.history.back()}
         onForward={() => window.history.forward()}
@@ -1779,6 +1780,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         />
       ) : null}
       {overlay?.kind === "studio" ? <TrunkStudio engine={session.engine} onClose={() => setOverlay(null)} openTrunk={openTrunkProfile} /> : null}
+      {lockdown.confirmation}
       {newTrunkRoster ? <NewTrunkPreview roster={newTrunkRoster} busy={makingTrunk} onClose={() => setNewTrunkRoster(null)} onConfirm={(choice) => void confirmNewTrunk(choice)} /> : null}
       {overlay?.kind === "shortcuts" ? <ShortcutsDialog defaultName={defaultName} onClose={() => setOverlay(null)} /> : null}
       {overlay?.kind === "cando" ? <CanDoDialog onClose={() => setOverlay(null)} onGo={(g) => {
