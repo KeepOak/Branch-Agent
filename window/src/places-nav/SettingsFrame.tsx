@@ -215,6 +215,10 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, a
   const wanted = pageAtLevel(page, level);
   const shown = !maySetup && HIDDEN_PAGES.includes(wanted) ? "general" : wanted;
   const scrollRef = useRef<HTMLDivElement>(null);
+  // The frame stays mounted across pages; a new page starts at its heading.
+  useLayoutEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [shown]);
   const levelScroll = useRef<{ page: string; top: number } | null>(null);
   useLayoutEffect(() => {
     if (levelScroll.current?.page === shown && scrollRef.current) {
