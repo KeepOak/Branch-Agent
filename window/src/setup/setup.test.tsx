@@ -132,7 +132,7 @@ describe("setup flow", () => {
     const input = document.querySelector<HTMLInputElement>('[data-testid="new-trunk-preview"] input')!;
     expect(input).toBeTruthy();
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Branch"); input.dispatchEvent(new Event("input", { bubbles: true })); });
-    await act(async () => byText(document.body, "Make Trunk").click());
+    await act(async () => byText(document.body, "Create Trunk").click());
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(request).toHaveBeenCalledWith("agents.create", expect.objectContaining({ name: "Branch" }));
     expect(document.body.textContent).toContain("That name is kept for Branch. Choose another Trunk name.");
