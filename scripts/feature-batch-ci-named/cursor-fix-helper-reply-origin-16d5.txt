@@ -1,0 +1,7 @@
+engine:src/agents/command/delivery.test.ts
+engine:src/agents/subagents/announce/subagent-announce-delivery.test.ts
+engine:src/agents/subagents/announce/subagent-announce.test.ts
+engine:src/agents/tools/media-generate-background-shared.test.ts
+engine:src/gateway/agent-turn/agent-delivery-phase.test.ts
+engine:src/infra/outbound/agent-delivery.test.ts
+engine:test/subagent-announce-origin.integration.test.ts

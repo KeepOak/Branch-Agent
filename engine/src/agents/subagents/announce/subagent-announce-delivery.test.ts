@@ -635,7 +635,7 @@ describe("deliverSubagentAnnouncement active requester steering", () => {
       agentId: "research",
       clone: false,
       sessionKey: "agent:research:work",
-      storePath: sharedStore,
+      storePath: path.resolve(sharedStore),
     });
   });
 
@@ -2569,6 +2569,26 @@ describe("deliverSubagentAnnouncement completion delivery", () => {
     });
 
     expectDeliveryPath(result, "direct");
+  });
+
+  it("does not send an in-app helper completion to a stored external route", async () => {
+    const callGateway = createGatewayMock();
+    const sendMessage = createSendMessageMock();
+    const result = await deliverSlackChannelAnnouncement({
+      callGateway,
+      sendMessage,
+      directIdempotencyKey: "announce-webchat-helper-origin",
+      origin: { channel: "webchat", to: "agent:main:main" },
+      completionDirectOrigin: { channel: "webchat", to: "agent:main:main" },
+      internalEvents: taskCompletionEvents({
+        childSessionId: "child-session-id",
+        taskLabel: "screen helper",
+      }),
+    });
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    expectGatewayAgentParams(callGateway, { deliver: false });
+    expect(result).toMatchObject({ path: expect.any(String) });
   });
 
   it("keeps direct external delivery for non-completion announces", async () => {

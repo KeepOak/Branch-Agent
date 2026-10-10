@@ -886,7 +886,7 @@ describe("createMediaGenerationTaskLifecycle", () => {
     });
   });
 
-  it("pins the external session route for an internal requester origin", async () => {
+  it("keeps an in-app requester origin from inheriting a stored external route", async () => {
     sessionMocks.loadSessionEntry.mockReturnValue(
       requesterEntry({ channel: "telegram", to: "room-a", accountId: "bot-1" }),
     );
@@ -894,14 +894,13 @@ describe("createMediaGenerationTaskLifecycle", () => {
 
     const handle = await lifecycle.createTaskRun({
       sessionKey: "agent:main:telegram:room-a",
-      requesterOrigin: { channel: "webchat" },
+      requesterOrigin: { channel: "webchat", to: "agent:main:main" },
       prompt: "proof image",
     });
 
     expect(handle?.requesterOrigin).toEqual({
-      channel: "telegram",
-      to: "room-a",
-      accountId: "bot-1",
+      channel: "webchat",
+      to: "agent:main:main",
     });
   });
 

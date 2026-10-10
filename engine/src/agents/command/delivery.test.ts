@@ -1,4 +1,5 @@
 // Covers agent-command reply normalization and outbound delivery status.
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReplyPayload } from "../../auto-reply/reply-payload.js";
 import type { createReplyMediaPathNormalizer } from "../../auto-reply/reply/reply-media-paths.runtime.js";
@@ -428,7 +429,7 @@ describe("deliverAgentCommandResult payload normalization", () => {
     const normalizerOptions = latestNormalizerOptions();
     expect(normalizerOptions.sessionKey).toBe("agent:tester:slack:direct:alice");
     expect(normalizerOptions.agentId).toBe("tester");
-    expect(normalizerOptions.workspaceDir).toBe("/tmp/agent-workspace");
+    expect(normalizerOptions.workspaceDir).toBe(path.resolve("/tmp/agent-workspace"));
     expect(normalizerOptions.messageProvider).toBe("slack");
 
     const normalizedInput = normalizerFn.mock.calls[0]?.[0];
@@ -1190,6 +1191,70 @@ describe("deliverAgentCommandResult payload normalization", () => {
       error: true,
       reason: "unknown_channel",
     });
+  });
+
+  it("does not send an in-app helper reply to a stored telegram route", async () => {
+    deliverOutboundPayloadsMock.mockResolvedValue([{ channel: "telegram", messageId: "msg-1" }]);
+    const delivered = await deliverAgentCommandResultForTest({
+      workspace: true,
+      omitReplyTarget: true,
+      opts: {
+        bestEffortDeliver: true,
+        sessionKey: "agent:tester:main",
+        messageChannel: "webchat",
+      },
+      outboundSession: { key: "agent:tester:main", agentId: "tester" },
+      sessionEntry: {
+        sessionId: "session-1",
+        updatedAt: 1,
+        delivery: normalizeSessionDeliveryState({
+          context: { channel: "telegram", to: "peer-1", accountId: "bot-1" },
+        }),
+      },
+      payloads: [{ text: "helper finished" }],
+    });
+
+    expect(deliverOutboundPayloadsMock).not.toHaveBeenCalled();
+    expect(delivered.deliverySucceeded).toBe(false);
+    expectDeliveryStatusFields(delivered, {
+      requested: true,
+      attempted: false,
+      status: "failed",
+      succeeded: false,
+      reason: "channel_resolved_to_internal",
+    });
+  });
+
+  it("still delivers a telegram-originated command reply on telegram", async () => {
+    deliverOutboundPayloadsMock.mockResolvedValue([{ channel: "telegram", messageId: "msg-1" }]);
+    const delivered = await deliverAgentCommandResultForTest({
+      workspace: true,
+      omitReplyTarget: true,
+      opts: {
+        bestEffortDeliver: true,
+        sessionKey: "agent:tester:main",
+        messageChannel: "telegram",
+        to: "peer-1",
+        accountId: "bot-1",
+      },
+      outboundSession: { key: "agent:tester:main", agentId: "tester" },
+      sessionEntry: {
+        sessionId: "session-1",
+        updatedAt: 1,
+        delivery: normalizeSessionDeliveryState({
+          context: { channel: "telegram", to: "peer-1", accountId: "bot-1" },
+        }),
+      },
+      payloads: [{ text: "helper finished" }],
+    });
+
+    expect(deliverOutboundPayloadsMock).toHaveBeenCalledOnce();
+    expect(latestOutboundDeliveryArgs()).toMatchObject({
+      channel: "telegram",
+      to: "telegram:peer-1",
+      accountId: "bot-1",
+    });
+    expect(delivered.deliverySucceeded).toBe(true);
   });
 });
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

@@ -13,6 +13,7 @@ import {
   INTERNAL_MESSAGE_CHANNEL,
   isDeliverableMessageChannel,
   isGatewayMessageChannel,
+  isInternalMessageChannel,
   isInternalNonDeliveryChannel,
   normalizeMessageChannel,
 } from "../../utils/message-channel.js";
@@ -120,7 +121,9 @@ export async function resolveAgentDeliveryPhase(params: {
   let deliveryResolutionError: string | null = null;
   let deliveryTargetResolutionError: Error | undefined = deliveryPlan.targetResolutionError;
 
-  if (wantsDelivery && resolvedChannel === INTERNAL_MESSAGE_CHANNEL) {
+  const turnSourceIsInApp = isInternalMessageChannel(turnSourceChannel);
+
+  if (wantsDelivery && resolvedChannel === INTERNAL_MESSAGE_CHANNEL && !turnSourceIsInApp) {
     try {
       const selection = await resolveMessageChannelSelection({
         cfg: params.cfgForAgent ?? params.cfg,
