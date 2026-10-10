@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useReducer, useRef, useState, type CSSProperties } from "react";
 import type { WindowEngine } from "../connect/engine";
 import type { Block } from "../thread/model";
 import type { ProgressCard } from "../thread/PlanCard";
@@ -13,6 +13,7 @@ import { FilesTab } from "./pane/FilesTab";
 import { MemoryTab, TerminalTab } from "./pane/MemoryTerminal";
 import { SideChatTab } from "./pane/SideChatTab";
 import { DashboardTab } from "./pane/DashboardTab";
+import { fitTabs, MORE_TAB_WIDTH } from "./pane/tab-fit";
 import { PreviewTab, usePortals } from "./pane/PreviewTab";
 import { ChangesTab } from "./coding/ChangesTab";
 import { ContactTopicsPane } from "../shell/ContactTopicsPane";
@@ -112,6 +113,11 @@ export function SidePane({ engine, name, blocks, running, card, cardError, tab, 
   const [prefs, setPrefs] = useState<Prefs>(readPrefs);
   const [focus, setFocus] = useState(false);
   const [menu, setMenu] = useState<{ at: MenuAnchor; items: MenuItem[]; label: string } | null>(null);
+  // The tab row: its width, each tab's measured width, and a re-render when a width changes (see tab-fit.ts).
+  const [rowWidth, setRowWidth] = useState(0);
+  const [, measured] = useReducer((n: number) => n + 1, 0);
+  const tabWidths = useRef<Record<string, number>>({});
+  const tabRow = useRef<HTMLDivElement>(null);
   const [added, setAdded] = useState<PaneTab[]>(tab === "Side chat" ? ["Side chat"] : []);
   const [error, setError] = useState("");
   const [pathTick, setPathTick] = useState(0);
@@ -128,6 +134,29 @@ export function SidePane({ engine, name, blocks, running, card, cardError, tab, 
     if (ADDABLE.includes(tab) && !added.includes(tab)) setAdded((a) => [...a, tab]);
   }, [tab, added]);
   const head = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    // Watch the tab row's width; the tabs that no longer fit move into More.
+    const row = tabRow.current;
+    if (!row) return;
+    const read = () => setRowWidth(row.clientWidth);
+    read();
+    if (typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(read);
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, []);
+  useLayoutEffect(() => {
+    // Measure every tab that is on the row now; a tab that moved to More keeps its last width.
+    let changed = false;
+    tabRow.current?.querySelectorAll<HTMLElement>("[data-tab]").forEach((el) => {
+      const name = el.dataset.tab ?? "";
+      if (el.offsetWidth && tabWidths.current[name] !== el.offsetWidth) {
+        tabWidths.current[name] = el.offsetWidth;
+        changed = true;
+      }
+    });
+    if (changed) measured();
+  });
   useEffect(() => {
     // The tab row scrolls sideways; keep the open tab in view.
     head.current?.querySelector<HTMLElement>("[role=tab][aria-selected=true]")?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
@@ -136,6 +165,7 @@ export function SidePane({ engine, name, blocks, running, card, cardError, tab, 
     t === "Conversations" ? Boolean(contactTopics) && tab === "Conversations" : t === "Branches" ? paths.length >= 2 || tab === "Branches" : t === "Preview" ? previews.portals.length > 0 || tab === "Preview" : ADDABLE.includes(t) ? added.includes(t) : true,
   );
   const current = tabs.includes(tab) ? tab : DEFAULT_PANE_TAB;
+  const fit = fitTabs(tabs, tabWidths.current, rowWidth, current);
   const fail = (m: string) => {
     setError(m);
     toast(m);
@@ -176,9 +206,9 @@ export function SidePane({ engine, name, blocks, running, card, cardError, tab, 
       <aside className={cls} style={style} aria-label="Side panel">
         {!focus && !prefs.min ? <PaneResizer width={prefs.width} below={below} onWidth={(w) => set({ width: w })} /> : null}
         <header className="pane-head pane-h-pn" ref={head}>
-          <div className="pane-tabs" role="tablist" aria-label="Side panel views">
-            {tabs.map((t) => (
-              <span key={t} className="ptab-wrap-pn">
+          <div className="pane-tabs" role="tablist" aria-label="Side panel views" ref={tabRow}>
+            {fit.visible.map((t) => (
+              <span key={t} className="ptab-wrap-pn" data-tab={t}>
                 <button
                   role="tab"
                   type="button"
@@ -192,9 +222,10 @@ export function SidePane({ engine, name, blocks, running, card, cardError, tab, 
                   onKeyDown={(e) => {
                     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
                     e.preventDefault();
-                    const next = tabs[(tabs.indexOf(current) + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length]!;
+                    const row = fit.visible;
+                    const next = row[(row.indexOf(current) + (e.key === "ArrowRight" ? 1 : row.length - 1)) % row.length]!;
                     onTab(next);
-                    (e.currentTarget.closest("[role=tablist]")?.querySelectorAll<HTMLElement>("[role=tab]")[tabs.indexOf(next)])?.focus();
+                    (e.currentTarget.closest("[role=tablist]")?.querySelectorAll<HTMLElement>("[role=tab]")[row.indexOf(next)])?.focus();
                   }}
                 >
                   {t}
@@ -206,6 +237,21 @@ export function SidePane({ engine, name, blocks, running, card, cardError, tab, 
                 ) : null}
               </span>
             ))}
+            {fit.overflow.length ? (
+              <span className="ptab-wrap-pn">
+                <button
+                  type="button"
+                  className="ptab-pn ptab-more-pn"
+                  aria-haspopup="menu"
+                  aria-label="More tabs"
+                  title="More tabs"
+                  style={{ minWidth: MORE_TAB_WIDTH }}
+                  onClick={(e) => setMenu({ at: at(e), label: "More tabs", items: fit.overflow.map((t): MenuItem => ({ label: t, run: () => onTab(t) })) })}
+                >
+                  More
+                </button>
+              </span>
+            ) : null}
           </div>
           <button type="button" className="ib" aria-haspopup="menu" aria-label="Add a tab" title="Add a tab" onClick={(e) => addMenu(at(e, true))}>
             <SIcon name="plus" small />
