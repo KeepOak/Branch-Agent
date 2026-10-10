@@ -65,6 +65,7 @@ const CORE_TOOL_FACTORY_DESCRIPTORS = [
   { name: "room_list", family: "branch" },
   { name: "room_read", family: "branch" },
   { name: "room_post", family: "branch" },
+  { name: "team_propose", family: "branch" },
   { name: "sessions_spawn", family: "branch" },
   { name: "sessions_yield", family: "branch" },
   { name: "structured_output", family: "branch" },

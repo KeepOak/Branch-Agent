@@ -10,13 +10,13 @@ import {
 } from "@branch/normalization-core/string-normalization";
 import { getLoadedChannelPlugin } from "../channels/plugins/index.js";
 import { resolveSessionConversation } from "../channels/plugins/session-conversation.js";
+import { resolveChannelGroupToolsPolicy } from "../config/group-policy.js";
+import type { BranchConfig } from "../config/types.branch.js";
+import type { AgentToolsConfig } from "../config/types.tools.js";
 import {
   markFrozenGroveToolAllowPolicy,
   resolveGroveToolPolicyConsent,
 } from "../groves/tool-policy-runtime.js";
-import { resolveChannelGroupToolsPolicy } from "../config/group-policy.js";
-import type { BranchConfig } from "../config/types.branch.js";
-import type { AgentToolsConfig } from "../config/types.tools.js";
 import { logWarn } from "../logger.js";
 import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "../routing/account-id.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
@@ -48,9 +48,9 @@ import {
   type SubagentSessionRole,
 } from "./subagents/spawn/subagent-capabilities.js";
 import { createToolPolicyMatcher } from "./tool-policy-match.js";
-import { resolveDisabledToolsetTools } from "./tool-toolsets.js";
 import type { ConfiguredToolPolicySources } from "./tool-policy-pipeline.js";
 import { mergeAlsoAllowPolicy, resolveToolProfilePolicy } from "./tool-policy.js";
+import { resolveDisabledToolsetTools } from "./tool-toolsets.js";
 import { AUTOMATIONS_TOOL_NAME } from "./tools/automations-tool-name.js";
 
 export { resolveProviderToolPolicy };
@@ -75,6 +75,7 @@ const SUBAGENT_TOOL_DENY_ALWAYS = [
   "room_list",
   "room_read",
   "room_post",
+  "team_propose",
   "conversations_list",
   "conversations_send",
   "conversations_turn",
