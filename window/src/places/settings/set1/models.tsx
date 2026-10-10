@@ -88,7 +88,7 @@ function ConnectionsTab({ engine, m, onAdd }: ConnProps) {
         {unset.map((c) => (
           <div key={c.provider} className="acct-g">
             <div className="acct-gh"><Logo id={c.provider} size={30} /><b>{serviceName(c.provider)}</b><span className="n6">Not set up</span></div>
-            <button type="button" className="add-row" onClick={() => onAdd({ provider: c.provider })}><Icon name="plus" small />Sign in to {serviceName(c.provider)}</button>
+            <button type="button" className="add-row" onClick={() => onAdd({ provider: c.provider, signIn: true })}><Icon name="plus" small />Sign in to {serviceName(c.provider)}</button>
           </div>
         ))}
       </div>
