@@ -8,6 +8,7 @@ import { ApprovalCard, ApprovalGroup } from "./ApprovalCard";
 import { lockdownAllowsAnswer } from "./approval-guard";
 import { DoneLine, ErrorBlock, Notice, Reply, SteeredNote, StepsFold, Thinking, Typing, UserMessage } from "./blocks";
 import { ThreadContext, type ThreadContextValue } from "./context";
+import { JobLine } from "../rooms/JobLine";
 import { ReactionChips } from "./dialogs";
 import { DoneCheer } from "./DoneCheer";
 import { EmptyState } from "./EmptyState";
@@ -573,6 +574,7 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
       if (isPreparationPending(block.message)) return <div className="stamp" role="status">Branch retried a startup delay.</div>;
       return view.dismissed.has(block.key) ? null : <ErrorBlock block={block} onDismiss={() => view.setDismissed((s) => new Set(s).add(block.key))} />;
     case "notice":
+      if (block.steps) return <JobLine block={block} />;
       return block.topicKey ? <div className="tpLblT5"><button type="button" onClick={() => view.onOpenSession?.(block.topicKey!)}>{block.text}</button></div> : <Notice block={block} />;
     case "steer":
       return <SteeredNote name={view.name} text={block.text} />;
