@@ -27,23 +27,20 @@ export function fallbackTrunkContacts(trunks: readonly Trunk[], sessions: readon
 
 /** An empty loaded roster is authoritative; only the first-run bootstrap owner is window-local. */
 export function contactRowsFor(gateway: readonly GatewayContact[], loaded: boolean, trunks: readonly Trunk[], sessions: readonly Conversation[], mainKey: string | null, firstRun: boolean, bootstrapDefault?: Trunk): GatewayContact[] {
-  const rows = loaded ? collapseGrafted([...gateway], Date.now()) : firstRun ? fallbackTrunkContacts(trunks, sessions, mainKey) : [];
+  const rows = loaded ? collapseGrafted([...gateway]) : firstRun ? fallbackTrunkContacts(trunks, sessions, mainKey) : [];
   if (bootstrapDefault && !rows.some((row) => row.id === `trunk:${bootstrapDefault.id}`)) {
     rows.push(...fallbackTrunkContacts([bootstrapDefault], sessions, mainKey));
   }
   return rows;
 }
 
-/** Grafted agents are one row per agent and computer. A new graft gets a new contact id, so the newest contact stands for its earlier sessions. */
-export const GRAFTED_OFFLINE_HIDE_MS = 7 * 24 * 60 * 60 * 1000;
-
 /** The same agent name, however it is typed: case, hyphens and spaces don't count. */
 export function normalizeAgentName(name: string): string {
   return name.trim().toLowerCase().replace(/[-\s]+/g, " ");
 }
 
-/** Keeps one grafted row per name and computer (the newest activity), and hides any offline for over seven days. Other rows pass through. */
-export function collapseGrafted<T extends { kind: string; name: string; where?: string; lastActivityAt: number; offline?: boolean }>(rows: readonly T[], now: number): T[] {
+/** Grafted agents are one row per name and computer. A new graft gets a new contact id, so the newest contact stands for its earlier sessions. Other rows pass through. */
+export function collapseGrafted<T extends { kind: string; name: string; where?: string; lastActivityAt: number }>(rows: readonly T[]): T[] {
   const kept: T[] = [];
   const slot = new Map<string, number>();
   for (const row of rows) {
@@ -51,7 +48,6 @@ export function collapseGrafted<T extends { kind: string; name: string; where?: 
       kept.push(row);
       continue;
     }
-    if (row.offline && now - row.lastActivityAt > GRAFTED_OFFLINE_HIDE_MS) continue;
     const key = `${normalizeAgentName(row.name)}|${row.where ?? ""}`;
     const at = slot.get(key);
     if (at === undefined) {
