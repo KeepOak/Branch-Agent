@@ -1,5 +1,6 @@
 // Owns delegated system-agent authorization and exact-proposal completion.
 import { randomUUID } from "node:crypto";
+import { isAgentModelChoiceEnabled, MODEL_CHOICE_OFF_MESSAGE } from "../../agents/model-choice.js";
 import { getGatewayToolCallerIdentity } from "../../agents/tools/gateway-caller-context.js";
 import {
   getActiveAgentRunDelegatedAuthority,
@@ -241,6 +242,18 @@ export async function prepareDelegatedSystemAgentApproval(params: {
           ? { kind: "completed", reply: retainWriteReport(resolution.reply) }
           : { ...resolution, completion: resolution.completion.then(retainWriteReport) };
       };
+      // A Trunk's own model change follows tools.modelChoice; off refuses before any write or prompt.
+      if (
+        proposal.operation.kind === "set-default-model" &&
+        !isAgentModelChoiceEnabled(params.context.getRuntimeConfig())
+      ) {
+        await retireSystemAgentProposal(params.session, manager, proposal.hash);
+        params.session.engine.noteAssistantMessage(MODEL_CHOICE_OFF_MESSAGE);
+        return {
+          kind: "completed",
+          reply: { text: MODEL_CHOICE_OFF_MESSAGE, action: "none", applied: false },
+        };
+      }
       // Only a fresh proposal belongs to this input. An existing operator request
       // stays bound to its original decision, even if this caller has Full Access.
       if (callerIdentity?.fullPermission === true) {
