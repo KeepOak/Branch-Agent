@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "../config/paths.js";
 import { acquireFileLockSyncWithRetry } from "../infra/file-lock-sync.js";
+import { writeJsonTarget } from "../infra/json-file.js";
 
 export type TrunkQueueItem = {
   id: string;
@@ -60,15 +61,13 @@ function file(env: NodeJS.ProcessEnv = process.env): string {
  * Runs one read-modify-write of the queue file under the cross-process file lock. The lock is the repo's sync file lock,
  * which reclaims a lock whose owning process has exited. Nothing in `fn` may take the lock again.
  */
+/** How long one read-modify-write waits for the queue lock before it fails. */
+const QUEUE_LOCK_TIMEOUT_MS = 10_000;
+
 export function withQueueLock<T>(env: NodeJS.ProcessEnv | undefined, fn: () => T): T {
   fs.mkdirSync(path.dirname(file(env)), { recursive: true });
-  // A busy Trunk queue can hold the lock for several milliseconds, so wait longer than the default budget.
-  const unlock = acquireFileLockSyncWithRetry(file(env), {
-    retries: 2000,
-    minTimeout: 1,
-    maxTimeout: 5,
-    randomize: true,
-  });
+  // A busy queue can hold the lock for several milliseconds, so the wait budget is longer than the default.
+  const unlock = acquireFileLockSyncWithRetry(file(env), { timeoutMs: QUEUE_LOCK_TIMEOUT_MS });
   try {
     return fn();
   } finally {
@@ -96,12 +95,9 @@ export function read(env?: NodeJS.ProcessEnv): TrunkQueueItem[] {
 }
 
 export function write(rows: TrunkQueueItem[], now: number, env?: NodeJS.ProcessEnv): void {
-  const target = file(env);
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  const tmp = `${target}.${process.pid}.tmp`;
   const kept = rows.filter((row) => !row.done_at || now - row.done_at < RETAIN_DONE_MS);
-  fs.writeFileSync(tmp, `${JSON.stringify(kept, null, 2)}\n`);
-  fs.renameSync(tmp, target);
+  // Atomic: written to a temp file in the same folder, then renamed over the queue file.
+  writeJsonTarget(file(env), kept);
 }
 
 export function isOpenClaim(row: TrunkQueueItem): boolean {
