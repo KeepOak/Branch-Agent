@@ -91,7 +91,6 @@ export function paletteRows(c: Ctx): PaletteRow[] {
     { id: "a:tour", group: "Actions", label: "Take the walkthrough", hint: "2 min", run: c.tour },
     { id: "a:skins", group: "Actions", label: "Browse themes", hint: "", run: () => c.openSettings("appearance") },
     { id: "a:account", group: "Actions", label: "Add an account", hint: "Settings", run: () => c.openSettings("accounts") },
-    { id: "a:update", group: "Actions", label: "Updates & about", hint: "Install update", keywords: "install update version", run: () => c.openSettings("updates") },
     ...conversationCommands(c),
   ];
   const conversations = c.conversations.map((r) => ({

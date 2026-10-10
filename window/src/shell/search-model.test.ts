@@ -33,3 +33,11 @@ it("shows a message snippet as plain words, without markdown links or emphasis",
   expect(plainSnippet("See [the report](https://example.test/r) and **the table** with `grep`.")).toBe("See the report and the table with grep.");
   expect(plainSnippet("plain   text")).toBe("plain text");
 });
+
+it("keeps literal underscores and asterisks that are part of words or spaced out", () => {
+  expect(plainSnippet("set my_var_name first")).toBe("set my_var_name first");
+  expect(plainSnippet("compute a * b * c")).toBe("compute a * b * c");
+  expect(plainSnippet("run `my_var_name` now")).toBe("run my_var_name now");
+  expect(plainSnippet("snake_case and __dunder__ names")).toBe("snake_case and dunder names");
+  expect(plainSnippet("an *emphasised* word and _this_ one")).toBe("an emphasised word and this one");
+});
