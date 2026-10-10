@@ -15,6 +15,7 @@ import { ComputerPicker } from "./ComputerPicker";
 import { AddComputer } from "./AddComputer";
 import { configStore } from "../places/settings/config-store";
 import { NativeScreen } from "./NativeScreen";
+import { SkeletonScreen, useDeadline } from "../shell/Skeleton";
 import "./stage.css";
 
 export type StageMode = "Computer" | "Browser";
@@ -24,6 +25,10 @@ const NO_NUMBERS = "The engine can't number what it may click on a computer scre
 const NO_RECORD = "The engine can't record what you do on a computer yet.";
 const NO_WINDOW = "The engine can't show one window of a computer yet.";
 const OWN_WINDOW = "This window can't open the computer in a window of its own yet.";
+
+/** How long the screen may connect before the stage says the computer didn't answer (DA-106). */
+export const CONNECT_DEADLINE_MS = 15_000;
+const NO_ANSWER = "The computer didn't answer in 15 seconds.";
 
 type Where = { placement: Placement | undefined; computers: Computer[]; profiles: { id: string; name: string }[]; loaded: boolean; error?: string };
 
@@ -88,16 +93,11 @@ function Screen({ view, target, onRetry, onChoose, controlling, onEnable, enabli
       <div className={controlling ? "st7-screen live-st ctl-st" : "st7-screen live-st"}>
         <div className="stage-screen" ref={target} />
         {controlling && view.phase === "connected" ? <span className="drive-st">You're driving</span> : null}
-        {view.phase !== "connected" ? (
+        {view.phase === "loading" ? <SkeletonScreen label="Connecting to this conversation's computer…" /> : null}
+        {view.phase !== "connected" && view.phase !== "loading" ? (
           <div className="stage-empty">
             <SIcon name="monitor" />
-            <b>
-              {view.phase === "loading"
-                ? "Connecting to this conversation's computer…"
-                : view.phase === "error"
-                  ? "Couldn't connect to the computer"
-                  : "It can't see a screen or use a mouse."}
-            </b>
+            <b>{view.phase === "error" ? "Couldn't connect to the computer" : "It can't see a screen or use a mouse."}</b>
             {view.message ? <p role="alert">{view.message}</p> : null}
             {enableError ? <p role="alert">{enableError}</p> : null}
             {view.phase === "error" ? (
@@ -105,11 +105,9 @@ function Screen({ view, target, onRetry, onChoose, controlling, onEnable, enabli
                 Try again
               </button>
             ) : null}
-            {view.phase !== "loading" ? (
-              <button type="button" className="btn" disabled={enabling} onClick={onEnable ?? onChoose}>
-                {onEnable ? enabling ? "Turning on screen access…" : "See the screen and use the mouse" : "Computer settings"}
-              </button>
-            ) : null}
+            <button type="button" className="btn" disabled={enabling} onClick={onEnable ?? onChoose}>
+              {onEnable ? enabling ? "Turning on screen access…" : "See the screen and use the mouse" : "Computer settings"}
+            </button>
           </div>
         ) : null}
       </div>
@@ -190,7 +188,9 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
   const viewed = where.computers.find((c) => c.id === viewing);
   const native = mode === "Computer" && nativeSelected && viewing === "gateway" && where.loaded && !viewed?.desktop;
   const view = useDesktopView(engine, gatewayUrl, mode === "Computer" && !native && picked !== "grid" && where.loaded ? viewing : null, target, control, retry);
-  const screenView: DesktopView = !where.loaded ? { phase: "loading" } : where.error && !viewing ? { phase: "error", message: where.error } : view;
+  const readView: DesktopView = !where.loaded ? { phase: "loading" } : where.error && !viewing ? { phase: "error", message: where.error } : view;
+  const noAnswer = useDeadline(readView.phase === "loading", CONNECT_DEADLINE_MS, `${tick}|${retry}|${viewing}|${control}`);
+  const screenView: DesktopView = noAnswer ? { phase: "error", title: readView.title, message: NO_ANSWER } : readView;
   const steps = planSteps(card);
   const browser = mode === "Browser";
   const controlling = browser ? control : view.phase === "connected" && view.controlling === true;
@@ -344,7 +344,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
         ) : native ? (
           <NativeScreen engine={engine} retry={retry} onLive={setNativeLive} onRetry={() => setRetry((value) => value + 1)} />
         ) : (
-          <Screen view={screenView} target={target} controlling={controlling} onRetry={() => { setRetry((v) => v + 1); if (where.error) setTick((v) => v + 1); }} onChoose={onChooseComputer} onEnable={where.loaded && !where.error && (!viewing || viewing === "gateway") ? enableScreen : undefined} enabling={enabling} enableError={enableError} />
+          <Screen view={screenView} target={target} controlling={controlling} onRetry={() => { setRetry((v) => v + 1); if (where.error || !where.loaded) setTick((v) => v + 1); }} onChoose={onChooseComputer} onEnable={where.loaded && !where.error && (!viewing || viewing === "gateway") ? enableScreen : undefined} enabling={enabling} enableError={enableError} />
         )}
       </div>
       )}
