@@ -34,7 +34,7 @@ import { clearEngineRecords, retireRecordedEngines } from "./engine-records";
 import { createUpdateLock, type UpdateLockHandle } from "./update-lock";
 import { createHash } from "node:crypto";
 import type { Tray } from "electron";
-import { MacComputerDriver, macScreenControlEnabled } from "./mac-computer-driver";
+import { MacComputerDriver, describeDriverError, macScreenControlEnabled } from "./mac-computer-driver";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
 /** Scratch test copies: never grouped with, or mistaken for, the owner's app (they also start hidden). */
@@ -1065,7 +1065,7 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   const started = Date.now();
   if (macComputerDriver && !screenControlEnabled()) await macComputerDriver.stop();
   const macComputerEndpoint = await (!prepared && screenControlEnabled() ? macComputerDriver?.start(engineDir) : undefined)?.catch(error => {
-    log(`Mac computer driver unavailable: ${String(error)}`);
+    log(`Mac computer driver unavailable: ${describeDriverError(error)}`);
     return undefined;
   });
   const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port, macComputerEndpoint);
