@@ -38,13 +38,16 @@ describe("Settings › Grafts", () => {
     expect(rows[0]?.querySelector(".rm-st-online")).not.toBeNull();
     expect(rows[0]?.textContent).toContain("Online now · Messaging builder-oak");
     expect(rows[1]?.querySelector(".rm-st-online")).toBeNull();
-    const may = (row: Element) => row.querySelector<HTMLInputElement>('input[aria-label$="may message Builder Oak"]')?.checked;
-    expect(may(rows[0]!)).toBe(true);
-    expect(may(rows[1]!)).toBe(false);
+    expect(rows[0]?.textContent).toContain("All 1 Trunks");
+    expect(rows[1]?.textContent).toContain("0 of 1 Trunks");
+    expect(rows[1]?.querySelector('button[aria-pressed="true"]')?.textContent).toBe("Choose…");
+    expect(rows[0]?.querySelector('button[aria-pressed="true"]')?.textContent).toBe("All Trunks");
     for (const [, line] of CONNECT_LINES) expect(document.body.textContent).toContain(line.split("\n")[0]);
+    expect([...document.querySelectorAll("button")].filter((b) => b.textContent === "Connect")).toHaveLength(CONNECT_LINES.length);
   });
 
-  it("the master switch and Disconnect go to the engine", async () => {
+  it("the master switch goes to the engine at once; Disconnect waits five seconds and Undo cancels it", async () => {
+    vi.useFakeTimers();
     const { engine, request } = engineWith({ "contacts.outside.list": LIST, "agents.list": { agents: [] }, "config.get": CONFIG });
     await act(async () => root.render(<SettingsPage page="agents" title="Grafts" level="regular" engine={engine} />));
     await flush();
@@ -52,8 +55,27 @@ describe("Settings › Grafts", () => {
     await flush();
     await act(async () => [...document.querySelectorAll("button")].find((b) => b.textContent === "Disconnect")!.click());
     await flush();
+    expect(document.querySelector('[role="status"]')?.textContent).toContain("will disconnect");
+    await act(async () => [...document.querySelectorAll("button")].find((b) => b.textContent === "Undo")!.click());
+    await act(async () => { vi.advanceTimersByTime(6000); });
+    await flush();
     const sets = request.mock.calls.filter(([m]) => m === "contacts.outside.set").map(([, p]) => p);
-    expect(sets).toEqual([{ enabled: false }, { id: "claude-code-a1b2c3", revoked: true }]);
+    expect(sets).toEqual([{ enabled: false }]);
+    vi.useRealTimers();
+  });
+
+  it("Disconnect sends the change after the five seconds pass", async () => {
+    vi.useFakeTimers();
+    const { engine, request } = engineWith({ "contacts.outside.list": LIST, "agents.list": { agents: [] }, "config.get": CONFIG });
+    await act(async () => root.render(<SettingsPage page="agents" title="Grafts" level="regular" engine={engine} />));
+    await flush();
+    await act(async () => [...document.querySelectorAll("button")].find((b) => b.textContent === "Disconnect")!.click());
+    await flush();
+    expect(request.mock.calls.filter(([m]) => m === "contacts.outside.set")).toHaveLength(0);
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    await flush();
+    expect(request.mock.calls.filter(([m]) => m === "contacts.outside.set").map(([, p]) => p)).toEqual([{ id: "claude-code-a1b2c3", revoked: true }]);
+    vi.useRealTimers();
   });
 
   it("groups a grafted Branch with its Trunks under one row with a Branch badge, and Disconnect is on the Branch row", async () => {
@@ -78,8 +100,11 @@ describe("Settings › Grafts", () => {
     expect(branch.querySelector('[data-agent="branch-b--scout"] img')?.getAttribute("src")).toBe("/assets/agents/ember/still.webp");
     const buttons = [...branch.querySelectorAll("button")].filter((b) => b.textContent === "Disconnect");
     expect(buttons).toHaveLength(1);
+    vi.useFakeTimers();
     await act(async () => buttons[0]!.click());
+    await act(async () => { vi.advanceTimersByTime(5000); });
     await flush();
+    vi.useRealTimers();
     expect(request.mock.calls.filter(([m]) => m === "contacts.outside.set").map(([, p]) => p)).toEqual([{ id: "branch-b", revoked: true }]);
   });
 

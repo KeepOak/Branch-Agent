@@ -5,11 +5,14 @@
 import type { SettingsPageProps } from "../index";
 import { useState } from "react";
 import { BranchLinkDialog } from "../../../shell/BranchLinkDialog";
-import { Btn, Ctl, Empty, Page, Sec, Switch, useConfig, type RowEntry } from "../kit";
+import { Btn, Ctl, Empty, Page, Sec, Seg, Switch, useConfig, type RowEntry } from "../kit";
 import { RoomAvatar, a2aBadge } from "../../../rooms/RoomMessage";
 import { trunkAppearance } from "../../../face/appearance";
+import { useDesktopControls } from "../../../connect/desktop-controls";
+import { Dialog } from "../../../shell/Dialog";
 import { DesktopCtl } from "../desktop-ctl";
-import { CodeRow, rec, str, useCall, useLive, when } from "./common";
+import { rec, str, useCall, useLive, when } from "./common";
+import { UndoLine, useDelayedChange, useSavedTick } from "./apply-now";
 import "./agents.css";
 
 const LEDE = "Coding agents connected to Branch: what each may do, and how to connect another.";
@@ -54,6 +57,7 @@ export const CONNECT_LINES: [string, string][] = [
 export const ROWS: RowEntry[] = [
   { page: "agents", title: "Let other agents work with Branch", group: "Connected agents", lv: 0 },
   ...CONNECT_LINES.map(([title]) => ({ page: "agents", title, sec: "Connect an agent", group: "Connect an agent", lv: 0 as const })),
+  { page: "agents", title: "Connect", sec: "Connect an agent", group: "Connect an agent", lv: 0 },
 ];
 
 type Trunk = { id: string; name: string };
@@ -90,21 +94,70 @@ function trunksOf(result: unknown): Trunk[] {
     .map((a) => ({ id: str(a.id), name: str(rec(a.identity).name) || str(a.name) || str(a.id) }));
 }
 
-function AgentRow({ agent, trunks, props, reload, sessions, nested = [] }: { agent: OutsideAgentRow; trunks: Trunk[]; props: SettingsPageProps; reload: () => void; sessions: string[]; nested?: OutsideAgentRow[] }) {
-  const isBranch = agent.kind === "branch";
+/** Denied Trunks for one agent: its `a2a:<id>` entry (and a product-wide one), read from each Trunk's deny list. */
+function useMayMessage(agent: OutsideAgentRow, props: SettingsPageProps, sessions: string[]) {
   const config = useConfig(props.engine);
-  const call = useCall();
-  const set = (change: Record<string, unknown>) => void call.run(async () => { await props.engine.request("contacts.outside.set", { id: agent.id, ...change }); reload(); });
   const denyPath = (trunk: string) => ["agents", "entries", trunk, "agentToAgent", "deny"];
   const legacy = legacyOutsideId(agent.id);
   const denied = (trunk: string) => { const d = config.get(denyPath(trunk)); return Array.isArray(d) && (d.includes(`a2a:${agent.id}`) || (!!legacy && d.includes(`a2a:${legacy}`))); };
-  const allow = (trunk: string, on: boolean) => {
+  const write = (trunk: string, on: boolean) => {
     const d = config.get(denyPath(trunk));
     const current = Array.isArray(d) ? d.filter((v): v is string => typeof v === "string") : [];
-    void config.set(denyPath(trunk), nextDeny(current, agent.id, on, sessions));
+    return config.set(denyPath(trunk), nextDeny(current, agent.id, on, sessions));
   };
+  return { config, denied, write };
+}
+
+/** "May message" for every Trunk in one control: All Trunks, or Choose… for a per-Trunk list. */
+function MayMessage({ agent, trunks, props, sessions }: { agent: OutsideAgentRow; trunks: Trunk[]; props: SettingsPageProps; sessions: string[] }) {
+  const { config, denied, write } = useMayMessage(agent, props, sessions);
+  const [choosing, setChoosing] = useState(false);
+  const [saved, mark] = useSavedTick();
+  if (!trunks.length) return null;
+  const blocked = trunks.filter((t) => denied(t.id)).length;
+  const allowAll = async () => {
+    for (const t of trunks) if (denied(t.id)) await write(t.id, true);
+    mark();
+  };
+  return (
+    <Ctl id={`${agent.id}-may`} title="May message" sub={blocked ? `${trunks.length - blocked} of ${trunks.length} Trunks` : `All ${trunks.length} Trunks`} noPin>
+      <span className="ca-may">
+        <Seg label={`${agent.name} may message`} value={blocked ? "some" : "all"} disabled={config.loading}
+          options={[{ id: "all", label: "All Trunks" }, { id: "some", label: "Choose…" }]}
+          onChange={(v) => { if (v === "all") void allowAll(); else setChoosing(true); }} />
+        {saved ? <span className="saved-tick" role="status">✓ Saved</span> : null}
+      </span>
+      {choosing ? <ChooseTrunks agent={agent} trunks={trunks} denied={denied} write={write} onSaved={mark} onClose={() => setChoosing(false)} /> : null}
+    </Ctl>
+  );
+}
+
+/** The per-Trunk list. Each switch saves as it changes. */
+function ChooseTrunks({ agent, trunks, denied, write, onSaved, onClose }: { agent: OutsideAgentRow; trunks: Trunk[]; denied: (t: string) => boolean; write: (t: string, on: boolean) => Promise<unknown>; onSaved: () => void; onClose: () => void }) {
+  return (
+    <Dialog title={`Trunks ${agent.name} may message`} onClose={onClose} footer={<Btn pri onClick={onClose}>Done</Btn>}>
+      <div className="rows">
+        {trunks.map((t) => (
+          <div key={t.id} className="prow" data-row={t.name}>
+            <span className="grow"><b>{t.name}</b></span>
+            <Switch label={`${agent.name} may message ${t.name}`} checked={!denied(t.id)} onChange={(on) => void write(t.id, on).then(onSaved)} />
+          </div>
+        ))}
+      </div>
+    </Dialog>
+  );
+}
+
+/** Disconnect waits five seconds with Undo. Reconnect is not destructive, so it applies at once. */
+function AgentRow({ agent, trunks, props, reload, sessions, nested = [] }: { agent: OutsideAgentRow; trunks: Trunk[]; props: SettingsPageProps; reload: () => void; sessions: string[]; nested?: OutsideAgentRow[] }) {
+  const isBranch = agent.kind === "branch";
+  const call = useCall();
+  const cut = useDelayedChange();
+  const set = (change: Record<string, unknown>) => void call.run(async () => { await props.engine.request("contacts.outside.set", { id: agent.id, ...change }); reload(); });
   const seen = agent.online ? "Online now" : agent.lastSeenAt ? `Last seen ${when(agent.lastSeenAt)}` : "Not seen yet";
   const doing = agent.activity ? ` · ${agent.activity}${agent.activityAt ? ` (${when(agent.activityAt)})` : ""}` : "";
+  const disconnect = () => cut.start(agent.id, `${agentTitle(agent)} will disconnect`, () => set({ revoked: true }));
+  const label = agent.revoked ? (isBranch ? "Disconnected" : "Reconnect") : "Disconnect";
   return (
     <div className="sec" data-testid="connected-agent" data-agent={agent.id} data-kind={agent.kind}>
       <h3 className="ca-head">
@@ -125,26 +178,42 @@ function AgentRow({ agent, trunks, props, reload, sessions, nested = [] }: { age
           ))}
         </ul>
       ) : null}
-      {trunks.map((t) => (
-        <Ctl key={t.id} id={`${agent.id}-${t.id}`} title={`May message ${t.name}`} noPin>
-          <Switch label={`${agent.name} may message ${t.name}`} checked={!denied(t.id)} disabled={config.loading} onChange={(on) => allow(t.id, on)} />
-        </Ctl>
-      ))}
+      <MayMessage agent={agent} trunks={trunks} props={props} sessions={sessions} />
       <Ctl id={`${agent.id}-window`} title="May use your Branch window" sub="Also needs About Branch › Let agents use this window." help="Also needs About Branch › Let agents use this window. Without it the agent gets its own test Branch." noPin>
         <Switch label={`${agent.name} may use your Branch window`} checked={agent.mayDriveWindow} disabled={call.busy} onChange={(on) => set({ mayDriveWindow: on })} />
       </Ctl>
-      {isBranch ? (
-        <Ctl id={`${agent.id}-connection`} title={agent.revoked ? "Disconnected" : "Disconnect"} sub={agent.revoked ? "Its pairing was removed. To bring it back, give it a new setup code (branch graft invite) and run branch graft join on it." : "Removes this Branch's pairing and its Trunks from your contacts. It needs a new setup code to join again."} noPin>
-          {agent.revoked ? null : <Btn sm disabled={call.busy} onClick={() => set({ revoked: true })}>Disconnect</Btn>}
-        </Ctl>
-      ) : (
-        <Ctl id={`${agent.id}-connection`} title={agent.revoked ? "Let it connect again" : "Disconnect"} sub={agent.revoked ? "It can work with your Trunks again the next time it connects." : "It stops working with Branch within a minute, until you let it back."} noPin>
-          <Btn sm disabled={call.busy} onClick={() => set({ revoked: !agent.revoked })}>{agent.revoked ? "Reconnect" : "Disconnect"}</Btn>
-        </Ctl>
-      )}
+      <Ctl id={`${agent.id}-connection`} title="Connection" sub={agent.revoked ? (isBranch ? "Its pairing was removed. To bring it back, give it a new setup code (branch graft invite) and run branch graft join on it." : "It can work with your Trunks again the next time it connects.") : "It stops working with Branch within a minute, until you let it back."} noPin>
+        {cut.pending?.key === agent.id ? <UndoLine label={cut.pending.label} onUndo={cut.undo} />
+          : agent.revoked && isBranch ? null
+          : <Btn sm disabled={call.busy} onClick={agent.revoked ? () => set({ revoked: false }) : disconnect}>{label}</Btn>}
+      </Ctl>
       {call.error ? <p className="hint" role="alert">{call.error}</p> : null}
     </div>
   );
+}
+
+/** Copies a connect line. Returns whether the copy worked. */
+async function copyLine(code: string): Promise<boolean> {
+  try { await navigator.clipboard.writeText(code); return true; } catch { return false; }
+}
+
+/** One Connect button per app. The raw command sits under Advanced for anyone who wants to paste it themselves. */
+function ConnectLine({ title, code }: { title: string; code: string }) {
+  const [copied, setCopied] = useState(false);
+  const connect = async () => setCopied(await copyLine(code));
+  return (
+    <Ctl title={title} sub={copied ? "Copied. Paste it into the app once." : "Copies the setup line for this app."} noPin
+      after={<details className="ca-raw"><summary>Advanced: the command</summary><code>{code}</code></details>}>
+      <Btn sm onClick={() => void connect()}>{copied ? "Copied" : "Connect"}</Btn>
+    </Ctl>
+  );
+}
+
+/** The branch command in the terminal: the Branch app's own switch, drawn only where the app can change it. */
+function TerminalCommand() {
+  const desk = useDesktopControls();
+  if (desk.off) return null;
+  return <DesktopCtl title="Type branch in any terminal" sub="Needed for these lines: adds the branch command." name="branchOnPath" />;
 }
 
 export function AgentsPage(props: SettingsPageProps) {
@@ -163,14 +232,14 @@ export function AgentsPage(props: SettingsPageProps) {
         </Ctl>
       </Sec>
       {agents.length ? groupAgents(agents).map(({ row, trunks: nested }) => <AgentRow key={row.id} agent={row} nested={nested} trunks={trunks} props={props} reload={reload} sessions={agents.map((x) => x.id)} />) : (
-        <Sec title="Connected agents"><Empty>No agent is connected yet. Paste one of the lines below into it.</Empty></Sec>
+        <Sec title="Connected agents"><Empty>No agent is connected yet. Connect an app below.</Empty></Sec>
       )}
       <Sec title="Another Branch" hint="Link a teammate's computer with a one-time code or QR.">
         <button type="button" className="btn" onClick={() => setLinking(true)}>Link another Branch</button>
       </Sec>
-      <Sec title="Connect an agent" hint="Each line is pasted once." help="Each line is pasted once. It runs the branch command, which always uses the Branch on this computer, so it keeps working after updates.">
-        <DesktopCtl title="Type branch in any terminal" sub="Needed for these lines: adds the branch command." name="branchOnPath" />
-        {CONNECT_LINES.map(([title, code]) => <CodeRow key={title} title={title} code={code} />)}
+      <Sec title="Connect an agent" hint="Each app connects once." help="Each Connect copies the line for that app. It runs the branch command, which always uses the Branch on this computer, so it keeps working after updates.">
+        <TerminalCommand />
+        {CONNECT_LINES.map(([title, code]) => <ConnectLine key={title} title={title} code={code} />)}
       </Sec>
       {linking && <BranchLinkDialog engine={props.engine} onClose={() => setLinking(false)} onLinked={reload} />}
     </Page>
