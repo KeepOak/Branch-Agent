@@ -4,6 +4,10 @@ import { toStringifiedError } from "@branch/normalization-core/error-coercion";
 import type { BranchConfig } from "../config/types.branch.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { runOutsideSqliteReadOnlyWorkerScope } from "../infra/sqlite-readonly-worker-context.js";
+import {
+  describePreparedModelRuntimeOwnerStates,
+  formatPreparedModelFailure,
+} from "./prepared-model-runtime.trace.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { registerRuntimeAuthProfileStoreMutationListener } from "./auth-profiles/runtime-snapshots.js";
 import type { ModelCatalogSnapshot } from "./model-catalog.types.js";
@@ -281,34 +285,8 @@ export function describePendingPreparedModelRuntimeReplacement(agentId?: string)
   if (!replacement) {
     return undefined;
   }
-  const scope = replacement.agentIds ? [...replacement.agentIds].sort().join(",") : "global";
+  const scope = replacement.agentIds ? [...replacement.agentIds].toSorted().join(",") : "global";
   return `scope=${scope} degraded=${replacement.degraded === true}`;
-}
-
-/** Trace text for each owner in a publication scope: published, failed, stale, or pending. */
-export function describePreparedModelRuntimeOwnerStates(
-  ownerMap: ReadonlyMap<string, PreparedModelRuntimeOwner>,
-  agentIds?: ReadonlySet<string>,
-): string {
-  const parts: string[] = [];
-  for (const owner of ownerMap.values()) {
-    const agentId = owner.input.agentId;
-    if (!agentId || (agentIds && !agentIds.has(agentId))) {
-      continue;
-    }
-    parts.push(`${agentId}=${describePreparedModelRuntimeOwnerState(owner)}`);
-  }
-  return parts.length > 0 ? parts.join(" ") : "none";
-}
-
-function describePreparedModelRuntimeOwnerState(owner: PreparedModelRuntimeOwner): string {
-  if (owner.snapshot) {
-    return "published";
-  }
-  if (owner.refreshError) {
-    return `failed(${owner.refreshError.message.slice(0, 120)})`;
-  }
-  return owner.needsRefresh ? "stale" : "pending";
 }
 
 /** Startup's retry of one agent: its unsettled model builds stop holding the next one back. */
@@ -631,7 +609,7 @@ export function refreshPreparedModelRuntimeSnapshots(
       });
     }
     log.info(
-      `prepared model publication rejected; owners ${describePreparedModelRuntimeOwnerStates(owners, publicationAgentIds)}; reason=${error.message.slice(0, 160)}`,
+      `prepared model publication rejected; owners ${describePreparedModelRuntimeOwnerStates(owners, publicationAgentIds)}; reason=${formatPreparedModelFailure(error.message, 160)}`,
     );
     rejectPendingPreparedModelRuntimeReplacement(replacement?.gateId, error);
   };

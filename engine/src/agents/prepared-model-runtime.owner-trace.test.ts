@@ -1,5 +1,8 @@
 import { expect, it } from "vitest";
-import { describePreparedModelRuntimeOwnerStates } from "./prepared-model-runtime.js";
+import {
+  describePreparedModelRuntimeOwnerStates,
+  formatPreparedModelFailure,
+} from "./prepared-model-runtime.trace.js";
 import type { PreparedModelRuntimeOwner } from "./prepared-model-runtime.types.js";
 
 function owner(agentId: string, state: Partial<PreparedModelRuntimeOwner>): PreparedModelRuntimeOwner {
@@ -38,4 +41,27 @@ it("truncates a long failure message so one owner cannot flood the trace line", 
   ]);
   const text = describePreparedModelRuntimeOwnerStates(owners);
   expect(text).toBe(`builder-oak=failed(${"x".repeat(120)})`);
+});
+
+const FAKE_ANTHROPIC_KEY = "sk-ant-api03-FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE0123456789";
+const FAKE_GITHUB_TOKEN = "ghp_FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE0123";
+
+it("never puts an API key from a failure message into the owner-state trace", () => {
+  const owners = new Map<string, PreparedModelRuntimeOwner>([
+    [
+      "oak",
+      owner("builder-oak", {
+        refreshError: new Error(`upstream rejected key ${FAKE_ANTHROPIC_KEY} for this agent`),
+      }),
+    ],
+  ]);
+  const text = describePreparedModelRuntimeOwnerStates(owners);
+  expect(text).toContain("builder-oak=failed(");
+  expect(text).not.toContain("FAKEFAKEFAKE");
+});
+
+it("redacts a token-shaped secret before truncating the logged failure reason", () => {
+  const text = formatPreparedModelFailure(`rejected ${FAKE_GITHUB_TOKEN} during refresh`, 160);
+  expect(text).not.toContain("FAKEFAKEFAKE");
+  expect(text.startsWith("rejected ")).toBe(true);
 });
