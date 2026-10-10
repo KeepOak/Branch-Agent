@@ -4,7 +4,6 @@ import { useState, type ReactNode } from "react";
 import { brandOf, Logo } from "../places/settings/set1/service";
 import { Icon, type IconName } from "../shell/icons";
 import type { Candidate, Detected, TestResult, Where } from "./setup-model";
-import { shownWhy } from "../shell/shown-why";
 
 export function WelcomeBody({ promise, onPromise }: { promise: boolean; onPromise: (v: boolean) => void }) {
   return (
@@ -27,19 +26,17 @@ export function WelcomeBody({ promise, onPromise }: { promise: boolean; onPromis
   );
 }
 
-const WHERE: { id: Where; icon: IconName; name: string; line: string; off?: string }[] = [
+const WHERE: { id: Where; icon: IconName; name: string; line: string }[] = [
   { id: "this", icon: "monitor", name: "This computer", line: "Recommended. Private, free, fast." },
   { id: "remote", icon: "key", name: "Another computer", line: "Over Tailscale or SSH: a home server or a desk PC." },
-  { id: "keepoak", icon: "globe", name: "A KeepOak computer", line: "In the cloud, always on. Needs a keepoak.com account.", off: "Needs a keepoak.com account." },
-  { id: "later", icon: "clock", name: "Decide later", line: "Start here and move it any time." },
 ];
 
-/** Cards like §4.8.1.2: one pressed at a time; a card the engine can't back yet is greyed with its reason. */
-export function ChoiceCards<T extends string | number>({ items, value, onPick }: { items: { id: T; icon: IconName; name: string; line: string; off?: string }[]; value: T | null; onPick: (v: T) => void }) {
+/** Cards like §4.8.1.2: one pressed at a time. */
+export function ChoiceCards<T extends string | number>({ items, value, onPick }: { items: { id: T; icon: IconName; name: string; line: string }[]; value: T | null; onPick: (v: T) => void }) {
   return (
     <div className="provs">
       {items.map((c) => (
-        <button key={String(c.id)} type="button" className="prov" aria-pressed={c.id === value} aria-disabled={c.off ? true : undefined} title={shownWhy(c.off)} data-testid={`setup-pick-${String(c.id)}`} onClick={() => !c.off && onPick(c.id)}>
+        <button key={String(c.id)} type="button" className="prov" aria-pressed={c.id === value} data-testid={`setup-pick-${String(c.id)}`} onClick={() => onPick(c.id)}>
           <span className="ico-tile">
             <Icon name={c.icon} small />
           </span>

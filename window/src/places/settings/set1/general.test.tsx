@@ -10,7 +10,7 @@ import { GENERAL_ROWS, GeneralPage } from "./general";
 import { GENERAL_PREFS } from "./general-conversation";
 import { ttlMinutes } from "./general-summaries";
 import { IN_BROWSER } from "../../../connect/desktop-controls";
-import { platformName } from "../../../setup/steps-later";
+import { platformName } from "../../../setup/platform-label";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;

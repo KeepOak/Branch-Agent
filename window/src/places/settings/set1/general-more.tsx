@@ -2,7 +2,7 @@
 // Controllers and This PC. Each is drawn as the preview draws it, greyed, with the reason on its own line.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../../connect/engine";
-import { platformName } from "../../../setup/steps-later";
+import { platformName } from "../../../setup/platform-label";
 import { Btn, Ctl, Hint, Pick, Sec, Seg, Switch, useLevel, useSaveRunner } from "../kit";
 import { useLook } from "./appearance-store";
 

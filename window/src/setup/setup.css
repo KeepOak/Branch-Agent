@@ -172,9 +172,6 @@
     display: none;
   }
 }
-@media (max-width: 1300px) {
-  .ob-pose-step-7 { display: none; }
-}
 
 /* Welcome */
 .ob-trust {

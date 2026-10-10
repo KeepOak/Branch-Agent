@@ -1,4 +1,4 @@
-// The parts every setup step shares (DESIGN-SPEC §4.8.1 "Shell"): the 260 px rail with the 11 steps and
+// The parts every setup step shares (DESIGN-SPEC §4.8.1 "Shell"): the 260 px rail with the five steps and
 // "Skip for now", the body with its heading, and the footer. Focus moves to the heading on each new step;
 // Tab stays inside; Escape skips except on Welcome.
 import { useEffect, useRef, type ReactNode } from "react";

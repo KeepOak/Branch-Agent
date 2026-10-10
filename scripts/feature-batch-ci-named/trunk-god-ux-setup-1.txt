@@ -1,0 +1,5 @@
+window:src/places/settings/set1/general.test.tsx
+window:src/setup/FirstTrunk.test.tsx
+window:src/setup/setup-preview.test.tsx
+window:src/setup/setup.test.tsx
+window:src/setup/talk-setup.test.ts

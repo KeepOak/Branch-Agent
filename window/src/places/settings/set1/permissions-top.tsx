@@ -9,7 +9,7 @@ import { Icon } from "../../../shell/icons";
 import { useLockdown } from "../../../shell/use-lockdown";
 import { notify } from "../../../shell/notify";
 import { MODE_ROWS, blockedReason, modeName, isEngineMode, type EngineMode } from "../../../composer/mode";
-import { platformName } from "../../../setup/steps-later";
+import { platformName } from "../../../setup/platform-label";
 import { record, text, visible, type RecordValue } from "../adapter";
 import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec, Seg } from "../kit";
 import { WHY, deadControl, type Cfg, type Ctx } from "./permissions-rows";

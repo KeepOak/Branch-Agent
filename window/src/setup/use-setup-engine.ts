@@ -4,8 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { createJob, JOBS as JOB_FILES } from "../places/customize/jobs-data";
 import { saveConfig, type ConfigSnapshot } from "../places/settings/adapter";
-import { firstOn, knownSetup, readDetected, readTest, setupRecord, type Check, type Detected, type Known, type SetupChoices, type TestResult } from "./setup-model";
-import type { ChatApp } from "./steps-later";
+import { firstOn, knownSetup, readDetected, readTest, setupRecord, type ChatApp, type Check, type Detected, type Known, type SetupChoices, type TestResult } from "./setup-model";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const modelProblem = (error: string) => /no agent model|branch onboard|not configured/i.test(error)

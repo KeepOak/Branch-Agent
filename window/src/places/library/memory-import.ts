@@ -1,4 +1,4 @@
-// Shared memory import: migrations.memory.plan / apply. Setup's Two more things and Library › Memory › Bring in
+// Shared memory import: migrations.memory.plan / apply. Settings › Data & usage › Moving in and out and Library › Memory › Bring in
 // both call these helpers so there is one importer, not two.
 import type { WindowEngine } from "../../connect/engine";
 import { errorText, rec, str } from "./data";

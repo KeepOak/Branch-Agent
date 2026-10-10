@@ -39,22 +39,10 @@ const rail = (host: HTMLElement) => [...host.querySelectorAll(".ob-rail li")].ma
 
 describe("setup preview rail", () => {
   it("uses the preview’s step order and exact names", () => {
-    expect([...STEPS]).toEqual([
-      "Welcome",
-      "Where Branch runs",
-      "Models",
-      "Make it yours",
-      "Your first Trunks",
-      "Reach it anywhere",
-      "Tools",
-      "Keep it running",
-      "People",
-      "Two more things",
-      "Health check",
-    ]);
+    expect([...STEPS]).toEqual(["Welcome", "Where Branch runs", "Models", "Your first Trunks", "Ready"]);
     expect(railTicked(0, 4)).toBe(false);
-    expect(railTicked(5, 4)).toBe(true);
-    expect(railTicked(4, 4)).toBe(false);
+    expect(railTicked(4, 3)).toBe(true);
+    expect(railTicked(3, 3)).toBe(false);
   });
 
   it("does not tick Your first Trunks on Welcome, even when Trunks already exist", async () => {
@@ -82,16 +70,15 @@ describe("setup preview rail", () => {
   });
 
   it("Run setup again reopens at Welcome with a clear rail", async () => {
-    const host = await show(<SetupFlow engine={engine(SET_UP)} version="1" trunkNames={["Researcher"]} defaultAgentId="main" defaultName="Sapling" startAt={5} onClose={() => {}} onLocalModel={() => {}} />);
+    const host = await show(<SetupFlow engine={engine(SET_UP)} version="1" trunkNames={["Researcher"]} defaultAgentId="main" defaultName="Sapling" startAt={4} onClose={() => {}} onLocalModel={() => {}} />);
     await act(async () => new Promise((r) => setTimeout(r, 0)));
-    expect(host.querySelector("h2")?.textContent).toBe("Reach Branch anywhere");
+    expect(host.querySelector("h2")?.textContent).toBe("Ready");
     expect(rail(host).find((r) => r.name === "Your first Trunks")?.cls).toBe("done");
     await act(async () => rerunSetup());
     expect(host.querySelector("h2")?.textContent).toBe("Hi, I’m Branch.");
     const names = rail(host);
     expect(names.find((r) => r.name === "Welcome")?.cls).toBe("now");
     expect(names.find((r) => r.name === "Your first Trunks")?.cls).toBe("");
-    expect(names.find((r) => r.name === "Reach it anywhere")?.cls).toBe("");
   });
 
   it("Run setup again opens a closed setup at Welcome", async () => {

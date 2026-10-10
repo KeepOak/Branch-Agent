@@ -345,7 +345,6 @@ export const windowStrictFiles = [
   'src/setup/SetupFlow.tsx',
   'src/setup/setup.test.tsx',
   'src/setup/steps-early.tsx',
-  'src/setup/more-step.tsx',
   'src/shell/Walkthrough.tsx',
   'src/shell/guide.test.tsx',
   'src/places/settings/set2/advanced.tsx',
