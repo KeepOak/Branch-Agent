@@ -7,6 +7,7 @@ import {
   type BranchStateDatabase,
   runBranchStateWriteTransaction,
 } from "../../state/branch-state-db.js";
+import { resolveBranchStateSqlitePath } from "../../state/branch-state-db.paths.js";
 import { updateConfigMachineStateInDatabase } from "../../state/config-machine-state-write.js";
 
 const log = createSubsystemLogger("skills/workshop");
@@ -109,21 +110,24 @@ export function claimExperienceSignalInDatabase(
 }
 
 /**
- * Production claim for the scheduler. It is a bounded immediate transaction and fails
- * closed: any key, lock timeout or storage error means no review is scheduled, and it is logged.
+ * Production claim for the scheduler. The key is read and cached before the transaction opens,
+ * so the transaction holds only the lock. It is a bounded immediate transaction and fails
+ * closed: a missing key, lock timeout or storage error means no review is scheduled, and the
+ * warning sink receives a message.
  */
-export function claimExperienceSignalCooldown(input: ExperienceSignalClaimInput): boolean {
+export function claimExperienceSignalCooldown(
+  input: ExperienceSignalClaimInput,
+  warn: (message: string) => void = (message) => log.warn(message),
+): boolean {
   try {
+    const key = loadExperienceSignalKey(path.dirname(resolveBranchStateSqlitePath(process.env)));
     return runBranchStateWriteTransaction(
-      (database) => {
-        const key = loadExperienceSignalKey(path.dirname(database.path));
-        return claimExperienceSignalInDatabase(database, key, input);
-      },
+      (database) => claimExperienceSignalInDatabase(database, key, input),
       {},
       { busyTimeoutMs: CLAIM_BUSY_TIMEOUT_MS, operationLabel: CLAIM_OPERATION_LABEL },
     );
   } catch (error) {
-    log.warn(
+    warn(
       `experience review signal claim unavailable, no review scheduled: ${formatErrorMessage(error)}`,
     );
     return false;

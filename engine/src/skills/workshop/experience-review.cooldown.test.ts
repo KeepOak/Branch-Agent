@@ -269,19 +269,29 @@ describe("repeated-failure signal cooldown", () => {
     expect(Object.keys(JSON.parse(stored).claims)).toEqual([keyed]);
   });
 
-  it("fails closed when the claim lock is held past its budget", () => {
-    const holder = new DatabaseSync(openBranchStateDatabase().path);
+  it("fails closed within the busy budget when another connection holds the write lock", () => {
+    const databasePath = openBranchStateDatabase().path;
+    const holder = new DatabaseSync(databasePath);
     const identity = JSON.stringify(["exec", "tilectl publish"]);
+    const warnings: string[] = [];
     holder.exec("BEGIN IMMEDIATE");
+    let claimed: boolean;
+    let elapsedMs: number;
     try {
-      const started = Date.now();
-      const claimed = claimExperienceSignalCooldown({ agentId: "main", identity, nowMs: startMs });
-      expect(claimed).toBe(false);
-      expect(Date.now() - started).toBeLessThan(2_000);
+      const started = performance.now();
+      claimed = claimExperienceSignalCooldown(
+        { agentId: "main", identity, nowMs: startMs },
+        (message) => warnings.push(message),
+      );
+      elapsedMs = performance.now() - started;
     } finally {
       holder.exec("ROLLBACK");
       holder.close();
     }
+    expect(claimed).toBe(false);
+    // The budget is 50 ms. The bound leaves room for transaction setup on a loaded machine.
+    expect(elapsedMs).toBeLessThan(500);
+    expect(warnings).toEqual([expect.stringContaining("no review scheduled")]);
     expect(claimExperienceSignalCooldown({ agentId: "main", identity, nowMs: startMs })).toBe(true);
   });
 });
