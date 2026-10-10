@@ -13,6 +13,7 @@ import {
   ownerEpochFor,
   pickUpQueuedWork,
   queueRunId,
+  releaseQueueItem,
   reconcileTrunkQueue,
   releaseOrphanQueueClaims,
   releaseStaleQueueClaims,
@@ -264,6 +265,24 @@ describe("Trunk queue fenced claims", () => {
     expect(listQueueItems(env).find((row) => row.id === job.id)).toMatchObject({
       status: "needs_attention",
     });
+  });
+
+  it("clears the needs-attention flag when the job is released, so it can be claimed again", async () => {
+    const job = addQueueItem({ title: "flagged job", brief_text: "flagged brief" }, env, 1);
+    claimNextQueueItem("builder-birch", env, 1_000);
+    const { gateway } = fenceGateway("pending", { abortWorks: false });
+    for (let pass = 0; pass < 3; pass += 1) {
+      await releaseStaleQueueClaims({ gateway, env, now: () => 1_000 + FOUR_HOURS_MS });
+    }
+    expect(listQueueItems(env)[0]).toMatchObject({ status: "needs_attention" });
+
+    releaseQueueItem(job.id, env, 5_000);
+
+    const row = listQueueItems(env)[0];
+    expect(row).toMatchObject({ status: "released" });
+    expect(row.attention_reason).toBeUndefined();
+    expect(row.stop_attempts).toBeUndefined();
+    expect(claimNextQueueItem("builder-oak", env, 6_000)?.id).toBe(job.id);
   });
 
   it("keeps the job done when its run finishes during the stop, and does not re-queue it", async () => {
