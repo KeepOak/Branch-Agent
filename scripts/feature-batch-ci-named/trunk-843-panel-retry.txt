@@ -1,0 +1,2 @@
+window:src/shell/talk-beside-retry.test.tsx
+window:src/shell/talk-beside.test.tsx
