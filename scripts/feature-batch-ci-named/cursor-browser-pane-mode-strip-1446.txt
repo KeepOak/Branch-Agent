@@ -1,1 +1,2 @@
 window:src/stage/BrowserChrome.test.tsx
+window:src/stage/BrowserView.test.tsx
