@@ -1499,7 +1499,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         header={header}
         dark={dark}
         listHidden={isNarrow ? !slideOpen : rail || layout.hidden}
-        onTheme={() => setTheme(toggleTheme(theme))}
         onToggleList={toggleList}
         onBack={() => window.history.back()}
         onForward={() => window.history.forward()}
