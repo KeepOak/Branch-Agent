@@ -264,7 +264,6 @@
   white-space: nowrap;
 }
 .topbar .global > .ib.guide-btn,
-.topbar .global > [data-testid="theme"],
 .topbar .global > [data-testid="list-toggle"] {
   width: auto;
   height: 24px;

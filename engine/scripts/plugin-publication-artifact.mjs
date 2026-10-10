@@ -416,6 +416,8 @@ export function inspectPackageTarballBytes(inputBytes, options = {}) {
   if (onFile !== undefined && typeof onFile !== "function") {
     throw new Error("Plugin tarball onFile option must be a function.");
   }
+  // Skill packages carry SKILL.md instead of branch.plugin.json; callers opt out explicitly.
+  const requirePluginManifest = options.requirePluginManifest !== false;
   const tarballBytes = Buffer.from(inputBytes.buffer, inputBytes.byteOffset, inputBytes.byteLength);
   const limits = normalizeTarInspectionOptions(options);
   if (tarballBytes.length === 0 || tarballBytes.length > limits.maxArchiveBytes) {
@@ -583,18 +585,20 @@ export function inspectPackageTarballBytes(inputBytes, options = {}) {
   if (!packageManifestBytes) {
     throw new Error("Plugin tarball must contain exactly one package/package.json.");
   }
-  if (!pluginManifestBytes) {
+  if (requirePluginManifest && !pluginManifestBytes) {
     throw new Error("Plugin tarball must contain exactly one package/branch.plugin.json.");
   }
   inventory.sort((left, right) => compareCodeUnits(left.path, right.path));
   const packageManifest = parsePackedJson(packageManifestBytes, "Packed package.json");
-  const pluginManifest = parsePackedJson(pluginManifestBytes, "Packed branch.plugin.json");
+  const pluginManifest = pluginManifestBytes
+    ? parsePackedJson(pluginManifestBytes, "Packed branch.plugin.json")
+    : null;
   return {
     inventory,
     packageManifest,
     packageManifestSha256: sha256(packageManifestBytes),
     pluginManifest,
-    pluginManifestSha256: sha256(pluginManifestBytes),
+    pluginManifestSha256: pluginManifestBytes ? sha256(pluginManifestBytes) : null,
     tarballSizeBytes: tarballBytes.byteLength,
     tarballSha256: sha256(tarballBytes),
     totalFileBytes,

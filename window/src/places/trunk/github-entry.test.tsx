@@ -69,7 +69,7 @@ it("saves ordinary editor changes against fresh revision after an immediate GitH
   await click("Use shared account"); await click("Save");
   const patch = request.mock.calls.find(([method]) => method === "config.patch");
   expect(patch).toBeTruthy();
-  expect(patch).toEqual(["config.patch", { baseHash: "h2", raw: JSON.stringify({ agents: { entries: { birch: { tools: { deny: ["browser"] } } } } }) }]);
+  expect(patch).toEqual(["config.patch", { baseHash: "h2", raw: JSON.stringify({ agents: { entries: { birch: { toolsets: { browser: false } } } } }) }]);
 });
 
 it("keeps edited-Trunk identity visible but blocks all GitHub mutations for read-only operators", async () => {
