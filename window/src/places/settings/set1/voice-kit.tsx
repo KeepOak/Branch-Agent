@@ -5,10 +5,9 @@ import { useRef } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { list, record, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
-import { Btn, Ctl, Field, Pick, Pill, Seg, Switch, type Opt } from "../kit";
+import { Ctl, Field, Pick, Seg, type Opt } from "../kit";
 
 export const NO_KEY = "Branch has no setting for this yet.";
-const noop = () => undefined;
 
 /** A resource that keeps showing its last answer while it reloads after a save. */
 export function useKept<T>(engine: WindowEngine, method: string, params: unknown = {}) {
