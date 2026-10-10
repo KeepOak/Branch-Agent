@@ -52,36 +52,48 @@ function StartingUp() {
 }
 
 type Project = { id: string; displayName: string; source?: string };
+/** Projects Branch made for each Trunk (source "workspace") sit in a folded group; the ones you added show first. */
+const isMadeByBranch = (p: Project) => p.source === "workspace";
 function Projects({ engine }: { engine: SettingsPageProps["engine"] }) {
   const res = useResource<RecordValue>(engine, "projects.list", {});
   const projects = list(res.data?.projects) as unknown as Project[];
+  const added = projects.filter((p) => !isMadeByBranch(p));
+  const made = projects.filter(isMadeByBranch);
   return (
     <Sec title="Projects">
       {res.loading ? <p className="hint">Reading your projects…</p>
         : res.error ? <Status tone="warn" title="Couldn’t read your projects just now." action={<Btn sm onClick={res.reload}>Try again</Btn>} />
-        : projects.length ? <Plist>{projects.map((p) => <ProjectRow key={p.id} engine={engine} project={p} />)}</Plist>
-        : <Empty>No projects yet.</Empty>}
+        : projects.length ? (
+          <>
+            {added.length ? <Plist>{added.map((p) => <ProjectRow key={p.id} engine={engine} project={p} />)}</Plist> : null}
+            {made.length ? (
+              <details className="gen-folded">
+                <summary>Folders Branch made for Trunks ({made.length})</summary>
+                <Plist>{made.map((p) => <ProjectRow key={p.id} engine={engine} project={p} />)}</Plist>
+              </details>
+            ) : null}
+          </>
+        ) : <Empty>No projects yet.</Empty>}
     </Sec>
   );
 }
 
+/** A project's name and its conversation count; the count shows only once there is one to show. */
 function ProjectRow({ engine, project }: { engine: SettingsPageProps["engine"]; project: Project }) {
   const res = useResource<RecordValue>(engine, "sessions.list", { projectId: project.id, limit: 1, excludeSubagents: true, excludeCron: true });
   const total = record(res.data).totalCount;
-  const sub = typeof total === "number" ? `${total} ${total === 1 ? "conversation" : "conversations"}` : res.loading ? "Counting conversations…" : "";
-  return (
-    <Prow icon={<span className="ico-tile gen-k"><Icon name="folder" small /></span>} title={visible(project.displayName)} sub={sub || undefined}>
-      <Btn sm disabled title="Branch can’t open a project’s own instructions from here yet.">Edit</Btn>
-    </Prow>
-  );
+  const sub = typeof total === "number" && total > 0 ? `${total} ${total === 1 ? "conversation" : "conversations"}` : undefined;
+  return <Prow icon={<span className="ico-tile gen-k"><Icon name="folder" small /></span>} title={visible(project.displayName)} sub={sub} />;
 }
 
+/** The modifier as this computer shows it: ⌘ on a Mac, Ctrl elsewhere. */
+const MOD = () => (/Mac/i.test(typeof navigator === "undefined" ? "" : navigator.platform || navigator.userAgent) ? "⌘" : "Ctrl ");
 function Keyboard() {
   const [open, setOpen] = useState(false);
   return (
     <>
       <Sec title="Keyboard">
-        <Ctl title="Keyboard shortcuts" sub="Ctrl K to find anything, Ctrl N for a new conversation.">
+        <Ctl title="Keyboard shortcuts" sub={`${MOD()}K to find anything, ${MOD()}N for a new conversation.`}>
           <Btn sm onClick={() => setOpen(true)}>Show all</Btn>
         </Ctl>
       </Sec>

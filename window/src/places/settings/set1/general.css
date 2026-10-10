@@ -25,3 +25,6 @@
 .set-col [data-page-title="General"] .ctl.stack-k:has(> .right > textarea) > small:not(.why-k) { order: 1; margin-left: 0; }
 .set-col [data-page-title="General"] .ctl.stack-k:has(> .right > textarea) > .right { order: 2; flex: 1 0 100%; margin-top: 6px; }
 .set-col [data-page-title="General"] .ctl.stack-k:has(> .right > textarea) > .why-k { order: 3; flex: 1 0 100%; margin-top: 4px; }
+
+.set-col .gen-folded { margin-top: 8px; }
+.set-col .gen-folded > summary { cursor: pointer; color: var(--ink-2); padding: 6px 0; list-style: revert; }
