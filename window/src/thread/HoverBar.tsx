@@ -1,7 +1,7 @@
 // The hover bar on a message (DESIGN-SPEC §4.2.6): it floats above the message on hover or keyboard focus and
 // never takes space in the thread. Each action calls its row's engine method; an action the engine or this
 // window can't do yet stays visible, greyed, with its reason as the tooltip (§5.1 "Disabled, with the reason").
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState, type ReactNode } from "react";
 import { Popover } from "./Dialog";
 import { fullTime, messageTime, modelName } from "./format";
 import { Icon, ICONS } from "./icons";
@@ -26,8 +26,6 @@ export type HoverActions = {
   read?: Act & { reading: boolean };
 };
 
-/** Why "Leave out of context" is off when this message has no engine id. */
-export const NO_LEAVE_OUT = "You can't leave a message out of context here yet.";
 
 const QUICK = ["👍", "❤️", "🎉", "👀", "🚀", "😂"];
 
@@ -85,31 +83,30 @@ function ReactMenu({ onPick, onClose }: { onPick: (emoji: string) => void; onClo
   );
 }
 
+/** The More menu lists only the actions that can run now. An unavailable action has no row (not a greyed one), and a
+ *  heading goes with its rows, so a message with nothing to do under a heading shows no empty group. */
 function MoreMenu({ actions, isReply, onClose, anchor }: { actions: HoverActions; isReply: boolean; onClose: () => void; anchor: HTMLElement | null }) {
-  const item = (label: string, act: Act | null, reason?: string) => (
-    <button type="button" className="mi" role="menuitem" aria-disabled={Boolean(reason ?? act?.disabled)} title={reason ?? act?.disabled ?? undefined}
-      onClick={() => { if (reason ?? act?.disabled) return; act?.run(); onClose(); }}>
-      {label}
-    </button>
-  );
+  const row = (label: string, act: Act | null | undefined) =>
+    act && !act.disabled ? (
+      <button key={label} type="button" className="mi" role="menuitem" onClick={() => { act.run(); onClose(); }}>
+        {label}
+      </button>
+    ) : null;
+  const groups: { title: string; rows: (ReactNode)[] }[] = [
+    { title: "Reply tools", rows: [isReply ? row("Try again", actions.retry) : row("Edit", actions.edit), row("Branch from here", actions.branch), row("Start a conversation from here", actions.startConversation)] },
+    { title: "Inspect", rows: isReply ? [row("Every step behind this reply", actions.inspect), row(actions.read?.reading ? "Stop reading" : "Read aloud", actions.read)] : [] },
+    { title: "Context", rows: [row(actions.context?.excluded ? "Put back in context" : "Leave out of context", actions.context)] },
+  ];
+  const shown = groups.map((g) => ({ ...g, rows: g.rows.filter((r) => r !== null) })).filter((g) => g.rows.length > 0);
   return (
     <Popover label="More" onClose={onClose} anchor={anchor}>
-      <div className="pop-head">Reply tools</div>
-      {!isReply ? item("Edit", actions.edit ?? null) : item("Try again", actions.retry ?? null)}
-      {item("Branch from here", actions.branch)}
-      {actions.startConversation ? item("Start a conversation from here", actions.startConversation) : null}
-      {/* Inspect and Feedback hold only reply actions: on your own message the groups go, not just their items. */}
-      {isReply ? (
-        <>
-          <hr className="msep" />
-          <div className="pop-head">Inspect</div>
-          {item("Every step behind this reply", actions.inspect ?? null)}
-          {actions.read ? item(actions.read.reading ? "Stop reading" : "Read aloud", actions.read) : null}
-        </>
-      ) : null}
-      <hr className="msep" />
-      <div className="pop-head">Context</div>
-      {item(actions.context?.excluded ? "Put back in context" : "Leave out of context", actions.context ?? null, actions.context ? undefined : NO_LEAVE_OUT)}
+      {shown.map((g, i) => (
+        <Fragment key={g.title}>
+          {i > 0 ? <hr className="msep" /> : null}
+          <div className="pop-head">{g.title}</div>
+          {g.rows}
+        </Fragment>
+      ))}
     </Popover>
   );
 }

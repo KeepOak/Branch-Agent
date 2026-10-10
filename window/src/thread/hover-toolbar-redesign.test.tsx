@@ -75,7 +75,31 @@ describe("P54 message toolbar", () => {
     expect(run).toHaveBeenCalledOnce();
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More"]')?.click());
     const put = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => b.textContent === "Leave out of context");
-    expect(put?.getAttribute("aria-disabled")).toBe("false");
+    expect(put).toBeDefined();
+  });
+
+  it("hides More rows whose action cannot run now, and drops a heading with no rows left", async () => {
+    const run = vi.fn();
+    const blocked = { run, disabled: "Not while Sapling is working." };
+    const actions: HoverActions = {
+      copy: { run, disabled: null },
+      retry: blocked,
+      edit: blocked,
+      reply: { run, disabled: null },
+      react: run,
+      reactDisabled: null,
+      branch: blocked,
+      context: blocked,
+      inspect: { run, disabled: null },
+    };
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root?.render(<HoverBar isReply={true} actions={actions} />));
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More"]')?.click());
+    const labels = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].map((x) => x.textContent);
+    expect(labels).toEqual(["Every step behind this reply"]);
+    expect([...document.body.querySelectorAll(".pop-head")].map((x) => x.textContent)).toEqual(["Inspect"]);
+    expect(document.body.querySelectorAll('[aria-disabled="true"]')).toHaveLength(0);
   });
 
   it("keeps the More menu inside the viewport near its lower edge", async () => {
