@@ -3,8 +3,46 @@ import type { WindowEngine } from "../../connect/engine";
 import { useResource } from "../settings/hooks";
 import { accountName, providersOf, STATUS_WORDS, type Provider } from "../settings/set1/accounts";
 import { canWrite, WRITE_WHY } from "./data";
+import { entryOf, errorText, patchConfig, readConfig } from "./model";
 
 type AuthStatus = { providers?: unknown };
+
+/** Settings › Accounts, where model accounts are signed in. */
+export function openAccountsSettings(): void {
+  window.dispatchEvent(new CustomEvent("branch:navigate-settings", { detail: { page: "accounts" } }));
+}
+
+/** agents.entries.<id>.useOwnerAccounts (engine/src/config/zod-schema.agent-entry-base.ts): unset means on. */
+function OwnerAccountsSwitch({ engine, agentId, onChanged }: { engine: WindowEngine; agentId: string; onChanged: () => Promise<void> }) {
+  const config = useResource<unknown>(engine, "config.get", {});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const snap = readConfig(config.data);
+  const on = entryOf(snap, agentId).useOwnerAccounts !== false;
+  const why = !canWrite(engine) ? WRITE_WHY : config.loading ? "Reading this Trunk’s settings." : !snap.hash ? "The engine did not provide this Trunk’s settings. Refresh to try again." : undefined;
+  const toggle = async () => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      // null removes the override, so the Trunk follows the default (on).
+      await patchConfig(engine, snap, { [`agents.entries.${agentId}.useOwnerAccounts`]: on ? false : null });
+      await config.reload();
+      await onChanged();
+    } catch (cause) {
+      setError(errorText(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return <div className="tk-accounts-share">
+    <label title={why}>
+      <input type="checkbox" role="switch" data-testid="use-owner-accounts" checked={on} disabled={busy || Boolean(why)} onChange={() => void toggle()} />{" "}
+      Use my accounts
+    </label>
+    <p className="tk-hint">{on ? "This Trunk can use the accounts you signed in." : "This Trunk uses only accounts signed in for it."}</p>
+    {error && <p className="tk-error" role="alert">{error}</p>}
+  </div>;
+}
 
 export function AccountsTab({ engine, agentId }: { engine: WindowEngine; agentId: string }) {
   const status = useResource<AuthStatus>(engine, "models.authStatus", { agentId });
@@ -31,9 +69,13 @@ export function AccountsTab({ engine, agentId }: { engine: WindowEngine; agentId
   const providers = providersOf(status.data?.providers).filter((provider) => provider.profiles.length);
   return <div className="tk-accounts">
     <p className="tk-hint">Choose which signed-in accounts this Trunk can use. Drag the selected accounts into priority order; the first available account goes first.</p>
+    <OwnerAccountsSwitch engine={engine} agentId={agentId} onChanged={status.reload} />
     {status.loading && <p role="status">Reading accounts…</p>}
     {status.error && <p role="alert">{status.error}</p>}
-    {!status.loading && !providers.length && <p>No signed-in accounts yet. Add one in Settings › Accounts.</p>}
+    {!status.loading && !status.error && !providers.length && <div className="tk-error" role="alert" data-testid="no-account">
+      <p>This Trunk has no model account, so it can’t answer or run jobs. Sign in an account, or turn on Use my accounts.</p>
+      <button type="button" className="btn sm" onClick={openAccountsSettings}>Sign in an account</button>
+    </div>}
     {providers.map((provider) => {
       const stored = Boolean((provider as Provider & { profileOrderStored?: boolean }).profileOrderStored);
       const why = provider.profileOrderLocked ? "The order is set in the settings file." : write ? undefined : WRITE_WHY;

@@ -116,7 +116,6 @@ describe("TeamApprovalCard", () => {
     );
 
     expect(onSave.mock.calls[0]?.[0]?.[0]).toMatchObject({
-      job: undefined,
       role: "Scout",
       name: "Builder Scout",
       job: "Find three sources.",

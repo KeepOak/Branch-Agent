@@ -111,6 +111,13 @@ export async function seedFirstRunGreeting(params: {
  * Called from agents.create right after a successful create. Scheduled, never awaited: the create
  * response does not wait on the greeting, and nothing thrown here reaches the caller.
  */
+/** Greetings still being written. Tests await them with settleFirstRunGreetings(), never with timers. */
+const pendingGreetings = new Set<Promise<void>>();
+
+/**
+ * Called from agents.create right after a successful create. Scheduled, never awaited: the create response does not
+ * wait on the greeting, and nothing thrown here reaches the caller.
+ */
 export function scheduleFirstRunGreeting(params: {
   result: FirstRunGreetingCreateResult;
   getConfig: () => BranchConfig;
@@ -122,7 +129,7 @@ export function scheduleFirstRunGreeting(params: {
   }
   const { agentId } = params.result;
   const seed = params.seed ?? seedFirstRunGreeting;
-  void (async () => {
+  const greeting = (async () => {
     try {
       const outcome = await seed({ cfg: params.getConfig(), agentId });
       if (outcome === "failed") {
@@ -132,4 +139,15 @@ export function scheduleFirstRunGreeting(params: {
       params.warn(`agent ${agentId} first-run greeting failed: ${formatErrorMessage(error)}`);
     }
   })();
+  pendingGreetings.add(greeting);
+  void greeting.finally(() => {
+    pendingGreetings.delete(greeting);
+  });
+}
+
+/** Resolves once every greeting scheduled so far has finished, win or fail. For tests only. */
+export async function settleFirstRunGreetings(): Promise<void> {
+  while (pendingGreetings.size > 0) {
+    await Promise.all(pendingGreetings);
+  }
 }

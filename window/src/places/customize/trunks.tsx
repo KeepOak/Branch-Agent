@@ -103,7 +103,7 @@ export function TrunksTab(props: Props) {
   return <div className="tk-tab-root">
     <div className="tk-toolbar">
       <button type="button" className="btn pri" disabled={busy || !roster || !write} title={write ? undefined : WRITE_WHY} onClick={() => setAdding(true)}><Icon name="plus" small />{busy ? "Making…" : "A new Trunk"}</button>
-      <button type="button" className="btn" onClick={openNewGroupChat}><Icon name="users" small />New group chat</button>
+      <button type="button" className="btn" onClick={() => openNewGroupChat()}><Icon name="users" small />New group chat</button>
     </div>
     <Status {...trunks} />
     {error && <p role="alert" className="tk-error">{error}</p>}

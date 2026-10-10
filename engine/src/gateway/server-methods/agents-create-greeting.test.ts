@@ -25,6 +25,13 @@ vi.mock("../../config/sessions/transcript.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../config/sessions/transcript.js")>()),
   appendAssistantMessageToSessionTranscript: mocks.append,
 }));
+// The greeting writes its session entry through these; the store itself is covered elsewhere, so the test
+// stubs them and does not depend on a real session database on every platform.
+vi.mock("../../config/sessions/session-accessor.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../config/sessions/session-accessor.js")>()),
+  loadSessionEntry: () => undefined,
+  upsertSessionEntryCore: async () => null,
+}));
 vi.mock("../../config/sessions/session-accessor.sqlite-entry.js", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("../../config/sessions/session-accessor.sqlite-entry.js")
@@ -37,6 +44,7 @@ vi.mock("./optional-model-catalog.js", async (importOriginal) => ({
 }));
 
 const { agentsHandlers } = await import("./agents.js");
+const { settleFirstRunGreetings } = await import("../../agents/first-run-greeting.js");
 
 const cfg: BranchConfig = { agents: { entries: { main: {} } } };
 
@@ -92,7 +100,8 @@ it("greets a brand-new Trunk once, after the create is answered", async () => {
     expect.objectContaining({ agentId: "new-trunk" }),
     undefined,
   );
-  await vi.waitFor(() => expect(mocks.append).toHaveBeenCalledTimes(1));
+  await settleFirstRunGreetings();
+  expect(mocks.append).toHaveBeenCalledTimes(1);
   expect(mocks.append).toHaveBeenCalledWith(
     expect.objectContaining({
       agentId: "new-trunk",
@@ -108,9 +117,7 @@ it("never greets an existing Trunk, even one whose ritual is pending", async () 
 
   const created = createCall();
   await created.promise;
-  await new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
+  await settleFirstRunGreetings();
   expect(created.respond).toHaveBeenCalledWith(true, expect.anything(), undefined);
   expect(mocks.append).not.toHaveBeenCalled();
 });
@@ -118,7 +125,13 @@ it("never greets an existing Trunk, even one whose ritual is pending", async () 
 it("does not hold the create response while the greeting write is slow", async () => {
   setup();
   stubCreate("created", true);
-  mocks.append.mockImplementation(() => new Promise(() => {}));
+  // The write starts and never finishes: the create must still answer, and must not wait for it.
+  const writeStarted = new Promise<void>((resolve) => {
+    mocks.append.mockImplementation(() => {
+      resolve();
+      return new Promise(() => {});
+    });
+  });
 
   const created = createCall();
   await created.promise;
@@ -127,5 +140,6 @@ it("does not hold the create response while the greeting write is slow", async (
     expect.objectContaining({ agentId: "new-trunk" }),
     undefined,
   );
-  await vi.waitFor(() => expect(mocks.append).toHaveBeenCalledTimes(1));
+  await writeStarted;
+  expect(mocks.append).toHaveBeenCalledTimes(1);
 });
