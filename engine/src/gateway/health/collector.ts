@@ -4,6 +4,7 @@ import { asNullableObjectRecord } from "@branch/normalization-core/record-coerce
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
 import { truncateUtf16Safe } from "@branch/normalization-core/utf16-slice";
 import { listAgentEntries } from "../../agents/agent-roster.js";
+import { tryResolveSoleAgentId } from "../../agents/agent-scope-config.js";
 import { redactChannelStatusSummaryBaseUrl } from "../../channels/account-snapshot-fields.js";
 import {
   buildChannelAccountSnapshotFromInspection,
@@ -79,7 +80,7 @@ const debugHealth = (
 };
 
 export function resolveHealthAgentOrder(cfg: BranchConfig) {
-  const defaultAgentId = tryResolveLegacyCompatibilityAgentId(cfg);
+  const defaultAgentId = tryResolveLegacyCompatibilityAgentId(cfg) ?? tryResolveSoleAgentId(cfg);
   const entries = listAgentEntries(cfg);
   const seen = new Set<string>();
   const ordered: Array<{ id: string; name?: string }> = [];
@@ -135,16 +136,6 @@ function projectHealthSessions(
     count: summary.count,
     recent,
   } satisfies HealthSummary["sessions"];
-}
-
-async function buildHealthSessionSummary(
-  storePath: string,
-  agentId?: string,
-  projection?: SessionRowProjection,
-) {
-  const reader = await createHealthSessionStoreReader(agentId ? [agentId] : [], projection);
-  const store = await reader.read(storePath, agentId);
-  return projectHealthSessions(store.path, store);
 }
 
 /** Shares one bounded session snapshot across every configured agent in this collection. */
@@ -514,13 +505,9 @@ export async function collectGatewayHealthSnapshot(params: {
   const heartbeatSeconds = heartbeatSummaryAgent?.heartbeat.everyMs
     ? Math.round(heartbeatSummaryAgent.heartbeat.everyMs / 1000)
     : 0;
-  const sessions =
-    summaryAgent?.sessions ??
-    (await buildHealthSessionSummary(
-      resolveSessionStorePathCore(cfg.session?.store, { agentId: summaryAgent?.agentId }),
-      summaryAgent?.agentId,
-      params.sessionRowProjection,
-    ));
+  // An explicitly empty roster has no session-store owner. Never resolve a
+  // per-agent path without one; configured agents were already read above.
+  const sessions = summaryAgent?.sessions ?? { path: "", count: 0, recent: [] };
 
   const includeSensitive = params.audience === "admin";
   const channels: Record<string, ChannelHealthSummary> = {};

@@ -1,6 +1,6 @@
 import { parseProviderModelRef } from "@branch/model-catalog-core/model-catalog-refs";
 import { findNormalizedProviderKey } from "@branch/model-catalog-core/provider-id";
-import { toAgentEntriesRecord } from "../agents/agent-scope-config.js";
+import { hasAgentRosterProperty, toAgentEntriesRecord } from "../agents/agent-scope-config.js";
 import type { AuthProfileCredential } from "../agents/auth-profiles/types.js";
 import { mergeAgentModelEntryForConfig } from "../config/model-input.js";
 import { materializeModelPolicyAllowlist } from "../config/model-policy-allowlist-migration.js";
@@ -49,6 +49,17 @@ function applySystemAgentModelSelectionWithModules(
     throw new Error(`Could not resolve configured agent "${params.targetAgentId}".`);
   }
   const targetAgentId = normalizedTarget?.value;
+  // Fresh explicit profiles still have an implicit owner until onboarding
+  // authors a roster. Register it when selecting a model so setup, imported
+  // credentials, and subsequent verification share a configured agent.
+  const implicitAgentId = targetAgentId ?? agentScope.resolveAmbientOwnerAgentId(nextConfig);
+  if (
+    (targetAgentId || nextConfig.agents?.ownership === "explicit") &&
+    !hasAgentRosterProperty(nextConfig) &&
+    agentScope.listAgentIds(nextConfig).includes(implicitAgentId)
+  ) {
+    nextConfig.agents = { ...nextConfig.agents, entries: { [implicitAgentId]: {} } };
+  }
   const agentId = agentScope.resolveAmbientOwnerAgentId(nextConfig, targetAgentId);
   const roster = agentScope.listAgentEntries(nextConfig);
   if (targetAgentId && !roster.some((entry) => normalizeAgentId(entry.id) === targetAgentId)) {
