@@ -11,6 +11,7 @@ import "./status.css";
 import { shownWhy } from "./shown-why";
 import { branchVersionDetail, branchVersionLabel, isNewerBranchVersion } from "../connect/branch-version";
 import { installOnComputer } from "../connect/desktop-component-updates";
+import { gigabytes, memoryTone, type MemoryTone } from "./memory-tone";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
 type Base = { above: Above; onClose: () => void };
@@ -222,6 +223,42 @@ export function RoomPopover({ request, row, level, onTidy, ...base }: RoomProps)
       <hr className="msep" />
       <Item icon="spark" label={used >= 90 ? "Tidy up this conversation · recommended" : "Tidy up this conversation"} testid="room-tidy" onClick={() => onTidy(false)} />
       {level !== "regular" ? <Item icon="book" label="Keep only the last 400 lines…" testid="room-keep400" onClick={() => onTidy(true)} /> : null}
+    </Popover>
+  );
+}
+
+type MemoryProps = Base & { request: Request; working: { key: string; title: string }[]; onStop: () => void };
+
+/** This computer's memory from system.info: total and free, which Trunks are running, and one action that asks first. */
+const readMemory = (r: unknown): { used: number; total: number } | null => {
+  const x = rec(r);
+  const total = typeof x.memoryTotalBytes === "number" ? x.memoryTotalBytes : null;
+  const free = typeof x.memoryFreeBytes === "number" ? x.memoryFreeBytes : null;
+  return total && free !== null ? { used: total - free, total } : null;
+};
+
+const MEMORY_COPY: Record<MemoryTone, string> = {
+  ok: "Plenty free. Nothing needs doing.",
+  warn: "Getting tight. Stopping running work frees memory. Nothing is deleted.",
+  bad: "Nearly full. Stop running work to free memory. Nothing is deleted.",
+};
+
+export function MemoryPopover({ request, working, onStop, ...base }: MemoryProps) {
+  const memory = useRead(request, "system.info", {}, readMemory);
+  const figures = memory.data;
+  const tone = figures ? memoryTone(figures.used, figures.total) : "ok";
+  return (
+    <Popover at={{ x: 0, y: 0 }} label="Memory" testid="pop-memory" className="sp" {...base}>
+      <div className="pt sp-title"><span>Memory</span><small>{figures ? `${gigabytes(figures.used)} of ${gigabytes(figures.total)} GB in use` : "Not measured"}</small></div>
+      {figures ? <div className="mem-meter" aria-hidden="true"><span className={`mem-meter-fill tone-${tone}`} style={{ width: `${Math.round((figures.used / figures.total) * 100)}%` }} /></div> : null}
+      <p className="pp">{figures ? MEMORY_COPY[tone] : "The engine hasn't reported memory yet."}</p>
+      <p className="pp">{working.length ? `Running now: ${working.map((w) => w.title).join(", ")}` : "Nothing is running right now."}</p>
+      {working.length && tone !== "ok" ? (
+        <>
+          <hr className="msep" />
+          <Item icon="pause" label={working.length === 1 ? "Stop the running work in 1 Trunk…" : `Stop the running work in ${working.length} Trunks…`} testid="memory-stop" onClick={onStop} />
+        </>
+      ) : null}
     </Popover>
   );
 }

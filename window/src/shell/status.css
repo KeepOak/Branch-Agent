@@ -386,6 +386,12 @@
 .r618-pick:hover { background: var(--fill); }
 .r618-pick small { color: var(--ink-3); }
 
+/* Memory popover: the share in use, coloured by tone (ok, warn, bad). */
+.mem-meter { width: 100%; height: 6px; border-radius: 3px; background: var(--line-2); overflow: hidden; margin: 6px 0 4px; }
+.mem-meter-fill { display: block; height: 100%; border-radius: 3px; background: var(--ok); }
+.mem-meter-fill.tone-warn { background: var(--warn); }
+.mem-meter-fill.tone-bad { background: var(--bad); }
+
 /* Context room left: a labelled bar that drains as the conversation fills (replaces the battery glyph). */
 .sb-room { gap: 6px; }
 .ctx-meter { display: inline-block; width: 40px; height: 6px; border-radius: 3px; background: var(--line-2); overflow: hidden; }

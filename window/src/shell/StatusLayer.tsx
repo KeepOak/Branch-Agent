@@ -8,7 +8,7 @@ import { Dialog } from "./Dialog";
 import { notify } from "./notify";
 import type { Above } from "./Popover";
 import type { StatusItem } from "./StatusBar";
-import { GatewayPopover, RoomPopover, RunningPopover, UsagePopover, VersionPopover } from "./StatusPopovers";
+import { GatewayPopover, MemoryPopover, RoomPopover, RunningPopover, UsagePopover, VersionPopover } from "./StatusPopovers";
 import type { Limits, UpdateInfo } from "./status-data";
 import type { GatewayFacts } from "./use-status";
 import { componentDesktop, stageWindowUpdate } from "../connect/desktop-component-updates";
@@ -23,7 +23,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 /** Gateway, usage and version popovers align to the item's right edge; the rest to its left (§4.9.1 rule 6). */
 export function statusAnchor(e: MouseEvent<HTMLElement>, item: StatusItem): Above {
   const r = e.currentTarget.getBoundingClientRect();
-  const right = item === "gateway" || item === "usage" || item === "version";
+  const right = item === "gateway" || item === "usage" || item === "version" || item === "memory";
   return { left: r.left, right: r.right, top: r.top, align: right ? "right" : "left" };
 }
 
@@ -159,6 +159,29 @@ export function prepareBackground(ctx: Pick<StatusContext, "session" | "openRow"
   ctx.openConversation(key);
 }
 
+/** Confirms "Stop running work…" from the memory popover. Stopping ends the replies in progress; nothing is deleted. */
+export function StopWorkDialog({ count, onCancel, onStop }: { count: number; onCancel: () => void; onStop: () => void }) {
+  return (
+    <Dialog
+      title={count === 1 ? "Stop the running work?" : `Stop the running work in ${count} Trunks?`}
+      onClose={onCancel}
+      testid="memory-stop-dialog"
+      footer={
+        <>
+          <button type="button" className="btn ghost" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" className="btn primary" data-testid="memory-stop-yes" onClick={onStop}>
+            Stop running work
+          </button>
+        </>
+      }
+    >
+      <p className="dlg-p">The replies in progress stop now. Nothing is deleted, and you can send the message again.</p>
+    </Dialog>
+  );
+}
+
 export function KeepLastDialog({ onCancel, onKeep }: { onCancel: () => void; onKeep: () => void }) {
   return (
     <Dialog
@@ -186,6 +209,7 @@ export function StatusPopover({ item, above, onClose, ctx }: Props) {
   const desktopUpdate = useDesktopComponentStatus(ctx.session.gatewayUrl);
   const desktopControls = useDesktopControls();
   const [confirm, setConfirm] = useState<Conversation | null>(null);
+  const [stopping, setStopping] = useState(false);
   const level = readLevel();
   const request = useMemo(() => ctx.session.request.bind(ctx.session) as <T = unknown>(m: string, p?: unknown) => Promise<T>, [ctx.session]);
   const base = { above, onClose };
@@ -195,6 +219,12 @@ export function StatusPopover({ item, above, onClose, ctx }: Props) {
   };
   if (confirm) {
     return <KeepLastDialog onCancel={() => setConfirm(null)} onKeep={() => (setConfirm(null), onClose(), void tidy(ctx, confirm, true))} />;
+  }
+  if (stopping) {
+    return <StopWorkDialog count={ctx.working.length} onCancel={() => setStopping(false)} onStop={() => (setStopping(false), onClose(), void pauseAll(ctx))} />;
+  }
+  if (item === "memory") {
+    return <MemoryPopover {...base} request={request} working={ctx.working} onStop={() => setStopping(true)} />;
   }
   if (item === "gateway") {
     return <GatewayPopover {...base} facts={ctx.gateway} level={level} onRestart={close(() => void restart(ctx))} onSettings={close(() => ctx.openSettings("gateway"))} />;
