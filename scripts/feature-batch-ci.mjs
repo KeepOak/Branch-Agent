@@ -113,7 +113,10 @@ async function runFeatureTests(scratch) {
     const browserTests = lane === 'engine' ? tests.filter(file => file.endsWith('.browser.test.ts')) : [];
     const regularTests = tests.filter(file => !browserTests.includes(file));
     if (regularTests.length) {
-      await run(process.execPath, [path.join(root, 'node_modules/vitest/vitest.mjs'),
+      // Engine workers need the repository owner's compiled subprocess graph.
+      const runner = lane === 'engine' ? path.join(engineRoot, 'scripts/run-vitest.mjs')
+        : path.join(root, 'node_modules/vitest/vitest.mjs');
+      await run(process.execPath, [runner,
         'run', '--config', config, ...regularTests], root, env);
     }
     if (browserTests.length) {
