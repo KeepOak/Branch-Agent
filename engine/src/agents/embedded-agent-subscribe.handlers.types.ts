@@ -247,6 +247,7 @@ export type EmbeddedAgentSubscribeState = {
 
 /** Handler context bundling params, mutable state, emitters, and helper hooks. */
 export type EmbeddedAgentSubscribeContext = {
+  runJournal?: import("./run-journal.js").RunJournal;
   params: SubscribeEmbeddedAgentSessionParams;
   state: EmbeddedAgentSubscribeState;
   log: EmbeddedSubscribeLogger;

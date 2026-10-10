@@ -26,6 +26,7 @@ import {
 export const AGENT_SCHEMA_COMPATIBILITY = {
   allowCompatibleAdditiveColumns: true,
   allowedMissingTables: [
+    "run_journal",
     "session_reactions",
     "memory_entry_origins",
     "memory_session_tombstones",
