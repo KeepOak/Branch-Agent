@@ -21,6 +21,21 @@ it("describes each owner as published, failed, stale or pending", () => {
   );
 });
 
+it("does not describe a stale or rebuilding owner as published while its last snapshot exists", () => {
+  const owners = new Map<string, PreparedModelRuntimeOwner>([
+    ["dev", owner("dev", { snapshot: {} as never, needsRefresh: true })],
+    ["maple", owner("builder-maple", { snapshot: {} as never, pending: Promise.resolve() as never })],
+  ]);
+  expect(describePreparedModelRuntimeOwnerStates(owners)).toBe("dev=stale builder-maple=pending");
+});
+
+it("reports an owner with a last snapshot and a refresh error as failed, not published", () => {
+  const owners = new Map<string, PreparedModelRuntimeOwner>([
+    ["dev", owner("dev", { snapshot: {} as never, refreshError: new Error("catalog build failed") })],
+  ]);
+  expect(describePreparedModelRuntimeOwnerStates(owners)).toBe("dev=failed(catalog build failed)");
+});
+
 it("limits the description to the requested publication scope", () => {
   const owners = new Map<string, PreparedModelRuntimeOwner>([
     ["tk", owner("tk", { snapshot: {} as never })],

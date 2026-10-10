@@ -1,5 +1,5 @@
-import type { BranchConfig } from "../../config/types.branch.js";
 import { resolveAgentMaxConcurrent } from "../../config/agent-limits.js";
+import type { BranchConfig } from "../../config/types.branch.js";
 import type { GatewayRecoveryRuntime } from "../../gateway/server-instance-runtime.types.js";
 import { waitForAbortSignal } from "../../infra/abort-signal.js";
 import {
@@ -8,6 +8,7 @@ import {
 } from "../../infra/agent-events.js";
 import { sleepWithAbort } from "../../infra/backoff.js";
 import { runWithGatewayIndependentRootWorkAdmission } from "../../process/gateway-work-admission.js";
+import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
 import { runWithMainSessionRecoveryAdmission } from "./main-session-recovery-admission.js";
 import { createMainSessionRecoveryCapacity } from "./main-session-recovery-capacity.js";
 import { getMainSessionRecoveryRetryCount } from "./main-session-recovery-state.js";
@@ -29,8 +30,18 @@ import {
   recoverStore,
 } from "./main-session-restart-recovery-store.js";
 
-type RecoveryCounts = { started: number; settled: number; failed: number; skipped: number };
+type RecoveryCounts = {
+  started: number;
+  settled: number;
+  failed: number;
+  skipped: number;
+  retryAtMs?: number;
+};
 const PENDING_ADMISSION_POLL_MS = 1_000;
+const retryWaitObservers = resolveGlobalSingleton(
+  Symbol.for("branch.restartRecoveryRetryWaitObservers"),
+  () => new Set<(deadlineAtMs: number) => void>(),
+);
 
 /** Resolves true once none of these agents waits for startup database admission. */
 async function waitForPendingAdmissions(params: {
@@ -38,13 +49,22 @@ async function waitForPendingAdmissions(params: {
   stateDir?: string;
   signal: AbortSignal;
   shouldContinue: () => boolean;
+  deadlineAtMs?: number;
 }): Promise<boolean> {
   try {
     while (
       params.shouldContinue() &&
-      hasPendingRestartRecoveryAdmission(params.agentIds, params.stateDir)
+      hasPendingRestartRecoveryAdmission(params.agentIds, params.stateDir) &&
+      (params.deadlineAtMs === undefined || Date.now() < params.deadlineAtMs)
     ) {
-      await sleepWithAbort(PENDING_ADMISSION_POLL_MS, params.signal, { ref: false });
+      await sleepWithAbort(
+        Math.min(
+          PENDING_ADMISSION_POLL_MS,
+          Math.max(0, (params.deadlineAtMs ?? Infinity) - Date.now()),
+        ),
+        params.signal,
+        { ref: false },
+      );
     }
   } catch (error) {
     if (params.shouldContinue()) {
@@ -104,7 +124,7 @@ export async function recoverRestartAbortedMainSessions(params: {
   recoveryCapacity?: ReturnType<typeof createMainSessionRecoveryCapacity>;
   terminalOnFailure?: boolean;
 }): Promise<RecoveryCounts> {
-  const result = { started: 0, settled: 0, failed: 0, skipped: 0 };
+  const result: RecoveryCounts = { started: 0, settled: 0, failed: 0, skipped: 0 };
   const handledSessionKeys = params.handledSessionKeys ?? new Set<string>();
 
   const targets = await discoverRestartRecoveryStoreTargets({
@@ -134,12 +154,20 @@ export async function recoverRestartAbortedMainSessions(params: {
     result.settled += storeResult.settled;
     result.failed += storeResult.failed;
     result.skipped += storeResult.skipped;
+    if ("retryAtMs" in storeResult && typeof storeResult.retryAtMs === "number") {
+      result.retryAtMs = Math.min(result.retryAtMs ?? Infinity, storeResult.retryAtMs);
+    }
   }
 
   if (result.started > 0 || result.settled > 0 || result.failed > 0) {
     mainSessionRecoveryLog.info(
       `main-session restart recovery startup complete: started=${result.started} settled=${result.settled} failed=${result.failed} skipped=${result.skipped}`,
     );
+  }
+  if (result.retryAtMs !== undefined) {
+    for (const observe of retryWaitObservers) {
+      observe(result.retryAtMs);
+    }
   }
   return result;
 }
@@ -215,6 +243,8 @@ export function scheduleRestartAbortedMainSessionRecoveryAfterOwnerRelease(
     stateDir?: string;
   },
 ): void {
+  const lifecycleGeneration = getAgentEventLifecycleGeneration();
+  const shouldContinue = () => isAgentEventLifecycleGenerationCurrent(lifecycleGeneration);
   const recover = () =>
     runWithGatewayIndependentRootWorkAdmission(async () => {
       const gatewayRuntime = params.getGatewayRuntime();
@@ -231,8 +261,24 @@ export function scheduleRestartAbortedMainSessionRecoveryAfterOwnerRelease(
     initialDelayMs: 0,
     maxRetries: params.maxRetries ?? MAX_RECOVERY_RETRIES,
     retryDelayMs: params.delayMs ?? DEFAULT_RECOVERY_DELAY_MS,
-    shouldContinue: () => true,
+    shouldContinue,
     attempt: async (finalAttempt) => {
+      const waiting = loadExpectedRestartRecoveryTarget({
+        expected: {
+          agentId: params.agentId,
+          sessionId: params.expectedSessionId,
+          sessionKey: params.sessionKey,
+        },
+        storePath: params.storePath,
+      });
+      if (waiting?.restartRecoveryRetryAtMs && waiting.restartRecoveryRetryAtMs > Date.now()) {
+        await sleepWithAbort(waiting.restartRecoveryRetryAtMs - Date.now(), undefined, {
+          ref: false,
+        });
+      }
+      if (!shouldContinue()) {
+        return true;
+      }
       const result = await recover();
       const stillPending = loadExpectedRestartRecoveryTarget({
         expected: {
@@ -370,6 +416,16 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
     }
   };
   let exhaustedTargets = new Map<string, ExhaustedRestartRecoveryTarget>();
+  let retryAtMs: number | undefined;
+  let wake: (() => void) | undefined;
+  const observeRetryWait = (deadlineAtMs: number) => {
+    if (!shouldContinue()) {
+      return;
+    }
+    retryAtMs = Math.min(retryAtMs ?? Infinity, deadlineAtMs);
+    wake?.();
+  };
+  retryWaitObservers.add(observeRetryWait);
   const runRecoveryWave = async (initialDelayMs: number): Promise<void> => {
     await runRecoveryRetries({
       initialDelayMs,
@@ -378,7 +434,13 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
       signal: abortController.signal,
       attempt: async (finalAttempt) => {
         exhaustedTargets = new Map();
+        // The scan replaces the previous timer, but notifications received
+        // while it is in flight must survive its (possibly older) result.
+        retryAtMs = undefined;
         const result = await runRecoveryAttempt(exhaustedTargets, finalAttempt);
+        if (result.retryAtMs !== undefined) {
+          retryAtMs = Math.min(retryAtMs ?? Infinity, result.retryAtMs);
+        }
         if (result.failed === 0) {
           return true;
         }
@@ -402,20 +464,47 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
       await Promise.race([params.waitForStart(), waitForAbortSignal(abortController.signal)]);
     }
     await runRecoveryWave(params.delayMs ?? DEFAULT_RECOVERY_DELAY_MS);
+    // Waiting is outside root admission, so neither a distant retry nor another update waits for it.
     // Rescan each agent once its startup admission settles; otherwise its
     // interrupted runs stay "running" with nothing left to resume them.
-    while (shouldContinue() && pendingAdmissionAgentIds.size > 0) {
-      const agentIds = [...pendingAdmissionAgentIds];
-      pendingAdmissionAgentIds.clear();
-      const admitted = await waitForPendingAdmissions({
-        agentIds,
-        stateDir: params.stateDir,
-        signal: abortController.signal,
-        shouldContinue,
+    while (shouldContinue()) {
+      // The predecessor can reach a retry after startup recovery has finished.
+      // Lease-release recovery publishes its deadline here without holding a root.
+      const changed = new Promise<void>((resolve) => {
+        wake = resolve;
       });
-      if (!admitted) {
+      const waitController = new AbortController();
+      const waitSignal = AbortSignal.any([abortController.signal, waitController.signal]);
+      let waiting: Promise<unknown>;
+      if (pendingAdmissionAgentIds.size > 0) {
+        waiting = waitForPendingAdmissions({
+          agentIds: [...pendingAdmissionAgentIds],
+          stateDir: params.stateDir,
+          signal: waitSignal,
+          shouldContinue: () => shouldContinue() && !waitSignal.aborted,
+          deadlineAtMs: retryAtMs,
+        });
+      } else if (retryAtMs !== undefined) {
+        waiting = sleepWithAbort(Math.max(0, retryAtMs - Date.now()), waitSignal, { ref: false });
+      } else {
+        waiting = changed;
+      }
+      try {
+        await Promise.race([waiting, changed]);
+      } catch (error) {
+        if (shouldContinue()) {
+          throw error;
+        }
+        return;
+      } finally {
+        wake = undefined;
+        waitController.abort();
+        await waiting.catch(() => {});
+      }
+      if (!shouldContinue()) {
         return;
       }
+      pendingAdmissionAgentIds.clear();
       await runRecoveryWave(0);
     }
   });
@@ -424,6 +513,8 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
       // Restart recovery belongs to its startup generation; stale timers must
       // never claim a session after that gateway begins draining.
       abortController.abort();
+      retryWaitObservers.delete(observeRetryWait);
+      wake?.();
       await run;
     },
   };
