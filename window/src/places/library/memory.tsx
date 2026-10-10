@@ -8,12 +8,11 @@ import { shows, type Level } from "../../places-nav/level";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { Menu, type MenuAnchor, type MenuItem } from "../../shell/Menu";
 import { errorText, num, optStr, rec, recs, str, useOperation, useResource, type Trunk } from "./data";
-import { configuredLimit, loadedChars, statedDefault, useDailyNotes, withoutFact, type Fact, type MemoryFile } from "./memory-data";
+import { configuredLimit, loadedChars, statedDefault, savedNotes, withoutFact, type Fact, type MemoryFile } from "./memory-data";
 import { AboutYou, HoldForYes, HowItLearns, MemoryHealth, Pinned, statusOf, WhatToRemember, type MemoryStatus } from "./memory-more";
 import { RingsRow } from "./rings";
 import { EmptyIcon, Grey, IcoTile, LibIcon, plural, Row } from "./parts";
 import { FileDialog } from "./reader";
-import { shownWhy } from "../../shell/shown-why";
 
 export const TIDY_REASON = "Needs the engine’s memory tidy-up method.";
 
@@ -68,21 +67,22 @@ function MemoryCard({ engine, level, files, scope, status, check }: CardProps) {
   const lookup = useResource<unknown>(engine, config.data && own === null ? "config.schema.lookup" : null, { path: "agents.defaults.bootstrapMaxChars" });
   const limit = own ?? (lookup.data ? statedDefault(lookup.data) : null);
   const menu = useMenu();
-  const notes = useDailyNotes(engine, files?.map(f => f.agentId) ?? []);
   if (!files) return <div className="lib-card" role="status"><p className="lib-hint">Loading…</p></div>;
-  const failed = files.filter(f => f.error);
+  const failed = files.filter(f => f.error || f.notesError);
+  const notes = files.reduce((n, f) => n + savedNotes(f).length, 0);
   const count = files.reduce((n, f) => n + f.facts.length, 0);
   const loaded = loadedChars(files, limit);
   const sizes = new Set(files.map(f => (f.file?.content ?? "").length));
   const fmt = (n: number) => new Intl.NumberFormat().format(n);
   const line = `${sizes.size > 1 ? "Up to " : ""}${fmt(loaded)}${limit ? ` of ${fmt(limit)}` : ""} characters load at the start of each conversation.`;
+  const summary = [count ? plural(count, "memory", "memories") : "", notes ? plural(notes, "saved note", "saved notes") : ""].filter(Boolean).join(" · ") || "No saved memory notes";
   const s = status.data;
   return <div className="lib-card" data-testid="memory-card">
     <Ring part={loaded} whole={limit} label={line} />
     <div className="lib-grow">
-      <b>{status.error ? "Memory needs attention" : plural(count, "memory", "memories") + (notes ? ` · ${plural(notes, "daily note", "daily notes")}` : "")}</b>
-      <p>{status.error ? status.error : line}</p>
-      {failed.filter(f => shownWhy(f.error)).map(f => <p key={f.agentId} className="lib-bad" role="alert">{f.trunk}: {f.error}</p>)}
+      <b>{status.error || failed.length ? "Memory needs attention" : summary}</b>
+      <p>{status.error ? status.error : failed.length ? "Some memory could not be read. Counts may be incomplete." : !loaded && notes ? "Saved notes are kept separately from the memory loaded at conversation start." : line}</p>
+      {failed.map(f => <p key={f.agentId} className="lib-bad" role="alert">{f.trunk}: {f.error || f.notesError}</p>)}
       {shows(level, "advanced") && s && !status.error && <small className="lib-third">{engineName(s.provider)} · {s.embedding.ok ? "searches by meaning and words" : "searches by words only"}</small>}
     </div>
     <span className="lib-card-acts">
@@ -163,9 +163,11 @@ function SearchResults({ engine, result, clear }: SearchProps & { result: { q: s
 
 function FactList({ engine, files, reloadFiles }: SearchProps) {
   const op = useOperation(engine);
+  const [open, setOpen] = useState<{ agentId: string; path: string } | null>(null);
   if (!files) return null;
   const facts = files.flatMap(f => f.facts.map(fact => ({ fact, file: f })));
-  if (!facts.length) return <EmptyLine icon={<EmptyIcon name="book" />}>Nothing remembered yet. Trunks write down what is worth keeping as they work, and anything you ask them to remember.</EmptyLine>;
+  const notes = files.flatMap(f => savedNotes(f).map(note => ({ note, file: f })));
+  if (!facts.length && !notes.length && !files.some(f => f.error || f.notesError)) return <EmptyLine icon={<EmptyIcon name="book" />}>Nothing remembered yet. Trunks write down what is worth keeping as they work, and anything you ask them to remember.</EmptyLine>;
   const forget = (fact: Fact, file: MemoryFile) => {
     if (!file.file?.hash) return;
     void op.run("agents.files.set", { agentId: fact.agentId, name: "MEMORY.md", content: withoutFact(file.file.content ?? "", fact), expectedHash: file.file.hash }, reloadFiles);
@@ -176,6 +178,10 @@ function FactList({ engine, files, reloadFiles }: SearchProps) {
       {facts.map(({ fact, file }) => <Row key={fact.agentId + ":" + fact.start} icon="star" title={fact.text} line={`${fact.trunk} · ${fact.detail.replace(/^\((.*)\)$/, "$1") || "from MEMORY.md"}`}>
         <button type="button" className="btn ghost sm" disabled={op.busy || !file.file?.hash} title={file.file?.hash ? undefined : "The engine did not give this file’s revision, so it can’t be changed safely."} onClick={() => forget(fact, file)}>Forget</button>
       </Row>)}
+      {notes.map(({ note, file }) => <Row key={file.agentId + ":" + note.path} icon="book" title={note.name} line={`${file.trunk} · ${note.path}`}>
+        <button type="button" className="btn ghost sm" onClick={() => setOpen({ agentId: file.agentId, path: note.path })}>Open</button>
+      </Row>)}
     </div>
+    {open && <FileDialog engine={engine} agentId={open.agentId} path={open.path} onClose={() => setOpen(null)} />}
   </>;
 }

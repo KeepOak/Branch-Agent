@@ -8,7 +8,7 @@ import type { FileEntry } from "./data";
 import { mapLimited } from "./parts";
 
 export type Fact = { agentId: string; trunk: string; text: string; detail: string; start: number; end: number };
-export type MemoryFile = { agentId: string; trunk: string; file: FileEntry | null; error: string | null; facts: Fact[] };
+export type MemoryFile = { agentId: string; trunk: string; file: FileEntry | null; error: string | null; facts: Fact[]; notes?: FileEntry[]; notesError?: string | null };
 
 const BULLET = /^[-*+]\s+(.*\S)\s*$/;
 
@@ -45,11 +45,16 @@ export function useMemoryFiles(engine: WindowEngine, trunks: Trunk[] | null) {
     let current = true;
     void mapLimited(trunks, 4, async (t): Promise<MemoryFile> => {
       const trunk = trunkName(t);
+      let notes: FileEntry[] = [];
+      let notesError: string | null = null;
+      try { notes = await listMemoryNotes(engine, t.id); }
+      catch (error) { notesError = errorText(error); }
+      const saved = { notes, notesError };
       try {
         const file = fileOf(await engine.request<unknown>("agents.files.get", { agentId: t.id, name: "MEMORY.md" }));
-        if (!file) return { agentId: t.id, trunk, file: null, error: "The engine did not return this Trunk’s MEMORY.md.", facts: [] };
-        return { agentId: t.id, trunk, file, error: null, facts: file.missing ? [] : parseFacts(file.content ?? "", t.id, trunk) };
-      } catch (error) { return { agentId: t.id, trunk, file: null, error: errorText(error), facts: [] }; }
+        if (!file) return { ...saved, agentId: t.id, trunk, file: null, error: "The engine did not return this Trunk’s MEMORY.md.", facts: [] };
+        return { ...saved, agentId: t.id, trunk, file, error: null, facts: file.missing ? [] : parseFacts(file.content ?? "", t.id, trunk) };
+      } catch (error) { return { ...saved, agentId: t.id, trunk, file: null, error: errorText(error), facts: [] }; }
     }).then(list => { if (current) setFiles(list); });
     return () => { current = false; };
   }, [engine, ids, revision]);
@@ -83,17 +88,40 @@ export function loadedChars(files: MemoryFile[], limit: number | null): number {
   }, 0);
 }
 
-/** Daily notes (memory/YYYY-MM-DD*.md) across the scoped Trunks; null until every folder answered. */
-export function useDailyNotes(engine: WindowEngine, agentIds: string[]) {
-  const [count, setCount] = useState<number | null>(null);
-  const key = agentIds.join("\n");
-  useEffect(() => {
-    let current = true;
-    setCount(null);
-    void Promise.all(key.split("\n").filter(Boolean).map(agentId => engine.request<unknown>("agents.workspace.list", { agentId, path: "memory" })
-      .then(r => entriesOf(r).filter(e => e.kind !== "directory" && /^\d{4}-\d{2}-\d{2}.*\.md$/.test(e.name)).length)))
-      .then(counts => { if (current) setCount(counts.reduce((a, b) => a + b, 0)); }, () => { if (current) setCount(null); });
-    return () => { current = false; };
-  }, [engine, key]);
-  return count;
+/** Saved Markdown notes, including named notes and nested folders, not just dated diaries.
+ * Read metadata only; contents are fetched when a person opens a note. */
+export async function listMemoryNotes(engine: WindowEngine, agentId: string): Promise<FileEntry[]> {
+  const notes: FileEntry[] = [];
+  const folders = ["memory"];
+  const visited = new Set<string>();
+  while (folders.length) {
+    const path = folders.shift()!;
+    if (visited.has(path)) continue;
+    visited.add(path);
+    let offset = 0;
+    while (true) {
+      let result: unknown;
+      try { result = await engine.request<unknown>("agents.workspace.list", { agentId, path, offset, limit: 250 }); }
+      catch (error) {
+        if (path === "memory" && rec(rec(error).details).type === "workspace_path_not_found") break;
+        throw error;
+      }
+      const entries = entriesOf(result);
+      for (const entry of entries) {
+        if (entry.kind === "directory") folders.push(entry.path);
+        else if (/\.md$/i.test(entry.name)) notes.push(entry);
+      }
+      offset += entries.length;
+      const total = rec(result).totalEntries;
+      if (typeof total !== "number" || offset >= total) break;
+      if (!entries.length) throw new Error("The engine returned an incomplete memory note list.");
+    }
+  }
+  return notes.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/** Root prose remains readable even when it contains no bullet-shaped facts. */
+export function savedNotes(file: MemoryFile): FileEntry[] {
+  return [...(file.file && !file.file.missing && file.file.content?.trim() && !file.facts.length
+    ? [{ ...file.file, path: "MEMORY.md" }] : []), ...(file.notes ?? [])];
 }

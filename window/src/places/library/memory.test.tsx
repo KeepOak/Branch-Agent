@@ -7,7 +7,7 @@ import type { WindowEngine } from "../../connect/engine";
 import type { Level } from "../../places-nav/level";
 import { LibraryPlace } from "./index";
 import { USER_TEMPLATE } from "./memory-about.test";
-import { configuredLimit, parseFacts, statedDefault, withoutFact } from "./memory-data";
+import { configuredLimit, listMemoryNotes, parseFacts, statedDefault, withoutFact } from "./memory-data";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let root: Root | null = null;
@@ -50,6 +50,23 @@ function base(extra: Handler = () => undefined): Handler {
 }
 
 describe("memory file handling", () => {
+  it("lists nested Markdown notes across every page without loading contents", async () => {
+    const { engine, request } = engineOf((method, p) => {
+      expect(method).toBe("agents.workspace.list");
+      if (p.path === "memory/projects") return { entries: [{ name: "plan.MD", path: "memory/projects/plan.MD", kind: "file" }], totalEntries: 1 };
+      if (p.offset === 0) return { entries: [{ name: "projects", path: "memory/projects", kind: "directory" }], totalEntries: 3 };
+      return { entries: [{ name: "notes.md", path: "memory/notes.md", kind: "file" }, { name: "index.json", path: "memory/index.json", kind: "file" }], totalEntries: 3 };
+    });
+    expect((await listMemoryNotes(engine, "a")).map(n => n.path)).toEqual(["memory/notes.md", "memory/projects/plan.MD"]);
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(request).toHaveBeenCalledWith("agents.workspace.list", { agentId: "a", path: "memory", offset: 1, limit: 250 });
+  });
+  it("treats an absent memory folder as empty but propagates access failures", async () => {
+    const missing = Object.assign(new Error("workspace directory not found"), { details: { type: "workspace_path_not_found" } });
+    await expect(listMemoryNotes(engineOf(() => missing).engine, "a")).resolves.toEqual([]);
+    await expect(listMemoryNotes(engineOf(() => new Error("Access denied")).engine, "a")).rejects.toThrow("Access denied");
+  });
+
   it("reads each top-level bullet as one memory with its indented lines", () => {
     const facts = parseFacts(MEMORY, "a", "Birch");
     expect(facts.map(f => [f.text, f.detail, f.start, f.end])).toEqual([["Sam prefers an aisle seat.", "(yesterday)", 2, 4], ["Archive means Downloads/Archive", "", 4, 5]]);
@@ -70,6 +87,58 @@ describe("memory file handling", () => {
 });
 
 describe("Library › Memory", () => {
+  it("keeps saved-note counts scoped and refreshes them after memory changes", async () => {
+    let changed: ((event: { event: string }) => void) | undefined;
+    let saved = false;
+    const { engine } = engineOf(base((m, p) => {
+      if (m === "agents.files.get") return { file: { name: String(p.name), missing: true } };
+      if (m === "agents.workspace.list") return { entries: saved && p.agentId === "a" ? [{ name: "decision.md", path: "memory/decision.md", kind: "file" }] : [] };
+    }));
+    engine.onEvent = (handler) => { changed = handler; return () => {}; };
+    await mount(engine);
+    expect(host.textContent).toContain("Nothing remembered yet.");
+    saved = true;
+    await act(async () => { changed?.({ event: "memory.changed" }); });
+    expect(host.querySelector('[data-testid="memory-card"]')!.textContent).toContain("1 saved note");
+    await click("Every Trunk"); await click("Rowan");
+    expect(host.querySelector('[data-testid="memory-card"]')!.textContent).toContain("No saved memory notes");
+    expect(host.textContent).not.toContain("decision.md");
+  });
+  it("keeps prose-only root memory readable instead of reporting nothing remembered", async () => {
+    const { engine } = engineOf(base((m, p) => {
+      if (m === "agents.workspace.list") return { entries: [] };
+      if (m === "agents.files.get" && p.name === "MEMORY.md") return { file: { name: "MEMORY.md", content: "Project milestones belong in the shared calendar." } };
+    }));
+    await mount(engine);
+    expect(host.querySelector('[data-testid="memory-card"]')!.textContent).toContain("2 saved notes");
+    expect(host.textContent).not.toContain("Nothing remembered yet.");
+  });
+
+  it("shows and opens saved non-daily notes when MEMORY.md is absent (LI1)", async () => {
+    const { engine, request } = engineOf(base((m, p) => {
+      if (m === "agents.files.get") return { file: { name: String(p.name), missing: true } };
+      if (m === "agents.workspace.list") return { entries: p.agentId === "a" ? [{ name: "decisions.md", path: "memory/decisions.md", kind: "file" }] : [], totalEntries: p.agentId === "a" ? 1 : 0 };
+      if (m === "agents.workspace.get") return { file: { name: "decisions.md", content: "Keep the project milestones in the shared calendar." } };
+    }));
+    await mount(engine);
+    expect(host.querySelector('[data-testid="memory-card"]')!.textContent).toContain("1 saved note");
+    expect(host.textContent).not.toContain("0 memories");
+    expect(host.textContent).not.toContain("Nothing remembered yet.");
+    await click("Open");
+    expect(request).toHaveBeenCalledWith("agents.workspace.get", { agentId: "a", path: "memory/decisions.md" });
+    expect(host.querySelector('[data-testid="file-dialog"]')!.textContent).toContain("shared calendar");
+  });
+  it("does not report empty memory when saved notes could not be read (LI1)", async () => {
+    const { engine } = engineOf(base((m, p) => {
+      if (m === "agents.files.get") return { file: { name: String(p.name), missing: true } };
+      if (m === "agents.workspace.list") return new Error("Notes unavailable");
+    }));
+    await mount(engine);
+    expect(host.textContent).toContain("Notes unavailable");
+    expect(host.textContent).not.toContain("Nothing remembered yet.");
+    expect(host.querySelector('[data-testid="memory-card"]')!.textContent).not.toContain("0 memories");
+  });
+
   it("exports the selected Trunk's memory as a Markdown download with each file heading", async () => {
     const make = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:memory");
     const drop = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
@@ -99,9 +168,9 @@ describe("Library › Memory", () => {
     const { engine, request } = engineOf(base());
     await mount(engine);
     const card = host.querySelector('[data-testid="memory-card"]')!;
-    expect(card.textContent).toContain("2 memories · 4 daily notes");
+    expect(card.textContent).toContain("2 memories · 4 saved notes");
     expect(card.textContent).toContain(`Up to ${MEMORY.length} of 12,000 characters load at the start of each conversation.`);
-    expect(host.querySelector('[role=tab][aria-selected=true]')!.textContent).toBe("Memory2");
+    expect(host.querySelector('[role=tab][aria-selected=true]')!.textContent).toBe("Memory6");
     expect(request).toHaveBeenCalledWith("agents.files.get", { agentId: "b", name: "MEMORY.md" });
     expect(request).not.toHaveBeenCalledWith("config.schema.lookup", expect.anything());
   });
@@ -196,7 +265,7 @@ describe("Library › Memory", () => {
     expect(request).toHaveBeenCalledWith("memory.sessionBackfill.rollback", { agentId: "a" });
   });
   it("greys the head controls with their reasons and shows an empty line when nothing is remembered", async () => {
-    const { engine } = engineOf(base((m, p) => m === "agents.files.get" ? { file: { name: String(p.name), missing: true } } : undefined));
+    const { engine } = engineOf(base((m, p) => m === "agents.files.get" ? { file: { name: String(p.name), missing: true } } : m === "agents.workspace.list" ? { entries: [] } : undefined));
     await mount(engine);
     for (const label of ["Clearing", "Translate a document…", "Make pictures…"]) expect(button(label)!.disabled).toBe(true);
     expect(button("Clearing")!.title).toBe("");
