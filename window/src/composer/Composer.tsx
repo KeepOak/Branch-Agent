@@ -1,7 +1,7 @@
 // The composer (DESIGN-SPEC §4.3): the message box, +, the plug, the model and mode chips, voice and Send/Stop,
 // the dock row above it and the menus, all wired to the engine through the shared handle (connect/engine.ts).
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
-import { engineInvocation, invocationName } from "../display-names";
+import { engineInvocation, skillPickText } from "../display-names";
 import { PASTED_TEXT_CHIP_CHARS } from "./attachments";
 import { isPreparationPending, preparationLabel } from "../connect/preparation-status";
 import { DockRow, type Goal } from "./DockRow";
@@ -277,7 +277,7 @@ export function Composer(props: Props) {
     let next: { text: string; caret: number };
     if (p.kind === "command") next = { text: `/${p.command.name} `, caret: p.command.name.length + 2 };
     else if (p.kind === "choice") next = { text: `/${p.command.name} ${p.value}`, caret: p.command.name.length + p.value.length + 2 };
-    else next = replaceToken(draft.text, p.token, p.kind === "skill" ? `/${p.token.start === 0 ? invocationName(p.name) : p.name}` : `@${p.name}`);
+    else next = replaceToken(draft.text, p.token, p.kind === "skill" ? skillPickText(p.name) : `@${p.name}`);
     if (p.kind === "person") draft.addPerson({ profileId: p.profileId, name: p.name });
     draft.setText(next.text);
     setCaret(next.caret);
