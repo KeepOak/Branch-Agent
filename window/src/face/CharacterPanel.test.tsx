@@ -164,7 +164,7 @@ it("remeasures sidebar, focus, and composer changes through observed resizes", a
   nextColumn.getBoundingClientRect = column.getBoundingClientRect;
   nextColumn.querySelector<HTMLElement>(".c-wrap")!.getBoundingClientRect = composer.getBoundingClientRect;
   column.replaceWith(nextColumn);
-  await act(async () => root.render(<CharacterPanel name="Juniper" state="work" onClose={close} column={nextColumn} />));
+  await act(async () => root.render(<CharacterPanel name="Juniper" state="work" onClose={close} onShow={show} onOpenTrunk={openTrunk} onChangePet={changePet} column={nextColumn} />));
   expect(observer.disconnected).toBe(true);
   expect(column.style.getPropertyValue("--agent-window-clearance")).toBe("");
   expect(FakeResizeObserver.instances[1]?.observed).toEqual(new Set([
@@ -180,7 +180,7 @@ it("reattaches clearance when switching between conversations of the same Trunk"
   const panel = host.querySelector<HTMLElement>(".character-panel")!;
   Object.defineProperty(panel, "offsetHeight", { configurable: true, value: 166 });
   oldColumn.replaceWith(newColumn);
-  await act(async () => root.render(<CharacterPanel name="Juniper" state="work" onClose={close} column={newColumn} />));
+  await act(async () => root.render(<CharacterPanel name="Juniper" state="work" onClose={close} onShow={show} onOpenTrunk={openTrunk} onChangePet={changePet} column={newColumn} />));
   expect(host.querySelector(".character-panel")).toBe(panel);
   expect(oldColumn.style.getPropertyValue("--agent-window-clearance")).toBe("");
   expect(newColumn.style.getPropertyValue("--agent-window-clearance")).toBe("190px");
@@ -188,11 +188,11 @@ it("reattaches clearance when switching between conversations of the same Trunk"
 
 it("attaches clearance after starting a new conversation and sending", async () => {
   const column = document.querySelector<HTMLElement>(".conversation-column")!;
-  await act(async () => root.render(<CharacterPanel name="Juniper" state="idle" onClose={close} column={null} />));
+  await act(async () => root.render(<CharacterPanel name="Juniper" state="idle" onClose={close} onShow={show} onOpenTrunk={openTrunk} onChangePet={changePet} column={null} />));
   expect(column.style.getPropertyValue("--agent-window-clearance")).toBe("");
   const panel = host.querySelector<HTMLElement>(".character-panel")!;
   Object.defineProperty(panel, "offsetHeight", { configurable: true, value: 166 });
-  await act(async () => root.render(<CharacterPanel name="Juniper" state="work" onClose={close} column={column} />));
+  await act(async () => root.render(<CharacterPanel name="Juniper" state="work" onClose={close} onShow={show} onOpenTrunk={openTrunk} onChangePet={changePet} column={column} />));
   expect(column.style.getPropertyValue("--agent-window-clearance")).toBe("190px");
 });
 
