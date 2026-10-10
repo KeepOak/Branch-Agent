@@ -16,7 +16,7 @@ export type NotifyPrefs = { categories: Record<CategoryKey, boolean>; detailLeve
 
 /** The engine's own defaults (DEFAULT_WEB_PUSH_NOTIFICATION_PREFERENCES). */
 export const DEFAULT_PREFS: NotifyPrefs = {
-  categories: { approvalRequested: true, agentFinished: false, agentQuestion: false, humanMentioned: false, scheduledTaskFailed: false },
+  categories: { approvalRequested: true, agentFinished: true, agentQuestion: true, humanMentioned: true, scheduledTaskFailed: true },
   detailLevel: "private",
   quietHours: { enabled: false, startMinute: 22 * 60, endMinute: 7 * 60, timeZone: "UTC" },
   agentIds: [],

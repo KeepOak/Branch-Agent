@@ -46,6 +46,15 @@ describe("Settings › Notifications", () => {
     expect(host.querySelector(".status b")?.textContent).toMatch(/^(Quiet is on now|Quiet hours are 10 PM to 7 AM)$/);
   });
 
+  it("with nothing saved yet, every useful notification is on", async () => {
+    const { engine } = engineOf({ "users.prefs.get": { status: "ok", entries: {} } });
+    await render(engine);
+    for (const label of ["A Trunk needs a yes", "A Trunk asks you something", "A long task finishes", "An automation fails", "Someone mentions you"]) {
+      expect(sw(label).checked, label).toBe(true);
+    }
+    expect(host.textContent).not.toContain("Off until you turn it on");
+  });
+
   it("a switch saves the whole normalised object, guarded by the last saved value", async () => {
     const { engine, request } = engineOf();
     await render(engine);
