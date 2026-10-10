@@ -91,12 +91,12 @@ describe("Settings › Developer", () => {
     expect(patches(request)).toContainEqual({ tools: { codeMode: { enabled: true, executor: "quickjs" } } });
   });
 
-  it("greys rows the engine has nothing for, without the developer note", async () => {
+  it("greys rows the engine has nothing for, with a plain reason instead of the developer note", async () => {
     const { engine } = engineWith(CONFIG());
     await show(engine);
     const r = row("Use language servers");
     expect(r?.getAttribute("aria-disabled")).toBe("true"); expect(r?.querySelector(".right")?.hasAttribute("inert")).toBe(true);
-    expect(r?.textContent).not.toContain("Needs the engine"); expect(r?.querySelector(".why-k")).toBeNull();
+    expect(r?.textContent).not.toContain("Needs the engine"); expect(r?.querySelector(".why-k")?.textContent).toBe("Branch can’t change this yet.");
     expect(visibleDevNotes(document.body)).toEqual([]);
     expect(row("Look at a project’s code")?.textContent).toContain("no code map yet");
   });

@@ -60,13 +60,13 @@ describe("Settings › Computer & browser, below Which Trunk uses which", () => 
     expect(sec("Lent computer, technical")).not.toBeNull();
   });
 
-  it("greys a row the engine can't back yet, without its developer note", async () => {
+  it("greys a row the engine can't back yet, with a plain reason instead of its developer note", async () => {
     const { engine } = engineWith(CONFIG);
     await show(engine, "regular");
     const r = row("Ask before a site it hasn’t visited");
     expect(r?.getAttribute("aria-disabled")).toBe("true"); expect(r?.classList.contains("off-k")).toBe(true);
     expect(r?.querySelector(".right")?.hasAttribute("inert")).toBe(true); expect(r?.querySelector<HTMLInputElement>("input[role=switch]")?.disabled).toBe(true);
-    expect(r?.textContent).toContain("You say yes once per site."); expect(r?.querySelector(".why-k")).toBeNull();
+    expect(r?.textContent).toContain("You say yes once per site."); expect(r?.querySelector(".why-k")?.textContent).toBe("Branch can’t change this yet.");
     expect(visibleDevNotes(document.body)).toEqual([]);
   });
 

@@ -1,0 +1,4 @@
+window:src/places/settings/desktop-ctl.test.tsx
+window:src/places/settings/kit.locked.test.tsx
+window:src/places/settings/set2/computer-more.test.tsx
+window:src/places/settings/set2/developer.test.tsx

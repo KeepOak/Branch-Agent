@@ -19,7 +19,12 @@
 .set-col .ctl:has(> .right .sseg button:nth-child(4)) > .right,
 .set-col .ctl:has(> .right textarea) > .right,
 .set-col .ctl:has(> .right .inp.wide-k) > .right { grid-row: auto; grid-column: 1; justify-content: flex-start; margin-top: 8px; }
-.set-col .ctl.off-k { opacity: 0.45; }
+/* A locked row (DA-81): the title and an on switch keep full contrast; other controls and an off switch fade, and the
+   reason under the row is readable text, never faded. */
+.set-col .ctl.off-k > .right > :not(.sw),
+.set-col .ctl.off-k .sw:not(:checked) { opacity: 0.55; }
+.set-col .ctl.off-k .sw { cursor: default; }
+.set-col .ctl.off-k > small { color: var(--ink-2); }
 .set-col .ctl.off-k > b > .pin-k { display: none; }
 /* A pin appears on hover without moving the right-aligned control. */
 .set-col .ctl > b > .pin-k { width: 22px; height: 22px; flex: none; display: inline-grid; place-items: center; margin: 0 0 0 4px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--ink-3); opacity: 0; vertical-align: middle; cursor: pointer; }
@@ -39,7 +44,8 @@
 .set-col .sw::after { content: ""; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--raise); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform 0.15s; }
 .set-col .sw:checked { background: var(--btn); border-color: var(--btn); }
 .set-col .sw:checked::after { transform: translateX(16px); background: var(--on-btn); }
-.set-col .sw:disabled { opacity: 0.5; cursor: default; }
+.set-col .sw:disabled { cursor: default; }
+.set-col .sw:disabled:not(:checked) { opacity: 0.55; }
 .set-col .sw:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .set-col .sseg { display: inline-flex; flex-wrap: nowrap; gap: 2px; padding: 2px; border-radius: 10px; background: var(--fill); white-space: nowrap; }

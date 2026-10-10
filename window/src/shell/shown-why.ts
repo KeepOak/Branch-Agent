@@ -34,3 +34,12 @@ export function isDevNote(why: string | undefined | null): boolean {
 export function shownWhy(why: string | undefined | null): string | undefined {
   return why && !isDevNote(why) ? why : undefined;
 }
+
+/** What a locked settings row says under itself (DA-81): its own reason, or a plain line in place of a developer note,
+ *  so a greyed control never sits there without saying why. */
+export const LOCKED_UPDATE = "Update Branch to change this.";
+export const LOCKED_YET = "Branch can’t change this yet.";
+export function lockedWhy(why: string | undefined | null): string | undefined {
+  if (!why) return undefined;
+  return shownWhy(why) ?? (/\bNeeds a newer Branch app\b/i.test(why) ? LOCKED_UPDATE : LOCKED_YET);
+}
