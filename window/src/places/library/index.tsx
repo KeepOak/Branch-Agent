@@ -1,5 +1,7 @@
-// Library (DESIGN-SPEC §4.6.4; preview 40-places, 42-placesbp, 93-g3p, 94-g4p, 96-appopsp): the head with Canvas,
+// Library (DESIGN-SPEC §4.6.4; preview 40-places, 42-placesbp, 93-g3p, 94-g4p, 96-appopsp): the head with
 // "Translate a document…" and "Make pictures…", then Memory, Documents, Meetings, Made for you and Logbook.
+// No "Clearing" pill under the heading (DA-42): it told a person nothing. Bring Clearings back here only as a real
+// list once the engine can list them; canvas.document.view opens one only by its id.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { PlaceScroll, type PlaceProps } from "../../places-nav/PlaceFrame";
@@ -15,7 +17,6 @@ import { Status } from "./ui";
 import "./library.css";
 
 export const HEAD_REASONS = {
-  canvas: "Needs an engine method that lists Clearings: canvas.document.view opens one only by its id.",
   translate: "Needs the engine’s document translation method.",
   pictures: "Needs the engine’s picture-making method.",
 };
@@ -63,7 +64,6 @@ export function LibraryPlace({ engine, level, openSettings, openConversation }: 
   const facts = memory.files?.reduce((n, f) => n + f.facts.length, 0);
   return <PlaceScroll><div className="place lib">
     <h1>Library</h1>
-    <Grey label="Clearing" reason={HEAD_REASONS.canvas} className="lib-canvas" />
     <p className="lede">What your Trunks remember, the documents they read, your meetings, and everything they made.</p>
     <div className="lib-head-acts"><Grey label="Translate a document…" reason={HEAD_REASONS.translate} /><Grey label="Make pictures…" reason={HEAD_REASONS.pictures} /></div>
     <div className="lib-body">

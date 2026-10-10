@@ -8,7 +8,7 @@ Statuses: `same` (app matches the preview), `different` (exists but destination 
 
 Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Later-pass interpolated `data-act` keys that are not distinct product destinations are omitted; `scripts/parity/extract-preview-acts.mjs` lists raw act keys.
 
-**379 controls.** Totals: same 263, different 98, missing 5, extra 9, dead 0, unknown 4.
+**379 controls.** Totals: same 263, different 97, missing 6, extra 9, dead 0, unknown 4.
 
 ## Non-`same` entries
 
@@ -181,9 +181,9 @@ Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Lat
 |---|---|---|---|---|
 | `lib-tab-meetings` | Meetings | extra | Not in the early preview library tabs. | Shows Meetings. |
 | `lib-tab-logbook` | Logbook | extra | Not in the early preview library tabs. | Shows Logbook. |
-| `lib-write` | Write a new document | different | Toasts: Opens a blank document a Trunk can help write. | Head actions Canvas / Translate / Make pictures are greyed (engine gaps). No toast-only Write button. |
+| `lib-write` | Write a new document | different | Toasts: Opens a blank document a Trunk can help write. | Head actions Translate / Make pictures are greyed (engine gaps). No Clearing pill and no toast-only Write button. |
 | `lib-open` | Open | different | Toasts: Opens in its own app. | Opens the document when the engine can; not a toast-only stub. |
-| `lib-canvas` | Canvas | different | Later preview Clearings/canvas. | Greyed: needs an engine method that lists Clearings. |
+| `lib-canvas` | Canvas | missing | Later preview Clearings/canvas. | Not shown: a greyed Clearing pill told a person nothing (DA-42). Returns once the engine can list Clearings. |
 
 ### customize
 

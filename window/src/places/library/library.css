@@ -1,6 +1,5 @@
 /* Library (§4.6.4), measured from the preview (42-placesbp.css, 94-g4p.css, 93-g3p.css, 96-appopsp.css). Tokens only. */
 .lib { font-size: 14px; line-height: 1.5; color: var(--ink); }
-.lib .lib-canvas { display: flex; margin: 0; }
 .lib-head-acts { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 10px; }
 .lib-tabs { margin: 18px 0 8px; }
 .lib-tabs .lib-n { margin-left: 4px; font: 600 11px var(--mono); opacity: .6; }
