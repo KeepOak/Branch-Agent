@@ -211,7 +211,11 @@ const JSON_NOT_APPLICABLE = {
   },
   rawArtifacts: {
     reason: "command streams a raw artifact whose bytes are already the machine contract",
-    commands: ["proxy blob"],
+    commands: ["proxy blob", "sessions export"],
+  },
+  humanSummary: {
+    reason: "prints a human summary of recent activity; there is no machine report document",
+    commands: ["sessions recap"],
   },
   shellIntegration: {
     reason: "shell integration output must remain executable shell source",
