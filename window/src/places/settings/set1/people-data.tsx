@@ -5,6 +5,8 @@ import { list, record, visible, type RecordValue } from "../adapter";
 
 /** The engine's owner profile id (gateway-protocol user-profile-constants.ts). */
 export const OWNER_ID = "gateway-owner";
+/** The owner's name before anyone sets one. */
+export const OWNER_DEFAULT_NAME = "Owner";
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
@@ -12,7 +14,7 @@ const num = (v: unknown): number | undefined => (typeof v === "number" && Number
 export type Profile = { id: string; name: string; emails: string[]; role?: string; hasAvatar: boolean; owner: boolean };
 export function profileOf(p: RecordValue): Profile {
   const id = str(p.id);
-  const name = str(p.displayName) || str(record(p.githubIdentity).login) || strs(p.emails)[0] || (id === OWNER_ID ? "Owner" : id);
+  const name = str(p.displayName) || str(record(p.githubIdentity).login) || strs(p.emails)[0] || (id === OWNER_ID ? OWNER_DEFAULT_NAME : id);
   return { id, name, emails: strs(p.emails), role: str(p.role) || undefined, hasAvatar: p.hasAvatar === true, owner: id === OWNER_ID };
 }
 /** Everyone in users.list, merged profiles left out (they live on in the profile they were merged into). */

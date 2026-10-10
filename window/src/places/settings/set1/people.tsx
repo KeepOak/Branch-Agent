@@ -12,7 +12,7 @@ import { GROUPS, ago, connsOf, keptDevices, faceColour, groupOf, initials, lastA
 import { PersonCard } from "./people-card";
 import { InviteDialog } from "../../people/person-dialogs";
 import { usePicture, type Picture } from "./people-mine";
-import { EachPerson, Records, SigningIn } from "./people-more";
+import { EachPerson, Records } from "./people-more";
 import "./people.css";
 
 export type People = {
@@ -41,8 +41,8 @@ export function PeoplePage(props: SettingsPageProps) {
         {sel ? <PersonCard key={sel.id} ctx={ctx} p={sel} /> : null}
       </div>
       <Hint>Separation on one computer, not separate accounts. Each person’s conversations and memory are their own.</Hint>
-      <EachPerson roles={ctx.roles} />
-      {lv >= 1 ? <><Records engine={props.engine} trunks={ctx.trunks} /><SigningIn /></> : null}
+      <EachPerson />
+      {lv >= 1 ? <Records engine={props.engine} trunks={ctx.trunks} /> : null}
       {invite ? <InviteDialog engine={props.engine} onClose={() => { setInvite(false); void ctx.reload(); }} /> : null}
     </Page>
   );
@@ -127,7 +127,6 @@ function PersonItem({ ctx, p, current, onSel }: { ctx: People; p: Profile; curre
 const row = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "people", title, sec, group: sec, lv }));
 export const PEOPLE_ROWS: RowEntry[] = [
   ...row("You", 0, ["Your own instructions", "Your own accounts"]),
-  ...row("Each person", 0, ["Ask for a PIN when switching person", "Keep conversations separate", "Open People"]),
+  ...row("Each person", 0, ["Open People", "Groups", "Signing in from other devices", "What you share"]),
   ...row("Records", 1, ["Signed household records"]),
-  ...row("Signing in to Branch", 1, ["Passkeys", "Authenticator codes", "A link by email", "Google, GitHub or Apple", "Company sign-in", "New people", "Allowed email domains", "Check their email first", "A check against bots on the sign-in page", "Add people from your directory", "One-time sign-in links for other systems", "Pass company sign-in on to tools", "Let someone start as a guest", "Recovery key"]),
 ];

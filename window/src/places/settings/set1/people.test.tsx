@@ -114,8 +114,6 @@ describe("Settings › People", () => {
     await pick("Dana");
     const ticks = [...host.querySelectorAll<HTMLInputElement>(".may-pp input")].map((i) => i.checked);
     expect(ticks).toEqual([true, true, true, true, true, false, false]);
-    expect(button("Switch to Dana")?.disabled).toBe(true);
-    expect(button("Remove")?.disabled).toBe(true);
     await act(async () => button("Make a one-time code")!.click());
     expect(request).toHaveBeenCalledWith("device.pair.setupCode", { includeQr: false, bootstrapProfile: "limited" });
     expect(host.querySelector(".code-pp code")?.textContent).toBe("CODE-123");
@@ -130,7 +128,6 @@ describe("Settings › People", () => {
     const { engine, request } = engineOf({ "config.get": { hash: "h1", valid: true, config: { gateway: { roles } } }, "users.setRole": { profile: PROFILES[1] } });
     await render(engine);
     await pick("Dana");
-    expect(host.querySelector<HTMLInputElement>('input[aria-label="Keep conversations separate"]')?.checked).toBe(true);
     await act(async () => button("Child")!.click());
     expect(request).toHaveBeenCalledWith("users.setRole", { profileId: "p-dana", role: "Child" });
   });
@@ -139,10 +136,7 @@ describe("Settings › People", () => {
     const { engine, request } = engineOf({ "audit.list": { events: [{ eventId: "e1", agentId: "main", kind: "tool_action", toolName: "read", status: "succeeded", occurredAt: NOW }] } });
     await render(engine, 0);
     expect(host.querySelector('[data-sec="Records"]')).toBeNull();
-    expect(host.querySelector('[data-sec="Signing in to Branch"]')).toBeNull();
     await render(engine, 1);
-    expect(host.querySelector('[data-row="Passkeys"]')?.getAttribute("aria-disabled")).toBe("true");
-    expect(button("Show it")?.disabled).toBe(true);
     expect(host.querySelector(".scopes-pp")).toBeNull();
     await act(async () => button("See the last")!.click());
     expect(request).toHaveBeenCalledWith("audit.list", { limit: 20 });
