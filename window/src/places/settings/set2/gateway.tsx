@@ -184,7 +184,7 @@ function Reached(ctx: Ctx) {
   );
 }
 
-function Doing({ engine, health, sys, lv }: Ctx) {
+function Doing({ engine, health, sys }: Ctx) {
   const restart = useCall();
   const started = typeof sys.uptimeMs === "number" ? Date.now() - Number(sys.uptimeMs) : undefined;
   const go = () => void restart.run(() => engine.request<RecordValue>("gateway.restart.request", { reason: "settings" }), (r) => (rec(r).status === "deferred" ? "Restarting once the running work finishes." : "Restarting. The window reconnects by itself."));
