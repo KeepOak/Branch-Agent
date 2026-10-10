@@ -3,7 +3,7 @@ import { historyToBlocks } from "../thread/history";
 import { layout } from "../thread/layout";
 import { foldTalks, talkSummary, type TalkItem } from "./fold";
 import { describeMembers, isRoom, readParticipants, withSenders } from "./members";
-import { roomMenuItems, ROOM_REASONS } from "./room-menu";
+import { roomMenuItems } from "./room-menu";
 import { roomRulesItems, ruleToast } from "./room-rules";
 import { isMine, readSender } from "./sender";
 import { readPeerHosts, readPeerList } from "./useRoom";
