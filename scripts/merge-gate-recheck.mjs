@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 export const GATE_NAMES = ['Merge gate', 'Merge gate trusted'];
 const ORDINARY_GATE = 'Merge gate';
 const TRUSTED_GATE = 'Merge gate trusted';
+// The recheck workflow's own runs are not content: an in-progress recheck must never hold a gate back.
+export const RECHECK_NAME = 'Merge gate recheck';
 const PASS = new Set(['success', 'skipped', 'neutral']);
 
 // runs: every run on the head, as { id, workflowName, status, conclusion, createdAt }.
@@ -20,7 +22,7 @@ export function summarizeRuns(runs) {
   // Only the newest run per workflow counts: a cancelled or failed older run is superseded by its rerun or its replacement.
   const newest = new Map();
   for (const run of runs) {
-    if (GATE_NAMES.includes(run.workflowName)) continue;
+    if (GATE_NAMES.includes(run.workflowName) || run.workflowName === RECHECK_NAME) continue;
     const current = newest.get(run.workflowName);
     if (!current || String(run.createdAt).localeCompare(String(current.createdAt)) > 0) newest.set(run.workflowName, run);
   }
@@ -74,11 +76,12 @@ function listRuns(repo, sha) {
 
 // Returns the exit code. A failed run listing reports "Attribution lookup failed" instead of crashing.
 export function runRecheck({
-  repo, sha, trigger, list = listRuns, rerun = rerunGate, log = console.log, error = console.error,
+  repo, sha, trigger, currentRunId, list = listRuns, rerun = rerunGate, log = console.log, error = console.error,
 }) {
   let plan;
   try {
-    plan = recheckPlan({ trigger, runs: list(repo, sha) });
+    const runs = list(repo, sha).filter((run) => String(run.id) !== String(currentRunId ?? ''));
+    plan = recheckPlan({ trigger, runs });
   } catch (err) {
     error(`Attribution lookup failed: could not list the runs for ${sha}: ${String(err?.message ?? err).split('\n')[0]}`);
     return 1;
@@ -104,5 +107,5 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     attempt: Number(process.env.TRIGGER_ATTEMPT ?? 1),
     name: process.env.TRIGGER_NAME,
   };
-  process.exitCode = runRecheck({ repo, sha, trigger });
+  process.exitCode = runRecheck({ repo, sha, trigger, currentRunId: process.env.GITHUB_RUN_ID });
 }

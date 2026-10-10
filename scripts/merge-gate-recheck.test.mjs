@@ -107,6 +107,8 @@ test('the recheck workflow has no workflow filter, reacts to every completed run
   assert.doesNotMatch(yaml, /^\s+workflows:/m);
   assert.match(yaml, /types: \[completed\]/);
   assert.match(yaml, /node scripts\/merge-gate-recheck\.mjs/);
+  assert.match(yaml, /cancel-in-progress: true/);
+  assert.match(yaml, /workflow_run\.name != 'Merge gate recheck'/);
   assert.match(yaml, /TRIGGER_KIND: content|TRIGGER_KIND: \$\{\{/);
   assert.doesNotMatch(yaml, /gh run rerun "\$id"/);
 });
@@ -144,4 +146,29 @@ test('the trusted gate and the aggregator are single-shot: no poll loop in eithe
   assert.doesNotMatch(merge, /seq 1 64/);
   const trustedYaml = readFileSync(new URL('../.github/workflows/merge-gate-trusted.yml', import.meta.url), 'utf8');
   assert.match(trustedYaml, /MERGE_GATE_WAIT_SECONDS: '0'/);
+});
+
+test('regression: an in-progress recheck run is not content, so the last real check still reruns the gate', () => {
+  const ownRecheck = { id: 99, workflowName: 'Merge gate recheck', status: 'in_progress', conclusion: null, createdAt: '2026-10-10T03:00:00Z' };
+  const plan = recheckPlan({
+    trigger: { kind: 'content', conclusion: 'success' },
+    runs: [gate('failure'), ownRecheck, content('success')],
+  });
+  assert.equal(actions(plan)['Merge gate'], 'rerun');
+});
+
+test('the current recheck run is excluded by its id even when its name differs', () => {
+  const reruns = [];
+  const code = runRecheck({
+    repo: 'example/repo',
+    sha: 'abc123',
+    trigger: { kind: 'content', conclusion: 'success' },
+    currentRunId: '99',
+    list: () => [gate('failure'), { id: 99, workflowName: 'Feature batch checks', status: 'in_progress', conclusion: null, createdAt: '2026-10-10T03:00:00Z' }, content('success')],
+    rerun: (_repo, id) => reruns.push(id),
+    log: () => {},
+    error: () => {},
+  });
+  assert.equal(code, 0);
+  assert.deepEqual(reruns, [50]);
 });

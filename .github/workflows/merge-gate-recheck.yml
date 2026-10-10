@@ -12,12 +12,14 @@ permissions:
   actions: write
 
 concurrency:
+  # One recheck per head at a time; a newer event supersedes an older one, which sees the same or newer runs.
   group: merge-gate-recheck-${{ github.event.workflow_run.head_sha }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   recheck:
-    if: github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'pull_request_target'
+    # The recheck's own completion must not start another recheck (it would loop).
+    if: (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'pull_request_target') && github.event.workflow_run.name != 'Merge gate recheck'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
