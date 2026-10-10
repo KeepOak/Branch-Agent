@@ -17,14 +17,19 @@ const NO_PROBE = "Branch can’t look for this runtime yet. Add it in Accounts a
 export const RUNTIMES: Runtime[] = [
   { id: "ollama", mark: "OL", name: "Ollama", note: "Runs on this computer, so nothing leaves it and nothing is charged. Install Ollama and run `ollama serve`. No key needed." },
   { id: "lmstudio", mark: "LS", name: "LM Studio", note: "Runs on this computer. Load a model in LM Studio and start its server. No account needed." },
-  { id: "vllm", mark: "VL", name: "vLLM", note: "Runs on this computer. Start vLLM with its OpenAI-compatible server. No account needed." },
+  { id: "vllm", mark: "VL", name: "vLLM", note: "Runs on this computer. Start vLLM’s server. No account needed." },
   { id: "llama-cpp", mark: "LC", name: "llama.cpp", note: "Runs on this computer. Start llama-server from llama.cpp. No account needed." },
   { id: "localai", mark: "LO", name: "LocalAI", note: "Runs on this computer and can also make speech and pictures. No account needed.", off: NO_PROBE },
   { id: "jan", mark: "JA", name: "Jan", note: "Runs on this computer. Turn on Jan’s local server. No account needed.", off: NO_PROBE },
-  { id: "litellm", mark: "LI", name: "LiteLLM proxy", note: "A proxy you run yourself that speaks OpenAI’s shape and forwards to whichever service you configured behind it. Point this at wherever you run it." },
+  { id: "litellm", mark: "LI", name: "LiteLLM proxy", note: "A proxy you run yourself. It forwards to whichever service you set up behind it. Point this at wherever you run it." },
 ];
 const NOT_FOUND = "Not found on this computer. Branch can use it as soon as it runs.";
 const SHARE = "plugins.entries.ollama.config.nodeInference.enabled";
+
+/** The one "couldn't check" state for this page: the same words and the same retry wherever a detection read times out. */
+export function CouldntCheck({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return <Status tone="warn" title="Couldn’t check this computer." action={<Btn sm onClick={onRetry}>Try again</Btn>}>{visible(error)}</Status>;
+}
 
 type Res = ReturnType<typeof useResource<RecordValue>>;
 type Props = { engine: WindowEngine; hw: Hw; detect: Res; models: Res; found: Set<string> };
@@ -65,7 +70,7 @@ export function Runtimes({ engine, hw, detect, models, found }: Props) {
   const rowProps = { engine, lv, found, detect, busy, looked, onLook: lookFor };
   return (
     <Sec title="Runtimes">
-      {detect.error ? <Status tone="warn" title="Branch couldn’t check which runtimes are installed." action={<Btn sm onClick={() => void detect.reload()}>Try again</Btn>}>{visible(detect.error)}</Status> : null}
+      {detect.error ? <CouldntCheck error={detect.error} onRetry={() => void detect.reload()} /> : null}
       <div className="rows rt-k">
         <RuntimeRow r={start} showShare {...rowProps} />
       </div>

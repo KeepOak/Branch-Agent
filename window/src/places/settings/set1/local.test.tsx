@@ -50,6 +50,8 @@ describe("Settings › On this computer", () => {
       await act(async () => { vi.advanceTimersByTime(20_000); });
       expect(host.querySelector(".hw-c-k:last-child")?.textContent).toBe("RuntimeCouldn’t check");
       expect(host.textContent).toContain("The engine didn’t answer in time.");
+      expect(host.textContent).not.toContain("Nothing to set up on this computer yet.");
+      expect(host.textContent.split("Couldn’t check this computer.").length - 1).toBe(2);
       expect(button("Try again")).toBeDefined();
       await act(async () => { answer(DETECT); });
       expect(host.querySelector(".prow[data-row=\"Ollama\"] .pill.ok")?.textContent).toBe("Found");

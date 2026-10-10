@@ -1,14 +1,14 @@
 // Settings › On this computer (DESIGN-SPEC §4.7.7): this computer's hardware (system.info), what the engine can set
 // up here (branch.setup.detect prepareOptions, run as a branch.setup.prepare.start wizard that picks a model for this
 // computer and installs it with its own progress), the models already here (models.list, local), the runtimes, and at
-// Advanced the rows for running models here. The engine has no model catalogue with sizes or graphics-card readout yet.
+// Advanced the rows for running models here. The engine has no model catalogue with sizes yet, so none is shown.
 import { useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import { list, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Icon } from "../../../shell/icons";
 import { Btn, Ctl, Empty, Page, Sec, Status, useScope, type RowEntry } from "../kit";
-import { Runtimes, RUNTIMES } from "./local-runtimes";
+import { CouldntCheck, Runtimes, RUNTIMES } from "./local-runtimes";
 import { LocalMore, MORE_TITLES } from "./local-more";
 import { SetupDialog } from "./local-setup";
 import "./set1.css";
@@ -16,7 +16,6 @@ import "./local.css";
 import { shownWhy } from "../../../shell/shown-why";
 
 const GIB = 1024 ** 3;
-const NO_CATALOGUE = "Branch can’t list recommended models with their sizes yet. Each setup above picks one that fits this computer.";
 
 /** This computer, from system.info. Graphics memory isn't reported by the engine. */
 export type Hw = { cpu?: string; ramGb?: number; diskGb?: number; mac: boolean; windows: boolean; port?: number };
@@ -69,7 +68,7 @@ export function LocalPage(props: SettingsPageProps) {
   return (
     <Page title={props.title} lede="Models that run here, free and private." help="Models that run here, free and private. Branch looks at this computer first and only offers what fits.">
       <Hardware loading={info.loading} error={info.error} hw={hw} runtimes={detect.loading || detect.error ? undefined : RUNTIMES.filter((r) => found.has(r.id)).map((r) => r.name)} runtimesFailed={Boolean(detect.error)} />
-      <Recommended loading={detect.loading || models.loading} options={list(detect.data?.prepareOptions)} local={local} onSetup={setSetup} />
+      <Recommended loading={detect.loading || models.loading} error={detect.error} onRetry={() => void detect.reload()} options={list(detect.data?.prepareOptions)} local={local} onSetup={setSetup} />
       <Runtimes engine={props.engine} hw={hw} detect={detect} models={models} found={found} />
       <LocalMore engine={props.engine} hw={hw} local={local} />
       {setup ? <SetupDialog engine={props.engine} option={setup} agent={agent} onClose={done} /> : null}
@@ -85,7 +84,7 @@ export const DOWNLOAD = SVG("M12 4v11M7 10l5 5 5-5M5 20h14");
 
 type HwProps = { loading: boolean; error?: string; hw: Hw; runtimes?: string[]; runtimesFailed?: boolean };
 function Hardware({ loading, error, hw, runtimes, runtimesFailed }: HwProps) {
-  if (loading) return <div className="hw-k scan-k" role="status"><span className="spin-k" /><b>Looking at this computer…</b><small>Memory, graphics card, free space and which runtimes are installed.</small></div>;
+  if (loading) return <div className="hw-k scan-k" role="status"><span className="spin-k" /><b>Looking at this computer…</b><small>Memory, free space and which runtimes are installed.</small></div>;
   if (error) return <Status tone="bad" title="Branch couldn’t look at this computer">{visible(error)}</Status>;
   const tiles: [ReactNode, string, string | undefined, string?][] = [
     [CPU, "Processor", hw.cpu],
@@ -105,10 +104,11 @@ function Hardware({ loading, error, hw, runtimes, runtimesFailed }: HwProps) {
   );
 }
 
-type RecProps = { loading: boolean; options: RecordValue[]; local: RecordValue[]; onSetup: (o: RecordValue) => void };
-function Recommended({ loading, options, local, onSetup }: RecProps) {
+type RecProps = { loading: boolean; error?: string; onRetry: () => void; options: RecordValue[]; local: RecordValue[]; onSetup: (o: RecordValue) => void };
+function Recommended({ loading, error, onRetry, options, local, onSetup }: RecProps) {
   return (
     <Sec title="Recommended for you">
+      {error ? <CouldntCheck error={error} onRetry={onRetry} /> : null}
       {options.length || local.length ? (
         <div className="lm-grid-k">
           {local.map((m) => <Installed key={`${text(m.provider)}/${text(m.id)}`} m={m} />)}
@@ -120,8 +120,7 @@ function Recommended({ loading, options, local, onSetup }: RecProps) {
             </div>
           ))}
         </div>
-      ) : loading ? <p className="hint">Looking for what this computer can run…</p> : <Empty>Nothing to set up on this computer yet.</Empty>}
-      <Ctl title="Recommended models, sized to this computer" sub="Show models that fit here and the sizes available." help="Each model with how well it fits here, and a size to pick: small, balanced or full." off={NO_CATALOGUE} />
+      ) : loading ? <p className="hint">Looking for what this computer can run…</p> : error ? null : <Empty>Nothing to set up on this computer yet.</Empty>}
     </Sec>
   );
 }
