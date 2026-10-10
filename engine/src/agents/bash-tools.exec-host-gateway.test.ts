@@ -10,7 +10,27 @@ import path from "node:path";
 import { setImmediate } from "node:timers/promises";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { quoteCliArg } from "../cli/quote-cli-arg.js";
+import { bindCronJobAdmittedRun, resetCronActiveJobs } from "../cron/active-jobs.js";
+import { resolveCronJobConfigRevision } from "../cron/config-revision.js";
+import { cronStoreKey } from "../cron/store/key.js";
+import { prepareCronRunAdmission } from "../cron/run-admission.js";
+import { markServiceCronJobActive } from "../cron/service/run-receipts.js";
+import { createCronServiceState } from "../cron/service/state.js";
+import {
+  loadCronRows,
+  loadedCronStoreFromRows,
+  upsertCronJobRow,
+} from "../cron/store/row-codec.js";
+import { releaseLocalCronRunReceiptOwnership } from "../cron/store/run-receipt-store.js";
+import { claimCronRunReceiptForTest } from "../cron/store/run-receipt-store.test-support.js";
+import type { CronStoredJob } from "../cron/types.js";
+import { buildCronExecOperationBinding } from "../gateway/operator-approval-standing-grants.js";
+import {
+  insertOperatorApproval,
+  resolveOperatorApproval,
+} from "../gateway/operator-approval-store.js";
 import { onAgentEvent } from "../infra/agent-events.js";
+import { registerCronRunExecSource } from "../infra/cron-run-exec-source.js";
 import {
   onInternalDiagnosticEvent,
   resetDiagnosticEventsForTest,
@@ -31,10 +51,12 @@ import {
   type ExecAuthorizationPlan,
 } from "../infra/exec-authorization-plan.js";
 import { buildAuthorizedShellCommandFromPlan } from "../infra/exec-authorization-render.js";
+import { buildEnforcedShellCommand as buildWindowsEnforcedShellCommand } from "../infra/exec-approvals-analysis.js";
 import {
   buildCwdBoundHashedArgPattern,
   resolvePolicyTargetCandidatePath,
 } from "../infra/exec-command-resolution.js";
+import { executeSqliteQuerySync, getNodeSqliteKysely } from "../infra/kysely-sync.js";
 import {
   getActiveGatewayRootWorkCount,
   markGatewayRestartDraining,
@@ -44,6 +66,13 @@ import {
 import { createProcessSupervisor } from "../process/supervisor/supervisor.js";
 import type { ProcessSupervisor } from "../process/supervisor/types.js";
 import { createDeferredCore } from "../shared/deferred.js";
+import type { DB as BranchStateKyselyDatabase } from "../state/branch-state-db.generated.js";
+import {
+  closeBranchStateDatabaseForTest,
+  closeBranchStateDatabaseByPathAsync,
+  openBranchStateDatabase,
+} from "../state/branch-state-db.js";
+import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
 import { resetProcessRegistryForTests } from "./bash-process-registry.test-support.js";
 import type {
   ExecApprovalFollowupFactory,
@@ -213,6 +242,25 @@ vi.mock("../infra/command-analysis/inline-eval.js", async (importOriginal) => ({
   detectInterpreterInlineEvalArgv: detectInterpreterInlineEvalArgvMock,
 }));
 
+// PowerShell builtins are not attestable executable bindings. Keep the POSIX
+// fixtures on POSIX hosts and use Windows' native read-only lookup executable.
+const fixtureExecutableName = "where.exe";
+let fixtureExecutableDir: string | undefined;
+function fixtureEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  if (!fixtureExecutableDir) return env;
+  const pathKey = Object.keys(env).find((key) => key.toUpperCase() === "PATH");
+  const inheritedPath = pathKey ? env[pathKey] : undefined;
+  const result = { ...env };
+  for (const key of Object.keys(result)) if (key.toUpperCase() === "PATH") delete result[key];
+  result.PATH = `${fixtureExecutableDir}${path.delimiter}${inheritedPath ?? ""}`;
+  return result;
+}
+function fixtureCommand(posix: string, windowsArgs?: string): string {
+  return process.platform === "win32"
+    ? `${fixtureExecutableName} ${windowsArgs ?? `/Q node.exe ${quoteCliArg(posix)}`}`
+    : posix;
+}
+
 let processGatewayAllowlist: typeof import("./bash-tools.exec-host-gateway.js").processGatewayAllowlist;
 type GatewayAllowlistParams = Parameters<typeof processGatewayAllowlist>[0];
 
@@ -249,6 +297,12 @@ function captureSecurityEvents(): {
 describe("processGatewayAllowlist", () => {
   beforeAll(async () => {
     ({ processGatewayAllowlist } = await import("./bash-tools.exec-host-gateway.js"));
+    if (process.platform === "win32") {
+      const systemRoot = process.env.SystemRoot;
+      expect(systemRoot).toBeTruthy();
+      fixtureExecutableDir = fs.realpathSync(path.join(systemRoot!, "System32"));
+      expect(fs.statSync(path.join(fixtureExecutableDir, fixtureExecutableName)).isFile()).toBe(true);
+    }
   });
 
   beforeEach(() => {
@@ -334,7 +388,7 @@ describe("processGatewayAllowlist", () => {
     return processGatewayAllowlist({
       command,
       workdir: process.cwd(),
-      env: process.env as Record<string, string>,
+      env: fixtureEnv() as Record<string, string>,
       pty: false,
       defaultTimeoutSec: 30,
       security: "allowlist",
@@ -379,8 +433,8 @@ describe("processGatewayAllowlist", () => {
   }
 
   async function requireAuthorizationPlan(params: Parameters<typeof planShellAuthorization>[0]) {
-    const authorizationPlan = await planShellAuthorization(params);
-    expect(authorizationPlan.ok).toBe(true);
+    const authorizationPlan = await planShellAuthorization({ ...params, env: fixtureEnv(params.env) });
+    expect(authorizationPlan.ok, authorizationPlan.ok ? undefined : authorizationPlan.reason).toBe(true);
     if (!authorizationPlan.ok) {
       throw new Error(authorizationPlan.reason);
     }
@@ -393,11 +447,13 @@ describe("processGatewayAllowlist", () => {
     const segments = authorizationPlan.groups.flatMap((group) =>
       group.candidates.map((candidate) => candidate.sourceSegment),
     );
-    const enforced = buildAuthorizedShellCommandFromPlan({
-      plan: authorizationPlan,
-      mode: "enforced",
-      segmentSatisfiedBy: ["allowlist"],
-    });
+    const enforced = process.platform === "win32"
+      ? buildWindowsEnforcedShellCommand({ command, segments, platform: process.platform })
+      : buildAuthorizedShellCommandFromPlan({
+          plan: authorizationPlan,
+          mode: "enforced",
+          segmentSatisfiedBy: ["allowlist"],
+        });
     expect(enforced.ok).toBe(true);
     if (!enforced.ok) {
       throw new Error(enforced.reason);
@@ -434,6 +490,7 @@ describe("processGatewayAllowlist", () => {
     segmentAllowlistEntries?: unknown[];
     hostAsk?: "off" | "on-miss" | "always";
     askFallback?: "deny" | "allowlist" | "full";
+    enforceable?: boolean;
   }) {
     const authorizationPlan = await requireAuthorizationPlan({
       command: params.command,
@@ -442,6 +499,13 @@ describe("processGatewayAllowlist", () => {
     const segments = authorizationPlan.groups.flatMap((group) =>
       group.candidates.map((entry) => entry.sourceSegment),
     );
+    let enforcedCommand: string | undefined;
+    if (process.platform === "win32" && params.enforceable !== false) {
+      const enforced = buildWindowsEnforcedShellCommand({ command: params.command, segments, platform: process.platform });
+      expect(enforced.ok, enforced.reason).toBe(true);
+      buildEnforcedShellCommandMock.mockReturnValue(enforced);
+      enforcedCommand = enforced.command;
+    }
     requiresExecApprovalMock.mockReturnValue(params.requiresApproval ?? true);
     mockAllowlist({
       allowlistSatisfied: params.allowlistSatisfied ?? false,
@@ -462,11 +526,11 @@ describe("processGatewayAllowlist", () => {
       candidate?.sourceSegment.resolution?.execution.resolvedPath;
     const invocationPath =
       candidate?.sourceSegment.resolution?.execution.resolvedPath ?? resolvedPath;
-    return { authorizationPlan, resolvedPath, invocationPath };
+    return { authorizationPlan, resolvedPath, invocationPath, enforcedCommand };
   }
 
   it("denies shell-expansion plan misses immediately when asking is off and fallback denies", async () => {
-    const command = "grep -il needle -r /tmp --include=*.md";
+    const command = fixtureCommand("grep -il needle -r /tmp --include=*.md", "/Q --include=*.md");
     const authorizationPlan = await requireAuthorizationPlan({
       command,
       env: { PATH: "/usr/bin:/bin" },
@@ -482,6 +546,16 @@ describe("processGatewayAllowlist", () => {
       segmentSatisfiedBy: ["allowlist"],
       authorizationPlan,
     });
+    if (process.platform === "win32") {
+      // Exercise the same reported expansion failure through the Windows backend fixture.
+      const unavailable = buildAuthorizedShellCommandFromPlan({
+        plan: authorizationPlan,
+        mode: "enforced",
+        segmentSatisfiedBy: ["allowlist"],
+      });
+      expect(unavailable).toEqual({ ok: false, reason: "shell expansion in enforced arguments" });
+      buildEnforcedShellCommandMock.mockReturnValue(unavailable);
+    }
     const captured = captureSecurityEvents();
 
     let result: Awaited<ReturnType<typeof runGatewayAllowlist>>;
@@ -632,63 +706,127 @@ describe("processGatewayAllowlist", () => {
     },
   );
 
-  it("escalates the third session denial and resets after reviewer allowance or human resolution", async () => {
-    const command = "echo review";
+  it("retries the exact rejected action once through human approval and preserves state on denial", async () => {
+    const command = fixtureCommand("echo review");
     await configurePlanBackedCommand({ command });
     defaultExecAutoReviewerMock.mockResolvedValue({
-      decision: "deny",
-      risk: "medium",
-      rationale: "narrow it",
+      decision: "deny", risk: "medium", rationale: "narrow it",
     });
-    const sessionKey = "agent:main:auto-denial-circuit";
+    const sessionKey = "agent:main:auto-denial-exact-retry";
     const run = (warnings: string[] = []) =>
       runGatewayAllowlist({ command, autoReview: true, sessionKey, warnings });
-    expect((await run()).deniedResult?.details).toMatchObject({
-      failureKind: "auto-review-denied",
-    });
-    expect((await run()).deniedResult?.details).toMatchObject({
-      failureKind: "auto-review-denied",
-    });
-    defaultExecAutoReviewerMock.mockResolvedValueOnce({
-      decision: "allow-once",
-      risk: "medium",
-      rationale: "safe now",
-    });
-    expect((await run()).deniedResult).toBeUndefined();
-    expect((await run()).deniedResult?.details).toMatchObject({
-      failureKind: "auto-review-denied",
-    });
-    expect((await run()).deniedResult?.details).toMatchObject({
-      failureKind: "auto-review-denied",
-    });
-    expect(createExecApprovalRequestRouteMock).not.toHaveBeenCalled();
-    // Human denial resolves the escalation and starts a new denial sequence.
+    expect((await run()).deniedResult?.details).toMatchObject({ failureKind: "auto-review-denied" });
     approvalDecisionMock.mockResolvedValueOnce("deny");
     const warnings: string[] = [];
     await run(warnings);
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(1);
     expect(createExecApprovalRequestRouteMock).toHaveBeenCalledTimes(1);
-    expect(warnings).toContain(
-      "Exec auto-review denied 3 consecutive commands for this session; escalating to human approval",
-    );
-    expect((await run()).deniedResult?.details).toMatchObject({
-      failureKind: "auto-review-denied",
-    });
-    expect((await run()).deniedResult?.details).toMatchObject({
-      failureKind: "auto-review-denied",
-    });
-    expect(createExecApprovalRequestRouteMock).toHaveBeenCalledTimes(1);
-    const otherSession = await runGatewayAllowlist({
-      command,
-      autoReview: true,
-      sessionKey: "agent:main:independent-circuit",
-    });
-    expect(otherSession.deniedResult?.details).toMatchObject({ failureKind: "auto-review-denied" });
+    expect(warnings).toContain("Exec auto-review deferred to human approval (classifier_blocked_retry)");
+    // The one-shot retry was consumed; rejection did not reset the first block.
+    expect((await run()).deniedResult?.details).toMatchObject({ failureKind: "auto-review-denied" });
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(2);
     await run();
     expect(createExecApprovalRequestRouteMock).toHaveBeenCalledTimes(2);
+    const thresholdWarnings: string[] = [];
+    await run(thresholdWarnings);
+    expect(thresholdWarnings).toContain("Exec auto-review deferred to human approval (consecutive_block)");
+    expect(createExecApprovalRequestRouteMock).toHaveBeenCalledTimes(3);
+    // A different session never inherits that reviewer signal.
+    expect((await runGatewayAllowlist({ command, autoReview: true,
+      sessionKey: "agent:main:independent-circuit" })).deniedResult?.details)
+      .toMatchObject({ failureKind: "auto-review-denied" });
+  });
+
+  it("clears denial counters after human allowance and re-engages the reviewer", async () => {
+    const command = fixtureCommand("echo recovery");
+    await configurePlanBackedCommand({ command });
+    defaultExecAutoReviewerMock.mockResolvedValue({ decision: "deny", risk: "medium", rationale: "review" });
+    const sessionKey = "agent:main:auto-denial-human-recovery";
+    await runGatewayAllowlist({ command, autoReview: true, sessionKey });
+    approvalDecisionMock.mockResolvedValueOnce("allow-once");
+    mockCompletedProcess();
+    await runGatewayAllowlist({ command, autoReview: true, sessionKey });
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(1);
+    expect((await runGatewayAllowlist({ command, autoReview: true, sessionKey })).deniedResult?.details)
+      .toMatchObject({ failureKind: "auto-review-denied" });
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not consume a manual retry or register approval during headless denial", async () => {
+    const command = fixtureCommand("echo headless-retry");
+    await configurePlanBackedCommand({ command });
+    defaultExecAutoReviewerMock.mockResolvedValue({ decision: "deny", risk: "medium", rationale: "review" });
+    const sessionKey = "agent:main:auto-denial-headless";
+    await runGatewayAllowlist({ command, autoReview: true, sessionKey });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await runGatewayAllowlist({ command, autoReview: true, sessionKey,
+        nonInteractiveApproval: true });
+      expect(result.deniedResult?.details).toMatchObject({ failureKind: "approval_required" });
+    }
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(1);
+    expect(createExecApprovalRequestRouteMock).not.toHaveBeenCalled();
+    await runGatewayAllowlist({ command, autoReview: true, sessionKey });
+    expect(createExecApprovalRequestRouteMock).toHaveBeenCalledOnce();
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("recovers after reviewer unavailability and preserves Full Access without extra approval", async () => {
+    const command = fixtureCommand("echo unavailable");
+    await configurePlanBackedCommand({ command });
+    defaultExecAutoReviewerMock.mockResolvedValue({ decision: "ask", risk: "unknown", rationale: "offline" });
+    const sessionKey = "agent:main:auto-denial-unavailable";
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await runGatewayAllowlist({ command, autoReview: true, sessionKey, nonInteractiveApproval: true });
+    }
+    // Source threshold2 selects manual fallback; a third call does not retry the unavailable reviewer.
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(2);
+    expect(createExecApprovalRequestRouteMock).not.toHaveBeenCalled();
+    approvalDecisionMock.mockResolvedValueOnce("allow-once");
+    mockCompletedProcess();
+    await runGatewayAllowlist({ command, autoReview: true, sessionKey });
+    defaultExecAutoReviewerMock.mockResolvedValueOnce({ decision: "allow-once", risk: "low", rationale: "back" });
+    expect((await runGatewayAllowlist({ command, autoReview: true, sessionKey })).deniedResult).toBeUndefined();
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(3);
+    // Switching to Full Access clears the historic signal and uses existing direct execution.
+    mockHostPolicy({ hostSecurity: "full", hostAsk: "off", askFallback: "full" });
+    requiresExecApprovalMock.mockReturnValue(false);
+    const approvalsBefore = createExecApprovalRequestRouteMock.mock.calls.length;
+    await runGatewayAllowlist({ command, autoReview: false, sessionKey, nonInteractiveApproval: true });
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(3);
+    expect(createExecApprovalRequestRouteMock).toHaveBeenCalledTimes(approvalsBefore);
+  });
+
+  it("resets the exact-action retry when the owner changes approval mode", async () => {
+    const command = fixtureCommand("echo mode-change");
+    await configurePlanBackedCommand({ command });
+    defaultExecAutoReviewerMock.mockResolvedValue({ decision: "deny", risk: "medium", rationale: "review" });
+    const sessionKey = "agent:main:auto-denial-mode-change";
+    await runGatewayAllowlist({ command, autoReview: true, sessionKey });
+    mockHostPolicy({ hostSecurity: "full", hostAsk: "off", askFallback: "full" });
+    requiresExecApprovalMock.mockReturnValue(false);
+    await runGatewayAllowlist({ command, autoReview: false, sessionKey });
+    await configurePlanBackedCommand({ command });
+    expect((await runGatewayAllowlist({ command, autoReview: true, sessionKey })).deniedResult?.details)
+      .toMatchObject({ failureKind: "auto-review-denied" });
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(2);
+    expect(createExecApprovalRequestRouteMock).not.toHaveBeenCalled();
+  });
+
+  it("binds the manual retry to the exact command and requested environment", async () => {
+    const command = fixtureCommand("echo environment");
+    await configurePlanBackedCommand({ command });
+    defaultExecAutoReviewerMock.mockResolvedValue({ decision: "deny", risk: "medium", rationale: "review" });
+    const sessionKey = "agent:main:auto-denial-env-change";
+    await runGatewayAllowlist({ command, autoReview: true, sessionKey, requestedEnv: { TASK: "first" } });
+    expect((await runGatewayAllowlist({ command, autoReview: true, sessionKey,
+      requestedEnv: { TASK: "second" } })).deniedResult?.details)
+      .toMatchObject({ failureKind: "auto-review-denied" });
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(2);
+    expect(createExecApprovalRequestRouteMock).not.toHaveBeenCalled();
   });
 
   it("returns approval-required when non-interactive auto-review asks for a human", async () => {
-    const command = "echo review";
+    const command = fixtureCommand("echo review");
     await configurePlanBackedCommand({ command });
     defaultExecAutoReviewerMock.mockResolvedValue({
       decision: "ask",
@@ -710,7 +848,7 @@ describe("processGatewayAllowlist", () => {
   });
 
   it("keeps always-ask commands on the human approval path", async () => {
-    const command = "echo review";
+    const command = fixtureCommand("echo review");
     await configurePlanBackedCommand({ command, hostAsk: "always" });
     await runGatewayAllowlist({ command, autoReview: true });
     expect(defaultExecAutoReviewerMock).not.toHaveBeenCalled();
@@ -729,7 +867,7 @@ describe("processGatewayAllowlist", () => {
   ] as const)(
     "publishes and records the $status Guardian review on its exec call",
     async ({ assessment, status }) => {
-      const command = "echo ok";
+      const command = fixtureCommand("echo ok");
       await configurePlanBackedCommand({ command });
       const review = createDeferredCore<Awaited<ReturnType<ExecAutoReviewer>>>();
       const autoReviewer = vi.fn<ExecAutoReviewer>(() => review.promise);
@@ -823,7 +961,7 @@ describe("processGatewayAllowlist", () => {
   );
 
   it("does not execute after cancellation wins during auto-review", async () => {
-    const command = "echo ok";
+    const command = fixtureCommand("echo ok");
     await configurePlanBackedCommand({ command });
     const autoReviewer = vi.fn<ExecAutoReviewer>(() => new Promise(() => {}));
     const abortController = new AbortController();
@@ -864,7 +1002,7 @@ describe("processGatewayAllowlist", () => {
   });
 
   it("rejects contradictory high-risk custom reviewer approvals", async () => {
-    const command = "echo ok";
+    const command = fixtureCommand("echo ok");
     await configurePlanBackedCommand({ command });
     defaultExecAutoReviewerMock.mockResolvedValueOnce({
       decision: "allow-once",
@@ -879,14 +1017,17 @@ describe("processGatewayAllowlist", () => {
   });
 
   it("auto-reviews strict inline-eval commands instead of forcing human approval", async () => {
-    const command = "python3 -c 'print(1)'";
-    const { invocationPath } = await configurePlanBackedCommand({
+    const inlineEval = process.platform === "win32"
+      ? { executable: "node", normalizedExecutable: "node", flag: "-e", argv: ["node", "-e", "console.log(1)"] }
+      : INLINE_EVAL_HIT;
+    const command = process.platform === "win32" ? 'node -e "console.log(1)"' : "python3 -c 'print(1)'";
+    const { invocationPath, enforcedCommand } = await configurePlanBackedCommand({
       command,
       allowlistSatisfied: true,
       requiresApproval: false,
       satisfiedBy: "allowlist",
     });
-    detectInterpreterInlineEvalArgvMock.mockReturnValue(INLINE_EVAL_HIT);
+    detectInterpreterInlineEvalArgvMock.mockReturnValue(inlineEval);
     const warnings: string[] = [];
 
     const result = await runGatewayAllowlist({
@@ -900,7 +1041,7 @@ describe("processGatewayAllowlist", () => {
     expect(defaultExecAutoReviewerMock).toHaveBeenCalledWith(
       expect.objectContaining({
         command,
-        argv: ["python3", "-c", "print(1)"],
+        argv: inlineEval.argv,
         host: "gateway",
         reason: "strict-inline-eval",
         analysis: expect.objectContaining({
@@ -910,20 +1051,24 @@ describe("processGatewayAllowlist", () => {
     );
     expect(createExecApprovalRequestRouteMock).not.toHaveBeenCalled();
     expect(warnings[0]).toContain("reviewer or explicit approval");
-    expect(result.execCommandOverride).toBe(`'${invocationPath}' -c 'print(1)'`);
+    expect(result.execCommandOverride).toBe(process.platform === "win32"
+      ? enforcedCommand
+      : `'${invocationPath}' -c 'print(1)'`);
   });
 
   it("does not bind current policy to redundant exact-command trust", async () => {
-    const command = "cd .";
+    const command = fixtureCommand("cd .");
     const { authorizationPlan } = await configurePlanBackedCommand({
       command,
       env: { PATH: "/usr/bin:/bin" },
       allowlistSatisfied: true,
       requiresApproval: false,
       segmentAllowlistEntries: [null],
-      satisfiedBy: "safeBuiltins",
+      satisfiedBy: process.platform === "win32" ? "allowlist" : "safeBuiltins",
     });
-    const enforced = buildAuthorizedShellCommandFromPlan({
+    const enforced = process.platform === "win32"
+      ? buildWindowsEnforcedShellCommand({ command, segments: authorizationPlan.groups.flatMap((group) => group.candidates.map((candidate) => candidate.sourceSegment)), platform: process.platform })
+      : buildAuthorizedShellCommandFromPlan({
       plan: authorizationPlan,
       mode: "enforced",
       segmentSatisfiedBy: ["safeBuiltins"],
@@ -954,8 +1099,9 @@ describe("processGatewayAllowlist", () => {
   });
 
   it("omits allow-always when allowlist execution cannot persist reusable patterns", async () => {
-    const command = "ls *.ts";
+    const command = fixtureCommand("ls *.ts", "/Q *.ts");
     await configurePlanBackedCommand({
+      enforceable: false,
       command,
       env: { PATH: "/usr/bin:/bin" },
       allowlistSatisfied: true,
@@ -980,8 +1126,8 @@ describe("processGatewayAllowlist", () => {
     );
   });
 
-  it("binds mixed allowlist authorization to exact trust when it bypasses an unavailable plan", async () => {
-    const command = "ls *.ts";
+  it("binds mixed allowlist authorization to exact trust and keeps mutable executables one-shot", async () => {
+    const command = fixtureCommand("ls *.ts", "/Q *.ts");
     const allowlistEntry: ExecAllowlistEntry = {
       pattern: "/usr/bin/ls",
       source: "allow-always",
@@ -990,6 +1136,7 @@ describe("processGatewayAllowlist", () => {
       command,
       env: { PATH: "/usr/bin:/bin" },
       requiresApproval: false,
+      enforceable: false,
       allowlistMatches: [allowlistEntry],
       allowlistSatisfied: true,
       segmentAllowlistEntries: [allowlistEntry],
@@ -997,6 +1144,18 @@ describe("processGatewayAllowlist", () => {
     });
     mockExactTrust(command, [allowlistEntry]);
     commitExecAuthorizationMock.mockRejectedValueOnce(new Error("exact-command approval revoked"));
+    if (process.platform === "win32") {
+      // This native executable is mutable under the real Windows filesystem
+      // heuristic. Exact text trust must not silently authorize future bytes.
+      approvalDecisionMock.mockResolvedValueOnce("deny");
+      const denied = await runGatewayAllowlist({ command, ask: "off", autoReview: false });
+      expect(denied.deniedResult?.details.status).toBe("failed");
+      expect(denied.deniedResult?.content[0]).toMatchObject({ text: expect.stringContaining("user-denied") });
+      expect(createExecApprovalRequestRouteMock).toHaveBeenCalledOnce();
+      expect(commitExecAuthorizationMock).not.toHaveBeenCalled();
+      expect(runExecProcessMock).not.toHaveBeenCalled();
+      return;
+    }
 
     await expect(
       runGatewayAllowlist({
@@ -1089,7 +1248,7 @@ describe("processGatewayAllowlist", () => {
   );
 
   it("does not use fallback-full when auto-review asks for human approval", async () => {
-    const command = "echo ok";
+    const command = fixtureCommand("echo ok");
     await configurePlanBackedCommand({ command });
     mockHostPolicy({ hostSecurity: "full", hostAsk: "on-miss", askFallback: "full" });
     defaultExecAutoReviewerMock.mockResolvedValue({
@@ -1108,15 +1267,15 @@ describe("processGatewayAllowlist", () => {
     expect(defaultExecAutoReviewerMock).toHaveBeenCalledOnce();
     expect(result.deniedResult?.details.status).toBe("failed");
     expect(result.deniedResult?.content[0]).toMatchObject({
-      text: `Exec denied (gateway id=${approvalRouteFixture.id}, approval-timeout): echo ok`,
+      text: `Exec denied (gateway id=${approvalRouteFixture.id}, approval-timeout): ${command}`,
     });
   });
 
-  it("allows durable exact-command trust to bypass the synchronous allowlist miss", async () => {
-    const command = "/bin/echo durable";
+  it("allows immutable exact-command trust to bypass a miss but keeps mutable executables one-shot", async () => {
+    const command = fixtureCommand("/bin/echo durable");
     mockAllowlist({
       analysisOk: false,
-      segments: [{ resolution: null, argv: ["/bin/echo", "durable"] }],
+      segments: [{ resolution: null, argv: process.platform === "win32" ? [fixtureExecutableName, "/Q", "node.exe", "/bin/echo durable"] : ["/bin/echo", "durable"] }],
       segmentSatisfiedBy: [],
     });
     hasDurableExecApprovalMock.mockReturnValue(true);
@@ -1126,6 +1285,16 @@ describe("processGatewayAllowlist", () => {
       command,
     });
     mockExactTrust(command);
+    if (process.platform === "win32") {
+      approvalDecisionMock.mockResolvedValueOnce("deny");
+      const denied = await runGatewayAllowlist({ command });
+      expect(denied.deniedResult?.details.status).toBe("failed");
+      expect(denied.deniedResult?.content[0]).toMatchObject({ text: expect.stringContaining("user-denied") });
+      expect(createExecApprovalRequestRouteMock).toHaveBeenCalledOnce();
+      expect(commitExecAuthorizationMock).not.toHaveBeenCalled();
+      expect(runExecProcessMock).not.toHaveBeenCalled();
+      return;
+    }
 
     const result = await runGatewayAllowlist({ command });
 
@@ -1704,6 +1873,267 @@ describe("processGatewayAllowlist", () => {
       text: expect.stringContaining("approval-timeout: execution-plan-miss"),
     });
     expect(commitExecAuthorizationMock).not.toHaveBeenCalled();
+  });
+
+  describe("cron standing grants", () => {
+    // Real resolvable executables only: OpenClaw main (9a1e00e2a) denies
+    // approval unless PATH resolution succeeds. Windows uses the existing
+    // read-only where.exe fixture so mutable node.exe is not required.
+    const grantCommand = fixtureCommand("echo nightly-backup");
+    const grantTempDirs: string[] = [];
+    let stateDirBackup: string | undefined;
+    let hadStateDirBackup = false;
+    let cronStorePath: string;
+    let workdir: string;
+    let unregisterCronSource: (() => void) | undefined;
+    let ownedDatabasePath: string | undefined;
+    let runOwner: ReturnType<typeof prepareCronRunAdmission> | undefined;
+    let controller: AbortController;
+    const releases: Array<() => void> = [];
+
+    beforeEach(() => {
+      ownedDatabasePath = undefined;
+      runOwner = undefined;
+      hadStateDirBackup = "BRANCH_STATE_DIR" in process.env;
+      stateDirBackup = process.env.BRANCH_STATE_DIR;
+      const stateDir = fs.realpathSync(
+        fs.mkdtempSync(path.join(os.tmpdir(), "branch-cron-grant-state-")),
+      );
+      grantTempDirs.push(stateDir);
+      process.env.BRANCH_STATE_DIR = stateDir;
+      cronStorePath = path.join(stateDir, "cron", "jobs.json");
+      workdir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "branch-cron-grant-cwd-")));
+      grantTempDirs.push(workdir);
+      // Grants are consulted only when policy would otherwise prompt, before
+      // any JSON allowlist digest can satisfy the command.
+      requiresExecApprovalMock.mockReturnValue(true);
+      hasDurableExecApprovalMock.mockReturnValue(false);
+      mockHostPolicy({ hostAsk: "on-miss" });
+    });
+
+    afterEach(async () => {
+      for (const release of releases.splice(0)) {
+        release();
+      }
+      unregisterCronSource?.();
+      unregisterCronSource = undefined;
+      runOwner?.close();
+      runOwner = undefined;
+      resetCronActiveJobs();
+      if (ownedDatabasePath) await closeBranchStateDatabaseByPathAsync(ownedDatabasePath);
+      closeBranchStateDatabaseForTest();
+      if (hadStateDirBackup) {
+        process.env.BRANCH_STATE_DIR = stateDirBackup;
+      } else {
+        delete process.env.BRANCH_STATE_DIR;
+      }
+      for (const dir of grantTempDirs.splice(0)) {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    function databaseOptions() {
+      return { env: { ...process.env } };
+    }
+
+    function seedCronJobRow(): string {
+      const database = openBranchStateDatabase(databaseOptions());
+      ownedDatabasePath = database.path;
+      // SAFETY: minimal valid cron job shape for the storage codec round-trip.
+      const job = {
+        id: "job-1",
+        agentId: "main",
+        name: "Nightly backup",
+        enabled: true,
+        createdAtMs: Date.now() - 1_000,
+        updatedAtMs: Date.now() - 1_000,
+        schedule: { kind: "cron", expr: "* * * * *", tz: "UTC" },
+        sessionTarget: "isolated",
+        wakeMode: "now",
+        payload: { kind: "agentTurn", message: "run the backup" },
+      } as CronStoredJob;
+      upsertCronJobRow(database.db, cronStoreKey(cronStorePath), job, 0);
+      const loaded = loadedCronStoreFromRows(loadCronRows(database.db, cronStoreKey(cronStorePath)));
+      const loadedJob = loaded.store.jobs.find((entry) => entry.id === "job-1");
+      if (!loadedJob) {
+        throw new Error("seeded cron job did not load back");
+      }
+      return resolveCronJobConfigRevision(loadedJob);
+    }
+
+    async function mintStandingGrant(revision: string): Promise<void> {
+      await insertOperatorApproval({
+        approval: {
+          id: "cron-approval-1",
+          kind: "exec",
+          presentation: {
+            kind: "exec",
+            commandText: grantCommand,
+            commandPreview: grantCommand,
+            warningText: null,
+            host: "gateway",
+            nodeId: null,
+            agentId: "main",
+            allowedDecisions: ["allow-once", "allow-always", "deny"],
+          },
+          reviewerDeviceIds: [],
+          source: {
+            agentId: "main",
+            sessionKey: "agent:main:cron:job-1",
+            sessionId: "session-1",
+            runId: "cron-run-0",
+            toolCallId: null,
+            toolName: "exec",
+          },
+          audienceSessionKeys: [],
+          runtimeEpoch: "epoch-1",
+          createdAtMs: Date.now() - 500,
+          expiresAtMs: Date.now() + 60_000,
+        },
+        databaseOptions: databaseOptions(),
+      });
+      const resolved = await resolveOperatorApproval({
+        id: "cron-approval-1",
+        decision: "allow-always",
+        resolver: { kind: "device", id: "reviewer-1" },
+        databaseOptions: databaseOptions(),
+        standingGrant: {
+          kind: "cron",
+          agentId: "main",
+          cronJobId: "job-1",
+          jobConfigRevision: revision,
+          operationBinding: buildCronExecOperationBinding({
+            command: grantCommand,
+            cwd: workdir,
+            env: undefined,
+          }),
+          expiresAtMs: null,
+        },
+      });
+      expect(resolved.outcome).toBe("resolved");
+    }
+
+    function readGrantUseCounts(): number[] {
+      const database = openBranchStateDatabase(databaseOptions());
+      const stateDb = getNodeSqliteKysely<
+        Pick<BranchStateKyselyDatabase, "operator_approval_standing_grants">
+      >(database.db);
+      return executeSqliteQuerySync(
+        database.db,
+        stateDb.selectFrom("operator_approval_standing_grants").select(["use_count"]),
+      ).rows.map((row) => row.use_count);
+    }
+
+    async function prepareCronRun(mintGrant: boolean) {
+      const revision = seedCronJobRow();
+      const database = openBranchStateDatabase(databaseOptions());
+      const loaded = loadedCronStoreFromRows(loadCronRows(database.db, cronStoreKey(cronStorePath)));
+      const job = loaded.store.jobs.find((entry) => entry.id === "job-1");
+      if (!job) {
+        throw new Error("seeded cron job did not load back");
+      }
+      const receipt = claimCronRunReceiptForTest(cronStorePath, job, Date.now());
+      releases.push(() => releaseLocalCronRunReceiptOwnership(receipt));
+      const marker = markServiceCronJobActive(
+        createCronServiceState({
+          scheduler: createTestGatewayScheduler(),
+          storePath: cronStorePath,
+          cronEnabled: true,
+          log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+          enqueueSystemEvent: vi.fn(),
+          requestHeartbeat: vi.fn(),
+          runIsolatedAgentJob: vi.fn(),
+        }),
+        job,
+        receipt,
+      );
+      runOwner = prepareCronRunAdmission({
+        cfg: {},
+        agentId: "main",
+        runId: "cron-run-1",
+        jobId: job.id,
+        sessionKey: "agent:main:cron:job-1",
+        deliveryAttemptFence: null,
+      });
+      controller = new AbortController();
+      bindCronJobAdmittedRun(
+        marker,
+        await runOwner.preparedRunAdmission.admit("embedded"),
+        controller.signal,
+      );
+      if (mintGrant) {
+        await mintStandingGrant(revision);
+      }
+      unregisterCronSource = registerCronRunExecSource("cron-run-1", {
+        agentId: "main",
+        jobId: "job-1",
+        jobConfigRevision: revision,
+        jobName: "Nightly backup",
+        standingGrantAuthority: runOwner.standingGrantAuthority,
+      });
+    }
+
+    function runCron() {
+      return runGatewayAllowlist({
+        command: grantCommand,
+        workdir,
+        agentId: "main",
+        runId: "cron-run-1",
+        ask: "on-miss",
+        signal: controller.signal,
+      });
+    }
+
+    it("executes a cron occurrence via a standing grant without prompting", async () => {
+      await prepareCronRun(true);
+      const security = captureSecurityEvents();
+      const result = await runCron();
+      expect(result.pendingResult).toBeUndefined();
+      expect(result.deniedResult).toBeUndefined();
+      expect(createExecApprovalRequestRouteMock).not.toHaveBeenCalled();
+      // Authority is recorded at the final effect: validation skips the prompt
+      // but the use is consumed only by the pre-spawn revalidation closure.
+      expect(readGrantUseCounts()).toEqual([0]);
+      expect(result.revalidateBeforeExecution).toBeDefined();
+      await expect(result.revalidateBeforeExecution?.()).resolves.toBeUndefined();
+      security.stop();
+      expect(JSON.stringify(security.events)).toContain("standing-grant");
+      expect(readGrantUseCounts()).toEqual([1]);
+    });
+
+    it("denies at the spawn boundary when the grant is invalidated after consult", async () => {
+      await prepareCronRun(true);
+      const security = captureSecurityEvents();
+      const result = await runCron();
+      expect(result.pendingResult).toBeUndefined();
+      expect(result.deniedResult).toBeUndefined();
+      expect(result.revalidateBeforeExecution).toBeDefined();
+      // Revoke the parent approval between consult and spawn: the closure
+      // must deny instead of executing on the stale authority.
+      const database = openBranchStateDatabase(databaseOptions());
+      // sqlite-allow-raw -- test-only reversal of the minting approval row.
+      database.db
+        .prepare("update operator_approvals set status = 'denied', decision = 'deny'")
+        .run();
+      const denied = await result.revalidateBeforeExecution?.();
+      security.stop();
+      expect(denied?.details.status).toBe("failed");
+      expect(denied?.content[0]).toMatchObject({
+        text: expect.stringContaining("standing grant no longer valid"),
+      });
+      expect(readGrantUseCounts()).toEqual([0]);
+      expect(JSON.stringify(security.events)).toContain("standing-grant-invalidated");
+    });
+
+    it("skips the JSON allowlist digest when a cron allow-always resolves", async () => {
+      await prepareCronRun(false);
+      approvalDecisionMock.mockResolvedValue("allow-always");
+      const result = await runCron();
+      expect(result.pendingResult).toBeUndefined();
+      expect(result.deniedResult).toBeUndefined();
+      await vi.waitFor(() => expect(commitExecAuthorizationMock).toHaveBeenCalledOnce());
+      expect(commitExecAuthorizationMock.mock.calls[0]?.[0].allowAlwaysDecision).toBeUndefined();
+    });
   });
 });
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

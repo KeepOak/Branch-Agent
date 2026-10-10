@@ -1,0 +1,2 @@
+engine:src/agents/bash-tools.exec-host-gateway.reviewed-command.test.ts
+engine:src/infra/exec-auto-review-denial-tracking.test.ts

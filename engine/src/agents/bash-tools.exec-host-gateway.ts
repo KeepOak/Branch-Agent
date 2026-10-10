@@ -44,6 +44,17 @@ import {
 } from "../infra/exec-auto-review.js";
 import { hasPosixShellStartupBeforeInlineCommand } from "../infra/exec-wrapper-resolution.js";
 import { LruCache } from "../infra/lru-cache.js";
+import { sha256HexPrefixCore } from "@branch/normalization-core/node-crypto";
+import {
+  consumePendingManualRetry,
+  createDenialState,
+  recordAllow,
+  recordBlock,
+  recordFallbackApprove,
+  recordUnavailable,
+  shouldFallback,
+  type AutoModeDenialState,
+} from "../infra/exec-auto-review-denial-tracking.js";
 import {
   prepareSystemRunMutableFileBinding,
   revalidateSystemRunMutableFileBinding,
@@ -98,21 +109,11 @@ const ONE_SHOT_ALLOW_ALWAYS: AllowAlwaysPersistenceDecision = {
 };
 // Keep compound reviews bounded independently of the serialized prompt cap.
 const MAX_GATEWAY_AUTO_REVIEW_CANDIDATES = 64;
-const MAX_CONSECUTIVE_AUTO_REVIEW_DENIALS = 3;
 const MAX_AUTO_REVIEW_SESSIONS = 256;
-const consecutiveAutoReviewDenials = new LruCache<number>(MAX_AUTO_REVIEW_SESSIONS);
-
-function recordAutoReviewDenial(sessionKey: string | undefined): number {
-  if (!sessionKey) {
-    return 1;
-  }
-  const count = Math.min(
-    (consecutiveAutoReviewDenials.get(sessionKey) ?? 0) + 1,
-    MAX_CONSECUTIVE_AUTO_REVIEW_DENIALS,
-  );
-  consecutiveAutoReviewDenials.set(sessionKey, count);
-  return count;
-}
+const autoReviewDenials = new LruCache<{
+  mode: string;
+  state: AutoModeDenialState;
+}>(MAX_AUTO_REVIEW_SESSIONS);
 
 function publishGatewayGuardianReview(
   params: ProcessGatewayAllowlistParams,
@@ -386,6 +387,33 @@ export async function processGatewayAllowlist(
     bypassHostApprovalFloors: params.bypassHostApprovalFloors,
     host: "gateway",
   });
+  // A deliberate mode/policy change invalidates the old reviewer signal.
+  // Full access never consults denial tracking or adds a prompt.
+  const denialMode = `${params.autoReview === true}:${hostSecurity}:${hostAsk}`;
+  if (params.sessionKey) {
+    if (params.autoReview !== true || (hostSecurity === "full" && hostAsk === "off")) {
+      autoReviewDenials.delete(params.sessionKey);
+    } else if (autoReviewDenials.get(params.sessionKey)?.mode !== denialMode) {
+      autoReviewDenials.set(params.sessionKey, { mode: denialMode, state: createDenialState() });
+    }
+  }
+  const actionFingerprint = sha256HexPrefixCore(JSON.stringify([
+    params.command,
+    params.workdir,
+    Object.entries(params.requestedEnv ?? {}).sort(([a], [b]) => a.localeCompare(b)),
+  ]), 64);
+  const getDenialState = () =>
+    (params.sessionKey ? autoReviewDenials.get(params.sessionKey)?.state : undefined) ??
+    createDenialState();
+  const updateDenialState = (update: (state: AutoModeDenialState) => AutoModeDenialState) => {
+    if (
+      params.sessionKey &&
+      params.autoReview === true &&
+      autoReviewDenials.get(params.sessionKey)?.mode === denialMode
+    ) {
+      autoReviewDenials.set(params.sessionKey, { mode: denialMode, state: update(getDenialState()) });
+    }
+  };
   const cwdAuthorizationBound = hostSecurity === "allowlist" || hostAsk !== "off";
   const capturedCwd = cwdAuthorizationBound
     ? captureApprovedCwdSnapshotSync(params.workdir)
@@ -825,8 +853,22 @@ export async function processGatewayAllowlist(
   }
   const requiresAsk =
     policyRequiresAsk || (durableApprovalRequiresBinding && mutableFileApprovalRequiresOneShot);
+  // Explicit approval requirements can also arise under full policy (for
+  // example strict inline eval). Bind those Windows dispatches through the
+  // same native enforcer without changing ordinary Full Access admission.
+  const reviewEnforcedCommand =
+    process.platform === "win32" &&
+    policyRequiresAsk &&
+    analysisOk &&
+    !shouldPrepareAllowlistExecution
+      ? buildEnforcedShellCommand({
+          command: params.command,
+          segments: allowlistEval.segments,
+          platform: process.platform,
+        })
+      : gatewayEnforcedCommand;
   const autoReviewEnforcedCommand =
-    gatewayEnforcedCommand?.ok === true ? gatewayEnforcedCommand.command : undefined;
+    reviewEnforcedCommand?.ok === true ? reviewEnforcedCommand.command : undefined;
   const autoReviewBlockedByShellStartup = allowlistEval.segments.some((segment) =>
     hasPosixShellStartupBeforeInlineCommand(segment.argv),
   );
@@ -928,7 +970,16 @@ export async function processGatewayAllowlist(
       (params.autoReview === true && hostAsk !== "always" && !canAutoReviewApprovalMiss) ||
       requiresAllowlistPlanApproval ||
       requiresHeredocApproval;
-    if (canAutoReviewApprovalMiss) {
+    const denialFallback = canAutoReviewApprovalMiss
+      ? shouldFallback(getDenialState(), actionFingerprint)
+      : { fallback: false as const };
+    if (denialFallback.fallback) {
+      params.warnings.push(
+        `Exec auto-review deferred to human approval (${denialFallback.reason})`,
+      );
+      autoReviewRequiresHumanApproval = true;
+    }
+    if (canAutoReviewApprovalMiss && !denialFallback.fallback) {
       const reviewer = params.autoReviewer ?? defaultExecAutoReviewer;
       publishGatewayGuardianReview(params, "in_progress");
       const pendingDecision = resolveExecAutoReviewDecision(reviewer, {
@@ -970,9 +1021,13 @@ export async function processGatewayAllowlist(
         publishGatewayGuardianReview(params, "aborted");
         throw error;
       }
-      const denialEscalated =
-        decision.decision === "deny" &&
-        recordAutoReviewDenial(params.sessionKey) >= MAX_CONSECUTIVE_AUTO_REVIEW_DENIALS;
+      if (decision.decision === "deny") {
+        updateDenialState((state) => recordBlock(state, actionFingerprint));
+      } else if (decision.decision === "ask" && decision.risk === "unknown") {
+        // Unknown-risk ask is the existing reviewer failure/unavailable signal.
+        updateDenialState(recordUnavailable);
+      }
+      const recordedDenialFallback = shouldFallback(getDenialState());
       publishGatewayGuardianReview(
         params,
         decision.decision === "allow-once" ? "approved" : "denied",
@@ -984,9 +1039,7 @@ export async function processGatewayAllowlist(
           if (decision.risk !== "low" && decision.risk !== "medium") {
             break;
           }
-          if (params.sessionKey) {
-            consecutiveAutoReviewDenials.delete(params.sessionKey);
-          }
+          updateDenialState((state) => recordAllow(state, actionFingerprint));
           const deniedResult = await revalidateGatewayExecApprovalBinding({
             binding: approvalMutableFileBinding,
             cwdSnapshot: approvedCwdSnapshot,
@@ -1016,9 +1069,9 @@ export async function processGatewayAllowlist(
           };
         }
         case "deny": {
-          if (denialEscalated) {
+          if (recordedDenialFallback.fallback) {
             params.warnings.push(
-              "Exec auto-review denied 3 consecutive commands for this session; escalating to human approval",
+              `Exec auto-review deferred to human approval (${recordedDenialFallback.reason})`,
             );
             break;
           }
@@ -1051,6 +1104,10 @@ export async function processGatewayAllowlist(
     }
     if (params.nonInteractiveApproval) {
       return denyHeadlessApproval();
+    }
+    if (denialFallback.fallback || shouldFallback(getDenialState()).fallback) {
+      // Consume the exact-action retry only when an interactive prompt can follow.
+      updateDenialState(consumePendingManualRetry);
     }
 
     const registerGatewayApproval = async (approvalId: string) =>
@@ -1214,10 +1271,10 @@ export async function processGatewayAllowlist(
       }
 
       const { decision, state: resolvedDecision } = approvalOutcome;
-      if (decision !== null && params.sessionKey) {
-        consecutiveAutoReviewDenials.delete(params.sessionKey);
-      }
       const { approvedByAsk } = resolvedDecision;
+      if (approvedByAsk) {
+        updateDenialState(recordFallbackApprove);
+      }
       let { deniedReason } = resolvedDecision;
 
       if (!approvedByAsk && hasAllowlistMiss) {
