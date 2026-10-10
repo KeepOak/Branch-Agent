@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
+  GH_RATE_LIMIT_BUDGET_SECONDS,
   ISSUE_INTRO,
   runGh,
   TRACKING_ISSUE_TITLE,
@@ -162,4 +163,27 @@ test('runGh waits out a rate limit and retries instead of failing the workflow',
   assert.equal(out, '[]');
   assert.equal(calls, 2);
   assert.equal(waits.length, 1);
+});
+
+test('rate-limit waits share one job deadline across every gh call', () => {
+  let clock = 1_000_000;
+  const now = () => clock;
+  const waits = [];
+  const sleep = (seconds) => {
+    waits.push(seconds);
+    clock += seconds * 1000;
+  };
+  const budget = { startedAt: null };
+  const limited = () => {
+    throw Object.assign(new Error('gh: API rate limit exceeded for installation (HTTP 403)'), {
+      stderr: 'gh: API rate limit exceeded for installation (HTTP 403)',
+    });
+  };
+  const options = { exec: limited, sleep, now, budget };
+  assert.throws(() => runGh(['api', 'repos/example/repo/commits/abc'], {}, options), /rate limit/);
+  const afterFirst = waits.reduce((total, seconds) => total + seconds, 0);
+  assert.throws(() => runGh(['issue', 'list'], {}, options), /rate limit/);
+  const total = waits.reduce((sum, seconds) => sum + seconds, 0);
+  assert.ok(total <= GH_RATE_LIMIT_BUDGET_SECONDS, `waited ${total}s, over the ${GH_RATE_LIMIT_BUDGET_SECONDS}s job budget`);
+  assert.equal(total, afterFirst, 'the second call had no budget left to wait with');
 });

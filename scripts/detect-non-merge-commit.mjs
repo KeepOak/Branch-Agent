@@ -114,17 +114,23 @@ export function inspectLanding({ sha, repo, commit, pulls, serverUrl }) {
 }
 
 // A landing commit's JSON carries every changed patch, so the default 1 MiB execFileSync buffer
-// overflows (spawnSync gh ENOBUFS). Rate limits are waited out inside the budget, then fail with the message.
+// overflows (spawnSync gh ENOBUFS). Rate limits are waited out inside one budget for the whole job,
+// shared by every gh call, so several rate-limited calls cannot add up past the job's limit.
+const jobBudget = { startedAt: null };
+
 export function runGh(args, env = process.env, {
   exec = execFileSync,
   sleep = (seconds) => execFileSync('sleep', [String(seconds)], { windowsHide: true }),
+  now = Date.now,
+  budget = jobBudget,
 } = {}) {
+  budget.startedAt ??= now();
   return withRateLimitRetry(() => exec('gh', args, {
     encoding: 'utf8',
     windowsHide: true,
     env,
     maxBuffer: GH_API_MAX_BUFFER,
-  }), { sleep, budgetSeconds: GH_RATE_LIMIT_BUDGET_SECONDS });
+  }), { sleep, now, startedAt: budget.startedAt, budgetSeconds: GH_RATE_LIMIT_BUDGET_SECONDS });
 }
 
 function readJson(stdout) {
