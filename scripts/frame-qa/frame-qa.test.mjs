@@ -7,7 +7,7 @@ import { blankFrames, findFlickers, firstChangeMs, frameIntervalMedian, idleChur
 import { auditContrast, contrastRatio, parseColor, requiredRatio } from './contrast.mjs';
 import { auditLines, lineFor, uniqueFindings } from './audit-lines.mjs';
 import { VisitedGraph, controlId, orderControls, traverse } from './traverse.mjs';
-import { TRACE_OPTIONS, VIDEO_SIZE, contextOptions } from './browser-options.mjs';
+import { TRACE_OPTIONS, VIDEO_SIZE, contextOptions, openRootContext } from './browser-options.mjs';
 
 const frames = (pairs) => pairs.map(([t, hash, bytes = 40000]) => ({ t, hash, bytes }));
 
@@ -226,6 +226,22 @@ test('if recovery itself throws, the crash is recorded a second time and the wal
 test('traces keep snapshots but drop screenshots', () => {
   assert.equal(TRACE_OPTIONS.screenshots, false);
   assert.equal(TRACE_OPTIONS.snapshots, true);
+});
+
+test('a root context starts its trace with the trace options, and the context gets the capped video', async () => {
+  const calls = [];
+  const fakeBrowser = {
+    async newContext(options) {
+      calls.push({ call: 'newContext', options });
+      return { tracing: { async start(opts) { calls.push({ call: 'tracing.start', options: opts }); } } };
+    },
+  };
+  await openRootContext(fakeBrowser, { out: '/tmp/out', safe: 'place-overview' });
+  const trace = calls.find((c) => c.call === 'tracing.start');
+  assert.deepEqual(trace.options, TRACE_OPTIONS, 'tracing.start is called with the trace options');
+  assert.equal(trace.options.screenshots, false);
+  const ctx = calls.find((c) => c.call === 'newContext');
+  assert.deepEqual(ctx.options.recordVideo.size, VIDEO_SIZE);
 });
 
 test('video is capped at 960x600 for every root context', () => {

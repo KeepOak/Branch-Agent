@@ -11,3 +11,10 @@ export const TRACE_OPTIONS = { screenshots: false, snapshots: true };
 export function contextOptions({ out, safe }) {
   return { viewport: VIEWPORT, recordVideo: { dir: join(out, 'videos', safe), size: VIDEO_SIZE } };
 }
+
+/** Opens one root's context and starts its trace with the trace options. Takes the browser as a parameter so tests can pass a fake. */
+export async function openRootContext(browser, { out, safe }) {
+  const context = await browser.newContext(contextOptions({ out, safe }));
+  await context.tracing.start(TRACE_OPTIONS);
+  return context;
+}
