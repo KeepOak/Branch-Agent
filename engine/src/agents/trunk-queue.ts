@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "../config/paths.js";
+import { recordTrunkJobTransition } from "./trunk-job-room-events.js";
 
 export type TrunkQueueItem = {
   id: string;
@@ -35,6 +36,9 @@ export type TrunkQueueGateway = {
 
 export const STALE_CLAIM_MS = 2 * 60 * 60_000;
 const RETAIN_DONE_MS = 7 * 24 * 60 * 60_000;
+const MANUAL_RELEASE_REASON = "released from the queue";
+const STALE_RELEASE_REASON = "no run activity for two hours";
+const DISPATCH_RELEASE_REASON = "its run could not start";
 
 function file(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(resolveStateDir(env), "trunks", "queue.json");
@@ -80,6 +84,19 @@ function release(row: TrunkQueueItem, now: number): void {
   delete row.claim_id;
   delete row.thread_key;
   delete row.active_at;
+}
+
+/** Room event for a released claim; `before` is the job as it was while claimed. */
+function recordRelease(before: TrunkQueueItem, reason: string): void {
+  if (before.claimed_by) {
+    recordTrunkJobTransition({
+      kind: "released",
+      trunkId: before.claimed_by,
+      jobId: before.id,
+      title: before.title,
+      reason,
+    });
+  }
 }
 
 function isPastStaleTime(row: TrunkQueueItem, now: number): boolean {
@@ -131,31 +148,47 @@ export function listQueueItems(
     .map((row) => Object.assign(row, { status: queueItemStatus(row) }));
 }
 
-/** Marks a job finished and returns it (with the Trunk that held it). */
+/**
+ * Marks a job finished and returns it (with the Trunk that held it). The first done writes a room event; the
+ * note (for example "PR #123") is shown in it. A repeated done changes nothing and writes nothing.
+ */
 export function markQueueItemDone(
   id: string,
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
+  note?: string,
 ): TrunkQueueItem | undefined {
   const rows = read(env);
   const row = rows.find((candidate) => candidate.id === id);
   if (!row) {
     return undefined;
   }
+  const firstDone = row.done_at === undefined;
   row.done_at ??= now;
   write(rows, now, env);
+  if (firstDone && row.claimed_by) {
+    recordTrunkJobTransition({
+      kind: "done",
+      trunkId: row.claimed_by,
+      jobId: row.id,
+      title: row.title,
+      note,
+    });
+  }
   return row;
 }
 
 /**
  * Puts a stuck claim back in the queue and returns the job as it was before. With claimId, only that claim
- * attempt is released, so a late failure never releases a newer claim on the same job.
+ * attempt is released, so a late failure never releases a newer claim on the same job. A release writes one
+ * room event; releasing a job that holds no open claim writes nothing.
  */
 export function releaseQueueItem(
   id: string,
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
   claimId?: string,
+  reason = MANUAL_RELEASE_REASON,
 ): TrunkQueueItem | undefined {
   const rows = read(env);
   const row = rows.find((candidate) => candidate.id === id);
@@ -166,6 +199,7 @@ export function releaseQueueItem(
   if (isOpenClaim(row) && (claimId === undefined || row.claim_id === claimId)) {
     release(row, now);
     write(rows, now, env);
+    recordRelease(before, reason);
   }
   return before;
 }
@@ -217,6 +251,7 @@ export function claimNextQueueItem(
     active_at: now,
   });
   write(rows, now, env);
+  recordTrunkJobTransition({ kind: "claimed", trunkId: agentId, jobId: next.id, title: next.title });
   return claim;
 }
 
@@ -286,10 +321,13 @@ export async function releaseStaleQueueClaims(params: {
     }
     if (working) {
       row.active_at = at;
+      write(rows, at, params.env);
     } else {
+      const before = { ...row };
       release(row, at);
+      write(rows, at, params.env);
+      recordRelease(before, STALE_RELEASE_REASON);
     }
-    write(rows, at, params.env);
   }
 }
 
@@ -378,7 +416,7 @@ async function dispatchClaim(
       idempotencyKey: `trunk-queue-${id}-${claimId}`,
     });
   } catch (error) {
-    releaseQueueItem(id, params.env, now(), claimId);
+    releaseQueueItem(id, params.env, now(), claimId, DISPATCH_RELEASE_REASON);
     throw error;
   }
   return { item, threadKey };
