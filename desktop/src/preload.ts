@@ -249,6 +249,8 @@ function showRecoveryError(message: string): void {
 
 /** A small bar at the bottom of the window while an update waits or applies. The app and window stay open throughout. */
 function showUpdateBar(state: UpdateState): void {
+  // The Settings page mirrors this bar, so it can clear its own pending state on the same outcomes.
+  window.dispatchEvent(new CustomEvent("branch:update-state", { detail: state }));
   if (state === "updated") document.getElementById("branch-desktop-recovery-error")?.remove();
   if (state === "kept") {
     // The new engine did not start; Branch keeps running the version it had.
