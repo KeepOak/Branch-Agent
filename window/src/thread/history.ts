@@ -320,7 +320,8 @@ function onUser(b: Builder, m: Message, index: number, inFlightRunId: string | n
   }
   closeRun(b, inFlightRunId);
   // A message sent while the turn before still ran starts its own turn when that one ended.
-  b.runStart = typeof m.timestamp === "number" || b.lastTs > 0 ? Math.max(num(m.timestamp), b.lastTs) : null;
+  // An untimed message has no start: measuring from the previous run's end would count the idle gap as this run.
+  b.runStart = typeof m.timestamp === "number" ? Math.max(m.timestamp, b.lastTs) : null;
   if (isRestartResume(m)) {
     b.blocks.push({ kind: "notice", key: `h:${index}`, text: RESUMED_AFTER_RESTART });
     return;
