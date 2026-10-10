@@ -48,6 +48,26 @@ describe("trunk templates", () => {
     expect(parsed.warnings).toHaveLength(2);
   });
 
+  it("keeps only known toolset switches and warns on always-on and unknown names", () => {
+    const parsed = parseTrunkTemplate({
+      format: "branch.trunk-template",
+      version: 1,
+      name: "Scout",
+      persona: { agentsMd: "# Scout\n" },
+      skills: [],
+      toolsets: { browser: false, message: false, nope: true },
+    });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) {
+      return;
+    }
+    expect(parsed.template.toolsets).toEqual({ browser: false });
+    expect(parsed.warnings).toEqual([
+      expect.stringContaining("always on"),
+      expect.stringContaining("names no known toolset"),
+    ]);
+  });
+
   it("names skills this engine has not installed as plain warnings", () => {
     const parsed = parseTrunkTemplate({
       format: "branch.trunk-template",

@@ -62,9 +62,10 @@ export function PetSec({ look }: { look: Look }) {
           </button>
         ))}
       </div>
-      <Ctl title="Name" sub="Pat it for a tip.">
+      <Ctl title="Name" sub="Shown on the pet’s tips and menu.">
         <Field value={String(look.val("petName", "Hazel"))} label="Pet name" onCommit={(v) => void save(() => look.store.set("petName", v.trim() && v.trim() !== "Hazel" ? v.trim().slice(0, 40) : null))} />
       </Ctl>
+      <SpecRow r={rowOf("roam")} look={look} />
       <SpecRow r={rowOf("petSounds")} look={look} />
       <Ctl title="Pets you’ve had">
         <Val>{`${had.length} of ${PETS.length - 1}${first ? ` · first ${String(first)}` : ""}`}</Val>
