@@ -5,7 +5,8 @@ import {
   type ToolsCatalogResult,
   validateToolsCatalogParams,
 } from "../../../packages/gateway-protocol/src/index.js";
-import { resolveAgentDir, resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
+import { resolveAgentConfig, resolveAgentDir, resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
+import { resolveConfiguredToolPolicies } from "../../agents/agent-tools.policy.js";
 import { resolveSwarmConfig } from "../../agents/subagents/swarm/swarm-config.js";
 import {
   listCoreToolSections,
@@ -13,6 +14,8 @@ import {
   resolveCoreToolProfiles,
 } from "../../agents/tool-catalog.js";
 import { summarizeToolDescriptionText } from "../../agents/tool-description-summary.js";
+import { resolveToolsetOffers } from "../../agents/tool-toolsets-offer.js";
+import { TOOLSETS } from "../../agents/tool-toolsets.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import type { PluginRegistry } from "../../plugins/registry-types.js";
 import { getActivePluginRegistry } from "../../plugins/runtime.js";
@@ -212,6 +215,10 @@ export const toolsCatalogHandlers: GatewayRequestHandlers = {
       return;
     }
     const { cfg, agentId } = resolved;
+    // The Trunk's own toolset switches are left out, so each switch shows what the rest of the tool list allows.
+    const offers = resolveToolsetOffers(
+      resolveConfiguredToolPolicies({ cfg, agentTools: resolveAgentConfig(cfg, agentId)?.tools }),
+    );
     const groups = buildCoreGroups({ cfg, agentId });
     if (params.includePlugins !== false) {
       groups.push(
@@ -228,6 +235,13 @@ export const toolsCatalogHandlers: GatewayRequestHandlers = {
         agentId,
         profiles: PROFILE_OPTIONS.map((profile) => ({ id: profile.id, label: profile.label })),
         groups,
+        toolsets: TOOLSETS.map((toolset) => ({
+          id: toolset.id,
+          label: toolset.label,
+          description: toolset.description,
+          tools: [...toolset.tools],
+          offered: offers[toolset.id] !== false,
+        })),
       } satisfies ToolsCatalogResult,
       undefined,
     );

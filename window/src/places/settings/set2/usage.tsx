@@ -873,7 +873,7 @@ function ManageDialog({ engine, onClose }: { engine: WindowEngine; onClose: () =
 }
 
 const SUITES: [string, string][] = [
-  ["Right actions", "Picks the right tools, helpers and safety steps · Exact and judge graders · passes at 90%"],
+  ["Right actions", "Picks the right tools, Trunks and safety steps · Exact and judge graders · passes at 90%"],
   ["Memory recall", "Answers from what it remembers, and how fast · Judge model · passes at 90%"],
   ["Recall after tidying up", "What survives when a long conversation is tidied · Judge model · passes at 90%"],
   ["Does it follow the skill", "Steps a skill requires, checked in the tool calls · From each skill · Tool-call grader · passes at 90%"],

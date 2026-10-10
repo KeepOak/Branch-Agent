@@ -29,20 +29,19 @@ const BASE: SettingsGroup[] = [
     pages: [
       { id: "permissions", name: "Permissions" },
       { id: "computer", name: "Computer & browser" },
-      { id: "secrets", name: "Saved sign-ins" },
-      { id: "agents", name: "Grafts" },
+      { id: "secrets", name: "Saved passwords" },
+      { id: "agents", name: "Connected agents" },
     ],
   },
   {
-    name: "Care",
+    name: "Data and safety",
     pages: [
       { id: "usage", name: "Data & usage" },
       { id: "backups", name: "Backups" },
       { id: "gateway", name: "Gateway" },
-      { id: "self", name: "Branch itself" },
+      { id: "self", name: "About Branch" },
       { id: "seasons", name: "Seasons" },
       { id: "updates", name: "Updates & about" },
-      { id: "achievements", name: "Achievements" },
     ],
   },
 ];
@@ -105,7 +104,6 @@ const KEYWORDS: Record<string, string> = {
   self: "self improve restart doctor check fix roll back",
   seasons: "rings gardener budding memory overnight skills learn improve",
   updates: "version update beta stable remove uninstall about release notes",
-  achievements: "badges medals trophies quiet",
   advanced: "memory automations webhooks search skills logs",
   developer: "api address session key language servers debugger playground telemetry",
 };

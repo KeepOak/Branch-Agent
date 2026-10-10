@@ -269,3 +269,53 @@ test('the gate-files-fresh job timeout outlasts the helper wait budget', () => {
     `timeout ${timeoutMinutes}m must exceed the ${waitSeconds}s wait budget plus 3 minutes of setup`,
   );
 });
+
+test('fetchCompare pages the commit list, so a branch 125 commits behind main is not too large', () => {
+  const shas = Array.from({ length: 125 }, (_, index) => `c${index}`);
+  const calls = [];
+  const result = fetchCompare('example/repo', 'unused', 'old', 'main', {
+    api: (_repo, _token, requestPath, options = {}) => {
+      calls.push({ requestPath, jq: options.jq });
+      const page = Number(new URL(`https://example/${requestPath}`).searchParams.get('page') ?? 1);
+      if (page === 1) {
+        assert.equal(options.jq, COMPARE_SLIM_JQ);
+        return {
+          merge_base_sha: 'old',
+          commits: shas.slice(0, 100),
+          truncated: false,
+          total_commits: 125,
+          files: ['gate.yml'],
+        };
+      }
+      if (options.jq === '[.commits[].sha]') return shas.slice((page - 1) * 100);
+      return [];
+    },
+  });
+  assert.equal(result.commits.length, 125);
+  assert.equal(result.commits[124].sha, 'c124');
+  assert.deepEqual(result.files.map((file) => file.filename), ['gate.yml']);
+  assert.equal(calls.filter((call) => call.jq === '[.commits[].sha]').length, 1);
+});
+
+test('the fork-to-main attribution compare is non-fatal, so a stale fork point cannot fail the gate by itself', async () => {
+  const compareOptions = [];
+  const api = {
+    fetchPrFiles: () => [{ filename: GATE, status: 'modified' }],
+    fetchPrCommits: () => [{ sha: 'pr1', parents: [{ sha: 'fork0' }] }],
+    fetchCompare: (_repo, _token, base, _head, options) => {
+      if (base === 'main') return { merge_base_commit: { sha: 'fork0' }, commits: [] };
+      compareOptions.push(options);
+      return { commits: [{ sha: 'mainadd1' }], truncated: true };
+    },
+    fetchFileText: (_repo, sha) => (sha === 'main' ? 'keep\nadded-on-main\n' : 'keep\n'),
+    fetchCommitsForPath: () => [{ sha: 'mainadd1' }],
+    fetchCommit: () => ({ sha: 'mainadd1', files: [] }),
+  };
+  const result = await checkPullRequest({
+    repo: 'example/repo', token: 'unused', prNumber: '1', headSha: 'pr1', mainRef: 'main', api,
+  });
+  assert.deepEqual(compareOptions, [{ requireComplete: false }]);
+  assert.equal(result.ok, false);
+  assert.equal(result.results[0].dropped[0].line, 'added-on-main');
+  assert.equal(result.results[0].dropped[0].commit, null);
+});
