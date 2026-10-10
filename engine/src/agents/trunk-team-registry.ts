@@ -37,30 +37,33 @@ function keptAside(env?: NodeJS.ProcessEnv): string[] {
   }
 }
 
-function pausedMessage(kept: string): string {
-  return `The team registry could not be read, so it was kept at ${kept}. Team jobs are paused until that file is fixed or removed.`;
+/** A kept copy is never read back, so removing it is the way out, and that means setting the teams up again. */
+function keptMessage(aside: string): string {
+  return `The team registry was unreadable and was kept at ${aside}. That copy is never read back; removing it means setting the teams up again.`;
+}
+
+function unreadableMessage(target: string, reason: string): string {
+  return `The team registry at ${target} could not be read (${reason}).`;
 }
 
 type Loaded = { teams: TeamRegistry } | { problem: string };
 
 /**
- * Loads the registry. A file that cannot be parsed is renamed aside (never overwritten) and the registry is paused
- * until the kept copy is removed. A kept copy is never read back as teams.
+ * Loads the registry. Any failure to read it is the paused state, never an exception: a file that cannot be parsed is
+ * renamed aside (never overwritten), and an unreadable one (permissions, a directory in its place) is left alone.
  */
 function load(env?: NodeJS.ProcessEnv): Loaded {
   const kept = keptAside(env);
   if (kept.length > 0) {
-    return { problem: pausedMessage(kept[0]!) };
+    return { problem: keptMessage(kept[0]!) };
   }
   const target = file(env);
   let text: string;
   try {
     text = fs.readFileSync(target, "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { teams: {} };
-    }
-    throw error;
+    const code = (error as NodeJS.ErrnoException).code ?? "unknown error";
+    return code === "ENOENT" ? { teams: {} } : { problem: unreadableMessage(target, code) };
   }
   try {
     const parsed = JSON.parse(text) as unknown;
@@ -71,8 +74,13 @@ function load(env?: NodeJS.ProcessEnv): Loaded {
     // Not JSON: keep it aside below.
   }
   const aside = `${target}.corrupt-${Date.now()}`;
-  fs.renameSync(target, aside);
-  return { problem: pausedMessage(aside) };
+  try {
+    fs.renameSync(target, aside);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code ?? "rename failed";
+    return { problem: unreadableMessage(target, code) };
+  }
+  return { problem: keptMessage(aside) };
 }
 
 /**

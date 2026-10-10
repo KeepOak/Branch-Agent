@@ -124,10 +124,13 @@ function unsetTeamReason(team: string): string {
   return `Team ${team} isn't set up on this computer. Set the team up again; the job then runs.`;
 }
 
+/** The reason a team job waits while the registry cannot be read. Recognised by its prefix when it clears. */
+const PAUSED_PREFIX = "Team jobs are paused. ";
+
 /**
- * Keeps each team job's block in step with its team: a job of a team that is not registered is blocked with a plain
- * reason, so the owner can see it, and a job whose team is registered again is unblocked. A paused registry changes
- * nothing. Returns whether any row changed.
+ * Keeps each team job's block in step with its team. A job whose team is not registered is blocked with a plain reason,
+ * and unblocked when the team is registered again. While the registry cannot be read, team jobs carry the pause reason
+ * and clear it once the registry reads again. Other blocks are left alone. Returns whether any row changed.
  */
 function refreshTeamBlocks(rows: TrunkQueueItem[], env?: NodeJS.ProcessEnv): boolean {
   const states = new Map<string, ReturnType<typeof teamState>>();
@@ -140,6 +143,19 @@ function refreshTeamBlocks(rows: TrunkQueueItem[], env?: NodeJS.ProcessEnv): boo
       states.set(row.team, teamState(row.team, env));
     }
     const state = states.get(row.team)!;
+    const reason = row.blocked_reason;
+    if (state.status === "paused") {
+      const wanted = PAUSED_PREFIX + state.problem;
+      if (reason !== wanted && (!reason || reason.startsWith(PAUSED_PREFIX))) {
+        row.blocked_reason = wanted;
+        changed = true;
+      }
+      continue;
+    }
+    if (reason?.startsWith(PAUSED_PREFIX)) {
+      delete row.blocked_reason;
+      changed = true;
+    }
     if (state.status === "unregistered" && !row.blocked_reason) {
       row.blocked_reason = unsetTeamReason(row.team);
       changed = true;

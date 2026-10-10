@@ -62,7 +62,7 @@ describe("team jobs queued before the team field existed", () => {
 });
 
 describe("a corrupt team registry", () => {
-  it("keeps the bad file aside, refuses to write, and pauses team jobs without blocking them", () => {
+  it("keeps the bad file aside, refuses to write, and pauses team jobs with a plain reason", () => {
     const target = path.join(dir, "trunks", "teams.json");
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, "{not json");
@@ -70,7 +70,7 @@ describe("a corrupt team registry", () => {
 
     expect(() =>
       registerTeam("aaaaaaaa", { roomId: "team-aaaaaaaa", members: ["m1"] }, env),
-    ).toThrow(/could not be read/);
+    ).toThrow(/was unreadable and was kept at/);
     expect(fs.existsSync(target)).toBe(false);
     const kept = fs
       .readdirSync(path.dirname(target))
@@ -82,7 +82,9 @@ describe("a corrupt team registry", () => {
       registerTeam("bbbbbbbb", { roomId: "team-bbbbbbbb", members: ["m2"] }, env),
     ).toThrow(/Nothing was registered/);
     expect(claimNextQueueItem("builder-scout-2d60428e", env, 1_100)).toBeUndefined();
-    expect(listQueueItems(env)[0]?.status).toBe("queued");
+    expect(listQueueItems(env)[0]?.status).toBe("blocked");
+    expect(listQueueItems(env)[0]?.blocked_reason).toMatch(/^Team jobs are paused\. .*kept at/);
+    expect(listQueueItems(env)[0]?.blocked_reason).toMatch(/setting the teams up again/);
   });
 });
 
@@ -99,5 +101,22 @@ describe("team jobs whose team is not set up here", () => {
 
     registerTeam("deadbeef", { roomId: "team-deadbeef", members: ["builder-scout-deadbeef"] }, env);
     expect(claimNextQueueItem("builder-scout-deadbeef", env, 1_200)?.title).toBe("Orphan");
+  });
+});
+
+describe("an unreadable team registry", () => {
+  it("pauses team jobs with a plain reason and leaves ordinary jobs claimable", () => {
+    fs.mkdirSync(path.join(dir, "trunks", "teams.json"), { recursive: true });
+    addQueueItem({ title: "Scout: Ship it", brief_text: "Find.", team: "2d60428e" }, env, 1_000);
+    addQueueItem({ title: "Plain", brief_text: "Do it." }, env, 1_001);
+
+    expect(claimNextQueueItem("builder-other", env, 1_100)?.title).toBe("Plain");
+    const team = listQueueItems(env).find((row) => row.title === "Scout: Ship it");
+    expect(team?.status).toBe("blocked");
+    expect(team?.blocked_reason).toMatch(/^Team jobs are paused\. .*could not be read/);
+    expect(claimNextQueueItem("builder-scout-2d60428e", env, 1_200)).toBeUndefined();
+    expect(() => registerTeam("cccccccc", { roomId: "team-cccccccc", members: ["m3"] }, env)).toThrow(
+      /could not be read/,
+    );
   });
 });
