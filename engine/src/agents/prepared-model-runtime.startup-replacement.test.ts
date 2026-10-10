@@ -58,7 +58,11 @@ const mocks = getPreparedModelRuntimeMocks();
 
 // The Gateway's startup preparation refreshes the active secrets snapshot and migrates sessions
 // first; this fixture has neither, so those two steps succeed and the model publication is real.
-const secrets = vi.hoisted(() => ({ active: false, revision: 0, authDatabasePaths: [] as string[] }));
+const secrets = vi.hoisted(() => ({
+  active: false,
+  revision: 0,
+  authDatabasePaths: [] as string[],
+}));
 vi.mock("../secrets/runtime.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../secrets/runtime.js")>();
   const snapshot = () => ({
@@ -88,12 +92,17 @@ vi.mock("../secrets/runtime.js", async (importOriginal) => {
 // The Gateway publishes a starting Trunk with a refresh scoped to it; the test can start a covering
 // reload the moment that refresh resolves.
 const startCoveringReload = vi.hoisted(() => ({ next: undefined as (() => void) | undefined }));
+// Runs right after each refresh scoped to the starting Trunk begins, while it is still queued.
+const scopedRefreshStarted = vi.hoisted(() => ({ hook: undefined as (() => void) | undefined }));
 vi.mock("./prepared-model-runtime.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./prepared-model-runtime.js")>();
   return {
     ...actual,
     refreshPreparedModelRuntimeSnapshots: ((...args) => {
       const refresh = actual.refreshPreparedModelRuntimeSnapshots(...args);
+      if (args[1]?.agentIds?.has("tk")) {
+        scopedRefreshStarted.hook?.();
+      }
       const start = args[1]?.agentIds?.has("tk") ? startCoveringReload.next : undefined;
       if (!start) {
         return refresh;
@@ -534,4 +543,93 @@ describe("startup preparation of a Trunk whose model build never settles", () =>
       await stop?.();
     }
   }, 60000);
+
+  it.each([
+    ["config", (state: { config: BranchConfig }) => void (state.config = { ...config })],
+    ["secrets revision", () => void (secrets.revision += 1)],
+  ] as const)(
+    "fails the Gateway's startup preparation as superseded when its %s changes while it republishes a superseded publication",
+    async (_changed, change) => {
+      mocks.configuredAgentIds = ["tk", "sibling"];
+      // A one-minute backoff: only the first attempt's outcome is observed.
+      const env = { ...process.env, BRANCH_AGENT_PREPARATION_RETRY_MS: "60000" };
+      const path = openBranchAgentDatabase({ agentId: "tk", env }).path;
+      await closeDatabases();
+      secrets.authDatabasePaths = [resolveAuthProfileDatabasePath(fixture.state.agentDir("tk"))];
+      secrets.active = true;
+      const state = { config };
+      const outsidePreparation = AsyncLocalStorage.snapshot();
+      let tkRefreshes = 0;
+      let siblingRefresh: Promise<void> | undefined;
+      scopedRefreshStarted.hook = () => {
+        tkRefreshes += 1;
+        if (tkRefreshes === 1) {
+          // A refresh for another Trunk supersedes the Trunk's first publication without covering it.
+          siblingRefresh = outsidePreparation(() =>
+            refreshPreparedModelRuntimeSnapshots(config, {
+              agentIds: new Set(["sibling"]),
+              catalogMode: "static",
+              allowGatewaySubagentBinding: true,
+              gatewayLifecycle: true,
+            }),
+          );
+          void siblingRefresh.catch(() => undefined);
+        } else if (tkRefreshes === 2) {
+          // The config or secrets change while the superseded publication is published again.
+          change(state);
+        }
+      };
+      const clean: BranchDatabaseSchemaPreflight = { incompatible: [], indeterminate: [] };
+      const failedAttempts: string[] = [];
+      const infos: string[] = [];
+      let stop: (() => Promise<void>) | undefined;
+      try {
+        await withAgentDatabaseStartupAdmission(async (admission) => {
+          const refusals = admission.defer({
+            env,
+            inspections: [{ target: { agentId: "tk", path }, result: Promise.resolve(clean) }],
+            reason: "Inspection continues after the Gateway listener binds.",
+          });
+          recordAgentDatabaseAdmissions(refusals, { env, source: "startup" });
+          stop = admission.adopt().stop;
+          // The Gateway's own prepareAgent runs unchanged, with its real assertPreparationCurrent.
+          activateGatewayAgentDatabaseStartup({
+            admission: {
+              activate: (activation: Parameters<typeof admission.activate>[0]) =>
+                admission.activate({
+                  ...activation,
+                  openAgent: async () => {},
+                  prepareAgent: async (input) => {
+                    try {
+                      await activation.prepareAgent(input);
+                    } catch (error) {
+                      failedAttempts.push(String(error));
+                      throw error;
+                    }
+                  },
+                }),
+            } as unknown as Parameters<typeof activateGatewayAgentDatabaseStartup>[0]["admission"],
+            preparationReady: Promise.resolve(),
+            getConfig: () => state.config,
+            getPluginRegistry: () => createEmptyPluginRegistry(),
+            getPluginMetadataSnapshot: () => undefined,
+            isCurrent: () => true,
+            log: { info: (message) => infos.push(message), warn: () => {} },
+          });
+        });
+        await expect.poll(() => failedAttempts.length, { timeout: 10000 }).toBeGreaterThan(0);
+        expect(failedAttempts[0]).toContain("Agent tk startup preparation was superseded");
+        expect(failedAttempts[0]).not.toContain("has not published");
+        expect(infos).toContain(
+          "agent tk startup model publication was superseded; publishing it again",
+        );
+        expect(tkRefreshes).toBeGreaterThanOrEqual(2);
+      } finally {
+        scopedRefreshStarted.hook = undefined;
+        secrets.active = false;
+        await stop?.();
+        await siblingRefresh?.catch(() => undefined);
+      }
+    },
+  );
 });
