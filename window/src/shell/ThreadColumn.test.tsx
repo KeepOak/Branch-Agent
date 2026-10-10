@@ -43,4 +43,21 @@ describe("v23 thread column versus the preview topic row", () => {
     </>));
     expect([...host.querySelectorAll("nav")].map((nav) => nav.getAttribute("aria-label"))).toEqual(["Threads"]);
   });
+
+  it("counts the General conversation with the threads it lists", async () => {
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root!.render(<ThreadColumn name="nas-builder-3" generalKey="agent:oak:main" openKey={null} items={[{ topic, preview: "Flights", updatedAt: 1 }]} onOpen={() => {}} />));
+    expect(host.querySelector(".v23-threads-head small")?.textContent).toBe("2 conversations");
+  });
+
+  it("opens a thread's menu on right-click, with the thread's key", async () => {
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    const onMenu = vi.fn();
+    await act(async () => root!.render(<ThreadColumn name="Oak" generalKey="agent:oak:main" openKey={null} items={[{ topic, preview: "Flights", updatedAt: 1 }]} onOpen={() => {}} onMenu={onMenu} />));
+    const row = [...host.querySelectorAll<HTMLButtonElement>(".v23-thread-row")].find((b) => b.textContent?.includes("Lisbon trip"));
+    await act(async () => row?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 4, clientY: 8 })));
+    expect(onMenu).toHaveBeenCalledWith(expect.anything(), topic.key, "Lisbon trip");
+  });
 });

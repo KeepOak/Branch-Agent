@@ -21,7 +21,8 @@ const RETRY_MS = 3_000;
 
 /** An outside identity a grafted Branch says hello as (contacts.outside.hello accepts kind and via). */
 export type GraftIdentity = OutsideAgentIdentity & { kind?: "branch" | "trunk"; via?: string };
-export type GraftLink = { url: string; tlsFingerprint?: string; name: string; joinedAt: number };
+/** `url` is the address the link starts with; `urls` are the host's other addresses, tried in order when it fails. */
+export type GraftLink = { url: string; urls?: string[]; tlsFingerprint?: string; name: string; joinedAt: number };
 export type ConnectOutcome =
   | { ok: true; deviceId?: string; scopes: string[] }
   | { ok: false; pendingRequestId?: string; message: string };
