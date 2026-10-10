@@ -223,4 +223,13 @@ describe("Settings › Chat apps on a partial engine reply", () => {
       expect(host.querySelector("h1")?.textContent).toBe("Chat apps");
     }
   });
+
+  it("explains the chat commands in plain words, points to Who may use commands, and has no Slack app file stub", async () => {
+    const { engine } = engineOf();
+    await render(engine, 1);
+    expect(host.textContent).toContain("Starts a fresh conversation in this chat.");
+    expect(host.textContent).toContain("Who may use them is set in “Who may use commands”, under People.");
+    expect(host.textContent).not.toContain("Slack app file");
+    expect(host.textContent).not.toContain("Branch can’t limit one command yet");
+  });
 });
