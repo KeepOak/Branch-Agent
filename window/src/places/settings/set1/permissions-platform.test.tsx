@@ -33,8 +33,6 @@ describe("Settings › Permissions › This computer", () => {
     expect(host.textContent).toContain("Windows permissions open from the Branch app on your computer.");
     expect(button("Open Windows Settings")?.disabled).toBe(true);
     expect(button("Open Windows Settings")?.title).toBe("Windows permissions open from the Branch app on your computer.");
-    expect(host.querySelector('[data-row="Location access"]')?.textContent).not.toContain("Windows permissions open from the Branch app");
-    expect(host.querySelector('[data-row="Precise location"]')?.textContent).not.toContain("Windows permissions open from the Branch app");
     expect(host.textContent).not.toContain("Open System Settings");
     expect(host.textContent).not.toContain("PipeWire");
   });
@@ -46,8 +44,6 @@ describe("Settings › Permissions › This computer", () => {
     expect(host.textContent).toContain("System Settings › Privacy & Security");
     expect(button("Open System Settings")?.disabled).toBe(true);
     expect(button("Open System Settings")?.title).toBe("System Settings › Privacy & Security opens from the Branch app on your computer.");
-    expect(host.querySelector('[data-row="Location access"]')?.textContent).not.toContain("System Settings › Privacy & Security");
-    expect(host.querySelector('[data-row="Precise location"]')?.textContent).not.toContain("System Settings › Privacy & Security");
     expect(host.textContent).not.toContain("Windows");
     expect(host.textContent).not.toContain("Open Windows Settings");
   });
@@ -65,16 +61,12 @@ describe("Settings › Permissions › This computer", () => {
     expect(host.textContent).not.toContain("Windows");
   });
 
-  it("shows the PipeWire sentence once under This computer, not on the location rows", async () => {
+  it("shows the PipeWire sentence once under This computer", async () => {
     await show("Linux x86_64");
     const sentence = "Microphone and camera use PipeWire or the desktop portal. Notifications use this desktop. They open from the Branch app on your computer.";
     expect(host.textContent?.split(sentence)).toHaveLength(2);
     expect([...host.querySelectorAll(".hint")].map((el) => el.textContent).filter((text) => text?.includes("PipeWire"))).toEqual([sentence]);
-    const location = host.querySelector('[data-row="Location access"]');
-    const precise = host.querySelector('[data-row="Precise location"]');
-    expect(location?.textContent).toContain("Lets a Trunk ask where this computer is when a tool needs it.");
-    expect(location?.textContent).not.toContain("PipeWire");
-    expect(precise?.textContent).toContain("The exact spot, not just the area.");
-    expect(precise?.textContent).not.toContain("PipeWire");
+    expect(host.querySelector('[data-row="Location access"]')).toBeNull();
+    expect(host.querySelector('[data-row="Precise location"]')).toBeNull();
   });
 });
