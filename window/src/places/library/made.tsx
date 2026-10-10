@@ -1,4 +1,4 @@
-// Library › Made for you (preview 40-places made + 42-placesbp libDashHtmlPQ18 / libImgHtmlPQ18 + 94-g4p apps):
+// Library › Activity › Made by Trunks, once the Made for you tab (preview 40-places made + 42-placesbp libDashHtmlPQ18 / libImgHtmlPQ18 + 94-g4p apps):
 // Dashboards (sessions.list hasBoard + board.get), every Trunk's made files (artifacts.list per conversation),
 // Images (artifacts.list type image, four at a time), Apps with Publish.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
