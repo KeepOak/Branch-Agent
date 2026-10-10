@@ -324,4 +324,16 @@ describe("Trunk tools rows", () => {
     expect(files?.disabled).toBe(false);
     expect(files?.getAttribute("aria-checked")).toBe("true");
   });
+
+  it("shows the browser off when a legacy deny lists it, even with the browser switch on", async () => {
+    const config = { hash: "h1", valid: true, config: { agents: { entries: { birch: { toolsets: { browser: true }, tools: { deny: ["browser"] } } } } } };
+    const catalog = {
+      toolsets: [{ id: "browser", label: "Browser", description: "Open pages.", tools: ["browser"], offered: false }],
+    };
+    await mount(<TrunkEditor engine={engine(fake({ "config.get": config, "tools.catalog": catalog }))} agentId="birch" level="regular" tab="may" onClose={() => {}} />);
+    const browser = document.querySelector<HTMLButtonElement>('[aria-label="Use the browser"]');
+    expect(browser?.disabled).toBe(true);
+    expect(browser?.getAttribute("aria-checked")).toBe("false");
+    expect(browser?.closest(".tk-ctl")?.textContent).toContain("Its own tool list leaves these tools out");
+  });
 });

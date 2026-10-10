@@ -5,7 +5,9 @@ import type { BranchConfig } from "../config/config.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import { createWarnLogCapture } from "../logging/test-helpers/warn-log-capture.js";
+import { resolveAgentConfig } from "./agent-scope.js";
 import {
+  resolveConfiguredToolPolicies,
   resolveEffectiveToolPolicy,
   resolveGroupToolPolicy,
   resolveGroupToolPolicyOutcome,
@@ -18,6 +20,7 @@ import { listCoreToolFactoryDescriptors } from "./core-tool-factory-descriptors.
 import { listCoreToolSections } from "./tool-catalog.js";
 import { applyToolPolicyPipeline, buildDefaultToolPolicyPipelineSteps } from "./tool-policy-pipeline.js";
 import { resolveToolProfilePolicy } from "./tool-policy.js";
+import { resolveToolsetOffers } from "./tool-toolsets-offer.js";
 
 vi.mock("../channels/plugins/session-conversation.js", () => ({
   resolveSessionConversation: ({ rawId }: { rawId: string }) => ({
@@ -375,6 +378,18 @@ describe("agent toolsets through the tool policy pipeline", () => {
     const offered = offeredThroughPipeline(rosterWith({ tools: { deny: ["browser"] } }));
     expect(offered).not.toContain("browser");
     expect(offered).toContain("read");
+  });
+
+  it("a legacy browser deny wins over the browser switch being on, and the offer says so", () => {
+    const config = rosterWith({ toolsets: { browser: true }, tools: { deny: ["browser"] } });
+    expect(offeredThroughPipeline(config)).not.toContain("browser");
+    const effective = resolveEffectiveToolPolicy({ config, agentId: "ops" });
+    const policies = resolveConfiguredToolPolicies({
+      cfg: config,
+      agentTools: resolveAgentConfig(config, "ops")?.tools,
+    });
+    expect(effective.agentPolicy?.deny).toContain("browser");
+    expect(resolveToolsetOffers(policies).browser).toBe(false);
   });
 
   it("keeps every built-in tool when no toolset is off and no deny is set", () => {
