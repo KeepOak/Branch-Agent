@@ -2831,18 +2831,19 @@ test('fetchFileText fails closed when an empty contents response has no readable
   })), /no content and no blob sha/);
 });
 
-test('regression: a running or failed recheck check run does not hold the trusted gate red', () => {
+test('regression: a running or failed recheck job from its own workflow does not hold the trusted gate red', () => {
   const recheck = (conclusion, status = 'completed') => ({
     id: 880, name: 'recheck', status, conclusion, check_suite: { id: 811 },
     details_url: 'https://github.com/example/repo/actions/runs/305/job/880',
   });
+  const ownWorkflow = { 880: { id: 305, path: '.github/workflows/merge-gate-recheck.yml', event: 'workflow_run' } };
   for (const [label, check] of [
     ['running', recheck(null, 'in_progress')],
     ['failed', recheck('failure')],
   ]) {
     const result = evaluateTrustedGate({
       checkRuns: [...passCheckRuns, check],
-      workflowsByCheckId: passWorkflows,
+      workflowsByCheckId: { ...passWorkflows, ...ownWorkflow },
       changedFiles: ['README.md'],
       coreWorkflows,
       currentRunId: CURRENT_RUN_ID,
@@ -2854,7 +2855,27 @@ test('regression: a running or failed recheck check run does not hold the truste
   }
 });
 
-test('the ordinary merge gate ignores the recheck check run by name', () => {
+test('regression: a failed recheck job from another workflow still fails the trusted gate', () => {
+  const otherRecheck = {
+    id: 881, name: 'recheck', status: 'completed', conclusion: 'failure', check_suite: { id: 812 },
+    details_url: 'https://github.com/example/repo/actions/runs/306/job/881',
+  };
+  const result = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, otherRecheck],
+    workflowsByCheckId: { ...passWorkflows, 881: { id: 306, path: '.github/workflows/feature-batch-checks.yml', event: 'pull_request' } },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(result.failed.length, 1);
+  assert.equal(result.failed[0].name, 'recheck');
+  assert.equal(result.ok, false);
+});
+
+test('the ordinary merge gate skips only the recheck job proven by its workflow path', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
-  assert.match(yaml, /select\(\.name != "merge-gate" and \.name != "merge-gate-trusted" and \.name != "recheck"\)/);
+  assert.match(yaml, /\.name != "recheck" or \(\(\$paths\[\.id \| tostring\] \/\/ ""\) != \$recheck\)/);
+  assert.match(yaml, /\.github\/workflows\/merge-gate-recheck\.yml/);
+  assert.doesNotMatch(yaml, /and \.name != "recheck"\)\]/);
 });

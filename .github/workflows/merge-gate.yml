@@ -121,7 +121,28 @@ jobs:
               page=$((page + 1))
             done
             combined=$(jq '{check_runs: [.[].check_runs[]]}' <<<"$pages")
-            runs=$(jq '[.check_runs[] | select(.name != "merge-gate" and .name != "merge-gate-trusted" and .name != "recheck")]' <<<"$combined")
+            runs=$(jq '[.check_runs[] | select(.name != "merge-gate" and .name != "merge-gate-trusted")]' <<<"$combined")
+            # Skip the recheck workflow's own `recheck` check only when its run proves merge-gate-recheck.yml.
+            # A failing or running `recheck` from any other workflow is still waited on.
+            recheck_paths='{}'
+            while IFS= read -r check; do
+              [ -z "$check" ] && continue
+              id=$(jq -r '.id' <<<"$check")
+              path=""
+              run_id=$(jq -r '(.details_url // .html_url // "") | capture("/actions/runs/(?<id>[0-9]+)")? | .id // empty' <<<"$check")
+              if [ -n "$run_id" ]; then
+                path=$(gh api "repos/$REPO/actions/runs/$run_id" | jq -r '.path // empty') || path=""
+              else
+                suite=$(jq -r '.check_suite.id // empty' <<<"$check")
+                if [ -n "$suite" ]; then
+                  path=$(gh api "repos/$REPO/actions/runs?check_suite_id=$suite&per_page=1" | jq -r '.workflow_runs[0].path // empty') || path=""
+                fi
+              fi
+              recheck_paths=$(jq --arg id "$id" --arg path "$path" '. + {($id): $path}' <<<"$recheck_paths")
+            done < <(jq -c '.[] | select(.name == "recheck")' <<<"$runs")
+            runs=$(jq --argjson paths "$recheck_paths" --arg recheck '.github/workflows/merge-gate-recheck.yml' '
+              map(select(.name != "recheck" or (($paths[.id | tostring] // "") != $recheck)))
+            ' <<<"$runs")
             # Skip Visual tour's continue-on-error `comment` job only when
             # check-suite or workflow-run attribution proves visual-tour.yml.
             # A `comment` check from any other workflow is still waited on.

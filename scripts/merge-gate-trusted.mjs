@@ -37,6 +37,7 @@ export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 export const TRUSTED_JOB = 'merge-gate-trusted';
 // The recheck workflow's own check run is not content: a running or failed recheck must not hold the gates red.
 export const RECHECK_CHECK = 'recheck';
+export const RECHECK_WORKFLOW_PATH = '.github/workflows/merge-gate-recheck.yml';
 export const TRUSTED_WORKFLOW_PATH = '.github/workflows/merge-gate-trusted.yml';
 export const HANDOFF_WORKFLOW_PATH = '.github/workflows/engine-handoff-checks.yml';
 export const TRUSTED_CHECKOUT_REF = '${{ github.event.repository.default_branch }}';
@@ -216,7 +217,10 @@ export function isSkippableVisualTourComment(run, workflow) {
 
 export function evaluateOtherChecks(checkRuns, workflowsByCheckId = {}, ignoreName = TRUSTED_JOB, context = {}) {
   const others = newestChecksByIdentity(checkRuns, workflowsByCheckId, context).filter((run) => {
-    if (run.name === ignoreName || run.name === RECHECK_CHECK) return false;
+    if (run.name === ignoreName) return false;
+    // Only the recheck workflow's own `recheck` job is skipped, and only when attribution proves its path.
+    if (run.name === RECHECK_CHECK
+      && lookupWorkflow(workflowsByCheckId, run.id)?.path === RECHECK_WORKFLOW_PATH) return false;
     return !isSkippableVisualTourComment(run, lookupWorkflow(workflowsByCheckId, run.id));
   });
   const pending = others.filter((run) => run.status !== 'completed');
