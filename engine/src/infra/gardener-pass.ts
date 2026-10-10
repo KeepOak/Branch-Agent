@@ -3,6 +3,7 @@
 // Off by default: with agents.gardener unset or enabled false the pass is a dry run and writes nothing.
 import { addQueueItem, listQueueItems, type TrunkQueueItem } from "../agents/trunk-queue.js";
 import type { BranchConfig } from "../config/types.branch.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   failingMainCheckSignals,
   parityGapSignals,
@@ -19,6 +20,7 @@ import {
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
+const log = createSubsystemLogger("gardener");
 
 /** Code defaults for timing. Only agents.gardener.enabled and agents.gardener.repo are config keys. */
 export const GARDENER_DEFAULTS = {
@@ -71,10 +73,17 @@ export type GardenerPassParams = {
   store: GardenerStateStore;
   /** The only GitHub write. Called once per planned issue, and only when the pass is enabled with a repo. */
   writeIssue: (draft: GardenerIssueDraft) => Promise<void>;
+  /**
+   * Whether an issue for this fingerprint already exists. When it does, the pass does not create another one, so a
+   * retry after a failed job write leaves exactly one issue. Omitted means the pass cannot tell, and writes.
+   */
+  findIssue?: (fingerprint: string) => Promise<boolean>;
   /** Queue write. Defaults to addQueueItem on the pass's env and clock. */
   enqueue?: (item: { title: string; brief_text: string; priority: number }) => void;
-  /** Where a failed write is reported. The pass goes on after it. */
+  /** Where a failed write is reported. Defaults to the gardener logger at warn level. */
   onError?: (message: string) => void;
+  /** The logger behind the default onError. Injected for tests. */
+  logger?: { warn(message: string): void };
   env?: NodeJS.ProcessEnv;
   now?: () => number;
   options?: Partial<GardenerOptions>;
@@ -201,15 +210,24 @@ function plannedJobFor(signal: GardenerSignal): GardenerPlannedJob {
 
 type CommitSink = {
   writeIssue: GardenerPassParams["writeIssue"];
+  findIssue?: GardenerPassParams["findIssue"];
   enqueue: (item: { title: string; brief_text: string; priority: number }) => void;
   store: GardenerStateStore;
-  onError?: (message: string) => void;
+  report: (message: string) => void;
   now: number;
   cooldownMs: number;
 };
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Writes the issue only when none exists yet for this fingerprint. */
+async function ensureIssue(repo: string, signal: GardenerSignal, sink: CommitSink): Promise<void> {
+  const exists = sink.findIssue ? await sink.findIssue(signal.fingerprint) : false;
+  if (!exists) {
+    await sink.writeIssue(issueDraftFor(repo, signal));
+  }
 }
 
 /**
@@ -224,7 +242,7 @@ async function commitPlan(
 ): Promise<void> {
   for (const signal of planned) {
     try {
-      await sink.writeIssue(issueDraftFor(repo, signal));
+      await ensureIssue(repo, signal, sink);
       sink.enqueue({
         title: `${markerFor(signal.fingerprint)} ${signal.job.title}`,
         brief_text: signal.job.brief_text,
@@ -232,7 +250,7 @@ async function commitPlan(
       });
       sink.store.setCooldownUntil(signal.fingerprint, sink.now + sink.cooldownMs, sink.cooldownMs);
     } catch (error: unknown) {
-      sink.onError?.(`gardener write failed for ${signal.fingerprint}: ${errorText(error)}`);
+      sink.report(`gardener write failed for ${signal.fingerprint}: ${errorText(error)}`);
     }
   }
 }
@@ -271,11 +289,13 @@ export async function runGardenerPass(params: GardenerPassParams): Promise<Garde
     return { status: "ran", dryRun: true, jobs, issues, suppressed };
   }
   const enqueue = params.enqueue ?? ((item) => addQueueItem(item, env, now));
+  const logger = params.logger ?? log;
   await commitPlan(planned, repo, {
     writeIssue: params.writeIssue,
+    findIssue: params.findIssue,
     enqueue,
     store: params.store,
-    onError: params.onError,
+    report: params.onError ?? ((message) => logger.warn(message)),
     now,
     cooldownMs: options.cooldownMs,
   });

@@ -211,3 +211,17 @@ describe("Gardener claims and quoted data", () => {
     expect(quoteData("a".repeat(500)).length).toBeLessThan(200);
   });
 });
+
+describe("quoteData strips format and bidi characters", () => {
+  it("removes bidi overrides, isolates, zero-width spaces and line separators", () => {
+    const hostile = "tests‮ evil⁦ injected line​ end";
+    expect(quoteData(hostile)).toBe('"tests evil injected line end"');
+  });
+
+  it("keeps a hostile bidi check name out of the job title", () => {
+    const [signal] = failingMainCheckSignals([
+      { checkName: "build\u202Efdp.exe\u2028", headSha: SHA },
+    ]);
+    expect(signal?.job.title).toBe('Fix failing check on main: "build fdp.exe"');
+  });
+});

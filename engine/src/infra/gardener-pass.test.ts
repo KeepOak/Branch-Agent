@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { addQueueItem, listQueueItems } from "../agents/trunk-queue.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { AgentsSchema } from "../config/zod-schema.agents.js";
@@ -248,5 +248,59 @@ describe("queue write failures", () => {
     expect(retry.jobs.map((job) => job.fingerprint)).toEqual(["parity:skills-ui"]);
     expect(listQueueItems(env)).toHaveLength(2);
     expect(errors).toHaveLength(1);
+  });
+});
+
+describe("issue idempotency and failure reporting", () => {
+  it("a job-write failure then a retry leaves exactly one issue for the source", async () => {
+    const issued = new Set<string>();
+    const issueWrites: string[] = [];
+    const errors: string[] = [];
+    let failJob = true;
+    const enqueue = (item: { title: string; brief_text: string; priority: number }) => {
+      if (failJob && item.title.includes("parity:skills-ui")) {
+        throw new Error("queue unavailable");
+      }
+      addQueueItem(item, env, clock);
+    };
+    const base = {
+      cfg: enabledCfg,
+      env,
+      store,
+      now,
+      writeIssue: async (draft: GardenerIssueDraft) => {
+        issueWrites.push(draft.fingerprint);
+        issued.add(draft.fingerprint);
+      },
+      findIssue: async (fingerprint: string) => issued.has(fingerprint),
+      enqueue,
+      onError: (message: string) => errors.push(message),
+    };
+    await runGardenerPass({ ...base, inputs: parityGap });
+    expect(errors).toHaveLength(1);
+
+    failJob = false;
+    clock += 31 * MINUTE;
+    await runGardenerPass({ ...base, inputs: parityGap });
+    expect(issueWrites.filter((fingerprint) => fingerprint === "parity:skills-ui")).toHaveLength(1);
+    expect(listQueueItems(env)).toHaveLength(1);
+  });
+
+  it("a failed write with no handler still logs a warning", async () => {
+    const warn = vi.fn();
+    await runGardenerPass({
+      cfg: enabledCfg,
+      inputs: parityGap,
+      env,
+      store,
+      now,
+      writeIssue: async () => {},
+      enqueue: () => {
+        throw new Error("queue unavailable");
+      },
+      logger: { warn },
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain("gardener write failed for parity:skills-ui");
   });
 });

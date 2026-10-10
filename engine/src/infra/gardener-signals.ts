@@ -37,7 +37,7 @@ const PRIORITY = { ci: 90, fix: 70, failstats: 60, claim: 50, parity: 40 } as co
  */
 export function quoteData(text: string): string {
   const oneLine = text
-    .replace(/\p{Cc}+/gu, " ")
+    .replace(/[\p{Cc}\p{Cf}\u2028\u2029]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
   const capped =
