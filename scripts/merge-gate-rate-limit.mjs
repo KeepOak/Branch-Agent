@@ -384,6 +384,20 @@ export function ghApiArgs(requestPath, {
   return args;
 }
 
+export const TRANSIENT_RETRY_LIMIT = 5;
+
+// A 5xx or a dropped connection is a GitHub-side blip, not a verdict on the PR.
+export function isTransientGitHubError(error) {
+  const status = httpStatusOf(error);
+  if (status != null && status >= 500 && status <= 599) return true;
+  return /ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|connection reset|timed out/i.test(errorText(error));
+}
+
+export function transientBackoffSeconds(retry, random = Math.random) {
+  const base = Math.min(MAX_RATE_LIMIT_SLEEP_SECONDS, 2 ** (retry + 2));
+  return Math.ceil(base * (0.5 + random() / 2));
+}
+
 export function withRateLimitRetry(fn, {
   sleep,
   now = Date.now,
@@ -396,11 +410,22 @@ export function withRateLimitRetry(fn, {
   log,
 } = {}) {
   const start = startedAt ?? now();
+  let transientRetries = 0;
   for (let retryAttempt = 0; ; retryAttempt += 1) {
     try {
       return fn();
     } catch (error) {
-      if (!isRateLimitError(error)) throw error;
+      if (!isRateLimitError(error)) {
+        const remaining = budgetSeconds - (now() - start) / 1000;
+        if (!isTransientGitHubError(error) || transientRetries >= TRANSIENT_RETRY_LIMIT || remaining < 1) {
+          throw error;
+        }
+        const transientWait = transientBackoffSeconds(transientRetries, random);
+        transientRetries += 1;
+        log?.(`GitHub API HTTP ${httpStatusOf(error) ?? 'unknown'} (transient); retrying in ${transientWait}s (${transientRetries}/${TRANSIENT_RETRY_LIMIT})`);
+        sleep(Math.min(transientWait, remaining));
+        continue;
+      }
       const remaining = budgetSeconds - (now() - start) / 1000;
       if (retryAttempt >= maxRetries || remaining < 1) throw error;
       let rateLimit = error.rateLimit ?? null;

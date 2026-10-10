@@ -3,6 +3,7 @@
 // The report never prints a full personal email; only a short SHA, field, and masked domain.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { httpStatusOf } from './merge-gate-rate-limit.mjs';
 import { ghApi } from './merge-gate-trusted.mjs';
 
 export const CUTOFF_ISO = '2026-10-08T04:05:00Z';
@@ -160,7 +161,16 @@ async function main() {
     process.exitCode = 2;
     return;
   }
-  const commits = fetchPrCommitsWithApi({ repo, prNumber, token });
+  let commits;
+  try {
+    commits = fetchPrCommitsWithApi({ repo, prNumber, token });
+  } catch (error) {
+    // An API failure is infrastructure, not a commit verdict. Print the status so the log shows why.
+    const status = httpStatusOf(error);
+    console.error(`GitHub API ${status ? `HTTP ${status}` : 'error (no HTTP status)'} while reading commits for PR #${prNumber}; retries exhausted. Not a commit-email failure.`);
+    process.exitCode = 2;
+    return;
+  }
   const failures = evaluateCommits(commits);
   if (failures.length === 0) {
     console.log(`Checked ${commits.length} commit(s); all in-scope addresses are allowed.`);
