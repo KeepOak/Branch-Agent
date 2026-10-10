@@ -5,7 +5,7 @@ export type SettingsGroup = { name: string; pages: { id: string; name: string }[
 
 const BASE: SettingsGroup[] = [
   {
-    name: "General",
+    name: "This app",
     pages: [
       { id: "general", name: "General" },
       { id: "people", name: "People" },

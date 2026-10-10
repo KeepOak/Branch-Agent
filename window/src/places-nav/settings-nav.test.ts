@@ -5,7 +5,7 @@ describe("settings nav", () => {
   it("has 21, 22 and 23 pages by level (Grafts is in Safety, Backups in Care)", () => {
     const count = (l: "regular" | "advanced" | "technical") => settingsGroups(l).reduce((n, g) => n + g.pages.length, 0);
     expect([count("regular"), count("advanced"), count("technical")]).toEqual([21, 22, 23]);
-    expect(settingsGroups("regular").map((g) => g.name)).toEqual(["General", "Your Trunks", "Safety", "Care"]);
+    expect(settingsGroups("regular").map((g) => g.name)).toEqual(["This app", "Your Trunks", "Safety", "Care"]);
   });
   it("a level drop moves a hidden page to General", () => {
     expect(pageAtLevel("developer", "advanced")).toBe("general");
