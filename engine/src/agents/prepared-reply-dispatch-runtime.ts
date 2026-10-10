@@ -1,6 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import type { BranchConfig } from "../config/types.branch.js";
 import { createAbortError, racePromiseWithAbortSignal } from "../infra/abort-signal.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import { resolvePublishedModelCatalogOwner } from "./prepared-model-catalog-owner.js";
 import { assertPreparedModelRuntimeAdmissionCanWait } from "./prepared-model-runtime-admission.js";
 import {
@@ -13,6 +14,7 @@ import type {
 } from "./prepared-model-runtime.types.js";
 
 const EMPTY_REPLY_DISPATCH_PUBLICATION: readonly PreparedReplyDispatchRuntime[] = Object.freeze([]);
+const log = createSubsystemLogger("agents/prepared-reply-dispatch");
 
 function createReplyDispatchRuntime(
   runtimeOwner: PreparedModelRuntimeOwner,
@@ -38,24 +40,67 @@ function createReplyDispatchRuntime(
   });
 }
 
+type ReplyDispatchBuild = {
+  runtimes: readonly PreparedReplyDispatchRuntime[];
+  /** Configured agents with no published runtime yet; they are absent from dispatch until one exists. */
+  excluded: ReadonlySet<string>;
+};
+
+function ownerDispatchKey(owner: PreparedModelRuntimeOwner): string {
+  return owner.input.agentId ?? owner.input.agentDir;
+}
+
+/**
+ * Builds one dispatch generation. A fresh owner gets a new runtime. A stale or still-building owner
+ * keeps the runtime it last served, so a sibling's publish never takes it offline. An owner that
+ * was never published (or was fenced by an auth mutation, which removes its runtime) is excluded
+ * until its own publication adds it back.
+ */
 function buildReplyDispatchPublication(
   owners: Iterable<PreparedModelRuntimeOwner>,
-): readonly PreparedReplyDispatchRuntime[] {
-  // A configured owner that is not published yet (stale after an auth mutation, or still
-  // building) is left out of this dispatch generation. Its own publication adds it back. Failing
-  // the whole generation instead lets one unpublished owner reject every sibling's commit, and a
-  // stale owner whose agent is still preparing can never be republished in that state.
-  const runtimes = [...owners]
-    .filter((owner) => owner.provenance === "configured")
-    .filter((owner) => owner.snapshot && !owner.needsRefresh && !owner.pending)
-    .map((owner) => createReplyDispatchRuntime(owner))
-    .toSorted((left, right) => left.agentId.localeCompare(right.agentId));
+  previous: readonly PreparedReplyDispatchRuntime[] = EMPTY_REPLY_DISPATCH_PUBLICATION,
+): ReplyDispatchBuild {
+  const lastServed = new Map(previous.map((runtime) => [runtime.agentId, runtime]));
+  const runtimes: PreparedReplyDispatchRuntime[] = [];
+  const excluded = new Set<string>();
+  for (const owner of owners) {
+    if (owner.provenance !== "configured") {
+      continue;
+    }
+    if (owner.snapshot && !owner.needsRefresh && !owner.pending) {
+      runtimes.push(createReplyDispatchRuntime(owner));
+      continue;
+    }
+    const kept = owner.input.agentId === undefined ? undefined : lastServed.get(owner.input.agentId);
+    if (kept) {
+      runtimes.push(kept);
+      continue;
+    }
+    excluded.add(ownerDispatchKey(owner));
+  }
+  runtimes.sort((left, right) => left.agentId.localeCompare(right.agentId));
   if (new Set(runtimes.map((runtime) => runtime.agentId)).size !== runtimes.length) {
     throw new PreparedModelRuntimeOwnerNotPublishedError(
       "prepared reply dispatch runtime publication contains duplicate configured agents",
     );
   }
-  return Object.freeze(runtimes);
+  return { runtimes: Object.freeze(runtimes), excluded };
+}
+
+function logReplyDispatchChanges(
+  previousExcluded: ReadonlySet<string>,
+  next: ReplyDispatchBuild,
+): void {
+  for (const agentId of next.excluded) {
+    if (!previousExcluded.has(agentId)) {
+      log.warn(`reply dispatch excluded ${agentId}: it has no published runtime yet; its own publication adds it back`);
+    }
+  }
+  for (const agentId of previousExcluded) {
+    if (!next.excluded.has(agentId) && next.runtimes.some((runtime) => runtime.agentId === agentId)) {
+      log.warn(`reply dispatch added back ${agentId}: its own publication committed`);
+    }
+  }
 }
 
 type PreparedReplyDispatchPublicationHost = Readonly<{
@@ -67,11 +112,13 @@ type PreparedReplyDispatchPublicationHost = Readonly<{
 /** Reads one immutable configured Gateway dispatch generation without activating an owner. */
 export class PreparedReplyDispatchPublicationOwner {
   #publication = EMPTY_REPLY_DISPATCH_PUBLICATION;
+  #excluded: ReadonlySet<string> = new Set();
 
   constructor(private readonly host: PreparedReplyDispatchPublicationHost) {}
 
   clear(): void {
     this.#publication = EMPTY_REPLY_DISPATCH_PUBLICATION;
+    this.#excluded = new Set();
   }
 
   advanceConfig(config: BranchConfig): void {
@@ -81,18 +128,26 @@ export class PreparedReplyDispatchPublicationOwner {
   }
 
   rebuild(owners: Iterable<PreparedModelRuntimeOwner>): void {
-    this.#publication = this.host.isGatewayLifecycleActive()
-      ? buildReplyDispatchPublication(owners)
-      : EMPTY_REPLY_DISPATCH_PUBLICATION;
+    this.#apply(this.#build(owners));
   }
 
   stage(owners: Iterable<PreparedModelRuntimeOwner>): () => void {
-    const publication = this.host.isGatewayLifecycleActive()
-      ? buildReplyDispatchPublication(owners)
-      : EMPTY_REPLY_DISPATCH_PUBLICATION;
+    const built = this.#build(owners);
     return () => {
-      this.#publication = publication;
+      this.#apply(built);
     };
+  }
+
+  #build(owners: Iterable<PreparedModelRuntimeOwner>): ReplyDispatchBuild {
+    return this.host.isGatewayLifecycleActive()
+      ? buildReplyDispatchPublication(owners, this.#publication)
+      : { runtimes: EMPTY_REPLY_DISPATCH_PUBLICATION, excluded: new Set() };
+  }
+
+  #apply(built: ReplyDispatchBuild): void {
+    logReplyDispatchChanges(this.#excluded, built);
+    this.#publication = built.runtimes;
+    this.#excluded = built.excluded;
   }
 
   remove(agentIds: ReadonlySet<string>): void {
@@ -104,7 +159,7 @@ export class PreparedReplyDispatchPublicationOwner {
   }
 
   replace(owners: readonly PreparedModelRuntimeOwner[]): void {
-    const replacements = buildReplyDispatchPublication(owners);
+    const replacements = buildReplyDispatchPublication(owners).runtimes;
     const agentIds = new Set(replacements.map((runtime) => runtime.agentId));
     this.#publication = Object.freeze(
       [
@@ -112,6 +167,11 @@ export class PreparedReplyDispatchPublicationOwner {
         ...replacements,
       ].toSorted((left, right) => left.agentId.localeCompare(right.agentId)),
     );
+    if (this.#excluded.size > 0 && [...this.#excluded].some((agentId) => agentIds.has(agentId))) {
+      const remaining = new Set([...this.#excluded].filter((agentId) => !agentIds.has(agentId)));
+      logReplyDispatchChanges(this.#excluded, { runtimes: this.#publication, excluded: remaining });
+      this.#excluded = remaining;
+    }
   }
 
   readonly load = async ({
