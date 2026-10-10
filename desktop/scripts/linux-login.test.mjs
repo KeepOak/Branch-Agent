@@ -9,6 +9,9 @@ import test from "node:test";
 
 const require = createRequire(import.meta.url);
 let sequence = 0;
+// Builtin import bindings can survive CJS fixture reloads. Their fake consults the active fixture,
+// never a previous fixture's captured sleep policy. Tests in this file run sequentially.
+let activeProbe;
 // CI checks strict-compiled code; Node's native type stripping permits no-build local regression runs.
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 const source = dist ?? fileURLToPath(new URL("../src", import.meta.url));
@@ -21,6 +24,7 @@ async function fixture(run) {
   const executable = Object.getOwnPropertyDescriptor(process, "execPath");
   const calls = [];
   const state = { sleep: "masked", packaged: true };
+  activeProbe = { state, calls };
   const app = {
     get isPackaged() { return state.packaged; },
     getPath: name => { assert.equal(name, "appData"); return root; },
@@ -35,9 +39,9 @@ async function fixture(run) {
   const id = ++sequence;
   const bridge = `branch-login-test-${id}`;
   globalThis[bridge] = { ...childProcess, execFileSync: (command, args, options) => {
-    calls.push([command, args, options]);
-    if (state.sleep instanceof Error) throw state.sleep;
-    return `${state.sleep}\n`;
+    activeProbe.calls.push([command, args, options]);
+    if (activeProbe.state.sleep instanceof Error) throw activeProbe.state.sleep;
+    return `${activeProbe.state.sleep}\n`;
   } };
   const mocks = {
     electron: "export const nativeImage = {}, powerSaveBlocker = {}, shell = {};",
@@ -74,6 +78,7 @@ async function fixture(run) {
   } finally {
     hooks.deregister();
     delete globalThis[bridge];
+    activeProbe = undefined;
     Object.defineProperty(process, "platform", platform);
     Object.defineProperty(process, "execPath", executable);
     rmSync(root, { recursive: true, force: true });
