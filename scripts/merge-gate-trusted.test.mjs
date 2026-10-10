@@ -2639,3 +2639,22 @@ test('merge-gate-trusted still reruns when the pull request body is edited', () 
   assert.match(source, /writeSummary\(formatGateChangeReviewSummary\(review\)\)/);
   assert.match(source, /if \(!review\.ok\)/);
 });
+
+test('the PR file list waits out rate limits inside a 10-minute cap, and the poll budget counts from job start', () => {
+  const seen = [];
+  const files = gate.fetchPrFiles('example/repo', '7', 'unused', {
+    request: (requestPath, options) => {
+      seen.push({ requestPath, options });
+      return [{ filename: 'README.md' }];
+    },
+  });
+  assert.deepEqual(files, [{ filename: 'README.md' }]);
+  assert.equal(seen[0].requestPath, 'pulls/7/files?per_page=100');
+  assert.equal(seen[0].options.paginate, true);
+  assert.equal(seen[0].options.budgetSeconds, 600);
+  assert.equal(gate.PR_FILES_WAIT_SECONDS, 600);
+  const source = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
+  assert.match(source, /startedAt: jobStartedAt/);
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate-trusted.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /merge-gate-trusted:\n[\s\S]*timeout-minutes: 35/);
+});
