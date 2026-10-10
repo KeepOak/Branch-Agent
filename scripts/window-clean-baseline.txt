@@ -1434,19 +1434,10 @@ theme	window/src/stage/pane/pane.css	(--ok);border-color:var(--ok);color:#fff;}
 theme	window/src/stage/pane/pane.css	14px; overflow: hidden; background: #fff; }
 theme	window/src/stage/stage.css	(--ok);border-color:var(--ok);color:#fff;}
 theme	window/src/stage/stage.css	,0 0 0 1px var(--line-2);background:#0e1419;}
-theme	window/src/stage/stage.css	.blank-st b {color:#1b1f23;font-size:15px;}
-theme	window/src/stage/stage.css	.br-chrome-st {flex:none;color:#3b4650;}
-theme	window/src/stage/stage.css	.br-tab-st.on {background:#fff;color:#1b1f23;}
 theme	window/src/stage/stage.css	0 0;border-radius:9px 9px 0 0;color:#556666;max-width:220px;flex:0 1 auto;min-w
-theme	window/src/stage/stage.css	adding:16px;text-align:center;color:#6a747c;background:#fff;}
-theme	window/src/stage/stage.css	br-tab-st.on {background:#fff;color:#1b1f23;}
-theme	window/src/stage/stage.css	d #e6e9ec;font-size:14px;background:#fff;}
-theme	window/src/stage/stage.css	ding:0 12px;border-bottom:1px solid #e6e9ec;font-size:14px;background:#fff;}
 theme	window/src/stage/stage.css	em {background:var(--accent);color:#fff;}
 theme	window/src/stage/stage.css	ex;flex-direction:column;background:#fff;}
 theme	window/src/stage/stage.css	hidden;box-shadow:0 30px 80px -30px rgba(0,0,0,.55),0 0 0 1px var(--line-2);b
-theme	window/src/stage/stage.css	ight:38px;padding:0 10px;background:#e4e8ec;font-size:13px;overflow-x:auto;scro
-theme	window/src/stage/stage.css	ign:center;color:#6a747c;background:#fff;}
 theme	window/src/stage/stage.css	ius:10px;overflow:hidden;background:#0e1419;cursor:pointer;}
 theme	window/src/stage/stage.css	lor:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12);}
 theme	window/src/stage/stage.css	lor:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12);}
