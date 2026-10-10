@@ -3,10 +3,10 @@ import type { DatabaseSync } from "node:sqlite";
 import { asNullableRecord } from "@branch/normalization-core/record-coerce";
 import { sha256Hex } from "../../infra/crypto-digest.js";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../infra/kysely-sync.js";
-import type { BranchStateDatabase as StateDatabase } from "../../state/branch-state-db-contract.js";
-import type { DB as BranchStateDatabase } from "../../state/branch-state-db.generated.js";
 import { updateConfigMachineStateInDatabase } from "../../state/config-machine-state-write.js";
 import { readConfigMachineStateRowInDatabase } from "../../state/config-machine-state.js";
+import type { BranchStateDatabase as StateDatabase } from "../../state/branch-state-db-contract.js";
+import type { DB as BranchStateDatabase } from "../../state/branch-state-db.generated.js";
 
 const SKILL_COLLECTION_REVIEW_HISTORY_LIMIT = 20;
 type CollectionReviewDatabase = Pick<BranchStateDatabase, "skill_workshop_collection_reviews">;
