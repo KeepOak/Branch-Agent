@@ -6,8 +6,13 @@ import type { BranchConfig } from "../../config/types.branch.js";
 import type { GatewayRequestHandlerOptions } from "./shared-types.js";
 import { trunkTemplatesHandlers } from "./trunk-templates.js";
 
-const { createMock } = vi.hoisted(() => ({ createMock: vi.fn() }));
+const { createMock, mutateMock, draft } = vi.hoisted(() => ({
+  createMock: vi.fn(),
+  mutateMock: vi.fn(),
+  draft: { current: {} as Record<string, any> },
+}));
 vi.mock("./agents.js", () => ({ agentsHandlers: { "agents.create": createMock } }));
+vi.mock("../../config/config.js", () => ({ mutateConfigFileWithRetry: mutateMock }));
 
 const BUNDLED_SKILLS = path.resolve(import.meta.dirname, "../../../skills");
 const EMPTY_CONFIG = { agents: { entries: {} } } as unknown as BranchConfig;
@@ -61,6 +66,12 @@ beforeAll(() => {
 
 beforeEach(() => {
   createMock.mockReset();
+  mutateMock.mockReset();
+  mutateMock.mockImplementation(async (params: { mutate: (d: Record<string, any>) => void }) => {
+    params.mutate(draft.current);
+    return {};
+  });
+  draft.current = { agents: { defaults: {}, entries: {} } };
 });
 
 describe("trunks.template.create", () => {
@@ -154,7 +165,7 @@ describe("trunks.template.create", () => {
     await done;
     expect(respond).toHaveBeenCalledTimes(1);
     expect(respond.mock.calls[0]?.[0]).toBe(false);
-    expect(String(respond.mock.calls[0]?.[2]?.message ?? "")).toContain("persona files could not be written");
+    expect(String(respond.mock.calls[0]?.[2]?.message ?? "")).toContain("could not be applied");
   });
 
   it("reports skills, a model family and automations from a template as warnings, not failures", async () => {
@@ -171,10 +182,69 @@ describe("trunks.template.create", () => {
     const payload = respond.mock.calls[0]?.[1] as { warnings: string[] };
     expect(respond.mock.calls[0]?.[0]).toBe(true);
     expect(payload.warnings).toEqual([
+      expect.stringContaining("is not installed here"),
       expect.stringContaining("Model family"),
-      expect.stringContaining("was not attached"),
       expect.stringContaining("Automations in this template were not created"),
     ]);
+  });
+});
+
+describe("trunks.template.create applies toolset switches and skills", () => {
+  it("writes the template's toolset switches to the new Trunk's entry", async () => {
+    createAnswers(workspace());
+    const file = templateFile({ toolsets: { browser: false, files: true } });
+    const { respond, done } = call("trunks.template.create", { templatePath: file });
+    await done;
+    expect(respond.mock.calls[0]?.[0]).toBe(true);
+    expect(draft.current.agents.entries.newagent.toolsets).toEqual({ browser: false, files: true });
+  });
+
+  it("skips toolset names that are unknown or always on, with plain warnings", async () => {
+    createAnswers(workspace());
+    const file = templateFile({ toolsets: { nope: false, message: false, browser: true } });
+    const { respond, done } = call("trunks.template.create", { templatePath: file });
+    await done;
+    expect(draft.current.agents.entries.newagent.toolsets).toEqual({ browser: true });
+    const payload = respond.mock.calls[0]?.[1] as { warnings: string[] };
+    expect(payload.warnings).toEqual([
+      expect.stringContaining("names no known toolset"),
+      expect.stringContaining("always on"),
+    ]);
+  });
+
+  it("adds the template's skills to the shared skills filter when the defaults filter skills", async () => {
+    draft.current.agents.defaults.skills = ["notes"];
+    createAnswers(workspace());
+    const file = templateFile({ skills: ["seedbank:@branch-agent/summarize-pdf"] });
+    await call("trunks.template.create", { templatePath: file }).done;
+    expect(draft.current.agents.entries.newagent.skills).toEqual(["notes", "summarize-pdf"]);
+  });
+
+  it("leaves the skills filter alone when the defaults do not filter skills", async () => {
+    createAnswers(workspace());
+    const file = templateFile({ skills: ["seedbank:@branch-agent/summarize-pdf"] });
+    await call("trunks.template.create", { templatePath: file }).done;
+    expect(draft.current.agents.entries.newagent.skills).toBeUndefined();
+  });
+
+  it("does not warn about a skill this engine ships", async () => {
+    createAnswers(workspace());
+    const file = templateFile({ skills: ["seedbank:@branch-agent/apple-notes"] });
+    const { respond, done } = call("trunks.template.create", { templatePath: file });
+    await done;
+    const payload = respond.mock.calls[0]?.[1] as { warnings: string[] };
+    expect(payload.warnings.join("\n")).not.toContain("apple-notes");
+  });
+
+  it("answers once with an error when the settings write fails after the Trunk is created", async () => {
+    createAnswers(workspace());
+    mutateMock.mockRejectedValue(new Error("config locked"));
+    const file = templateFile({ toolsets: { browser: false } });
+    const { respond, done } = call("trunks.template.create", { templatePath: file });
+    await done;
+    expect(respond).toHaveBeenCalledTimes(1);
+    expect(respond.mock.calls[0]?.[0]).toBe(false);
+    expect(String(respond.mock.calls[0]?.[2]?.message ?? "")).toContain("could not be applied");
   });
 });
 

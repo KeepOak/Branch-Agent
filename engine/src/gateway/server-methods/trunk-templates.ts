@@ -1,15 +1,19 @@
 // Gateway RPCs for Trunk templates: export one Trunk, or create a Trunk from a template.
 // Both methods respond exactly once, including when something throws.
+import { existsSync } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ErrorCodes, errorShape, validateTrunkTemplateCreateParams, validateTrunkTemplateExportParams } from "../../../packages/gateway-protocol/src/index.js";
+import { mutateConfigFileWithRetry } from "../../config/config.js";
 import { resolveBundledSkillsDir } from "../../skills/loading/bundled-dir.js";
 import { exportTrunkTemplate } from "../../trunks/trunk-template-export.js";
 import {
   parseTrunkTemplate,
+  skillSlugForId,
   TRUNK_TEMPLATE_FILE_NAME,
   type TrunkTemplate,
   type TrunkTemplateParse,
+  uninstalledSkillWarnings,
 } from "../../trunks/trunk-template.js";
 import { agentsHandlers } from "./agents.js";
 import type { GatewayRequestHandlerOptions } from "./shared-types.js";
@@ -75,22 +79,53 @@ function parseTemplateText(text: string): TrunkTemplateParse | undefined {
   }
 }
 
-/** What the create does not apply yet, said plainly so the owner can set it after creating the Trunk. */
+/** What the create still leaves to the owner: the model choice, and automations, which are not created here. */
 function notAppliedWarnings(template: TrunkTemplate): string[] {
   const warnings: string[] = [];
   if (template.model) {
     warnings.push(`Model family "${template.model.family}" was not set. Pick a model for this Trunk in its settings.`);
   }
-  for (const id of template.skills) {
-    warnings.push(`Skill "${id}" was not attached. Attach it from the skills page.`);
-  }
   if (template.automations?.length) {
     warnings.push("Automations in this template were not created. Add them in Automations after creating the Trunk.");
   }
-  if (Object.keys(template.toolsets).length > 0) {
-    warnings.push("Tool switches in this template were not applied. Set them in What it may do.");
-  }
   return warnings;
+}
+
+/** Skill folders this engine can load: bundled, and the new Trunk's own workspace. */
+function installedSkillSlugs(slugs: readonly string[], workspaceDir: string): Set<string> {
+  const roots = [resolveBundledSkillsDir(), path.join(workspaceDir, "skills")].filter(
+    (root): root is string => root !== undefined,
+  );
+  return new Set(slugs.filter((slug) => roots.some((root) => existsSync(path.join(root, slug, "SKILL.md")))));
+}
+
+/**
+ * Writes the template's toolset switches and attaches its skills to the new Trunk's entry.
+ * A skill only needs an entry when the shared defaults already filter skills; otherwise every
+ * installed skill is visible. Returns warnings for skills this engine does not have.
+ */
+async function applyTemplateSettings(agentId: string, template: TrunkTemplate, workspaceDir: string): Promise<string[]> {
+  const slugs = template.skills.map(skillSlugForId).filter((slug): slug is string => slug !== undefined);
+  const installed = installedSkillSlugs(slugs, workspaceDir);
+  const toolsets = { ...template.toolsets };
+  if (Object.keys(toolsets).length > 0 || slugs.length > 0) {
+    await mutateConfigFileWithRetry({
+      afterWrite: { mode: "auto" },
+      mutate: (draft) => {
+        const agents = (draft.agents ??= {});
+        const entries = (agents.entries ??= {});
+        const entry = (entries[agentId] ??= {});
+        if (Object.keys(toolsets).length > 0) {
+          entry.toolsets = toolsets;
+        }
+        const defaultSkills = agents.defaults?.skills;
+        if (slugs.length > 0 && Array.isArray(defaultSkills)) {
+          entry.skills = [...new Set([...defaultSkills, ...slugs])];
+        }
+      },
+    });
+  }
+  return uninstalledSkillWarnings(template, installed);
 }
 
 async function writePersona(workspaceDir: string, template: TrunkTemplate): Promise<void> {
@@ -143,13 +178,15 @@ async function createTrunkFromTemplate(
     return;
   }
   const workspace = outcome.workspace ?? "";
+  let settingsWarnings: string[];
   try {
     await writePersona(workspace, parsed.template);
+    settingsWarnings = await applyTemplateSettings(outcome.agentId, parsed.template, workspace);
   } catch (error) {
-    respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, `The Trunk was created, but its persona files could not be written: ${messageOf(error)}`));
+    respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, `The Trunk was created, but its template files or settings could not be applied: ${messageOf(error)}`));
     return;
   }
-  respond(true, { ok: true, agentId: outcome.agentId, workspace, warnings: [...parsed.warnings, ...notAppliedWarnings(parsed.template)] }, undefined);
+  respond(true, { ok: true, agentId: outcome.agentId, workspace, warnings: [...parsed.warnings, ...settingsWarnings, ...notAppliedWarnings(parsed.template)] }, undefined);
 }
 
 export const trunkTemplatesHandlers: GatewayRequestHandlers = {
