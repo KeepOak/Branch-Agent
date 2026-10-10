@@ -1,0 +1,9 @@
+engine:src/gateway/signal-wake-poller-start.test.ts
+engine:src/gateway/signal-wake-source-guard.test.ts
+engine:src/infra/heartbeat-wake-policy.test.ts
+engine:src/infra/heartbeat-wake-signal-guard.test.ts
+engine:src/infra/signal-wakes/signal-wake-classify.test.ts
+engine:src/infra/signal-wakes/signal-wake-dispatch.test.ts
+engine:src/infra/signal-wakes/signal-wake-github.test.ts
+engine:src/infra/signal-wakes/signal-wake-poller.test.ts
+engine:src/infra/signal-wakes/signal-wake-state.test.ts

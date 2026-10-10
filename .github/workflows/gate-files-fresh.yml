@@ -44,5 +44,5 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           MAIN_REF: ${{ github.event.repository.default_branch }}
-          MERGE_GATE_WAIT_SECONDS: '480'
+          MERGE_GATE_WAIT_SECONDS: '120'
         run: node scripts/check-gate-files-fresh.mjs

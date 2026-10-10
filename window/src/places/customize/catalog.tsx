@@ -12,7 +12,7 @@ import { Status } from "../library/ui";
 import { Grey, list, Logo, rec, str, type Rec } from "./common";
 import { shownWhy } from "../../shell/shown-why";
 
-type Item = { id: string; name: string; summary: string; author: string; categories: string[]; action: string; enabled: boolean; installed: boolean; install: Rec | null };
+export type Item = { id: string; name: string; summary: string; author: string; categories: string[]; action: string; enabled: boolean; installed: boolean; install: Rec | null };
 export function readItems(result: unknown): Item[] {
   return list(rec(result).items).map(i => {
     const c = rec(i.catalog), l = rec(i.local);

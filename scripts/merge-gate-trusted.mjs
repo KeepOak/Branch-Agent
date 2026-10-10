@@ -729,8 +729,19 @@ export function isRateLimitError(error) {
   return /rate limit exceeded/i.test(text);
 }
 
+// Shared rate-limit budget for one process. When budgetSeconds is set (gate-files-fresh), every call draws
+// from one deadline and retries until it runs out, so the job cannot wait longer than its budget. Unset keeps
+// each call's own default budget.
+export const gateApiBudget = { budgetSeconds: undefined, startedAt: undefined };
+
 export function ghApi(repo, token, requestPath, { paginate = false, retries = 6 } = {}) {
-  return ghApiWithRetry(repo, token, requestPath, { paginate, retries });
+  const bounded = gateApiBudget.budgetSeconds != null;
+  return ghApiWithRetry(repo, token, requestPath, {
+    paginate,
+    retries: bounded ? Number.POSITIVE_INFINITY : retries,
+    budgetSeconds: gateApiBudget.budgetSeconds,
+    startedAt: gateApiBudget.startedAt,
+  });
   const args = ['api', `repos/${repo}/${requestPath}`, '-H', 'Accept: application/vnd.github+json'];
   if (paginate) args.splice(1, 0, '--paginate');
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -838,8 +849,15 @@ export function formatTimeoutMessage(pending, { missingAnalyze = false, unregist
   return `Timed out waiting for: ${waitingOn}\n${TIMEOUT_RERUN_LINE}`;
 }
 
-export function fetchPrFiles(repo, prNumber, token) {
-  const payload = ghApi(repo, token, `pulls/${prNumber}/files?per_page=100`, { paginate: true });
+// The file list waits out installation rate limits inside its own 10-minute cap (AGENTS rule 13).
+// The job keeps its 35-minute limit: the poll budget below counts from job start, so this wait is not extra time.
+export const PR_FILES_WAIT_SECONDS = 600;
+
+export function fetchPrFiles(repo, prNumber, token, {
+  request = (requestPath, options) => ghApiWithRetry(repo, token, requestPath, options),
+  budgetSeconds = PR_FILES_WAIT_SECONDS,
+} = {}) {
+  const payload = request(`pulls/${prNumber}/files?per_page=100`, { paginate: true, budgetSeconds });
   return Array.isArray(payload) ? payload : [];
 }
 
@@ -863,14 +881,32 @@ export function runSelfCheckFromPr(headRef, body) {
   return result.ok;
 }
 
-export function fetchFileText(repo, sha, token, filePath) {
+// Only a 404 means "no such file at this ref". Any other failure (rate limit, 5xx, network) must
+// propagate: a null here reads as an empty file, which would hide lines main added (fail open).
+// The contents API returns empty content for files over 1 MB; then the blob (same sha) carries the bytes.
+export function fetchFileText(repo, sha, token, filePath, api = ghApi) {
+  let payload;
   try {
-    const payload = ghApi(repo, token, `contents/${filePath}?ref=${sha}`);
-    if (!payload?.content) return null;
-    return Buffer.from(payload.content, payload.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8');
-  } catch {
-    return null;
+    payload = api(repo, token, `contents/${filePath}?ref=${sha}`);
+  } catch (error) {
+    if (isNotFoundError(error)) return null;
+    throw error;
   }
+  if (payload?.content) {
+    return Buffer.from(payload.content, payload.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8');
+  }
+  if (!payload?.sha) {
+    throw new Error(`contents/${filePath}?ref=${sha} returned no content and no blob sha`);
+  }
+  const blob = api(repo, token, `git/blobs/${payload.sha}`);
+  if (!blob?.content) {
+    throw new Error(`git/blobs/${payload.sha} for ${filePath} returned no content`);
+  }
+  return Buffer.from(blob.content, blob.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8');
+}
+
+export function isNotFoundError(error) {
+  return error?.httpStatus === 404 || /HTTP 404\b/.test(String(error?.message ?? ''));
 }
 
 export function workflowFromActionsRun(run) {
@@ -1214,6 +1250,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exit(1);
   }
 
+  const jobStartedAt = Date.now();
   const files = fetchPrFiles(repo, prNumber, token);
   const changedFiles = changedFilesFromPrFiles(files);
   const body = fetchPrBody(repo, prNumber, token);
@@ -1250,6 +1287,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   process.exit(pollTrustedGate({
     repo, sha, token, changedFiles, coreWorkflows,
     currentRunId: process.env.GITHUB_RUN_ID, prNumber, baseRef, maxAttempts, pollSeconds,
-    waitBudgetSeconds,
+    waitBudgetSeconds, startedAt: jobStartedAt,
   }));
 }

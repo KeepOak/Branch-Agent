@@ -32,6 +32,11 @@ export type AgentConfig = Omit<
 export type AgentEntryConfig = Omit<AgentConfig, "id">;
 
 /** Shared Trunk job queue: whether idle Trunks take queued jobs, and which Trunks may. */
+/** Opt-in PR signal wakes: `owner/name` repositories this gateway polls for Trunk-authored PRs. */
+export type SignalWakesConfig = {
+  repos?: string[];
+};
+
 export type TrunkQueueConfig = {
   /** Idle Trunks take queued jobs unless this is false. */
   enabled?: boolean;
@@ -65,5 +70,6 @@ export type AgentsConfig = {
   entries?: Record<string, AgentEntryConfig>;
   trunkQueue?: TrunkQueueConfig;
   gardener?: GardenerConfig;
+  signalWakes?: SignalWakesConfig;
   teamMemory?: TeamMemoryConfig;
 };

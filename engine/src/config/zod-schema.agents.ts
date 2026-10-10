@@ -58,6 +58,13 @@ export const AgentsSchema = z
           .optional(),
       })
       .optional(),
+    signalWakes: z
+      .strictObject({
+        repos: z
+          .array(z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, "Expected owner/name"))
+          .optional(),
+      })
+      .optional(),
     teamMemory: z
       .strictObject({
         agents: z.array(z.string().min(1).max(64)).optional(),

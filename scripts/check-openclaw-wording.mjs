@@ -109,6 +109,18 @@ export const ALLOWLIST = [
     file: /^docs\/upstream\/COPIED\.csv$/,
   },
   {
+    id: 'display-name-map',
+    why: 'single display-name map; engine keys only, never rendered',
+    file: /^window\/src\/display-names\.ts$/,
+    re: /\["openclaw", "Branch"\]/,
+  },
+  {
+    id: 'about-credit',
+    why: 'the one "Based on OpenClaw" credit line in Settings > Updates & about (owner decision: one credit line)',
+    file: /^window\/src\/places\/settings\/set2\/updates\.tsx$/,
+    re: /Based on OpenClaw/,
+  },
+  {
     id: 'rebrand-tooling',
     why: 'The rename map and script must keep the old word so leftover names can still be found',
     file: /^scripts\/rebrand(?:-map\.json|\.mjs)$/,
