@@ -14,6 +14,9 @@
 .tk-emoji-face { display: inline-grid; place-items: center; flex: none; border-radius: 50%; background: var(--fill-2); line-height: 1; }
 .tk-emoji-face i { font-style: normal; }
 .tk-face-wrap { display: inline-flex; }
+/* The chat's character art is drawn at 118% of its face (the floating card). Here it must stay inside its panel: the art fills the box and nothing spills past it. */
+.tk-character-fit { display: inline-flex; flex: none; overflow: hidden; }
+.tk-character-fit > .character-face img, .tk-character-fit > .character-face video { width: 100%; height: 100%; }
 
 /* editor frame: 120 px face column, then the tabs */
 [data-testid="trunk-editor"]:focus { outline: none; }

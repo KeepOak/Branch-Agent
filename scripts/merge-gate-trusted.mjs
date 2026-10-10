@@ -58,12 +58,16 @@ export const GATE_SCRIPTS = [
   'scripts/check-self-check.mjs',
   'scripts/check-self-check.test.mjs',
   'scripts/feature-batch-ci-targets.mjs',
+  'scripts/feature-batch-ci-matrix.mjs',
+  'scripts/feature-batch-ci.mjs',
   'scripts/feature-slice-ci-targets.mjs',
   'scripts/priority-capabilities-ci-targets.mjs',
   'scripts/merge-gate-rate-limit.mjs',
   'scripts/merge-gate-rate-limit.test.mjs',
   'scripts/merge-gate-recheck.mjs',
 ];
+// Workflows whose jobs must actually run on a PR they apply to. A skipped job is missing here, not a pass.
+export const MUST_RUN_WORKFLOWS = new Set(['.github/workflows/feature-batch-checks.yml']);
 export const PACKAGE_JSON_FILES = [
   'package.json',
   'engine/package.json',
@@ -404,6 +408,10 @@ export function missingCoreWorkflows({
     }
     const runs = checkRuns.filter((run) => lookupWorkflow(workflowsByCheckId, run.id)?.path === workflow.path);
     if (!runs.length) missing.push(`${workflow.path} (${PATH_FILTER_NO_CHECK_RUN})`);
+    else if (MUST_RUN_WORKFLOWS.has(workflow.path)) {
+      const notRun = runs.filter((run) => run.conclusion === 'skipped' || run.conclusion === 'neutral');
+      if (notRun.length) missing.push(`${workflow.path} (${notRun.length} job(s) skipped; these jobs must run, not pass by skipping: ${notRun.map((run) => run.name).join(', ')})`);
+    }
     else if (workflow.path === HANDOFF_WORKFLOW_PATH && !runs.some(isPassingHandoffE2e)) {
       missing.push(`${workflow.path} (hand-over paths changed, no passing real-engine handoff run)`);
     }

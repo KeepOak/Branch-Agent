@@ -85,16 +85,12 @@ export function PreviewTab({ engine, name, portals, error, onError, toast }: Pro
           <iframe key={current.id} src={current.url} title={`${current.title} preview`} sandbox="allow-scripts allow-forms allow-same-origin allow-popups" />
         </div>
       ) : null}
-      {current.url ? (
-        <div className="pv-acts-pn">
-          <button type="button" className="btn sm" disabled title="The stage can’t show a preview yet. Open it in your browser instead.">Open full size</button>
-        </div>
-      ) : (
+      {!current.url ? (
         <div className="pv-status-pn">
           <b>Can’t show this preview here</b>
           <p>Its address is shown only to a person who may change things on this Branch.</p>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

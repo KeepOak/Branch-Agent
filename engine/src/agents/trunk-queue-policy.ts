@@ -33,3 +33,12 @@ export function isTrunkStartupStalled(row: Record<string, unknown>): boolean {
     (preparation as Record<string, unknown>).state === "needs-attention"
   );
 }
+
+/** A Trunk still retrying its startup cannot answer a session query yet, so it gets no pickup until it is ready. */
+export function isTrunkStartupPending(row: Record<string, unknown>): boolean {
+  const refusal = row.admissionRefusal;
+  if (!refusal || typeof refusal !== "object") {
+    return false;
+  }
+  return Boolean((refusal as Record<string, unknown>).preparation);
+}
