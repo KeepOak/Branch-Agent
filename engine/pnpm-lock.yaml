@@ -245,6 +245,9 @@ importers:
       '@branch/ai':
         specifier: workspace:*
         version: link:packages/ai
+      '@branch/normalization-core':
+        specifier: workspace:*
+        version: link:packages/normalization-core
       '@clack/core':
         specifier: 1.5.1
         version: 1.5.1

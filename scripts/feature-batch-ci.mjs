@@ -47,10 +47,16 @@ async function prepareBuildArtifacts() {
     'const { withDistArtifactOwnership } = await import("./scripts/lib/dist-artifact-ownership.mts");\n' +
     'const { ensureKyselyTypes } = await import("./scripts/generate-kysely-types.mts");\n' +
     'await withDistArtifactOwnership(process.cwd(), () => ensureKyselyTypes(process.cwd()));'], engineRoot);
-  for (const name of ['gateway-protocol', 'gateway-client']) {
+  for (const name of ['normalization-core', 'gateway-protocol', 'gateway-client']) {
     await run(process.execPath, ['--import', './scripts/tsx.mjs',
       'scripts/build-workspace-package.mts', name], engineRoot);
   }
+  // SQLite worker children use native package resolution, not Vitest/TSX aliases.
+  await run(process.execPath, ['--input-type=module', '--eval',
+    'import assert from "node:assert/strict";\n' +
+    'import { asRecord } from "@branch/normalization-core/record-coerce";\n' +
+    'assert.deepEqual(asRecord({ probe: true }), { probe: true });\n' +
+    'console.log("PASS: SQLite worker native package resolution");'], path.join(engineRoot, 'src/infra'));
 }
 
 async function featureTestEnv(scratch) {
