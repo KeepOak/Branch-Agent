@@ -104,7 +104,11 @@ describe("update-cli", () => {
     vi.mocked(resolveGatewayInstallEntrypoint).mockResolvedValue(entrypoint);
     mockGitUpdateAfterMutation(makeOkUpdateResult({ mode: "git", root: process.cwd() }));
 
-    await updateCommand({ yes: true });
+    await updateCommand({ yes: true }).catch((error: unknown) => {
+      // Preserve the real worker diagnostic when RuntimeEnv.exit becomes an ExitError.
+      console.error(getErrorOutput());
+      throw error;
+    });
 
     expect(serviceStop.mock.calls.length).toBe(1);
     expect(vi.mocked(runDaemonInstall).mock.calls.length).toBe(0);
