@@ -17,6 +17,7 @@ import {
 } from "./trunk-queue-status.js";
 import {
   byPriority,
+  withQueueLock,
   claimRef,
   type ClaimRef,
   findClaim,
@@ -83,17 +84,19 @@ export function addQueueItem(
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
 ): TrunkQueueItem {
-  const rows = read(env);
-  const item: TrunkQueueItem = {
-    id: randomUUID(),
-    title: input.title,
-    brief_text: input.brief_text,
-    priority: input.priority ?? 0,
-    added_at: now,
-  };
-  rows.push(item);
-  write(rows, now, env);
-  return item;
+  return withQueueLock(env, () => {
+    const rows = read(env);
+    const item: TrunkQueueItem = {
+      id: randomUUID(),
+      title: input.title,
+      brief_text: input.brief_text,
+      priority: input.priority ?? 0,
+      added_at: now,
+    };
+    rows.push(item);
+    write(rows, now, env);
+    return item;
+  });
 }
 
 export function listQueueItems(
@@ -110,14 +113,16 @@ export function markQueueItemDone(
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
 ): TrunkQueueItem | undefined {
-  const rows = read(env);
-  const row = rows.find((candidate) => candidate.id === id);
-  if (!row) {
-    return undefined;
-  }
-  row.done_at ??= now;
-  write(rows, now, env);
-  return row;
+  return withQueueLock(env, () => {
+    const rows = read(env);
+    const row = rows.find((candidate) => candidate.id === id);
+    if (!row) {
+      return undefined;
+    }
+    row.done_at ??= now;
+    write(rows, now, env);
+    return row;
+  });
 }
 
 /**
@@ -131,22 +136,24 @@ export function releaseQueueItem(
   now = Date.now(),
   claimId?: string,
 ): TrunkQueueItem | undefined {
-  const rows = read(env);
-  const row = rows.find((candidate) => candidate.id === id);
-  if (!row) {
-    return undefined;
-  }
-  const before = { ...row };
-  if (isOpenClaim(row) && (claimId === undefined || row.claim_id === claimId)) {
-    release(row, now);
-    write(rows, now, env);
-  } else if (!row.claimed_by && row.blocked_reason) {
-    delete row.blocked_reason;
-    row.failures = 0;
-    row.released_at = now;
-    write(rows, now, env);
-  }
-  return before;
+  return withQueueLock(env, () => {
+    const rows = read(env);
+    const row = rows.find((candidate) => candidate.id === id);
+    if (!row) {
+      return undefined;
+    }
+    const before = { ...row };
+    if (isOpenClaim(row) && (claimId === undefined || row.claim_id === claimId)) {
+      release(row, now);
+      write(rows, now, env);
+    } else if (!row.claimed_by && row.blocked_reason) {
+      delete row.blocked_reason;
+      row.failures = 0;
+      row.released_at = now;
+      write(rows, now, env);
+    }
+    return before;
+  });
 }
 
 /** Records run activity in the claim's own thread, so a working claim is not released as stale. */
@@ -155,15 +162,17 @@ export function touchQueueClaim(
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
 ): void {
-  const rows = read(env);
-  const row = rows.find(
-    (candidate) => isOpenClaim(candidate) && candidate.thread_key === threadKey,
-  );
-  if (!row) {
-    return;
-  }
-  row.active_at = now;
-  write(rows, now, env);
+  return withQueueLock(env, () => {
+    const rows = read(env);
+    const row = rows.find(
+      (candidate) => isOpenClaim(candidate) && candidate.thread_key === threadKey,
+    );
+    if (!row) {
+      return;
+    }
+    row.active_at = now;
+    write(rows, now, env);
+  });
 }
 
 /**
@@ -176,20 +185,22 @@ export function closeQueueClaimForThread(
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
 ): boolean {
-  const rows = read(env);
-  const row = rows.find(
-    (candidate) => isOpenClaim(candidate) && candidate.thread_key === threadKey,
-  );
-  if (!row) {
-    return false;
-  }
-  if (outcome === "completed") {
-    row.done_at = now;
-  } else {
-    failClaim(row, now, RUN_ERROR_REASON);
-  }
-  write(rows, now, env);
-  return true;
+  return withQueueLock(env, () => {
+    const rows = read(env);
+    const row = rows.find(
+      (candidate) => isOpenClaim(candidate) && candidate.thread_key === threadKey,
+    );
+    if (!row) {
+      return false;
+    }
+    if (outcome === "completed") {
+      row.done_at = now;
+    } else {
+      failClaim(row, now, RUN_ERROR_REASON);
+    }
+    write(rows, now, env);
+    return true;
+  });
 }
 
 /**
@@ -202,13 +213,15 @@ function releaseUnavailableClaim(
   now: number,
   claimId: string,
 ): void {
-  const rows = read(env);
-  const row = rows.find((candidate) => candidate.id === id);
-  if (!row || !isOpenClaim(row) || row.claim_id !== claimId) {
-    return;
-  }
-  release(row, now);
-  write(rows, now, env);
+  return withQueueLock(env, () => {
+    const rows = read(env);
+    const row = rows.find((candidate) => candidate.id === id);
+    if (!row || !isOpenClaim(row) || row.claim_id !== claimId) {
+      return;
+    }
+    release(row, now);
+    write(rows, now, env);
+  });
 }
 
 /** A claim attempt that could not be dispatched: counted as a failure, and only if it still holds this claim. */
@@ -219,13 +232,15 @@ function failQueueClaim(
   claimId: string,
   reason: string,
 ): void {
-  const rows = read(env);
-  const row = rows.find((candidate) => candidate.id === id);
-  if (!row || !isOpenClaim(row) || row.claim_id !== claimId) {
-    return;
-  }
-  failClaim(row, now, reason);
-  write(rows, now, env);
+  return withQueueLock(env, () => {
+    const rows = read(env);
+    const row = rows.find((candidate) => candidate.id === id);
+    if (!row || !isOpenClaim(row) || row.claim_id !== claimId) {
+      return;
+    }
+    failClaim(row, now, reason);
+    write(rows, now, env);
+  });
 }
 
 /** True while the job is still held by this claim attempt (not done, released or reclaimed since). */
@@ -250,23 +265,25 @@ export function claimNextQueueItem(
   now = Date.now(),
   epoch = GATEWAY_EPOCH,
 ): TrunkQueueClaim | undefined {
-  const rows = read(env);
-  const holds = rows.some((row) => isOpenClaim(row) && row.claimed_by === agentId);
-  const next = holds ? undefined : rows.filter(isClaimable).toSorted(byPriority)[0];
-  if (!next) {
-    return undefined;
-  }
-  const claimId = randomUUID();
-  const claim = Object.assign(next, {
-    claimed_by: agentId,
-    claimed_at: now,
-    claim_id: claimId,
-    thread_key: `agent:${agentId}:queue-${next.id}-${claimId.slice(0, 8)}`,
-    active_at: now,
-    gateway_epoch: epoch,
+  return withQueueLock(env, () => {
+    const rows = read(env);
+    const holds = rows.some((row) => isOpenClaim(row) && row.claimed_by === agentId);
+    const next = holds ? undefined : rows.filter(isClaimable).toSorted(byPriority)[0];
+    if (!next) {
+      return undefined;
+    }
+    const claimId = randomUUID();
+    const claim = Object.assign(next, {
+      claimed_by: agentId,
+      claimed_at: now,
+      claim_id: claimId,
+      thread_key: `agent:${agentId}:queue-${next.id}-${claimId.slice(0, 8)}`,
+      active_at: now,
+      gateway_epoch: epoch,
+    });
+    write(rows, now, env);
+    return claim;
   });
-  write(rows, now, env);
-  return claim;
 }
 
 type ReaperParams = {
@@ -558,19 +575,8 @@ export async function releaseOrphanQueueClaims(params: {
     if (live || !(await claimMayRelease(params.gateway, candidate))) {
       continue;
     }
-    const rows = read(params.env);
-    const row = rows.find(
-      (current) =>
-        current.id === candidate.id &&
-        isOpenClaim(current) &&
-        current.claim_id === candidate.claim_id,
-    );
-    if (!row) {
-      continue;
-    }
     const at = now();
-    release(row, at);
-    write(rows, at, params.env);
+    updateClaim(params.env, claimRef(candidate), at, (row) => release(row, at));
   }
 }
 

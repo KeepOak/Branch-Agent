@@ -4,8 +4,19 @@ import { getFileLockProcessStartTime } from "../shared/pid-alive.js";
 import { acquireFileLockSync } from "./file-lock-manager.js";
 import { isLockOwnerDefinitelyStale } from "./stale-lock-file.js";
 
+/** Retry budget for the synchronous lock. The defaults are unchanged for existing callers. */
+export type FileLockSyncRetryOptions = {
+  retries?: number;
+  minTimeout?: number;
+  maxTimeout?: number;
+  randomize?: boolean;
+};
+
 /** Synchronous lock for legacy stores that cannot transact in SQLite yet. */
-export function acquireFileLockSyncWithRetry(path: string): () => void {
+export function acquireFileLockSyncWithRetry(
+  path: string,
+  retryOptions: FileLockSyncRetryOptions = {},
+): () => void {
   rejectUnsupportedLockPath(`${path}.lock`);
   const processStartTime = getFileLockProcessStartTime(process.pid);
   const createPayload = () => ({
@@ -19,7 +30,13 @@ export function acquireFileLockSyncWithRetry(path: string): () => void {
     });
   const lock = acquireFileLockSync(path, {
     staleMs: 30_000,
-    retry: { retries: 9, factor: 1, minTimeout: 20, maxTimeout: 20, randomize: false },
+    retry: {
+      retries: retryOptions.retries ?? 9,
+      factor: 1,
+      minTimeout: retryOptions.minTimeout ?? 20,
+      maxTimeout: retryOptions.maxTimeout ?? 20,
+      randomize: retryOptions.randomize ?? false,
+    },
     staleRecovery: "remove-if-unchanged",
     payload: createPayload,
     shouldReclaim: isStale,

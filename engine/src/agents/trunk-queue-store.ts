@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "../config/paths.js";
+import { acquireFileLockSyncWithRetry } from "../infra/file-lock-sync.js";
 
 export type TrunkQueueItem = {
   id: string;
@@ -53,6 +54,26 @@ const RETAIN_DONE_MS = 7 * 24 * 60 * 60_000;
 
 function file(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(resolveStateDir(env), "trunks", "queue.json");
+}
+
+/**
+ * Runs one read-modify-write of the queue file under the cross-process file lock. The lock is the repo's sync file lock,
+ * which reclaims a lock whose owning process has exited. Nothing in `fn` may take the lock again.
+ */
+export function withQueueLock<T>(env: NodeJS.ProcessEnv | undefined, fn: () => T): T {
+  fs.mkdirSync(path.dirname(file(env)), { recursive: true });
+  // A busy Trunk queue can hold the lock for several milliseconds, so wait longer than the default budget.
+  const unlock = acquireFileLockSyncWithRetry(file(env), {
+    retries: 2000,
+    minTimeout: 1,
+    maxTimeout: 5,
+    randomize: true,
+  });
+  try {
+    return fn();
+  } finally {
+    unlock();
+  }
 }
 
 export function read(env?: NodeJS.ProcessEnv): TrunkQueueItem[] {
@@ -159,19 +180,21 @@ export function updateClaim(
   now: number,
   change: (row: TrunkQueueItem) => void,
 ): boolean {
-  const rows = read(env);
-  const row = rows.find(
-    (candidate) =>
-      candidate.id === claim.id &&
-      isOpenClaim(candidate) &&
-      candidate.claim_id === claim.claim_id &&
-      candidate.claimed_by === claim.claimed_by &&
-      candidate.gateway_epoch === claim.gateway_epoch,
-  );
-  if (!row) {
-    return false;
-  }
-  change(row);
-  write(rows, now, env);
-  return true;
+  return withQueueLock(env, () => {
+    const rows = read(env);
+    const row = rows.find(
+      (candidate) =>
+        candidate.id === claim.id &&
+        isOpenClaim(candidate) &&
+        candidate.claim_id === claim.claim_id &&
+        candidate.claimed_by === claim.claimed_by &&
+        candidate.gateway_epoch === claim.gateway_epoch,
+    );
+    if (!row) {
+      return false;
+    }
+    change(row);
+    write(rows, now, env);
+    return true;
+  });
 }
