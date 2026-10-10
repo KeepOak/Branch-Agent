@@ -8,6 +8,7 @@ import { isIncognitoSessionKey } from "../../routing/session-key.js";
 import { runInDetachedAsyncContext } from "../../shared/detached-async-context.js";
 import type { RunSkillUsage } from "../runtime/run-usage.js";
 import { resolveSkillWorkshopConfig } from "./config.js";
+import { hasOvercomeRepeatedFailure } from "./experience-review-failure-signal.js";
 import {
   countSkillModelIterations,
   hasExplicitDurableTeaching,
@@ -219,7 +220,8 @@ export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSched
             : 0;
       if (
         modelIterations < EXPERIENCE_REVIEW_MIN_MODEL_ITERATIONS &&
-        !hasExplicitDurableTeaching(turnMessages)
+        !hasExplicitDurableTeaching(turnMessages) &&
+        !hasOvercomeRepeatedFailure(turnMessages)
       ) {
         log.debug(
           `experience review skipped: reason=below-depth-bar iterations=${modelIterations} session=${sessionKey}`,
