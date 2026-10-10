@@ -2,6 +2,7 @@
 // (system-presence), roles (gateway.roles in config) and paired devices (device.pair.list). Shapes follow
 // engine/packages/gateway-protocol/src/schema/{users,snapshot,devices}.ts. Kept in step with the People place.
 import { list, record, visible, type RecordValue } from "../adapter";
+import { personName } from "../../../shell/person-name";
 
 /** The engine's owner profile id (gateway-protocol user-profile-constants.ts). */
 export const OWNER_ID = "gateway-owner";
@@ -12,7 +13,7 @@ const num = (v: unknown): number | undefined => (typeof v === "number" && Number
 export type Profile = { id: string; name: string; emails: string[]; role?: string; hasAvatar: boolean; owner: boolean };
 export function profileOf(p: RecordValue): Profile {
   const id = str(p.id);
-  const name = str(p.displayName) || str(record(p.githubIdentity).login) || strs(p.emails)[0] || (id === OWNER_ID ? "Owner" : id);
+  const name = personName(p, id);
   return { id, name, emails: strs(p.emails), role: str(p.role) || undefined, hasAvatar: p.hasAvatar === true, owner: id === OWNER_ID };
 }
 /** Everyone in users.list, merged profiles left out (they live on in the profile they were merged into). */
