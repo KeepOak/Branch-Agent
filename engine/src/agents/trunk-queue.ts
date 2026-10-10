@@ -62,7 +62,16 @@ export type QueueTransition = {
   kind: "claimed" | "done" | "released" | "blocked";
   item: TrunkQueueItem;
   agentId?: string;
+  /** Increases with every transition the queue decides, in decision order. Assigned inside the queue lock. */
+  seq: number;
 };
+let transitionSeq = 0;
+
+/** Called inside the queue lock, so the number follows the order in which the queue made each decision. */
+function nextSeq(): number {
+  transitionSeq += 1;
+  return transitionSeq;
+}
 type QueueTransitionListener = (transition: QueueTransition) => void;
 let transitionListener: QueueTransitionListener | undefined;
 
@@ -78,6 +87,27 @@ function announce(transition: QueueTransition): void {
   } catch {
     // A progress line must never fail the queue operation that produced it.
   }
+}
+
+/**
+ * Frees a claim the reaper found stale. The transition is decided inside the lock, with the claimant it released, and
+ * announced after the lock is released.
+ */
+function releaseClaimAnnounced(
+  env: NodeJS.ProcessEnv | undefined,
+  claim: ClaimRef,
+  now: number,
+): boolean {
+  let transition = undefined as QueueTransition | undefined;
+  const released = updateClaim(env, claim, now, (row) => {
+    const claimant = row.claimed_by;
+    release(row, now);
+    transition = { kind: "released", item: { ...row }, agentId: claimant, seq: nextSeq() };
+  });
+  if (transition) {
+    announce(transition);
+  }
+  return released;
 }
 
 /** A team job is claimable only by a member of that team; any other job is open to every eligible Trunk. */
@@ -158,13 +188,16 @@ export function markQueueItemDone(
     const firstCompletion = row.done_at === undefined;
     row.done_at ??= now;
     write(rows, now, env);
-    return { row, doneItem: firstCompletion ? { ...row } : undefined };
+    const transition: QueueTransition | undefined = firstCompletion
+      ? { kind: "done", item: { ...row }, seq: nextSeq() }
+      : undefined;
+    return { row, transition };
   });
   if (!done) {
     return undefined;
   }
-  if (done.doneItem) {
-    announce({ kind: "done", item: done.doneItem });
+  if (done.transition) {
+    announce(done.transition);
   }
   return done.row;
 }
@@ -191,7 +224,13 @@ export function releaseQueueItem(
       const claimant = row.claimed_by;
       release(row, now);
       write(rows, now, env);
-      return { before, released: { item: { ...row }, agentId: claimant } };
+      const transition: QueueTransition = {
+        kind: "released",
+        item: { ...row },
+        agentId: claimant,
+        seq: nextSeq(),
+      };
+      return { before, transition };
     }
     if (!row.claimed_by && row.blocked_reason) {
       delete row.blocked_reason;
@@ -201,8 +240,8 @@ export function releaseQueueItem(
     }
     return { before };
   });
-  if (outcome?.released) {
-    announce({ kind: "released", item: outcome.released.item, agentId: outcome.released.agentId });
+  if (outcome?.transition) {
+    announce(outcome.transition);
   }
   return outcome?.before;
 }
@@ -244,20 +283,24 @@ export function closeQueueClaimForThread(
     if (!row) {
       return undefined;
     }
-    let blocked = false;
+    let transition: QueueTransition | undefined;
     if (outcome === "completed") {
+      const firstCompletion = row.done_at === undefined;
       row.done_at = now;
-    } else {
-      blocked = failClaim(row, now, RUN_ERROR_REASON);
+      if (firstCompletion) {
+        transition = { kind: "done", item: { ...row }, agentId: row.claimed_by, seq: nextSeq() };
+      }
+    } else if (failClaim(row, now, RUN_ERROR_REASON)) {
+      transition = { kind: "blocked", item: { ...row }, seq: nextSeq() };
     }
     write(rows, now, env);
-    return { blockedItem: blocked ? { ...row } : undefined };
+    return { transition };
   });
   if (!closed) {
     return false;
   }
-  if (closed.blockedItem) {
-    announce({ kind: "blocked", item: closed.blockedItem });
+  if (closed.transition) {
+    announce(closed.transition);
   }
   return true;
 }
@@ -299,10 +342,13 @@ function failQueueClaim(
     }
     const isBlocked = failClaim(row, now, reason);
     write(rows, now, env);
-    return isBlocked ? { ...row } : undefined;
+    const transition: QueueTransition | undefined = isBlocked
+      ? { kind: "blocked", item: { ...row }, seq: nextSeq() }
+      : undefined;
+    return transition;
   });
   if (blocked) {
-    announce({ kind: "blocked", item: blocked });
+    announce(blocked);
   }
 }
 
@@ -349,12 +395,19 @@ export function claimNextQueueItem(
       gateway_epoch: epoch,
     });
     write(rows, now, env);
-    return claim;
+    const transition: QueueTransition = {
+      kind: "claimed",
+      item: { ...claim },
+      agentId,
+      seq: nextSeq(),
+    };
+    return { claim, transition };
   });
-  if (claimed) {
-    announce({ kind: "claimed", item: { ...claimed }, agentId });
+  if (!claimed) {
+    return undefined;
   }
-  return claimed;
+  announce(claimed.transition);
+  return claimed.claim;
 }
 
 type ReaperParams = {
@@ -381,7 +434,7 @@ async function reapSilentClaim(params: ReaperParams, claim: ClaimRef): Promise<v
   }
   const at = (params.now ?? Date.now)();
   if (outcome === "stopped") {
-    updateClaim(params.env, claim, at, (row) => release(row, at));
+    releaseClaimAnnounced(params.env, claim, at);
     params.log?.(
       `Stopped ${after.title} on ${claim.claimed_by} after 4 hours without finishing; it is back in the queue.`,
     );
@@ -421,7 +474,7 @@ async function reapAbandonedClaim(
     return;
   }
   const at = (params.now ?? Date.now)();
-  updateClaim(params.env, claim, at, (row) => release(row, at));
+  releaseClaimAnnounced(params.env, claim, at);
 }
 
 /** Each pass: finds claims past the stale window and handles each one, re-reading the queue after every await. */
@@ -647,7 +700,7 @@ export async function releaseOrphanQueueClaims(params: {
       continue;
     }
     const at = now();
-    updateClaim(params.env, claimRef(candidate), at, (row) => release(row, at));
+    releaseClaimAnnounced(params.env, claimRef(candidate), at);
   }
 }
 
