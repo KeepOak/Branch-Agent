@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { GATE_SCRIPTS } from './merge-gate-trusted.mjs';
 import {
+  DEFAULT_GATE_FILES_BUDGET_SECONDS,
+  formatGateFilesError,
+  gateFilesBudgetSeconds,
   COMPARE_FILES_JQ,
   COMPARE_SLIM_JQ,
   GATE_WORKFLOW_FILES,
@@ -318,4 +321,28 @@ test('the fork-to-main attribution compare is non-fatal, so a stale fork point c
   assert.equal(result.ok, false);
   assert.equal(result.results[0].dropped[0].line, 'added-on-main');
   assert.equal(result.results[0].dropped[0].commit, null);
+});
+
+test('the gate-files-fresh wait budget comes from MERGE_GATE_WAIT_SECONDS and defaults safely', () => {
+  assert.equal(gateFilesBudgetSeconds({ MERGE_GATE_WAIT_SECONDS: '480' }), 480);
+  assert.equal(gateFilesBudgetSeconds({}), DEFAULT_GATE_FILES_BUDGET_SECONDS);
+  assert.equal(gateFilesBudgetSeconds({ MERGE_GATE_WAIT_SECONDS: 'soon' }), DEFAULT_GATE_FILES_BUDGET_SECONDS);
+  assert.equal(gateFilesBudgetSeconds({ MERGE_GATE_WAIT_SECONDS: '0' }), DEFAULT_GATE_FILES_BUDGET_SECONDS);
+});
+
+test('an exhausted rate-limit budget fails closed with a clear message, not as a gate-file failure', () => {
+  const rateLimited = Object.assign(new Error('gh: API rate limit exceeded for installation (HTTP 403)'), {
+    stderr: 'gh: API rate limit exceeded for installation (HTTP 403)',
+  });
+  const message = formatGateFilesError(rateLimited, 480);
+  assert.match(message, /480s wait budget/);
+  assert.match(message, /not a gate-file failure/);
+  assert.match(formatGateFilesError(new Error('gh: Server Error (HTTP 502)'), 480), /could not read GitHub/);
+});
+
+test('gate-files-fresh bounds its own API waits with one shared budget read from the job environment', () => {
+  const source = readFileSync(new URL('./check-gate-files-fresh.mjs', import.meta.url), 'utf8');
+  assert.match(source, /gateApiBudget\.budgetSeconds = budgetSeconds;/);
+  assert.match(source, /gateApiBudget\.startedAt = Date\.now\(\);/);
+  assert.match(source, /process\.exit\(1\);\s*\}/);
 });
