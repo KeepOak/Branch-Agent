@@ -6,9 +6,6 @@
 // pairing), the link stops and forgets the host; a new `branch graft join` brings it back.
 import { readConnectErrorDetailCode } from "../../packages/gateway-protocol/src/connect-error-details.js";
 import { listAgentEntries } from "../agents/agent-scope.js";
-
-/** Budget for each local gateway call while a joined job runs; the Trunk's own reply wait is separate. */
-const JOINED_JOB_CALL_TIMEOUT_MS = 60_000;
 import {
   GRAFT_DEVICE_SCOPES,
   graftBranchIdentity,
@@ -17,6 +14,9 @@ import {
   type GraftLink,
 } from "./graft-join.js";
 import { HELLO_INTERVAL_MS } from "./outside-presence.js";
+
+/** Budget for each local gateway call while a joined job runs; the Trunk's own reply wait is separate. */
+const JOINED_JOB_CALL_TIMEOUT_MS = 60_000;
 
 export type LinkClient = {
   start: () => void;
@@ -244,7 +244,6 @@ export async function createDeviceLinkClient(
   };
 }
 
-/** Start the joined Branch's links to its saved hosts (the gateway's graft-link service). */
 /**
  * Runs one job the host queued for a local Trunk: open its thread, send the text, wait for the reply.
  * Each local gateway call gets its own budget, so a busy gateway is not mistaken for a failed Trunk.
@@ -298,6 +297,7 @@ export async function runJoinedTrunkJob(
     : { error: result.error || `The joined Trunk ended with ${result.status}.` };
 }
 
+/** Start the joined Branch's links to its saved hosts (the gateway's graft-link service). */
 export function startGraftLinks(log: (line: string) => void): GraftLinkSupervisor {
   const supervisor: GraftLinkSupervisor = new GraftLinkSupervisor({
     links: () => readGraftLinks(),
