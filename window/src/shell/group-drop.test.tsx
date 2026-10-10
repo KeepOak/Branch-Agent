@@ -99,6 +99,31 @@ describe("drag to group", () => {
     expect(mergeRoomNotices(history, notices).map((block) => block.key)).toEqual(["room:r1:1", "first", "reply", "room:r1:2", "second"]);
     expect(notices[1]).toMatchObject({ text: "You added Hermes", at: 300 });
   });
+  it("adds the room's Trunk posts and other Trunks' replies from its log as their reports, nothing already in the conversation", async () => {
+    const piper = contact("piper", "Piper", "trunk");
+    const request = vi.fn(async () => ({ events: [
+      { seq: 1, kind: "message", actorId: "owner", payload: { text: "Status?" }, createdAt: 200 },
+      { seq: 2, kind: "turn.replied", actorId: "scout", payload: { text: "Lead reply, already in the conversation" }, createdAt: 250 },
+      { seq: 3, kind: "turn.replied", actorId: "piper", payload: { text: "Quotes are in." }, createdAt: 300 },
+      { seq: 4, kind: "message", actorId: "scout", payload: { text: "Posted to the room." }, createdAt: 350 },
+      { seq: 5, kind: "message", actorId: "a2a:hermes", payload: { text: "From outside", from: "Hermes" }, createdAt: 400 },
+    ] }));
+    const session = { request, onGatewayEvent: () => () => {} } as unknown as SaplingSession;
+    const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
+    let notices: Block[] = [];
+    function Probe() { notices = useRoomNotices(session, contacts[3]!.threadKey, [...contacts, piper]); return null; }
+    await act(async () => root!.render(<Probe />));
+    expect(notices).toEqual([
+      { kind: "text", key: "room:r1:3", text: "Quotes are in.", streaming: false, meta: { timestamp: 300, sender: { kind: "trunk", agentId: "piper", posted: true } } },
+      { kind: "text", key: "room:r1:4", text: "Posted to the room.", streaming: false, meta: { timestamp: 350 } },
+    ]);
+    const history: Block[] = [
+      { kind: "user", key: "ask", text: "Status?", meta: { timestamp: 200 } },
+      { kind: "text", key: "lead", text: "Lead reply", streaming: false, meta: { timestamp: 250 } },
+      { kind: "user", key: "later", text: "Thanks", meta: { timestamp: 500 } },
+    ];
+    expect(mergeRoomNotices(history, notices).map((block) => block.key)).toEqual(["ask", "lead", "room:r1:3", "room:r1:4", "later"]);
+  });
   it("creates a real room with both contacts and a lead Trunk through rooms.create", async () => {
     const { session, request } = fakeSession();
     const made = await createDroppedGroup(session, contacts, [scout.threadKey, ledger.threadKey], "Hartwell check", "scout");
@@ -127,6 +152,27 @@ describe("drag to group", () => {
     await act(async () => rendered.host.querySelector<HTMLInputElement>("input")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(rendered.request).toHaveBeenCalledWith("rooms.create", expect.objectContaining({ name: "Hartwell check" }));
     expect(rendered.onOpen).toHaveBeenCalledWith("agent:scout:room:new");
+  });
+  it("puts both dropped chats in the rooms.create group after confirming a new pair", async () => {
+    expect(groupPlan(drop(scout, ledger), contacts, [room])).toBe("new");
+    const rendered = await show();
+    await act(async () => rendered.host.querySelector<HTMLButtonElement>("[data-testid=start-group-with-these]")!.click());
+    const created = rendered.request.mock.calls.find(([method]) => method === "rooms.create");
+    expect(created).toBeTruthy();
+    const members = (created![1] as { members: { kind: string; id: string }[] }).members;
+    expect(members.map((member) => `${member.kind}:${member.id}`)).toEqual(["trunk:scout", "a2a:ledger"]);
+    expect(rendered.onOpen).toHaveBeenCalledWith("agent:scout:room:new");
+  });
+  it("offers Add both to… on a new-group confirm and adds the missing members", async () => {
+    const other: GroupRoom = { roomId: "r2", name: "Week plan", lead: "scout", createdAt: 4, members: [{ kind: "trunk", id: "scout" }] };
+    const rendered = await show({ rooms: [other] });
+    expect(rendered.host.textContent).toContain("Add both to…");
+    expect(rendered.host.textContent).toContain("Week plan");
+    const button = [...rendered.host.querySelectorAll<HTMLButtonElement>("button.mi")].find((el) => el.textContent === "Week plan");
+    await act(async () => button!.click());
+    expect(rendered.request).toHaveBeenCalledWith("rooms.members.add", { roomId: "r2", kind: "a2a", id: "ledger" });
+    expect(rendered.request).not.toHaveBeenCalledWith("rooms.members.add", expect.objectContaining({ id: "scout" }));
+    expect(rendered.onOpen).toHaveBeenCalledWith("agent:scout:room:r2");
   });
   it("asks before adding a grafted contact, notes it is offline, and calls rooms.members.add", async () => {
     const rendered = await show({ drop: { kind: "add", source: hermes.threadKey, target: contacts[3]!.threadKey, anchor } });

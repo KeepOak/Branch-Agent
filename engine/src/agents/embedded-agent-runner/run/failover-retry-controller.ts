@@ -572,7 +572,7 @@ export function createEmbeddedRunFailoverRetryController(input: {
         if (!completed) {
           recordDecision("rejected", "wait_interrupted");
         }
-        closeRetryWait?.(completed);
+        await closeRetryWait?.(completed);
       }
       recordDecision("accepted", "backoff_completed");
       transientRetryCount += 1;

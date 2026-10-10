@@ -102,6 +102,7 @@ export type ResolvedAgentConfig = {
   embeddedAgent?: AgentEntry["embeddedAgent"];
   sandbox?: AgentEntry["sandbox"];
   tools?: AgentEntry["tools"];
+  toolsets?: AgentEntry["toolsets"];
 };
 
 /** ACP primaries select the harness; explicit fallback lists still configure native calls. */
@@ -450,6 +451,7 @@ export function resolveAgentConfig(
         : undefined,
     sandbox: entry.sandbox,
     tools: entry.tools,
+    toolsets: entry.toolsets,
   };
 }
 

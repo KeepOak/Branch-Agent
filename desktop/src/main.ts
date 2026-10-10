@@ -23,12 +23,18 @@ import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate } from "./auto-apply-update";
 import { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes } from "./available-memory";
+import { RotatingLog, uiEventLine } from "./diagnostics-log";
+import { readTail, recentLines, reportReadme } from "./diagnostics-report";
+import { zipStored } from "./diagnostics-zip";
+
+/** How much of each log the report reads from the end. The time window then keeps only recent lines. */
+const REPORT_TAIL_BYTES = 4 * 1024 * 1024;
 import { checkCandidateBeside, stopCandidate } from "./candidate-check";
 import { clearEngineRecords, retireRecordedEngines } from "./engine-records";
 import { createUpdateLock, type UpdateLockHandle } from "./update-lock";
 import { createHash } from "node:crypto";
 import type { Tray } from "electron";
-import { MacComputerDriver, macScreenControlEnabled } from "./mac-computer-driver";
+import { MacComputerDriver, describeDriverError, macScreenControlEnabled } from "./mac-computer-driver";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
 /** Scratch test copies: never grouped with, or mistaken for, the owner's app (they also start hidden). */
@@ -832,6 +838,44 @@ async function start(): Promise<void> {
     if (served) windowPort = gatewayPort;
     e.returnValue = served ? { gatewayUrl: gatewayUrl(), gatewayToken: token } : null;
   });
+  // Diagnostics: the window's UI events go to ui-events.log, and a report bundles the recent logs.
+  const uiLog = new RotatingLog(join(cfg.dataDir, "ui-events.log"));
+  const fromServedWindow = (e: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): boolean => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    return Boolean(owner && branchWindows().includes(owner) && e.senderFrame === e.sender.mainFrame && e.sender.getURL().startsWith(windowUrl()));
+  };
+  ipcMain.on("branch-desktop:ui-event", (e, raw: unknown) => {
+    if (!fromServedWindow(e)) return;
+    try {
+      const line = uiEventLine(raw, new Date().toISOString());
+      if (line) uiLog.append(line);
+    } catch {
+      // Diagnostics must never stop the app.
+    }
+  });
+  ipcMain.handle("branch-desktop:report-problem", async (e, minutes: unknown) => {
+    if (!fromServedWindow(e)) return { saved: false };
+    const span = typeof minutes === "number" && Number.isFinite(minutes) ? Math.min(240, Math.max(1, Math.round(minutes))) : 30;
+    const now = new Date();
+    const cutoff = now.getTime() - span * 60_000;
+    const ui = uiLog.paths().reverse().map((file) => readTail(file, REPORT_TAIL_BYTES)).join("\n");
+    const entries = [
+      { name: "desktop.log", text: readTail(join(cfg.dataDir, "desktop.log"), REPORT_TAIL_BYTES) },
+      { name: "gateway.log", text: readTail(join(cfg.dataDir, "gateway.log"), REPORT_TAIL_BYTES) },
+      { name: "ui-events.log", text: ui },
+    ].map((source) => ({ name: source.name, data: Buffer.from(`${recentLines(source.text, cutoff).join("\n")}\n`, "utf8") }));
+    entries.push({ name: "README.txt", data: Buffer.from(reportReadme(span, now.toISOString()), "utf8") });
+    const archive = zipStored(entries, now);
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    const options = {
+      defaultPath: `branch-problem-report-${now.toISOString().slice(0, 16).replace(/[:T]/g, "-")}.zip`,
+      filters: [{ name: "Zip archive", extensions: ["zip"] }],
+    };
+    const picked = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options);
+    if (picked.canceled || !picked.filePath) return { saved: false };
+    writeFileSync(picked.filePath, archive);
+    return { saved: true, bytes: archive.length };
+  });
   ipcMain.handle("branch-desktop:open-conversation", (e, key: unknown) => {
     const owner = BrowserWindow.fromWebContents(e.sender);
     if (!owner || (owner !== win && ![...conversationWindows.values()].includes(owner)) || !isOwnedComponentWindow(e, owner.webContents, windowUrl())) {
@@ -1021,7 +1065,7 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   const started = Date.now();
   if (macComputerDriver && !screenControlEnabled()) await macComputerDriver.stop();
   const macComputerEndpoint = await (!prepared && screenControlEnabled() ? macComputerDriver?.start(engineDir) : undefined)?.catch(error => {
-    log(`Mac computer driver unavailable: ${String(error)}`);
+    log(`Mac computer driver unavailable: ${describeDriverError(error)}`);
     return undefined;
   });
   const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port, macComputerEndpoint);

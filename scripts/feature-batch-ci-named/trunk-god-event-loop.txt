@@ -1,0 +1,3 @@
+engine:src/gateway/server/ws-connection/request-diagnostics.catalog-label.test.ts
+engine:src/logging/diagnostic.test.ts
+engine:src/logging/main-thread-work.test.ts

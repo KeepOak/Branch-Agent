@@ -1,6 +1,6 @@
 // Settings › Appearance › The pet (§4.7.3): pick one (or none), its name, its sounds and the pets
 // you've had. The three pixel pets are drawn from their own pixel maps (the App Preview's PETS).
-import { Btn, Ctl, Field, Sec, useSaveRunner, Val } from "../kit";
+import { Ctl, Field, Sec, useSaveRunner, Val } from "../kit";
 import { rowOf } from "./appearance-rows";
 import { SpecRow, type Look } from "./appearance-sections";
 
@@ -43,7 +43,7 @@ export function petsHad(look: Look): string[] {
   return now === "none" || had.includes(now) ? had : [...had, now];
 }
 
-export function PetSec({ look, openSettings }: { look: Look; openSettings?: (page: string) => void }) {
+export function PetSec({ look }: { look: Look }) {
   const save = useSaveRunner();
   const cur = String(look.val("pet", DEFAULT_PET));
   const had = petsHad(look), first = look.val("petFirst", "");
@@ -62,13 +62,13 @@ export function PetSec({ look, openSettings }: { look: Look; openSettings?: (pag
           </button>
         ))}
       </div>
-      <Ctl title="Name" sub="Pat it for a tip.">
+      <Ctl title="Name" sub="Shown on the pet’s tips and menu.">
         <Field value={String(look.val("petName", "Hazel"))} label="Pet name" onCommit={(v) => void save(() => look.store.set("petName", v.trim() && v.trim() !== "Hazel" ? v.trim().slice(0, 40) : null))} />
       </Ctl>
+      <SpecRow r={rowOf("roam")} look={look} />
       <SpecRow r={rowOf("petSounds")} look={look} />
       <Ctl title="Pets you’ve had">
         <Val>{`${had.length} of ${PETS.length - 1}${first ? ` · first ${String(first)}` : ""}`}</Val>
-        <Btn sm disabled={!openSettings} onClick={() => openSettings?.("achievements")}>Open</Btn>
       </Ctl>
     </Sec>
   );

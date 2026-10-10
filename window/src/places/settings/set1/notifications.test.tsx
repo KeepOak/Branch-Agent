@@ -121,27 +121,39 @@ describe("Settings › Notifications", () => {
     expect(host.textContent).toContain("Saving these needs your Branch profile");
   });
 
-  it("rows the engine can't do are greyed and unchecked", async () => {
+  it("no greyed stubs for notifications Branch doesn't send yet", async () => {
     const { engine } = engineOf();
-    await render(engine);
-    for (const label of ["A Trunk replies", "Play a sound", "A conversation stopped moving"]) {
-      expect(sw(label).disabled).toBe(true);
-      expect(sw(label).checked).toBe(false);
+    await render(engine, 2);
+    for (const gone of ["A Trunk replies", "Play a sound", "A conversation stopped moving", "Days off", "Recent notifications", "Which sound", "Kinds of notice", "Health"]) {
+      expect(rowsOf()).not.toContain(gone);
+    }
+    expect(host.textContent).not.toContain("yet.");
+  });
+
+  it("desktop app: this computer's own switch replaces the service-worker row, and push-only sections are hidden", async () => {
+    const granted = { permission: "granted", requestPermission: vi.fn(async () => "granted") };
+    vi.stubGlobal("Notification", granted);
+    (window as unknown as { branchDesktop?: unknown }).branchDesktop = {};
+    try {
+      const { engine } = engineOf();
+      await render(engine, 1);
+      expect(host.textContent).not.toContain("no service worker");
+      expect(host.textContent).not.toContain("This browser");
+      expect(host.querySelector('input[aria-label="Notifications on this computer"]')).not.toBeNull();
+      expect(sw("Notifications on this computer").checked).toBe(true);
+    } finally {
+      delete (window as unknown as { branchDesktop?: unknown }).branchDesktop;
+      vi.unstubAllGlobals();
     }
   });
 
-  it("levels: kinds and this device at Advanced, sorting at Technical", async () => {
+  it("levels: this device at Advanced", async () => {
     const { engine } = engineOf();
     await render(engine, 0);
-    expect(rowsOf()).not.toContain("Health");
     expect(rowsOf()).not.toContain("Only these Trunks");
     await render(engine, 1);
-    expect(rowsOf()).toContain("Health");
     expect(rowsOf()).toContain("Name on its notifications");
-    expect(rowsOf()).not.toContain("Use the kind a Trunk gives");
-    await render(engine, 2);
-    expect(rowsOf()).toContain("Use the kind a Trunk gives");
-    expect(NOTIFICATIONS_ROWS.find((r) => r.title === "Use the kind a Trunk gives")?.lv).toBe(2);
+    expect(NOTIFICATIONS_ROWS.find((r) => r.title === "Only these Trunks")?.lv).toBe(1);
   });
 
   it("Only these Trunks: picking a Trunk saves its id; Every Trunk clears the list", async () => {

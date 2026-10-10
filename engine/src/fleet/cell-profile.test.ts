@@ -9,7 +9,6 @@ import {
   cellDataDir,
   cellNetworkName,
   cellOwnerId,
-  DEFAULT_FLEET_IMAGE,
   FLEET_ATTEMPT_LABEL,
   FLEET_ENV_KEYS_LABEL,
   FLEET_GATEWAY_PORT,
@@ -17,6 +16,7 @@ import {
   FLEET_TENANT_LABEL,
   parseEnvAssignments,
   type CellContainerProfile,
+  requireFleetImage,
   validateFleetImage,
   validateDiskSize,
   validateTenantId,
@@ -27,6 +27,7 @@ const FLEET_CONTAINER_STATE_DIR = "/home/node/.branch";
 const FLEET_CONTAINER_CACHE_DIR = `${FLEET_CONTAINER_STATE_DIR}/cache`;
 const FLEET_CONTAINER_AUTH_SECRET_DIR = "/home/node/.config/branch";
 const TEST_ENVIRONMENT_FILE = "/tmp/branch-fleet-env/cell.env";
+const TEST_FLEET_IMAGE = "registry.example.test/branch-fleet:test";
 
 function makeProfile(overrides: Partial<CellContainerProfile> = {}): CellContainerProfile {
   const tenantId = overrides.tenantId ?? "acme";
@@ -35,7 +36,7 @@ function makeProfile(overrides: Partial<CellContainerProfile> = {}): CellContain
     tenantId,
     containerName: overrides.containerName ?? cellContainerName(tenantId),
     networkName: overrides.networkName ?? cellNetworkName(tenantId),
-    image: DEFAULT_FLEET_IMAGE,
+    image: TEST_FLEET_IMAGE,
     runtime: "docker",
     hostPort: FLEET_BASE_PORT,
     dataDir,
@@ -118,6 +119,20 @@ describe("fleet image references", () => {
     );
     expect(() => validateFleetImage("--help")).toThrow(/must not begin/iu);
     expect(() => validateFleetImage(" ")).toThrow(/must not be empty/iu);
+  });
+});
+
+describe("fleet image requirement", () => {
+  it("returns an explicit image", () => {
+    expect(requireFleetImage(" registry.example.test/branch-fleet:1 ")).toBe(
+      "registry.example.test/branch-fleet:1",
+    );
+  });
+
+  it.each([undefined, "", "   "])("refuses a missing image (%j) with the --image instruction", (image) => {
+    expect(() => requireFleetImage(image)).toThrow(
+      "No fleet container image set. Pass one with --image <ref>. No Branch image is published yet, so pass your own.",
+    );
   });
 });
 
@@ -257,7 +272,7 @@ describe("fleet container arguments", () => {
     expect(args.join(" ")).not.toContain("gateway-token");
     expect(args.join(" ")).not.toContain("west=1");
     expect(args.slice(-8)).toEqual([
-      DEFAULT_FLEET_IMAGE,
+      TEST_FLEET_IMAGE,
       "node",
       "dist/index.js",
       "gateway",

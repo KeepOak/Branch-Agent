@@ -7,6 +7,7 @@ import { computers, loadCanopy } from "./data";
 import { buildRuns, filterRuns, NO_FILTERS, type Filters } from "./runs";
 import { NowTab } from "./NowTab";
 import { CardsTab } from "./CardsTab";
+import { CardsOff, isCardsOff } from "./CardsOff";
 import { CardSheet } from "./CardSheet";
 import { CardDialog, cardPatch, draftOf } from "./CardDialogs";
 import { FilterRow, Strip } from "./Strip";
@@ -67,6 +68,7 @@ export function CanopyPlace({ engine, openConversation, openPlace, level }: Plac
         {ctx ? <>
           <Strip ctx={ctx} runs={all} f={f} setF={setF} /><FilterRow ctx={ctx} f={f} setF={setF} />
           {tab === "now" ? <NowTab ctx={ctx} all={all} list={filterRuns(all, f)} />
+            : d && isCardsOff(d.cardsError) ? <CardsOff ctx={ctx} refresh={() => void state.refresh()} />
             : d?.cardsError ? <p role="alert" className="cn-err">Cards: {d.cardsError}</p>
             : <CardsTab ctx={ctx} trunks={f.trunk} setTrunks={t => setF({ ...f, trunk: t })} sheet={c => setSheet(String(c.id))} />}
           {sheet && !editing ? <CardSheet ctx={ctx} id={sheet} close={() => setSheet("")} edit={c => setEditing(c)} /> : null}

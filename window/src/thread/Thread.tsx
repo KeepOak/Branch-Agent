@@ -19,6 +19,7 @@ import { Icon, ICONS } from "./icons";
 import { ComputerActivityCard } from "./ComputerActivityCard";
 import { turnDoneLines } from "./computer-card";
 import { isComputerStep, layout, shownApprovalIds, type Item } from "./layout";
+import { isInternalStep } from "./internal-steps";
 import { PlanCard, planAnchor } from "./PlanCard";
 import { useConversationPrefs } from "./prefs";
 import { isPreparationPending, isPreparationStalled, preparationLabel, preparationNeedsAttentionLabel, preparationRetryingLabel } from "../connect/preparation-status";
@@ -382,7 +383,7 @@ export function Thread(props: Props) {
           {helperNextUserAt < 0 ? helperChip : null}
           {restSupplement}
           {suggestions.length ? <div className="suggestion-row" role="group" aria-label="Suggested replies" data-testid="suggestion-row">
-            {suggestions.map((text) => <button key={text} type="button" onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}>{text}</button>)}
+            {suggestions.map((text) => <button key={text} type="button" title={`Send “${text}” as your reply`} aria-label={`Reply: ${text}`} onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}><Icon d={ICONS.reply} size={12} className="sug-arrow" />{text}</button>)}
           </div> : null}
           {props.recoveryFailure === RESTART_NOT_RESUMED ? (
             <div className="pass-line restart-stop" role="status" data-testid="restart-stopped">Stopped by restart{recoveryEntryId ? <button type="button" className="btn pri sm" onClick={() => void continueInterrupted()}>Resume</button> : null}</div>
@@ -489,7 +490,7 @@ function LiveRun({ view, offset }: { view: View; offset: number }) {
   }, [startedAt]);
   const usage = live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage");
   const waiting = live.some((b) => b.kind === "approval" && b.approval.state === "pending");
-  const typing = !waiting && !live.some((b) => b.kind === "text" || (view.showThinking && b.kind === "thinking") || b.kind === "step" || b.kind === "preamble" || b.kind === "plan");
+  const typing = !waiting && !live.some((b) => b.kind === "text" || (view.showThinking && b.kind === "thinking") || (b.kind === "step" && !isInternalStep(b)) || b.kind === "preamble" || b.kind === "plan");
   return (
     <div className="live-run" data-streaming="true">
       {/* While only the dots show, nothing sits above them (P47); the clock comes with the first real activity. */}
@@ -563,7 +564,7 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
       while (start > 0 && view.all[start - 1].kind !== "user") start -= 1;
       const turn = view.all.slice(start, index);
       // "Done in" closes a task (a turn with steps), not every plain reply (owner decision 5, 2026-10-06).
-      if (!block.stopped && !turn.some((entry) => entry.kind === "step")) return null;
+      if (!block.stopped && !turn.some((entry) => entry.kind === "step" && !isInternalStep(entry))) return null;
       const words = turn.filter((entry): entry is Extract<Block, { kind: "text" }> => entry.kind === "text")
         .reduce((count, entry) => count + (entry.text.trim().match(/\S+/g)?.length ?? 0), 0);
       return <DoneLine block={block} name={view.name} words={words} />;
@@ -583,6 +584,13 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
 function faceFor(view: View, live: boolean): ReactNode {
   const state = live ? agentState({ live: view.live, running: view.running, history: [], endedAt: null, now: Date.now() }) : "idle";
   return <Face size={28} label={view.name} state={state} priority={live ? PRIORITY.open : PRIORITY.row} />;
+}
+
+/** In a group chat, another Trunk's post carries that Trunk's face, not this conversation's. */
+function postedFace(block: Extract<Block, { kind: "text" }>, view: View): ReactNode | null {
+  const sender = block.meta?.sender;
+  if (!view.room?.isRoom || sender?.kind !== "trunk" || !sender.posted) return null;
+  return <Face size={28} label={view.room.trunkName(sender.agentId)} priority={PRIORITY.row} />;
 }
 
 function MessageView({ block, index, firstReply, face, view, live }: { block: Extract<Block, { kind: "user" | "text" }>; index: number; firstReply: boolean; face: boolean; view: View; live: boolean }) {
@@ -611,7 +619,7 @@ function MessageView({ block, index, firstReply, face, view, live }: { block: Ex
   }
   return (
     <>
-      <Reply block={block} face={face ? faceFor(view, live) : undefined} working={face && view.running && (live || index > view.lastUser)} from={fromName(block, firstReply, view.room, view.name)}>{bar}</Reply>
+      <Reply block={block} face={face ? postedFace(block, view) ?? faceFor(view, live) : undefined} working={face && !postedFace(block, view) && view.running && (live || index > view.lastUser)} from={fromName(block, firstReply, view.room, view.name)}>{bar}</Reply>
       {putBack}
       {live ? null : <TimeLine block={block} view={view} />}
       <ReactionChips list={chips} onToggle={toggle} />

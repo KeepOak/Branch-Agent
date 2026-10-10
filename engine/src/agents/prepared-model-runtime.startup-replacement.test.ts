@@ -15,7 +15,10 @@ import {
   readAgentDatabaseAdmissionRefusal,
   recordAgentDatabaseAdmissions,
 } from "../state/agent-database-admission.js";
-import { withAgentDatabaseStartupAdmission } from "../state/agent-database-startup.js";
+import {
+  retryAgentDatabaseStartupPreparation,
+  withAgentDatabaseStartupAdmission,
+} from "../state/agent-database-startup.js";
 import {
   closeBranchAgentDatabasesAsync,
   closeBranchAgentDatabasesForTest,
@@ -55,12 +58,16 @@ const mocks = getPreparedModelRuntimeMocks();
 
 // The Gateway's startup preparation refreshes the active secrets snapshot and migrates sessions
 // first; this fixture has neither, so those two steps succeed and the model publication is real.
-const secrets = vi.hoisted(() => ({ active: false, revision: 0, authDatabasePath: "" }));
+const secrets = vi.hoisted(() => ({
+  active: false,
+  revision: 0,
+  authDatabasePaths: [] as string[],
+}));
 vi.mock("../secrets/runtime.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../secrets/runtime.js")>();
   const snapshot = () => ({
     sourceConfig: {},
-    authStores: [{ databasePath: secrets.authDatabasePath }],
+    authStores: secrets.authDatabasePaths.map((databasePath) => ({ databasePath })),
   });
   return {
     ...actual,
@@ -150,8 +157,10 @@ describe("startup preparation of a Trunk whose model build never settles", () =>
     const hung = Promise.withResolvers<void>();
     releaseHungBuild = () => hung.resolve();
     let stuckBuilds = 0;
+    const stuckStarted = Promise.withResolvers<void>();
     mocks.prepareStaticCatalog.mockImplementation(async (...args: unknown[]) => {
       if (workspaceOf(args).includes("stuck") && ++stuckBuilds === 1) {
+        stuckStarted.resolve();
         // The first build of this Trunk never settles and ignores every abort signal.
         await hung.promise;
       }
@@ -160,7 +169,9 @@ describe("startup preparation of a Trunk whose model build never settles", () =>
     const env = {
       BRANCH_STATE_DIR: tempDirs.make("startup-model-replacement-"),
       BRANCH_AGENT_PREPARATION_RETRY_MS: "1",
-      BRANCH_AGENT_PREPARATION_ATTEMPT_MS: "400",
+      // Deliberately large: only the retry requested below ends the hung attempt, so a slow
+      // machine cannot expire a healthy attempt and change the attempt count.
+      BRANCH_AGENT_PREPARATION_ATTEMPT_MS: "60000",
     };
     const paths = new Map(
       ["stuck", "sibling"].map((agentId) => [
@@ -203,6 +214,10 @@ describe("startup preparation of a Trunk whose model build never settles", () =>
       });
     });
     try {
+      // The hung build is the first attempt of "stuck". A retry request ends that attempt; the
+      // retry replaces the build before the next attempt starts.
+      await stuckStarted.promise;
+      expect(retryAgentDatabaseStartupPreparation("stuck")).toBe(true);
       // Both get ready on their own: the stuck build is replaced before the stuck Trunk's next
       // attempt, so neither it nor the sibling publications that cover it wait behind it.
       await expect
@@ -213,9 +228,9 @@ describe("startup preparation of a Trunk whose model build never settles", () =>
         .toBeUndefined();
       expect(replaced).toContain("stuck");
       expect(stuckBuilds).toBeGreaterThanOrEqual(2);
-      // Recovered well before a restart from scratch (six failures in a row).
-      expect(attempts.get("stuck")).toBeLessThan(6);
-      expect(attempts.get("sibling")).toBeLessThan(6);
+      // Exactly one hung attempt and one replacement attempt: no failure, no restart from scratch.
+      expect(attempts.get("stuck")).toBe(2);
+      expect(attempts.get("sibling")).toBeLessThanOrEqual(2);
       expect(getPreparedModelRuntimeSnapshot(inputFor("stuck"))).toBeDefined();
       expect(getPreparedModelRuntimeSnapshot(inputFor("sibling"))).toBeDefined();
     } finally {
@@ -240,7 +255,7 @@ describe("startup preparation of a Trunk whose model build never settles", () =>
     const env = { ...process.env, BRANCH_AGENT_PREPARATION_RETRY_MS: "60000" };
     const path = openBranchAgentDatabase({ agentId: "tk", env }).path;
     await closeDatabases();
-    secrets.authDatabasePath = resolveAuthProfileDatabasePath(fixture.state.agentDir("tk"));
+    secrets.authDatabasePaths = [resolveAuthProfileDatabasePath(fixture.state.agentDir("tk"))];
     secrets.active = true;
     const siblingStarted = Promise.withResolvers<void>();
     const gate = Promise.withResolvers<void>();
@@ -329,6 +344,206 @@ describe("startup preparation of a Trunk whose model build never settles", () =>
     }
   });
 
+  it("waits out a newer covering replacement that hides the snapshot right after a covering wait, instead of failing", async () => {
+    mocks.configuredAgentIds = ["tk", "sibling"];
+    const env = { ...process.env, BRANCH_AGENT_PREPARATION_RETRY_MS: "60000" };
+    const path = openBranchAgentDatabase({ agentId: "tk", env }).path;
+    await closeDatabases();
+    // Read outside the preparation guard: a read inside it runs the guard's currency check.
+    const tkInput = inputFor("tk");
+    secrets.authDatabasePaths = [resolveAuthProfileDatabasePath(fixture.state.agentDir("tk"))];
+    secrets.active = true;
+    const siblingStarted = Promise.withResolvers<void>();
+    const gate = Promise.withResolvers<void>();
+    // Holds the newer replacement's tk catalog until the test releases it.
+    const holdTk = Promise.withResolvers<void>();
+    let holdTkCatalog = false;
+    mocks.prepareStaticCatalog.mockImplementation(async (...args: unknown[]) => {
+      if (workspaceOf(args).includes("sibling")) {
+        siblingStarted.resolve();
+        await gate.promise;
+      } else if (holdTkCatalog && workspaceOf(args).includes("tk")) {
+        await holdTk.promise;
+      }
+      return { entries: [] };
+    });
+    const outsidePreparation = AsyncLocalStorage.snapshot();
+    let covering: Promise<void> | undefined;
+    startCoveringReload.next = () => {
+      covering = outsidePreparation(() =>
+        refreshPreparedModelRuntimeSnapshots(config, {
+          catalogMode: "static",
+          allowGatewaySubagentBinding: true,
+          gatewayLifecycle: true,
+        }),
+      );
+      void covering.catch(() => undefined);
+    };
+    let newerReplacement: Promise<void> | undefined;
+    const clean: BranchDatabaseSchemaPreflight = { incompatible: [], indeterminate: [] };
+    const failedAttempts: string[] = [];
+    let stop: (() => Promise<void>) | undefined;
+    try {
+      await withAgentDatabaseStartupAdmission(async (admission) => {
+        const refusals = admission.defer({
+          env,
+          inspections: [{ target: { agentId: "tk", path }, result: Promise.resolve(clean) }],
+          reason: "Inspection continues after the Gateway listener binds.",
+        });
+        recordAgentDatabaseAdmissions(refusals, { env, source: "startup" });
+        stop = admission.adopt().stop;
+        activateGatewayAgentDatabaseStartup({
+          admission: {
+            activate: (activation: Parameters<typeof admission.activate>[0]) =>
+              admission.activate({
+                ...activation,
+                openAgent: async () => {},
+                prepareAgent: async (input) => {
+                  try {
+                    await activation.prepareAgent(input);
+                  } catch (error) {
+                    failedAttempts.push(String(error));
+                    throw error;
+                  }
+                },
+              }),
+          } as unknown as Parameters<typeof activateGatewayAgentDatabaseStartup>[0]["admission"],
+          preparationReady: Promise.resolve(),
+          getConfig: () => config,
+          getPluginRegistry: () => createEmptyPluginRegistry(),
+          getPluginMetadataSnapshot: () => undefined,
+          isCurrent: () => true,
+          log: { info: () => {}, warn: () => {} },
+          // Test seam: right after tk's covering wait has published its snapshot, a newer covering
+          // refresh starts and hides that snapshot until the test releases it.
+          afterCoveringWait: (agentId) => {
+            if (agentId !== "tk" || newerReplacement || !getPreparedModelRuntimeSnapshot(tkInput)) {
+              return;
+            }
+            holdTkCatalog = true;
+            // Started from outside the Trunk's preparation, as a real reload is (see the test above).
+            newerReplacement = outsidePreparation(() =>
+              refreshPreparedModelRuntimeSnapshots(config, {
+                agentIds: new Set(["tk"]),
+                catalogMode: "static",
+                allowGatewaySubagentBinding: true,
+                gatewayLifecycle: true,
+              }),
+            );
+            void newerReplacement.catch(() => undefined);
+          },
+        });
+      });
+      await siblingStarted.promise;
+      gate.resolve();
+      await covering;
+      // Long enough that an attempt which does not wait out the newer replacement fails now.
+      await delay(300);
+      holdTk.resolve();
+      await newerReplacement;
+      await expect
+        .poll(() => readAgentDatabaseAdmissionRefusal("tk", { env }), { timeout: 5000 })
+        .toBeUndefined();
+      expect(getPreparedModelRuntimeSnapshot(inputFor("tk"))).toBeDefined();
+      expect(failedAttempts).toEqual([]);
+    } finally {
+      gate.resolve();
+      holdTk.resolve();
+      startCoveringReload.next = undefined;
+      secrets.active = false;
+      await stop?.();
+    }
+  });
+
+  it("keeps three agents' startup publications from retiring each other's owners while they are still preparing", async () => {
+    // Each covering wait of an attempt is followed by a peer's reload from outside the attempt, as
+    // a peer's publication is. On main the reload widens to the roster and deletes the owner the
+    // attempt just built, so every attempt fails "has not published" and the three keep retrying.
+    const agents = ["builder-elm", "dev", "builder-maple"];
+    mocks.configuredAgentIds = agents;
+    const env = { ...process.env, BRANCH_AGENT_PREPARATION_RETRY_MS: "1" };
+    const paths = new Map(
+      agents.map((agentId) => [agentId, openBranchAgentDatabase({ agentId, env }).path]),
+    );
+    await closeDatabases();
+    secrets.authDatabasePaths = agents.map((agentId) =>
+      resolveAuthProfileDatabasePath(fixture.state.agentDir(agentId)),
+    );
+    secrets.active = true;
+    const peerOf = (agentId: string) => agents[(agents.indexOf(agentId) + 1) % agents.length]!;
+    // More reloads than the publication loop's rounds: an unfixed attempt runs out of rounds.
+    const reloadsPerAgent = 8;
+    const reloads = new Map(agents.map((agentId) => [agentId, 0]));
+    const outsidePreparation = AsyncLocalStorage.snapshot();
+    const clean: BranchDatabaseSchemaPreflight = { incompatible: [], indeterminate: [] };
+    const failedAttempts: string[] = [];
+    let stop: (() => Promise<void>) | undefined;
+    try {
+      await withAgentDatabaseStartupAdmission(async (admission) => {
+        const refusals = admission.defer({
+          env,
+          inspections: agents.map((agentId) => ({
+            target: { agentId, path: paths.get(agentId)! },
+            result: Promise.resolve(clean),
+          })),
+          reason: "Inspection continues after the Gateway listener binds.",
+        });
+        recordAgentDatabaseAdmissions(refusals, { env, source: "startup" });
+        stop = admission.adopt().stop;
+        activateGatewayAgentDatabaseStartup({
+          admission: {
+            activate: (activation: Parameters<typeof admission.activate>[0]) =>
+              admission.activate({
+                ...activation,
+                openAgent: async () => {},
+                prepareAgent: async (input) => {
+                  try {
+                    await activation.prepareAgent(input);
+                  } catch (error) {
+                    failedAttempts.push(String(error));
+                    throw error;
+                  }
+                },
+              }),
+          } as unknown as Parameters<typeof activateGatewayAgentDatabaseStartup>[0]["admission"],
+          preparationReady: Promise.resolve(),
+          getConfig: () => config,
+          getPluginRegistry: () => createEmptyPluginRegistry(),
+          getPluginMetadataSnapshot: () => undefined,
+          isCurrent: () => true,
+          log: { info: () => {}, warn: () => {} },
+          afterCoveringWait: (agentId) => {
+            const done = reloads.get(agentId) ?? 0;
+            if (done >= reloadsPerAgent) {
+              return;
+            }
+            reloads.set(agentId, done + 1);
+            return outsidePreparation(() =>
+              refreshPreparedModelRuntimeSnapshots(config, {
+                agentIds: new Set([peerOf(agentId)]),
+                catalogMode: "static",
+                allowGatewaySubagentBinding: true,
+                gatewayLifecycle: true,
+              }),
+            ).catch(() => undefined);
+          },
+        });
+      });
+      await expect
+        .poll(() => agents.some((agentId) => readAgentDatabaseAdmissionRefusal(agentId, { env })), {
+          timeout: 30000,
+        })
+        .toBe(false);
+      expect(failedAttempts).toEqual([]);
+      for (const agentId of agents) {
+        expect(getPreparedModelRuntimeSnapshot(inputFor(agentId))).toBeDefined();
+      }
+    } finally {
+      secrets.active = false;
+      await stop?.();
+    }
+  }, 60000);
+
   it.each([
     ["config", (state: { config: BranchConfig }) => void (state.config = { ...config })],
     ["secrets revision", () => void (secrets.revision += 1)],
@@ -340,7 +555,7 @@ describe("startup preparation of a Trunk whose model build never settles", () =>
       const env = { ...process.env, BRANCH_AGENT_PREPARATION_RETRY_MS: "60000" };
       const path = openBranchAgentDatabase({ agentId: "tk", env }).path;
       await closeDatabases();
-      secrets.authDatabasePath = resolveAuthProfileDatabasePath(fixture.state.agentDir("tk"));
+      secrets.authDatabasePaths = [resolveAuthProfileDatabasePath(fixture.state.agentDir("tk"))];
       secrets.active = true;
       const state = { config };
       const outsidePreparation = AsyncLocalStorage.snapshot();

@@ -43,15 +43,15 @@ function fx(over: Record<string, unknown> = {}): Record<string, unknown> {
 let root: Root | undefined, host: HTMLElement, emit: (event: string, payload: unknown) => void = () => {};
 afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; });
 
-async function mount(responses = fx(), level: Level = "regular") {
+async function mount(responses = fx(), level: Level = "regular", scopes = ["operator.admin"]) {
   const calls: [string, unknown][] = [];
   const request = vi.fn(async (method: string, params?: unknown) => {
     calls.push([method, params]);
-    if (method in responses) { const v = responses[method]; if (v instanceof Error) throw v; return v; }
+    if (method in responses) { const v = responses[method]; if (v instanceof Error) throw v; return typeof v === "function" ? v(params) : v; }
     return { applied: true, ok: true };
   });
   const listeners = new Set<(e: { event: string; payload?: unknown }) => void>();
-  const engine: WindowEngine = { request: request as WindowEngine["request"], onEvent: fn => { listeners.add(fn); return () => listeners.delete(fn); }, sessionKey: null, scopes: ["operator.admin"] };
+  const engine: WindowEngine = { request: request as WindowEngine["request"], onEvent: fn => { listeners.add(fn); return () => listeners.delete(fn); }, sessionKey: null, scopes };
   emit = (event, payload) => listeners.forEach(fn => fn({ event, payload }));
   const open = vi.fn();
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
@@ -272,9 +272,42 @@ describe("Canopy states", () => {
     expect(runCard("Check the invoice")).toBeTruthy();
   });
   it("shows the Cards error when the canopy add-on can't be read", async () => {
-    await mount(fx({ "canopy.cards.list": new Error("unknown method: canopy.cards.list") }));
+    await mount(fx({ "canopy.cards.list": new Error("not connected") }));
     await click(button("Cards"));
-    expect(host.querySelector("[role=alert]")?.textContent).toContain("Cards: unknown method: canopy.cards.list");
+    expect(host.querySelector("[role=alert]")?.textContent).toContain("Cards: not connected");
+  });
+  it("shows a switched-off empty state, not the raw error, when the Canopy plugin is off", async () => {
+    const off = fx({ "canopy.cards.list": new Error("unknown method: canopy.cards.list") });
+    const { calls } = await mount(off);
+    await click(button("Cards"));
+    expect(host.textContent).not.toContain("unknown method");
+    expect(host.querySelector("[role=alert]")).toBeNull();
+    expect(host.textContent).toContain("Cards need the Canopy plugin, which is switched off.");
+    off["canopy.cards.list"] = { cards: CARDS, boards: [{ id: "default", total: 2 }] };
+    await click(button("Switch on Canopy"));
+    expect(calls).toContainEqual(["plugins.setEnabled", { pluginId: "canopy", enabled: true }]);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(host.textContent).toContain("Ready card");
+    expect(host.textContent).not.toContain("switched off");
+  });
+  it("asks for the capability review before switching Canopy on when the engine wants one", async () => {
+    const refusal = Object.assign(new Error("Canopy adds tools for your Trunks."), { details: { capabilityConsentCode: "review", reviewToken: "rt" } });
+    let tries = 0;
+    const { calls } = await mount(fx({
+      "canopy.cards.list": new Error("unknown method: canopy.cards.list"),
+      "plugins.setEnabled": () => { if (++tries === 1) throw refusal; return { ok: true }; },
+    }));
+    await click(button("Cards"));
+    await click(button("Switch on Canopy"));
+    expect(document.body.textContent).toContain("Canopy adds tools for your Trunks.");
+    await click(button("Allow"));
+    expect(calls).toContainEqual(["plugins.setEnabled", { pluginId: "canopy", enabled: true, acknowledgeCapabilities: { reviewToken: "rt" } }]);
+  });
+  it("keeps Switch on Canopy disabled, with its reason, for a viewer who cannot change settings", async () => {
+    await mount(fx({ "canopy.cards.list": new Error("unknown method: canopy.cards.list") }), "regular", ["operator.read"]);
+    await click(button("Cards"));
+    expect(button("Switch on Canopy").disabled).toBe(true);
+    expect(host.textContent).toContain("Only someone who can change settings can switch Canopy on.");
   });
   it("lists a conversation that finished today in Done today", async () => {
     await mount(fx({ "sessions.list": { sessions: [...SESSIONS, { key: "agent:c:old", agentId: "c", label: "Sorted the receipts", status: "done", endedAt: now, runtimeMs: 65000 }], hasMore: false } }));

@@ -31,12 +31,19 @@ export function registerQueueMcpTools(server: McpServer, gw: TrunkGateway): void
 
   server.tool(
     "queue_list",
-    "List the Trunk queue, highest priority first: each job's status (queued, claimed, released or done) and the Trunk that holds it.",
+    "List the Trunk queue, highest priority first: each job's status (queued, claimed, needs_attention, released, blocked or done) and the Trunk that holds it.",
     {},
     async () => {
       const result = await gw.request<Record<string, unknown>>("trunks.queue.list", {});
       const items = Array.isArray(result.items) ? result.items : [];
-      return ok(`${items.length} queued jobs`, { items });
+      // A job whose run could not be stopped is named in plain English, so it is not missed in the list.
+      const attention = items.flatMap((item) => {
+        const row = item as { status?: unknown; attention_reason?: unknown };
+        return row.status === "needs_attention" && typeof row.attention_reason === "string"
+          ? [row.attention_reason]
+          : [];
+      });
+      return ok([`${items.length} queued jobs`, ...attention].join("\n"), { items });
     },
   );
 
