@@ -155,12 +155,15 @@ export function guessFromWords(text: string, now = Date.now()): { task: string; 
 const tidy = (s: string) => { const t = s.trim().replace(/^[,.\s]+|[,.\s]+$/g, ""); return t ? t[0].toUpperCase() + t.slice(1) : ""; };
 
 export type Health = { count: number; failed: number; text: string; warn: boolean; points: string };
+/** Old history marked skips as failed completion; execution status wins for those records. */
+export const failedRun = (run: Row): boolean => run.status !== "skipped" && (run.status === "error" || run.completionStatus === "failed");
 /** "12 runs · all fine" / "7 runs · 7 failed", and the sparkline of run lengths (only from 8 runs up). */
 export function health(runs: Row[], total = runs.length): Health | null {
   if (!runs.length) return null;
-  const failed = runs.filter(r => r.status === "error" || r.completionStatus === "failed").length;
-  const count = Math.max(total, runs.length);
-  const text = `${count} run${count === 1 ? "" : "s"} · ${failed ? `${failed} failed` : "all fine"}`;
+  const failed = runs.filter(failedRun).length, skipped = runs.filter(r => r.status === "skipped").length;
+  // The failure count is page-local: never compare it to a lifetime run total.
+  const count = runs.length, recent = Number.isFinite(total) && total > count;
+  const text = `${count}${recent ? " recent" : ""} run${count === 1 ? "" : "s"} · ${failed ? `${failed} failed` : skipped ? "" : "all fine"}${skipped ? `${failed ? " · " : ""}${skipped} skipped` : ""}`;
   const last = runs.slice(0, 12).reverse().map(r => Number(r.durationMs) || 0);
   let points = "";
   if (runs.length >= 8 && last.some(v => v > 0)) {
@@ -180,7 +183,19 @@ export function autoDisabledWords(job: Row): string | null {
 
 export function failing(job: Row): boolean {
   const s = rec(job.state);
-  return Boolean(s.autoDisabled) || s.lastRunStatus === "error" || s.lastStatus === "error";
+  return Boolean(s.autoDisabled) || (s.lastRunStatus ?? s.lastStatus) === "error" || (s.lastRunStatus !== "skipped" && s.lastCompletionStatus === "failed");
+}
+
+/** Active failure streak, not the first historical failure. A skip ends the streak. */
+export function failureDetails(job: Row, runs: Row[]): { since: unknown; error: string } | null {
+  if (!failing(job)) return null;
+  const s = rec(job.state), streak: Row[] = [];
+  for (const run of runs) { if (!failedRun(run)) break; streak.push(run); }
+  const first = streak.at(-1), last = streak[0];
+  return {
+    since: s.failingSinceMs ?? first?.runAtMs ?? first?.ts ?? s.lastRunAtMs,
+    error: str(s.lastError) || str(s.lastDeliveryError) || str(last?.error) || str(last?.deliveryError),
+  };
 }
 
 export function copyName(name: string, names: string[]): string {

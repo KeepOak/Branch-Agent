@@ -177,6 +177,11 @@ export function applyJobResult(
       deliveryState.status,
       deliveryState.deliverySuppressionReason,
     );
+  job.state.lastCompletionStatus = completionStatus;
+  job.state.failingSinceMs =
+    result.status === "error" || (result.status !== "skipped" && completionStatus === "failed")
+      ? (job.state.failingSinceMs ?? result.startedAt)
+      : undefined;
 
   // Track consecutive errors for backoff / auto-disable; skipped runs use a
   // separate counter so opt-in skip alerts do not affect retry behavior.

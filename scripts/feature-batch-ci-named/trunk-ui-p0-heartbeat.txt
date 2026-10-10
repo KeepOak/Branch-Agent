@@ -1,0 +1,5 @@
+engine:src/cron/heartbeat-skip-completion.test.ts
+engine:src/cron/service.heartbeat-busy-poll.test.ts
+engine:src/cron/service.heartbeat-payload.test.ts
+engine:src/infra/heartbeat-inbox-fallback.test.ts
+window:src/places/automations/heartbeat-health.test.tsx
