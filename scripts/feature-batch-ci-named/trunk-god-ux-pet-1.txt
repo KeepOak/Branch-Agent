@@ -2,3 +2,4 @@ window:src/shell/SidebarPet.test.ts
 window:src/shell/shown.test.tsx
 window:src/shell/pet-row-redesign.test.tsx
 window:src/face/CharacterPanel.test.tsx
+window:src/places/settings/set1/appearance.test.tsx

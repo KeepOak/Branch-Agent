@@ -1153,6 +1153,13 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   // Let it roam (Appearance › Pet) walks the pet along the chat instead of the card; one pet on screen at a time.
   const lanePet = pet.roam ? pet : { ...pet, id: "none" };
   const stopRoaming = () => void lookStore(session.engine).set("roam", false);
+  // While the pet roams the card is hidden, so the header face gives the card back, with Undo, instead of doing nothing.
+  const onCharacterButton = () => {
+    if (!pet.roam) { setCharacterVisible(!characterShown); return; }
+    stopRoaming();
+    setCharacterVisible(true);
+    notify("Back on the card.", { action: { label: "Undo", run: () => void lookStore(session.engine).set("roam", true) } });
+  };
   const reducedMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
   const pausedTrunks = trunks.list.filter((t) => t.paused);
   const statusExtras = {
@@ -1283,7 +1290,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     };
     main = draftTopic ? (
       <div className="conversation-column" data-testid="new-topic-draft" ref={setConversationColumn}>
-        {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterVisible(!characterShown)} onList={toggleList} onBack={() => window.history.back()} onForward={() => window.history.forward()} tools={conversationTools} /> : null}
+        {compact && header ? <HeaderRow header={header} onCharacter={onCharacterButton} onList={toggleList} onBack={() => window.history.back()} onForward={() => window.history.forward()} tools={conversationTools} /> : null}
         <Thread
           name={trunkName(draftTopic.agentId)}
           history={[]}
@@ -1316,7 +1323,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       <>
         <StageConversation
         columnRef={setConversationColumn}
-        header={compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterVisible(!characterShown)} onList={toggleList} onBack={() => window.history.back()} onForward={() => window.history.forward()} tools={conversationTools} /> : null}
+        header={compact && header ? <HeaderRow header={header} onCharacter={onCharacterButton} onList={toggleList} onBack={() => window.history.back()} onForward={() => window.history.forward()} tools={conversationTools} /> : null}
         topics={topicContact && activeTopics.length ? <TopicRail
           contactId={topicContact.id}
           contactName={topicContact.name}
@@ -1506,7 +1513,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         onToggleList={toggleList}
         onBack={() => window.history.back()}
         onForward={() => window.history.forward()}
-        onCharacter={() => setCharacterVisible(!characterShown)}
+        onCharacter={onCharacterButton}
         onGuide={(e) => showMenu(e, "guide", guideItems(), "Guide")}
         conversationTools={conversationTools}
         ask={route.kind === "settings" ? { name: defaultName, open: false, help: true, onToggle: () => window.dispatchEvent(new Event("branch-settings-help")) } : talkEntry}
