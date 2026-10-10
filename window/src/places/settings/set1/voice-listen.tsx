@@ -1,38 +1,18 @@
-// Voice › Hearing, Listening and Talking, more (Advanced). Wake words on voicewake.get/set; Answer aloud on
-// tts.status's auto mode (tts.enable / tts.disable); speech language on talk.speechLocale; talking over it on
-// talk.interruptOnSpeech. Microphone, wake-word listening and dictation run in the desktop app, so they are greyed.
+// Voice › Listening and Talking, more (Advanced). Wake words on voicewake.get/set; Answer aloud on tts.status's auto
+// mode (tts.enable / tts.disable); speech language on talk.speechLocale; talking over it on talk.interruptOnSpeech.
+// Only rows the engine can change are shown; microphone capture is not in this build yet.
 import { useEffect, useState } from "react";
 import { visible } from "../adapter";
 import { Ctl, Pick, Sec, Switch, useSaveRunner, type Opt } from "../kit";
-import { APP, Choice, Greyed, NO_KEY, isMac } from "./voice-kit";
+import { Choice, NO_KEY } from "./voice-kit";
 import type { Cfg, Shared } from "./voice-more";
-
-export function HearingMore() {
-  return (
-    <Sec title="Hearing, more" group="Listening">
-      <Greyed why={APP} rows={[{ t: "Microphone level", sub: "Level, the point where it starts listening, and the pitch it hears.", c: { btn: "Test" } }]} />
-    </Sec>
-  );
-}
 
 export function ListeningMore(props: Shared) {
   return (
     <Sec title="Listening, more" showHeading={false} group="Listening">
-      <Greyed why={APP} rows={[{ t: "Wake word", sub: `${props.word}, heard on this computer only. Off until you choose: it keeps the microphone open.`, c: { sw: false } }]} />
       <WakeWords {...props} />
-      <Greyed why={APP} rows={[
-        { t: "The wake word starts live voice", sub: "Saying a wake word opens live voice with the default Trunk. Off: the wake word starts dictation into the message box. Off until you choose: the call keeps the microphone open until you end it.", c: { sw: false } },
-        { t: "Stop listening after silence", sub: "For live dictation.", c: { field: isMac() ? "0.7" : "2.5", unit: "s" } },
-      ]} />
       <AnswerAloud {...props} />
-      <Greyed why={NO_KEY} rows={[{ t: "Spoken morning brief", sub: "The written brief, read out at 7:30 on the speaker you choose.", c: { sw: true } }]} />
       <SpeechLanguage cfg={props.cfg} />
-      <Greyed why={NO_KEY} rows={[{ t: "Also understand", sub: "None added.", c: { pick: ["Add a language…"] } }]} />
-      <Greyed why={APP} rows={[
-        { t: "Speech model", sub: "Turns your voice into text on this computer. Bigger understands more and takes more disk and memory.", c: { seg: ["Tiny", "Base", "Small"], v: "Base" } },
-        { t: "Test voice input", sub: "Say something, and see the words it heard.", c: { btn: "Try it" } },
-        { t: "Chime when listening starts and stops", sub: "A short sound when push to talk, the wake word or dictation starts and stops listening.", c: { sw: true } },
-      ]} />
     </Sec>
   );
 }
@@ -91,11 +71,9 @@ function SpeechLanguage({ cfg }: { cfg: Cfg }) {
 export function TalkingMore({ cfg }: { cfg: Cfg }) {
   return (
     <Sec title="Talking, more" showHeading={false} group="Listening">
-      <Greyed why={APP} rows={[{ t: "Answer approvals by voice", sub: "Say yes or no to an approval, or hold the phone key to talk turn by turn.", c: { btn: "Try one" } }]} />
       <Ctl title="Talking over it stops it" sub="Speak while it is talking and it stops to listen." help="Speak while it is talking and it stops to listen. On a Mac, pressing the right Option key does the same at any time.">
         <Switch checked={cfg.get("talk.interruptOnSpeech") !== false} label="Talking over it stops it" disabled={cfg.loading} onChange={(on) => void cfg.set("talk.interruptOnSpeech", on)} />
       </Ctl>
-      <Greyed why={APP} rows={[{ t: "Hold the microphone to dictate", sub: "Hold the microphone button until it listens, then let go and keep talking. Done puts the words in the message box.", c: { sw: true } }]} />
     </Sec>
   );
 }

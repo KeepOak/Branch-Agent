@@ -6,7 +6,7 @@ import { useState } from "react";
 import { errorText, list, text, visible } from "../adapter";
 import { Btn, Ctl, Field, Pick, Plist, Prow, Sec, Switch, useSaveRunner } from "../kit";
 import { Dialog } from "../../../shell/Dialog";
-import { APP, Greyed, NO_KEY, group, providersOf, type GreyRow, type Provider } from "./voice-kit";
+import { group, providersOf, type Provider } from "./voice-kit";
 import type { Shared } from "./voice-more";
 import { Logo } from "./service";
 
@@ -26,8 +26,6 @@ export function SpeakingMore(props: Shared) {
       <Ctl title="Voice services" sub={ready.length ? `On because ${ready.join(" and ")} ${ready.length > 1 ? "are" : "is"} connected.` : "Turns on when a voice service is connected."}
         after={<KeyList providers={providers} openSettings={props.openSettings} />} />
       <NamedVoices {...props} />
-      <Greyed why="Change it with /tts limit in a conversation for now." rows={[{ t: "Read in full up to", sub: "Longer replies are shortened before they are read. /tts limit changes it for one conversation.", c: { field: "", ph: "1500", unit: "characters" } }]} />
-      <Greyed why="Change it with /tts summary in a conversation for now." rows={[{ t: "Shorten longer replies first", sub: "A longer reply is summarised before it is read out. /tts summary changes it for one conversation.", c: { sw: true } }]} />
     </Sec>
   );
 }
@@ -70,7 +68,7 @@ function PreviewRow({ engine }: Shared) {
 function NamedVoices({ tts }: Shared) {
   const [open, setOpen] = useState(false);
   const personas = list(tts.data?.personas);
-  if (!personas.length) return <Greyed why="Branch can’t add a named voice from here yet." rows={[{ t: "Named voices", sub: "A name for a voice that keeps sounding the same, whichever engine speaks.", c: { btn: "Manage" } }]} />;
+  if (!personas.length) return null;
   return (
     <Ctl title="Named voices" sub="Save one voice name across speech engines." help="A name for a voice that keeps sounding the same, whichever engine speaks.">
       <Btn sm onClick={() => setOpen(true)}>See {personas.length}</Btn>
@@ -82,17 +80,6 @@ function NamedVoices({ tts }: Shared) {
         </Dialog>
       ) : null}
     </Ctl>
-  );
-}
-
-export function TrunksMayUse() {
-  return (
-    <Sec title="What Trunks may use" group="Voice engine">
-      <Greyed why={APP} rows={[
-        { t: "Trunks may listen through the microphone", sub: "A Trunk can record and turn speech into text on this computer when a task needs it. Setup turns it on; it stays off if setup is skipped.", c: { sw: true } },
-        { t: "Trunks may speak on this computer’s speakers", sub: "A Trunk can say something out loud here, such as a reminder, in the chosen voice. Setup turns it on; it stays off if setup is skipped.", c: { sw: true } },
-      ]} />
-    </Sec>
   );
 }
 
@@ -110,45 +97,9 @@ export function ListeningServices({ cfg, catalog, openSettings }: Shared) {
       <Ctl stack title="A program of yours as an engine" sub="{{Text}} and {{OutputPath}} are filled in for you.">
         <Field wide label="A program of yours as an engine" value={cli} placeholder="piper --output_file {{OutputPath}}" disabled={cfg.loading} onCommit={(v) => void cfg.set("tts.providers.tts-local-cli.command", v.trim() || null)} />
       </Ctl>
-      <Greyed why={NO_KEY} rows={[
-        { t: "Try again when a service hiccups", sub: "A wrong key stops at once instead of using up your allowance.", c: { sw: true } },
-        { t: "Use the chat app’s own transcript first", sub: "Where an app sends its own words with a voice note.", c: { sw: true } },
-      ]} />
       <Ctl title="Turn audio and video files into documents" sub="Files you add to Library are transcribed." after={<KeyList providers={providers} openSettings={openSettings} />}>
         <Switch checked={cfg.get("tools.media.audio.enabled") !== false} label="Turn audio and video files into documents" disabled={cfg.loading} onChange={(on) => void cfg.set("tools.media.audio.enabled", on)} />
       </Ctl>
     </Sec>
   );
-}
-
-const TURN: GreyRow[] = [
-  { t: "Set up voice", sub: "Pick how it listens and speaks, add keys, and get what runs here.", c: { btn: "Start" } },
-  { t: "Keep voice ready", sub: "While voice is on somewhere, the engines stay loaded so the first word is quick.", c: { sw: true } },
-  { t: "Speak while the answer is written", sub: "Each sentence is spoken as soon as it’s done.", c: { sw: true } },
-  { t: "Remember spoken lines", sub: "A line said before plays at once; a new voice never replays an old one.", c: { sw: true } },
-  { t: "Trunks may change their voice in a reply", sub: "A reply can ask for another voice or engine for a line.", c: { sw: false } },
-  { t: "Send dictation by itself", sub: "When you stop, the words go after a short countdown you can cancel.", c: { sw: false }, why: APP },
-  { t: "Countdown", c: { field: "3", unit: "s" }, why: APP },
-  { t: "Wait while I’m mid-thought", sub: "A pause that sounds unfinished doesn’t end your turn.", c: { sw: true } },
-  { t: "Ignore its own voice", sub: "Its speech, filler sounds and people nearby are kept out of what it hears.", c: { sw: true } },
-  { t: "Stop phrases", sub: "Saying one ends the voice session. One per line.", c: { area: "" } },
-  { t: "Start answering while I finish", sub: "On this computer: it gets ready as you speak and drops the draft if you keep going.", c: { sw: false } },
-  { t: "Talk to a Trunk by name", sub: "A Trunk’s name at the start or end of what you say goes to that Trunk.", c: { sw: true } },
-  { t: "Act on each part as I say it", sub: "“Open the browser and find flights”: the first part starts before you finish. Off until you choose: it acts before you’ve finished.", c: { sw: false } },
-  { t: "Clean up background noise", sub: "Fans, traffic and typing are filtered before it listens. Uses a little processor.", c: { sw: false }, why: APP },
-  { t: "Lower other sound while we talk", sub: "Music and videos get quieter while it listens or speaks.", c: { sw: true }, why: APP },
-  { t: "Tell a real interruption from a cough", sub: "A short “uh-huh” pauses it instead of stopping it.", c: { sw: true } },
-  { t: "While it thinks", sub: "So a pause doesn’t sound like a dropped call.", c: { seg: ["Silence", "Soft typing", "A low hum"], v: "Silence" } },
-  { t: "Say how background tasks are going", sub: "Waits for a pause in the talk, then a short line.", c: { sw: true } },
-  { t: "Hand slow work to a helper and keep talking", sub: "Anything slower than a few seconds goes to a helper; the voice carries on.", c: { sw: true } },
-  { t: "Every spoken turn ends with speech", sub: "If it fails, is stopped or runs out, it says a short sentence instead of going quiet.", c: { sw: true } },
-  { t: "Risky actions asked by voice need a spoken yes", sub: "Bound to that one task.", c: { sw: true } },
-  { t: "Quick spoken commands", sub: "“Stop”, “louder”, “next”: matched before any model is asked.", c: { sw: true } },
-  { t: "Notice how I sound", sub: "A hint to the Trunk when it’s fairly sure you sound stressed or rushed. Off until you choose: it reads your tone.", c: { sw: false } },
-  { t: "Dictate into any app", sub: "Hold the key below anywhere; the words appear tidied where you type.", c: { sw: false }, why: APP },
-  { t: "Dictate-anywhere key", c: { field: "Right Ctrl" }, why: APP, stack: true },
-];
-
-export function SpokenTurn() {
-  return <Sec title="A spoken turn" showHeading={false} group="Voice engine"><Greyed why={NO_KEY} rows={TURN} /></Sec>;
 }

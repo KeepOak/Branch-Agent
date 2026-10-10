@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { list, record, text, visible, type RecordValue } from "../adapter";
 import { Btn, Ctl, Hint, Pick, Pill, Plist, Prow, Sec, Seg, Switch, type Opt } from "../kit";
-import { APP, Greyed, NO_KEY, NumField, group, providersOf, type GreyRow, type Kept, type Provider } from "./voice-kit";
+import { NumField, group, providersOf, type Kept, type Provider } from "./voice-kit";
 import type { Cfg, Shared } from "./voice-more";
 import { Logo } from "./service";
 
@@ -32,7 +32,7 @@ export function LiveMore({ cfg, catalog, agents }: Shared & { agents: Kept<Recor
   const live = liveOf(catalog.data, cfg);
   const ready = Boolean(live.active?.configured);
   const [tone, word] = READY[ready ? "yes" : "no"];
-  const through: Opt[] = [{ id: "local", label: "This computer", off: "Branch has no live voice on this computer yet." }, { id: "", label: "Any service with a working key" }, ...live.providers.map((p) => ({ id: p.id, label: p.label }))];
+  const through: Opt[] = [{ id: "", label: "Any service with a working key" }, ...live.providers.map((p) => ({ id: p.id, label: p.label }))];
   const str = (path: string) => text(cfg.get(path) ?? "");
   const set = (path: string) => (v: string) => void cfg.set(path, v || null);
   return (
@@ -58,19 +58,9 @@ export function LiveMore({ cfg, catalog, agents }: Shared & { agents: Kept<Recor
           options={[{ id: "", label: "The default Trunk" }, ...list(agents.data?.agents).map((a) => ({ id: text(a.id), label: visible(record(a.identity).name ?? a.name ?? a.id) }))]} />
       </Ctl>
       <TextRow cfg={cfg} path="talk.realtime.instructions" title="How it talks in live voice" ph="Speak warmly and keep answers brief." sub="Add pace and tone to live-voice instructions." help="Style for the voice service, such as pace and tone. Added to Branch’s own live-voice instructions, never replacing them." />
-      <Greyed why={APP} rows={LIVE_APP} />
     </Sec>
   );
 }
-
-const SOUNDS = ["System sound", "None"];
-const LIVE_APP: GreyRow[] = [
-  { t: "Shift stops it talking", sub: "Press Shift while it speaks to stop it and talk.", c: { sw: true } },
-  { t: "Sounds as it listens and answers", sub: "A soft sound when live voice starts listening, starts thinking and starts to speak.", c: { sw: true } },
-  { t: "Wake sound", sub: "The sound when the wake word is heard.", c: { pick: SOUNDS, extra: "Play" } },
-  { t: "Sent sound", sub: "The sound when what you said is sent.", c: { pick: SOUNDS, extra: "Play" } },
-  { t: "Camera", sub: "For showing something during live voice. The camera starts only when you turn it on in a call.", c: { pick: ["System default"], extra: "Refresh" } },
-];
 
 function GatewayRow({ cfg, live }: { cfg: Cfg; live: Live }) {
   const can = Boolean(live.active?.configured) && (!live.active?.transports.length || live.active.transports.includes("gateway-relay"));
@@ -143,7 +133,6 @@ export function LiveServices({ cfg, catalog }: Shared) {
           ))}
         </Plist>
       ) : <Hint>{catalog.loading ? "Looking for live-voice services…" : "No live-voice service is installed."}</Hint>}
-      <Greyed why={NO_KEY} rows={[{ t: "Live voice with a ChatGPT account", sub: "Use your ChatGPT sign-in for live voice instead of a key.", c: { sw: true } }]} />
     </Sec>
   );
 }
