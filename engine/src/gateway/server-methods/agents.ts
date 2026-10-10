@@ -54,6 +54,10 @@ import {
 } from "../../agents/auth-profiles/path-resolve.js";
 import { resolveAuthProfileDatabasePath } from "../../agents/auth-profiles/sqlite.js";
 import {
+  seedFirstRunGreeting,
+  shouldSeedFirstRunGreeting,
+} from "../../agents/first-run-greeting.js";
+import {
   createAgentIdentityConfig,
   normalizeIdentityForFile,
   sanitizeAgentIdentityLine,
@@ -467,6 +471,24 @@ export const agentsHandlers: GatewayRequestHandlers = {
       await reviveAgentDatabasesAfterConfigCommit([result.agentId], (message) =>
         context.logGateway.warn(message),
       );
+      // A brand-new Trunk opens its own chat once. The greeting is best-effort: a failed write
+      // is logged, and the committed creation still succeeds.
+      if (shouldSeedFirstRunGreeting(result)) {
+        await seedFirstRunGreeting({
+          cfg: context.getRuntimeConfig(),
+          agentId: result.agentId,
+        })
+          .then((outcome) => {
+            if (outcome === "failed") {
+              context.logGateway.warn(`agent ${result.agentId} first-run greeting was not saved`);
+            }
+          })
+          .catch((error: unknown) => {
+            context.logGateway.warn(
+              `agent ${result.agentId} first-run greeting failed: ${formatErrorMessage(error)}`,
+            );
+          });
+      }
       // Creation is already committed. A failed or slow worker warm-up must not
       // make this successful create appear retryable to the client.
       void warmAgentSessionAdmission(result.agentId, context.getRuntimeConfig()).catch((error) => {
