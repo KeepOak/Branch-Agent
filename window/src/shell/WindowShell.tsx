@@ -853,7 +853,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   };
 
   const contacts = projectContact([...contactRows.map((contact) => contact.kind === "outside" && groupRooms.peerOnline.has(contact.id.slice(4)) ? { ...contact, offline: groupRooms.peerOnline.get(contact.id.slice(4)) === false } : contact), ...groupRooms.rooms.map((room) => roomContact(room, contactRows)).filter((c): c is NonNullable<typeof c> => Boolean(c))], lists.rows);
-  const roomNotices = useRoomNotices(session, openKey, contacts);
+  const roomNotices = useRoomNotices(session, openKey, contacts, (id) => trunks.list.find((t) => t.id === id)?.name || null);
   // A saved conversation that is neither a session nor a contact thread reopens the default Trunk.
   useEffect(() => {
     if (!draftTopic && !roomIdOf(openKey ?? "") && lists.loaded && s.mainKey && missingConversation(openKey, s.mainKey, contactsLoaded, contacts, lists.rows)) {

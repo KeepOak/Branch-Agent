@@ -89,7 +89,7 @@ describe("drag to group", () => {
     const session = { request, onGatewayEvent: () => () => {} } as unknown as SaplingSession;
     const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
     let notices: Block[] = [];
-    function Probe() { notices = useRoomNotices(session, contacts[3]!.threadKey, contacts); return null; }
+    function Probe() { notices = useRoomNotices(session, contacts[3]!.threadKey, contacts, () => null); return null; }
     await act(async () => root!.render(<Probe />));
     const history: Block[] = [
       { kind: "user", key: "first", text: "First", meta: { timestamp: 200 } },
@@ -98,6 +98,24 @@ describe("drag to group", () => {
     ];
     expect(mergeRoomNotices(history, notices).map((block) => block.key)).toEqual(["room:r1:1", "first", "reply", "room:r1:2", "second"]);
     expect(notices[1]).toMatchObject({ text: "You added Hermes", at: 300 });
+  });
+  it("shows a Trunk job as one line from the room log, then moves it on when a live transition arrives", async () => {
+    let emit: (event: string, payload: unknown) => void = () => {};
+    const request = vi.fn(async () => ({ events: [
+      { seq: 1, kind: "created", payload: { members: room.members }, createdAt: 100 },
+      { seq: 2, kind: "job", actorId: "scout", payload: { text: "scout picked up: Quote sheet", transition: "claimed", jobId: "j1", title: "Quote sheet" }, createdAt: 200 },
+    ] }));
+    const session = { request, onGatewayEvent: (handler: (event: string, payload: unknown) => void) => { emit = handler; return () => {}; } } as unknown as SaplingSession;
+    const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
+    let notices: Block[] = [];
+    function Probe() { notices = useRoomNotices(session, contacts[3]!.threadKey, contacts, (id) => (id === "scout" ? "Scout" : null)); return null; }
+    await act(async () => root!.render(<Probe />));
+    const jobs = () => notices.filter((block) => block.key.includes(":job:"));
+    expect(jobs()).toHaveLength(1);
+    expect(jobs()[0]).toMatchObject({ key: "room:r1:job:j1", text: "Scout picked up: Quote sheet", at: 200 });
+    await act(async () => emit("rooms.event", { roomId: "r1", seq: 3, kind: "job", actorId: "scout", payload: { text: "scout finished: Quote sheet, PR #41", transition: "done", jobId: "j1", title: "Quote sheet" }, createdAt: 400 }));
+    expect(jobs()).toHaveLength(1);
+    expect(jobs()[0]).toMatchObject({ key: "room:r1:job:j1", text: "Scout finished: Quote sheet, PR #41", at: 400, steps: [{ text: "Scout picked up: Quote sheet" }, { text: "Scout finished: Quote sheet, PR #41" }] });
   });
   it("creates a real room with both contacts and a lead Trunk through rooms.create", async () => {
     const { session, request } = fakeSession();
