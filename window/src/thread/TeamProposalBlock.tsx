@@ -6,6 +6,7 @@ import { TeamApprovalCard, type TeamApprovalState } from "../places/trunk/TeamAp
 import { useThread } from "./context";
 import {
   rolesOf,
+  stateAfter,
   type TeamChoices,
   type TeamProposalView,
   type TeamToolResult,
@@ -18,11 +19,6 @@ const messageOf = (error: unknown): string =>
 
 type OpenAnswer = { status?: string; approvalId?: string };
 type ResolveAnswer = { applied?: boolean };
-
-/** The card's state after the owner answers the approval. Allowing only says the team is being created. */
-export function stateAfter(decision: "allow-once" | "deny"): TeamApprovalState {
-  return decision === "allow-once" ? "applying" : "declined";
-}
 
 export function TeamProposalBlock({ block }: { block: TeamBlock }) {
   const { engine } = useThread();

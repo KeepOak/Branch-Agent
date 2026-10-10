@@ -3,8 +3,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadContext, type ThreadContextValue } from "./context";
-import { TeamProposalBlock, stateAfter, type TeamBlock } from "./TeamProposalBlock";
-import type { TeamToolResult } from "./team-proposal";
+import { TeamProposalBlock, type TeamBlock } from "./TeamProposalBlock";
+import { stateAfter, type TeamToolResult } from "./team-proposal";
 
 const result: TeamToolResult = {
   proposal: {

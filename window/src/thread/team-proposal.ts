@@ -78,3 +78,8 @@ export function rolesOf(
     model: member.model,
   }));
 }
+
+/** The card's state after the owner answers the approval. Allowing only says the team is being created. */
+export function stateAfter(decision: "allow-once" | "deny"): "applying" | "declined" {
+  return decision === "allow-once" ? "applying" : "declined";
+}
