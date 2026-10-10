@@ -24,9 +24,13 @@ export type TrunkQueueItem = {
   done_at?: number;
   released_at?: number;
   released_from?: string;
+  /** Claim attempts that ended in an error or a failed dispatch. At MAX_CLAIM_FAILURES the job is blocked. */
+  failures?: number;
+  /** Plain reason a job stopped after MAX_CLAIM_FAILURES. Shown in the queue list; cleared by queue_release. */
+  blocked_reason?: string;
 };
 
-export type TrunkQueueStatus = "queued" | "claimed" | "released" | "done";
+export type TrunkQueueStatus = "queued" | "claimed" | "released" | "blocked" | "done";
 
 /** The gateway calls a pickup needs: the Trunk's threads (is it idle?) and a new thread with the brief. */
 export type TrunkQueueGateway = {
@@ -34,7 +38,17 @@ export type TrunkQueueGateway = {
 };
 
 export const STALE_CLAIM_MS = 2 * 60 * 60_000;
+/** A claim with no run activity for this long and no live run lost its run without a run-end event. */
+export const ORPHAN_CLAIM_GRACE_MS = 2 * 60_000;
+/** Failed claim attempts after which a job is blocked, so a broken job cannot re-dispatch forever. */
+export const MAX_CLAIM_FAILURES = 3;
+/** Live sessions requested per query. The query selects running sessions before the limit applies. */
+const LIVE_SESSION_LIMIT = 500;
 const RETAIN_DONE_MS = 7 * 24 * 60 * 60_000;
+const RUN_ERROR_REASON = "the run ended with an error";
+
+/** Claim ids whose brief is still being sent. A claim is never called orphaned while its dispatch is in flight. */
+const dispatchingClaimIds = new Set<string>();
 
 function file(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(resolveStateDir(env), "trunks", "queue.json");
@@ -87,7 +101,18 @@ function isPastStaleTime(row: TrunkQueueItem, now: number): boolean {
 }
 
 function isClaimable(row: TrunkQueueItem): boolean {
-  return !row.done_at && !row.claimed_by;
+  return !row.done_at && !row.claimed_by && (row.failures ?? 0) < MAX_CLAIM_FAILURES;
+}
+
+/** Counts a failed attempt and puts the job back. At the cap the job is blocked with a plain reason. */
+function failClaim(row: TrunkQueueItem, now: number, reason: string): void {
+  row.failures = (row.failures ?? 0) + 1;
+  release(row, now);
+  if (row.failures >= MAX_CLAIM_FAILURES) {
+    row.blocked_reason =
+      `Stopped after ${MAX_CLAIM_FAILURES} failed attempts (last: ${reason}). ` +
+      "Check the Trunk, then queue_release this job to run it again.";
+  }
 }
 
 export function queueItemStatus(row: TrunkQueueItem): TrunkQueueStatus {
@@ -96,6 +121,9 @@ export function queueItemStatus(row: TrunkQueueItem): TrunkQueueStatus {
   }
   if (row.claimed_by) {
     return "claimed";
+  }
+  if (row.blocked_reason) {
+    return "blocked";
   }
   return row.released_at ? "released" : "queued";
 }
@@ -149,7 +177,8 @@ export function markQueueItemDone(
 
 /**
  * Puts a stuck claim back in the queue and returns the job as it was before. With claimId, only that claim
- * attempt is released, so a late failure never releases a newer claim on the same job.
+ * attempt is released, so a late failure never releases a newer claim on the same job. A blocked job is
+ * unblocked: its failure count resets and it can be claimed again.
  */
 export function releaseQueueItem(
   id: string,
@@ -166,18 +195,76 @@ export function releaseQueueItem(
   if (isOpenClaim(row) && (claimId === undefined || row.claim_id === claimId)) {
     release(row, now);
     write(rows, now, env);
+  } else if (!row.claimed_by && row.blocked_reason) {
+    delete row.blocked_reason;
+    row.failures = 0;
+    row.released_at = now;
+    write(rows, now, env);
   }
   return before;
 }
 
-/** Records run activity on the job a Trunk holds, so a working Trunk's claim is not released as stale. */
-export function touchQueueClaim(agentId: string, env?: NodeJS.ProcessEnv, now = Date.now()): void {
+/** Records run activity in the claim's own thread, so a working claim is not released as stale. */
+export function touchQueueClaim(
+  threadKey: string,
+  env?: NodeJS.ProcessEnv,
+  now = Date.now(),
+): void {
   const rows = read(env);
-  const row = rows.find((candidate) => isOpenClaim(candidate) && candidate.claimed_by === agentId);
+  const row = rows.find(
+    (candidate) => isOpenClaim(candidate) && candidate.thread_key === threadKey,
+  );
   if (!row) {
     return;
   }
   row.active_at = now;
+  write(rows, now, env);
+}
+
+/**
+ * The run in a claim's own thread ended. A clean end completes the job; an error counts a failed attempt and
+ * puts it back. Runs in other threads do not touch the claim. Returns whether a claim was closed.
+ */
+export function closeQueueClaimForThread(
+  threadKey: string,
+  outcome: "completed" | "failed",
+  env?: NodeJS.ProcessEnv,
+  now = Date.now(),
+): boolean {
+  const rows = read(env);
+  const row = rows.find(
+    (candidate) => isOpenClaim(candidate) && candidate.thread_key === threadKey,
+  );
+  if (!row) {
+    return false;
+  }
+  if (outcome === "completed") {
+    row.done_at = now;
+  } else {
+    failClaim(row, now, RUN_ERROR_REASON);
+  }
+  write(rows, now, env);
+  return true;
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** A claim attempt that could not be dispatched: counted as a failure, and only if it still holds this claim. */
+function failQueueClaim(
+  id: string,
+  env: NodeJS.ProcessEnv | undefined,
+  now: number,
+  claimId: string,
+  reason: string,
+): void {
+  const rows = read(env);
+  const row = rows.find((candidate) => candidate.id === id);
+  if (!row || !isOpenClaim(row) || row.claim_id !== claimId) {
+    return;
+  }
+  failClaim(row, now, reason);
   write(rows, now, env);
 }
 
@@ -223,15 +310,45 @@ export function claimNextQueueItem(
 type Rec = Record<string, unknown>;
 const rec = (v: unknown): Rec => (v && typeof v === "object" ? (v as Rec) : {});
 
+/** A session row counts as live when it reports a run in progress. */
+function isLiveRow(row: Rec): boolean {
+  return (
+    row.hasActiveRun === true ||
+    row.status === "running" ||
+    (typeof row.activeWriterRunId === "string" && row.activeWriterRunId !== "")
+  );
+}
+
+/**
+ * Live sessions of one Trunk, selected before pagination so the limit cannot hide a running session. A page
+ * that comes back full is treated as live, so an unseen run is never released by mistake.
+ */
+async function liveSessionRows(gw: TrunkQueueGateway, agentId: string): Promise<Rec[] | "full"> {
+  const rows = rec(
+    await gw.request("sessions.list", {
+      agentId,
+      activeOnly: true,
+      limit: LIVE_SESSION_LIMIT,
+    }),
+  ).sessions;
+  const list = Array.isArray(rows) ? rows.map(rec) : [];
+  return list.length >= LIVE_SESSION_LIMIT ? "full" : list;
+}
+
 /** A Trunk is working while any of its threads has a run: the same test trunks_list uses. */
 async function isTrunkWorking(gw: TrunkQueueGateway, agentId: string): Promise<boolean> {
-  const rows = rec(await gw.request("sessions.list", { agentId, limit: 50 })).sessions;
-  return (Array.isArray(rows) ? rows.map(rec) : []).some(
-    (row) =>
-      row.hasActiveRun === true ||
-      row.status === "running" ||
-      (typeof row.activeWriterRunId === "string" && row.activeWriterRunId !== ""),
-  );
+  const rows = await liveSessionRows(gw, agentId);
+  return rows === "full" || rows.some(isLiveRow);
+}
+
+/** Whether one claim's own thread has a live run. Matched on the exact stored thread key. */
+async function isClaimThreadLive(
+  gw: TrunkQueueGateway,
+  agentId: string,
+  threadKey: string,
+): Promise<boolean> {
+  const rows = await liveSessionRows(gw, agentId);
+  return rows === "full" || rows.some((row) => row.key === threadKey && isLiveRow(row));
 }
 
 const IDLE_POLL_MS = 500;
@@ -357,6 +474,7 @@ async function dispatchClaim(
   const { id, claim_id: claimId, thread_key: threadKey } = item;
   // A claim released (or released and reclaimed) while a call was in flight sends nothing more.
   const current = () => isQueueClaimCurrent(id, claimId, params.env);
+  dispatchingClaimIds.add(claimId);
   try {
     if (!current()) {
       return undefined;
@@ -378,8 +496,16 @@ async function dispatchClaim(
       idempotencyKey: `trunk-queue-${id}-${claimId}`,
     });
   } catch (error) {
-    releaseQueueItem(id, params.env, now(), claimId);
+    failQueueClaim(
+      id,
+      params.env,
+      now(),
+      claimId,
+      `the brief could not be sent: ${errorText(error)}`,
+    );
     throw error;
+  } finally {
+    dispatchingClaimIds.delete(claimId);
   }
   return { item, threadKey };
 }
@@ -407,4 +533,67 @@ export async function wakeIdleTrunks(params: {
     }
   }
   return woken;
+}
+
+/**
+ * A claim whose own thread has no live run, past ORPHAN_CLAIM_GRACE_MS without activity, lost its run without a
+ * run-end event (a gateway restart, for one). It goes back in the queue. This is not a failed attempt. A claim whose
+ * brief is still being sent is never touched.
+ */
+export async function releaseOrphanQueueClaims(params: {
+  gateway: TrunkQueueGateway;
+  env?: NodeJS.ProcessEnv;
+  now?: () => number;
+}): Promise<void> {
+  const now = params.now ?? Date.now;
+  const orphans = read(params.env).filter(
+    (row) =>
+      isOpenClaim(row) &&
+      !dispatchingClaimIds.has(row.claim_id ?? "") &&
+      now() - (row.active_at ?? row.claimed_at ?? now()) >= ORPHAN_CLAIM_GRACE_MS,
+  );
+  for (const candidate of orphans) {
+    const live = await isClaimThreadLive(
+      params.gateway,
+      candidate.claimed_by!,
+      candidate.thread_key ?? "",
+    );
+    if (live) {
+      continue;
+    }
+    const rows = read(params.env);
+    const row = rows.find(
+      (current) =>
+        current.id === candidate.id &&
+        isOpenClaim(current) &&
+        current.claim_id === candidate.claim_id,
+    );
+    if (!row) {
+      continue;
+    }
+    const at = now();
+    release(row, at);
+    write(rows, at, params.env);
+  }
+}
+
+/**
+ * Periodic and post-restart pass. Releases orphaned claims, then hands queued jobs to idle eligible Trunks. It makes
+ * no gateway call while the queue has neither an open claim nor a claimable job, so an empty queue costs nothing.
+ */
+export async function reconcileTrunkQueue(params: {
+  gateway: TrunkQueueGateway;
+  agentIds: () => Promise<string[]>;
+  env?: NodeJS.ProcessEnv;
+  now?: () => number;
+}): Promise<void> {
+  const rows = read(params.env);
+  if (!rows.some((row) => isOpenClaim(row) || isClaimable(row))) {
+    return;
+  }
+  await releaseOrphanQueueClaims(params);
+  if (!read(params.env).some(isClaimable)) {
+    return;
+  }
+  await wakeIdleTrunks({ ...params, agentIds: await params.agentIds() });
 }

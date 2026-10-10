@@ -155,6 +155,8 @@ export const COMPARE_SLIM_JQ = [
   '}',
 ].join(' ');
 export const COMPARE_FILES_JQ = '[.files[].filename]';
+export const COMPARE_COMMITS_JQ = '[.commits[].sha]';
+export const COMPARE_COMMIT_MAX_PAGES = 3;
 
 export function compareTooLargeMessage(base, head, {
   truncated,
@@ -170,17 +172,27 @@ export function compareTooLargeMessage(base, head, {
   ].join(' ');
 }
 
-export function fetchCompare(repo, token, base, head) {
-  return fetchComparePaged(repo, token, base, head, arguments[4] ?? {});
-  return ghApi(repo, token, `compare/${base}...${head}`) ?? {};
+export function fetchCompare(repo, token, base, head, options = {}) {
+  return fetchComparePaged(repo, token, base, head, options);
 }
 
+// GitHub pages the commit list (per_page applies to commits) but returns the file list on page 1 only.
 export function fetchComparePaged(repo, token, base, head, { api = ghApi, requireComplete = true } = {}) {
   const firstPath = `compare/${base}...${head}?per_page=${COMPARE_FILE_PAGE_SIZE}&page=1`;
   const slim = api(repo, token, firstPath, { jq: COMPARE_SLIM_JQ }) ?? {};
   const files = [...(Array.isArray(slim.files) ? slim.files : [])];
   const commits = Array.isArray(slim.commits) ? slim.commits : [];
   const truncated = Boolean(slim.truncated);
+  const totalCommits = Number.isInteger(slim.total_commits) ? slim.total_commits : commits.length;
+  for (let page = 2; !truncated && commits.length < totalCommits && page <= COMPARE_COMMIT_MAX_PAGES; page += 1) {
+    const shas = api(repo, token, `compare/${base}...${head}?per_page=${COMPARE_FILE_PAGE_SIZE}&page=${page}`, {
+      jq: COMPARE_COMMITS_JQ,
+    });
+    const names = Array.isArray(shas) ? shas : [];
+    if (!names.length) break;
+    commits.push(...names);
+    if (names.length < COMPARE_FILE_PAGE_SIZE) break;
+  }
   for (let page = 2; !truncated && files.length < COMPARE_FILE_LIMIT; page += 1) {
     const more = api(repo, token, `compare/${base}...${head}?per_page=${COMPARE_FILE_PAGE_SIZE}&page=${page}`, {
       jq: COMPARE_FILES_JQ,
@@ -192,7 +204,7 @@ export function fetchComparePaged(repo, token, base, head, { api = ghApi, requir
   }
   const tooLarge = truncated
     || files.length > COMPARE_FILE_LIMIT
-    || (Number.isInteger(slim.total_commits) && slim.total_commits > commits.length);
+    || totalCommits > commits.length;
   if (requireComplete && tooLarge) {
     throw new Error(compareTooLargeMessage(base, head, {
       truncated,
@@ -251,7 +263,9 @@ export async function checkPullRequest({
   if (!forkPoint) {
     throw new Error('Could not determine the pull request fork point from main');
   }
-  const againstMain = api.fetchCompare(repo, token, forkPoint, mainRef);
+  // Attribution only: the pass/fail decision comes from the file snapshots below. An incomplete list
+  // labels a line's commit "unknown" instead of failing the gate.
+  const againstMain = api.fetchCompare(repo, token, forkPoint, mainRef, { requireComplete: false });
   const mainCommitShas = new Set((againstMain.commits ?? []).map((commit) => commit.sha));
 
   const fileSnapshots = {};

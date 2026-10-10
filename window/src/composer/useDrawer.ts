@@ -2,6 +2,7 @@
 // command's choices after it, the Skills popover for a mid-message "/", and the mention popover for "@".
 import { useCallback, useEffect, useState } from "react";
 import { agentOf, errorText, list, rec, str, type WindowEngine } from "./engine";
+import { invocationName } from "../display-names";
 import { matches, skillTokenAt, tokenAt, type Token } from "./mention";
 import { argQuery, filterChoices, filterCommands, readCommands, slashQuery, type SlashCommand } from "./slash";
 import type { DrawerRow } from "./SlashDrawer";
@@ -99,9 +100,9 @@ export function useDrawer(engine: WindowEngine | undefined, trunks: Trunk[], lev
       if (slash) return slash;
       const skill = skillTokenAt(text, caret);
       if (skill) {
-        const names = cat.skills.filter((n) => matches(n, skill.query));
+        const names = cat.skills.filter((n) => matches(invocationName(n), skill.query));
         if (names.length === 0) return null;
-        return { kind: "skills", label: "Skills", rows: names.map((n) => ({ id: n, main: `/${n}` })), picks: names.map((n) => ({ kind: "skill", token: skill, name: n })), groups: [] };
+        return { kind: "skills", label: "Skills", rows: names.map((n) => ({ id: n, main: `/${invocationName(n)}` })), picks: names.map((n) => ({ kind: "skill", token: skill, name: n })), groups: [] };
       }
       const at = tokenAt(text, caret, "@");
       if (!at) return null;
@@ -127,5 +128,5 @@ export function useDrawer(engine: WindowEngine | undefined, trunks: Trunk[], lev
     },
     [cat, trunks, levels, current],
   );
-  return { view, commands: cat.commands, peopleError: cat.peopleError, loadPeople: cat.loadPeople };
+  return { view, commands: cat.commands, skills: cat.skills, peopleError: cat.peopleError, loadPeople: cat.loadPeople };
 }

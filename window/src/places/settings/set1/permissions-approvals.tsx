@@ -15,7 +15,7 @@ export function ApprovalsDialog({ engine, onClose }: { engine: WindowEngine; onC
   const tech = useLevel() >= 2;
   return (
     <Dialog title="Approvals" wide onClose={onClose} testid="approvals">
-      <p className="hint">Commands, plugins and Branch itself, newest first.</p>
+      <p className="hint">Commands, plugins and Branch, newest first.</p>
       <div className="pm-apr">
         <h3>Waiting now</h3><Waiting engine={engine} tech={tech} />
         <h3>Standing permissions</h3><Standing engine={engine} />
@@ -88,7 +88,7 @@ function answerOf(a: RecordValue): ["ok" | "bad" | "idle", string] {
   if (a.status === "cancelled") return ["idle", "Cancelled"];
   return ANSWER[text(a.decision)] ?? ["idle", visible(a.status)];
 }
-const KIND: Record<string, string> = { exec: "Command", plugin: "Plugin", "system-agent": "Branch itself" };
+const KIND: Record<string, string> = { exec: "Command", plugin: "Plugin", "system-agent": "Branch" };
 
 function Answered({ engine }: { engine: WindowEngine }) {
   const first = useResource<RecordValue>(engine, "approval.history", { limit: 50 });
