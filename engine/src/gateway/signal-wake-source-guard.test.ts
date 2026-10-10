@@ -40,12 +40,23 @@ describe("signal wake source guard", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("only the signal dispatch imports requestSignalWake, the one entry that may send signal wakes", () => {
-    const importers = productionSourceFiles(SRC)
-      .filter((file) => !file.endsWith(path.join("infra", "heartbeat-wake.ts")))
-      .filter((file) => readFileSync(file, "utf8").includes("requestSignalWake"))
-      .map((file) => path.relative(SRC, file));
-    expect(importers).toEqual([DISPATCH_FILE]);
+  it("only the signal dispatch imports requestSignalWake, and only the internal module imports the session entry", () => {
+    const mentions = (name: string, exempt: string[]) =>
+      productionSourceFiles(SRC)
+        .filter((file) => !exempt.some((suffix) => file.endsWith(suffix)))
+        .filter((file) => readFileSync(file, "utf8").includes(name))
+        .map((file) => path.relative(SRC, file));
+    expect(
+      mentions("requestSignalWake", [
+        path.join("infra", "signal-wakes", "signal-wake-internal.ts"),
+      ]),
+    ).toEqual([DISPATCH_FILE]);
+    expect(
+      mentions("requestSignalSessionEventWake", [
+        path.join("infra", "session-event-wake.ts"),
+        path.join("infra", "signal-wakes", "signal-wake-internal.ts"),
+      ]),
+    ).toEqual([]);
   });
 
   it("only the internal signal dispatch path sets source signal anywhere in the engine", () => {
