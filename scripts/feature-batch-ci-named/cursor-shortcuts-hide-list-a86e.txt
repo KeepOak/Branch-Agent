@@ -1,0 +1,1 @@
+window:src/shell/ShortcutsDialog.test.tsx
