@@ -115,10 +115,14 @@ describe("preview topic row in the shell", () => {
     expect(host.querySelector(".head-row [data-testid=list-toggle]")).toBeTruthy();
   });
 
-  it("still mounts ThreadColumn for a contact without topics", async () => {
+  it("opens General directly without a duplicate thread column when it is the only thread", async () => {
+    localStorage.setItem("branch.controlTower", "hidden");
     const host = await show("agent:oak:main", [], [{ kind: "text", key: "g1", text: "General last line", streaming: false }]);
-    await vi.waitFor(() => expect(host.querySelector(".v23-threads")).toBeTruthy());
-    expect(threadNavs(host)).toHaveLength(1);
+    await vi.waitFor(() => expect(host.querySelector(".conversation-column")).toBeTruthy());
+    expect(threadNavs(host)).toHaveLength(0);
+    expect(host.querySelector(".v23-threads")).toBeNull();
+    expect(host.querySelector(".main.v23-layout")).toBeNull();
+    expect(host.textContent).toContain("General last line");
     expect(host.querySelector(".topicsT5")).toBeNull();
   });
 
