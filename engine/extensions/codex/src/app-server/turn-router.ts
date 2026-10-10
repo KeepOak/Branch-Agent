@@ -47,6 +47,8 @@ export type CodexThreadRouteReservation = {
   ) => Promise<void>;
   cancelTurn: () => Promise<void>;
   drain: () => Promise<void>;
+  /** Also waits for output received before a physical client close. */
+  drainReceived: () => Promise<void>;
   release: () => void;
 };
 
@@ -206,6 +208,7 @@ class ClientTurnRouter {
       bindTurn: (turnId, bindingOptions) => this.bindTurn(route, turnId, bindingOptions),
       cancelTurn: () => this.cancelTurn(route),
       drain: () => this.waitForNotifications(route),
+      drainReceived: () => this.waitForReceivedNotifications(route),
       release: () => this.release(route),
     };
   }
@@ -662,7 +665,11 @@ class ClientTurnRouter {
     notification: CodexServerNotification,
     scope: CodexThreadRouteScope,
   ): void {
-    if (route.released && !this.canDrainClosedTurn(route, route.turnId)) {
+    if (
+      route.released &&
+      !this.canDrainClosedTurn(route, route.turnId) &&
+      !this.canDrainClosedReceipts(route)
+    ) {
       return;
     }
     route.notificationTail = route.notificationTail
@@ -684,6 +691,15 @@ class ClientTurnRouter {
       await Promise.race([route.notificationPause, route.ended.promise]);
     }
     await Promise.race([route.notificationTail, route.ended.promise]);
+  }
+
+  /** A physical close does not end this wait; callers bound it with their own deadline. */
+  private async waitForReceivedNotifications(route: Route): Promise<void> {
+    if (!this.canDrainClosedReceipts(route)) {
+      return await this.waitForNotifications(route);
+    }
+    await route.notificationPause?.catch(() => undefined);
+    await route.notificationTail;
   }
 
   private release(route: Route, error = new Error("codex app-server thread route is released")) {
@@ -718,6 +734,15 @@ class ClientTurnRouter {
       route.released === this.closeError &&
       turnId &&
       route.completedNativeTurnIds.has(turnId),
+    );
+  }
+
+  // A physical close stops new receipts; output already delivered for the bound turn
+  // (buffered behind its prompt barrier) still belongs to that turn.
+  private canDrainClosedReceipts(route: Route): boolean {
+    return (
+      Boolean(this.closeError && route.released === this.closeError && route.turnId) &&
+      route.gate === "bound"
     );
   }
 
