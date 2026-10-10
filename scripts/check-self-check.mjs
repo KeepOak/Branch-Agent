@@ -67,8 +67,11 @@ export function checkSelfCheck({ headRef, body, headSha }) {
   const problems = [];
   const problem = (sentence) => problems.push(`${sentence} (${SELF_CHECK_DOC}).`);
   const block = findSelfCheckBlock(body);
+  // With a known head, the block must name it. A body without a Final head line cannot be checked, so it fails.
   const finalHead = /Final head:\s*([0-9a-f]{40})/i.exec(body ?? '');
-  if (headSha && finalHead && finalHead[1].toLowerCase() !== headSha.toLowerCase()) {
+  if (headSha && !finalHead) {
+    problem(`The SELF-CHECK block has no Final head line, so it cannot be checked against the current head ${headSha.slice(0, 9)}. Edit the description and add "Final head: ${headSha}"`);
+  } else if (headSha && finalHead[1].toLowerCase() !== headSha.toLowerCase()) {
     problem(`The SELF-CHECK Final head ${finalHead[1].slice(0, 9)} is not the current head ${headSha.slice(0, 9)}. Edit the description and set Final head to the current head`);
   }
   if (block === null) {
@@ -114,11 +117,15 @@ export function formatSelfCheckSummary(result) {
 }
 
 // The input to check: the live pull request when CI configures it (the payload can be stale), else the event file.
+// In CI (GITHUB_ACTIONS=true) the live context is required: a missing one fails closed instead of reading the payload.
 export function resolveSelfCheckInput({ env = process.env, read = readLivePullRequest } = {}) {
   const ctx = liveContext(env);
   if (ctx) {
     const pr = read(ctx);
     return { headRef: pr.headRef, body: pr.body, headSha: pr.headSha };
+  }
+  if (env.GITHUB_ACTIONS === 'true') {
+    throw new Error('CI needs REPO, PR_NUMBER and a token to read the live pull request; the event payload is not used in CI');
   }
   return inputFromEvent(JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8')));
 }

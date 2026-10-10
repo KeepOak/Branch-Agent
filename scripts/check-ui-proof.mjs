@@ -137,6 +137,11 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const number = event?.pull_request?.number;
   // The live body when CI configures it: a body edited after the push is not in the payload.
   const ctx = liveContext({ ...process.env, REPO: process.env.REPO || repo, PR_NUMBER: process.env.PR_NUMBER || number });
+  // In CI a missing live context fails closed: the event payload may predate a body edit.
+  if (!ctx && process.env.GITHUB_ACTIONS === 'true' && event?.pull_request) {
+    console.error('Could not read the pull request body live: CI needs REPO, PR_NUMBER and a token. This is not a screenshot failure.');
+    process.exit(1);
+  }
   let body = prBodyFromEvent(event);
   if (ctx) {
     try {

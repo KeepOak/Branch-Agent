@@ -141,7 +141,7 @@ test('CLI fails or passes, writes summary, skips non-trunk and fails closed on u
     const summaryPath = path.join(temp, 'summary.md');
     const run = () => spawnSync(process.execPath, [fileURLToPath(new URL('./check-self-check.mjs', import.meta.url))], {
       cwd: temp, windowsHide: true, encoding: 'utf8',
-      env: { ...process.env, GITHUB_EVENT_PATH: eventPath, GITHUB_STEP_SUMMARY: summaryPath },
+      env: { ...process.env, GITHUB_ACTIONS: '', GITHUB_EVENT_PATH: eventPath, GITHUB_STEP_SUMMARY: summaryPath },
     });
     for (const [headRef, body, exitCode, output] of [
       ['trunk/x', 'no block', 1, /no SELF-CHECK block/],
@@ -161,7 +161,7 @@ test('CLI fails or passes, writes summary, skips non-trunk and fails closed on u
     rmSync(eventPath);
     assert.match(run().stderr, /Could not read the pull request \(/);
     const missing = spawnSync(process.execPath, [fileURLToPath(new URL('./check-self-check.mjs', import.meta.url))], {
-      windowsHide: true, encoding: 'utf8', env: { ...process.env, GITHUB_EVENT_PATH: '', GITHUB_STEP_SUMMARY: summaryPath },
+      windowsHide: true, encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: '', GITHUB_EVENT_PATH: '', GITHUB_STEP_SUMMARY: summaryPath },
     });
     assert.equal(missing.status, 1);
   } finally {
@@ -246,4 +246,34 @@ test('the merge gate reads the live body for its SELF-CHECK step and its UI-proo
   assert.match(selfStep.slice(0, 400), /GH_TOKEN: \$\{\{ github\.token \}\}/);
   const uiStep = yaml.slice(yaml.indexOf('name: Require screenshots for window UI changes'));
   assert.match(uiStep.slice(0, 400), /PR_NUMBER: \$\{\{ github\.event\.pull_request\.number \}\}/);
+});
+
+test('regression: a body with no Final head line fails when the head is known, instead of skipping the freshness check', () => {
+  const noFinal = selfCheckBody(HEAD).replace(/Final head:.*\n/, '');
+  const result = checkSelfCheck({ headRef: 'trunk/live-body', body: noFinal, headSha: HEAD });
+  assert.equal(result.ok, false);
+  assert.match(result.problems.join('\n'), /no Final head line/);
+  assert.equal(checkSelfCheck({ headRef: 'trunk/live-body', body: noFinal }).ok, true, 'no head known: nothing to compare');
+});
+
+test('regression: in CI a missing live context fails closed and never reads the event payload', () => {
+  assert.throws(() => resolveSelfCheckInput({
+    env: { GITHUB_ACTIONS: 'true', GITHUB_EVENT_PATH: '/nonexistent/event.json' },
+    read: () => { throw new Error('must not be called'); },
+  }), /CI needs REPO, PR_NUMBER and a token/);
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'self-check-local-'));
+  try {
+    const eventPath = path.join(temp, 'event.json');
+    writeFileSync(eventPath, JSON.stringify({ pull_request: { head: { ref: 'trunk/live-body' }, body: selfCheckBody(HEAD) } }));
+    const input = resolveSelfCheckInput({ env: { GITHUB_ACTIONS: '', GITHUB_EVENT_PATH: eventPath }, read: () => { throw new Error('unused'); } });
+    assert.equal(input.headRef, 'trunk/live-body');
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('the merge gate job that runs the SELF-CHECK and UI-proof steps declares pull-requests: read', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  const job = yaml.slice(yaml.indexOf('  changed-test-coverage:'), yaml.indexOf('  merge-gate:'));
+  assert.match(job, /permissions:\n\s+contents: read\n\s+pull-requests: read/);
 });
