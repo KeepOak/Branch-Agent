@@ -12,7 +12,7 @@ import { Empty, useSaveRunner } from "../kit";
 import { Logo, serviceName } from "./service";
 import { providersOf, tokenLabel, type Provider } from "./accounts";
 
-export type AddStart = { provider?: string };
+export type AddStart = { provider?: string; signIn?: boolean };
 type Kind = "plan" | "key" | "local" | "custom";
 /** One service tile: a provider with plan sign-ins or a key, or an engine setup option (local or your own). */
 export type Service = { id: string; brand: string; name: string; kind: Kind; signedIn: number; logins: RecordValue[]; choice?: string };
@@ -57,16 +57,30 @@ export function servicesOf(caps: RecordValue[], providers: Provider[], detect: R
 
 type Props = { engine: WindowEngine; start: AddStart; caps: RecordValue[]; providers: Provider[]; agent: { agentId?: string }; onClose: (added: boolean) => void };
 
+/** Shell entry point: load account capabilities without leaving the current place. */
+export function AddAccountFlow({ engine, onClose }: { engine: WindowEngine; onClose: (added: boolean) => void }) {
+  const agent = engine.agentId ? { agentId: engine.agentId } : {};
+  const status = useResource<RecordValue>(engine, "models.authStatus", agent);
+  if (status.loading || status.error) return <Dialog title="Add an account" onClose={() => onClose(false)} testid="add-account">
+    {status.error ? <><p role="alert">{status.error}</p><button type="button" className="btn" onClick={() => void status.reload()}>Try again</button></> : <p role="status">Reading your accounts…</p>}
+  </Dialog>;
+  return <AddAccountDialog engine={engine} start={{}} caps={list(status.data?.providerCapabilities)} providers={providersOf(status.data?.providers)} agent={agent} onClose={onClose} />;
+}
+
 export function AddAccountDialog({ engine, start, caps, providers, agent, onClose }: Props) {
   const detect = useResource<RecordValue>(engine, "branch.setup.detect", agent);
   const services = useMemo(() => servicesOf(caps, providers, detect.data), [caps, providers, detect.data]);
-  const first = start.provider && !detect.loading ? services.find((s) => s.brand === start.provider && s.kind === "plan") ?? services.find((s) => s.brand === start.provider) : undefined;
-  const [step, setStep] = useState<Step>(first ? { n: 2, svc: first } : { n: 1 });
+  const [selected, setSelected] = useState(false);
+  const [step, setStep] = useState<Step>({ n: 1 });
   useEffect(() => {
-    if (!start.provider || detect.loading) return;
+    if (!start.provider || selected) return;
     const preferred = services.find((service) => service.brand === start.provider && service.kind === "plan") ?? services.find((service) => service.brand === start.provider);
-    if (preferred) setStep((current) => current.n === 1 || (current.n === 2 && !("run" in current) && current.svc.brand === start.provider && current.svc.kind === "key" && preferred.kind === "plan") ? { n: 2, svc: preferred } : current);
-  }, [detect.loading, services, start.provider]);
+    // Browser sign-in capabilities are already known; do not wait for the computer scan.
+    if (!preferred || (detect.loading && preferred.kind !== "plan")) return;
+    setSelected(true);
+    const login = [...preferred.logins].filter((option) => option.kind === "oauth" || option.kind === "device-code").sort((a, b) => Number(b.kind === "oauth") - Number(a.kind === "oauth") || Number(b.featured === true) - Number(a.featured === true))[0];
+    setStep(start.signIn && login ? { n: 2, svc: preferred, run: { method: "models.authLogin", params: { authChoice: text(login.id), ...agent } } } : { n: 2, svc: preferred });
+  }, [agent, detect.loading, selected, services, start.provider, start.signIn]);
   const [added, setAdded] = useState(false);
   const ids = providers.flatMap((p) => p.profiles.map((a) => a.profileId));
   const signedIn = () => { setAdded(true); if (step.n === 2) setStep({ n: 3, svc: step.svc, before: ids }); };
@@ -74,7 +88,10 @@ export function AddAccountDialog({ engine, start, caps, providers, agent, onClos
   return (
     <Dialog title={title} wide={step.n === 1} onClose={() => onClose(added)} testid="add-account" footer={<StepFoot step={step} onBack={() => setStep({ n: 1 })} onClose={() => onClose(added)} />}>
       <div className="wiz-dots" aria-hidden="true">{[1, 2, 3].map((i) => <i key={i} className={i <= step.n ? "wz" : ""} />)}</div>
-      {step.n === 1 ? <PickService services={services} detect={detect} engine={engine} agent={agent} onPick={(svc) => setStep({ n: 2, svc })} onUsed={() => { setAdded(true); onClose(true); }} /> : null}
+      {step.n === 1 && start.provider && !selected ? <>
+        <p role={detect.loading ? "status" : "alert"}>{detect.loading ? `Preparing ${serviceName(start.provider)} sign-in…` : detect.error ?? `Sign-in for ${serviceName(start.provider)} is not available.`}</p>
+        {!detect.loading ? <button type="button" className="btn" onClick={() => void detect.reload()}>Try again</button> : null}
+      </> : step.n === 1 ? <PickService services={services} detect={detect} engine={engine} agent={agent} onPick={(svc) => setStep({ n: 2, svc })} onUsed={() => { setAdded(true); onClose(true); }} /> : null}
       {step.n === 2 && !("run" in step) ? <SignIn engine={engine} svc={step.svc} agent={agent} onRun={(run) => setStep({ n: 2, svc: step.svc, run })} onKey={signedIn} /> : null}
       {step.n === 2 && "run" in step ? <RunWizard engine={engine} run={step.run} onDone={signedIn} onBack={() => setStep({ n: 1 })} /> : null}
       {step.n === 3 ? <Placed engine={engine} svc={step.svc} before={step.before} agent={agent} onDone={() => onClose(true)} /> : null}

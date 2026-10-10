@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react
 import type { Conversation } from "../connect/conversations";
 import type { WindowEngine } from "../connect/engine";
 import { Face } from "../face/Face";
+import { AddAccountFlow } from "../places/settings/set1/add-account";
 import { approvals, canApprove, rec, resolveApproval, rows as listRows, str, usePlaceData } from "../places/inbox/data";
 import { Menu, type MenuAnchor, type MenuItem } from "./Menu";
 import {
@@ -150,6 +151,7 @@ function useTowerLive(engine: WindowEngine, rows: Conversation[]) {
 
 /** Live Control tower. The preview's sample approvals and jobs are never shown as real data. */
 export function ControlTower({ engine, rows, needsCount, trunkName, onOpen, onInbox, onClose }: Props) {
+  const [addingAccount, setAddingAccount] = useState(false);
   const queue = usePlaceData(engine, approvals);
   const live = useTowerLive(engine, rows);
   const pending = queue.data?.items ?? [];
@@ -193,7 +195,7 @@ export function ControlTower({ engine, rows, needsCount, trunkName, onOpen, onIn
     const items = await whoItKnowsItems((method, params) => engine.request(method, params), self, live.trunks.list);
     setKnown({ at: { x: box.left, y: box.bottom + 4 }, items });
   };
-  return <aside className="v23-tower" aria-label="Control tower">
+  return <><aside className="v23-tower" aria-label="Control tower">
     <header><b>Control tower</b><button type="button" className="ib" aria-label="Hide the control tower" onClick={onClose}>×</button></header>
     <div className={`v23-tower-health ${health.tone}`.trim()}><i /><span>{health.text}</span></div>
     <section><h3>Needs you {total ? <span>{total}</span> : null}</h3>
@@ -247,8 +249,10 @@ export function ControlTower({ engine, rows, needsCount, trunkName, onOpen, onIn
         </button>;
       })}
       {live.checkError ? <p role="alert">{live.checkError}</p> : null}
-      <p>{live.limits ? `${checkedLine(live.limits.updatedAt)} · ` : null}<button type="button" className="v23-link" onClick={() => openTowerSettings("accounts")}>Add an account</button></p>
+      <p>{live.limits ? `${checkedLine(live.limits.updatedAt)} · ` : null}<button type="button" className="v23-link" onClick={() => setAddingAccount(true)}>Add an account</button></p>
     </section>
     {known ? <Menu at={known.at} items={known.items} onClose={() => setKnown(null)} label="Who it knows" testid="who-it-knows" /> : null}
-  </aside>;
+  </aside>
+    {addingAccount ? <AddAccountFlow engine={engine} onClose={(added) => { setAddingAccount(false); if (added) void live.checkNow(); }} /> : null}
+  </>;
 }

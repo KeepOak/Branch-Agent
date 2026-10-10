@@ -162,7 +162,7 @@ describe("Control tower live sections", () => {
     expect(session.request).toHaveBeenCalledWith("usage.status", { refresh: true });
     await act(async () => { [...host.querySelectorAll("button")].find((button) => button.textContent === "Automations")?.click(); });
     await act(async () => { [...host.querySelectorAll("button")].find((button) => button.textContent === "All history")?.click(); });
-    await act(async () => { [...host.querySelectorAll("button")].find((button) => button.textContent === "Add an account")?.click(); });
+    await act(async () => { host.querySelector<HTMLButtonElement>(".v23-acct")?.click(); });
     expect(places).toEqual([{ place: "automations" }, { place: "inbox", tab: "History" }]);
     expect(settings).toEqual([{ page: "accounts" }]);
   });
