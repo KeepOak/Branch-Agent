@@ -3,6 +3,10 @@
 // Apply (default): open or update one tracking issue. Never revert.
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { GH_API_MAX_BUFFER, withRateLimitRetry } from './merge-gate-rate-limit.mjs';
+
+// The job has a 5-minute limit, so a rate-limit wait must end well before it.
+export const GH_RATE_LIMIT_BUDGET_SECONDS = 180;
 
 export const TRACKING_ISSUE_TITLE = 'Non-merge-commit landing on main';
 
@@ -109,8 +113,18 @@ export function inspectLanding({ sha, repo, commit, pulls, serverUrl }) {
   };
 }
 
-export function runGh(args, env = process.env) {
-  return execFileSync('gh', args, { encoding: 'utf8', windowsHide: true, env });
+// A landing commit's JSON carries every changed patch, so the default 1 MiB execFileSync buffer
+// overflows (spawnSync gh ENOBUFS). Rate limits are waited out inside the budget, then fail with the message.
+export function runGh(args, env = process.env, {
+  exec = execFileSync,
+  sleep = (seconds) => execFileSync('sleep', [String(seconds)], { windowsHide: true }),
+} = {}) {
+  return withRateLimitRetry(() => exec('gh', args, {
+    encoding: 'utf8',
+    windowsHide: true,
+    env,
+    maxBuffer: GH_API_MAX_BUFFER,
+  }), { sleep, budgetSeconds: GH_RATE_LIMIT_BUDGET_SECONDS });
 }
 
 function readJson(stdout) {

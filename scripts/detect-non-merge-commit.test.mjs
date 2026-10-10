@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   ISSUE_INTRO,
+  runGh,
   TRACKING_ISSUE_TITLE,
   associatedPulls,
   buildIssueBody,
@@ -128,4 +129,37 @@ test('does not restore a write-permission pull_request_target auto-merge workflo
   assert.equal(existsSync(new URL('../.github/workflows/disable-auto-merge.yml', import.meta.url)), false);
   assert.doesNotMatch(trackWorkflow, /pull_request_target/);
   assert.doesNotMatch(trackWorkflow, /auto_merge_enabled/);
+});
+
+test('runGh gives gh a buffer large enough for a landing commit with every patch', () => {
+  const seen = [];
+  const out = runGh(['api', 'repos/example/repo/commits/abc'], { GH_TOKEN: 'unused' }, {
+    exec: (_bin, _args, options) => {
+      seen.push(options.maxBuffer);
+      return '{"sha":"abc"}';
+    },
+  });
+  assert.equal(out, '{"sha":"abc"}');
+  assert.equal(seen.length, 1);
+  assert.ok(seen[0] >= 64 * 1024 * 1024, `maxBuffer ${seen[0]} is below 64 MiB`);
+});
+
+test('runGh waits out a rate limit and retries instead of failing the workflow', () => {
+  let calls = 0;
+  const waits = [];
+  const out = runGh(['issue', 'list'], {}, {
+    exec: () => {
+      calls += 1;
+      if (calls === 1) {
+        throw Object.assign(new Error('gh: API rate limit exceeded for installation (HTTP 403)'), {
+          stderr: 'gh: API rate limit exceeded for installation (HTTP 403)',
+        });
+      }
+      return '[]';
+    },
+    sleep: (seconds) => waits.push(seconds),
+  });
+  assert.equal(out, '[]');
+  assert.equal(calls, 2);
+  assert.equal(waits.length, 1);
 });
