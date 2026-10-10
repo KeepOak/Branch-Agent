@@ -1,3 +1,4 @@
+import { recordPlace } from "../diagnostics/ui-log";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from "react";
 import type { Conversation } from "../connect/conversations";
 import type { Topic } from "@branch/gateway-protocol";
@@ -50,7 +51,7 @@ import { topicLayoutFor, readTopicSettings, setContactTopicLayout, type TopicLay
 import { patchTopicSession } from "./topic-session";
 import { loadAllTopicTranscripts } from "./topic-all";
 import { useContactSegments } from "./useContactSegments";
-import { contactAlert, contactAlertTarget, notify, readMutedContacts, saveMutedContacts } from "./notify";
+import { contactAlert, contactAlertTarget, noticesHereOn, notify, readMutedContacts, saveMutedContacts } from "./notify";
 import { SaveProgressOffer, useCkptOn } from "./SaveProgress";
 import { SidebarPet } from "./SidebarPet";
 import { GetAppsDialog } from "./GetApps";
@@ -70,7 +71,7 @@ import { Palette } from "./Palette";
 import { paletteRows } from "./palette-rows";
 import { PersonMenu, usePersonName } from "./PersonMenu";
 import { SideResizer } from "./Resizer";
-import { rowMenuItems } from "./row-menu";
+import { rowMenuItems, threadMenuItems } from "./row-menu";
 import { SearchBox, SearchResultsView, useSearch } from "./Search";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { QuickAsk } from "./QuickAsk";
@@ -345,6 +346,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const projects = useProjects(session, ready);
   const [newProject, setNewProject] = useState(false);
   const [route, setRoute] = useState<Route>(loadRoute);
+  useEffect(() => { recordPlace(route.kind === "place" ? route.place : route.kind); }, [route]);
   const firstRun = useFirstRun(session, ready, () => document.querySelector(".scrim, .pop, [data-testid=setup]") !== null, trunks.loaded ? trunks.list.length : null, route.kind === "settings");
   const contactRows = contactRowsFor(gatewayContacts, contactsLoaded, trunks.list, lists.rows, s.mainKey, firstRun.isFirstRun,
     firstRun.isFirstRun && firstRun.requiresContact ? trunks.bootstrapDefault : undefined);
@@ -630,7 +632,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     if (!ready) { previousContactActivity.current = null; return; }
     const previous = previousContactActivity.current;
     previousContactActivity.current = new Map(contactRows.map((contact) => [contact.id, contact.lastActivityAt]));
-    if (!previous || !document.hidden || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    if (!previous || !document.hidden || typeof Notification === "undefined" || Notification.permission !== "granted" || !noticesHereOn()) return;
     for (const contact of contactRows) {
       if (!previous.has(contact.id) || contact.lastActivityAt <= previous.get(contact.id)! || (!contact.threadUnread && contact.unreadTopics === 0)) continue;
       const alert = contactAlert(contact, mutedContacts.has(contact.id));
@@ -1497,7 +1499,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         header={header}
         dark={dark}
         listHidden={isNarrow ? !slideOpen : rail || layout.hidden}
-        onTheme={() => setTheme(toggleTheme(theme))}
         onToggleList={toggleList}
         onBack={() => window.history.back()}
         onForward={() => window.history.forward()}
@@ -1638,7 +1639,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             Leave focus mode · Ctrl+.
           </button>
         ) : null}
-        {showThreadColumn && threadGeneralKey ? <ThreadColumn key={topicContact?.id ?? threadGeneralKey} name={topicContact?.name ?? defaultName} generalKey={threadGeneralKey} openKey={openKey} items={topicItems} onOpen={(key) => key === threadGeneralKey ? openConversation(key) : openTopic(key)} /> : null}
+        {showThreadColumn && threadGeneralKey ? <ThreadColumn key={topicContact?.id ?? threadGeneralKey} name={topicContact?.name ?? defaultName} generalKey={threadGeneralKey} openKey={openKey} items={topicItems} onOpen={(key) => key === threadGeneralKey ? openConversation(key) : openTopic(key)}
+          onMenu={(e, key, label) => { const row = lists.rows.find((r) => r.key === key); if (row) showMenu(e, `thread:${key}`, threadMenuItems(row, { actions, rename: (r) => { openConversation(r.key); setRenaming(r.key); } }), label); }} /> : null}
         {main}
         {showTower ? <ControlTower engine={session.engine} rows={lists.rows} needsCount={needsYou} trunkName={trunkName} onOpen={openConversation} onInbox={() => openPlace("inbox")} onClose={() => { setTowerOn(false); try { localStorage.setItem("branch.controlTower", "hidden"); } catch { /* current window only */ } }} /> : null}
       </main>
@@ -1778,6 +1780,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         />
       ) : null}
       {overlay?.kind === "studio" ? <TrunkStudio engine={session.engine} onClose={() => setOverlay(null)} openTrunk={openTrunkProfile} /> : null}
+      {lockdown.confirmation}
       {newTrunkRoster ? <NewTrunkPreview roster={newTrunkRoster} busy={makingTrunk} onClose={() => setNewTrunkRoster(null)} onConfirm={(choice) => void confirmNewTrunk(choice)} /> : null}
       {overlay?.kind === "shortcuts" ? <ShortcutsDialog defaultName={defaultName} onClose={() => setOverlay(null)} /> : null}
       {overlay?.kind === "cando" ? <CanDoDialog onClose={() => setOverlay(null)} onGo={(g) => {

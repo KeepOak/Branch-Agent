@@ -5,9 +5,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { errorText, list, record, visible } from "../adapter";
-import { Btn, Ctl, Field, Hint, Pick, Sec, useSaveRunner, type Opt } from "../kit";
+import { Btn, Ctl, Field, Hint, Pick, Sec, Switch, useSaveRunner, type Opt } from "../kit";
 import { CATEGORY_KEYS, agentIdsOf, detailOf, normalizeQuiet, type CategoryKey, type Detail, type Quiet } from "./notifications-prefs";
 import { shownWhy } from "../../../shell/shown-why";
+import { noticesHereOn, setNoticesHere } from "../../../shell/notify";
 
 export type DevicePrefs = { enabled: boolean; label: string; categories?: Partial<Record<CategoryKey, boolean>>; detailLevel?: Detail; quietHours?: Quiet; agentIds?: string[] };
 type Perm = NotificationPermission | "unsupported";
@@ -119,6 +120,47 @@ export function useTestSend(engine: WindowEngine) {
     }
   };
   return { ...line, send };
+}
+
+/** The desktop app has no push subscription: its own windows show this computer's notices directly. */
+export function isDesktopApp(): boolean {
+  return typeof window !== "undefined" && (window as unknown as { branchDesktop?: unknown }).branchDesktop !== undefined;
+}
+
+/** Desktop app: this computer's own notices, through the window's Notification API (no service worker needed). */
+export function DesktopNotices() {
+  const [perm, setPerm] = useState<Perm>(() => facts().permission);
+  const [on, setOn] = useState(noticesHereOn);
+  const [line, setLine] = useState("");
+  const off = perm === "unsupported" ? "This Branch window can’t show notifications." : perm === "denied" ? "Notifications for Branch are off in your computer’s settings." : undefined;
+  const flip = async (next: boolean) => {
+    if (next && perm !== "granted") {
+      const answer = await Notification.requestPermission();
+      setPerm(answer);
+      if (answer !== "granted") return;
+    }
+    setNoticesHere(next);
+    setOn(next);
+  };
+  const test = () => {
+    try {
+      new Notification("Branch", { body: "Notifications are working on this computer." });
+      setLine("Sent.");
+    } catch {
+      setLine("Branch couldn’t show a notification here.");
+    }
+  };
+  const live = on && perm === "granted";
+  return (
+    <>
+      <Ctl title="Notifications on this computer" sub="Off keeps this computer quiet." off={off}>
+        <Switch checked={live} disabled={Boolean(off)} label="Notifications on this computer" onChange={(v) => void flip(v)} />
+      </Ctl>
+      <Ctl title="Send a test notification" sub={line || undefined} off={live ? undefined : "Turn on notifications here first."}>
+        <Btn sm disabled={!live} onClick={test}>Send test</Btn>
+      </Ctl>
+    </>
+  );
 }
 
 const PERM_WORD: Record<Perm, string> = { granted: "Allowed", denied: "Blocked", default: "Not asked yet", unsupported: "Not supported" };

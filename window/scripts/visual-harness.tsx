@@ -19,6 +19,9 @@ const fixture={
   request:async(method:string,params:any)=>{
     if(method==='sessions.subscribe')return {list:{sessions:rows}};
     if(method==='sessions.list' && params?.spawnedBy)return {sessions:[]};
+    if(method==='contacts.list')return {contacts:[]};
+    if(method==='rooms.list')return {rooms:[]};
+    if(method==='a2a.peers.list')return {peers:[]};
     if(method==='agents.list')return agents;
     if(method==='sessions.list')return {sessions:rows,defaults:{modelProvider:'local',model:'fixture',thinkingLevel:'medium'}};
     if(method==='sessions.describe')return {session:{key:params.key,modelProvider:'local',model:'fixture',permissionMode:'full'}};
