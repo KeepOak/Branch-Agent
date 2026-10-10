@@ -3,6 +3,7 @@
 // skills.install, kept versions (skills.library.*), and "Add a skill" (skills.search / skills.install).
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
+import { displayName } from "../../display-names";
 import { shownWhy } from "../../shell/shown-why";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { shows } from "../../places-nav/level";
@@ -15,13 +16,13 @@ import { ago, Dot, Grey, list, Pill, rec, Sec, Seg, str, type Rec } from "./comm
 import { Glyph } from "./glyphs";
 import type { ToolsCtx } from "./tools";
 
-export type Skill = { key: string; name: string; description: string; source: string; disabled: boolean; eligible: boolean; missing: string[]; installs: { id: string; label: string }[]; always: boolean; userInvocable: boolean; filePath: string; registry: boolean; raw: Rec };
+export type Skill = { key: string; name: string; rawName: string; description: string; source: string; disabled: boolean; eligible: boolean; missing: string[]; installs: { id: string; label: string }[]; always: boolean; userInvocable: boolean; filePath: string; registry: boolean; raw: Rec };
 const strings = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 export function readSkillRows(result: unknown): Skill[] {
   return list(rec(result).skills).filter(s => s.modelVisible !== false || s.disabled === true).map(s => {
     const m = rec(s.missing);
     return {
-      key: str(s.skillKey) || str(s.name), name: str(s.name), description: str(s.description),
+      key: str(s.skillKey) || str(s.name), name: displayName(str(s.name)), rawName: str(s.name), description: displayName(str(s.description)),
       source: s.bundled === true ? "Built in" : str(s.source) === "workspace" ? "In this Trunk’s folder" : "Installed",
       disabled: s.disabled === true, eligible: s.eligible !== false,
       missing: [...strings(m.bins).map(b => `the ${b} program`), ...strings(m.anyBins).map(b => `the ${b} program`), ...strings(m.env).map(e => `the ${e} key`), ...strings(m.config).map(c => `the ${c} setting`), ...strings(m.os).map(o => `${o}`)],
@@ -110,7 +111,7 @@ function SkillDetail({ ctx, skill }: { ctx: ToolsCtx; skill: Skill }) {
     {stOf(skill) === "setup" && <div className="cz-card warn"><b>Needs setting up</b><small>It needs {skill.missing.join(", ") || "something this computer lacks"}.</small>
       {skill.installs.length > 0 && <div className="cz-acts">{skill.installs.map(i => <button key={i.id} type="button" className="btn sm" disabled={op.busy} onClick={() => void op.run("skills.install", { ...scopeOf(ctx), name: skill.name, installId: i.id }, ctx.skills.reload)}>{i.label}</button>)}</div>}</div>}
     {skill.raw.blockedByAgentFilter === true && <p className="cz-hint">This Trunk’s skill list leaves it out.</p>}
-    <Sec title="How it’s used"><dl className="cz-kv"><dt>Where it came from</dt><dd>{skill.source}</dd><dt>Use</dt><dd>{skill.userInvocable ? `/${skill.name} in a conversation, or when a Trunk needs it` : "When a Trunk needs it"}</dd><dt>Always load it</dt><dd>{skill.always ? "Yes" : "No"}</dd>
+    <Sec title="How it’s used"><dl className="cz-kv"><dt>Where it came from</dt><dd>{skill.source}</dd><dt>Use</dt><dd>{skill.userInvocable ? `/${skill.rawName} in a conversation, or when a Trunk needs it` : "When a Trunk needs it"}</dd><dt>Always load it</dt><dd>{skill.always ? "Yes" : "No"}</dd>
       {shows(ctx.level, "technical") && skill.filePath && <><dt>File</dt><dd><code>{skill.filePath}</code></dd></>}</dl></Sec>
     {shows(ctx.level, "advanced") && <KeptVersions ctx={ctx} skill={skill} />}
     <div className="cz-acts">{skill.registry ? <button type="button" className="btn sm" disabled={op.busy} onClick={() => void op.run("skills.update", { ...scopeOf(ctx), source: "clawhub", slug: skill.key }, ctx.skills.reload)}>Check for updates</button> : <Grey reason="Only skills from the skill library can be checked for updates.">Check for updates</Grey>}
@@ -121,7 +122,7 @@ function SkillDetail({ ctx, skill }: { ctx: ToolsCtx; skill: Skill }) {
 /** [A] Kept versions: a skill in your library keeps each saved revision (skills.library.list / read). */
 function KeptVersions({ ctx, skill }: { ctx: ToolsCtx; skill: Skill }) {
   const library = useResource<unknown>(ctx.engine, "skills.library.list", {});
-  const entry = list(rec(library.data).entries).find(e => str(e.slug) === skill.key || str(e.name) === skill.name);
+  const entry = list(rec(library.data).entries).find(e => str(e.slug) === skill.key || str(e.name) === skill.rawName);
   const read = useResource<unknown>(ctx.engine, entry ? "skills.library.read" : null, { skillId: str(entry?.skillId) });
   const revisions = list(rec(read.data).revisions);
   return <Sec title="Kept versions"><Status {...library} />
