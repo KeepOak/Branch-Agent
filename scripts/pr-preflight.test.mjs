@@ -13,9 +13,11 @@ import {
   unverifiedFileNames,
   namedListPathFor,
   runCli,
+  preflightBudgetSeconds,
   runPreflight,
   scopedChecks,
 } from './pr-preflight.mjs';
+import { gateApiBudget } from './merge-gate-trusted.mjs';
 
 const SHA = 'a'.repeat(40);
 const BRANCH = 'trunk/pr-preflight';
@@ -308,4 +310,36 @@ test('CI input from clean API data passes', () => {
   const commits = [{ sha: 'abc1234', commit: { message: 'feat: x', author: { email: NOREPLY }, committer: { email: NOREPLY, date: '2026-10-09T12:00:00Z' } } }];
   const input = inputFromApi({ headBranch: BRANCH, headSha: SHA, files, commits, listText: null });
   assert.deepEqual(runPreflight({ ...input, body: BODY, protectedPaths: PROTECTED }), []);
+});
+
+test('the CI preflight budget comes from PREFLIGHT_WAIT_SECONDS, with a safe default', () => {
+  assert.equal(preflightBudgetSeconds({ PREFLIGHT_WAIT_SECONDS: '90' }), 90);
+  assert.equal(preflightBudgetSeconds({}), 120);
+  assert.equal(preflightBudgetSeconds({ PREFLIGHT_WAIT_SECONDS: 'later' }), 120);
+});
+
+test('CI preflight needs no --body file, reads the live inputs, and applies one job-wide budget', () => {
+  try {
+    const result = runCli(['--ci'], process.cwd(), { PREFLIGHT_WAIT_SECONDS: '90' }, { ciInput: () => withInput({}) });
+    assert.equal(result.exitCode, 0, result.text);
+    assert.equal(gateApiBudget.budgetSeconds, 90);
+    assert.ok(Number.isFinite(gateApiBudget.startedAt));
+  } finally {
+    gateApiBudget.budgetSeconds = undefined;
+    gateApiBudget.startedAt = undefined;
+  }
+});
+
+test('a CI read that outlasts the budget fails closed with a clear message, not as a preflight failure', () => {
+  try {
+    const result = runCli(['--ci'], process.cwd(), {}, {
+      ciInput: () => { throw Object.assign(new Error('gh: API rate limit exceeded (HTTP 403)'), {}); },
+    });
+    assert.equal(result.exitCode, 1);
+    assert.match(result.text, /could not read GitHub within its 120s budget/);
+    assert.match(result.text, /not a preflight failure/);
+  } finally {
+    gateApiBudget.budgetSeconds = undefined;
+    gateApiBudget.startedAt = undefined;
+  }
 });

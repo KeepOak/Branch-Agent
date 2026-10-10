@@ -14,7 +14,9 @@ import {
   coverageFromPrFiles,
   evaluateGateChangeReview,
   fetchFileText,
+  fetchPrBody,
   fetchPrFiles,
+  gateApiBudget,
   loadProtectedGatePaths,
 } from './merge-gate-trusted.mjs';
 import { checkWindowClean, scanTree } from './check-window-clean.mjs';
@@ -332,7 +334,14 @@ export function inputFromApi({ headBranch, headSha, files, commits, listText, de
   };
 }
 
-function apiInputFromEnv(env, body) {
+// The CI job-wide wait budget for every GitHub call the preflight makes. Invalid values fall back to the default.
+export const PREFLIGHT_DEFAULT_BUDGET_SECONDS = 120;
+export function preflightBudgetSeconds(env = process.env) {
+  const value = Number(env.PREFLIGHT_WAIT_SECONDS);
+  return Number.isInteger(value) && value > 0 ? value : PREFLIGHT_DEFAULT_BUDGET_SECONDS;
+}
+
+function apiInputFromEnv(env) {
   const repo = env.REPO;
   const prNumber = env.PR_NUMBER;
   const token = env.GITHUB_TOKEN;
@@ -341,6 +350,8 @@ function apiInputFromEnv(env, body) {
   if (!repo || !prNumber || !token || !headSha || !headBranch) {
     throw new Error('CI mode needs REPO, PR_NUMBER, GITHUB_TOKEN, HEAD_SHA and HEAD_BRANCH');
   }
+  // The live body from the API: the event payload can predate a body edit, so CI never reads it from there.
+  const body = fetchPrBody(repo, prNumber, token);
   const files = fetchPrFiles(repo, prNumber, token);
   const commits = fetchPrCommitsWithApi({ repo, prNumber, token });
   const listText = fetchFileText(repo, headSha, token, namedListPathFor(headBranch));
@@ -349,14 +360,27 @@ function apiInputFromEnv(env, body) {
 }
 
 // Exported so tests can drive the real CLI wiring against a temporary repository.
-export function runCli(argv, cwd, env = process.env) {
+export function runCli(argv, cwd, env = process.env, { ciInput = apiInputFromEnv } = {}) {
+  if (argv.includes('--ci')) {
+    // CI reads the live body and its own inputs from the API under one job-wide budget.
+    const budgetSeconds = preflightBudgetSeconds(env);
+    gateApiBudget.budgetSeconds = budgetSeconds;
+    gateApiBudget.startedAt = Date.now();
+    let input;
+    try {
+      input = ciInput(env);
+    } catch (error) {
+      const reason = String(error?.message ?? error).split('\n')[0];
+      return {
+        exitCode: 1,
+        text: [...ciSkippedLines(), `preflight could not read GitHub within its ${budgetSeconds}s budget (${reason}). This is not a preflight failure; re-run the check.`].join('\n'),
+      };
+    }
+    const problems = runPreflight({ ...input, cloudAgent: false });
+    return { exitCode: problems.length ? 1 : 0, text: [...ciSkippedLines(), formatProblems(problems)].join('\n') };
+  }
   if (!argv.includes('--body')) {
     return { exitCode: 2, text: 'preflight: pass --body <draft PR body file>. Preflight checks the body you are about to submit.' };
-  }
-  if (argv.includes('--ci')) {
-    const body = readFileSync(argValue('--body', argv), 'utf8');
-    const problems = runPreflight({ ...apiInputFromEnv(env, body), cloudAgent: false });
-    return { exitCode: problems.length ? 1 : 0, text: [...ciSkippedLines(), formatProblems(problems)].join('\n') };
   }
   const input = gatherInputs({ argv, cwd });
   // Both checks are slow (a whole-tree scan, a test run), so each runs only when its own inputs changed.

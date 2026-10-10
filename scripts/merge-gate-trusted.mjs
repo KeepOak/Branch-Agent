@@ -729,8 +729,19 @@ export function isRateLimitError(error) {
   return /rate limit exceeded/i.test(text);
 }
 
+// Shared rate-limit budget for one process. When budgetSeconds is set (gate-files-fresh, the CI preflight), every
+// call draws from one deadline and retries until it runs out, so the job cannot wait longer than its budget.
+// Unset keeps each call's own default budget.
+export const gateApiBudget = { budgetSeconds: undefined, startedAt: undefined };
+
 export function ghApi(repo, token, requestPath, { paginate = false, retries = 6 } = {}) {
-  return ghApiWithRetry(repo, token, requestPath, { paginate, retries });
+  const bounded = gateApiBudget.budgetSeconds != null;
+  return ghApiWithRetry(repo, token, requestPath, {
+    paginate,
+    retries: bounded ? Number.POSITIVE_INFINITY : retries,
+    budgetSeconds: gateApiBudget.budgetSeconds,
+    startedAt: gateApiBudget.startedAt,
+  });
   const args = ['api', `repos/${repo}/${requestPath}`, '-H', 'Accept: application/vnd.github+json'];
   if (paginate) args.splice(1, 0, '--paginate');
   for (let attempt = 0; attempt <= retries; attempt += 1) {
