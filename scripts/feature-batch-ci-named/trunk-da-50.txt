@@ -1,0 +1,1 @@
+window:src/places/people/people.test.tsx
