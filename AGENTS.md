@@ -57,6 +57,8 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 16. **No new OpenClaw wording.** `scripts/check-openclaw-wording.mjs` fails a PR that adds user-visible OpenClaw names or openclaw.ai / docs.openclaw.ai / github.com/openclaw links; write Branch Agent and Branch links instead.
 17. **Trunk pull requests carry a SELF-CHECK.** A pull request from a `trunk/` branch has the SELF-CHECK block from [`docs/SELF-CHECK.md`](docs/SELF-CHECK.md) in its description, with real test counts. `merge-gate` fails without it; fix it by editing the description (no new commit needed).
 
+17. **No personal machine details.** Never put machine names, hostnames, personal paths, account emails or secrets in the public repo, its pull requests or issues. The personal-info PR scan fails when the title, body or added lines include them; editing the description re-runs it.
+
 ## Common tasks
 
 ### Install dependencies
