@@ -403,3 +403,21 @@ describe("durable issue record across a restart", () => {
     expect(listQueueItems(env)).toHaveLength(1);
   });
 });
+
+describe("issue number contract", () => {
+  it("a write that returns no issue number is a failed write, reported and retried", async () => {
+    const errors: string[] = [];
+    await runGardenerPass({
+      cfg: enabledCfg,
+      env,
+      store,
+      now,
+      inputs: parityGap,
+      writeIssue: async () => undefined as unknown as number,
+      onError: (message: string) => errors.push(message),
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("parity:skills-ui");
+    expect(listQueueItems(env)).toHaveLength(0);
+  });
+});
