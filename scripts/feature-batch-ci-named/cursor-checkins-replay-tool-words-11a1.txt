@@ -1,0 +1,2 @@
+window:src/places/automations/checkins-text-tool.test.tsx
+window:src/shell/replay-text-tool.test.tsx
