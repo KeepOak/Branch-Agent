@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { conversationMenuItems, type ConversationMenuContext, type ConversationMenuRun } from "./conversation-menu";
 import { Menu } from "./Menu";
 
@@ -45,6 +45,17 @@ function flyout(host: HTMLElement, label: string) {
 }
 
 describe("conversation ⋯ More and View", () => {
+  it("closes the whole menu when a row two flyouts deep runs", async () => {
+    const closed = vi.fn();
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root!.render(createElement(Menu, { at: { x: 0, y: 0 }, items: items(), onClose: closed, label: "Conversation", testid: "conversation-menu" })));
+    await act(async () => rowNamed(host, "More")!.click());
+    await act(async () => rowNamed(host, "View")!.click());
+    await act(async () => rowNamed(host, "Side panel")!.click());
+    expect(closed).toHaveBeenCalled();
+  });
+
   it("opens More, then View, which holds Side panel and Open the browser", async () => {
     const host = await show();
     expect(flyout(host, "Conversation")?.textContent).not.toContain("Side panel");
