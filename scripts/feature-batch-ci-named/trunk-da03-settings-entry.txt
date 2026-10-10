@@ -1,0 +1,2 @@
+window:src/shell/place-head.test.tsx
+window:src/shell/settings-entry.test.tsx

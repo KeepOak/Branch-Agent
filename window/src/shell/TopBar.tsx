@@ -41,8 +41,6 @@ type Props = {
   conversationTools?: ReactNode;
   /** On a place or Settings page: "Ask <default Trunk>", which shows that Trunk beside the page (§3.3). */
   ask?: { name: string; open: boolean; onToggle: () => void; help?: boolean } | null;
-  /** On a place page: the gear at the start of the header half, which opens Settings (the preview's placeHead). */
-  onSettings?: () => void;
 };
 
 /** The preview's five header forms, projected from the shared Trunk state. */
@@ -152,17 +150,14 @@ export function HeaderRow({ header, onCharacter, tools, onList, onBack, onForwar
   );
 }
 
-/** A place's 58 px row under the 34 px bar (narrow windows, the preview's placeHead): ≡ shows the list, the gear opens Settings. */
-export function PlaceHead({ onList, onSettings, onBack, onForward }: { onList: () => void; onSettings: () => void; onBack?: () => void; onForward?: () => void }) {
+/** A place's 58 px row under the 34 px bar (narrow windows, the preview's placeHead): ≡ shows the list. */
+export function PlaceHead({ onList, onBack, onForward }: { onList: () => void; onBack?: () => void; onForward?: () => void }) {
   return (
     <div className="place-head" data-testid="place-head">
       {onBack ? <button type="button" className="ib" aria-label="Back" title="Back" onClick={onBack}><Icon name="back" /></button> : null}
       {onForward ? <button type="button" className="ib" aria-label="Forward" title="Forward" onClick={onForward}><Icon name="forward" /></button> : null}
       <button type="button" className="ib" aria-label="Show conversations" title="Show conversations" onClick={onList}>
         <Icon name="menu" />
-      </button>
-      <button type="button" className="ib" aria-label="Settings" title="Settings" onClick={onSettings}>
-        <Icon name="gear" />
       </button>
     </div>
   );
@@ -178,7 +173,7 @@ export function useHeaderTint(header: Pick<HeaderInfo, "colour" | "trunkName" | 
 }
 
 /** The merged 52 px top bar (DESIGN-SPEC §3.2): the machine switcher over the sidebar, the conversation header, the global buttons. */
-export function TopBar({ compact, machine, header, dark, listHidden, onToggleList, onBack, onForward, onCharacter, onGuide, conversationTools, ask, onSettings }: Props) {
+export function TopBar({ compact, machine, header, dark, listHidden, onToggleList, onBack, onForward, onCharacter, onGuide, conversationTools, ask }: Props) {
   const live = header !== null && !header.room && ["think", "work", "search", "read", "wait"].includes(header.state);
   const tint = useHeaderTint(compact ? null : header);
   // The app's window buttons sit over this bar's top-right; keep their colours and height matched to it.
@@ -206,11 +201,6 @@ export function TopBar({ compact, machine, header, dark, listHidden, onToggleLis
           <div className="head">
             <button type="button" className="ib" aria-label="Back" title="Back" onClick={onBack}><Icon name="back" /></button>
             <button type="button" className="ib" aria-label="Forward" title="Forward" onClick={onForward}><Icon name="forward" /></button>
-            {onSettings ? (
-              <button type="button" className="ib" aria-label="Settings" title="Settings" data-testid="place-settings" onClick={onSettings}>
-                <Icon name="gear" />
-              </button>
-            ) : null}
           </div>
         )}
         <div className="global">
