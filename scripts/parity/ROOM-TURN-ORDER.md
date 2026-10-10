@@ -37,6 +37,21 @@ This is an explicit live test. Keep raw logs and room/member identifiers outside
 
 ## Regression checks
 
+When the running app must remain untouched, exercise the real gateway in scratch
+state with the deterministic loopback provider:
+
+```sh
+cd engine
+node scripts/run-vitest.mjs run src/gateway/server.rooms-turn-order.test.ts
+```
+
+This uses three Trunks, a free loopback listener, an isolated data directory, and
+one persistent client. It checks alternating start/reply events, matching run
+IDs, nonempty replies, member order (not lead order), and earlier-reply context.
+The fixture closes both servers and removes its state. A passing scratch test
+is regression evidence, **not** a live Builders C04 PASS. After review and
+release, the runtime owner runs the live procedure above and records its result.
+
 PR #850 already supplies the turn-order and earlier-reply-context regression:
 
 ```sh
