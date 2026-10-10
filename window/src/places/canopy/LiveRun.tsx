@@ -6,7 +6,7 @@ import { rec, resolveApproval, str, type Row } from "../automations/runtime";
 import { goalOf, isRunning, sessionTitle, stepOf, trunkName } from "./data";
 import { EveryStep } from "./Live";
 import { Glyph } from "./glyphs";
-import { TrunkFace, type Ctx } from "./ui";
+import type { Ctx } from "./ui";
 
 const goalOp = (agentId: string, sessionKey: string, goalId: string, action: "pause" | "resume") => ({
   sessionKey, ...(agentId ? { agentId } : {}), goalId, action, operationId: crypto.randomUUID(), issuedAtMs: Date.now(),
@@ -20,8 +20,7 @@ export function LiveRun({ ctx, c }: { ctx: Ctx; c: Row }) {
   const asks = ctx.d.pending.filter(p => str(rec(p.request).sessionKey) === key);
   const name = trunkName(ctx.d, str(c.agentId) || ctx.d.defaultTrunk), live = isRunning(session);
   return <>
-    <div className="cn-who"><TrunkFace name={name} size={34} working={live} />
-      <span className="cn-grow"><b>{name}</b><small>{stepOf(session) || (live ? "Working" : "Not running right now")}</small></span></div>
+    <p className="cn-flush"><b>{stepOf(session) || (live ? "Working on it" : "Not running right now")}</b></p>
     {asks.map(p => <Ask key={str(p.id)} ctx={ctx} item={p} name={name} />)}
     {live ? <Steer ctx={ctx} sessionKey={key} name={name} /> : null}
     {live ? <LiveActs ctx={ctx} session={session} agentId={str(c.agentId)} name={name} /> : null}

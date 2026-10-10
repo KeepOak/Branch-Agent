@@ -92,7 +92,7 @@ export function CardsTab({ ctx, trunks, setTrunks, sheet, scope = "all", onShowA
     </> : <>
       <CardFilterRow ctx={ctx} F={F} setF={setF} trunks={trunks} setTrunks={setTrunks} />
       {adv && sel.length ? <SelectionBar ctx={ctx} ids={sel.filter(id => ctx.d.cards.some(c => str(c.id) === id))} clear={() => setSel([])} /> : null}
-      {list.length ? <Board ctx={ctx} list={list} v={v} setV={setV} ops={ops} setDlg={setDlg} setSel={setSel} /> : <NoCards scope={scope} onShowAll={onShowAll} />}
+      {list.length ? <Board ctx={ctx} list={list} v={v} setV={setV} ops={ops} setDlg={setDlg} setSel={setSel} hideEmpty={scope === "running"} /> : <NoCards scope={scope} onShowAll={onShowAll} />}
     </>}
     {dlg?.kind === "card" ? <CardDialog ctx={ctx} base={dlg.base} start={dlg.start} save={saveCard(dlg.base)} close={() => setDlg(null)} /> : null}
     {dlg?.kind === "board" ? <BoardDialog start={dlg.start} busy={ctx.busy} save={saveBoard} close={() => setDlg(null)} /> : null}
@@ -104,10 +104,10 @@ export function CardsTab({ ctx, trunks, setTrunks, sheet, scope = "all", onShowA
   </>;
 }
 
-function Board({ ctx, list, v, setV, ops, setDlg, setSel }: { ctx: Ctx; list: Row[]; v: View; setV: (v: View) => void; ops: CardOps; setDlg: (d: Dlg) => void; setSel: (s: string[]) => void }) {
+function Board({ ctx, list, v, setV, ops, setDlg, setSel, hideEmpty = false }: { ctx: Ctx; list: Row[]; v: View; setV: (v: View) => void; ops: CardOps; setDlg: (d: Dlg) => void; setSel: (s: string[]) => void; hideEmpty?: boolean }) {
   const [over, setOver] = useState(""), [menu, setMenu] = useState<{ k: string; at: MenuAnchor } | null>(null), adv = shows(ctx.level, "advanced");
   const drop = (k: string) => (ev: DragEvent) => { ev.preventDefault(); setOver(""); const c = ctx.d.cards.find(x => str(x.id) === ev.dataTransfer.getData("text/canopy-card")); if (c && c.status !== k) ops.move(c, k); };
-  const cols = STATUSES.filter(([k]) => !(adv && v.empty === "hide" && !list.some(c => c.status === k)));
+  const cols = STATUSES.filter(([k]) => !((hideEmpty || (adv && v.empty === "hide")) && !list.some(c => c.status === k)));
   if (adv && v.mode === "list") return <ListView ctx={ctx} list={list} cols={cols} ops={ops} />;
   return (
     <div className="cn-cboard" role="list" aria-label="Cards">

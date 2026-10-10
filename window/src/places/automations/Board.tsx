@@ -8,6 +8,12 @@ import { Segmented } from "../../shell/Popover";
 import { CardBoard } from "../canopy/CardBoard";
 import { BOARD_REQUEST_EVENT, peekBoardRequest, takeBoardRequest, type BoardRequest, type BoardScope } from "./board-route";
 
+const HINT: Record<BoardScope, string> = {
+  today: "Today shows what your Trunks are on now, and what changed since midnight. Drag a card to move it yourself.",
+  running: "Running shows the cards a Trunk is on right now. Open one to watch it, steer it, stop it or answer it.",
+  all: "Every card on this board. Drag a card to move it yourself.",
+};
+
 export type BoardProps = { engine: WindowEngine; level: Level; openConversation: (key: string) => void; openPlace: (place: PlaceId) => void };
 
 export function BoardTab({ engine, level, openConversation, openPlace }: BoardProps) {
@@ -27,7 +33,7 @@ export function BoardTab({ engine, level, openConversation, openPlace }: BoardPr
   }, []);
   return <div className="au-tab">
     <div className="au-board-h">
-      <p className="au-hint">Today shows what your Trunks are on now, and what changed since midnight. Drag a card to move it yourself.</p>
+      <p className="au-hint">{HINT[scope]}</p>
       <Segmented label="Show" value={scope} options={[{ id: "today", name: "Today" }, { id: "running", name: "Running" }, { id: "all", name: "All cards" }]} onChange={setScope} />
     </div>
     <div className="au-board">
