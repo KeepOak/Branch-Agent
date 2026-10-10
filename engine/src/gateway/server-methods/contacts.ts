@@ -27,15 +27,15 @@ import {
   isOutsideAgentOnline,
   listOutsideAgents,
   outsideAgentPeers,
-  outsideAgentMayMessage,
   outsideAgentMayDriveWindow,
   outsideAgentRefusal,
   readOutsideAgentSettings,
   recordOutsideAgent,
   updateOutsideAgentSettings,
 } from "../contacts/outside-agents.js";
+import { queueGraftedTeammateSend } from "../contacts/grafted-send.js";
 import { projectContacts } from "../contacts/project.js";
-import { claimGraftWork, completeGraftWork, enqueueGraftWork, getGraftWork } from "../contacts/graft-work.js";
+import { claimGraftWork, completeGraftWork, getGraftWork } from "../contacts/graft-work.js";
 import { hasOperatorBoundary, resolveOperatorRolePolicy } from "../operator-role-policy.js";
 import { removeOutsideRoomMembers } from "../rooms/store.js";
 import { createSessionListEntryFilter } from "../session-sharing.js";
@@ -175,20 +175,18 @@ export const contactHandlers: GatewayRequestHandlers = {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "A local Trunk, grafted target and message are required."));
       return;
     }
-    const records = listOutsideAgents();
-    const trunk = records.find((row) => row.id === target && row.kind === "trunk");
-    const branch = records.find((row) => row.id === trunk?.via && row.kind === "branch");
-    if (!trunk?.trunkId || !trunk.deviceId || !branch || branch.deviceId !== trunk.deviceId ||
-        outsideAgentRefusal(trunk) || outsideAgentRefusal(branch)) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "That Trunk is not linked to this Branch."));
+    const result = queueGraftedTeammateSend({
+      target: p.target as string,
+      text,
+      sourceSessionKey,
+      idempotencyKey,
+      cfg: context.getRuntimeConfig(),
+    });
+    if (!result.ok) {
+      respond(false, undefined, errorShape(ErrorCodes[result.code], result.message));
       return;
     }
-    if (!outsideAgentMayMessage(context.getRuntimeConfig(), sourceAgentId, target)) {
-      respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, "Agent-to-agent messaging denied by agentToAgent policy."));
-      return;
-    }
-    const job = enqueueGraftWork({ deviceId: trunk.deviceId, trunkId: trunk.trunkId, text, sourceSessionKey, sourceAgentId, idempotencyKey });
-    respond(true, { id: job.id, status: "accepted" });
+    respond(true, { id: result.id, status: "accepted" });
   },
   "graft.work.poll": async ({ respond, client }) => {
     const deviceId = graftDeviceId(client);
@@ -248,6 +246,11 @@ export const contactHandlers: GatewayRequestHandlers = {
       )
     )
       return;
+    // A grafted Trunk row without its trunkId can never receive work, so it is refused rather than kept.
+    if (params.agent.kind === "trunk" && !params.agent.trunkId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "A grafted Trunk needs its trunkId."));
+      return;
+    }
     let settings = readOutsideAgentSettings();
     const records = listOutsideAgents();
     // A grafted Branch (a scoped paired device) keeps its own rows; it never takes another's. A goodbye keeps

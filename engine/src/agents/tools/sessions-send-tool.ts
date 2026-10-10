@@ -253,7 +253,12 @@ export function createSessionsSendTool(opts?: SessionsSendToolOptions): AnyAgent
           });
           return jsonResult({ runId: accepted.id, status: "accepted", sessionKey, targetDisposition: "queued", delivery: { status: "pending" } });
         } catch (error) {
-          return sendFailure("error", formatErrorMessage(error), sessionKey);
+          // The message already says what to do for the person. The agent must not work around it.
+          return sendFailure(
+            "error",
+            `${formatErrorMessage(error)} Do not retry through the CLI or chat.send.`,
+            sessionKey,
+          );
         }
       }
       const allowMissingKey = isConfiguredAgentMainSessionKey({
