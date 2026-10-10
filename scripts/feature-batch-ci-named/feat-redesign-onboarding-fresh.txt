@@ -2,6 +2,5 @@ window:src/composer/Composer.startup.test.tsx
 window:src/places/settings/set1/accounts.test.tsx
 window:src/places/trunk/AccountsTab.test.tsx
 window:src/setup/FirstTrunk.test.tsx
-window:src/setup/keep-body.test.tsx
 window:src/setup/setup.test.tsx
 window:src/setup/talk-setup.test.ts
