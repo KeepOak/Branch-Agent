@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { listA2aPeers, refreshA2aPeerCards } from "../../../extensions/a2a/src/card-cache.js";
 import {
   ErrorCodes,
@@ -34,8 +35,11 @@ import {
   recordOutsideAgent,
   updateOutsideAgentSettings,
 } from "../contacts/outside-agents.js";
+import { runJoinedTrunkJob } from "../../mcp/graft-link.js";
+import { ackRelay, beginRelay, finishRelay, pollRelays } from "../contacts/graft-relay.js";
+import { queueGraftedTeammateSend } from "../contacts/grafted-send.js";
 import { projectContacts } from "../contacts/project.js";
-import { claimGraftWork, completeGraftWork, enqueueGraftWork, getGraftWork } from "../contacts/graft-work.js";
+import { claimGraftWork, completeGraftWork, getGraftWork } from "../contacts/graft-work.js";
 import { hasOperatorBoundary, resolveOperatorRolePolicy } from "../operator-role-policy.js";
 import { removeOutsideRoomMembers } from "../rooms/store.js";
 import { createSessionListEntryFilter } from "../session-sharing.js";
@@ -163,6 +167,34 @@ async function removeGraftDevice(
   });
 }
 
+/** The paired device of a joined Branch that is still linked on this Branch, or undefined. */
+function hostedBranchRow(client: Parameters<typeof graftDeviceId>[0]): { deviceId: string } | undefined {
+  const deviceId = graftDeviceId(client);
+  if (!deviceId) return undefined;
+  const linked = listOutsideAgents().some(
+    (row) => row.kind === "branch" && row.deviceId === deviceId && !outsideAgentRefusal(row),
+  );
+  return linked ? { deviceId } : undefined;
+}
+
+/** Runs one relayed message on this Branch's Trunk and keeps the reply until the joined Branch acknowledges it. */
+async function runRelayedJob(
+  deviceId: string,
+  job: { id: string; trunkId: string; text: string; sourceAgentId: string },
+): Promise<void> {
+  let outcome: { reply?: string; error?: string };
+  try {
+    const [{ callGateway }, { waitForAgentRunReply }] = await Promise.all([
+      import("../call.js"),
+      import("../../agents/run-wait.js"),
+    ]);
+    outcome = await runJoinedTrunkJob(job, { callGateway, waitForAgentRunReply });
+  } catch (error) {
+    outcome = { error: error instanceof Error ? error.message : String(error) };
+  }
+  finishRelay(deviceId, { id: job.id, ...outcome });
+}
+
 export const contactHandlers: GatewayRequestHandlers = {
   "graft.work.send": async ({ params, respond, client, context }) => {
     const p = params && typeof params === "object" ? params as Record<string, unknown> : {};
@@ -175,20 +207,81 @@ export const contactHandlers: GatewayRequestHandlers = {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "A local Trunk, grafted target and message are required."));
       return;
     }
-    const records = listOutsideAgents();
-    const trunk = records.find((row) => row.id === target && row.kind === "trunk");
-    const branch = records.find((row) => row.id === trunk?.via && row.kind === "branch");
-    if (!trunk?.trunkId || !trunk.deviceId || !branch || branch.deviceId !== trunk.deviceId ||
-        outsideAgentRefusal(trunk) || outsideAgentRefusal(branch)) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "That Trunk is not linked to this Branch."));
+    const result = queueGraftedTeammateSend({
+      target: p.target as string,
+      text,
+      sourceSessionKey,
+      idempotencyKey,
+      cfg: context.getRuntimeConfig(),
+    });
+    if (!result.ok) {
+      respond(false, undefined, errorShape(ErrorCodes[result.code], result.message));
       return;
     }
-    if (!outsideAgentMayMessage(context.getRuntimeConfig(), sourceAgentId, target)) {
+    respond(true, { id: result.id, status: "accepted" });
+  },
+  // A joined Branch lists this Branch's Trunks, sends to them, and polls their replies over its own socket.
+  "graft.roster.list": async ({ respond, client, context }) => {
+    if (!hostedBranchRow(client)) {
+      respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, "Only a joined Branch can list this Branch's Trunks."));
+      return;
+    }
+    const roster = await listGatewayAgentsBasic(context.getRuntimeConfig());
+    respond(true, {
+      trunks: roster.agents
+        .filter((agent) => agent.kind !== "system")
+        .map((agent) => ({ id: agent.id, name: agent.name })),
+    });
+  },
+  "graft.relay.send": async ({ params, respond, client, context }) => {
+    const branch = hostedBranchRow(client);
+    if (!branch) {
+      respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, "Only a joined Branch can message this Branch's Trunks."));
+      return;
+    }
+    const p = (params ?? {}) as { target?: unknown; sourceTrunkId?: unknown; text?: unknown; idempotencyKey?: unknown };
+    const target = typeof p.target === "string" ? p.target : "";
+    const sourceTrunkId = typeof p.sourceTrunkId === "string" ? p.sourceTrunkId : "";
+    const text = typeof p.text === "string" ? p.text.trim() : "";
+    if (!target || !sourceTrunkId || !text) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "A target Trunk, a source Trunk and a message are required."));
+      return;
+    }
+    const cfg = context.getRuntimeConfig();
+    const roster = await listGatewayAgentsBasic(cfg);
+    if (!roster.agents.some((agent) => agent.id === target && agent.kind !== "system")) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "That Trunk is not on this Branch."));
+      return;
+    }
+    if (!outsideAgentMayMessage(cfg, sourceTrunkId, target)) {
       respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, "Agent-to-agent messaging denied by agentToAgent policy."));
       return;
     }
-    const job = enqueueGraftWork({ deviceId: trunk.deviceId, trunkId: trunk.trunkId, text, sourceSessionKey, sourceAgentId, idempotencyKey });
-    respond(true, { id: job.id, status: "accepted" });
+    const slot = beginRelay(branch.deviceId);
+    if (!slot.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, slot.message));
+      return;
+    }
+    const id = randomUUID();
+    respond(true, { id, status: "accepted" });
+    void runRelayedJob(branch.deviceId, { id, trunkId: target, text, sourceAgentId: sourceTrunkId });
+  },
+  "graft.relay.poll": async ({ respond, client }) => {
+    const branch = hostedBranchRow(client);
+    if (!branch) {
+      respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, "Only a joined Branch can poll its replies."));
+      return;
+    }
+    respond(true, { replies: pollRelays(branch.deviceId) });
+  },
+  "graft.relay.ack": async ({ params, respond, client }) => {
+    const branch = hostedBranchRow(client);
+    const id = typeof (params as { id?: unknown } | undefined)?.id === "string" ? (params as { id: string }).id : "";
+    if (!branch || !id) {
+      respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, "A joined Branch must acknowledge its own replies."));
+      return;
+    }
+    respond(true, { acked: ackRelay(branch.deviceId, id) });
   },
   "graft.work.poll": async ({ respond, client }) => {
     const deviceId = graftDeviceId(client);
@@ -248,6 +341,11 @@ export const contactHandlers: GatewayRequestHandlers = {
       )
     )
       return;
+    // A grafted Trunk row without its trunkId can never receive work, so it is refused rather than kept.
+    if (params.agent.kind === "trunk" && !params.agent.trunkId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "A grafted Trunk needs its trunkId."));
+      return;
+    }
     let settings = readOutsideAgentSettings();
     const records = listOutsideAgents();
     // A grafted Branch (a scoped paired device) keeps its own rows; it never takes another's. A goodbye keeps

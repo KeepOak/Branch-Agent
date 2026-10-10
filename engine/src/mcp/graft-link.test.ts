@@ -6,6 +6,7 @@ import {
   isHostRefusal,
   type LinkClient,
   type LinkHandlers,
+  runJoinedTrunkJob,
 } from "./graft-link.js";
 
 const link: GraftLink = { url: "ws://127.0.0.1:41010", name: "Branch B", joinedAt: 1 };
@@ -45,6 +46,22 @@ beforeEach(() => vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] }))
 afterEach(() => vi.useRealTimers());
 
 describe("the joined Branch's link to its host", () => {
+  it("gives each local call of a joined job its own budget, and the reply wait the full ten minutes", async () => {
+    const calls: { method: string; timeoutMs?: number }[] = [];
+    const callGateway = vi.fn(async (request: { method: string; timeoutMs?: number }) => {
+      calls.push(request);
+      return request.method === "chat.send" ? { runId: "run-1" } : {};
+    });
+    const wait = vi.fn(async () => ({ status: "ok", replyText: " PONG " }));
+    const result = await runJoinedTrunkJob(
+      { id: "job-9", trunkId: "researcher", text: "Ping", sourceAgentId: "juniper" } as never,
+      { callGateway: callGateway as never, waitForAgentRunReply: wait as never },
+    );
+    expect(result).toEqual({ reply: "PONG" });
+    expect(calls.map((call) => call.method)).toEqual(["sessions.create", "chat.send"]);
+    for (const call of calls) expect(call.timeoutMs).toBe(60_000);
+    expect(wait).toHaveBeenCalledWith(expect.objectContaining({ runId: "run-1", timeoutMs: 600_000 }));
+  });
   it("polls work over the outbound link and returns the joined Trunk's reply", async () => {
     const job = { id: "job-1", trunkId: "tester", text: "Ping", sourceAgentId: "juniper" };
     let offered = false;
