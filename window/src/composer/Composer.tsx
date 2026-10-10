@@ -695,8 +695,11 @@ function ToolButton({ refEl, icon, label, tip, open, onClick, disabled, testId }
 function NoModelLine({ onOpen }: { onOpen?: (target: OpenTarget) => void }) {
   return (
     <p className="c-nomodel" data-testid="no-model">
-      Trunks can’t answer until a model is connected.{" "}
-      <button type="button" className="c-link" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => onOpen?.("settings/accounts/add")}>Add an account</button>
+      Please{" "}
+      <button type="button" className="c-link" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => onOpen?.("settings/models")}>connect a model</button>
+      , or{" "}
+      <button type="button" className="c-link" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => onOpen?.("local-model-setup")}>click here</button>
+      {" "}to set up a local model.
     </p>
   );
 }

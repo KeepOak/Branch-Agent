@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 describe("Composer startup preparation", () => {
-  it("offers one account action when no model is connected", async () => {
+  it("offers the preview no-model actions when no model is connected", async () => {
     const request = vi.fn(async (method: string) => method === "agents.list" ? { agents: [{ id: "main", name: "Oak" }], defaultId: "main" } : {});
     const engine = { request: request as WindowEngine["request"], onEvent: () => () => undefined, sessionKey: "agent:main:empty", agentId: "main", scopes: [] } as WindowEngine;
     const onOpen = vi.fn();
@@ -22,11 +22,15 @@ describe("Composer startup preparation", () => {
     try {
       await act(async () => root.render(<Composer name="Oak" working={false} disabled={false} onSend={vi.fn()} onStop={vi.fn()} engine={engine} onOpen={onOpen} />));
       await vi.waitFor(() => expect(host.querySelector('[data-testid="no-model"]')).not.toBeNull());
+      expect(host.querySelector('[data-testid="no-model"]')?.textContent).toBe("Please connect a model, or click here to set up a local model.");
       const buttons = host.querySelectorAll<HTMLButtonElement>('[data-testid="no-model"] button');
-      expect(buttons).toHaveLength(1);
-      expect(buttons[0].textContent).toBe("Add an account");
+      expect(buttons).toHaveLength(2);
+      expect(buttons[0].textContent).toBe("connect a model");
+      expect(buttons[1].textContent).toBe("click here");
       await act(async () => buttons[0].click());
-      expect(onOpen).toHaveBeenCalledExactlyOnceWith("settings/accounts/add");
+      expect(onOpen).toHaveBeenNthCalledWith(1, "settings/models");
+      await act(async () => buttons[1].click());
+      expect(onOpen).toHaveBeenNthCalledWith(2, "local-model-setup");
     } finally { await act(async () => root.unmount()); }
   });
   it("keeps the draft and sends nothing when Enter is pressed during preparation", async () => {
