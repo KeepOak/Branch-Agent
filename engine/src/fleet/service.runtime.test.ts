@@ -19,6 +19,8 @@ import {
   TEST_ATTEMPT_ID,
 } from "./service.runtime.test-helpers.js";
 
+const TEST_FLEET_IMAGE = "registry.example.test/branch-fleet:test";
+
 let root: string;
 
 describe("fleet service", () => {
@@ -54,6 +56,16 @@ describe("fleet service", () => {
     await tempRoot.cleanup();
   });
 
+  it("refuses to create a cell without an explicit image before touching containers", async () => {
+    const containers = createContainerMock();
+    const service = createFleetService({ env, containers: containers.runtime });
+
+    await expect(service.create({ tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
+      "No fleet container image set. Pass one with --image <ref>.",
+    );
+    expect(containers.run).not.toHaveBeenCalled();
+  });
+
   it("creates a bootable token-only cell config and returns the secret-bearing result", async () => {
     const containers = createContainerMock();
     const service = createFleetService({
@@ -64,6 +76,7 @@ describe("fleet service", () => {
     });
 
     const result = await service.create({
+      image: TEST_FLEET_IMAGE,
       tenant: "acme",
       env: ["FEATURE=a=b"],
     });
@@ -72,7 +85,7 @@ describe("fleet service", () => {
       tenant: "acme",
       containerName: "branch-cell-acme",
       port: 19_100,
-      image: "ghcr.io/openclaw/openclaw:latest",
+      image: TEST_FLEET_IMAGE,
       runtime: "docker",
       started: true,
       token: "gw-token",
@@ -134,6 +147,7 @@ describe("fleet service", () => {
   it("generates a 32-character hexadecimal token", async () => {
     const containers = createContainerMock();
     const result = await createFleetService({ env, containers: containers.runtime }).create({
+      image: TEST_FLEET_IMAGE,
       tenant: "random-token",
       start: false,
     });
@@ -152,13 +166,13 @@ describe("fleet service", () => {
     });
 
     await expect(
-      service.create({ tenant: "healthy", gatewayToken: "token" }),
+      service.create({ image: TEST_FLEET_IMAGE, tenant: "healthy", gatewayToken: "token" }),
     ).resolves.toMatchObject({ tenant: "healthy", started: true });
     expect(fetchMock).toHaveBeenCalledOnce();
 
     fetchMock.mockClear();
     await expect(
-      service.create({ tenant: "stopped", gatewayToken: "token", start: false }),
+      service.create({ image: TEST_FLEET_IMAGE, tenant: "stopped", gatewayToken: "token", start: false }),
     ).resolves.toMatchObject({ tenant: "stopped", started: false });
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -175,7 +189,7 @@ describe("fleet service", () => {
       probePort: async () => true,
     });
 
-    await expect(service.create({ tenant: "sick", gatewayToken: "token" })).rejects.toThrow(
+    await expect(service.create({ image: TEST_FLEET_IMAGE, tenant: "sick", gatewayToken: "token" })).rejects.toThrow(
       "Fleet cell sick was created but did not become healthy within 60s; inspect it with `branch fleet status sick` or `branch fleet logs sick`, or remove it with `branch fleet rm sick --force`.",
     );
 
@@ -192,7 +206,7 @@ describe("fleet service", () => {
       probePort: async () => false,
     });
     await expect(
-      busy.create({ tenant: "busy", port: 20_000, gatewayToken: "token" }),
+      busy.create({ image: TEST_FLEET_IMAGE, tenant: "busy", port: 20_000, gatewayToken: "token" }),
     ).rejects.toThrow("Host port 20000 is already in use on 127.0.0.1 by another process.");
     expect(await getFleetCell(env, "busy")).toBeUndefined();
 
@@ -204,7 +218,7 @@ describe("fleet service", () => {
         throw failure;
       },
     });
-    await expect(broken.create({ tenant: "broken", gatewayToken: "token" })).rejects.toBe(failure);
+    await expect(broken.create({ image: TEST_FLEET_IMAGE, tenant: "broken", gatewayToken: "token" })).rejects.toBe(failure);
     expect(await getFleetCell(env, "broken")).toBeUndefined();
   });
 
@@ -213,7 +227,7 @@ describe("fleet service", () => {
     const probePort = vi.fn(async (port: number) => port !== 19_100);
     const service = createFleetService({ env, containers: containers.runtime, probePort });
 
-    const result = await service.create({ tenant: "acme", gatewayToken: "token" });
+    const result = await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
 
     expect(probePort.mock.calls.map(([port]) => port)).toEqual([19_100, 19_101]);
     expect(result.port).toBe(19_101);
@@ -225,7 +239,7 @@ describe("fleet service", () => {
     const probePort = vi.fn(async (port: number) => port >= 19_130);
     const service = createFleetService({ env, containers: containers.runtime, probePort });
 
-    const result = await service.create({ tenant: "acme", gatewayToken: "token" });
+    const result = await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
 
     expect(result.port).toBe(19_130);
     expect(probePort).toHaveBeenCalledTimes(31);
@@ -249,8 +263,8 @@ describe("fleet service", () => {
     const service = createFleetService({ env, containers: containers.runtime, probePort });
 
     const [alpha, beta] = await Promise.all([
-      service.create({ tenant: "alpha", gatewayToken: "alpha-token" }),
-      service.create({ tenant: "beta", gatewayToken: "beta-token" }),
+      service.create({ image: TEST_FLEET_IMAGE, tenant: "alpha", gatewayToken: "alpha-token" }),
+      service.create({ image: TEST_FLEET_IMAGE, tenant: "beta", gatewayToken: "beta-token" }),
     ]);
 
     expect(new Set([alpha.port, beta.port])).toEqual(new Set([19_100, 19_101]));
@@ -270,6 +284,7 @@ describe("fleet service", () => {
       now: () => 1000,
     });
     await service.create({
+      image: TEST_FLEET_IMAGE,
       tenant: "acme",
       runtime: "podman",
       disk: "10g",
@@ -289,7 +304,7 @@ describe("fleet service", () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime });
     await expect(
-      service.create({ tenant: "acme", network: "internal", gatewayToken: "token" }),
+      service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", network: "internal", gatewayToken: "token" }),
     ).rejects.toThrow(/Docker cannot publish loopback ports/iu);
     expect(await getFleetCell(env, "acme")).toBeUndefined();
     expect(containers.createNetwork).not.toHaveBeenCalled();
@@ -300,7 +315,7 @@ describe("fleet service", () => {
     containers.run.mockRejectedValue(new Error("--storage-opt is supported only with pquota"));
     const service = createFleetService({ env, containers: containers.runtime });
     await expect(
-      service.create({ tenant: "acme", disk: "10g", gatewayToken: "token" }),
+      service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", disk: "10g", gatewayToken: "token" }),
     ).rejects.toThrow(/Fleet cannot enforce --disk.*XFS/iu);
     expect(await getFleetCell(env, "acme")).toBeUndefined();
   });
@@ -312,7 +327,7 @@ describe("fleet service", () => {
     );
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
 
-    await expect(service.create({ tenant: "remote", gatewayToken: "token" })).rejects.toThrow(
+    await expect(service.create({ image: TEST_FLEET_IMAGE, tenant: "remote", gatewayToken: "token" })).rejects.toThrow(
       /local Docker endpoint.*remote cells/iu,
     );
 
@@ -327,8 +342,8 @@ describe("fleet service", () => {
   it("lists cells deterministically and degrades runtime failures to unknown", async () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "zulu", gatewayToken: "z-token" });
-    await service.create({ tenant: "alpha", gatewayToken: "a-token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "zulu", gatewayToken: "z-token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "alpha", gatewayToken: "a-token" });
     containers.inspect.mockImplementation(async (_runtime, name) =>
       name.endsWith("alpha")
         ? runningInspection({ labels: fleetLabels("alpha") })
@@ -353,7 +368,7 @@ describe("fleet service", () => {
       fetch: fetchMock,
       now: () => 1000,
     });
-    await service.create({ tenant: "acme", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
     containers.inspect.mockResolvedValue(runningInspection());
 
     const status = await service.status("acme");
@@ -388,7 +403,7 @@ describe("fleet service", () => {
       fetch: fetchMock,
       now: () => 1000,
     });
-    await service.create({ tenant: "acme", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
     fetchMock.mockClear();
     containers.inspect.mockResolvedValue(runningInspection({ state: "exited", running: false }));
 
@@ -406,7 +421,7 @@ describe("fleet service", () => {
   it("omits imageId for missing and unmanaged status", async () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "acme", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
 
     containers.inspect.mockResolvedValue(runningInspection({ labels: {} }));
     expect((await service.status("acme")).container).not.toHaveProperty("imageId");
@@ -417,7 +432,7 @@ describe("fleet service", () => {
   it.each(["start", "stop", "restart"] as const)("runs the %s lifecycle action", async (action) => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "acme", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
     containers.inspect.mockResolvedValue(runningInspection());
     containers[action].mockClear();
 
@@ -429,7 +444,7 @@ describe("fleet service", () => {
   it("pins logs to the inspected container generation after proving ownership", async () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "acme", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
     containers.inspect.mockResolvedValue(runningInspection());
 
     const logOptions = { tenant: "acme", follow: true, timestamps: true, tail: 100, since: "10m" };
@@ -455,7 +470,7 @@ describe("fleet service", () => {
             : { kind: "unavailable", state: "unknown", error: "daemon unavailable" };
       const containers = createContainerMock();
       const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-      await service.create({ tenant: "acme", gatewayToken: "token" });
+      await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
       containers.inspect.mockResolvedValue(inspection);
 
       await expect(service.logs({ tenant: "acme" })).rejects.toThrow();
@@ -466,7 +481,7 @@ describe("fleet service", () => {
   it("refuses logs when the recorded runtime is unavailable", async () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "acme", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
     containers.inspect.mockClear();
     containers.assertLocal.mockRejectedValue(new Error("daemon unavailable"));
 
@@ -478,7 +493,7 @@ describe("fleet service", () => {
   it("requires force for running removal and purge", async () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "acme", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
     containers.inspect.mockResolvedValue(runningInspection());
 
     await expect(service.remove({ tenant: "acme" })).rejects.toThrow(/running.*--force/iu);
@@ -498,7 +513,7 @@ describe("fleet service", () => {
       generateAttemptId: () => TEST_ATTEMPT_ID,
     });
 
-    await expect(service.create({ tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
+    await expect(service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
       /already allocated/iu,
     );
 
@@ -525,7 +540,7 @@ describe("fleet service", () => {
       );
     });
 
-    await expect(service.create({ tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
+    await expect(service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
       /already allocated/iu,
     );
 
@@ -542,7 +557,7 @@ describe("fleet service", () => {
     containers.run.mockRejectedValue(new Error("container command timed out"));
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
 
-    await expect(service.create({ tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
+    await expect(service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
       /timed out/iu,
     );
 
@@ -568,7 +583,7 @@ describe("fleet service", () => {
       generateAttemptId: () => TEST_ATTEMPT_ID,
     });
 
-    await expect(service.create({ tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
+    await expect(service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
       /timed out/iu,
     );
 
@@ -588,11 +603,11 @@ describe("fleet service", () => {
     const first = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
     const second = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
 
-    const creating = first.create({ tenant: "acme", gatewayToken: "token" });
+    const creating = first.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
     try {
       await networkStarted.promise;
       expect(containers.createNetwork).toHaveBeenCalledOnce();
-      await expect(second.create({ tenant: "acme", gatewayToken: "other-token" })).rejects.toThrow(
+      await expect(second.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "other-token" })).rejects.toThrow(
         /fleet create.*already running/iu,
       );
     } finally {
@@ -606,11 +621,11 @@ describe("fleet service", () => {
     containers.createNetwork.mockRejectedValueOnce(new Error("daemon busy"));
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
 
-    await expect(service.create({ tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
+    await expect(service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
       /daemon busy/iu,
     );
     await expect(
-      service.create({ tenant: "acme", gatewayToken: "retry-token" }),
+      service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "retry-token" }),
     ).resolves.toMatchObject({ tenant: "acme" });
   });
 
@@ -626,7 +641,7 @@ describe("fleet service", () => {
       generateAttemptId: () => TEST_ATTEMPT_ID,
     });
 
-    await expect(service.create({ tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
+    await expect(service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
       /reservation changed/iu,
     );
 
@@ -640,7 +655,7 @@ describe("fleet service", () => {
     containers.run.mockRejectedValue(new Error("container name is already in use"));
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
 
-    await expect(service.create({ tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
+    await expect(service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
       /already in use/iu,
     );
 
@@ -659,7 +674,7 @@ describe("fleet service", () => {
     });
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
 
-    await expect(service.create({ tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
+    await expect(service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
       /already in use/iu,
     );
 
@@ -679,7 +694,7 @@ describe("fleet service", () => {
     containers.run.mockRejectedValue(new Error("container name is already in use"));
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
 
-    await expect(service.create({ tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
+    await expect(service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
       /already in use/iu,
     );
 
@@ -701,7 +716,7 @@ describe("fleet service", () => {
       generateAttemptId: () => TEST_ATTEMPT_ID,
     });
 
-    await expect(service.create({ tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
+    await expect(service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" })).rejects.toThrow(
       /already in use/iu,
     );
 

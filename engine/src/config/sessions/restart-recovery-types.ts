@@ -70,6 +70,8 @@ export type RestartRecoveryTerminalDeliveryEvidence =
 
 /** Durable ownership and idempotency state for gateway restart recovery. */
 export type SessionRestartRecoveryState = {
+  /** A parked provider wait must not retry early when another engine resumes it. */
+  restartRecoveryRetryAtMs?: number;
   restartRecoveryBeforeAgentReplyState?: RestartRecoveryBeforeAgentReplyState;
   /** Durable pre/post boundary around the terminal external send. */
   restartRecoveryDeliveryReceiptState?: "terminal-pending" | "delivered-terminal";

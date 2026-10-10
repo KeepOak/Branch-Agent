@@ -1,6 +1,7 @@
 import { appendFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { liveContext, readLivePullRequest } from './live-pull-request.mjs';
 
 export const SELF_CHECK_DOC = 'docs/SELF-CHECK.md';
 
@@ -61,11 +62,18 @@ function placeholder(text) {
   return text.match(/<[^>\n]*>|yes\/no|pass\/fail|\b(?:TBD|TODO)\b/)?.[0];
 }
 
-export function checkSelfCheck({ headRef, body }) {
+export function checkSelfCheck({ headRef, body, headSha }) {
   if (!isTrunkBranch(headRef)) return { ok: true, skipped: true, problems: [] };
   const problems = [];
   const problem = (sentence) => problems.push(`${sentence} (${SELF_CHECK_DOC}).`);
   const block = findSelfCheckBlock(body);
+  // With a known head, the block must name it. A body without a Final head line cannot be checked, so it fails.
+  const finalHead = /Final head:\s*([0-9a-f]{40})/i.exec(body ?? '');
+  if (headSha && !finalHead) {
+    problem(`The SELF-CHECK block has no Final head line, so it cannot be checked against the current head ${headSha.slice(0, 9)}. Edit the description and add "Final head: ${headSha}"`);
+  } else if (headSha && finalHead[1].toLowerCase() !== headSha.toLowerCase()) {
+    problem(`The SELF-CHECK Final head ${finalHead[1].slice(0, 9)} is not the current head ${headSha.slice(0, 9)}. Edit the description and set Final head to the current head`);
+  }
   if (block === null) {
     return { ok: false, skipped: false, problems: [`The pull request description has no SELF-CHECK block. Edit the description and paste the Trunk's SELF-CHECK block (format: ${SELF_CHECK_DOC}).`] };
   }
@@ -108,13 +116,27 @@ export function formatSelfCheckSummary(result) {
   return ['## SELF-CHECK block', ...lines].join('\n');
 }
 
+// The input to check: the live pull request when CI configures it (the payload can be stale), else the event file.
+// In CI (GITHUB_ACTIONS=true) the live context is required: a missing one fails closed instead of reading the payload.
+export function resolveSelfCheckInput({ env = process.env, read = readLivePullRequest } = {}) {
+  const ctx = liveContext(env);
+  if (ctx) {
+    const pr = read(ctx);
+    return { headRef: pr.headRef, body: pr.body, headSha: pr.headSha };
+  }
+  if (env.GITHUB_ACTIONS === 'true') {
+    throw new Error('CI needs REPO, PR_NUMBER and a token to read the live pull request; the event payload is not used in CI');
+  }
+  return inputFromEvent(JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8')));
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   let result;
   try {
-    const input = inputFromEvent(JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')));
-    result = checkSelfCheck(input);
-  } catch {
-    result = { ok: false, skipped: false, problems: [`Could not read the pull request event; set GITHUB_EVENT_PATH to a readable JSON event file (${SELF_CHECK_DOC}).`] };
+    result = checkSelfCheck(resolveSelfCheckInput());
+  } catch (error) {
+    const reason = String(error?.message ?? error).split('\n')[0];
+    result = { ok: false, skipped: false, problems: [`Could not read the pull request (${reason}). This is not a SELF-CHECK failure; re-run the check. Set GITHUB_EVENT_PATH for a local run (${SELF_CHECK_DOC}).`] };
   }
   const summary = formatSelfCheckSummary(result);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);

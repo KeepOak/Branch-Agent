@@ -29,6 +29,7 @@ import {
   type SkillExperienceReviewParams,
 } from "./experience-review-scheduler.js";
 import { prepareSkillExperienceReviewCandidate } from "./experience-review.js";
+import { createExperienceReviewMessages } from "./experience-review.test-support.js";
 
 function completedRun(
   options: {
@@ -670,6 +671,245 @@ describe("skill experience review scheduler", () => {
     expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ turnAborted: true }));
     scheduler.clear();
   });
+});
+
+describe("skill experience review repeated-failure trigger", () => {
+  const { repeatedFailureRecoveryMessages } = createExperienceReviewMessages("gpt-test");
+
+  function execRound(id: string, command: string, isError: boolean): unknown[] {
+    return [
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id, name: "exec", arguments: { command } }],
+      },
+      {
+        role: "toolResult",
+        toolCallId: id,
+        toolName: "exec",
+        content: [{ type: "text", text: isError ? "failed" : "ok" }],
+        isError,
+      },
+    ];
+  }
+
+  function exitCodeRound(id: string, command: string, exitCode: number): unknown[] {
+    return [
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id, name: "exec", arguments: { command } }],
+      },
+      {
+        role: "toolResult",
+        toolCallId: id,
+        toolName: "exec",
+        content: [{ type: "text", text: `Command exited with code ${exitCode}` }],
+        isError: false,
+        details: { status: "completed", exitCode },
+      },
+    ];
+  }
+
+  function targetlessRound(id: string, name: string, isError: boolean): unknown[] {
+    return [
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id, name, arguments: { query: "tile publish" } }],
+      },
+      {
+        role: "toolResult",
+        toolCallId: id,
+        toolName: name,
+        content: [{ type: "text", text: isError ? "failed" : "ok" }],
+        isError,
+      },
+    ];
+  }
+
+  it("reviews a shallow run whose exec command exits non-zero and later exits zero", async () => {
+    vi.useFakeTimers();
+    const runReview = vi.fn(async () => {});
+    const scheduler = createSkillExperienceReviewScheduler({
+      isSystemActive: () => false,
+      runReview,
+      claimSignalCooldown: () => true,
+    });
+    const params = completedRun({ modelIterations: 2 });
+    params.event.messages = [
+      { role: "user", content: "Publish the release bundle." },
+      ...exitCodeRound("publish-first", "tilectl publish --manifest first.json", 1),
+      ...exitCodeRound("publish-retry", "tilectl publish --manifest release.json", 0),
+    ];
+    scheduler.schedule(params);
+    await vi.runAllTimersAsync();
+    expect(runReview).toHaveBeenCalledTimes(1);
+    scheduler.clear();
+  });
+
+  it("reviews a shallow run whose failed command later succeeds", async () => {
+    vi.useFakeTimers();
+    const runReview = vi.fn(async () => {});
+    const scheduler = createSkillExperienceReviewScheduler({
+      isSystemActive: () => false,
+      runReview,
+      claimSignalCooldown: () => true,
+    });
+    const params = completedRun({ modelIterations: 3 });
+    params.event.messages = repeatedFailureRecoveryMessages();
+    scheduler.schedule(params);
+    await vi.runAllTimersAsync();
+    expect(runReview).toHaveBeenCalledTimes(1);
+    scheduler.clear();
+  });
+
+  it.each([
+    [
+      "the same command succeeds without any failure",
+      [...execRound("a", "tilectl status", false), ...execRound("b", "tilectl status", false)],
+    ],
+    ["a failure is never followed by a success", execRound("a", "tilectl publish", true)],
+    [
+      "a tool without a command or path fails then succeeds",
+      [...targetlessRound("a", "web_search", true), ...targetlessRound("b", "web_search", false)],
+    ],
+    [
+      "the recovery runs a different command",
+      [...execRound("a", "npm test", true), ...execRound("b", "npm run build", false)],
+    ],
+    [
+      "the success comes before the failure",
+      [...execRound("a", "tilectl publish", false), ...execRound("b", "tilectl publish", true)],
+    ],
+  ])("does not review a shallow run where %s", async (_label, rounds) => {
+    vi.useFakeTimers();
+    const runReview = vi.fn(async () => {});
+    const scheduler = createSkillExperienceReviewScheduler({
+      isSystemActive: () => false,
+      runReview,
+      claimSignalCooldown: () => true,
+    });
+    const params = completedRun({ modelIterations: 3 });
+    params.event.messages = [{ role: "user", content: "Check the tile service." }, ...rounds];
+    scheduler.schedule(params);
+    await vi.runAllTimersAsync();
+    expect(runReview).not.toHaveBeenCalled();
+    scheduler.clear();
+  });
+
+  it("claims the cooldown for the first recovered identity only, once per run", async () => {
+    vi.useFakeTimers();
+    const runReview = vi.fn(async () => {});
+    const claimSignalCooldown = vi.fn(() => true);
+    const scheduler = createSkillExperienceReviewScheduler({
+      isSystemActive: () => false,
+      runReview,
+      claimSignalCooldown,
+    });
+    const params = completedRun({ modelIterations: 4 });
+    params.event.messages = [
+      { role: "user", content: "Publish and verify the release." },
+      ...execRound("a", "tilectl publish --manifest first.json", true),
+      ...execRound("b", "tilectl publish --manifest release.json", false),
+      ...execRound("c", "tilectl status", true),
+      ...execRound("d", "tilectl status", false),
+    ];
+    scheduler.schedule(params);
+    await vi.runAllTimersAsync();
+    expect(claimSignalCooldown).toHaveBeenCalledTimes(1);
+    expect(claimSignalCooldown).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "main",
+        identity: JSON.stringify(["exec", "tilectl publish"]),
+      }),
+    );
+    expect(runReview).toHaveBeenCalledTimes(1);
+    scheduler.clear();
+  });
+
+  it("does not use the failure signal without a cooldown store", async () => {
+    vi.useFakeTimers();
+    const runReview = vi.fn(async () => {});
+    const scheduler = createSkillExperienceReviewScheduler({
+      isSystemActive: () => false,
+      runReview,
+    });
+    const params = completedRun({ modelIterations: 3 });
+    params.event.messages = repeatedFailureRecoveryMessages();
+    scheduler.schedule(params);
+    await vi.runAllTimersAsync();
+    expect(runReview).not.toHaveBeenCalled();
+    scheduler.clear();
+  });
+
+  it("claims only after the review is queued", async () => {
+    vi.useFakeTimers();
+    const claimSignalCooldown = vi.fn(() => true);
+    const scheduler = createSkillExperienceReviewScheduler({
+      isSystemActive: () => false,
+      runReview: vi.fn(async () => {}),
+      claimSignalCooldown,
+      setTimer: () => {
+        throw new Error("timer unavailable");
+      },
+    });
+    const params = completedRun({ modelIterations: 3 });
+    params.event.messages = repeatedFailureRecoveryMessages();
+    expect(() => scheduler.schedule(params)).toThrow("timer unavailable");
+    expect(claimSignalCooldown).not.toHaveBeenCalled();
+    scheduler.clear();
+  });
+
+  it("withdraws the queued review when the claim is denied", async () => {
+    vi.useFakeTimers();
+    const runReview = vi.fn(async () => {});
+    const scheduler = createSkillExperienceReviewScheduler({
+      isSystemActive: () => false,
+      runReview,
+      claimSignalCooldown: () => false,
+    });
+    const params = completedRun({ modelIterations: 3 });
+    params.event.messages = repeatedFailureRecoveryMessages();
+    scheduler.schedule(params);
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.runAllTimersAsync();
+    expect(runReview).not.toHaveBeenCalled();
+    scheduler.clear();
+  });
+
+  it("does not claim a run that has no source to review", async () => {
+    vi.useFakeTimers();
+    const claimSignalCooldown = vi.fn(() => true);
+    const scheduler = createSkillExperienceReviewScheduler({
+      isSystemActive: () => false,
+      runReview: vi.fn(async () => {}),
+      claimSignalCooldown,
+    });
+    const params = completedRun({ modelIterations: 3 });
+    params.event.messages = repeatedFailureRecoveryMessages();
+    params.source = undefined;
+    scheduler.schedule(params);
+    await vi.runAllTimersAsync();
+    expect(claimSignalCooldown).not.toHaveBeenCalled();
+    scheduler.clear();
+  });
+
+  it.each(["heartbeat", "cron", "memory", "overflow"] as const)(
+    "keeps %s-triggered runs excluded even with a repeated-failure recovery",
+    async (trigger) => {
+      vi.useFakeTimers();
+      const runReview = vi.fn(async () => {});
+      const scheduler = createSkillExperienceReviewScheduler({
+        isSystemActive: () => false,
+        runReview,
+        claimSignalCooldown: () => true,
+      });
+      const params = completedRun({ modelIterations: 3, trigger });
+      params.event.messages = repeatedFailureRecoveryMessages();
+      scheduler.schedule(params);
+      await vi.runAllTimersAsync();
+      expect(runReview).not.toHaveBeenCalled();
+      scheduler.clear();
+    },
+  );
 });
 
 describe("skill experience review prompt", () => {

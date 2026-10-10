@@ -2,6 +2,7 @@
  * Shared transport lifecycle helpers for stdio and WebSocket Codex app-server
  * connections.
  */
+import { spawnSync, type SpawnSyncOptions } from "node:child_process";
 import { finished } from "node:stream/promises";
 import { terminateCodexAppServerDescendants } from "./transport-process-containment.js";
 import { waitForCodexAppServerProcessRegistrationCleanup } from "./transport-process-registration.js";
@@ -17,7 +18,12 @@ type TransportClose = {
 };
 const CODEX_APP_SERVER_TRANSPORT_CLOSES = new WeakMap<object, TransportClose>();
 
-type TransportCloseOptions = { forceKillDelayMs?: number; drainStdio?: boolean };
+type TransportCloseOptions = {
+  forceKillDelayMs?: number;
+  drainStdio?: boolean;
+  /** Test seam: ends a Windows root's whole tree. Production uses taskkill /T /F. */
+  windowsTreeKill?: (pid: number) => void;
+};
 
 /** True only after bounded settlement proves an exit that cleanup did not cause. */
 export function hasCodexAppServerNaturalExit(child: CodexAppServerTransport): boolean {
@@ -61,6 +67,27 @@ export function closeCodexAppServerTransport(
   void beginCodexAppServerTransportClose(child, options).closing;
 }
 
+type WindowsTreeRunner = (
+  command: string,
+  args: string[],
+  options: SpawnSyncOptions,
+) => unknown;
+
+/**
+ * Windows has no process group, so killing the launcher leaves its native child running as an
+ * orphan. taskkill /T ends the whole tree of this one transport root.
+ */
+export function terminateWindowsCodexAppServerTree(
+  pid: number,
+  run: WindowsTreeRunner = spawnSync,
+): void {
+  run("taskkill.exe", ["/PID", String(pid), "/T", "/F"], {
+    stdio: "ignore",
+    windowsHide: true,
+    timeout: 5_000,
+  });
+}
+
 function beginCodexAppServerTransportClose(
   child: CodexAppServerTransport,
   options: TransportCloseOptions,
@@ -79,7 +106,23 @@ function beginCodexAppServerTransportClose(
       return "natural";
     }
     if (process.platform === "win32" || !child.pid || !child.kill) {
-      finishCodexAppServerTransportClose(child, options, forceKill);
+      // Windows has no graceful tree signal. The tree kill waits in the force-kill
+      // path: only a root still alive after the EOF grace window gets it. Limit: a root
+      // that exits within the window can leave a native child running, because Windows
+      // keeps no parent link once the root is gone, so no tree kill can reach it.
+      const pid = child.pid;
+      const treeKill =
+        process.platform === "win32" && pid !== undefined
+          ? (options.windowsTreeKill ?? terminateWindowsCodexAppServerTree)
+          : undefined;
+      finishCodexAppServerTransportClose(child, options, () => {
+        // Tree first: taskkill /T walks from the root's parent link, which is gone once the
+        // root is killed, so the root must still be alive when the tree is ended.
+        if (treeKill && pid !== undefined) {
+          treeKill(pid);
+        }
+        forceKill();
+      });
       return "uncertain";
     }
     const contained = await terminateCodexAppServerDescendants(child).catch(() => undefined);

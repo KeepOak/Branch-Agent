@@ -1,3 +1,4 @@
+import path from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   buildEmptyToolTelemetry,
@@ -8,11 +9,13 @@ import {
   TURN_ID,
 } from "../../../extensions/codex/src/app-server/event-projector.test-harness.js";
 import { isCodexTransientProviderTurnFailure } from "../../../extensions/codex/src/app-server/usage-limit-error.js";
+import { getBranchAgentDatabaseIfOpen } from "../../state/branch-agent-db.js";
 import type { BranchTestState } from "../../test-utils/branch-test-state.js";
 import { classifyFailoverReasonCore } from "../failover/classify-core.js";
 import { makeAttemptResult } from "./run.overflow-compaction.fixture.js";
 import {
   createOverflowRunParams,
+  mockedAcquireAgentRunPreparedModelRuntime,
   mockedGlobalHookRunner,
   mockedRunEmbeddedAttempt,
   resetSharedRunIntegrationHarnessMocks,
@@ -115,6 +118,24 @@ describe("transient provider capacity failures", () => {
       ).rejects.toThrow("failed");
 
       expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(2);
+      const lease = await mockedAcquireAgentRunPreparedModelRuntime.mock.results[0]?.value;
+      if (!lease) {
+        throw new Error("The retry run did not acquire its runtime.");
+      }
+      expect(lease.snapshot.snapshotId).toEqual(expect.any(String));
+      const database = getBranchAgentDatabaseIfOpen({
+        agentId: "main",
+        path: path.join(lease.snapshot.agentDir, "branch-agent.sqlite"),
+      });
+      const journal =
+        database?.db
+          .prepare(
+            "SELECT event_type, snapshot_id, payload_json FROM run_journal WHERE run_id = ? ORDER BY sequence",
+          )
+          .all("provider-internal-error-retry") ?? [];
+      expect(journal.map((row) => row.event_type)).toEqual(["run_started", "run_ended"]);
+      expect(journal.every((row) => row.snapshot_id === lease.snapshot.snapshotId)).toBe(true);
+      expect(JSON.parse(String(journal.at(-1)?.payload_json))).toEqual({ status: "failed" });
     });
   });
 });

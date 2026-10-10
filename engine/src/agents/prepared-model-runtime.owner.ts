@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { toStringifiedError } from "@branch/normalization-core/error-coercion";
 import { hashRuntimeConfigValue } from "../config/runtime-snapshot.js";
@@ -177,10 +178,7 @@ export function rebindInputToCommittedConfiguredOwner(
 }
 
 /** Accepts canonical config clones without weakening projected-config isolation. */
-export function preparedModelRuntimeConfigsMatch(
-  left: BranchConfig,
-  right: BranchConfig,
-): boolean {
+export function preparedModelRuntimeConfigsMatch(left: BranchConfig, right: BranchConfig): boolean {
   if (left === right) {
     return true;
   }
@@ -198,7 +196,7 @@ function stampPreparedModelRuntimeSnapshotConfig(
   if (snapshot.config === config) {
     return snapshot;
   }
-  const stamped = Object.freeze({ ...snapshot, config });
+  const stamped = Object.freeze({ ...snapshot, config, snapshotId: randomUUID() });
   copyPreparedModelRuntimeAuthBindings(snapshot, stamped);
   return stamped;
 }
@@ -231,7 +229,11 @@ export function normalizePreparedModelRuntimeInput(
     ...rest
   } = input;
   const inheritedAuthDir = normalizeOptionalDir(
-    input.inheritedAuthDir ?? resolveLegacyInheritedAuthDir(input.config, input.env),
+    input.inheritedAuthDir ??
+      resolveLegacyInheritedAuthDir(input.config, input.env, undefined, {
+        agentId: input.agentId,
+        agentDir: input.agentDir,
+      }),
   );
   const workspaceDir = normalizeOptionalDir(input.workspaceDir);
   const env = input.env ? Object.freeze({ ...input.env }) : undefined;

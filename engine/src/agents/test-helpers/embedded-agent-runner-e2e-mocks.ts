@@ -3,6 +3,7 @@
  *
  * Installs targeted Vitest module mocks for tests that do not need live plugin/runtime boot.
  */
+import { randomUUID } from "node:crypto";
 import { vi } from "vitest";
 import type { ContextEngine } from "../../context-engine/types.js";
 import { createEmptyPluginMetadataSnapshot } from "../../plugins/plugin-metadata-empty.test-support.js";
@@ -37,6 +38,7 @@ function createEmptyPreparedModelRuntimeSnapshot(
   pluginRegistry?: PreparedModelRuntimeSnapshot["pluginRegistry"],
 ): PreparedModelRuntimeSnapshot {
   return {
+    snapshotId: randomUUID(),
     catalogOwner: undefined,
     ...(input.agentId !== undefined ? { agentId: input.agentId } : {}),
     agentDir: input.agentDir,

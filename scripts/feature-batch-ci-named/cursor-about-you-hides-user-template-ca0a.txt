@@ -1,0 +1,2 @@
+window:src/places/library/memory-about.test.ts
+window:src/places/library/memory.test.tsx

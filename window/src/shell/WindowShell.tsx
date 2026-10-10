@@ -1,3 +1,4 @@
+import { recordPlace } from "../diagnostics/ui-log";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from "react";
 import type { Conversation } from "../connect/conversations";
 import type { Topic } from "@branch/gateway-protocol";
@@ -50,7 +51,8 @@ import { topicLayoutFor, readTopicSettings, setContactTopicLayout, type TopicLay
 import { patchTopicSession } from "./topic-session";
 import { createSerialReloader, loadAllTopicTranscripts, type TopicTranscriptCache } from "./topic-all";
 import { useContactSegments } from "./useContactSegments";
-import { contactAlert, contactAlertTarget, notify, readMutedContacts, saveMutedContacts } from "./notify";
+import { contactAlert, contactAlertTarget, noticesHereOn, notify, readMutedContacts, saveMutedContacts } from "./notify";
+import { headerFace, stopRoaming } from "./pet-roam";
 import { SaveProgressOffer, useCkptOn } from "./SaveProgress";
 import { SidebarPet } from "./SidebarPet";
 import { GetAppsDialog } from "./GetApps";
@@ -70,7 +72,7 @@ import { Palette } from "./Palette";
 import { paletteRows } from "./palette-rows";
 import { PersonMenu, usePersonName } from "./PersonMenu";
 import { SideResizer } from "./Resizer";
-import { rowMenuItems } from "./row-menu";
+import { rowMenuItems, threadMenuItems } from "./row-menu";
 import { SearchBox, SearchResultsView, useSearch } from "./Search";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { QuickAsk } from "./QuickAsk";
@@ -280,8 +282,8 @@ function useCharacterShown() {
 }
 
 /** The header and character panel receive the same Trunk state. */
-function LiveCharacter({ name, state, onClose, others, column }: { name: string; state: AgentState; onClose: () => void; others?: string[]; column: HTMLElement | null }) {
-  return <CharacterPanel name={name} state={state} onClose={onClose} others={others} column={column} />;
+function LiveCharacter(props: { name: string; state: AgentState; onClose: () => void; onShow: () => void; onOpenTrunk: () => void; onChangePet: () => void; others?: string[]; column: HTMLElement | null }) {
+  return <CharacterPanel {...props} />;
 }
 
 /** Engine reads the shell needs, in one place. */
@@ -345,6 +347,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const projects = useProjects(session, ready);
   const [newProject, setNewProject] = useState(false);
   const [route, setRoute] = useState<Route>(loadRoute);
+  useEffect(() => { recordPlace(route.kind === "place" ? route.place : route.kind); }, [route]);
   const firstRun = useFirstRun(session, ready, () => document.querySelector(".scrim, .pop, [data-testid=setup]") !== null, trunks.loaded ? trunks.list.length : null, route.kind === "settings");
   const contactRows = contactRowsFor(gatewayContacts, contactsLoaded, trunks.list, lists.rows, s.mainKey, firstRun.isFirstRun,
     firstRun.isFirstRun && firstRun.requiresContact ? trunks.bootstrapDefault : undefined);
@@ -410,6 +413,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     return () => window.removeEventListener("branch:whats-new", openNews);
   }, []);
   const [characterShown, setCharacterShown] = useCharacterShown();
+  // The card and Appearance › Agents › "Show the agent beside the conversation" are one switch: keep both in step.
+  const setCharacterVisible = (on: boolean) => { setCharacterShown(on); void lookStore(session.engine).set("agentShown", on).catch(() => undefined); };
   const [conversationColumn, setConversationColumn] = useState<HTMLDivElement | null>(null);
   const [talk, setTalk] = useTalkLayout(); // the default Trunk beside a place or Settings page (§3.3)
   const shown = useShown(session.engine); // Appearance › What's shown
@@ -630,7 +635,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     if (!ready) { previousContactActivity.current = null; return; }
     const previous = previousContactActivity.current;
     previousContactActivity.current = new Map(contactRows.map((contact) => [contact.id, contact.lastActivityAt]));
-    if (!previous || !document.hidden || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    if (!previous || !document.hidden || typeof Notification === "undefined" || Notification.permission !== "granted" || !noticesHereOn()) return;
     for (const contact of contactRows) {
       if (!previous.has(contact.id) || contact.lastActivityAt <= previous.get(contact.id)! || (!contact.threadUnread && contact.unreadTopics === 0)) continue;
       const alert = contactAlert(contact, mutedContacts.has(contact.id));
@@ -1152,6 +1157,12 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       : null;
   const voiceReady = useVoiceCatalog(ready ? session.engine : undefined);
   const pet = usePetLook(session.engine);
+  // Let it roam (Appearance › Pet) walks the pet along the chat instead of the card; one pet on screen at a time.
+  const lanePet = pet.roam ? pet : { ...pet, id: "none" };
+  // Stopping the roam brings the card back, with Undo; the pet's menu and the header face both use it (pet-roam.ts).
+  const roamSetting = lookStore(session.engine);
+  const stopRoamingHere = () => stopRoaming(roamSetting, () => setCharacterVisible(true));
+  const onCharacterButton = () => headerFace(pet.roam, roamSetting, () => setCharacterVisible(true), () => setCharacterVisible(!characterShown));
   const reducedMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
   const pausedTrunks = trunks.list.filter((t) => t.paused);
   const statusExtras = {
@@ -1203,7 +1214,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     onDelete: (row) => (askBeforeDelete() ? setDeleting(row) : void actions.remove(row)),
     openPlace,
     characterHidden: !characterShown,
-    onShowCharacter: () => setCharacterShown(true),
+    onShowCharacter: () => setCharacterVisible(true),
     talkOff: voiceReady.live ? null : VOICE_OFF,
     onTalk: () => window.dispatchEvent(new Event(TALK_EVENT)),
     onSearch: () => window.dispatchEvent(new Event(FIND_EVENT)),
@@ -1282,7 +1293,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     };
     main = draftTopic ? (
       <div className="conversation-column" data-testid="new-topic-draft" ref={setConversationColumn}>
-        {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} onList={toggleList} onBack={() => window.history.back()} onForward={() => window.history.forward()} tools={conversationTools} /> : null}
+        {compact && header ? <HeaderRow header={header} onCharacter={onCharacterButton} onList={toggleList} onBack={() => window.history.back()} onForward={() => window.history.forward()} tools={conversationTools} /> : null}
         <Thread
           name={trunkName(draftTopic.agentId)}
           history={[]}
@@ -1294,7 +1305,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onOpenSession={openConversation}
           onStart={(start) => void sendNew(start)}
         />
-        <div className={pet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={pet} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={null} /></div>
+        <div className={lanePet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={lanePet} onStopRoaming={stopRoamingHere} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={null} /></div>
         <Composer
           key={draftTopic.nonce}
           {...composerProps}
@@ -1315,7 +1326,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       <>
         <StageConversation
         columnRef={setConversationColumn}
-        header={compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} onList={toggleList} onBack={() => window.history.back()} onForward={() => window.history.forward()} tools={conversationTools} /> : null}
+        header={compact && header ? <HeaderRow header={header} onCharacter={onCharacterButton} onList={toggleList} onBack={() => window.history.back()} onForward={() => window.history.forward()} tools={conversationTools} /> : null}
         topics={topicContact && activeTopics.length ? <TopicRail
           contactId={topicContact.id}
           contactName={topicContact.name}
@@ -1408,7 +1419,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         stage={stage ? (
           <ComputerStage key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} mode={stage} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} initialComputer={stageComputer} initialControl={stageTakeOver} onMode={setStage} onClose={() => { setStage(null); setStageComputer(null); setStageTakeOver(false); }} onChooseComputer={() => openSettings("computer")} onPip={(computer) => { setPip(computer); setStage(null); }} />
         ) : null}
-        pet={<div className={pet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={pet} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={(() => { const w = lists.rows.find((r) => rowState(r).waiting); return w ? trunkName(w.agentId) : null; })()} /></div>}
+        pet={<div className={lanePet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={lanePet} onStopRoaming={stopRoamingHere} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={(() => { const w = lists.rows.find((r) => rowState(r).waiting); return w ? trunkName(w.agentId) : null; })()} /></div>}
         composer={<Composer
           {...composerProps}
           mainKey={mainKeySuffix}
@@ -1501,11 +1512,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         header={header}
         dark={dark}
         listHidden={isNarrow ? !slideOpen : rail || layout.hidden}
-        onTheme={() => setTheme(toggleTheme(theme))}
         onToggleList={toggleList}
         onBack={() => window.history.back()}
         onForward={() => window.history.forward()}
-        onCharacter={() => setCharacterShown((v) => !v)}
+        onCharacter={onCharacterButton}
         onGuide={(e) => showMenu(e, "guide", guideItems(), "Guide")}
         conversationTools={conversationTools}
         ask={route.kind === "settings" ? { name: defaultName, open: false, help: true, onToggle: () => window.dispatchEvent(new Event("branch-settings-help")) } : talkEntry}
@@ -1642,7 +1652,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             Leave focus mode · Ctrl+.
           </button>
         ) : null}
-        {showThreadColumn && threadGeneralKey ? <ThreadColumn key={topicContact?.id ?? threadGeneralKey} name={topicContact?.name ?? defaultName} generalKey={threadGeneralKey} openKey={openKey} items={topicItems} onOpen={(key) => key === threadGeneralKey ? openConversation(key) : openTopic(key)} /> : null}
+        {showThreadColumn && threadGeneralKey ? <ThreadColumn key={topicContact?.id ?? threadGeneralKey} name={topicContact?.name ?? defaultName} generalKey={threadGeneralKey} openKey={openKey} items={topicItems} onOpen={(key) => key === threadGeneralKey ? openConversation(key) : openTopic(key)}
+          onMenu={(e, key, label) => { const row = lists.rows.find((r) => r.key === key); if (row) showMenu(e, `thread:${key}`, threadMenuItems(row, { actions, rename: (r) => { openConversation(r.key); setRenaming(r.key); } }), label); }} /> : null}
         {main}
         {showTower ? <ControlTower engine={session.engine} rows={lists.rows} needsCount={needsYou} trunkName={trunkName} onOpen={openConversation} onInbox={() => openPlace("inbox")} onClose={() => { setTowerOn(false); try { localStorage.setItem("branch.controlTower", "hidden"); } catch { /* current window only */ } }} /> : null}
       </main>
@@ -1722,7 +1733,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onTheme={changeTheme}
           onClose={() => setOverlay(null)}
           onSettings={() => openSettings("general")}
-          onAchievements={() => openSettings("achievements")}
           onShortcuts={() => setOverlay({ kind: "shortcuts" })}
           onApps={() => setOverlay({ kind: "apps" })}
           onAbout={() => openSettings("updates")}
@@ -1783,6 +1793,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         />
       ) : null}
       {overlay?.kind === "studio" ? <TrunkStudio engine={session.engine} onClose={() => setOverlay(null)} openTrunk={openTrunkProfile} /> : null}
+      {lockdown.confirmation}
       {newTrunkRoster ? <NewTrunkPreview roster={newTrunkRoster} busy={makingTrunk} onClose={() => setNewTrunkRoster(null)} onConfirm={(choice) => void confirmNewTrunk(choice)} /> : null}
       {overlay?.kind === "shortcuts" ? <ShortcutsDialog defaultName={defaultName} onClose={() => setOverlay(null)} /> : null}
       {overlay?.kind === "cando" ? <CanDoDialog onClose={() => setOverlay(null)} onGo={(g) => {
@@ -1843,8 +1854,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         />
       ) : null}
       {removingTrunk ? <RemoveTrunkDialog engine={session.engine} agentId={removingTrunk.agentId} name={removingTrunk.name} onClose={() => setRemovingTrunk(null)} /> : null}
-      {route.kind === "chat" && characterShown ? (
-        <LiveCharacter name={trunkName(openRow?.agentId)} state={faceNow} onClose={() => setCharacterShown(false)} others={room.others} column={conversationColumn} />
+      {route.kind === "chat" && characterShown && !pet.roam ? (
+        <LiveCharacter name={trunkName(openRow?.agentId)} state={faceNow} onClose={() => setCharacterVisible(false)} onShow={() => setCharacterVisible(true)} onOpenTrunk={() => openTrunkProfile(openRow?.agentId)} onChangePet={() => openSettings("appearance")} others={room.others} column={conversationColumn} />
       ) : null}
       <NewGroupChatHost engine={ready ? session.engine : undefined} onOpen={openConversation} />
       {guide === "tour" ? <Walkthrough defaultName={defaultName} onClose={() => setGuide(null)} /> : null}

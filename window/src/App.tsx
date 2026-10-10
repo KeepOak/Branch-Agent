@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { startKey, type DesktopBridge } from "./connect/start-key";
 import { SaplingSession } from "./connect/session";
+import { installUiEventLog } from "./diagnostics/ui-log";
 import { loadRoute } from "./places-nav/routes";
 import { WindowShell } from "./shell/WindowShell";
 import { PreConnect, type PreConnectState } from "./setup/PreConnect";
@@ -19,6 +20,7 @@ const LOCAL = BUILT_IN ?? LOCAL_ADDRESS;
 const RESIDENT_URL_KEY = "branch.window.residentUrl";
 
 export function App() {
+  useEffect(() => installUiEventLog(), []);
   const [url, setUrl] = useState<string | null>(() => readTarget() ?? BUILT_IN ?? null);
   const [typed, setTyped] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);

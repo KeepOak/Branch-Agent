@@ -128,6 +128,27 @@ describe("drag to group", () => {
     expect(rendered.request).toHaveBeenCalledWith("rooms.create", expect.objectContaining({ name: "Hartwell check" }));
     expect(rendered.onOpen).toHaveBeenCalledWith("agent:scout:room:new");
   });
+  it("puts both dropped chats in the rooms.create group after confirming a new pair", async () => {
+    expect(groupPlan(drop(scout, ledger), contacts, [room])).toBe("new");
+    const rendered = await show();
+    await act(async () => rendered.host.querySelector<HTMLButtonElement>("[data-testid=start-group-with-these]")!.click());
+    const created = rendered.request.mock.calls.find(([method]) => method === "rooms.create");
+    expect(created).toBeTruthy();
+    const members = (created![1] as { members: { kind: string; id: string }[] }).members;
+    expect(members.map((member) => `${member.kind}:${member.id}`)).toEqual(["trunk:scout", "a2a:ledger"]);
+    expect(rendered.onOpen).toHaveBeenCalledWith("agent:scout:room:new");
+  });
+  it("offers Add both to… on a new-group confirm and adds the missing members", async () => {
+    const other: GroupRoom = { roomId: "r2", name: "Week plan", lead: "scout", createdAt: 4, members: [{ kind: "trunk", id: "scout" }] };
+    const rendered = await show({ rooms: [other] });
+    expect(rendered.host.textContent).toContain("Add both to…");
+    expect(rendered.host.textContent).toContain("Week plan");
+    const button = [...rendered.host.querySelectorAll<HTMLButtonElement>("button.mi")].find((el) => el.textContent === "Week plan");
+    await act(async () => button!.click());
+    expect(rendered.request).toHaveBeenCalledWith("rooms.members.add", { roomId: "r2", kind: "a2a", id: "ledger" });
+    expect(rendered.request).not.toHaveBeenCalledWith("rooms.members.add", expect.objectContaining({ id: "scout" }));
+    expect(rendered.onOpen).toHaveBeenCalledWith("agent:scout:room:r2");
+  });
   it("asks before adding a grafted contact, notes it is offline, and calls rooms.members.add", async () => {
     const rendered = await show({ drop: { kind: "add", source: hermes.threadKey, target: contacts[3]!.threadKey, anchor } });
     expect(rendered.host.textContent).toContain("Add Hermes to Supplier quotes?");

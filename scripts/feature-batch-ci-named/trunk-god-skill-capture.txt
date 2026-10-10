@@ -1,0 +1,3 @@
+engine:src/skills/workshop/experience-review.apply.test.ts
+engine:src/skills/workshop/experience-review.cooldown.test.ts
+engine:src/skills/workshop/experience-review.test.ts

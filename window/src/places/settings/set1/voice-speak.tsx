@@ -35,7 +35,7 @@ export function SpeakingMore(props: Shared) {
 const KEY_WORD: Record<string, string> = { yes: "Ready", no: "No key yet", here: "On this computer" };
 /** A provider that runs on this computer (your own program, a local voice) needs no key. */
 const runsHere = (p: Provider) => /local|cli/i.test(p.id);
-/** Each service and whether it has a key; keys live in Saved sign-ins. */
+/** Each service and whether it has a key; keys live in Saved passwords. */
 function KeyList({ providers, openSettings }: { providers: Provider[]; openSettings?: (page: string) => void }) {
   if (!providers.length) return null;
   return (
@@ -140,7 +140,7 @@ const TURN: GreyRow[] = [
   { t: "Tell a real interruption from a cough", sub: "A short “uh-huh” pauses it instead of stopping it.", c: { sw: true } },
   { t: "While it thinks", sub: "So a pause doesn’t sound like a dropped call.", c: { seg: ["Silence", "Soft typing", "A low hum"], v: "Silence" } },
   { t: "Say how background tasks are going", sub: "Waits for a pause in the talk, then a short line.", c: { sw: true } },
-  { t: "Hand slow work to a helper and keep talking", sub: "Anything slower than a few seconds goes to a helper; the voice carries on.", c: { sw: true } },
+  { t: "Hand slow work to a Trunk and keep talking", sub: "Anything slower than a few seconds goes to a Trunk; the voice carries on.", c: { sw: true } },
   { t: "Every spoken turn ends with speech", sub: "If it fails, is stopped or runs out, it says a short sentence instead of going quiet.", c: { sw: true } },
   { t: "Risky actions asked by voice need a spoken yes", sub: "Bound to that one task.", c: { sw: true } },
   { t: "Quick spoken commands", sub: "“Stop”, “louder”, “next”: matched before any model is asked.", c: { sw: true } },

@@ -540,6 +540,7 @@ export function buildRestartRecoveryClaimCleanupPatch(params: {
       : undefined;
   return {
     restartRecoveryBeforeAgentReplyState: undefined,
+    restartRecoveryRetryAtMs: undefined,
     restartRecoveryDeliveryReceiptState: undefined,
     restartRecoveryDeliveryToolCallId: undefined,
     restartRecoveryDeliveryContext: undefined,

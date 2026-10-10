@@ -24,7 +24,7 @@ export function removeMainSessionRecoveryForegroundClaim(
 
 type MainRecoveryStateFields = Pick<
   SessionEntry,
-  "abortedLastRun" | "restartRecoveryRuns" | "mainRestartRecovery"
+  "abortedLastRun" | "restartRecoveryRuns" | "mainRestartRecovery" | "restartRecoveryRetryAtMs"
 >;
 
 // restartRecoveryDeliveryRunId stays out of this patch: it keys delivery-claim
@@ -42,11 +42,14 @@ export function buildMainSessionRecoveryClearPatch(
   if (
     entry?.abortedLastRun !== true &&
     entry?.restartRecoveryRuns === undefined &&
-    entry?.mainRestartRecovery === undefined
+    entry?.mainRestartRecovery === undefined &&
+    entry?.restartRecoveryRetryAtMs === undefined
   ) {
     return {};
   }
-  return MAIN_SESSION_RECOVERY_CLEAR_PATCH;
+  return entry?.restartRecoveryRetryAtMs === undefined
+    ? MAIN_SESSION_RECOVERY_CLEAR_PATCH
+    : { ...MAIN_SESSION_RECOVERY_CLEAR_PATCH, restartRecoveryRetryAtMs: undefined };
 }
 
 export function clearMainSessionRecoveryAfterAgentRun(

@@ -177,12 +177,20 @@ export function createGatewayRpcDiagnostics(
   if (!areDiagnosticsEnabledForProcess() || !hasInternalDiagnosticEventInterest("gateway.rpc")) {
     return undefined;
   }
-  // Only catalog-owned names become dimensions, never arbitrary request values.
-  const label =
-    isCoreGatewayMethodClassified(method) ||
+  return new GatewayRpcDiagnostics(
+    gatewayRpcCatalogLabel(method, getMethodRegistry, extraHandlers),
+  );
+}
+
+/** Only catalog-owned names become dimensions; any other caller-chosen name is "other". */
+export function gatewayRpcCatalogLabel(
+  method: string,
+  getMethodRegistry: (() => GatewayMethodRegistry) | undefined,
+  extraHandlers: GatewayRequestHandlers,
+): string {
+  return isCoreGatewayMethodClassified(method) ||
     getMethodRegistry?.().getHandler(method) ||
     Object.hasOwn(extraHandlers, method)
-      ? method
-      : "other";
-  return new GatewayRpcDiagnostics(label);
+    ? method
+    : "other";
 }

@@ -5,7 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { checkSelfCheck, findSelfCheckBlock, formatSelfCheckSummary, inputFromEvent, isTrunkBranch, SELF_CHECK_DOC } from './check-self-check.mjs';
+import { checkSelfCheck, findSelfCheckBlock, formatSelfCheckSummary, inputFromEvent, isTrunkBranch, resolveSelfCheckInput, SELF_CHECK_DOC } from './check-self-check.mjs';
+import { LIVE_READ_ATTEMPTS, liveContext, readLivePullRequest } from './live-pull-request.mjs';
 
 const filled = 'SELF-CHECK\nFiles: 3 (all expected: yes)\nTests: node --test example.test.mjs -> 5 passed, 0 failed';
 const check = (body) => checkSelfCheck({ headRef: 'trunk/x', body });
@@ -140,7 +141,7 @@ test('CLI fails or passes, writes summary, skips non-trunk and fails closed on u
     const summaryPath = path.join(temp, 'summary.md');
     const run = () => spawnSync(process.execPath, [fileURLToPath(new URL('./check-self-check.mjs', import.meta.url))], {
       cwd: temp, windowsHide: true, encoding: 'utf8',
-      env: { ...process.env, GITHUB_EVENT_PATH: eventPath, GITHUB_STEP_SUMMARY: summaryPath },
+      env: { ...process.env, GITHUB_ACTIONS: '', GITHUB_EVENT_PATH: eventPath, GITHUB_STEP_SUMMARY: summaryPath },
     });
     for (const [headRef, body, exitCode, output] of [
       ['trunk/x', 'no block', 1, /no SELF-CHECK block/],
@@ -158,12 +159,121 @@ test('CLI fails or passes, writes summary, skips non-trunk and fails closed on u
     writeFileSync(eventPath, 'not JSON');
     assert.equal(run().status, 1);
     rmSync(eventPath);
-    assert.match(run().stderr, /Could not read the pull request event/);
+    assert.match(run().stderr, /Could not read the pull request \(/);
     const missing = spawnSync(process.execPath, [fileURLToPath(new URL('./check-self-check.mjs', import.meta.url))], {
-      windowsHide: true, encoding: 'utf8', env: { ...process.env, GITHUB_EVENT_PATH: '', GITHUB_STEP_SUMMARY: summaryPath },
+      windowsHide: true, encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: '', GITHUB_EVENT_PATH: '', GITHUB_STEP_SUMMARY: summaryPath },
     });
     assert.equal(missing.status, 1);
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }
+});
+
+const HEAD = 'c'.repeat(40);
+const OLD = 'd'.repeat(40);
+const selfCheckBody = (finalHead) => [
+  'Summary.',
+  '',
+  'SELF-CHECK',
+  `Final head: ${finalHead}`,
+  'Branch: trunk/live-body',
+  'Base: origin/main abc1234',
+  'Files: 2 (all expected: yes; CI test list: none needed)',
+  'Tests: node --test scripts/check-self-check.test.mjs -> 3 passed, 0 failed',
+  'Brief/FIX points: 1: done',
+  'Trailer and emails: ok',
+].join('\n');
+const LIVE_CTX = { REPO: 'o/r', PR_NUMBER: '7', GH_TOKEN: 't' };
+
+test('live mode needs a repo, a PR number and a token; otherwise the event file is used', () => {
+  assert.equal(liveContext({}), null);
+  assert.equal(liveContext({ REPO: 'o/r', PR_NUMBER: '7' }), null);
+  assert.deepEqual(liveContext({ REPO: 'o/r', PR_NUMBER: '7', GITHUB_TOKEN: 'g' }), { repo: 'o/r', prNumber: '7', token: 'g' });
+});
+
+test('regression: the live body wins over a stale event payload that has no SELF-CHECK block', () => {
+  const staleEvent = { pull_request: { head: { ref: 'trunk/live-body', sha: HEAD }, body: 'Old body with no block.' } };
+  const input = resolveSelfCheckInput({
+    env: { ...LIVE_CTX, GITHUB_EVENT_PATH: '/nonexistent/event.json' },
+    read: () => ({ headRef: 'trunk/live-body', body: selfCheckBody(HEAD), headSha: HEAD }),
+  });
+  assert.equal(checkSelfCheck(input).ok, true);
+  assert.equal(inputFromEvent(staleEvent).body.includes('SELF-CHECK'), false);
+});
+
+test('a failed live read fails closed; it never falls back to the payload', () => {
+  assert.throws(() => resolveSelfCheckInput({
+    env: { ...LIVE_CTX, GITHUB_EVENT_PATH: '/nonexistent/event.json' },
+    read: () => { throw new Error('gh: Server Error (HTTP 502)'); },
+  }), /HTTP 502/);
+});
+
+test('readLivePullRequest retries transient failures with a delay, then returns the body and head', () => {
+  let calls = 0;
+  const sleeps = [];
+  const pr = readLivePullRequest(LIVE_CTX, {
+    request: () => {
+      calls += 1;
+      if (calls < 3) throw new Error('gh: API rate limit exceeded (HTTP 403)');
+      return { body: 'live', head: { ref: 'trunk/live-body', sha: HEAD } };
+    },
+    sleep: (seconds) => sleeps.push(seconds),
+  });
+  assert.deepEqual(pr, { body: 'live', headRef: 'trunk/live-body', headSha: HEAD });
+  assert.equal(calls, 3);
+  assert.deepEqual(sleeps, [5, 10]);
+});
+
+test('readLivePullRequest gives up after its attempts with a clear message', () => {
+  let calls = 0;
+  assert.throws(() => readLivePullRequest(LIVE_CTX, {
+    request: () => { calls += 1; throw new Error('gh: Server Error (HTTP 502)'); },
+    sleep: () => {},
+  }), new RegExp(`HTTP 502.*after ${LIVE_READ_ATTEMPTS} attempts`));
+  assert.equal(calls, LIVE_READ_ATTEMPTS);
+});
+
+test('a Final head that is not the current head fails, and the current head passes', () => {
+  assert.equal(checkSelfCheck({ headRef: 'trunk/live-body', body: selfCheckBody(OLD), headSha: HEAD }).ok, false);
+  assert.match(checkSelfCheck({ headRef: 'trunk/live-body', body: selfCheckBody(OLD), headSha: HEAD }).problems.join('\n'), /not the current head/);
+  assert.equal(checkSelfCheck({ headRef: 'trunk/live-body', body: selfCheckBody(HEAD), headSha: HEAD }).ok, true);
+});
+
+test('the merge gate reads the live body for its SELF-CHECK step and its UI-proof step', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  const selfStep = yaml.slice(yaml.indexOf('name: Require a SELF-CHECK block'));
+  assert.match(selfStep.slice(0, 400), /PR_NUMBER: \$\{\{ github\.event\.pull_request\.number \}\}/);
+  assert.match(selfStep.slice(0, 400), /GH_TOKEN: \$\{\{ github\.token \}\}/);
+  const uiStep = yaml.slice(yaml.indexOf('name: Require screenshots for window UI changes'));
+  assert.match(uiStep.slice(0, 400), /PR_NUMBER: \$\{\{ github\.event\.pull_request\.number \}\}/);
+});
+
+test('regression: a body with no Final head line fails when the head is known, instead of skipping the freshness check', () => {
+  const noFinal = selfCheckBody(HEAD).replace(/Final head:.*\n/, '');
+  const result = checkSelfCheck({ headRef: 'trunk/live-body', body: noFinal, headSha: HEAD });
+  assert.equal(result.ok, false);
+  assert.match(result.problems.join('\n'), /no Final head line/);
+  assert.equal(checkSelfCheck({ headRef: 'trunk/live-body', body: noFinal }).ok, true, 'no head known: nothing to compare');
+});
+
+test('regression: in CI a missing live context fails closed and never reads the event payload', () => {
+  assert.throws(() => resolveSelfCheckInput({
+    env: { GITHUB_ACTIONS: 'true', GITHUB_EVENT_PATH: '/nonexistent/event.json' },
+    read: () => { throw new Error('must not be called'); },
+  }), /CI needs REPO, PR_NUMBER and a token/);
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'self-check-local-'));
+  try {
+    const eventPath = path.join(temp, 'event.json');
+    writeFileSync(eventPath, JSON.stringify({ pull_request: { head: { ref: 'trunk/live-body' }, body: selfCheckBody(HEAD) } }));
+    const input = resolveSelfCheckInput({ env: { GITHUB_ACTIONS: '', GITHUB_EVENT_PATH: eventPath }, read: () => { throw new Error('unused'); } });
+    assert.equal(input.headRef, 'trunk/live-body');
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('the merge gate job that runs the SELF-CHECK and UI-proof steps declares pull-requests: read', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  const job = yaml.slice(yaml.indexOf('  changed-test-coverage:'), yaml.indexOf('  merge-gate:'));
+  assert.match(job, /permissions:\n\s+contents: read\n\s+pull-requests: read/);
 });

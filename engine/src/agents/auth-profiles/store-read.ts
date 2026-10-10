@@ -266,7 +266,10 @@ export function createAuthProfileStoreReadRuntime(host: StoreReadHost) {
         : materializePersonalAuthProfile(shared, loadOptions.profileId);
     }
     const effectiveAgentDir = resolveRuntimeAuthProfileAgentDir(agentDir);
-    const effectiveLoadOptions = resolveRuntimeAuthProfileLoadOptions(loadOptions);
+    const effectiveLoadOptions = resolveRuntimeAuthProfileLoadOptions(
+      loadOptions,
+      effectiveAgentDir,
+    );
     const options: LoadAuthProfileStoreOptions = {
       readOnly: true,
       allowKeychainPrompt: effectiveLoadOptions?.allowKeychainPrompt ?? false,
@@ -329,7 +332,7 @@ export function createAuthProfileStoreReadRuntime(host: StoreReadHost) {
         : materializePersonalAuthProfile(shared, options.profileId);
     }
     const effectiveAgentDir = resolveRuntimeAuthProfileAgentDir(agentDir);
-    const effectiveOptions = resolveRuntimeAuthProfileLoadOptions(options);
+    const effectiveOptions = resolveRuntimeAuthProfileLoadOptions(options, effectiveAgentDir);
     const externalCli = resolveExternalCliOverlayOptions(effectiveOptions);
     const runtimeStore = yield* resolveRuntimeAuthProfileStore(
       effectiveAgentDir,
@@ -417,6 +420,7 @@ export function createAuthProfileStoreReadRuntime(host: StoreReadHost) {
     const effectiveAgentDir = resolveRuntimeAuthProfileAgentDir(agentDir);
     const effectiveOptions: LoadAuthProfileStoreOptions = resolveRuntimeAuthProfileLoadOptions(
       options,
+      effectiveAgentDir,
     ) ?? { ...options };
     const runtimeStore = yield* resolveRuntimeAuthProfileStore(
       effectiveAgentDir,

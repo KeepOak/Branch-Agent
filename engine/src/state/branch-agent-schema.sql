@@ -13,6 +13,24 @@ CREATE TABLE IF NOT EXISTS schema_meta (
   updated_at INTEGER NOT NULL
 ) STRICT;
 
+-- Managed Agents' session log, stored per Trunk rather than on the shared gateway.
+-- Rows are immutable until a successful transcript compaction covers them.
+CREATE TABLE IF NOT EXISTS run_journal (
+  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  snapshot_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  payload_json TEXT NOT NULL CHECK (json_valid(payload_json)),
+  operation_key TEXT,
+  attempt_id TEXT,
+  created_at INTEGER NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS idx_run_journal_session_sequence
+  ON run_journal(session_id, sequence);
+CREATE INDEX IF NOT EXISTS idx_run_journal_run_sequence
+  ON run_journal(run_id, sequence);
+
 CREATE TABLE IF NOT EXISTS session_nodes (
   session_key TEXT NOT NULL PRIMARY KEY,
   current_session_id TEXT NOT NULL,
