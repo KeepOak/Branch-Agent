@@ -26,11 +26,11 @@ function describePreparedModelRuntimeOwnerState(owner: PreparedModelRuntimeOwner
   // Readers refuse a snapshot while its owner needs refresh or is rebuilding, so only an owner
   // with none of those flags is published. A stale or rebuilding owner that still holds an older
   // snapshot must not read as published.
-  if (owner.snapshot && !owner.needsRefresh && !owner.pending) {
-    return "published";
-  }
   if (owner.refreshError) {
     return `failed(${formatPreparedModelFailure(owner.refreshError.message, 120)})`;
+  }
+  if (owner.snapshot && !owner.needsRefresh && !owner.pending) {
+    return "published";
   }
   if (owner.needsRefresh) {
     return "stale";
