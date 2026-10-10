@@ -9,8 +9,8 @@ import {
   listQueueItems,
   markQueueItemDone,
   pickUpQueuedWork,
+  reapExpiredQueueClaims,
   releaseQueueItem,
-  releaseStaleQueueClaims,
   STALE_CLAIM_MS,
   type TrunkQueueGateway,
 } from "./trunk-queue.js";
@@ -186,7 +186,7 @@ describe("Trunk job queue pickup", () => {
     expect(listQueueItems(env).find((item) => item.title === "B")?.status).toBe("queued");
   });
 
-  it("releases a claim with no run activity for 2 hours but keeps one whose run is still going", async () => {
+  it("reclaims a claim whose 2-hour lease ran out but renews one whose run is still going", async () => {
     const start = 10_000;
     addQueueItem({ title: "Stuck", brief_text: "stuck", priority: 1 }, env, start);
     addQueueItem({ title: "Long run", brief_text: "long", priority: 0 }, env, start);
@@ -196,7 +196,7 @@ describe("Trunk job queue pickup", () => {
     const { gateway } = fakeGateway(new Set(["birch"]));
     const later = start + STALE_CLAIM_MS + 1;
 
-    await releaseStaleQueueClaims({ gateway, env, now: () => later });
+    await reapExpiredQueueClaims({ gateway, env, now: () => later });
 
     const listed = listQueueItems(env);
     expect(listed.find((item) => item.title === "Stuck")).toMatchObject({

@@ -42,6 +42,10 @@ export type TrunkQueueConfig = {
   enabled?: boolean;
   /** Trunk ids allowed to take queued jobs. Unset means every builder-* Trunk. */
   agents?: string[];
+  /** Lease length of a claim in ms; run start and end renew it. Default 7200000 (2 hours). */
+  leaseMs?: number;
+  /** Unfinished attempts (failed run or dispatch, expired lease) after which a job goes dead. Default 3. */
+  maxAttempts?: number;
 };
 
 /**

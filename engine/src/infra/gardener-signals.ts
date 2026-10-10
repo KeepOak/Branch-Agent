@@ -145,7 +145,7 @@ function isStaleClaim(item: TrunkQueueItem, now: number): boolean {
 export function staleClaimSignals(items: readonly TrunkQueueItem[], now: number): GardenerSignal[] {
   const signals: GardenerSignal[] = [];
   for (const item of items) {
-    if (item.claim_id === undefined || !isStaleClaim(item, now)) {
+    if (item.lease_token === undefined || !isStaleClaim(item, now)) {
       continue;
     }
     if (item.title.startsWith(GARDENER_TITLE_PREFIX)) {
@@ -153,7 +153,7 @@ export function staleClaimSignals(items: readonly TrunkQueueItem[], now: number)
     }
     const title = quoteData(item.title);
     signals.push({
-      fingerprint: `stale-claim:${item.id}:${item.claim_id}`,
+      fingerprint: `stale-claim:${item.id}:${item.lease_token}`,
       job: {
         title: `Check stale queue claim: ${title}`,
         brief_text: `${title} is claimed by ${quoteData(item.claimed_by ?? "")} with no run activity for ${Math.round(STALE_CLAIM_MS / HOUR)}h. Confirm the Trunk is alive, or release the job. ${DATA_NOTE}`,
