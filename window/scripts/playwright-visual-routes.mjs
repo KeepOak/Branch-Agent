@@ -1,16 +1,23 @@
-// Captures the named screens of the visual harness with real clicks (Playwright, Chromium).
-// Usage: node scripts/playwright-visual-routes.mjs <route> <outDir> [label]
-//   routes: room-menu (a group room's ⋯ conversation menu), stage-preview (the side panel's Preview tab)
-// The harness serves the fixture (group "Design group", portal "Ledger app"). Run the Vite server first:
-//   npx vite --port 5751 --strictPort   and set VISUAL_URL=http://127.0.0.1:5751 (default below).
+// Captures a named screen of the visual harness with real clicks (Playwright, Chromium), and saves a screenshot.
+//
+// Usage (from window/, with the harness served by Vite):
+//   npx vite --port 5751 --strictPort          # serve the harness
+//   VISUAL_URL=http://127.0.0.1:5751 node scripts/playwright-visual-routes.mjs <route> <outDir> [label]
+//
+// Routes (names and descriptions in scripts/visual-routes.mjs):
+//   room-menu      the group room's ⋯ conversation menu
+//   stage-preview  the side panel's Preview tab with the Ledger app portal
+// The fixture (visual-harness.tsx) supplies the group "Design group" and the portal "Ledger app".
+// Writes <outDir>/<route>-<label>.png (label defaults to "current"); pass "before" or "after" for a PR.
+// Add a route by adding a name in visual-routes.mjs and a step below.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
+import { ROUTES } from "./visual-routes.mjs";
 
 const [route, outDir, label = "current"] = process.argv.slice(2);
-const routes = ["room-menu", "stage-preview"];
-if (!routes.includes(route) || !outDir) {
-  console.error(`usage: node scripts/playwright-visual-routes.mjs <${routes.join("|")}> <outDir> [label]`);
+if (!(route in ROUTES) || !outDir) {
+  console.error(`usage: node scripts/playwright-visual-routes.mjs <${Object.keys(ROUTES).join("|")}> <outDir> [label]`);
   process.exit(2);
 }
 const base = process.env.VISUAL_URL ?? "http://127.0.0.1:5751";
