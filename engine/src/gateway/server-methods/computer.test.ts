@@ -232,6 +232,50 @@ describe("Gateway computer RPC", () => {
     expect(owners[2]).toBe(owners[0]);
   });
 
+  it("logs each dispatched action as allowed by the standing grant, with no prompt", async () => {
+    const info = vi.fn();
+    const identity = createIdentity();
+    const dispatch = vi.fn(async () => ({ ok: true }));
+    const context: Partial<GatewayRequestContext> = {
+      logGateway: { info } as unknown as GatewayRequestContext["logGateway"],
+      validateAgentRuntimeApprovalAuthority: (candidate: AgentRuntimeIdentity) =>
+        candidate === identity,
+    };
+    const service = { status: vi.fn(), invoke: dispatch };
+    const click = {
+      ...snapshot,
+      command: "computer.act",
+      params: { action: "left_click", coordinate: [4, 4] },
+      idempotencyKey: "click-one",
+    };
+    const agentRun = createClient(identity);
+    expect(await invoke("computer.invoke", click, service, { client: agentRun, context })).toEqual([
+      true,
+      { payload: { ok: true } },
+    ]);
+    expect(await invoke("computer.invoke", snapshot, service, { context })).toEqual([
+      true,
+      { payload: { ok: true } },
+    ]);
+    const close = {
+      ...snapshot,
+      command: "computer.act",
+      params: { action: "__close_execution", executionId: "execution-one" },
+    };
+    expect(
+      (await invoke("computer.invoke", close, service, { client: agentRun, context }))?.[0],
+    ).toBe(true);
+    expect(dispatch).toHaveBeenCalledTimes(3);
+    expect(info.mock.calls).toEqual([
+      [
+        "computer.invoke allowed by standing grant, no per-action prompt: action=left_click caller=agent-run",
+      ],
+      [
+        "computer.invoke allowed by standing grant, no per-action prompt: action=screen.snapshot caller=operator",
+      ],
+    ]);
+  });
+
   it("rejects a synthetic client without an admitted run", async () => {
     const client = createClient();
     client.internal = { syntheticClient: true };
