@@ -43,8 +43,11 @@ function skillProblem(s: Rec): SkillRow["problem"] {
   return anyMissing || s.eligible === false ? "Not running" : undefined;
 }
 
-/** Human-facing skill names; the engine key stays unchanged. */
+/** Human-facing skill names; the engine key stays unchanged. The one product name is set here, explicitly. */
 function skillLabel(name: string): string {
+  if (name.toLowerCase() === "clawhub") {
+    return "Seedbank";
+  }
   const label = /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(name)
     ? name.replace(/[-_]/g, " ").replace(/^./, (letter) => letter.toUpperCase())
     : name;
