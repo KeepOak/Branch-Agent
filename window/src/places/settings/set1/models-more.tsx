@@ -3,12 +3,12 @@
 // for are greyed with the reason.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { ReactNode } from "react";
-import { list, text, visible } from "../adapter";
+import { text, visible } from "../adapter";
 import { Btn, Ctl, Num, Pick, Sec, Seg, Switch, useLevel, useSaveRunner, type Opt } from "../kit";
 import { modelOpts, refOf, type ModelsCtx } from "./models-data";
 import { FallbackLists, HowTrunksWork, NewConversations, Nicknames } from "./models-defaults";
 import { LocalMore, MediaMore, SecondMore } from "./models-tabs";
-import { Attachments, ConnectionsTechnical, DecisionTechnical, EachModel, HelpersTechnical, HowTurnsRun, PerConnection, PerConnectionMore, Retries } from "./models-tech";
+import { Attachments, ConnectionsTechnical, EachModel, HelpersTechnical, HowTurnsRun, PerConnection, PerConnectionMore, Retries } from "./models-tech";
 
 export const NONE = "Branch has no setting for this yet.";
 const MODEL_CHOICE_ENABLED = ["tools", "modelChoice", "enabled"];
@@ -30,8 +30,7 @@ export function ModelsSections({ m, tab, openSettings }: { m: ModelsCtx; tab: st
     [t && tab === "media", <MediaMore key="media" />],
     [t && tab === "defaults", <ConnectionsTechnical key="conntech" m={m} />],
     [tab === "defaults", <HowTrunksWork key="how" />],
-    [true, <DecisionModels key="decide" m={m} />],
-    [t, <DecisionTechnical key="decidet" />],
+    [true, <WhichModelDoes key="which" m={m} />],
     [t, <Attachments key="attach" m={m} />],
     [t, <HelpersTechnical key="helpers" m={m} />],
     [tab === "defaults", <NewConversations key="new" m={m} />],
@@ -40,8 +39,6 @@ export function ModelsSections({ m, tab, openSettings }: { m: ModelsCtx; tab: st
     [t, <HowTurnsRun key="turns" />],
     [true, <PicturesVideoMusic key="pics" m={m} />],
     [true, <FinishingWell key="finish" />],
-    [true, <PickingModels key="picking" m={m} />],
-    [true, <ModelJobs key="jobs" m={m} />],
     [t, <EachModel key="each" m={m} />],
   ];
   return <>{parts.filter(([on]) => on).map(([, node]) => node)}</>;
@@ -106,22 +103,6 @@ function Mixtures() {
   );
 }
 
-/** Decision models: agents.defaults.decisionModel ("" = none), from the engine's decision model list. */
-function DecisionModels({ m }: { m: ModelsCtx }) {
-  const value = String(m.ownOrShared("decisionModel") ?? "");
-  const opts: Opt[] = [{ id: "", label: "None" }, ...m.decisionModels.map((d) => ({ id: `${text(d.provider)}/${text(d.id)}`, label: visible(d.name) })), ...modelOpts(m.models)];
-  return (
-    <Sec title="Decision models" hint="Use small, fast models for easy judgments." help="Small, fast judgments: yes or no, pick one, a score, or keep-or-drop over a list. Branch uses them to send a message to the right Trunk and to sort the Inbox, so the big model isn’t woken for easy calls.">
-      <Ctl title="Model for decisions" sub="None until you choose one." help="None until you choose one. A model on this computer is free, and nothing leaves.">
-        <Pick label="Model for decisions" value={value} options={opts} onChange={(v) => void m.cfg.set(m.own("decisionModel"), v || null)} />
-      </Ctl>
-      <Ctl title="Send each message to the right Trunk" sub="When you don’t say who, it picks from their jobs." off={NONE}><Switch checked={false} label="Send each message to the right Trunk" onChange={() => undefined} /></Ctl>
-      <Ctl title="Sort the Inbox by urgency" sub="Deadlines and money first." off={NONE}><Switch checked={false} label="Sort the Inbox by urgency" onChange={() => undefined} /></Ctl>
-      <Ctl title="Filter long lists before a Trunk reads them" sub="Mail, files and search results it clearly doesn’t need are dropped." off={NONE}><Switch checked={false} label="Filter long lists before a Trunk reads them" onChange={() => undefined} /></Ctl>
-    </Sec>
-  );
-}
-
 function PicturesVideoMusic({ m }: { m: ModelsCtx }) {
   const media = (kind: string) => refOf(m.cfg.get(m.shared("mediaModels", kind)));
   const auto = [{ id: "", label: "Automatic: the first one that works" }];
@@ -165,45 +146,24 @@ function FinishingWell() {
   );
 }
 
-const PICKING: [string, string, boolean][] = [
-  ["Ask before a costly model", "Switching to a model that costs much more asks first.", true],
-  ["Hide models that learn from what you send", "Some cheap plans train on your messages; they’re left out of every menu.", false],
-  ["Offer newer models", "Once, when a newer model replaces the one you use.", true],
-  ["Warn about models not made for tasks", "A small note when a picked model is weak at using tools.", true],
-];
-function PickingModels({ m }: { m: ModelsCtx }) {
-  const allow = list(m.cfg.get(m.shared("modelPolicy", "allow")) as unknown[]).length;
+/** Which model does what: the choices Branch wires today. Pictures, video and music have their own section above. */
+function WhichModelDoes({ m }: { m: ModelsCtx }) {
+  const value = String(m.ownOrShared("decisionModel") ?? "");
+  const opts: Opt[] = [{ id: "", label: "None" }, ...m.decisionModels.map((d) => ({ id: `${text(d.provider)}/${text(d.id)}`, label: visible(d.name) })), ...modelOpts(m.models)];
   return (
-    <Sec title="Picking models">
-      <Ctl title="Favourite models" sub="Show starred and recent models first." help="Starred models come first in the model menu, with the ones you used last." off={NONE} />
-      <Ctl title="Model setups" sub="Save a mix of model, account and settings." help="A named mix of model, account and settings you can switch to in one go, or hand to a Trunk." off={NONE}><Btn sm>Save the current one</Btn></Ctl>
-      <Ctl title="Model in Auto" sub="Each mode can keep its own model." off={NONE}><Pick label="Model in Auto" value="" options={[{ id: "", label: "Same model" }]} onChange={() => undefined} /></Ctl>
-      <Ctl title="Model in Plan first" off={NONE}><Pick label="Model in Plan first" value="" options={[{ id: "", label: "Same model" }]} onChange={() => undefined} /></Ctl>
-      {PICKING.map(([t, s, on]) => <Ctl key={t} title={t} sub={s} off={NONE}><Switch checked={on} label={t} onChange={() => undefined} /></Ctl>)}
-      <Ctl title="Trunks may switch their own model" sub="A Trunk can change its own model. Without Full access it asks you first." help="A Trunk can change its own model or sign-in. With Full access the change happens straight away; without it you get one approve card, and nothing changes until you allow it.">
-        <Switch checked={m.cfg.get(MODEL_CHOICE_ENABLED) === true} label="Trunks may switch their own model" onChange={(v) => void m.cfg.set(MODEL_CHOICE_ENABLED, v)} />
-      </Ctl>
-      <Ctl title="Where models run" sub={allow ? `Only the ${allow} allowed models can be picked.` : "This computer first falls back to a service when it can’t answer."} off={NONE}>
-        <Seg label="Where models run" value="services" options={[{ id: "services", label: "Services first" }, { id: "local", label: "This computer first" }, { id: "only", label: "Only this computer" }]} onChange={() => undefined} />
-      </Ctl>
-      <Ctl title="Pictures go to a model that sees" sub="Describe pictures for models that cannot see them." help="A model that can’t see pictures gets the words; the picture goes to one that can." off={NONE}><Switch checked label="Pictures go to a model that sees" onChange={() => undefined} /></Ctl>
-      <Ctl title="Each kind of step picks its own model" sub="Use different models for searching, reading and writing." help="Searching, reading and writing can use different models from the one planning." off={NONE}><Switch checked={false} label="Each kind of step picks its own model" onChange={() => undefined} /></Ctl>
-    </Sec>
-  );
-}
-
-function ModelJobs({ m }: { m: ModelsCtx }) {
-  return (
-    <Sec title="Model jobs">
-      <Ctl title="Looking at pictures" sub="Used when the main model can’t see.">
-        <Pick label="Looking at pictures" value={refOf(m.cfg.get(m.shared("imageModel")))} options={[{ id: "", label: "Automatic" }, ...modelOpts(m.models, (x) => x.images)]} onChange={(v) => void m.cfg.set(m.shared("imageModel", "primary"), v || null)} />
-      </Ctl>
-      <Ctl title="Finding things on the screen" sub="For using the computer: a model good at pointing." off={NONE}><Pick label="Finding things on the screen" value="" options={[{ id: "", label: "Automatic" }]} onChange={() => undefined} /></Ctl>
-      <Ctl title="Applying a plan’s edits" sub="One model plans, another writes the changes." off={NONE}><Pick label="Applying a plan’s edits" value="" options={[{ id: "", label: "Same model" }]} onChange={() => undefined} /></Ctl>
-      <Ctl title="Summaries" sub="Keeping long conversations short.">
-        <Pick label="Model for summaries" value={String(m.cfg.get(m.shared("compaction", "model")) ?? "")} options={[{ id: "", label: "Model for smaller jobs" }, ...modelOpts(m.models)]} onChange={(v) => void m.cfg.set(m.shared("compaction", "model"), v || null)} />
-      </Ctl>
-      <Ctl title="Routers" sub="Pick a model for each job based on its strengths." help="A list of models, each with a line about what it’s good at; the router picks one per task." off={NONE}><Btn sm>Add a router</Btn></Ctl>
+    <Sec title="Which model does what">
+            <Ctl title="Model for decisions" sub="None until you choose one." help="None until you choose one. A model on this computer is free, and nothing leaves.">
+              <Pick label="Model for decisions" value={value} options={opts} onChange={(v) => void m.cfg.set(m.own("decisionModel"), v || null)} />
+            </Ctl>
+            <Ctl title="Looking at pictures" sub="Used when the main model can’t see.">
+              <Pick label="Looking at pictures" value={refOf(m.cfg.get(m.shared("imageModel")))} options={[{ id: "", label: "Automatic" }, ...modelOpts(m.models, (x) => x.images)]} onChange={(v) => void m.cfg.set(m.shared("imageModel", "primary"), v || null)} />
+            </Ctl>
+            <Ctl title="Summaries" sub="Keeping long conversations short.">
+              <Pick label="Model for summaries" value={String(m.cfg.get(m.shared("compaction", "model")) ?? "")} options={[{ id: "", label: "Model for smaller jobs" }, ...modelOpts(m.models)]} onChange={(v) => void m.cfg.set(m.shared("compaction", "model"), v || null)} />
+            </Ctl>
+            <Ctl title="Trunks may switch their own model" sub="A Trunk can change its own model. Without Full access it asks you first." help="A Trunk can change its own model or sign-in. With Full access the change happens straight away; without it you get one approve card, and nothing changes until you allow it.">
+              <Switch checked={m.cfg.get(MODEL_CHOICE_ENABLED) === true} label="Trunks may switch their own model" onChange={(v) => void m.cfg.set(MODEL_CHOICE_ENABLED, v)} />
+            </Ctl>
     </Sec>
   );
 }

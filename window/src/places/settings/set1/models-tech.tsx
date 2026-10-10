@@ -48,15 +48,6 @@ export function ConnectionsTechnical({ m }: { m: ModelsCtx }) {
   );
 }
 
-export function DecisionTechnical() {
-  return (
-    <Sec title="Decision models, technical" showHeading={false} group="Decision models">
-      <Ctl title="Ask the big model when it’s less sure than" sub="Below this, the task’s own model decides instead." off={NONE}><Num label="Ask the big model when it’s less sure than" value={undefined} placeholder="0.75" unit="sure" onCommit={() => undefined} /></Ctl>
-      <Ctl title="Longest list it filters at once" sub="Longer lists are split." off={NONE}><Num label="Longest list it filters at once" value={undefined} placeholder="400" unit="lines" onCommit={() => undefined} /></Ctl>
-    </Sec>
-  );
-}
-
 export function Attachments({ m }: { m: ModelsCtx }) {
   return (
     <Sec title="Attachments">
