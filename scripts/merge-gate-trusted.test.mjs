@@ -2664,3 +2664,29 @@ test('a skipped feature-batch job is missing, not a pass, when its paths changed
   });
   assert.equal(passed.filter((item) => item.includes('feature-batch-checks.yml')).length, 0);
 });
+
+test('fetchFileText fails closed on a non-404 read instead of treating main as an empty file', () => {
+  const rateLimited = Object.assign(new Error('gh: API rate limit exceeded (HTTP 403)'), { httpStatus: 403 });
+  assert.throws(() => gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/x.mjs', () => {
+    throw rateLimited;
+  }), /rate limit/);
+  const serverError = Object.assign(new Error('gh: Server Error (HTTP 502)'), { httpStatus: 502 });
+  assert.throws(() => gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/x.mjs', () => {
+    throw serverError;
+  }), /Server Error/);
+});
+
+test('fetchFileText returns null only for a 404, the file being absent at that ref', () => {
+  const notFound = Object.assign(new Error('gh: Not Found (HTTP 404)'), { httpStatus: 404 });
+  assert.equal(gate.fetchFileText('example/repo', 'fork0', 'unused', 'scripts/x.mjs', () => {
+    throw notFound;
+  }), null);
+  const textOnly = new Error('gh: Not Found (HTTP 404)');
+  assert.equal(gate.fetchFileText('example/repo', 'fork0', 'unused', 'scripts/x.mjs', () => {
+    throw textOnly;
+  }), null);
+  const content = Buffer.from('keep\n').toString('base64');
+  assert.equal(gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/x.mjs', () => ({
+    content, encoding: 'base64',
+  })), 'keep\n');
+});
