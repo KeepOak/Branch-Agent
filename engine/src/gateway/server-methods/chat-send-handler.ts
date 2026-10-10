@@ -47,6 +47,7 @@ import {
   prepareChatSendAttachments,
 } from "./chat-send-attachments.js";
 import { handleChatSendSetupError } from "./chat-send-dispatch-errors.js";
+import { resolveChatSendDisposition } from "./chat-send-disposition.js";
 import type { ChatSendExternalAuthorityAdmission } from "./chat-send-external-authority-contract.js";
 import {
   createChatSendMessageInjectionStarter,
@@ -124,6 +125,7 @@ async function handleChatSendWithOptions(
     interruptedActiveRun,
     lifecycleGeneration,
     messageInjectionTarget,
+    queuedBehindActiveRun,
     restartSafeAdmission,
   } = admission;
   const preparedAttachments = await prepareChatSendAttachments({
@@ -345,10 +347,23 @@ async function handleChatSendWithOptions(
       if (userTurnRecorder.isPendingInputConsumed?.()) {
         admission.cleanupAdmittedRun();
         clearAgentRunContext(clientRunId, lifecycleGeneration);
-        respond(true, { runId: clientRunId, status: "ok" }, undefined, {
-          cached: true,
-          runId: clientRunId,
-        });
+        const consumedInjection = messageInjectionTarget
+          ? { targetRunId: messageInjectionTarget.runId }
+          : undefined;
+        respond(
+          true,
+          {
+            runId: clientRunId,
+            status: "ok",
+            ...resolveChatSendDisposition({
+              injection: consumedInjection,
+              target: messageInjectionTarget,
+              queuedBehindActiveRun,
+            }),
+          },
+          undefined,
+          { cached: true, runId: clientRunId },
+        );
         return;
       }
       if (!staged) {
@@ -568,10 +583,16 @@ async function handleChatSendWithOptions(
     traceRunStep(clientRunId, "accept", { agent: selectedAgent.agentId });
     // Only the recorder can attest transcript placement; custody and a started ACK cannot.
     const receipt = userTurnRecorder.getAdmissionReceipt?.();
+    const disposition = resolveChatSendDisposition({
+      injection: messageInjectionAttempt,
+      target: messageInjectionTarget,
+      queuedBehindActiveRun,
+    });
     const ackPayload = {
       ...goalResult,
       runId: clientRunId,
       status: "started" as const,
+      ...disposition,
       ...(receipt ? { messageSeq: receipt.activeMessagePosition + 1 } : {}),
       ...(interruptedActiveRun ? { interruptedActiveRun: true } : {}),
       ...(serverTiming ? { serverTiming } : {}),
