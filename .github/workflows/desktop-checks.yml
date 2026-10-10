@@ -72,6 +72,10 @@ jobs:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
           NODE_OPTIONS: '--max-old-space-size=96'
         run: node --max-old-space-size=96 --test scripts/auto-apply-update.test.mjs scripts/available-memory.test.mjs scripts/component-update-ipc.test.mjs scripts/component-update.test.mjs scripts/desktop-controls.test.mjs scripts/desktop-update.test.mjs scripts/gateway-ready.test.mjs scripts/gateway-supervisor.test.mjs scripts/hidden-processes.test.mjs scripts/mac-computer-driver.test.mjs scripts/profile-migration.test.mjs scripts/resident-window.test.mjs scripts/restart-engine.test.mjs scripts/update-lock.test.mjs scripts/window-state.test.mjs
+      - name: Check the engine outlives the UI and the next launch attaches to it
+        env:
+          BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
+        run: node --test scripts/engine-spawn.test.mjs scripts/engine-survival.test.mjs scripts/engine-attach.test.mjs
       - name: Check component release archive scale
         working-directory: ${{ github.workspace }}
         env:
