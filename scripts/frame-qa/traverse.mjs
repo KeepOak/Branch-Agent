@@ -9,6 +9,7 @@
 //   overlayState()             -> string fingerprint of the open menu or dialog, or null
 //   escape()                   press Escape and report whether the overlay is still open
 //   endRoot(root)              close the root's context and keep its artifacts
+//   recover(root, reason)      optional: reopen the root after a crashed page; the walk continues
 
 const REGION_ORDER = ['overlay', 'screen', 'nav', 'sidebar', 'chrome'];
 const GLOBAL_REGIONS = new Set(['chrome', 'sidebar', 'nav']);
@@ -86,8 +87,26 @@ export async function traverse({ roots, adapter, graph = new VisitedGraph(), max
   const expired = () => now() > deadlineMs;
   const rec = (node) => { graph.add(node); onNode(node); return node; };
 
+  /**
+   * A crashed page is recovered by reopening the root. Returns false when the reopen itself throws,
+   * so the walk records a second crash and goes on with the next control.
+   */
+  async function recoverFrom(node, error) {
+    if (!adapter.recover) return false;
+    try {
+      await adapter.recover(node.root, String(error && error.message ? error.message : error));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function restoreBase(node) {
-    if ((await adapter.signature()) !== node.signature) await adapter.replay(node.root, node.path);
+    try {
+      if ((await adapter.signature()) !== node.signature) await adapter.replay(node.root, node.path);
+    } catch (error) {
+      await recoverFrom(node, error);
+    }
   }
 
   async function exploreControl(node, control) {
@@ -97,7 +116,13 @@ export async function traverse({ roots, adapter, graph = new VisitedGraph(), max
     const reason = adapter.skipReason(control) || (control.selected ? 'already-selected' : null);
     if (reason) return Object.assign(entry, { status: 'skipped', reason });
     await restoreBase(node);
-    const obs = await adapter.act(control);
+    let obs;
+    try {
+      obs = await adapter.act(control);
+    } catch (error) {
+      const recovered = await recoverFrom(node, error);
+      return Object.assign(entry, { status: 'flag', problems: recovered ? ['browser-crash'] : ['browser-crash', 'recover-failed'] });
+    }
     Object.assign(entry, { observation: obs, problems: obs.problems, status: obs.dead ? 'dead-end' : obs.problems.length ? 'flag' : 'pass' });
     if (obs.navigated) graph.link(id, `route:${obs.route}`, 'navigate');
     if (obs.opensOverlay) await descend(node, control, id, entry);

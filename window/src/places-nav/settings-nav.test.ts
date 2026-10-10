@@ -17,6 +17,11 @@ describe("settings nav", () => {
     }
     expect(searchSettings("achievements", [])).toEqual([]);
   });
+  it("hides Achievements until it counts real achievements", () => {
+    const ids = (l: "regular" | "advanced" | "technical") => settingsGroups(l).flatMap((g) => g.pages.map((p) => p.id));
+    expect(ids("technical")).not.toContain("achievements");
+    expect(pageAtLevel("achievements", "technical")).toBe("general");
+  });
   it("a level drop moves a hidden page to General", () => {
     expect(pageAtLevel("developer", "advanced")).toBe("general");
     expect(pageAtLevel("advanced", "regular")).toBe("general");
