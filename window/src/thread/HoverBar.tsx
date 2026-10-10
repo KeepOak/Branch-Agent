@@ -26,16 +26,8 @@ export type HoverActions = {
   read?: Act & { reading: boolean };
 };
 
-/** Reasons for the controls this engine has no method for (listed in the ledger's "Engine gaps"). */
-export const NO_FLAG = "You can't flag replies here yet.";
-export const NO_PIN = "You can't pin one message here yet.";
+/** Why "Leave out of context" is off when this message has no engine id. */
 export const NO_LEAVE_OUT = "You can't leave a message out of context here yet.";
-export const NO_GOOD = "Reply feedback isn't available here yet.";
-export const NO_BAD = NO_GOOD;
-export const NO_COMPARE = "Asking another model from this reply isn't available here yet.";
-export const NO_PICTURE = "Sharing a message as a picture isn't available here yet.";
-export const NO_CODING_APP = "This action needs the Branch desktop app.";
-export const NO_DELETE = "You can't delete one message here yet.";
 
 const QUICK = ["👍", "❤️", "🎉", "👀", "🚀", "😂"];
 
@@ -106,7 +98,6 @@ function MoreMenu({ actions, isReply, onClose, anchor }: { actions: HoverActions
       {!isReply ? item("Edit", actions.edit ?? null) : item("Try again", actions.retry ?? null)}
       {item("Branch from here", actions.branch)}
       {actions.startConversation ? item("Start a conversation from here", actions.startConversation) : null}
-      {isReply ? item("Ask another model", null, NO_COMPARE) : null}
       {/* Inspect and Feedback hold only reply actions: on your own message the groups go, not just their items. */}
       {isReply ? (
         <>
@@ -119,21 +110,6 @@ function MoreMenu({ actions, isReply, onClose, anchor }: { actions: HoverActions
       <hr className="msep" />
       <div className="pop-head">Context</div>
       {item(actions.context?.excluded ? "Put back in context" : "Leave out of context", actions.context ?? null, actions.context ? undefined : NO_LEAVE_OUT)}
-      {isReply ? (
-        <>
-          <hr className="msep" />
-          <div className="pop-head">Feedback</div>
-          {item("Good reply", null, NO_GOOD)}
-          {item("Bad reply", null, NO_BAD)}
-          {item("Flag", null, NO_FLAG)}
-        </>
-      ) : null}
-      <hr className="msep" />
-      <div className="pop-head">Share</div>
-      {item("As a picture", null, NO_PICTURE)}
-      {item("To a coding app", null, NO_CODING_APP)}
-      <hr className="msep" />
-      {item("Delete", null, NO_DELETE)}
     </Popover>
   );
 }
@@ -150,7 +126,6 @@ export function HoverBar({ isReply, actions, meta }: { isReply: boolean; actions
       <Btn label="Copy" d={ICONS.copy} act={actions.copy} />
       <Btn label="Reply" d={ICONS.reply} act={actions.reply} />
       <Btn label="React" d={ICONS.react} act={{ run: () => setMenu("react"), disabled: actions.reactDisabled }} />
-      <Btn label="Pin" d={ICONS.pin} act={{ run: () => undefined, disabled: NO_PIN }} />
       <Btn label="More" d={ICONS.more} act={{ run: () => setMenu("more"), disabled: null }} />
       {time ? (
         <span className="hb-time" title={meta?.timestamp ? fullTime(meta.timestamp) : undefined} aria-label={model ? `Sent at ${time} by ${model}` : `Sent at ${time}`}>

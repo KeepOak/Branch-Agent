@@ -35,19 +35,18 @@ async function mount(isReply: boolean) {
 }
 
 describe("P54 message toolbar", () => {
-  it.each([true, false])("shows only five direct actions for isReply=%s", async (isReply) => {
+  it.each([true, false])("shows four direct actions and no greyed Pin for isReply=%s", async (isReply) => {
     const { host } = await mount(isReply);
     expect([...host.querySelectorAll<HTMLButtonElement>(".hb-btn")].map((b) => b.getAttribute("aria-label")))
-      .toEqual(["Copy", "Reply", "React", "Pin", "More"]);
-    expect(host.querySelector<HTMLButtonElement>('[aria-label="Pin"]')?.disabled).toBe(true);
+      .toEqual(["Copy", "Reply", "React", "More"]);
   });
 
   it("groups reply actions under More and keeps working actions wired", async () => {
     const { host, run } = await mount(true);
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More"]')?.click());
-    expect([...document.body.querySelectorAll(".pop-head")].map((x) => x.textContent)).toEqual(["Reply tools", "Inspect", "Context", "Feedback", "Share"]);
+    expect([...document.body.querySelectorAll(".pop-head")].map((x) => x.textContent)).toEqual(["Reply tools", "Inspect", "Context"]);
     const labels = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].map((x) => x.textContent);
-    expect(labels).toEqual(["Try again", "Branch from here", "Ask another model", "Every step behind this reply", "Read aloud", "Leave out of context", "Good reply", "Bad reply", "Flag", "As a picture", "To a coding app", "Delete"]);
+    expect(labels).toEqual(["Try again", "Branch from here", "Every step behind this reply", "Read aloud", "Leave out of context"]);
     await act(async () => document.body.querySelector<HTMLButtonElement>('[role="menuitem"]')?.click());
     expect(run).toHaveBeenCalledOnce();
   });
@@ -55,29 +54,28 @@ describe("P54 message toolbar", () => {
   it("leaves out groups with nothing for your own message (no empty Inspect or Feedback heading)", async () => {
     const { host } = await mount(false);
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More"]')?.click());
-    expect([...document.body.querySelectorAll(".pop-head")].map((x) => x.textContent)).toEqual(["Reply tools", "Context", "Share"]);
-    expect(document.body.querySelectorAll(".msep")).toHaveLength(3);
+    expect([...document.body.querySelectorAll(".pop-head")].map((x) => x.textContent)).toEqual(["Reply tools", "Context"]);
+    expect(document.body.querySelectorAll(".msep")).toHaveLength(1);
   });
 
   it("moves Edit into the user-message menu", async () => {
     const { host, run } = await mount(false);
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More"]')?.click());
     expect(document.body.querySelector<HTMLButtonElement>('[role="menuitem"]')?.textContent).toBe("Edit");
-    expect([...document.body.querySelectorAll(".pop-head")].map((x) => x.textContent)).toEqual(["Reply tools", "Context", "Share"]);
+    expect([...document.body.querySelectorAll(".pop-head")].map((x) => x.textContent)).toEqual(["Reply tools", "Context"]);
     await act(async () => document.body.querySelector<HTMLButtonElement>('[role="menuitem"]')?.click());
     expect(run).toHaveBeenCalledOnce();
   });
 
-  it("runs the context action and gives disabled actions a plain reason", async () => {
+  it("runs the context action from More", async () => {
     const { host, run } = await mount(true);
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More"]')?.click());
     const context = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => b.textContent === "Leave out of context");
     await act(async () => context?.click());
     expect(run).toHaveBeenCalledOnce();
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More"]')?.click());
-    const disabled = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => b.textContent === "Good reply");
-    expect(disabled?.getAttribute("aria-disabled")).toBe("true");
-    expect(disabled?.title).toBe("Reply feedback isn't available here yet.");
+    const put = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => b.textContent === "Leave out of context");
+    expect(put?.getAttribute("aria-disabled")).toBe("false");
   });
 
   it("keeps the More menu inside the viewport near its lower edge", async () => {
