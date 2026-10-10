@@ -1,9 +1,9 @@
 // Room rules (DESIGN-SPEC §4.2.4 "Room rules", the preview's rr17c popover), drawn as a glass menu:
-// "Who answers": "A lead Trunk decides", "Everyone, every time", "Only those you @mention"; then "How the Trunks work
-// together here". In a Branch group, lead calls rooms.rule.set; Everyone and @mention stay greyed until rooms.send
-// starts every enabled member or the mentioned members instead of always the lead. In a chat-app group,
-// Everyone and @mention set the engine's groupActivation ("always" / "mention"); lead stays greyed. The
-// working-together patterns have no engine method yet and stay greyed with the reason. A participant room that is
+// "Who answers": "A lead Trunk decides", "Everyone, every time", "Only those you @mention". In a Branch group, lead
+// calls rooms.rule.set; Everyone and @mention stay greyed until rooms.send starts every enabled member or the
+// mentioned members instead of always the lead. In a chat-app group, Everyone and @mention set the engine's
+// groupActivation ("always" / "mention"); lead stays greyed. The working-together section was removed: it had no
+// engine method and every row was greyed. A participant room that is
 // neither a Branch group nor a chat-app group keeps Who answers greyed: lead has no method there, and Everyone /
 // @mention only write groupActivation on chat-app sessions.
 import type { MenuItem } from "../shell/Menu";
