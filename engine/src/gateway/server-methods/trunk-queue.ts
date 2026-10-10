@@ -62,8 +62,11 @@ export async function onTrunkRunLifecycle(params: {
 }
 
 /** Trunks eligible for queued work that are past startup: a Trunk still preparing cannot answer a session query. */
-async function readyEligibleAgentIds(cfg: BranchConfig | undefined): Promise<string[]> {
-  const rows = rec(await localGateway.request("agents.list", {})).agents;
+async function readyEligibleAgentIds(
+  gateway: TrunkQueueGateway,
+  cfg: BranchConfig | undefined,
+): Promise<string[]> {
+  const rows = rec(await gateway.request("agents.list", {})).agents;
   return (Array.isArray(rows) ? rows.map(rec) : [])
     .filter((row) => !isTrunkStartupPending(row))
     .map((row) => text(row.id))
@@ -73,7 +76,7 @@ async function readyEligibleAgentIds(cfg: BranchConfig | undefined): Promise<str
 /** Gives the top queued job to each idle eligible Trunk, after a card is added or put back. */
 function wakeEligibleTrunks(cfg: BranchConfig | undefined, log: (message: string) => void): void {
   void (async () => {
-    const agentIds = await readyEligibleAgentIds(cfg);
+    const agentIds = await readyEligibleAgentIds(localGateway, cfg);
     await wakeIdleTrunks({ agentIds, gateway: localGateway });
   })().catch((error: unknown) => log(`trunk queue wake failed: ${String(error)}`));
 }
@@ -81,23 +84,55 @@ function wakeEligibleTrunks(cfg: BranchConfig | undefined, log: (message: string
 /** How often the gateway reconciles the queue, so an idle Trunk takes a job without a run end or a nudge. */
 export const TRUNK_QUEUE_SWEEP_MS = 15_000;
 
+/** The one live sweep in this process, if any. A second start while it runs is a no-op. */
+let activeSweep: { signal: AbortSignal; timer: ReturnType<typeof setInterval> } | undefined;
+
 /**
- * Starts the periodic reconcile for the gateway's life. A pass that fails (a Trunk still starting, say) is logged
- * and the next pass retries.
+ * Starts the periodic reconcile for this process. Idempotent: while a sweep is running, further starts do nothing,
+ * so overlapping gateway starts never run two sweeps. The sweep stops on abort and a later start may begin again.
+ * A pass that fails (a Trunk still starting, say) is logged, and the next pass retries. A pass never overlaps the
+ * one before it. Returns whether this call started a sweep.
  */
 export function startTrunkQueueSweep(params: {
   getConfig: () => BranchConfig | undefined;
   log: (message: string) => void;
   signal: AbortSignal;
-}): void {
+  gateway?: TrunkQueueGateway;
+  intervalMs?: number;
+}): boolean {
+  if (params.signal.aborted || (activeSweep && !activeSweep.signal.aborted)) {
+    return false;
+  }
+  const gateway = params.gateway ?? localGateway;
+  let passRunning = false;
   const timer = setInterval(() => {
+    if (passRunning) {
+      return;
+    }
+    passRunning = true;
     void reconcileTrunkQueue({
-      gateway: localGateway,
-      agentIds: () => readyEligibleAgentIds(params.getConfig()),
-    }).catch((error: unknown) => params.log(`trunk queue sweep failed: ${String(error)}`));
-  }, TRUNK_QUEUE_SWEEP_MS);
+      gateway,
+      agentIds: () => readyEligibleAgentIds(gateway, params.getConfig()),
+    })
+      .catch((error: unknown) => params.log(`trunk queue sweep failed: ${String(error)}`))
+      .finally(() => {
+        passRunning = false;
+      });
+  }, params.intervalMs ?? TRUNK_QUEUE_SWEEP_MS);
   timer.unref();
-  params.signal.addEventListener("abort", () => clearInterval(timer), { once: true });
+  const sweep = { signal: params.signal, timer };
+  activeSweep = sweep;
+  params.signal.addEventListener(
+    "abort",
+    () => {
+      clearInterval(timer);
+      if (activeSweep === sweep) {
+        activeSweep = undefined;
+      }
+    },
+    { once: true },
+  );
+  return true;
 }
 
 export const trunkQueueHandlers: GatewayRequestHandlers = {

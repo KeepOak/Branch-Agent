@@ -312,6 +312,17 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
     await vi.waitFor(() => expect(requestsWith("demo-finished-brief")).toHaveLength(1), {
       timeout: RUN_WAIT_MS,
     });
+    // The key stored on the claim is the session key the gateway reports for its run, so the run's end matches it.
+    const storedThread = (await list()).find((item) => item.id === job.item.id)?.thread_key;
+    const sessionKeys = (
+      await client().request<{ sessions: Array<{ key: string }> }>("sessions.list", {
+        agentId: "builder-birch",
+        limit: 200,
+      })
+    ).sessions.map((session) => session.key);
+    expect(storedThread).toBeDefined();
+    expect(sessionKeys).toContain(storedThread);
+
     await waitIdle("builder-birch");
 
     // The clean end closes the claim: the job is done, so a release has nothing to put back.
