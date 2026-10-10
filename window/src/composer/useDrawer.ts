@@ -128,5 +128,5 @@ export function useDrawer(engine: WindowEngine | undefined, trunks: Trunk[], lev
     },
     [cat, trunks, levels, current],
   );
-  return { view, commands: cat.commands, peopleError: cat.peopleError, loadPeople: cat.loadPeople };
+  return { view, commands: cat.commands, skills: cat.skills, peopleError: cat.peopleError, loadPeople: cat.loadPeople };
 }
