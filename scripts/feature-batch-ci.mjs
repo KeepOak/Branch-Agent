@@ -75,7 +75,6 @@ async function prepareBuildArtifacts() {
 
 async function featureTestEnv(scratch) {
   const env = { ...process.env, BRANCH_TEST_ARTIFACT_DIR: path.join(scratch, 'fixtures'),
-    NODE_COMPILE_CACHE: path.join(scratch, 'node-compile'),
     BRANCH_BROWSER_SNAPSHOT_E2E: process.platform === 'linux' ? '1' : '0' };
   if (process.platform === 'linux' || process.platform === 'win32') {
     env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = await hostedChrome();
@@ -113,12 +112,18 @@ async function runFeatureTests(scratch) {
     console.log(`${lane}: ${tests.length} named test files in shard ${shard.index + 1}/${shard.total}`);
     const browserTests = lane === 'engine' ? tests.filter(file => file.endsWith('.browser.test.ts')) : [];
     const regularTests = tests.filter(file => !browserTests.includes(file));
-    if (regularTests.length) {
-      // Engine workers need the repository owner's compiled subprocess graph.
-      const runner = lane === 'engine' ? path.join(engineRoot, 'scripts/run-vitest.mjs')
-        : path.join(root, 'node_modules/vitest/vitest.mjs');
-      await run(process.execPath, [runner,
-        'run', '--config', config, ...regularTests], root, env);
+    const nativeWorkerTests = lane === 'engine'
+      ? regularTests.filter(file => file === 'src/cli/update-cli.git-service.test.ts') : [];
+    const directTests = regularTests.filter(file => !nativeWorkerTests.includes(file));
+    if (nativeWorkerTests.length) {
+      // Keep this native-worker consumer under the repository's compiled-code owner.
+      await run(process.execPath, [path.join(engineRoot, 'scripts/run-vitest.mjs'),
+        'run', '--config', config, ...nativeWorkerTests], root,
+        { ...env, NODE_COMPILE_CACHE: path.join(scratch, 'node-compile') });
+    }
+    if (directTests.length) {
+      await run(process.execPath, [path.join(root, 'node_modules/vitest/vitest.mjs'),
+        'run', '--config', config, ...directTests], root, env);
     }
     if (browserTests.length) {
       if (process.platform !== 'linux') {

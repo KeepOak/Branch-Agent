@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { EventEmitter } from "node:events";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
@@ -17,6 +18,7 @@ import * as updateTempRoot from "../infra/tmp-branch-dir.js";
 import * as handoffDatabase from "../infra/update-managed-service-handoff-database.js";
 import type { UpdateRunResult } from "../infra/update-runner-types.js";
 import * as windowsPrivateDirectory from "../infra/windows-private-directory.js";
+import { closeDefaultRetainedNativeWorkerSource } from "../infra/worker-native-lifecycle.js";
 import * as spawnBrokerHost from "../process/spawn-broker/host.js";
 import { BRANCH_AGENT_SCHEMA_VERSION } from "../state/branch-agent-db-contract.js";
 import { BRANCH_STATE_SCHEMA_VERSION } from "../state/branch-state-db-contract.js";
@@ -132,20 +134,40 @@ function withUpdateCliHostPlatform<T>(run: () => T): T {
   }
 }
 
+const hostPlatformContext = new AsyncLocalStorage<boolean>();
+let hostPlatformUsers = 0;
+let servicePlatformDescriptor: PropertyDescriptor | undefined;
+
 async function withUpdateCliHostPlatformAsync<T>(run: () => Promise<T>): Promise<T> {
-  const descriptor = expectDefined(
-    Object.getOwnPropertyDescriptor(process, "platform"),
-    "host platform descriptor",
-  );
-  Object.defineProperty(process, "platform", {
-    configurable: true,
-    enumerable: descriptor.enumerable,
-    value: sqliteHostPlatform,
-  });
+  if (hostPlatformUsers === 0) {
+    const descriptor = expectDefined(
+      Object.getOwnPropertyDescriptor(process, "platform"),
+      "host platform descriptor",
+    );
+    servicePlatformDescriptor = descriptor;
+    // Real filesystem work can yield while service inspection is still running.
+    // Only its async context sees the host; sibling service work keeps its double.
+    Object.defineProperty(process, "platform", {
+      configurable: true,
+      enumerable: descriptor.enumerable,
+      get: () =>
+        hostPlatformContext.getStore()
+          ? sqliteHostPlatform
+          : (descriptor.get?.call(process) ?? descriptor.value),
+    });
+  }
+  hostPlatformUsers++;
   try {
-    return await run();
+    return await hostPlatformContext.run(true, run);
   } finally {
-    Object.defineProperty(process, "platform", descriptor);
+    if (--hostPlatformUsers === 0) {
+      Object.defineProperty(
+        process,
+        "platform",
+        expectDefined(servicePlatformDescriptor, "service platform descriptor"),
+      );
+      servicePlatformDescriptor = undefined;
+    }
   }
 }
 
@@ -523,6 +545,8 @@ export function registerUpdateCliLifecycle(fixture: UpdateCliLifecycleFixture): 
     // Relocated stores can retain workers whose coordinator lives in this temporary home.
     await closeBranchStateDatabaseAsync();
     closeBranchStateDatabaseForTest();
+    // The lifetime broker can retain its checkout cwd after the SQLite store closes.
+    await closeDefaultRetainedNativeWorkerSource();
     try {
       await tempHome?.restore();
     } catch (error) {
