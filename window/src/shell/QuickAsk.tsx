@@ -1,6 +1,5 @@
 // Quick ask (DESIGN-SPEC §4.1.4): a box near the top of the window. It sends the question to a new conversation with
-// the Trunk picked under To. Enter sends, Escape closes; an empty box says so. "Have Branch make a Trunk" is
-// places/trunk's TrunkStudio.
+// the Trunk picked under To. Enter sends, Escape closes; an empty box says so.
 import { useState } from "react";
 import type { Trunk } from "./engine-data";
 import { notify } from "./notify";

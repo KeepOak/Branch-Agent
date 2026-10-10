@@ -37,10 +37,11 @@ type Props = {
   onBack?: () => void;
   onForward?: () => void;
   onCharacter?: () => void;
-  onGuide?: (event: MouseEvent<HTMLElement>) => void;
+  /** The one Help button (audit DA-08): opens the Help menu. */
+  onHelp?: (event: MouseEvent<HTMLElement>) => void;
   conversationTools?: ReactNode;
-  /** On a place or Settings page: "Ask <default Trunk>", which shows that Trunk beside the page (§3.3). */
-  ask?: { name: string; open: boolean; onToggle: () => void; help?: boolean } | null;
+  /** On a place page: "Ask <default Trunk>", which shows that Trunk beside the page (§3.3). */
+  ask?: { name: string; open: boolean; onToggle: () => void } | null;
   /** On a place page: the gear at the start of the header half, which opens Settings (the preview's placeHead). */
   onSettings?: () => void;
 };
@@ -178,7 +179,7 @@ export function useHeaderTint(header: Pick<HeaderInfo, "colour" | "trunkName" | 
 }
 
 /** The merged 52 px top bar (DESIGN-SPEC §3.2): the machine switcher over the sidebar, the conversation header, the global buttons. */
-export function TopBar({ compact, machine, header, dark, listHidden, onToggleList, onBack, onForward, onCharacter, onGuide, conversationTools, ask, onSettings }: Props) {
+export function TopBar({ compact, machine, header, dark, listHidden, onToggleList, onBack, onForward, onCharacter, onHelp, conversationTools, ask, onSettings }: Props) {
   const live = header !== null && !header.room && ["think", "work", "search", "read", "wait"].includes(header.state);
   const tint = useHeaderTint(compact ? null : header);
   // The app's window buttons sit over this bar's top-right; keep their colours and height matched to it.
@@ -215,10 +216,10 @@ export function TopBar({ compact, machine, header, dark, listHidden, onToggleLis
         )}
         <div className="global">
           {header && !compact ? <span className="conv-tools">{conversationTools}</span> : null}
-          {!header && onGuide ? <button type="button" className="ib guide-btn" title="Guide" data-testid="guide" onClick={onGuide}><Icon name="help" small /><span>Guide</span></button> : null}
+          {onHelp ? <button type="button" className="ib help-btn" title="Help" aria-haspopup="menu" data-testid="help" onClick={onHelp}><Icon name="help" small /><span>Help</span></button> : null}
           {ask ? (
-            <button type="button" className="ib talk-btn" aria-label={ask.help ? "Help for this page" : `Ask ${ask.name}`} title={ask.help ? "Help for this page" : `Ask ${ask.name}`} aria-haspopup={ask.help ? "dialog" : undefined} aria-pressed={ask.help ? undefined : ask.open} data-testid="ask-default" onClick={ask.onToggle}>
-              {ask.help ? "?" : <Icon name="ask" small />}
+            <button type="button" className="ib talk-btn" aria-label={`Ask ${ask.name}`} title={`Ask ${ask.name}`} aria-pressed={ask.open} data-testid="ask-default" onClick={ask.onToggle}>
+              <Icon name="chat" small />
             </button>
           ) : null}
           {!compact ? <button

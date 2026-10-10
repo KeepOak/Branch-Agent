@@ -140,12 +140,6 @@ button.tk-prow:disabled:hover { background: none; }
 .tk-defaults .tk-right .inp.num { width: 110px; }
 .tk-defaults .tk-right small { font-size: 12px; color: var(--ink-3); }
 
-/* studio */
-.tk-studio { display: grid; gap: 12px; }
-.tk-studio textarea.inp { width: 100%; min-height: 64px; padding: 8px 10px; resize: vertical; height: auto; font: inherit; font-size: 13px; }
-.tk-say { display: grid; gap: 8px; padding: 12px; border-radius: 12px; background: var(--fill); font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; }
-.tk-say .tk-opts { display: flex; flex-wrap: wrap; gap: 6px; }
-
 @media (max-width: 640px) {
   .tk-editor { grid-template-columns: 1fr; }
   .tk-split { grid-template-columns: 1fr; }
@@ -166,9 +160,6 @@ button.tk-prow:disabled:hover { background: none; }
 .tk-pf .tk-sec { margin-top: 0; }
 /* Its computers: the computers and the two rows below them are bold, as the preview's plain <b> */
 .tk-its .tk-grow b, .tk-its .tk-its-ctl b { font-weight: 700; }
-/* Have Branch make a Trunk: the preview's one-line box (its .inp height) and the hint 14 px under it */
-.tk-studio .tk-field textarea.inp { height: 34px; min-height: 34px; padding: 6px 10px; resize: vertical; }
-.tk-studio-hint { margin-top: 14px; line-height: 1.5; }
 /* Profile: the status line under the name (preview .attnC18) and Pause at the footer's left (.pfPauseC18) */
 .tk-pf-attn { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-ink); font-size: 12px; }
 .tk-pf-attn i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }

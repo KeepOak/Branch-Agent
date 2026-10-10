@@ -1,0 +1,6 @@
+window:src/places/trunk/trunk.test.tsx
+window:src/setup/setup.test.tsx
+window:src/shell/conversation-menu.test.ts
+window:src/shell/help-control.test.tsx
+window:src/shell/help-menu.test.tsx
+window:src/shell/new-menu.test.ts

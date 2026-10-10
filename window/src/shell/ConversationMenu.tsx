@@ -58,7 +58,6 @@ export type ConversationMenuProps = {
   onTheme?: () => void;
   onComputer?: () => void;
   onBrowser?: () => void;
-  onGuide?: () => void;
   onBackToContact?: () => void;
   onConversations?: () => void;
   hasContactReturn?: boolean;
@@ -227,7 +226,6 @@ function useRun(p: ConversationMenuProps, c: RunCtx): ConversationMenuRun {
     theme: () => p.onTheme?.(),
     computer: () => p.onComputer?.(),
     browser: () => p.onBrowser?.(),
-    guide: () => p.onGuide?.(),
     backToContact: () => p.onBackToContact?.(),
     conversations: () => p.onConversations?.(),
   };

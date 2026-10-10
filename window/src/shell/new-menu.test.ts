@@ -7,7 +7,23 @@ import { createTopic, newMenuItems } from "./new-menu";
 
 const context = (newWith: (id: string) => void) => ({
   newWith, trunks: [{ id: "elm", name: "Builder Elm" }, { id: "oak", name: "TK" }], defaultId: "oak",
-  newTrunk: vi.fn(), openPlace: vi.fn(), makeTrunk: vi.fn(), quickAsk: vi.fn(),
+  newTrunk: vi.fn(), fromJob: vi.fn(),
+});
+
+const labels = (items: ReturnType<typeof newMenuItems>) => items.map((entry) => "label" in entry ? entry.label : entry.kind);
+
+describe("the one New menu", () => {
+  it("offers exactly New conversation and New Trunk, and New Trunk asks blank or from a job", () => {
+    const ctx = context(vi.fn());
+    const items = newMenuItems(ctx);
+    expect(labels(items)).toEqual(["New conversation", "New Trunk"]);
+    const trunk = items[1];
+    if (trunk.kind !== "sub") throw new Error("New Trunk should ask how to start");
+    expect(labels(trunk.items)).toEqual(["Blank", "From a job…"]);
+    for (const item of trunk.items) if ("run" in item) item.run();
+    expect(ctx.newTrunk).toHaveBeenCalledOnce();
+    expect(ctx.fromJob).toHaveBeenCalledOnce();
+  });
 });
 
 describe("new conversation drafts", () => {

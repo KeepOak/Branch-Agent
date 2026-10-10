@@ -8,7 +8,6 @@ import { TrunksTab } from "../customize/trunks";
 import { Jobs } from "../customize/jobs";
 import { TrunkEditor } from "./TrunkEditor";
 import { TrunkProfile } from "./TrunkProfile";
-import { TrunkStudio } from "./TrunkStudio";
 import { removeTrunk, updateParams } from "./api";
 import { readMay } from "./may";
 import { LOOKS, creationProblem, lookOf, readConfig } from "./model";
@@ -293,17 +292,6 @@ describe("Trunk profile and studio", () => {
     await click(document.querySelector('[aria-label="Morning on or off"]'));
     expect(request).toHaveBeenCalledWith("cron.update", { id: "j1", patch: { enabled: false } });
     expect(byText("Pause Birch").disabled).toBe(true);
-  });
-  it("asks Branch through branch.chat and shows its reply", async () => {
-    const request = vi.fn(() => Promise.resolve({ sessionId: "s", reply: "Here is my proposal.", action: "none", needsApproval: true }));
-    await mount(<TrunkStudio engine={engine(request)} onClose={() => {}} />);
-    expect(byText("Propose it").disabled).toBe(true);
-    const box = document.querySelector("textarea")!;
-    await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(box, "Watch renewals"); box.dispatchEvent(new Event("input", { bubbles: true })); });
-    await click(byText("Propose it"));
-    expect(request).toHaveBeenCalledWith("branch.chat", expect.objectContaining({ welcomeVariant: "new-agent", message: "Make me a Trunk: Watch renewals" }));
-    expect(document.body.textContent).toContain("Here is my proposal.");
-    expect(byText("Make it")).toBeTruthy();
   });
 });
 

@@ -67,6 +67,7 @@ import { creationProblem, readRoster } from "../places/trunk/model";
 import { COMPOSE_EVENT } from "../composer/Composer";
 import { PairDialog } from "../places/customize/pairing";
 import { guideLinkItems } from "./guide-links";
+import { helpMenuItems } from "./help-menu";
 import { Palette } from "./Palette";
 import { paletteRows } from "./palette-rows";
 import { PersonMenu, usePersonName } from "./PersonMenu";
@@ -126,7 +127,6 @@ import { installedRows, WhatsNew } from "./WhatsNew";
 import { SetupFlow } from "../setup/SetupFlow";
 import { useFirstRun } from "../setup/use-first-run";
 import { useNeedsCount } from "../places/inbox";
-import { TrunkStudio } from "../places/trunk";
 import "./preview.css";
 
 /** The clock for row times; it also ticks just after a "Done" so the header goes back to ready (§4.2.5). */
@@ -158,7 +158,6 @@ type Overlay =
   | { kind: "pair" }
   | { kind: "status"; item: StatusItem; above: Above }
   | { kind: "ask" }
-  | { kind: "studio" }
   | null;
 
 const below = (e: MouseEvent<HTMLElement>): MenuAnchor => {
@@ -990,14 +989,15 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     showMenu(e, id, machineMenuItems({ machineName: machine?.name || readTargetName(url) || "", currentUrl: url, homeUrl, online: ready, level: readLevel(), roundTripMs: gateway.health?.durationMs ?? null, openSettings,
       onLinkBranch: () => setLinkingBranch(true), onSwitch: target => window.dispatchEvent(new CustomEvent("branch:switch-computer", { detail: { url: target } })) }), "Which computer", upward);
   };
-  const guideItems = (): MenuItem[] => [
-    { label: "What’s new", hint: "this version", run: () => setGuide("news"), testid: "guide-news" },
-    { label: "Set up Branch", hint: "3 min", run: () => firstRun.open(0), testid: "guide-setup" },
-    { label: "Take the walkthrough", hint: "2 min", run: () => (setOverlay(null), setGuide("tour")), testid: "guide-tour" },
-    { kind: "sep" },
-    ...guideLinkItems((url) => { window.open(url, "_blank", "noopener"); }),
-    { label: "What Branch can do", run: () => setOverlay({ kind: "cando" }), testid: "guide-cando" },
-  ];
+  const helpItems = (): MenuItem[] => helpMenuItems({
+    pageHelp: route.kind === "settings" ? () => window.dispatchEvent(new Event("branch-settings-help")) : undefined,
+    walkthrough: () => (setOverlay(null), setGuide("tour")),
+    setup: () => firstRun.open(0),
+    news: () => setGuide("news"),
+    canDo: () => setOverlay({ kind: "cando" }),
+    shortcuts: () => setOverlay({ kind: "shortcuts" }),
+    links: guideLinkItems((url) => { window.open(url, "_blank", "noopener"); }),
+  });
   const [, setReminded] = useState(0); // "Remind me tomorrow" redraws the person menu's update line
   const statusItem = (item: StatusItem, e: MouseEvent<HTMLElement>) => {
     if (item === "connection") {
@@ -1212,7 +1212,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     onTheme: () => setTheme(toggleTheme(theme)),
     onComputer: () => setStage("Computer"),
     onBrowser: () => setStage("Browser"),
-    onGuide: () => { const rect = document.querySelector<HTMLElement>("[data-testid=conversation-menu-button]")?.getBoundingClientRect(); setOverlay({ kind: "menu", id: "guide", at: { x: rect?.left ?? 8, y: (rect?.bottom ?? 48) + 4 }, items: guideItems(), label: "Guide" }); },
     hasContactReturn: Boolean(topicReturnKey && (draftTopic || openKey !== topicReturnKey)),
     onBackToContact: () => { if (topicReturnKey) { const key = topicReturnKey; setTopicReturnKey(null); openConversation(key); } },
     hasContactConversations: Boolean(topicContact && !draftTopic),
@@ -1503,9 +1502,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         onBack={() => window.history.back()}
         onForward={() => window.history.forward()}
         onCharacter={() => setCharacterShown((v) => !v)}
-        onGuide={(e) => showMenu(e, "guide", guideItems(), "Guide")}
+        onHelp={(e) => showMenu(e, "help", helpItems(), "Help")}
         conversationTools={conversationTools}
-        ask={route.kind === "settings" ? { name: defaultName, open: false, help: true, onToggle: () => window.dispatchEvent(new Event("branch-settings-help")) } : talkEntry}
+        ask={route.kind === "settings" ? null : talkEntry}
         onSettings={route.kind === "place" ? () => openSettings("general") : undefined}
       />
       <Sidebar
@@ -1584,7 +1583,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           openConversation(key);
         }}
         onNew={(e) => showMenu(e, "new", [
-          ...newMenuItems({ newWith: (id) => startNew(id), trunks: trunks.list, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }),
+          ...newMenuItems({ newWith: (id) => startNew(id), trunks: trunks.list, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), fromJob: () => openPlace("customize") }),
           ...(rail ? [{ kind: "sep" as const }, { label: "Settings", run: () => openSettings("general") }, { label: "Show the full list", hint: "Ctrl B", run: () => { if (topicAutoRail && !layout.rail) setFullListFor(topicContact?.id ?? null); else setLayout({ rail: false }); } }] : []),
         ], "New")}
         onMenu={rowMenu}
@@ -1721,14 +1720,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onClose={() => setOverlay(null)}
           onSettings={() => openSettings("general")}
           onAchievements={() => openSettings("achievements")}
-          onShortcuts={() => setOverlay({ kind: "shortcuts" })}
           onApps={() => setOverlay({ kind: "apps" })}
-          onAbout={() => openSettings("updates")}
-          onGuide={() => {
-            const r = document.querySelector("[data-testid=guide]")?.getBoundingClientRect();
-            setOverlay({ kind: "menu", id: "guide", at: { x: r ? r.left : 8, y: r ? r.bottom + 4 : 48 }, items: guideItems(), label: "Guide" });
-          }}
-          onReplay={() => firstRun.open(0)}
           onAddPerson={() => openSettings("people")}
           onLock={() => openSettings("permissions")}
           updateTo={update?.latest && update.latest !== branchVersion && !remindedToday(update.latest) ? update.latest : null}
@@ -1780,7 +1772,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           }}
         />
       ) : null}
-      {overlay?.kind === "studio" ? <TrunkStudio engine={session.engine} onClose={() => setOverlay(null)} openTrunk={openTrunkProfile} /> : null}
       {lockdown.confirmation}
       {newTrunkRoster ? <NewTrunkPreview roster={newTrunkRoster} busy={makingTrunk} onClose={() => setNewTrunkRoster(null)} onConfirm={(choice) => void confirmNewTrunk(choice)} /> : null}
       {overlay?.kind === "shortcuts" ? <ShortcutsDialog defaultName={defaultName} onClose={() => setOverlay(null)} /> : null}
