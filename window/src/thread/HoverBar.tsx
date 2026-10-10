@@ -9,7 +9,8 @@ import type { MessageMeta } from "./model";
 import { shownWhy } from "../shell/shown-why";
 
 /** An action and why it can't run now (null when it can). */
-export type Act = { run: () => void; disabled: string | null };
+/** `disabled` is the reason the action cannot run now; `waiting` marks a reason that clears when the Trunk finishes. */
+export type Act = { run: () => void; disabled: string | null; waiting?: boolean };
 
 export type HoverActions = {
   copy: Act;
@@ -19,7 +20,7 @@ export type HoverActions = {
   react: (emoji: string, remove?: boolean) => void;
   reactDisabled: string | null;
   inspect?: Act;
-  branch: Act;
+  branch?: Act;
   context?: Act & { excluded: boolean };
   startConversation?: Act;
   /** Read aloud / Stop reading on a reply (§4.2.6). */
@@ -86,12 +87,17 @@ function ReactMenu({ onPick, onClose }: { onPick: (emoji: string) => void; onClo
 /** The More menu lists only the actions that can run now. An unavailable action has no row (not a greyed one), and a
  *  heading goes with its rows, so a message with nothing to do under a heading shows no empty group. */
 function MoreMenu({ actions, isReply, onClose, anchor }: { actions: HoverActions; isReply: boolean; onClose: () => void; anchor: HTMLElement | null }) {
-  const row = (label: string, act: Act | null | undefined) =>
-    act && !act.disabled ? (
-      <button key={label} type="button" className="mi" role="menuitem" onClick={() => { act.run(); onClose(); }}>
+  // A row for an action that can apply to this message stays listed; when it is blocked now, it is disabled with the reason.
+  const row = (label: string, act: Act | null | undefined) => {
+    if (!act) return null;
+    const why = act.disabled ? (act.waiting ? "Available when the Trunk finishes" : act.disabled) : undefined;
+    return (
+      <button key={label} type="button" className="mi" role="menuitem" aria-disabled={Boolean(why)} title={why}
+        onClick={() => { if (why) return; act.run(); onClose(); }}>
         {label}
       </button>
-    ) : null;
+    );
+  };
   const groups: { title: string; rows: (ReactNode)[] }[] = [
     { title: "Reply tools", rows: [isReply ? row("Try again", actions.retry) : row("Edit", actions.edit), row("Branch from here", actions.branch), row("Start a conversation from here", actions.startConversation)] },
     { title: "Inspect", rows: isReply ? [row("Every step behind this reply", actions.inspect), row(actions.read?.reading ? "Stop reading" : "Read aloud", actions.read)] : [] },
