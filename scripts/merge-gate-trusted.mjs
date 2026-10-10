@@ -62,6 +62,7 @@ export const GATE_SCRIPTS = [
   'scripts/priority-capabilities-ci-targets.mjs',
   'scripts/merge-gate-rate-limit.mjs',
   'scripts/merge-gate-rate-limit.test.mjs',
+  'scripts/merge-gate-recheck.mjs',
 ];
 export const PACKAGE_JSON_FILES = [
   'package.json',
