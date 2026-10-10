@@ -56,8 +56,12 @@ const OTHER: [string, string, Lv][] = [
   ["Reading", "Interface font", 1], ["Reading", "Conversation font", 1], ["The pet", "Pet", 0], ["The pet", "Name", 0], ["The pet", "Pets you’ve had", 0],
 ];
 
+/** The page a section's rows belong to: Pet and Layout split off Look. */
+const PAGE_OF: Record<string, string> = { "The pet": "pet", "What’s shown": "layout", "Window": "layout", "The list": "layout" };
+const pageOf = (sec: string) => PAGE_OF[sec.trim()] ?? "appearance";
+
 export const APPEARANCE_ROWS: RowEntry[] = [
-  ...OTHER.map(([sec, title, lv]) => ({ page: "appearance", title, sec, group: sec.replace(/, (more|technical|in depth)$/, ""), lv })),
+  ...OTHER.map(([sec, title, lv]) => ({ page: pageOf(sec), title, sec, group: sec.replace(/, (more|technical|in depth)$/, ""), lv })),
   // Season shows only with "The grove" behind the glass, so search can't land on it.
-  ...ROWS.filter((r) => r.key !== "season").map((r) => ({ page: "appearance", title: r.title, sec: r.sec.trim(), group: r.group ?? r.sec.trim(), lv: r.lv ?? 0 })),
+  ...ROWS.filter((r) => r.key !== "season").map((r) => ({ page: pageOf(r.sec), title: r.title, sec: r.sec.trim(), group: r.group ?? r.sec.trim(), lv: r.lv ?? 0 })),
 ];

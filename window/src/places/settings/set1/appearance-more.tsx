@@ -6,23 +6,20 @@ import { Ctl, Sec, Seg, useLevel } from "../kit";
 import { SpecRow, type Look } from "./appearance-sections";
 import { rowOf, rowsOf } from "./appearance-rows";
 
-type MoreProps = { look: Look };
+/** The Trunk beside the conversation: how its character moves and what it shows (Look). */
+export function CharactersSec({ look }: { look: Look }) {
+  const level = useLevel();
+  if (level < 1) return null;
+  return <Sec title="Characters" group="The Trunk beside the conversation">{rowsOf("Characters").map((r) => <SpecRow key={r.key} r={r} look={look} />)}</Sec>;
+}
 
-export function AppearanceMore({ look }: MoreProps) {
+/** How a contact's threads show and whether working rows show a headline (Layout). */
+export function ListMore({ look }: { look: Look }) {
   const level = useLevel();
   return (
     <>
       <TopicLayoutSec />
-      {level >= 1 ? (
-        <>
-          <Sec title="Characters" group="The Trunk beside the conversation">
-            {rowsOf("Characters").map((r) => <SpecRow key={r.key} r={r} look={look} />)}
-          </Sec>
-          <Sec title="The list" group="Status bar and list">
-            <SpecRow r={rowOf("headlines")} look={look} />
-          </Sec>
-        </>
-      ) : null}
+      {level >= 1 ? <Sec title="The list" group="Status bar and list"><SpecRow r={rowOf("headlines")} look={look} /></Sec> : null}
     </>
   );
 }

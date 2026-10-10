@@ -9,7 +9,7 @@ import { Page, Status, useSaveRunner } from "../kit";
 import { setThemeChoice } from "../../../theme/theme";
 import { ThemeEditor, type EditStart } from "./appearance-editor";
 import { DEFAULT_THEME, SLATE, toPalette, type Pair } from "./appearance-look";
-import { AppearanceMore } from "./appearance-more";
+import { CharactersSec, ListMore } from "./appearance-more";
 import { PetSec } from "./appearance-pet";
 import { AgentsSec, BackgroundSec, ReadingSec, ShownSec, WindowSec, type Look } from "./appearance-sections";
 import { useLook } from "./appearance-store";
@@ -20,6 +20,28 @@ import "./appearance.css";
 export { APPEARANCE_ROWS } from "./appearance-rows";
 
 type Open = { kind: "gallery" } | { kind: "edit"; start: EditStart } | null;
+
+/** Settings › Pet: the companion beside the list (its own page, so the pet menu can open it directly). */
+export function PetPage(props: SettingsPageProps) {
+  const look = useLook(props.engine);
+  return (
+    <Page title={props.title} lede="The little companion on the list. Pick one, name it, or hide it.">
+      <PetSec look={look} openSettings={props.openSettings} />
+    </Page>
+  );
+}
+
+/** Settings › Layout: what the window shows, its tabs, how threads and the list show. */
+export function LayoutPage(props: SettingsPageProps) {
+  const look = useLook(props.engine);
+  return (
+    <Page title={props.title} lede="What the window shows and how its list and threads are laid out.">
+      <ShownSec look={look} />
+      <WindowSec look={look} />
+      <ListMore look={look} />
+    </Page>
+  );
+}
 
 export function AppearancePage(props: SettingsPageProps) {
   const look = useLook(props.engine);
@@ -40,12 +62,9 @@ export function AppearancePage(props: SettingsPageProps) {
       <LightDarkSec engine={props.engine} pair={pair} trunk={trunk.name} profile={profile} />
       <ThemeSec look={look} pair={pair} themes={themes} current={current} mode={mode} onBrowse={() => setOpen({ kind: "gallery" })} onMake={make} />
       <AgentsSec look={look} />
+      <CharactersSec look={look} />
       <BackgroundSec look={look} />
       <ReadingSec look={look} />
-      <PetSec look={look} openSettings={props.openSettings} />
-      <ShownSec look={look} />
-      <WindowSec look={look} />
-      <AppearanceMore look={look} />
       {open?.kind === "gallery" ? (
         <ThemesDialog themes={themes} currentId={currentId} mode={mode} contrast={look.val("contrast", false) === true}
           onContrast={(on) => void look.store.set("contrast", on ? true : null)} onPick={acts.pick} onMake={() => make(false)} onImport={acts.add} onDelete={acts.remove}
