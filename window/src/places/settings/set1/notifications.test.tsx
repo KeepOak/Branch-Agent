@@ -141,6 +141,8 @@ describe("Settings › Notifications", () => {
       expect(host.textContent).not.toContain("This browser");
       expect(host.querySelector('input[aria-label="Notifications on this computer"]')).not.toBeNull();
       expect(sw("Notifications on this computer").checked).toBe(true);
+      expect(host.textContent).toContain("Shows on your phone and other devices.");
+      expect(host.textContent).not.toContain("Shows on this computer and your phone.");
     } finally {
       delete (window as unknown as { branchDesktop?: unknown }).branchDesktop;
       vi.unstubAllGlobals();
