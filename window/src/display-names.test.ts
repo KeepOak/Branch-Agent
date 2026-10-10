@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayName, engineInvocation, invocationName, skillPickText } from "./display-names";
+import { displayName, invocationName } from "./display-names";
 import { visible } from "./places/settings/adapter";
 import { readSkillRows, skillInstallParams } from "./places/customize/skills";
 
@@ -44,45 +44,10 @@ describe("displayName: exact engine identifiers only", () => {
   });
 });
 
-describe("skill invocations", () => {
+describe("skill invocation names", () => {
   it("shows a skill as the lower-case display name, and leaves other names as they are", () => {
     expect(invocationName("clawhub")).toBe("seedbank");
     expect(invocationName("file-receipts")).toBe("file-receipts");
-  });
-
-  it("a pick anywhere in the message runs as the engine key", () => {
-    const typed = `${skillPickText("clawhub")} find invoices`;
-    expect(typed).toContain("/seedbank");
-    expect(engineInvocation(typed, ["clawhub"])).toBe("/clawhub find invoices");
-  });
-
-  it("a pick in the middle of a sentence runs as the engine key", () => {
-    const typed = `before you start, ${skillPickText("clawhub")} now`;
-    expect(engineInvocation(typed, ["clawhub"])).toBe("before you start, /clawhub now");
-  });
-
-  it("a typed leading /seedbank runs as the engine key", () => {
-    expect(engineInvocation("/seedbank summarize this", ["clawhub"])).toBe("/clawhub summarize this");
-    expect(engineInvocation("/seedbank", ["clawhub"])).toBe("/clawhub");
-  });
-
-  it("prose that mentions /seedbank without a pick is sent unchanged", () => {
-    expect(engineInvocation("please use /seedbank now", ["clawhub"])).toBe("please use /seedbank now");
-    expect(engineInvocation("ask the seedbank team", ["clawhub"])).toBe("ask the seedbank team");
-  });
-
-  it("a typed mid-message /seedbank after a pick is prose and stays as written", () => {
-    const typed = `${skillPickText("clawhub")} then tell me about /seedbank`;
-    expect(engineInvocation(typed, ["clawhub"])).toBe("/clawhub then tell me about /seedbank");
-  });
-
-  it("keeps /clawhub working as a hidden alias", () => {
-    expect(engineInvocation("/clawhub summarize this", ["clawhub"])).toBe("/clawhub summarize this");
-  });
-
-  it("never leaves the invisible pick mark in the text the engine receives", () => {
-    const out = engineInvocation(`${skillPickText("clawhub")}⁠ ok`, ["clawhub"]);
-    expect(out).not.toMatch(/⁠/);
   });
 });
 

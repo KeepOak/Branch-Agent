@@ -1,13 +1,14 @@
 // The composer (DESIGN-SPEC §4.3): the message box, +, the plug, the model and mode chips, voice and Send/Stop,
 // the dock row above it and the menus, all wired to the engine through the shared handle (connect/engine.ts).
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
-import { engineInvocation, skillPickText } from "../display-names";
+import { displayName } from "../display-names";
 import { PASTED_TEXT_CHIP_CHARS } from "./attachments";
 import { isPreparationPending, preparationLabel } from "../connect/preparation-status";
 import { DockRow, type Goal } from "./DockRow";
 import { isAdmin, num, rec, str, type SendExtras, type WindowEngine } from "./engine";
 import { Icon, StopMark } from "./icons";
 import { replaceToken } from "./mention";
+import { leadingCommand, newPick, pickText, reconcilePicks, resolveSend, type SkillPick } from "./skill-picks";
 import { isEngineMode, modeName, nextMode, type EngineMode } from "./mode";
 import { composerChipLabel, currentModelRef, currentThinking } from "./model";
 import { ModelMenu } from "./ModelMenu";
@@ -154,13 +155,22 @@ export function Composer(props: Props) {
 
   const levels = current?.levels ?? [];
   const drawer = useDrawer(engine, conv.trunks, levels, useMemo(() => ({ think: thinking }), [thinking]));
+  const [picks, setPicks] = useState<SkillPick[]>([]);
+  const seenText = useRef(draft.text);
+  useEffect(() => {
+    const before = seenText.current;
+    seenText.current = draft.text;
+    if (before !== draft.text) setPicks((current) => reconcilePicks(current, before, draft.text));
+  }, [draft.text]);
   const deliver = useCallback(
     (typed: string, files = draft.files, people = draft.people, queue?: string) => {
-      const text = engineInvocation(typed, drawer.skills);
+      const text = leadingCommand(typed, drawer.skills);
       return onSend(text, buildExtras(text, files, people, queue, props.replyTo));
     },
     [onSend, draft.files, draft.people, props.replyTo, drawer.skills],
   );
+  /** What the engine receives for the draft: picks and a typed leading command resolved, then trimmed. */
+  const outgoing = () => resolveSend(draft.text, picks, drawer.skills).trim();
   const line = useWaitingLine(engine?.sessionKey ?? null, working, Boolean(props.offline), (item, steer) => {
     onSend(item.text, buildExtras(item.text, item.files, [], steer ? "steer" : undefined), item.id);
     if (steer) toast(`Steered ${trunkName}. It picks this up at its next step.`);
@@ -222,15 +232,15 @@ export function Composer(props: Props) {
     }
     if (noModel && plan.kind !== "command") return;
     if (props.draftAgentId) {
-      void Promise.resolve(deliver(draft.text.trim(), draft.files, draft.people)).then((created) => {
+      void Promise.resolve(deliver(outgoing(), draft.files, draft.people)).then((created) => {
         if (created) draft.clear();
       });
       return;
     }
     if (plan.kind === "wait") {
-      line.add(draft.text.trim(), draft.files);
+      line.add(outgoing(), draft.files);
     } else {
-      deliver(draft.text.trim(), draft.files, draft.people, plan.kind === "send" ? plan.queueMode : undefined);
+      deliver(outgoing(), draft.files, draft.people, plan.kind === "send" ? plan.queueMode : undefined);
       if (plan.kind === "send" && plan.queueMode === "steer") toast(`Steered ${trunkName}. It picks this up at its next step.`);
     }
     history.record(draft.text.trim());
@@ -277,8 +287,12 @@ export function Composer(props: Props) {
     let next: { text: string; caret: number };
     if (p.kind === "command") next = { text: `/${p.command.name} `, caret: p.command.name.length + 2 };
     else if (p.kind === "choice") next = { text: `/${p.command.name} ${p.value}`, caret: p.command.name.length + p.value.length + 2 };
-    else next = replaceToken(draft.text, p.token, p.kind === "skill" ? skillPickText(p.name) : `@${p.name}`);
+    else next = replaceToken(draft.text, p.token, p.kind === "skill" ? pickText(p.name) : `@${p.name}`);
     if (p.kind === "person") draft.addPerson({ profileId: p.profileId, name: p.name });
+    if (p.kind === "skill") {
+      seenText.current = next.text;
+      setPicks((current) => [...reconcilePicks(current, draft.text, next.text), newPick(p.token.start, p.name)]);
+    }
     draft.setText(next.text);
     setCaret(next.caret);
     if (p.kind === "choice") setDismissed(next.text);
@@ -432,6 +446,13 @@ export function Composer(props: Props) {
       {problem ? <p className="c-note bad" role="alert">{isPreparationPending(problem) ? preparationLabel(trunkName) : shortReason(problem)}</p> : null}
       {line.error ? <p className="c-note bad" role="alert">{isPreparationPending(line.error) ? preparationLabel(trunkName) : shortReason(line.error)}</p> : null}
       {draft.note ? <p className="c-note">{draft.note}</p> : null}
+      {picks.length > 0 ? (
+        <div className="c-dock-row">
+          {picks.map((pick) => (
+            <span key={`${pick.start}:${pick.raw}`} className="c-chip" role="img" aria-label={`Skill ${displayName(pick.raw)}, runs as ${pickText(pick.raw)}`}>{displayName(pick.raw)}</span>
+          ))}
+        </div>
+      ) : null}
       {drawer.peopleError && view?.kind === "mention" ? <p className="c-note bad">{drawer.peopleError}</p> : null}
       {props.replyTo ? (
         <div className="c-dock-row">

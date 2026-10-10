@@ -19,7 +19,7 @@ const NIGHT: Record<string, string> = { "0 1 * * *": "1", "0 3 * * *": "3", "0 5
 const ZONES = ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "Europe/London", "Europe/Berlin", "Africa/Lagos", "Asia/Kolkata", "Asia/Tokyo", "Australia/Sydney"];
 
 export const ROWS: RowEntry[] = [
-  ["Tidy memory overnight", "Rings", 0], ["Night window", "Rings", 0], ["Rings diary", "Rings", 0],
+  ["Rings tidy memory at night", "Rings", 0], ["Night window", "Rings", 0], ["Rings diary", "Rings", 0],
   ["Look after skills", "Skill maintenance", 0], ["Look at skills now", "Skill maintenance", 0],
   ["Learn what a Trunk can’t do yet", "Skill learning", 0], ["Highest step it may take", "Skill learning", 0],
   ["Keep a change only if it does better by", "Keeping a change", 0], ["Use paid models at night", "Keeping a change", 0],
@@ -83,8 +83,8 @@ function RingsSec({ engine, config, agent }: Ctx) {
   const night = NIGHT[cron] ?? "custom";
   return (
     <Sec title="Rings">
-      <Ctl title="Tidy memory overnight" sub="Merges repeats, keeps what matters and lets go of what’s unused." help="Merges repeats, keeps what matters and lets go of what’s unused. Every change is in the diary.">
-        <Switch label="Tidy memory overnight" checked={enabled} disabled={config.loading} onChange={(on) => void config.set(`${RINGS}.enabled`, on)} />
+      <Ctl title="Rings tidy memory at night" sub="Merges repeats, keeps what matters and lets go of what’s unused." help="Merges repeats, keeps what matters and lets go of what’s unused. Every change is in the diary.">
+        <Switch label="Rings tidy memory at night" checked={enabled} disabled={config.loading} onChange={(on) => void config.set(`${RINGS}.enabled`, on)} />
       </Ctl>
       <Ctl title="Night window" sub={night === "custom" ? `Custom: ${cron}. Rings starts when the window opens and runs until it is done.` : "Rings starts when the window opens and runs until it is done."}>
         <Seg label="Night window" value={night} disabled={config.loading || !enabled} onChange={(h) => void config.set(`${RINGS}.frequency`, `0 ${h} * * *`)}
