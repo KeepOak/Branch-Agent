@@ -281,6 +281,15 @@ describe("scoped browser viewing", () => {
     await act(async () => reload.click());
     expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ path: "/act", body: { kind: "evaluate", fn: "() => location.reload()", targetId: "tab-one" } }));
   });
+  it("offers no greyed-out stubs in the toolbar or its More menu", async () => {
+    await render(owner(routed(() => new Promise(() => {})) as any));
+    await flush();
+    expect(container.querySelectorAll("button:disabled")).toHaveLength(0);
+    const more = container.querySelector<HTMLButtonElement>('[aria-label="More browser actions"]')!;
+    await act(async () => more.click());
+    expect(document.querySelectorAll("button.mi").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll("button.mi:disabled")).toHaveLength(0);
+  });
   it("maps clicks through letterboxing and ignores the margins", () => {
     const rect = { left: 0, top: 0, width: 400, height: 400 },
       image = { width: 200, height: 100, cssWidth: 1000, cssHeight: 500 };

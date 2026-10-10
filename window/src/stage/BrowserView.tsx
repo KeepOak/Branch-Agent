@@ -29,11 +29,6 @@ export function browserRemotePoint(
 }
 
 export type BrowserPhase = "loading" | "empty" | "connected" | "error";
-const NO_READS = "Choosing how it reads pages isn't wired in this window yet.";
-const NO_NUMBERS = "The engine can't show its numbers on the live page yet.";
-const NO_COMMENT = "The engine can't take comments pinned to a page yet.";
-const NO_RECORD = "The engine can't record what you do in the browser yet.";
-export const NO_MARKUP = "Marking up a page needs a way to send the drawing to the chat, which the window doesn't have yet.";
 
 type Browser = { key: string; phase: "none" | "loading" | "stopped" | "ready" | "error"; tabs: LiveTab[]; error?: string };
 
@@ -360,27 +355,23 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     onControl?.(true);
     void call("DELETE", `/tabs/${encodeURIComponent(id)}`).then(refresh, fail);
   };
-  const moreMenu = (at: MenuAnchor) =>
+  const moreMenu = (at: MenuAnchor) => {
+    const pageItems: MenuItem[] = tab
+      ? [
+          { label: "Take a screenshot", run: () => void call("POST", "/screenshot", { targetId: tab.targetId }).then((r) => setNote(`Saved the screenshot to ${String((r as { path?: unknown } | null)?.path ?? "the browser's folder")}.`), fail) },
+          { label: "Save as PDF", run: () => void call("POST", "/pdf", { targetId: tab.targetId }).then((r) => setNote(`Saved the page as a PDF to ${String((r as { path?: unknown } | null)?.path ?? "the browser's folder")}.`), fail) },
+          { label: "Find on this page", run: () => setFind("") },
+        ]
+      : [];
     setMenu({
       at,
       items: [
-        { kind: "head", label: "This page" },
-        { label: "Take a screenshot", disabled: tab ? undefined : "Nothing open.", run: () => void call("POST", "/screenshot", { targetId: tab?.targetId }).then((r) => setNote(`Saved the screenshot to ${String((r as { path?: unknown } | null)?.path ?? "the browser's folder")}.`), fail) },
-        { label: "Save as PDF", disabled: tab ? undefined : "Nothing open.", run: () => void call("POST", "/pdf", { targetId: tab?.targetId }).then((r) => setNote(`Saved the page as a PDF to ${String((r as { path?: unknown } | null)?.path ?? "the browser's folder")}.`), fail) },
-        { label: "Find on this page", disabled: tab ? undefined : "Nothing open.", run: () => setFind("") },
-        { label: "Watch this page for changes", run: () => undefined, disabled: "The engine can't watch a page for changes yet." },
-        { kind: "sep" },
-        { label: "Borrow a tab from your Chrome…", run: () => undefined, disabled: "Borrowing one of your own Chrome tabs isn't wired in this window yet." },
-        { kind: "sep" },
-        { kind: "head", label: `${name}'s tools` },
-        { label: drawer ? "Hide tools" : "Show tools", run: () => setDrawer((v) => !v), disabled: tab ? undefined : "Nothing open." },
-        { label: "How it reads pages", run: () => undefined, disabled: NO_READS },
-        { label: "Numbers on the page", run: () => undefined, disabled: NO_NUMBERS },
-        { label: "Comment on the page", run: () => undefined, disabled: NO_COMMENT },
-        { label: "Record what happens", run: () => undefined, disabled: NO_RECORD },
-        { kind: "info", label: "Screenshots black out password boxes." },
+        ...(pageItems.length ? [{ kind: "head" as const, label: "This page" }, ...pageItems] : []),
+        ...(tab ? [{ kind: "sep" as const }, { label: drawer ? "Hide tools" : "Show tools", run: () => setDrawer((v) => !v) }] : []),
+        ...(pageItems.length || tab ? [{ kind: "info" as const, label: "Screenshots black out password boxes." }] : []),
       ],
     });
+  };
   const findText = (text: string) => {
     if (!tab || !text) return;
     void call("POST", "/act", { targetId: tab.targetId, body: { kind: "evaluate", fn: `() => window.find(${JSON.stringify(text)})` } }).then(
@@ -415,9 +406,11 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
       {route ? (
         <div className="bar-br" role="toolbar" aria-label="Browser actions">
           <span className="tb-grow" />
-          <button type="button" className="btn ghost sm tb-br" aria-haspopup="menu" aria-label="More browser actions" title="More" disabled={!showChrome} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); moreMenu({ x: r.right, y: r.bottom + 6 }); }}>
-            <span aria-hidden="true">⋯</span>
-          </button>
+          {showChrome ? (
+            <button type="button" className="btn ghost sm tb-br" aria-haspopup="menu" aria-label="More browser actions" title="More" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); moreMenu({ x: r.right, y: r.bottom + 6 }); }}>
+              <span aria-hidden="true">⋯</span>
+            </button>
+          ) : null}
         </div>
       ) : null}
       {working && view.phase === "connected" ? (
@@ -464,15 +457,19 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
                     </button>
                   </div>
                   <form className="br-url-st" onSubmit={(e) => { e.preventDefault(); go(shownAddress); }}>
-                    <button type="button" className="br-nav-st" aria-label="Back" title="Back" disabled={!tab} onClick={() => history("back")}>
-                      <SIcon name="back" small />
-                    </button>
-                    <button type="button" className="br-nav-st" aria-label="Forward" title="Forward" disabled={!tab} onClick={() => history("forward")}>
-                      <SIcon name="forward" small />
-                    </button>
-                    <button type="button" className="br-nav-st" aria-label="Reload" title="Reload" disabled={!tab} onClick={reload}>
-                      <SIcon name="reload" small />
-                    </button>
+                    {tab ? (
+                      <>
+                        <button type="button" className="br-nav-st" aria-label="Back" title="Back" onClick={() => history("back")}>
+                          <SIcon name="back" small />
+                        </button>
+                        <button type="button" className="br-nav-st" aria-label="Forward" title="Forward" onClick={() => history("forward")}>
+                          <SIcon name="forward" small />
+                        </button>
+                        <button type="button" className="br-nav-st" aria-label="Reload" title="Reload" onClick={reload}>
+                          <SIcon name="reload" small />
+                        </button>
+                      </>
+                    ) : null}
                     <SIcon name="lock" small />
                     <input
                       className="br-addr-st"
