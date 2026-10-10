@@ -4,6 +4,7 @@ import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/i
 import { createAgent } from "../../agents/agent-create.js";
 import { addQueueItem, listQueueItems } from "../../agents/trunk-queue.js";
 import { applyTeamProposal, type TeamApplyDeps } from "../../agents/trunk-team-apply.js";
+import { registerTeam } from "../../agents/trunk-team-registry.js";
 import { buildTeamProposal, describeTeamProposal } from "../../agents/trunk-team.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { createRoom, getRoom } from "../rooms/store.js";
@@ -86,6 +87,7 @@ function productionDeps(context: GatewayRequestContext): TeamApplyDeps {
     addJob: (input) => {
       addQueueItem(input);
     },
+    registerTeam: (teamId, record) => registerTeam(teamId, record),
   };
 }
 
