@@ -1,56 +1,81 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { recheckPlan } from './merge-gate-recheck.mjs';
+import { recheckPlan, summarizeRuns } from './merge-gate-recheck.mjs';
 
-const byWorkflow = (plan) => Object.fromEntries(plan.map((step) => [step.workflow, step.action]));
+const run = (workflowName, status, conclusion, id = 1, createdAt = '2026-10-10T02:00:00Z') => ({ id, workflowName, status, conclusion, createdAt });
+const actions = (plan) => Object.fromEntries(plan.map((step) => [step.gate, step.action]));
+const content = (conclusion = 'success') => (conclusion === 'in_progress'
+  ? run('Feature batch checks', 'in_progress', null, 9)
+  : run('Feature batch checks', 'completed', conclusion, 9));
+const gate = (conclusion, status = 'completed', id = 50) => run('Merge gate', status, conclusion, id);
+const trusted = (conclusion, status = 'completed', id = 60) => run('Merge gate trusted', status, conclusion, id);
 
 test('a content check that did not succeed reruns nothing', () => {
-  const plan = recheckPlan({ triggerConclusion: 'failure', runs: [{ workflow: 'merge-gate.yml', id: 1, status: 'completed', conclusion: 'cancelled' }] });
-  assert.deepEqual(byWorkflow(plan), { 'merge-gate.yml': 'skip', 'merge-gate-trusted.yml': 'skip' });
+  const plan = recheckPlan({ trigger: { kind: 'content', conclusion: 'failure' }, runs: [gate('cancelled'), content('failure')] });
+  assert.deepEqual(actions(plan), { 'Merge gate': 'skip', 'Merge gate trusted': 'skip' });
 });
 
-test('a trusted gate that failed early is rerun after a content success, the case the old recheck missed', () => {
-  const runs = [
-    { workflow: 'merge-gate.yml', id: 10, status: 'completed', conclusion: 'success' },
-    { workflow: 'merge-gate-trusted.yml', id: 20, status: 'completed', conclusion: 'failure' },
-  ];
-  const plan = recheckPlan({ triggerConclusion: 'success', runs });
-  assert.equal(byWorkflow(plan)['merge-gate-trusted.yml'], 'rerun');
-  assert.equal(plan.find((s) => s.workflow === 'merge-gate-trusted.yml').id, 20);
-  assert.equal(byWorkflow(plan)['merge-gate.yml'], 'skip');
+test('a gate that ended unsuccessfully is rerun once every other check has passed', () => {
+  const runs = [gate('cancelled'), trusted('failure'), content('success')];
+  const plan = recheckPlan({ trigger: { kind: 'content', conclusion: 'success' }, runs });
+  assert.equal(actions(plan)['Merge gate trusted'], 'rerun');
+  assert.equal(plan.find((step) => step.gate === 'Merge gate trusted').id, 60);
 });
 
-test('a gate still running is left alone, because it will see the result itself', () => {
-  const runs = [{ workflow: 'merge-gate-trusted.yml', id: 21, status: 'in_progress', conclusion: null }];
-  const plan = recheckPlan({ triggerConclusion: 'success', runs });
-  assert.equal(byWorkflow(plan)['merge-gate-trusted.yml'], 'wait');
+test('the race: a gate still running when the last check passes is left to its own completion', () => {
+  const runs = [gate('failure', 'in_progress'), content('success')];
+  const plan = recheckPlan({ trigger: { kind: 'content', conclusion: 'success' }, runs });
+  assert.equal(actions(plan)['Merge gate'], 'wait');
 });
 
-test('a merge gate that ended cancelled is rerun, and a missing run is skipped', () => {
-  const runs = [{ workflow: 'merge-gate.yml', id: 11, status: 'completed', conclusion: 'cancelled' }];
-  const plan = recheckPlan({ triggerConclusion: 'success', runs });
-  assert.equal(byWorkflow(plan)['merge-gate.yml'], 'rerun');
-  assert.equal(byWorkflow(plan)['merge-gate-trusted.yml'], 'skip');
+test('the race, other order: a gate that fails while checks are still pending waits, and the last check rechecks it', () => {
+  const runs = [gate('failure'), content('in_progress')];
+  const gatePlan = recheckPlan({ trigger: { kind: 'gate', conclusion: 'failure', attempt: 1, name: 'Merge gate' }, runs });
+  assert.equal(actions(gatePlan)['Merge gate'], 'wait');
+  const lastPlan = recheckPlan({ trigger: { kind: 'content', conclusion: 'success' }, runs: [gate('failure'), content('success')] });
+  assert.equal(actions(lastPlan)['Merge gate'], 'rerun');
 });
 
-test('gates that already passed are not rerun', () => {
-  const runs = [
-    { workflow: 'merge-gate.yml', id: 12, status: 'completed', conclusion: 'success' },
-    { workflow: 'merge-gate-trusted.yml', id: 22, status: 'completed', conclusion: 'success' },
-  ];
-  assert.deepEqual(byWorkflow(recheckPlan({ triggerConclusion: 'success', runs })), { 'merge-gate.yml': 'skip', 'merge-gate-trusted.yml': 'skip' });
+test('a gate that fails after every check passed is rerun on its own completion', () => {
+  const runs = [gate('failure'), content('success')];
+  assert.equal(actions(recheckPlan({ trigger: { kind: 'gate', conclusion: 'failure', attempt: 1 }, runs }))['Merge gate'], 'rerun');
 });
 
-test('the recheck workflow calls the tested script and no longer reruns merge-gate in bash', () => {
+test('a gate that is itself a rerun is never rerun again: no loop', () => {
+  const runs = [gate('failure'), content('success')];
+  assert.equal(actions(recheckPlan({ trigger: { kind: 'gate', conclusion: 'failure', attempt: 2 }, runs }))['Merge gate'], 'skip');
+});
+
+test('a red commit is not rerun: a failed check settles it', () => {
+  const runs = [gate('failure'), content('failure')];
+  assert.equal(actions(recheckPlan({ trigger: { kind: 'gate', conclusion: 'failure', attempt: 1 }, runs }))['Merge gate'], 'skip');
+});
+
+test('a gate that passed, or has no run, is skipped', () => {
+  assert.equal(actions(recheckPlan({ trigger: { kind: 'content', conclusion: 'success' }, runs: [gate('success'), content('success')] }))['Merge gate'], 'skip');
+  assert.equal(actions(recheckPlan({ trigger: { kind: 'content', conclusion: 'success' }, runs: [content('success')] }))['Merge gate'], 'skip');
+});
+
+test('the newest gate run is the one that decides', () => {
+  const older = run('Merge gate', 'completed', 'failure', 1, '2026-10-10T01:00:00Z');
+  const newer = run('Merge gate', 'completed', 'success', 2, '2026-10-10T02:00:00Z');
+  assert.equal(summarizeRuns([older, newer, content('success')]).gates['Merge gate'].id, 2);
+});
+
+test('the recheck workflow lists one run per head, reacts to gate completion, and calls the script', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate-recheck.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /- Merge gate\n/);
+  assert.match(yaml, /- Merge gate trusted\n/);
   assert.match(yaml, /node scripts\/merge-gate-recheck\.mjs/);
+  assert.match(yaml, /TRIGGER_KIND: content|TRIGGER_KIND: \$\{\{/);
   assert.doesNotMatch(yaml, /gh run rerun "\$id"/);
-  assert.match(yaml, /TRIGGER_CONCLUSION/);
 });
 
-test('the trusted gate fails fast on its own wait, and the recheck picks it up when content finishes', () => {
-  const yaml = readFileSync(new URL('../.github/workflows/merge-gate-trusted.yml', import.meta.url), 'utf8');
-  const wait = /MERGE_GATE_WAIT_SECONDS: '(\d+)'/.exec(yaml.slice(yaml.indexOf('Wait for checks')));
-  assert.ok(wait && Number(wait[1]) <= 720, 'the trusted wait is at most 12 minutes');
+test('the trusted gate and the aggregator are single-shot: no poll loop in either workflow', () => {
+  const merge = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  assert.match(merge, /for attempt in \$\(seq 1 1\); do/);
+  assert.doesNotMatch(merge, /seq 1 64/);
+  const trustedYaml = readFileSync(new URL('../.github/workflows/merge-gate-trusted.yml', import.meta.url), 'utf8');
+  assert.match(trustedYaml, /MERGE_GATE_WAIT_SECONDS: '0'/);
 });

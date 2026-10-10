@@ -18,6 +18,8 @@ on:
       - Visual tour
       - Engine build (PR)
       - Gate files fresh
+      - Merge gate
+      - Merge gate trusted
     types: [completed]
 
 permissions:
@@ -29,7 +31,7 @@ concurrency:
 
 jobs:
   recheck:
-    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    if: github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'pull_request_target'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -49,5 +51,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.workflow_run.head_sha }}
+          TRIGGER_KIND: ${{ (github.event.workflow_run.name == 'Merge gate' || github.event.workflow_run.name == 'Merge gate trusted') && 'gate' || 'content' }}
           TRIGGER_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          TRIGGER_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          TRIGGER_NAME: ${{ github.event.workflow_run.name }}
         run: node scripts/merge-gate-recheck.mjs

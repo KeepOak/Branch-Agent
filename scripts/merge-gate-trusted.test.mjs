@@ -1339,8 +1339,9 @@ test('ordinary merge gate jq preserves all checks and its polling budget', () =>
     }));
     assert.deepEqual(actual, [feature, analyzeCheck, latest, { ...feature, id: 90, conclusion: 'cancelled' }]);
   }
-  assert.match(yaml, /seq 1 64/);
-  assert.match(yaml, /if \[ "\$attempt" -lt 64 \]; then sleep 30; fi/);
+  // Single pass (event-driven): one evaluation, no 64-attempt poll loop.
+  assert.match(yaml, /seq 1 1\)/);
+  assert.doesNotMatch(yaml, /seq 1 64/);
   assert.doesNotMatch(yaml, /sleep 10/);
 });
 
@@ -2638,4 +2639,36 @@ test('merge-gate-trusted still reruns when the pull request body is edited', () 
   assert.match(source, /evaluateGateChangeReview\(\{ changedFiles, body, headSha: sha, baselineGrew \}\)/);
   assert.match(source, /writeSummary\(formatGateChangeReviewSummary\(review\)\)/);
   assert.match(source, /if \(!review\.ok\)/);
+});
+
+// Attribution from one head runs listing: one API call per evaluation instead of one per check run.
+const attrRun = { id: 555, path: '.github/workflows/feature-batch-checks.yml', name: 'Feature batch checks', event: 'pull_request', check_suite_id: 900, head_sha: 'abc', pull_requests: [] };
+const attrCheck = (overrides = {}) => ({ id: 7001, name: 'Named feature tests', head_sha: 'abc', details_url: 'https://github.com/o/r/actions/runs/555/job/9', check_suite: { id: 900 }, ...overrides });
+
+test('a check run is attributed from the listing only when its check suite is the run\'s own suite', () => {
+  const runsById = new Map([['555', attrRun]]);
+  assert.equal(gate.runIdFromCheckRun(attrCheck()), '555');
+  assert.equal(gate.attributeFromRunList(attrCheck(), runsById).path, '.github/workflows/feature-batch-checks.yml');
+  assert.equal(gate.attributeFromRunList(attrCheck({ check_suite: { id: 901 } }), runsById), null, 'a different suite is not attributed');
+  assert.equal(gate.attributeFromRunList(attrCheck({ details_url: 'https://github.com/o/r/actions/runs/999' }), runsById), null);
+});
+
+test('one listing attributes every check it covers, and only the rest use a per-check lookup', () => {
+  const listing = { total_count: 1, workflow_runs: [attrRun] };
+  const calls = { list: 0, lookup: [] };
+  const fetchRuns = () => { calls.list += 1; return new Map(listing.workflow_runs.map((run) => [String(run.id), run])); };
+  const resolveWorkflow = (_repo, _token, check) => { calls.lookup.push(check.id); return { path: 'fallback.yml' }; };
+  const checks = [attrCheck(), attrCheck({ id: 7002, details_url: 'https://github.com/o/r/actions/runs/777/job/1' })];
+  const map = gate.resolveWorkflowsForCheckRuns('o/r', 't', checks, { fetchRuns, resolveWorkflow });
+  assert.equal(calls.list, 1, 'one listing per evaluation');
+  assert.deepEqual(calls.lookup, [7002], 'only the check the listing does not cover falls back');
+  assert.equal(map[7001].path, '.github/workflows/feature-batch-checks.yml');
+  assert.equal(map[7002].path, 'fallback.yml');
+});
+
+test('an incomplete head listing is not trusted: every check falls back to its own lookup', () => {
+  const api = () => ({ total_count: 250, workflow_runs: [attrRun] });
+  assert.equal(gate.fetchRunsByIdForHead('o/r', 't', 'abc', { api }).size, 0);
+  const complete = () => ({ total_count: 1, workflow_runs: [attrRun] });
+  assert.equal(gate.fetchRunsByIdForHead('o/r', 't', 'abc', { api: complete }).get('555').id, 555);
 });

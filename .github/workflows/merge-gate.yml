@@ -106,7 +106,7 @@ jobs:
           # duplicate job names, and reuse it on later polls.
           attr_cache='{}'
           identity_filter='if type == "object" and (.path | type == "string") and .path != "" then {path, event, headSha: .head_sha, checkSuiteId: .check_suite_id, pullRequests: [(.pull_requests // [])[] | {number, base: ((.base // {}).ref // null)}]} else null end'
-          for attempt in $(seq 1 64); do
+          for attempt in $(seq 1 1); do
             # Read every check-run page. One response is capped at 100.
             page=1
             pages='[]'
@@ -248,7 +248,7 @@ jobs:
               echo "All $(jq length <<<"$runs") other checks passed."; exit 0
             fi
             echo "Waiting for $pending check(s)…"
-            if [ "$attempt" -lt 64 ]; then sleep 30; fi
+            # Single pass: a pending result ends here. merge-gate-recheck reruns this gate when the checks finish.
           done
           pending_names=$(jq -r '[.[] | select(.status != "completed") | .name] + (if any(.[]; .name == "Analyze (actions)") then [] else ["Analyze (actions)"] end) | unique | sort | join(", ")' <<<"$runs")
           echo "Timed out waiting for: $pending_names"

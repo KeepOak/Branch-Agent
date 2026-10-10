@@ -890,18 +890,46 @@ export function resolveWorkflowForCheckRun(repo, token, checkRun) {
   return workflowFromActionsRun(payload?.workflow_runs?.[0]);
 }
 
+// The Actions run a check run belongs to, from its details URL.
+export function runIdFromCheckRun(checkRun) {
+  return /\/actions\/runs\/(\d+)/.exec(String(checkRun?.details_url ?? checkRun?.html_url ?? ''))?.[1] ?? null;
+}
+
+// Attribution from one listing of the head's runs. A check run is bound to a run only when the run's check suite
+// is the check run's own suite, so the listing can never attribute a check to another workflow's run.
+export function attributeFromRunList(checkRun, runsById) {
+  const run = runsById.get(String(runIdFromCheckRun(checkRun)));
+  const suite = checkRun?.check_suite?.id;
+  if (!run || suite == null || Number(run.check_suite_id) !== Number(suite)) return null;
+  return workflowFromActionsRun(run);
+}
+
+// One call per evaluation, not one per check run. More than 100 runs on a head falls back to per-check lookups.
+export function fetchRunsByIdForHead(repo, token, sha, { api = ghApi } = {}) {
+  if (!sha) return new Map();
+  const payload = api(repo, token, `actions/runs?head_sha=${sha}&per_page=100`);
+  if (!payload || !Array.isArray(payload.workflow_runs) || payload.total_count > payload.workflow_runs.length) {
+    return new Map();
+  }
+  return new Map(payload.workflow_runs.map((run) => [String(run.id), run]));
+}
+
 export function resolveWorkflowsForCheckRuns(repo, token, checkRuns, {
   attributionCache = new Map(),
   resolveWorkflow = resolveWorkflowForCheckRun,
+  runsById,
+  fetchRuns = fetchRunsByIdForHead,
 } = {}) {
   const workflowsByCheckId = {};
+  const unresolved = checkRuns.filter((run) => !attributionCache.has(run.id));
+  const byId = runsById ?? (unresolved.length ? fetchRuns(repo, token, checkRuns[0]?.head_sha) : new Map());
   for (const run of checkRuns) {
     if (attributionCache.has(run.id)) {
       workflowsByCheckId[run.id] = attributionCache.get(run.id);
       continue;
     }
     try {
-      const workflow = resolveWorkflow(repo, token, run);
+      const workflow = attributeFromRunList(run, byId) ?? resolveWorkflow(repo, token, run);
       if (workflow) {
         workflowsByCheckId[run.id] = workflow;
         // Attribution is immutable for a check ID; status/conclusion still come from each poll.
@@ -1143,7 +1171,8 @@ export function pollTrustedGateWithBudget({
   const start = startedAt ?? now();
   const remaining = () => waitBudgetSeconds - (now() - start) / 1000;
   for (let attempt = 1; attempt <= maxAttempts; ) {
-    if (remaining() < 1) break;
+    // The first evaluation always runs; a zero budget means one pass with no polling.
+    if (attempt > 1 && remaining() < 1) break;
     let checkRuns;
     try {
       checkRuns = fetchChecks(repo, sha, token);
