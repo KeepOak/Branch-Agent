@@ -44,7 +44,6 @@ export type SidebarProps = {
   onArchive: (row: Conversation) => void;
   onMarkAllRead: () => void;
   onPerson: (event: MouseEvent<HTMLElement>) => void;
-  onSettings: () => void;
   /** On a place or Settings page: the button by the gear that shows the default Trunk beside the page (§3.3). */
   talk?: TalkEntry | null;
   /** The engine's projects and every conversation (to count and list each project's own). */
@@ -287,9 +286,6 @@ export function Sidebar(p: SidebarProps) {
             <Icon name="chat" />
           </button>
         ) : null}
-        <button type="button" className="ib" aria-label="Settings" title="Settings" data-testid="gear" onClick={p.onSettings}>
-          <Icon name="gear" />
-        </button>
       </div>
     </aside>
   );

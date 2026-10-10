@@ -10,7 +10,7 @@ import { isPreparationPending, isPreparationStalled, PreparationRetry, preparati
 import { Composer, VOICE_OFF } from "../composer/Composer";
 import { hasUnsavedDraftFiles } from "../composer/drafts";
 import { componentDesktop } from "../connect/desktop-component-updates";
-import { useBranchVersion } from "../connect/branch-version";
+import { isNewerBranchVersion, useBranchVersion } from "../connect/branch-version";
 import { LOCAL_ADDRESS, readTargetName, saveTargetName } from "../setup/pre-connect-state";
 import { Thread } from "../thread/Thread";
 import { PlaceView } from "../places-nav/PlaceView";
@@ -1584,7 +1584,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         }}
         onNew={(e) => showMenu(e, "new", [
           ...newMenuItems({ newWith: (id) => startNew(id), trunks: trunks.list, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }),
-          ...(rail ? [{ kind: "sep" as const }, { label: "Settings", run: () => openSettings("general") }, { label: "Show the full list", hint: "Ctrl B", run: () => { if (topicAutoRail && !layout.rail) setFullListFor(topicContact?.id ?? null); else setLayout({ rail: false }); } }] : []),
         ], "New")}
         onMenu={rowMenu}
         onPin={(r) => { const contact = contacts.find((c) => c.threadKey === r.key); if (contact) toggleContactPin(contact); else void actions.pin(r); }}
@@ -1595,7 +1594,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         }}
         onMarkAllRead={() => void Promise.all(contacts.map((contact) => markContactRead(contact, request))).then(refreshContacts).catch((e: unknown) => notify(`Couldn't mark all read: ${e instanceof Error ? e.message : String(e)}.`, { tone: "bad" }))}
         onPerson={(e) => (overlay?.kind === "person" ? setOverlay(null) : setOverlay({ kind: "person", at: above(e), from: statusAnchor(e, "connection") }))}
-        onSettings={() => openSettings("general")}
         talk={talkEntry}
         projects={shown.projects ? projects.projects : undefined}
         allRows={lists.rows}
@@ -1718,7 +1716,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onTheme={changeTheme}
           onClose={() => setOverlay(null)}
           onSettings={() => openSettings("general")}
-          onAchievements={() => openSettings("achievements")}
           onShortcuts={() => setOverlay({ kind: "shortcuts" })}
           onApps={() => setOverlay({ kind: "apps" })}
           onAbout={() => openSettings("updates")}
@@ -1726,10 +1723,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             const r = document.querySelector("[data-testid=guide]")?.getBoundingClientRect();
             setOverlay({ kind: "menu", id: "guide", at: { x: r ? r.left : 8, y: r ? r.bottom + 4 : 48 }, items: guideItems(), label: "Guide" });
           }}
-          onReplay={() => firstRun.open(0)}
           onAddPerson={() => openSettings("people")}
           onLock={() => openSettings("permissions")}
-          updateTo={update?.latest && update.latest !== branchVersion && !remindedToday(update.latest) ? update.latest : null}
+          updateTo={update?.latest && isNewerBranchVersion(update.latest, branchVersion) && !remindedToday(update.latest) ? update.latest : null}
           onUpdate={() => {
             const r = document.querySelector("[data-testid=sb-version]")?.getBoundingClientRect();
             const above = r && r.width ? { left: r.left, right: r.right, top: r.top, align: "right" as const } : { left: 8, right: 8, top: innerHeight - 40, align: "left" as const };
