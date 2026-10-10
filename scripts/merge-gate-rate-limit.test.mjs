@@ -686,7 +686,7 @@ test('release readiness and gate-files-fresh use the shared gh retry helper', ()
   assert.doesNotMatch(readiness, /^\s+gh api /m);
   const fresh = readFileSync(new URL('../.github/workflows/gate-files-fresh.yml', import.meta.url), 'utf8');
   assert.match(fresh, /types:\s*\[opened, synchronize, reopened\]/);
-  assert.match(fresh, /timeout-minutes:\s*12/);
+  assert.match(fresh, /timeout-minutes:\s*5/);
   assert.match(fresh, /MERGE_GATE_WAIT_SECONDS/);
 });
 

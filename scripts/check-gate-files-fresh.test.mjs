@@ -166,7 +166,7 @@ test('gate-files-fresh workflow checks out the default branch read-only', () => 
   assert.match(yaml, /^\s+name:\s*gate-files-fresh\s*$/m);
   assert.match(yaml, /^\s+pull_request_target:\s*$/m);
   assert.match(yaml, /types:\s*\[opened, synchronize, reopened\]/);
-  assert.match(yaml, /^\s+timeout-minutes:\s*12\s*$/m);
+  assert.match(yaml, /^\s+timeout-minutes:\s*5\s*$/m);
   assert.match(yaml, /ref:\s*\$\{\{\s*github\.event\.repository\.default_branch\s*\}\}/);
   assert.match(yaml, /persist-credentials:\s*false/);
   assert.match(yaml, /contents:\s*read/);
@@ -268,8 +268,8 @@ test('the gate-files-fresh job timeout outlasts the helper wait budget', () => {
   const waitSeconds = Number(/MERGE_GATE_WAIT_SECONDS:\s*'(\d+)'/.exec(yml)?.[1]);
   assert.ok(Number.isFinite(timeoutMinutes) && Number.isFinite(waitSeconds));
   assert.ok(
-    timeoutMinutes * 60 >= waitSeconds + 180,
-    `timeout ${timeoutMinutes}m must exceed the ${waitSeconds}s wait budget plus 3 minutes of setup`,
+    timeoutMinutes * 60 >= waitSeconds + 150,
+    `timeout ${timeoutMinutes}m must exceed the ${waitSeconds}s wait budget plus 150 s of setup and calls`,
   );
 });
 
@@ -324,7 +324,7 @@ test('the fork-to-main attribution compare is non-fatal, so a stale fork point c
 });
 
 test('the gate-files-fresh wait budget comes from MERGE_GATE_WAIT_SECONDS and defaults safely', () => {
-  assert.equal(gateFilesBudgetSeconds({ MERGE_GATE_WAIT_SECONDS: '480' }), 480);
+  assert.equal(gateFilesBudgetSeconds({ MERGE_GATE_WAIT_SECONDS: '120' }), 120);
   assert.equal(gateFilesBudgetSeconds({}), DEFAULT_GATE_FILES_BUDGET_SECONDS);
   assert.equal(gateFilesBudgetSeconds({ MERGE_GATE_WAIT_SECONDS: 'soon' }), DEFAULT_GATE_FILES_BUDGET_SECONDS);
   assert.equal(gateFilesBudgetSeconds({ MERGE_GATE_WAIT_SECONDS: '0' }), DEFAULT_GATE_FILES_BUDGET_SECONDS);
@@ -334,10 +334,10 @@ test('an exhausted rate-limit budget fails closed with a clear message, not as a
   const rateLimited = Object.assign(new Error('gh: API rate limit exceeded for installation (HTTP 403)'), {
     stderr: 'gh: API rate limit exceeded for installation (HTTP 403)',
   });
-  const message = formatGateFilesError(rateLimited, 480);
-  assert.match(message, /480s wait budget/);
+  const message = formatGateFilesError(rateLimited, 120);
+  assert.match(message, /120s wait budget/);
   assert.match(message, /not a gate-file failure/);
-  assert.match(formatGateFilesError(new Error('gh: Server Error (HTTP 502)'), 480), /could not read GitHub/);
+  assert.match(formatGateFilesError(new Error('gh: Server Error (HTTP 502)'), 120), /could not read GitHub/);
 });
 
 test('gate-files-fresh bounds its own API waits with one shared budget read from the job environment', () => {

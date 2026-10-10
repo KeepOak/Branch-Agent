@@ -3,7 +3,8 @@ import path from 'node:path';
 import { GATE_SCRIPTS, fetchFileText, fetchPrFiles, gateApiBudget, ghApi } from './merge-gate-trusted.mjs';
 import { isRateLimitError } from './merge-gate-rate-limit.mjs';
 
-export const DEFAULT_GATE_FILES_BUDGET_SECONDS = 480;
+// Budget for every GitHub call in the job. The job limit is 5 minutes: this budget, about 90 s of checkout and setup, and a margin.
+export const DEFAULT_GATE_FILES_BUDGET_SECONDS = 120;
 
 // The job's rate-limit wait budget, from MERGE_GATE_WAIT_SECONDS. The job limit is this plus setup margin.
 export function gateFilesBudgetSeconds(env = process.env) {
