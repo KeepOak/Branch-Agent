@@ -51,6 +51,7 @@ import { patchTopicSession } from "./topic-session";
 import { loadAllTopicTranscripts } from "./topic-all";
 import { useContactSegments } from "./useContactSegments";
 import { contactAlert, contactAlertTarget, notify, readMutedContacts, saveMutedContacts } from "./notify";
+import { headerFace, stopRoaming } from "./pet-roam";
 import { SaveProgressOffer, useCkptOn } from "./SaveProgress";
 import { SidebarPet } from "./SidebarPet";
 import { GetAppsDialog } from "./GetApps";
@@ -1152,14 +1153,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const pet = usePetLook(session.engine);
   // Let it roam (Appearance › Pet) walks the pet along the chat instead of the card; one pet on screen at a time.
   const lanePet = pet.roam ? pet : { ...pet, id: "none" };
-  // Stopping the roam brings the card back, with Undo; the pet's menu and the header face both use it.
-  const stopRoaming = () => {
-    void lookStore(session.engine).set("roam", false);
-    setCharacterVisible(true);
-    notify("Back on the card.", { action: { label: "Undo", run: () => void lookStore(session.engine).set("roam", true) } });
-  };
-  // While the pet roams the card is hidden, so the header face gives the card back instead of doing nothing.
-  const onCharacterButton = () => (pet.roam ? stopRoaming() : setCharacterVisible(!characterShown));
+  // Stopping the roam brings the card back, with Undo; the pet's menu and the header face both use it (pet-roam.ts).
+  const roamSetting = lookStore(session.engine);
+  const stopRoamingHere = () => stopRoaming(roamSetting, () => setCharacterVisible(true));
+  const onCharacterButton = () => headerFace(pet.roam, roamSetting, () => setCharacterVisible(true), () => setCharacterVisible(!characterShown));
   const reducedMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
   const pausedTrunks = trunks.list.filter((t) => t.paused);
   const statusExtras = {
@@ -1302,7 +1299,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onOpenSession={openConversation}
           onStart={(start) => void sendNew(start)}
         />
-        <div className={lanePet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={lanePet} onStopRoaming={stopRoaming} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={null} /></div>
+        <div className={lanePet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={lanePet} onStopRoaming={stopRoamingHere} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={null} /></div>
         <Composer
           key={draftTopic.nonce}
           {...composerProps}
@@ -1416,7 +1413,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         stage={stage ? (
           <ComputerStage key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} mode={stage} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} initialComputer={stageComputer} initialControl={stageTakeOver} onMode={setStage} onClose={() => { setStage(null); setStageComputer(null); setStageTakeOver(false); }} onChooseComputer={() => openSettings("computer")} onPip={(computer) => { setPip(computer); setStage(null); }} />
         ) : null}
-        pet={<div className={lanePet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={lanePet} onStopRoaming={stopRoaming} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={(() => { const w = lists.rows.find((r) => rowState(r).waiting); return w ? trunkName(w.agentId) : null; })()} /></div>}
+        pet={<div className={lanePet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={lanePet} onStopRoaming={stopRoamingHere} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={(() => { const w = lists.rows.find((r) => rowState(r).waiting); return w ? trunkName(w.agentId) : null; })()} /></div>}
         composer={<Composer
           {...composerProps}
           mainKey={mainKeySuffix}
