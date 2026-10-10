@@ -60,6 +60,58 @@ describe("interval heartbeat for a queue-eligible Trunk", () => {
     });
   });
 
+  it("skips the production monitor tick (cron every, authoritative, no task)", async () => {
+    await withTempHeartbeatSandbox(async ({ tmpDir, storePath, replySpy }) => {
+      const cfg = routedConfig(tmpDir, storePath, TRUNK_ID);
+      await seedSessionStore(storePath, `agent:${TRUNK_ID}:main`, {
+        sessionId: "sid",
+        updatedAt: Date.now(),
+        lastChannel: "whatsapp",
+        lastProvider: "whatsapp",
+        lastTo: "120363401234567890@g.us",
+      });
+
+      const res = await runHeartbeatOnce({
+        cfg,
+        agentId: TRUNK_ID,
+        source: "interval",
+        intent: "scheduled",
+        reason: "interval",
+        scheduledEveryMs: 30 * 60_000,
+        deps: createDeps(replySpy),
+      });
+
+      expect(replySpy).not.toHaveBeenCalled();
+      expect(res).toEqual({ status: "skipped", reason: "no-signal" });
+    });
+  });
+
+  it("still runs the model for a Trunk tick that carries a scheduled task", async () => {
+    await withTempHeartbeatSandbox(async ({ tmpDir, storePath, replySpy }) => {
+      const cfg = routedConfig(tmpDir, storePath, TRUNK_ID);
+      await seedSessionStore(storePath, `agent:${TRUNK_ID}:main`, {
+        sessionId: "sid",
+        updatedAt: Date.now(),
+        lastChannel: "whatsapp",
+        lastProvider: "whatsapp",
+        lastTo: "120363401234567890@g.us",
+      });
+
+      await runHeartbeatOnce({
+        cfg,
+        agentId: TRUNK_ID,
+        source: "interval",
+        intent: "task",
+        reason: "heartbeat-task:job-1",
+        scheduledEveryMs: 30 * 60_000,
+        tasks: [{ jobId: "job-1", name: "Standup", prompt: "Post the standup" }],
+        deps: createDeps(replySpy),
+      });
+
+      expect(replySpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("still runs the model for a Trunk that has a pending event", async () => {
     await withTempHeartbeatSandbox(async ({ tmpDir, storePath, replySpy }) => {
       resetSystemEventsForTest();

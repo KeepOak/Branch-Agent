@@ -201,7 +201,6 @@ export async function resolveHeartbeatWakeStage(opts: HeartbeatRunOptions) {
       source: wakeSource,
       scheduledTaskCount: scheduledTasks.length,
       pendingEventCount: preflight.pendingEventEntries.length,
-      authoritativeScheduledTick: preflight.authoritativeScheduledTick,
     })
   ) {
     return skippedHeartbeatStage(HEARTBEAT_SKIP_NO_SIGNAL, startedAt);
