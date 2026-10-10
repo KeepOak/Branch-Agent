@@ -5,7 +5,7 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { MacComputerDriver, macScreenControlEnabled } from "../dist/mac-computer-driver.js";
+import { MacComputerDriver, describeDriverError, macScreenControlEnabled } from "../dist/mac-computer-driver.js";
 
 test("Mac screen control remains off until explicitly enabled", async () => {
   const dir = await mkdtemp(join(tmpdir(), "branch-mac-screen-setting-"));
@@ -78,4 +78,69 @@ test("Mac app requests both permissions before supplying a live embedded driver 
     assert.deepEqual(events.slice(-2), ["stop", "destroy"]);
     exit.emit("exit");
   } finally { await driver.stop(); backend.close(); await rm(dir, { recursive: true, force: true }); }
+});
+
+// The shipped SDK accepts only these environment names for an embedded host (its safe allowlist).
+const EMBEDDED_ENVIRONMENT_ALLOWLIST = new Set(["CUA_DRIVER_RS_TELEMETRY_ENABLED"]);
+function allowlistedSdk(events, reasonFor = () => undefined) {
+  return {
+    currentMacOsPermissionStatus: () => ({ accessibility: true, screenRecording: true }),
+    requestMacOSPermissions: () => ({ accessibility: true, screenRecording: true }),
+    hasRequiredMacOSPermissions: status => status.accessibility && status.screenRecording,
+    EmbeddedPermissionMode: { Standard: 0 },
+    EmbeddedCuaDriverHost: class {
+      static withOptions(options) {
+        for (const { name } of options.environment) {
+          const reason = reasonFor(name);
+          if (!EMBEDDED_ENVIRONMENT_ALLOWLIST.has(name)) {
+            const error = new Error("EmbeddedDriverError.Configuration");
+            error.inner = { reason: reason ?? `environment variable ${name} is not in the embedded safe allowlist` };
+            events.push("rejected");
+            throw error;
+          }
+        }
+        return new this();
+      }
+      async start() { events.push("start"); return { socketPath: "/nonexistent.sock", generation: "one" }; }
+      async stop() {}
+      waitForExit() { return new Promise(() => {}); }
+      uniffiDestroy() {}
+    },
+  };
+}
+
+test("the embedded driver is configured only with environment the SDK accepts", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "branch-mac-driver-env-"));
+  await writeFile(join(dir, "cua-driver"), "fixture");
+  const lines = [];
+  const events = [];
+  const driver = new MacComputerDriver(line => lines.push(line), () => allowlistedSdk(events), () => "ai.branch.mac");
+  try {
+    assert.equal(JSON.parse(await driver.start(dir)).v, 2);
+    assert.deepEqual(events, ["start"]);
+    assert.deepEqual(lines, []);
+  } finally { await driver.stop(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test("a rejected embedded configuration surfaces the SDK's reason, not just its name", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "branch-mac-driver-reason-"));
+  await writeFile(join(dir, "cua-driver"), "fixture");
+  const sdk = {
+    currentMacOsPermissionStatus: () => ({ accessibility: true, screenRecording: true }),
+    requestMacOSPermissions: () => ({ accessibility: true, screenRecording: true }),
+    hasRequiredMacOSPermissions: status => status.accessibility && status.screenRecording,
+    EmbeddedPermissionMode: { Standard: 0 },
+    EmbeddedCuaDriverHost: {
+      withOptions() {
+        throw Object.assign(new Error("EmbeddedDriverError.Configuration"), { inner: { reason: "rejected for test" } });
+      },
+    },
+  };
+  const driver = new MacComputerDriver(() => {}, () => sdk, () => "ai.branch.mac");
+  try {
+    const error = await driver.start(dir).then(() => undefined, reason => reason);
+    assert.ok(error, "start should reject when the SDK rejects the configuration");
+    assert.equal(describeDriverError(error), "rejected for test");
+    assert.equal(describeDriverError(new Error("plain")), "Error: plain");
+  } finally { await driver.stop(); await rm(dir, { recursive: true, force: true }); }
 });
