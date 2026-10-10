@@ -15,6 +15,7 @@ import { Ico } from "./icons";
 import { ComputerMore, NewCloud, ROWS as MORE_ROWS } from "./computer-more";
 import { Icon } from "../../../shell/icons";
 import { DesktopCtl } from "../desktop-ctl";
+import { useDesktopControls } from "../../../connect/desktop-controls";
 import { shownWhy } from "../../../shell/shown-why";
 
 const PAIR_EVENTS = ["device.pair", "node.pair", "node"];
@@ -174,10 +175,17 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
       {other.length ? <><div className="s2-grp">Your other computers</div><div className="s2-comps">{other.map(card)}</div></> : null}
       {nodes.data && !all.length && !usableHere && !config.loading ? <Hint>No computers are paired yet.</Hint> : null}
       <InTheCloud engine={engine} />
-      <DesktopCtl title="Keep this computer awake" sub="Keeps this computer awake while Trunks use it." help="Stays awake between tasks while Trunks may use it. Locking and signing out still work; Branch never unlocks it. Off until you choose: it stops this computer sleeping on its power plan." name="keepAwake" />
+      <KeepAwake />
       <Acts><Btn pri onClick={() => window.dispatchEvent(new CustomEvent("branch:add-computer"))}><Icon name="plus" small />Add a computer</Btn></Acts>
     </Sec>
   );
+}
+
+/** Keep this computer awake: the Branch app's own switch. Not drawn where the app is absent, since nothing can change it there. */
+function KeepAwake() {
+  const desk = useDesktopControls();
+  if (desk.off) return null;
+  return <DesktopCtl title="Keep this computer awake" sub="Keeps this computer awake while Trunks use it." help="Stays awake between tasks while Trunks may use it. Locking and signing out still work; Branch never unlocks it. Off until you choose: it stops this computer sleeping on its power plan." name="keepAwake" />;
 }
 
 /** In the cloud: a cloud computer, offered only when the engine has a profile to start one from. */
