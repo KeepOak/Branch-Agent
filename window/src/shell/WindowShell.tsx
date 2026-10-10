@@ -72,7 +72,7 @@ import { Palette } from "./Palette";
 import { paletteRows } from "./palette-rows";
 import { PersonMenu, usePersonName } from "./PersonMenu";
 import { SideResizer } from "./Resizer";
-import { rowMenuItems, threadMenuItems } from "./row-menu";
+import { rowMenuItems } from "./row-menu";
 import { SearchBox, SearchResultsView, useSearch } from "./Search";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { QuickAsk } from "./QuickAsk";
@@ -104,7 +104,6 @@ import { PlanCard, usePlanDismiss, usePlanRefresh, useProgressCard } from "../th
 import { ComputerStage, type PipTarget, type StageMode } from "../stage/ComputerStage";
 import { StageConversation } from "../stage/StageConversation";
 import { SidePane, type PaneTab } from "../stage/SidePane";
-import { shouldShowThreadColumn, ThreadColumn } from "./ThreadColumn";
 import { ControlTower } from "./ControlTower";
 import { StagePip } from "../stage/StagePip";
 import { AddComputer } from "../stage/AddComputer";
@@ -1482,17 +1481,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       </>
     );
   }
-  const threadGeneralKey = topicContact?.threadKey ?? (openRow?.isMain ? openKey : null);
-  const showThreadColumn = shouldShowThreadColumn({
-    chat: route.kind === "chat",
-    focus: layout.focus,
-    stage: Boolean(stage),
-    draft: Boolean(draftTopic),
-    generalKey: threadGeneralKey,
-    topicRow: Boolean(topicContact && activeTopics.length),
-  });
   const showTower = route.kind === "chat" && ready && towerOn && !pane && !layout.focus && !stage && !draftTopic && firstRun.step === null;
-  const mainClass = route.kind === "chat" ? `main${pane ? " with-pane" : ""}${showThreadColumn || showTower ? " v23-layout" : ""}` : talkShown ? (talk.dock === "bottom" ? "main with-talk talk-bottom" : "main with-talk") : "main";
+  const mainClass = route.kind === "chat" ? `main${pane ? " with-pane" : ""}${showTower ? " v23-layout" : ""}` : talkShown ? (talk.dock === "bottom" ? "main with-talk talk-bottom" : "main with-talk") : "main";
 
   return (
     <TrunkAppearances.Provider value={appearances}>
@@ -1648,8 +1638,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             Leave focus mode · Ctrl+.
           </button>
         ) : null}
-        {showThreadColumn && threadGeneralKey ? <ThreadColumn key={topicContact?.id ?? threadGeneralKey} name={topicContact?.name ?? defaultName} generalKey={threadGeneralKey} openKey={openKey} items={topicItems} onOpen={(key) => key === threadGeneralKey ? openConversation(key) : openTopic(key)}
-          onMenu={(e, key, label) => { const row = lists.rows.find((r) => r.key === key); if (row) showMenu(e, `thread:${key}`, threadMenuItems(row, { actions, rename: (r) => { openConversation(r.key); setRenaming(r.key); } }), label); }} /> : null}
         {main}
         {showTower ? <ControlTower engine={session.engine} rows={lists.rows} needsCount={needsYou} trunkName={trunkName} onOpen={openConversation} onInbox={() => openPlace("inbox")} onClose={() => { setTowerOn(false); try { localStorage.setItem("branch.controlTower", "hidden"); } catch { /* current window only */ } }} /> : null}
       </main>

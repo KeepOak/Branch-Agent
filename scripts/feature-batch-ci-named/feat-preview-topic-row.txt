@@ -1,5 +1,4 @@
 engine:src/gateway/contacts/project.test.ts
-window:src/shell/ThreadColumn.test.tsx
 window:src/shell/TopicRail.test.tsx
 window:src/shell/WindowShell.topics.test.tsx
 window:src/shell/conversation-menu-view.test.tsx
