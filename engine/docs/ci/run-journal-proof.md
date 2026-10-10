@@ -41,6 +41,17 @@ test blob ID, assertion failures and command exit status. Compilation, missing
 imports, disk exhaustion and fixture setup failures are not fail-on-base proof.
 Restore the head production files before rerunning head checks.
 
+### Verified base result
+
+On 2026-10-10, production from main commit
+`3bbe4820d5ca4ffbc14a49286367ea3593ff50bb` was checked with final test blob
+`5c47a55083028e9782bbda9b30cb1bd1e0535e59`. The source diff from that base
+contained only the orchestrator test. Its command above reported **0 passed,
+3 failed**, exit 1. All three failures reached line 125's event-order assertion:
+`expected [] to deeply equal` the required `run_started` / `run_ended` rows.
+These were assertion failures, not compilation or harness failures. The test
+blob is unchanged from the previously reviewed head of PR #879.
+
 ## Check attribution
 
 Disclose lint preparation failures in the SELF-CHECK lint line itself. A
