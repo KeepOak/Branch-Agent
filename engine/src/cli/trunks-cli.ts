@@ -34,6 +34,19 @@ function writeWarnings(warnings: string[] | undefined): void {
   }
 }
 
+/** Without --force the write is exclusive, so a file created during the gateway call is never overwritten. */
+async function writeTemplateFile(target: string, template: unknown, force: boolean): Promise<void> {
+  const body = `${JSON.stringify(template, null, 2)}\n`;
+  try {
+    await writeFile(target, body, { encoding: "utf8", flag: force ? "w" : "wx" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw new Error(`${target} already exists. Pass --force to overwrite it.`, { cause: error });
+    }
+    throw error;
+  }
+}
+
 export function registerTrunksCli(program: Command) {
   const trunks = program
     .command("trunks")
@@ -57,7 +70,7 @@ export function registerTrunksCli(program: Command) {
           { agentId },
           { scopes: ["operator.read"] },
         )) as ExportResult;
-        await writeFile(target, `${JSON.stringify(result.template, null, 2)}\n`, "utf8");
+        await writeTemplateFile(target, result.template, opts.force === true);
         if (opts.json === true) {
           process.stdout.write(`${JSON.stringify({ file: target, warnings: result.warnings ?? [] }, null, 2)}\n`);
           return;

@@ -70,6 +70,18 @@ describe("branch trunks export", () => {
     expect(readFileSync(target, "utf8")).toBe("{}");
   });
 
+  it("does not overwrite a file that appears while the gateway call runs", async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "trunks-export-"));
+    const target = path.join(dir, "raced.trunk-template.json");
+    const { program } = createProgram({ template: { name: "Scout" } });
+    callGatewayFromCli.mockImplementationOnce(async () => {
+      writeFileSync(target, "someone else's file");
+      return { template: { name: "Scout" } };
+    });
+    await expect(program.parseAsync(cli("export", "scout", "--out", target))).rejects.toThrow(/already exists/);
+    expect(readFileSync(target, "utf8")).toBe("someone else's file");
+  });
+
   it("overwrites with --force", async () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "trunks-export-"));
     const target = path.join(dir, "existing.trunk-template.json");
