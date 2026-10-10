@@ -22,25 +22,7 @@
     "chat:agent:researcher:notes > Attach, mention a Trunk, skills, Temporary :: Run it in the background /bg": [
       "error"
     ],
-    "chat:agent:researcher:notes > Conversation menu :: Copy link": [
-      "toast-only"
-    ],
-    "chat:agent:researcher:notes > Conversation menu :: Open in its own window": [
-      "dead"
-    ],
     "chat:agent:researcher:notes > Conversation menu :: Pin": [
-      "dead"
-    ],
-    "chat:agent:researcher:notes > Conversation menu :: Reload": [
-      "dead"
-    ],
-    "chat:agent:researcher:notes > Conversation menu :: Search in this conversation Ctrl F": [
-      "dead"
-    ],
-    "chat:agent:researcher:notes > Conversation menu :: Send to the board": [
-      "toast-only"
-    ],
-    "chat:agent:researcher:notes > Conversation menu :: Show Researcher’s window": [
       "dead"
     ],
     "chat:agent:researcher:notes > How threads show: Column :: Column": [

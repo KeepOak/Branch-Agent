@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Conversation } from "../connect/conversations";
-import { conversationMenuItems, type ConversationMenuContext, type ConversationMenuRun } from "./conversation-menu";
+import { conversationMenuItems, keyHint, type ConversationMenuContext, type ConversationMenuRun } from "./conversation-menu";
 import type { MenuItem } from "./Menu";
 import { conversationLink, publicShareLink, readDetail } from "./ConversationMenu";
 import { readSharing } from "./ShareDialog";
@@ -14,80 +14,106 @@ const row = (patch: Partial<Conversation> = {}): Conversation => ({
 });
 function ctx(_level: string, own: boolean, patch: Partial<ConversationMenuContext> = {}): ConversationMenuContext {
   return { row: own ? row() : row({ key: "agent:main:main", agentId: "main", isMain: true, title: "" }), isMain: !own,
-    trunkName: own ? "Research" : "Sapling", ownTrunk: own, canRemoveTrunk: true, online: true, now: new Date(2026, 9, 1, 9, 0).getTime(),
+    trunkName: own ? "Research" : "Sapling", ownTrunk: own, canRemoveTrunk: true, mac: false, now: new Date(2026, 9, 1, 9, 0).getTime(),
     hasReply: true, talkOff: null, run, ...patch };
 }
 const shape = (items: MenuItem[]) => items.map((i) => i.kind === "sep" ? "---" : i.kind === "custom" ? "[custom]" : i.kind === "sub" ? `${i.label} ›` : i.kind === "head" || i.kind === "info" ? `[${i.label}]` : `${i.disabled ? "[off] " : ""}${i.label}`);
+/** Every row under a menu, flattened: the submenus' rows follow their parent. */
+const flat = (items: MenuItem[]): MenuItem[] => items.flatMap((i) => (i.kind === "sub" ? [i, ...flat(i.items)] : [i]));
+const leaves = (items: MenuItem[]) => flat(items).filter((i): i is Extract<MenuItem, { run: () => void }> => i.kind === undefined || i.kind === "item");
+const more = (items: MenuItem[]) => (items.find((i) => i.kind === "sub" && i.label === "More") as Extract<MenuItem, { kind: "sub" }>).items;
+const leaf = (items: MenuItem[], label: string) => leaves(items).find((i) => i.label === label);
 
 describe("P54 conversation header menu", () => {
-  it("groups the conversation, Trunk, look, export, view and help actions with destructive rows last", () => {
-    const items = conversationMenuItems(ctx("regular", true));
-    const labels = shape(items);
-    expect(labels.filter((x) => x.startsWith("["))).toContain("[This conversation]");
-    expect(labels).toContain("[Research]");
-    expect(labels).toContain("[Look closer]");
-    expect(labels).toContain("Export ›");
-    expect(labels).toContain("[View]");
-    expect(labels).toContain("[Help]");
-    expect(labels).toContain("Copy link");
-    expect(labels).not.toContain("Copy ›");
-    expect(labels).toContain("Talk live");
-    expect(labels).toContain("Archive");
-    expect(labels.slice(-2)).toEqual(["Delete this conversation…", "Remove Research…"]);
-    expect(items.slice(-2).every((i) => (i.kind === undefined || i.kind === "item") && i.danger)).toBe(true);
-    const exportRow = items.find((i) => i.kind === "sub" && i.label === "Export") as Extract<MenuItem, { kind: "sub" }>;
-    expect(shape(exportRow.items)).toEqual(["As Markdown", "As a web page", "[off] As a share file, locked…"]);
+  it("shows six actions, the Trunk and More at the top, with no developer rows", () => {
+    expect(shape(conversationMenuItems(ctx("regular", true)))).toEqual([
+      "Unpin", "Share this conversation…", "Clear messages and start fresh…", "Archive", "---", "Research…", "---", "More ›",
+    ]);
+    const all = leaves(conversationMenuItems(ctx("regular", true, { canMove: true }))).map((i) => i.label);
+    expect(all).not.toEqual(expect.arrayContaining(["Reload", "Copy link", "Send to the board", "Research’s profile", "Edit Research…"]));
+  });
+
+  it("keeps every other action reachable under More", () => {
+    const labels = leaves(more(conversationMenuItems(ctx("regular", true)))).map((i) => i.label);
+    expect(labels).toEqual(expect.arrayContaining([
+      "Talk live", "Rename this thread…", "Who Research knows", "Make a card on the Canopy board", "Look inside the last reply", "Map of this conversation",
+      "Replay this conversation", "As Markdown", "As a web page", "Side panel", "Hide or show the list", "Open the browser", "Switch light or dark",
+      "Why each thing is here", "Delete this conversation…", "Remove Research…",
+    ]));
+  });
+
+  it("uses the Trunk entry for the profile, where editing lives", () => {
+    calls.length = 0;
+    const trunk = conversationMenuItems(ctx("regular", true)).find((i) => i.kind === undefined && i.label === "Research…") as Extract<MenuItem, { run: () => void }>;
+    trunk.run();
+    expect(calls).toEqual(["profile"]);
+  });
+
+  it("uses ⌘ for shortcut hints on a Mac and Ctrl elsewhere", () => {
+    expect(keyHint("Ctrl Shift K", true)).toBe("⌘⇧K");
+    expect(keyHint("Ctrl F", false)).toBe("Ctrl F");
+    expect((more(conversationMenuItems(ctx("regular", true))).find((i) => i.kind === "sub" && i.label === "View") as Extract<MenuItem, { kind: "sub" }>).hover).toBe(false);
+    expect(leaf(conversationMenuItems(ctx("regular", true, { mac: true })), "Side panel")?.hint).toBe("⌘⇧K");
+    expect(leaf(conversationMenuItems(ctx("regular", true, { mac: false })), "Side panel")?.hint).toBe("Ctrl Shift K");
+  });
+
+  it("shows Move to computer only when another computer exists", () => {
+    expect(shape(conversationMenuItems(ctx("regular", true, { canMove: true })))).toContain("Move to computer…");
+    expect(shape(conversationMenuItems(ctx("regular", true)))).not.toContain("Move to computer…");
+  });
+
+  it("hides Talk live while voice is off, and leaves no greyed row without a reason", () => {
+    const off = "Off until you choose: it uses the microphone.";
+    expect(leaf(conversationMenuItems(ctx("regular", true, { talkOff: off })), "Talk live")).toBeUndefined();
+    expect(leaf(conversationMenuItems(ctx("regular", true, { talkOff: null })), "Talk live")?.disabled).toBeUndefined();
+    for (const entry of leaves(conversationMenuItems(ctx("regular", true, { talkOff: off, ownWindowOff: "Not here." })))) {
+      if (entry.disabled !== undefined) expect(entry.disabled.length).toBeGreaterThan(0);
+    }
   });
 
   it("uses the main, thread and group variants without duplicated rename or destructive controls", () => {
-    const main = shape(conversationMenuItems(ctx("regular", false)));
-    expect(main).toContain("Rename Sapling…");
-    expect(main).not.toContain("Archive");
-    expect(main).not.toContain("Snooze ›");
-    expect(main).not.toContain("Delete this conversation…");
-    const thread = shape(conversationMenuItems(ctx("regular", true)));
-    expect(thread).toContain("Rename this thread…");
-    const group = shape(conversationMenuItems(ctx("regular", true, { room: [{ label: "Room rules", run: () => {} }] })));
-    expect(group).toContain("Rename this group…");
-    expect(group).toContain("Room rules");
-    expect(group).not.toContain("[Research]");
+    const mainTop = shape(conversationMenuItems(ctx("regular", false)));
+    expect(mainTop).toContain("Sapling…");
+    expect(mainTop).not.toContain("Archive");
+    const mainMore = leaves(more(conversationMenuItems(ctx("regular", false)))).map((i) => i.label);
+    expect(mainMore).not.toContain("Delete this conversation…");
+    expect(mainMore).not.toContain("Rename Sapling…");
+    expect(shape(more(conversationMenuItems(ctx("regular", true))))).toEqual(expect.arrayContaining(["Snooze ›"]));
+    const group = conversationMenuItems(ctx("regular", true, { room: [{ label: "Room rules", run: () => {} }] }));
+    expect(shape(group)).not.toContain("Research…");
+    expect(leaves(more(group)).map((i) => i.label)).toEqual(expect.arrayContaining(["Room rules", "Rename this group…"]));
   });
 
   it("offers four correctly worded snooze choices and a Wake action", () => {
-    const items = conversationMenuItems(ctx("regular", true));
-    const snooze = items.find((i) => i.kind === "sub" && i.label === "Snooze") as Extract<MenuItem, { kind: "sub" }>;
+    const snooze = more(conversationMenuItems(ctx("regular", true))).find((i) => i.kind === "sub" && i.label === "Snooze") as Extract<MenuItem, { kind: "sub" }>;
     expect(shape(snooze.items)).toEqual(["[Snooze until]", "In 1 hour", "In 3 hours", "Tomorrow", "Next week"]);
     expect((snooze.items[3] as { hint: string }).hint).not.toMatch(/tomorrow/i);
     expect((snooze.items[4] as { hint: string }).hint).toMatch(/Mon/);
     const now = new Date(2026, 9, 1, 9, 0).getTime();
-    expect(shape(conversationMenuItems(ctx("regular", true, { row: row({ snoozedUntil: now + 3_600_000 }) })))).toContain("Wake");
+    expect(leaves(more(conversationMenuItems(ctx("regular", true, { row: row({ snoozedUntil: now + 3_600_000 }) })))).map((i) => i.label)).toContain("Wake");
     expect(shape(conversationMenuItems(ctx("regular", true, { row: row({ archived: true }) })))).toContain("Restore");
   });
 
-  it("keeps all active view actions wired and greys unavailable ones with reasons", () => {
+  it("keeps the view actions wired", () => {
     calls.length = 0;
     const items = conversationMenuItems(ctx("regular", true));
-    for (const label of ["Search in this conversation", "Side panel", "Hide or show the list", "Open in its own window", "Open its computer", "Open the browser", "Switch light or dark", "Why each thing is here"]) {
-      const found = items.find((i) => i.kind !== "sub" && i.kind !== "sep" && i.kind !== "head" && i.kind !== "custom" && i.label === label) as Extract<MenuItem, { run: () => void }>;
+    for (const label of ["Side panel", "Hide or show the list", "Open in its own window", "Open its computer", "Open the browser", "Switch light or dark", "Why each thing is here"]) {
+      const found = leaf(items, label)!;
       expect(found.disabled).toBeUndefined();
       found.run();
     }
-    expect(calls).toEqual(["search", "sidePanel", "list", "ownWindow", "computer", "browser", "theme", "guide"]);
-    const tower = items.find((i) => i.kind !== "sub" && i.kind !== "sep" && i.kind !== "head" && i.kind !== "custom" && i.label === "Show the Control tower") as Extract<MenuItem, { run: () => void }>;
-    expect(tower.disabled).toBeUndefined();
-    tower.run();
-    expect(calls.at(-1)).toBe("tower");
-    expect(shape(conversationMenuItems(ctx("regular", true, { towerVisible: true })))).toContain("Hide the Control tower");
+    expect(calls).toEqual(["sidePanel", "list", "ownWindow", "computer", "browser", "theme", "guide"]);
+    expect(shape(conversationMenuItems(ctx("regular", true, { towerVisible: true })))).toBeDefined();
+    expect(leaves(more(conversationMenuItems(ctx("regular", true, { towerVisible: true })))).map((i) => i.label)).toContain("Hide the Control tower");
   });
 
-  it("keeps this contact's thread layout behind a click-only View row above Side panel", () => {
+  it("keeps this contact's thread layout as a click-only row inside View", () => {
     const items = conversationMenuItems(ctx("regular", true, { threadView: { contactName: "Researcher", layout: "column", set: () => undefined } }));
-    const view = items.find((i) => i.kind === "sub" && i.label === "View") as Extract<MenuItem, { kind: "sub" }>;
-    expect(view.hover).toBe(false);
-    const labels = shape(items);
-    expect(labels.indexOf("View ›") + 1).toBe(labels.indexOf("Side panel"));
-    expect(labels).toContain("Open the browser");
-    expect(shape(view.items)).toEqual(["[Researcher’s threads show as]", "Column", "Emoji rail", "Side tabs", "Tabs above the chat"]);
+    const view = more(items).find((i) => i.kind === "sub" && i.label === "View") as Extract<MenuItem, { kind: "sub" }>;
+    const threads = view.items.find((i) => i.kind === "sub" && i.label === "Threads show as") as Extract<MenuItem, { kind: "sub" }>;
+    expect(threads.hover).toBe(false);
+    expect(shape(threads.items)).toEqual(["[Researcher’s threads show as]", "Column", "Emoji rail", "Side tabs", "Tabs above the chat"]);
+    expect(shape(view.items).indexOf("Side panel")).toBeGreaterThan(shape(view.items).indexOf("Threads show as ›"));
   });
 });
 

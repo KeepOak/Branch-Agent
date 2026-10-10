@@ -1,0 +1,4 @@
+window:src/shell/contact-row-routing.test.tsx
+window:src/shell/conversation-menu-view.test.tsx
+window:src/shell/conversation-menu.test.ts
+window:src/shell/who-it-knows-button.test.tsx

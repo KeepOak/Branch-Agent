@@ -69,7 +69,7 @@ it("offers Pin but not Archive or Delete on the default Trunk's conversation men
   const [contact] = projectContact([raw("tk", 10)], []);
   const items = conversationMenuItems({
     row: openContactRow(contact.threadKey, [contact], []), isMain: true, trunkName: "TK",
-    ownTrunk: false, canRemoveTrunk: false, online: true, now: 100,
+    ownTrunk: false, canRemoveTrunk: false, mac: false, now: 100,
     hasReply: false, talkOff: null,
     run: new Proxy({}, { get: () => vi.fn() }) as ConversationMenuRun,
   });

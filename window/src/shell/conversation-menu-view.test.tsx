@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { conversationMenuItems, type ConversationMenuContext, type ConversationMenuRun } from "./conversation-menu";
 import { Menu } from "./Menu";
 
@@ -14,7 +14,7 @@ const row = {
 };
 function items() {
   const ctx: ConversationMenuContext = {
-    row, isMain: false, trunkName: "Researcher", ownTrunk: true, canRemoveTrunk: true, online: true,
+    row, isMain: false, trunkName: "Researcher", ownTrunk: true, canRemoveTrunk: true, mac: true,
     now: new Date(2026, 9, 1, 9, 0).getTime(), hasReply: true, talkOff: null, run,
     threadView: { contactName: "Researcher", layout: "column", set: () => undefined },
   };
@@ -35,41 +35,47 @@ async function show() {
   return host;
 }
 
+/** The menu row (button) whose label reads `label`, in the top menu or any open flyout. */
 function rowNamed(host: HTMLElement, label: string) {
-  return [...host.querySelectorAll<HTMLButtonElement>("[data-testid=conversation-menu] > button.mi")].find((button) =>
-    [...button.querySelectorAll("span")].some((span) => span.textContent === label),
-  );
+  return [...host.querySelectorAll<HTMLButtonElement>("button.mi")].find((button) => button.querySelector("span")?.textContent === label);
 }
 
-function viewRow(host: HTMLElement) {
-  return host.querySelector<HTMLButtonElement>("[data-testid=conversation-view]")
-    ?? [...host.querySelectorAll<HTMLButtonElement>("[data-testid=conversation-menu] > button.mi[aria-haspopup=menu]")].find((button) =>
-      [...button.querySelectorAll("span")].some((span) => span.textContent === "View"),
-    );
+function flyout(host: HTMLElement, label: string) {
+  return host.querySelector<HTMLElement>(`[role=menu][aria-label="${label}"]`);
 }
 
-describe("conversation ⋯ View layout", () => {
-  it("does not open a View flyout on hover that covers Side panel or Open the browser", async () => {
-    const host = await show();
-    const view = viewRow(host)!;
-    expect(view).toBeTruthy();
-    await act(async () => view.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
-    await act(async () => view.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true })));
-    expect(host.querySelector("[role=menu][aria-label=View]")).toBeNull();
-    expect(host.textContent).not.toContain("Researcher’s threads show as");
-    const side = rowNamed(host, "Side panel")!;
-    const browser = rowNamed(host, "Open the browser")!;
-    expect(side).toBeTruthy();
-    expect(browser).toBeTruthy();
-    await act(async () => side.click());
-    await act(async () => browser.click());
+describe("conversation ⋯ More and View", () => {
+  it("closes the whole menu when a row two flyouts deep runs", async () => {
+    const closed = vi.fn();
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root!.render(createElement(Menu, { at: { x: 0, y: 0 }, items: items(), onClose: closed, label: "Conversation", testid: "conversation-menu" })));
+    await act(async () => rowNamed(host, "More")!.click());
+    await act(async () => rowNamed(host, "View")!.click());
+    await act(async () => rowNamed(host, "Side panel")!.click());
+    expect(closed).toHaveBeenCalled();
   });
 
-  it("opens the thread-layout choices when View is clicked", async () => {
+  it("opens More, then View, which holds Side panel and Open the browser", async () => {
     const host = await show();
-    await act(async () => viewRow(host)!.click());
-    const flyout = host.querySelector("[role=menu][aria-label=View]");
-    expect(flyout?.textContent).toContain("Researcher’s threads show as");
-    expect(flyout?.textContent).toContain("Column");
+    expect(flyout(host, "Conversation")?.textContent).not.toContain("Side panel");
+    await act(async () => rowNamed(host, "More")!.click());
+    expect(flyout(host, "More")).toBeTruthy();
+    await act(async () => rowNamed(host, "View")!.click());
+    const view = flyout(host, "View");
+    expect(view?.textContent).toContain("Side panel");
+    expect(view?.textContent).toContain("Open the browser");
+  });
+
+  it("keeps the thread-layout choices click-only inside View", async () => {
+    const host = await show();
+    await act(async () => rowNamed(host, "More")!.click());
+    await act(async () => rowNamed(host, "View")!.click());
+    const threads = rowNamed(host, "Threads show as")!;
+    await act(async () => threads.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true })));
+    expect(flyout(host, "Threads show as")).toBeNull();
+    await act(async () => threads.click());
+    expect(flyout(host, "Threads show as")?.textContent).toContain("Researcher’s threads show as");
+    expect(flyout(host, "Threads show as")?.textContent).toContain("Column");
   });
 });
