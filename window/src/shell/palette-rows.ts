@@ -59,6 +59,23 @@ function conversationCommands(c: Ctx): PaletteRow[] {
   return rows;
 }
 
+/** Words that find a Settings page when its name doesn't say them (what the page is for). */
+const SETTINGS_KEYWORDS: Record<string, string> = {
+  agents: "skills capabilities tools grafts agents connect",
+  accounts: "sign in login account add provider",
+  permissions: "allow approve approvals access",
+  computer: "computer machine device browser screen",
+  updates: "update install version about what's new",
+  achievements: "achievements badges progress",
+  backups: "backup restore export",
+  secrets: "passwords sign-ins credentials keys",
+  seasons: "seasons archive",
+  self: "about branch profile",
+  usage: "usage data limits cost",
+  voice: "voice speak microphone",
+  appearance: "theme colours dark light",
+};
+
 export function paletteRows(c: Ctx): PaletteRow[] {
   const actions: PaletteRow[] = [
     { id: "a:new", group: "Actions", label: "New conversation", hint: "Ctrl N", run: c.newConversation },
@@ -73,6 +90,8 @@ export function paletteRows(c: Ctx): PaletteRow[] {
     { id: "a:help", group: "Actions", label: "Get help setting up", hint: "", run: c.setup },
     { id: "a:tour", group: "Actions", label: "Take the walkthrough", hint: "2 min", run: c.tour },
     { id: "a:skins", group: "Actions", label: "Browse themes", hint: "", run: () => c.openSettings("appearance") },
+    { id: "a:account", group: "Actions", label: "Add an account", hint: "Settings", run: () => c.openSettings("accounts") },
+    { id: "a:update", group: "Actions", label: "Updates & about", hint: "Install update", keywords: "install update version", run: () => c.openSettings("updates") },
     ...conversationCommands(c),
   ];
   const conversations = c.conversations.map((r) => ({
@@ -84,7 +103,7 @@ export function paletteRows(c: Ctx): PaletteRow[] {
   }));
   const places = PLACES.map((p) => ({ id: `p:${p.id}`, group: "Places", label: p.name, hint: "Place", run: () => c.openPlace(p.id) }));
   const settings = settingsGroups("technical").flatMap((g) =>
-    g.pages.map((p) => ({ id: `s:${p.id}`, group: "Settings", label: p.name, hint: "Settings", run: () => c.openSettings(p.id) })),
+    g.pages.map((p) => ({ id: `s:${p.id}`, group: "Settings", label: p.name, hint: "Settings", keywords: SETTINGS_KEYWORDS[p.id], run: () => c.openSettings(p.id) })),
   );
   const trunks = c.trunks.map((t) => ({ id: `t:${t.id}`, group: "Trunks", label: t.name, hint: "Trunk", run: () => c.openPlace("customize") }));
   return [...actions, ...conversations, ...places, ...settings, ...trunks];

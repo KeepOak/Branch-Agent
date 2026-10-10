@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Conversation } from "../connect/conversations";
-import { countOf, cutAround, markParts, matchConversations, readFileHits, readMessageHits } from "./search-model";
+import { countOf, cutAround, markParts, matchConversations, readFileHits, readMessageHits, plainSnippet } from "./search-model";
 
 const conv = (key: string, title: string, archived = false) => ({ key, title, archived, preview: "", agentId: "dev" }) as Conversation;
 
@@ -27,4 +27,9 @@ describe("search model", () => {
   it("counts", () => {
     expect(countOf({ chats: [conv("a", "x")], messages: [], past: [], files: [] }, "all")).toBe(1);
   });
+});
+
+it("shows a message snippet as plain words, without markdown links or emphasis", () => {
+  expect(plainSnippet("See [the report](https://example.test/r) and **the table** with `grep`.")).toBe("See the report and the table with grep.");
+  expect(plainSnippet("plain   text")).toBe("plain text");
 });

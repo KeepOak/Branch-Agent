@@ -34,6 +34,16 @@ export function matchConversations(rows: Conversation[], q: string, trunkName: (
   return { chats: hit.filter((r) => !r.archived), past: hit.filter((r) => r.archived) };
 }
 
+/** A message snippet as plain words: links and emphasis marks dropped, so the row never shows raw markdown. */
+export function plainSnippet(text: string): string {
+  return text
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/(\*\*|__|\*|_)(.+?)\1/g, "$2")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** Reads sessions.search `results[]`, at most 25 (the most one message search returns). */
 export function readMessageHits(result: unknown): MessageHit[] {
   const items = (result as { results?: unknown })?.results;
@@ -45,7 +55,7 @@ export function readMessageHits(result: unknown): MessageHit[] {
     return {
       key: String(r.sessionKey ?? ""),
       role: r.role === "user" ? "user" : "assistant",
-      snippet: String(r.snippet ?? "").replace(/\s+/g, " ").trim(),
+      snippet: plainSnippet(String(r.snippet ?? "")),
       at: typeof r.timestamp === "number" ? r.timestamp : 0,
       messageId: String(r.messageId ?? ""),
     };
