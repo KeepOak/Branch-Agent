@@ -1,2 +1,0 @@
-window:src/thread/blocks.reply-text-tool.test.tsx
-window:src/thread/text-tool-call.test.ts

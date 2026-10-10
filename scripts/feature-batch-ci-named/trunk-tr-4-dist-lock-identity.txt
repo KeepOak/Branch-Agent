@@ -1,2 +1,0 @@
-engine:test/scripts/dist-artifact-lock.test.ts
-engine:test/scripts/vitest-worker-cache.test.ts

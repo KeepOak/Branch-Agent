@@ -1,2 +1,0 @@
-engine:src/infra/run-trace.test.ts
-window:src/diagnostics/ui-log.test.ts

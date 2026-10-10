@@ -1,2 +1,0 @@
-window:src/places-nav/routes.test.ts
-window:src/shell/own-window.test.ts

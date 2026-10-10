@@ -1,2 +1,0 @@
-window:src/places/settings/set2/set2.test.tsx
-window:src/shell/use-status-update.test.tsx

@@ -1,3 +1,0 @@
-window:src/connect/run-outcome.test.ts
-window:src/thread/run-outcome.test.tsx
-window:src/thread/format.test.ts

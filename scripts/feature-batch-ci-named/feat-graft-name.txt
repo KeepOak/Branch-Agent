@@ -1,3 +1,0 @@
-engine:src/cli/mcp-cli.graft.test.ts
-engine:src/cli/program/command-registry.test.ts
-engine:src/cli/program/root-help.test.ts

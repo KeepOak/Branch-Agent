@@ -1,1 +1,0 @@
-window:src/places/settings/set1/people-more.test.tsx

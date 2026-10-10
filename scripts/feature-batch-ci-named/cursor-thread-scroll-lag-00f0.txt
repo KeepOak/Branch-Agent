@@ -1,1 +1,0 @@
-window:src/thread/follow-scroll.test.tsx

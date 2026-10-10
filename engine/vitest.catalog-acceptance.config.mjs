@@ -1,9 +1,0 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import {fileURLToPath,pathToFileURL} from 'node:url';
-const root=process.env.BRANCH_CATALOG_ACCEPTANCE_ENGINE_ROOT ?? path.dirname(fileURLToPath(import.meta.url));
-const dependencyRoot=process.env.BRANCH_CATALOG_ACCEPTANCE_DEPENDENCY_ROOT ?? root;
-const paths=JSON.parse(fs.readFileSync(`${root}/tsconfig.json`,'utf8')).compilerOptions.paths;
-function alias(id){for(const [pattern,targets] of Object.entries(paths)){const w=pattern.indexOf('*');if(w<0&&id===pattern)return path.resolve(root,targets[0]);if(w>=0&&id.startsWith(pattern.slice(0,w))&&id.endsWith(pattern.slice(w+1)))return path.resolve(root,targets[0].replace('*',id.slice(w,id.length-(pattern.length-w-1))));}}
-const resolving=new Set();
-export default {root,cacheDir:process.env.BRANCH_CATALOG_ACCEPTANCE_CACHE_DIR ?? path.join(root,'.cache/catalog-acceptance-vitest'),plugins:[{name:'catalog-actual-source-and-existing-dependencies',enforce:'pre',async resolveId(id,importer){const source=alias(id);if(source)return source;if(id.startsWith('.')||id.startsWith('/')||id.startsWith('node:')||id.includes(':/')||id.startsWith('\u0000'))return;const key=`${id}|${importer??''}`;if(resolving.has(key))return;resolving.add(key);try{const relative=importer&&path.relative(root,importer);const mirror=relative&&!relative.startsWith('..')&&!path.isAbsolute(relative)?path.join(dependencyRoot,relative):path.join(dependencyRoot,'test/__catalog_acceptance__.ts');return await this.resolve(id,mirror,{skipSelf:true});}finally{resolving.delete(key);}}}],test:{pool:'forks',maxWorkers:1,fileParallelism:false,isolate:true,testTimeout:60000,hookTimeout:120000,setupFiles:[`${root}/test/setup.ts`],include:['src/auto-reply/reply/commands-info.test.ts'],execArgv:['--max-old-space-size=384','--import',pathToFileURL(`${dependencyRoot}/node_modules/tsx/dist/esm/index.mjs`).href,'--import',pathToFileURL(path.join(root,'test/catalog-dependency-loader.mjs')).href]}};

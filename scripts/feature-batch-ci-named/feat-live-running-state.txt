@@ -1,3 +1,0 @@
-window:src/connect/live-running-reset.test.ts
-window:src/shell/live-running-rings.test.tsx
-window:src/thread/restart-marks.test.ts

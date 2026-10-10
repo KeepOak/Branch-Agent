@@ -1,2 +1,0 @@
-engine:extensions/memory-core/src/team-memory-search.test.ts
-engine:extensions/memory-core/src/tools.test.ts
