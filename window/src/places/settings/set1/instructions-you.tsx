@@ -28,12 +28,12 @@ export function JustAboutYou({ engine, agentId }: { engine: WindowEngine; agentI
     <Sec title="Just about you">
       <Plist>
         <div className="prow if-row" data-row="Just about you">
-          <code className="if-name">USER.md</code>
+          <span className="if-name" title="USER.md">About you</span>
           <span className="grow"><b>Just about you</b><small>Yours: what this Trunk should know about you. Only you and it read it.{n ? ` · ${linesText(n)}` : ""}</small></span>
           <Btn sm onClick={() => setOpen(true)}>{n ? "Edit" : "Write"}</Btn>
         </div>
       </Plist>
-      <Hint>The shared USER.md above stays the household’s.</Hint>
+      <Hint>The shared About you instructions above stay the household’s.</Hint>
       {open ? <YouEditor engine={engine} agentId={agentId} start={doc} onClose={(saved) => { setOpen(false); if (saved) void file.reload(); }} /> : null}
     </Sec>
   );
@@ -52,7 +52,7 @@ function YouEditor({ engine, agentId, start, onClose }: EdProps) {
     ? <AskFoot d={d} question="Discard your changes and load the saved file?" onDiscard={() => onClose(false)} />
     : <><Btn ghost onClick={() => void d.reload()}>Reload</Btn><span className="grow" /><Btn ghost onClick={closer(d, () => onClose(false))}>Cancel</Btn><Btn pri disabled={!can} onClick={() => void d.save()}>Save</Btn></>;
   return (
-    <Dialog title={`USER.md · just about you${d.dirty ? " · unsaved" : ""}`} wide onClose={closer(d, () => onClose(false))} footer={foot} testid="just-about-you">
+    <Dialog title={`About you · just about you${d.dirty ? " · unsaved" : ""}`} wide onClose={closer(d, () => onClose(false))} footer={foot} testid="just-about-you">
       <div className="if-ed" onKeyDown={saveKeys(d, can)}>
         <ConflictBox d={d} />
         <textarea ref={ref} className="inp if-text" rows={12} spellCheck={false} aria-label="USER.md, just about you" value={d.text} onChange={(e) => d.setText(e.target.value)} />

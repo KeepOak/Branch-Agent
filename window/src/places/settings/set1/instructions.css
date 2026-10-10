@@ -7,10 +7,9 @@
 .set-col .if-chips .chip6[aria-pressed="true"] { background: var(--btn); border-color: var(--btn); color: var(--on-btn); }
 
 .set-col .if-files { margin-top: 8px; }
-.set-col .if-name { flex: none; min-width: 112px; padding: 3px 7px; border-radius: 6px; background: var(--fill); font: 12.5px var(--mono); color: var(--ink); text-align: center; }
+.set-col .if-name { flex: none; min-width: 112px; padding: 3px 7px; border-radius: 6px; background: var(--fill); font: 500 12.5px var(--sans); color: var(--ink); text-align: center; }
 .set-col .prow.if-row b { font-weight: 500; }
 .set-col .prow.if-row .grow { min-width: 160px; }
-.set-col .prow.if-row small.if-path { font: 11.5px var(--mono); color: var(--ink-3); overflow-wrap: anywhere; }
 .set-col .prow.if-row small.why-k { color: var(--ink-3); font-style: italic; }
 .set-col .prow.if-row.off-k > :not(.grow) { opacity: 0.5; }
 .set-col .if-add { margin-top: 8px; }
@@ -35,8 +34,6 @@
 .if-ed .if-prev ul { margin: 0 0 8px; padding-left: 20px; }
 .if-ed .if-prev code { padding: 1px 4px; border-radius: 4px; background: var(--fill); font: 12.5px var(--mono); }
 .if-ed .hint { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--ink-3); }
-.if-ed .if-hist { display: grid; justify-items: start; gap: 8px; font-size: 13px; }
-.if-ed .if-hist .btn { width: 100%; justify-content: flex-start; gap: 6px; }
 .if-ed .if-count { display: grid; gap: 2px; margin-top: -6px; }
 .if-ed .if-error { margin: 0; font-size: 13px; color: var(--bad); }
 .if-ed .if-conflict { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--bad-tint); border-radius: var(--r3-17, 14px); background: color-mix(in srgb, var(--bad) 7%, var(--raise)); }
@@ -52,3 +49,9 @@
   .set-col .prow.if-row .if-name { justify-self: start; min-width: 0; }
   .set-col .prow.if-row .grow { grid-column: 1 / -1; grid-row: 2; min-width: 0; }
 }
+
+.if-use { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 8px; max-width: 190px; font-size: 12px; }
+.if-use small { grid-column: 1 / -1; }
+.if-guided { display: grid; gap: 8px; }
+.if-guided textarea { width: 100%; min-height: 110px; padding: 10px; resize: vertical; }
+.if-ed details > summary { cursor: pointer; margin-bottom: 10px; }

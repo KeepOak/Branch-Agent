@@ -1,11 +1,11 @@
 // Settings › Instructions & personality, the file editor (DESIGN-SPEC §4.7.5.1): Edit · Preview (· Side by side on wide
 // windows), Ctrl+S saves, "· unsaved" in the title, Escape asks before dropping changes, and "Changed on this computer"
 // with Reload / Overwrite when the engine refuses a save because the file moved on (agents.files.set expectedHash).
-// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";
 import { errorText, record, visible } from "../adapter";
+import { fileTitle } from "./instructions-titles";
 import { Btn, Seg, useSaved } from "../kit";
 
 /** One editable document as the engine last gave it: its text, its revision (null while missing). */
@@ -93,6 +93,12 @@ export function useFocusText() {
   return ref;
 }
 
+const JOB_HEADING = "\n\n## This Trunk’s job\n\n";
+function jobParts(content: string) {
+  const at = content.lastIndexOf(JOB_HEADING);
+  return at < 0 ? { before: content.trimEnd(), job: "" } : { before: content.slice(0, at), job: content.slice(at + JOB_HEADING.length).replace(/\n$/, "") };
+}
+
 type Mode = "edit" | "preview" | "side";
 type EditorProps = { engine: WindowEngine; agentId: string; file: FileState; owner: string; onClose: (saved: boolean) => void };
 
@@ -100,6 +106,9 @@ type EditorProps = { engine: WindowEngine; agentId: string; file: FileState; own
 export function FileEditor({ engine, agentId, file, owner, onClose }: EditorProps) {
   const d = useDraft(file, { load: () => readFile(engine, agentId, file.name), save: (t, on) => writeFile(engine, agentId, file.name, t, on) }, () => onClose(true));
   const [mode, setMode] = useState<Mode>("edit");
+  const [advanced, setAdvanced] = useState(file.name !== "SOUL.md");
+  const guided = file.name === "SOUL.md";
+  const parts = jobParts(d.text);
   const wide = typeof window !== "undefined" && window.innerWidth > 1180;
   const ref = useFocusText();
   const shown: Mode = mode === "side" && !wide ? "edit" : mode;
@@ -109,37 +118,30 @@ export function FileEditor({ engine, agentId, file, owner, onClose }: EditorProp
     ? <AskFoot d={d} question="Discard your changes?" onDiscard={() => onClose(false)} />
     : <><Btn ghost onClick={closer(d, () => onClose(false))}>Cancel</Btn><Btn pri disabled={!can} onClick={() => void d.save()}>Save</Btn></>;
   return (
-    <Dialog title={`${file.name} · ${owner}${d.dirty ? " · unsaved" : ""}`} wide onClose={closer(d, () => onClose(false))} footer={foot} testid="instruction-file">
+    <Dialog title={`${fileTitle(file.name)} · ${owner}${d.dirty ? " · unsaved" : ""}`} wide onClose={closer(d, () => onClose(false))} footer={foot} testid="instruction-file">
       <div className="if-ed" onKeyDown={saveKeys(d, can)}>
         <ConflictBox d={d} />
         {d.base.missing ? <p className="hint if-made">It’s made when you save.</p> : null}
+        {guided ? <label className="if-guided">
+          <b>Describe this Trunk’s job</b>
+          <p className="hint">What should it help with? Include the tone you prefer and anything it should ask before doing. Saving adds this to its existing instructions.</p>
+          <textarea className="inp" rows={5} aria-label="Describe this Trunk’s job" value={parts.job} disabled={d.busy} onChange={(e) => d.setText(`${parts.before}${JOB_HEADING}${e.target.value}\n`)} />
+        </label> : null}
+        <details open={advanced} onToggle={(e) => setAdvanced(e.currentTarget.open)}>
+          <summary>Advanced · edit the full instructions</summary>
+        {advanced ? <>
         <Seg label="Edit or preview" value={shown} options={modes} onChange={(m) => setMode(m as Mode)} />
         <div className={`if-panes if-${shown}`}>
           {shown !== "preview" ? <textarea ref={ref} className="inp if-text" rows={14} spellCheck={false} aria-label={file.name} value={d.text} onChange={(e) => d.setText(e.target.value)} /> : null}
           {shown !== "edit" ? <div className="if-prev" aria-label="Preview"><Markdown text={d.text} /></div> : null}
         </div>
+        </> : null}
+        </details>
         {d.error ? <p className="if-error" role="alert">{d.error}</p> : null}
-        <Versions />
       </div>
     </Dialog>
   );
 }
-
-const NO_DRAFT = "Branch can’t write a first version from here yet.";
-/** Earlier versions and "Write it for me": the engine keeps no versions and drafts no file yet, so both say why. */
-function Versions() {
-  return (
-    <aside className="if-hist">
-      <b>Earlier versions</b>
-      <p className="hint">Branch doesn’t keep earlier versions of these files yet.</p>
-      <Btn sm disabled title={NO_DRAFT}><Spark />Write it for me</Btn>
-      <p className="hint">Looks around this workspace and writes a first version, like /init. Read it before you save.</p>
-      <p className="hint">{NO_DRAFT}</p>
-    </aside>
-  );
-}
-
-const Spark = () => <svg className="i s" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 3v5M12 16v5M3 12h5M16 12h5M6 6l3 3M15 15l3 3M6 18l3-3M15 9l3-3" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>;
 
 /** A small Markdown reader for the preview: headings, lists, paragraphs, `code`, **bold** and *italic*. */
 export function Markdown({ text }: { text: string }) {

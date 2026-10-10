@@ -109,7 +109,7 @@ function TrunkFace({ trunk, size }: { trunk: RecordValue; size: number }) {
   return look ? <CharacterFace appearance={look} size={size} label={name} /> : <Face size={size} label={name} />;
 }
 
-/** "Settings for" (Advanced): which Trunk's own settings the pages show; the default Trunk first. */
+/** "Settings for": which Trunk's own settings the pages show; the default Trunk first. */
 function ScopePicker({ engine, scope, onScope }: { engine: WindowEngine; scope: string | null; onScope: (id: string | null) => void }) {
   const agents = useResource<RecordValue>(engine, "agents.list", {});
   const def = text(agents.data?.defaultId ?? "");
@@ -207,7 +207,8 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, a
     }
   }, [level, chosen]);
   const [query, setQuery] = useState("");
-  const [scope, setScope] = useState<string | null>(null);
+  const [scope, setScope] = useState<string | null>(engine.agentId ?? null);
+  useEffect(() => setScope(engine.agentId ?? null), [engine.agentId]);
   const [save, report] = useSaveState();
   const jump = useRowJump(page);
   // Before the engine says hello the scopes aren't known yet: nothing is greyed until they are.
@@ -229,7 +230,6 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, a
     levelScroll.current = next === shown && scrollRef.current ? { page: shown, top: scrollRef.current.scrollTop } : null;
     setLevel(l);
     saveLevel(l);
-    if (l === "regular") setScope(null); // "Settings for" is an Advanced control; Regular shows the default Trunk's
     if (next !== page) onPage(next);
   };
   const go = useCallback((id: string, row?: SearchRow) => {
@@ -266,7 +266,7 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, a
           <input placeholder="Search settings" aria-label="Search settings" value={query} onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape" && query) { e.preventDefault(); setQuery(""); } else if (e.key === "Enter") { e.preventDefault(); first(); } }} />
         </label>
-        {LV[level] >= 1 ? <ScopePicker engine={engine} scope={scope} onScope={setScope} /> : null}
+        <ScopePicker engine={engine} scope={scope} onScope={setScope} />
         {query.trim() ? <SearchResults query={query} level={level} shown={shown} onGo={go} /> : settingsGroups(level).map((g) => ({ ...g, pages: g.pages.filter((p) => maySetup || !HIDDEN_PAGES.includes(p.id)) })).map((g) => (
           <div key={g.name} className="set-group">
             <div className="grp">{g.name}</div>
@@ -281,7 +281,7 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, a
       <div className="set-scroll" ref={scrollRef}>
         <div className="set-col">
           <FileProblem engine={engine} />
-          <KitProvider level={LV[level]} report={report} scope={LV[level] >= 1 ? scope : null} ask={hasModel ? onAsk : undefined} askName={askName} pins={pins}>
+          <KitProvider level={LV[level]} report={report} scope={scope} ask={hasModel ? onAsk : undefined} askName={askName} pins={pins}>
             <SetupLock locked={!maySetup && SETUP_PAGES.includes(shown)}>
               <SettingsPage page={shown} title={pageName(shown)} level={level} engine={engine} openSettings={onPage} />
             </SetupLock>

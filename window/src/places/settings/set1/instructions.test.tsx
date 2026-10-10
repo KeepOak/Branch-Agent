@@ -55,9 +55,7 @@ describe("Settings › Instructions & personality", () => {
     expect(row("Its name").querySelector("small")!.textContent).toBe("Empty");
     expect(button(row("Who your assistant is"), "Edit")).toBeTruthy();
     expect(button(row("Its name"), "Write")).toBeTruthy();
-    expect(row("Notes on the tools").classList.contains("off-k")).toBe(true);
-    expect(button(row("Notes on the tools"), "Write").disabled).toBe(true);
-    expect(row("Who your assistant is").querySelector<HTMLInputElement>('input[aria-label="Read SOUL.md"]')!.checked).toBe(true);
+    expect(row("Who your assistant is").querySelector<HTMLInputElement>('input[aria-label="Use this file: Personality"]')!.checked).toBe(true);
   });
 
   it("saves an edited file with the hash it read, and a new one as expected missing", async () => {
@@ -65,15 +63,80 @@ describe("Settings › Instructions & personality", () => {
     await render(engine);
     await act(async () => button(row("Who your assistant is"), "Edit").click());
     const dlg = document.querySelector<HTMLElement>('[data-testid="instruction-file"]')!;
-    expect(dlg.getAttribute("aria-label")).toBe("SOUL.md · every Trunk");
-    await type(dlg.querySelector("textarea")!, "# Soul\n\nShort answers.\n");
-    expect(dlg.getAttribute("aria-label")).toBe("SOUL.md · every Trunk · unsaved");
+    const advanced = dlg.querySelector<HTMLElement>("summary");
+    if (advanced && !dlg.querySelector("details")?.open) await act(async () => advanced.click());
+    expect(dlg.getAttribute("aria-label")).toBe("Personality · every Trunk");
+    await type(dlg.querySelector<HTMLTextAreaElement>("textarea.if-text")!, "# Soul\n\nShort answers.\n");
+    expect(dlg.getAttribute("aria-label")).toBe("Personality · every Trunk · unsaved");
     await act(async () => button(dlg, "Save").click());
     expect(request).toHaveBeenCalledWith("agents.files.set", { agentId: "main", name: "SOUL.md", content: "# Soul\n\nShort answers.\n", expectedHash: H1 });
     await act(async () => button(row("Its name"), "Write").click());
     await type(document.querySelector<HTMLTextAreaElement>('[data-testid="instruction-file"] textarea')!, "# Me\n");
     await act(async () => document.querySelector('[data-testid="instruction-file"] .if-ed')!.dispatchEvent(new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true })));
     expect(request).toHaveBeenCalledWith("agents.files.set", { agentId: "main", name: "IDENTITY.md", content: "# Me\n", expectedMissing: true });
+  });
+
+  it("shows friendly titles and labeled file switches without paths", async () => {
+    await render(engineOf().engine, 2);
+    const files = host.querySelector(".if-files")!;
+    for (const title of ["Personality", "Name", "About you", "House rules"]) expect(files.textContent).toContain(title);
+    for (const title of ["Tools", "Standing steps", "Scheduled check-ins"]) expect(files.textContent).not.toContain(title);
+    expect(files.textContent).not.toContain("SOUL.md");
+    expect(files.textContent).not.toContain("/w/");
+    expect(files.querySelector('[title="SOUL.md"]')).not.toBeNull();
+    expect(files.textContent).toContain("Use this file");
+  });
+
+  it("writes a guided job without replacing existing instructions and confirms Saved", async () => {
+    const { engine, request } = engineOf();
+    await render(engine);
+    await act(async () => button(row("Who your assistant is"), "Edit").click());
+    const dlg = document.querySelector<HTMLElement>('[data-testid="instruction-file"]')!;
+    const job = dlg.querySelector<HTMLTextAreaElement>('textarea[aria-label="Describe this Trunk’s job"]');
+    expect(job).not.toBeNull();
+    expect(dlg.querySelector("details")?.open).toBe(false);
+    await type(job!, "Help me ");
+    expect(job!.value).toBe("Help me ");
+    await type(job!, "Help me plan weekly meals.");
+    await act(async () => button(dlg, "Save").click());
+    expect(request).toHaveBeenCalledWith("agents.files.set", expect.objectContaining({ content: "# Soul\n\nPlain words.\n\n## This Trunk’s job\n\nHelp me plan weekly meals.\n", expectedHash: H1 }));
+    expect(host.querySelector('[role="status"]')?.textContent).toContain("Saved");
+  });
+
+  it("keeps the guided draft open on a failed save without a Saved confirmation", async () => {
+    const { engine } = engineOf({ "agents.files.set": () => { throw new Error("Save unavailable"); } });
+    await render(engine);
+    await act(async () => button(row("Who your assistant is"), "Edit").click());
+    const dlg = document.querySelector<HTMLElement>('[data-testid="instruction-file"]')!;
+    await type(dlg.querySelector<HTMLTextAreaElement>('textarea[aria-label="Describe this Trunk’s job"]')!, "Plan meals.");
+    await act(async () => button(dlg, "Save").click());
+    expect(dlg.querySelector('[role="alert"]')?.textContent).toBe("Save unavailable");
+    expect(host.querySelector('[role="status"]')).toBeNull();
+    expect(dlg.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe("Plan meals.");
+  });
+
+  it("updates the guided job on reopening instead of duplicating it", async () => {
+    STORE["main/SOUL.md"].content = "Keep these boundaries.\n\n## This Trunk’s job\n\nPlan meals.\n";
+    const { engine, request } = engineOf();
+    await render(engine);
+    await act(async () => button(row("Who your assistant is"), "Edit").click());
+    const dlg = document.querySelector<HTMLElement>('[data-testid="instruction-file"]')!;
+    const job = dlg.querySelector<HTMLTextAreaElement>('textarea[aria-label="Describe this Trunk’s job"]')!;
+    expect(job.value).toBe("Plan meals.");
+    await type(job, "Plan trips.");
+    await act(async () => button(dlg, "Save").click());
+    expect(request).toHaveBeenCalledWith("agents.files.set", expect.objectContaining({ content: "Keep these boundaries.\n\n## This Trunk’s job\n\nPlan trips.\n" }));
+  });
+
+  it("keeps starter prose and documentation links out of the guided editor", async () => {
+    STORE["main/SOUL.md"].content = "# Soul\n\nYou are becoming someone.\n\n[Personality guide](/concepts/soul)\n";
+    await render(engineOf().engine);
+    await act(async () => button(row("Who your assistant is"), "Edit").click());
+    const dlg = document.querySelector<HTMLElement>('[data-testid="instruction-file"]')!;
+    expect(dlg.querySelector("textarea.if-text")).toBeNull();
+    expect(dlg.textContent).not.toContain("/concepts/soul");
+    expect(dlg.textContent).not.toContain("You are becoming someone.");
+    expect(dlg.textContent).not.toContain("Write it for me");
   });
 
   async function staleSave(change: () => void) {
@@ -84,7 +147,9 @@ describe("Settings › Instructions & personality", () => {
     await render(engine);
     await act(async () => button(row("Who your assistant is"), "Edit").click());
     const dlg = document.querySelector<HTMLElement>('[data-testid="instruction-file"]')!;
-    await type(dlg.querySelector("textarea")!, "Mine\n");
+    const advanced = dlg.querySelector<HTMLElement>("summary");
+    if (advanced && !dlg.querySelector("details")?.open) await act(async () => advanced.click());
+    await type(dlg.querySelector<HTMLTextAreaElement>("textarea.if-text")!, "Mine\n");
     await act(async () => button(dlg, "Save").click());
     expect(dlg.querySelector(".if-conflict")!.textContent).toContain("Changed on this computer");
     expect(button(dlg, "Save").disabled).toBe(true);
@@ -109,16 +174,18 @@ describe("Settings › Instructions & personality", () => {
   it("Escape asks before dropping changes", async () => {
     const { engine } = engineOf();
     await render(engine);
-    await act(async () => button(row("House rules"), "Edit").click());
+    await act(async () => button(row("House rules for every Trunk. Branch also reads CLAUDE.md and .hermes.md."), "Edit").click());
     const dlg = document.querySelector<HTMLElement>('[data-testid="instruction-file"]')!;
-    await type(dlg.querySelector("textarea")!, "changed");
+    const advanced = dlg.querySelector<HTMLElement>("summary");
+    if (advanced && !dlg.querySelector("details")?.open) await act(async () => advanced.click());
+    await type(dlg.querySelector<HTMLTextAreaElement>("textarea.if-text")!, "changed");
     await act(async () => dlg.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     expect(dlg.querySelector(".if-ask")!.textContent).toBe("Discard your changes?");
     await act(async () => button(dlg, "Discard").click());
     expect(document.querySelector('[data-testid="instruction-file"]')).toBeNull();
   });
 
-  it("gates rows by level: Add a file… and the message rows at Advanced, paths at Technical", async () => {
+  it("gates rows by level: Add a file… and the message rows at Advanced, no paths even at Technical", async () => {
     const { engine } = engineOf();
     await render(engine, 0);
     expect(host.textContent).not.toContain("What goes with every message");
@@ -130,7 +197,7 @@ describe("Settings › Instructions & personality", () => {
     expect(host.textContent).toContain("/brief");
     expect(host.querySelector(".if-path")).toBeNull();
     await render(engine, 2);
-    expect(row("Who your assistant is").querySelector(".if-path")!.textContent).toBe("/w/SOUL.md");
+    expect(host.querySelector(".if-path")).toBeNull();
   });
 
   it("Just about you stays away on a one-person Branch, and saves the person's own USER.md otherwise", async () => {
@@ -142,9 +209,9 @@ describe("Settings › Instructions & personality", () => {
     await act(async () => button(row("Just about you"), "Write").click());
     const dlg = document.querySelector<HTMLElement>('[data-testid="just-about-you"]')!;
     expect(dlg.textContent).toContain("0 / 4,000 characters");
-    await type(dlg.querySelector("textarea")!, "x".repeat(4001));
+    await type(dlg.querySelector<HTMLTextAreaElement>("textarea.if-text")!, "x".repeat(4001));
     expect(button(dlg, "Save").disabled).toBe(true);
-    await type(dlg.querySelector("textarea")!, "Call me T.");
+    await type(dlg.querySelector<HTMLTextAreaElement>("textarea.if-text")!, "Call me T.");
     await act(async () => button(dlg, "Save").click());
     expect(many.request).toHaveBeenCalledWith("users.personalFile.set", { agentId: "main", content: "Call me T.", expectedHash: null });
   });
