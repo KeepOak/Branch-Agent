@@ -1,2 +1,2 @@
-window:src/shell/topic-all.test.ts
 window:src/shell/WindowShell.topics.test.tsx
+window:src/shell/topic-all.test.ts
