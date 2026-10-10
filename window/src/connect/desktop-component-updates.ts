@@ -11,7 +11,13 @@ export type ComponentUpdates = {
   status(): Promise<ComponentUpdateStatus>;
   check(): Promise<ComponentUpdateStatus>;
   stage(): Promise<ComponentUpdateStatus>;
+  /** Older desktop builds have no Install now; the page hides the button without it. */
+  install?: () => void;
 };
+/** The desktop update bar's states, published by the preload as this window event (same wording as the bar). */
+export type EngineUpdateState = "ready" | "auto-wait" | "preparing" | "restarting" | "updating" | "updated" | "kept" | "failed";
+export type EngineUpdateEvent = { state: EngineUpdateState; message?: string };
+export const ENGINE_UPDATE_EVENT = "branch:update-state";
 export type AppliedUpdateNotice = { version: string; canUndo: boolean; expiresAt: number };
 export type UpdateNoticeEvent = "shown" | "dismissed" | "expired" | "undo";
 /** Preview T0 (`updT5` in design/spec-v23/index.html): a normal toast after an in-place update. */
