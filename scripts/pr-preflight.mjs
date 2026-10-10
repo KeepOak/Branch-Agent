@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Local preflight: runs the gate checks that need no CI infrastructure, before a push or a PR body edit.
 // Reuses the gates' own exported checks and config so the rules cannot drift. Prints one line per problem, with the fix.
-// Usage: node scripts/pr-preflight.mjs --body <draft-body.md> [--base origin/main] [--cloud-agent]
+// Usage: node scripts/pr-preflight.mjs --body <draft-body.md> [--title <PR title>] [--base origin/main] [--cloud-agent]
+// Without --title the title is the HEAD commit subject; pass the PR title when it differs.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -14,9 +15,9 @@ import {
   coverageFromPrFiles,
   evaluateGateChangeReview,
   fetchFileText,
-  fetchPrBody,
   fetchPrFiles,
   gateApiBudget,
+  ghApi,
   loadProtectedGatePaths,
 } from './merge-gate-trusted.mjs';
 import { checkWindowClean, scanTree } from './check-window-clean.mjs';
@@ -141,6 +142,27 @@ export function desktopCoverageProblems({ files, desktopWorkflow }) {
   ));
 }
 
+// A fix, perf or refactor PR must say what it checked before it changed code: upstream, peer agents or the old code.
+const PRIOR_ART_TITLE = /^(fix|perf|refactor)(\([^)]*\))?!?:/;
+const PRIOR_ART_LINE = /^\s*(?:[-*]\s*)?Prior art:(.*)$/im;
+const PRIOR_ART_SOURCE = /\b(upstream|upstream|peer|old code|replaces|hermes|codex|agent-refs)\b/i;
+const PRIOR_ART_FIX = 'add a line "Prior art: <what you checked>" naming upstream project, peer agents or the old code it replaces, or "Prior art: none found: <what you checked>"';
+
+export function priorArtProblems({ title, body }) {
+  if (!PRIOR_ART_TITLE.test(title ?? '')) {
+    return [];
+  }
+  const line = PRIOR_ART_LINE.exec(body ?? '');
+  if (!line) {
+    return [problem('prior-art', `title "${title}" needs a "Prior art:" line in the body and has none`, PRIOR_ART_FIX)];
+  }
+  const text = line[1].trim();
+  if (/^none found:\s*\S/i.test(text) || PRIOR_ART_SOURCE.test(text)) {
+    return [];
+  }
+  return [problem('prior-art', 'the "Prior art:" line names no source checked', PRIOR_ART_FIX)];
+}
+
 export function personalInfoProblems(addedLines) {
   const real = addedLines.filter((l) => !FIXTURE_FILE.test(l.file));
   return real.filter((l) => PERSONAL_PATTERNS.some((p) => p.test(l.text))).map((l) => (
@@ -176,6 +198,7 @@ export function runPreflight(input) {
     ...commitProblems(input.commits ?? [], { cloudAgent: input.cloudAgent === true }),
     ...selfCheckProblems({ branch: input.branch, headSha: input.headSha, body }),
     ...namedListProblems({ changedFiles, listText: input.listText ?? null, listPath: input.listPath }),
+    ...priorArtProblems({ title: input.title, body }),
     ...uiProofProblems({ changedFiles, body }),
     ...windowCleanProblems(input.windowResult),
     ...shardProblems(input.shardResult),
@@ -250,6 +273,7 @@ function gatherInputs({ argv, cwd }) {
   return {
     branch,
     headSha: git(['rev-parse', 'HEAD'], cwd),
+    title: argValue('--title', argv) ?? git(['log', '-1', '--format=%s'], cwd),
     body: bodyPath && existsSync(path.resolve(cwd, bodyPath)) ? readFileSync(path.resolve(cwd, bodyPath), 'utf8') : null,
     dirtyCount: git(['status', '--porcelain'], cwd).split('\n').filter(Boolean).length,
     commits: gitCommits(base, cwd),
@@ -316,10 +340,11 @@ export function unverifiedFileNames(files) {
     .map((f) => f.filename);
 }
 
-export function inputFromApi({ headBranch, headSha, files, commits, listText, desktopWorkflow = null }) {
+export function inputFromApi({ headBranch, headSha, files, commits, listText, desktopWorkflow = null, title = '' }) {
   return {
     branch: headBranch,
     headSha,
+    title,
     files,
     desktopWorkflow,
     dirtyCount: 0,
@@ -350,13 +375,15 @@ function apiInputFromEnv(env) {
   if (!repo || !prNumber || !token || !headSha || !headBranch) {
     throw new Error('CI mode needs REPO, PR_NUMBER, GITHUB_TOKEN, HEAD_SHA and HEAD_BRANCH');
   }
-  // The live body from the API: the event payload can predate a body edit, so CI never reads it from there.
-  const body = fetchPrBody(repo, prNumber, token);
+  // The live title and body from the API: the event payload can predate an edit, so CI never reads them from there.
+  const pr = ghApi(repo, token, `pulls/${prNumber}`);
+  const body = typeof pr?.body === 'string' ? pr.body : '';
+  const title = typeof pr?.title === 'string' ? pr.title : '';
   const files = fetchPrFiles(repo, prNumber, token);
   const commits = fetchPrCommitsWithApi({ repo, prNumber, token });
   const listText = fetchFileText(repo, headSha, token, namedListPathFor(headBranch));
   const desktopWorkflow = fetchFileText(repo, headSha, token, '.github/workflows/desktop-checks.yml');
-  return { ...inputFromApi({ headBranch, headSha, files, commits, listText, desktopWorkflow }), body };
+  return { ...inputFromApi({ headBranch, headSha, files, commits, listText, desktopWorkflow, title }), body };
 }
 
 // Exported so tests can drive the real CLI wiring against a temporary repository.
