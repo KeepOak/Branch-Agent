@@ -236,15 +236,35 @@ describe("trunks.template.create applies toolset switches and skills", () => {
     expect(payload.warnings.join("\n")).not.toContain("apple-notes");
   });
 
-  it("answers once with an error when the settings write fails after the Trunk is created", async () => {
-    createAnswers(workspace());
+  it("answers once with an error naming the new agent and workspace when the settings write fails", async () => {
+    const dir = workspace();
+    createAnswers(dir);
     mutateMock.mockRejectedValue(new Error("config locked"));
     const file = templateFile({ toolsets: { browser: false } });
     const { respond, done } = call("trunks.template.create", { templatePath: file });
     await done;
     expect(respond).toHaveBeenCalledTimes(1);
     expect(respond.mock.calls[0]?.[0]).toBe(false);
-    expect(String(respond.mock.calls[0]?.[2]?.message ?? "")).toContain("could not be applied");
+    const error = respond.mock.calls[0]?.[2] as { message: string; details?: unknown };
+    expect(error.message).toContain("could not be applied");
+    expect(error.message).toContain('agent "newagent"');
+    expect(error.message).toContain(dir);
+    expect(error.message).toContain("Do not run the create again");
+    expect(error.details).toEqual({ agentId: "newagent", workspace: dir });
+  });
+
+  it("scrubs local user paths and secrets from the failure reason", async () => {
+    createAnswers(workspace());
+    mutateMock.mockRejectedValue(
+      new Error("EACCES: open '/Users/taofikbishi/secret/config.json' token sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789"),
+    );
+    const file = templateFile({ toolsets: { browser: false } });
+    const { respond, done } = call("trunks.template.create", { templatePath: file });
+    await done;
+    const error = respond.mock.calls[0]?.[2] as { message: string };
+    expect(error.message).toContain("EACCES");
+    expect(error.message).not.toContain("/Users/taofikbishi");
+    expect(error.message).not.toContain("abcdefghijklmnopqrstuvwxyz0123456789");
   });
 });
 

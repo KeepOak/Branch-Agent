@@ -5,10 +5,12 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ErrorCodes, errorShape, validateTrunkTemplateCreateParams, validateTrunkTemplateExportParams } from "../../../packages/gateway-protocol/src/index.js";
 import { mutateConfigFileWithRetry } from "../../config/config.js";
+import { redactSensitiveText } from "../../logging/redact.js";
 import { resolveBundledSkillsDir } from "../../skills/loading/bundled-dir.js";
 import { exportTrunkTemplate } from "../../trunks/trunk-template-export.js";
 import {
   parseTrunkTemplate,
+  redactPersonaText,
   skillSlugForId,
   TRUNK_TEMPLATE_FILE_NAME,
   type TrunkTemplate,
@@ -37,6 +39,19 @@ function onceRespond(respond: RespondFn): RespondFn {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * The Trunk exists but the template did not finish applying. Names the agent and workspace so the owner
+ * can find it and a retry does not create a duplicate. The reason is scrubbed of local paths and secrets.
+ */
+function settingsFailureShape(agentId: string, workspace: string, error: unknown) {
+  const reason = redactSensitiveText(redactPersonaText(messageOf(error), {}));
+  return errorShape(
+    ErrorCodes.UNAVAILABLE,
+    `The Trunk was created as agent "${agentId}" in ${workspace}, but its template files or settings could not be applied. Do not run the create again, because it would make a second Trunk. Reason: ${reason}`,
+    { details: { agentId, workspace } },
+  );
 }
 
 const TEMPLATE_PATH_SUFFIX = ".trunk-template.json";
@@ -183,7 +198,7 @@ async function createTrunkFromTemplate(
     await writePersona(workspace, parsed.template);
     settingsWarnings = await applyTemplateSettings(outcome.agentId, parsed.template, workspace);
   } catch (error) {
-    respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, `The Trunk was created, but its template files or settings could not be applied: ${messageOf(error)}`));
+    respond(false, undefined, settingsFailureShape(outcome.agentId, workspace, error));
     return;
   }
   respond(true, { ok: true, agentId: outcome.agentId, workspace, warnings: [...parsed.warnings, ...settingsWarnings, ...notAppliedWarnings(parsed.template)] }, undefined);
