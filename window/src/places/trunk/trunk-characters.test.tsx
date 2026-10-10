@@ -56,3 +56,49 @@ it("enables and saves Colour, Shape and Eyes; Shuffle changes a character and a 
   await click(button("Shuffle"));
   expect(selected()).not.toBe(before);
 });
+
+function editorEngine(emoji = "") {
+  const request = vi.fn(async (method: string, _params?: unknown) => method === "agents.list" ? { defaultId: "demo", agents: [
+    { id: "demo", identity: { name: "Demo", avatar: emoji ? "classic" : "branch:bolt", emoji } },
+  ] } : method === "config.get" ? { hash: "demo", valid: true, config: { agents: { entries: { demo: {} } } } } : method === "models.list" ? { models: [] } : method === "node.list" ? { nodes: [] } : { ok: true });
+  return { request, engine: { request, scopes: ["operator.admin"] } as unknown as WindowEngine };
+}
+
+it("Shuffle changes the big emoji face without saving", async () => {
+  const { engine, request } = editorEngine("🦊");
+  await mount(<TrunkEditor engine={engine} agentId="demo" level="regular" onClose={() => {}} />);
+  expect(document.querySelector(".tk-big .tk-emoji-face i")?.textContent).toBe("🦊");
+  await click(button("Shuffle"));
+  expect(document.querySelector(".tk-big .tk-emoji-face i")?.textContent).not.toBe("🦊");
+  expect(request.mock.calls.filter(([method]) => method === "agents.update" || method === "config.patch")).toEqual([]);
+});
+
+it.each(["Cancel", "Escape"])("%s discards a mascot preview without writing and reopening keeps the original", async (dismiss) => {
+  const { engine, request } = editorEngine();
+  const onClose = vi.fn();
+  const editor = <TrunkEditor engine={engine} agentId="demo" level="regular" onClose={onClose} />;
+  await mount(editor);
+  await click(document.querySelector('[aria-label="Ember"]'));
+  expect(document.querySelector('[aria-label="Ember"]')?.getAttribute("aria-pressed")).toBe("true");
+  expect(request.mock.calls.filter(([method]) => method === "agents.update" || method === "config.patch")).toEqual([]);
+  if (dismiss === "Cancel") await click(button("Cancel"));
+  else await act(async () => { document.querySelector('[data-testid="trunk-editor"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(request.mock.calls.filter(([method]) => method === "agents.update" || method === "config.patch")).toEqual([]);
+  await act(async () => root!.unmount());
+  root = null;
+  document.body.innerHTML = "";
+  await mount(editor);
+  expect(document.querySelector('[aria-label="Bolt"]')?.getAttribute("aria-pressed")).toBe("true");
+});
+
+it("picking a mascot stays a draft until Save sends exactly one avatar update", async () => {
+  const { engine, request } = editorEngine();
+  const onClose = vi.fn();
+  await mount(<TrunkEditor engine={engine} agentId="demo" level="regular" onClose={onClose} />);
+  await click(document.querySelector('[aria-label="Ember"]'));
+  expect(request.mock.calls.filter(([method]) => method === "agents.update" || method === "config.patch")).toEqual([]);
+  await click(button("Save"));
+  expect(request.mock.calls.filter(([method]) => method === "agents.update")).toEqual([["agents.update", { agentId: "demo", avatar: "branch:ember" }]]);
+  expect(onClose).toHaveBeenCalledTimes(1);
+});

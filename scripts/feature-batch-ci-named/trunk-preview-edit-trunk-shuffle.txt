@@ -1,0 +1,2 @@
+window:src/places/trunk/shuffle.test.ts
+window:src/places/trunk/trunk-characters.test.tsx
