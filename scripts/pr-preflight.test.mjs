@@ -126,6 +126,12 @@ test('a named-test list missing an entry, or unsorted, is reported', () => {
   assert.match(reversed[0].message, /is not sorted/);
 });
 
+test('an engine .mts test needs a named-test entry like a .ts test does', () => {
+  const problems = runPreflight(withInput({ changedFiles: ['engine/src/c.test.mts'] }));
+  assert.deepEqual(checksOf(problems), ['named-tests']);
+  assert.match(problems[0].fix, /engine:src\/c\.test\.mts/);
+});
+
 test('a window UI change without screenshot proof fails', () => {
   const body = BODY.replace('No visible change: CLI only.', 'Done.');
   const problems = runPreflight(withInput({ body, changedFiles: ['window/src/shell/Thread.tsx'] }));

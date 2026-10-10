@@ -25,7 +25,7 @@ const PERSONAL_PATTERNS = [
 ];
 // Test files carry synthetic fixtures (example addresses, sample paths) on purpose, so they are exempt.
 const FIXTURE_FILE = /\.test\.(mjs|ts|tsx)$/;
-const TEST_FILE = /^(engine|window)\/.+\.test\.(ts|tsx|mjs)$/;
+const TEST_FILE = /^(engine|window)\/.+\.test\.(?:ts|tsx|mjs|mts)$/;
 
 const problem = (check, message, fix) => ({ check, message, fix });
 
