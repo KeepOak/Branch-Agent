@@ -30,7 +30,7 @@ import { zipStored } from "./diagnostics-zip";
 /** How much of each log the report reads from the end. The time window then keeps only recent lines. */
 const REPORT_TAIL_BYTES = 4 * 1024 * 1024;
 import { checkCandidateBeside, stopCandidate } from "./candidate-check";
-import { clearEngineRecords, retireRecordedEngines } from "./engine-records";
+import { clearEngineRecords, findSurvivingEngine, retireRecordedEngines } from "./engine-records";
 import { createUpdateLock, type UpdateLockHandle } from "./update-lock";
 import { createHash } from "node:crypto";
 import type { Tray } from "electron";
@@ -397,6 +397,8 @@ async function afterUpdateLockRelease(released: UpdateLockHandle): Promise<void>
 
 /** Seamless handoff is on by default; desktop.json can set seamlessHandoff to false for drain-first updates. */
 const seamlessHandoff = (): boolean => cfg.seamlessHandoff !== false;
+/** desktop.json detachedEngine: the engine outlives quit and the next launch attaches to it (off by default). */
+const detachedEngine = (): boolean => cfg.detachedEngine === true;
 
 /**
  * Old engines from the moment step-down is sent: quitting stops them (shutdown), a crash leaves their
@@ -989,9 +991,12 @@ async function start(): Promise<void> {
   log(`starting page shown after ${Date.now() - launchStarted} ms`);
   const desktopVersion = await confirmDesktopUpdate(cfg);
   if (desktopVersion) log(`desktop update ${desktopVersion} started; confirmed`);
+  // A detached engine the last session left running is attached to; every other engine from it is retired.
+  const survivor = detachedEngine() ? await findSurvivingEngine(cfg.dataDir, cfg.gatewayPort) : undefined;
   // Engines the last session started and left running (a crash mid-update): retire them before starting our own.
-  await retireRecordedEngines(cfg.dataDir, log);
+  await retireRecordedEngines(cfg.dataDir, log, survivor?.pid);
   for (const port of [cfg.gatewayPort, cfg.windowPort]) {
+    if (survivor && port === cfg.gatewayPort) continue;
     if (!(await portIsFree(port))) throw new Error(`port ${port} is already in use; is Branch Agent already running?`);
   }
   await refuseOrphanedEngine();
@@ -1005,7 +1010,9 @@ async function start(): Promise<void> {
   server = await serveWindow(() => servedWindowDir, cfg.windowPort);
   await win.loadURL(windowUrl());
   log(`window loaded after ${Date.now() - launchStarted} ms`);
-  if (await bootSelectedEngine()) {
+  if (survivor) {
+    log(`attached to the engine the last session left running (pid ${survivor.pid}, port ${survivor.port})`);
+  } else if (await bootSelectedEngine()) {
     await win.loadURL(windowUrl());
     log("Reloaded retained window after component rollback");
   }
@@ -1245,7 +1252,8 @@ async function restartEngine(): Promise<void> {
 /** Quitting stops an idle engine cleanly, so the next launch skips the stale-lease integrity pass. */
 let quitAfterCleanStop = false;
 function deferQuitForCleanStop(event: Electron.Event | undefined): boolean {
-  if (quitAfterCleanStop || !gateway || !engineRunning() || typeof event?.preventDefault !== "function") return false;
+  // A detached engine is left running on purpose: quit must not wait on its drain.
+  if (detachedEngine() || quitAfterCleanStop || !gateway || !engineRunning() || typeof event?.preventDefault !== "function") return false;
   event.preventDefault();
   quitting = true;
   quitAfterCleanStop = true;
@@ -1270,8 +1278,13 @@ function shutdown(): void {
   for (const child of retiring.keys()) stopGateway(child);
   if (standby) stopGateway(standby.child);
   standby = undefined;
-  if (gateway) stopGateway(gateway);
-  clearEngineRecords(cfg.dataDir);
+  // A detached engine keeps serving with its records, so the next launch attaches. A handoff in flight stops it as before.
+  const keepEngine = detachedEngine() && retiring.size === 0;
+  if (keepEngine) log(`quit: the engine${gateway ? ` (pid ${gateway.pid})` : ""} keeps running`);
+  else {
+    if (gateway) stopGateway(gateway);
+    clearEngineRecords(cfg.dataDir);
+  }
   void macComputerDriver?.stop();
   server?.close();
   // The next launch starts on the configured port; never leave a moved, dead port for the branch command to dial.

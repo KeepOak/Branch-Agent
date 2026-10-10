@@ -28,6 +28,11 @@ export interface DesktopConfig {
    * default; set false to fall back to drain-first updates.
    */
   seamlessHandoff?: boolean;
+  /**
+   * The engine outlives the app: it is started detached on every OS (outside Windows' kill-on-close job) and quit
+   * leaves it running; the next launch attaches to it. Off by default; set true in desktop.json to try it.
+   */
+  detachedEngine?: boolean;
 }
 
 function isFile(file: string): boolean {

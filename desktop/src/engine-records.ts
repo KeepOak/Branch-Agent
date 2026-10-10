@@ -156,9 +156,18 @@ function snapshotMatches(record: EngineRecord, snapshot: Map<number, { started: 
   return actual !== undefined && identityMatches(record, actual) && actual.ports.includes(record.port);
 }
 
-export async function retireRecordedEngines(dataDir: string, log: (line: string) => void): Promise<void> {
+/** Records that stay after a retire: the attached engine's own record, if the caller kept one. */
+function forgetRetired(dataDir: string, keepPid: number | undefined): void {
+  if (keepPid === undefined) clearEngineRecords(dataDir);
+  else writeEngineRecords(dataDir, readEngineRecords(dataDir).filter(record => record.pid === keepPid));
+}
+
+/**
+ * Engines from the last session are retired, except `keepPid`: the engine the desktop attached to.
+ */
+export async function retireRecordedEngines(dataDir: string, log: (line: string) => void, keepPid?: number): Promise<void> {
   if (process.platform === "win32") {
-    const records = readEngineRecords(dataDir).filter(record => record.pid !== process.pid);
+    const records = readEngineRecords(dataDir).filter(record => record.pid !== process.pid && record.pid !== keepPid);
     const snapshot = await windowsSnapshot(records);
     const victims = records.filter(record => snapshotMatches(record, snapshot));
     for (const record of victims) {
@@ -172,11 +181,11 @@ export async function retireRecordedEngines(dataDir: string, log: (line: string)
         try { run("taskkill", ["/PID", String(record.pid), "/T", "/F"]); } catch { /* process may have exited */ }
       }
     }
-    clearEngineRecords(dataDir);
+    forgetRetired(dataDir, keepPid);
     return;
   }
   for (const record of readEngineRecords(dataDir)) {
-    if (record.pid === process.pid || !await matches(record) || !await ownsListener(record.pid, record.port)) continue;
+    if (record.pid === process.pid || record.pid === keepPid || !await matches(record) || !await ownsListener(record.pid, record.port)) continue;
     log(`retiring the last session's ${record.role} engine ${record.pid} on port ${record.port}`);
     try {
       process.kill(-record.pid, "SIGTERM");
@@ -189,5 +198,28 @@ export async function retireRecordedEngines(dataDir: string, log: (line: string)
       } catch { /* process may have exited */ }
     }
   }
-  clearEngineRecords(dataDir);
+  forgetRetired(dataDir, keepPid);
+}
+
+/**
+ * A recorded engine that is still the same process, owns `port` and answers /readyz: the desktop attaches to it
+ * instead of starting a second engine on the port. Records alone never authorize attaching.
+ */
+export async function findSurvivingEngine(dataDir: string, port: number): Promise<EngineRecord | undefined> {
+  const records = readEngineRecords(dataDir).filter(record => record.role === "engine" && record.port === port && record.pid !== process.pid);
+  if (!records.length) return undefined;
+  const snapshot = process.platform === "win32" ? await windowsSnapshot(records) : undefined;
+  for (const record of records) {
+    const verified = snapshot ? snapshotMatches(record, snapshot) : await matches(record) && await ownsListener(record.pid, record.port);
+    if (verified && await answersReady(port)) return record;
+  }
+  return undefined;
+}
+
+async function answersReady(port: number): Promise<boolean> {
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/readyz`, { signal: AbortSignal.timeout(2_000) });
+    await response.body?.cancel();
+    return response.status === 200;
+  } catch { return false; }
 }
