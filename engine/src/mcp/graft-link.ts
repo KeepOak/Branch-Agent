@@ -17,6 +17,12 @@ import { HELLO_INTERVAL_MS } from "./outside-presence.js";
 
 /** Pre-hello failures move the link to the next saved address, at most once per this interval. */
 export const ADDRESS_SWITCH_INTERVAL_MS = 60_000;
+/**
+ * Off until verified. The link sends its stored operator device token to whatever answers at an address, so a
+ * fallback address (a reassigned LAN IP, or another Branch on the same port) would receive that token. Only the
+ * primary address is used while this is false.
+ */
+export const FALLBACK_ADDRESSES_VERIFIED = false;
 
 export type LinkClient = {
   start: () => void;
@@ -163,7 +169,7 @@ export class GraftLinkRunner {
 
   /** Moves to the next saved address; the host's other addresses are how a link recovers when one changes. */
   private switchAddress(now: number): void {
-    if (this.addresses().length < 2) return;
+    if (!FALLBACK_ADDRESSES_VERIFIED || this.addresses().length < 2) return;
     if (now - this.lastAddressSwitchAt < ADDRESS_SWITCH_INTERVAL_MS) return;
     this.lastAddressSwitchAt = now;
     this.addressIndex += 1;

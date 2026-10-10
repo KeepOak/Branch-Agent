@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GraftLink } from "./graft-join.js";
 import {
+  FALLBACK_ADDRESSES_VERIFIED,
   GraftLinkRunner,
   GraftLinkSupervisor,
   isHostRefusal,
@@ -133,7 +134,7 @@ describe("the joined Branch's link to its host", () => {
     expect(lines[0]).toContain("rejoin");
     runner.stop();
   });
-  it("moves to the host's next saved address after a pre-hello failure, but not on every failure", async () => {
+  it("never sends the device link to a saved fallback address while fallback addresses are unverified", async () => {
     const created: string[] = [];
     const fake = fakeClient();
     const runner = new GraftLinkRunner({
@@ -147,10 +148,12 @@ describe("the joined Branch's link to its host", () => {
       log: () => undefined,
     });
     runner.start();
-    fake.get().handlers.onConnectError?.(new Error("connect ETIMEDOUT 10.0.0.5:41010"));
-    expect(created).toEqual(["ws://10.0.0.5:41010", "ws://100.64.0.7:41010"]);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      fake.get().handlers.onConnectError?.(new Error("connect ETIMEDOUT 10.0.0.5:41010"));
+    }
     fake.get().handlers.onConnectError?.(new Error("connect ECONNREFUSED 100.64.0.7:41010"));
-    expect(created).toHaveLength(2);
+    expect(FALLBACK_ADDRESSES_VERIFIED).toBe(false);
+    expect(created).toEqual(["ws://10.0.0.5:41010"]);
     expect(runner.state).toBe("connecting");
     runner.stop();
   });
