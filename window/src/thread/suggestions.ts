@@ -15,11 +15,15 @@ function pendingAskChips(history: readonly Block[]): string[] | undefined {
   return ["Yes, go ahead", "Tell me more first", "Not now"];
 }
 
-/** Prefer no chip to guessing: a question mark alone does not imply a binary choice. */
+/**
+ * Prefer no chip to guessing: a question mark alone does not imply a binary choice.
+ * Only questions that ask whether a statement holds ("Is this right?", "Did you get it?") count.
+ * Modal forms ("Can you…", "Could you…", "Would you…") ask for something, so they never do.
+ */
 function isConfirmation(question: string): boolean {
-  // Open-ended requests and alternatives can start with the same auxiliary verbs.
-  if (/\b(?:or|what|which|who|where|when|why|how|describe|explain|tell|list|show)\b/i.test(question)) return false;
-  return /^(?:is|are|was|were|do|does|did|have|has|had|can|could|will|would|should)\s+(?:you|we|it|this|that|these|those|there)\b/i.test(question);
+  // A wh-word or an alternative makes the answer something other than yes or no.
+  if (/\b(?:or|what|which|who|where|when|why|how)\b/i.test(question)) return false;
+  return /^(?:is|are|was|do|does|did|have|has)\s+(?:it|this|that|you)\b/i.test(question);
 }
 
 /** Follow-ups are derived only from the latest real reply, never an older turn or a canned conversation. */

@@ -38,6 +38,11 @@ describe("P54 one relevant suggestion row", () => {
     "Want me to open the file or the folder?",
     "Can you tell me what happened?",
     "Could you describe the problem?",
+    "Could you elaborate?",
+    "Can you provide your account number?",
+    "Can you send me the file?",
+    "Would you share the logs?",
+    "Will you paste the error here?",
     "Ready?",
     "¿Cómo puedo ayudarte?",
   ])("does not invent binary answers for %s", (text) => {
@@ -59,6 +64,14 @@ describe("P54 one relevant suggestion row", () => {
     root = createRoot(host);
     await act(async () => root?.render(<Thread name="Research" history={[user("Hi"), reply("Hey! What’s up?")]} live={[]} pendingUser={null} running={false} onAnswer={() => {}} onStart={vi.fn()} />));
     expect(host.textContent).toContain("Hey! What’s up?");
+    expect(host.querySelector('[aria-label="Suggested replies"]')).toBeNull();
+  });
+
+  it("renders a modal request without Yes / No", async () => {
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root?.render(<Thread name="Research" history={[user("Hi"), reply("Could you elaborate?")]} live={[]} pendingUser={null} running={false} onAnswer={() => {}} onStart={vi.fn()} />));
+    expect(host.textContent).toContain("Could you elaborate?");
     expect(host.querySelector('[aria-label="Suggested replies"]')).toBeNull();
   });
 
