@@ -46,6 +46,10 @@ export type GardenerPassParams = {
   inputs: GardenerInputs;
   /** The only GitHub write. Called once per planned issue, and only when the pass is enabled with a repo. */
   writeIssue: (draft: GardenerIssueDraft) => Promise<void>;
+  /** Queue write. Defaults to addQueueItem on the pass's env and clock. */
+  enqueue?: (item: { title: string; brief_text: string; priority: number }) => void;
+  /** Where a failed write is reported. The pass goes on after it. */
+  onError?: (message: string) => void;
   env?: NodeJS.ProcessEnv;
   now?: () => number;
   options?: Partial<GardenerOptions>;
@@ -173,30 +177,40 @@ function plannedJobFor(signal: GardenerSignal): GardenerPlannedJob {
   return { fingerprint: signal.fingerprint, ...signal.job };
 }
 
+type CommitSink = {
+  writeIssue: GardenerPassParams["writeIssue"];
+  enqueue: (item: { title: string; brief_text: string; priority: number }) => void;
+  onError?: (message: string) => void;
+  now: number;
+  cooldownMs: number;
+};
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
- * Writes one planned item at a time. The issue is written first: if that write fails, no job and no cooldown are
- * recorded, so the next run retries. The cooldown is set only after both writes succeed.
+ * Writes one planned item at a time, the issue first and then the job. A failed write is reported through onError
+ * and the loop goes on. The item gets no cooldown, so the next run after the interval retries it. An issue that
+ * was written before a failed job write will be written again on that retry.
  */
 async function commitPlan(
   planned: readonly GardenerSignal[],
   repo: string,
-  writeIssue: GardenerPassParams["writeIssue"],
-  env: NodeJS.ProcessEnv,
-  now: number,
-  options: GardenerOptions,
+  sink: CommitSink,
 ): Promise<void> {
   for (const signal of planned) {
-    await writeIssue(issueDraftFor(repo, signal));
-    addQueueItem(
-      {
+    try {
+      await sink.writeIssue(issueDraftFor(repo, signal));
+      sink.enqueue({
         title: `${markerFor(signal.fingerprint)} ${signal.job.title}`,
         brief_text: signal.job.brief_text,
         priority: signal.job.priority,
-      },
-      env,
-      now,
-    );
-    cooldownUntil.set(signal.fingerprint, now + options.cooldownMs);
+      });
+      cooldownUntil.set(signal.fingerprint, sink.now + sink.cooldownMs);
+    } catch (error: unknown) {
+      sink.onError?.(`gardener write failed for ${signal.fingerprint}: ${errorText(error)}`);
+    }
   }
 }
 
@@ -228,7 +242,15 @@ export async function runGardenerPass(params: GardenerPassParams): Promise<Garde
   if (!config.enabled || repo === undefined) {
     return { status: "ran", dryRun: true, jobs, issues, suppressed };
   }
+  const enqueue = params.enqueue ?? ((item) => addQueueItem(item, env, now));
+  await commitPlan(planned, repo, {
+    writeIssue: params.writeIssue,
+    enqueue,
+    onError: params.onError,
+    now,
+    cooldownMs: options.cooldownMs,
+  });
+  // The run is counted once its pass has finished, failed writes included. Failed items retry after the interval.
   lastRunAt = now;
-  await commitPlan(planned, repo, params.writeIssue, env, now, options);
   return { status: "ran", dryRun: false, jobs, issues, suppressed };
 }

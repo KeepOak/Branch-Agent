@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { listQueueItems } from "../agents/trunk-queue.js";
+import { addQueueItem, listQueueItems } from "../agents/trunk-queue.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { AgentsSchema } from "../config/zod-schema.agents.js";
 import {
@@ -206,5 +206,45 @@ describe("config errors", () => {
     expect(
       AgentsSchema.safeParse({ entries, gardener: { enabled: true, repo: REPO } }).success,
     ).toBe(true);
+  });
+});
+
+describe("queue write failures", () => {
+  it("reports the failed write, goes on, and retries that item once the interval has passed", async () => {
+    const writes: GardenerIssueDraft[] = [];
+    const errors: string[] = [];
+    let failParity = true;
+    const enqueue = (item: { title: string; brief_text: string; priority: number }) => {
+      if (failParity && item.title.includes("parity:skills-ui")) {
+        throw new Error("queue unavailable");
+      }
+      addQueueItem(item, env, clock);
+    };
+    const withSink = (inputs: GardenerInputs) => ({
+      ...passParams(enabledCfg, inputs, writes),
+      enqueue,
+      onError: (message: string) => errors.push(message),
+    });
+
+    const first = await runGardenerPass(withSink({ ...failingMain, ...parityGap }));
+    expect(first.status).toBe("ran");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("parity:skills-ui");
+    expect(listQueueItems(env).map((item) => item.title)).toEqual([
+      '[gardener:ci-main:7] Fix failing main workflow "Engine tests"',
+    ]);
+
+    clock += 5 * MINUTE;
+    const blocked = await runGardenerPass(withSink(parityGap));
+    expect(blocked.status).toBe("rate-limited");
+    expect(listQueueItems(env)).toHaveLength(1);
+
+    failParity = false;
+    clock += 31 * MINUTE;
+    const retry = await runGardenerPass(withSink(parityGap));
+    expect(retry.status).toBe("ran");
+    expect(retry.jobs.map((job) => job.fingerprint)).toEqual(["parity:skills-ui"]);
+    expect(listQueueItems(env)).toHaveLength(2);
+    expect(errors).toHaveLength(1);
   });
 });
