@@ -6,6 +6,7 @@ import { addQueueItem, listQueueItems } from "../../agents/trunk-queue.js";
 import { applyTeamProposal, type TeamApplyDeps } from "../../agents/trunk-team-apply.js";
 import { buildTeamProposal, describeTeamProposal } from "../../agents/trunk-team.js";
 import type { BranchConfig } from "../../config/types.branch.js";
+import { formatErrorMessage } from "../../infra/errors.js";
 import { createRoom, getRoom } from "../rooms/store.js";
 import { requestOwnerChangeApproval } from "./model-choice-approval.js";
 import { wakeEligibleTrunks } from "./trunk-queue.js";
@@ -61,7 +62,7 @@ function productionDeps(context: GatewayRequestContext): TeamApplyDeps {
     hasAgent: (agentId) => Boolean(cfg().agents?.entries?.[agentId]),
     createAgent: async (member) => {
       const result = await createAgent({
-        entry: { id: member.agentId, name: member.name },
+        entry: { id: member.agentId, name: member.name, ...placementFor(member.machine) },
         purpose: member.job,
         model: member.model,
         skipBootstrap: true,
@@ -89,6 +90,87 @@ function productionDeps(context: GatewayRequestContext): TeamApplyDeps {
   };
 }
 
+/** The machine a member runs on. "this" is the default, so only a remote computer is written into the entry. */
+export function placementFor(machine: string): {
+  tools?: { exec: { host: "node"; node: string } };
+} {
+  return machine === "this" ? {} : { tools: { exec: { host: "node", node: machine } } };
+}
+
+type ApproveOutcome =
+  | { ok: true; payload: Record<string, unknown> }
+  | { ok: false; error: ReturnType<typeof errorShape> };
+
+/** Approvals in flight, by team id. A second approve for the same team waits for the first and shares its answer. */
+const teamApprovalsInFlight = new Map<string, Promise<ApproveOutcome>>();
+
+async function approveOnce(
+  context: GatewayRequestContext,
+  goal: string,
+  proposalHash: string,
+): Promise<ApproveOutcome> {
+  const result = proposalFor(context, goal);
+  if (!result.ok) {
+    return { ok: false, error: errorShape(ErrorCodes.INVALID_REQUEST, result.reason) };
+  }
+  if (proposalHash !== result.proposal.hash) {
+    return {
+      ok: false,
+      error: errorShape(
+        ErrorCodes.INVALID_REQUEST,
+        "The team changed since it was proposed. Propose it again.",
+      ),
+    };
+  }
+  const decision = await requestOwnerChangeApproval({
+    context,
+    title: "Create a team",
+    question: describeTeamProposal(result.proposal),
+    kind: "trunk-team",
+  });
+  if (decision !== "allow") {
+    return {
+      ok: true,
+      payload: { status: decision === "unavailable" ? "unavailable" : "declined" },
+    };
+  }
+  try {
+    const applied = await applyTeamProposal(result.proposal, productionDeps(context));
+    wakeEligibleTrunks(context.getRuntimeConfig(), (message) => context.logGateway.warn(message));
+    return { ok: true, payload: { status: "applied", ...applied } };
+  } catch (error) {
+    // Each step checks before it creates, so approving again finishes what is missing.
+    context.logGateway.warn(
+      `team ${result.proposal.teamId} was not fully created: ${formatErrorMessage(error)}`,
+    );
+    return {
+      ok: false,
+      error: errorShape(
+        ErrorCodes.UNAVAILABLE,
+        "The team was only partly created. Approve it again to finish.",
+      ),
+    };
+  }
+}
+
+/** One approval per team at a time: concurrent approves share the first one's outcome, so nothing is created twice. */
+function singleFlightApprove(
+  context: GatewayRequestContext,
+  teamId: string,
+  goal: string,
+  proposalHash: string,
+): Promise<ApproveOutcome> {
+  const running = teamApprovalsInFlight.get(teamId);
+  if (running) {
+    return running;
+  }
+  const started = approveOnce(context, goal, proposalHash).finally(() => {
+    teamApprovalsInFlight.delete(teamId);
+  });
+  teamApprovalsInFlight.set(teamId, started);
+  return started;
+}
+
 export const trunkTeamHandlers: GatewayRequestHandlers = {
   "trunks.team.propose": ({ params, respond, context }) => {
     const result = proposalFor(context, text(rec(params).goal));
@@ -100,34 +182,22 @@ export const trunkTeamHandlers: GatewayRequestHandlers = {
   },
   "trunks.team.approve": async ({ params, respond, context }) => {
     const p = rec(params);
-    const result = proposalFor(context, text(p.goal));
-    if (!result.ok) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.reason));
+    const goal = text(p.goal);
+    const proposal = proposalFor(context, goal);
+    if (!proposal.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, proposal.reason));
       return;
     }
-    if (text(p.proposalHash) !== result.proposal.hash) {
-      respond(
-        false,
-        undefined,
-        errorShape(
-          ErrorCodes.INVALID_REQUEST,
-          "The team changed since it was proposed. Propose it again.",
-        ),
-      );
-      return;
-    }
-    const decision = await requestOwnerChangeApproval({
+    const outcome = await singleFlightApprove(
       context,
-      title: "Create a team",
-      question: describeTeamProposal(result.proposal),
-      kind: "trunk-team",
-    });
-    if (decision !== "allow") {
-      respond(true, { status: decision === "unavailable" ? "unavailable" : "declined" });
-      return;
+      proposal.proposal.teamId,
+      goal,
+      text(p.proposalHash),
+    );
+    if (outcome.ok) {
+      respond(true, outcome.payload);
+    } else {
+      respond(false, undefined, outcome.error);
     }
-    const applied = await applyTeamProposal(result.proposal, productionDeps(context));
-    wakeEligibleTrunks(context.getRuntimeConfig(), (message) => context.logGateway.warn(message));
-    respond(true, { status: "applied", ...applied });
   },
 };

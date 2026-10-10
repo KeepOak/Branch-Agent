@@ -82,5 +82,8 @@ describe("buildTeamProposal", () => {
     const summary = describeTeamProposal(result.proposal);
     expect(summary).toContain("Builder Scout (Scout)");
     expect(summary).toContain("Nothing is created until you approve.");
+    expect(summary).toContain(
+      "Approving starts the team. Each job uses your anthropic/claude-sonnet account.",
+    );
   });
 });
