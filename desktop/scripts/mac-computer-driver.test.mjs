@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { createConnection, createServer } from "node:net";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -82,7 +82,7 @@ test("Mac app requests both permissions before supplying a live embedded driver 
 
 // The shipped SDK accepts only these environment names for an embedded host (its safe allowlist).
 const EMBEDDED_ENVIRONMENT_ALLOWLIST = new Set(["CUA_DRIVER_RS_TELEMETRY_ENABLED"]);
-function allowlistedSdk(events, reasonFor = () => undefined) {
+function allowlistedSdk(events, reasonFor = () => undefined, allowlist = EMBEDDED_ENVIRONMENT_ALLOWLIST) {
   return {
     currentMacOsPermissionStatus: () => ({ accessibility: true, screenRecording: true }),
     requestMacOSPermissions: () => ({ accessibility: true, screenRecording: true }),
@@ -92,7 +92,7 @@ function allowlistedSdk(events, reasonFor = () => undefined) {
       static withOptions(options) {
         for (const { name } of options.environment) {
           const reason = reasonFor(name);
-          if (!EMBEDDED_ENVIRONMENT_ALLOWLIST.has(name)) {
+          if (!allowlist.has(name)) {
             const error = new Error("EmbeddedDriverError.Configuration");
             error.inner = { reason: reason ?? `environment variable ${name} is not in the embedded safe allowlist` };
             events.push("rejected");
@@ -120,6 +120,24 @@ test("the embedded driver is configured only with environment the SDK accepts", 
     assert.deepEqual(events, ["start"]);
     assert.deepEqual(lines, []);
   } finally { await driver.stop(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test("an engine update whose SDK drops an environment name from its allowlist leaves the driver configured", async () => {
+  const root = await mkdtemp(join(tmpdir(), "branch-mac-driver-update-"));
+  const before = join(root, "engine-before"), after = join(root, "engine-after");
+  for (const dir of [before, after]) { await mkdir(dir); await writeFile(join(dir, "cua-driver"), "fixture"); }
+  const lines = [];
+  const events = [];
+  // The update brings an SDK whose embedded allowlist no longer has the name this app sends.
+  const sdkFor = engineDir => allowlistedSdk(events, () => undefined, engineDir === after ? new Set() : EMBEDDED_ENVIRONMENT_ALLOWLIST);
+  const driver = new MacComputerDriver(line => lines.push(line), sdkFor, () => "ai.branch.mac");
+  try {
+    assert.equal(JSON.parse(await driver.start(before)).v, 2);
+    const endpoint = await driver.start(after); // what bootEngine does when an update swaps the engine in place
+    assert.equal(JSON.parse(endpoint).v, 2);
+    assert.deepEqual(events, ["start", "rejected", "start"]);
+    assert.deepEqual(lines, ["Mac computer driver: this engine does not accept CUA_DRIVER_RS_TELEMETRY_ENABLED; starting without it"]);
+  } finally { await driver.stop(); await rm(root, { recursive: true, force: true }); }
 });
 
 test("a rejected embedded configuration surfaces the SDK's reason, not just its name", async () => {

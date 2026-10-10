@@ -1,5 +1,5 @@
 // The macOS CUA daemon must be spawned by Electron, the process that owns TCC grants.
-// Loading the pinned SDK from the selected engine also keeps app and engine updates in sync.
+// The SDK loads from the selected engine, so an engine update can change it under an app that has not updated yet.
 import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
@@ -11,6 +11,11 @@ export function describeDriverError(error: unknown): string {
   const reason = (error as { inner?: { reason?: unknown } } | undefined)?.inner?.reason;
   return typeof reason === "string" && reason ? reason : String(error);
 }
+
+/** Hints only: the driver runs without them. Engine updates can ship an SDK whose embedded allowlist drops a name. */
+const OPTIONAL_ENVIRONMENT: ReadonlyArray<{ name: string; value: string }> = [
+  { name: "CUA_DRIVER_RS_TELEMETRY_ENABLED", value: "false" },
+];
 
 type PermissionStatus = { accessibility: boolean; screenRecording: boolean };
 export function macScreenControlEnabled(configPath: string): boolean {
@@ -109,17 +114,29 @@ export class MacComputerDriver {
     }
     // The native driver must enforce its own approval policy even if the Gateway
     // has admitted a computer action. A broker below authenticates its caller.
-    const host = sdk.EmbeddedCuaDriverHost.withOptions({
+    const options = {
       binaryPath: binary,
       hostBundleId: this.bundleId(),
       permissionMode: sdk.EmbeddedPermissionMode.Standard,
       approveCapabilityManifest: false,
       approveSessionPolicy: false,
       dangerouslyBypassApprovals: false,
-      // Only names on the SDK's embedded safe allowlist: any other name makes withOptions throw Configuration.
-      environment: [{ name: "CUA_DRIVER_RS_TELEMETRY_ENABLED", value: "false" }],
       inheritStderr: false,
-    });
+    };
+    // Any name off the SDK's embedded safe allowlist makes withOptions throw Configuration. That allowlist ships
+    // with the engine, so after an engine update drop the hints it no longer accepts instead of losing the driver.
+    let environment = [...OPTIONAL_ENVIRONMENT];
+    let host: EmbeddedHost;
+    for (;;) {
+      try { host = sdk.EmbeddedCuaDriverHost.withOptions({ ...options, environment }); break; } catch (error) {
+        if (!environment.length || !String(error).includes("Configuration")) throw error;
+        const reason = describeDriverError(error);
+        const named = environment.filter(({ name }) => reason.includes(name));
+        const dropped = named.length ? named : environment;
+        environment = environment.filter(entry => !dropped.includes(entry));
+        this.log(`Mac computer driver: this engine does not accept ${dropped.map(({ name }) => name).join(", ")}; starting without it`);
+      }
+    }
     try {
       const connection = await host.start(); // Resolves only after the private socket accepts connections.
       const secret = randomBytes(32).toString("hex");
