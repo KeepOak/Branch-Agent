@@ -19,7 +19,7 @@ function fakeIssueApi(existing: number) {
     if (url.includes("/search/issues")) {
       return Response.json({ total_count: existing, items: [] });
     }
-    return new Response("{}", { status: 201 });
+    return Response.json({ number: 7 }, { status: 201 });
   });
 }
 
@@ -63,6 +63,24 @@ describe("createGardenerIssueWriter", () => {
     const write = createGardenerIssueWriter({ fetchImpl: fetchImpl as typeof fetch, token: "t" });
     await expect(write(DRAFT)).rejects.toMatchObject({ status: 503 });
     expect(postCalls(fetchImpl as unknown as ReturnType<typeof fakeIssueApi>)).toHaveLength(0);
+  });
+
+  it("returns the created issue number", async () => {
+    const write = createGardenerIssueWriter({
+      fetchImpl: fakeIssueApi(0) as typeof fetch,
+      token: "t",
+    });
+    expect(await write(DRAFT)).toBe(7);
+  });
+
+  it("a created issue without a number is a failed write", async () => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request) =>
+      String(input).includes("/search/issues")
+        ? Response.json({ total_count: 0, items: [] })
+        : Response.json({}, { status: 201 }),
+    );
+    const write = createGardenerIssueWriter({ fetchImpl: fetchImpl as typeof fetch, token: "t" });
+    await expect(write(DRAFT)).rejects.toThrow(/without returning its number/);
   });
 
   it("refuses to write without a token and sends no request", async () => {

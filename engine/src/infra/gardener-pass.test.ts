@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { addQueueItem, listQueueItems } from "../agents/trunk-queue.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { AgentsSchema } from "../config/zod-schema.agents.js";
+import { resetPluginStateStoreForTests } from "../plugin-state/plugin-state-store.js";
 import {
   createMemoryGardenerStore,
   resolveGardenerConfig,
@@ -13,6 +14,7 @@ import {
   type GardenerIssueDraft,
   type GardenerStateStore,
 } from "./gardener-pass.js";
+import { openGardenerStateStore } from "./gardener-state-store.js";
 
 const MINUTE = 60_000;
 const START = Date.parse("2026-10-10T12:00:00Z");
@@ -60,6 +62,7 @@ function passParams(
     now,
     writeIssue: async (draft: GardenerIssueDraft) => {
       writes.push(draft);
+      return writes.length;
     },
   };
 }
@@ -151,13 +154,14 @@ describe("cooldown and rate limit", () => {
     expect(listQueueItems(env)).toHaveLength(1);
   });
 
-  it("a fingerprint is allowed again after the six-hour cooldown", async () => {
+  it("a fingerprint is planned again after the six-hour cooldown, without a second issue", async () => {
     const writes: GardenerIssueDraft[] = [];
     await runGardenerPass(passParams(enabledCfg, failingMain, writes));
     clock += 6 * 60 * MINUTE + 31 * MINUTE;
     const later = await runGardenerPass(passParams(enabledCfg, failingMain, writes));
     expect(later.jobs.map((job) => job.fingerprint)).toEqual(["ci-main:engine-tests"]);
-    expect(writes).toHaveLength(2);
+    // The issue for this source already exists, so the job returns without a second issue.
+    expect(writes).toHaveLength(1);
   });
 
   it("a second run inside the rate-limit interval is blocked", async () => {
@@ -271,6 +275,7 @@ describe("issue idempotency and failure reporting", () => {
       writeIssue: async (draft: GardenerIssueDraft) => {
         issueWrites.push(draft.fingerprint);
         issued.add(draft.fingerprint);
+        return 100 + issueWrites.length;
       },
       findIssue: async (fingerprint: string) => issued.has(fingerprint),
       enqueue,
@@ -294,7 +299,7 @@ describe("issue idempotency and failure reporting", () => {
       env,
       store,
       now,
-      writeIssue: async () => {},
+      writeIssue: async () => 1,
       enqueue: () => {
         throw new Error("queue unavailable");
       },
@@ -349,9 +354,52 @@ describe("local issue record", () => {
       inputs: parityGap,
       writeIssue: async (draft: GardenerIssueDraft) => {
         issueWrites.push(draft.fingerprint);
+        return 1;
       },
       findIssue: async () => true,
     });
     expect(issueWrites).toHaveLength(0);
+  });
+});
+
+describe("durable issue record across a restart", () => {
+  afterEach(() => {
+    resetPluginStateStoreForTests();
+  });
+
+  it("a restart between the issue create and the job write does not create a second issue", async () => {
+    const issueWrites: string[] = [];
+    let failJob = true;
+    const writeIssue = async (draft: GardenerIssueDraft) => {
+      issueWrites.push(draft.fingerprint);
+      return 101;
+    };
+    const enqueue = (item: { title: string; brief_text: string; priority: number }) => {
+      if (failJob && item.title.includes("parity:skills-ui")) {
+        throw new Error("queue unavailable");
+      }
+      addQueueItem(item, env, clock);
+    };
+    const run = (store: ReturnType<typeof openGardenerStateStore>) =>
+      runGardenerPass({
+        cfg: enabledCfg,
+        env,
+        store,
+        now,
+        inputs: parityGap,
+        writeIssue,
+        findIssue: async () => false,
+        enqueue,
+        onError: () => {},
+      });
+    await run(openGardenerStateStore(env));
+    // The restart: this process drops its database handle and reopens the same state.
+    resetPluginStateStoreForTests();
+    failJob = false;
+    clock += 31 * MINUTE;
+    const result = await run(openGardenerStateStore(env));
+    expect(result.status).toBe("ran");
+    expect(issueWrites.filter((fingerprint) => fingerprint === "parity:skills-ui")).toHaveLength(1);
+    expect(listQueueItems(env)).toHaveLength(1);
   });
 });
