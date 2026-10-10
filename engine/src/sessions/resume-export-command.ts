@@ -4,8 +4,7 @@ import { ExpectedCliError } from "../cli/failure-output.js";
 import { getRuntimeConfig } from "../config/config.js";
 import { resolveSessionStorePathCore } from "../config/sessions/paths.js";
 import { loadSessionEntryReadOnly, listSessionEntriesReadOnly, resolveSessionTranscriptReadTarget,
-  readSessionTranscriptMessageEventPage } from "../config/sessions/session-accessor.js";
-import { readTranscriptExportSnapshotReadOnlySync } from "../config/sessions/session-accessor.js";
+  readSessionTranscriptMessageEventPage, readTranscriptExportSnapshotReadOnlySync } from "../config/sessions/session-accessor.js";
 import { resolveAgentIdFromSessionKey } from "../routing/session-key.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { resolveExplicitSessionStorePath, resolveCommandSessionStoreTargets } from "../commands/session-store-targets.js";
@@ -27,6 +26,8 @@ export type SessionExportCommandOptions = {
   contextMax?: string;
   all?: boolean;
   allAgents?: boolean;
+  /** Recap only: print the recap as a JSON document instead of text. */
+  json?: boolean;
 };
 
 function fail(message: string): never {
@@ -35,17 +36,26 @@ function fail(message: string): never {
 
 function selectTranscript(options: SessionExportCommandOptions) {
   const sessionKey = options.sessionKey?.trim();
-  if (!sessionKey) fail("--session-key is required");
-  if (options.agent !== undefined && !options.agent.trim()) fail("--agent must not be blank");
-  if (options.store !== undefined && !options.store.trim()) fail("--store must not be blank");
+  if (!sessionKey) {
+    fail("--session-key is required");
+  }
+  if (options.agent !== undefined && !options.agent.trim()) {
+    fail("--agent must not be blank");
+  }
+  if (options.store !== undefined && !options.store.trim()) {
+    fail("--store must not be blank");
+  }
   const cfg = getRuntimeConfig();
   const agentId = options.agent ? resolveConfiguredAgentId(cfg, options.agent.trim())
     : resolveAgentIdFromSessionKey(sessionKey);
   let storePath = resolveSessionStorePathCore(options.store ?? cfg.session?.store, { agentId });
-  if (options.store) storePath = resolveExplicitSessionStorePath({ storePath,
-    inputStorePath: options.store, agentId });
+  if (options.store) {
+    storePath = resolveExplicitSessionStorePath({ storePath, inputStorePath: options.store, agentId });
+  }
   const entry = loadSessionEntryReadOnly({ agentId, sessionKey, storePath });
-  if (!entry?.sessionId) fail(`Session not found: ${sessionKey}`);
+  if (!entry?.sessionId) {
+    fail(`Session not found: ${sessionKey}`);
+  }
   const target = resolveSessionTranscriptReadTarget({ agentId, sessionKey, storePath,
     sessionEntry: entry, sessionId: entry.sessionId });
   return { entry, target, sessionKey };
@@ -53,20 +63,30 @@ function selectTranscript(options: SessionExportCommandOptions) {
 
 function validateFormat(options: SessionExportCommandOptions) {
   const format = options.format ?? "markdown";
-  if (!["markdown", "html", "json", "context", "plaintext", "recap", "graph"].includes(format)) fail("Unknown export format");
+  if (!["markdown", "html", "json", "context", "plaintext", "recap", "graph"].includes(format)) {
+    fail("Unknown export format");
+  }
   const max = options.contextMax === undefined ? undefined : Number(options.contextMax);
   if (max !== undefined && (!/^\d+$/.test(options.contextMax!) || !Number.isSafeInteger(max)
-    || max <= 0)) fail("--context-max must be a positive integer");
-  if (max !== undefined && format !== "context") fail("--context-max requires --format context");
+    || max <= 0)) {
+    fail("--context-max must be a positive integer");
+  }
+  if (max !== undefined && format !== "context") {
+    fail("--context-max requires --format context");
+  }
   return { format, max };
 }
 
 function selectAllTranscripts(options: SessionExportCommandOptions) {
-  if (options.sessionKey !== undefined) fail("--all cannot be combined with --session-key");
+  if (options.sessionKey !== undefined) {
+    fail("--all cannot be combined with --session-key");
+  }
   const targets = resolveCommandSessionStoreTargets({ cfg: getRuntimeConfig(), opts: options });
   return targets.flatMap(({ agentId, storePath }) => listSessionEntriesReadOnly({
     agentId, storePath, projection: "list" }).flatMap(({ sessionKey, entry }) => {
-      if (!entry.sessionId) return [];
+      if (!entry.sessionId) {
+        return [];
+      }
       const target = resolveSessionTranscriptReadTarget({ agentId, storePath, sessionKey,
         sessionEntry: entry, sessionId: entry.sessionId });
       return [{ entry, target, sessionKey }];
@@ -90,19 +110,28 @@ function exportConversation(selection: ReturnType<typeof selectTranscript>, opti
 export async function sessionExportCommand(options: SessionExportCommandOptions,
   runtime: RuntimeEnv): Promise<void> {
   const { format, max } = validateFormat(options);
-  if (options.allAgents && !options.all) fail("--all-agents requires --all");
+  if (options.allAgents && !options.all) {
+    fail("--all-agents requires --all");
+  }
   const selections = options.all ? selectAllTranscripts(options) : [selectTranscript(options)];
   if (format === "graph") {
     const graphs = selections.map(({ target, sessionKey }) => {
       const snapshot = readTranscriptExportSnapshotReadOnlySync(target, { includeActiveLeaf: true });
-      if (!snapshot || snapshot.activeLeafEntryId === undefined) fail("Session graph snapshot is unavailable");
+      if (!snapshot || snapshot.activeLeafEntryId === undefined) {
+        fail("Session graph snapshot is unavailable");
+      }
       return { sessionKey, ...nativeMessageTree(snapshot.events, snapshot.activeLeafEntryId) };
     });
     runtime.log(JSON.stringify(options.all ? { conversations: graphs } : graphs[0], null, 2));
     return;
   }
   const conversations = selections.map((selection) => exportConversation(selection, options));
-  const json = conversations.map(({ renderOptions, ...conversation }) => conversation);
+  if (options.json === true && format === "recap") {
+    const recaps = conversations.map(({ sessionKey, sessionId, title, recap }) => ({ sessionKey, sessionId, title, recap }));
+    runtime.log(JSON.stringify(options.all ? { conversations: recaps } : recaps[0], null, 2));
+    return;
+  }
+  const json = conversations.map(({ renderOptions: _renderOptions, ...conversation }) => conversation);
   if (options.all && format === "html") {
     const entries = conversations.flatMap((conversation) => [{ kind: "note" as const,
       summary: conversation.title, content: conversation.sessionKey, timestamp: "" }, ...conversation.entries]);
