@@ -1,4 +1,3 @@
-// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserView, type BrowserPhase } from "./BrowserView";
 import { profileLine, recordedBrowserTabs, routeOf } from "./browser-route";
@@ -275,7 +274,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
           ))}
         </span>
         {!(native || !onPip || (!browser && !viewing)) ? (
-          <button type="button" className="ib" aria-label="Shrink to a small window" title={native ? "This screen is shown in the Computer panel." : "Picture in picture"} disabled={native || !onPip || (!browser && !viewing)} onClick={() => (browser ? onPip?.({ kind: "browser", id: "browser", name: "browser" }) : viewing && onPip?.({ kind: "computer", id: viewing, name: viewed?.name ?? view.title ?? viewing }))}>
+          <button type="button" className="ib" aria-label="Shrink to a small window" title={native ? "This screen is shown in the Computer panel." : "Picture in picture"} onClick={() => (browser ? onPip?.({ kind: "browser", id: "browser", name: "browser" }) : viewing && onPip?.({ kind: "computer", id: viewing, name: viewed?.name ?? view.title ?? viewing }))}>
             <SIcon name="pip" />
           </button>
         ) : null}

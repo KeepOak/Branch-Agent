@@ -1,4 +1,3 @@
-// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
 import type { Block } from "../thread/model";
@@ -406,7 +405,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
       {route ? (
         <div className="bar-br" role="toolbar" aria-label="Browser actions">
           <span className="tb-grow" />
-          {showChrome ? (
+          {tab ? (
             <button type="button" className="btn ghost sm tb-br" aria-haspopup="menu" aria-label="More browser actions" title="More" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); moreMenu({ x: r.right, y: r.bottom + 6 }); }}>
               <span aria-hidden="true">⋯</span>
             </button>

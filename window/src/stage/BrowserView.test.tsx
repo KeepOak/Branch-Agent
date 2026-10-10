@@ -281,6 +281,14 @@ describe("scoped browser viewing", () => {
     await act(async () => reload.click());
     expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ path: "/act", body: { kind: "evaluate", fn: "() => location.reload()", targetId: "tab-one" } }));
   });
+  it("shows the More button only when there is a tab to act on", async () => {
+    const request = vi.fn(async (_m: string, params: any) =>
+      params.path === "/" ? { running: true } : params.path === "/tabs" ? { tabs: [] } : {},
+    );
+    await render(owner(request as any));
+    await flush();
+    expect(container.querySelector('[aria-label="More browser actions"]')).toBeNull();
+  });
   it("offers no greyed-out stubs in the toolbar or its More menu", async () => {
     await render(owner(routed(() => new Promise(() => {})) as any));
     await flush();
