@@ -31,7 +31,7 @@ function sidebar(contacts: ReturnType<typeof projectContact>, onOpen: (key: stri
     trunkName: (id) => id ?? "", personName: "Owner", hasUnread: false,
     filterSlot: null, summary: null, emptyLine: null, search: null, searchResults: null,
     rail: false, onRailSearch: () => {}, onOpen, onNew: () => {}, onMenu: () => {},
-    onPin: () => {}, onArchive: () => {}, onMarkAllRead: () => {}, onPerson: () => {}, onSettings: () => {},
+    onPin: () => {}, onArchive: () => {}, onMarkAllRead: () => {}, onPerson: () => {},
   };
 }
 
