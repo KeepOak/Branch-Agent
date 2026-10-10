@@ -58,12 +58,11 @@ export function usageRingColour(left: number | null): string {
   return left < 35 ? "var(--warn)" : "var(--ok)";
 }
 
-type Glyph = "computer" | "gateway" | "context" | "running" | "update";
+type Glyph = "computer" | "gateway" | "running" | "update";
 function StatusGlyph({ kind, colour = "currentColor", value = 0 }: { kind: Glyph; colour?: string; value?: number }) {
-  const common = { className: `status-glyph status-glyph-${kind}`, viewBox: kind === "context" ? "0 0 20 16" : "0 0 16 16", "aria-hidden": true as const };
+  const common = { className: `status-glyph status-glyph-${kind}`, viewBox: "0 0 16 16", "aria-hidden": true as const };
   if (kind === "computer") return <svg {...common}><rect x="1.8" y="3" width="12.4" height="8.2" rx="1.4"/><path d="M5.6 14h4.8M8 11.2V14"/><circle cx="12.6" cy="4.6" r="2.1" fill={colour} stroke="var(--side)" strokeWidth="1"/></svg>;
   if (kind === "gateway") return <svg {...common}><circle cx="3.4" cy="8" r="2"/><circle cx="12.6" cy="8" r="2"/><path d="M5.4 8h5.2"/><circle className="status-gateway-pulse" cx="8" cy="8" r="1.3" fill={colour} stroke="none"/></svg>;
-  if (kind === "context") return <svg {...common}><rect x="1" y="4.6" width="15.4" height="6.8" rx="2.2"/><path d="M17.8 6.8v2.4"/><rect x="2.6" y="6.2" width={Math.max(0, Math.min(100, value)) * 0.122} height="3.6" rx="1" fill={colour} stroke="none"/></svg>;
   if (kind === "running") return <svg {...common}><circle className={value ? "status-running-ring" : undefined} cx="8" cy="8" r="6.2" stroke={colour}/><path d="M6.6 5.4v5.2l4.2-2.6z" fill={colour} stroke={colour} strokeWidth="1"/></svg>;
   return <svg {...common}><path d="M5.2 14.6V3.6M5.2 9.6c0-2.6 5.6-1.8 5.6-5.4"/><circle cx="5.2" cy="2.6" r="1.1"/><circle cx="10.8" cy="3.2" r="1.1"/></svg>;
 }
@@ -105,9 +104,11 @@ export function StatusBar(p: Props) {
     return () => window.clearTimeout(timer);
   }, [usageExpanded, p.open]);
   const connectionWord = WORDS[p.connection] || "Online";
-  const connectionLabel = p.connection === "connected" ? "Online · you are here" : `${connectionWord} · ${p.machineName}`;
+  // The computer's name lives in the top bar's switcher; here the label says only the state.
+  const connectionLabel = p.connection === "connected" ? "Online · you are here" : connectionWord;
   const connectionColour = p.connection === "connected" ? "var(--ok)" : p.connection === "connecting" ? "var(--warn)" : "var(--bad)";
   const left = p.roomUsed === null ? null : Math.max(0, Math.round((1 - p.roomUsed) * 100));
+  const roomTip = left === null ? "Context" : `Context: ${left}% left. The room this conversation has for new messages. Click for details.`;
   const item = (id: StatusItem) => ({ "aria-expanded": p.open === id, "aria-haspopup": "dialog" as const, onClick: (e: MouseEvent<HTMLElement>) => p.onItem(id, e) });
   const usageLine = p.usage ? `${p.usage.name} · ${p.usage.left}% left${p.usage.reset ? ` · ${p.usage.reset}` : ""}` : "Usage";
   const usageLabel = p.usage ? `${usageLine}. Enter opens every account.` : "Usage · no account limits yet. Enter opens every account.";
@@ -130,9 +131,10 @@ export function StatusBar(p: Props) {
       </button>
       {p.gatewayShown === false ? null : <GatewayStatus gateway={p.gateway} open={p.open} onItem={p.onItem} />}
       {left !== null && p.roomUsed !== null ? (
-        <button type="button" className="sb status-symbol" title={`Context left · ${left}%`} aria-label={`Context left · ${left}%`} data-testid="sb-room" {...item("room")}>
-          <StatusGlyph kind="context" colour={roomColour(p.roomUsed)} value={left} />
-          <span className="status-number">{left}%</span>
+        <button type="button" className="sb status-symbol sb-room" title={roomTip} aria-label={roomTip} data-testid="sb-room" {...item("room")}>
+          <span className="status-label">Context</span>
+          <span className="ctx-meter" aria-hidden="true"><span className="ctx-meter-fill" style={{ width: `${left}%`, background: roomColour(p.roomUsed) }} /></span>
+          <span className="status-number">{left}% left</span>
         </button>
       ) : null}
       <button type="button" className="sb status-symbol" title={p.running ? `${p.running} running` : "Nothing running"} aria-label={p.running ? `${p.running} running` : "Nothing running"} data-testid="sb-running" {...item("running")}>
