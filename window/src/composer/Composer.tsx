@@ -8,7 +8,9 @@ import { DockRow, type Goal } from "./DockRow";
 import { isAdmin, num, rec, str, type SendExtras, type WindowEngine } from "./engine";
 import { Icon, StopMark } from "./icons";
 import { replaceToken } from "./mention";
-import { leadingCommand, newPick, pickText, reconcilePicks, resolveSend, type SkillPick } from "./skill-picks";
+import { newPick, pickText, reconcilePicks, resolveSend, trimMessage, type Message, type SkillPick } from "./skill-picks";
+import type { DraftFile } from "./attachments";
+import type { Person } from "./DockRow";
 import { isEngineMode, modeName, nextMode, type EngineMode } from "./mode";
 import { composerChipLabel, currentModelRef, currentThinking } from "./model";
 import { ModelMenu } from "./ModelMenu";
@@ -98,6 +100,9 @@ function useComposeEvent(open: string | null, setText: (t: string) => void, box:
   }, [open, setText, box]);
 }
 
+/** What goes with a send besides its message: the files, people, queue mode, reply and waiting-line id. */
+type SendParts = { files?: DraftFile[]; people?: Person[]; queue?: string; replyTo?: Reply | null; id?: string };
+
 /** The composer (DESIGN-SPEC §4.3.1): the message box and Send, which becomes Stop while the Trunk works. */
 export function Composer(props: Props) {
   const { name, working, disabled, onSend, onStop, engine, onToast, onOpen } = props;
@@ -162,17 +167,16 @@ export function Composer(props: Props) {
     seenText.current = draft.text;
     if (before !== draft.text) setPicks((current) => reconcilePicks(current, before, draft.text));
   }, [draft.text]);
-  const deliver = useCallback(
-    (typed: string, files = draft.files, people = draft.people, queue?: string) => {
-      const text = leadingCommand(typed, drawer.skills);
-      return onSend(text, buildExtras(text, files, people, queue, props.replyTo));
-    },
-    [onSend, draft.files, draft.people, props.replyTo, drawer.skills],
-  );
-  /** What the engine receives for the draft: picks and a typed leading command resolved, then trimmed. */
-  const outgoing = () => resolveSend(draft.text, picks, drawer.skills).trim();
+  /** The one sender. A draft, a queued message and a steered message all come through here: picks and a typed leading
+   *  command resolve against the skills now, and the engine gets the resolved text. */
+  const sendMessage = (message: Message, parts: SendParts = {}) => {
+    const text = resolveSend(message.text, message.picks, drawer.skills);
+    return onSend(text, buildExtras(text, parts.files ?? [], parts.people ?? [], parts.queue, parts.replyTo), parts.id);
+  };
+  /** The draft as it goes out: trimmed, with its picks kept in step with the text. */
+  const draftMessage = (): Message => trimMessage({ text: draft.text, picks });
   const line = useWaitingLine(engine?.sessionKey ?? null, working, Boolean(props.offline), (item, steer) => {
-    onSend(item.text, buildExtras(item.text, item.files, [], steer ? "steer" : undefined), item.id);
+    sendMessage({ text: item.text, picks: item.picks ?? [] }, { files: item.files, queue: steer ? "steer" : undefined, id: item.id });
     if (steer) toast(`Steered ${trunkName}. It picks this up at its next step.`);
   });
   const bg = useBackground(engine, conv.trunkId, props.mainKey);
@@ -232,15 +236,16 @@ export function Composer(props: Props) {
     }
     if (noModel && plan.kind !== "command") return;
     if (props.draftAgentId) {
-      void Promise.resolve(deliver(outgoing(), draft.files, draft.people)).then((created) => {
+      void Promise.resolve(sendMessage(draftMessage(), { files: draft.files, people: draft.people, replyTo: props.replyTo })).then((created) => {
         if (created) draft.clear();
       });
       return;
     }
     if (plan.kind === "wait") {
-      line.add(outgoing(), draft.files);
+      const message = draftMessage();
+      line.add(message.text, draft.files, message.picks);
     } else {
-      deliver(outgoing(), draft.files, draft.people, plan.kind === "send" ? plan.queueMode : undefined);
+      sendMessage(draftMessage(), { files: draft.files, people: draft.people, queue: plan.kind === "send" ? plan.queueMode : undefined, replyTo: props.replyTo });
       if (plan.kind === "send" && plan.queueMode === "steer") toast(`Steered ${trunkName}. It picks this up at its next step.`);
     }
     history.record(draft.text.trim());
@@ -500,7 +505,7 @@ export function Composer(props: Props) {
         people={draft.people}
         onForget={draft.forget}
         onSteer={async (text) => {
-          deliver(text, [], [], "steer");
+          sendMessage({ text, picks: [] }, { queue: "steer", replyTo: props.replyTo });
           toast(`Steered ${trunkName}. It picks this up at its next step.`);
           return true;
         }}
@@ -693,7 +698,7 @@ export function Composer(props: Props) {
           />
         ) : null}
       </form>
-      {picture ? <PictureDialog onClose={() => setPicture(false)} onMake={(words) => deliver(`Make a picture: ${words}`, [], [])} /> : null}
+      {picture ? <PictureDialog onClose={() => setPicture(false)} onMake={(words) => sendMessage({ text: `Make a picture: ${words}`, picks: [] }, { replyTo: props.replyTo })} /> : null}
       {photo ? <PhotoDialog onClose={() => setPhoto(false)} onUse={(f) => void draft.addFiles([f], "file")} onUpload={() => fileInput.current?.click()} /> : null}
     </div>
   );

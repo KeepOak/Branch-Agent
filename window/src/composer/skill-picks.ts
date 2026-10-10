@@ -64,3 +64,15 @@ export function resolveSend(text: string, picks: SkillPick[], skillKeys: readonl
   for (const pick of valid) out = `${out.slice(0, pick.start)}/${pick.raw}${out.slice(pick.end)}`;
   return leadingCommand(out, skillKeys);
 }
+
+/** A message as the composer holds it: its display text (/seedbank) and where its picks sit in that text. */
+export type Message = { text: string; picks: SkillPick[] };
+
+/** Trims surrounding whitespace from a message, moving its picks with the text. */
+export function trimMessage(message: Message): Message {
+  const lead = message.text.length - message.text.trimStart().length;
+  return {
+    text: message.text.trim(),
+    picks: message.picks.filter((pick) => pick.start >= lead).map((pick) => ({ ...pick, start: pick.start - lead, end: pick.end - lead })),
+  };
+}

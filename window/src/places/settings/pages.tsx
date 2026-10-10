@@ -42,7 +42,7 @@ const FIELDS: Record<string, Field[]> = {
   ],
   models: [{ key: "agents.defaults.model.primary", label: "Default model", note: "Used by Trunks without their own model override. Choose a model the engine reports as available." }],
   seasons: [
-    { key: "plugins.entries.memory-core.config.rings.enabled", label: "Rings tidy memory at night", note: "Run the memory engine's consolidation passes. Inherited keeps the source default.", kind: "boolean", options: ["true", "false"] },
+    { key: "plugins.entries.memory-core.config.rings.enabled", label: "Tidy memory at night with Rings", note: "Run the memory engine's consolidation passes. Inherited keeps the source default.", kind: "boolean", options: ["true", "false"] },
     { key: "plugins.entries.memory-core.config.rings.frequency", label: "Rings schedule", note: "Cron cadence for the complete sweep: light, REM, then deep. Leave inherited for the engine's schedule." },
     { key: "plugins.entries.memory-core.config.rings.timezone", label: "Rings time zone", note: "An IANA time zone for the consolidation schedule." },
     { key: "plugins.entries.memory-core.config.rings.model", label: "Model that writes the diary", note: "A provider/model reference. Inherited uses the Trunk's own model." },

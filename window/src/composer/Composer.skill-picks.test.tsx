@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
-// Messages sent while a Trunk works go through the same send transform. Ctrl+Enter waits in line (the queued path):
-// a picked skill runs from anywhere, and prose is kept as written. A typed leading command runs on send.
+// Messages sent while a Trunk works wait in line with their display text (/seedbank) and their picks. The one sender
+// resolves them when they go: a picked skill sends as /clawhub, a leading command resolves even after a reword, and
+// prose is kept as written.
 import { act } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
 import { Composer } from "./Composer";
-import { loadLine } from "./queue";
+import { loadLine, reword, saveLine, type QueueItem } from "./queue";
+import { newPick } from "./skill-picks";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const KEY = "agent:main:queued";
@@ -28,14 +30,16 @@ function engineWithSkill(): WindowEngine {
   return { request: request as WindowEngine["request"], onEvent: () => () => undefined, sessionKey: KEY, agentId: "main", scopes: [] } as WindowEngine;
 }
 
-async function mount() {
+async function mount(working: boolean) {
   const onSend = vi.fn();
+  const engine = engineWithSkill();
   const host = document.body.appendChild(document.createElement("div"));
-  const root = createRoot(host);
-  await act(async () => root.render(<Composer name="Oak" working disabled={false} onSend={onSend} onStop={vi.fn()} engine={engineWithSkill()} />));
+  const root: Root = createRoot(host);
+  const render = (isWorking: boolean) => act(async () => root.render(<Composer name="Oak" working={isWorking} disabled={false} onSend={onSend} onStop={vi.fn()} engine={engine} />));
+  await render(working);
   await vi.waitFor(() => expect(host.querySelector('[data-testid="composer"]')).not.toBeNull());
   const box = host.querySelector<HTMLTextAreaElement>('[data-testid="composer"]')!;
-  return { host, root, box, onSend };
+  return { host, root, box, onSend, render };
 }
 
 async function type(box: HTMLTextAreaElement, value: string) {
@@ -51,46 +55,68 @@ async function press(box: HTMLTextAreaElement, key: string, ctrlKey = false) {
   });
 }
 
-const queuedTexts = () => loadLine(localStorage, KEY).map((item) => item.text);
+const queued = (): QueueItem[] => loadLine(localStorage, KEY);
+
+async function cleanup(root: Root, host: HTMLElement) {
+  await act(async () => root.unmount());
+  host.remove();
+}
 
 describe("messages sent while a Trunk works", () => {
   it("a typed leading /seedbank runs as the engine key on send", async () => {
-    const { host, root, box, onSend } = await mount();
+    const { host, root, box, onSend } = await mount(true);
     try {
       await type(box, "/seedbank summarize this");
       await press(box, "Enter");
-      await vi.waitFor(() => expect(onSend).toHaveBeenCalledWith("/clawhub summarize this", expect.anything()));
+      await vi.waitFor(() => expect(onSend.mock.calls[0]?.[0]).toBe("/clawhub summarize this"));
     } finally {
-      await act(async () => root.unmount());
-      host.remove();
+      await cleanup(root, host);
     }
   });
 
-  it("a queued message with a picked skill mid-message is stored as the engine key, with no hidden characters", async () => {
-    const { host, root, box } = await mount();
+  it("a queued pick displays /seedbank in the waiting line, and sends /clawhub when the Trunk is free", async () => {
+    const { host, root, box, onSend, render } = await mount(true);
     try {
       await type(box, "please /seed");
       await press(box, "Enter"); // the drawer is open: Enter picks the highlighted skill
-      expect(box.value).toContain("/seedbank");
       await press(box, "Enter", true); // Ctrl+Enter waits in line
-      await vi.waitFor(() => expect(queuedTexts()).toHaveLength(1));
-      expect(queuedTexts()[0]).toMatch(/^please \/clawhub ?$/);
-      expect(queuedTexts()[0]).not.toMatch(/⁠/);
+      await vi.waitFor(() => expect(queued()).toHaveLength(1));
+      expect(queued()[0].text).toBe("please /seedbank");
+      expect(queued()[0].text).not.toMatch(/\/clawhub/);
+      expect(onSend).not.toHaveBeenCalled();
+      await render(false);
+      await vi.waitFor(() => expect(onSend).toHaveBeenCalledWith("please /clawhub", expect.anything(), expect.any(String)));
+      expect(queued()).toEqual([]);
     } finally {
-      await act(async () => root.unmount());
-      host.remove();
+      await cleanup(root, host);
     }
   });
 
-  it("a queued message that only mentions /seedbank is stored unchanged", async () => {
-    const { host, root, box } = await mount();
+  it("a queued leading command still resolves after it is reworded", async () => {
+    const { host, root, onSend, render } = await mount(true);
+    try {
+      const id = "queued-leading";
+      saveLine(localStorage, KEY, [{ id, text: "/seedbank summarize this", files: [], state: "waiting", picks: [newPick(0, "clawhub")] }]);
+      // A reword in the waiting line: the pick's text changed, so it drops; the leading command still resolves at send.
+      saveLine(localStorage, KEY, reword(loadLine(localStorage, KEY), id, "/Seedbank  summarize the invoices"));
+      expect(queued()[0].picks).toEqual([]);
+      await render(false);
+      await vi.waitFor(() => expect(onSend).toHaveBeenCalledWith("/clawhub  summarize the invoices", expect.anything(), id));
+    } finally {
+      await cleanup(root, host);
+    }
+  });
+
+  it("a queued message that only mentions /seedbank is sent unchanged", async () => {
+    const { host, root, box, onSend, render } = await mount(true);
     try {
       await type(box, "please use /seedbank now");
       await press(box, "Enter", true);
-      await vi.waitFor(() => expect(queuedTexts()).toEqual(["please use /seedbank now"]));
+      await vi.waitFor(() => expect(queued()).toHaveLength(1));
+      await render(false);
+      await vi.waitFor(() => expect(onSend).toHaveBeenCalledWith("please use /seedbank now", expect.anything(), expect.any(String)));
     } finally {
-      await act(async () => root.unmount());
-      host.remove();
+      await cleanup(root, host);
     }
   });
 });
