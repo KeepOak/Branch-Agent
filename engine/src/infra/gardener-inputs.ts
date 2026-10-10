@@ -2,14 +2,13 @@
 // observations come from the poller's own reads, and the two extra reads go through the same ETag cache.
 import type { GardenerInputs } from "./gardener-pass.js";
 import type { FixVerdictRecord, MainCheckFailure } from "./gardener-signals.js";
-import { failingCheckNames } from "./signal-wakes/signal-wake-classify.js";
+import { failingCheckNames, parseBranchVerdict } from "./signal-wakes/signal-wake-classify.js";
 import type { RepoRef, SignalWakeGitHubReads } from "./signal-wakes/signal-wake-github.js";
 import type { PrObservation } from "./signal-wakes/signal-wake-poller.js";
 
 /** The poller ticks every 5 minutes. Three intervals of silence means the PR is closed or no longer polled. */
 const OBSERVATION_FRESH_MS = 15 * 60_000;
 const MAIN_BRANCH = "main";
-const VERDICT = /^\s*(FIX|PASS|MERGE)\b/;
 
 export type ObservationStore = {
   record(observation: PrObservation, seenAt: number): void;
@@ -31,19 +30,22 @@ export function createObservationStore(): ObservationStore {
   };
 }
 
-type Verdict = { kind: string; at: number };
+type Verdict = { kind: "FIX" | "MERGE"; headSha: string; at: number };
 
-/** The latest FIX, PASS or MERGE from a reviewer other than the PR author. Undated comments cannot be timed, so skip them. */
+/**
+ * The latest verdict line (`branch-verdict: FIX|MERGE head=<sha>`) from a reviewer other than the PR author.
+ * Parsed with the same contract as the poller. Undated comments cannot be timed, so they are skipped.
+ */
 function latestVerdict(observation: PrObservation): Verdict | undefined {
   let latest: Verdict | undefined;
   for (const comment of observation.comments) {
-    const match = VERDICT.exec(comment.body);
+    const verdict = parseBranchVerdict(comment.body);
     const at = comment.createdAt === undefined ? Number.NaN : Date.parse(comment.createdAt);
-    if (!match || Number.isNaN(at) || comment.authorLogin === observation.authorLogin) {
+    if (!verdict || Number.isNaN(at) || comment.authorLogin === observation.authorLogin) {
       continue;
     }
     if (latest === undefined || at > latest.at) {
-      latest = { kind: match[1] ?? "", at };
+      latest = { kind: verdict.verdict, headSha: verdict.headSha, at };
     }
   }
   return latest;
@@ -71,7 +73,12 @@ async function readStalledFixes(
   const records: FixVerdictRecord[] = [];
   for (const observation of observations) {
     const verdict = latestVerdict(observation);
-    if (verdict?.kind !== "FIX" || now - verdict.at < stallMs) {
+    // A FIX on an older head means the branch moved since, so it is not stalled on the current head.
+    if (
+      verdict?.kind !== "FIX" ||
+      verdict.headSha !== observation.headSha ||
+      now - verdict.at < stallMs
+    ) {
       continue;
     }
     const lastPushAt = await reads.getCommitTime(observation.repo, observation.headSha);

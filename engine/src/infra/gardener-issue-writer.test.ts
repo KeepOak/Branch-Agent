@@ -30,4 +30,11 @@ describe("createGardenerIssueWriter", () => {
     await expect(write(DRAFT)).rejects.toBeInstanceOf(GardenerIssueWriteError);
     await expect(write(DRAFT)).rejects.toMatchObject({ status: 403 });
   });
+
+  it("refuses to write without a token and sends no request", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response("{}", { status: 201 }));
+    const write = createGardenerIssueWriter({ fetchImpl: fetchImpl as typeof fetch, token: "" });
+    await expect(write(DRAFT)).rejects.toMatchObject({ status: 401 });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
 });

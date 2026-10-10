@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  commentExcerpt,
   failingCheckNames,
-  isFixVerdict,
+  latestBranchVerdict,
+  parseBranchVerdict,
   trunkForHeadRef,
 } from "./signal-wake-classify.js";
+
+const SHA = "f".repeat(40);
 
 describe("trunkForHeadRef", () => {
   it("maps trunk/<id>-<rest> to a configured Trunk", () => {
@@ -25,16 +27,38 @@ describe("trunkForHeadRef", () => {
   });
 });
 
-describe("isFixVerdict", () => {
-  it("accepts a body whose first word is FIX", () => {
-    expect(isFixVerdict("FIX\n- missing test")).toBe(true);
-    expect(isFixVerdict("  FIX: rename the helper")).toBe(true);
+describe("parseBranchVerdict", () => {
+  it("reads MERGE and FIX with a full head sha on the first line", () => {
+    expect(parseBranchVerdict(`branch-verdict: FIX head=${SHA}\n- problem`)).toEqual({
+      verdict: "FIX",
+      headSha: SHA,
+    });
+    expect(parseBranchVerdict(`branch-verdict: MERGE head=${SHA}`)).toEqual({
+      verdict: "MERGE",
+      headSha: SHA,
+    });
   });
 
-  it("rejects PASS, lowercase fix, and words that only start with FIX", () => {
-    expect(isFixVerdict("PASS")).toBe(false);
-    expect(isFixVerdict("fix the typo")).toBe(false);
-    expect(isFixVerdict("FIXED in the next push")).toBe(false);
+  it("rejects a verdict-looking line that is not the first line, a short sha, or a PASS word", () => {
+    expect(parseBranchVerdict(`Review\nbranch-verdict: FIX head=${SHA}`)).toBeUndefined();
+    expect(parseBranchVerdict("branch-verdict: FIX head=abc1234")).toBeUndefined();
+    expect(parseBranchVerdict("FIX\n- missing test")).toBeUndefined();
+    expect(parseBranchVerdict("PASS")).toBeUndefined();
+  });
+});
+
+describe("latestBranchVerdict", () => {
+  it("returns the verdict on the highest comment id, ignoring other comments", () => {
+    const latest = latestBranchVerdict([
+      { id: 5, body: `branch-verdict: FIX head=${SHA}` },
+      { id: 9, body: "thanks" },
+      { id: 7, body: `branch-verdict: MERGE head=${SHA}` },
+    ]);
+    expect(latest).toEqual({ id: 7, verdict: "MERGE", headSha: SHA });
+  });
+
+  it("returns undefined when no comment is a verdict", () => {
+    expect(latestBranchVerdict([{ id: 1, body: "hello" }])).toBeUndefined();
   });
 });
 
@@ -48,12 +72,5 @@ describe("failingCheckNames", () => {
         { name: "e2e", status: "completed", conclusion: "timed_out" },
       ]),
     ).toEqual(["build", "e2e"]);
-  });
-});
-
-describe("commentExcerpt", () => {
-  it("keeps the first line and caps its length", () => {
-    expect(commentExcerpt("FIX\nsecond line")).toBe("FIX");
-    expect(commentExcerpt("x".repeat(400)).length).toBe(160);
   });
 });

@@ -14,6 +14,10 @@ const NOW = Date.parse("2026-10-10T12:00:00Z");
 const STALL = 2 * HOUR;
 const REPO: RepoRef = { owner: "example-owner", name: "example-repo" };
 const MAIN_SHA = "0123456789abcdef0123456789abcdef01234567";
+const HEAD = "a".repeat(40);
+/** A reviewer verdict on the given head, in the poller's verdict-line contract. */
+const fix = (sha = HEAD) => `branch-verdict: FIX head=${sha}\n- add the test`;
+const merge = (sha = HEAD) => `branch-verdict: MERGE head=${sha}`;
 
 function fakeReads(overrides: {
   mainSha?: string | undefined;
@@ -31,7 +35,7 @@ function fakeReads(overrides: {
   };
 }
 
-function observation(comments: CommentSummary[], headSha = "head1"): PrObservation {
+function observation(comments: CommentSummary[], headSha = HEAD): PrObservation {
   return {
     repo: REPO,
     pullNumber: 12,
@@ -99,7 +103,7 @@ describe("readGardenerInputs: main CI", () => {
 describe("readGardenerInputs: stalled FIX", () => {
   it("reports an open FIX from a reviewer, older than two hours, with no push since", async () => {
     const reads = fakeReads({ commitTime: NOW - 3 * HOUR });
-    const obs = observation([comment(1, "FIX\n- add the test", twoHoursAgo)]);
+    const obs = observation([comment(1, fix(), twoHoursAgo)]);
     const inputs = await readGardenerInputs({
       reads,
       repo: REPO,
@@ -111,7 +115,7 @@ describe("readGardenerInputs: stalled FIX", () => {
       {
         repo: "example-owner/example-repo",
         pr: 12,
-        headSha: "head1",
+        headSha: HEAD,
         verdictAt: NOW - STALL,
         lastPushAt: NOW - 3 * HOUR,
       },
@@ -120,7 +124,7 @@ describe("readGardenerInputs: stalled FIX", () => {
 
   it("ignores a FIX written by the PR author", async () => {
     const reads = fakeReads({});
-    const obs = observation([comment(1, "FIX\n- x", twoHoursAgo, "builder-author")]);
+    const obs = observation([comment(1, fix(), twoHoursAgo, "builder-author")]);
     const inputs = await readGardenerInputs({
       reads,
       repo: REPO,
@@ -131,12 +135,12 @@ describe("readGardenerInputs: stalled FIX", () => {
     expect(inputs.fixVerdicts).toEqual([]);
   });
 
-  it("is closed by a later PASS from a reviewer", async () => {
+  it("is closed by a later MERGE from a reviewer", async () => {
     const reads = fakeReads({});
     const later = new Date(NOW - HOUR).toISOString();
     const obs = observation([
-      comment(1, "FIX\n- x", twoHoursAgo),
-      comment(2, "PASS", later, "other-reviewer"),
+      comment(1, fix(), twoHoursAgo),
+      comment(2, merge(), later, "other-reviewer"),
     ]);
     const inputs = await readGardenerInputs({
       reads,
@@ -151,7 +155,7 @@ describe("readGardenerInputs: stalled FIX", () => {
   it("does not read the head commit for a FIX younger than the stall window", async () => {
     const reads = fakeReads({});
     const recent = new Date(NOW - HOUR).toISOString();
-    const obs = observation([comment(1, "FIX\n- x", recent)]);
+    const obs = observation([comment(1, fix(), recent)]);
     await readGardenerInputs({
       reads,
       repo: REPO,
@@ -164,7 +168,7 @@ describe("readGardenerInputs: stalled FIX", () => {
 
   it("reports the push time, and the signal stage drops a FIX whose branch was pushed after it", async () => {
     const reads = fakeReads({ commitTime: NOW - HOUR });
-    const obs = observation([comment(1, "FIX\n- x", twoHoursAgo)]);
+    const obs = observation([comment(1, fix(), twoHoursAgo)]);
     const inputs = await readGardenerInputs({
       reads,
       repo: REPO,
@@ -176,9 +180,16 @@ describe("readGardenerInputs: stalled FIX", () => {
     expect(stalledFixSignals(inputs.fixVerdicts ?? [], NOW, STALL)).toEqual([]);
   });
 
+  it("ignores a FIX written against an older head, since the branch moved on", async () => {
+    const reads = fakeReads({});
+    const obs = observation([comment(1, fix("c".repeat(40)), twoHoursAgo)]);
+    const inputs = await readGardenerInputs({ reads, repo: REPO, observations: [obs], now: NOW, fixStallMs: STALL });
+    expect(inputs.fixVerdicts).toEqual([]);
+  });
+
   it("skips an undated comment, since its age cannot be known", async () => {
     const reads = fakeReads({});
-    const obs = observation([comment(1, "FIX\n- x", undefined)]);
+    const obs = observation([comment(1, fix(), undefined)]);
     const inputs = await readGardenerInputs({
       reads,
       repo: REPO,

@@ -1,4 +1,4 @@
-import { failingCheckNames, isFixVerdict, trunkForHeadRef } from "./signal-wake-classify.js";
+import { failingCheckNames, latestBranchVerdict, trunkForHeadRef } from "./signal-wake-classify.js";
 import { diffPrSignals, type PrSignalState, type SignalDecision } from "./signal-wake-decide.js";
 import type {
   CommentSummary,
@@ -6,6 +6,7 @@ import type {
   RepoRef,
   SignalWakeGitHub,
 } from "./signal-wake-github.js";
+import type { SignalStateMap, SignalStateStore } from "./signal-wake-state.js";
 
 export const SIGNAL_POLL_INTERVAL_MS = 5 * 60_000;
 
@@ -30,17 +31,15 @@ export type SignalPollerOptions = {
   notify: (signal: SignalDecision) => void;
   /** Optional read-only tap on each PR the poll reads. Used by the Gardener; no extra GitHub call. */
   observe?: (observation: PrObservation) => void;
+  store: SignalStateStore;
   onError?: (message: string) => void;
   intervalMs?: number;
 };
 
-type RepoState = { prs: Map<number, PrSignalState> };
-
 type PollContext = {
   options: SignalPollerOptions;
-  states: Map<string, RepoState>;
-  /** False until a tick lists every repo; that first tick only records state. */
-  baselined: boolean;
+  /** Loaded from the store on the first tick, then kept in memory and written after each tick. */
+  states?: SignalStateMap;
 };
 
 function repoKey(repo: RepoRef): string {
@@ -51,17 +50,26 @@ function reportError(ctx: PollContext, error: unknown): void {
   ctx.options.onError?.(error instanceof Error ? error.message : String(error));
 }
 
+/** The observe tap is best-effort: a throw is reported and never stops the PR's wake decisions. */
+function observeSafely(ctx: PollContext, observation: PrObservation): void {
+  try {
+    ctx.options.observe?.(observation);
+  } catch (error: unknown) {
+    reportError(ctx, error);
+  }
+}
+
 async function tickPr(
   ctx: PollContext,
   repo: RepoRef,
   pull: PullSummary,
   trunkId: string,
-  state: RepoState,
+  prs: Map<number, PrSignalState>,
 ): Promise<void> {
   const github = ctx.options.github;
   const checks = await github.listCheckRuns(repo, pull.headSha);
   const comments = await github.listComments(repo, pull.number);
-  ctx.options.observe?.({
+  observeSafely(ctx, {
     repo,
     pullNumber: pull.number,
     authorLogin: pull.authorLogin,
@@ -69,62 +77,71 @@ async function tickPr(
     trunkId,
     comments,
   });
-  const diff = diffPrSignals(state.prs.get(pull.number), {
+  const diff = diffPrSignals(prs.get(pull.number), {
     number: pull.number,
-    authorLogin: pull.authorLogin,
-    headSha: pull.headSha,
     trunkId,
+    headSha: pull.headSha,
     failingChecks: failingCheckNames(checks),
-    verdicts: comments
-      .filter((comment) => isFixVerdict(comment.body))
-      .map((comment) => ({ id: comment.id, authorLogin: comment.authorLogin, body: comment.body })),
+    latestVerdict: latestBranchVerdict(comments),
   });
-  state.prs.set(pull.number, diff.next);
-  if (ctx.baselined) {
-    diff.signals.forEach(ctx.options.notify);
-  }
+  // Notify before recording state: a failed notify is retried on the next tick.
+  diff.signals.forEach(ctx.options.notify);
+  prs.set(pull.number, diff.next);
 }
 
-function forgetClosedPrs(state: RepoState, pulls: readonly PullSummary[]): void {
+function forgetClosedPrs(prs: Map<number, PrSignalState>, pulls: readonly PullSummary[]): void {
   const openNumbers = new Set(pulls.map((pull) => pull.number));
-  for (const number of state.prs.keys()) {
+  for (const number of prs.keys()) {
     if (!openNumbers.has(number)) {
-      state.prs.delete(number);
+      prs.delete(number);
     }
   }
 }
 
-async function tickRepo(ctx: PollContext, repo: RepoRef): Promise<void> {
+async function tickRepo(ctx: PollContext, repo: RepoRef, states: SignalStateMap): Promise<void> {
   const key = repoKey(repo);
-  const state = ctx.states.get(key) ?? { prs: new Map<number, PrSignalState>() };
-  ctx.states.set(key, state);
+  const prs = states.get(key) ?? new Map<number, PrSignalState>();
+  states.set(key, prs);
   const pulls = await ctx.options.github.listOpenPulls(repo);
   const trunkIds = ctx.options.trunkIds();
   for (const pull of pulls) {
     const trunkId = trunkForHeadRef(pull.headRef, trunkIds);
     if (trunkId !== undefined) {
-      await tickPr(ctx, repo, pull, trunkId, state).catch((error: unknown) =>
+      await tickPr(ctx, repo, pull, trunkId, prs).catch((error: unknown) =>
         reportError(ctx, error),
       );
     }
   }
-  forgetClosedPrs(state, pulls);
+  forgetClosedPrs(prs, pulls);
+}
+
+async function loadStates(ctx: PollContext): Promise<SignalStateMap | undefined> {
+  if (ctx.states === undefined) {
+    try {
+      ctx.states = await ctx.options.store.read();
+    } catch (error: unknown) {
+      // Without the persisted state, a tick could re-wake old signals, so it does nothing.
+      reportError(ctx, error);
+      return undefined;
+    }
+  }
+  return ctx.states;
 }
 
 async function runTick(ctx: PollContext): Promise<void> {
-  let listed = true;
-  for (const repo of ctx.options.repos) {
-    await tickRepo(ctx, repo).catch((error: unknown) => {
-      listed = false;
-      reportError(ctx, error);
-    });
+  const states = await loadStates(ctx);
+  if (states === undefined) {
+    return;
   }
-  ctx.baselined ||= listed;
+  for (const repo of ctx.options.repos) {
+    await tickRepo(ctx, repo, states).catch((error: unknown) => reportError(ctx, error));
+  }
+  await ctx.options.store.write(states).catch((error: unknown) => reportError(ctx, error));
 }
 
 /** Starts one poller per gateway. Ticks never overlap; the timer is unref'd and stops on request. */
 export function startSignalWakePoller(options: SignalPollerOptions): SignalPoller {
-  const ctx: PollContext = { options, states: new Map(), baselined: false };
+  const ctx: PollContext = { options };
   let inFlight: Promise<void> | undefined;
   const tick = (): Promise<void> => {
     inFlight ??= runTick(ctx).finally(() => {

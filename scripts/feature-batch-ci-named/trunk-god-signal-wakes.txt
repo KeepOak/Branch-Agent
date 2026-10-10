@@ -4,3 +4,4 @@ engine:src/infra/signal-wakes/signal-wake-classify.test.ts
 engine:src/infra/signal-wakes/signal-wake-dispatch.test.ts
 engine:src/infra/signal-wakes/signal-wake-github.test.ts
 engine:src/infra/signal-wakes/signal-wake-poller.test.ts
+engine:src/infra/signal-wakes/signal-wake-state.test.ts

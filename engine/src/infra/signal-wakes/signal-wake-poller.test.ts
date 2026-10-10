@@ -2,11 +2,13 @@ import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SignalDecision } from "./signal-wake-decide.js";
 import { createSignalWakeGitHub, type RepoRef } from "./signal-wake-github.js";
-import { startSignalWakePoller, SIGNAL_POLL_INTERVAL_MS } from "./signal-wake-poller.js";
+import { SIGNAL_POLL_INTERVAL_MS, startSignalWakePoller } from "./signal-wake-poller.js";
+import { createMemorySignalStateStore, type SignalStateStore } from "./signal-wake-state.js";
 
 const REPO: RepoRef = { owner: "KeepOak", name: "Branch-Agent" };
-const AUTHOR = "stabrea";
 const TRUNK_HEAD = "trunk/builder-1-signal";
+const HEAD_A = "a".repeat(40);
+const HEAD_B = "b".repeat(40);
 
 type FakePull = { number: number; login: string; ref: string; sha: string };
 type FakeComment = { id: number; login: string; body: string };
@@ -16,6 +18,13 @@ type FakeGitHub = {
   checks: Record<string, FakeCheck[]>;
   comments: Record<number, FakeComment[]>;
 };
+
+const GREEN: FakeCheck[] = [{ name: "build", status: "completed", conclusion: "success" }];
+const RED: FakeCheck[] = [{ name: "test", status: "completed", conclusion: "failure" }];
+
+function verdictBody(verdict: "MERGE" | "FIX", sha: string): string {
+  return `branch-verdict: ${verdict} head=${sha}\n\n- problem one`;
+}
 
 function bodyFor(url: string, gh: FakeGitHub): unknown {
   const checkMatch = /\/commits\/([^/]+)\/check-runs/.exec(url);
@@ -37,7 +46,7 @@ function bodyFor(url: string, gh: FakeGitHub): unknown {
   return undefined;
 }
 
-/** A fake fetch that issues real-looking ETags and answers 304 when If-None-Match matches. */
+/** A fake fetch that issues ETags and answers 304 when If-None-Match matches the current body. */
 function fakeGitHub(gh: FakeGitHub) {
   const requests: { url: string; status: number; conditional: boolean }[] = [];
   const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -64,36 +73,42 @@ function fakeGitHub(gh: FakeGitHub) {
 
 const errors: string[] = [];
 
-function start(gh: FakeGitHub, notify: (signal: SignalDecision) => void, intervalMs = 1e9) {
-  const fake = fakeGitHub(gh);
+function start(options: {
+  gh: FakeGitHub;
+  notify: (signal: SignalDecision) => void;
+  store?: SignalStateStore;
+  intervalMs?: number;
+}) {
+  const fake = fakeGitHub(options.gh);
   const poller = startSignalWakePoller({
     github: createSignalWakeGitHub({ fetchImpl: fake.fetchImpl, token: "test-token" }),
     repos: [REPO],
     trunkIds: () => ["builder-1"],
-    notify,
+    notify: options.notify,
+    store: options.store ?? createMemorySignalStateStore(),
     onError: (message) => errors.push(message),
-    intervalMs,
+    intervalMs: options.intervalMs ?? 1e9,
   });
   return { poller, requests: fake.requests };
 }
 
-function greenGitHub(): FakeGitHub {
+function openPr(headSha: string, ref = TRUNK_HEAD): FakeGitHub {
   return {
-    pulls: [{ number: 7, login: AUTHOR, ref: TRUNK_HEAD, sha: "aaaaaaa1111" }],
-    checks: { aaaaaaa1111: [{ name: "build", status: "completed", conclusion: "success" }] },
+    pulls: [{ number: 7, login: "stabrea", ref, sha: headSha }],
+    checks: { [headSha]: GREEN },
     comments: {},
   };
 }
 
 afterEach(() => {
   vi.useRealTimers();
+  errors.length = 0;
 });
 
 describe("signal wake poller", () => {
   it("spends no wake when every conditional read returns 304", async () => {
     const notify = vi.fn();
-    const gh = greenGitHub();
-    const { poller, requests } = start(gh, notify);
+    const { poller, requests } = start({ gh: openPr(HEAD_A), notify });
     await poller.tick();
     requests.length = 0;
     await poller.tick();
@@ -104,12 +119,12 @@ describe("signal wake poller", () => {
     await poller.stop();
   });
 
-  it("wakes once for a red check and not again for the same red head", async () => {
+  it("wakes once for a red head and not again for the same red head", async () => {
     const notify = vi.fn();
-    const gh = greenGitHub();
-    const { poller } = start(gh, notify);
+    const gh = openPr(HEAD_A);
+    const { poller } = start({ gh, notify });
     await poller.tick();
-    gh.checks.aaaaaaa1111 = [{ name: "test", status: "completed", conclusion: "failure" }];
+    gh.checks[HEAD_A] = RED;
     await poller.tick();
     expect(notify).toHaveBeenCalledTimes(1);
     expect(notify.mock.calls[0]?.[0]).toMatchObject({
@@ -118,36 +133,51 @@ describe("signal wake poller", () => {
       trunkId: "builder-1",
       contextKey: "signal:ci-red:7",
     });
-    gh.checks.aaaaaaa1111 = [
-      { name: "test", status: "completed", conclusion: "failure" },
-      { name: "lint", status: "completed", conclusion: "failure" },
-    ];
+    gh.checks[HEAD_A] = [...RED, { name: "lint", status: "completed", conclusion: "failure" }];
     await poller.tick();
     expect(notify).toHaveBeenCalledTimes(1);
     await poller.stop();
   });
 
-  it("ignores a FIX comment posted by the PR author", async () => {
+  it("wakes once for a FIX verdict on the current head and dedupes by comment id", async () => {
     const notify = vi.fn();
-    const gh = greenGitHub();
-    const { poller } = start(gh, notify);
+    const gh = openPr(HEAD_A);
+    const { poller } = start({ gh, notify });
     await poller.tick();
-    gh.comments[7] = [{ id: 101, login: AUTHOR, body: "FIX\n- missing test" }];
+    gh.comments[7] = [{ id: 202, login: "stabrea", body: verdictBody("FIX", HEAD_A) }];
+    await poller.tick();
+    await poller.tick();
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify.mock.calls[0]?.[0]).toMatchObject({ reason: "fix-verdict", pr: 7 });
+    gh.comments[7] = [
+      { id: 202, login: "stabrea", body: verdictBody("FIX", HEAD_A) },
+      { id: 203, login: "stabrea", body: verdictBody("FIX", HEAD_A) },
+    ];
+    await poller.tick();
+    expect(notify).toHaveBeenCalledTimes(2);
+    await poller.stop();
+  });
+
+  it("does not fire a FIX on an old head", async () => {
+    const notify = vi.fn();
+    const gh = openPr(HEAD_B);
+    gh.comments[7] = [{ id: 301, login: "stabrea", body: verdictBody("FIX", HEAD_A) }];
+    const { poller } = start({ gh, notify });
     await poller.tick();
     expect(notify).not.toHaveBeenCalled();
     await poller.stop();
   });
 
-  it("wakes once for a FIX comment from a non-author and dedupes by comment id", async () => {
+  it("does not fire a FIX that a newer MERGE verdict has superseded", async () => {
     const notify = vi.fn();
-    const gh = greenGitHub();
-    const { poller } = start(gh, notify);
+    const gh = openPr(HEAD_A);
+    gh.comments[7] = [
+      { id: 401, login: "stabrea", body: verdictBody("FIX", HEAD_A) },
+      { id: 402, login: "stabrea", body: verdictBody("MERGE", HEAD_A) },
+    ];
+    const { poller } = start({ gh, notify });
     await poller.tick();
-    gh.comments[7] = [{ id: 202, login: "reviewer", body: "FIX\n- missing test" }];
-    await poller.tick();
-    await poller.tick();
-    expect(notify).toHaveBeenCalledTimes(1);
-    expect(notify.mock.calls[0]?.[0]).toMatchObject({ reason: "fix-verdict", pr: 7 });
+    expect(notify).not.toHaveBeenCalled();
     await poller.stop();
   });
 
@@ -155,23 +185,48 @@ describe("signal wake poller", () => {
     const notify = vi.fn();
     const gh: FakeGitHub = {
       pulls: [
-        { number: 8, login: AUTHOR, ref: "feature/x", sha: "bbbbbbb2222" },
-        { number: 9, login: AUTHOR, ref: "trunk/unknown-1-x", sha: "ccccccc3333" },
+        { number: 8, login: "stabrea", ref: "feature/x", sha: HEAD_B },
+        { number: 9, login: "stabrea", ref: "trunk/unknown-1-x", sha: HEAD_B },
       ],
-      checks: { bbbbbbb2222: [{ name: "build", status: "completed", conclusion: "failure" }] },
-      comments: { 8: [{ id: 303, login: "reviewer", body: "FIX\n- x" }] },
+      checks: { [HEAD_B]: RED },
+      comments: { 8: [{ id: 303, login: "reviewer", body: verdictBody("FIX", HEAD_B) }] },
     };
-    const { poller, requests } = start(gh, notify);
+    const { poller, requests } = start({ gh, notify });
     await poller.tick();
     expect(notify).not.toHaveBeenCalled();
     expect(requests.some((r) => r.url.includes("/commits/"))).toBe(false);
     await poller.stop();
   });
 
+  it("restart with a red PR wakes once, then not again on later restarts", async () => {
+    const store = createMemorySignalStateStore();
+    const notify = vi.fn();
+    const gh = openPr(HEAD_A);
+    const first = start({ gh, notify, store });
+    await first.poller.tick();
+    await first.poller.stop();
+
+    gh.checks[HEAD_A] = RED;
+    const second = start({ gh, notify, store });
+    await second.poller.tick();
+    expect(notify).toHaveBeenCalledTimes(1);
+    await second.poller.tick();
+    await second.poller.stop();
+
+    const third = start({ gh, notify, store });
+    await third.poller.tick();
+    await third.poller.stop();
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(errors).toEqual([]);
+  });
+
   it("polls at most once per interval", async () => {
     vi.useFakeTimers();
-    const gh = greenGitHub();
-    const { poller, requests } = start(gh, vi.fn(), SIGNAL_POLL_INTERVAL_MS);
+    const { poller, requests } = start({
+      gh: openPr(HEAD_A),
+      notify: vi.fn(),
+      intervalMs: SIGNAL_POLL_INTERVAL_MS,
+    });
     await vi.advanceTimersByTimeAsync(0);
     const pullCalls = () => requests.filter((r) => r.url.includes("/pulls?")).length;
     expect(pullCalls()).toBe(1);

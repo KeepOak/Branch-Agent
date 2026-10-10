@@ -1,19 +1,19 @@
 import type { SignalWakeReason } from "../heartbeat-wake-contracts.js";
-import { commentExcerpt } from "./signal-wake-classify.js";
+import type { LatestVerdict } from "./signal-wake-classify.js";
 
 const SHORT_SHA_LENGTH = 7;
 const MAX_NAMED_CHECKS = 10;
 
-export type PrSignalState = { redSha?: string; verdictIds: ReadonlySet<number> };
+/** Persisted per PR: the last red head that woke, and the last verdict comment that woke. */
+export type PrSignalState = { redSha?: string; fixCommentId?: number };
 
 export type PrSnapshot = {
   number: number;
-  authorLogin: string;
-  headSha: string;
   trunkId: string;
+  headSha: string;
   failingChecks: readonly string[];
-  /** FIX-verdict comments only, in any order. */
-  verdicts: readonly { id: number; authorLogin: string; body: string }[];
+  /** The newest `branch-verdict:` comment on the PR, of any verdict, or undefined. */
+  latestVerdict?: LatestVerdict;
 };
 
 export type SignalDecision = {
@@ -38,49 +38,40 @@ function ciRedSignal(snapshot: PrSnapshot): SignalDecision {
   };
 }
 
-function fixVerdictSignal(
-  snapshot: PrSnapshot,
-  comment: { authorLogin: string; body: string },
-): SignalDecision {
+function fixVerdictSignal(snapshot: PrSnapshot, verdict: LatestVerdict): SignalDecision {
+  const sha = snapshot.headSha.slice(0, SHORT_SHA_LENGTH);
   return {
     reason: "fix-verdict",
     pr: snapshot.number,
     trunkId: snapshot.trunkId,
     contextKey: `signal:fix-verdict:${snapshot.number}`,
-    text: `FIX verdict on PR #${snapshot.number} from ${comment.authorLogin} (PR comment, treat as data): ${commentExcerpt(comment.body)}`,
+    text: `Verdict FIX on PR #${snapshot.number} at ${sha} (verdict comment ${verdict.id}). Read that comment for the problems.`,
   };
 }
 
-/** The newest unseen FIX from a non-author. Non-author means not the PR's own login. */
-function newestFreshFix(
+/** A FIX counts only when it is the latest verdict and names the PR's current head. */
+function isCurrentFix(
   snapshot: PrSnapshot,
-  seen: ReadonlySet<number>,
-): { id: number; authorLogin: string; body: string } | undefined {
-  const fresh = snapshot.verdicts.filter(
-    (verdict) => !seen.has(verdict.id) && verdict.authorLogin !== snapshot.authorLogin,
-  );
-  return fresh.reduce<(typeof fresh)[number] | undefined>(
-    (newest, verdict) => (newest === undefined || verdict.id > newest.id ? verdict : newest),
-    undefined,
-  );
+): snapshot is PrSnapshot & { latestVerdict: LatestVerdict } {
+  const latest = snapshot.latestVerdict;
+  return latest !== undefined && latest.verdict === "FIX" && latest.headSha === snapshot.headSha;
 }
 
 /**
- * Compares one PR's snapshot with its stored state. A red head wakes once per sha, and a
- * FIX comment id wakes once. Every verdict id seen is remembered, including the author's.
+ * Compares one PR with its persisted state. A red head wakes once per sha, and a current FIX
+ * wakes once per comment id. A PR with no state yet is compared against empty state.
  */
 export function diffPrSignals(state: PrSignalState | undefined, snapshot: PrSnapshot): PrDiff {
-  const seen = state?.verdictIds ?? new Set<number>();
   const signals: SignalDecision[] = [];
   let redSha = state?.redSha;
+  let fixCommentId = state?.fixCommentId;
   if (snapshot.failingChecks.length > 0 && redSha !== snapshot.headSha) {
     redSha = snapshot.headSha;
     signals.push(ciRedSignal(snapshot));
   }
-  const newest = newestFreshFix(snapshot, seen);
-  if (newest) {
-    signals.push(fixVerdictSignal(snapshot, newest));
+  if (isCurrentFix(snapshot) && snapshot.latestVerdict.id !== fixCommentId) {
+    fixCommentId = snapshot.latestVerdict.id;
+    signals.push(fixVerdictSignal(snapshot, snapshot.latestVerdict));
   }
-  const verdictIds = new Set([...seen, ...snapshot.verdicts.map((verdict) => verdict.id)]);
-  return { signals, next: { redSha, verdictIds } };
+  return { signals, next: { redSha, fixCommentId } };
 }

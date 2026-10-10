@@ -21,6 +21,10 @@ export function createGardenerIssueWriter(
 ): (draft: GardenerIssueDraft) => Promise<void> {
   const base = options.apiBase ?? GITHUB_REST_BASE;
   return async (draft) => {
+    if (options.token.trim() === "") {
+      // Never send an unauthenticated write: with no token, the Gardener files nothing.
+      throw new GardenerIssueWriteError(401);
+    }
     const [owner = "", name = ""] = draft.repo.split("/");
     const response = await options.fetchImpl(
       `${base}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues`,
