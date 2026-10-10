@@ -6,6 +6,7 @@ import type { WindowEngine } from "./engine";
 import { UpdatesPage } from "../places/settings/set2/updates";
 import { dismiss, getToasts } from "../shell/notify";
 import { Toasts } from "../shell/Toasts";
+import { INSTALL_NO_ANSWER_MS } from "../places/settings/set2/desktop-updates";
 import {
   componentDesktop, createUpdateNoticeHub, setupBlocksUpdateToast, showAppliedUpdateToast, stageWindowUpdate,
   UPDATED_IN_PLACE, UPDATE_TOAST_SETUP_WAIT_MS, useDesktopAppliedUpdateNotice,
@@ -73,7 +74,7 @@ it("the desktop saying kept (postponed) ends Updating… and offers Update now a
   desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1", componentUpdates: { status: async () => staged, check: async () => staged, stage: async () => staged, install } };
   await show();
   await click("Update now");
-  await act(async () => { window.dispatchEvent(new CustomEvent("branch:update-state", { detail: "kept" })); });
+  await act(async () => { window.dispatchEvent(new CustomEvent("branch:update-state", { detail: { state: "kept" } })); });
   expect(host.textContent).toContain("Update postponed; Branch kept the current version");
   expect(button("Update now").disabled).toBe(false);
 });
@@ -83,6 +84,65 @@ it("without an install bridge (an older desktop) the staged update shows and no 
   desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1", componentUpdates: { status: async () => staged, check: async () => staged, stage: async () => staged } };
   await show();
   expect(host.textContent).toContain("Update ready, applying when your Trunks finish");
+  expect([...host.querySelectorAll("button")].some(b => b.textContent === "Update now")).toBe(false);
+});
+
+function stagedBridge(extra: Record<string, unknown> = {}) {
+  const staged = { ...state, phase: "staged", currentVersion: "1.0", pendingVersion: "1.1", latestVersion: "1.1" };
+  const install = vi.fn();
+  desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1", componentUpdates: { status: async () => staged, check: async () => staged, stage: async () => staged, install, ...extra } };
+  return { install, staged };
+}
+function fire(detail: Record<string, unknown>) {
+  return act(async () => { window.dispatchEvent(new CustomEvent("branch:update-state", { detail })); });
+}
+
+it("succeeded (updated): Updating… ends and the page is no longer waiting on the bar", async () => {
+  stagedBridge();
+  await show();
+  await click("Update now");
+  expect(button("Updating…").disabled).toBe(true);
+  await fire({ state: "updated" });
+  expect(host.textContent).not.toContain("Updating Branch…");
+  expect(button("Update now").disabled).toBe(false);
+});
+
+it("failed: the page says the update didn't finish, shows the reason, and offers Update now again", async () => {
+  stagedBridge();
+  await show();
+  await click("Update now");
+  await fire({ state: "failed", message: "Install stopped." });
+  expect(host.textContent).toContain("The update didn’t finish");
+  expect(host.textContent).toContain("Install stopped.");
+  expect(host.textContent).not.toContain("Updating Branch…");
+  expect(button("Update now").disabled).toBe(false);
+});
+
+it("no answer from the desktop: after the drain bound plus a margin, Updating… ends with a plain reason", async () => {
+  stagedBridge();
+  await show();
+  vi.useFakeTimers();
+  try {
+    await click("Update now");
+    await act(async () => { await vi.advanceTimersByTimeAsync(INSTALL_NO_ANSWER_MS - 1); });
+    expect(host.textContent).toContain("Updating Branch…");
+    await act(async () => { await vi.advanceTimersByTimeAsync(2); });
+    expect(host.textContent).toContain("The update didn’t finish");
+    expect(host.textContent).toContain("Branch didn’t confirm the update");
+    expect(button("Update now").disabled).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("the staged update is cleared by a check: Updating… ends and the Update now row goes", async () => {
+  const current = { ...state, phase: "current", currentVersion: "1.1", latestVersion: "1.1", pendingVersion: null };
+  const { install } = stagedBridge({ check: async () => current });
+  await show();
+  await click("Update now");
+  expect(install).toHaveBeenCalledTimes(1);
+  await click("Check now");
+  expect(host.textContent).not.toContain("Updating Branch…");
   expect([...host.querySelectorAll("button")].some(b => b.textContent === "Update now")).toBe(false);
 });
 

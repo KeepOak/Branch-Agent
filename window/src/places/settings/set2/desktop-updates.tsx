@@ -3,7 +3,11 @@ import type { SettingsPageProps } from "../index";
 import { KeeperMark } from "../../../brand/KeeperMark";
 import { Btn, Ctl, Hint, Page, Sec, Status, Switch } from "../kit";
 import { useDesktopControls } from "../../../connect/desktop-controls";
-import { componentDesktop, DESKTOP_CHECKS_HOURLY, ENGINE_UPDATE_EVENT, MANUAL_UPDATE_UNSUPPORTED, useDesktopComponentStatus, type ComponentUpdateStatus, type EngineUpdateState } from "../../../connect/desktop-component-updates";
+import { componentDesktop, DESKTOP_CHECKS_HOURLY, ENGINE_UPDATE_EVENT, MANUAL_UPDATE_UNSUPPORTED, useDesktopComponentStatus, type ComponentUpdateStatus, type EngineUpdateEvent } from "../../../connect/desktop-component-updates";
+
+/** The desktop drains running work for up to 330 s, then restarts; a silent desktop gets this long plus a 60 s margin. */
+export const INSTALL_NO_ANSWER_MS = 390_000;
+export const NO_ANSWER_MESSAGE = "Branch didn’t confirm the update. It may still finish: check the version in a few minutes, or restart Branch.";
 import { rec, str, useLive, type RecordValue } from "./common";
 import { isNewerBranchVersion, runningBranchVersion, useBranchVersion, useShippedWindowVersion, versionParts } from "../../../connect/branch-version";
 
@@ -19,15 +23,17 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [installRequested, setInstallRequested] = useState(false);
-  const [bar, setBar] = useState<EngineUpdateState | null>(null);
+  const [outcome, setOutcome] = useState<EngineUpdateEvent | null>(null);
+  const bar = outcome?.state ?? null;
   const staged = data.status?.phase === "staged";
   useEffect(() => {
-    const onState = (event: Event) => setBar((event as CustomEvent<EngineUpdateState>).detail);
+    const onState = (event: Event) => setOutcome((event as CustomEvent<EngineUpdateEvent>).detail);
     window.addEventListener(ENGINE_UPDATE_EVENT, onState);
     return () => window.removeEventListener(ENGINE_UPDATE_EVENT, onState);
   }, []);
-  // Postponed, updated or no longer staged: the page stops saying "Updating…", as the desktop bar does.
-  useEffect(() => { if (bar === "kept" || bar === "updated") setInstallRequested(false); }, [bar]);
+  // Every terminal outcome ends "Updating…": succeeded, postponed, failed, or no answer before the bound.
+  useEffect(() => { if (bar === "kept" || bar === "updated" || bar === "failed") setInstallRequested(false); }, [bar]);
+  useEffect(() => { if (!installRequested) return; const timer = setTimeout(() => setOutcome({ state: "failed", message: NO_ANSWER_MESSAGE }), INSTALL_NO_ANSWER_MS); return () => clearTimeout(timer); }, [installRequested]);
   useEffect(() => { if (!staged) setInstallRequested(false); }, [staged]);
   const run = async (method: "check" | "stage") => {
     if (!bridge || busy) return;
@@ -42,15 +48,18 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
   const autoApply = auto.state?.autoApplyUpdates !== false;
   const lede = running ? `Branch ${versionParts(running).detail} on this computer.` : "Updates for Branch on this computer.";
   const install = bridge.install;
-  const requestInstall = () => { if (!install || installRequested) return; install(); setInstallRequested(true); };
+  const requestInstall = () => { if (!install || installRequested) return; setOutcome(null); install(); setInstallRequested(true); };
+  const failed = !installRequested && bar === "failed";
   const headline = installRequested ? (bar === "preparing" ? "Getting the update ready…" : "Updating Branch…")
+    : failed ? "The update didn’t finish"
     : bar === "kept" ? "Update postponed; Branch kept the current version"
     : statusLine(data.status, stagedWaiting, autoApply);
   return <Page title={title} lede={lede}>
     <div className="s2-keeper"><KeeperMark size={64} /></div>
     {error || data.error ? <Status tone="bad" title="Branch couldn’t update">{error || data.error}</Status> : null}
-    <Status tone={stagedWaiting ? "ok" : "idle"} title={headline}>
-      {stagedWaiting && installRequested ? "Running work carries on for up to about 6 minutes, then Branch restarts and picks up anything interrupted."
+    <Status tone={failed ? "bad" : stagedWaiting ? "ok" : "idle"} title={headline}>
+      {failed ? (outcome?.message || "Branch kept the current version.")
+        : stagedWaiting && installRequested ? "Running work carries on for up to about 6 minutes, then Branch restarts and picks up anything interrupted."
         : stagedWaiting ? "Downloaded and checked. Your conversations and settings stay in place."
         : running ? `You have Branch ${versionParts(running).detail}. Checks for a new verified Branch release.` : "Checks for a new verified Branch release."}
     </Status>

@@ -15,7 +15,8 @@ export type ComponentUpdates = {
   install?: () => void;
 };
 /** The desktop update bar's states, published by the preload as this window event (same wording as the bar). */
-export type EngineUpdateState = "ready" | "auto-wait" | "preparing" | "restarting" | "updating" | "updated" | "kept";
+export type EngineUpdateState = "ready" | "auto-wait" | "preparing" | "restarting" | "updating" | "updated" | "kept" | "failed";
+export type EngineUpdateEvent = { state: EngineUpdateState; message?: string };
 export const ENGINE_UPDATE_EVENT = "branch:update-state";
 export type AppliedUpdateNotice = { version: string; canUndo: boolean; expiresAt: number };
 export type UpdateNoticeEvent = "shown" | "dismissed" | "expired" | "undo";
