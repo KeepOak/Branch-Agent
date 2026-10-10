@@ -1,0 +1,5 @@
+engine:src/gateway/server-methods/trunk-team-flow.test.ts
+engine:src/gateway/server-methods/trunk-team.lockdown.test.ts
+engine:src/gateway/server-methods/trunk-team.test.ts
+window:src/places/trunk/TeamApprovalCard.test.tsx
+window:src/thread/TeamProposalBlock.test.tsx
