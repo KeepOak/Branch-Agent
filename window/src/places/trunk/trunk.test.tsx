@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // @vitest-environment jsdom
 import { act } from "react";
 import { readFileSync } from "node:fs";
