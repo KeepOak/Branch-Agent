@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { installSkillFromSource } from "../../src/skills/lifecycle/source-install.js";
 import { withTestDir } from "../../src/test-helpers/temp-dir.js";
@@ -10,7 +11,6 @@ import {
   assertPortablePath,
   createSeedbankCatalog,
   permissionsEqual,
-  resolveCommandShim,
   resolveSeedbankEntry,
   seedbankInstallArgs,
   stageSeedbankSkill,
@@ -35,7 +35,6 @@ const CLEAN_SCAN = {
 };
 
 type FixtureOptions = {
-  packageName?: string;
   skillName?: string;
   packId?: string;
   tier?: string;
@@ -44,24 +43,74 @@ type FixtureOptions = {
   extraFiles?: Record<string, string>;
 };
 
+// Canonical POSIX ustar numeric fields end in " \0" (the inspector refuses any other encoding).
+function octalField(value: number, width: number): string {
+  return `${value.toString(8).padStart(width, "0")} \0`;
+}
+
+function tarHeader(name: string, size: number, type: "0" | "5"): Buffer {
+  const h = Buffer.alloc(512, 0);
+  const put = (offset: number, length: number, text: string) => h.write(text, offset, length, "ascii");
+  put(0, 100, name);
+  put(100, 8, octalField(0o644, 6));
+  put(108, 8, octalField(0, 6));
+  put(116, 8, octalField(0, 6));
+  put(124, 12, octalField(size, 10));
+  put(136, 12, octalField(0, 10));
+  h.fill(" ", 148, 156);
+  put(156, 1, type);
+  put(257, 6, "ustar\0");
+  put(263, 2, "00");
+  put(329, 8, octalField(0, 6));
+  put(337, 8, octalField(0, 6));
+  let sum = 0;
+  for (const byte of h) sum += byte;
+  put(148, 8, octalField(sum, 6));
+  return h;
+}
+
+// Packs a directory as "package/..." entries, the layout npm pack produces, with no npm process.
+function tarFromDir(root: string): Buffer {
+  const parts: Buffer[] = [tarHeader("package/", 0, "5")];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const full = path.join(dir, entry.name);
+      const rel = path.relative(root, full).split(path.sep).join("/");
+      if (entry.isDirectory()) {
+        parts.push(tarHeader(`package/${rel}/`, 0, "5"));
+        walk(full);
+        continue;
+      }
+      const body = readFileSync(full);
+      parts.push(tarHeader(`package/${rel}`, body.length, "0"), body, Buffer.alloc((512 - (body.length % 512)) % 512));
+    }
+  };
+  walk(root);
+  parts.push(Buffer.alloc(1024));
+  return Buffer.concat(parts);
+}
+
+// Builds the same package/ layout npm pack produces. No npm process runs, which keeps the Windows
+// named shard within its time budget.
 async function packFixtureSkill(dir: string, options: FixtureOptions = {}) {
   const skillName = options.skillName ?? "fixture-notes";
-  await fs.mkdir(path.join(dir, "references"), { recursive: true });
+  const pkg = path.join(dir, "package");
+  await fs.mkdir(path.join(pkg, "references"), { recursive: true });
   await fs.writeFile(
-    path.join(dir, "package.json"),
+    path.join(pkg, "package.json"),
     JSON.stringify({
-      name: options.packageName ?? "@branch-agent/fixture-notes",
+      name: "@branch-agent/fixture-notes",
       version: "2026.9.8",
       files: ["SKILL.md", "branch.pack.json", "references"],
     }),
   );
   await fs.writeFile(
-    path.join(dir, "SKILL.md"),
+    path.join(pkg, "SKILL.md"),
     `---\nname: ${skillName}\ndescription: Fixture skill for distribution tests\n---\n\n# Fixture notes\n`,
   );
   if (options.withPackManifest !== false) {
     await fs.writeFile(
-      path.join(dir, "branch.pack.json"),
+      path.join(pkg, "branch.pack.json"),
       JSON.stringify({
         schema: "branch.pack/v1",
         kind: "skill",
@@ -72,20 +121,12 @@ async function packFixtureSkill(dir: string, options: FixtureOptions = {}) {
       }),
     );
   }
-  await fs.writeFile(path.join(dir, "references", "guide.md"), "Reference material.\n");
+  await fs.writeFile(path.join(pkg, "references", "guide.md"), "Reference material.\n");
   for (const [name, content] of Object.entries(options.extraFiles ?? {})) {
-    await fs.writeFile(path.join(dir, name), content);
+    await fs.writeFile(path.join(pkg, name), content);
   }
-  const npm = resolveCommandShim("npm", ["pack", "--ignore-scripts", "--json"]);
-  const packed = spawnSync(npm.command, npm.args, {
-    cwd: dir,
-    encoding: "utf8",
-    windowsHide: true,
-    windowsVerbatimArguments: npm.windowsVerbatimArguments,
-  });
-  expect(packed.status).toBe(0);
-  const filename = JSON.parse(packed.stdout)[0].filename as string;
-  return { filename, bytes: readFileSync(path.join(dir, filename)), scan: CLEAN_SCAN };
+  const filename = "branch-agent-fixture-notes-2026.9.8.tgz";
+  return { filename, bytes: gzipSync(tarFromDir(pkg)), scan: CLEAN_SCAN };
 }
 
 function catalogFor(artifact: { filename: string; bytes: Buffer; scan?: unknown }) {
