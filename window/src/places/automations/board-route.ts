@@ -1,21 +1,25 @@
-// Opens Automations › Board from elsewhere (Canopy's Now tab, a card's "On the board" link). The request waits here until
-// the Board mounts, so a Board that is not open yet still lands on the right tab, with the named card's sheet open.
-export const BOARD_CARD_EVENT = "branch:board-card";
+// Opens Automations › Board from elsewhere (Overview's running count, a card's link, the removed Canopy place). The request
+// waits here until the Board mounts, so a Board that is not open yet still lands on the right view, with a named card's sheet open.
+export const BOARD_REQUEST_EVENT = "branch:board-request";
 
-let pending: { card: string } | null = null;
+/** Today: active cards and anything that moved since midnight. Running: cards a Trunk is on now. All: every card. */
+export type BoardScope = "today" | "running" | "all";
+export type BoardRequest = { card?: string; scope?: BoardScope };
 
-/** Opens the Board, and the named card's sheet when a card id is given. */
-export function openBoard(cardId = ""): void {
-  pending = { card: cardId };
+let pending: BoardRequest | null = null;
+
+/** Opens the Board on a scope, and the named card's sheet when a card id is given. */
+export function openBoard(card = "", scope?: BoardScope): void {
+  pending = { card, scope };
   window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "automations", tab: "Board" } }));
-  if (cardId) window.dispatchEvent(new CustomEvent(BOARD_CARD_EVENT, { detail: { id: cardId } }));
+  window.dispatchEvent(new CustomEvent(BOARD_REQUEST_EVENT, { detail: { card, scope } }));
 }
 
 /** Whether a Board request is waiting, so Automations starts on the Board tab. */
 export const boardRequested = (): boolean => pending !== null;
 
-/** The card a waiting request names, read without clearing it. */
-export const peekBoardCard = (): { id: string } | null => (pending?.card ? { id: pending.card } : null);
+/** The waiting request, read without clearing it. */
+export const peekBoardRequest = (): BoardRequest | null => pending;
 
 /** Clears the waiting request once the Board has shown it. */
 export function takeBoardRequest(): void {

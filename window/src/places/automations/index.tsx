@@ -10,6 +10,7 @@ import { ProceduresTab } from "./Procedures";
 import { BoardTab } from "./Board";
 import { boardRequested } from "./board-route";
 import { rec, str, type Row } from "./runtime";
+import { shows } from "../../places-nav/level";
 import "./activity.css";
 import "./automations.css";
 
@@ -44,13 +45,16 @@ export function tabFromEvent(detail: unknown): Tab | null {
 }
 
 export function AutomationsPlace({ engine, openConversation, openPlace, level }: PlaceProps) {
-  const [tab, setTab] = useState<Tab>(() => (boardRequested() ? "board" : "scheduled"));
+  // Procedures shows only at Technical, where its commands are; until a procedure store exists it has nothing else to show.
+  const visible = TABS.filter(([id]) => id !== "procedures" || shows(level, "technical"));
+  const [picked, setTab] = useState<Tab>(() => (boardRequested() ? "board" : "scheduled"));
+  const tab: Tab = visible.some(([id]) => id === picked) ? picked : "scheduled";
   const moveTab = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     if (event.ctrlKey || event.altKey || event.metaKey) return;
-    const next = event.key === "ArrowRight" ? (index + 1) % TABS.length : event.key === "ArrowLeft" ? (index + TABS.length - 1) % TABS.length : event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1 : -1;
+    const next = event.key === "ArrowRight" ? (index + 1) % visible.length : event.key === "ArrowLeft" ? (index + visible.length - 1) % visible.length : event.key === "Home" ? 0 : event.key === "End" ? visible.length - 1 : -1;
     if (next < 0) return;
     event.preventDefault();
-    setTab(TABS[next][0]);
+    setTab(visible[next][0]);
     event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
   };
   useEffect(() => {
@@ -60,7 +64,7 @@ export function AutomationsPlace({ engine, openConversation, openPlace, level }:
   }, []);
   return <PlaceFrame title="Automations" lede="Work your Trunks do on their own.">
     <div className="auto-place">
-      <div className="au-tabs" role="tablist" aria-label="Automations">{TABS.map(([id, name], index) => <button key={id} type="button" role="tab" aria-selected={tab === id} tabIndex={tab === id ? 0 : -1} onKeyDown={event => moveTab(event, index)} onClick={() => setTab(id)}>{name}</button>)}</div>
+      <div className="au-tabs" role="tablist" aria-label="Automations">{visible.map(([id, name], index) => <button key={id} type="button" role="tab" aria-selected={tab === id} tabIndex={tab === id ? 0 : -1} onKeyDown={event => moveTab(event, index)} onClick={() => setTab(id)}>{name}</button>)}</div>
       {!canAdmin(engine) && <div className="au-banner" role="status"><i className="au-dot" /><span className="au-grow"><small>You can look, but changing automations needs an owner.</small></span></div>}
       {tab === "scheduled" && <ScheduledTab engine={engine} level={level} openConversation={openConversation} />}
       {tab === "procedures" && <ProceduresTab engine={engine} level={level} />}

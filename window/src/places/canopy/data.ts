@@ -46,6 +46,9 @@ export async function loadCanopy(engine: WindowEngine): Promise<CanopyData> {
 
 export const trunkName = (d: Pick<CanopyData, "trunks">, id: string) => d.trunks.find(t => t.id === id)?.name || id || "Trunk";
 export const sessionTitle = (row: Row) => str(row.label) || str(row.displayName) || str(row.derivedTitle) || "Conversation";
+export const isRunning = (row: Row) => row.hasActiveRun === true || (Array.isArray(row.activeRunIds) && row.activeRunIds.length > 0);
+export const goalOf = (row: Row) => { const g = rec(row.goal); return str(g.id) ? g : null; };
+export const stepOf = (row: Row) => str(rec(row.observerDigest).headline) || str(rec(row.activitySummary).text) || str(row.lastMessagePreview);
 
 /** The computers a run can be on: this computer first, then your other computers, then cloud computers (§4.6.7 strip). */
 export function computers(d: Pick<CanopyData, "nodes" | "computer" | "sessions">): Computer[] {

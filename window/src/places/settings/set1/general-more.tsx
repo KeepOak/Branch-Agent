@@ -13,7 +13,6 @@ export const NO_KEY = "Branch has no setting for this yet.";
 const noop = () => undefined;
 
 const LANGS = ["Same as my message", "English", "Español", "Français", "Deutsch", "Português", "Yorùbá", "العربية", "日本語", "中文"].map((l) => ({ id: l, label: l }));
-const LANDING = ["The last conversation", "Overview", "Inbox", "Automations"].map((l) => ({ id: l, label: l }));
 const AFTER_PLAN = ["Ask to carry it out", "In a fresh conversation", "Don’t ask"].map((l) => ({ id: l, label: l }));
 
 /** Overview's "Finish setting up" checklist: the person's own choice, kept in their look ("checklist"). */
@@ -40,7 +39,6 @@ export function Writing({ engine }: { engine: WindowEngine }) {
       <Ctl title="Replies in" sub="Separate from the window’s language." off={NO_KEY}><Pick label="Replies in" value="Same as my message" options={LANGS} onChange={noop} /></Ctl>
       <Ctl title="After a plan" sub="When a Trunk finishes planning, “Carry out this plan?”" off={NO_KEY}><Seg label="After a plan" value="Ask to carry it out" options={AFTER_PLAN} onChange={noop} /></Ctl>
       {lv >= 1 ? <Ctl title="Rounds before it checks in" sub="Empty means no limit; a number sets the check-in point." help="Empty means no limit; a number makes it stop and ask after that many rounds." off={NO_KEY}><input className="inp" placeholder="No limit" aria-label="Rounds before it checks in" /></Ctl> : null}
-      <Ctl title="Open Branch on" sub="What you see first when Branch opens." off={NO_KEY}><Pick label="Open Branch on" value="The last conversation" options={LANDING} onChange={noop} /></Ctl>
       <FinishSetupRow engine={engine} />
     </Sec>
   );

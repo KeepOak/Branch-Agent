@@ -140,3 +140,61 @@ describe("Automations › Board, cards", () => {
     expect(host.textContent).toContain("by rule");
   });
 });
+
+describe("Automations › Board, a running card's live run", () => {
+  const RUN = { id: "r1", title: "Reconcile invoices", status: "running", agentId: "a", sessionKey: "agent:a:main", updatedAt: now - 1000 };
+  const LIVE = fx({
+    "canopy.cards.list": { cards: [RUN], boards: [{ id: "default", total: 1 }] },
+    "sessions.list": {
+      sessions: [
+        { key: "agent:a:main", agentId: "a", label: "Reconcile invoices", hasActiveRun: true, observerDigest: { headline: "Reading the export" } },
+        { key: "agent:a:sub", agentId: "a", label: "Check totals", parentSessionKey: "agent:a:main", hasActiveRun: true },
+      ], hasMore: false,
+    },
+    "exec.approval.list": [{ id: "ap1", request: { sessionKey: "agent:a:main", command: "send the invoice", allowedDecisions: ["allow-once", "deny"] } }],
+  });
+  const openSheet = async () => { await click(document.querySelector<HTMLElement>(".cn-card[aria-label='Reconcile invoices'] > b")!); };
+  const sheet = () => document.querySelector("[data-testid=cn-sheet]") as HTMLElement;
+
+  it("opens a running card on its Live run tab, with the run's status", async () => {
+    await mount(LIVE);
+    await openSheet();
+    expect(sheet().querySelector("[role=tab][aria-selected=true]")?.textContent).toBe("Live run");
+    expect(sheet().textContent).toContain("Reading the export");
+  });
+  it("steers a running card from its sheet with a steer message", async () => {
+    const { calls } = await mount(LIVE);
+    await openSheet();
+    const input = sheet().querySelector("input[aria-label='Tell Juniper what to change']") as HTMLInputElement;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "use the March export"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    await click(button("Steer now", sheet()));
+    expect(calls).toContainEqual(["chat.send", expect.objectContaining({ sessionKey: "agent:a:main", message: "use the March export", queueMode: "steer" })]);
+  });
+  it("stops a running card from its sheet", async () => {
+    const { calls } = await mount(LIVE);
+    await openSheet();
+    await click(button("Stop", sheet()));
+    expect(calls).toContainEqual(["sessions.abort", { key: "agent:a:main" }]);
+  });
+  it("answers the run's approval from the card sheet", async () => {
+    const { calls } = await mount(LIVE);
+    await openSheet();
+    expect(sheet().textContent).toContain("send the invoice");
+    await click(button("Allow", sheet()));
+    expect(calls).toContainEqual(["approval.resolve", { id: "ap1", kind: "exec", decision: "allow-once" }]);
+  });
+  it("lists the run's helpers and stops a running one", async () => {
+    const { calls } = await mount(LIVE);
+    await openSheet();
+    expect(sheet().textContent).toContain("1 helper");
+    await click(sheet().querySelector<HTMLElement>("[aria-label='Stop Check totals']")!);
+    expect(calls).toContainEqual(["sessions.abort", { key: "agent:a:sub" }]);
+  });
+  it("opens the Running view from a request, and lists background tasks there", async () => {
+    openBoard("", "running");
+    await mount(LIVE);
+    expect(showChoice("Running").getAttribute("aria-checked")).toBe("true");
+    expect(host.textContent).toContain("Reconcile invoices");
+    expect(host.querySelector("[aria-label='Background tasks']")).toBeTruthy();
+  });
+});

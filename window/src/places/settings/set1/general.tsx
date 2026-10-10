@@ -95,7 +95,7 @@ export const GENERAL_ROWS: RowEntry[] = [
   ...rows("Starting up", 0, [`Start with ${OS()}`]),
   ...rows("Projects", 0, []),
   ...rows("Keyboard", 0, ["Keyboard shortcuts"]),
-  ...rows("Writing", 0, ["Message box grows with the text", "Check spelling in the message box", "Suggest the rest as I type", "Add my location to messages", "Replies in", "After a plan", "Open Branch on", "Show “Finish setting up”"]),
+  ...rows("Writing", 0, ["Message box grows with the text", "Check spelling in the message box", "Suggest the rest as I type", "Add my location to messages", "Replies in", "After a plan", "Show “Finish setting up”"]),
   ...rows("Writing", 1, ["Write long messages in your own editor", "Rounds before it checks in"]),
   ...rows("Clipboard history", 1, ["Keep after restart"]),
   ...rows("Cover the screen", 0, ["Cover now"]),

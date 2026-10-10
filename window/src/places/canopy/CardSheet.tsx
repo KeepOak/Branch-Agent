@@ -8,7 +8,8 @@ import { Dialog } from "../../shell/Dialog";
 import type { MenuAnchor } from "../../shell/Menu";
 import { Popover } from "../../shell/Popover";
 import { errorText, rec, rows, str, type Row } from "../automations/runtime";
-import { BLOCK, cardBoard, isArchived, trunkName, waitsFor, whyOf } from "./data";
+import { BLOCK, cardBoard, isArchived, isRunning, trunkName, waitsFor, whyOf } from "./data";
+import { LiveRun } from "./LiveRun";
 import { blocksCount, boardName, convState, meta, PRIOS, prioName, STATUSES, statusName } from "./cards-model";
 import { ActivityTab, DetailsTab } from "./SheetRecords";
 import { anchorOf, ChoiceMenu, Nobody, Pill, Sec, TrunkFace, when, type Ctx } from "./ui";
@@ -16,7 +17,7 @@ import { anchorOf, ChoiceMenu, Nobody, Pill, Sec, TrunkFace, when, type Ctx } fr
 
 export function CardSheet({ ctx, id, close, edit }: { ctx: Ctx; id: string; close: () => void; edit: (c: Row) => void }) {
   const tech = shows(ctx.level, "technical");
-  const [tab, setTab] = useState("Overview"), [desc, setDesc] = useState<string | null>(null), [asking, setAsking] = useState(false);
+  const [tab, setTab] = useState(""), [desc, setDesc] = useState<string | null>(null), [asking, setAsking] = useState(false);
   const c = ctx.d.cards.find(x => str(x.id) === id);
   // The dialog focuses its first field; the sheet opens on its tabs instead, scrolled to the top.
   useEffect(() => { const t = document.querySelector<HTMLElement>("[data-testid=cn-sheet] [role=tab][aria-selected=true]"); t?.focus({ preventScroll: true }); t?.closest(".dlg-b")?.scrollTo?.({ top: 0 }); }, [id]);
@@ -24,15 +25,20 @@ export function CardSheet({ ctx, id, close, edit }: { ctx: Ctx; id: string; clos
   const leave = () => desc !== null && desc !== str(c.notes) ? setAsking(true) : close();
   if (asking) return <Dialog title="Discard changes?" onClose={() => setAsking(false)} footer={<><button className="btn ghost" type="button" onClick={() => setAsking(false)}>Keep editing</button><button className="btn pri" type="button" onClick={close}>Discard</button></>}><p className="dlg-p">Your changes will be lost.</p></Dialog>;
   const agent = str(c.agentId), why = c.status === "blocked" ? whyOf(c, ctx.d.cards) : null;
-  const tabs = ["Overview", "Activity", "Conversation", ...(tech ? ["Details"] : [])];
+  // A running card (or one waiting on a yes) opens on its live run; the other tabs stay one click away.
+  const session: Row | undefined = ctx.d.sessions.find(s => str(s.key) === str(c.sessionKey));
+  const asks = ctx.d.pending.some(p => str(rec(p.request).sessionKey) === str(c.sessionKey));
+  const liveOn = str(c.sessionKey) !== "" && (isRunning(session ?? {}) || asks || str(c.status) === "running");
+  const tabs = [...(liveOn ? ["Live run"] : []), "Overview", "Activity", "Conversation", ...(tech ? ["Details"] : [])];
+  const current = tabs.includes(tab) ? tab : tabs[0];
   return (
     <Dialog title={str(c.title)} wide onClose={leave} testid="cn-sheet"
       footer={<><button className="btn ghost" type="button" disabled={!ctx.write} onClick={() => edit(c)}>Edit card</button></>}>
       <div className="cn-who">{agent ? <TrunkFace name={trunkName(ctx.d, agent)} size={34} /> : <Nobody size={34} />}
         <span className="cn-grow"><b>{agent ? trunkName(ctx.d, agent) : "No Trunk yet"}</b><small>{statusName(str(c.status))} · {convState(c, ctx.d.sessions, ctx.now)[0]}</small></span>
         {why ? <Pill tone={BLOCK[why.why][0]} tip={why.detail || undefined}>{BLOCK[why.why][1]}</Pill> : null}{isArchived(c) ? <Pill tone="idle">Archived</Pill> : null}</div>
-      <div className="cn-tabs cn-stabs" role="tablist" aria-label={str(c.title)}>{tabs.map(t => <button key={t} type="button" role="tab" aria-selected={(tabs.includes(tab) ? tab : "Overview") === t} onClick={() => setTab(t)}>{t}</button>)}</div>
-      {tab === "Activity" ? <ActivityTab ctx={ctx} c={c} /> : tab === "Conversation" ? <ConversationTab ctx={ctx} c={c} /> : tab === "Details" && tech ? <DetailsTab c={c} />
+      <div className="cn-tabs cn-stabs" role="tablist" aria-label={str(c.title)}>{tabs.map(t => <button key={t} type="button" role="tab" aria-selected={current === t} onClick={() => setTab(t)}>{t}</button>)}</div>
+      {current === "Live run" ? <LiveRun ctx={ctx} c={c} /> : current === "Activity" ? <ActivityTab ctx={ctx} c={c} /> : current === "Conversation" ? <ConversationTab ctx={ctx} c={c} /> : current === "Details" ? <DetailsTab c={c} />
         : <Overview ctx={ctx} c={c} desc={desc} setDesc={setDesc} />}
     </Dialog>
   );

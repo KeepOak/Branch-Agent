@@ -1,5 +1,6 @@
 // Canopy › Cards (§4.6.7 parity adds): Canopy's own nine statuses, card state lines, badges and filters,
 // read from canopy.cards.list cards (engine/packages/canopy-contract CanopyCard) and the live conversations.
+import type { BoardScope } from "../automations/board-route";
 import { rec, rows, str, type Row } from "../automations/runtime";
 import { cardBoard, isArchived, waitsFor } from "./data";
 
@@ -36,6 +37,12 @@ export function convState(c: Row, sessions: Row[], now: number): [string, string
 
 /** Statuses a Trunk is on now or is about to be: they show in Today whatever their last change was. */
 export const ACTIVE_STATUSES = ["ready", "running", "review", "blocked"];
+/** Whether a card belongs in a Board scope: Today, Running (a Trunk is on it now) or All. */
+export function inScope(c: Row, scope: BoardScope, now: number): boolean {
+  if (scope === "running") return str(c.status) === "running";
+  return scope === "all" || isToday(c, now);
+}
+
 /** Today: a card a Trunk is on now, or one that started, finished or changed since local midnight. */
 export function isToday(c: Row, now: number): boolean {
   const midnight = new Date(now); midnight.setHours(0, 0, 0, 0);
