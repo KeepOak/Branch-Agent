@@ -676,6 +676,7 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["rooms.members.remove", "rooms", "operator.write", "2026.9"],
   ["rooms.rule.set", "rooms", "operator.write", "2026.9"],
   ["rooms.archive", "rooms", "operator.write", "2026.9"],
+  ["rooms.merge.record", "rooms", "operator.write", "2026.10"],
   ["contacts.outside.hello", "contacts", "operator.write", "2026.9"],
   ["contacts.outside.list", "contacts", "operator.read", "2026.9"],
   ["contacts.outside.set", "contacts", "operator.admin", "2026.9"],

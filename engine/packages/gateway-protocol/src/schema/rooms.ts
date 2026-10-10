@@ -66,7 +66,12 @@ export const RoomsLogParamsSchema = closedObject({
   cursor: Type.Optional(Type.Integer({ minimum: 0 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
 });
-export const RoomsMembersAddParamsSchema = closedObject({ roomId: Id, kind: Kind, id: Id, outsideAgent: Type.Optional(OutsideAgentSchema) });
+export const RoomsMembersAddParamsSchema = closedObject({
+  roomId: Id,
+  kind: Kind,
+  id: Id,
+  outsideAgent: Type.Optional(OutsideAgentSchema),
+});
 export const RoomsMembersRemoveParamsSchema = closedObject({ roomId: Id, kind: Kind, id: Id });
 export const RoomsRuleSetParamsSchema = closedObject({
   roomId: Id,
@@ -74,6 +79,12 @@ export const RoomsRuleSetParamsSchema = closedObject({
   trunksTalk: Type.Optional(Type.Boolean()),
 });
 export const RoomsArchiveParamsSchema = closedObject({ roomId: Id });
+export const RoomsMergeRecordParamsSchema = closedObject({
+  roomId: Id,
+  repo: Type.String({ minLength: 3, maxLength: 100, pattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" }),
+  number: Type.Integer({ minimum: 1 }),
+  title: Type.String({ minLength: 1, maxLength: 500 }),
+});
 export const RoomsRoomResultSchema = closedObject({ room: RoomSchema });
 export const RoomsListResultSchema = closedObject({ rooms: Type.Array(RoomSchema) });
 export const RoomsLogResultSchema = closedObject({
