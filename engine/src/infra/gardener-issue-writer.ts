@@ -34,10 +34,13 @@ function headersFor(token: string): Record<string, string> {
   };
 }
 
-/** Whether an issue in the repo already carries this fingerprint's marker. */
+/**
+ * The number of an issue in the repo that already carries this fingerprint's marker, or undefined when none does.
+ * A match without a number is an error, so the writer never creates a second issue on an unknown state.
+ */
 export function createGardenerIssueFinder(
   options: GardenerIssueWriterOptions,
-): (repo: string, fingerprint: string) => Promise<boolean> {
+): (repo: string, fingerprint: string) => Promise<number | undefined> {
   const base = options.apiBase ?? GITHUB_REST_BASE;
   return async (repo, fingerprint) => {
     assertToken(options.token);
@@ -49,8 +52,17 @@ export function createGardenerIssueFinder(
     if (!response.ok) {
       throw new GardenerIssueWriteError(response.status);
     }
-    const body = (await response.json()) as { total_count?: unknown };
-    return typeof body.total_count === "number" && body.total_count > 0;
+    const body = (await response.json()) as { total_count?: unknown; items?: unknown };
+    if (typeof body.total_count !== "number" || body.total_count === 0) {
+      return undefined;
+    }
+    const first = Array.isArray(body.items)
+      ? (body.items[0] as { number?: unknown } | undefined)
+      : undefined;
+    if (typeof first?.number !== "number") {
+      throw new Error("GitHub search found the issue without its number");
+    }
+    return first.number;
   };
 }
 
@@ -60,8 +72,9 @@ export function createGardenerIssueWriter(
   const base = options.apiBase ?? GITHUB_REST_BASE;
   const exists = createGardenerIssueFinder(options);
   return async (draft) => {
-    if (await exists(draft.repo, draft.fingerprint)) {
-      return;
+    const existing = await exists(draft.repo, draft.fingerprint);
+    if (existing !== undefined) {
+      return existing;
     }
     const [owner = "", name = ""] = draft.repo.split("/");
     const response = await options.fetchImpl(

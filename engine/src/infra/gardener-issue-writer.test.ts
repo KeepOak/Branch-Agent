@@ -17,7 +17,7 @@ function fakeIssueApi(existing: number) {
   return vi.fn(async (input: string | URL | Request) => {
     const url = String(input);
     if (url.includes("/search/issues")) {
-      return Response.json({ total_count: existing, items: [] });
+      return Response.json({ total_count: existing, items: existing > 0 ? [{ number: 12 }] : [] });
     }
     return Response.json({ number: 7 }, { status: 201 });
   });
@@ -44,10 +44,10 @@ describe("createGardenerIssueWriter", () => {
     expect(JSON.parse(String(init.body))).toEqual({ title: DRAFT.title, body: DRAFT.body });
   });
 
-  it("keeps an existing issue for the fingerprint and posts nothing", async () => {
+  it("keeps an existing issue for the fingerprint, returns its number, and posts nothing", async () => {
     const fetchImpl = fakeIssueApi(1);
     const write = createGardenerIssueWriter({ fetchImpl: fetchImpl as typeof fetch, token: "t" });
-    await write(DRAFT);
+    expect(await write(DRAFT)).toBe(12);
     expect(postCalls(fetchImpl)).toHaveLength(0);
   });
 
@@ -92,16 +92,16 @@ describe("createGardenerIssueWriter", () => {
 });
 
 describe("createGardenerIssueFinder", () => {
-  it("reports whether an issue with the fingerprint marker exists", async () => {
+  it("reports the number of the existing issue, or none", async () => {
     const found = createGardenerIssueFinder({
       fetchImpl: fakeIssueApi(2) as typeof fetch,
       token: "t",
     });
-    expect(await found("example-owner/example-repo", "ci-main:engine-tests")).toBe(true);
+    expect(await found("example-owner/example-repo", "ci-main:engine-tests")).toBe(12);
     const none = createGardenerIssueFinder({
       fetchImpl: fakeIssueApi(0) as typeof fetch,
       token: "t",
     });
-    expect(await none("example-owner/example-repo", "ci-main:engine-tests")).toBe(false);
+    expect(await none("example-owner/example-repo", "ci-main:engine-tests")).toBeUndefined();
   });
 });

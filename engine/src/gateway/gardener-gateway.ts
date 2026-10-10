@@ -19,7 +19,7 @@ export type GardenerGatewayParams = {
   scheduler: GatewayScheduler;
   /** The one shared GitHub client. Undefined when no token is available. */
   reads: SignalWakeGitHubReads | undefined;
-  writeIssue: (draft: GardenerIssueDraft) => Promise<void>;
+  writeIssue: (draft: GardenerIssueDraft) => Promise<number>;
   observations: ObservationStore;
   onError: (message: string) => void;
   /** Injected for tests; the gateway uses the state database. */
