@@ -11,8 +11,6 @@ import type { May } from "./may";
 import { Fallbacks } from "./Fallbacks";
 import { modelName } from "./fallback-list";
 
-export const SEND_WHY = "Needs the engine’s per-Trunk setting for asking before it sends.";
-export const NOTES_WHY = "Each Trunk keeps its notes in its own folder; the engine has no setting to share them.";
 
 export function Row({ title, hint, children, off }: { title: string; hint: string; children: ReactNode; off?: string }) {
   return <div className={off ? "tk-ctl off" : "tk-ctl"} title={shownWhy(off)}><b>{title}</b><span className="tk-right">{children}</span><small>{shownWhy(off) || hint}</small></div>;
@@ -40,13 +38,7 @@ export function PermissionsTab({ draft, set }: PermissionsProps) {
       <Row title="Use the browser" hint="With your saved sign-ins." off={may.browseLock || undefined}>
         {may.browseLock ? <button type="button" role="switch" aria-checked={false} aria-label="Use the browser" className="switch" disabled /> : <Switch label="Use the browser" on={may.browse} onChange={(browse) => setMay({ browse })} />}
       </Row>
-      <Row title="Send email and messages" hint="Overrides the mode for this Trunk only." off={SEND_WHY}>
-        <span className="tk-seg">{["Ask first", "Allowed"].map((l) => <button key={l} type="button" disabled>{l}</button>)}</span>
-      </Row>
       <Row title="Spend money" hint="Never, whatever mode Branch is in."><span className="tk-fixed">Never</span></Row>
-      <Row title="Keep its own notes" hint="Separate from other Trunks’ memory." off={NOTES_WHY}>
-        <button type="button" role="switch" aria-checked={true} aria-label="Keep its own notes" className="switch" disabled />
-      </Row>
     </div>
   );
 }

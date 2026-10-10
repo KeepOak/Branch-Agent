@@ -1,7 +1,5 @@
 // People › Live now (§4.6.5.1): who is online, then a card per run happening now, with a read-only Watch.
-// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
-import { shownWhy } from "../../shell/shown-why";
 import { Face } from "../../face/Face";
 import { Dialog } from "../../shell/Dialog";
 import type { WindowEngine } from "../../connect/engine";
@@ -11,8 +9,6 @@ import { ACTIVITY_WORD, activeProfiles, activityOf, deviceName, firstName, nameO
 import { Avatar, Empty, Glyph, Status } from "./ui";
 import { workingRows } from "./working";
 
-/** No engine method lets someone ask to join another person's run yet. */
-export const ASK_TO_JOIN_OFF = "Needs the engine's ask-to-join method.";
 const ONLINE = "Online";
 const SHARED_OWNER_TIP = "Connected with Branch’s key or a tunnel, not a personal sign-in.";
 
@@ -62,7 +58,7 @@ function RunCard({ run, owner, trunk, conns, mine, open, watch }: { run: Row; ow
     <div className="pp-run-b"><Face size={30} label={trunk} state="work" />
       <span className="grow"><b>{trunk}{SHARED.has(run.visibility) && <> <span className="pp-tag">shared</span></>}</b><span>{run.title}</span>{line && <small>{line}</small>}</span></div>
     <div className="pp-acts">{mine ? <button type="button" className="btn sm" onClick={open}>Open</button>
-      : <><button type="button" className="btn sm" onClick={watch}><Glyph name="eye" />Watch</button><button type="button" className="btn ghost sm" disabled title={shownWhy(ASK_TO_JOIN_OFF)}>Ask to join</button></>}</div>
+      : <button type="button" className="btn sm" onClick={watch}><Glyph name="eye" />Watch</button>}</div>
   </article>;
 }
 
@@ -72,7 +68,7 @@ function WatchDialog({ engine, run, owner, trunk, onClose }: { engine: WindowEng
   const first = firstName(owner ? nameOf(owner) : run.ownerLabel || "Someone");
   const entry = recs(rec(preview.data).previews).find(p => str(p.key) === run.key);
   const items = recs(entry?.items).filter(i => str(i.text));
-  return <Dialog wide title={`${first}’s ${trunk}`} onClose={onClose} footer={<><button type="button" className="btn" disabled title={shownWhy(ASK_TO_JOIN_OFF)}>Ask to join</button></>}>
+  return <Dialog wide title={`${first}’s ${trunk}`} onClose={onClose}>
     <p className="pp-hint" style={{ margin: 0 }}>Read-only. You see what {first} shares with the team: steps and questions, never their private files.</p>
     <div className="pp-peek"><b>{run.title}</b><Status {...preview} />
       {entry && !items.length && <p className="pp-hint">No steps to show yet.</p>}

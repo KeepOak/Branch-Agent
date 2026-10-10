@@ -69,7 +69,7 @@ describe("People › Live now", () => {
     expect(strip.querySelector('[aria-label="Active"]')).toBeTruthy();
     expect(host.querySelectorAll(".pp-run")).toHaveLength(2);
     expect(host.textContent).toContain("Reconcile the card statement"); expect(host.textContent).toContain("shared");
-    const ask = button("Ask to join")!; expect(ask.disabled).toBe(true); expect(ask.title).toBe(""); expect(visibleDevNotes(host)).toEqual([]);
+    expect(button("Ask to join")).toBeUndefined(); expect(visibleDevNotes(host)).toEqual([]);
     await click("Open"); expect(opened).toHaveBeenCalledWith("agent:main:b");
     expect(host.querySelector('[role="tab"][aria-selected="true"]')!.textContent).toBe("Live now2");
   });

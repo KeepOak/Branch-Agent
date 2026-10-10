@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { visibleDevNotes } from "../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -106,9 +108,7 @@ describe("Trunk editor", () => {
     await type(document.querySelectorAll<HTMLInputElement>(".tk-split input")[1], "Money");
     await click(byText("Permissions"));
     await click(document.querySelector('[aria-label="Use the browser"]'));
-    const send = [...document.querySelectorAll<HTMLElement>(".tk-ctl")].find(r => r.querySelector("b")?.textContent === "Send email and messages")!;
-    expect(send.classList.contains("off")).toBe(true); expect(send.title).toBe("");
-    expect(send.textContent).toContain("Overrides the mode for this Trunk only."); expect([...send.querySelectorAll("button")].every(b => b.disabled)).toBe(true);
+    expect(document.body.textContent).not.toContain("Send email and messages"); expect(document.body.textContent).not.toContain("Keep its own notes");
     expect(visibleDevNotes(document.body)).toEqual([]);
     await click(byText("Its computers"));
     await click(document.querySelector('[data-value="n1"]'));
@@ -133,6 +133,12 @@ describe("Trunk editor", () => {
     await mount(<TrunkEditor engine={engine(fake(), [])} agentId="oak" level="regular" onClose={() => {}} />);
     await type(document.querySelectorAll<HTMLInputElement>(".tk-split input")[0], "Elm");
     expect(byText("Save").disabled).toBe(true);
+  });
+  it("keeps the tab row on screen while the editor body scrolls", async () => {
+    const css = readFileSync(resolve("src/places/trunk/trunk.css"), "utf8");
+    expect(css).toMatch(/\.tk-col > \.tk-tabs \{[^}]*position: sticky;[^}]*top: 0;/);
+    await mount(<TrunkEditor engine={engine(fake())} agentId="oak" level="advanced" onClose={() => {}} />);
+    expect(document.querySelector('.tk-col > [role="tablist"]')).toBeTruthy();
   });
   it("clicks every editor tab and shows its panel", async () => {
     await mount(<TrunkEditor engine={engine(fake())} agentId="oak" level="advanced" onClose={() => {}} />);
@@ -316,7 +322,7 @@ describe("Trunk profile and studio", () => {
     expect(document.body.textContent).toContain("ID birch");
     await click(document.querySelector('[aria-label="Morning on or off"]'));
     expect(request).toHaveBeenCalledWith("cron.update", { id: "j1", patch: { enabled: false } });
-    expect(byText("Pause Birch").disabled).toBe(true);
+    expect(byText("Pause Birch")).toBeUndefined();
   });
   it("asks Branch through branch.chat and shows its reply", async () => {
     const request = vi.fn(() => Promise.resolve({ sessionId: "s", reply: "Here is my proposal.", action: "none", needsApproval: true }));

@@ -2,7 +2,6 @@
 // engine can give, one row per thing to change (each opens the editor where it changes), its automations, then
 // Pause / Make default / Edit. It loads its own data, so any place (the thread header too) can open it by id.
 import { useState, type ReactNode } from "react";
-import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
 import { Icon } from "../../shell/icons";
@@ -23,7 +22,8 @@ import { TrunkFiles } from "./TrunkFiles";
 import { Layer } from "./layer";
 import "./trunk.css";
 
-// TODO(engine-lane): pausing a Trunk (Customize › Trunks › Pause, Trunk profile) needs the engine's pause for a Trunk.
+
+// Shared with Customize › Trunks, which still shows its own greyed Pause until that place removes it.
 export const PAUSE_WHY = "Needs the engine’s pause for a Trunk.";
 
 export type TrunkProfileProps = {
@@ -119,7 +119,6 @@ function ProfileBody({ engine, level, onClose, openPlace, data, row, reload, edi
   const block = defaultBlock(data.roster, row.id), write = canWrite(engine);
   const toDefault = () => makeDefault(engine, data.roster, row.id).then(() => { notify(`${row.name} is now your default Trunk. Unrouted chats go to it.`); reload(); }, (e: unknown) => setError(errorText(e)));
   const footer = <>
-    <button type="button" className="btn ghost tk-pf-pause" disabled title={shownWhy(PAUSE_WHY)}>Pause {row.name}</button>
     {!isDefault && <button type="button" className="btn ghost" disabled={!!block || !write} title={block || (write ? undefined : WRITE_WHY)} onClick={() => void toDefault()}>Make default</button>}
     {!isDefault && <button type="button" className="btn ghost" disabled={!write} title={write ? undefined : WRITE_WHY} onClick={remove}>Remove {row.name}…</button>}
     <button type="button" className="btn pri" onClick={() => edit("look")}>Edit {row.name}</button>
