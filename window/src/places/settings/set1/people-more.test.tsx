@@ -7,7 +7,6 @@ import { EachPerson } from "./people-more";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const empty = { names: [], defs: {} };
 
 let root: Root;
 let host: HTMLDivElement;
@@ -24,7 +23,7 @@ describe("Settings › People › Each person", () => {
     try {
       await act(async () => root.render(
         <KitProvider level={0} report={report} scope={null}>
-          <EachPerson roles={empty} />
+          <EachPerson />
         </KitProvider>,
       ));
       expect(host.querySelector('[data-row="Open People"]')).not.toBeNull();

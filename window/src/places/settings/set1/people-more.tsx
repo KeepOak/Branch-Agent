@@ -13,7 +13,7 @@ export function openPeople(tab?: string) {
   window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "people", ...(tab ? { tab } : {}) } }));
 }
 
-export function EachPerson({ roles }: { roles: Roles }) {
+export function EachPerson() {
   return (
     <>
       <Sec title="Each person">

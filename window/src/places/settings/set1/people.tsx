@@ -41,7 +41,7 @@ export function PeoplePage(props: SettingsPageProps) {
         {sel ? <PersonCard key={sel.id} ctx={ctx} p={sel} /> : null}
       </div>
       <Hint>Separation on one computer, not separate accounts. Each person’s conversations and memory are their own.</Hint>
-      <EachPerson roles={ctx.roles} />
+      <EachPerson />
       {lv >= 1 ? <Records engine={props.engine} trunks={ctx.trunks} /> : null}
       {invite ? <InviteDialog engine={props.engine} onClose={() => { setInvite(false); void ctx.reload(); }} /> : null}
     </Page>
