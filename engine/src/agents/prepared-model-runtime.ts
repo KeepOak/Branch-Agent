@@ -275,6 +275,42 @@ export function getPendingPreparedModelRuntimeReplacement(agentId?: string): Pro
   return getPassiveReplacement(agentId)?.promise;
 }
 
+/** Trace text for the pending publication barrier an agent awaits: its scope and degraded flag. */
+export function describePendingPreparedModelRuntimeReplacement(agentId?: string): string | undefined {
+  const replacement = getPassiveReplacement(agentId);
+  if (!replacement) {
+    return undefined;
+  }
+  const scope = replacement.agentIds ? [...replacement.agentIds].sort().join(",") : "global";
+  return `scope=${scope} degraded=${replacement.degraded === true}`;
+}
+
+/** Trace text for each owner in a publication scope: published, failed, stale, or pending. */
+export function describePreparedModelRuntimeOwnerStates(
+  ownerMap: ReadonlyMap<string, PreparedModelRuntimeOwner>,
+  agentIds?: ReadonlySet<string>,
+): string {
+  const parts: string[] = [];
+  for (const owner of ownerMap.values()) {
+    const agentId = owner.input.agentId;
+    if (!agentId || (agentIds && !agentIds.has(agentId))) {
+      continue;
+    }
+    parts.push(`${agentId}=${describePreparedModelRuntimeOwnerState(owner)}`);
+  }
+  return parts.length > 0 ? parts.join(" ") : "none";
+}
+
+function describePreparedModelRuntimeOwnerState(owner: PreparedModelRuntimeOwner): string {
+  if (owner.snapshot) {
+    return "published";
+  }
+  if (owner.refreshError) {
+    return `failed(${owner.refreshError.message.slice(0, 120)})`;
+  }
+  return owner.needsRefresh ? "stale" : "pending";
+}
+
 /** Startup's retry of one agent: its unsettled model builds stop holding the next one back. */
 export const replacePreparedModelRuntimeAgentBuilds = (agentDir: string, reason: Error) =>
   replaceAgentDirectoryBuilds(agentBuildCompletions, normalizeOptionalDir(agentDir) ?? "", reason);
@@ -594,6 +630,9 @@ export function refreshPreparedModelRuntimeSnapshots(
         resetPluginGeneration: true,
       });
     }
+    log.info(
+      `prepared model publication rejected; owners ${describePreparedModelRuntimeOwnerStates(owners, publicationAgentIds)}; reason=${error.message.slice(0, 160)}`,
+    );
     rejectPendingPreparedModelRuntimeReplacement(replacement?.gateId, error);
   };
   const commitReplacement = () => {
@@ -610,6 +649,9 @@ export function refreshPreparedModelRuntimeSnapshots(
     }
     const adoptedAuthTransaction = authPublication.prepareAdoptedCommit(replacement.gateId);
     replyDispatchPublication.rebuild(owners.values());
+    log.info(
+      `prepared model publication committed; owners ${describePreparedModelRuntimeOwnerStates(owners, publicationAgentIds)}`,
+    );
     pendingModelRuntimeReplacement = undefined;
     startup?.complete();
     if (adoptedAuthTransaction) {
