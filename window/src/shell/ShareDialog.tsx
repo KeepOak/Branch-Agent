@@ -9,6 +9,18 @@ const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object"
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const reason = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+/** session.members.list / sessions.describe fail with "unknown session" when the conversation has no store yet. */
+export function shareLoadReason(e: unknown): string {
+  const text = reason(e);
+  return /unknown session|session not found/i.test(text) ? "This conversation hasn't started yet." : text;
+}
+
+/** Same title chain as projectConversation: label, then displayName, then derivedTitle. */
+export function describedShareTitle(row: unknown): string {
+  const session = rec(rec(row).session);
+  return str(session.label) || str(session.displayName) || str(session.derivedTitle);
+}
+
 type Visibility = "shared" | "read-only" | "suggest" | "draft";
 type Identity = { id: string; name: string };
 type Sharing = { visibility: Visibility | null; allowed: Visibility[]; owner: Identity | null; members: Set<string>; people: Identity[]; publicToken: string | null; canChange: boolean };
@@ -38,30 +50,50 @@ type Props = { engine: WindowEngine; sessionKey: string; agentId?: string; sessi
 function useSharing(engine: WindowEngine, sessionKey: string, agentId?: string) {
   const [state, setState] = useState<Sharing | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [described, setDescribed] = useState<string | null>(null);
   const load = useCallback(async () => {
-    const target = { sessionKey, ...(agentId ? { agentId } : {}) };
-    const [list, row] = await Promise.all([
-      engine.request("session.members.list", target),
-      engine.request("sessions.describe", { key: sessionKey, ...(agentId ? { agentId } : {}) }),
-    ]);
-    setState(readSharing(list, rec(rec(row).session).visibility));
+    setError(null);
+    setLoading(true);
+    try {
+      const target = { sessionKey, ...(agentId ? { agentId } : {}) };
+      const [list, row] = await Promise.all([
+        engine.request("session.members.list", target),
+        engine.request("sessions.describe", { key: sessionKey, includeDerivedTitles: true, ...(agentId ? { agentId } : {}) }),
+      ]);
+      setState(readSharing(list, rec(rec(row).session).visibility));
+      setDescribed(describedShareTitle(row) || null);
+    } catch (e: unknown) {
+      setState(null);
+      setError(shareLoadReason(e));
+    } finally {
+      setLoading(false);
+    }
   }, [engine, sessionKey, agentId]);
   useEffect(() => {
-    load().catch((e: unknown) => setError(reason(e)));
+    void load();
   }, [load]);
   const change = (method: string, params: Record<string, unknown>) => {
     setError(null);
-    engine.request(method, { sessionKey, ...(agentId ? { agentId } : {}), ...params }).then(load).catch((e: unknown) => setError(reason(e)));
+    engine.request(method, { sessionKey, ...(agentId ? { agentId } : {}), ...params }).then(load).catch((e: unknown) => setError(shareLoadReason(e)));
   };
-  return { state, error, change };
+  return { state, error, loading, described, change, load };
 }
 
 export function ShareDialog({ engine, sessionKey, agentId, sessionId, title, publicLink, onCopy, onClose }: Props) {
-  const { state, error, change } = useSharing(engine, sessionKey, agentId);
+  const { state, error, loading, described, change, load } = useSharing(engine, sessionKey, agentId);
   const can = state?.canChange ?? false;
   const draft = state?.visibility === "draft";
+  const name = described && described !== title ? described : title;
   return (
-    <Dialog title={`Share ${title}`} wide onClose={onClose} footer={<button type="button" className="btn primary" onClick={onClose}>Done</button>} testid="share-dialog">
+    <Dialog title={`Share ${name}`} wide onClose={onClose} footer={<button type="button" className="btn primary" onClick={onClose}>Done</button>} testid="share-dialog">
+      {loading && !state ? <p className="hint" role="status">Loading…</p> : null}
+      {error ? (
+        <div>
+          <p className="field-error" role="alert">{error}</p>
+          <button type="button" className="btn sm" onClick={() => void load()}>Try again</button>
+        </div>
+      ) : null}
       {state ? (
         <div className="share-b">
           <div className="share-row">
@@ -87,7 +119,6 @@ export function ShareDialog({ engine, sessionKey, agentId, sessionId, title, pub
           <p className="hint">They see who started it, who owns it, and who else is in it. Their drafts stay private until they send.</p>
         </div>
       ) : null}
-      {error ? <p className="field-error" role="alert">{error}</p> : null}
     </Dialog>
   );
 }
