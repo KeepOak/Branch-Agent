@@ -2,6 +2,7 @@ import type { BranchConfig } from "../../config/types.branch.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
 import { enqueueGraftWork } from "./graft-work.js";
 import {
+  graftDeviceId,
   listOutsideAgents,
   outsideAgentMayMessage,
   outsideAgentRefusal,
@@ -68,4 +69,33 @@ export function queueGraftedTeammateSend(input: {
     idempotencyKey: input.idempotencyKey,
   });
   return { ok: true, id: job.id };
+}
+
+/**
+ * The reply's home: the owner's default Trunk session for that teammate's contact, the same thread the
+ * composer typed into. Replies land there, not in the default Trunk's main thread.
+ */
+export function teammateThreadKey(defaultAgentId: string, teammateKey: string): string {
+  return `agent:${defaultAgentId}:${teammateKey}`;
+}
+
+/** A chat.send to a joined Trunk's contact key: queued for that Trunk, with the reply sent back to that thread. */
+export function routeJoinedTeammateChat(input: {
+  sessionKey: string;
+  message: string;
+  idempotencyKey?: string;
+  defaultAgentId: string;
+  cfg: BranchConfig;
+  client: Parameters<typeof graftDeviceId>[0];
+}): GraftedSendResult {
+  if (graftDeviceId(input.client)) {
+    return { ok: false, code: "FORBIDDEN", message: "A joined Branch cannot message a teammate." };
+  }
+  return queueGraftedTeammateSend({
+    target: input.sessionKey,
+    text: input.message,
+    sourceSessionKey: teammateThreadKey(input.defaultAgentId, input.sessionKey),
+    idempotencyKey: input.idempotencyKey,
+    cfg: input.cfg,
+  });
 }

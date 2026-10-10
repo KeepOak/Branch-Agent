@@ -12,6 +12,7 @@ import {
   outsideAgentDeviceRows,
   readOutsideAgentSettings,
 } from "../contacts/outside-agents.js";
+import { routeJoinedTeammateChat } from "../contacts/grafted-send.js";
 
 const removed = vi.hoisted(() => ({ calls: [] as string[], fail: "" }));
 const replyStep = vi.hoisted(() => vi.fn(async () => undefined));
@@ -253,5 +254,26 @@ describe("Branch-to-Branch graft on the host", () => {
     );
     expect(sent.ok).toBe(false);
     expect(sent.error?.message).toContain("disconnected");
+  });
+
+  it("sends a teammate's reply back into the thread the chat was typed in, not the default Trunk's main thread", async () => {
+    replyStep.mockClear();
+    await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    await call("contacts.outside.hello", { agent: { ...scout, trunkId: "scout" } }, device("dev-b"));
+    const sent = routeJoinedTeammateChat({
+      sessionKey: "a2a:branch-b--scout",
+      message: "Ping",
+      idempotencyKey: "thread-1",
+      defaultAgentId: "juniper",
+      cfg: {} as never,
+      client: owner,
+    });
+    expect(sent.ok).toBe(true);
+    expect((await call("graft.work.poll", {}, device("dev-b"))).payload.job).toMatchObject({ trunkId: "scout", text: "Ping" });
+    expect((await call("graft.work.complete", { id: sent.ok ? sent.id : "", reply: "PONG" }, device("dev-b"))).ok).toBe(true);
+    expect(replyStep).toHaveBeenCalledWith(
+      expect.objectContaining({ agentId: "juniper", sessionKey: "agent:juniper:a2a:branch-b--scout", message: "PONG" }),
+    );
+    expect(replyStep).not.toHaveBeenCalledWith(expect.objectContaining({ sessionKey: "agent:juniper:main" }));
   });
 });
