@@ -306,7 +306,10 @@ export function createModelCatalogDecisions(params: ModelCatalogDecisionParams) 
     agentDir,
     preparedCliRuntimeAuthDirectories: {
       agentDir,
-      inheritedAuthDir: resolveLegacyInheritedAuthDir(params.cfg),
+      inheritedAuthDir: resolveLegacyInheritedAuthDir(params.cfg, undefined, undefined, {
+        agentId: params.agentId,
+        agentDir,
+      }),
     },
     env: process.env,
     metadataSnapshot,

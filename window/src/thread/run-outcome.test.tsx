@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { WindowEngine } from "../connect/engine";
 import type { RunEnd } from "../connect/session";
 import { agentState } from "../face/agentState";
-import { CHECK_STATUS_EVENT, isScreenControlSetupError } from "./blocks";
+import { CHECK_STATUS_EVENT, isModelAccountMissingError, isScreenControlSetupError } from "./blocks";
 import { DoneCheer } from "./DoneCheer";
 import { modelName } from "./format";
 import { historyToBlocks, markStopped } from "./history";
@@ -142,11 +142,30 @@ describe("Couldn't finish", () => {
     const history: Block[] = [{ kind: "user", key: "u", text: "x" }, { kind: "error", key: "e", message: "No API key found for provider \"llama-cpp\"." }];
     const container = await mount(<Thread name="Juniper" history={history} live={[]} pendingUser={null} running={false} engine={engine} onAnswer={() => {}} />);
     const strip = container.querySelector('[data-testid="run-error"]')!;
-    expect([...strip.querySelectorAll("button")].map((b) => b.textContent || b.getAttribute("aria-label"))).toEqual(["Dismiss", "Copy error", "Check status"]);
+    expect([...strip.querySelectorAll("button")].map((b) => b.textContent || b.getAttribute("aria-label"))).toEqual(["Dismiss", "Copy error", "Sign in an account", "Check status"]);
     let opened = 0;
     window.addEventListener(CHECK_STATUS_EVENT, () => opened++);
     await act(async () => [...strip.querySelectorAll("button")].find((b) => b.textContent === "Check status")!.click());
     expect(opened).toBe(1);
+  });
+
+  it("says a run with no usable model account has none and offers Sign in an account", async () => {
+    const message = "401 Missing bearer or basic authentication in header";
+    expect(isModelAccountMissingError(message)).toBe(true);
+    expect(isModelAccountMissingError("No API key resolved for provider \"openai\" (auth mode: api-key, checked: env).")).toBe(true);
+    expect(isModelAccountMissingError("socket hang up")).toBe(false);
+    const history: Block[] = [{ kind: "user", key: "u", text: "x" }, { kind: "error", key: "e", message }];
+    const container = await mount(<Thread name="Juniper" history={history} live={[]} pendingUser={null} running={false} engine={engine} onAnswer={() => {}} />);
+    const strip = container.querySelector('[data-testid="run-error"]')!;
+    expect(strip.textContent).toContain("Juniper couldn’t finish: no model account is signed in for this Trunk.");
+    let page = "";
+    const listen = (event: Event) => {
+      page = (event as CustomEvent<{ page?: string }>).detail?.page ?? "";
+    };
+    window.addEventListener("branch:navigate-settings", listen);
+    await act(async () => strip.querySelector<HTMLButtonElement>("[data-testid=open-accounts]")!.click());
+    window.removeEventListener("branch:navigate-settings", listen);
+    expect(page).toBe("accounts");
   });
 
   it("offers Open that switch when the computer tool names the screen-and-mouse setting", async () => {
