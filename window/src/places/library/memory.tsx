@@ -9,7 +9,7 @@ import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { Menu, type MenuAnchor, type MenuItem } from "../../shell/Menu";
 import { errorText, num, optStr, rec, recs, str, useOperation, useResource, type Trunk } from "./data";
 import { configuredLimit, loadedChars, statedDefault, useDailyNotes, withoutFact, type Fact, type MemoryFile } from "./memory-data";
-import { AboutYou, HoldForYes, HowItLearns, MemoryHealth, Pinned, statusOf, WhatToRemember, type MemoryStatus } from "./memory-more";
+import { AboutYou, HoldForYes, HowItLearns, MemoryHealth, statusOf, WhatToRemember, type MemoryStatus } from "./memory-more";
 import { RingsRow } from "./rings";
 import { EmptyIcon, Grey, IcoTile, LibIcon, plural, Row } from "./parts";
 import { FileDialog } from "./reader";
@@ -54,7 +54,6 @@ export function MemoryTab(props: MemoryProps) {
     {shows(level, "advanced") && <HowItLearns engine={engine} trunks={trunks} scope={scope || props.defaultId} onApplied={props.reloadFiles} />}
     <MemoryHealth engine={engine} agentId={scope || props.defaultId} status={status} check={check} />
     <WhatToRemember />
-    <Pinned facts={scoped?.flatMap(f => f.facts) ?? []} />
     <AboutYou engine={engine} agentId={scope || props.defaultId} />
     {shows(level, "technical") && <HoldForYes />}
   </div>;
