@@ -97,7 +97,7 @@ export type Session = {
   key: string; agentId: string; title: string; preview: string; working: boolean; updatedAt?: number; createdAt?: number;
   status: string; runId?: string; lastRunId?: string; ownerId: string; ownerLabel: string; human: boolean; helper: boolean; automation: boolean;
   global: boolean; unread: boolean; archived: boolean; cost?: number; recap: string; recapState: string; lastRunError: string;
-  kind: string; room?: number;
+  kind: string; room?: number; snoozedUntil?: number;
 };
 function actorOf(row: Record<string, unknown>): Record<string, unknown> {
   const owner = record(record(row.owner).actor);
@@ -123,6 +123,7 @@ export function session(row: Record<string, unknown>): Session {
     global: row.kind === "global" || row.kind === "unknown", unread: row.unread === true, archived: row.archived === true,
     cost: number(row.estimatedCostUsd), recap: text(summary.text), recapState: text(summary.state), lastRunError: text(row.lastRunError),
     kind: text(row.chatType) || text(row.kind), room: roomLeft(row),
+    snoozedUntil: number(row.snoozedUntil),
   };
 }
 export function sessions(value: unknown): Session[] {

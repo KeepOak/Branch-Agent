@@ -6,6 +6,7 @@ import { Icon } from "../../shell/icons";
 import { Face } from "../../face/Face";
 import { agentName, type Agent, type Session } from "../overview/engine";
 import { InboxRow } from "./Rows";
+import { clock, dayWord } from "../overview/format";
 
 export const DEFERRED_GAP = "Needs the engine's deferred-work queue (callbacks, steps you do by hand, work handed over to later).";
 // TODO(engine-lane): Messages (Important / Everything else / All) needs the engine's message triage method.
@@ -14,6 +15,20 @@ export const MESSAGES_GAP = "Needs the engine's message triage method.";
 /** Conversations whose work has finished, newest first. */
 export function finishedRows(list: Session[]): Session[] {
   return list.filter(s => !s.working && !s.helper && !s.automation && !s.archived && !s.global && (s.status === "done" || Boolean(s.lastRunId)));
+}
+
+/** Conversations snoozed until a future time, soonest wake first. */
+export function snoozedRows(list: Session[], now = Date.now()): Session[] {
+  return list.filter(s => typeof s.snoozedUntil === "number" && s.snoozedUntil > now)
+    .sort((a, b) => (a.snoozedUntil ?? 0) - (b.snoozedUntil ?? 0));
+}
+
+/** "Wakes tomorrow at 9:00 AM", using the shared day and clock words. */
+export function wakeWords(until: number, now = Date.now()): string {
+  const at = new Date(until);
+  const day = dayWord(at, new Date(now));
+  const time = clock(at);
+  return day === "Today" || day === "Tomorrow" ? `Wakes ${day.toLowerCase()} at ${time}` : `Wakes ${day} at ${time}`;
 }
 
 export function Finished({ list, agents, loading, open }: { list: Session[]; agents: Agent[]; loading: boolean; open: (key: string) => void }) {
@@ -31,10 +46,17 @@ export function Finished({ list, agents, loading, open }: { list: Session[]; age
   </>;
 }
 
-export function Later() {
+export function Later({ list, agents, open, wake }: { list: Session[]; agents: Agent[]; open: (key: string) => void; wake: (row: Session) => void }) {
+  const snoozed = snoozedRows(list);
   return <>
     <p className="ib-hint ib-lead">Work that finishes later: by a reply it waits for, a step only you can do, or a job handed over to another time.</p>
-    <EmptyLine icon={<Icon name="clock" />}><span title={shownWhy(DEFERRED_GAP)}>Nothing is waiting to finish later.</span></EmptyLine>
+    {!snoozed.length ? <EmptyLine icon={<Icon name="clock" />}><span title={shownWhy(DEFERRED_GAP)}>Nothing is waiting to finish later.</span></EmptyLine> : <div className="ib-list">{snoozed.map(s => {
+      const trunk = agentName(agents, s.agentId);
+      return <InboxRow key={s.key} unread={s.unread} lead={<Face size={34} label={trunk} />} title={s.title} sub={s.snoozedUntil ? wakeWords(s.snoozedUntil) : ""}>
+        <button type="button" className="btn sm" onClick={() => open(s.key)}>Open</button>
+        <button type="button" className="btn sm" onClick={() => wake(s)}>Wake now</button>
+      </InboxRow>;
+    })}</div>}
   </>;
 }
 
