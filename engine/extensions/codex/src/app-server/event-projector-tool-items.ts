@@ -1,4 +1,7 @@
-import { truncateNativeToolTranscriptText } from "branch/plugin-sdk/agent-harness-attempt-runtime";
+import {
+  TOOL_TRANSCRIPT_OUTPUT_MAX_CHARS,
+  truncateNativeToolTranscriptText,
+} from "branch/plugin-sdk/agent-harness-attempt-runtime";
 import {
   inferToolMetaFromArgs,
   projectAgentToolActivity,
@@ -299,7 +302,39 @@ export function itemToolError(
   if (status !== "failed") {
     return undefined;
   }
-  return itemOutputText(item, outputTextByItem) ?? "codex native tool failed";
+  return (
+    commandFailureText(item, outputTextByItem) ??
+    itemOutputText(item, outputTextByItem) ??
+    "codex native tool failed"
+  );
+}
+
+function commandFailureText(
+  item: CodexThreadItem,
+  outputTextByItem?: ReadonlyMap<string, string>,
+): string | undefined {
+  if (item.type !== "commandExecution" || itemStatus(item) !== "failed") {
+    return undefined;
+  }
+  const output = itemObservedOutputText(item, outputTextByItem)?.trim();
+  if (!output) {
+    return undefined;
+  }
+  const header = `Command execution failed${typeof item.exitCode === "number" ? ` (exit code ${item.exitCode})` : ""}:\n`;
+  // Codex combines stdout and stderr. Keep the end, where command diagnostics
+  // normally appear, using the existing transcript budget rather than a new cap.
+  const notice = "[earlier command output truncated]\n";
+  const budget = TOOL_TRANSCRIPT_OUTPUT_MAX_CHARS - header.length;
+  let tail = output;
+  if (output.length > budget) {
+    let start = output.length - (budget - notice.length);
+    const code = output.charCodeAt(start);
+    if (code >= 0xdc00 && code <= 0xdfff) {
+      start += 1;
+    }
+    tail = `${notice}${output.slice(start)}`;
+  }
+  return `${header}${tail}`;
 }
 
 export function itemMeta(
@@ -339,7 +374,12 @@ function itemObservedOutputText(
   outputTextByItem?: ReadonlyMap<string, string>,
 ): string | undefined {
   if (item.type === "commandExecution") {
-    return item.aggregatedOutput ?? outputTextByItem?.get(item.id);
+    if (itemStatus(item) !== "failed") {
+      return item.aggregatedOutput ?? outputTextByItem?.get(item.id);
+    }
+    return item.aggregatedOutput?.trim()
+      ? item.aggregatedOutput
+      : (outputTextByItem?.get(item.id) ?? item.aggregatedOutput ?? undefined);
   }
   if (item.type === "dynamicToolCall") {
     return collectDynamicToolContentText(item.contentItems);
@@ -358,6 +398,10 @@ export function itemTranscriptResultText(
   item: CodexThreadItem,
   outputTextByItem?: ReadonlyMap<string, string>,
 ): string | undefined {
+  const failure = commandFailureText(item, outputTextByItem);
+  if (failure) {
+    return failure;
+  }
   const output = itemObservedOutputText(item, outputTextByItem);
   if (output !== undefined) {
     return output;
