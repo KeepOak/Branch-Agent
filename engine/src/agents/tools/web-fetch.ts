@@ -717,6 +717,7 @@ async function fetchWebPayload(params: WebFetchRuntimeParams): Promise<Record<st
           }
           const basic = await extractBasicHtmlContent({
             html: body,
+            url: finalUrl,
             extractMode: params.extractMode,
           });
           if (basic?.text) {

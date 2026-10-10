@@ -216,7 +216,56 @@ function closeOpenAnchorWithText(stack: RenderContext[], state: { title?: string
   return false;
 }
 
-export function htmlToMarkdown(html: string): { text: string; title?: string } {
+function resolveLinkDestination(value: string | undefined, baseUrl?: string): string | undefined {
+  if (!value || !baseUrl) {
+    return value;
+  }
+  try {
+    return new URL(value, baseUrl).href;
+  } catch {
+    return value;
+  }
+}
+
+function resolveDocumentBase(html: string, pageUrl?: string): string | undefined {
+  if (!pageUrl) {
+    return undefined;
+  }
+  for (let pos = 0; pos < html.length;) {
+    const start = html.indexOf("<", pos);
+    if (start === -1) {
+      break;
+    }
+    const rawName = readRawTextOpenTagName(html, start);
+    if (rawName) {
+      pos = skipRawTextElement(html, start, rawName);
+      continue;
+    }
+    const read = readTagToken(html, start);
+    pos = read?.next ?? start + 1;
+    const token = read?.token;
+    if (!token || token.closing || token.name !== "base") {
+      continue;
+    }
+    const href = readAttributeValue(token.raw, "href");
+    if (href === undefined) {
+      continue;
+    }
+    try {
+      const base = new URL(href, pageUrl);
+      return ["http:", "https:", "ftp:"].includes(base.protocol) ? base.href : pageUrl;
+    } catch {
+      return pageUrl;
+    }
+  }
+  return pageUrl;
+}
+
+export function htmlToMarkdown(html: string, pageUrl?: string): { text: string; title?: string } {
+  return renderHtmlToMarkdown(html, resolveDocumentBase(html, pageUrl));
+}
+
+function renderHtmlToMarkdown(html: string, baseUrl?: string): { text: string; title?: string } {
   const root: RenderContext = { kind: "root", parts: [] };
   const stack: RenderContext[] = [root];
   const state: { title?: string } = {};
@@ -294,7 +343,12 @@ export function htmlToMarkdown(html: string): { text: string; title?: string } {
       closeThroughContext(stack, "anchor", state);
       pushContext(
         stack,
-        { kind: "anchor", href: readAttributeValue(token.raw, "href"), hasText: false, parts: [] },
+        {
+          kind: "anchor",
+          href: resolveLinkDestination(readAttributeValue(token.raw, "href"), baseUrl),
+          hasText: false,
+          parts: [],
+        },
         state,
       );
       continue;
@@ -391,9 +445,10 @@ export function truncateWebFetchText(
 export async function extractBasicHtmlContent(params: {
   html: string;
   extractMode: ExtractMode;
+  url?: string;
 }): Promise<{ text: string; title?: string } | null> {
   const cleanHtml = await sanitizeHtml(params.html);
-  const rendered = htmlToMarkdown(cleanHtml);
+  const rendered = renderHtmlToMarkdown(cleanHtml, resolveDocumentBase(params.html, params.url));
   const text =
     stripInvisibleUnicode(
       params.extractMode === "text" ? markdownToText(rendered.text) : rendered.text,
