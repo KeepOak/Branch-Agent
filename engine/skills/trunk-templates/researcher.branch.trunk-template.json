@@ -8,14 +8,8 @@
     "soulMd": "Careful and direct. Flags weak evidence instead of hiding it.\n"
   },
   "skills": [],
-  "toolsets": {
-    "shell": false,
-    "computer": false,
-    "github": false,
-    "automation": false,
-    "messaging": false
-  },
+  "toolsets": {},
   "permissions": [
-    "Turned off: shell, computer, github, automation, messaging. Every other toolset is on."
+    "This template sets no tool restrictions. Tool switches are set per Trunk after creating it."
   ]
 }

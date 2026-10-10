@@ -10,6 +10,8 @@ export const TRUNK_TEMPLATE_VERSION = 1;
 
 const SEEDBANK_SKILL_PREFIX = "seedbank:@branch-agent/";
 const SKILL_ID_PATTERN = /^seedbank:@branch-agent\/([a-z0-9][a-z0-9-]*)(?:@\S+)?$/;
+export const NO_RESTRICTIONS_PERMISSION =
+  "This template sets no tool restrictions. Tool switches are set per Trunk after creating it.";
 
 export type TrunkTemplateAutomation = { name: string; cron: string; prompt: string };
 
@@ -21,12 +23,12 @@ export type TrunkTemplate = {
   persona: { agentsMd: string; soulMd?: string };
   /** Catalog ids, `seedbank:@branch-agent/<slug>` with an optional `@version`. */
   skills: string[];
-  /** Named toolsets; a missing name is on. */
+  /** Named toolset switches carried by the file. Not applied by this build. */
   toolsets: Record<string, boolean>;
   /** A model family such as "gpt-5.5". Never an account, key or auth profile. */
   model?: { family: string };
   automations?: TrunkTemplateAutomation[];
-  /** What the Trunk may reach, in plain words. */
+  /** What the Trunk may reach, in plain words, as the exporter found it. */
   permissions: string[];
 };
 
@@ -40,6 +42,7 @@ export type TrunkTemplateSource = {
   toolsets?: Record<string, boolean>;
   modelFamily?: string;
   automations?: TrunkTemplateAutomation[];
+  permissions?: string[];
 };
 
 export function skillIdForSlug(slug: string): string {
@@ -51,23 +54,36 @@ export function skillSlugForId(id: string): string | undefined {
   return SKILL_ID_PATTERN.exec(id)?.[1];
 }
 
+/**
+ * The one skill check, shared by export and import. Keeps each well-formed catalog id once
+ * and names every other entry in a warning. Never fails.
+ */
+export function validateSkillIds(ids: readonly string[]): { ids: string[]; warnings: string[] } {
+  const kept = new Set<string>();
+  const warnings: string[] = [];
+  for (const id of ids) {
+    if (skillSlugForId(id) === undefined) {
+      warnings.push(`Skill "${id}" is not a catalog id and was skipped.`);
+    } else {
+      kept.add(id);
+    }
+  }
+  return { ids: [...kept], warnings };
+}
+
 /** Keeps explicit boolean switches only. Names are checked against the toolset list once it lands. */
-function toolsetSwitches(toolsets: Record<string, boolean> | undefined) {
+function toolsetSwitches(toolsets: Record<string, boolean> | undefined): Record<string, boolean> {
   return Object.fromEntries(
     Object.entries(toolsets ?? {}).filter((pair): pair is [string, boolean] => typeof pair[1] === "boolean"),
   );
 }
 
-function permissionsFor(toolsets: Record<string, boolean>): string[] {
-  const off = Object.keys(toolsets).filter((id) => toolsets[id] === false);
-  return off.length
-    ? [`Turned off: ${off.join(", ")}. Every other toolset is on.`]
-    : ["Every toolset is on."];
-}
-
-/** Shapes a template from the allowlisted source. Persona text must already be redacted. */
-export function buildTrunkTemplate(source: TrunkTemplateSource): TrunkTemplate {
-  const toolsets = toolsetSwitches(source.toolsets);
+/** Shapes a template from the allowlisted source. Persona text must already be redacted and scanned. */
+export function buildTrunkTemplate(source: TrunkTemplateSource): {
+  template: TrunkTemplate;
+  warnings: string[];
+} {
+  const skills = validateSkillIds((source.skillSlugs ?? []).map(skillIdForSlug));
   const template: TrunkTemplate = {
     format: TRUNK_TEMPLATE_FORMAT,
     version: TRUNK_TEMPLATE_VERSION,
@@ -77,13 +93,13 @@ export function buildTrunkTemplate(source: TrunkTemplateSource): TrunkTemplate {
       agentsMd: source.agentsMd ?? "",
       ...(source.soulMd ? { soulMd: source.soulMd } : {}),
     },
-    skills: [...new Set((source.skillSlugs ?? []).map(skillIdForSlug))],
-    toolsets,
+    skills: skills.ids,
+    toolsets: toolsetSwitches(source.toolsets),
     ...(source.modelFamily ? { model: { family: source.modelFamily } } : {}),
     ...(source.automations?.length ? { automations: source.automations } : {}),
-    permissions: permissionsFor(toolsets),
+    permissions: source.permissions?.length ? source.permissions : [NO_RESTRICTIONS_PERMISSION],
   };
-  return template;
+  return { template, warnings: skills.warnings };
 }
 
 /** Replaces the workspace and home directories in free text so no machine path leaves. */
@@ -113,7 +129,7 @@ function isStringRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** Checks the shape of a template file. Unknown toolsets and malformed skill ids warn; they do not fail. */
+/** Checks the shape of a template file. Bad toolsets and malformed skill ids warn; they do not fail. */
 export function parseTrunkTemplate(raw: unknown): TrunkTemplateParse {
   if (!isStringRecord(raw) || raw.format !== TRUNK_TEMPLATE_FORMAT || raw.version !== TRUNK_TEMPLATE_VERSION) {
     return { ok: false, error: `Not a Trunk template: expected format "${TRUNK_TEMPLATE_FORMAT}" version ${TRUNK_TEMPLATE_VERSION}.` };
@@ -133,28 +149,26 @@ export function parseTrunkTemplate(raw: unknown): TrunkTemplateParse {
   const warnings: string[] = [];
   const toolsets: Record<string, boolean> = {};
   for (const [id, on] of Object.entries(raw.toolsets)) {
-    if (typeof on !== "boolean") {
+    if (typeof on === "boolean") {
+      toolsets[id] = on;
+    } else {
       warnings.push(`Toolset "${id}" must be true or false and was skipped.`);
-      continue;
     }
-    toolsets[id] = on;
   }
-  const skills = raw.skills.filter((id) => {
-    const ok = skillSlugForId(id) !== undefined;
-    if (!ok) {
-      warnings.push(`Skill "${id}" is not a catalog id and was skipped.`);
-    }
-    return ok;
-  });
-  const template = buildTrunkTemplate({
+  const skills = validateSkillIds(raw.skills as string[]);
+  warnings.push(...skills.warnings);
+  const { template } = buildTrunkTemplate({
     name: raw.name,
     description: typeof raw.description === "string" ? raw.description : "",
     agentsMd: raw.persona.agentsMd,
     soulMd: typeof raw.persona.soulMd === "string" ? raw.persona.soulMd : undefined,
-    skillSlugs: skills.map((id) => skillSlugForId(id) ?? ""),
+    skillSlugs: skills.ids.map((id) => skillSlugForId(id) ?? ""),
     toolsets,
     modelFamily: isStringRecord(raw.model) && typeof raw.model.family === "string" ? raw.model.family : undefined,
     automations: Array.isArray(raw.automations) ? (raw.automations as TrunkTemplateAutomation[]) : undefined,
+    permissions: Array.isArray(raw.permissions) && raw.permissions.every((line) => typeof line === "string")
+      ? (raw.permissions as string[])
+      : undefined,
   });
   return { ok: true, template, warnings };
 }

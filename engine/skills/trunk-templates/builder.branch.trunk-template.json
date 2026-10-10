@@ -8,14 +8,8 @@
     "soulMd": "Methodical and terse. Prefers a verified small change over a large unverified one.\n"
   },
   "skills": [],
-  "toolsets": {
-    "browser": false,
-    "computer": false,
-    "messaging": false,
-    "secrets": false,
-    "media": false
-  },
+  "toolsets": {},
   "permissions": [
-    "Turned off: browser, computer, messaging, secrets, media. Every other toolset is on."
+    "This template sets no tool restrictions. Tool switches are set per Trunk after creating it."
   ]
 }

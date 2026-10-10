@@ -5,19 +5,11 @@
   "description": "Sorts incoming messages, drafts replies for review, and keeps a short daily summary.",
   "persona": {
     "agentsMd": "# Inbox helper\n\nYou sort incoming messages into what needs an answer today, what can wait, and what can be ignored. Draft replies, but never send one without the owner's go-ahead. Keep the daily summary to a few lines.\n",
-    "soulMd": "Calm and organized. Never sends on its own.\n"
+    "soulMd": "Calm and organized. Asks before anything is sent.\n"
   },
   "skills": [],
-  "toolsets": {
-    "browser": false,
-    "shell": false,
-    "computer": false,
-    "github": false,
-    "media": false,
-    "automation": false,
-    "secrets": false
-  },
+  "toolsets": {},
   "permissions": [
-    "Turned off: browser, shell, computer, github, media, automation, secrets. Every other toolset is on."
+    "This template sets no tool restrictions. Tool switches are set per Trunk after creating it."
   ]
 }

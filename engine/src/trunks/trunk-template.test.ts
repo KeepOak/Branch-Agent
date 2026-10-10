@@ -6,6 +6,7 @@ import type { BranchConfig } from "../config/types.branch.js";
 import { modelFamilyFromRef, exportTrunkTemplate } from "./trunk-template-export.js";
 import {
   buildTrunkTemplate,
+  NO_RESTRICTIONS_PERMISSION,
   parseTrunkTemplate,
   redactPersonaText,
   skillIdForSlug,
@@ -16,7 +17,7 @@ const BUNDLED_DIR = path.resolve(import.meta.dirname, "../../skills/trunk-templa
 
 describe("trunk templates", () => {
   it("round-trips a built template through JSON and parse with no warnings", () => {
-    const built = buildTrunkTemplate({
+    const { template: built, warnings } = buildTrunkTemplate({
       name: "Scout",
       description: "Finds things.",
       agentsMd: "# Scout\n",
@@ -24,6 +25,7 @@ describe("trunk templates", () => {
       toolsets: { browser: false, files: true },
       modelFamily: "gpt-5.5",
     });
+    expect(warnings).toEqual([]);
     const parsed = parseTrunkTemplate(structuredClone(built));
     expect(parsed).toEqual({ ok: true, template: built, warnings: [] });
     expect(built.skills).toEqual([skillIdForSlug("summarize-pdf")]);
@@ -115,7 +117,11 @@ describe("trunk templates", () => {
       },
     } as unknown as BranchConfig;
 
-    const template = await exportTrunkTemplate({ cfg, agentId: "ops", env: {} });
+    const result = await exportTrunkTemplate({ cfg, agentId: "ops", env: {} });
+    if (!result.ok) {
+      throw new Error(result.error);
+    }
+    const { template } = result;
     if (!template) {
       throw new Error("expected a template");
     }
@@ -137,5 +143,66 @@ describe("trunk templates", () => {
     expect(template.model).toEqual({ family: "gpt-5.5" });
     expect(template.skills).toEqual([skillIdForSlug("summarize-pdf")]);
     expect(template.name).toBe("Ops");
+  });
+
+  it("refuses export when persona text looks like a secret, and never names the value", async () => {
+    const workspace = mkdtempSync(path.join(os.tmpdir(), "trunk-template-secret-"));
+    writeFileSync(path.join(workspace, "AGENTS.md"), "# Ops\nToken: ghp_1234567890abcdefghijklmnopqrstuvwxyz\n");
+    const cfg = { agents: { entries: { ops: { name: "Ops", workspace } } } } as unknown as BranchConfig;
+    const result = await exportTrunkTemplate({ cfg, agentId: "ops", env: {} });
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.error).toContain("looks like it contains a secret");
+    expect(result.error).not.toContain("ghp_");
+  });
+
+  it("names a tool-limited Trunk's restriction in its permissions instead of claiming no restrictions", async () => {
+    const workspace = mkdtempSync(path.join(os.tmpdir(), "trunk-template-limit-"));
+    writeFileSync(path.join(workspace, "AGENTS.md"), "# Ops\n");
+    const cfg = { agents: { entries: { ops: { name: "Ops", workspace, tools: { deny: ["exec"] } } } } } as unknown as BranchConfig;
+    const result = await exportTrunkTemplate({ cfg, agentId: "ops", env: {} });
+    if (!result.ok) {
+      throw new Error(result.error);
+    }
+    expect(result.template.permissions).toEqual([expect.stringContaining("has its own tool list")]);
+    expect(result.template.permissions).not.toContain(NO_RESTRICTIONS_PERMISSION);
+  });
+
+  it("states no restrictions only when the Trunk has none", async () => {
+    const workspace = mkdtempSync(path.join(os.tmpdir(), "trunk-template-free-"));
+    writeFileSync(path.join(workspace, "AGENTS.md"), "# Ops\n");
+    const cfg = { agents: { entries: { ops: { name: "Ops", workspace } } } } as unknown as BranchConfig;
+    const result = await exportTrunkTemplate({ cfg, agentId: "ops", env: {} });
+    if (!result.ok) {
+      throw new Error(result.error);
+    }
+    expect(result.template.permissions).toEqual([NO_RESTRICTIONS_PERMISSION]);
+  });
+
+  it("drops a malformed skill slug the same way on export and on import", async () => {
+    const workspace = mkdtempSync(path.join(os.tmpdir(), "trunk-template-skill-"));
+    writeFileSync(path.join(workspace, "AGENTS.md"), "# Ops\n");
+    const cfg = { agents: { entries: { ops: { name: "Ops", workspace, skills: ["Bad Slug", "summarize-pdf"] } } } } as unknown as BranchConfig;
+    const exported = await exportTrunkTemplate({ cfg, agentId: "ops", env: {} });
+    if (!exported.ok) {
+      throw new Error(exported.error);
+    }
+    expect(exported.template.skills).toEqual([skillIdForSlug("summarize-pdf")]);
+    expect(exported.warnings).toEqual([expect.stringContaining("Bad Slug")]);
+    const imported = parseTrunkTemplate({
+      format: "branch.trunk-template",
+      version: 1,
+      name: "Ops",
+      persona: { agentsMd: "" },
+      skills: [skillIdForSlug("Bad Slug"), skillIdForSlug("summarize-pdf")],
+      toolsets: {},
+    });
+    if (!imported.ok) {
+      throw new Error(imported.error);
+    }
+    expect(imported.template.skills).toEqual(exported.template.skills);
+    expect(imported.warnings).toEqual([expect.stringContaining("Bad Slug")]);
   });
 });
