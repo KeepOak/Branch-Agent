@@ -47,7 +47,8 @@ async function prepareBuildArtifacts() {
     'const { withDistArtifactOwnership } = await import("./scripts/lib/dist-artifact-ownership.mts");\n' +
     'const { ensureKyselyTypes } = await import("./scripts/generate-kysely-types.mts");\n' +
     'await withDistArtifactOwnership(process.cwd(), () => ensureKyselyTypes(process.cwd()));'], engineRoot);
-  for (const name of ['normalization-core', 'worker-runtime', 'net-policy', 'retry', 'gateway-protocol', 'gateway-client']) {
+  for (const name of ['normalization-core', 'worker-runtime', 'net-policy', 'retry',
+    'model-catalog-core', 'media-core', 'llm-core', 'gateway-protocol', 'gateway-client']) {
     await run(process.execPath, ['--import', './scripts/tsx.mjs',
       'scripts/build-workspace-package.mts', name], engineRoot);
   }
@@ -58,9 +59,15 @@ async function prepareBuildArtifacts() {
     'import { createRetainedOperation } from "@branch/worker-runtime/lifecycle";\n' +
     'await import("@branch/net-policy/redact-sensitive-url");\n' +
     'await import("@branch/retry");\n' +
+    'await import("@branch/model-catalog-core/model-catalog-refs");\n' +
+    'await import("@branch/media-core/constants");\n' +
     'assert.deepEqual(asRecord({ probe: true }), { probe: true });\n' +
     'assert.equal(typeof createRetainedOperation, "function");\n' +
     'console.log("PASS: SQLite worker native package resolution");'], path.join(engineRoot, 'src/infra'));
+  // The update-state child also reaches agent-core's existing llm-core dependency.
+  await run(process.execPath, ['--input-type=module', '--eval',
+    'await import("@branch/llm-core/types");\n' +
+    'console.log("PASS: update-state native package resolution");'], path.join(engineRoot, 'packages/agent-core/src'));
 }
 
 async function featureTestEnv(scratch) {

@@ -245,6 +245,12 @@ importers:
       '@branch/ai':
         specifier: workspace:*
         version: link:packages/ai
+      '@branch/media-core':
+        specifier: workspace:*
+        version: link:packages/media-core
+      '@branch/model-catalog-core':
+        specifier: workspace:*
+        version: link:packages/model-catalog-core
       '@branch/net-policy':
         specifier: workspace:*
         version: link:packages/net-policy
