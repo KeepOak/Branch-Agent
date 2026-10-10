@@ -1,6 +1,23 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { GATE_SCRIPTS, fetchFileText, fetchPrFiles, ghApi } from './merge-gate-trusted.mjs';
+import { GATE_SCRIPTS, fetchFileText, fetchPrFiles, gateApiBudget, ghApi } from './merge-gate-trusted.mjs';
+import { isRateLimitError } from './merge-gate-rate-limit.mjs';
+
+// Budget for every GitHub call in the job. The job limit is 5 minutes: this budget, about 90 s of checkout and setup, and a margin.
+export const DEFAULT_GATE_FILES_BUDGET_SECONDS = 120;
+
+// The job's rate-limit wait budget, from MERGE_GATE_WAIT_SECONDS. The job limit is this plus setup margin.
+export function gateFilesBudgetSeconds(env = process.env) {
+  const value = Number(env.MERGE_GATE_WAIT_SECONDS);
+  return Number.isInteger(value) && value > 0 ? value : DEFAULT_GATE_FILES_BUDGET_SECONDS;
+}
+
+export function formatGateFilesError(error, budgetSeconds) {
+  if (isRateLimitError(error)) {
+    return `GitHub API rate limit outlasted the ${budgetSeconds}s wait budget. This is not a gate-file failure; re-run gate-files-fresh.`;
+  }
+  return `gate-files-fresh could not read GitHub: ${String(error?.message ?? error).split('\n')[0]}`;
+}
 
 export const KEEP_MAIN_MESSAGE = 'merge main in and keep main\'s version of this file';
 
@@ -317,13 +334,22 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exit(1);
   }
 
-  const result = await checkPullRequest({
-    repo,
-    token,
-    prNumber,
-    headSha,
-    mainRef,
-  });
+  const budgetSeconds = gateFilesBudgetSeconds(process.env);
+  gateApiBudget.budgetSeconds = budgetSeconds;
+  gateApiBudget.startedAt = Date.now();
+  let result;
+  try {
+    result = await checkPullRequest({
+      repo,
+      token,
+      prNumber,
+      headSha,
+      mainRef,
+    });
+  } catch (error) {
+    console.error(formatGateFilesError(error, budgetSeconds));
+    process.exit(1);
+  }
   const report = formatReport(result);
   if (!result.ok) {
     console.error(report);
