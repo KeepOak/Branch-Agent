@@ -4,6 +4,18 @@ import { projectSessionDisplayMessage } from "./session-display-projection.js";
 const SESSION_LAST_MESSAGE_PREVIEW_DEFAULT_CHARS = 240;
 
 describe("projectSessionDisplayMessage", () => {
+  test("never projects the engine's own wake turns as a person's message", () => {
+    const exec = { role: "user", content: "[Branch Agent exec completion]\nDisable automatic completion turns with tools.exec.notifyOnExit=false." };
+    const heartbeat = { role: "user", content: "[Branch Agent heartbeat poll]" };
+    const byProvenance = { role: "user", content: "Check the build", provenance: { kind: "internal_system", sourceTool: "exec" } };
+    const person = { role: "user", content: "[Draft] the notes" };
+    expect(projectSessionDisplayMessage(exec)).toBeNull();
+    expect(projectSessionDisplayMessage(heartbeat)).toBeNull();
+    expect(projectSessionDisplayMessage(byProvenance)).toBeNull();
+    expect(projectSessionDisplayMessage(person)).toEqual({ role: "user", text: "[Draft] the notes" });
+    expect(projectSessionDisplayMessage(exec, { view: "model-context" })).not.toBeNull();
+  });
+
   test("keeps visible user and assistant text while excluding non-display rows", () => {
     const messages = [
       { role: "user", content: "Initial request" },
