@@ -28,7 +28,7 @@ export function ModelsSections({ m, tab, openSettings }: { m: ModelsCtx; tab: st
     [true, <Mixtures key="mix" />],
     [tab === "second", <SecondMore key="second" />],
     [t && tab === "media", <MediaMore key="media" />],
-    [t && tab === "connections", <ConnectionsTechnical key="conntech" m={m} />],
+    [t && tab === "defaults", <ConnectionsTechnical key="conntech" m={m} />],
     [tab === "defaults", <HowTrunksWork key="how" />],
     [true, <DecisionModels key="decide" m={m} />],
     [t, <DecisionTechnical key="decidet" />],

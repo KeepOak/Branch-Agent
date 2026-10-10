@@ -80,6 +80,11 @@ export function movedUp(acc: Account, all: Account[]): string[] {
   return orderAfterMove(acc, all, "up");
 }
 
+/** Featured services with no account yet: each gets a Sign in button, as Models > Connections used to offer. */
+export function unsetFeatured(caps: unknown[], providers: Provider[]): { provider: string }[] {
+  return (caps as { provider: string; loginOptions?: { featured?: boolean }[] }[]).filter((c) => !providers.some((p) => p.provider === c.provider && p.profiles.length) && c.loginOptions?.some((o) => o.featured));
+}
+
 export function AccountsPage(props: SettingsPageProps) {
   const scope = useScope();
   // As in Models: with several Trunks the engine needs an owner, so the household view uses the default Trunk.
@@ -99,7 +104,7 @@ export function AccountsPage(props: SettingsPageProps) {
   return (
     <Page title={props.title} lede="Manage model accounts and the order Branch uses them." help="Your model accounts, the order Branch uses them in, which Trunks use each, and your keepoak.com account.">
       <AccountsStatus loading={status.loading} error={status.error} count={all.length} unavailable={record(status.data?.unavailable).message} />
-      <OrderSection {...props} all={all} reload={status.reload} onAdd={setAdd} agent={agent} />
+      <OrderSection {...props} all={all} reload={status.reload} onAdd={setAdd} agent={agent} unset={unsetFeatured(caps, providers)} />
       <CodingApps engine={props.engine} />
       <WhenOneRunsOut engine={props.engine} />
       <OwnAccounts engine={props.engine} />
@@ -119,7 +124,7 @@ function AccountsStatus({ loading, error, count, unavailable }: { loading: boole
   return <Status title={`${count} ${count === 1 ? "account" : "accounts"} signed in`}>Branch never sees your passwords. Each account is billed by its own site.</Status>;
 }
 
-type OrderProps = SettingsPageProps & { all: Account[]; reload: () => Promise<void>; onAdd: (s: AddStart) => void; agent: { agentId?: string } };
+type OrderProps = SettingsPageProps & { all: Account[]; reload: () => Promise<void>; onAdd: (s: AddStart) => void; agent: { agentId?: string }; unset: { provider: string }[] };
 type PendingPause = { acc: Account; pause: Pause };
 
 /** A pause from a choice: an open pause for "until I turn it back on", or a timed one. */
@@ -128,7 +133,7 @@ function pauseFrom(choice: PauseChoice, now = new Date()): Pause {
   return until === undefined ? {} : { until };
 }
 
-function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
+function OrderSection({ engine, all, reload, onAdd, agent, unset }: OrderProps) {
   const save = useSaveRunner();
   const lv = useLevel();
   const [menu, setMenu] = useState<{ at: MenuAnchor; acc: Account } | null>(null);
@@ -199,6 +204,7 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
         <Btn pri onClick={() => onAdd({})}><Icon name="plus" small />Add an account</Btn>
         <Btn onClick={() => onAdd({ provider: "anthropic" })}>Add a Claude account</Btn>
         {brands.filter((p) => p.provider !== "anthropic").map((p) => <Btn key={p.provider} onClick={() => onAdd({ provider: p.provider })}>Another {serviceName(p.provider, p.displayName)} account</Btn>)}
+        {unset.map((c) => <Btn key={c.provider} onClick={() => onAdd({ provider: c.provider })}>Sign in to {serviceName(c.provider)}</Btn>)}
       </Acts>
       {menu ? <AccountMenu engine={engine} acc={menu.acc} all={all} at={menu.at} agent={agent} reload={reload} setOrder={setOrder}
         pause={(choice) => askPause(menu.acc, choice)} resume={() => void sendPause(menu.acc, null)} onClose={() => setMenu(null)} /> : null}

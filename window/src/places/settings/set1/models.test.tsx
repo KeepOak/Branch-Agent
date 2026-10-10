@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { KitProvider, type SaveReport } from "../kit";
 import { ModelsPage } from "./models";
-import { connectionsOf, modelsOf } from "./models-data";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const MODELS = { models: [
@@ -42,18 +41,6 @@ const click = async (text: string) => act(async () => [...host.querySelectorAll<
 const patches = (request: ReturnType<typeof vi.fn>) => request.mock.calls.filter(([m]) => m === "config.patch").map(([, p]) => JSON.parse((p as { raw: string }).raw));
 
 describe("Settings › Models", () => {
-  it("connections are the services with accounts, then this computer", () => {
-    const conns = connectionsOf(modelsOf(MODELS), AUTH.providers as never);
-    expect(conns.map((c) => [c.id, c.name, c.models.length])).toEqual([["openai", "ChatGPT", 1], ["anthropic", "Claude", 1], ["local", "This computer", 1]]);
-  });
-
-  it("Connections groups each service's accounts with who answers first", async () => {
-    const { engine } = engineOf();
-    await render(engine);
-    expect([...host.querySelectorAll(".acct-gh b")].map((b) => b.textContent)).toEqual(["ChatGPT", "Claude"]);
-    expect(host.querySelector(".acct-r .pill.ok")?.textContent).toBe("Answers first");
-  });
-
   it("Everyday answers sets the default model to that connection's default", async () => {
     const { engine, request } = engineOf({ agents: { defaults: { model: { primary: "openai/gpt-5.5" } } } });
     await render(engine);
@@ -120,21 +107,4 @@ describe("Settings › Models", () => {
     expect([...host.querySelectorAll(".sec > h2")].filter((h) => h.textContent === "Per account")).toHaveLength(1);
   });
 
-  it("with no account and no local model it says No model set up and offers Add an account", async () => {
-    const request = vi.fn(async (method: string) => method === "config.get" ? { hash: "h", valid: true, config: {} } : method === "models.authStatus" ? { providers: [] } : { models: [] });
-    await render({ request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine);
-    expect(host.textContent).toContain("No model set up");
-    expect([...host.querySelectorAll("button")].filter((b) => b.textContent?.trim() === "Add an account")).toHaveLength(1);
-    await click("Add an account");
-    expect(document.querySelector('[data-testid="add-account"]')).not.toBeNull();
-  });
-
-  it("calls the unconfigured xAI service by its product name", async () => {
-    const request = vi.fn(async (method: string) => method === "config.get" ? { hash: "h", valid: true, config: {} } : method === "models.authStatus" ? {
-      providers: [], providerCapabilities: [{ provider: "xai", loginOptions: [{ featured: true }] }],
-    } : { models: [] });
-    await render({ request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine);
-    expect(host.querySelector(".acct-gh > b")?.textContent).toBe("xAI");
-    expect([...host.querySelectorAll(".acct-g .add-row")].map((b) => b.textContent)).toEqual(["Sign in to xAI"]);
-  });
 });

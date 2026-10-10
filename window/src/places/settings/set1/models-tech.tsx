@@ -37,16 +37,13 @@ export function ConnectionsTechnical({ m }: { m: ModelsCtx }) {
   const save = useSaveRunner();
   const refresh = m.cfg.get(["models", "catalogRefresh", "enabled"]);
   return (
-    <Sec title="Connections, technical" group="Accounts">
-      <Ctl title="Model services from plugins" sub="Add another model service through a plugin." help="A plugin can bring a way to reach a model service Branch doesn’t know yet." off={NONE}><Btn sm>See installed</Btn></Ctl>
-      <Ctl title="Retired models and hiccups" sub="Try a named successor when a model is retired." help="Automatic: a retired model moves to its named successor, and a brief failure is tried again." off={NONE}><Btn sm>Last 7 days</Btn></Ctl>
+    <Sec title="Model list, technical" group="Model list">
       <Ctl title="Keep the model list and prices up to date" sub="Checks the public model list every few hours." help="Checks the public model list every few hours. Nothing about you is sent.">
         <Switch checked={refresh !== false} label="Keep the model list and prices up to date" onChange={(v) => void m.cfg.set(["models", "catalogRefresh", "enabled"], v)} />
       </Ctl>
       <Ctl title="Model list" sub={m.catalog.data?.refreshFailed === true ? "The last check failed. Try again." : undefined}>
         <Btn sm onClick={() => void save(async () => { await m.engine.request("models.list", { refresh: true, ...m.agent }); await m.catalog.reload(); })}>Check now</Btn>
       </Ctl>
-      <Ctl title="Find free models" sub="Free models on OpenRouter, ranked for use as a fallback." help="Free models on OpenRouter, ranked for use as a fallback. Listed only. Connect OpenRouter to check each with a real call." off={NONE}><Btn sm>Look now</Btn></Ctl>
     </Sec>
   );
 }

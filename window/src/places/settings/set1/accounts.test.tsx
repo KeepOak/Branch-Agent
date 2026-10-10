@@ -206,3 +206,11 @@ describe("Settings › Accounts on a partial engine reply", () => {
     expect(request).toHaveBeenCalledWith("models.authPauseSet", { provider: "openai", profileId: "openai:b", paused: true });
   });
 });
+
+describe("Settings › Accounts sign-in for featured services", () => {
+  it("offers Sign in to a featured service with no account yet, as Models > Connections did", async () => {
+    const { engine } = engineOf({ "models.authStatus": { providers: [], providerCapabilities: [{ provider: "xai", loginOptions: [{ featured: true }] }] } });
+    await render(engine);
+    expect([...host.querySelectorAll("button")].map((b) => b.textContent)).toContain("Sign in to xAI");
+  });
+});

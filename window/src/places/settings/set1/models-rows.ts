@@ -4,7 +4,6 @@ import type { RowEntry } from "../kit";
 const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "models", title, sec, group: sec.startsWith("Per connection") ? "Per account" : sec.replace(/, (more|technical|in depth)$/, ""), lv }));
 
 export const MODELS_ROWS: RowEntry[] = [
-  ...rows("Connections", 0, ["Find models on this computer"]),
   ...rows("Defaults", 0, ["Reading pictures", "Everyday answers", "Planning and hard problems", "Quick and cheap jobs", "Summaries", "If the model fails"]),
   ...rows("Second opinion", 0, ["Ask a second model on hard questions"]),
   ...rows("Media", 0, ["Make pictures", "Make short videos"]),
@@ -22,7 +21,7 @@ export const MODELS_ROWS: RowEntry[] = [
   ...rows("Model jobs", 1, ["Looking at pictures", "Finding things on the screen", "Applying a plan’s edits", "Routers"]),
   ...rows("Retries and timeouts", 2, ["Retries when a service fails", "Wait for the first word", "Model rounds per step", "Tool and command timeout", "Largest tool answer kept whole"]),
   ...rows("Per connection", 2, ["Service tier", "Slow down near a rate limit", "Keep Claude’s cache warm", "Fewer rounds"]),
-  ...rows("Connections, technical", 2, ["Model services from plugins", "Retired models and hiccups", "Keep the model list and prices up to date", "Model list", "Find free models"]),
+  ...rows("Model list, technical", 2, ["Keep the model list and prices up to date", "Model list"]),
   ...rows("Decision models, technical", 2, ["Ask the big model when it’s less sure than", "Longest list it filters at once"]),
   ...rows("Attachments", 2, ["Largest file you can attach"]),
   ...rows("Helpers, technical", 2, ["Conversations a Trunk can see", "Helpers a task may keep open", "Helper time limit", "Helpers at once in a swarm"]),
