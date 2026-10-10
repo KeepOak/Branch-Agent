@@ -75,26 +75,35 @@ function Advanced({ engine, agentId, name, draft, models, setMay }: { engine: Wi
   );
 }
 
-type ToolsetRow = { id: string; label: string; description: string };
+type ToolsetRow = { id: string; label: string; description: string; offered?: boolean };
 
-/** One switch per toolset the engine offers (tools.catalog). Browser is the browser switch, with its own lock reason. */
+const NOT_OFFERED = "Its own tool list leaves these tools out, so this switch has no effect.";
 /** Until tools.catalog answers, or when it doesn't, the browser switch stays available on its own. */
 const BROWSER_ONLY: ToolsetRow[] = [{ id: "browser", label: "Browser", description: "Open pages, click, type and read them in the built-in browser." }];
 
+/** One switch per toolset the engine offers (tools.catalog). Each switch shows the state the Trunk's own tool list allows. */
 function ToolsSection({ engine, agentId, may, setMay }: { engine: WindowEngine; agentId: string; may: May; setMay: (m: Partial<May>) => void }) {
   const catalog = useResource<{ toolsets?: ToolsetRow[] }>(engine, "tools.catalog", { agentId });
   const toolsets = catalog.data?.toolsets?.length ? catalog.data.toolsets : BROWSER_ONLY;
+  const rowFor = (t: ToolsetRow) => {
+    const browser = t.id === "browser";
+    const lock = (browser ? may.browseLock : "") || (t.offered === false ? NOT_OFFERED : "");
+    const label = browser ? "Use the browser" : `Use ${t.label}`;
+    const on = browser ? may.browse : may.toolsets[t.id] !== false;
+    const onChange = (next: boolean) => (browser ? setMay({ browse: next }) : setMay({ toolsets: { ...may.toolsets, [t.id]: next } }));
+    return (
+      <Row key={t.id} title={t.label} hint={t.description} off={lock || undefined}>
+        {lock
+          ? <button type="button" role="switch" aria-checked={false} aria-label={label} className="switch" disabled />
+          : <Switch label={label} on={on} onChange={onChange} />}
+      </Row>
+    );
+  };
   return (
     <section className="tk-tools" aria-label="Tools">
       <h4 className="tk-tools-title">Tools</h4>
       <p className="tk-hint">Switch off what this Trunk should never reach. The reply tool, its questions and its status stay on.</p>
-      {toolsets.map((t) => t.id === "browser"
-        ? <Row key={t.id} title={t.label} hint={t.description} off={may.browseLock || undefined}>
-            {may.browseLock ? <button type="button" role="switch" aria-checked={false} aria-label="Use the browser" className="switch" disabled /> : <Switch label="Use the browser" on={may.browse} onChange={(browse) => setMay({ browse })} />}
-          </Row>
-        : <Row key={t.id} title={t.label} hint={t.description}>
-            <Switch label={`Use ${t.label}`} on={may.toolsets[t.id] !== false} onChange={(on) => setMay({ toolsets: { ...may.toolsets, [t.id]: on } })} />
-          </Row>)}
+      {toolsets.map(rowFor)}
     </section>
   );
 }

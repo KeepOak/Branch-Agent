@@ -306,3 +306,22 @@ describe("Trunk profile and studio", () => {
     expect(byText("Make it")).toBeTruthy();
   });
 });
+
+describe("Trunk tools rows", () => {
+  it("shows a toolset off and its switch disabled when the Trunk's own tool list leaves its tools out", async () => {
+    const catalog = {
+      toolsets: [
+        { id: "files", label: "Files", description: "Read and edit files.", tools: ["read"], offered: true },
+        { id: "shell", label: "Shell", description: "Run commands.", tools: ["exec"], offered: false },
+      ],
+    };
+    await mount(<TrunkEditor engine={engine(fake({ "tools.catalog": catalog }))} agentId="birch" level="regular" tab="may" onClose={() => {}} />);
+    const shell = document.querySelector<HTMLButtonElement>('[aria-label="Use Shell"]');
+    expect(shell?.disabled).toBe(true);
+    expect(shell?.getAttribute("aria-checked")).toBe("false");
+    expect(shell?.closest(".tk-ctl")?.textContent).toContain("Its own tool list leaves these tools out");
+    const files = document.querySelector<HTMLButtonElement>('[aria-label="Use Files"]');
+    expect(files?.disabled).toBe(false);
+    expect(files?.getAttribute("aria-checked")).toBe("true");
+  });
+});

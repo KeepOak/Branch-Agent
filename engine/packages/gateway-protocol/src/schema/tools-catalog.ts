@@ -68,6 +68,8 @@ export const ToolCatalogToolsetSchema = closedObject({
   label: NonEmptyString,
   description: Type.String(),
   tools: Type.Array(NonEmptyString),
+  /** Whether this Trunk's own tool list still offers any of the toolset's tools. */
+  offered: Type.Optional(Type.Boolean()),
 });
 
 /** Tool catalog result for agent configuration UI. */
