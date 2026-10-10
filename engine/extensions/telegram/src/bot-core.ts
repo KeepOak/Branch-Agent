@@ -64,6 +64,7 @@ import { formatTelegramRawUpdateForLog } from "./raw-update-log.js";
 import type { TelegramSendChatActionHandler } from "./sendchataction-401-backoff.js";
 import { createTelegramSequentializer } from "./sequentialize.js";
 import { createTelegramThreadBindingManager } from "./thread-bindings.js";
+import { loadContactTopicMirrors } from "./contact-topic-mirror.js";
 
 export async function createTelegramBotCore(
   opts: TelegramBotOptions & { telegramDeps: TelegramBotDeps },
@@ -361,6 +362,7 @@ export async function createTelegramBotCore(
   handlers.register(nativeCommandCallbackDispatcher);
 
   const originalStop = bot.stop.bind(bot);
+  await loadContactTopicMirrors(account.accountId);
   // Acquire the account owner only after bot setup has succeeded.
   const threadBindingManager = threadBindingPolicy.enabled
     ? await createTelegramThreadBindingManager({

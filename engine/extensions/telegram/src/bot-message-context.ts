@@ -364,6 +364,7 @@ export const buildTelegramMessageContext = async ({
     botHasTopicsEnabled:
       (threadSpec.scope === "dm" && msg.is_topic_message === true) ||
       resolveTelegramBotHasTopicsEnabled(primaryCtx.me),
+    preserveBoundTopic: conversationRoute.contactTopicMirror === true,
   });
   route = {
     ...route,

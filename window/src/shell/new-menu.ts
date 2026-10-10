@@ -15,6 +15,28 @@ export async function createTopic(request: (method: string, params: unknown) => 
     displayName, titleSource: first.slice(0, 1000), ...options,
   }) as { key?: unknown };
   if (typeof result.key !== "string" || !result.key) throw new Error("The engine made no conversation.");
+  try {
+    const parent = await request("sessions.describe", { key: `agent:${agentId}:${mainKey}` }) as {
+      session?: { deliveryContext?: { channel?: string; to?: string; accountId?: string } };
+    };
+    const delivery = parent.session?.deliveryContext;
+    const chatId = delivery?.channel === "telegram"
+      ? /^(?:telegram:)?([1-9]\d*)$/.exec(delivery.to ?? "")?.[1]
+      : undefined;
+    if (chatId) {
+      await request("message.action", {
+        channel: "telegram", action: "topic-create", sessionKey: result.key,
+        idempotencyKey: `contact-topic:${result.key}`,
+        params: {
+          chatId, name: displayName, contactTopicMirror: true,
+          ...(delivery?.accountId ? { accountId: delivery.accountId } : {}),
+        },
+      });
+    }
+  } catch (error) {
+    // The first message already created the conversation; a Telegram outage cannot undo it.
+    console.warn("Telegram topic mirror unavailable", error);
+  }
   return result.key;
 }
 

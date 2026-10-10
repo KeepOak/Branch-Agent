@@ -323,7 +323,7 @@ export function resolveThreadSessionKeys(params: {
   normalizeThreadId?: (threadId: string) => string;
 }): { sessionKey: string; parentSessionKey?: string } {
   const threadId = (params.threadId ?? "").trim();
-  if (!threadId) {
+  if (!threadId || threadId === "__root__") {
     return { sessionKey: params.baseSessionKey, parentSessionKey: undefined };
   }
   const normalizedThread =
