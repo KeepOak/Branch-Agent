@@ -27,7 +27,7 @@ function props(rail = false): SidebarProps {
     trunkName: (id) => id ?? "", personName: "Owner", hasUnread: true,
     filterSlot: null, summary: null, emptyLine: null, search: null, searchResults: null,
     rail, onRailSearch: () => {}, onOpen: () => {}, onNew: () => {}, onMenu: () => {},
-    onPin: () => {}, onArchive: () => {}, onMarkAllRead: () => {}, onPerson: () => {}, onSettings: () => {} };
+    onPin: () => {}, onArchive: () => {}, onMarkAllRead: () => {}, onPerson: () => {} };
 }
 async function show(rail = false) {
   const host = document.body.appendChild(document.createElement("div"));
