@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { expectDefined } from "@branch/normalization-core";
 import { afterAll, afterEach, beforeEach, expect, vi } from "vitest";
+import * as artifactOwnership from "../../scripts/lib/dist-artifact-lock.mts";
 import type { ConfigFileSnapshot } from "../config/types.branch.js";
 import {
   GATEWAY_SERVICE_RUNTIME_PID_ENV,
@@ -130,6 +131,23 @@ function withUpdateCliHostPlatform<T>(run: () => T): T {
   }
 }
 
+async function withUpdateCliHostPlatformAsync<T>(run: () => Promise<T>): Promise<T> {
+  const descriptor = expectDefined(
+    Object.getOwnPropertyDescriptor(process, "platform"),
+    "host platform descriptor",
+  );
+  Object.defineProperty(process, "platform", {
+    configurable: true,
+    enumerable: descriptor.enumerable,
+    value: sqliteHostPlatform,
+  });
+  try {
+    return await run();
+  } finally {
+    Object.defineProperty(process, "platform", descriptor);
+  }
+}
+
 type UpdateCliLifecycleFixture = {
   baseConfig: ConfigFileSnapshot["config"];
   baseSnapshot: ConfigFileSnapshot;
@@ -228,6 +246,21 @@ export function registerUpdateCliLifecycle(fixture: UpdateCliLifecycleFixture): 
     // Keep actual PID/start reads, switching only their synchronous platform dispatch.
     vi.spyOn(pidAlive, "getFileLockProcessStartTime").mockImplementation((...args) =>
       withUpdateCliHostPlatform(() => readHostProcessStartTime(...args)),
+    );
+    // Artifact locks own real host directories, not the service's simulated OS.
+    // Retain actual acquisition, identity checks and exclusive release.
+    const acquireHostArtifacts = artifactOwnership.acquireDistArtifactOwnership;
+    vi.spyOn(artifactOwnership, "acquireDistArtifactOwnership").mockImplementation(
+      async (...args) => {
+        const lock = await withUpdateCliHostPlatformAsync(() => acquireHostArtifacts(...args));
+        return {
+          ...lock,
+          verifyStillHeld: () => withUpdateCliHostPlatformAsync(() => lock.verifyStillHeld()),
+          release: () => withUpdateCliHostPlatformAsync(() => lock.release()),
+          [Symbol.asyncDispose]: () =>
+            withUpdateCliHostPlatformAsync(() => lock[Symbol.asyncDispose]()),
+        };
+      },
     );
     // Real handoff storage has the host's permission model and directory durability.
     // Keep its real identity checks and transactions while services simulate another OS.
