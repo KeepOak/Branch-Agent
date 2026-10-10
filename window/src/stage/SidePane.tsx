@@ -216,7 +216,7 @@ export function SidePane({ engine, name, blocks, running, card, cardError, tab, 
           <button type="button" className="ib" aria-pressed={prefs.min} aria-label="Minimize" title="Minimize" onClick={() => set({ min: !prefs.min })}>
             <SIcon name="minimize" small />
           </button>
-          <button type="button" className="ib" aria-haspopup="menu" aria-label="Layout" title="Layout" onClick={(e) => layoutMenu(at(e, true))}>
+          <button type="button" className="ib" aria-haspopup="menu" aria-label="Panel layout" title="Panel layout" onClick={(e) => layoutMenu(at(e, true))}>
             <SIcon name="layout" small />
           </button>
           <button type="button" className="ib" aria-label="Close the side panel" title="Close · Ctrl Shift K" onClick={onClose}>

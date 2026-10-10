@@ -99,6 +99,12 @@ describe("side pane", () => {
     expect(css).toMatch(/\.conversation-pane\.pane-pn\s+\.pane-tabs\s+\.ptab-pn\s*\{[^}]*overflow:\s*visible/);
     expect(css).not.toMatch(/\.pane-pn\.at-right:not\(\.focus\)\s*\{[^}]*overflow:\s*hidden/);
   });
+  it("names the layout control Panel layout", async () => {
+    await render(engineWith({}).engine);
+    const control = container.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"][aria-label="Panel layout"]')!;
+    expect(control.title).toBe("Panel layout");
+    expect(container.querySelector('[aria-label="Layout"]')).toBeNull();
+  });
   it("keeps Conversations off the default strip so Activity is the first tab", async () => {
     const topics = { items: [] as TopicListItem[], name: "Ada", onOpen: () => {} };
     await render(engineWith({}).engine, DEFAULT_PANE_TAB, vi.fn(), topics);
