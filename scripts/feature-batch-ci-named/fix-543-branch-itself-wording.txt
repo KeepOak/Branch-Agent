@@ -1,0 +1,1 @@
+window:src/places/settings/set2/set2.test.tsx
