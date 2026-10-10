@@ -30,6 +30,8 @@ export type TrunkQueueItem = {
   blocked_reason?: string;
   /** The gateway process (epoch) that made this claim. Its run cannot outlive that process. */
   gateway_epoch?: string;
+  /** Bumped each time a claim is stopped by the hard cap, so the stopped attempt is fenced off for good. */
+  fence?: number;
 };
 
 export type TrunkQueueStatus = "queued" | "claimed" | "released" | "blocked" | "done";
@@ -423,11 +425,42 @@ export function queueRunId(id: string, claimId: string): string {
 
 const ENDED_RUN_STATUSES = new Set(["ok", "error", "aborted"]);
 
+/** The gateway no longer has this run: it finished long ago, or its record was lost. */
+function isRunNotFoundError(error: unknown): boolean {
+  return /agent run was not found/.test(errorText(error));
+}
+
 /**
- * Whether a reaper may free this claim. Within the current gateway epoch only a terminal run status counts; a
- * pending, timed-out or unknown answer keeps the claim held, so its job is not dispatched while the run may be live.
- * A claim from an earlier epoch cannot still be running (the process that held its run has exited), so it is freed
- * whatever the answer. Without the answer the claim is not freed.
+ * What the gateway says about the claim's run: its status, "gone" when the record is missing, or undefined when the
+ * Trunk is not ready to answer.
+ */
+async function observeRun(
+  gw: TrunkQueueGateway,
+  row: TrunkQueueItem,
+): Promise<{ status: string | undefined } | "gone" | undefined> {
+  try {
+    const result = rec(
+      await gw.request("agent.wait", {
+        runId: queueRunId(row.id, row.claim_id ?? ""),
+        timeoutMs: 0,
+      }),
+    );
+    return { status: typeof result.status === "string" ? result.status : undefined };
+  } catch (error) {
+    if (isRunNotFoundError(error)) {
+      return "gone";
+    }
+    if (isTrunkUnavailableError(error)) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Whether a reaper may free this claim. A claim from an earlier gateway epoch cannot still be running, so it is
+ * freed whatever the answer. Within the current epoch it is freed only when its run has ended (a terminal status) or
+ * the gateway no longer has the run. Pending, timed-out or unknown keeps it held.
  */
 async function claimMayRelease(gw: TrunkQueueGateway, row: TrunkQueueItem): Promise<boolean> {
   if (!row.claim_id) {
@@ -436,17 +469,48 @@ async function claimMayRelease(gw: TrunkQueueGateway, row: TrunkQueueItem): Prom
   if (row.gateway_epoch !== GATEWAY_EPOCH) {
     return true;
   }
-  try {
-    const result = rec(
-      await gw.request("agent.wait", { runId: queueRunId(row.id, row.claim_id), timeoutMs: 0 }),
-    );
-    return typeof result.status === "string" && ENDED_RUN_STATUSES.has(result.status);
-  } catch (error) {
-    if (isTrunkUnavailableError(error)) {
-      return false;
-    }
-    throw error;
+  const observed = await observeRun(gw, row);
+  if (observed === "gone") {
+    return true;
   }
+  return (
+    observed !== undefined &&
+    observed.status !== undefined &&
+    ENDED_RUN_STATUSES.has(observed.status)
+  );
+}
+
+/**
+ * Stops a claim whose run has been silent past the hard cap. The abort is confirmed by the run's own status before the
+ * claim is freed. Returns "stopped" when the run is confirmed ended or gone, otherwise "unconfirmed".
+ */
+async function stopSilentClaim(
+  gw: TrunkQueueGateway,
+  row: TrunkQueueItem,
+): Promise<"stopped" | "unconfirmed"> {
+  if (!row.claim_id || !row.claimed_by) {
+    return "unconfirmed";
+  }
+  try {
+    await gw.request("sessions.abort", {
+      key: row.thread_key,
+      runId: queueRunId(row.id, row.claim_id),
+      agentId: row.claimed_by,
+    });
+  } catch (error) {
+    if (!isRunNotFoundError(error)) {
+      return "unconfirmed";
+    }
+  }
+  const observed = await observeRun(gw, row);
+  if (observed === "gone") {
+    return "stopped";
+  }
+  return observed !== undefined &&
+    observed.status !== undefined &&
+    ENDED_RUN_STATUSES.has(observed.status)
+    ? "stopped"
+    : "unconfirmed";
 }
 
 /** Whether the Trunk has a live run, or undefined when it is not ready to answer. Other errors still throw. */
@@ -524,10 +588,17 @@ export async function releaseStaleQueueClaims(params: {
       continue;
     }
     if (at - (row.active_at ?? row.claimed_at ?? at) >= HARD_CLAIM_CAP_MS) {
+      if ((await stopSilentClaim(params.gateway, row)) === "unconfirmed") {
+        params.log?.(
+          `Could not stop ${row.title} on ${agentId} after 4 hours without finishing; it stays claimed. Needs attention.`,
+        );
+        continue;
+      }
+      row.fence = (row.fence ?? 0) + 1;
       release(row, at);
       write(rows, at, params.env);
       params.log?.(
-        `trunk queue: released job "${row.title}" (${row.id}) from ${agentId}: its run had no activity for 4 hours`,
+        `Stopped ${row.title} on ${agentId} after 4 hours without finishing; it is back in the queue.`,
       );
       continue;
     }
