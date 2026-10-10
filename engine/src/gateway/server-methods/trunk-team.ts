@@ -160,14 +160,17 @@ function singleFlightApprove(
   goal: string,
   proposalHash: string,
 ): Promise<ApproveOutcome> {
-  const running = teamApprovalsInFlight.get(teamId);
+  // Keyed by team and proposal: a second approve of the same proposal shares the first outcome, and a different
+  // proposal for the same team runs on its own, never handed the other one's answer.
+  const key = `${teamId}:${proposalHash}`;
+  const running = teamApprovalsInFlight.get(key);
   if (running) {
     return running;
   }
   const started = approveOnce(context, goal, proposalHash).finally(() => {
-    teamApprovalsInFlight.delete(teamId);
+    teamApprovalsInFlight.delete(key);
   });
-  teamApprovalsInFlight.set(teamId, started);
+  teamApprovalsInFlight.set(key, started);
   return started;
 }
 

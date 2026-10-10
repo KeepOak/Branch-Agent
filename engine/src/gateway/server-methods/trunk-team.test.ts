@@ -171,6 +171,23 @@ describe("placement on create", () => {
 });
 
 describe("concurrent approvals", () => {
+  it("runs a different proposal for the same team on its own, without its answer", async () => {
+    const hashAlone = await proposalHash(goal, []);
+    const hashPaired = await proposalHash(goal, ["node-a"]);
+    expect(hashPaired).not.toBe(hashAlone);
+    mocks.approval.mockResolvedValue("allow");
+
+    const [alone, paired] = await Promise.all([
+      call("trunks.team.approve", { goal, proposalHash: hashAlone }, []),
+      call("trunks.team.approve", { goal, proposalHash: hashPaired }, ["node-a"]),
+    ]);
+
+    expect(mocks.approval).toHaveBeenCalledTimes(2);
+    expect(alone.mock.calls[0]?.[1]).toMatchObject({ status: "applied" });
+    expect(paired.mock.calls[0]?.[1]).toMatchObject({ status: "applied" });
+    const remote = mocks.createAgent.mock.calls.filter(([params]) => params.entry.tools !== undefined);
+    expect(remote.length).toBeGreaterThan(0);
+  });
   it("creates each Trunk once when the same team is approved twice at the same time", async () => {
     const hash = await proposalHash(goal);
     let release: (value: string) => void = () => undefined;
