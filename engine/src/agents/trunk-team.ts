@@ -62,17 +62,22 @@ export type TeamProposalResult =
   | { ok: true; proposal: TeamProposal }
   | { ok: false; reason: string };
 
-/** Plain text only: no markup, no control characters, no line breaks. */
-function cleanText(value: string, max: number): string {
-  const printable = [...value]
-    .map((ch) => (isControl(ch) ? " " : "<>|".includes(ch) ? "" : ch))
-    .join("");
-  return printable.replace(/\s+/gu, " ").trim().slice(0, max).trim();
-}
+/** Plain text only: no markup, no hidden or direction-changing characters, no control characters, no line breaks. */
+const MARKUP = new Set(["<", ">", "|", "*", "_", "`", "~", "[", "]", "\\", "#"]);
 
-function isControl(ch: string): boolean {
-  const code = ch.charCodeAt(0);
-  return code < 32 || code === 127;
+function cleanText(value: string, max: number): string {
+  const plain = [...value]
+    .map((ch) => {
+      if (/\p{Cc}/u.test(ch) || ch === "\u2028" || ch === "\u2029") {
+        return " ";
+      }
+      if (/\p{Cf}/u.test(ch)) {
+        return "";
+      }
+      return MARKUP.has(ch) ? "" : ch;
+    })
+    .join("");
+  return plain.replace(/\s+/gu, " ").trim().slice(0, max).trim();
 }
 
 /** Same goal, same team: the id is the only thing a retried approval needs to recognise. */

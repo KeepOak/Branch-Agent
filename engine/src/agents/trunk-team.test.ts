@@ -153,4 +153,33 @@ describe("a drafted team", () => {
     );
     expect(result.proposal.jobs[0]?.briefText.match(/<!--/g)).toHaveLength(1);
   });
+
+  it("removes hidden, direction-changing, and line-separator characters from drafted text", () => {
+    const result = buildTeamProposal({
+      goal: "Ship\u202e it",
+      models: ["anthropic/claude-sonnet"],
+      machines: ["this"],
+      roles: [{ name: "Ed\u200bitor\u2066", job: "Edit\u2028the draft\u2029now." }],
+    });
+    if (!result.ok) {
+      throw new Error(result.reason);
+    }
+    expect(result.proposal.goal).toBe("Ship it");
+    expect(result.proposal.members[0]?.name).toBe("Builder Editor");
+    expect(result.proposal.members[0]?.job).toBe("Edit the draft now.");
+  });
+
+  it("strips markdown, so drafted text reads as plain text in the card and the Inbox", () => {
+    const result = buildTeamProposal({
+      goal: "Ship **it** now",
+      models: ["anthropic/claude-sonnet"],
+      machines: ["this"],
+      roles: [{ name: "Writer", job: "Draft `the` [post](http://x) # now." }],
+    });
+    if (!result.ok) {
+      throw new Error(result.reason);
+    }
+    expect(result.proposal.goal).toBe("Ship it now");
+    expect(result.proposal.members[0]?.job).toBe("Draft the post(http://x) now.");
+  });
 });

@@ -127,8 +127,8 @@ type ApproveOutcome =
   | { ok: true; payload: Record<string, unknown> }
   | { ok: false; error: ReturnType<typeof errorShape> };
 
-/** The approval running for each team, with the proposal it is applying. */
-const teamApprovalsInFlight = new Map<string, { hash: string; outcome: Promise<ApproveOutcome> }>();
+/** The approvals running, keyed by team and proposal hash. */
+const teamApprovalsInFlight = new Map<string, Promise<ApproveOutcome>>();
 
 async function approveOnce(
   context: GatewayRequestContext,
@@ -181,8 +181,8 @@ async function approveOnce(
 }
 
 /**
- * One approval per team at a time. A second approve of the same proposal shares the first one's outcome, so
- * nothing is created twice. A different proposal for the same team waits behind the running one and is refused.
+ * One approval per team and proposal at a time. A second approve of the same proposal shares the first one's
+ * outcome, so nothing is created twice. A different proposal for the same team runs on its own.
  */
 function singleFlightApprove(
   context: GatewayRequestContext,
@@ -191,23 +191,18 @@ function singleFlightApprove(
   roles: TeamDraftRole[] | undefined,
   proposalHash: string,
 ): Promise<ApproveOutcome> {
-  const running = teamApprovalsInFlight.get(teamId);
+  // Keyed by team and proposal: a second approve of the same proposal shares the first outcome, and a different
+  // proposal for the same team runs on its own, never handed the other one's answer.
+  const key = `${teamId}:${proposalHash}`;
+  const running = teamApprovalsInFlight.get(key);
   if (running) {
-    return running.hash === proposalHash
-      ? running.outcome
-      : Promise.resolve({
-          ok: false,
-          error: errorShape(
-            ErrorCodes.UNAVAILABLE,
-            "Another approval for this team is running. Wait for it to finish.",
-          ),
-        });
+    return running;
   }
-  const outcome = approveOnce(context, goal, roles, proposalHash).finally(() => {
-    teamApprovalsInFlight.delete(teamId);
+  const started = approveOnce(context, goal, roles, proposalHash).finally(() => {
+    teamApprovalsInFlight.delete(key);
   });
-  teamApprovalsInFlight.set(teamId, { hash: proposalHash, outcome });
-  return outcome;
+  teamApprovalsInFlight.set(key, started);
+  return started;
 }
 
 export const trunkTeamHandlers: GatewayRequestHandlers = {
