@@ -16,6 +16,7 @@ Every pull request from a `trunk/` branch carries the SELF-CHECK block below in 
 
 ## Before handover
 
+0. Run `node scripts/pr-preflight.mjs --body <draft-body-file>` (outside the repo). Fix every line it prints and rerun until it prints `preflight: ok`. Run it again after every push and every body edit.
 1. Re-read the brief and every review FIX comment. For each point, say how it's done, or why it isn't.
 2. Run the typecheck and the touched tests on the exact commit you report (AGENTS.md rules 4 and 7). Report the real pass and fail counts.
 3. List every new or changed engine or window test file in `scripts/feature-batch-ci-named/<branch-name-with-slashes-as-dashes>.txt` (`engine:<path>` or `window:<path>`, one per line, sorted; AGENTS.md rule 5). Desktop tests get a `node --test` step in `.github/workflows/desktop-checks.yml`. Repository `scripts/*.test.mjs` files run from a step in the workflow that uses them and need no list. Without the list, changed-test-coverage fails and both merge checks go red.

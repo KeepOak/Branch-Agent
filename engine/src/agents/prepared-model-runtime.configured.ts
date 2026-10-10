@@ -312,7 +312,6 @@ export function listConfiguredOwnerInputs(
   preservedWorkspaceByAgentDir?: ReadonlyMap<string, ReadonlyMap<string, string>>,
 ): PreparedModelRuntimeInput[] {
   const compatibilityAgentId = tryResolveLegacyCompatibilityAgentId(config);
-  const inheritedAuthDir = resolveLegacyInheritedAuthDir(config);
   return listAgentIds(config)
     .filter((agentId) => !readAgentDatabaseAdmissionRefusal(agentId))
     .map((agentId) => {
@@ -326,7 +325,10 @@ export function listConfiguredOwnerInputs(
         agentId,
         agentDir,
         config,
-        inheritedAuthDir,
+        inheritedAuthDir: resolveLegacyInheritedAuthDir(config, undefined, undefined, {
+          agentId,
+          agentDir,
+        }),
         workspaceDir: preserveWorkspaceDirOnRefresh
           ? launchWorkspaceDir
           : resolveAgentWorkspaceDir(config, agentId),

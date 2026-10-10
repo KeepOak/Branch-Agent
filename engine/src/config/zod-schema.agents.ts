@@ -48,6 +48,16 @@ export const AgentsSchema = z
         agents: z.array(z.string().min(1).max(64)).optional(),
       })
       .optional(),
+    gardener: z
+      .strictObject({
+        enabled: z.boolean().optional(),
+        repo: z
+          .string()
+          .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, "Repo must be owner/name")
+          .max(200)
+          .optional(),
+      })
+      .optional(),
     signalWakes: z
       .strictObject({
         repos: z
@@ -62,6 +72,13 @@ export const AgentsSchema = z
       .optional(),
   })
   .superRefine((value, ctx) => {
+    if (value.gardener?.enabled === true && !value.gardener.repo) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["gardener", "repo"],
+        message: "agents.gardener.repo is required when agents.gardener.enabled is true",
+      });
+    }
     const entries = Object.entries(value.entries ?? {});
     if (
       value.defaultId &&
