@@ -403,7 +403,7 @@ function Storage({ engine, config, lv }: Ctx) {
       <Ctl title="Tidy now" sub={on ? run.note ?? run.error ?? "Archives what’s due now." : "Turns on with “Archive older conversations”."}>
         <Btn sm disabled={!on || run.busy} onClick={() => void run.run(() => engine.request("sessions.storage.run", {}), () => { void status.reload(); return "Tidying. The figures above update when it’s done."; })}>Run now</Btn>
       </Ctl>
-      {lv >= 2 ? <CodeRow title="Shrink the shared database" code="branch doctor --state-sqlite compact" sub="Shrinks the database after a checked backup." help="Shrinks the shared database. Stop the Gateway and make a checked backup first; it refuses while the Gateway runs." /> : null}
+      {lv >= 2 ? <CodeRow title="Shrink the shared database" code="branch doctor --state-sqlite compact" sub="Shrinks the database after a checked backup." help="Shrinks the shared database after a checked backup. It refuses while Branch is running." /> : null}
       {lv >= 2 ? <CodeRow title="Conversation databases" code="branch doctor --session-sqlite inspect|dry-run|import|compact|recover|restore" sub="Look at, move, shrink or recover conversation databases." /> : null}
       {byTrunk ? <ByTrunkDialog agents={agents} onClose={() => setByTrunk(false)} /> : null}
     </Sec>

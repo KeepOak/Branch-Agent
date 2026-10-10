@@ -1,0 +1,6 @@
+engine:src/gateway/contacts/read-state.test.ts
+engine:src/gateway/server-methods-list.test.ts
+engine:src/gateway/server-methods/contacts.read-state.test.ts
+window:src/connect/owner-error-text.test.ts
+window:src/shell/contacts-model.test.ts
+window:src/shell/owner-copy.test.ts
