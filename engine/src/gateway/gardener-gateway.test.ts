@@ -148,7 +148,7 @@ describe("gardener gateway end to end", () => {
     expect(issuePosts(github)).toHaveLength(2);
     const titles = listQueueItems().map((item) => item.title);
     expect(titles).toContain(
-      "[gardener:ci-main:engine-tests] Fix failing check on main: engine-tests",
+      "[gardener:ci-main:engine-tests] Fix failing check on main: \"engine-tests\"",
     );
     expect(titles.some((title) => title.startsWith("[gardener:stale-claim:"))).toBe(true);
   });
