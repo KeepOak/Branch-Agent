@@ -128,6 +128,7 @@ import { SetupFlow } from "../setup/SetupFlow";
 import { useFirstRun } from "../setup/use-first-run";
 import { useNeedsCount } from "../places/inbox";
 import { TrunkStudio } from "../places/trunk";
+import { keyHint } from "./key-hint";
 import "./preview.css";
 
 /** The clock for row times; it also ticks just after a "Done" so the header goes back to ready (§4.2.5). */
@@ -1645,7 +1646,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         {lockdown.on ? <LockdownBanner onTurnOff={toggleLockdown} /> : null}
         {layout.focus ? (
           <button type="button" className="btn sm focus-exit" onClick={() => setLayout({ focus: false })}>
-            Leave focus mode · Ctrl+.
+            Leave focus mode · {keyHint("Ctrl+.")}
           </button>
         ) : null}
         {showThreadColumn && threadGeneralKey ? <ThreadColumn key={topicContact?.id ?? threadGeneralKey} name={topicContact?.name ?? defaultName} generalKey={threadGeneralKey} openKey={openKey} items={topicItems} onOpen={(key) => key === threadGeneralKey ? openConversation(key) : openTopic(key)}
