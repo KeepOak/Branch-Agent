@@ -1,6 +1,6 @@
 // Permissions, the custom rows: This PC (the computer's own permissions, which only the desktop app can read), the
 // mode box and "Mode everywhere" (tools.exec.mode, the same engine key behind the composer's modes), Work style,
-// Lockdown, Pinned settings, who may run commands outside the sandbox (tools.elevated.allowFrom) and connectors.
+// Lockdown, who may run commands outside the sandbox (tools.elevated.allowFrom) and connectors.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
@@ -22,7 +22,6 @@ export function thisPcCopy(os = platformName()) {
       open: "Open System Settings",
       install: "macOS asks for an administrator yes each time. Branch asks you first.",
       why: "System Settings › Privacy & Security opens from the Branch app on your computer.",
-      locationHelp: "Lets a Trunk ask where this computer is when a tool needs it. On macOS it asks the first time a Trunk needs it.",
     };
   }
   if (os === "Linux") {
@@ -31,7 +30,6 @@ export function thisPcCopy(os = platformName()) {
       open: null,
       install: "Linux asks for an administrator yes each time. Branch asks you first.",
       why: "Microphone and camera use PipeWire or the desktop portal. Notifications use this desktop. They open from the Branch app on your computer.",
-      locationHelp: "Lets a Trunk ask where this computer is when a tool needs it. On Linux it asks the first time a Trunk needs it.",
     };
   }
   return {
@@ -39,7 +37,6 @@ export function thisPcCopy(os = platformName()) {
     open: "Open Windows Settings",
     install: "Windows asks for an administrator yes each time. Branch asks you first.",
     why: WHY.os,
-    locationHelp: "Lets a Trunk ask where this computer is when a tool needs it. On Windows it asks the first time a Trunk needs it.",
   };
 }
 
@@ -69,10 +66,6 @@ export function ThisPc() {
         ))}
       </Plist>
       <Hint>{copy.why}</Hint>
-      <div className="sec pm-loc">
-        <Ctl title="Location access" sub="Lets a Trunk ask where this computer is when a tool needs it." help={copy.locationHelp} off={WHY.key}>{deadControl({ seg: ["Off", "While using", "Always"], v: "While using" }, "Location access")}</Ctl>
-        <Ctl title="Precise location" sub="The exact spot, not just the area." off={WHY.key}>{deadControl({ sw: true }, "Precise location")}</Ctl>
-      </div>
     </Sec>
   );
 }
@@ -101,7 +94,7 @@ export async function saveMode(cfg: Cfg, mode: string, after: () => Promise<void
   if (await cfg.set("tools.exec", { mode, security: null, ask: null })) await after();
 }
 
-const MODE_OPTS = MODE_ROWS.map((r) => ({ id: r.engine ? EXEC_OF[r.engine] : "plan", label: r.name, off: blockedReason(r, true) ?? undefined }));
+const MODE_OPTS = MODE_ROWS.filter((r) => !r.gap).map((r) => ({ id: r.engine ? EXEC_OF[r.engine] : "plan", label: r.name, off: blockedReason(r, true) ?? undefined }));
 export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: RecordValue; reload: () => Promise<void> }) {
   const selected = execMode(cfg, agents);
   const lockdown = cfg.get("security.lockdown") === true;
@@ -137,15 +130,6 @@ export function Lockdown({ engine }: { engine: WindowEngine }) {
       <Btn className={lockdown.on ? undefined : "bad"} disabled={!lockdown.loaded || !lockdown.supported} title={lockdown.supported ? undefined : "This engine has no Lockdown switch yet."} onClick={toggleLockdown}>{lockdown.on ? "Turn Lockdown off" : "Turn Lockdown on"}</Btn>
       {lockdown.confirmation}
     </div>
-  );
-}
-
-export function Pinned() {
-  return (
-    <>
-      <Empty>Nothing is pinned.</Empty>
-      <div className="acts" data-row="Pin a setting"><Btn sm disabled><Icon name="plus" small />Pin a setting</Btn><Hint>The engine can’t pin a setting yet.</Hint></div>
-    </>
   );
 }
 

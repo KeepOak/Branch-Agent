@@ -6,7 +6,7 @@
 import { record } from "../adapter";
 import { CommandDefaults, RulesFor, RulesList } from "./permissions-commands";
 import { WHY, type Cfg, type Dead, type Row, type Section } from "./permissions-rows";
-import { ApprovalsRow, Connectors, Lockdown, Pinned, WhoMay } from "./permissions-top";
+import { ApprovalsRow, Connectors, Lockdown, WhoMay } from "./permissions-top";
 
 const off = (t: string, sub: string | undefined, c: Dead, why = WHY.key, lv?: 0 | 1 | 2): Row => ({ k: "off", t, sub, c, why, lv });
 const offSw = (t: string, sub: string, on: boolean, why = WHY.key): Row => off(t, sub, { sw: on }, why);
@@ -46,10 +46,6 @@ export const LOCKS: Section = { title: "Locks and records", lv: 0, rows: [
   off("Older file-transfer permissions", "Older yeses for copying files to and from your computers stay paused until you review them. Blocks, size limits and link settings keep working meanwhile.", { btn: "Review" }, "The engine can’t list them here yet; move them by command.", 2),
   { k: "code", t: "Move them by command", lv: 2, code: "branch file-transfer approvals migrate --dry-run" },
 ], tail: (x) => <Lockdown engine={x.engine} /> };
-
-export const PINNED: Section = { title: "Pinned settings", lv: 0, hint: "A pinned setting is fixed. Someone else who uses this computer sees it pinned and can’t change it any way.", rows: [
-  { k: "el", t: "Pin a setting", el: () => <Pinned /> },
-] };
 
 export const RULES: Section = { title: "Rules for each tool and folder", group: "Rules and checks", lv: 1, rows: [
   { k: "el", t: "Rules for", el: (x) => <RulesFor x={x} /> },
@@ -159,7 +155,7 @@ export const FOLDERS: Section = { title: "Folders the sandbox may reach", group:
   off("Add a folder", undefined, { btn: "Add a folder" }, SB_FOLDERS),
 ] };
 
-export const POLICY: Section = { title: "Company policy", group: "Pinned settings", showHeading: false, lv: 2, rows: [
+export const POLICY: Section = { title: "Company policy", group: "Company policy", showHeading: false, lv: 2, rows: [
   offSw("Check Branch against a policy file", "Reports where Branch differs from your organisation’s policy file (policy.jsonc). It changes nothing by itself. Off until you choose: it is for organisations with a written policy.", false, WHY.policy),
   offSw("Let it repair project folders", "Off until you choose: it changes files in your projects.", false, WHY.policy),
 ] };
@@ -276,4 +272,4 @@ export const CONNECTORS: Section = { title: "What each connector may do", group:
 ] };
 
 /** Every section after "Without asking, Trunks may…", in the preview's order. */
-export const LOWER: Section[] = [LOCKS, PINNED, RULES, COMMANDS, MORE_WITHOUT, CHECKS, ISOLATION, TOOLS_TECH, TEST, SECURITY_TECH, GUARDS_ON, TOOLS_LOOPS, PRIVACY, TERMINAL, FOLDERS, POLICY, MORE_APPROVALS, MORE_GUARDS, MONEY, NETWORK, CONNECTORS];
+export const LOWER: Section[] = [LOCKS, RULES, COMMANDS, MORE_WITHOUT, CHECKS, ISOLATION, TOOLS_TECH, TEST, SECURITY_TECH, GUARDS_ON, TOOLS_LOOPS, PRIVACY, TERMINAL, FOLDERS, POLICY, MORE_APPROVALS, MORE_GUARDS, MONEY, NETWORK, CONNECTORS];

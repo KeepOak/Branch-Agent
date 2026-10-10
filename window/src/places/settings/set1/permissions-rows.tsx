@@ -102,7 +102,8 @@ export function RowView({ r, x }: { r: Row; x: Ctx }) {
     case "sw": return <SwRow r={r} c={c} />;
     case "seg": case "pick": return <ChoiceRow r={r} c={c} />;
     case "num": return <NumRow r={r} c={c} />;
-    case "off": return <Ctl title={r.t} sub={r.sub} off={r.why} stack={r.stack}>{deadControl(r.c, r.t)}</Ctl>;
+    // A greyed row ("off") is not drawn: it has no path to working and reads as protection that is not there.
+    case "off": return null;
     case "code": return <Ctl title={r.t} sub={r.sub}><Val code>{typeof r.code === "string" ? r.code : r.code(c)}</Val></Ctl>;
     case "pill": return <Ctl title={r.t} sub={r.sub}><Pill tone="ok">{r.word}</Pill></Ctl>;
     case "el": return <>{r.el(x)}</>;
@@ -113,10 +114,11 @@ export function RowView({ r, x }: { r: Row; x: Ctx }) {
 export function SectionView({ s, x }: { s: Section; x: Ctx }) {
   const lv = useLevel();
   if (s.lv > lv) return null;
-  const rows = s.rows.filter((r) => (r.lv ?? 0) <= lv);
+  const rows = s.rows.filter((r) => (r.lv ?? 0) <= lv && r.k !== "off");
+  if (!rows.length && !s.tail) return null;
   return (
     <>
-      <Sec title={s.title} group={s.group} showHeading={s.showHeading} hint={s.hint}>{rows.map((r) => <RowView key={r.t} r={r} x={x} />)}</Sec>
+      {rows.length ? <Sec title={s.title} group={s.group} showHeading={s.showHeading} hint={s.hint}>{rows.map((r) => <RowView key={r.t} r={r} x={x} />)}</Sec> : null}
       {s.tail ? s.tail(x) : null}
     </>
   );
@@ -124,5 +126,5 @@ export function SectionView({ s, x }: { s: Section; x: Ctx }) {
 
 /** The search entries for a set of sections. */
 export function rowsOf(sections: Section[]): RowEntry[] {
-  return sections.flatMap((s) => s.rows.map((r) => ({ page: "permissions", title: r.t, sec: s.title, group: s.group ?? s.title, lv: Math.max(s.lv, r.lv ?? 0) as Lv, ...(r.words ? { words: r.words } : {}) })));
+  return sections.flatMap((s) => s.rows.filter((r) => r.k !== "off").map((r) => ({ page: "permissions", title: r.t, sec: s.title, group: s.group ?? s.title, lv: Math.max(s.lv, r.lv ?? 0) as Lv, ...(r.words ? { words: r.words } : {}) })));
 }

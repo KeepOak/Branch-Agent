@@ -11,20 +11,11 @@ import { Acts, Btn, Hint, Page, useConfig, type RowEntry } from "../kit";
 import { ApprovalsDialog } from "./permissions-approvals";
 import { THIS_PC } from "./permissions-commands";
 import { useApprovalsFile } from "./permissions-file";
-import { SectionView, WHY, rowsOf, type Ctx, type Row, type Section } from "./permissions-rows";
+import { SectionView, rowsOf, type Ctx } from "./permissions-rows";
 import { LOWER } from "./permissions-sections";
 import { LockdownStatus, ModeEverywhere, THIS_PC_ROWS, ThisPc } from "./permissions-top";
 import "./set1.css";
 import "./permissions.css";
-
-const sw = (t: string, sub: string, on: boolean): Row => ({ k: "off", t, sub, c: { sw: on }, why: WHY.key });
-const WITHOUT: Section = { title: "Without asking, Trunks may…", lv: 0, rows: [
-  sw("Read files in Documents and Downloads", "Reading never changes a file.", true),
-  sw("Use the browser on this computer", "Signs in with your saved sign-ins. You can take over any time.", true),
-  sw("Send email and messages", "Off means every message waits for your yes.", true),
-  sw("Install tools and packages", "Off means a request shows up in your Inbox.", false),
-  sw("Record tasks so you can watch them again", "Recordings stay on this computer.", true),
-] };
 
 export function PermissionsPage(props: SettingsPageProps) {
   const cfg = useConfig(props.engine);
@@ -49,7 +40,6 @@ export function PermissionsPage(props: SettingsPageProps) {
           <Btn sm onClick={() => props.openSettings?.("computer")}>Open that switch</Btn>
         </Acts>
       ) : null}
-      <SectionView s={WITHOUT} x={x} />
       {LOWER.map((s) => <SectionView key={s.title} s={s} x={x} />)}
       {approvals ? <ApprovalsDialog engine={props.engine} onClose={() => setApprovals(false)} /> : null}
     </Page>
@@ -58,11 +48,9 @@ export function PermissionsPage(props: SettingsPageProps) {
 
 const TOP: RowEntry[] = [
   ...THIS_PC_ROWS.map(([title]) => ({ page: "permissions", title, sec: "This computer", group: "This computer", lv: 0 as const })),
-  { page: "permissions", title: "Location access", sec: "This computer", group: "This computer", lv: 0 },
-  { page: "permissions", title: "Precise location", sec: "This computer", group: "This computer", lv: 0 },
   { page: "permissions", title: "Lockdown", sec: "Locks and records", group: "Locks and records", lv: 0, words: "stop everything" },
   { page: "permissions", title: "Access", group: "Access", lv: 0, words: "auto ask first plan first read only full access mode screen mouse computer browser" },
 ];
 const COMMAND_ROWS: RowEntry[] = ["Ask before a command", "When nobody can be asked", "Let skill programs run"].map((title) => ({ page: "permissions", title, sec: "Commands, by default", group: "Rules and checks", lv: 1 }));
 
-export const PERMISSIONS_ROWS: RowEntry[] = [...TOP, ...rowsOf([WITHOUT, ...LOWER]), ...COMMAND_ROWS];
+export const PERMISSIONS_ROWS: RowEntry[] = [...TOP, ...rowsOf(LOWER), ...COMMAND_ROWS];
