@@ -110,23 +110,26 @@ export function planWords(provider: string, raw: string): string {
 }
 
 /** models.authStatus: each saved account's email by its profile id, the same emails Settings › Accounts shows. */
-export function accountEmails(result: unknown): Map<string, string> {
-  const emails = new Map<string, string>();
+/** Each profile's label, the way Accounts names it: its email, else its own name. Keyed by profile id. */
+export function accountLabels(result: unknown): Map<string, string> {
+  const labels = new Map<string, string>();
   for (const provider of list(rec(result).providers)) {
     for (const profile of list(provider.profiles)) {
-      const id = str(profile.profileId), email = str(profile.email);
-      if (id && email) emails.set(id, email);
+      const id = str(profile.profileId), label = str(profile.email) || str(profile.displayName);
+      if (id && label) labels.set(id, label);
     }
   }
-  return emails;
+  return labels;
 }
 
-/** Fills in an account's email from its profile when the usage reading didn't carry one. */
-export function withAccountEmails(limits: Limits, emails: Map<string, string>): Limits {
-  if (!emails.size) return limits;
+/** Names each account as Accounts does: its label replaces the position number, and an email also fills the email. */
+export function withAccountLabels(limits: Limits, labels: Map<string, string>): Limits {
+  if (!labels.size) return limits;
   return { ...limits, rows: limits.rows.map((row) => {
-    const email = row.email || (row.profileId ? emails.get(row.profileId) : undefined);
-    return email ? { ...row, email } : row;
+    const label = row.profileId ? labels.get(row.profileId) : undefined;
+    if (!label) return row;
+    const email = row.email || (label.includes("@") ? label : undefined);
+    return { ...row, email, name: row.name.replace(/·\s*Account \d+$/, `· ${label}`) };
   }) };
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accountEmails, comingUp, dueWords, planWords, readLimits, readRoom, readRounds, resetWords, ringReading, SIGN_IN_AGAIN_WORDS, sizeWords, uptimeWords, usagePollResult, windowName, withAccountEmails } from "./status-data";
+import { accountLabels, comingUp, dueWords, planWords, readLimits, readRoom, readRounds, resetWords, ringReading, SIGN_IN_AGAIN_WORDS, sizeWords, uptimeWords, usagePollResult, windowName, withAccountLabels } from "./status-data";
 import { usageWords } from "./StatusBar";
 
 const NOW = new Date(2026, 9, 2, 12, 0).getTime();
@@ -164,12 +164,15 @@ describe("Running and version", () => {
       { provider: "anthropic", displayName: "Claude", authProfileId: "anthropic:one", plan: "max", windows: [{ label: "5h", usedPercent: 20, resetAt: NOW + 3_600_000 }] },
       { provider: "anthropic", displayName: "Claude", authProfileId: "anthropic:two", plan: "max", windows: [] },
     ] };
-    const emails = accountEmails({ providers: [{ provider: "anthropic", profiles: [{ profileId: "anthropic:one", email: "one@example.com" }, { profileId: "anthropic:two" }] }] });
+    const emails = accountLabels({ providers: [{ provider: "anthropic", profiles: [{ profileId: "anthropic:one", email: "one@example.com" }, { profileId: "anthropic:two" }] }] });
     expect([...emails]).toEqual([["anthropic:one", "one@example.com"]]);
-    const named = withAccountEmails(readLimits(usage, NOW), emails);
+    const named = withAccountLabels(readLimits(usage, NOW), emails);
     expect(named.rows.map((row) => row.email)).toEqual(["one@example.com", undefined]);
     expect(named.rows[0].plan).toBe("Claude Max");
-    expect(withAccountEmails(readLimits(usage, NOW), new Map())).toEqual(readLimits(usage, NOW));
+    expect(withAccountLabels(readLimits(usage, NOW), new Map())).toEqual(readLimits(usage, NOW));
+    const labelled = withAccountLabels(readLimits(usage, NOW), new Map([["anthropic:one", "one@example.com"], ["anthropic:two", "Max"]]));
+    expect(labelled.rows.map((row) => row.name)).toEqual(["Claude · one@example.com", "Claude · Max"]);
+    expect(labelled.rows.map((row) => row.email)).toEqual(["one@example.com", undefined]);
   });
   it("the bottom bar names the account used next by email, with its share left and reset, or says usage is unknown", () => {
     expect(usageWords({ name: "Claude · Account 1", email: "one@example.com", left: 60, reset: "resets 3 PM", low: false })).toBe("one@example.com · 60% left · resets 3 PM");
