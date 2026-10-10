@@ -33,6 +33,11 @@ const byText = (host: HTMLElement, text: string) => [...host.querySelectorAll("b
 const tid = (host: HTMLElement, id: string) => host.querySelector(`[data-testid="${id}"]`) as HTMLButtonElement;
 
 describe("setup model", () => {
+  it("does not count a running but explicitly disconnected chat transport as connected", () => {
+    expect(readChatApps({ channelOrder: ["telegram", "discord"], channelAccounts: {
+      telegram: [{ running: true, connected: false }], discord: [{ running: true }],
+    } }).map((app) => app.connected)).toEqual([false, true]);
+  });
   it("has the spec's 11 steps", () => {
     expect(STEPS).toHaveLength(11);
     expect(STEPS[2]).toBe("Models");
@@ -99,6 +104,27 @@ function engine(answers: Record<string, unknown>) {
 const params = (request: ReturnType<typeof vi.fn>, method: string) => request.mock.calls.filter((c) => c[0] === method).map((c) => c[1] as Record<string, unknown>);
 
 describe("setup flow", () => {
+  it("ignores health replies from before leaving All set to fix setup", async () => {
+    const pending: Array<(result: unknown) => void> = [];
+    const { engine: e, request } = engine({
+      "config.get": { config: {} }, "channels.status": {},
+      "branch.setup.verify": { ok: true, modelRef: "current", latencyMs: 100 },
+      "system.info": { diskAvailableBytes: 1024 ** 3 },
+    });
+    const original = request.getMockImplementation()!;
+    request.mockImplementation((method: string) => method === "health"
+      ? new Promise((resolve) => pending.push(resolve)) : original(method));
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={10} onClose={() => {}} onLocalModel={() => {}} />);
+    await act(async () => byText(host, "Back").click());
+    const old = pending.splice(0);
+    await act(async () => tid(host, "setup-next").click());
+    await act(async () => pending.splice(0).forEach((resolve) => resolve({ ok: true, durationMs: 25 })));
+    expect(host.querySelector('[data-testid="setup-checks"]')?.textContent).toContain("answering in 25 ms");
+    await act(async () => old.forEach((resolve) => resolve({ ok: false, durationMs: 999 })));
+    expect(host.querySelector('[data-testid="setup-checks"]')?.textContent).toContain("answering in 25 ms");
+    expect(host.querySelector('[data-testid="setup-checks"]')?.textContent).not.toContain("999");
+    expect(host.querySelector('[data-testid="setup-checks"]')?.textContent).not.toContain("not answering");
+  });
   it("shows the shared reserved-name wording from WindowShell New Trunk", async () => {
     vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
     HTMLElement.prototype.scrollIntoView = vi.fn();

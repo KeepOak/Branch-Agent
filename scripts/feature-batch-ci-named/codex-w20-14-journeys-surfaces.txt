@@ -1,0 +1,1 @@
+window:src/setup/setup.test.tsx
