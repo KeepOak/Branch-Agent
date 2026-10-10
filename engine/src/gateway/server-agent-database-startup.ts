@@ -343,6 +343,8 @@ export function activateGatewayAgentDatabaseStartup(params: {
               withPluginRuntimeRegistryScope(params.getPluginRegistry(), () =>
                 refreshPreparedModelRuntimeSnapshots(cfg, {
                   agentIds,
+                  // Lets this publication degrade past the startup budget, as the Gateway-wide call does.
+                  startup: true,
                   catalogMode: "static",
                   allowGatewaySubagentBinding: true,
                   ...(pluginMetadataSnapshot ? { pluginMetadataSnapshot } : {}),
