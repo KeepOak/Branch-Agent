@@ -60,9 +60,18 @@ jobs:
       - id: plan
         # Shard counts come from the default branch's planner and weights. The PR's named lists add tests as
         # data. An empty matrix or one below the floors fails this job, so the feature jobs cannot be skipped.
+        # Bootstrap: until the planner is on the default branch, the matrix is the floors written here (this file
+        # is a reviewed gate file, and no PR code runs). Nothing is read from the PR's own planner.
         env:
           EVENT_NAME: ${{ github.event_name }}
-        run: node base/scripts/feature-batch-ci-matrix.mjs "$EVENT_NAME" --named-dir "$GITHUB_WORKSPACE/pr/scripts/feature-batch-ci-named" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ -f base/scripts/feature-batch-ci-matrix.mjs ]; then
+            node base/scripts/feature-batch-ci-matrix.mjs "$EVENT_NAME" --named-dir "$GITHUB_WORKSPACE/pr/scripts/feature-batch-ci-named" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT_NAME" = pull_request ]; then
+            echo 'matrix={"include":[{"os":"ubuntu-latest","shard":"1/10","label":"1/10","scope":"all"},{"os":"ubuntu-latest","shard":"2/10","label":"2/10","scope":"all"},{"os":"ubuntu-latest","shard":"3/10","label":"3/10","scope":"all"},{"os":"ubuntu-latest","shard":"4/10","label":"4/10","scope":"all"},{"os":"ubuntu-latest","shard":"5/10","label":"5/10","scope":"all"},{"os":"ubuntu-latest","shard":"6/10","label":"6/10","scope":"all"},{"os":"ubuntu-latest","shard":"7/10","label":"7/10","scope":"all"},{"os":"ubuntu-latest","shard":"8/10","label":"8/10","scope":"all"},{"os":"ubuntu-latest","shard":"9/10","label":"9/10","scope":"all"},{"os":"ubuntu-latest","shard":"10/10","label":"10/10","scope":"all"},{"os":"windows-latest","shard":"1/1","label":"touched","scope":"touched"}]}' >> "$GITHUB_OUTPUT"
+          else
+            echo 'matrix={"include":[{"os":"ubuntu-latest","shard":"1/7","label":"1/7","scope":"all"},{"os":"ubuntu-latest","shard":"2/7","label":"2/7","scope":"all"},{"os":"ubuntu-latest","shard":"3/7","label":"3/7","scope":"all"},{"os":"ubuntu-latest","shard":"4/7","label":"4/7","scope":"all"},{"os":"ubuntu-latest","shard":"5/7","label":"5/7","scope":"all"},{"os":"ubuntu-latest","shard":"6/7","label":"6/7","scope":"all"},{"os":"ubuntu-latest","shard":"7/7","label":"7/7","scope":"all"},{"os":"windows-latest","shard":"1/11","label":"1/11","scope":"all"},{"os":"windows-latest","shard":"2/11","label":"2/11","scope":"all"},{"os":"windows-latest","shard":"3/11","label":"3/11","scope":"all"},{"os":"windows-latest","shard":"4/11","label":"4/11","scope":"all"},{"os":"windows-latest","shard":"5/11","label":"5/11","scope":"all"},{"os":"windows-latest","shard":"6/11","label":"6/11","scope":"all"},{"os":"windows-latest","shard":"7/11","label":"7/11","scope":"all"},{"os":"windows-latest","shard":"8/11","label":"8/11","scope":"all"},{"os":"windows-latest","shard":"9/11","label":"9/11","scope":"all"},{"os":"windows-latest","shard":"10/11","label":"10/11","scope":"all"},{"os":"windows-latest","shard":"11/11","label":"11/11","scope":"all"},{"os":"macos-latest","shard":"1/10","label":"1/10","scope":"all"},{"os":"macos-latest","shard":"2/10","label":"2/10","scope":"all"},{"os":"macos-latest","shard":"3/10","label":"3/10","scope":"all"},{"os":"macos-latest","shard":"4/10","label":"4/10","scope":"all"},{"os":"macos-latest","shard":"5/10","label":"5/10","scope":"all"},{"os":"macos-latest","shard":"6/10","label":"6/10","scope":"all"},{"os":"macos-latest","shard":"7/10","label":"7/10","scope":"all"},{"os":"macos-latest","shard":"8/10","label":"8/10","scope":"all"},{"os":"macos-latest","shard":"9/10","label":"9/10","scope":"all"},{"os":"macos-latest","shard":"10/10","label":"10/10","scope":"all"}]}' >> "$GITHUB_OUTPUT"
+          fi
 
   feature-batch:
     needs: plan
