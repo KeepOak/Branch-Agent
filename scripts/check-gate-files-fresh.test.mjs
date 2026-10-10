@@ -163,7 +163,7 @@ test('gate-files-fresh workflow checks out the default branch read-only', () => 
   assert.match(yaml, /^\s+name:\s*gate-files-fresh\s*$/m);
   assert.match(yaml, /^\s+pull_request_target:\s*$/m);
   assert.match(yaml, /types:\s*\[opened, synchronize, reopened\]/);
-  assert.match(yaml, /^\s+timeout-minutes:\s*5\s*$/m);
+  assert.match(yaml, /^\s+timeout-minutes:\s*12\s*$/m);
   assert.match(yaml, /ref:\s*\$\{\{\s*github\.event\.repository\.default_branch\s*\}\}/);
   assert.match(yaml, /persist-credentials:\s*false/);
   assert.match(yaml, /contents:\s*read/);
@@ -255,4 +255,17 @@ test('fetchCompare fails closed when GitHub truncates the compare file list', ()
     commitCount: 250,
     totalCommits: 400,
   }), /Merge main so the fork point is recent/);
+});
+
+test('the gate-files-fresh job timeout outlasts the helper wait budget', () => {
+  // The helper sleeps through installation rate limits for up to MERGE_GATE_WAIT_SECONDS. When the job
+  // timeout is shorter, GitHub kills the job at that timeout and the run shows as cancelled, not failed.
+  const yml = readFileSync(new URL('../.github/workflows/gate-files-fresh.yml', import.meta.url), 'utf8');
+  const timeoutMinutes = Number(/timeout-minutes:\s*(\d+)/.exec(yml)?.[1]);
+  const waitSeconds = Number(/MERGE_GATE_WAIT_SECONDS:\s*'(\d+)'/.exec(yml)?.[1]);
+  assert.ok(Number.isFinite(timeoutMinutes) && Number.isFinite(waitSeconds));
+  assert.ok(
+    timeoutMinutes * 60 >= waitSeconds + 180,
+    `timeout ${timeoutMinutes}m must exceed the ${waitSeconds}s wait budget plus 3 minutes of setup`,
+  );
 });
