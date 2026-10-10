@@ -74,7 +74,10 @@ async function readyEligibleAgentIds(
 }
 
 /** Gives the top queued job to each idle eligible Trunk, after a card is added or put back. */
-function wakeEligibleTrunks(cfg: BranchConfig | undefined, log: (message: string) => void): void {
+export function wakeEligibleTrunks(
+  cfg: BranchConfig | undefined,
+  log: (message: string) => void,
+): void {
   void (async () => {
     const agentIds = await readyEligibleAgentIds(localGateway, cfg);
     await wakeIdleTrunks({ agentIds, gateway: localGateway });
