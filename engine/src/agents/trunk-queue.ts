@@ -24,6 +24,8 @@ export type TrunkQueueItem = {
   done_at?: number;
   released_at?: number;
   released_from?: string;
+  /** Claim attempts that ended in an error or a failed dispatch. At MAX_CLAIM_FAILURES the job stops being claimable. */
+  failures?: number;
 };
 
 export type TrunkQueueStatus = "queued" | "claimed" | "released" | "done";
@@ -34,6 +36,10 @@ export type TrunkQueueGateway = {
 };
 
 export const STALE_CLAIM_MS = 2 * 60 * 60_000;
+/** A claim with no run activity for this long and no live run lost its run without a run-end event. */
+export const ORPHAN_CLAIM_GRACE_MS = 2 * 60_000;
+/** Failed claim attempts after which a job stops being handed out, so a broken job cannot re-dispatch forever. */
+export const MAX_CLAIM_FAILURES = 3;
 const RETAIN_DONE_MS = 7 * 24 * 60 * 60_000;
 
 function file(env: NodeJS.ProcessEnv = process.env): string {
@@ -87,7 +93,13 @@ function isPastStaleTime(row: TrunkQueueItem, now: number): boolean {
 }
 
 function isClaimable(row: TrunkQueueItem): boolean {
-  return !row.done_at && !row.claimed_by;
+  return !row.done_at && !row.claimed_by && (row.failures ?? 0) < MAX_CLAIM_FAILURES;
+}
+
+/** Counts a failed attempt and puts the job back in the queue. */
+function failClaim(row: TrunkQueueItem, now: number): void {
+  row.failures = (row.failures ?? 0) + 1;
+  release(row, now);
 }
 
 export function queueItemStatus(row: TrunkQueueItem): TrunkQueueStatus {
@@ -170,14 +182,62 @@ export function releaseQueueItem(
   return before;
 }
 
-/** Records run activity on the job a Trunk holds, so a working Trunk's claim is not released as stale. */
-export function touchQueueClaim(agentId: string, env?: NodeJS.ProcessEnv, now = Date.now()): void {
+/** Records run activity in the claim's own thread, so a working claim is not released as stale. */
+export function touchQueueClaim(
+  threadKey: string,
+  env?: NodeJS.ProcessEnv,
+  now = Date.now(),
+): void {
   const rows = read(env);
-  const row = rows.find((candidate) => isOpenClaim(candidate) && candidate.claimed_by === agentId);
+  const row = rows.find(
+    (candidate) => isOpenClaim(candidate) && candidate.thread_key === threadKey,
+  );
   if (!row) {
     return;
   }
   row.active_at = now;
+  write(rows, now, env);
+}
+
+/**
+ * The run in a claim's own thread ended. A clean end completes the job; an error counts a failed attempt and
+ * puts it back. Runs in other threads do not touch the claim. Returns whether a claim was closed.
+ */
+export function closeQueueClaimForThread(
+  threadKey: string,
+  outcome: "completed" | "failed",
+  env?: NodeJS.ProcessEnv,
+  now = Date.now(),
+): boolean {
+  const rows = read(env);
+  const row = rows.find(
+    (candidate) => isOpenClaim(candidate) && candidate.thread_key === threadKey,
+  );
+  if (!row) {
+    return false;
+  }
+  if (outcome === "completed") {
+    row.done_at = now;
+  } else {
+    failClaim(row, now);
+  }
+  write(rows, now, env);
+  return true;
+}
+
+/** A claim attempt that could not be dispatched: counted as a failure, and only if it still holds this claim. */
+function failQueueClaim(
+  id: string,
+  env: NodeJS.ProcessEnv | undefined,
+  now: number,
+  claimId: string,
+): void {
+  const rows = read(env);
+  const row = rows.find((candidate) => candidate.id === id);
+  if (!row || !isOpenClaim(row) || row.claim_id !== claimId) {
+    return;
+  }
+  failClaim(row, now);
   write(rows, now, env);
 }
 
@@ -378,7 +438,7 @@ async function dispatchClaim(
       idempotencyKey: `trunk-queue-${id}-${claimId}`,
     });
   } catch (error) {
-    releaseQueueItem(id, params.env, now(), claimId);
+    failQueueClaim(id, params.env, now(), claimId);
     throw error;
   }
   return { item, threadKey };
@@ -407,4 +467,60 @@ export async function wakeIdleTrunks(params: {
     }
   }
   return woken;
+}
+
+/**
+ * A claim whose Trunk has no live run and no run activity for ORPHAN_CLAIM_GRACE_MS lost its run without a run-end
+ * event (a gateway restart, for one). It goes back in the queue. This is not a failed attempt: the job did not error.
+ */
+export async function releaseOrphanQueueClaims(params: {
+  gateway: TrunkQueueGateway;
+  env?: NodeJS.ProcessEnv;
+  now?: () => number;
+}): Promise<void> {
+  const now = params.now ?? Date.now;
+  const orphans = read(params.env).filter(
+    (row) =>
+      isOpenClaim(row) &&
+      now() - (row.active_at ?? row.claimed_at ?? now()) >= ORPHAN_CLAIM_GRACE_MS,
+  );
+  for (const candidate of orphans) {
+    if (await isTrunkWorking(params.gateway, candidate.claimed_by!)) {
+      continue;
+    }
+    const rows = read(params.env);
+    const row = rows.find(
+      (current) =>
+        current.id === candidate.id &&
+        isOpenClaim(current) &&
+        current.claim_id === candidate.claim_id,
+    );
+    if (!row) {
+      continue;
+    }
+    const at = now();
+    release(row, at);
+    write(rows, at, params.env);
+  }
+}
+
+/**
+ * Periodic and post-restart pass. Releases orphaned claims, then hands queued jobs to idle eligible Trunks. It makes
+ * no gateway call while the queue has neither an open claim nor a claimable job, so an empty queue costs nothing.
+ */
+export async function reconcileTrunkQueue(params: {
+  gateway: TrunkQueueGateway;
+  agentIds: () => Promise<string[]>;
+  env?: NodeJS.ProcessEnv;
+  now?: () => number;
+}): Promise<void> {
+  const rows = read(params.env);
+  if (!rows.some((row) => isOpenClaim(row) || isClaimable(row))) {
+    return;
+  }
+  await releaseOrphanQueueClaims(params);
+  if (!read(params.env).some(isClaimable)) {
+    return;
+  }
+  await wakeIdleTrunks({ ...params, agentIds: await params.agentIds() });
 }
