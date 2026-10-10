@@ -7,8 +7,8 @@ import {
 } from "../../../config/sessions/session-accessor.js";
 import type { Context, ImageContent, Model } from "../../../llm/types.js";
 import { createUserTurnTranscriptRecorder } from "../../../sessions/user-turn-transcript.js";
-import { withEnvAsync } from "../../../test-utils/env.js";
 import { withBranchTestState } from "../../../test-utils/branch-test-state.js";
+import { withEnvAsync } from "../../../test-utils/env.js";
 import { prepareSystemAgentRunAdmission } from "../../admitted-run-context.js";
 import { readBtwTranscriptMessages } from "../../btw-transcript.js";
 import type { AgentMessage } from "../../runtime/index.js";
@@ -63,6 +63,37 @@ afterEach(() => {
 });
 
 describe("submitEmbeddedAttemptPrompt", () => {
+  it("joins the durable handoff checkpoint before starting another provider stream", async () => {
+    const { activeSession } = createSession();
+    const input = createBaseInput();
+    const provider = vi.fn<StreamFn>(() =>
+      createAssistantResultStream(createAssistant(testModel, [{ type: "text", text: "not sent" }])),
+    );
+    activeSession.agent.streamFn = provider;
+    const handoff = new Error("turn parked for handoff");
+    const onHandoffBoundary = vi.fn(async () => {
+      expect(input.persistToolResultProjections).toHaveBeenCalledOnce();
+      throw handoff;
+    });
+    await expect(
+      submitEmbeddedAttemptPrompt({
+        ...input,
+        attempt: { sessionId, onHandoffBoundary },
+        activeSession,
+        promptActiveSession: async (_prompt, options) => {
+          options?.preflightResult?.(true);
+          await activeSession.agent.streamFn(
+            testModel,
+            { systemPrompt: "system", messages: [] },
+            {},
+          );
+        },
+      }),
+    ).rejects.toBe(handoff);
+    expect(provider).not.toHaveBeenCalled();
+    expect(activeSession.agent.streamFn).toBe(provider);
+  });
+
   it("replaces queued context without charging it twice or changing user overlap credit", () => {
     const user = {
       role: "user" as const,

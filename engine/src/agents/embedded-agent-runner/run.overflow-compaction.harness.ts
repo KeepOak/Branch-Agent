@@ -2,6 +2,7 @@
  * Test harness mocks for embedded-run overflow compaction coverage.
  */
 
+import { randomUUID } from "node:crypto";
 import { matchesContextOverflowMessage } from "@branch/ai/internal/runtime";
 import { type Mock, vi } from "vitest";
 import type { ThinkLevel } from "../../auto-reply/thinking.js";
@@ -152,6 +153,7 @@ export const mockedAcquireAgentRunPreparedModelRuntime = vi.fn(
       ? admitted.pluginMetadataSnapshot
       : { ...emptyPluginMetadataSnapshot, workspaceDir: input.workspaceDir };
     const snapshot = {
+      snapshotId: randomUUID(),
       agentId: input.agentId,
       agentDir: input.agentDir,
       config: input.config,

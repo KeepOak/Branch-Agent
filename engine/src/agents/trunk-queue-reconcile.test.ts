@@ -44,6 +44,9 @@ function fakeGateway(liveKeys: string[] = []) {
       if (method === "agents.list") {
         return { agents: [{ id: "builder-ash" }] } as T;
       }
+      if (method === "agent.wait") {
+        return { runId: params.runId, status: "ok" } as T;
+      }
       return {} as T;
     },
   };

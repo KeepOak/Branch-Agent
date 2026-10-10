@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { toStringifiedError } from "@branch/normalization-core/error-coercion";
 import { hashRuntimeConfigValue } from "../config/runtime-snapshot.js";
@@ -177,10 +178,7 @@ export function rebindInputToCommittedConfiguredOwner(
 }
 
 /** Accepts canonical config clones without weakening projected-config isolation. */
-export function preparedModelRuntimeConfigsMatch(
-  left: BranchConfig,
-  right: BranchConfig,
-): boolean {
+export function preparedModelRuntimeConfigsMatch(left: BranchConfig, right: BranchConfig): boolean {
   if (left === right) {
     return true;
   }
@@ -198,7 +196,7 @@ function stampPreparedModelRuntimeSnapshotConfig(
   if (snapshot.config === config) {
     return snapshot;
   }
-  const stamped = Object.freeze({ ...snapshot, config });
+  const stamped = Object.freeze({ ...snapshot, config, snapshotId: randomUUID() });
   copyPreparedModelRuntimeAuthBindings(snapshot, stamped);
   return stamped;
 }
