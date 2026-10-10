@@ -5,10 +5,10 @@ import type { SettingsPageProps } from "../index";
 import type { RecordValue } from "../adapter";
 import { useConfig, useLevel } from "../kit";
 import { useKept, type Kept } from "./voice-kit";
-import { HearingMore, ListeningMore, TalkingMore } from "./voice-listen";
-import { CallsAndMeetings, CallsMore } from "./voice-calls";
+import { ListeningMore, TalkingMore } from "./voice-listen";
+import { CallsAndMeetings } from "./voice-calls";
 import { LiveMore, LiveServices, LiveTechnical } from "./voice-live";
-import { ListeningServices, SpeakingMore, SpokenTurn, TrunksMayUse } from "./voice-speak";
+import { ListeningServices, SpeakingMore } from "./voice-speak";
 import { VoiceTechnical } from "./voice-tech";
 
 export type MoreProps = SettingsPageProps & { tts: Kept<RecordValue>; voices: Kept<RecordValue>; wake: Kept<RecordValue>; word: string };
@@ -22,17 +22,13 @@ export function VoiceAdvanced(props: MoreProps) {
   const shared = { ...props, cfg, catalog };
   return (
     <>
-      <HearingMore />
       <ListeningMore {...shared} />
       <TalkingMore cfg={cfg} />
       <CallsAndMeetings {...shared} />
       <LiveMore {...shared} agents={agents} />
       <SpeakingMore {...shared} />
-      <TrunksMayUse />
       {lv >= 2 ? <><LiveTechnical {...shared} /><VoiceTechnical {...shared} /></> : null}
       <ListeningServices {...shared} />
-      <SpokenTurn />
-      <CallsMore />
       {lv >= 2 ? <LiveServices {...shared} /> : null}
     </>
   );

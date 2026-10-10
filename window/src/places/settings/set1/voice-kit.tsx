@@ -1,4 +1,4 @@
-// Settings › Voice shared bits: the greyed rows (the engine has no key, or the row runs in the desktop app), a resource
+// Settings › Voice shared bits: a resource
 // that keeps its last answer while it reloads, and the small choice helpers every Voice section uses.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useRef } from "react";
@@ -8,7 +8,6 @@ import { useResource } from "../hooks";
 import { Btn, Ctl, Field, Pick, Pill, Seg, Switch, type Opt } from "../kit";
 
 export const NO_KEY = "Branch has no setting for this yet.";
-export const APP = "This runs in the Branch app on your computer.";
 const noop = () => undefined;
 
 /** A resource that keeps showing its last answer while it reloads after a save. */
@@ -21,35 +20,6 @@ export function useKept<T>(engine: WindowEngine, method: string, params: unknown
 export type Kept<T> = ReturnType<typeof useKept<T>>;
 
 export const isMac = (): boolean => typeof navigator !== "undefined" && /Mac/i.test(navigator.platform || navigator.userAgent);
-
-/** One greyed control, drawn the way the preview draws it. */
-export type GreyCtl =
-  | { sw: boolean } | { btn: string; ghost?: boolean } | { seg: string[]; v?: string } | { pick: string[]; extra?: string }
-  | { field: string; unit?: string; ph?: string } | { area: string } | { pill: string };
-export type GreyRow = { t: string; sub?: string; c?: GreyCtl; why?: string; stack?: boolean };
-
-function GreyControl({ c, t }: { c: GreyCtl; t: string }) {
-  if ("sw" in c) return <Switch checked={c.sw} label={t} onChange={noop} />;
-  if ("btn" in c) return <Btn sm ghost={c.ghost}>{c.btn}</Btn>;
-  if ("seg" in c) return <Seg label={t} value={c.v ?? ""} options={c.seg.map((s) => ({ id: s, label: s }))} onChange={noop} />;
-  if ("pick" in c) return <><Pick label={t} value={c.pick[0]} options={c.pick.map((s) => ({ id: s, label: s }))} onChange={noop} />{c.extra ? <Btn sm ghost>{c.extra}</Btn> : null}</>;
-  if ("field" in c) return <><input className="inp num-k" aria-label={t} value={c.field} placeholder={c.ph} readOnly />{c.unit ? <small className="unit-k">{c.unit}</small> : null}</>;
-  if ("area" in c) return <textarea className="inp" rows={3} aria-label={t} placeholder={c.area} readOnly />;
-  return <Pill tone="idle">{c.pill}</Pill>;
-}
-
-/** Rows the engine can't change yet (or that only the desktop app runs): greyed, each with why. */
-export function Greyed({ rows, why }: { rows: GreyRow[]; why: string }) {
-  return (
-    <>
-      {rows.map((r) => (
-        <Ctl key={r.t} title={r.t} sub={r.sub} off={r.why ?? why} stack={r.stack || (r.c && "area" in r.c)}>
-          {r.c ? <GreyControl c={r.c} t={r.t} /> : null}
-        </Ctl>
-      ))}
-    </>
-  );
-}
 
 /** A choice that draws as segments when short and as a list when long (an engine's voices can be many). */
 export function Choice({ value, options, onChange, label, disabled }: { value: string; options: Opt[]; onChange: (id: string) => void; label: string; disabled?: boolean }) {

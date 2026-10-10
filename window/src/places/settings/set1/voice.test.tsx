@@ -53,20 +53,6 @@ const patches = (request: ReturnType<typeof engineOf>["request"]) =>
   request.mock.calls.filter(([m]) => m === "config.patch").map(([, p]) => JSON.parse((p as { raw: string }).raw));
 
 describe("Settings › Voice", () => {
-  it.each([
-    ["Linux x86_64", "Hold it anywhere on this computer."],
-    ["Win32", "Hold it anywhere in Windows."],
-    ["MacIntel", "Hold it anywhere on this Mac."],
-    ["UnknownOS", "Hold it anywhere on this computer."],
-  ])("Push-to-talk key names the platform on %s", async (platform, expected) => {
-    Object.defineProperty(Navigator.prototype, "platform", { configurable: true, get: () => platform });
-    const { engine } = engineOf();
-    await render(engine, 2);
-    const key = row("Push-to-talk key");
-    expect(key.textContent).toContain(expected);
-    if (platform !== "Win32") expect(key.textContent).not.toContain("Windows");
-  });
-
   it("Voice lists the engine's named voices and Off; a pick saves through tts.setPersona", async () => {
     const { engine, request } = engineOf();
     await render(engine);
@@ -91,12 +77,13 @@ describe("Settings › Voice", () => {
     expect(request).toHaveBeenCalledWith("tts.enable", {});
   });
 
-  it("Regular shows Talking and Speaking back only; the desktop-only rows are greyed with why", async () => {
+  it("Regular shows Speaking back only, with one plain note about microphone talk; no greyed rows", async () => {
     const { engine } = engineOf();
     await render(engine);
-    expect([...host.querySelectorAll(".sec > h2")].map((h) => h.textContent)).toEqual(["Talking", "Speaking back"]);
-    expect(row("Microphone").getAttribute("aria-disabled")).toBe("true");
-    expect(row("Listening").textContent).toContain("“Hey Branch”");
+    expect([...host.querySelectorAll(".sec > h2")].map((h) => h.textContent)).toEqual(["Speaking back"]);
+    expect(host.textContent).toContain("Talking by microphone, push to talk and dictation aren’t in this version of Branch yet.");
+    expect(host.querySelector('[data-row="Microphone"]')).toBeNull();
+    expect(host.querySelector('[aria-disabled="true"]')).toBeNull();
     expect(host.querySelector('[data-row="Wake words"]')).toBeNull();
   });
 
