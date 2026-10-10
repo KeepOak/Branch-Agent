@@ -1,0 +1,1 @@
+window:src/shell/status-redesign.test.tsx

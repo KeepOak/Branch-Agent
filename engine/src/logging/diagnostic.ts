@@ -86,6 +86,7 @@ import {
   startDiagnosticStabilityRecorder,
   stopDiagnosticStabilityRecorder,
 } from "./diagnostic-stability.js";
+import { takeMainThreadWorkSummary } from "./main-thread-work.js";
 
 export { diagnosticLogger } from "./diagnostic-runtime.js";
 
@@ -221,6 +222,7 @@ function emitDiagnosticLivenessWarning(
   sample: DiagnosticLivenessSample,
   work: DiagnosticWorkSnapshot,
   now: number,
+  mainThreadWork: string,
 ): void {
   const phase = getCurrentDiagnosticPhase();
   // Attribute only phases completed during this measured liveness interval.
@@ -247,8 +249,8 @@ function emitDiagnosticLivenessWarning(
   } waiting=${work.waitingCount} queued=${work.queuedCount}${
     phase ? ` phase=${phase}` : ""
   }${recentPhaseSummary ? ` recentPhases=${recentPhaseSummary}` : ""}${
-    workLabelSummary ? ` work=[${workLabelSummary}]` : ""
-  }`;
+    mainThreadWork ? ` mainThreadWork=[${mainThreadWork}]` : ""
+  }${workLabelSummary ? ` work=[${workLabelSummary}]` : ""}`;
   const hasBlockingWork = work.waitingCount > 0 || work.queuedCount > 0;
   const hasPersistentDegradation = sample.degradedSinceMs !== undefined;
   const hasSustainedEventLoopDelay =
@@ -873,6 +875,8 @@ export function startGatewayDiagnosticHeartbeat(
     pruneDiagnosticSessionStates(now, true);
     const work = getDiagnosticWorkSnapshot(now);
     const rawLivenessSample = (opts?.sampleLiveness ?? sampleDiagnosticLiveness)(now, work);
+    // Drain every tick so a warning names only the work done since the previous heartbeat.
+    const mainThreadWork = takeMainThreadWorkSummary();
     // Keep sampling during grace so event-loop delay baselines reset, but suppress startup-only reports.
     const livenessSample = inStartupGrace ? null : rawLivenessSample;
     const shouldEmitLivenessEvent =
@@ -896,7 +900,7 @@ export function startGatewayDiagnosticHeartbeat(
     }
 
     if (shouldEmitLivenessReport && livenessSample) {
-      emitDiagnosticLivenessWarning(livenessSample, work, now);
+      emitDiagnosticLivenessWarning(livenessSample, work, now, mainThreadWork);
     }
 
     diag.debug(

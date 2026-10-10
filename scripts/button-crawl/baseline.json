@@ -4,9 +4,6 @@
     "chat:agent:builder:roadmap > Attach, mention a Trunk, skills, Temporary :: Builder": [
       "dead"
     ],
-    "chat:agent:builder:roadmap > Attach, mention a Trunk, skills, Temporary :: Record a voice note": [
-      "error"
-    ],
     "chat:agent:builder:roadmap > Attach, mention a Trunk, skills, Temporary :: Run it in the background /bg": [
       "error"
     ],

@@ -182,6 +182,20 @@ describe("branch mcp serve Trunk tools", () => {
     expect(calls[0]?.params).not.toHaveProperty("outsideAgent");
   });
 
+  it("trunk_send into a thread queues behind its active run instead of inheriting the session queue mode", async () => {
+    const { gw, calls } = fakeGateway({ "chat.send": () => ({ runId: "run-3", status: "queued" }) });
+    await call(await connect(gw), "trunk_send", {
+      agent_id: "builder-oak",
+      text: "Also check the migration",
+      thread_key: "agent:builder-oak:claude-code-1700",
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.params).toMatchObject({
+      sessionKey: "agent:builder-oak:claude-code-1700",
+      queueMode: "followup",
+    });
+  });
+
   it("trunk_steer steers the busy run and run_abort stops it", async () => {
     const { gw, calls } = fakeGateway({
       "chat.send": () => ({ runId: "run-1" }),

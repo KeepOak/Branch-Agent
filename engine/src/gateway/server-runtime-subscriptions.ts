@@ -142,6 +142,13 @@ export function startGatewayEventSubscriptions(params: {
     }
   };
   reconcileAuditPolicy(getRuntimeConfig());
+  void import("./server-methods/trunk-queue.js").then(({ startTrunkQueueSweep }) =>
+    startTrunkQueueSweep({
+      getConfig: getRuntimeConfig,
+      log: (message) => params.log.warn(message),
+      signal: params.signal,
+    }),
+  );
   const sessionActivitySummaries = createSessionActivitySummaries({
     scheduler: params.scheduler,
     getConfig: getRuntimeConfig,
@@ -608,7 +615,13 @@ export function startGatewayEventSubscriptions(params: {
         .then(({ onTrunkRunLifecycle }) =>
           params.signal.aborted
             ? undefined
-            : onTrunkRunLifecycle({ agentId: queueAgentId, terminal: queueTerminal }),
+            : onTrunkRunLifecycle({
+                agentId: queueAgentId,
+                terminal: queueTerminal,
+                threadKey: evt.sessionKey ?? evt.deliverySessionKey,
+                outcome: lifecyclePhase === "end" ? "completed" : "failed",
+                cfg: getRuntimeConfig(),
+              }),
         )
         .catch((error: unknown) =>
           params.log.warn("Trunk queue pickup failed", { agentId: queueAgentId, error }),

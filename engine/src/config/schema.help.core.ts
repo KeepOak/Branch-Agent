@@ -341,6 +341,8 @@ export const CORE_FIELD_HELP: Record<string, string> = {
     "Optional per-agent overrides for skills subsystem budgets. Use this when an agent needs a different skills prompt budget without introducing a second generic context-limits path.",
   "agents.entries.*.skillsLimits.maxSkillsPromptChars":
     "Per-agent override for the skills prompt character budget. This extends the existing skills.limits.maxSkillsPromptChars path instead of routing the same budget through contextLimits.",
+  "agents.entries.*.toolsets":
+    "Per-Trunk on and off switches for named toolsets such as browser, files, shell and web. Omit a toolset or set it true to keep it on. Set it false to remove that toolset's tools from this Trunk's offer. Switches only remove tools; Lockdown and exec approvals still apply, and message, ask_user and session_status stay on.",
   "agents.entries.*.contextLimits":
     "Optional per-agent overrides for the focused context budget knobs. Omitted fields inherit agents.defaults.contextLimits.",
   "agents.entries.*.contextLimits.memoryGetMaxChars":

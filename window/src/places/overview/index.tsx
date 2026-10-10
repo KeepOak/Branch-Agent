@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import { useLockdown } from "../../shell/use-lockdown";
+import { LOCKDOWN_EXPLANATION } from "../../shell/ConfirmLockdown";
 import { notify } from "../../shell/notify";
 import { PlaceFrame, type PlaceProps } from "../../places-nav/PlaceFrame";
 import { Face } from "../../face/Face";
@@ -118,7 +119,8 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
       </Tile>
       <Tile title="Controls">
         <p>Mode: <b>{lockdown.on ? "Lockdown" : mode || "As each Trunk is set"}</b> · <button type="button" className="ov-link ov-inline" disabled={!openSettings || lockdown.on} onClick={() => openSettings?.("permissions")}>change</button></p>
-        <div className="ov-acts"><button type="button" className={lockdown.on ? "btn sm" : "btn bad sm"} disabled={!lockdown.loaded || !lockdown.supported} title={lockdown.supported ? undefined : "This engine has no Lockdown switch yet."} onClick={toggleLockdown}>{lockdown.on ? "Turn Lockdown off" : "Lockdown"}</button><button type="button" className="btn sm" disabled title={shownWhy(PAUSE_ALL_GAP)}>Pause all Trunks</button></div>
+        <div className="ov-acts"><button type="button" className="btn sm" aria-describedby="overview-lockdown-help" disabled={!lockdown.loaded || !lockdown.supported} title={lockdown.supported ? undefined : "This engine has no Lockdown switch yet."} onClick={toggleLockdown}>{lockdown.on ? "Turn Lockdown off" : "Lockdown"}</button><button type="button" className="btn sm" disabled title={shownWhy(PAUSE_ALL_GAP)}>Pause all Trunks</button></div>
+        <p className="ov-hint" id="overview-lockdown-help">{LOCKDOWN_EXPLANATION}.</p>
       </Tile>
       <Tile title="Who is using Branch">
         {status("people", "people")}{status("presence", "live presence")}
@@ -128,5 +130,6 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
       </Tile>
       <Tile title="Milestones"><div className="ov-badges" data-reason={MILESTONES_GAP} />{shownWhy(MILESTONES_GAP) && <p className="ov-hint">{shownWhy(MILESTONES_GAP)}</p>}</Tile>
     </div>
+    {lockdown.confirmation}
   </PlaceFrame>;
 }

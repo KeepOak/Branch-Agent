@@ -2,72 +2,11 @@
 // os.freemem() is only unused pages: on macOS that leaves out inactive and purgeable
 // memory, and on Linux it is MemFree rather than MemAvailable (#459). Windows
 // ullAvailPhys is already the right figure, so it stays on os.freemem().
-import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { freemem, totalmem } from "node:os";
+import { defaultMemoryNeedBytes, type MemoryMeasure, type MemoryProbe } from "./available-memory-core.mjs";
+export { availableMemory, availableMemoryBytes, type AvailableMemory, type MemoryMeasure, type MemoryProbe } from "./available-memory-core.mjs";
 
 /** 6 GB, the shared load rule. Tests replace it with BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB as an absolute MB floor. */
 export const CANDIDATE_MIN_FREE_MB_DEFAULT = 6144;
-
-export interface MemoryProbe {
-  platform?: NodeJS.Platform;
-  meminfo?: string;
-  vmStat?: string;
-  freemem?: number;
-  totalmem?: number;
-  /** When present, including `undefined`, this is the override; otherwise the process environment is read. */
-  envMb?: string;
-}
-
-function pages(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined;
-  const n = Number(value);
-  return Number.isFinite(n) && n >= 0 ? n : undefined;
-}
-
-function vmStat(probe: MemoryProbe): string {
-  return probe.vmStat ?? execFileSync("/usr/bin/vm_stat", [], {
-    encoding: "utf8", windowsHide: true, timeout: 3_000, stdio: ["ignore", "pipe", "ignore"],
-  });
-}
-
-/** Which counter produced the byte count. Named in the candidate-check skip log. */
-export type MemoryMeasure = "vm_stat" | "MemAvailable" | "os.freemem";
-
-export interface AvailableMemory {
-  bytes: number;
-  measure: MemoryMeasure;
-}
-
-/** Bytes the OS can give a new process now, and which counter produced that figure. */
-export function availableMemory(probe: MemoryProbe = {}): AvailableMemory {
-  const platform = probe.platform ?? process.platform;
-  try {
-    if (platform === "linux") {
-      const available = /^MemAvailable:\s+(\d+)\s+kB$/mu.exec(probe.meminfo ?? readFileSync("/proc/meminfo", "utf8"))?.[1];
-      const kib = pages(available);
-      if (kib !== undefined) return { bytes: kib * 1024, measure: "MemAvailable" };
-    }
-    if (platform === "darwin") {
-      const text = vmStat(probe);
-      const pageSize = pages(/page size of (\d+) bytes/u.exec(text)?.[1]);
-      const free = pages(/^Pages free:\s+(\d+)\./mu.exec(text)?.[1]);
-      const inactive = pages(/^Pages inactive:\s+(\d+)\./mu.exec(text)?.[1]);
-      const purgeable = pages(/^Pages purgeable:\s+(\d+)\./mu.exec(text)?.[1]) ?? 0;
-      if (pageSize !== undefined && free !== undefined && inactive !== undefined) {
-        return { bytes: (free + inactive + purgeable) * pageSize, measure: "vm_stat" };
-      }
-    }
-  } catch {
-    // A failed probe must not block an update: fall back to os.freemem(), as before.
-  }
-  return { bytes: probe.freemem ?? freemem(), measure: "os.freemem" };
-}
-
-/** Bytes the OS can give a new process now. */
-export function availableMemoryBytes(probe: MemoryProbe = {}): number {
-  return availableMemory(probe).bytes;
-}
 
 /** Skip line written to desktop.log when there is not enough room for a second engine. */
 export function candidateCheckSkippedLine(bytes: number, measure: MemoryMeasure): string {
@@ -82,5 +21,5 @@ export function candidateCheckSkippedLine(bytes: number, measure: MemoryMeasure)
 export function candidateMinFreeBytes(probe: MemoryProbe = {}): number {
   const env = Object.hasOwn(probe, "envMb") ? probe.envMb : process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB;
   if (env !== undefined) return Number(env) * 2 ** 20;
-  return Math.min(CANDIDATE_MIN_FREE_MB_DEFAULT * 2 ** 20, Math.floor((probe.totalmem ?? totalmem()) / 4));
+  return defaultMemoryNeedBytes(CANDIDATE_MIN_FREE_MB_DEFAULT * 2 ** 20, probe.totalmem);
 }

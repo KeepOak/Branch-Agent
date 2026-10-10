@@ -1,0 +1,1 @@
+window:src/places/canopy/canopy.test.tsx

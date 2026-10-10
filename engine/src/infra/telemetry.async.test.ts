@@ -18,6 +18,8 @@ import {
   resolveTelemetryStatus,
 } from "./telemetry.js";
 
+const OPTED_IN_CONFIG = { telemetry: { enabled: true } } as const;
+
 const { execute, contexts } = vi.hoisted(() => ({
   execute: vi.fn<(command: SqliteWorkerCommand<TelemetryWorkerOperations>) => Promise<unknown>>(),
   contexts: [] as BranchStateWorkerContext[],
@@ -99,11 +101,11 @@ it("coalesces a cold check through storage preparation and accepted response per
   const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ version: "2026.8.24" }));
   const options = { surface: "gateway" as const, fetchImpl, nowMs: 100 };
   let settled = false;
-  const first = checkTelemetryUpdate(() => ({}), options).then((value) => {
+  const first = checkTelemetryUpdate(() => OPTED_IN_CONFIG, options).then((value) => {
     settled = true;
     return value;
   });
-  const second = checkTelemetryUpdate(() => ({}), options);
+  const second = checkTelemetryUpdate(() => OPTED_IN_CONFIG, options);
   try {
     expect(fetchImpl).not.toHaveBeenCalled();
     read.resolve({});
@@ -137,12 +139,12 @@ it("returns another path's fresh cache before joining a pending network check", 
     return await response.promise;
   });
   const options = { surface: "gateway" as const, fetchImpl, nowMs: 100 };
-  const first = checkTelemetryUpdate(() => ({}), options);
+  const first = checkTelemetryUpdate(() => OPTED_IN_CONFIG, options);
   await requested.promise;
   vi.stubEnv("BRANCH_STATE_DIR", testState.path("cached-state"));
   vi.stubEnv("BRANCH_TELEMETRY_ENDPOINT", "https://telemetry.example.invalid/cached");
   let cachedVersion: string | undefined;
-  const second = checkTelemetryUpdate(() => ({}), options).then((update) => {
+  const second = checkTelemetryUpdate(() => OPTED_IN_CONFIG, options).then((update) => {
     cachedVersion = update?.version;
     return update;
   });
@@ -151,7 +153,7 @@ it("returns another path's fresh cache before joining a pending network check", 
     await vi.waitFor(() => expect(cachedVersion).toBe("2026.8.25"));
     expect(fetchImpl).toHaveBeenCalledOnce();
     vi.stubEnv("BRANCH_STATE_DIR", testState.path("third-state"));
-    third = checkTelemetryUpdate(() => ({}), options);
+    third = checkTelemetryUpdate(() => OPTED_IN_CONFIG, options);
   } finally {
     response.resolve(Response.json({ version: "2026.8.24" }));
     await Promise.all([first, second, third]);
@@ -173,9 +175,9 @@ it("joins the captured check when it settles during another caller's storage wai
   });
   const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ version: "2026.8.24" }));
   const options = { surface: "gateway" as const, fetchImpl, nowMs: 100 };
-  const first = checkTelemetryUpdate(() => ({}), options);
+  const first = checkTelemetryUpdate(() => OPTED_IN_CONFIG, options);
   let secondSettled = false;
-  const second = checkTelemetryUpdate(() => ({}), options).then((update) => {
+  const second = checkTelemetryUpdate(() => OPTED_IN_CONFIG, options).then((update) => {
     secondSettled = true;
     return update;
   });
@@ -205,18 +207,18 @@ it("does not treat another path's cached result as a network check for an uncach
   });
   const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ version: "2026.8.25" }));
   const options = { surface: "gateway" as const, fetchImpl, nowMs: 100 };
-  const first = checkTelemetryUpdate(() => ({}), options);
+  const first = checkTelemetryUpdate(() => OPTED_IN_CONFIG, options);
   vi.stubEnv("BRANCH_STATE_DIR", testState.path("uncached-state"));
   const endpoint = "https://telemetry.example.invalid/uncached";
   vi.stubEnv("BRANCH_TELEMETRY_ENDPOINT", endpoint);
-  const second = checkTelemetryUpdate(() => ({}), options);
+  const second = checkTelemetryUpdate(() => OPTED_IN_CONFIG, options);
   firstRead.resolve({ lastPingAt: 100, latestVersion: "2026.8.24" });
   const [cached, checked] = await Promise.all([first, second]);
   expect(cached).toEqual({ version: "2026.8.24" });
   expect(checked).toEqual({ version: "2026.8.25" });
   expect(fetchImpl).toHaveBeenCalledExactlyOnceWith(
     endpoint,
-    expect.objectContaining({ method: "GET" }),
+    expect.objectContaining({ method: "POST" }),
   );
 });
 
@@ -277,7 +279,7 @@ it.each(["do-not-track", "opt-out", "update-disabled", "still-enabled"] as const
       count.resolve(3);
       await checking;
     }
-    if (change === "update-disabled") {
+    if (change === "update-disabled" || change === "opt-out" || change === "do-not-track") {
       expect(fetchImpl).not.toHaveBeenCalled();
       expect(await checking).toBeNull();
     } else if (change === "still-enabled") {
@@ -290,14 +292,6 @@ it.each(["do-not-track", "opt-out", "update-disabled", "still-enabled"] as const
         throw new Error("Expected the telemetry JSON request body");
       }
       expect(JSON.parse(body)).toMatchObject({ features: { sessionsLast24h: 3 } });
-    } else {
-      expect(fetchImpl).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ method: "GET" }),
-      );
-      const request = fetchImpl.mock.calls[0]?.[1];
-      expect(request).not.toHaveProperty("body");
-      expect(request).not.toHaveProperty("headers.Content-Type");
     }
   },
 );

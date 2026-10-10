@@ -76,25 +76,26 @@ describe("Trunk job queue pickup", () => {
     );
     const { gateway, calls } = fakeGateway();
 
-    await onTrunkRunLifecycle({ agentId: "birch", terminal: true, gateway });
+    await onTrunkRunLifecycle({ agentId: "builder-birch", terminal: true, gateway });
 
     const thread = listQueueItems(env).find((item) => item.id === high.id)?.thread_key;
-    expect(thread).toMatch(new RegExp(`^agent:birch:queue-${high.id}-[0-9a-f]{8}$`));
+    expect(thread).toMatch(new RegExp(`^agent:builder-birch:queue-${high.id}-[0-9a-f]{8}$`));
     expect(calls.map((call) => call.method)).toEqual([
       "sessions.list",
       "sessions.create",
       "chat.send",
     ]);
-    expect(calls[1]!.params).toEqual({ key: thread, agentId: "birch", label: "High job" });
+    expect(calls[1]!.params).toMatchObject({ key: thread, agentId: "builder-birch" });
+    expect(String(calls[1]!.params.label)).toMatch(/^High job \([0-9a-f]{8}\)$/);
     expect(calls[2]!.params).toMatchObject({
       sessionKey: thread,
-      agentId: "birch",
+      agentId: "builder-birch",
       message: "Do the high job.",
       deliver: false,
     });
     const listed = listQueueItems(env);
     expect(listed.map((item) => [item.title, item.status, item.claimed_by])).toEqual([
-      ["High job", "claimed", "birch"],
+      ["High job", "claimed", "builder-birch"],
       ["Low job", "queued", undefined],
     ]);
   });
@@ -106,21 +107,28 @@ describe("Trunk job queue pickup", () => {
 
     const [a, b] = await Promise.all([
       pickUpQueuedWork({ agentId: "ash", gateway, env }),
-      pickUpQueuedWork({ agentId: "birch", gateway, env }),
+      pickUpQueuedWork({ agentId: "builder-birch", gateway, env }),
     ]);
 
     expect(new Set([a?.item.title, b?.item.title])).toEqual(new Set(["First", "Second"]));
     const sends = calls.filter((call) => call.method === "chat.send");
-    expect(sends.map((call) => call.params.message).toSorted()).toEqual(["one", "two"]);
+    expect(
+      sends
+        .map((call) => String(call.params.message))
+        .toSorted((left, right) => left.localeCompare(right)),
+    ).toEqual(["one", "two"]);
     const claimers = listQueueItems(env).map((item) => item.claimed_by);
-    expect(claimers.toSorted()).toEqual(["ash", "birch"]);
+    expect(claimers.map(String).toSorted((left, right) => left.localeCompare(right))).toEqual([
+      "ash",
+      "builder-birch",
+    ]);
   });
 
   it("does not interrupt a Trunk that is mid-run", async () => {
     addQueueItem({ title: "Waiting", brief_text: "later", priority: 1 }, env);
-    const { gateway, calls } = fakeGateway(new Set(["birch"]));
+    const { gateway, calls } = fakeGateway(new Set(["builder-birch"]));
 
-    expect(await pickUpQueuedWork({ agentId: "birch", gateway, env })).toBeUndefined();
+    expect(await pickUpQueuedWork({ agentId: "builder-birch", gateway, env })).toBeUndefined();
 
     expect(calls.map((call) => call.method)).toEqual(["sessions.list"]);
     expect(listQueueItems(env)[0]!.status).toBe("queued");
@@ -136,13 +144,13 @@ describe("Trunk job queue pickup", () => {
         if (method === "sessions.list" && stillActive > 0) {
           stillActive -= 1;
           calls.push({ method, params });
-          return { sessions: [{ key: "agent:birch:main", hasActiveRun: true }] } as T;
+          return { sessions: [{ key: "agent:builder-birch:main", hasActiveRun: true }] } as T;
         }
         return await idle.request<T>(method, params);
       },
     };
 
-    await onTrunkRunLifecycle({ agentId: "birch", terminal: true, gateway });
+    await onTrunkRunLifecycle({ agentId: "builder-birch", terminal: true, gateway });
 
     expect(calls.map((call) => call.method)).toEqual([
       "sessions.list",
@@ -151,7 +159,10 @@ describe("Trunk job queue pickup", () => {
       "sessions.create",
       "chat.send",
     ]);
-    expect(listQueueItems(env)[0]).toMatchObject({ status: "claimed", claimed_by: "birch" });
+    expect(listQueueItems(env)[0]).toMatchObject({
+      status: "claimed",
+      claimed_by: "builder-birch",
+    });
   });
 
   it("does nothing on an empty queue: no thread, no message", async () => {

@@ -1,0 +1,2 @@
+window:src/rooms/rooms.test.ts
+window:src/rooms/room-rules-groups.test.tsx

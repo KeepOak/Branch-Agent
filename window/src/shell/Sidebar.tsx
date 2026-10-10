@@ -1,5 +1,6 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { Pebble } from "../face/Pebble";
+import { RoomAvatar } from "../rooms/RoomMessage";
 import { RoomFaces } from "../rooms/RoomFaces";
 import type { Conversation } from "../connect/conversations";
 import type { PlaceId } from "../places-nav/routes";
@@ -147,6 +148,24 @@ function Row({ p, row, kids, depth = 0, child = false }: { p: SidebarProps; row:
   );
 }
 
+const PIN_FACE = 44;
+
+function pinFace(p: SidebarProps, row: Conversation, state: RowState) {
+  const extra = Math.max(0, (row.participantIds?.length ?? row.roomPicks?.length ?? 0) - 2);
+  if (row.roomPicks?.length) {
+    return (
+      <>
+        <RoomFaces picks={row.roomPicks} size={PIN_FACE} />
+        {extra > 0 ? <i className="pin-plus">+{extra}</i> : null}
+      </>
+    );
+  }
+  if (row.kind === "outside" || row.kind === "chatGroup" || (row.kind !== "trunk" && !row.agentId)) {
+    return <RoomAvatar id={row.key} name={row.title} size={PIN_FACE} />;
+  }
+  return <Pebble size={PIN_FACE} label={p.trunkName(row.agentId)} state={state.waiting ? "wait" : state.working ? "work" : "idle"} priority={state.working || state.waiting ? 200 : 100} />;
+}
+
 const seenPinned = new Set<string>();
 function PinnedTile({ p, row }: { p: SidebarProps; row: Conversation }) {
   const [fresh] = useState(() => !seenPinned.has(row.key));
@@ -160,11 +179,11 @@ function PinnedTile({ p, row }: { p: SidebarProps; row: Conversation }) {
       title={row.title} onClick={(e) => { if ((e.altKey || e.shiftKey) && p.onSelect?.(row, e)) return; p.onOpen(row.key); }}
       onContextMenu={(e) => { e.preventDefault(); p.onMenu(row, e); }}
       onKeyDown={(e) => { if (e.key === "F10" && e.shiftKey) { e.preventDefault(); p.onMenu(row, e as unknown as MouseEvent<HTMLElement>); } }}>
-      <span className="pin-face">{row.roomPicks ? <RoomFaces picks={row.roomPicks} size={60} /> : <Pebble size={60} label={row.kind === "group" || row.kind === "chatGroup" || row.kind === "outside" ? row.title : p.trunkName(row.agentId)} state={state.waiting ? "wait" : state.working ? "work" : "idle"} priority={state.working || state.waiting ? 200 : 100} />}
+      <span className="pin-face">{pinFace(p, row, state)}
         {row.unread && !current ? <i className="pin-unread" aria-label="Unread" /> : null}
         {state.waiting ? <i className="needs-you" aria-label="Waiting for you" /> : null}
       </span>
-      <b className="pin-name">{row.title}</b><span className="pin-role">{role}</span>
+      <b className="pin-name">{row.title}</b>
     </button>
     <button type="button" className="pin-more" aria-label={`More for ${row.title}`} title={`More for ${row.title}`} onClick={(e) => p.onMenu(row, e)}><Icon name="more" small /></button>
   </div>;
@@ -251,7 +270,7 @@ export function Sidebar(p: SidebarProps) {
               const label = s.label !== null ? (s.id.startsWith("trunk:") ? p.trunkName(s.label) : s.label) : s.id === "all" ? "Conversations" : null;
               return (
                 <section key={s.id} className="list-sec" data-section={s.id}>
-                  {label !== null || lead ? <SectionLabel p={p} s={s} label={label} lead={lead} /> : null}
+                  {s.id === "pinned" && !p.rail ? null : label !== null || lead ? <SectionLabel p={p} s={s} label={label} lead={lead} /> : null}
                   {s.id === "pinned" && !p.rail ? <div className="pin-grid" role="list" aria-label="Pinned">{s.rows.map((row) => <PinnedTile key={row.key} p={p} row={row} />)}</div> : <Rows p={p} rows={s.rows} kids={kids} />}
                 </section>
               );

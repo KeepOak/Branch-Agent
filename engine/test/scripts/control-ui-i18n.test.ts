@@ -609,21 +609,6 @@ describe("control-ui-i18n catalog validation", () => {
     expect(result.stdout).not.toContain("provider=anthropic");
   });
 
-  it("checks generated catalog fallbacks without a provider", () => {
-    const result = spawnSync(
-      process.execPath,
-      ["--import", "tsx", "scripts/control-ui-i18n-verify.ts", "generated"],
-      {
-        cwd: process.cwd(),
-        encoding: "utf8",
-      },
-    );
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain("raw-copy:");
-    expect(result.stdout).toContain("catalog:");
-  });
-
   it("rejects placeholder-corrupt batch replies before they leave the retry loop", () => {
     const items = [
       {

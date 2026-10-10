@@ -8,9 +8,7 @@ import type { AgentWaitResult } from "../agents/run-wait.types.js";
 import {
   addQueueItem,
   claimNextQueueItem,
-  pickUpQueuedWork,
   STALE_CLAIM_MS,
-  type TrunkQueueGateway,
   type TrunkQueueItem,
 } from "../agents/trunk-queue.js";
 import type { BranchConfig } from "../config/types.branch.js";
@@ -53,9 +51,15 @@ function answer(response: ServerResponse, text: string) {
   response.end("data: [DONE]\n\n");
 }
 
-/** Answers every model request at once, except the first one carrying HOLD, which waits until released. */
-async function startProvider(requests: string[], held: Array<() => void>) {
-  let heldOnce = false;
+/**
+ * Answers every model request at once, except one carrying HOLD while the hold is armed; that one waits until
+ * released. The hold disarms as soon as it catches a request, so the rest of that run is answered normally.
+ */
+async function startProvider(
+  requests: string[],
+  held: Array<() => void>,
+  hold: { armed: boolean },
+) {
   return await reserveTestPortListener({
     offsets: [0],
     createListener: () =>
@@ -67,9 +71,8 @@ async function startProvider(requests: string[], held: Array<() => void>) {
           }
           const body = Buffer.concat(chunks).toString("utf8");
           requests.push(body);
-          // Later turns in the same thread carry HOLD in their history; only the first is held.
-          if (body.includes(HOLD) && !heldOnce) {
-            heldOnce = true;
+          if (hold.armed && body.includes(HOLD)) {
+            hold.armed = false;
             held.push(() => answer(response, "demo long run finished"));
             return;
           }
@@ -85,6 +88,7 @@ type Gateway = Awaited<ReturnType<typeof startGatewayWithClient>>;
 describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
   const requests: string[] = [];
   const held: Array<() => void> = [];
+  const hold = { armed: false };
   let state: Awaited<ReturnType<typeof createBranchTestState>> | undefined;
   let portClaim: Awaited<ReturnType<typeof acquireGatewayE2ePortBlock>> | undefined;
   let providerServer: Awaited<ReturnType<typeof startProvider>> | undefined;
@@ -98,11 +102,6 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
       { runId, timeoutMs: RUN_WAIT_MS },
       { timeoutMs: RUN_WAIT_MS + 5_000 },
     );
-  const runToEnd = async (sessionKey: string, message: string) => {
-    const runId = randomUUID();
-    await client().request("chat.send", { sessionKey, message, idempotencyKey: runId });
-    expect((await waitRun(runId)).status).toBe("ok");
-  };
   const waitIdle = async (agentId: string) =>
     await vi.waitFor(
       async () => {
@@ -137,7 +136,7 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
     // The queue hook reaches the gateway as a local client, the way trunk_send does.
     state.envVars.BRANCH_GATEWAY_PORT = String(portClaim.port);
     state.applyEnv();
-    providerServer = await startProvider(requests, held);
+    providerServer = await startProvider(requests, held, hold);
     const provider = buildMockOpenAiResponsesProvider(
       `http://127.0.0.1:${providerServer.claim.port}/v1`,
       "trunk-queue-demo",
@@ -155,7 +154,7 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
           },
         },
         defaultId: "main",
-        entries: { main: {}, ash: {}, birch: {} },
+        entries: { main: {}, ash: {}, "builder-birch": {} },
       },
       gateway: { auth: { mode: "token", token } },
       models: { mode: "replace", providers: { [provider.providerId]: provider.config } },
@@ -173,7 +172,7 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
     // Session storage can still be opening right after startup; wait until every Trunk answers.
     await vi.waitFor(
       async () => {
-        for (const agentId of ["main", "ash", "birch"]) {
+        for (const agentId of ["main", "ash", "builder-birch"]) {
           await client().request("sessions.list", { agentId, limit: 1 });
         }
       },
@@ -202,21 +201,22 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
 
   it("keeps the claim of a run lasting past 2 hours and releases a claim with no run", async () => {
     const holdRun = randomUUID();
+    hold.armed = true;
     await client().request("chat.send", {
-      sessionKey: "agent:birch:main",
+      sessionKey: "agent:builder-birch:main",
       message: `${HOLD} demo long task`,
       idempotencyKey: holdRun,
     });
     await vi.waitFor(() => expect(held).toHaveLength(1), { timeout: RUN_WAIT_MS });
     try {
-      // Both claims were last touched long ago; only birch has a run going right now.
+      // Both claims were last touched long ago; only builder-birch has a run going right now.
       const longAgo = Date.now() - STALE_CLAIM_MS - 60_000;
       const longJob = addQueueItem(
         { title: "Demo long job", brief_text: "demo long" },
         process.env,
         longAgo,
       );
-      claimNextQueueItem("birch", process.env, longAgo);
+      claimNextQueueItem("builder-birch", process.env, longAgo);
       const lostJob = addQueueItem(
         { title: "Demo lost job", brief_text: "demo lost" },
         process.env,
@@ -228,7 +228,7 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
 
       expect(listed.find((item) => item.id === longJob.id)).toMatchObject({
         status: "claimed",
-        claimed_by: "birch",
+        claimed_by: "builder-birch",
       });
       expect(listed.find((item) => item.id === lostJob.id)).toMatchObject({
         status: "released",
@@ -237,71 +237,108 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
       await client().request("trunks.queue.done", { id: longJob.id });
       await client().request("trunks.queue.done", { id: lostJob.id });
     } finally {
-      // Later tests need birch idle whatever this one found.
+      // Later tests need builder-birch idle whatever this one found.
       held.shift()?.();
       expect((await waitRun(holdRun)).status).toBe("ok");
-      await waitIdle("birch");
+      await waitIdle("builder-birch");
     }
   });
 
   it("starts the queued job by itself in a new thread when a Trunk's run ends", async () => {
+    await waitIdle("builder-birch");
+    const holdRun = randomUUID();
+    hold.armed = true;
+    await client().request("chat.send", {
+      sessionKey: "agent:builder-birch:main",
+      message: `${HOLD} demo first task`,
+      idempotencyKey: holdRun,
+    });
+    await vi.waitFor(() => expect(held).toHaveLength(1), { timeout: RUN_WAIT_MS });
     const queued = await client().request<{ item: TrunkQueueItem }>("trunks.queue.add", {
       title: "Demo queued job",
       brief_text: "demo-queued-brief",
       priority: 1,
     });
+    // The Trunk is mid-run, so the card waits for the run to end.
     expect(requestsWith("demo-queued-brief")).toHaveLength(0);
 
-    await runToEnd("agent:birch:main", "demo first task");
+    held.shift()?.();
+    expect((await waitRun(holdRun)).status).toBe("ok");
 
     await vi.waitFor(() => expect(requestsWith("demo-queued-brief")).toHaveLength(1), {
       timeout: RUN_WAIT_MS,
     });
     const claim = (await list()).find((item) => item.id === queued.item.id);
-    expect(claim).toMatchObject({ status: "claimed", claimed_by: "birch" });
+    // A fast run may already have completed the job; either way the idle Trunk took it.
+    expect(claim).toMatchObject({ claimed_by: "builder-birch" });
     const threads = await client().request<{ sessions: Array<{ key: string; label?: string }> }>(
       "sessions.list",
-      { agentId: "birch", limit: 50 },
+      { agentId: "builder-birch", limit: 50 },
     );
     expect(threads.sessions).toContainEqual(
-      expect.objectContaining({ key: claim?.thread_key, label: "Demo queued job" }),
+      expect.objectContaining({
+        key: claim?.thread_key,
+        label: expect.stringMatching(/^Demo queued job \([0-9a-f]{8}\)$/),
+      }),
     );
-    await waitIdle("birch");
+    await waitIdle("builder-birch");
     await client().request("trunks.queue.done", { id: queued.item.id });
   });
 
-  it("sends a released job to the next Trunk as a fresh run through real chat admission", async () => {
+  it("starts a card added while a Trunk is idle, without waiting for a run to end", async () => {
+    await waitIdle("builder-birch");
+    const added = await client().request<{ item: TrunkQueueItem }>("trunks.queue.add", {
+      title: "Demo added job",
+      brief_text: "demo-added-brief",
+      priority: 100,
+    });
+
+    await vi.waitFor(() => expect(requestsWith("demo-added-brief")).toHaveLength(1), {
+      timeout: RUN_WAIT_MS,
+    });
+    // The run may already have ended, which completes the job; either way the idle Trunk took it.
+    const claim = (await list()).find((item) => item.id === added.item.id);
+    expect(claim).toMatchObject({ claimed_by: "builder-birch" });
+    await waitIdle("builder-birch");
+    await client().request("trunks.queue.done", { id: added.item.id });
+  });
+
+  it("completes a job when its run ends cleanly, and does not send it again", async () => {
+    await waitIdle("builder-birch");
     const job = await client().request<{ item: TrunkQueueItem }>("trunks.queue.add", {
-      title: "Demo reassigned job",
-      brief_text: "demo-reassigned-brief",
+      title: "Demo finished job",
+      brief_text: "demo-finished-brief",
       priority: 2,
     });
-    const realGateway: TrunkQueueGateway = {
-      request: async <T>(method: string, params: Record<string, unknown>) =>
-        await client().request<T>(method, params),
-    };
-    const first = await pickUpQueuedWork({ agentId: "ash", gateway: realGateway });
-    expect(first?.item.id).toBe(job.item.id);
-    await vi.waitFor(() => expect(requestsWith("demo-reassigned-brief")).toHaveLength(1), {
+    await vi.waitFor(() => expect(requestsWith("demo-finished-brief")).toHaveLength(1), {
       timeout: RUN_WAIT_MS,
     });
-    await waitIdle("ash");
+    // The key stored on the claim is the session key the gateway reports for its run, so the run's end matches it.
+    const storedThread = (await list()).find((item) => item.id === job.item.id)?.thread_key;
+    const sessionKeys = (
+      await client().request<{ sessions: Array<{ key: string }> }>("sessions.list", {
+        agentId: "builder-birch",
+        limit: 200,
+      })
+    ).sessions.map((session) => session.key);
+    expect(storedThread).toBeDefined();
+    expect(sessionKeys).toContain(storedThread);
+
+    await waitIdle("builder-birch");
+
+    // The clean end closes the claim: the job is done, so a release has nothing to put back.
+    await vi.waitFor(
+      async () =>
+        expect((await list()).find((item) => item.id === job.item.id)).toMatchObject({
+          status: "done",
+        }),
+      {
+        timeout: RUN_WAIT_MS,
+      },
+    );
     expect(await client().request("trunks.queue.release", { id: job.item.id })).toMatchObject({
-      released: true,
-      released_from: "ash",
+      released: false,
     });
-
-    const second = await pickUpQueuedWork({ agentId: "birch", gateway: realGateway });
-
-    expect(second?.item.id).toBe(job.item.id);
-    expect(second?.threadKey).not.toBe(first?.threadKey);
-    // A new model request means chat.send admitted a new run, not a replay of ash's attempt.
-    await vi.waitFor(() => expect(requestsWith("demo-reassigned-brief")).toHaveLength(2), {
-      timeout: RUN_WAIT_MS,
-    });
-    expect((await list()).find((item) => item.id === job.item.id)).toMatchObject({
-      status: "claimed",
-      claimed_by: "birch",
-    });
+    expect(requestsWith("demo-finished-brief")).toHaveLength(1);
   });
 });

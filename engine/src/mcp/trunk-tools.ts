@@ -5,6 +5,7 @@ import type { EventFrame } from "../../packages/gateway-protocol/src/index.js";
 import { extractFirstTextBlock } from "../shared/chat-message-content.js";
 import { registerQueueMcpTools } from "./queue-tools.js";
 import { registerSigninMcpTools } from "./signin-tools.js";
+import { registerTrunkStatusTools } from "./trunk-status-tools.js";
 
 /**
  * Trunk tools for `branch mcp serve`: an outside agent sees and drives Trunks the way the owner's window does.
@@ -225,6 +226,7 @@ export function registerTrunkMcpTools(
   registerSigninMcpTools(server, gw);
   registerQueueMcpTools(server, gw);
   registerTrunkReadTools(server, gw);
+  registerTrunkStatusTools(server, gw);
   registerTrunkWriteTools(server, gw, opts);
   registerRunTools(server, gw);
   registerRoomTools(server, gw, opts);
@@ -394,7 +396,14 @@ function registerTrunkWriteTools(
           label: title ?? text.slice(0, 60),
         });
       }
-      const sent = await chatSend(gw, opts, { sessionKey: key, agentId: agent_id, message: text });
+      // A send queues behind the thread's active run. It never starts a parallel run, whatever
+      // queue mode the session or config sets. trunk_steer is the path that joins the run.
+      const sent = await chatSend(gw, opts, {
+        sessionKey: key,
+        agentId: agent_id,
+        message: text,
+        queueMode: "followup",
+      });
       return ok(`sent to ${key}`, {
         thread_key: key,
         run_id: sent.runId ?? null,

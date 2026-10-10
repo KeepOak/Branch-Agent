@@ -250,3 +250,61 @@ describe("SQLite transaction diagnostics", () => {
     },
   );
 });
+
+describe("slow transaction lock waits", () => {
+  it("reports the BEGIN lock wait apart from the time the lock was held", () => {
+    const logger = { warn: vi.fn() };
+    let held = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => held);
+    let waited = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => waited);
+    const db = createDatabase();
+    const exec = db.exec.bind(db);
+    vi.spyOn(db, "exec").mockImplementation((sql) => {
+      exec(sql);
+      if (sql === "BEGIN IMMEDIATE") {
+        waited += 1_500;
+      }
+    });
+
+    withSqliteReaderOwner({ operation: "session.write", ownerKind: "worker" }, () =>
+      runSqliteImmediateTransactionSync(
+        db,
+        () => {
+          held += 5_100;
+          return "committed";
+        },
+        { logger },
+      ),
+    );
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      "slow SQLite transaction hold",
+      expect.objectContaining({
+        lockWaitMs: 1_500,
+        elapsedMs: 5_100,
+        mode: "immediate",
+        operation: "session.write",
+      }),
+    );
+  });
+
+  it("logs no hold for a long lock wait followed by a fast body", () => {
+    const logger = { warn: vi.fn() };
+    vi.spyOn(Date, "now").mockImplementation(() => 0);
+    let waited = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => waited);
+    const db = createDatabase();
+    const exec = db.exec.bind(db);
+    vi.spyOn(db, "exec").mockImplementation((sql) => {
+      exec(sql);
+      if (sql === "BEGIN IMMEDIATE") {
+        waited += 20_000;
+      }
+    });
+
+    runSqliteImmediateTransactionSync(db, () => "committed", { logger });
+
+    expect(logger.warn).not.toHaveBeenCalledWith("slow SQLite transaction hold", expect.anything());
+  });
+});

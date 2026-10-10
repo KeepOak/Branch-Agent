@@ -502,6 +502,16 @@ export function handoffRunTargets(workflow, config) {
   return targets;
 }
 
+// Engine tests that run only after merge (push to main), named on an executable run line of
+// engine-lint-baselines.yml. They still run in CI, just not on pull requests.
+export function postMergeEngineRunTargets(workflow) {
+  const targets = new Set();
+  for (const match of String(workflow ?? '').matchAll(/^\s*run:\s*node scripts\/run-vitest\.mjs run (test\/[\w./-]+\.test\.ts)\s*$/gm)) {
+    targets.add(`engine/${match[1]}`);
+  }
+  return targets;
+}
+
 export function changedTestPaths(nameStatus) {
   return nameStatus.split(/\r?\n/).filter(Boolean).flatMap((line) => {
     const [status, ...paths] = line.split('\t');
@@ -516,11 +526,19 @@ export function uncoveredTests(changed, covered) {
     target === file || (target.includes('*') && path.matchesGlob(file, target)))).sort();
 }
 
-export function coverageTargets(desktopWorkflow, handoffWorkflow = '', handoffConfig = '') {
+// namedFor reads one lane's named feature tests; tests inject their own list so they do not depend on the repo's lists.
+export function coverageTargets(
+  desktopWorkflow,
+  handoffWorkflow = '',
+  handoffConfig = '',
+  lintBaselinesWorkflow = '',
+  { namedFor = namedTests } = {},
+) {
   const covered = pullRequestDesktopRunTargets(desktopWorkflow);
   for (const file of handoffRunTargets(handoffWorkflow, handoffConfig)) covered.add(file);
+  for (const file of postMergeEngineRunTargets(lintBaselinesWorkflow)) covered.add(file);
   for (const lane of ['engine', 'window']) {
-    for (const file of [...namedTests(lane), ...harvestTests(lane)]) covered.add(`${lane}/${file}`);
+    for (const file of [...namedFor(lane), ...harvestTests(lane)]) covered.add(`${lane}/${file}`);
   }
   for (const file of capabilityTests()) covered.add(`engine/${file}`);
   for (const slice of slices) {
@@ -552,7 +570,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const workflow = readFileSync(path.join(root, '.github/workflows/desktop-checks.yml'), 'utf8');
   const handoffWorkflow = readFileSync(path.join(root, '.github/workflows/engine-handoff-checks.yml'), 'utf8');
   const handoffConfig = readFileSync(path.join(root, 'engine/test/vitest/vitest.desktop-handoff.config.ts'), 'utf8');
-  const uncovered = uncoveredTests(changed, coverageTargets(workflow, handoffWorkflow, handoffConfig));
+  const lintBaselinesWorkflow = readFileSync(path.join(root, '.github/workflows/engine-lint-baselines.yml'), 'utf8');
+  const uncovered = uncoveredTests(changed, coverageTargets(workflow, handoffWorkflow, handoffConfig, lintBaselinesWorkflow));
   if (uncovered.length) {
     for (const file of uncovered) console.error(`Uncovered changed test: ${file}\n  Add: ${additionFor(file)}`);
     process.exitCode = 1;
