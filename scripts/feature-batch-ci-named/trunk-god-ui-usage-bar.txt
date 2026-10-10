@@ -6,3 +6,4 @@ window:src/shell/StatusPopovers.test.tsx
 window:src/shell/status-data.test.ts
 window:src/shell/status-gateway.test.tsx
 window:src/shell/status-redesign.test.tsx
+window:src/shell/usage-every-account.test.tsx
