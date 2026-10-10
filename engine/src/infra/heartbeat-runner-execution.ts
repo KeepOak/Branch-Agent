@@ -378,25 +378,21 @@ export async function prepareHeartbeatRunStage(wake: ReadyHeartbeatWake) {
   const { entry, sessionKey, run, conversationEntry } = preflight.session;
   const previousUpdatedAt = entry?.updatedAt;
   const projectionSessionKey = run.kind === "isolated" ? run.baseSessionKey : sessionKey;
-  // Capture the client-owned generation before routing can await. The inspected
-  // completion queue owns publication eligibility, not the coalesced wake source.
+  // Capture the app-owned generation before routing can await. Routeless polls
+  // can publish here; queued completions retain their existing route eligibility.
   // Session-owned work: a background command completion, or the continuation of a turn
   // interrupted by a Gateway restart. Both answer the session that owns them.
   const isSessionOwnedEvent = (event: (typeof preflight.pendingEventEntries)[number]) =>
     isExecCompletionEvent(event.text) ||
     (wake.wakeSource === "restart-sentinel" && isRestartContinuationEvent(event));
   const projectionCandidate =
-    scheduledTasks.length === 0 &&
-    preflight.shouldInspectPendingEvents &&
-    preflight.pendingEventEntries.some(isSessionOwnedEvent) &&
     !preflight.session.suppressOriginatingContext &&
     !isInternalSessionEffectsKey(projectionSessionKey) &&
     conversationEntry?.delivery?.kind === "internal" &&
     conversationEntry.createdVia !== "internal" &&
     (conversationEntry.createdVia === "operator" ||
-      conversationEntry.lastReadAt !== undefined ||
-      (conversationEntry.createdVia === "spawn" &&
-        parseAgentSessionKey(projectionSessionKey)?.rest.startsWith("dashboard:")))
+      conversationEntry.createdVia === "spawn" ||
+      conversationEntry.lastReadAt !== undefined)
       ? {
           sessionKey: projectionSessionKey,
           sessionId: conversationEntry.sessionId,
@@ -434,7 +430,17 @@ export async function prepareHeartbeatRunStage(wake: ReadyHeartbeatWake) {
   // Gate here so neither the relay prompt nor the session publication path can
   // see a projection target the resolver already declined to deliver to.
   const internalProjection =
-    resolvedDelivery.reason === "target-none" ? undefined : projectionCandidate;
+    resolvedDelivery.reason === "no-route" ||
+    (resolvedDelivery.reason !== "target-none" &&
+      scheduledTasks.length === 0 &&
+      preflight.shouldInspectPendingEvents &&
+      preflight.pendingEventEntries.some(isSessionOwnedEvent) &&
+      (conversationEntry?.createdVia === "operator" ||
+        conversationEntry?.lastReadAt !== undefined ||
+        (conversationEntry?.createdVia === "spawn" &&
+          parseAgentSessionKey(projectionSessionKey)?.rest.startsWith("dashboard:"))))
+      ? projectionCandidate
+      : undefined;
   // Session-owned work in an internal session (the same eligibility as the routeless
   // projection above: Control UI/WebChat and other operator-owned internal sessions)
   // answers in that session. The heartbeat target is for heartbeat output and must not
@@ -448,13 +454,14 @@ export async function prepareHeartbeatRunStage(wake: ReadyHeartbeatWake) {
   const delivery: typeof resolvedDelivery = sessionOwnedCompletion
     ? { ...resolvedDelivery, channel: "none", to: undefined, reason: "session-owned-completion" }
     : resolvedDelivery;
-  // Routeless ambient polls are pure model burn, but only they may skip:
+  // Without a chat or app destination, ambient polls are pure model burn, but only they may skip:
   // triggered wakes (hook/manual/cron/exec), polls with queued events, and
   // scheduled-task wakes must still run to process their payloads even when
   // the reply cannot deliver. An absent source is the plain scheduled poll.
   if (
     delivery.channel === "none" &&
     delivery.reason === "no-route" &&
+    !internalProjection &&
     (wake.wakeSource === undefined || wake.wakeSource === "interval") &&
     preflight.pendingEventEntries.length === 0 &&
     scheduledTasks.length === 0

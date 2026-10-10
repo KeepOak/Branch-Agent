@@ -303,7 +303,7 @@ describe("native heartbeat busy poll settlement", () => {
           expect(skipped).toMatchObject({
             status: "skipped",
             error: "heartbeat skipped: requests-in-flight",
-            completionStatus: "failed",
+            completionStatus: "unknown",
           });
           expect(skipped?.durationMs).toBeLessThan(1_000);
           expect(getLastHeartbeatEvent()).toMatchObject({

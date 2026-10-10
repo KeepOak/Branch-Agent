@@ -40,7 +40,7 @@ function RunRow({ run, open }: { run: Row; open: (r: Row) => void }) {
     <div className="au-grow">
       <span className="au-pills"><span className={`au-pill ${status === "error" ? "bad" : status === "ok" ? "ok" : ""}`}><i />{RUN_WORDS[status] ?? "Not recorded"}</span>{sent && <span className="au-pill"><i />{SEND_WORDS[sent] ?? sent}</span>}</span>
       <small>{str(run.summary) || "No summary."}</small>
-      {run.error ? <small className="au-bad">{str(run.error)}</small> : null}
+      {run.error ? <small className={status === "skipped" ? undefined : "au-bad"}>{str(run.error)}</small> : null}
     </div>
     <time className="au-time">{when(run.runAtMs ?? run.ts)}</time>
     <button type="button" className="btn ghost sm" onClick={() => open(run)}>See what it did</button>
