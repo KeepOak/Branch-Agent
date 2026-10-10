@@ -37,9 +37,10 @@ export function identityKey(name: string): string {
   return name.trim().toLowerCase().replace(/[\s-]+/g, " ");
 }
 
-/** The key a nature look is drawn from: the name's identity key, plus the computer it is on when known (ux-shell's key). */
+/** The key a nature look is drawn from: a JSON pair of the name's identity key and the computer's (null when unknown),
+ *  so no name can collide with a name-plus-computer pair. */
 export function lookKey(name: string, where?: string): string {
-  return where?.trim() ? `${identityKey(name)}@${identityKey(where)}` : identityKey(name);
+  return JSON.stringify([identityKey(name), where?.trim() ? identityKey(where) : null]);
 }
 
 /** A deterministic moss, bark, sky or clay pebble from a look key (djb2 hash). */

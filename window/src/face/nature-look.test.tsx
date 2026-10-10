@@ -10,6 +10,13 @@ describe("the nature look for a Trunk or grafted agent with no look of its own",
     expect(natureLook(lookKey("NAS Builders"))).toEqual(natureLook(lookKey("nas-builders")));
   });
 
+  it("pins the key for sample names, and keeps a name and a name-plus-computer pair apart", () => {
+    expect(lookKey("NAS Builders")).toBe('["nas builders",null]');
+    expect(lookKey("Oak", "Mac mini")).toBe('["oak","mac mini"]');
+    expect(lookKey("x@y")).not.toBe(lookKey("x", "y"));
+    expect(lookKey("x", "y")).not.toBe(lookKey("x@y"));
+  });
+
   it("gives the same name on the same computer the same look, and the same name on another computer its own", () => {
     expect(natureLook(lookKey("Oak", "Mac mini"))).toEqual(natureLook(lookKey("oak", "mac-mini")));
     expect(natureLook(lookKey("Oak", "Mac mini"))).not.toEqual(natureLook(lookKey("Oak", "NAS")));
