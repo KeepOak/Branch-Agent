@@ -8,7 +8,7 @@ import { errorText, record, type RecordValue } from "./adapter";
 import { configStore, pathKeys, type ConfigPath } from "./config-store";
 import { Icon } from "../../shell/icons";
 import { PIN_MAX, type Pins } from "./pins";
-import { isDevNote, shownWhy } from "../../shell/shown-why";
+import { isDevNote, lockedWhy, shownWhy } from "../../shell/shown-why";
 import "./kit.css";
 
 /** 0 = Regular, 1 = Advanced, 2 = Technical. */
@@ -173,7 +173,8 @@ function PinBtn({ title }: { title: string }) {
   );
 }
 
-/** One settings row: title, sub-line and the control on the right. `off` greys the control and says why on its own line.
+/** One settings row: title, sub-line and the control on the right. `off` locks the control and always says why on its own
+ *  line (a developer note becomes a plain line). A locked switch that is on keeps full contrast, so it still reads as on.
  *  Every row with a plain title has a pin, except General's Pinned list itself (noPin). */
 export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, after, noPin }: {
   title: ReactNode; sub?: ReactNode; help?: string; children?: ReactNode; off?: string; keep?: Keep; icon?: ReactNode; stack?: boolean; id?: string; after?: ReactNode; noPin?: boolean;
@@ -183,7 +184,7 @@ export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, af
   const locked = useContext(LockContext);
   const why = off ?? (locked ? NOSETUP : undefined);
   const name = typeof title === "string" ? title : id;
-  const shown = shownWhy(why);
+  const shown = lockedWhy(why);
   const line = sub ?? shown;
   useHelpEntry(helpKey, typeof title === "string" ? title : id ?? "Setting", help);
   const kept = keep && level >= 1 ? KEEP_LINE[keep] : null;

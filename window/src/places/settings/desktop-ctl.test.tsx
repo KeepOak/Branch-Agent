@@ -33,13 +33,13 @@ describe("DesktopCtl", () => {
     expect(row("Keep this computer awake").querySelector(".why-k")?.textContent).toBe(IN_BROWSER);
   });
 
-  it("is greyed for an older Branch app without controls, without a developer note", async () => {
+  it("is greyed for an older Branch app without controls, with a plain reason and no developer note", async () => {
     (window as { branchDesktop?: unknown }).branchDesktop = {};
     await render();
     const r = row("Type branch in any terminal");
     expect(r.getAttribute("aria-disabled")).toBe("true"); expect(r.classList.contains("off-k")).toBe(true);
     expect(r.querySelector(".right")?.hasAttribute("inert")).toBe(true);
-    expect(r.querySelector(".why-k")).toBeNull(); expect(r.textContent).not.toContain(NEEDS_NEWER_APP);
+    expect(r.querySelector(".why-k")?.textContent).toBe("Update Branch to change this."); expect(r.textContent).not.toContain(NEEDS_NEWER_APP);
     expect(visibleDevNotes(host)).toEqual([]);
   });
 
