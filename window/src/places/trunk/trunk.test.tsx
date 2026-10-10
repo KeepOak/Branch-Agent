@@ -182,7 +182,28 @@ describe("Customize › Trunks", () => {
     await click(byText("New group chat"));
     window.removeEventListener("branch:new-group-chat", asked);
     expect(asked).toHaveBeenCalledTimes(1);
-    expect(byText("Pause").disabled).toBe(true); expect(byText("Pause").title).toBe(""); expect(visibleDevNotes(document.body)).toEqual([]);
+    expect(byText("Pause")).toBeUndefined(); expect(visibleDevNotes(document.body)).toEqual([]);
+  });
+  it("keeps only Who it knows and Edit on a row and puts a red Remove with its reason in the ⋯ menu (DA-54)", async () => {
+    const request = fake();
+    await mount(tab(request));
+    for (const row of document.querySelectorAll(".tk-row")) {
+      const labels = [...row.querySelectorAll(":scope > button")].map((b) => b.getAttribute("aria-label") ?? b.textContent);
+      expect(labels.slice(1)).toEqual(["Who it knows", "Edit", `More for ${labels[0]!.replace(": profile", "")}`]);
+    }
+    expect([...document.querySelectorAll(".tk-row button")].some((b) => b.textContent === "Pause" || b.textContent === "Remove")).toBe(false);
+    await click(document.querySelector('[aria-label="More for Birch"]'));
+    const remove = document.querySelector<HTMLButtonElement>('[data-testid="trunk-row-remove"]')!;
+    expect(remove.classList.contains("bad")).toBe(true); expect(remove.disabled).toBe(false);
+    await click(remove);
+    expect(document.querySelector('[data-testid="trunk-remove"]')).toBeTruthy();
+    await act(async () => root!.unmount()); root = null; document.body.innerHTML = "";
+    await mount(tab(request));
+    await click(document.querySelector('[aria-label="More for Oak"]'));
+    const blocked = document.querySelector<HTMLButtonElement>('[data-testid="trunk-row-remove"]')!;
+    expect(blocked.classList.contains("bad")).toBe(true); expect(blocked.disabled).toBe(true);
+    expect(blocked.textContent).toContain("The default Trunk cannot be removed.");
+    expect(visibleDevNotes(document.body)).toEqual([]);
   });
   it("opens the new Trunk's profile when the shell hands over no way to start its conversation", async () => {
     const request = fake({ "agents.create": { ok: true, agentId: "new-trunk" } });
@@ -208,7 +229,8 @@ describe("Customize › Trunks", () => {
     await expect(removeTrunk(engine(request), "oak")).rejects.toThrow("default Trunk");
     expect(request).not.toHaveBeenCalledWith("agents.delete", expect.anything());
     await mount(tab(request));
-    expect(byText("Remove").disabled).toBe(true);
+    await click(document.querySelector('[aria-label="More for Oak"]'));
+    expect(document.querySelector<HTMLButtonElement>('[data-testid="trunk-row-remove"]')!.disabled).toBe(true);
     const row = document.querySelectorAll(".tk-row")[1];
     await act(async () => { row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })); });
     await click(byText("Remove Birch…"));

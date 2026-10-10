@@ -162,6 +162,12 @@ button.tk-prow:disabled:hover { background: none; }
 .kp .tk-tab-root .btn:disabled { opacity: .45; }
 .kp .tk-tab-root .tk-row-who { height: auto; padding: 0; border: 0; background: none; border-radius: 12px; color: inherit; font: inherit; }
 .kp .tk-tab-root .tk-row-who:hover { background: none; }
+/* DA-54: the row's ⋯ is the shell's plain icon button, and its menus keep the shell's menu rows, so Remove stays red */
+.kp .tk-tab-root .tk-row-more { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--ink-3); }
+.kp .tk-tab-root .tk-row-more:hover { background: var(--wash17); color: var(--ink); }
+.kp .tk-tab-root .menu button.mi { height: auto; padding: 8px 10px; border: 0; border-radius: var(--r-nav); background: transparent; color: var(--ink); font-size: 13.5px; }
+.kp .tk-tab-root .menu button.mi:hover:not(:disabled) { background: var(--wash17); }
+.kp .tk-tab-root .menu button.mi.bad { color: var(--bad); }
 .kp .tk-tab-root .tk-ctl select.inp, .kp .tk-tab-root .tk-ctl input.inp { height: 32px; }
 .tk-pf .tk-sec { margin-top: 0; }
 /* Its computers: the computers and the two rows below them are bold, as the preview's plain <b> */
