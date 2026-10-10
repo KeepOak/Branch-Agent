@@ -3,6 +3,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { rawDataToString } from "@branch/gateway-client/websocket-data";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RawData, WebSocket } from "ws";
 import { installQueueRuntimeErrorSilencer } from "../../auto-reply/reply/queue.test-helpers.js";
@@ -10,6 +13,7 @@ import * as replyRunRegistryModule from "../../auto-reply/reply/reply-run-regist
 import { createReplyOperation } from "../../auto-reply/reply/reply-run-registry.operation.js";
 import { replyRunRegistry } from "../../auto-reply/reply/reply-run-registry.registry.js";
 import { forceClearReplyOperation } from "../../auto-reply/reply/reply-run-registry.state.js";
+import { registerTrunkMcpTools, type TrunkGateway } from "../../mcp/trunk-tools.js";
 import {
   dispatchInboundMessageMock,
   installGatewayTestHooks,
@@ -311,4 +315,148 @@ describe("terminal-receipt steer fence isolated-gateway proof (#128971)", () => 
       registrySpy.mockRestore();
     },
   );
+});
+
+/** A TrunkGateway over this test's real socket, so trunk_send runs the production gateway path. */
+function socketTrunkGateway(): TrunkGateway {
+  return {
+    async request(method, params) {
+      const res = (await rpcReq(ws, method, params, 20_000)) as WireResponse;
+      if (!res.ok) {
+        throw new Error(res.error?.message ?? `${method} failed`);
+      }
+      return res.payload as never;
+    },
+    onGatewayEvent(listener) {
+      const onMessage = (raw: RawData) => {
+        try {
+          const frame = JSON.parse(rawDataToString(raw)) as { type?: string };
+          if (frame.type === "event") {
+            listener(frame as never);
+          }
+        } catch {
+          // Unrelated frames on the shared test socket.
+        }
+      };
+      ws.on("message", onMessage);
+      return () => {
+        ws.off("message", onMessage);
+      };
+    },
+  };
+}
+
+async function connectTrunkTools(gw: TrunkGateway): Promise<Client> {
+  const server = new McpServer({ name: "branch", version: "test" });
+  registerTrunkMcpTools(server, gw, { outsideAgent: () => undefined, now: () => 1_700 });
+  const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "Claude Code", version: "2.1.0" });
+  await Promise.all([server.connect(serverSide), client.connect(clientSide)]);
+  return client;
+}
+
+describe("trunk_send steers a mid-run thread over the real transport", () => {
+  it(
+    "joins the running turn with the message and starts no queued turn",
+    { timeout: 30_000 },
+    async () => {
+      await seedActiveTurn({
+        sessionKey: SESSION_KEY,
+        sessionId: "session-trunk-steer",
+        runId: "live-run-trunk",
+        terminalRunId: "source-old",
+        sourceTurnId: "source-live-trunk",
+      });
+      const injectionSpy = vi
+        .spyOn(replyRunRegistryModule, "beginReplyMessageInjectionTarget")
+        .mockImplementation(() => ({
+          targetRunId: "live-run-trunk",
+          acceptance: Promise.resolve(true),
+          outcome: Promise.resolve({ status: "accepted" as const }),
+        }));
+      const client = await connectTrunkTools(socketTrunkGateway());
+      try {
+        const sent = await client.callTool({
+          name: "trunk_send",
+          arguments: { agent_id: "main", text: "trunk steer probe", thread_key: SESSION_KEY },
+        });
+        const out = sent.structuredContent as Record<string, unknown>;
+
+        expect(injectionSpy).toHaveBeenCalledTimes(1);
+        expect(injectionSpy.mock.calls[0]?.[1]).toContain("trunk steer probe");
+        expect(dispatchCapture.calls).toBe(0);
+        expect(out.thread_key).toBe(SESSION_KEY);
+        expect(out.target_disposition).toBe("steered");
+        expect(out.run_id).toBe("live-run-trunk");
+      } finally {
+        injectionSpy.mockRestore();
+        await client.close();
+      }
+    },
+  );
+
+  it(
+    "acks started, not steered, when the turn ends just before the send",
+    { timeout: 30_000 },
+    async () => {
+      await seedActiveTurn({
+        sessionKey: SESSION_KEY,
+        sessionId: "session-trunk-race",
+        runId: "live-run-race",
+        terminalRunId: "source-old",
+      });
+      // The turn ends before the send reaches admission.
+      clearLiveOperation("trunk-race-turn-ended");
+      const injectionSpy = vi.spyOn(replyRunRegistryModule, "beginReplyMessageInjectionTarget");
+
+      const client = await connectTrunkTools(socketTrunkGateway());
+      try {
+        const sent = await client.callTool({
+          name: "trunk_send",
+          arguments: { agent_id: "main", text: "trunk race probe", thread_key: SESSION_KEY },
+        });
+        const out = sent.structuredContent as Record<string, unknown>;
+
+        expect(injectionSpy).not.toHaveBeenCalled();
+        expect(out.target_disposition).toBe("started");
+        expect(out.run_id).not.toBe("live-run-race");
+      } finally {
+        injectionSpy.mockRestore();
+        await client.close();
+      }
+    },
+  );
+
+  it("acks queued when the running turn refuses the steer", { timeout: 30_000 }, async () => {
+    await seedActiveTurn({
+      sessionKey: SESSION_KEY,
+      sessionId: "session-trunk-refused",
+      runId: "live-run-refused",
+      terminalRunId: "source-old",
+      sourceTurnId: "source-live-refused",
+    });
+    const injectionSpy = vi
+      .spyOn(replyRunRegistryModule, "beginReplyMessageInjectionTarget")
+      .mockImplementation(() => ({
+        targetRunId: "live-run-refused",
+        acceptance: Promise.resolve(false),
+        outcome: Promise.resolve({ status: "rejected" as const }),
+      }));
+
+    const client = await connectTrunkTools(socketTrunkGateway());
+    try {
+      const sent = await client.callTool({
+        name: "trunk_send",
+        arguments: { agent_id: "main", text: "trunk refused probe", thread_key: SESSION_KEY },
+      });
+      const out = sent.structuredContent as Record<string, unknown>;
+
+      expect(injectionSpy).toHaveBeenCalledTimes(1);
+      expect(out.target_disposition).toBe("queued");
+      expect(out.run_id).not.toBe("live-run-refused");
+    } finally {
+      injectionSpy.mockRestore();
+      await client.close();
+    }
+  });
 });

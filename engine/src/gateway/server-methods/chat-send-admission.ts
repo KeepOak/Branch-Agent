@@ -182,6 +182,7 @@ export async function admitChatSend(
   let admittedSessionSettings: ReturnType<typeof captureAdmittedChatSendSessionSettings>;
   let assertInitialSkillSelection: (() => void) | undefined;
   let messageInjectionTarget: ReplyMessageInjectionTarget | undefined;
+  let queuedBehindActiveRun = false;
   let runInterruptTarget: ReturnType<typeof replyRunRegistry.resolveCurrentInterruptTarget>;
   let reservationSuperseded = false;
   let supersedingResult: DedupeEntry | undefined;
@@ -276,6 +277,9 @@ export async function admitChatSend(
         p.queueMode === "steer"
           ? replyRunRegistry.resolveCurrentMessageInjectionTarget(activeRunScopeKey)
           : undefined;
+      // A send that does not interrupt waits behind a run active at admission unless it steers in.
+      queuedBehindActiveRun =
+        p.queueMode !== "interrupt" && replyRunRegistry.get(activeRunScopeKey) !== undefined;
       runInterruptTarget =
         p.queueMode === "interrupt"
           ? replyRunRegistry.resolveCurrentInterruptTarget(activeRunScopeKey)
@@ -713,6 +717,7 @@ export async function admitChatSend(
       lifecycleGeneration,
       interruptedActiveRun,
       messageInjectionTarget,
+      queuedBehindActiveRun,
       originatingRoute,
       rejectSessionRoutingChanged,
       releaseSourceWorkAdmission: retainedWork.release,
