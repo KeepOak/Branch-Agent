@@ -1,10 +1,33 @@
 // The macOS CUA daemon must be spawned by Electron, the process that owns TCC grants.
 // Loading the pinned SDK from the selected engine also keeps app and engine updates in sync.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createConnection, createServer, type Server } from "node:net";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+
+/**
+ * The driver's own update check (GET https://api.github.com/repos/trycua/cua/releases) reads `update_check_enabled`
+ * from this file. The embedded host rejects the CUA_DRIVER_RS_UPDATE_CHECK environment variable, so the file is the
+ * only supported off switch. An explicit value the owner set is kept; the default is off.
+ */
+export const DRIVER_CONFIG_PATH = join(homedir(), ".cua-driver", "config.json");
+
+export function ensureUpdateCheckOff(configPath: string = DRIVER_CONFIG_PATH): "written" | "kept" | "unreadable" {
+  let config: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(configPath, "utf8"));
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return "unreadable";
+    config = parsed as Record<string, unknown>;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") return "unreadable";
+  }
+  if ("update_check_enabled" in config) return "kept";
+  mkdirSync(dirname(configPath), { recursive: true, mode: 0o700 });
+  writeFileSync(configPath, `${JSON.stringify({ ...config, update_check_enabled: false }, null, 2)}\n`, { mode: 0o600 });
+  return "written";
+}
 
 /** The SDK's typed errors carry the reason (e.g. the rejected environment name) in `inner`; String() keeps only the variant. */
 export function describeDriverError(error: unknown): string {
@@ -84,6 +107,7 @@ export class MacComputerDriver {
     private readonly log: (line: string) => void,
     private readonly sdk: (engineDir: string) => MacSdk = loadSdk,
     private readonly bundleId: () => string = hostBundleId,
+    private readonly configPath: string = DRIVER_CONFIG_PATH,
   ) {}
 
   async start(engineDir: string): Promise<string | undefined> {
@@ -93,6 +117,15 @@ export class MacComputerDriver {
     return this.starting;
   }
 
+  private applyUpdateCheckPolicy(): void {
+    try {
+      const outcome = ensureUpdateCheckOff(this.configPath);
+      if (outcome === "unreadable") this.log("Mac computer driver config is unreadable; its update check was left as it is");
+    } catch (error) {
+      this.log(`Mac computer driver update-check setting could not be written: ${describeDriverError(error)}`);
+    }
+  }
+
   private async startSelected(engineDir: string): Promise<string | undefined> {
     await this.stop();
     const binary = join(engineDir, "cua-driver");
@@ -100,6 +133,7 @@ export class MacComputerDriver {
       this.log(`Mac computer driver is not packaged in ${engineDir}`);
       return undefined;
     }
+    this.applyUpdateCheckPolicy();
     const sdk = this.sdk(engineDir);
     const current = sdk.currentMacOsPermissionStatus();
     const permissions = sdk.hasRequiredMacOSPermissions(current) ? current : sdk.requestMacOSPermissions();
