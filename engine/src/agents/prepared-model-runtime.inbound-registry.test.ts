@@ -30,6 +30,8 @@ import {
   refreshPreparedModelRuntimeSnapshots,
 } from "./prepared-model-runtime.js";
 import { retainPreparedPluginGeneration } from "./prepared-model-runtime.plugin-lifetime.js";
+import { recordAgentDatabaseAdmissions } from "../state/agent-database-admission.js";
+import { withAgentDatabaseStartupAdmission } from "../state/agent-database-startup.js";
 
 const fixture = usePreparedModelRuntimeHarness({ label: "prepared-model-runtime" });
 const { mocks } = fixture;
@@ -423,6 +425,73 @@ describe("prepared reply dispatch runtime", () => {
     await expect(loadPublishedGatewayReplyDispatchRuntime({ agentId: "default" })).resolves.toBe(
       defaultRuntime,
     );
+  });
+
+  it("publishes a sibling's scoped refresh while an auth-stale owner is still preparing", async () => {
+    mocks.configuredAgentIds = ["default", "worker"];
+    await refreshPreparedModelRuntimeSnapshots(
+      {},
+      {
+        gatewayLifecycle: true,
+        catalogMode: "static",
+      },
+    );
+    const refreshFailed = createDeferred();
+    const unregister = registerPreparedModelRuntimePublicationListener((event) => {
+      if (event.phase === "failed") {
+        refreshFailed.resolve();
+      }
+    });
+    mocks.discoverAuthStorage.mockImplementationOnce(() => {
+      throw new Error("auth refresh rejected");
+    });
+    mocks.mutationListener?.({
+      agentDir: fixture.state.agentDir("worker"),
+      affectsInheritedStores: false,
+    });
+    await refreshFailed.promise;
+    unregister();
+
+    // Worker is stale after the auth mutation and its own startup preparation is still pending.
+    // A sibling's scoped refresh must still publish; worker stays out of dispatch until it recovers.
+    const env = process.env;
+    const clean = { incompatible: [], indeterminate: [] };
+    let stop: (() => Promise<void>) | undefined;
+    try {
+      await withAgentDatabaseStartupAdmission(async (admission) => {
+        const refusals = admission.defer({
+          env,
+          inspections: [
+            {
+              target: {
+                agentId: "worker",
+                path: `${fixture.state.agentDir("worker")}/branch-agent.sqlite`,
+              },
+              result: Promise.resolve(clean),
+            },
+          ],
+          reason: "Inspection continues after the Gateway listener binds.",
+        });
+        recordAgentDatabaseAdmissions(refusals, { env, source: "startup" });
+        stop = admission.adopt().stop;
+
+        await expect(
+          refreshPreparedModelRuntimeSnapshots(
+            {},
+            {
+              agentIds: new Set(["default"]),
+              gatewayLifecycle: true,
+              catalogMode: "static",
+            },
+          ),
+        ).resolves.toBeUndefined();
+        await expect(
+          loadPublishedGatewayReplyDispatchRuntime({ agentId: "default" }),
+        ).resolves.toMatchObject({ agentId: "default" });
+      });
+    } finally {
+      await stop?.();
+    }
   });
 
   it("aborts run admission without retaining an owner after auth publication", async () => {

@@ -41,16 +41,14 @@ function createReplyDispatchRuntime(
 function buildReplyDispatchPublication(
   owners: Iterable<PreparedModelRuntimeOwner>,
 ): readonly PreparedReplyDispatchRuntime[] {
+  // A configured owner that is not published yet (stale after an auth mutation, or still
+  // building) is left out of this dispatch generation. Its own publication adds it back. Failing
+  // the whole generation instead lets one unpublished owner reject every sibling's commit, and a
+  // stale owner whose agent is still preparing can never be republished in that state.
   const runtimes = [...owners]
     .filter((owner) => owner.provenance === "configured")
-    .map((owner) => {
-      if (!owner.snapshot || owner.needsRefresh || owner.pending) {
-        throw new PreparedModelRuntimeOwnerNotPublishedError(
-          `prepared reply dispatch runtime owner was not published for ${owner.input.agentId ?? owner.input.agentDir}`,
-        );
-      }
-      return createReplyDispatchRuntime(owner);
-    })
+    .filter((owner) => owner.snapshot && !owner.needsRefresh && !owner.pending)
+    .map((owner) => createReplyDispatchRuntime(owner))
     .toSorted((left, right) => left.agentId.localeCompare(right.agentId));
   if (new Set(runtimes.map((runtime) => runtime.agentId)).size !== runtimes.length) {
     throw new PreparedModelRuntimeOwnerNotPublishedError(
@@ -126,7 +124,7 @@ export class PreparedReplyDispatchPublicationOwner {
     let supersededSince: number | undefined;
     const waitForSuccessor = async (error: PreparedModelRuntimePublicationSupersededError) => {
       supersededSince ??= Date.now();
-      if (Date.now() - supersededSince >= 120_000) throw error;
+      if (Date.now() - supersededSince >= 120_000) { throw error; }
       await racePromiseWithAbortSignal(delay(250), abortSignal);
     };
     for (;;) {
@@ -144,7 +142,7 @@ export class PreparedReplyDispatchPublicationOwner {
         try {
           await racePromiseWithAbortSignal(replacement, abortSignal);
         } catch (error) {
-          if (!(error instanceof PreparedModelRuntimePublicationSupersededError)) throw error;
+          if (!(error instanceof PreparedModelRuntimePublicationSupersededError)){ throw error; }
           await waitForSuccessor(error);
         }
         continue;
@@ -155,7 +153,7 @@ export class PreparedReplyDispatchPublicationOwner {
         try {
           await racePromiseWithAbortSignal(pendingOwner.pending, abortSignal);
         } catch (error) {
-          if (!(error instanceof PreparedModelRuntimePublicationSupersededError)) throw error;
+          if (!(error instanceof PreparedModelRuntimePublicationSupersededError)){ throw error; }
           await waitForSuccessor(error);
         }
         continue;
