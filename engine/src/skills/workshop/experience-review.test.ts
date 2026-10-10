@@ -731,6 +731,7 @@ describe("skill experience review repeated-failure trigger", () => {
     const scheduler = createSkillExperienceReviewScheduler({
       isSystemActive: () => false,
       runReview,
+      claimSignalCooldown: () => true,
     });
     const params = completedRun({ modelIterations: 2 });
     params.event.messages = [
@@ -750,6 +751,7 @@ describe("skill experience review repeated-failure trigger", () => {
     const scheduler = createSkillExperienceReviewScheduler({
       isSystemActive: () => false,
       runReview,
+      claimSignalCooldown: () => true,
     });
     const params = completedRun({ modelIterations: 3 });
     params.event.messages = repeatedFailureRecoveryMessages();
@@ -783,9 +785,55 @@ describe("skill experience review repeated-failure trigger", () => {
     const scheduler = createSkillExperienceReviewScheduler({
       isSystemActive: () => false,
       runReview,
+      claimSignalCooldown: () => true,
     });
     const params = completedRun({ modelIterations: 3 });
     params.event.messages = [{ role: "user", content: "Check the tile service." }, ...rounds];
+    scheduler.schedule(params);
+    await vi.runAllTimersAsync();
+    expect(runReview).not.toHaveBeenCalled();
+    scheduler.clear();
+  });
+
+  it("claims the cooldown for the first recovered identity only, once per run", async () => {
+    vi.useFakeTimers();
+    const runReview = vi.fn(async () => {});
+    const claimSignalCooldown = vi.fn(() => true);
+    const scheduler = createSkillExperienceReviewScheduler({
+      isSystemActive: () => false,
+      runReview,
+      claimSignalCooldown,
+    });
+    const params = completedRun({ modelIterations: 4 });
+    params.event.messages = [
+      { role: "user", content: "Publish and verify the release." },
+      ...execRound("a", "tilectl publish --manifest first.json", true),
+      ...execRound("b", "tilectl publish --manifest release.json", false),
+      ...execRound("c", "tilectl status", true),
+      ...execRound("d", "tilectl status", false),
+    ];
+    scheduler.schedule(params);
+    await vi.runAllTimersAsync();
+    expect(claimSignalCooldown).toHaveBeenCalledTimes(1);
+    expect(claimSignalCooldown).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "main",
+        identity: JSON.stringify(["exec", "tilectl publish"]),
+      }),
+    );
+    expect(runReview).toHaveBeenCalledTimes(1);
+    scheduler.clear();
+  });
+
+  it("does not use the failure signal without a cooldown store", async () => {
+    vi.useFakeTimers();
+    const runReview = vi.fn(async () => {});
+    const scheduler = createSkillExperienceReviewScheduler({
+      isSystemActive: () => false,
+      runReview,
+    });
+    const params = completedRun({ modelIterations: 3 });
+    params.event.messages = repeatedFailureRecoveryMessages();
     scheduler.schedule(params);
     await vi.runAllTimersAsync();
     expect(runReview).not.toHaveBeenCalled();
@@ -800,6 +848,7 @@ describe("skill experience review repeated-failure trigger", () => {
       const scheduler = createSkillExperienceReviewScheduler({
         isSystemActive: () => false,
         runReview,
+        claimSignalCooldown: () => true,
       });
       const params = completedRun({ modelIterations: 3, trigger });
       params.event.messages = repeatedFailureRecoveryMessages();

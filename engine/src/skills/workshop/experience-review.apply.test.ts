@@ -36,6 +36,7 @@ import {
   createSkillExperienceReviewScheduler,
   type ExperienceReviewCandidate,
 } from "./experience-review-scheduler.js";
+import { claimExperienceSignalCooldown } from "./experience-review-signal-cooldown.js";
 import { runSkillExperienceReview as runCapturedExperienceReview } from "./experience-review.js";
 import { createExperienceReviewMessages } from "./experience-review.test-support.js";
 import { inspectSkillProposal, listSkillProposals, proposeCreateSkill } from "./service.js";
@@ -794,6 +795,7 @@ describe("experience review maintenance", () => {
     let fireIdle: (() => void) | undefined;
     const scheduler = createSkillExperienceReviewScheduler({
       isSystemActive: () => false,
+      claimSignalCooldown: claimExperienceSignalCooldown,
       setTimer: (callback, delayMs) => {
         const timer = setTimeout(callback, delayMs);
         fireIdle = () => {

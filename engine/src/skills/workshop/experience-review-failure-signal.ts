@@ -2,13 +2,16 @@ import { isRecord } from "@branch/normalization-core/record-coerce";
 
 /**
  * Deterministic "repeated failure overcome" signal for one run's messages.
- * It fires when a tool call failed and a later call of the same tool and command
- * head succeeded. It reads message shape only and never calls a model.
+ * It returns the identity of the first tool call that failed and was later
+ * overcome by a successful call of the same tool and command head. It reads
+ * message shape only and never calls a model.
  * A failure is either `isError` or a non-zero `details.exitCode`, which exec reports
  * for a normal exit with a non-zero code. A success carries no error text, so the
  * match is on call identity alone. Calls without a command or path are not tracked.
  */
-export function hasOvercomeRepeatedFailure(messages: readonly unknown[]): boolean {
+export function findOvercomeRepeatedFailureIdentity(
+  messages: readonly unknown[],
+): string | undefined {
   const callKeys = new Map<string, string>();
   const failedKeys = new Set<string>();
   for (const message of messages) {
@@ -29,10 +32,10 @@ export function hasOvercomeRepeatedFailure(messages: readonly unknown[]): boolea
     if (isFailedToolResult(message)) {
       failedKeys.add(key);
     } else if (failedKeys.has(key)) {
-      return true;
+      return key;
     }
   }
-  return false;
+  return undefined;
 }
 
 function isFailedToolResult(message: Record<string, unknown>): boolean {

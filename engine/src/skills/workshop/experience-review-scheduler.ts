@@ -8,7 +8,7 @@ import { isIncognitoSessionKey } from "../../routing/session-key.js";
 import { runInDetachedAsyncContext } from "../../shared/detached-async-context.js";
 import type { RunSkillUsage } from "../runtime/run-usage.js";
 import { resolveSkillWorkshopConfig } from "./config.js";
-import { hasOvercomeRepeatedFailure } from "./experience-review-failure-signal.js";
+import { findOvercomeRepeatedFailureIdentity } from "./experience-review-failure-signal.js";
 import {
   countSkillModelIterations,
   hasExplicitDurableTeaching,
@@ -76,6 +76,8 @@ type ExperienceReviewTimer = ReturnType<typeof setTimeout>;
 type ExperienceReviewSchedulerDeps = {
   isSystemActive: () => boolean | Promise<boolean>;
   runReview: (candidate: ExperienceReviewCandidate) => Promise<void>;
+  /** Without a claim store the repeated-failure signal never shortens the depth bar. */
+  claimSignalCooldown?: (input: { agentId: string; identity: string; nowMs: number }) => boolean;
   setTimer?: (callback: () => void, delayMs: number) => ExperienceReviewTimer;
   clearTimer?: (timer: ExperienceReviewTimer) => void;
 };
@@ -108,6 +110,19 @@ function isEligibleContext(ctx: ExperienceReviewAgentContext): boolean {
   return !sessionKey
     .split(":")
     .some((segment) => EXPERIENCE_REVIEW_BLOCKED_SESSION_SEGMENTS.has(segment));
+}
+
+/** At most one repeated-failure review per run, gated by the persisted per-identity cooldown. */
+function claimRepeatedFailureSignal(
+  deps: ExperienceReviewSchedulerDeps,
+  agentId: string,
+  turnMessages: readonly unknown[],
+): boolean {
+  const identity = findOvercomeRepeatedFailureIdentity(turnMessages);
+  if (identity === undefined || deps.claimSignalCooldown === undefined) {
+    return false;
+  }
+  return deps.claimSignalCooldown({ agentId, identity, nowMs: Date.now() });
 }
 
 export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSchedulerDeps) {
@@ -221,7 +236,7 @@ export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSched
       if (
         modelIterations < EXPERIENCE_REVIEW_MIN_MODEL_ITERATIONS &&
         !hasExplicitDurableTeaching(turnMessages) &&
-        !hasOvercomeRepeatedFailure(turnMessages)
+        !claimRepeatedFailureSignal(deps, params.ctx.foregroundPromptContext.agentId, turnMessages)
       ) {
         log.debug(
           `experience review skipped: reason=below-depth-bar iterations=${modelIterations} session=${sessionKey}`,

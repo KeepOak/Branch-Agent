@@ -3,10 +3,10 @@ import type { DatabaseSync } from "node:sqlite";
 import { asNullableRecord } from "@branch/normalization-core/record-coerce";
 import { sha256Hex } from "../../infra/crypto-digest.js";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../infra/kysely-sync.js";
-import { updateConfigMachineStateInDatabase } from "../../state/config-machine-state-write.js";
-import { readConfigMachineStateRowInDatabase } from "../../state/config-machine-state.js";
 import type { BranchStateDatabase as StateDatabase } from "../../state/branch-state-db-contract.js";
 import type { DB as BranchStateDatabase } from "../../state/branch-state-db.generated.js";
+import { updateConfigMachineStateInDatabase } from "../../state/config-machine-state-write.js";
+import { readConfigMachineStateRowInDatabase } from "../../state/config-machine-state.js";
 
 const SKILL_COLLECTION_REVIEW_HISTORY_LIMIT = 20;
 type CollectionReviewDatabase = Pick<BranchStateDatabase, "skill_workshop_collection_reviews">;
@@ -17,6 +17,8 @@ type SkillGardenerState = {
   lastResult: {
     collectionReviews?: Record<string, SkillCollectionReviewStatus>;
     experienceReviews?: Record<string, SkillExperienceReviewStatus>;
+    /** Hashed agent and identity keys mapped to the time their repeated-failure review was claimed. */
+    experienceSignalClaims?: Record<string, number>;
   };
 };
 
@@ -93,6 +95,52 @@ export function recordSkillExperienceReviewOutcomeInDatabase(
     },
     now,
   );
+}
+
+export const EXPERIENCE_SIGNAL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+export type ClaimExperienceSignalCooldownInput = {
+  agentId: string;
+  identity: string;
+  nowMs: number;
+};
+
+/**
+ * Claims the repeated-failure review for an agent and call identity. Returns false while
+ * an earlier claim is inside the cooldown. The identity is stored only as a hash, so
+ * command text never reaches the state database.
+ */
+export function claimExperienceSignalCooldownInDatabase(
+  database: StateDatabase,
+  input: ClaimExperienceSignalCooldownInput,
+): boolean {
+  const claimKey = sha256Hex(`${input.agentId}\0${input.identity}`);
+  let claimed = false;
+  updateConfigMachineStateInDatabase<SkillGardenerState>(
+    database.db,
+    "skills.gardenerState",
+    (current) => {
+      const state = current?.lastResult;
+      const claims = Object.fromEntries(
+        Object.entries(state?.experienceSignalClaims ?? {}).filter(
+          ([, claimedAtMs]) => input.nowMs - claimedAtMs < EXPERIENCE_SIGNAL_COOLDOWN_MS,
+        ),
+      );
+      claimed = claims[claimKey] === undefined;
+      if (claimed) {
+        claims[claimKey] = input.nowMs;
+      }
+      return {
+        lastAttemptAtMs: 0,
+        lastSuccessAtMs: null,
+        lastError: null,
+        ...current,
+        lastResult: { ...state, experienceSignalClaims: claims },
+      };
+    },
+    input.nowMs,
+  );
+  return claimed;
 }
 
 function parseStoredNames(value: string, field: string): string[] {
