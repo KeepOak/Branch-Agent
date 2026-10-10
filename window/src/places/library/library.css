@@ -5,6 +5,7 @@
 .lib-tabs { margin: 18px 0 8px; }
 .lib-tabs .lib-n { margin-left: 4px; font: 600 11px var(--mono); opacity: .6; }
 .lib-body { display: block; }
+.lib .lib-act-seg { width: min(320px, 100%); margin: 4px 0 10px; }
 .lib-grow { flex: 1; min-width: 0; display: grid; }
 .lib-grow > b { font-weight: 600; font-size: 14px; line-height: 21px; overflow-wrap: anywhere; }
 .lib-grow > small { display: block; font-size: 12.5px; line-height: 18.75px; color: var(--ink-3); overflow-wrap: anywhere; }

@@ -75,7 +75,7 @@ const PHONES_LENT: SecSpec = { t: "Phones lent to Branch", lv: 0, body: (c) => <
 const LOGBOOK_KEY = "plugins.entries.logbook";
 const LB = `${LOGBOOK_KEY}.config`;
 const LOGBOOK: SecSpec = { t: "Logbook", group: "Connections", showHeading: false, lv: 1, rows: [
-  { t: "Logbook", k: "sw", key: `${LOGBOOK_KEY}.enabled`, def: false, sub: "Pictures of your screen at intervals, read by a model into a timeline in Library › Logbook. Off until you choose: it takes pictures of your screen and a model reads them." },
+  { t: "Logbook", k: "sw", key: `${LOGBOOK_KEY}.enabled`, def: false, sub: "Pictures of your screen at intervals, read by a model into a timeline in Library › Activity › Your day. Off until you choose: it takes pictures of your screen and a model reads them." },
   { t: "Picture every", k: "num", key: `${LB}.captureIntervalSeconds`, def: 30, unit: "seconds", min: 5, max: 600, sub: "From 5 to 600." },
   { t: "Look at them every", k: "num", key: `${LB}.analysisIntervalMinutes`, def: 15, unit: "minutes", min: 3, max: 120, sub: "From 3 to 120." },
   { t: "From which computer", k: "custom", render: (c) => <LogbookNode c={c} /> },
