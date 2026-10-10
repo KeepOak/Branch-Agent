@@ -36,6 +36,8 @@ export async function mount(engine: WindowEngine, level: Level = "regular") {
 export const opened = vi.fn();
 export const button = (label: string) => [...document.querySelectorAll("button")].find(b => b.textContent?.trim() === label) as HTMLButtonElement | undefined;
 export async function click(label: string) { const b = button(label); expect(b, label).toBeTruthy(); await act(async () => { b!.click(); }); await act(async () => { await Promise.resolve(); }); }
+/** Opens the Live now tab; its name carries the running count once runs load. */
+export async function openLive() { const t = [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(b => b.textContent?.startsWith("Live now")); expect(t, "Live now tab").toBeTruthy(); await act(async () => { t!.click(); }); await act(async () => { await Promise.resolve(); }); }
 export const calls = (request: ReturnType<typeof vi.fn>, method: string) => request.mock.calls.filter(([m]) => m === method).map(([, p]) => p);
 
 export const BASE = {
@@ -55,7 +57,7 @@ describe("People › Live now", () => {
 
   it("shows who is online with the engine's activity and counts, and a card per run", async () => {
     const { engine, request } = fakeEngine({ ...BASE, "sessions.list": sessions });
-    await mount(engine);
+    await mount(engine); await openLive();
     expect(request).toHaveBeenCalledWith("users.list", {});
     expect(calls(request, "sessions.list")).toContainEqual({ activeOnly: true, includeDerivedTitles: true, includeLastMessage: true });
     expect(calls(request, "sessions.list")).toContainEqual({ limit: 1, includeOwnerSessionCounts: true });
@@ -71,7 +73,7 @@ describe("People › Live now", () => {
 
   it("watches a run read-only through the engine's preview", async () => {
     const { engine, request } = fakeEngine({ ...BASE, "sessions.list": sessions, "sessions.preview": { previews: [{ key: "agent:books:a", status: "ok", items: [{ role: "tool", text: "Opened the statement" }, { role: "assistant", text: "Matching receipts" }] }] } });
-    await mount(engine);
+    await mount(engine); await openLive();
     await click("Watch");
     expect(request).toHaveBeenCalledWith("sessions.preview", { keys: ["agent:books:a"], limit: 12, maxChars: 240 });
     const dialog = document.querySelector('[role="dialog"]')!;
@@ -83,13 +85,13 @@ describe("People › Live now", () => {
     const helper = { key: "agent:books:h", agentId: "books", label: "Read the receipts", spawnedBy: "agent:books:a", hasActiveRun: true };
     const withHelper = (p: Record<string, unknown>) => { const v = sessions(p); return p.includeOwnerSessionCounts ? v : { sessions: [...v.sessions, helper] }; };
     const { engine } = fakeEngine({ ...BASE, "sessions.list": withHelper });
-    await mount(engine);
+    await mount(engine); await openLive();
     expect(host.querySelectorAll(".pp-run")).toHaveLength(2);
     expect(host.textContent).not.toContain("Read the receipts");
   });
   it("says nothing is running when the engine has no active runs, and shows the banner", async () => {
     const { engine } = fakeEngine({ ...BASE, "system-presence": [], "sessions.list": { sessions: [] } });
-    await mount(engine);
+    await mount(engine); await openLive();
     expect(host.textContent).toContain("Nothing is running right now.");
     expect(host.textContent).toContain("Your keepoak.com team is optional");
     expect(host.querySelector('[role="group"][aria-label]')).toBeNull();
@@ -313,7 +315,7 @@ describe("People › Usage", () => {
 describe("People › Rules", () => {
   it("draws the team rules disabled under the banner with their reason", async () => {
     const { engine, request } = fakeEngine({ ...BASE, "sessions.list": { sessions: [] } });
-    await mount(engine); await click("Rules");
+    await mount(engine); request.mockClear(); await click("Rules");
     expect(host.textContent).toContain("Your keepoak.com team is optional");
     expect(host.textContent).toContain("Spending that needs an Admin’s yes"); expect(host.textContent).toContain("Keep team conversations");
     const controls = [...host.querySelectorAll<HTMLButtonElement>(".pp-ctl button")];
@@ -368,11 +370,20 @@ describe("People › Signing in", () => {
 });
 
 describe("People place", () => {
+  it("opens on People listing the owner, not on an empty Live now (DA-51)", async () => {
+    const { engine } = fakeEngine({ ...BASE, "system-presence": [], "sessions.list": { sessions: [] } });
+    await mount(engine);
+    const tabs = [...host.querySelectorAll('[role="tab"]')];
+    expect(tabs[0]!.textContent).toBe("People2");
+    expect(host.querySelector('[role="tab"][aria-selected="true"]')!.textContent).toBe("People2");
+    expect([...host.querySelectorAll(".pp-item")].map(i => i.textContent).join(" ")).toContain("Rowan Vale");
+    expect(host.textContent).not.toContain("Nothing is running right now.");
+  });
   it("switches tab on the window's branch:place-tab event for People", async () => {
     const { engine } = fakeEngine({ ...BASE, "sessions.list": { sessions: [] } });
     await mount(engine);
     await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "inbox", tab: "rules" } })); });
-    expect(host.querySelector('[role="tab"][aria-selected="true"]')!.textContent).toContain("Live now");
+    expect(host.querySelector('[role="tab"][aria-selected="true"]')!.textContent).toBe("People2");
     await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "people", tab: "Rules" } })); });
     expect(host.querySelector('[role="tab"][aria-selected="true"]')!.textContent).toBe("Rules");
     await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "people", tab: "signin" } })); });
@@ -389,7 +400,7 @@ describe("People final round", () => {
   });
   it("shows a Shared owner chip for connections made with the Gateway's key", async () => {
     const { engine } = fakeEngine({ ...BASE, "system-presence": [{ host: "laptop", mode: "webchat", roles: ["operator"], ts: 1 }, { host: "gw", mode: "gateway", ts: 1 }], "sessions.list": { sessions: [] } });
-    await mount(engine);
+    await mount(engine); await openLive();
     const chip = host.querySelector(".pp-keyed") as HTMLElement;
     expect(chip.textContent).toContain("Shared owner"); expect(chip.textContent).toContain("1 connection"); expect(chip.title).toContain("not a personal sign-in");
   });
