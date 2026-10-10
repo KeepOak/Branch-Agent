@@ -12,14 +12,14 @@ export function connectProblem(code: string | undefined, host: string): Problem 
     case "AUTH_TOKEN_MISSING":
     case "AUTH_PASSWORD_MISSING":
       return key(`${host} needs its key`, `${host} answers, but needs the matching key before this window can connect.`, [
-        "Paste the key from `branch gateway auth-token --show` into Gateway key.",
+        "Paste the key from that computer into Gateway key.",
         "Or type the password set for that computer.",
         "Then choose Connect again.",
       ]);
     case "AUTH_TOKEN_NOT_CONFIGURED":
     case "AUTH_PASSWORD_NOT_CONFIGURED":
       return key(`${host} needs its key`, `${host} answers, but needs the matching key before this window can connect.`, [
-        "No key set? Run `branch doctor --generate-gateway-token` on that computer.",
+        "No key is set on that computer yet. Ask whoever runs it to set one.",
         "Then choose Connect again.",
       ]);
     case "AUTH_TOKEN_MISMATCH":
@@ -27,12 +27,12 @@ export function connectProblem(code: string | undefined, host: string): Problem 
     case "AUTH_UNAUTHORIZED":
     case "AUTH_DEVICE_TOKEN_MISMATCH":
       return key(`${host} refused this key`, "Check it belongs to this computer.", [
-        "Run `branch dashboard --no-open` for a fresh link, or `branch gateway auth-token --show` to see the key.",
+        "Ask whoever runs that computer for its current key.",
         "Replace the key with the one for this address.",
       ]);
     case "AUTH_BOOTSTRAP_TOKEN_INVALID":
       return plain("This link no longer works", "It expired or was already used. Ask for a fresh link; don't change the key.", [
-        "Open the fresh link `branch dashboard` prints. Links work once and expire after ten minutes.",
+        "Ask for a fresh link, then open it here. Links work once and expire after ten minutes.",
       ]);
     case "AUTH_RATE_LIMITED":
       return plain("Too many tries", `${host} is pausing sign-ins from here for a moment.`, ["Stop retrying for a moment.", "Wait, then connect with the right key."]);

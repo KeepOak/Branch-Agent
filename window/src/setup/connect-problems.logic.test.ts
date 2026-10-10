@@ -8,7 +8,7 @@ describe("connect-problems logic", () => {
       expect(p.title).toBe("127.0.0.1:18789 needs its key");
       expect(p.line).toBe("127.0.0.1:18789 answers, but needs the matching key before this window can connect.");
       expect(p.steps).toEqual([
-        "Paste the key from `branch gateway auth-token --show` into Gateway key.",
+        "Paste the key from that computer into Gateway key.",
         "Or type the password set for that computer.",
         "Then choose Connect again.",
       ]);
@@ -20,7 +20,7 @@ describe("connect-problems logic", () => {
       expect(p.title).toBe("pc:1 needs its key");
       expect(p.line).toBe("pc:1 answers, but needs the matching key before this window can connect.");
       expect(p.steps).toEqual([
-        "Paste the key from `branch gateway auth-token --show` into Gateway key.",
+        "Paste the key from that computer into Gateway key.",
         "Or type the password set for that computer.",
         "Then choose Connect again.",
       ]);
@@ -32,7 +32,7 @@ describe("connect-problems logic", () => {
       expect(p.title).toBe("desktop:9999 needs its key");
       expect(p.line).toBe("desktop:9999 answers, but needs the matching key before this window can connect.");
       expect(p.steps).toEqual([
-        "Paste the key from `branch gateway auth-token --show` into Gateway key.",
+        "Paste the key from that computer into Gateway key.",
         "Or type the password set for that computer.",
         "Then choose Connect again.",
       ]);
@@ -44,7 +44,7 @@ describe("connect-problems logic", () => {
       expect(p.title).toBe("localhost:18789 needs its key");
       expect(p.line).toBe("localhost:18789 answers, but needs the matching key before this window can connect.");
       expect(p.steps).toEqual([
-        "No key set? Run `branch doctor --generate-gateway-token` on that computer.",
+        "No key is set on that computer yet. Ask whoever runs it to set one.",
         "Then choose Connect again.",
       ]);
       expect(p.needsKey).toBe(true);
@@ -55,7 +55,7 @@ describe("connect-problems logic", () => {
       expect(p.title).toBe("192.168.1.5:8080 needs its key");
       expect(p.line).toBe("192.168.1.5:8080 answers, but needs the matching key before this window can connect.");
       expect(p.steps).toEqual([
-        "No key set? Run `branch doctor --generate-gateway-token` on that computer.",
+        "No key is set on that computer yet. Ask whoever runs it to set one.",
         "Then choose Connect again.",
       ]);
       expect(p.needsKey).toBe(true);
@@ -66,7 +66,7 @@ describe("connect-problems logic", () => {
       expect(p.title).toBe("pc:1 refused this key");
       expect(p.line).toBe("Check it belongs to this computer.");
       expect(p.steps).toEqual([
-        "Run `branch dashboard --no-open` for a fresh link, or `branch gateway auth-token --show` to see the key.",
+        "Ask whoever runs that computer for its current key.",
         "Replace the key with the one for this address.",
       ]);
       expect(p.needsKey).toBe(true);
@@ -77,7 +77,7 @@ describe("connect-problems logic", () => {
       expect(p.title).toBe("home:3000 refused this key");
       expect(p.line).toBe("Check it belongs to this computer.");
       expect(p.steps).toEqual([
-        "Run `branch dashboard --no-open` for a fresh link, or `branch gateway auth-token --show` to see the key.",
+        "Ask whoever runs that computer for its current key.",
         "Replace the key with the one for this address.",
       ]);
       expect(p.needsKey).toBe(true);
@@ -88,7 +88,7 @@ describe("connect-problems logic", () => {
       expect(p.title).toBe("server:5000 refused this key");
       expect(p.line).toBe("Check it belongs to this computer.");
       expect(p.steps).toEqual([
-        "Run `branch dashboard --no-open` for a fresh link, or `branch gateway auth-token --show` to see the key.",
+        "Ask whoever runs that computer for its current key.",
         "Replace the key with the one for this address.",
       ]);
       expect(p.needsKey).toBe(true);
@@ -99,7 +99,7 @@ describe("connect-problems logic", () => {
       expect(p.title).toBe("box:7777 refused this key");
       expect(p.line).toBe("Check it belongs to this computer.");
       expect(p.steps).toEqual([
-        "Run `branch dashboard --no-open` for a fresh link, or `branch gateway auth-token --show` to see the key.",
+        "Ask whoever runs that computer for its current key.",
         "Replace the key with the one for this address.",
       ]);
       expect(p.needsKey).toBe(true);
@@ -110,7 +110,7 @@ describe("connect-problems logic", () => {
       expect(p.title).toBe("This link no longer works");
       expect(p.line).toBe("It expired or was already used. Ask for a fresh link; don't change the key.");
       expect(p.steps).toEqual([
-        "Open the fresh link `branch dashboard` prints. Links work once and expire after ten minutes.",
+        "Ask for a fresh link, then open it here. Links work once and expire after ten minutes.",
       ]);
       expect(p.needsKey).toBe(false);
     });
@@ -277,6 +277,13 @@ describe("connect-problems logic", () => {
       expect(hostOf("ws://[::1]:8080")).toBe("[::1]:8080");
     });
 
+    it("never asks a stranger to type a terminal command", () => {
+      const codes = ["AUTH_REQUIRED", "AUTH_TOKEN_NOT_CONFIGURED", "AUTH_TOKEN_MISMATCH", "AUTH_BOOTSTRAP_TOKEN_INVALID", "OPERATOR_ACCESS_DENIED", "PROTOCOL_MISMATCH", "UNKNOWN_CODE"];
+      for (const code of codes) {
+        const p = connectProblem(code, "127.0.0.1:18789");
+        expect([p.line, ...p.steps].join("\n")).not.toMatch(/`branch |\bbranch (dashboard|gateway|doctor)\b/);
+      }
+    });
     it("handles bare IPv4", () => {
       expect(hostOf("10.0.0.1:5000")).toBe("10.0.0.1:5000");
     });
