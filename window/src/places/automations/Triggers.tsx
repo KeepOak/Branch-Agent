@@ -112,9 +112,9 @@ export function TriggersTab({ engine, level, openConversation }: { engine: Windo
   }).filter(i => !("label" in i) || !["Duplicate", "Change where it sends…", "When it fails…"].includes(i.label)) : [];
   return <div className="au-tab">
     <p className="au-hint">Work that starts when something happens.</p>
-    <form className="au-describe" onSubmit={e => { e.preventDefault(); if (words.trim()) { setError(""); setCard({ task: words.trim(), agentId: data?.defaultId || "", every: "30", script: "", once: false }); setWords(""); } }}>
+    <form className="au-describe" onSubmit={e => { e.preventDefault(); if (words.trim()) { setError(""); setCard({ task: words.trim(), agentId: data?.defaultId || "", every: "30", script: "", once: false }); setWords(""); } else e.currentTarget.querySelector("input")?.focus(); }}>
       <input className="inp" aria-label="Describe a new trigger" placeholder={"Describe it: “when a PDF lands in Downloads, summarise it”"} value={words} disabled={!write} title={write ? undefined : "Needs an owner"} onChange={e => setWords(e.target.value)} />
-      <button type="submit" className="btn pri" disabled={!write || !words.trim()}>Add</button>
+      <button type="submit" className="btn pri" disabled={!write}>Add</button>
     </form>
     {card && <TriggerCard card={card} set={p => setCard(c => c && { ...c, ...p })} level={level} trunks={data?.trunks ?? []} busy={busy} canWrite={write} error={error} onCancel={() => setCard(null)} onConfirm={confirm} />}
     {state.error && <p className="au-error" role="alert">{state.error}</p>}

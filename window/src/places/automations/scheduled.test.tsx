@@ -46,6 +46,13 @@ async function type(el: HTMLInputElement, value: string) { await act(async () =>
 async function describeIt(words: string) { await type(host.querySelector("input[aria-label='Describe a new automation']")!, words); await click(button("Add")); }
 
 describe("Automations › Scheduled", () => {
+  it("Add with nothing described keeps the button live and puts the cursor in the field", async () => {
+    await mount(engine().engine);
+    expect(button("Add").disabled).toBe(false);
+    await click(button("Add"));
+    expect(document.activeElement).toBe(host.querySelector("input[aria-label='Describe a new automation']"));
+    expect(host.querySelector("[aria-label=Repeats]")).toBeNull();
+  });
   it("draws the face, the health readout and Turned itself off from the engine", async () => {
     await mount(engine().engine);
     expect(host.querySelectorAll("[role=img][aria-label=Sapling]").length).toBe(2);

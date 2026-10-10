@@ -12,7 +12,7 @@
 .au-bad { color: var(--bad) !important; }
 .au-grow { flex: 1; min-width: 0; display: grid; gap: 1px; }
 .au-grow b { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.au-grow small { font-size: 12.5px; color: var(--ink-3); line-height: 1.4; }
+.au-grow small { font-size: 12.5px; color: var(--ink-3); line-height: 1.5; }
 .au-mono { font-family: var(--mono); font-size: 12px; color: var(--ink-3); margin: 0; }
 .au-code { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--fill); font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-x: auto; }
 .au-link { border: 0; background: none; padding: 0; color: var(--ink-3); font-size: 12px; cursor: pointer; }
@@ -20,7 +20,7 @@
 
 /* Describe and Add */
 .au-describe { display: flex; gap: 8px; align-items: center; margin: 8px 0 12px; }
-.au-describe .inp { flex: 1; height: 40px; border-radius: 12px; background: var(--raise); padding: 0 12px; font-size: 13.5px; color: var(--ink); }
+.au-describe .inp { flex: 1; height: 40px; border-radius: 12px; background: var(--raise); padding: 0 14px; font-size: 14px; color: var(--ink); }
 .au-describe .btn { height: 34px; }
 
 /* Status cards: paused, look-only */
@@ -42,21 +42,24 @@
 .au-find .seg { width: 132px; height: 32px; flex: none; }
 .au-find .seg button { height: 24px; }
 .au-find .inp { flex: 1; min-width: 0; color: var(--ink); }
-.au-list { display: grid; padding: 0 12px; border-radius: 16px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--hair17, var(--line)); margin: 8px 0 0; }
+.au-list { display: grid; padding: 0 16px; border-radius: 16px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--hair17, var(--line)); margin: 8px 0 0; }
 .au-row { display: flex; align-items: center; gap: 12px; padding: 13px 4px; min-height: 66px; box-sizing: border-box; border-bottom: 1px solid var(--hair17, var(--line)); position: relative; }
 .au-row:last-child { border-bottom: 0; }
+.au-row .au-grow { min-width: 200px; }
 .au-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 10px; }
 .au-name { all: unset; cursor: pointer; font-weight: 600; }
 .au-name:hover { text-decoration: underline; }
 .au-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .au-health { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; color: var(--ink-3); font-size: 11.5px; white-space: nowrap; }
-.au-health small { font-size: 11.5px; }
+.au-health small { font-size: 12.5px; line-height: 1.5; }
+@media (max-width: 640px) { .au-health small { display: none; } }
 .au-health.warn small { color: var(--warn); }
 .au-spark { width: 64px; height: 18px; }
 .au-spark polyline { fill: none; stroke: var(--ok); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
 .au-health.warn .au-spark polyline { stroke: var(--warn); }
-.au-more { display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-3); opacity: 0; cursor: pointer; flex: none; margin-left: -6px; }
-.au-row:hover .au-more, .au-more:focus-visible { opacity: 1; }
+/* the row menu opens on right-click or Shift+F10, as in the preview; a touch screen gets a visible ⋯ instead */
+.au-more { display: none; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-3); cursor: pointer; flex: none; margin-left: -6px; }
+@media (hover: none) { .au-more { display: grid; } }
 .au-more:hover { background: var(--wash17); }
 .au-more-row { display: flex; align-items: center; gap: 10px; margin: 8px 4px 0; }
 .au-more-row small { font-size: 12px; color: var(--ink-3); }
@@ -85,7 +88,9 @@
 
 /* Sections under the list */
 .au-sec { margin-top: 28px; }
-.au-sec-h { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.au-sec-h { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.au-sec .au-sec-h h2 { margin: 0; }
+.au-sec-h .au-link { font-size: 12.5px; }
 .au-sec h2 { margin: 0 0 8px; font: 500 10.5px/1.2 var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
 .au-sec > .au-hint { margin-top: -2px; }
 .au-ideas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
@@ -117,28 +122,33 @@
   .au-ideas { grid-template-columns: 1fr; }
   .au-grid { grid-template-columns: 1fr; }
   .au-row { flex-wrap: wrap; }
-  .au-row .au-health { order: 3; margin-left: 46px; width: 100%; }
   .au-find { flex-wrap: wrap; }
   .au-find .inp { flex-basis: 100%; order: 3; }
-  .au-more { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) { .auto-place * { transition: none !important; animation: none !important; } }
 
 /* Check-ins */
-.au-card { display: grid; gap: 12px; margin: 12px 0 0; padding: 14px 16px; border-radius: 16px; background: var(--raise); box-shadow: inset 0 0 0 1px var(--hair17, var(--line)); }
-.au-card > .au-hint { margin: -6px 0 0; }
-.au-card-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; }
-.au-setrow { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0 12px; border-bottom: 1px solid var(--hair17, var(--line)); }
+.au-card { display: grid; gap: 8px; align-content: start; margin: 8px 0 0; padding: 16px; border-radius: var(--r3-17); background: var(--raise); border: 1px solid var(--hair17); }
+.au-card > .au-hint { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+.au-card-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 14px; }
+.au-card-h b { font-weight: 600; }
+.au-setrow { display: flex; align-items: center; justify-content: space-between; gap: 2px 16px; padding: 13px 0; border-bottom: 1px solid var(--line); }
 .au-setrow > span, .au-swrow > span { display: grid; gap: 2px; }
-.au-setrow b { font-size: 13.5px; font-weight: 600; }
-.au-setrow small { font-size: 12px; color: var(--ink-3); }
-.au-setrow .seg { width: fit-content; height: 32px; flex: none; }
+.au-setrow b { font-size: 14px; font-weight: 500; }
+.au-setrow small { font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
+/* the preview's .seg: content-sized pills on --fill, the chosen one raised (no sliding thumb) */
+.au-setrow .seg { display: inline-flex; flex-wrap: wrap; gap: 2px; width: auto; height: auto; padding: 2px; border-radius: 10px; background: var(--fill); flex: none; }
+.au-setrow .seg::before { display: none; }
+.au-setrow .seg button[aria-checked="true"] { background: var(--raise); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
 .au-checks > .btn { justify-self: start; }
-.au-setrow .seg button { height: 26px; padding: 0 10px; font-size: 12px; white-space: nowrap; }
+.au-setrow .seg button { height: 26px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; font-weight: 400; color: var(--ink-2); white-space: nowrap; }
 .au-off .seg { pointer-events: none; opacity: .55; }
-.au-card .au-swrow { padding: 8px 0 12px; border-bottom: 1px solid var(--hair17, var(--line)); }
+.au-card .au-swrow { padding: 13px 0; border-bottom: 1px solid var(--line); }
+.au-card .au-swrow b { font-size: 14px; font-weight: 500; }
+.au-card .au-swrow small { font-size: 12.5px; line-height: 1.5; }
 .au-swrow .switch:disabled { opacity: .5; cursor: default; }
-.au-checks { display: grid; gap: 4px; margin-top: 8px; }
+.au-checks { display: grid; gap: 4px; margin-top: 28px; }
+.au-checks > .au-sub { margin: 0 0 4px; }
 .au-sub { margin: 8px 0 6px; font: 500 10.5px/1.2 var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
 .au-check { display: flex; align-items: center; gap: 12px; padding: 6px 4px; border-bottom: 1px solid var(--hair17, var(--line)); font-size: 13.5px; }
 .au-check .au-grow { display: block; }
