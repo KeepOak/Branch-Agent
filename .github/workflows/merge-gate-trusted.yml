@@ -55,6 +55,8 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: node scripts/check-commit-emails.mjs
       - name: Preflight the pull request body, commits and files with the local checks
+        # The body is read live from the API, never from the event payload. All of its API calls share one
+        # 120 s budget. It runs in the trusted job (35 min on main). Depends on #1000 (the script is on main only then).
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
@@ -62,10 +64,8 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-        run: |
-          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
-          node scripts/pr-preflight.mjs --ci --body "$RUNNER_TEMP/pr-body.md"
+          PREFLIGHT_WAIT_SECONDS: '120'
+        run: node scripts/pr-preflight.mjs --ci
       - name: Wait for checks and run main's coverage and merge-command gates
         env:
           GH_TOKEN: ${{ github.token }}
