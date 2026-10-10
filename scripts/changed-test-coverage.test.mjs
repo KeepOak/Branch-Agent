@@ -7,6 +7,7 @@ import {
   coverageTargets,
   desktopRunTargets,
   handoffRunTargets,
+  postMergeEngineRunTargets,
   pullRequestDesktopRunTargets,
   uncoveredTests,
   workflowDefaultsSetShell,
@@ -67,6 +68,18 @@ test('real-engine handoff coverage requires the executable sharded Vitest comman
   assert.deepEqual([...handoffRunTargets(workflow, config)], ['engine/test/gateway-desktop-handoff.e2e.test.ts']);
   assert.deepEqual([...handoffRunTargets('run: node scripts/run-vitest.mjs run', config)], []);
   assert.deepEqual([...handoffRunTargets(workflow, 'include: []')], []);
+});
+
+test('the post-merge catalog-fallback test counts as covered only through its executable run line', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/engine-lint-baselines.yml', import.meta.url), 'utf8');
+  assert.deepEqual([...postMergeEngineRunTargets(workflow)], ['engine/test/scripts/control-ui-i18n.generated.test.ts']);
+  assert.deepEqual([...postMergeEngineRunTargets('# run: node scripts/run-vitest.mjs run test/scripts/x.test.ts\n')], []);
+  const desktop = readFileSync(new URL('../.github/workflows/desktop-checks.yml', import.meta.url), 'utf8');
+  const file = 'engine/test/scripts/control-ui-i18n.generated.test.ts';
+  // Hermetic: no named list from the repo, so the file is covered only by the post-merge run line.
+  const noNamedLists = { namedFor: () => [] };
+  assert.deepEqual(uncoveredTests([file], coverageTargets(desktop, '', '', '', noNamedLists)), [file]);
+  assert.deepEqual(uncoveredTests([file], coverageTargets(desktop, '', '', workflow, noNamedLists)), []);
 });
 
 test('allowlisted desktop coverage counts #677\'s plain post-build step on the real workflow', () => {

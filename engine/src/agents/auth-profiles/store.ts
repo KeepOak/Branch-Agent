@@ -191,10 +191,11 @@ export function resolveRuntimeAuthProfileAgentDir(agentDir?: string): string | u
 
 function resolveRuntimeAuthProfileLoadOptions(
   options?: LoadAuthProfileStoreOptions,
+  agentDir?: string,
 ): LoadAuthProfileStoreOptions | undefined {
   const mode = authProfileRuntimeMode.getStore();
   if (mode?.kind !== "agent-dir") {
-    return withConfiguredInheritedAuthDir(options);
+    return withConfiguredInheritedAuthDir(options, agentDir);
   }
   return { ...options, inheritedAuthDir: mode.agentDir };
 }
@@ -202,14 +203,21 @@ function resolveRuntimeAuthProfileLoadOptions(
 /**
  * Config-scoped reads inherit from the same owner as prepared runs: while the shared store is
  * still the legacy one, agents.defaults.authInheritance names it (not a fixed main agent).
+ * Under state-db the owner's Trunk store is inherited, unless the reading Trunk opted out.
  */
 function withConfiguredInheritedAuthDir(
   options?: LoadAuthProfileStoreOptions,
+  agentDir?: string,
 ): LoadAuthProfileStoreOptions | undefined {
   if (!options?.config || options.inheritedAuthDir) {
     return options;
   }
-  const inheritedAuthDir = resolveLegacyInheritedAuthDir(options.config);
+  const inheritedAuthDir = resolveLegacyInheritedAuthDir(
+    options.config,
+    undefined,
+    undefined,
+    agentDir ? { agentDir } : undefined,
+  );
   return inheritedAuthDir ? { ...options, inheritedAuthDir } : options;
 }
 
@@ -378,9 +386,10 @@ export function resolvePersistedAuthProfileOwnerAgentDir(params: {
   if (isSharedMainAuthProfileAgentDir(agentDir)) {
     return undefined;
   }
-  const configuredOwnerDir = withConfiguredInheritedAuthDir({
-    config: params.config ?? params.cfg,
-  })?.inheritedAuthDir;
+  const configuredOwnerDir = withConfiguredInheritedAuthDir(
+    { config: params.config ?? params.cfg },
+    agentDir,
+  )?.inheritedAuthDir;
   // Only a configured owner other than the shared main store changes the owner; main stays implicit.
   const inheritedAuthDir =
     configuredOwnerDir && !isSharedMainAuthProfileAgentDir(configuredOwnerDir)
@@ -1040,7 +1049,7 @@ export function createAuthProfileStoreRuntime(
       return createEmptyAuthProfileStore();
     }
     const effectiveAgentDir = resolveRuntimeAuthProfileAgentDir(agentDir);
-    const effectiveOptions = resolveRuntimeAuthProfileLoadOptions(options);
+    const effectiveOptions = resolveRuntimeAuthProfileLoadOptions(options, effectiveAgentDir);
     const databasePath = effectiveAgentDir
       ? resolveAgentAuthPath(effectiveAgentDir)
       : resolveSharedAuthPath(env);
@@ -1163,7 +1172,7 @@ export function createAuthProfileStoreRuntime(
         : materializePersonalAuthProfile(shared, options.profileId);
     }
     const effectiveAgentDir = resolveRuntimeAuthProfileAgentDir(agentDir);
-    const effectiveOptions = resolveRuntimeAuthProfileLoadOptions(options);
+    const effectiveOptions = resolveRuntimeAuthProfileLoadOptions(options, effectiveAgentDir);
     const authPath = effectiveAgentDir
       ? resolveAgentAuthPath(effectiveAgentDir)
       : resolveSharedAuthPath(env);

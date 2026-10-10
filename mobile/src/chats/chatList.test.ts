@@ -68,6 +68,19 @@ describe('chat rows', () => {
     expect(rows.filter((r) => matchesSearch(r, '  ')).length).toBe(rows.length);
   });
 
+  it('dates a chat by its latest activity, so one whose updatedAt lags its last reply still reads as today', () => {
+    const today = new Date(2026, 9, 8, 9, 40).getTime();
+    const yesterday = new Date(2026, 9, 7, 18, 0).getTime();
+    const [lagging, plain] = chatRows(
+      { sessions: [{ key: 'agent:juniper:main', updatedAt: yesterday, lastActivityAt: today }, { key: 'agent:juniper:x', updatedAt: today, lastActivityAt: yesterday }] },
+      new Map(),
+      'main',
+    );
+    expect(lagging.updatedAt).toBe(today);
+    expect(plain.updatedAt).toBe(today);
+    expect(chatTime(lagging.updatedAt, FIXTURE_NOW)).toBe('9:40 AM');
+  });
+
   it('says when, the way Messages does', () => {
     const at = (d: number, h: number, m: number) => new Date(2026, 9, d, h, m).getTime();
     expect(chatTime(FIXTURE_NOW - 10_000, FIXTURE_NOW)).toBe('Now');

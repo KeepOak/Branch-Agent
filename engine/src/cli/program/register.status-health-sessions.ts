@@ -413,6 +413,7 @@ export function registerStatusHealthSessionsCommands(program: Command) {
     .description("Export a stored conversation to stdout")
     .option("--session-key <key>", "Session key to export")
     .option("--format <format>", "markdown, html, json, plaintext, context, recap, or graph", "markdown")
+    .option("--json", "Output JSON; same as --format json", false)
     .option("--all", "Export all conversations in the selected stores", false)
     .option("--all-agents", "Export conversations from every configured agent (requires --all)", false)
     .option("--context-max <characters>", "Context transcript size (retains beginning and end)")
@@ -429,7 +430,7 @@ export function registerStatusHealthSessionsCommands(program: Command) {
       await runCommandWithRuntime(defaultRuntime, async () => {
         const { sessionExportCommand } = await import("../../sessions/resume-export-command.js");
         await sessionExportCommand({ sessionKey: opts.sessionKey as string | undefined,
-          format: opts.format as string | undefined, contextMax: opts.contextMax as string | undefined,
+          format: opts.json === true ? "json" : opts.format as string | undefined, contextMax: opts.contextMax as string | undefined,
           includeToolDetails: Boolean(opts.includeToolDetails),
           includeTimestamps: Boolean(opts.includeTimestamps), includeReasoning: Boolean(opts.includeReasoning),
           all: Boolean(opts.all), allAgents: Boolean(opts.allAgents || parentOpts?.allAgents),
@@ -442,6 +443,7 @@ export function registerStatusHealthSessionsCommands(program: Command) {
     .command("recap")
     .description("Summarize recent conversation activity locally")
     .option("--session-key <key>", "Session key to recap")
+    .option("--json", "Output the recap as JSON", false)
     .option("--store <path>", "Legacy session store selector path")
     .option("--agent <id>", "Agent id for resolving the session store")
     .action(async (opts, command) => {
@@ -450,7 +452,7 @@ export function registerStatusHealthSessionsCommands(program: Command) {
         ["allAgents", "active", "limit", "verbose", "json"], "recap targets one conversation");
       await runCommandWithRuntime(defaultRuntime, async () => {
         const { sessionExportCommand } = await import("../../sessions/resume-export-command.js");
-        await sessionExportCommand({ sessionKey: opts.sessionKey as string | undefined, format: "recap",
+        await sessionExportCommand({ sessionKey: opts.sessionKey as string | undefined, format: "recap", json: opts.json === true,
           store: (opts.store as string | undefined) ?? parentOpts?.store,
           agent: (opts.agent as string | undefined) ?? parentOpts?.agent }, defaultRuntime);
       });

@@ -204,10 +204,20 @@ async function finalizeMemorySearchToolQuery(params: {
   const { active, searched, query, visibility, searchSources, runtimeDebug, startedAt } = params;
   const status = params.status ?? active.manager.status();
   const pausedIndexIdentity = resolveMemoryIndexIdentityDiagnostic(status);
+  const latestDebug = runtimeDebug.at(-1);
+  // Only the manager can validate the content-only identity under its read
+  // lease. A keyword mode alone must never authorize a stale corpus or scope.
+  const embeddingKeywordOnly =
+    latestDebug?.effectiveMode === "keyword-only" &&
+    latestDebug.keywordFallbackContentScopeValid === true &&
+    pausedIndexIdentity?.status === "mismatched" &&
+    pausedIndexIdentity.owner === "configuration" &&
+    ["model", "provider", "provider_settings", "vector_dims"].includes(pausedIndexIdentity.code) &&
+    Boolean(status.fts?.enabled && status.fts?.available);
   // A pending chunking upgrade on an otherwise matching index degrades to
-  // keyword-only results instead of pausing memory search; every other
-  // mismatch still withholds all candidates. Keyword results still need a
-  // usable FTS index — the manager's fallback requires the same, so without
+  // keyword-only results instead of pausing memory search. Validated embedding
+  // mismatches do the same; every other mismatch withholds all candidates.
+  // Keyword results need a usable FTS index — the manager's fallback requires the same, so without
   // it there is no retrieval path and the tool must keep the paused
   // diagnostic instead of reporting a successful empty search.
   const chunkingUpgradeKeywordOnly =
@@ -216,7 +226,7 @@ async function finalizeMemorySearchToolQuery(params: {
     pausedIndexIdentity.code === "chunking_version" &&
     pausedIndexIdentity.chunkingVersionOnly === true &&
     Boolean(status.fts?.enabled && status.fts?.available);
-  if (pausedIndexIdentity && !chunkingUpgradeKeywordOnly) {
+  if (pausedIndexIdentity && !chunkingUpgradeKeywordOnly && !embeddingKeywordOnly) {
     return {
       searchStartedAt: startedAt,
       status,
@@ -244,7 +254,6 @@ async function finalizeMemorySearchToolQuery(params: {
   }
 
   const rawResults = filtered.slice(0, query.resultLimit);
-  const latestDebug = runtimeDebug.at(-1);
   return {
     searchStartedAt: startedAt,
     status,

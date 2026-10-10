@@ -291,6 +291,9 @@ describe("listGatewayMethods", () => {
       "rooms.list",
       "rooms.send",
       "rooms.log",
+      "rooms.trunk.list",
+      "rooms.trunk.read",
+      "rooms.trunk.post",
       "rooms.members.add",
       "rooms.members.remove",
       "rooms.rule.set",
@@ -308,6 +311,15 @@ describe("listGatewayMethods", () => {
       "backup.schedule.set",
       "backup.schedule.clear",
       "backup.run",
+      "trunks.queue.add",
+      "trunks.queue.list",
+      "trunks.queue.done",
+      "trunks.queue.release",
+      "agents.retryStartup",
+      "trunks.template.export",
+      "trunks.template.create",
+      "trunks.team.propose",
+      "trunks.team.approve",
     ];
     expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
     const methods = listGatewayMethods();
@@ -404,6 +416,9 @@ describe("listGatewayMethods", () => {
       "rooms.list",
       "rooms.send",
       "rooms.log",
+      "rooms.trunk.list",
+      "rooms.trunk.read",
+      "rooms.trunk.post",
       "rooms.members.add",
       "rooms.members.remove",
       "rooms.rule.set",
@@ -421,6 +436,15 @@ describe("listGatewayMethods", () => {
       "backup.schedule.set",
       "backup.schedule.clear",
       "backup.run",
+      "trunks.queue.add",
+      "trunks.queue.list",
+      "trunks.queue.done",
+      "trunks.queue.release",
+      "agents.retryStartup",
+      "trunks.template.export",
+      "trunks.template.create",
+      "trunks.team.propose",
+      "trunks.team.approve",
     ]);
   });
 
@@ -651,6 +675,9 @@ describe("listGatewayMethods", () => {
       "rooms.list",
       "rooms.send",
       "rooms.log",
+      "rooms.trunk.list",
+      "rooms.trunk.read",
+      "rooms.trunk.post",
       "rooms.members.add",
       "rooms.members.remove",
       "rooms.rule.set",
@@ -668,6 +695,15 @@ describe("listGatewayMethods", () => {
       "backup.schedule.set",
       "backup.schedule.clear",
       "backup.run",
+      "trunks.queue.add",
+      "trunks.queue.list",
+      "trunks.queue.done",
+      "trunks.queue.release",
+      "agents.retryStartup",
+      "trunks.template.export",
+      "trunks.template.create",
+      "trunks.team.propose",
+      "trunks.team.approve",
     ];
     expect(coreMethods.slice(-expectedCoreSuffix.length)).toEqual(expectedCoreSuffix);
     expect(methods.indexOf("approval.get")).toBeGreaterThan(methods.indexOf("tts.speak"));

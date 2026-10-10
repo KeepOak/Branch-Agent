@@ -7,7 +7,7 @@
 set -euo pipefail
 D="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$D"
-npx tsc -p tsconfig.json
+node scripts/build.mjs
 OUT="${BRANCH_DESKTOP_OUT:-$(node -p 'require("path").join(require("./dist/config.js").defaultDataDirectory(),"dist")')}"
 VERSION="$(node -p 'require("./package.json").version')"
 TARGET="$OUT/v$VERSION"

@@ -192,6 +192,30 @@ export async function readRequiredProposal(
   return read;
 }
 
+/**
+ * A pending create whose target skill does not exist has nothing to reconcile, and its draft is
+ * still there, so listing it needs no write lease. Anything else, including a missing draft, takes
+ * the locked path below, which decides it under the lease exactly as before.
+ */
+async function isPendingCreateWithoutTarget(
+  record: SkillProposalRecord,
+  workshopDir: string,
+  options: SkillProposalScopeOptions,
+): Promise<boolean> {
+  if (record.kind !== "create" || !isPathInside(workshopDir, record.target.skillFile)) {
+    return false;
+  }
+  try {
+    if ((await readWorkspaceSkillFile(record.target.skillFile)) !== null) {
+      return false;
+    }
+    await readSkillProposalDraft(record, captureSkillWorkshopStoreOptions(options));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function reconcilePendingSkillProposal(
   record: SkillProposalRecord,
   options: SkillProposalScopeOptions,
@@ -200,6 +224,9 @@ async function reconcilePendingSkillProposal(
     return;
   }
   const workshopDir = resolveWorkshopSkillsDir(options.config, options.agentId, options.env);
+  if (await isPendingCreateWithoutTarget(record, workshopDir, options)) {
+    return;
+  }
   const transition = await withSkillProposalCommitLock(
     record,
     async (store) => {

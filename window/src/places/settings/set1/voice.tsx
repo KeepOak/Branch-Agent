@@ -5,8 +5,9 @@
 import type { SettingsPageProps } from "../index";
 import { list, text, visible, type RecordValue } from "../adapter";
 import { Ctl, Page, Sec, useLevel, useSaveRunner, type Opt, type RowEntry } from "../kit";
-import { APP, Choice, Greyed, isMac, providersOf, useKept, type Kept } from "./voice-kit";
+import { APP, Choice, Greyed, providersOf, useKept, type Kept } from "./voice-kit";
 import { VoiceAdvanced } from "./voice-more";
+import { platformName } from "../../../setup/steps-later";
 import "./voice.css";
 
 /** The first wake word, quoted, for the sub-lines (the engine's own list; never a made-up phrase). */
@@ -17,6 +18,7 @@ export function wakeWordOf(wake: RecordValue | undefined): string {
 
 export function VoicePage(props: SettingsPageProps) {
   const lv = useLevel();
+  const platform = platformName();
   const tts = useKept<RecordValue>(props.engine, "tts.status", {});
   const voices = useKept<RecordValue>(props.engine, "tts.providers", {});
   const wake = useKept<RecordValue>(props.engine, "voicewake.get", {});
@@ -26,7 +28,7 @@ export function VoicePage(props: SettingsPageProps) {
       <Sec title="Talking">
         <Greyed why={APP} rows={[
           { t: "Listening", sub: `Push to talk holds the key; wake word listens for ${word}.`, c: { seg: ["Off", "Push to talk", "Wake word"], v: "Off" } },
-          { t: "Push-to-talk key", sub: isMac() ? "Hold it anywhere on this Mac." : "Hold it anywhere in Windows.", c: { btn: "Change" } },
+          { t: "Push-to-talk key", sub: platform === "macOS" ? "Hold it anywhere on this Mac." : platform === "Windows" ? "Hold it anywhere in Windows." : "Hold it anywhere on this computer.", c: { btn: "Change" } },
           { t: "Microphone", sub: "Used for dictation, push to talk, the wake word and live voice. A change applies to the next dictation or call.", c: { pick: ["System default"], extra: "Refresh" } },
           { t: "Test the microphone", sub: "Watch the level as you speak, and try the wake word.", c: { btn: "Test" } },
         ]} />
@@ -83,7 +85,7 @@ export const VOICE_ROWS: RowEntry[] = [
   ...rows("Live voice, technical", 2, ["How it runs", "Who does the thinking", "Final words go to", "Thinking during live voice", "Fast answers during live voice", "Voice detection", "Silence before it answers", "Sound kept before speech", "Reasoning", "Pause before sending (talk on a device)", "Connection"]),
   ...rows("Voice, technical", 2, ["Speak into a file", "Speaking status", "Voice nicknames", "Audio format", "Check the call setup", "Call and speak", "During a call", "Follow the call log", "Answer delay", "Reach call webhooks from outside", "All voice settings"]),
   ...rows("Listening, services", 1, ["Listening engine", "A program of yours as an engine", "Try again when a service hiccups", "Use the chat app’s own transcript first", "Turn audio and video files into documents"]),
-  ...rows("A spoken turn", 1, ["Set up voice", "Keep voice ready", "Speak while the answer is written", "Remember spoken lines", "Trunks may change their voice in a reply", "Send dictation by itself", "Countdown", "Wait while I’m mid-thought", "Ignore its own voice", "Stop phrases", "Start answering while I finish", "Talk to a Trunk by name", "Act on each part as I say it", "Clean up background noise", "Lower other sound while we talk", "Tell a real interruption from a cough", "While it thinks", "Say how background tasks are going", "Hand slow work to a helper and keep talking", "Every spoken turn ends with speech", "Risky actions asked by voice need a spoken yes", "Quick spoken commands", "Notice how I sound", "Dictate into any app", "Dictate-anywhere key"]),
+  ...rows("A spoken turn", 1, ["Set up voice", "Keep voice ready", "Speak while the answer is written", "Remember spoken lines", "Trunks may change their voice in a reply", "Send dictation by itself", "Countdown", "Wait while I’m mid-thought", "Ignore its own voice", "Stop phrases", "Start answering while I finish", "Talk to a Trunk by name", "Act on each part as I say it", "Clean up background noise", "Lower other sound while we talk", "Tell a real interruption from a cough", "While it thinks", "Say how background tasks are going", "Hand slow work to a Trunk and keep talking", "Every spoken turn ends with speech", "Risky actions asked by voice need a spoken yes", "Quick spoken commands", "Notice how I sound", "Dictate into any app", "Dictate-anywhere key"]),
   ...rows("Calls and meetings, more", 1, ["Recognise who is speaking", "Split recordings by speaker", "Notes from any call, without joining", "Record and transcribe", "Answer questions it hears", "Sum up each call", "Call numbers", "Press keypad tones on phone menus", "Call a list of people", "Practice calls", "FaceTime", "A face on live voice", "Smart glasses", "Make a podcast from a document", "Narrate a screen recording", "Make a voice of your own"]),
   ...rows("Live voice, more services", 2, ["Live voice with a ChatGPT account"]),
 ];

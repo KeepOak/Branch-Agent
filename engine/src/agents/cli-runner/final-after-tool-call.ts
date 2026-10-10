@@ -1,7 +1,7 @@
 import type { CliOutput } from "../cli-output-contracts.js";
 import { appendCliResultText } from "../cli-output-results.js";
 import { SETTLED_TOOL_TERMINAL_CONTINUATION_INSTRUCTION } from "../embedded-agent-runner/run/incomplete-turn-recovery.js";
-import { acceptsCliLiveSession } from "./cli-live-session-registry.js";
+import { acceptsCliLiveSession, restartCliLiveSession } from "./cli-live-session-registry.js";
 import type { PreparedCliRunContext } from "./types.js";
 
 export const CLI_ENDED_AFTER_TOOL_CALL_ERROR =
@@ -13,9 +13,7 @@ export const CLI_ENDED_AFTER_TOOL_CALL_CODE = "cli_ended_after_tool_call";
  * on a tool call for its final message. It resumes the same CLI session with
  * only the instruction as its prompt, so the original turn is never replayed.
  */
-export function buildFinalAfterToolCallContext(
-  context: PreparedCliRunContext,
-): PreparedCliRunContext {
+function buildFinalAfterToolCallContext(context: PreparedCliRunContext): PreparedCliRunContext {
   const params: PreparedCliRunContext["params"] = {
     ...context.params,
     prompt: SETTLED_TOOL_TERMINAL_CONTINUATION_INSTRUCTION,
@@ -29,15 +27,36 @@ export function buildFinalAfterToolCallContext(
   delete params.media;
   // Execution-internal image layout carried alongside the public params.
   delete (params as { mediaImageLayout?: unknown }).mediaImageLayout;
-  // A warm stdio session fixes its argv at start and keeps the turn only in
-  // that process; restarting it to drop tools would lose the turn. Fresh
-  // processes resume the native transcript, so they run with no tools at all.
-  if (!acceptsCliLiveSession(context)) {
-    params.cliToolAvailability = { native: [], branch: [] };
-  }
+  // The continuation runs with no tools on every backend, so it ends in one model turn.
+  params.cliToolAvailability = { native: [], branch: [] };
   const continuation: PreparedCliRunContext = { ...context, params };
   delete continuation.promptContext;
+  if (acceptsCliLiveSession(context)) {
+    // A warm stdio process fixes its tools at start. The continuation runs in its own
+    // process that resumes the persisted native transcript; the next turn starts a new
+    // warm process from that transcript, including this final message.
+    const { liveSession: _liveSession, ...processPerTurnBackend } = context.preparedBackend.backend;
+    continuation.preparedBackend = { ...context.preparedBackend, backend: processPerTurnBackend };
+    delete continuation.requiredClaudeLiveSessionGeneration;
+  }
   return continuation;
+}
+
+/**
+ * Prepares the final-message continuation. A warm live session is closed first so the
+ * tool-less process owns the native session alone. Returns undefined when the turn lives
+ * only in that warm process (its transcript was not on disk), which cannot be resumed.
+ */
+export async function prepareFinalAfterToolCallContext(
+  context: PreparedCliRunContext,
+): Promise<PreparedCliRunContext | undefined> {
+  if (acceptsCliLiveSession(context)) {
+    if (context.requiredClaudeLiveSessionGeneration) {
+      return undefined;
+    }
+    await restartCliLiveSession(context);
+  }
+  return buildFinalAfterToolCallContext(context);
 }
 
 /** Use the continuation's text as the turn's final message, keeping its tool evidence. */

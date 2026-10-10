@@ -22,6 +22,7 @@ export const AGENT_MODEL_FIELD_LABELS: Record<string, string> = {
   "agents.defaults.embeddedAgent.cyberFailover.cooloffMs": "Cyber Policy Failover Cooloff",
   "agents.defaults.utilityModel": "Utility Model",
   "agents.entries.*.utilityModel": "Agent Utility Model",
+  "agents.entries.*.useOwnerAccounts": "Use Owner's Model Accounts",
   "agents.defaults.decisionModel": "Decision Model",
   "agents.defaults.experimental.decisionAssistance": "Decision Assistance (Experimental)",
   "agents.entries.*.decisionModel": "Agent Decision Model",

@@ -60,10 +60,10 @@ import {
 } from "./cli-runner/delivery-evidence.js";
 import { createCliFailoverError } from "./cli-runner/exit-error.js";
 import {
-  buildFinalAfterToolCallContext,
   CLI_ENDED_AFTER_TOOL_CALL_CODE,
   CLI_ENDED_AFTER_TOOL_CALL_ERROR,
   mergeFinalAfterToolCall,
+  prepareFinalAfterToolCallContext,
 } from "./cli-runner/final-after-tool-call.js";
 import { cliBackendLog } from "./cli-runner/log.js";
 import {
@@ -375,11 +375,15 @@ async function runPreparedCliAgentOwned(
     }
     let final: CliOutput;
     try {
-      final = await executePreparedCliRun(
-        buildFinalAfterToolCallContext(attemptContext),
-        cliSessionId,
-        diagnosticLifecycle ? { onPhase: diagnosticLifecycle.setPhase } : undefined,
-      );
+      const continuation = await prepareFinalAfterToolCallContext(attemptContext);
+      // No tool-less continuation can resume this turn; it ends plainly below.
+      final = continuation
+        ? await executePreparedCliRun(
+            continuation,
+            cliSessionId,
+            diagnosticLifecycle ? { onPhase: diagnosticLifecycle.setPhase } : undefined,
+          )
+        : output;
     } catch (error) {
       if (params.abortSignal?.aborted) {
         throw error;

@@ -3,7 +3,8 @@
 // The report never prints a full personal email; only a short SHA, field, and masked domain.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ghApi } from './merge-gate-trusted.mjs';
+import { httpStatusOf, isRateLimitError, isTransientGitHubError } from './merge-gate-rate-limit.mjs';
+import { ghApi, ghApiWithRetry } from './merge-gate-trusted.mjs';
 
 export const CUTOFF_ISO = '2026-10-08T04:05:00Z';
 export const CUTOFF_MS = Date.parse(CUTOFF_ISO);
@@ -151,6 +152,55 @@ function shortSha(sha) {
   return value.length > 7 ? value.slice(0, 7) : value || 'unknown';
 }
 
+export const COMMIT_EMAIL_WAIT_SECONDS = 600;
+
+// One rate-limit budget for the whole job: every page shares one start time, so two rate-limited pages
+// cannot each get 600 s (the job has a 15-minute limit).
+export function createEmailCheckApi({
+  budgetSeconds = COMMIT_EMAIL_WAIT_SECONDS,
+  now = Date.now,
+  requestWithRetry = ghApiWithRetry,
+} = {}) {
+  const startedAt = now();
+  return function emailCheckApi(repo, token, requestPath, options = {}) {
+    const remaining = budgetSeconds - (now() - startedAt) / 1000;
+    if (remaining < 1) {
+      throw Object.assign(new Error(`rate-limit wait budget of ${budgetSeconds}s used up before ${requestPath}`), {
+        budgetExhausted: true,
+      });
+    }
+    return requestWithRetry(repo, token, requestPath, {
+      ...options, retries: Number.POSITIVE_INFINITY, startedAt, budgetSeconds, now,
+    });
+  };
+}
+
+export function apiFailureLine(error, prNumber) {
+  if (error?.budgetExhausted) {
+    return `GitHub API rate-limit wait ran out of its ${COMMIT_EMAIL_WAIT_SECONDS}s job budget while reading commits for PR #${prNumber}. Not a commit-email failure; re-run the check.`;
+  }
+  const status = httpStatusOf(error);
+  const label = status ? `HTTP ${status}` : 'error (no HTTP status)';
+  let why = 'not retried (not a rate limit or a transient error)';
+  if (isRateLimitError(error)) why = 'waited out the rate limit within the step budget, then gave up';
+  else if (isTransientGitHubError(error)) why = 'retried with backoff, then gave up';
+  return `GitHub API ${label} while reading commits for PR #${prNumber}; ${why}. Not a commit-email failure.`;
+}
+
+export function runCommitEmailCheck({ repo, prNumber, token, api = createEmailCheckApi() }) {
+  let commits;
+  try {
+    commits = fetchPrCommitsWithApi({ repo, prNumber, token, api });
+  } catch (error) {
+    return { exitCode: 2, lines: [apiFailureLine(error, prNumber)] };
+  }
+  const failures = evaluateCommits(commits);
+  if (failures.length === 0) {
+    return { exitCode: 0, lines: [`Checked ${commits.length} commit(s); all in-scope addresses are allowed.`] };
+  }
+  return { exitCode: 1, lines: [formatReport(failures)] };
+}
+
 async function main() {
   const repo = process.env.REPO || process.env.GITHUB_REPOSITORY;
   const prNumber = process.env.PR_NUMBER;
@@ -160,14 +210,12 @@ async function main() {
     process.exitCode = 2;
     return;
   }
-  const commits = fetchPrCommitsWithApi({ repo, prNumber, token });
-  const failures = evaluateCommits(commits);
-  if (failures.length === 0) {
-    console.log(`Checked ${commits.length} commit(s); all in-scope addresses are allowed.`);
-    return;
+  const result = runCommitEmailCheck({ repo, prNumber, token });
+  for (const line of result.lines) {
+    if (result.exitCode === 0) console.log(line);
+    else console.error(line);
   }
-  console.error(formatReport(failures));
-  process.exitCode = 1;
+  process.exitCode = result.exitCode;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

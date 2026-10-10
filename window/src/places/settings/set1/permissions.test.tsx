@@ -93,6 +93,8 @@ describe("Settings › Permissions", () => {
     const turnOnBtn = button("Turn Lockdown on");
     expect(turnOnBtn?.className).toContain("bad"); // Preview spec-v23 index.html:8553 button class when off
     await act(async () => turnOnBtn?.click());
+    expect(request.mock.calls.some(([m]) => m === "config.patch")).toBe(false);
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="confirm-lockdown"] .dlg-f button:last-child')!.click());
     expect(patchOf(request)).toEqual({ security: { lockdown: true } });
     // Verify toast shown on success (Preview spec-v23 index.html:8910)
     expect(vi.mocked(notify)).toHaveBeenCalledWith("Lockdown is on.");

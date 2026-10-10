@@ -258,6 +258,13 @@ export function activateCodexAttemptTurn(
         await terminateCodexBackgroundTerminals(
           resourceState.client,
           resourceState.thread.threadId,
+          params.oneShotCliRun === true,
+          notifications.waitForNativeTerminalItems,
+        );
+        resources.nativeProcessAuthority?.settleTerminatedLocalTurn(
+          resourceState.client,
+          resourceState.thread.threadId,
+          activeTurnId,
         );
       }
       if (state.permissionChangeRestart) {

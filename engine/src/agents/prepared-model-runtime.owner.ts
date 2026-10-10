@@ -229,7 +229,11 @@ export function normalizePreparedModelRuntimeInput(
     ...rest
   } = input;
   const inheritedAuthDir = normalizeOptionalDir(
-    input.inheritedAuthDir ?? resolveLegacyInheritedAuthDir(input.config, input.env),
+    input.inheritedAuthDir ??
+      resolveLegacyInheritedAuthDir(input.config, input.env, undefined, {
+        agentId: input.agentId,
+        agentDir: input.agentDir,
+      }),
   );
   const workspaceDir = normalizeOptionalDir(input.workspaceDir);
   const env = input.env ? Object.freeze({ ...input.env }) : undefined;

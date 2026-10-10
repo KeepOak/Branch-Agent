@@ -53,6 +53,7 @@ import {
   resolveSharedAuthStorePath,
 } from "../../agents/auth-profiles/path-resolve.js";
 import { resolveAuthProfileDatabasePath } from "../../agents/auth-profiles/sqlite.js";
+import { scheduleFirstRunGreeting } from "../../agents/first-run-greeting.js";
 import {
   createAgentIdentityConfig,
   normalizeIdentityForFile,
@@ -404,6 +405,22 @@ function cleanupPathCovers(
 
 export const agentsHandlers: GatewayRequestHandlers = {
   "agents.list": agentListHandler,
+  // A Trunk whose startup preparation failed starts it again from scratch now (the window's Retry).
+  "agents.retryStartup": async ({ params, respond }) => {
+    const raw =
+      params && typeof params === "object" ? (params as { agentId?: unknown }).agentId : undefined;
+    const normalized = typeof raw === "string" ? normalizeAgentIdStrict(raw) : undefined;
+    if (!normalized?.ok) {
+      respondAgentNotFound(respond, typeof raw === "string" ? raw : "");
+      return;
+    }
+    const { retryAgentDatabaseStartupPreparation } =
+      await import("../../state/agent-database-startup.js");
+    respond(true, {
+      agentId: normalized.value,
+      retrying: retryAgentDatabaseStartupPreparation(normalized.value),
+    });
+  },
   "agents.create": async ({ params, respond, client, context }) => {
     if (!assertValidParams(params, validateAgentsCreateParams, "agents.create", respond)) {
       return;
@@ -451,6 +468,13 @@ export const agentsHandlers: GatewayRequestHandlers = {
       await reviveAgentDatabasesAfterConfigCommit([result.agentId], (message) =>
         context.logGateway.warn(message),
       );
+      // A brand-new Trunk opens its own chat once. It is scheduled, never awaited, so a slow
+      // database cannot delay this response.
+      scheduleFirstRunGreeting({
+        result,
+        getConfig: () => context.getRuntimeConfig(),
+        warn: (message) => context.logGateway.warn(message),
+      });
       // Creation is already committed. A failed or slow worker warm-up must not
       // make this successful create appear retryable to the client.
       void warmAgentSessionAdmission(result.agentId, context.getRuntimeConfig()).catch((error) => {

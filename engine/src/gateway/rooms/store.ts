@@ -139,10 +139,7 @@ export function createRoom(input: {
 }): Room {
   requireText(input.name, "room name", 200);
   const trunks = input.members.filter((member) => member.kind === "trunk");
-  if (
-    trunks.length < 1 ||
-    new Set(trunks.map((member) => member.id)).size !== trunks.length
-  )
+  if (trunks.length < 1 || new Set(trunks.map((member) => member.id)).size !== trunks.length)
     throw new Error("Rooms require at least one Trunk, each listed once");
   if (input.members.length > MAX_ROOM_MEMBERS) throw new Error("Too many room members");
   const lead = trunks.find((member) => member.role === "lead")?.id ?? trunks[0]!.id;
@@ -231,6 +228,29 @@ export function setRoomRule(roomId: string, rule: Room["rule"], trunksTalk: bool
     },
     {},
     { operationLabel: "rooms.rule.set" },
+  );
+}
+
+/** Disconnect removes membership even in archived rooms, so restoring a room cannot restore access. */
+export function removeOutsideRoomMembers(ids: readonly string[]): Room[] {
+  if (!ids.length) {
+    return [];
+  }
+  return runBranchStateWriteTransaction(
+    ({ db }) => {
+      const affected = new Set<string>();
+      const find = db.prepare("SELECT room_id FROM room_members WHERE kind='a2a' AND id=?");
+      const remove = db.prepare("DELETE FROM room_members WHERE kind='a2a' AND id=?");
+      for (const id of ids) {
+        for (const row of find.all(id) as Array<{ room_id: string }>) {
+          affected.add(row.room_id);
+        }
+        remove.run(id);
+      }
+      return [...affected].map((roomId) => mapRoom(db, roomRow(db, roomId)!));
+    },
+    {},
+    { operationLabel: "rooms.members.disconnect" },
   );
 }
 export function archiveRoom(roomId: string): Room {

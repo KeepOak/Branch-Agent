@@ -12,6 +12,21 @@ export function preparationTimeoutLabel(name: string): string {
   return `${name || "This Trunk"} is still starting up. Try again in a minute.`;
 }
 
+/** The window stopped re-reading after its two minutes (`preparationTimeoutLabel`); the Trunk may still be getting ready. */
+export function isPreparationStalled(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return message.endsWith("is still starting up. Try again in a minute.");
+}
+
+export function preparationRetryingLabel(name: string): string {
+  return `Getting ${name || "this Trunk"} ready failed, retrying…`;
+}
+
+/** The engine stopped retrying after five failed starts in a row; only Retry starts it again. */
+export function preparationNeedsAttentionLabel(name: string): string {
+  return `${name || "This Trunk"} needs attention: getting it ready kept failing.`;
+}
+
 /** A single startup episode gets at most two minutes of increasingly spaced retries. */
 export class PreparationRetry {
   private startedAt: number | null = null;

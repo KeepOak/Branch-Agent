@@ -6,6 +6,7 @@ import {
   GATEWAY_CLIENT_IDS,
   GATEWAY_CLIENT_MODES,
   GatewayBrowserDeviceAuthLifecycle,
+  GatewayChatStreamProjection,
   GatewayProtocolClient,
   MIN_CLIENT_PROTOCOL_VERSION,
   PROTOCOL_VERSION,
@@ -31,6 +32,8 @@ export const OPERATOR_ROLE = 'operator';
  */
 export const PHONE_SCOPES = ['operator.approvals', 'operator.questions', 'operator.read', 'operator.write'] as const;
 const CONNECT_FAILED_CLOSE_CODE = 4008;
+/** The Control UI's close for a chat addition whose frames before it this connection never had (engine/ui/src/api/gateway.ts). */
+const CHAT_BASELINE_MISSING_CLOSE_CODE = 4000;
 const PAIRING_RETRY_MS = 2000;
 const STARTING_RETRY_MS = 1000;
 
@@ -96,6 +99,15 @@ export class PhoneGateway {
   private readonly protocol: GatewayProtocolClient<GatewayBrowserDeviceAuthPlan>;
   private readonly auth: GatewayBrowserDeviceAuthLifecycle;
   private bootstrapToken: string | undefined;
+  /**
+   * Each reply's whole text so far, rebuilt from this connection's frames, as the Control UI keeps it
+   * (engine/ui/src/api/gateway-chat-events.ts). The engine sends a connection a reply's whole text only in its first
+   * frame for the run and in replacements, then additions alone (server-broadcast-live-text.ts `canSendDelta`), and
+   * it keeps that per connection, not per screen: a reply that streamed while Chats was open arrives at a chat opened
+   * later as bare additions. Rebuilding here gives every `chat` frame its whole text, whichever screen was open.
+   */
+  private readonly chatStream = new GatewayChatStreamProjection();
+  private readonly listeners = new Set<(event: EventFrame) => void>();
 
   constructor(private readonly opts: PhoneGatewayOptions) {
     this.client = phoneClient(opts.platform, opts.appVersion);
@@ -104,7 +116,11 @@ export class PhoneGateway {
     const pairingRetryMs = opts.pairingRetryMs ?? PAIRING_RETRY_MS;
     const createSocket = opts.createSocket ?? webSocketFor;
     this.protocol = new GatewayProtocolClient<GatewayBrowserDeviceAuthPlan>({
-      createSocket: (handlers) => createSocket(opts.url, handlers),
+      createSocket: (handlers) => {
+        // The texts belong to the connection that carried them.
+        this.chatStream.clear();
+        return createSocket(opts.url, handlers);
+      },
       createRequestId: opts.createRequestId,
       buildConnectPlan: ({ nonce, challengeTs }) =>
         this.auth.buildPlan({
@@ -145,10 +161,14 @@ export class PhoneGateway {
         if (isEngineStarting(details)) return { retry: true, notify: true, reconnectDelayMs: STARTING_RETRY_MS, pendingError: error };
         return { retry: !shouldPauseGatewayReconnect({ details }), notify: true, pendingError: error };
       },
-      onClose: (context, decision) => this.reportClose(context, decision.retry),
+      onClose: (context, decision) => {
+        this.chatStream.clear();
+        this.reportClose(context, decision.retry);
+      },
       handshake: { mode: 'require-challenge', timeoutMs: 10_000 },
       reconnect: { initialMs: 800, multiplier: 1.7, maxMs: 5_000 },
     });
+    this.protocol.addEventListener((event) => this.dispatch(event));
   }
 
   start(): void {
@@ -157,6 +177,7 @@ export class PhoneGateway {
   }
 
   stop(): void {
+    this.chatStream.clear();
     this.protocol.stop();
   }
 
@@ -165,9 +186,21 @@ export class PhoneGateway {
     return this.protocol.request<T>(method, params);
   }
 
-  /** Every event the engine pushes on this connection (sessions.changed, chat, approvals…). */
+  /** Every event the engine pushes on this connection (sessions.changed, chat, approvals…), each `chat` frame with its whole text. */
   addEventListener(listener: (event: EventFrame) => void): () => void {
-    return this.protocol.addEventListener(listener);
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  /** Gives each `chat` frame its reply's whole text once, for every listener. */
+  private dispatch(event: EventFrame): void {
+    const { event: projected, missingBaseline } = this.chatStream.project(event);
+    if (missingBaseline) {
+      // An addition to text this connection never had: start a new connection, whose first frame carries it all.
+      this.protocol.closeSocket(CHAT_BASELINE_MISSING_CLOSE_CODE, 'chat stream baseline missing');
+      return;
+    }
+    for (const listener of [...this.listeners]) listener(projected);
   }
 
   private reportClose(context: GatewayProtocolCloseContext, willRetry: boolean): void {

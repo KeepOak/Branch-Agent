@@ -3,7 +3,7 @@ import { bytesToBase64Url, utf8ToBytes } from '../connect/base64url';
 import { createFakeEngine } from '../connect/fakeEngine';
 import { PHONE_SCOPES } from '../connect/phoneGateway';
 import { memoryStore } from '../storage/keyValueStore';
-import { failureMessage, NEUTRAL_FAILURE_MESSAGE, PAIRING_RECORD_KEY, PairingSession, type PairingState } from './pairingSession';
+import { CODE_GONE_MESSAGE, DENIED_MESSAGE, failureMessage, NEUTRAL_FAILURE_MESSAGE, PAIRING_RECORD_KEY, PairingSession, type PairingState } from './pairingSession';
 import { decodeSetupCode, gatewayHost, isGatewayUrl, SetupCodeError } from './setupCode';
 
 const encode = (value: unknown) => bytesToBase64Url(utf8ToBytes(JSON.stringify(value)));
@@ -96,6 +96,23 @@ describe('pairing code', () => {
     expect(gatewayHost('not an address user:secret@')).toBe('your computer');
   });
 
+  it('drops spaces and line breaks a copy picked up, inside the code as well as around it', () => {
+    const text = encode(payload);
+    const wrapped = ` ${text.slice(0, 20)}\n${text.slice(20, 41)}\r\n ${text.slice(41)}\t\n`;
+    expect(decodeSetupCode(wrapped, 1_000)).toEqual(payload);
+    expect(decodeSetupCode(`oc-pair:// ${text}`, 1_000)).toEqual(payload);
+  });
+
+  it('calls a code with one stray or missing character damaged, not “not a Branch code”', () => {
+    const text = encode(payload);
+    for (const damaged of [`${text}x`, `${text.slice(0, 30)}k${text.slice(30)}`, `${text.slice(0, 30)}${text.slice(31)}`, `${text.slice(0, 30)}.${text.slice(30)}`, `oc-pair://${text}!`, `x${text}`]) {
+      expect(() => decodeSetupCode(damaged, 1_000)).toThrow(new SetupCodeError('damaged'));
+    }
+    for (const other of ['hello world', 'https://example.com/pair', '1234']) {
+      expect(() => decodeSetupCode(other, 1_000)).toThrow(new SetupCodeError('invalid'));
+    }
+  });
+
   it('says when a code has expired', () => {
     expect(() => decodeSetupCode(encode(payload), payload.expiresAtMs)).toThrow(new SetupCodeError('expired'));
   });
@@ -154,17 +171,60 @@ describe('pairing with the computer', () => {
     expect(JSON.parse(store.dump()[DEVICE_IDENTITY_KEY]).publicKey).toBe(a.publicKey);
   });
 
-  it('explains a refusal and an expired code in plain words', async () => {
+  it('explains a Deny and a code that no longer works in plain words', async () => {
     const refused = sessionWith();
+    refused.session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1', expiresAtMs: Date.now() + 300_000 });
+    await until(refused.session, (s) => s.step === 'approval');
     refused.engine.reject();
-    refused.session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' });
-    expect(await until(refused.session, (s) => s.step === 'failed')).toMatchObject({ message: expect.stringContaining('turned this phone away') });
+    expect(await until(refused.session, (s) => s.step === 'failed')).toEqual({ step: 'failed', url: 'ws://computer.local:19031', message: DENIED_MESSAGE });
+    expect(DENIED_MESSAGE).toBe('Your computer said no.');
     refused.session.dispose();
 
     const stale = sessionWith();
     stale.session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'old-code' });
-    expect(await until(stale.session, (s) => s.step === 'failed')).toMatchObject({ message: expect.stringContaining('expired or was already used') });
+    expect(await until(stale.session, (s) => s.step === 'failed')).toEqual({ step: 'failed', url: 'ws://computer.local:19031', message: CODE_GONE_MESSAGE });
+    expect(CODE_GONE_MESSAGE).toBe('This code no longer works. Make a new one on your computer.');
     stale.session.dispose();
+  });
+
+  it('carries the engine’s request id and the code’s expiry while waiting for Allow', async () => {
+    const { session } = sessionWith();
+    session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1', expiresAtMs: Date.now() + 300_000 });
+    const waiting = await until(session, (s) => s.step === 'approval');
+    expect(waiting).toEqual({ step: 'approval', url: 'ws://computer.local:19031', requestId: 'request-1', expiresAtMs: expect.any(Number) });
+    session.dispose();
+  });
+
+  it('a code whose record is gone stays gone: the same code again is turned away, and only a new code pairs', async () => {
+    const { session, engine } = sessionWith();
+    session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1', expiresAtMs: Date.now() + 300_000 });
+    await until(session, (s) => s.step === 'approval');
+    engine.refuse({ code: 'AUTH_BOOTSTRAP_TOKEN_INVALID', message: 'unauthorized: bootstrap token invalid or expired' });
+    expect(await until(session, (s) => s.step === 'failed')).toEqual({ step: 'failed', url: 'ws://computer.local:19031', message: DENIED_MESSAGE });
+
+    // Stopping the refusal doesn't bring the code back, as on the real engine.
+    engine.refuse(null);
+    engine.approve();
+    session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1', expiresAtMs: Date.now() + 300_000 });
+    expect(await until(session, (s) => s.step === 'failed')).toEqual({ step: 'failed', url: 'ws://computer.local:19031', message: CODE_GONE_MESSAGE });
+    expect(session).not.toHaveProperty('askAgain');
+    session.dispose();
+  });
+
+  it('says the code no longer works, not that the computer said no, when the code ran out while it waited', async () => {
+    let now = 1_000;
+    const store = memoryStore();
+    const engine = createFakeEngine();
+    const session = new PairingSession(
+      { store, platform: 'ios', appVersion: '0.1.0', loadIdentity: () => loadDeviceIdentity(store, randomBytes), createRequestId: randomUUID, createSocket: engine.createSocket, pairingRetryMs: 20 },
+      () => now,
+    );
+    session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1', expiresAtMs: 2_000 });
+    await until(session, (s) => s.step === 'approval');
+    now = 2_000;
+    engine.refuse({ code: 'AUTH_BOOTSTRAP_TOKEN_INVALID', message: 'unauthorized: bootstrap token invalid or expired' });
+    expect(await until(session, (s) => s.step === 'failed')).toEqual({ step: 'failed', url: 'ws://computer.local:19031', message: failureMessage('AUTH_BOOTSTRAP_TOKEN_INVALID') });
+    session.dispose();
   });
 
   it('ignores a saved computer whose address carries a user name or password', async () => {

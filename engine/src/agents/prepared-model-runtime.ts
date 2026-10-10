@@ -1,8 +1,13 @@
 /** Lifecycle-owned auth/model discovery snapshots for agent runs. */
+import { adoptSupersedingPublication } from "./prepared-model-runtime.superseded-adoption.js";
 import { toStringifiedError } from "@branch/normalization-core/error-coercion";
 import type { BranchConfig } from "../config/types.branch.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { runOutsideSqliteReadOnlyWorkerScope } from "../infra/sqlite-readonly-worker-context.js";
+import {
+  describePreparedModelRuntimeOwnerStates,
+  formatPreparedModelFailure,
+} from "./prepared-model-runtime.trace.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { registerRuntimeAuthProfileStoreMutationListener } from "./auth-profiles/runtime-snapshots.js";
 import type { ModelCatalogSnapshot } from "./model-catalog.types.js";
@@ -17,6 +22,7 @@ import {
   configuredOwnersAreRequestVisible,
   registerPreparedRuntimeAuthMaterializationPublisher,
 } from "./prepared-model-runtime-materializations.js";
+import { replaceAgentDirectoryBuilds } from "./prepared-model-runtime.build.js";
 import * as configuredRefresh from "./prepared-model-runtime.configured-refresh.js";
 import {
   capturePreparedModelRuntimeLifetime,
@@ -273,6 +279,20 @@ export function getPendingPreparedModelRuntimeReplacement(agentId?: string): Pro
   return getPassiveReplacement(agentId)?.promise;
 }
 
+/** Trace text for the pending publication barrier an agent awaits: its scope and degraded flag. */
+export function describePendingPreparedModelRuntimeReplacement(agentId?: string): string | undefined {
+  const replacement = getPassiveReplacement(agentId);
+  if (!replacement) {
+    return undefined;
+  }
+  const scope = replacement.agentIds ? [...replacement.agentIds].toSorted().join(",") : "global";
+  return `scope=${scope} degraded=${replacement.degraded === true}`;
+}
+
+/** Startup's retry of one agent: its unsettled model builds stop holding the next one back. */
+export const replacePreparedModelRuntimeAgentBuilds = (agentDir: string, reason: Error) =>
+  replaceAgentDirectoryBuilds(agentBuildCompletions, normalizeOptionalDir(agentDir) ?? "", reason);
+
 /** Fence new execution while plugin work drains, without withdrawing the active catalog. */
 export const beginPreparedModelRuntimePluginDrain = modelRuntimeDrain.begin;
 
@@ -305,15 +325,19 @@ export async function publishPreparedModelRuntimeSnapshot(
       return existing.snapshot;
     }
   }
-  return await publishModelRuntimeSnapshot(
-    input,
-    owners,
-    agentBuildCompletions,
-    modelRuntimeBuildTimeoutMs,
-    existing,
-    options.provenance,
-    options.catalogMode,
-  );
+  try {
+    return await publishModelRuntimeSnapshot(
+      input,
+      owners,
+      agentBuildCompletions,
+      modelRuntimeBuildTimeoutMs,
+      existing,
+      options.provenance,
+      options.catalogMode,
+    );
+  } catch (error) {
+    return await adoptSupersedingPublication(owners, input, error);
+  }
 }
 
 /** Activates lifecycle publication for direct embedded runtimes without a gateway startup. */
@@ -445,6 +469,7 @@ export function markPreparedModelRuntimeSnapshotsStale(
     waitForReplacement?: boolean;
     preserveReplacementWait?: boolean;
     agentIds?: ReadonlySet<string>;
+    keepServedRuntimes?: boolean;
   } = {},
 ): PreparedModelRuntimeReplacementGateId | undefined {
   captureModelRuntimeLifetime();
@@ -452,7 +477,13 @@ export function markPreparedModelRuntimeSnapshotsStale(
   const previousCancellation = refreshCancellation;
   refreshCancellation = new AbortController();
   setPreparedModelRuntimeStartupStatus(undefined);
-  replyDispatchPublication.clear();
+  // A scoped request leaves each agent's last served runtime in place, even when it widens to the
+  // roster because a sibling is stale: readers wait on the pending replacement, and a failed refresh
+  // keeps serving that runtime. An unscoped refresh (a config or plugin change) still fences the
+  // whole generation.
+  if (!options.keepServedRuntimes && !options.agentIds) {
+    replyDispatchPublication.clear();
+  }
   if (options.waitForReplacement) {
     const superseded = pendingModelRuntimeReplacement;
     pendingModelRuntimeReplacement = createPreparedModelRuntimeReplacement();
@@ -545,6 +576,7 @@ export function refreshPreparedModelRuntimeSnapshots(
   markPreparedModelRuntimeSnapshotsStale(undefined, {
     waitForReplacement: true,
     agentIds: initialAgentIds,
+    keepServedRuntimes: requestedScopedRefresh,
   });
   const requestEpoch = refreshRequestEpoch;
   const acquisitionSignal = refreshCancellation.signal;
@@ -584,6 +616,9 @@ export function refreshPreparedModelRuntimeSnapshots(
         resetPluginGeneration: true,
       });
     }
+    log.info(
+      `prepared model publication rejected; owners ${describePreparedModelRuntimeOwnerStates(owners, publicationAgentIds)}; reason=${formatPreparedModelFailure(error.message, 160)}`,
+    );
     rejectPendingPreparedModelRuntimeReplacement(replacement?.gateId, error);
   };
   const commitReplacement = () => {
@@ -600,6 +635,9 @@ export function refreshPreparedModelRuntimeSnapshots(
     }
     const adoptedAuthTransaction = authPublication.prepareAdoptedCommit(replacement.gateId);
     replyDispatchPublication.rebuild(owners.values());
+    log.info(
+      `prepared model publication committed; owners ${describePreparedModelRuntimeOwnerStates(owners, publicationAgentIds)}`,
+    );
     pendingModelRuntimeReplacement = undefined;
     startup?.complete();
     if (adoptedAuthTransaction) {

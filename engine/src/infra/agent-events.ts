@@ -1,4 +1,5 @@
 // Stores and broadcasts agent lifecycle and streaming events.
+import { traceAgentRunEvent } from "./run-trace.js";
 import { isRecord } from "@branch/normalization-core/record-coerce";
 import { truncateUtf16Safe } from "@branch/normalization-core/utf16-slice";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
@@ -539,6 +540,7 @@ function dispatchAgentEvent(
   if (!enriched) {
     return false;
   }
+  traceAgentRunEvent(enriched);
   notifyListeners(iterateAgentEventListeners(state, enriched), enriched);
   return true;
 }

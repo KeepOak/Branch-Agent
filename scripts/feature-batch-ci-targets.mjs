@@ -1,4 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
@@ -474,7 +476,12 @@ export const windowStrictFiles = [
 // A PR adds its named tests in its own file, scripts/feature-batch-ci-named/<topic>.txt, one
 // `engine:<file>` or `window:<file>` per line (# comments allowed), instead of editing the shared
 // lists above, so parallel PRs never conflict on them.
-const NAMED_DIR = new URL('./feature-batch-ci-named/', import.meta.url);
+let NAMED_DIR = new URL('./feature-batch-ci-named/', import.meta.url);
+
+// The plan job loads this planner from the default branch and reads the PR's named lists as data.
+export function setNamedListDir(dirPath) {
+  NAMED_DIR = pathToFileURL(`${path.resolve(dirPath)}${path.sep}`);
+}
 
 export function namedTestFiles(lane, only) {
   let names = [];
@@ -623,6 +630,8 @@ export function shardOf(value = process.env.FEATURE_SHARD) {
 // files are a few seconds of vitest startup. The numbers only balance shards.
 const featureTestWeights = {
   'src/gateway/server.auth.control-ui.test.ts': 287,
+  // Measured 2026-10-09: 255 s on ubuntu-latest, 394 s on macos-latest (PR #878 runs).
+  'src/agents/cli-runner/prepare.test.ts': 255,
   'src/commands/startup-config-preflight.recovery.test.ts': 176,
   'src/gateway/server-kernel.phases.test.ts': 175,
   'src/gateway/server-methods/sessions-reactions.test.ts': 157,
@@ -695,21 +704,59 @@ export function shardTests(tests, shard, weights) {
   return planShards(tests, shard.total, weights).files[shard.index];
 }
 
-// Pull requests stay at ten Linux shards. Main and nightly use six Linux, ten
-// Windows and nine macOS shards; four extra jobs add setup cost and queue time,
-// while max-parallel stays six. These counts keep each
-// shard's expected job, including setup and the Linux shard-1 typecheck, at most
-// 12 minutes. Windows and macOS scales are the median job-time / linux-test-weight
+// Pull requests stay at ten Linux shards. Main and nightly use seven Linux, eleven
+// Windows and ten macOS shards (25 to 28 jobs). Each extra job adds setup cost and queue
+// time, while max-parallel stays six. These counts keep each shard's expected job,
+// including setup and the Linux shard-1 typecheck, at most 12 minutes even after a PR adds
+// 60 unweighted engine tests (see the shard test "a PR adding 60 unweighted engine tests").
+// Windows and macOS scales are the median job-time / linux-test-weight
 // ratio from main-push successes on 2026-10-08 (1.50 and 1.35). Ubuntu weights are
 // already hot measurements, so that scale stays 1.
 export const pullRequestLinuxShardCount = 10;
-export const mainPushShardCounts = { ubuntu: 6, windows: 10, macos: 9 };
+export const mainPushShardCounts = { ubuntu: 7, windows: 11, macos: 10 };
 export const shardBudgetSeconds = 12 * 60;
 export const windowShardFileSeconds = 2;
 export const runnerTestScale = { ubuntu: 1, windows: 1.5, macos: 1.35 };
 
-export function expectedShardSeconds(total, { typecheck = false, scale = 1 } = {}) {
-  const engine = planShards(namedTests('engine'), total);
+// The slowest planned shard for a total, at the runner's scale. Shard 0 carries the reserve.
+export function plannedSlowestSeconds(os, total, { extraTests = [] } = {}) {
+  const loads = expectedShardSeconds(total, { typecheck: os === 'ubuntu', scale: runnerTestScale[os], extraTests });
+  return Math.max(...loads);
+}
+
+// Headroom: Windows and macOS keep ten percent under the budget (the Linux shard 1 keeps the full budget).
+export function shardBudgetFor(os) {
+  return os === 'ubuntu' ? shardBudgetSeconds : shardBudgetSeconds * 0.9;
+}
+
+const MAX_SHARD_COUNT = 64;
+
+// Derive the shard count from total weight, then verify: start at ceil(total / budget) and add shards
+// until the planned slowest shard fits. Adding named tests adds shards; it never fails a PR.
+export function shardCountFor(os, { extraTests = [] } = {}) {
+  const budget = shardBudgetFor(os);
+  const weight = [...namedTests('engine'), ...extraTests]
+    .reduce((sum, file) => sum + featureTestWeight(file), 0) * runnerTestScale[os];
+  let total = Math.max(1, Math.ceil(weight / budget));
+  while (total < MAX_SHARD_COUNT && plannedSlowestSeconds(os, total, { extraTests }) > budget) total += 1;
+  if (plannedSlowestSeconds(os, total, { extraTests }) > budget) {
+    throw new Error(`${os} cannot fit the named tests into ${MAX_SHARD_COUNT} shards within the ${budget}s budget`);
+  }
+  return total;
+}
+
+// The matrix counts: never fewer than the floors above, and grown by the weight-derived count.
+export function resolvedShardCounts({ extraTests = [] } = {}) {
+  return {
+    ubuntu: Math.max(mainPushShardCounts.ubuntu, shardCountFor('ubuntu', { extraTests })),
+    windows: Math.max(mainPushShardCounts.windows, shardCountFor('windows', { extraTests })),
+    macos: Math.max(mainPushShardCounts.macos, shardCountFor('macos', { extraTests })),
+    pullRequestLinux: Math.max(pullRequestLinuxShardCount, shardCountFor('ubuntu', { extraTests })),
+  };
+}
+
+export function expectedShardSeconds(total, { typecheck = false, scale = 1, extraTests = [] } = {}) {
+  const engine = planShards([...namedTests('engine'), ...extraTests], total);
   const windowFiles = planShards(namedTests('window'), total).files;
   return engine.loads.map((load, index) => {
     const reserve = index === 0 ? firstShardReserveSeconds : 0;

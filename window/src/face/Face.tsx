@@ -3,7 +3,7 @@ import type { AgentState } from "./agentState";
 import { SHEET } from "./painter";
 import { FacePlayer } from "./player";
 import "./face.css";
-import { useTrunkAppearance, useTrunkPebbleLook, useTrunkEmojiFace, type PebbleLook } from "./appearance";
+import { useTrunkAppearance, useTrunkPebbleLook, useTrunkEmojiFace, completePebbleLook, type PebbleLook } from "./appearance";
 import { CharacterFace } from "./CharacterFace";
 import { useLookPrefs, type LookPrefs } from "./look-prefs";
 
@@ -18,6 +18,8 @@ type Props = {
   /** Plays the pebble's hover and pat reactions (§6.2 "Reactions"). */
   reactive?: boolean;
   pebbleLook?: PebbleLook;
+  /** The computer the agent is on, so two agents with the same name on different computers get different looks. */
+  where?: string;
 };
 
 /** At 24 px and smaller the face is the flat pebble: the colour in its shape with two white eyes (§6.3). */
@@ -67,11 +69,13 @@ function useVisibility(player: FacePlayer | null, el: HTMLElement | null): void 
 /** One Trunk face: the classic pebble's still at rest, its state's sheet when something happens. */
 export function Face(props: Props) {
   const appearance = useTrunkAppearance(props.label);
-  const pebbleLook = useTrunkPebbleLook(props.label);
+  const contextLook = useTrunkPebbleLook(props.label);
+  // Every pebble gets its colour, shape and eyes, falling back to the name's nature look (never the grey placeholder).
+  const pebbleLook = completePebbleLook(props.pebbleLook ?? contextLook, props.label, props.where);
   const emoji = useTrunkEmojiFace(props.label);
   const look = useLookPrefs();
   const shown = { ...props, state: shownState(props.state ?? "idle", look), reactive: Boolean(props.reactive) && look.reactsToTouch };
-  return appearance ? <CharacterFace {...shown} appearance={appearance} /> : emoji ? <span className="emoji-pebble" role="img" aria-label={props.label} style={{ width: props.size, height: props.size, background: pebbleLook?.colour, fontSize: Math.round(props.size * 0.56) }}>{emoji}</span> : <ClassicFace {...shown} pebbleLook={props.pebbleLook ?? pebbleLook} />;
+  return appearance ? <CharacterFace {...shown} appearance={appearance} /> : emoji ? <span className="emoji-pebble" role="img" aria-label={props.label} style={{ width: props.size, height: props.size, background: pebbleLook.colour, fontSize: Math.round(props.size * 0.56) }}>{emoji}</span> : <ClassicFace {...shown} pebbleLook={pebbleLook} />;
 }
 
 /** The state a face plays under Appearance › Characters: "Acts out what it is doing" off keeps it still (asleep stays

@@ -9,9 +9,10 @@ import { Button } from '../ui/Button';
 import { Card, Screen } from '../ui/Screen';
 
 export function setupCodeProblem(error: unknown): string {
-  return error instanceof SetupCodeError && error.kind === 'expired'
-    ? 'This code has expired. Make a new one on your computer.'
-    : 'That isn’t a Branch pairing code. Use the code from Pair a phone in Branch on your computer.';
+  const kind = error instanceof SetupCodeError ? error.kind : 'invalid';
+  if (kind === 'expired') return 'This code has expired. Make a new one on your computer.';
+  if (kind === 'damaged') return 'This code looks damaged. Copy it again from Branch on your computer.';
+  return 'That isn’t a Branch pairing code. Use the code from Pair a phone in Branch on your computer.';
 }
 
 /** Full-screen camera that reads the pairing QR code; the code can also be typed. */

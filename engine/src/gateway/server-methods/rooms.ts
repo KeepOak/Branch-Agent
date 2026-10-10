@@ -19,7 +19,10 @@ import { persistSessionTranscriptTurn } from "../../config/sessions/session-acce
 import { escapeRegExp } from "../../utils.js";
 import { listGatewayAgentsBasic } from "../agent-list.js";
 import {
+  graftDeviceId,
+  graftSendRefusal,
   listOutsideAgents,
+  outsideAgentMayMessage,
   outsideAgentRefusal,
   outsideAgentSender,
   type OutsideAgent,
@@ -74,6 +77,35 @@ async function checkTrunks(options: GatewayRequestHandlerOptions, ids: string[])
   }
 }
 type OutsideSender = Pick<OutsideAgent, "id" | "name">;
+
+function outsideRoomRefusal(
+  options: GatewayRequestHandlerOptions,
+  room: Room,
+  outside?: OutsideSender,
+): string | undefined {
+  const deviceRefusal = graftSendRefusal(outside?.id, graftDeviceId(options.client));
+  if (deviceRefusal) {
+    return `${deviceRefusal} Reconnect through your own Graft and try again.`;
+  }
+  if (!outside) {
+    return undefined;
+  }
+  const refusal = outsideAgentRefusal(outside);
+  if (refusal) {
+    return `${refusal} Ask the owner to allow this agent there, then reconnect Graft.`;
+  }
+  const cfg = options.context.getRuntimeConfig();
+  for (const member of room.members) {
+    if (
+      member.kind === "trunk" &&
+      member.enabled &&
+      !outsideAgentMayMessage(cfg, member.id, outside.id)
+    ) {
+      return `${outside.name} may not join or post in this group chat because ${member.id}'s "Who it knows" switch is off. Ask the owner to turn it on for this agent.`;
+    }
+  }
+  return undefined;
+}
 type Roster = Awaited<ReturnType<typeof listGatewayAgentsBasic>>;
 type RoomTurn = Awaited<ReturnType<typeof dispatchTrunk>>;
 
@@ -477,7 +509,7 @@ export const roomHandlers: GatewayRequestHandlers = {
       return;
     }
     const outside = options.params.outsideAgent;
-    const refusal = outside ? outsideAgentRefusal(outside) : undefined;
+    const refusal = outsideRoomRefusal(options, room, outside);
     if (refusal) {
       failure(options.respond, new Error(refusal));
       return;
@@ -488,7 +520,12 @@ export const roomHandlers: GatewayRequestHandlers = {
         (member) => member.kind === "a2a" && member.id === outside.id && member.enabled,
       )
     ) {
-      failure(options.respond, new Error(`${outside.name} is not a member of this group chat`));
+      failure(
+        options.respond,
+        new Error(
+          `${outside.name} is not a member of this group chat. Use room_join before posting.`,
+        ),
+      );
       return;
     }
     try {
@@ -580,8 +617,21 @@ export const roomHandlers: GatewayRequestHandlers = {
       return;
     try {
       if (options.params.kind === "trunk") await checkTrunks(options, [options.params.id]);
-      const room = addRoomMember(options.params.roomId, options.params);
       const outside = options.params.outsideAgent;
+      if (outside && (options.params.kind !== "a2a" || options.params.id !== outside.id)) {
+        throw new Error(
+          "An outside agent can join only as its own identity. Use room_join without changing the member id.",
+        );
+      }
+      const current = getRoom(options.params.roomId);
+      if (!current || current.archivedAt !== undefined) {
+        throw new Error("Room not found");
+      }
+      const refusal = outsideRoomRefusal(options, current, outside);
+      if (refusal) {
+        throw new Error(refusal);
+      }
+      const room = addRoomMember(options.params.roomId, options.params);
       const actorId =
         outside && options.params.kind === "a2a" && options.params.id === outside.id
           ? `a2a:${outside.id}`

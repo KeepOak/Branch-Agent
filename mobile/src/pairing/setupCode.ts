@@ -12,14 +12,28 @@ export type SetupPayload = {
   tlsFingerprint?: string;
 };
 
+/**
+ * Why a code was turned away. `damaged` is a Branch code that no longer reads, such as one with a character
+ * added or lost in copying; `invalid` is anything else.
+ */
+export type SetupCodeProblem = 'invalid' | 'damaged' | 'expired';
+
+const MESSAGES: Record<SetupCodeProblem, string> = {
+  invalid: 'Invalid pairing setup code.',
+  damaged: 'Damaged pairing setup code.',
+  expired: 'Pairing setup code has expired.',
+};
+
 export class SetupCodeError extends Error {
-  constructor(readonly kind: 'invalid' | 'expired') {
-    super(kind === 'expired' ? 'Pairing setup code has expired.' : 'Invalid pairing setup code.');
+  constructor(readonly kind: SetupCodeProblem) {
+    super(MESSAGES[kind]);
   }
 }
 
 const PREFIX = 'oc-pair://';
 const CODE = /^[A-Za-z0-9_-]+$/;
+/** Every code starts as base64url JSON of an object, `{"`, which encodes to `eyJ`. */
+const OBJECT_START = 'eyJ';
 const SCHEME_WITHOUT_AUTHORITY = /^(?:https?|wss?):(?!\/\/)/i;
 const MAX_URLS = 8;
 
@@ -56,15 +70,20 @@ function nonEmpty(value: unknown): string | undefined {
 }
 
 export function decodeSetupCode(input: string, nowMs: number = Date.now()): SetupPayload {
-  const trimmed = input.trim();
-  const code = trimmed.toLowerCase().startsWith(PREFIX) ? trimmed.slice(PREFIX.length) : trimmed;
-  if (!code || !CODE.test(code)) throw new SetupCodeError('invalid');
+  // A code has no spaces, so any space, tab or line break came from copying (a wrapped line, a trailing
+  // newline) and is dropped.
+  const compact = input.replace(/\s+/g, '');
+  const prefixed = compact.toLowerCase().startsWith(PREFIX);
+  const code = prefixed ? compact.slice(PREFIX.length) : compact;
+  // Text that has the prefix or a code's opening but no longer reads is a damaged copy, not some other text.
+  const unreadable = () => new SetupCodeError(prefixed || code.includes(OBJECT_START) ? 'damaged' : 'invalid');
+  if (!code || !CODE.test(code)) throw unreadable();
 
   let decoded: unknown;
   try {
     decoded = JSON.parse(base64UrlToUtf8(code));
   } catch {
-    throw new SetupCodeError('invalid');
+    throw unreadable();
   }
   if (typeof decoded !== 'object' || decoded === null || Array.isArray(decoded)) {
     throw new SetupCodeError('invalid');
