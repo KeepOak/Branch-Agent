@@ -13,6 +13,8 @@ const fake = vi.hoisted(() => ({
   historyReads: 0,
   historyFailures: 0,
   historyFailureText: "Agent builder-oak has not completed startup inspection and preparation; run branch doctor --fix",
+  /** The engine still holds the Trunk back (agents.list says so). */
+  held: false,
 }));
 
 vi.mock("./gateway", () => ({
@@ -32,7 +34,7 @@ vi.mock("./gateway", () => ({
           fake.transcript.push({ role: "user", content: String(params?.message ?? ""), timestamp: 1 });
           return { runId: "r1" };
         case "agents.list":
-          return { agents: [{ id: "main", name: "Main" }], defaultId: "main" };
+          return { agents: [{ id: "main", name: "Main", ...(fake.held ? { admissionRefusal: { code: "agent-database-inspection-pending", preparation: { state: "preparing" } } } : {}) }], defaultId: "main" };
         case "approval.history":
           return { items: [] };
         case "exec.approval.list":
@@ -113,6 +115,7 @@ describe("a failing turn's error receipt reaches the thread after it is persiste
     vi.useFakeTimers();
     try {
       fake.historyFailures = 1_000;
+      fake.held = true;
       const session = new SaplingSession("ws://fake", undefined);
       session.start();
       fake.options?.onStatus({ phase: "connected", hello } as unknown as GatewayStatus);
@@ -123,6 +126,7 @@ describe("a failing turn's error receipt reaches the thread after it is persiste
       const reads = fake.historyReads;
       await vi.advanceTimersByTimeAsync(10_000);
       expect(fake.historyReads).toBe(reads);
+      fake.held = false;
       session.stop();
     } finally {
       vi.useRealTimers();

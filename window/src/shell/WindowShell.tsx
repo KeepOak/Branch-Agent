@@ -1370,7 +1370,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           loadingEarlier={segments.loading}
           earlierError={segments.error}
           preparationError={s.error}
-          onStartupReady={() => session.retryOpen()}
           advancedDiagnostics={level !== "regular"}
           onLoadEarlier={segments.loadEarlier}
           onOpenSession={(key) => { if (showingAll) setAllTopics(null); openTopic(key); }}

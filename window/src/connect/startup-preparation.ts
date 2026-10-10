@@ -1,6 +1,6 @@
 // A Trunk the engine is still getting ready: what its startup preparation is doing (agents.list's
 // admissionRefusal.preparation) and the Retry that starts it again from scratch (agents.retryStartup).
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { WindowEngine } from "./engine";
 
 export type StartupPreparationState = "preparing" | "retrying" | "needs-attention";
@@ -38,21 +38,15 @@ export function readStartupPreparation(list: unknown, agentId: string): StartupP
 
 /**
  * While `active` (the conversation is waiting for its Trunk to get ready), follows that Trunk's startup
- * preparation. When the engine stops holding the Trunk back after it did, or after the window gave up
- * re-reading (`stalled`), `onReady` reads the conversation again.
+ * preparation for this conversation's view. Re-reading the conversation once the Trunk is ready is the
+ * session's job (connect/session.ts startup watch), so it works whichever page is open.
  */
-export function useStartupPreparation(engine: WindowEngine | undefined, active: boolean, stalled: boolean, onReady?: () => void): StartupPreparation {
+export function useStartupPreparation(engine: WindowEngine | undefined, active: boolean): StartupPreparation {
   const agentId = startupAgentId(engine);
   const [state, setState] = useState<StartupPreparationState>("preparing");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
-  const ready = useRef(onReady);
-  useEffect(() => {
-    ready.current = onReady;
-  }, [onReady]);
-  /** The engine held this Trunk back at the last read (kept across a Retry's re-read). */
-  const held = useRef(false);
   useEffect(() => {
     if (!active || !engine || !agentId) return;
     let live = true;
@@ -60,13 +54,7 @@ export function useStartupPreparation(engine: WindowEngine | undefined, active: 
     const read = () => void engine.request("agents.list", {}).then((list) => {
       if (!live) return;
       const next = readStartupPreparation(list, agentId);
-      if (next) {
-        held.current = true;
-        setState(next);
-      } else if (held.current || stalled) {
-        held.current = false;
-        ready.current?.();
-      }
+      if (next) setState(next);
     }, () => undefined).finally(() => {
       if (live) timer = setTimeout(read, POLL_MS);
     });
@@ -75,7 +63,7 @@ export function useStartupPreparation(engine: WindowEngine | undefined, active: 
       live = false;
       if (timer) clearTimeout(timer);
     };
-  }, [engine, agentId, active, stalled, tick]);
+  }, [engine, agentId, active, tick]);
   const retry = useCallback(() => {
     if (!engine || !agentId) return;
     setBusy(true);

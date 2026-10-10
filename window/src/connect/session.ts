@@ -10,7 +10,8 @@ import { withOwner } from "./agent-owner";
 import { projectRun, type Approval, type Block } from "../thread/model";
 import { historyToBlocks, markStopped, readApprovalRecords } from "../thread/history";
 import { sanitizeBlocks } from "../thread/tool-output-display";
-import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "./preparation-status";
+import { isPreparationPending, isPreparationStalled, PreparationRetry, preparationTimeoutLabel } from "./preparation-status";
+import { readStartupPreparation } from "./startup-preparation";
 import { addNotSent, healNotSent } from "../composer/queue";
 import { droppedFiles, engineKeyOf, FirstSendEcho, heldRuns, UnconfirmedSends } from "./unconfirmed";
 import { failedAck, isRetryable, refusedOrUnsent, requestWithRetry } from "./send-errors";
@@ -90,6 +91,7 @@ export function mergeQueued(
 
 export type GatewayEventListener = (event: string, payload: unknown) => void;
 
+const STARTUP_POLL_MS = 3_000;
 
 /** The group chat a room's lead conversation belongs to: `agent:<lead>:room:<roomId>` (engine rooms.send). */
 export function roomIdOf(sessionKey: string): string {
@@ -152,6 +154,12 @@ export class SaplingSession {
   /** The newest `chat.history` read, so a finishing run can wait for the one that really lands. */
   private currentRead: Promise<void> | null = null;
   private preparationRetry: ReturnType<typeof setTimeout> | null = null;
+  /** Watches the Trunk while it gets ready (any page, not only the thread), and reads the conversation again once it is. */
+  private startupWatch: ReturnType<typeof setTimeout> | null = null;
+  /** Whether the engine has held the Trunk back during the current watch (so its release is a change worth a re-read). */
+  private startupHeld = false;
+  /** Bumped each time a connection finishes reading its conversation, so the open pages re-read from the new engine. */
+  private connectionEpoch = 0;
   private readonly preparationBackoff = new PreparationRetry();
   private stopped = false;
   private gateway: BranchGateway;
@@ -214,6 +222,7 @@ export class SaplingSession {
     if (this.preparationRetry) clearTimeout(this.preparationRetry);
     this.preparationRetry = null;
     this.preparationBackoff.reset();
+    this.stopStartupWatch();
     this.gateway.stop();
     this.retiringGateway?.stop();
     this.retiringGateway = null;
@@ -251,15 +260,16 @@ export class SaplingSession {
 
   getSnapshot = (): SessionSnapshot => this.snapshot;
 
-  private engineCache: { key: string | null; hello: HelloOk | null; engine: WindowEngine } | null = null;
+  private engineCache: { key: string | null; hello: HelloOk | null; epoch: number; engine: WindowEngine } | null = null;
 
   /** The shared engine handle for the open conversation (rebuilt when the conversation or connection changes). */
   get engine(): WindowEngine {
     const status = this.snapshot.status;
     const hello = status.phase === "connected" ? status.hello : null;
     const key = this.snapshot.sessionKey;
-    if (!this.engineCache || this.engineCache.key !== key || this.engineCache.hello !== hello) {
-      this.engineCache = { key, hello, engine: buildEngine(this, key, hello) };
+    const epoch = this.connectionEpoch;
+    if (!this.engineCache || this.engineCache.key !== key || this.engineCache.hello !== hello || this.engineCache.epoch !== epoch) {
+      this.engineCache = { key, hello, epoch, engine: buildEngine(this, key, hello) };
     }
     return this.engineCache.engine;
   }
@@ -269,8 +279,8 @@ export class SaplingSession {
     return this.loadHistory();
   }
 
-  /** The Trunk got ready after this window stopped waiting for it: open the conversation again, with a fresh wait. */
-  retryOpen(): void {
+  /** Reads the open conversation again with a fresh wait (the startup watch calls this when the Trunk is ready). */
+  private retryOpen(): void {
     const { status, sessionKey } = this.snapshot;
     if (this.stopped || status.phase !== "connected" || !sessionKey) return;
     this.preparationBackoff.reset();
@@ -412,6 +422,7 @@ export class SaplingSession {
       patch = { ...patch, error: preparationTimeoutLabel(this.snapshot.name) };
     }
     this.snapshot = { ...this.snapshot, ...patch };
+    this.syncStartupWatch(patch);
     if (patch.error === null || (patch.status && patch.status.phase !== "connected")) {
       if (this.preparationRetry) clearTimeout(this.preparationRetry);
       this.preparationRetry = null;
@@ -476,11 +487,53 @@ export class SaplingSession {
       ]);
       this.set({ name: readAgentName(agents) });
       await Promise.all([this.backfillApprovals().catch(() => undefined), this.loadHistory()]);
+      this.connectionEpoch += 1;
       this.set({ status, error: null });
       if (this.engineKey) this.unconfirmed.connected(this.engineKey);
     } catch (error) {
       this.set({ status, error: error instanceof Error ? error.message : String(error) });
     }
+  }
+
+  /** While the open Trunk is getting ready, watch it from here so recovery never depends on the page showing. */
+  private syncStartupWatch(patch: Partial<SessionSnapshot>): void {
+    const error = patch.error === undefined ? this.snapshot.error : patch.error;
+    const waiting = Boolean(error) && (isPreparationPending(error) || isPreparationStalled(error));
+    if (patch.status && patch.status.phase !== "connected") this.stopStartupWatch();
+    else if (waiting) this.armStartupWatch();
+    else if (patch.error === null) this.stopStartupWatch();
+  }
+
+  private armStartupWatch(): void {
+    if (this.startupWatch || this.stopped) return;
+    this.startupWatch = setTimeout(() => void this.checkStartup(), STARTUP_POLL_MS);
+  }
+
+  private stopStartupWatch(): void {
+    if (this.startupWatch) clearTimeout(this.startupWatch);
+    this.startupWatch = null;
+    this.startupHeld = false;
+  }
+
+  /** One look at the open Trunk: held back means keep watching; released (after it was held, or once the window
+   *  gave up re-reading) means read the conversation again. */
+  private async checkStartup(): Promise<void> {
+    this.startupWatch = null;
+    const { status, sessionKey, error } = this.snapshot;
+    const agentId = /^agent:([^:]+):/.exec(sessionKey ?? "")?.[1];
+    if (this.stopped || status.phase !== "connected" || !agentId || !(isPreparationPending(error) || isPreparationStalled(error))) return;
+    try {
+      const preparing = readStartupPreparation(await this.gateway.request("agents.list", {}), agentId) !== null;
+      if (preparing) this.startupHeld = true;
+      else if (this.startupHeld || isPreparationStalled(error)) {
+        this.startupHeld = false;
+        this.retryOpen();
+        return;
+      }
+    } catch {
+      // The engine did not answer this look; the next one reads again.
+    }
+    this.armStartupWatch();
   }
 
   /** Pending approvals that were raised before this connection (docs/gateway/clients.md). */

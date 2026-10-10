@@ -101,7 +101,6 @@ type Props = {
   earlierError?: string;
   preparationError?: string | null;
   /** The Trunk got ready after this conversation stopped waiting for it: read the conversation again. */
-  onStartupReady?: () => void;
   advancedDiagnostics?: boolean;
   onLoadEarlier?: () => void;
 };
@@ -257,7 +256,7 @@ export function Thread(props: Props) {
   const suggestions = props.onStart && !firstPending && suggestionKey !== usedSuggestion
     ? suggestionsFor(history, running, Boolean(pendingUser)) : [];
   const preparationError = [props.preparationError, props.earlierError].find((error) => isPreparationPending(error) || isPreparationStalled(error));
-  const startup = useStartupPreparation(engine, Boolean(preparationError), isPreparationStalled(preparationError), props.onStartupReady);
+  const startup = useStartupPreparation(engine, Boolean(preparationError));
   const inRoom = Boolean(props.room);
   const ownAgentId = props.room?.ownAgentId;
   const anchors = useMemo(() => anchorQuestions(history, props.questions ?? []), [history, props.questions]);
