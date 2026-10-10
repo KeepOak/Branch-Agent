@@ -79,6 +79,10 @@ const STALE_MOCK_RE = /\b(?:mockData|demoData|demoMode|isDemo|fakeData|dummyData
 const STALE_COMMENT_RE = /\bLegacy\b|\blegacy (?:prop|layout|layouts|type|types|tile|tiles|name|path|api)\b|\bbackward-compat\b/gi;
 const STALE_DECL_RE = /\b(?:export\s+)?(?:async\s+)?(?:function|const|let|class|type|interface|enum)\s+([A-Za-z_$][\w$]*)/g;
 
+// The single "Based on OpenClaw" credit line. Only this exact string in this exact file is allowed.
+export const CREDIT_FILE = 'window/src/places/settings/set2/updates.tsx';
+export const CREDIT_LINE = 'Based on OpenClaw';
+
 // Import paths that still have to keep an upstream name. A hit is allowed
 // only when the matched text sits in one of these. They are not drawn.
 export const IMPORT_ALLOWLIST = [
@@ -258,6 +262,8 @@ export function productNameFindings(file, text) {
   const { strings, texts } = collectVisible(text);
   const consider = (value, index, before) => {
     if (before !== undefined && allowlistedImport(before, value)) return;
+    // The one credit line, in Settings > Updates & about (owner decision: one credit line).
+    if (file === CREDIT_FILE && value === CREDIT_LINE) return;
     const flags = PRODUCT_NAME_RE.flags.includes('g') ? PRODUCT_NAME_RE.flags : `${PRODUCT_NAME_RE.flags}g`;
     const re = new RegExp(PRODUCT_NAME_RE.source, flags);
     let match;
