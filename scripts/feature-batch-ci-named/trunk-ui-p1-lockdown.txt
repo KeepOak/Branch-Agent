@@ -1,0 +1,3 @@
+window:src/places/overview/overview.test.tsx
+window:src/places/settings/set1/permissions.test.tsx
+window:src/shell/lockdown-confirmation.test.tsx

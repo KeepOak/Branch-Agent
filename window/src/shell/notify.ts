@@ -10,6 +10,15 @@ export type NotifyOptions = { line?: string; action?: ToastAction; tone?: ToastT
 
 export const TOAST_MS = 6000;
 
+const NOTICES_HERE_KEY = "branch.notices.thisComputer";
+/** Whether this computer shows its own OS notices (the Notifications page's switch). Absent means on. */
+export function noticesHereOn(): boolean {
+  try { return localStorage.getItem(NOTICES_HERE_KEY) !== "off"; } catch { return true; }
+}
+export function setNoticesHere(on: boolean): void {
+  try { localStorage.setItem(NOTICES_HERE_KEY, on ? "on" : "off"); } catch { /* storage blocked: the choice lasts this window */ }
+}
+
 const MUTED_KEY = "branch.mutedContacts";
 export function readMutedContacts(): Set<string> {
   try { return new Set(JSON.parse(localStorage.getItem(MUTED_KEY) ?? "[]") as string[]); }
@@ -52,7 +61,7 @@ export function syncWaitingNotices(
     waitingNotices.delete(id);
   }
   const permission = env.permission ?? (typeof Notification === "undefined" ? "default" : Notification.permission);
-  if (!env.hidden || permission !== "granted") return;
+  if (!env.hidden || permission !== "granted" || !noticesHereOn()) return;
   const make = env.notify ?? ((title, opts) => new Notification(title, opts));
   for (const item of items) {
     if (waitingNotices.has(item.id)) continue;

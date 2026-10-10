@@ -1,0 +1,98 @@
+name: Seedbank plugin distribution
+on:
+  pull_request:
+    paths:
+      - 'engine/scripts/seedbank-*'
+      - 'engine/scripts/lib/seedbank-distribution.mjs'
+      - 'engine/test/scripts/seedbank-distribution.test.ts'
+      - '.github/workflows/seedbank-plugin-distribution.yml'
+  workflow_dispatch:
+    inputs:
+      extensions:
+        description: 'Space-separated extension ids (not npm package names)'
+        type: string
+        required: true
+        default: 'cerebras'
+      release_tag:
+        description: 'Immutable plugins-* release tag'
+        type: string
+        required: true
+        default: 'plugins-2026.9.8'
+      publish:
+        description: 'Publish after protected-environment approval; false only builds and verifies'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: seedbank-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+      - run: npm install --global pnpm@12.5.1
+      - run: node scripts/install-worktree.mjs engine
+      - name: Test distribution contracts
+        working-directory: engine
+        run: node scripts/run-vitest.mjs run test/scripts/seedbank-distribution.test.ts
+      - name: Build and pack exact artifacts
+        working-directory: engine
+        env:
+          EXTENSIONS: ${{ inputs.extensions || 'cerebras' }}
+          RELEASE_TAG: ${{ inputs.release_tag || 'plugins-ci' }}
+        run: |
+          node --input-type=module -e 'import {spawnSync} from "node:child_process";const result=spawnSync(process.execPath,["--import","./scripts/tsx.mjs","scripts/seedbank-prepare.mjs","../seedbank-output",process.env.RELEASE_TAG,...process.env.EXTENSIONS.trim().split(/\s+/)],{stdio:"inherit",shell:false});if(result.error)throw result.error;process.exit(result.status??1);'
+          node scripts/seedbank-publish.mjs ../seedbank-output --verify
+      - name: Rebuild and compare tarball bytes
+        working-directory: engine
+        env:
+          EXTENSIONS: ${{ inputs.extensions || 'cerebras' }}
+          RELEASE_TAG: ${{ inputs.release_tag || 'plugins-ci' }}
+        run: |
+          rm -rf ../seedbank-rebuild
+          node --import ./scripts/tsx.mjs scripts/seedbank-prepare.mjs ../seedbank-rebuild "$RELEASE_TAG" $EXTENSIONS
+          (cd ../seedbank-output && sha256sum ./*.tgz) > ../first.sha256
+          (cd ../seedbank-rebuild && sha256sum ./*.tgz) > ../second.sha256
+          cat ../first.sha256
+          diff ../first.sha256 ../second.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: seedbank-${{ github.sha }}
+          path: seedbank-output/
+          if-no-files-found: error
+          retention-days: 14
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main' && github.repository == 'KeepOak/Branch-Agent' && vars.BRANCH_PLUGIN_PUBLICATION_ENABLED == 'true'
+    needs: verify
+    environment: plugin-publication
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: seedbank-${{ github.sha }}
+          path: seedbank-output/
+      - name: Publish identical tarballs and read both destinations back
+        working-directory: engine
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH_PLUGIN_PUBLICATION_ENABLED: ${{ vars.BRANCH_PLUGIN_PUBLICATION_ENABLED }}
+        run: node scripts/seedbank-publish.mjs ../seedbank-output --publish

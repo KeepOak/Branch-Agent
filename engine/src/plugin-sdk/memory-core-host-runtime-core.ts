@@ -17,6 +17,7 @@ export {
   resolveDefaultAgentId,
 } from "../agents/agent-scope.js";
 export { resolveSessionAgentIds } from "./agent-scope-runtime.js";
+export { listOutsideAgentIdentityIds } from "../gateway/contacts/outside-agents.js";
 export {
   resolveMemorySearchConfig,
   resolveMemorySearchIndexConfig,
