@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope-config.js";
 import { resolveAgentMainSessionKey } from "../config/sessions/main-session.js";
 import { loadSessionEntry, upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { appendAssistantMessageToSessionTranscript } from "../config/sessions/transcript.js";
 import type { BranchConfig } from "../config/types.branch.js";
-import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "./agent-scope-config.js";
 
 /** The first line a new Trunk says. Static on purpose: no model turn, no tokens, one question. */
 export const FIRST_RUN_GREETING_TEXT =
@@ -17,6 +17,7 @@ const PLAUSIBLE_NAME = /^[\p{L}][\p{L} .'-]{0,39}$/u;
 const MAX_PROFILE_BYTES = 64 * 1024;
 
 export type FirstRunGreetingCreateResult = {
+  agentId: string;
   status: "created" | "existing";
   bootstrapPending: boolean;
 };
@@ -37,15 +38,35 @@ export function firstRunGreetingText(ownerName?: string): string {
   return `Hey ${name}, I just came online. How are you doing?`;
 }
 
-/** Reads the owner's name from the shared owner profile (USER.md) in a workspace, if it is there. */
+/**
+ * Reads the owner's name from the shared owner profile (USER.md) in a workspace. Each observed block
+ * is one entry; a superseded block is ignored, and the last active directive wins.
+ */
 export async function readOwnerNameFromProfile(workspaceDir: string): Promise<string | undefined> {
   try {
-    const stat = await fs.stat(path.join(workspaceDir, "USER.md"));
+    const file = path.join(workspaceDir, "USER.md");
+    const stat = await fs.stat(file);
     if (!stat.isFile() || stat.size > MAX_PROFILE_BYTES) {
       return undefined;
     }
-    const text = await fs.readFile(path.join(workspaceDir, "USER.md"), "utf8");
-    return OWNER_NAME_DIRECTIVE.exec(text)?.[1]?.trim();
+    const blocks = (await fs.readFile(file, "utf8")).split(/<!--\s*observed:/i);
+    let name: string | undefined;
+    for (const block of blocks) {
+      if (/status:\s*superseded/i.test(block.split("\n")[0] ?? "")) {
+        continue;
+      }
+      name = OWNER_NAME_DIRECTIVE.exec(block)?.[1]?.trim() ?? name;
+    }
+    return name;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Resolves the owner profile workspace; a config that cannot resolve one just means no name. */
+function defaultOwnerWorkspaceDir(cfg: BranchConfig): string | undefined {
+  try {
+    return resolveAgentWorkspaceDir(cfg, resolveDefaultAgentId(cfg));
   } catch {
     return undefined;
   }
@@ -63,6 +84,8 @@ export async function seedFirstRunGreeting(params: {
   /** Owner profile workspace, for tests. Production reads the default Trunk's workspace. */
   ownerWorkspaceDir?: string;
 }): Promise<FirstRunGreetingOutcome> {
+  const ownerDir = params.ownerWorkspaceDir ?? defaultOwnerWorkspaceDir(params.cfg);
+  const ownerName = ownerDir ? await readOwnerNameFromProfile(ownerDir) : undefined;
   const sessionKey = resolveAgentMainSessionKey({ cfg: params.cfg, agentId: params.agentId });
   const scope = { agentId: params.agentId, sessionKey, storePath: params.storePath };
   if (!loadSessionEntry(scope)?.sessionId) {
@@ -72,10 +95,6 @@ export async function seedFirstRunGreeting(params: {
       chatType: "direct",
     });
   }
-  const ownerDir =
-    params.ownerWorkspaceDir ??
-    resolveAgentWorkspaceDir(params.cfg, resolveDefaultAgentId(params.cfg));
-  const ownerName = await readOwnerNameFromProfile(ownerDir);
   const result = await appendAssistantMessageToSessionTranscript({
     agentId: params.agentId,
     sessionKey,
@@ -85,4 +104,31 @@ export async function seedFirstRunGreeting(params: {
     config: params.cfg,
   });
   return result.ok ? "seeded" : "failed";
+}
+
+/**
+ * Called from agents.create right after a successful create. Scheduled, never awaited: the create
+ * response does not wait on the greeting, and nothing thrown here reaches the caller.
+ */
+export function scheduleFirstRunGreeting(params: {
+  result: FirstRunGreetingCreateResult;
+  getConfig: () => BranchConfig;
+  warn: (message: string) => void;
+  seed?: typeof seedFirstRunGreeting;
+}): void {
+  if (!shouldSeedFirstRunGreeting(params.result)) {
+    return;
+  }
+  const { agentId } = params.result;
+  const seed = params.seed ?? seedFirstRunGreeting;
+  void (async () => {
+    try {
+      const outcome = await seed({ cfg: params.getConfig(), agentId });
+      if (outcome === "failed") {
+        params.warn(`agent ${agentId} first-run greeting was not saved`);
+      }
+    } catch (error) {
+      params.warn(`agent ${agentId} first-run greeting failed: ${String(error)}`);
+    }
+  })();
 }
