@@ -2,8 +2,10 @@ import {
   createSkillExperienceReviewScheduler,
   type SkillExperienceReviewParams,
 } from "./experience-review-scheduler.js";
+import { claimExperienceSignalCooldown } from "./experience-review-signal-cooldown.js";
 
 const defaultScheduler = createSkillExperienceReviewScheduler({
+  claimSignalCooldown: claimExperienceSignalCooldown,
   isSystemActive: async () => {
     const { getActiveEmbeddedRunCount } =
       await import("../../agents/embedded-agent-runner/active-run-projections.js");

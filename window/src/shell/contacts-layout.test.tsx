@@ -126,7 +126,7 @@ describe("contacts layout", () => {
     scroll.scrollTop = 80;
     expect(host.querySelectorAll(".pin-tile")).toHaveLength(2);
     expect(host.querySelector('[aria-label="Places"]')).toBeNull();
-    expect(host.querySelector(".pin-tile .test-face")?.getAttribute("style")).toContain("width: 60px");
+    expect(host.querySelector(".pin-tile .test-face")?.getAttribute("style")).toContain("width: 44px");
     expect(host.querySelector('[data-key="Birch"] .row-preview')?.textContent).toBe("Owner: latest update");
     const p = props(); p.openKey = "Birch";
     await act(async () => root!.render(<Sidebar {...p} />));
@@ -170,6 +170,32 @@ describe("contacts layout", () => {
     expect(dropZoneAt(145, 100, 90, zones)).toBe("onto");
     expect(dropZoneAt(185, 100, 90, zones)).toBe("after");
     expect(dropZoneAt(145, 100, 90, ["before", "after"])).toBe("after");
+  });
+  it("shows pinned chats as a tooltip avatar row and leaves unpinned chats in Recent", async () => {
+    const open = vi.fn();
+    const pin = vi.fn();
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    const first = props();
+    first.onOpen = open;
+    first.onPin = pin;
+    await act(async () => root!.render(<Sidebar {...first} />));
+    const tiles = [...host.querySelectorAll<HTMLElement>(".pin-tile")];
+    expect(tiles.map((tile) => tile.getAttribute("data-pin-key"))).toEqual(["Oak", "Elm"]);
+    expect(host.querySelector(".pin-grid")?.getAttribute("aria-label")).toBe("Pinned");
+    expect(host.querySelector('.list-sec[data-section="pinned"] .lh')?.textContent).not.toBe("Pinned");
+    expect(host.querySelector('[data-pin-key="Oak"] .pin-open')?.getAttribute("title")).toBe("Oak");
+    expect(host.querySelector('[data-pin-key="Oak"] .pin-name')?.textContent).toBe("Oak");
+    expect(host.querySelector('[data-key="Birch"]')).not.toBeNull();
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-pin-key="Elm"] .pin-open')!.click());
+    expect(open).toHaveBeenCalledWith("Elm");
+    const after = props();
+    after.onOpen = open;
+    after.sections = [{ id: "pinned", label: "Pinned", rows: [a] }, { id: "recent", label: "Recent", rows: [b, c] }];
+    await act(async () => root!.render(<Sidebar {...after} />));
+    expect([...host.querySelectorAll(".pin-tile")].map((tile) => tile.getAttribute("data-pin-key"))).toEqual(["Oak"]);
+    expect(host.querySelector('[data-key="Elm"]')).not.toBeNull();
+    expect(host.querySelector('[data-pin-key="Elm"]')).toBeNull();
   });
   it("captures a started pin drag and clears it when a new pointerdown is not on a pin", async () => {
     const open = vi.fn();

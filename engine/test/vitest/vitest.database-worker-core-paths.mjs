@@ -455,6 +455,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/embedded-agent-runner/skill-runtime.library-read.test.ts",
   "src/skills/workshop/collection-restore.test.ts",
   "src/skills/workshop/experience-review.apply.test.ts",
+  "src/skills/workshop/experience-review.cooldown.test.ts",
   "src/skills/workshop/policy.test.ts",
   "src/skills/workshop/revision-atomicity.test.ts",
   "src/skills/workshop/service-evaluation.test.ts",

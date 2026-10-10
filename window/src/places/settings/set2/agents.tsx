@@ -1,4 +1,4 @@
-// Settings › Grafts (Graft is the bridge's name): coding agents (Claude Code, Codex, Gemini CLI, Hermes, any MCP client) that work with
+// Settings › Connected agents (Graft is the bridge's name): coding agents (Claude Code, Codex, Gemini CLI, Hermes, any MCP client) that work with
 // Branch through `branch graft` (alias `branch mcp serve`). The master switch and per-agent disconnect / window rights are the engine's
 // contacts.outside.list / contacts.outside.set; "may message" is each Trunk's agentToAgent deny list for a2a:<id>,
 // the same rule Who it knows writes (shell/who-it-knows-menu.tsx) and the gateway enforces on every send.
@@ -12,7 +12,7 @@ import { DesktopCtl } from "../desktop-ctl";
 import { CodeRow, rec, str, useCall, useLive, when } from "./common";
 import "./agents.css";
 
-const LEDE = "Agents grafted onto Branch: coding agents on your computers that work with your Trunks, what each may do, and how to graft another.";
+const LEDE = "Coding agents connected to Branch: what each may do, and how to connect another.";
 
 export type OutsideAgentRow = {
   id: string; name: string; version?: string; where?: string; project?: string; activity?: string; activityAt?: number;
@@ -52,8 +52,8 @@ export const CONNECT_LINES: [string, string][] = [
 ];
 
 export const ROWS: RowEntry[] = [
-  { page: "agents", title: "Let other agents work with Branch", group: "Grafts", lv: 0 },
-  ...CONNECT_LINES.map(([title]) => ({ page: "agents", title, sec: "Graft an agent", group: "Graft an agent", lv: 0 as const })),
+  { page: "agents", title: "Let other agents work with Branch", group: "Connected agents", lv: 0 },
+  ...CONNECT_LINES.map(([title]) => ({ page: "agents", title, sec: "Connect an agent", group: "Connect an agent", lv: 0 as const })),
 ];
 
 type Trunk = { id: string; name: string };
@@ -130,7 +130,7 @@ function AgentRow({ agent, trunks, props, reload, sessions, nested = [] }: { age
           <Switch label={`${agent.name} may message ${t.name}`} checked={!denied(t.id)} disabled={config.loading} onChange={(on) => allow(t.id, on)} />
         </Ctl>
       ))}
-      <Ctl id={`${agent.id}-window`} title="May use your Branch window" sub="Also needs Branch itself › Let agents use this window." help="Also needs Branch itself › Let agents use this window. Without it the agent gets its own test Branch." noPin>
+      <Ctl id={`${agent.id}-window`} title="May use your Branch window" sub="Also needs About Branch › Let agents use this window." help="Also needs About Branch › Let agents use this window. Without it the agent gets its own test Branch." noPin>
         <Switch label={`${agent.name} may use your Branch window`} checked={agent.mayDriveWindow} disabled={call.busy} onChange={(on) => set({ mayDriveWindow: on })} />
       </Ctl>
       {isBranch ? (
@@ -158,17 +158,17 @@ export function AgentsPage(props: SettingsPageProps) {
   return (
     <Page title={props.title} lede={LEDE}>
       <Sec title="">
-        <Ctl title="Let other agents work with Branch" sub="Grafted agents may message Trunks and join groups." help="Claude Code, Codex, Hermes and other agents grafted with branch graft may see your Trunks, message them and join group chats. Off turns every one of them away." off={live.error ? String(live.error) : undefined}>
+        <Ctl title="Let other agents work with Branch" sub="Connected agents may message your Trunks and join groups." help="Claude Code, Codex, Hermes and other connected agents may see your Trunks, message them and join group chats. Off turns every one of them away." off={live.error ? String(live.error) : undefined}>
           <Switch label="Let other agents work with Branch" checked={enabled} disabled={live.loading || call.busy} onChange={(on) => void call.run(async () => { await props.engine.request("contacts.outside.set", { enabled: on }); reload(); })} />
         </Ctl>
       </Sec>
       {agents.length ? groupAgents(agents).map(({ row, trunks: nested }) => <AgentRow key={row.id} agent={row} nested={nested} trunks={trunks} props={props} reload={reload} sessions={agents.map((x) => x.id)} />) : (
-        <Sec title="Grafts"><Empty>No agent is grafted yet. Paste one of the lines below into it.</Empty></Sec>
+        <Sec title="Connected agents"><Empty>No agent is connected yet. Paste one of the lines below into it.</Empty></Sec>
       )}
       <Sec title="Another Branch" hint="Link a teammate's computer with a one-time code or QR.">
         <button type="button" className="btn" onClick={() => setLinking(true)}>Link another Branch</button>
       </Sec>
-      <Sec title="Graft an agent" hint="Each line is pasted once." help="Each line is pasted once. It runs the branch command, which always uses the Branch on this computer, so it keeps working after updates.">
+      <Sec title="Connect an agent" hint="Each line is pasted once." help="Each line is pasted once. It runs the branch command, which always uses the Branch on this computer, so it keeps working after updates.">
         <DesktopCtl title="Type branch in any terminal" sub="Needed for these lines: adds the branch command." name="branchOnPath" />
         {CONNECT_LINES.map(([title, code]) => <CodeRow key={title} title={title} code={code} />)}
       </Sec>

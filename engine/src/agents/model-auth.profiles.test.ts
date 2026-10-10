@@ -470,6 +470,58 @@ describe("configured auth inheritance owner", () => {
     );
   });
 
+  it("lets a new Trunk use the owner's sign-ins after the shared store moved to state-db", async () => {
+    await withBranchTestState(
+      { layout: "state-only", prefix: "branch-auth-state-db-owner-", agentEnv: "clear", env: { OPENAI_API_KEY: undefined } },
+      async (state) => {
+        writeConfigMachineState("auth.sharedStore", { location: "state-db" }, { env: state.env });
+        const cfg: BranchConfig = {
+          agents: { ownership: "explicit", defaultId: "juniper", entries: { juniper: {}, "mac-builder-1": {} } },
+        };
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:juniper": keyCredential("openai", "juniper-key") }),
+          state.agentDir("juniper"),
+        );
+        const newTrunkDir = state.agentDir("mac-builder-1");
+        expect(inspectPersistedAuthProfileStoreRaw(newTrunkDir).status).toBe("missing");
+        const store = ensureAuthProfileStore(newTrunkDir, { allowKeychainPrompt: false, config: cfg });
+        expect(Object.keys(store.profiles)).toContain("openai:juniper");
+        const resolved = await resolveAuth({ provider: "openai", cfg, agentDir: newTrunkDir });
+        expect(resolved.apiKey).toBe("juniper-key");
+        expect(resolved.source).toBe("profile:openai:juniper");
+      },
+    );
+  });
+
+  it("fails loudly for a Trunk that turned off the owner's accounts and has none of its own", async () => {
+    await withBranchTestState(
+      { layout: "state-only", prefix: "branch-auth-state-db-opt-out-", agentEnv: "clear", env: { OPENAI_API_KEY: undefined } },
+      async (state) => {
+        writeConfigMachineState("auth.sharedStore", { location: "state-db" }, { env: state.env });
+        const cfg: BranchConfig = {
+          agents: {
+            ownership: "explicit",
+            defaultId: "juniper",
+            entries: { juniper: {}, "mac-builder-2": { useOwnerAccounts: false } },
+          },
+        };
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:juniper": keyCredential("openai", "juniper-key") }),
+          state.agentDir("juniper"),
+        );
+        const trunkDir = state.agentDir("mac-builder-2");
+        expect(
+          resolveLegacyInheritedAuthDir(cfg, state.env, undefined, { agentId: "mac-builder-2" }),
+        ).toBe(trunkDir);
+        const store = ensureAuthProfileStore(trunkDir, { allowKeychainPrompt: false, config: cfg });
+        expect(Object.keys(store.profiles)).not.toContain("openai:juniper");
+        await expect(resolveAuth({ provider: "openai", cfg, agentDir: trunkDir })).rejects.toThrow(
+          /No API key found for provider "openai"/,
+        );
+      },
+    );
+  });
+
   it("lets every agent use the accounts of agents.defaults.authInheritance.agentId", async () => {
     await withBranchTestState(
       {

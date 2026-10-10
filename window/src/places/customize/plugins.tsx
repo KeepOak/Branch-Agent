@@ -14,7 +14,7 @@ import { CatalogDialog, ConsentDialog, usePluginAction } from "./catalog";
 import { Glyph } from "./glyphs";
 import type { ToolsCtx } from "./tools";
 
-type Plugin = { id: string; name: string; description: string; state: string; enabled: boolean; installed: boolean; version: string; origin: string; install: Rec | null; removable: boolean; error: string };
+export type Plugin = { id: string; name: string; description: string; state: string; enabled: boolean; installed: boolean; version: string; origin: string; install: Rec | null; removable: boolean; error: string };
 export function readPlugins(result: unknown): Plugin[] {
   return list(rec(result).plugins).map(p => ({
     id: str(p.id), name: str(p.name) || str(p.id), description: str(p.description), state: str(p.state), enabled: p.enabled === true, installed: p.installed === true,
