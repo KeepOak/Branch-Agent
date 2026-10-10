@@ -2690,3 +2690,42 @@ test('fetchFileText returns null only for a 404, the file being absent at that r
     content, encoding: 'base64',
   })), 'keep\n');
 });
+
+test('fetchFileText treats the real gh 404 stderr line as absent, and every other failure as fatal', () => {
+  const realStderr = new Error('Command failed: gh api contents/scripts/x.mjs?ref=fork0\ngh: Not Found (HTTP 404)');
+  assert.equal(gate.fetchFileText('example/repo', 'fork0', 'unused', 'scripts/x.mjs', () => {
+    throw realStderr;
+  }), null);
+  for (const [label, error] of [
+    ['server error', Object.assign(new Error('gh: Server Error (HTTP 500)'), { httpStatus: 500 })],
+    ['forbidden', new Error('gh: Forbidden (HTTP 403)')],
+    ['network reset', Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' })],
+  ]) {
+    assert.throws(() => gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/x.mjs', () => {
+      throw error;
+    }), (thrown) => thrown === error, label);
+  }
+});
+
+test('fetchFileText reads a file over 1 MB through its blob when the contents response is empty', () => {
+  const body = 'keep\n'.repeat(300000);
+  const calls = [];
+  const text = gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/big.mjs', (_repo, _token, requestPath) => {
+    calls.push(requestPath);
+    if (requestPath.startsWith('contents/')) return { content: '', encoding: 'none', sha: 'blob123' };
+    assert.equal(requestPath, 'git/blobs/blob123');
+    return { content: Buffer.from(body).toString('base64'), encoding: 'base64' };
+  });
+  assert.equal(text, body);
+  assert.deepEqual(calls, ['contents/scripts/big.mjs?ref=main', 'git/blobs/blob123']);
+});
+
+test('fetchFileText fails closed when an empty contents response has no readable blob', () => {
+  assert.throws(() => gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/big.mjs', (_repo, _token, requestPath) => {
+    if (requestPath.startsWith('contents/')) return { content: '', encoding: 'none', sha: 'blob123' };
+    throw Object.assign(new Error('gh: Server Error (HTTP 502)'), { httpStatus: 502 });
+  }), /Server Error/);
+  assert.throws(() => gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/big.mjs', () => ({
+    content: '', encoding: 'none',
+  })), /no content and no blob sha/);
+});
