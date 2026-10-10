@@ -181,4 +181,28 @@ describe("Settings › Accounts on a partial engine reply", () => {
       expect(document.querySelector("h1")?.textContent).toBe("Accounts");
     }
   });
+
+  it("a paused account shows Paused with its switch off, and switching it on resumes it through models.authPauseSet", async () => {
+    const providers = [{ ...PROVIDERS[0], profiles: [{ ...PROVIDERS[0].profiles[0], paused: {} }, PROVIDERS[0].profiles[1]] }, PROVIDERS[1]];
+    const { engine, request } = engineOf({ "models.authStatus": { ts: 1, providers, providerCapabilities: CAPS } });
+    await render(engine);
+    expect(host.textContent).toContain("Paused until you turn it back on");
+    const paused = host.querySelector<HTMLInputElement>('input[role="switch"][aria-label*="a@example.test"]')!;
+    expect(paused.checked).toBe(false);
+    expect(host.querySelector<HTMLInputElement>('input[role="switch"][aria-label*="b@example.test"]')!.checked).toBe(true);
+    await act(async () => paused.click());
+    expect(request).toHaveBeenCalledWith("models.authPauseSet", { provider: "openai", profileId: "openai:a", paused: false });
+  });
+
+  it("pausing the last account Branch can use asks first, and pauses only once confirmed", async () => {
+    const providers = [{ ...PROVIDERS[0], profiles: [{ ...PROVIDERS[0].profiles[0], paused: {} }, PROVIDERS[0].profiles[1]] }, PROVIDERS[1]];
+    const { engine, request } = engineOf({ "models.authStatus": { ts: 1, providers, providerCapabilities: CAPS } });
+    await render(engine);
+    const usable = host.querySelector<HTMLInputElement>('input[role="switch"][aria-label*="b@example.test"]')!;
+    await act(async () => usable.click());
+    expect(request).not.toHaveBeenCalledWith("models.authPauseSet", expect.anything());
+    expect(host.textContent).toContain("Pause the last account Branch can use for");
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Pause it")!.click());
+    expect(request).toHaveBeenCalledWith("models.authPauseSet", { provider: "openai", profileId: "openai:b", paused: true });
+  });
 });
