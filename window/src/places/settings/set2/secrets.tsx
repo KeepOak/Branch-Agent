@@ -4,13 +4,14 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import type { SettingsPageProps } from "../index";
-import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Seg, Status, useConfig, type RowEntry } from "../kit";
+import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Seg, Status, Switch, useConfig, type RowEntry } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
 import { Menu, type MenuItem } from "../../../shell/Menu";
 import { Icon } from "../../../shell/icons";
 import { CallLine, CodeRow, lvOf, rec, str, Tile, useCall, useLive, when, type RecordValue } from "./common";
 import { Ico } from "./icons";
+import { UndoLine, useDelayedChange, useSavedTick } from "./apply-now";
 
 const LEDE = "Sign-ins Branch may fill for you. It never sees or stores the passwords.";
 const ONEPASSWORD = { source: "exec", pluginIntegration: { pluginId: "onepassword", integrationId: "onepassword" } };
@@ -19,8 +20,7 @@ const KEYLIKE = /(_API_KEY|_TOKEN|_PASSWORD|_PRIVATE_KEY|_SECRET)$/;
 const NAME_RE = /^[A-Z][A-Z0-9_]{0,127}$/;
 
 export const ROWS: RowEntry[] = [
-  ["Make narrow keys for services", "Narrow keys", 0], ["Password manager", "Where passwords come from", 1],
-  ["Keys kept apart from settings", "Where passwords come from", 1], ["Sign-in tokens", "Where passwords come from", 1],
+  ["Use 1Password", "Where passwords come from", 1], ["Keys kept apart from settings", "Where passwords come from", 1],
   ["List the keys", "Keys Branch holds", 2], ["Set a key", "Keys Branch holds", 2], ["Remove a key", "Keys Branch holds", 2],
   ["Bring in a .env file", "Keys Branch holds", 2], ["Reload keys", "Keys, technical", 2], ["Keys written in plain text", "Keys, technical", 2],
   ["Move keys out of settings", "Keys, technical", 2], ["The settings file", "Keys, technical", 2],
@@ -35,12 +35,9 @@ export function SecretsPage(props: SettingsPageProps) {
     <Page title={props.title} lede={LEDE}>
       {onePassword
         ? <Status title="1Password is set up">Branch asks 1Password for a key when a setting points to it.</Status>
-        : <Status tone="bad" title="No password manager is connected">Turns on when a password manager is connected.</Status>}
+        : <Status tone="bad" title="No password manager is connected">Turn on 1Password under Where passwords come from, below.</Status>}
       <Sec title="Branch may fill">
-        <Empty>{onePassword ? "Filling website sign-ins needs the engine’s list of sign-ins Branch may fill." : "Nothing to fill until a password manager is connected. Pick one at Advanced: How much to show › Advanced, then “Where passwords come from”."}</Empty>
-      </Sec>
-      <Sec title="Narrow keys">
-        <Ctl title="Make narrow keys for services" sub="Creates limited keys for services such as Vercel." help="Vercel, Supabase and others: a key that can do only what a Trunk needs, replaced on a schedule." off="Needs the engine to make keys with each service."><Btn sm disabled>Choose a service</Btn></Ctl>
+        <Empty>{onePassword ? "Filling website sign-ins needs the engine’s list of sign-ins Branch may fill." : "Nothing to fill until a password manager is on. Turn on 1Password under Where passwords come from, below."}</Empty>
       </Sec>
       {lv >= 1 ? <Where engine={props.engine} onePassword={onePassword} config={config} /> : null}
       {lv >= 1 ? <Keys engine={props.engine} lv={lv} store={store} /> : null}
@@ -51,41 +48,50 @@ export function SecretsPage(props: SettingsPageProps) {
 
 type Config = ReturnType<typeof useConfig>;
 
-/** Where passwords come from: 1Password through its plugin's secret provider; the others have no engine plugin. */
+/** Where passwords come from. 1Password is the one manager the engine can read today; the switch applies as it changes. */
 function Where({ onePassword, config }: Pick<SettingsPageProps, "engine"> & { onePassword: boolean; config: Config }) {
-  const choose = async (id: string) => {
-    if (id !== "onepassword") return;
-    await config.set("plugins.entries.onepassword.enabled", true);
-    await config.set("secrets.providers.onepassword", ONEPASSWORD);
+  const [saved, mark] = useSavedTick();
+  const toggle = async (on: boolean) => {
+    if (on) {
+      await config.set("plugins.entries.onepassword.enabled", true);
+      await config.set("secrets.providers.onepassword", ONEPASSWORD);
+    } else {
+      await config.set("secrets.providers.onepassword", null);
+    }
+    mark();
   };
   return (
     <Sec title="Where passwords come from" group="Keys">
-      <Ctl title="Password manager" sub={onePassword ? "1Password gives Branch a key only where a setting points to it; Branch never shows it." : "Pick the one you use. Branch never sees your passwords."}>
-        <Seg label="Password manager" value={onePassword ? "onepassword" : ""} disabled={config.loading} onChange={(id) => void choose(id)}
-          options={[{ id: "bitwarden", label: "Bitwarden", off: "Bitwarden needs its engine plugin." }, { id: "onepassword", label: "1Password" }, { id: "windows", label: "Windows", off: "Windows Credential Manager needs its engine plugin." }]} />
+      <Ctl title="Use 1Password" sub={onePassword ? "1Password gives Branch a key only where a setting points to it; Branch never shows it." : "Turn on to let settings point to keys in 1Password. Branch never sees your passwords."}>
+        <span className="ca-may">
+          <Switch label="Use 1Password" checked={onePassword} disabled={config.loading} onChange={(on) => void toggle(on)} />
+          {saved ? <span className="saved-tick" role="status">✓ Saved</span> : null}
+        </span>
       </Ctl>
       <Ctl title="Keys kept apart from settings" sub="Keys stay in a locker only the engine can read." help="Keys live in a locker only the engine reads, so sharing your settings never shares a key.">
         <Btn sm onClick={() => document.getElementById("s2-keys")?.scrollIntoView({ block: "start" })}>Show where</Btn>
       </Ctl>
-      <Ctl title="Sign-in tokens" sub="Sign-in tokens are encrypted, refreshed and revoked." help="Tokens from “sign in with…” are encrypted, refreshed before they expire, and revoked when removed." off="Checking them needs the engine’s token report."><Btn sm>Check them</Btn></Ctl>
     </Sec>
   );
 }
 
 type Res = ReturnType<typeof useLive<RecordValue>>;
-type Dlg = { kind: "add" } | { kind: "edit"; entry: RecordValue } | { kind: "several" } | { kind: "delete"; entry: RecordValue } | null;
+type Dlg = { kind: "add" } | { kind: "edit"; entry: RecordValue } | { kind: "several" } | null;
 
 /** Keys Branch holds: the engine's key store, protected (secret) or readable by Trunks (env). */
 function Keys({ engine, lv, store }: Pick<SettingsPageProps, "engine"> & { lv: number; store: Res }) {
   const [dlg, setDlg] = useState<Dlg>(null);
-  const entries = list(rec(store.data).entries);
+  const cut = useDelayedChange();
+  const entries = list(rec(store.data).entries).filter((e) => cut.pending?.key !== str(e.name));
+  const remove = (name: string) => cut.start(name, `${name} removed`, () => void engine.request("secrets.store.delete", { name }).finally(() => void store.reload()));
   const close = (changed: boolean) => { setDlg(null); if (changed) void store.reload(); };
   return (
     <Sec title="Keys Branch holds" showHeading={false} group="Keys" hint="See which keys are set, who changed them and when." help="Which keys are set, who changed them and when; a protected key is never shown." id="s2-keys">
       <Acts><Btn sm ghost onClick={() => setDlg({ kind: "several" })}>Add several</Btn><Btn sm onClick={() => setDlg({ kind: "add" })}><Icon name="plus" small />Add a key</Btn></Acts>
       {store.error ? <p className="hint s2-err" role="alert">{store.error}</p> : null}
       {store.data && !entries.length ? <Empty>No keys yet. Keys you add here, and keys from accounts and connectors, show here.</Empty> : null}
-      {entries.length ? <Plist>{entries.map((e) => <KeyRow key={str(e.name)} entry={e} onEdit={() => setDlg({ kind: "edit", entry: e })} onDelete={() => setDlg({ kind: "delete", entry: e })} />)}</Plist> : null}
+      {entries.length ? <Plist>{entries.map((e) => <KeyRow key={str(e.name)} entry={e} onEdit={() => setDlg({ kind: "edit", entry: e })} onDelete={() => remove(str(e.name))} />)}</Plist> : null}
+      {cut.pending ? <UndoLine label={cut.pending.label} onUndo={cut.undo} /> : null}
       {lv >= 2 ? (
         <>
           <CodeRow title="List the keys" code="branch secrets store list" sub="From a terminal on the Gateway’s computer." />
@@ -96,7 +102,6 @@ function Keys({ engine, lv, store }: Pick<SettingsPageProps, "engine"> & { lv: n
       ) : null}
       {dlg?.kind === "add" || dlg?.kind === "edit" ? <KeyDialog engine={engine} entry={dlg.kind === "edit" ? dlg.entry : undefined} onClose={close} /> : null}
       {dlg?.kind === "several" ? <SeveralDialog engine={engine} onClose={close} /> : null}
-      {dlg?.kind === "delete" ? <DeleteDialog engine={engine} entry={dlg.entry} onClose={close} /> : null}
     </Sec>
   );
 }
@@ -186,17 +191,6 @@ function SeveralDialog({ engine, onClose }: Pick<SettingsPageProps, "engine"> & 
       <label className="s2-chk"><input type="checkbox" checked={protect} onChange={(e) => setProtect(e.target.checked)} />Protect key-like names</label>
       <small className="hint">Names ending in _API_KEY, _TOKEN, _PASSWORD, _PRIVATE_KEY or _SECRET. Unticked, every key is readable by Trunks.</small>
       <p className="hint">{guarded} will be protected</p>
-      <CallLine call={call} />
-    </Dialog>
-  );
-}
-
-function DeleteDialog({ engine, entry, onClose }: Pick<SettingsPageProps, "engine"> & { entry: RecordValue; onClose: (changed: boolean) => void }) {
-  const call = useCall();
-  const go = () => void call.run(async () => { await engine.request("secrets.store.delete", { name: str(entry.name) }); onClose(true); });
-  return (
-    <Dialog title={`Delete ${str(entry.name)}?`} onClose={() => onClose(false)} footer={<><Btn ghost onClick={() => onClose(false)}>Cancel</Btn><Btn className="bad" disabled={call.busy} onClick={go}>Delete</Btn></>}>
-      <p>Settings that point to it stop working until it is added again.</p>
       <CallLine call={call} />
     </Dialog>
   );
