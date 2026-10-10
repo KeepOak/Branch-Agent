@@ -78,7 +78,7 @@ describe("Move to group pick popover", () => {
       rooms: [other],
     });
     expect(rendered.host.textContent).toContain("Add both to…");
-    const button = [...rendered.host.querySelectorAll("button.mi")].find((el) => el.textContent === "Week plan");
+    const button = [...rendered.host.querySelectorAll<HTMLButtonElement>("button.mi")].find((el) => el.textContent === "Week plan");
     await act(async () => button!.click());
     expect(rendered.request).toHaveBeenCalledWith("rooms.members.add", { roomId: "r2", kind: "a2a", id: "ledger" });
     expect(rendered.onOpen).toHaveBeenCalledWith("agent:scout:room:r2");

@@ -143,7 +143,7 @@ describe("drag to group", () => {
     const rendered = await show({ rooms: [other] });
     expect(rendered.host.textContent).toContain("Add both to…");
     expect(rendered.host.textContent).toContain("Week plan");
-    const button = [...rendered.host.querySelectorAll("button.mi")].find((el) => el.textContent === "Week plan");
+    const button = [...rendered.host.querySelectorAll<HTMLButtonElement>("button.mi")].find((el) => el.textContent === "Week plan");
     await act(async () => button!.click());
     expect(rendered.request).toHaveBeenCalledWith("rooms.members.add", { roomId: "r2", kind: "a2a", id: "ledger" });
     expect(rendered.request).not.toHaveBeenCalledWith("rooms.members.add", expect.objectContaining({ id: "scout" }));
