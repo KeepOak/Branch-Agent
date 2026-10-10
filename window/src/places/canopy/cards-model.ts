@@ -34,6 +34,15 @@ export function convState(c: Row, sessions: Row[], now: number): [string, string
   return ["State unknown", ""];
 }
 
+/** Statuses a Trunk is on now or is about to be: they show in Today whatever their last change was. */
+export const ACTIVE_STATUSES = ["ready", "running", "review", "blocked"];
+/** Today: a card a Trunk is on now, or one that started, finished or changed since local midnight. */
+export function isToday(c: Row, now: number): boolean {
+  const midnight = new Date(now); midnight.setHours(0, 0, 0, 0);
+  const touched = Math.max(Number(c.updatedAt) || 0, Number(c.startedAt) || 0, Number(c.completedAt) || 0);
+  return ACTIVE_STATUSES.includes(str(c.status)) || touched >= midnight.getTime();
+}
+
 /** Cards that wait on this one and aren't done ("<n> blocked"). */
 export const blocksCount = (c: Row, cards: Row[]) => cards.filter(x => !isArchived(x) && x.status !== "done" && waitsFor(x).includes(str(c.id))).length;
 

@@ -7,7 +7,7 @@ import { Icon } from "../../shell/icons";
 import { Menu, type MenuAnchor } from "../../shell/Menu";
 import { str, type Row } from "../automations/runtime";
 import { cardBoard, isArchived, sessionsBoardIds, trunkName } from "./data";
-import { boardIdFor, convState, dispatchLine, NO_CARD_FILTERS, STATUSES, visibleCards, type CardFilters } from "./cards-model";
+import { boardIdFor, convState, dispatchLine, isToday, NO_CARD_FILTERS, STATUSES, visibleCards, type CardFilters } from "./cards-model";
 import { CardFace, cardMenu, type CardOps } from "./CardFace";
 import { BoardDialog, CardDialog, Confirm, cardPatch, draftOf, type BoardDraft, type CardDraft } from "./CardDialogs";
 import { AutomationChip, BoardPicker, CardFilterRow, ViewMenu, type View } from "./CardsHeader";
@@ -43,7 +43,13 @@ function useCardOps(ctx: Ctx, setDlg: (d: Dlg) => void, sheet: (c: Row) => void,
   };
 }
 
-export function CardsTab({ ctx, trunks, setTrunks, sheet }: { ctx: Ctx; trunks: string[]; setTrunks: (t: string[]) => void; sheet: (c: Row) => void }) {
+/** No cards to draw: Today says so and offers the whole board; a filtered view says to change its filters. */
+function NoCards({ today, onShowAll }: { today: boolean; onShowAll?: () => void }) {
+  if (!today) return <p className="cn-hint cn-nomatch">No cards match this view. Try fewer filters or a different search.</p>;
+  return <div className="cn-center"><p className="cn-hint">Nothing is active or changed today.</p>{onShowAll ? <button className="btn sm" type="button" onClick={onShowAll}>Show all cards</button> : null}</div>;
+}
+
+export function CardsTab({ ctx, trunks, setTrunks, sheet, today = false, onShowAll }: { ctx: Ctx; trunks: string[]; setTrunks: (t: string[]) => void; sheet: (c: Row) => void; today?: boolean; onShowAll?: () => void }) {
   const [board, setBoard] = useState("all"), [F, setF] = useState<CardFilters>(NO_CARD_FILTERS), [v, setV] = useState<View>(readView);
   const [sel, setSel] = useState<string[]>([]), [dlg, setDlg] = useState<Dlg>(null), [result, setResult] = useState("");
   useEffect(() => saveView(v), [v]);
@@ -62,7 +68,7 @@ export function CardsTab({ ctx, trunks, setTrunks, sheet }: { ctx: Ctx; trunks: 
   }, x.id ? "Saved the board." : `Made ${x.name.trim()}.`);
   const dispatch = () => void ctx.act(async () => { const res = await e.request("canopy.cards.dispatch", board !== "all" ? { boardId: board } : {}); setResult(dispatchLine(res as Row)); return res; }, "Start Trunks ran.");
   const all = ctx.d.cards.filter(c => board === "all" ? !sessionsBoardIds(ctx.d.boards).has(cardBoard(c)) : cardBoard(c) === board);
-  const list = visibleCards(ctx.d.cards, board, sessionsBoardIds(ctx.d.boards), F, trunks, ctx.now);
+  const list = visibleCards(ctx.d.cards, board, sessionsBoardIds(ctx.d.boards), F, trunks, ctx.now).filter(c => !today || isToday(c, ctx.now));
   const head = (
     <div className="cn-head">
       <BoardPicker ctx={ctx} board={board} setBoard={pickBoard} newBoard={() => setDlg({ kind: "board", start: { kind: "cards", name: "", color: "" } })}
@@ -84,7 +90,7 @@ export function CardsTab({ ctx, trunks, setTrunks, sheet }: { ctx: Ctx; trunks: 
     </> : <>
       <CardFilterRow ctx={ctx} F={F} setF={setF} trunks={trunks} setTrunks={setTrunks} />
       {adv && sel.length ? <SelectionBar ctx={ctx} ids={sel.filter(id => ctx.d.cards.some(c => str(c.id) === id))} clear={() => setSel([])} /> : null}
-      {list.length ? <Board ctx={ctx} list={list} v={v} setV={setV} ops={ops} setDlg={setDlg} setSel={setSel} /> : <p className="cn-hint cn-nomatch">No cards match this view. Try fewer filters or a different search.</p>}
+      {list.length ? <Board ctx={ctx} list={list} v={v} setV={setV} ops={ops} setDlg={setDlg} setSel={setSel} /> : <NoCards today={today} onShowAll={onShowAll} />}
     </>}
     {dlg?.kind === "card" ? <CardDialog ctx={ctx} base={dlg.base} start={dlg.start} save={saveCard(dlg.base)} close={() => setDlg(null)} /> : null}
     {dlg?.kind === "board" ? <BoardDialog start={dlg.start} busy={ctx.busy} save={saveBoard} close={() => setDlg(null)} /> : null}

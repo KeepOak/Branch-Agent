@@ -1,24 +1,36 @@
-// Automations › Board, the Orchard (§4.6.3.5, preview p40-auto-other): six columns. The engine has no Orchard
-// store yet, so the columns are drawn empty and the controls are greyed with that reason; Canopy's own cards
-// (the canopy plugin's nine statuses) live in Canopy.
-// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+// Automations › Board: the one board for Trunk work. It shows Canopy's cards, the same ones Canopy's Now tab reads.
+// Today is the default view: the cards a Trunk is on now, and anything that changed since midnight. All shows every card.
+import { useEffect, useState } from "react";
+import type { WindowEngine } from "../../connect/engine";
+import type { Level } from "../../places-nav/level";
 import type { PlaceId } from "../../places-nav/routes";
-import { shownWhy } from "../../shell/shown-why";
-import { Glyph } from "./glyphs";
+import { Segmented } from "../../shell/Popover";
+import { CardBoard } from "../canopy/CardBoard";
+import { BOARD_CARD_EVENT, peekBoardCard, takeBoardRequest } from "./board-route";
 
-export const ORCHARD_COLUMNS = ["To sort", "To do", "Doing", "To check", "Done", "Stuck"];
-export const ORCHARD_NEEDS = "Needs the engine’s Orchard board store.";
+export type BoardProps = { engine: WindowEngine; level: Level; openConversation: (key: string) => void; openPlace: (place: PlaceId) => void };
 
-/** Opens Canopy on its Cards tab (places listen for "branch:place-tab"). */
-export function openCanopyCards(openPlace: (place: PlaceId) => void) {
-  openPlace("canopy");
-  setTimeout(() => window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "canopy", tab: "Cards" } })), 0);
-}
-
-export function BoardTab({ openPlace }: { openPlace: (place: PlaceId) => void }) {
+export function BoardTab({ engine, level, openConversation, openPlace }: BoardProps) {
+  const [today, setToday] = useState(true);
+  const [openCard, setOpenCard] = useState(peekBoardCard);
+  useEffect(() => {
+    takeBoardRequest();
+    const onCard = (e: Event) => {
+      const id = String((e as CustomEvent<{ id?: string }>).detail?.id ?? "");
+      if (!id) return;
+      takeBoardRequest();
+      setOpenCard({ id });
+    };
+    window.addEventListener(BOARD_CARD_EVENT, onCard);
+    return () => window.removeEventListener(BOARD_CARD_EVENT, onCard);
+  }, []);
   return <div className="au-tab">
-    <div className="au-board-h"><button type="button" className="btn sm" disabled title={shownWhy(ORCHARD_NEEDS)}>Bring in issues</button><p className="au-hint">Work that takes more than one sitting. Trunks move their own cards; drag one to move it yourself.</p></div>
-    <div className="au-banner" role="status"><Glyph name="board" /><span className="au-grow"><small>Cards your Trunks work on today are in Canopy.</small></span><button type="button" className="btn sm" onClick={() => openCanopyCards(openPlace)}>Open Canopy</button></div>
-    <div className="au-board">{ORCHARD_COLUMNS.map(c => <section className={c === "Stuck" ? "au-col stuck" : "au-col"} key={c} aria-label={c}><h3>{c}<span>0</span></h3></section>)}</div>
+    <div className="au-board-h">
+      <p className="au-hint">Today shows what your Trunks are on now, and what changed since midnight. Drag a card to move it yourself.</p>
+      <Segmented label="Show" value={today ? "today" : "all"} options={[{ id: "today", name: "Today" }, { id: "all", name: "All cards" }]} onChange={v => setToday(v === "today")} />
+    </div>
+    <div className="au-board">
+      <CardBoard engine={engine} level={level} openConversation={openConversation} openPlace={openPlace} today={today} onShowAll={() => setToday(false)} openCard={openCard} />
+    </div>
   </div>;
 }

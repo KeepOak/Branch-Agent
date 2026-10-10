@@ -150,17 +150,17 @@
 .au-text { min-height: 180px; padding: 10px; font: 12.5px/1.5 var(--mono); resize: vertical; height: auto !important; }
 @media (max-width: 760px) { .au-setrow { flex-wrap: wrap; } .au-setrow .seg { width: 100%; overflow-x: auto; } }
 
-/* Board (Orchard) */
-.au-board-h { display: grid; justify-items: start; gap: 8px; margin-top: 4px; }
-.au-board-h .au-hint { margin: 0; }
-.au-board { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 8px; overflow-x: auto; margin: 12px 0; padding-bottom: 8px; }
-.au-col { background: var(--fill); border-radius: 14px; padding: 8px; min-height: 150px; }
-.au-col h3 { display: flex; justify-content: space-between; margin: 3px 3px 8px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
-.au-col h3 span { color: var(--ink-3); font-weight: 500; }
-.au-col.stuck h3 { color: var(--bad); }
+/* Board: Canopy's card board under one header row (Today or All) */
+.au-board-h { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-top: 4px; }
+.au-board-h .au-hint { margin: 0; max-width: 60ch; }
+.au-board { margin: 12px 0; }
+
+/* How they're doing: one click away, closed by default */
+.au-more { margin: 12px 0; }
+.au-more > summary { cursor: pointer; font-size: 13px; color: var(--ink-2); padding: 6px 0; }
 
 .au-sec .au-swrow { padding: 10px 0; border-bottom: 1px solid var(--hair17, var(--line)); }
 .au-card, .au-card > *, .au-checks > *, .au-prop > * { min-width: 0; }
-@media (max-width: 760px) { .au-card { overflow: hidden; } .au-setrow .seg { display: flex; } .au-setrow .seg::before { display: none; } .au-setrow .seg button[aria-checked="true"] { background: var(--raise); box-shadow: 0 1px 2px rgba(0,0,0,.18); } .au-board { grid-template-columns: repeat(6, 140px); } }
+@media (max-width: 760px) { .au-card { overflow: hidden; } .au-setrow .seg { display: flex; } .au-setrow .seg::before { display: none; } .au-setrow .seg button[aria-checked="true"] { background: var(--raise); box-shadow: 0 1px 2px rgba(0,0,0,.18); } }
 .au-noval .seg::before { display: none; }
 .au-p { margin: 0; font-size: 13.5px; color: var(--ink-2); }

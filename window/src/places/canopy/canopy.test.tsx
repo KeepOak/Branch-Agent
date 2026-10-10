@@ -63,68 +63,6 @@ const button = (text: string, scope: ParentNode = document) => [...scope.querySe
 const runCard = (task: string) => [...document.querySelectorAll(".cn-run")].find(r => r.textContent?.includes(task)) as HTMLElement;
 const click = async (el: HTMLElement) => { await act(async () => { el.click(); await new Promise(r => setTimeout(r, 0)); }); };
 
-function canopyTab(name: "Now" | "Cards"): HTMLButtonElement {
-  const tab = [...host.querySelectorAll<HTMLButtonElement>('.cn-tabs[aria-label="Canopy"] [role=tab]')].find(t => t.textContent?.startsWith(name));
-  if (!tab) throw new Error(`Missing Canopy tab: ${name}`);
-  return tab;
-}
-async function pressTab(tab: HTMLButtonElement, key: string, modifiers: KeyboardEventInit = {}) {
-  const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...modifiers });
-  await act(async () => { tab.focus(); tab.dispatchEvent(event); await new Promise(r => setTimeout(r, 0)); });
-  return event;
-}
-
-describe("Canopy tab-row keyboard parity", () => {
-  it("uses one roving tab stop and wraps Left/Right selection with actual focus", async () => {
-    const { calls } = await mount();
-    const nowTab = canopyTab("Now"), cardsTab = canopyTab("Cards"), before = [...calls];
-    expect([nowTab.tabIndex, cardsTab.tabIndex]).toEqual([0, -1]);
-    for (const [tab, key, expected] of [[nowTab, "ArrowRight", cardsTab], [cardsTab, "ArrowRight", nowTab], [nowTab, "ArrowLeft", cardsTab], [cardsTab, "ArrowLeft", nowTab]] as const) {
-      expect((await pressTab(tab, key)).defaultPrevented).toBe(true);
-      expect(document.activeElement).toBe(expected);
-      expect(expected.getAttribute("aria-selected")).toBe("true");
-      expect(expected.tabIndex).toBe(0);
-      expect(tab.tabIndex).toBe(-1);
-    }
-    expect(calls).toEqual(before);
-  });
-  it("Home/End select and focus the endpoints like the exact preview frame", async () => {
-    await mount();
-    const nowTab = canopyTab("Now"), cardsTab = canopyTab("Cards");
-    expect((await pressTab(nowTab, "End")).defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(cardsTab);
-    expect(cardsTab.getAttribute("aria-selected")).toBe("true");
-    expect((await pressTab(cardsTab, "Home")).defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(nowTab);
-    expect(nowTab.getAttribute("aria-selected")).toBe("true");
-    expect([nowTab.tabIndex, cardsTab.tabIndex]).toEqual([0, -1]);
-  });
-  it("leaves Ctrl/Alt/Meta shortcuts and unrelated keys untouched", async () => {
-    const { calls } = await mount();
-    const nowTab = canopyTab("Now"), before = [...calls];
-    for (const modifiers of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }]) {
-      for (const key of ["ArrowRight", "ArrowLeft", "Home", "End"]) expect((await pressTab(nowTab, key, modifiers)).defaultPrevented).toBe(false);
-    }
-    for (const key of ["Escape", "PageDown", "a"]) expect((await pressTab(nowTab, key)).defaultPrevented).toBe(false);
-    expect(document.activeElement).toBe(nowTab);
-    expect(nowTab.getAttribute("aria-selected")).toBe("true");
-    expect(calls).toEqual(before);
-  });
-  it("keeps mouse and cross-place routing as the source of the selected tab stop", async () => {
-    const { calls } = await mount();
-    const nowTab = canopyTab("Now"), cardsTab = canopyTab("Cards"), before = [...calls];
-    await click(cardsTab);
-    expect([nowTab.tabIndex, cardsTab.tabIndex]).toEqual([-1, 0]);
-    await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "inbox", tab: "Now" } })); });
-    expect(cardsTab.getAttribute("aria-selected")).toBe("true");
-    await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "canopy", tab: "Now" } })); });
-    expect([nowTab.tabIndex, cardsTab.tabIndex]).toEqual([0, -1]);
-    expect((await pressTab(nowTab, "ArrowRight", { shiftKey: true })).defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(cardsTab);
-    expect(calls).toEqual(before);
-  });
-});
-
 describe("Canopy › Now", () => {
   it("draws each run with face, step, computer and model, and a real meter only", async () => {
     await mount();
@@ -202,43 +140,6 @@ describe("Canopy › Now", () => {
   });
 });
 
-describe("Canopy › Cards", () => {
-  it("moves, starts and creates cards with the canopy.cards methods", async () => {
-    const { calls } = await mount();
-    await click(button("Cards"));
-    await click(document.querySelector<HTMLElement>("[aria-label='More for “Ready card”']")!);
-    await click(button("Review"));
-    expect(calls).toContainEqual(["canopy.cards.move", { id: "k1", status: "review", expectedUpdatedAt: 5 }]);
-    await click(button("Start Trunks"));
-    expect(calls).toContainEqual(["canopy.cards.dispatch", {}]);
-    await click(button("New card"));
-    const title = document.querySelector<HTMLInputElement>("[data-testid=cn-card-dialog] input")!;
-    await act(async () => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!; set.call(title, "Write the notes"); title.dispatchEvent(new Event("input", { bubbles: true })); });
-    await click(button("Create"));
-    expect(calls).toContainEqual(["canopy.cards.create", { title: "Write the notes", notes: "", status: "todo", priority: "normal", labels: [] }]);
-  });
-  it("greys Open with Claude and Open with OpenAI in a card's menu, without a developer note", async () => {
-    await mount();
-    await click(button("Cards"));
-    await click(document.querySelector<HTMLElement>("[aria-label='More for “Ready card”']")!);
-    const items = [...document.querySelectorAll<HTMLButtonElement>("[role=menuitem]")].filter(b => b.textContent?.startsWith("Open with"));
-    expect(items.map(b => b.textContent)).toEqual(["Open with Claude", "Open with OpenAI"]);
-    for (const b of items) { expect(b.disabled).toBe(true); expect(b.title).toBe(""); }
-    expect(visibleDevNotes(document.body)).toEqual([]);
-  });
-  it("gates View and Details by level", async () => {
-    await mount();
-    await click(button("Cards"));
-    expect(button("View")).toBeUndefined();
-    await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = "";
-    await mount(fx(), "technical");
-    await click(button("Cards"));
-    expect(button("View")).toBeDefined();
-    await click(document.querySelector<HTMLElement>(".cn-card[aria-label='Ready card'] > b")!);
-    expect(button("Details")).toBeDefined();
-  });
-});
-
 describe("Canopy states", () => {
   it("names who started a run when it isn't the signed-in viewer (users.self)", async () => {
     const sessions = SESSIONS.map(s => s.key === "agent:b:main" ? { ...s, createdActor: { type: "human", id: "p2", label: "Dana Reyes" } } : s.key === "agent:a:main" ? { ...s, createdActor: { type: "human", id: "p1", label: "Me" } } : s);
@@ -252,14 +153,16 @@ describe("Canopy states", () => {
     expect(runCard("Tidy files").textContent).not.toContain("started it");
     expect(host.textContent).not.toContain("authenticated user");
   });
-  it("switches tab on the frame's branch:place-tab event, only for Canopy", async () => {
+  it("sends a request for the old Cards tab to Automations › Board, and ignores other places", async () => {
     await mount();
+    const navigated: unknown[] = [];
+    const onNavigate = (e: Event) => navigated.push((e as CustomEvent).detail);
+    addEventListener("branch:navigate-place", onNavigate);
     await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "inbox", tab: "Cards" } })); });
-    expect(document.querySelectorAll(".cn-tabs [role=tab]")[0].getAttribute("aria-selected")).toBe("true");
+    expect(navigated).toEqual([]);
     await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "canopy", tab: "Cards" } })); });
-    expect(button("Cards").getAttribute("aria-selected")).toBe("true");
-    await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "canopy", tab: "Now" } })); });
-    expect(document.querySelectorAll(".cn-tabs [role=tab]")[0].getAttribute("aria-selected")).toBe("true");
+    removeEventListener("branch:navigate-place", onNavigate);
+    expect(navigated).toEqual([{ place: "automations", tab: "Board" }]);
   });
   it("draws no run count on a computer no run can be tied to", async () => {
     await mount(fx({ "computer.status": { configured: true, available: true } }));
@@ -270,11 +173,6 @@ describe("Canopy states", () => {
     await mount(fx({ "plugin.approval.list": new Error("not connected") }));
     expect(host.textContent).toContain("Add-on approvals: not connected");
     expect(runCard("Check the invoice")).toBeTruthy();
-  });
-  it("shows the Cards error when the canopy add-on can't be read", async () => {
-    await mount(fx({ "canopy.cards.list": new Error("unknown method: canopy.cards.list") }));
-    await click(button("Cards"));
-    expect(host.querySelector("[role=alert]")?.textContent).toContain("Cards: unknown method: canopy.cards.list");
   });
   it("lists a conversation that finished today in Done today", async () => {
     await mount(fx({ "sessions.list": { sessions: [...SESSIONS, { key: "agent:c:old", agentId: "c", label: "Sorted the receipts", status: "done", endedAt: now, runtimeMs: 65000 }], hasMore: false } }));
@@ -302,39 +200,6 @@ describe("Canopy states", () => {
     await act(async () => emit("session.tool", { runId: "r8", seq: 3, stream: "tool", sessionKey: "agent:b:main", data: { phase: "result", name: "apply_patch", toolCallId: "p1", result: { content: "ok" } } }));
     expect(steps.textContent).toContain("Edited 2 files");
     expect(steps.textContent).not.toMatch(/apply_patch|bash/);
-  });
-});
-
-describe("Canopy › Cards [A]", () => {
-  it("opens a card attachment from canopy.cards.attachments.get", async () => {
-    const cards = [{ ...CARDS[0], metadata: { attachments: [{ id: "f1", cardId: "k1", fileName: "notes.txt", byteSize: 5, createdAt: now }] } }];
-    const { calls } = await mount(fx({ "canopy.cards.list": { cards, boards: [] }, "canopy.cards.attachments.get": { attachment: { id: "f1", fileName: "notes.txt", mimeType: "text/plain" }, contentBase64: "aGVsbG8=" } }), "advanced");
-    const opened = vi.spyOn(window, "open").mockReturnValue({} as Window);
-    URL.createObjectURL = vi.fn(() => "blob:x"); URL.revokeObjectURL = vi.fn();
-    await click(button("Cards"));
-    await click(document.querySelector<HTMLElement>(".cn-card[aria-label='Ready card'] > b")!);
-    await click(button("Activity"));
-    await click(button("Open", document.querySelector("[data-testid=cn-sheet]")!));
-    expect(calls).toContainEqual(["canopy.cards.attachments.get", { id: "f1" }]);
-    expect(opened).toHaveBeenCalledWith("blob:x", "_blank");
-  });
-  it("selects several and archives them with canopy.cards.bulk", async () => {
-    const { calls } = await mount(fx(), "advanced");
-    await click(button("Cards"));
-    await click(document.querySelector<HTMLElement>("[aria-label='Select “Ready card”']")!);
-    expect(document.querySelector(".cn-selbar")?.textContent).toContain("1 selected");
-    await click(button("Archive", document.querySelector(".cn-selbar")!));
-    expect(calls).toContainEqual(["canopy.cards.bulk", { ids: ["k1"], patch: {}, archived: true }]);
-  });
-  it("reads a Conversations board and pins a tile's column on drop", async () => {
-    const board = { id: "conv", kind: "sessions", name: "Conversations", sessions: { columns: [] } };
-    const read = { board, columns: [{ id: "needs", label: "Needs you", description: "d" }], sessions: [{ key: "agent:a:main", agentId: "a", label: "Check the invoice", run: "active", source: "state", columnId: "needs", pullRequests: [] }] };
-    const { calls } = await mount(fx({ "canopy.cards.list": { cards: CARDS, boards: [{ id: "default", total: 2 }, board] }, "canopy.sessionsBoard.read": read }), "advanced");
-    await click(button("Cards"));
-    await click(button("All boards"));
-    await click([...document.querySelectorAll<HTMLElement>("[role=menuitemradio]")].find(b => b.textContent?.includes("Conversations"))!);
-    expect(calls).toContainEqual(["canopy.sessionsBoard.read", { boardId: "conv" }]);
-    expect(host.textContent).toContain("by rule");
   });
 });
 

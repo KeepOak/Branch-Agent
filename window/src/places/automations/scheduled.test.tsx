@@ -143,11 +143,14 @@ describe("Automations › Scheduled", () => {
     await click(button("Resume all"));
     expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ cron: { enabled: true } }) });
   });
-  it("parts with no engine store are greyed with a reason, and look-only people can't change anything", async () => {
+  it("look-only people can't change anything, and parts with no engine store are not drawn", async () => {
     await mount(engine(FX, ["operator.read"]).engine);
-    const add = [...host.querySelectorAll(".au-sec button")].filter(b => b.textContent === "Add") as HTMLButtonElement[];
-    expect(add.length).toBeGreaterThan(0);
-    for (const b of add) { expect(b.disabled).toBe(true); expect(b.title).toBe(""); }
+    expect(host.textContent).not.toContain("Standing orders");
+    expect(host.textContent).not.toContain("Reminders, alarms and to-dos");
+    const ideas = [...host.querySelectorAll<HTMLButtonElement>(".au-idea")];
+    expect(ideas.length).toBeGreaterThan(0);
+    for (const b of ideas) expect(b.disabled).toBe(true);
+    expect((button("Pause all") as HTMLButtonElement).disabled).toBe(true);
     expect(visibleDevNotes(host)).toEqual([]);
     expect((host.querySelector("[aria-label='Morning brief on or off']") as HTMLButtonElement).disabled).toBe(true);
   });

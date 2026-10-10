@@ -15,7 +15,7 @@ import { Glyph } from "./glyphs";
 import { copyName, firstRun, isTrigger, jobName, when } from "./model";
 import { Proposal } from "./Proposal";
 import { FIND0, FindBar, findJobs, JobRow, rowMenuItems, summaryLine, trunkNameOf, type Find } from "./Rows";
-import { HowTheyreDoing, Ideas, PausedBanner, Reminders, RunningMore, StandingOrders } from "./Sections";
+import { HowTheyreDoing, Ideas, PauseEverything, PausedBanner } from "./Sections";
 import { Sheet } from "./Sheet";
 import { errorText, rec, str, usePlaceData, type Row } from "./runtime";
 
@@ -102,9 +102,7 @@ export function ScheduledTab({ engine, level, openConversation }: Props) {
     {adv && data && data.jobs.some(j => !isTrigger(j)) && <FindBar find={find} set={setFind} />}
     {data && <List data={data} find={find} level={level} write={write} busy={busy} actions={actions} open={open} />}
     <Ideas canWrite={write} pick={(title, message) => { setError(""); setDraft(draftFromIdea(title, message, agentFor())); }} />
-    <StandingOrders />
-    {adv && <RunningMore paused={paused} canWrite={write} busy={busy} setPaused={setPaused} />}
-    <Reminders />
+    {!paused && <PauseEverything canWrite={write} busy={busy} setPaused={setPaused} />}
     {adv && data && <HowTheyreDoing jobs={data.jobs} runs={data.runs} />}
     {open?.kind === "menu" && <Menu at={open.at} label={`More for ${jobName(open.job)}`} items={menu} onClose={() => setOpen(null)} testid="au-row-menu" />}
     {open?.kind === "remove" && <RemoveDialog job={open.job} act={act} busy={busy} onClose={() => setOpen(null)} />}

@@ -1,0 +1,5 @@
+# Automations one Board and plain page; Canopy cards moved to the Board (ux-places, LP-01, LP-02, LP-05).
+window:src/places/automations/board.test.tsx
+window:src/places/automations/procedures-board.test.tsx
+window:src/places/automations/scheduled.test.tsx
+window:src/places/canopy/canopy.test.tsx

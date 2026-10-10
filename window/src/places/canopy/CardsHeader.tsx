@@ -6,7 +6,7 @@ import { Icon } from "../../shell/icons";
 import { Menu, type MenuAnchor } from "../../shell/Menu";
 import { Popover } from "../../shell/Popover";
 import { rec, str, type Row } from "../automations/runtime";
-import { scheduleWords } from "../automations";
+import { scheduleWords } from "../automations/model";
 import { trunkName } from "./data";
 import { ago, boardName, PRIOS, STATUSES, statusName, type CardFilters } from "./cards-model";
 import { anchorOf, ChoiceMenu, clock, type Ctx } from "./ui";
@@ -43,7 +43,7 @@ export function AutomationChip({ ctx, b }: { ctx: Ctx; b?: Row }) {
   const job = ctx.d.jobs.find(j => str(j.id) === jobId);
   if (!job) return <span className="cn-auto">Automation not available. Refresh the board to try again.</span>;
   const next = Number(rec(job.state).nextRunAtMs), changed = Number(job.updatedAtMs) || Number(job.createdAtMs);
-  return <span className="cn-auto"><Icon name="clock" />Sorted by {str(job.name)} · {job.enabled ? "On" : "Paused"} · {scheduleWords(job)} · {!job.enabled ? "Not scheduled" : next > ctx.now ? `Next run ${clock(next)}` : "Next run due now"}{changed ? ` · Updated ${ago(ctx.now - changed)} ago` : ""} <button className="link" type="button" onClick={() => ctx.openPlace("automations")}>Open</button></span>;
+  return <span className="cn-auto"><Icon name="clock" />Sorted by {str(job.name)} · {job.enabled ? "On" : "Paused"} · {scheduleWords(rec(job.schedule)) || str(rec(job.schedule).kind)} · {!job.enabled ? "Not scheduled" : next > ctx.now ? `Next run ${clock(next)}` : "Next run due now"}{changed ? ` · Updated ${ago(ctx.now - changed)} ago` : ""} <button className="link" type="button" onClick={() => ctx.openPlace("automations")}>Open</button></span>;
 }
 
 export function ViewMenu({ v, setV }: { v: View; setV: (v: View) => void }) {

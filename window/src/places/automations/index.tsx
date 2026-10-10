@@ -8,6 +8,7 @@ import { canAdmin, ScheduledTab } from "./Scheduled";
 import { TriggersTab } from "./Triggers";
 import { ProceduresTab } from "./Procedures";
 import { BoardTab } from "./Board";
+import { boardRequested } from "./board-route";
 import { rec, str, type Row } from "./runtime";
 import "./activity.css";
 import "./automations.css";
@@ -43,7 +44,7 @@ export function tabFromEvent(detail: unknown): Tab | null {
 }
 
 export function AutomationsPlace({ engine, openConversation, openPlace, level }: PlaceProps) {
-  const [tab, setTab] = useState<Tab>("scheduled");
+  const [tab, setTab] = useState<Tab>(() => (boardRequested() ? "board" : "scheduled"));
   const moveTab = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     if (event.ctrlKey || event.altKey || event.metaKey) return;
     const next = event.key === "ArrowRight" ? (index + 1) % TABS.length : event.key === "ArrowLeft" ? (index + TABS.length - 1) % TABS.length : event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1 : -1;
@@ -65,7 +66,7 @@ export function AutomationsPlace({ engine, openConversation, openPlace, level }:
       {tab === "procedures" && <ProceduresTab engine={engine} level={level} />}
       {tab === "triggers" && <TriggersTab engine={engine} level={level} openConversation={openConversation} />}
       {tab === "checkins" && <Checkins engine={engine} level={level} />}
-      {tab === "board" && <BoardTab openPlace={openPlace} />}
+      {tab === "board" && <BoardTab engine={engine} level={level} openConversation={openConversation} openPlace={openPlace} />}
     </div>
   </PlaceFrame>;
 }
