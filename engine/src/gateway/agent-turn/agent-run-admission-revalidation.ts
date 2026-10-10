@@ -1,4 +1,9 @@
 import { ErrorCodes, type ErrorShape } from "../../../packages/gateway-protocol/src/index.js";
+import type { PreparedModelRuntimeAdmissionBudget } from "../../agents/prepared-model-runtime-admission-budget.js";
+import type {
+  PreparedModelRuntimeLease,
+  PreparedReplyDispatchRuntime,
+} from "../../agents/prepared-model-runtime.types.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import {
   isRuntimeRaceFailure,
@@ -17,6 +22,38 @@ import {
   type PreparedAgentRunUserTurn,
 } from "./agent-run-user-turn.js";
 import type { AgentTurnContext, AgentTurnPrincipal } from "./types.js";
+
+/** Carry all re-admitted execution facts together, not just the successor plugin generation. */
+export function rebindAgentRunReplyDispatchRuntime(
+  runtime: PreparedReplyDispatchRuntime,
+  lease: PreparedModelRuntimeLease,
+): PreparedReplyDispatchRuntime {
+  return Object.freeze({
+    ...runtime,
+    config: lease.snapshot.config,
+    modelCatalog: lease.snapshot.modelCatalog,
+    readFullModelCatalog: lease.snapshot.readFullModelCatalog,
+    inboundPluginRegistry:
+      lease.pluginGeneration.inboundPluginRegistry ?? runtime.inboundPluginRegistry,
+    pluginGeneration: lease.pluginGeneration,
+  });
+}
+
+/** Stop only this turn's reader on timeout; the shared publication keeps its own owner. */
+export async function waitForAgentRunRuntimePublication<T>(
+  budget: PreparedModelRuntimeAdmissionBudget,
+  abortSignal: AbortSignal,
+  load: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const reader = new AbortController();
+  try {
+    const runtime = await budget.wait(load(AbortSignal.any([abortSignal, reader.signal])));
+    budget.progress();
+    return runtime;
+  } finally {
+    reader.abort();
+  }
+}
 
 /**
  * Keep owner-provided policy failures intact across every preaccept preparation phase.

@@ -12,6 +12,7 @@ import type { InlineModelEntry } from "./embedded-agent-runner/model.inline-prov
 import type { AgentHarnessPluginSelection } from "./harness/runtime-plugin-load-plan.js";
 import type { ModelCatalogEntry, ModelCatalogSnapshot } from "./model-catalog.types.js";
 import type { PublishedModelCatalogOwnerCandidate } from "./prepared-model-catalog.types.js";
+import type { PreparedModelRuntimeAdmissionBudget } from "./prepared-model-runtime-admission-budget.js";
 import type { AuthStorage, AuthStorageData } from "./sessions/auth-storage.js";
 import type { ModelRegistry } from "./sessions/model-registry.js";
 
@@ -160,6 +161,8 @@ export type PreparedModelRuntimeLease = Readonly<{
 }>;
 
 export type PreparedModelRuntimeLeaseOptions = {
+  /** Shared with the Gateway's reply-dispatch wait and every successor re-admission. */
+  admissionBudget?: PreparedModelRuntimeAdmissionBudget;
   retainIdleRunOwner?: boolean;
   catalogMode?: PreparedModelRuntimeCatalogMode;
   pluginGeneration?: PreparedModelRuntimePluginGeneration;
