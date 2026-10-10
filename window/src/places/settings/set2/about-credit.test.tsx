@@ -4,7 +4,6 @@ import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { About } from "./updates";
 
