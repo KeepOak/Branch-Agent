@@ -30,6 +30,7 @@ export function groupPlan(drop: SidebarDrop, contacts: readonly GroupContact[], 
   if (room) return !memberOf(person) ? null : hasMember(room, person) ? "duplicate" : "add";
   return memberOf(source) && memberOf(target) ? "new" : null;
 }
+
 export function groupHint(drop: SidebarDrop, contacts: readonly GroupContact[], rooms: readonly GroupRoom[]): string {
   if (drop.zone !== "onto") return "Move here";
   const plan = groupPlan(drop, contacts, rooms);
@@ -210,7 +211,7 @@ export function GroupDropPopover({ drop, contacts, rooms, defaultTrunk, session,
     </> : drop.kind === "new" && source && target ? <>
       <div className="group-drop-head"><RoomFaces picks={[source, target].map((contact) => contact.kind === "trunk" ? { kind: "trunk", name: contact.name } : { kind: "person", id: contact.id, name: contact.name })} size={28} /><b>New group</b></div>
       <label className="group-drop-field">Name <input ref={input} className="inp" maxLength={60} value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void create(drop.source, drop.target!); } }} /></label>
-      <button type="button" className="btn pri" disabled={busy || !name.trim()} onClick={() => void create(drop.source, drop.target!)}>New group with {source.name} and {target.name}</button>
+      <button type="button" className="btn pri" data-testid="start-group-with-these" disabled={busy || !name.trim()} onClick={() => void create(drop.source, drop.target!)}>New group with {source.name} and {target.name}</button>
       {[source, target].filter((c) => c.offline).map((c) => <p key={c.id} className="group-drop-note">{c.name} is offline. It joins when it’s back.</p>)}
       {rooms.length ? <><hr /><div className="ph">Add both to…</div>{rooms.map((candidate) => <button key={candidate.roomId} type="button" className="mi" disabled={busy || [source, target].every((c) => hasMember(candidate, c))} onClick={() => void add(candidate, [source, target])}>{candidate.name}{[source, target].every((c) => hasMember(candidate, c)) ? " · Already in this group" : ""}</button>)}</> : null}
       <hr /><button type="button" className="mi" onClick={onClose}>Cancel <kbd>Esc</kbd></button>
