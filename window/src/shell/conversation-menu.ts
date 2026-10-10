@@ -65,7 +65,7 @@ export type ConversationMenuContext = {
   now: number;
   /** Whether the Trunk has replied in this conversation yet (Look inside reads the last reply). */
   hasReply: boolean;
-  /** Why Talk out loud is greyed, or null when voice works. */
+  /** Why live voice can't run (the row is then left out), or null when it works. */
   talkOff: string | null;
   /** The agent window is closed (its × hides it; this row brings it back). */
   characterHidden?: boolean;
@@ -134,7 +134,8 @@ export function conversationMenuItems(c: ConversationMenuContext): MenuItem[] {
     c.hasContactReturn ? item("Back to contact thread", "chat", c.run.backToContact) : null,
     row ? item(row.pinned ? "Unpin" : "Pin", "pin", c.run.pin) : null,
     snoozeRow(c),
-    item("Talk live", "wave", c.run.talk, c.talkOff ? { disabled: c.talkOff } : {}),
+    // DA-16: no greyed "Talk live" when no live voice service is ready; the row shows once one is.
+    c.talkOff ? null : item("Talk live", "wave", c.run.talk),
     item("Send to the board", "puzzle", c.run.toBoard),
     isRoom ? null : c.canMove ? item("Move to another computer…", "monitor", c.run.move) : off("Move to another computer…", "monitor", OFF_REASONS.move),
     item("Share this conversation…", "users", c.run.share),
