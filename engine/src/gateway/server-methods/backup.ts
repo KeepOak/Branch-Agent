@@ -1,3 +1,5 @@
+import os from "node:os";
+import path from "node:path";
 import {
   ErrorCodes,
   errorShape,
@@ -23,6 +25,11 @@ import { readBackupRuns, summarizeBackupTargets } from "../../state/backup-run-r
 import { listStorageLocations } from "../../storage/locations.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { defineValidatedGatewayMethod } from "./validation.js";
+
+/** The folder Settings › Backups offers first, in the person's Documents folder (a Git history of their backups). */
+export function suggestedBackupFolder(homeDir: string = os.homedir()): string {
+  return path.join(homeDir, "Documents", "Branch Backups");
+}
 
 function gitScheduleJobs(jobs: readonly CronJob[]): CronJob[] {
   return jobs.filter((job) => backupScheduleModeForDeclaration(job.declarationKey) === "git");
@@ -53,6 +60,7 @@ export const backupHandlers: GatewayRequestHandlers = {
         context.cron.list({ includeDisabled: true }),
       ]);
       const result: BackupStatusResult = {
+        suggestedFolder: suggestedBackupFolder(),
         targets: summarizeBackupTargets(runs),
         schedules: await withRemotes(summarizeBackupSchedules(jobs)),
         locations: listStorageLocations(

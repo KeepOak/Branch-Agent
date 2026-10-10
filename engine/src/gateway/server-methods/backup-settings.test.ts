@@ -2,6 +2,7 @@
 // cron store and a real folder destination.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CronService } from "../../cron/service.js";
@@ -111,6 +112,10 @@ describe("Settings › Backups gateway methods", () => {
     expect(await cron.list({ includeDisabled: true })).toEqual([]);
   });
 
+  it("offers a folder in Documents as the backup folder to start from", async () => {
+    const status = await call("backup.status", {});
+    expect(status.payload.suggestedFolder).toBe(path.join(os.homedir(), "Documents", "Branch Backups"));
+  });
   it("rejects a repository address that carries a sign-in, before writing anything", async () => {
     const set = await call("backup.schedule.set", {
       destination: { kind: "git", url: "https://someone:ghp_example@github.com/you/branch-backups.git" },
