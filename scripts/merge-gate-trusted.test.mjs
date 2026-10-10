@@ -1919,9 +1919,11 @@ test('summarizeGateFileChanges lists workflows, gate scripts, and package.json f
     'package.json',
     'engine/src/gateway/contacts.ts',
   ];
+  // scripts/feature-batch-ci.mjs runs the feature tests from the PR checkout, so it is protected too.
   assert.deepEqual(summarizeGateFileChanges(files), [
     '.github/workflows/merge-gate.yml',
     'package.json',
+    'scripts/feature-batch-ci.mjs',
     'scripts/merge-gate-trusted.mjs',
   ]);
   assert.match(formatGateChangeSummary(['README.md']), /No /);
@@ -2638,4 +2640,92 @@ test('merge-gate-trusted still reruns when the pull request body is edited', () 
   assert.match(source, /evaluateGateChangeReview\(\{ changedFiles, body, headSha: sha, baselineGrew \}\)/);
   assert.match(source, /writeSummary\(formatGateChangeReviewSummary\(review\)\)/);
   assert.match(source, /if \(!review\.ok\)/);
+});
+
+test('a skipped feature-batch job is missing, not a pass, when its paths changed', () => {
+  const featureBatch = {
+    path: '.github/workflows/feature-batch-checks.yml',
+    pullRequestPaths: ['engine/**', 'window/**'],
+  };
+  const checkRun = (conclusion) => ({ id: 9001, name: 'Named feature tests on ubuntu-latest (1/7)', status: 'completed', conclusion });
+  const workflows = { 9001: { id: 7, path: '.github/workflows/feature-batch-checks.yml', event: 'pull_request' } };
+  const skipped = missingCoreWorkflows({
+    checkRuns: [checkRun('skipped')],
+    workflowsByCheckId: workflows,
+    changedFiles: ['engine/src/gateway/contacts.ts'],
+    coreWorkflows: [featureBatch],
+  });
+  assert.ok(skipped.some((item) => item.includes('feature-batch-checks.yml') && item.includes('skipped')), skipped.join('\n'));
+  const passed = missingCoreWorkflows({
+    checkRuns: [checkRun('success')],
+    workflowsByCheckId: workflows,
+    changedFiles: ['engine/src/gateway/contacts.ts'],
+    coreWorkflows: [featureBatch],
+  });
+  assert.equal(passed.filter((item) => item.includes('feature-batch-checks.yml')).length, 0);
+});
+
+test('fetchFileText fails closed on a non-404 read instead of treating main as an empty file', () => {
+  const rateLimited = Object.assign(new Error('gh: API rate limit exceeded (HTTP 403)'), { httpStatus: 403 });
+  assert.throws(() => gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/x.mjs', () => {
+    throw rateLimited;
+  }), /rate limit/);
+  const serverError = Object.assign(new Error('gh: Server Error (HTTP 502)'), { httpStatus: 502 });
+  assert.throws(() => gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/x.mjs', () => {
+    throw serverError;
+  }), /Server Error/);
+});
+
+test('fetchFileText returns null only for a 404, the file being absent at that ref', () => {
+  const notFound = Object.assign(new Error('gh: Not Found (HTTP 404)'), { httpStatus: 404 });
+  assert.equal(gate.fetchFileText('example/repo', 'fork0', 'unused', 'scripts/x.mjs', () => {
+    throw notFound;
+  }), null);
+  const textOnly = new Error('gh: Not Found (HTTP 404)');
+  assert.equal(gate.fetchFileText('example/repo', 'fork0', 'unused', 'scripts/x.mjs', () => {
+    throw textOnly;
+  }), null);
+  const content = Buffer.from('keep\n').toString('base64');
+  assert.equal(gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/x.mjs', () => ({
+    content, encoding: 'base64',
+  })), 'keep\n');
+});
+
+test('fetchFileText treats the real gh 404 stderr line as absent, and every other failure as fatal', () => {
+  const realStderr = new Error('Command failed: gh api contents/scripts/x.mjs?ref=fork0\ngh: Not Found (HTTP 404)');
+  assert.equal(gate.fetchFileText('example/repo', 'fork0', 'unused', 'scripts/x.mjs', () => {
+    throw realStderr;
+  }), null);
+  for (const [label, error] of [
+    ['server error', Object.assign(new Error('gh: Server Error (HTTP 500)'), { httpStatus: 500 })],
+    ['forbidden', new Error('gh: Forbidden (HTTP 403)')],
+    ['network reset', Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' })],
+  ]) {
+    assert.throws(() => gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/x.mjs', () => {
+      throw error;
+    }), (thrown) => thrown === error, label);
+  }
+});
+
+test('fetchFileText reads a file over 1 MB through its blob when the contents response is empty', () => {
+  const body = 'keep\n'.repeat(300000);
+  const calls = [];
+  const text = gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/big.mjs', (_repo, _token, requestPath) => {
+    calls.push(requestPath);
+    if (requestPath.startsWith('contents/')) return { content: '', encoding: 'none', sha: 'blob123' };
+    assert.equal(requestPath, 'git/blobs/blob123');
+    return { content: Buffer.from(body).toString('base64'), encoding: 'base64' };
+  });
+  assert.equal(text, body);
+  assert.deepEqual(calls, ['contents/scripts/big.mjs?ref=main', 'git/blobs/blob123']);
+});
+
+test('fetchFileText fails closed when an empty contents response has no readable blob', () => {
+  assert.throws(() => gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/big.mjs', (_repo, _token, requestPath) => {
+    if (requestPath.startsWith('contents/')) return { content: '', encoding: 'none', sha: 'blob123' };
+    throw Object.assign(new Error('gh: Server Error (HTTP 502)'), { httpStatus: 502 });
+  }), /Server Error/);
+  assert.throws(() => gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/big.mjs', () => ({
+    content: '', encoding: 'none',
+  })), /no content and no blob sha/);
 });

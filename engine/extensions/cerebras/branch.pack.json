@@ -1,0 +1,14 @@
+{
+  "schema": "branch.pack/v1",
+  "kind": "plugin",
+  "tier": "official",
+  "id": "cerebras",
+  "summary": "Optional. Connects your Cerebras account. Needs a key from Cerebras.",
+  "permissions": {
+    "network": true,
+    "files": "none",
+    "runCommands": false,
+    "secrets": true,
+    "computerControl": false
+  }
+}

@@ -30,24 +30,62 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  plan:
+    name: Plan feature-batch shards
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: Check out the default branch (the planner comes only from here)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: base
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Check out the pull request commit (its named lists are read as data only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: pr
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up reviewed Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - id: plan
+        # Shard counts come from the default branch's planner and weights. The PR's named lists add tests as
+        # data. An empty matrix or one below the floors fails this job, so the feature jobs cannot be skipped.
+        # Bootstrap: until the planner is on the default branch, the matrix is the floors written here (this file
+        # is a reviewed gate file, and no PR code runs). Nothing is read from the PR's own planner.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ -f base/scripts/feature-batch-ci-matrix.mjs ]; then
+            node base/scripts/feature-batch-ci-matrix.mjs "$EVENT_NAME" --named-dir "$GITHUB_WORKSPACE/pr/scripts/feature-batch-ci-named" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT_NAME" = pull_request ]; then
+            echo 'matrix={"include":[{"os":"ubuntu-latest","shard":"1/10","label":"1/10","scope":"all"},{"os":"ubuntu-latest","shard":"2/10","label":"2/10","scope":"all"},{"os":"ubuntu-latest","shard":"3/10","label":"3/10","scope":"all"},{"os":"ubuntu-latest","shard":"4/10","label":"4/10","scope":"all"},{"os":"ubuntu-latest","shard":"5/10","label":"5/10","scope":"all"},{"os":"ubuntu-latest","shard":"6/10","label":"6/10","scope":"all"},{"os":"ubuntu-latest","shard":"7/10","label":"7/10","scope":"all"},{"os":"ubuntu-latest","shard":"8/10","label":"8/10","scope":"all"},{"os":"ubuntu-latest","shard":"9/10","label":"9/10","scope":"all"},{"os":"ubuntu-latest","shard":"10/10","label":"10/10","scope":"all"},{"os":"windows-latest","shard":"1/1","label":"touched","scope":"touched"}]}' >> "$GITHUB_OUTPUT"
+          else
+            echo 'matrix={"include":[{"os":"ubuntu-latest","shard":"1/7","label":"1/7","scope":"all"},{"os":"ubuntu-latest","shard":"2/7","label":"2/7","scope":"all"},{"os":"ubuntu-latest","shard":"3/7","label":"3/7","scope":"all"},{"os":"ubuntu-latest","shard":"4/7","label":"4/7","scope":"all"},{"os":"ubuntu-latest","shard":"5/7","label":"5/7","scope":"all"},{"os":"ubuntu-latest","shard":"6/7","label":"6/7","scope":"all"},{"os":"ubuntu-latest","shard":"7/7","label":"7/7","scope":"all"},{"os":"windows-latest","shard":"1/11","label":"1/11","scope":"all"},{"os":"windows-latest","shard":"2/11","label":"2/11","scope":"all"},{"os":"windows-latest","shard":"3/11","label":"3/11","scope":"all"},{"os":"windows-latest","shard":"4/11","label":"4/11","scope":"all"},{"os":"windows-latest","shard":"5/11","label":"5/11","scope":"all"},{"os":"windows-latest","shard":"6/11","label":"6/11","scope":"all"},{"os":"windows-latest","shard":"7/11","label":"7/11","scope":"all"},{"os":"windows-latest","shard":"8/11","label":"8/11","scope":"all"},{"os":"windows-latest","shard":"9/11","label":"9/11","scope":"all"},{"os":"windows-latest","shard":"10/11","label":"10/11","scope":"all"},{"os":"windows-latest","shard":"11/11","label":"11/11","scope":"all"},{"os":"macos-latest","shard":"1/10","label":"1/10","scope":"all"},{"os":"macos-latest","shard":"2/10","label":"2/10","scope":"all"},{"os":"macos-latest","shard":"3/10","label":"3/10","scope":"all"},{"os":"macos-latest","shard":"4/10","label":"4/10","scope":"all"},{"os":"macos-latest","shard":"5/10","label":"5/10","scope":"all"},{"os":"macos-latest","shard":"6/10","label":"6/10","scope":"all"},{"os":"macos-latest","shard":"7/10","label":"7/10","scope":"all"},{"os":"macos-latest","shard":"8/10","label":"8/10","scope":"all"},{"os":"macos-latest","shard":"9/10","label":"9/10","scope":"all"},{"os":"macos-latest","shard":"10/10","label":"10/10","scope":"all"}]}' >> "$GITHUB_OUTPUT"
+          fi
+
   feature-batch:
+    needs: plan
     name: Named feature tests on ${{ matrix.os }} (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
-    # The cap stays at 15 minutes. Pull requests keep ten Linux shards (about 6 minutes).
-    # Main and nightly: 7 Linux shards (including the shard-1 typecheck), 11 Windows shards,
-    # and 10 macOS shards. Each planned shard stays within the 12-minute budget in
-    # scripts/feature-batch-ci-targets.mjs, even after a PR adds 60 unweighted engine tests.
+    # The cap stays at 15 minutes. Shard counts are derived from the test weights in
+    # scripts/feature-batch-ci-targets.mjs (shardCountFor), with the floors kept as minimums.
+    # Pull requests: Linux shards, plus the touched Windows tests. Main and nightly: Linux, Windows and macOS.
     # Extra jobs add setup cost and queue time; max-parallel stays 6.
     timeout-minutes: 15
     strategy:
       fail-fast: false
       max-parallel: 6
-      matrix:
-        # PRs: Linux runs the full named suite in ten shards; Windows runs only the named tests the PR
-        # touches plus a fixed Windows smoke set. Main after merge and nightly: the full suite on all
-        # three systems, with the shard counts above. macOS for PRs touching OS-specific code is in
-        # os-specific-checks.yml.
-        include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"os":"ubuntu-latest","shard":"1/10","label":"1/10","scope":"all"},{"os":"ubuntu-latest","shard":"2/10","label":"2/10","scope":"all"},{"os":"ubuntu-latest","shard":"3/10","label":"3/10","scope":"all"},{"os":"ubuntu-latest","shard":"4/10","label":"4/10","scope":"all"},{"os":"ubuntu-latest","shard":"5/10","label":"5/10","scope":"all"},{"os":"ubuntu-latest","shard":"6/10","label":"6/10","scope":"all"},{"os":"ubuntu-latest","shard":"7/10","label":"7/10","scope":"all"},{"os":"ubuntu-latest","shard":"8/10","label":"8/10","scope":"all"},{"os":"ubuntu-latest","shard":"9/10","label":"9/10","scope":"all"},{"os":"ubuntu-latest","shard":"10/10","label":"10/10","scope":"all"},{"os":"windows-latest","shard":"1/1","label":"touched","scope":"touched"}]' || '[{"os":"ubuntu-latest","shard":"1/7","label":"1/7","scope":"all"},{"os":"ubuntu-latest","shard":"2/7","label":"2/7","scope":"all"},{"os":"ubuntu-latest","shard":"3/7","label":"3/7","scope":"all"},{"os":"ubuntu-latest","shard":"4/7","label":"4/7","scope":"all"},{"os":"ubuntu-latest","shard":"5/7","label":"5/7","scope":"all"},{"os":"ubuntu-latest","shard":"6/7","label":"6/7","scope":"all"},{"os":"ubuntu-latest","shard":"7/7","label":"7/7","scope":"all"},{"os":"windows-latest","shard":"1/11","label":"1/11","scope":"all"},{"os":"windows-latest","shard":"2/11","label":"2/11","scope":"all"},{"os":"windows-latest","shard":"3/11","label":"3/11","scope":"all"},{"os":"windows-latest","shard":"4/11","label":"4/11","scope":"all"},{"os":"windows-latest","shard":"5/11","label":"5/11","scope":"all"},{"os":"windows-latest","shard":"6/11","label":"6/11","scope":"all"},{"os":"windows-latest","shard":"7/11","label":"7/11","scope":"all"},{"os":"windows-latest","shard":"8/11","label":"8/11","scope":"all"},{"os":"windows-latest","shard":"9/11","label":"9/11","scope":"all"},{"os":"windows-latest","shard":"10/11","label":"10/11","scope":"all"},{"os":"windows-latest","shard":"11/11","label":"11/11","scope":"all"},{"os":"macos-latest","shard":"1/10","label":"1/10","scope":"all"},{"os":"macos-latest","shard":"2/10","label":"2/10","scope":"all"},{"os":"macos-latest","shard":"3/10","label":"3/10","scope":"all"},{"os":"macos-latest","shard":"4/10","label":"4/10","scope":"all"},{"os":"macos-latest","shard":"5/10","label":"5/10","scope":"all"},{"os":"macos-latest","shard":"6/10","label":"6/10","scope":"all"},{"os":"macos-latest","shard":"7/10","label":"7/10","scope":"all"},{"os":"macos-latest","shard":"8/10","label":"8/10","scope":"all"},{"os":"macos-latest","shard":"9/10","label":"9/10","scope":"all"},{"os":"macos-latest","shard":"10/10","label":"10/10","scope":"all"}]') }}
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       CI: 'true'
       FEATURE_SHARD: ${{ matrix.shard }}
