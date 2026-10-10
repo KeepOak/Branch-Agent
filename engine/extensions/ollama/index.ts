@@ -149,6 +149,17 @@ async function buildLocalOllamaProvider(
   return capLocalOllamaProviderContext(await buildOllamaProvider(configuredBaseUrl, opts));
 }
 
+function normalizeConfiguredOllamaResolvedModel(
+  ctx: Parameters<NonNullable<ProviderPlugin["normalizeResolvedModel"]>>[0],
+) {
+  const normalized = normalizeResolvedModel(ctx);
+  if (!normalized) {
+    return undefined;
+  }
+  const capped = capLocalOllamaModelContext(normalized, normalized.baseUrl ?? "");
+  return capped === normalized ? normalized : { ...normalized, ...capped };
+}
+
 async function resolveAppGuidedOllamaConnection(ctx: ProviderAppGuidedSetupContext) {
   const pluginConfig = resolvePluginConfigObject(ctx.config, OLLAMA_PROVIDER_ID) as
     | OllamaPluginConfig
@@ -670,7 +681,7 @@ const createOllamaSharedProviderHooks = (api: BranchPluginApi) =>
         : buildOpenAICompatibleReplayPolicy(modelApi),
     resolveReasoningOutputMode: () => "native",
     resolveThinkingProfile: resolveOllamaThinkingProfile,
-    normalizeResolvedModel,
+    normalizeResolvedModel: normalizeConfiguredOllamaResolvedModel,
     wrapStreamFn: createConfiguredOllamaCompatStreamWrapper,
     matchesContextOverflowError: ({ errorMessage }) =>
       matchesOllamaContextOverflowError(errorMessage),

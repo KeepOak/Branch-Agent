@@ -460,6 +460,14 @@ export function capLocalOllamaModelContext(
   ) {
     return model;
   }
+  // Config overlays remain authoritative: an explicit contextTokens pin is kept as is.
+  if (
+    typeof model.contextTokens === "number" &&
+    Number.isFinite(model.contextTokens) &&
+    model.contextTokens > 0
+  ) {
+    return model;
+  }
   return {
     ...model,
     // Local Ollama allocates KV cache from num_ctx. Keep native metadata, but cap
