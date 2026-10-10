@@ -76,7 +76,7 @@ function Console({ engine, route, targetId, again }: Props & { again: number }) 
   const dialogs = [...list(seen.pending), ...list(seen.recent)];
   return (
     <Wait read={read}>
-      <div className="acts-br seg-br" role="group" aria-label="Show">
+      <div className="acts-br seg-br" role="group" aria-label="Message level">
         {(["all", "error", "warning"] as const).map((v) => (
           <button key={v} type="button" aria-pressed={only === v} onClick={() => setOnly(v)}>
             {v === "all" ? "All" : v === "error" ? "Errors" : "Warnings"}
