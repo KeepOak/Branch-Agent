@@ -47,7 +47,6 @@ export type ConversationMenuRun = {
   theme: () => void;
   computer: () => void;
   browser: () => void;
-  guide: () => void;
   backToContact: () => void;
   conversations: () => void;
 };
@@ -180,9 +179,6 @@ export function conversationMenuItems(c: ConversationMenuContext): MenuItem[] {
     item("Open its computer", "monitor", c.run.computer),
     item("Open the browser", "eye", c.run.browser),
     item("Switch light or dark", "spark", c.run.theme),
-    SEP,
-    { kind: "head", label: "Help" },
-    item("Why each thing is here", "info", c.run.guide),
     SEP,
     row && !c.isMain ? item("Delete this conversation…", "trash", c.run.remove, { danger: true }) : null,
     !isRoom && c.ownTrunk && c.canRemoveTrunk ? item(`Remove ${c.trunkName}…`, "trash", c.run.removeTrunk, { danger: true }) : null,

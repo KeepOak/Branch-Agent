@@ -263,7 +263,7 @@
   padding: 0 8px;
   white-space: nowrap;
 }
-.topbar .global > .ib.guide-btn,
+.topbar .global > .ib.help-btn,
 .topbar .global > [data-testid="list-toggle"] {
   width: auto;
   height: 24px;
@@ -1177,7 +1177,7 @@ button.mi:focus-visible {
 }
 
 /* The Guide button: the bulb and the word (preview top bar) */
-.ib.guide-btn {
+.ib.help-btn {
   display: inline-flex;
   align-items: center;
   width: auto;

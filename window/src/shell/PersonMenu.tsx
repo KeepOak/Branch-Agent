@@ -40,16 +40,11 @@ type Props = {
   onTheme: (t: ThemeChoice) => void;
   onSettings: () => void;
   onAchievements: () => void;
-  onShortcuts: () => void;
   onApps: () => void;
-  onAbout: () => void;
   onClose: () => void;
   /** The version waiting to install, when the person hasn't asked to be reminded tomorrow (§4.9.8). */
   updateTo?: string | null;
   onUpdate?: () => void;
-  /** Opens the Guide menu: What's new, Set up Branch, the walkthrough, Docs, Get help, Community. */
-  onGuide: () => void;
-  onReplay: () => void;
   onAddPerson: () => void;
   /** Lock Branch; with no PIN set it opens Settings › Permissions › App lock (§4.1.5, SHARED lockscreen). */
   onLock: () => void;
@@ -71,7 +66,7 @@ function Row({ icon, label, hint, onClick, testid }: { icon: Parameters<typeof I
   );
 }
 
-/** The person menu (DESIGN-SPEC §4.1.5): who is using Branch, Look, then Settings and help. */
+/** The person menu (DESIGN-SPEC §4.1.5): who is using Branch, Look, then Settings. Help lives in the top bar's Help menu. */
 export function PersonMenu(p: Props) {
   const run = (f: () => void) => () => {
     p.onClose();
@@ -98,9 +93,7 @@ export function PersonMenu(p: Props) {
       <hr className="msep" />
       <Row icon="gear" label="Settings" hint="Ctrl ," onClick={run(p.onSettings)} testid="person-settings" />
       <Row icon="check" label="Achievements" onClick={run(p.onAchievements)} />
-      <Row icon="menu" label="Keyboard shortcuts" hint="?" onClick={run(p.onShortcuts)} testid="person-shortcuts" />
       <Row icon="phone" label="Get the apps" onClick={run(p.onApps)} testid="person-apps" />
-      <Row icon="help" label="Guide" onClick={run(p.onGuide)} testid="person-guide" />
       {p.updateTo && p.onUpdate ? (
         <button type="button" className="mi" data-testid="person-update" onClick={run(p.onUpdate)}>
           <Icon name="spark" small />
@@ -108,8 +101,6 @@ export function PersonMenu(p: Props) {
           <i className="sb-new" aria-hidden="true" />
         </button>
       ) : null}
-      <Row icon="spark" label="Set up Branch" onClick={run(p.onReplay)} testid="person-replay" />
-      <Row icon="monitor" label="About Branch" onClick={run(p.onAbout)} />
       <hr className="msep" />
       <Row icon="lock" label="Lock Branch" onClick={run(p.onLock)} testid="person-lock" />
     </Popover>

@@ -101,7 +101,7 @@ export function Page({ title, lede, help, children, top }: { title: string; lede
   }, []);
   useEffect(() => {
     const toggle = () => {
-      const anchor = document.querySelector<HTMLElement>('[data-testid="ask-default"]');
+      const anchor = document.querySelector<HTMLElement>('[data-testid="help"]');
       if (anchor) {
         const box = anchor.getBoundingClientRect();
         setHelpPosition({ top: box.bottom + 8, right: window.innerWidth - box.right });
@@ -115,9 +115,9 @@ export function Page({ title, lede, help, children, top }: { title: string; lede
     if (!open) return;
     const close = (event: MouseEvent) => {
       const target = event.target as Node;
-      if (!helpRef.current?.contains(target) && !document.querySelector('[data-testid="ask-default"]')?.contains(target)) setOpen(false);
+      if (!helpRef.current?.contains(target) && !document.querySelector('[data-testid="help"]')?.contains(target)) setOpen(false);
     };
-    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); document.querySelector<HTMLButtonElement>('[data-testid="ask-default"]')?.focus(); } };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); document.querySelector<HTMLButtonElement>('[data-testid="help"]')?.focus(); } };
     document.addEventListener("pointerdown", close);
     document.addEventListener("keydown", escape);
     return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", escape); };

@@ -20,7 +20,7 @@ function ctx(_level: string, own: boolean, patch: Partial<ConversationMenuContex
 const shape = (items: MenuItem[]) => items.map((i) => i.kind === "sep" ? "---" : i.kind === "custom" ? "[custom]" : i.kind === "sub" ? `${i.label} ›` : i.kind === "head" || i.kind === "info" ? `[${i.label}]` : `${i.disabled ? "[off] " : ""}${i.label}`);
 
 describe("P54 conversation header menu", () => {
-  it("groups the conversation, Trunk, look, export, view and help actions with destructive rows last", () => {
+  it("groups the conversation, Trunk, look, export and view actions with destructive rows last; help is the top bar's", () => {
     const items = conversationMenuItems(ctx("regular", true));
     const labels = shape(items);
     expect(labels.filter((x) => x.startsWith("["))).toContain("[This conversation]");
@@ -28,7 +28,8 @@ describe("P54 conversation header menu", () => {
     expect(labels).toContain("[Look closer]");
     expect(labels).toContain("Export ›");
     expect(labels).toContain("[View]");
-    expect(labels).toContain("[Help]");
+    expect(labels).not.toContain("[Help]");
+    expect(labels).not.toContain("Why each thing is here");
     expect(labels).toContain("Copy link");
     expect(labels).not.toContain("Copy ›");
     expect(labels).toContain("Talk live");
@@ -67,12 +68,12 @@ describe("P54 conversation header menu", () => {
   it("keeps all active view actions wired and greys unavailable ones with reasons", () => {
     calls.length = 0;
     const items = conversationMenuItems(ctx("regular", true));
-    for (const label of ["Search in this conversation", "Side panel", "Hide or show the list", "Open in its own window", "Open its computer", "Open the browser", "Switch light or dark", "Why each thing is here"]) {
+    for (const label of ["Search in this conversation", "Side panel", "Hide or show the list", "Open in its own window", "Open its computer", "Open the browser", "Switch light or dark"]) {
       const found = items.find((i) => i.kind !== "sub" && i.kind !== "sep" && i.kind !== "head" && i.kind !== "custom" && i.label === label) as Extract<MenuItem, { run: () => void }>;
       expect(found.disabled).toBeUndefined();
       found.run();
     }
-    expect(calls).toEqual(["search", "sidePanel", "list", "ownWindow", "computer", "browser", "theme", "guide"]);
+    expect(calls).toEqual(["search", "sidePanel", "list", "ownWindow", "computer", "browser", "theme"]);
     const tower = items.find((i) => i.kind !== "sub" && i.kind !== "sep" && i.kind !== "head" && i.kind !== "custom" && i.label === "Show the Control tower") as Extract<MenuItem, { run: () => void }>;
     expect(tower.disabled).toBeUndefined();
     tower.run();
