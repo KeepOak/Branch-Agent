@@ -26,6 +26,7 @@ import { getCatalogEntry } from '../office/layout/furnitureCatalog.js';
 import { overlayProjection } from '../office/projection.js';
 import { CharacterState, TILE_SIZE } from '../office/types.js';
 import { AREA_MEETING, MEETING_TABLE_UID } from './branchLayout.js';
+import { namePlateWorldY } from './namePlate.js';
 import type { BranchServer } from './branchServer.js';
 import type { BranchAgent } from './types.js';
 
@@ -94,6 +95,12 @@ export function BranchOverlay(p: Props) {
   // Name plates scale with the office (about half a tile tall), within readable limits.
   const nameFont = Math.round(Math.max(9, Math.min(15, cssZoom * 5.5)));
 
+  const furniture = os.getLayout().furniture;
+  const footprint = (type: string) => {
+    const e = getCatalogEntry(type);
+    return e ? { w: e.footprintW, h: e.footprintH } : undefined;
+  };
+
   const items: React.ReactNode[] = [];
   for (const ch of os.characters.values()) {
     if (ch.matrixEffect === 'despawn') continue;
@@ -115,7 +122,7 @@ export function BranchOverlay(p: Props) {
           data-agent={agent.id}
           style={{
             left: x,
-            top: project.toScreenY(ch.y + sit + 2),
+            top: project.toScreenY(namePlateWorldY(ch, os.seats, furniture, footprint, ch.y + sit + 2)),
             opacity: agent.state === 'offline' ? 0.55 : 1,
             fontSize: nameFont,
           }}
