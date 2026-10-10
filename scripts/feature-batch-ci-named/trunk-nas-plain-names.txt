@@ -1,0 +1,10 @@
+engine:src/gateway/contacts/outside-agents.test.ts
+engine:src/infra/provider-usage.shared.test.ts
+window:src/places-nav/settings-nav.test.ts
+window:src/places/library/memory.test.tsx
+window:src/places/settings/set2/set2.test.tsx
+window:src/places/settings/settings.test.tsx
+window:src/display-names.test.ts
+window:src/places/settings/set2/about-credit.test.tsx
+window:src/composer/skill-picks.test.ts
+window:src/composer/Composer.skill-picks.test.tsx

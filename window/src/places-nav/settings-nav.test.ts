@@ -2,10 +2,20 @@ import { describe, expect, it } from "vitest";
 import { levelFor, pageAtLevel, pageLevel, pageName, searchSettings, settingsGroups } from "./settings-nav";
 
 describe("settings nav", () => {
-  it("has 20, 21 and 22 pages by level (Grafts is in Safety, Backups in Care)", () => {
+  it("has plain group names and omits achievements at every level", () => {
     const count = (l: "regular" | "advanced" | "technical") => settingsGroups(l).reduce((n, g) => n + g.pages.length, 0);
     expect([count("regular"), count("advanced"), count("technical")]).toEqual([20, 21, 22]);
-    expect(settingsGroups("regular").map((g) => g.name)).toEqual(["General", "Your Trunks", "Safety", "Care"]);
+    expect(settingsGroups("regular").map((g) => g.name)).toEqual(["General", "Your Trunks", "Safety", "Data and safety"]);
+  });
+  it("uses plain page names in navigation and search", () => {
+    for (const [id, name] of [["agents", "Connected agents"], ["seasons", "Seasons"], ["self", "About Branch"], ["secrets", "Saved passwords"]]) {
+      expect(pageName(id)).toBe(name);
+      expect(searchSettings(name, []).flatMap(g => g.hits.map(h => h.page.name))).toContain(name);
+    }
+    for (const level of ["regular", "advanced", "technical"] as const) {
+      expect(settingsGroups(level).flatMap(g => g.pages).some(p => p.id === "achievements")).toBe(false);
+    }
+    expect(searchSettings("achievements", [])).toEqual([]);
   });
   it("hides Achievements until it counts real achievements", () => {
     const ids = (l: "regular" | "advanced" | "technical") => settingsGroups(l).flatMap((g) => g.pages.map((p) => p.id));
