@@ -44,6 +44,7 @@ const CUA_WIRE_ACTION_NAMES = COMPUTER_USE_V2_ACTION_NAMES.slice(1, 14);
 // display; budget above it so full-resolution snapshots reach the downscaler.
 const MAX_IMAGE_PIXELS = 40_000_000;
 const CUA_DRIVER_ENDPOINT_ENV = "BRANCH_CUA_DRIVER_ENDPOINT";
+const CUA_DRIVER_ENDPOINT_FILE_ENV = "BRANCH_CUA_DRIVER_ENDPOINT_FILE";
 
 const CuaDriverEndpointSchema = z.strictObject({
   v: z.literal(2),
@@ -93,9 +94,23 @@ type CuaComputerProviderOptions = {
 function resolveMacOsMcpEndpoint(
   env: NodeJS.ProcessEnv,
 ): { port: number; secret: string } | undefined {
-  const rawEndpoint = env[CUA_DRIVER_ENDPOINT_ENV] ??
-    (globalThis as Record<symbol, unknown>)[Symbol.for("branch.macComputerEndpoint")];
-  if (typeof rawEndpoint !== "string") return undefined;
+  let rawEndpoint: unknown;
+  const endpointFile = env[CUA_DRIVER_ENDPOINT_FILE_ENV];
+  if (endpointFile) {
+    try {
+      const stat = fs.statSync(endpointFile);
+      if (!stat.isFile() || stat.size > 4 * 1024 || (process.platform !== "win32" && (stat.mode & 0o077) !== 0)) {
+        return undefined;
+      }
+      rawEndpoint = fs.readFileSync(endpointFile, "utf8");
+    } catch { return undefined; }
+  } else {
+    rawEndpoint = env[CUA_DRIVER_ENDPOINT_ENV] ??
+      (globalThis as Record<symbol, unknown>)[Symbol.for("branch.macComputerEndpoint")];
+  }
+  if (typeof rawEndpoint !== "string") {
+    return undefined;
+  }
   if (!rawEndpoint || Buffer.byteLength(rawEndpoint, "utf8") > 4 * 1024) {
     return undefined;
   }

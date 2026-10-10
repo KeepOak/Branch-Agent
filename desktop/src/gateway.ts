@@ -1,6 +1,6 @@
 // Starts the Branch engine gateway as a child process (as the early copy's start.sh does) and stops it by PID.
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
-import { appendFileSync, createWriteStream, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, createWriteStream, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { constants as osConstants, setPriority } from "node:os";
@@ -68,7 +68,9 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
     else log.write(message + "\n");
   }, join(engineDir, "docs", "reference", "templates"));
   if (profile.note) log.write(profile.note + "\n");
-  const env = {
+  const endpointFile = macComputerEndpoint ? join(cfg.dataDir, `cua-endpoint-${randomBytes(16).toString("hex")}`) : undefined;
+  if (endpointFile && macComputerEndpoint) writeFileSync(endpointFile, macComputerEndpoint, { flag: "wx", mode: 0o600 });
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
     BRANCH_PROFILE: profile.legacyDevMode ? "dev" : "default",
     BRANCH_HOME: join(cfg.dataDir, "home"),
@@ -86,9 +88,11 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
     BRANCH_GATEWAY_TOKEN: token,
     BRANCH_GATEWAY_STANDBY: standby ? "1" : undefined,
     // Only Electron's Mac host can give the Gateway this app-owned daemon lease.
-    BRANCH_CUA_DRIVER_ENDPOINT: macComputerEndpoint,
+    BRANCH_CUA_DRIVER_ENDPOINT_FILE: endpointFile,
     ...testProfile(),
   };
+  // The Mac driver secret must not leak to any child of the gateway.
+  delete env.BRANCH_CUA_DRIVER_ENDPOINT;
   const args = ["branch.mjs", "gateway", ...(profile.legacyDevMode ? ["--dev"] : []), "--port", String(port)];
   const child = spawn(cfg.nodePath, args, {
     cwd: engineDir,
@@ -99,6 +103,7 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
   });
   // Record the spawn before querying its start time, so a crash cannot lose the engine.
   recordEngine(cfg.dataDir, child, port, standby ? "standby" : "engine", cfg.nodePath);
+  if (endpointFile) child.once("close", () => { try { unlinkSync(endpointFile); } catch { /* already removed */ } });
   child.stdout?.pipe(log);
   child.stderr?.pipe(log);
   if (!standby && child.pid !== undefined) {

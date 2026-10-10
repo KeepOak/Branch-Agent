@@ -1,6 +1,9 @@
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
 import { resizeToJpeg } from "branch/plugin-sdk/media-runtime";
 import { createSolidPngBuffer } from "branch/plugin-sdk/test-fixtures";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createCuaComputerProvider } from "./commands.js";
 import {
@@ -177,6 +180,54 @@ describe("cua-computer provider", () => {
         createCuaComputerProvider({ platform: "darwin", env, driver: session }).isAvailable(),
         label,
       ).toBe(false);
+    }
+  });
+
+  it("reads the Mac endpoint from a private file without an environment secret", () => {
+    const dir = mkdtempSync(join(tmpdir(), "branch-cua-endpoint-"));
+    const file = join(dir, "endpoint");
+    try {
+      writeFileSync(file, macOsEndpoint().BRANCH_CUA_DRIVER_ENDPOINT!, { mode: 0o600 });
+      const { session } = driver();
+      expect(createCuaComputerProvider({ platform: "darwin", env: { BRANCH_CUA_DRIVER_ENDPOINT_FILE: file }, driver: session }).isAvailable()).toBe(true);
+      writeFileSync(file, "not-json");
+      expect(createCuaComputerProvider({ platform: "darwin", env: { BRANCH_CUA_DRIVER_ENDPOINT_FILE: file }, driver: session }).isAvailable()).toBe(false);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("resolves the Mac endpoint from the gateway process symbol after environment secrets are stripped", () => {
+    const key = Symbol.for("branch.macComputerEndpoint");
+    const owner = globalThis as Record<symbol, unknown>;
+    const previous = owner[key];
+    try {
+      owner[key] = macOsEndpoint().BRANCH_CUA_DRIVER_ENDPOINT;
+      const { session } = driver();
+      expect(createCuaComputerProvider({ platform: "darwin", env: {}, driver: session }).isAvailable()).toBe(true);
+    } finally {
+      if (previous === undefined) {
+        delete owner[key];
+      } else {
+        owner[key] = previous;
+      }
+    }
+  });
+
+  it("fails closed for a retained older engine that only reads the legacy environment secret", () => {
+    const key = Symbol.for("branch.macComputerEndpoint");
+    const owner = globalThis as Record<symbol, unknown>;
+    const previous = owner[key];
+    delete owner[key];
+    try {
+      const { session } = driver();
+      // Desktop no longer sets BRANCH_CUA_DRIVER_ENDPOINT. An older engine that
+      // only reads that variable starts, but Mac control stays unavailable.
+      expect(createCuaComputerProvider({ platform: "darwin", env: {}, driver: session }).isAvailable()).toBe(false);
+    } finally {
+      if (previous === undefined) {
+        delete owner[key];
+      } else {
+        owner[key] = previous;
+      }
     }
   });
 
