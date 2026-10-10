@@ -177,7 +177,10 @@ function resolveInputs(params: LoadPreparedModelCatalogParams = {}): {
     agentDir,
     config,
     ...(params.env ? { env: params.env } : {}),
-    inheritedAuthDir: resolveLegacyInheritedAuthDir(config, params.env),
+    inheritedAuthDir: resolveLegacyInheritedAuthDir(config, params.env, undefined, {
+      agentId,
+      agentDir,
+    }),
     ...(params.workspaceDir ? { workspaceDir: params.workspaceDir } : {}),
     ...(params.allowGatewaySubagentBinding ? { allowGatewaySubagentBinding: true } : {}),
   };
