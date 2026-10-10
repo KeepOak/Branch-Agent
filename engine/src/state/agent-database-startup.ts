@@ -21,7 +21,6 @@ import {
   preparePendingAgentDatabase,
   type AgentDatabaseAdmissionRefusal,
 } from "./agent-database-admission.js";
-import { readAgentDeletionJournalStatusInWorker } from "./agent-deletion-journal.read.js";
 import {
   AgentOpenHungError,
   boundStage,
@@ -31,6 +30,7 @@ import {
   StageTimeoutError,
   waitForStage,
 } from "./agent-database-startup.stages.js";
+import { readAgentDeletionJournalStatusInWorker } from "./agent-deletion-journal.read.js";
 import {
   AGENT_DATABASE_PREFLIGHT_CONCURRENCY,
   BRANCH_AGENT_SCHEMA_VERSION,
@@ -161,7 +161,6 @@ function firstRetryMs(env: NodeJS.ProcessEnv): number {
 }
 
 const log = createSubsystemLogger("state/agent-admission");
-
 
 const startupAdmission = new AsyncLocalStorage<AgentDatabaseStartupAdmission>();
 /** Admissions the running Gateway adopted; a retry request reaches their pending agents. */
@@ -514,7 +513,8 @@ class AgentDatabaseStartupAdmission {
               }
               const stageExpiry = controller.signal.reason;
               const failure =
-                stageExpiry instanceof StageTimeoutError || stageExpiry instanceof AgentOpenHungError;
+                stageExpiry instanceof StageTimeoutError ||
+                stageExpiry instanceof AgentOpenHungError;
               throw failure ? stageExpiry : error;
             });
           };

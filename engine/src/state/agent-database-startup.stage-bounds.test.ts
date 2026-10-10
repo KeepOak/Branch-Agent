@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { closeStateDatabaseForTest } from "../test-utils/database-cleanup.js";
 import {
@@ -13,36 +13,52 @@ import {
 } from "./branch-agent-db.js";
 import type { BranchDatabaseSchemaPreflight } from "./branch-database-preflight.types.js";
 
-// Stall counter for the deletion-journal read, which has no seam of its own: the next `stalls`
-// reads never settle. The real implementation runs otherwise.
+// Module state the tests share through mocks. Every test resets it in beforeEach.
 const stalls = vi.hoisted(() => ({
-  deletionJournalReadsToStall: 0,
-  stalled: 0,
-  /** Answers every read at once, so the permit queue is the only queue under test. */
-  journalReadsImmediate: false,
+  /** The next this-many journal reads never settle; the rest answer at once. */
+  journalReadsToStall: 0,
+  journalStalled: 0,
 }));
 // Permits held by the pools created in this file, to check that no permit leaks.
 const permits = vi.hoisted(() => ({ outstanding: 0, peak: 0 }));
 
+// The journal read runs in a real worker, whose speed depends on the machine. Stub it: it answers
+// at once unless a test stalls it on purpose.
 vi.mock("./agent-deletion-journal.read.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./agent-deletion-journal.read.js")>();
   return {
     ...actual,
-    readAgentDeletionJournalStatusInWorker: (
-      ...args: Parameters<typeof actual.readAgentDeletionJournalStatusInWorker>
-    ) => {
-      if (stalls.journalReadsImmediate) {
-        return Promise.resolve("absent" as Awaited<
-          ReturnType<typeof actual.readAgentDeletionJournalStatusInWorker>
-        >);
+    readAgentDeletionJournalStatusInWorker: async () => {
+      if (stalls.journalReadsToStall > 0) {
+        stalls.journalReadsToStall -= 1;
+        stalls.journalStalled += 1;
+        await new Promise<never>(() => {});
       }
-      if (stalls.deletionJournalReadsToStall > 0) {
-        stalls.deletionJournalReadsToStall -= 1;
-        stalls.stalled += 1;
-        return new Promise<never>(() => {});
-      }
-      return actual.readAgentDeletionJournalStatusInWorker(...args);
+      return "absent" as const;
     },
+  };
+});
+
+// The retry backoff sleeps on node:timers/promises. Route it through the global setTimeout, so the
+// fake clock controls it too.
+vi.mock("node:timers/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:timers/promises")>();
+  return {
+    ...actual,
+    setTimeout: (ms: number, value?: unknown, options?: { signal?: AbortSignal }) =>
+      new Promise((resolve, reject) => {
+        const timer = globalThis.setTimeout(() => {
+          resolve(value);
+        }, ms);
+        options?.signal?.addEventListener(
+          "abort",
+          () => {
+            globalThis.clearTimeout(timer);
+            reject(options.signal?.reason);
+          },
+          { once: true },
+        );
+      }),
   };
 });
 
@@ -82,25 +98,64 @@ async function closeDatabases() {
   closeBranchAgentDatabasesForTest();
   await closeStateDatabaseForTest();
 }
-afterEach(closeDatabases);
+
+beforeEach(() => {
+  stalls.journalReadsToStall = 0;
+  stalls.journalStalled = 0;
+  permits.outstanding = 0;
+  permits.peak = 0;
+});
+
+afterEach(async () => {
+  vi.useRealTimers();
+  await closeDatabases();
+});
 
 const CLEAN: BranchDatabaseSchemaPreflight = { incompatible: [], indeterminate: [] };
 const NEVER = (): Promise<BranchDatabaseSchemaPreflight> => new Promise(() => {});
-const delay = (ms: number) =>
+/** A fake-clock sleep: it finishes when the test advances the clock past `ms`. */
+const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
   });
 
+/** Lets every microtask and ready macrotask run, without touching the fake clock. */
+const flush = () =>
+  new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+
+/**
+ * Advances the fake clock one timer at a time until `done` holds. Deterministic: nothing here reads
+ * the wall clock, so a slow machine only takes longer. Fails if no timer is left to advance first.
+ */
+async function runUntil(done: () => boolean, what: string): Promise<void> {
+  for (let turn = 0; turn < 100_000; turn += 1) {
+    await flush();
+    if (done()) {
+      return;
+    }
+    if (vi.getTimerCount() === 0) {
+      throw new Error(`no timer left while waiting for ${what}`);
+    }
+    await vi.advanceTimersToNextTimerAsync();
+  }
+  throw new Error(`gave up waiting for ${what}`);
+}
+
 type Agent = {
   agentId: string;
-  inspection?: Promise<BranchDatabaseSchemaPreflight>;
+  /** A function is called once the fake clock is installed, so its timers are fake too. */
+  inspection?:
+    | Promise<BranchDatabaseSchemaPreflight>
+    | (() => Promise<BranchDatabaseSchemaPreflight>);
   prepareAgent?: (input: { signal: AbortSignal }) => Promise<void>;
 };
 
 /**
- * Starts startup preparation for the given agents in one admission. `open` is the Gateway's open of
- * one agent; the default opens at once. `armStall` runs after the databases are open, so a stall
- * cannot be spent on work done before the admission starts.
+ * Starts startup preparation for the given agents in one admission, on fake timers. `open` is the
+ * Gateway's open of one agent; the default opens at once. `armStall` runs after the databases are
+ * open, so a stall cannot be spent on work done before the admission starts.
  */
 async function startAdmission(
   agents: Agent[],
@@ -119,6 +174,7 @@ async function startAdmission(
   );
   await closeDatabases();
   armStall();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   const openAgent = vi.fn(open);
   const replaceAgent = vi.fn(async () => {});
   const prepares = new Map(
@@ -130,7 +186,8 @@ async function startAdmission(
       env,
       inspections: agents.map(({ agentId, inspection }) => ({
         target: { agentId, path: paths.get(agentId)! },
-        result: inspection ?? Promise.resolve(CLEAN),
+        result:
+          typeof inspection === "function" ? inspection() : (inspection ?? Promise.resolve(CLEAN)),
       })),
       reason: "Inspection continues after the Gateway listener binds.",
     });
@@ -147,7 +204,7 @@ async function startAdmission(
   });
   const refusal = (agentId: string) => readAgentDatabaseAdmissionRefusal(agentId, { env });
   const admitted = (agentId: string) =>
-    vi.waitFor(() => expect(refusal(agentId)).toBeUndefined(), { timeout: 10000 });
+    runUntil(() => refusal(agentId) === undefined, `${agentId} to be admitted`);
   return {
     agentId: agents[0]!.agentId,
     env,
@@ -162,11 +219,11 @@ async function startAdmission(
 
 describe("agent database startup stages that could hang", () => {
   it("names a stage that is still waiting for its inspection, and keeps waiting while it has not finished", async () => {
-    const started = await startAdmission([{ agentId: "tk", inspection: NEVER() }], {});
+    const started = await startAdmission([{ agentId: "tk", inspection: NEVER }], {});
     try {
-      await vi.waitFor(
-        () => expect(started.refusal("tk")?.reason).toContain("Stage: inspection."),
-        { timeout: 5000 },
+      await runUntil(
+        () => started.refusal("tk")?.reason.includes("Stage: inspection.") === true,
+        "the inspection stage to be named",
       );
       expect(started.openAgent).not.toHaveBeenCalled();
       expect(started.prepares.get("tk")).not.toHaveBeenCalled();
@@ -184,13 +241,13 @@ describe("agent database startup stages that could hang", () => {
       { BRANCH_AGENT_PREPARATION_RETRY_MS: "400" },
       undefined,
       () => {
-        stalls.deletionJournalReadsToStall = 1;
+        stalls.journalReadsToStall = 1;
       },
     );
     try {
-      await vi.waitFor(
-        () => expect(started.refusal("tk")?.reason).toContain("deletion-journal read"),
-        { timeout: 5000 },
+      await runUntil(
+        () => started.refusal("tk")?.reason.includes("deletion-journal read") === true,
+        "the journal read stage to be named",
       );
       await started.admitted("tk");
       expect(started.prepares.get("tk")).toHaveBeenCalledTimes(1);
@@ -227,31 +284,31 @@ describe("agent database startup stages that could hang", () => {
   });
 
   it("quarantines a hung open after its expiries: its permit is released, and its agent fails with open hung", async () => {
-    permits.outstanding = 0;
     const started = await startAdmission([{ agentId: "tk" }], {}, async () => {
       // Never settles: a hung open cannot be cancelled, so only its expiries can end its agent.
       await new Promise(() => {});
     });
     try {
-      await vi.waitFor(
+      await runUntil(
         () =>
-          expect(started.refusal("tk")).toMatchObject({
-            code: "agent-database-inspection-failed",
-            reason: expect.stringContaining("open hung after 3 expiries; run doctor or restart."),
-          }),
-        { timeout: 5000 },
+          started
+            .refusal("tk")
+            ?.reason.includes("open hung after 3 expiries; run doctor or restart.") === true,
+        "the agent to fail with open hung",
       );
+      expect(started.refusal("tk")).toMatchObject({
+        code: "agent-database-inspection-failed",
+      });
       expect(started.openAgent).toHaveBeenCalledTimes(1);
       expect(started.prepares.get("tk")).not.toHaveBeenCalled();
       // The hung open's permit went back to the pool on quarantine, although the open never settled.
-      await vi.waitFor(() => expect(permits.outstanding).toBe(0), { timeout: 5000 });
+      expect(permits.outstanding).toBe(0);
     } finally {
       await started.stop();
     }
   });
 
   it("two hung opens do not block a third agent's open: their permits are released on quarantine", async () => {
-    permits.outstanding = 0;
     const hung = new Set(["tk", "builder-ash"]);
     const started = await startAdmission(
       [
@@ -261,11 +318,7 @@ describe("agent database startup stages that could hang", () => {
           agentId: "builder-elm",
           // Its inspection finishes after both hung opens have taken the two permits, so its
           // permit request queues behind them until they are quarantined.
-          inspection: new Promise<BranchDatabaseSchemaPreflight>((resolve) => {
-            setTimeout(() => {
-              resolve(CLEAN);
-            }, 100);
-          }),
+          inspection: () => sleep(100).then(() => CLEAN),
         },
       ],
       {},
@@ -277,28 +330,23 @@ describe("agent database startup stages that could hang", () => {
     );
     try {
       await started.admitted("builder-elm");
-      expect(started.openAgent.mock.calls.filter(([input]) => input.agentId === "builder-elm")).toHaveLength(1);
+      expect(
+        started.openAgent.mock.calls.filter(([input]) => input.agentId === "builder-elm"),
+      ).toHaveLength(1);
       expect(started.prepares.get("builder-elm")).toHaveBeenCalledTimes(1);
       for (const agentId of hung) {
-        await vi.waitFor(
-          () =>
-            expect(started.refusal(agentId)).toMatchObject({
-              code: "agent-database-inspection-failed",
-              reason: expect.stringContaining("open hung"),
-            }),
-          { timeout: 5000 },
-        );
+        expect(started.refusal(agentId)).toMatchObject({
+          code: "agent-database-inspection-failed",
+          reason: expect.stringContaining("open hung"),
+        });
       }
-      await vi.waitFor(() => expect(permits.outstanding).toBe(0), { timeout: 5000 });
+      expect(permits.outstanding).toBe(0);
     } finally {
       await started.stop();
     }
   });
 
   it("a stalled open that completes after its expiry does not overlap the retry, publish twice, or leak its permit", async () => {
-    // The hung-open test before this one holds a permit forever; count from zero here.
-    permits.outstanding = 0;
-    permits.peak = 0;
     const inFlight = { now: 0, peak: 0, perAgent: new Map<string, number>(), perAgentPeak: 0 };
     let tkCalls = 0;
     const started = await startAdmission(
@@ -315,7 +363,7 @@ describe("agent database startup stages that could hang", () => {
             tkCalls += 1;
             if (tkCalls === 1) {
               // Ignores its abort and finishes after its stage expired.
-              await delay(150);
+              await sleep(150);
             }
           }
         } finally {
@@ -329,7 +377,7 @@ describe("agent database startup stages that could hang", () => {
       await started.admitted("builder-ash");
       await started.admitted("builder-oak");
       // The late open completes on its own; its permit is released only then.
-      await vi.waitFor(() => expect(permits.outstanding).toBe(0), { timeout: 5000 });
+      await runUntil(() => permits.outstanding === 0, "the late open's permit to be released");
       expect(inFlight.peak).toBeLessThanOrEqual(2);
       expect(inFlight.perAgentPeak).toBe(1);
       expect(permits.peak).toBeLessThanOrEqual(2);
@@ -350,10 +398,7 @@ describe("agent database startup stages that could hang", () => {
       agentIds.map((agentId) => ({ agentId })),
       { BRANCH_AGENT_PREPARATION_ATTEMPT_MS: "300" },
       async () => {
-        await delay(200);
-      },
-      () => {
-        stalls.journalReadsImmediate = true;
+        await sleep(200);
       },
     );
     try {
@@ -361,28 +406,30 @@ describe("agent database startup stages that could hang", () => {
         await started.admitted(agentId);
       }
       for (const agentId of agentIds) {
-        expect(started.openAgent.mock.calls.filter(([input]) => input.agentId === agentId)).toHaveLength(1);
+        expect(
+          started.openAgent.mock.calls.filter(([input]) => input.agentId === agentId),
+        ).toHaveLength(1);
       }
       // No attempt failed, so no expiry fired: a queue wait that counted as stage time would have
       // failed an attempt and replaced its preparation.
       expect(started.replaceAgent).not.toHaveBeenCalled();
     } finally {
-      stalls.journalReadsImmediate = false;
       await started.stop();
     }
   });
 
   it("a stage expiry grows the next attempt's limit, so each attempt is given more time than the last", async () => {
-    stalls.deletionJournalReadsToStall = 6;
-    stalls.stalled = 0;
+    stalls.journalReadsToStall = 0;
     // Base limit 40ms. Each stalled read expires at its limit, and each expiry doubles the next one:
-    // 40, 80, 160, 320, 640, 1280ms. Without growth these six would take about 240ms, not 2.5s.
-    const started = await startAdmission([{ agentId: "tk" }], {}, undefined, () => {});
+    // 40, 80, 160, 320, 640, 1280ms. Without growth these six would take 240ms, not 2520ms.
+    const started = await startAdmission([{ agentId: "tk" }], {}, undefined, () => {
+      stalls.journalReadsToStall = 6;
+    });
     const begun = Date.now();
     try {
       await started.admitted("tk");
-      expect(Date.now() - begun).toBeGreaterThanOrEqual(2000);
-      expect(stalls.stalled).toBe(6);
+      expect(Date.now() - begun).toBeGreaterThanOrEqual(2520);
+      expect(stalls.journalStalled).toBe(6);
       expect(started.openAgent).toHaveBeenCalledTimes(1);
       expect(started.prepares.get("tk")).toHaveBeenCalledTimes(1);
     } finally {
