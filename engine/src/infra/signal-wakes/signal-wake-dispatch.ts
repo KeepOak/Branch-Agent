@@ -1,6 +1,6 @@
 import { resolveAgentMainSessionKey } from "../../config/sessions/main-session.js";
 import type { BranchConfig } from "../../config/types.branch.js";
-import { requestHeartbeat } from "../heartbeat-wake.js";
+import { requestSignalWake } from "../heartbeat-wake.js";
 import { withSystemEventOwner } from "../system-event-ownership.js";
 import { enqueueSystemEvent } from "../system-events.js";
 import type { SignalDecision } from "./signal-wake-decide.js";
@@ -16,7 +16,7 @@ export function dispatchSignalWake(cfg: BranchConfig, signal: SignalDecision): v
   if (!queued) {
     return;
   }
-  requestHeartbeat({
+  requestSignalWake({
     source: "signal",
     intent: "immediate",
     reason: signal.reason,
