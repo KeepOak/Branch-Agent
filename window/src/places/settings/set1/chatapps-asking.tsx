@@ -5,6 +5,7 @@ import { Fragment, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";
 import { visible } from "../adapter";
+import { useAction } from "../hooks";
 import { Btn, Ctl, Hint, Sec, useLevel, useSaveRunner } from "../kit";
 import { ChatLogo as Logo } from "./chatapps-logo";
 import { ago, type App } from "./chatapps-data";
@@ -67,14 +68,16 @@ function RequestRow({ r, onApprove, onDismiss }: { r: PairRequest; onApprove: ()
 function ApproveDialog({ engine, r, trunk, ownerSet, onClose }: { engine: WindowEngine; r: PairRequest; trunk: string; ownerSet: boolean; onClose: () => void }) {
   const level = useLevel();
   const save = useSaveRunner();
+  const action = useAction();
   const [tell, setTell] = useState(false);
   const [owner, setOwner] = useState(false);
-  const go = async () => {
+  const go = () => action.run(async () => {
     const ok = await save(() => engine.request("channels.pairing.approve", { channel: r.channel, accountId: r.accountId, requestId: r.requestId, ...(tell ? { notify: true } : {}), ...(owner ? { bootstrapCommandOwner: true } : {}) }));
     if (ok) onClose();
-  };
+  });
   return (
-    <Dialog title={`Let ${visible(r.senderLabel)} message ${trunk}?`} onClose={onClose} testid="chatapps-approve" footer={<><button type="button" className="btn ghost" onClick={onClose}>Cancel</button><button type="button" className="btn pri" onClick={() => void go()}>Allow</button></>}>
+    <Dialog title={`Let ${visible(r.senderLabel)} message ${trunk}?`} onClose={onClose} testid="chatapps-approve" footer={<><button type="button" className="btn ghost" onClick={onClose}>Cancel</button><button type="button" className="btn pri" disabled={action.busy} onClick={() => void go()}>{action.busy ? "Allowing…" : "Allow"}</button></>}>
+
       <p className="mono-ca">{[visible(r.senderId), visible(r.channelLabel), visible(r.accountLabel ?? r.accountId)].join(" · ")}</p>
       <div className="info-ca">They can message in direct chats. Groups are separate.</div>
       {r.notifySupported ? <label className="row-ca"><input type="checkbox" checked={tell} onChange={(e) => setTell(e.target.checked)} /><span>Tell them they’re allowed</span></label> : null}
@@ -85,9 +88,11 @@ function ApproveDialog({ engine, r, trunk, ownerSet, onClose }: { engine: Window
 
 function DismissDialog({ engine, r, onClose }: { engine: WindowEngine; r: PairRequest; onClose: () => void }) {
   const save = useSaveRunner();
-  const go = async () => { if (await save(() => engine.request("channels.pairing.dismiss", { channel: r.channel, accountId: r.accountId, requestId: r.requestId }))) onClose(); };
+  const action = useAction();
+  const go = () => action.run(async () => { if (await save(() => engine.request("channels.pairing.dismiss", { channel: r.channel, accountId: r.accountId, requestId: r.requestId }))) onClose(); });
   return (
-    <Dialog title="Don't allow this request?" onClose={onClose} testid="chatapps-dismiss" footer={<><button type="button" className="btn ghost" onClick={onClose}>Cancel</button><button type="button" className="btn bad" onClick={() => void go()}>Don't allow</button></>}>
+    <Dialog title="Don't allow this request?" onClose={onClose} testid="chatapps-dismiss" footer={<><button type="button" className="btn ghost" onClick={onClose}>Cancel</button><button type="button" className="btn bad" disabled={action.busy} onClick={() => void go()}>{action.busy ? "Dismissing…" : "Don't allow"}</button></>}>
+
       <p className="dlg-p-ca">They aren’t blocked and can ask again.</p>
     </Dialog>
   );
