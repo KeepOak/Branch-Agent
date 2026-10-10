@@ -15,6 +15,17 @@ function pendingAskChips(history: readonly Block[]): string[] | undefined {
   return ["Yes, go ahead", "Tell me more first", "Not now"];
 }
 
+/**
+ * Prefer no chip to guessing: a question mark alone does not imply a binary choice.
+ * Only questions that ask whether a statement holds ("Is this right?", "Did you get it?") count.
+ * Modal forms ("Can you…", "Could you…", "Would you…") ask for something, so they never do.
+ */
+function isConfirmation(question: string): boolean {
+  // A wh-word or an alternative makes the answer something other than yes or no.
+  if (/\b(?:or|what|which|who|where|when|why|how)\b/i.test(question)) return false;
+  return /^(?:is|are|was|do|does|did|have|has)\s+(?:it|this|that|you)\b/i.test(question);
+}
+
 /** Follow-ups are derived only from the latest real reply, never an older turn or a canned conversation. */
 export function suggestionsFor(history: readonly Block[], running: boolean, pendingUser: boolean): string[] {
   if (running || pendingUser) return [];
@@ -29,7 +40,7 @@ export function suggestionsFor(history: readonly Block[], running: boolean, pend
   const lower = words.toLowerCase();
   const answer: string[] = [];
   const question = words.match(/[^.!?]*\?\s*$/)?.[0]?.trim();
-  if (question) {
+  if (question && !/\bor\b/i.test(question)) {
     const offer = question.match(/^(?:want me to|shall i|should i|do you want me to)\s+(.+?)\?$/i);
     if (offer && / and /i.test(offer[1])) {
       const [a] = offer[1].split(/ and /i);
@@ -39,7 +50,7 @@ export function suggestionsFor(history: readonly Block[], running: boolean, pend
         "Not now",
       );
     } else if (offer) answer.push("Yes, please", "Not now");
-    else answer.push("Yes", "No");
+    else if (isConfirmation(question)) answer.push("Yes", "No");
   }
   if (/\$\d|short|late fee|difference/i.test(lower) && /invoice|paid/i.test(lower)) {
     answer.push("Ask them to waive it", "Show me the invoice");
