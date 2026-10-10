@@ -11,6 +11,11 @@ import { parseNodeWorkerDesktopStreamInput } from "../worker/node-desktop-protoc
 import { runNodeStreamTransport } from "./node-stream-transport.js";
 
 const DEFAULT_DESKTOP_PORT = 5900;
+
+/** What a person sees when another computer's screen can't be watched yet. No setup is asked of them. */
+export function loopbackRfbUnavailableMessage(): string {
+  return "Watching another computer's screen is coming in a Branch update. No setup needed.";
+}
 const PROBE_TIMEOUT_MS = 1_500;
 const TICKET_PATTERN = /^[a-f0-9]{48}$/u;
 const MAX_VNC_PASSWORD_BYTES = 4 * 1024;
@@ -123,7 +128,7 @@ async function runNodeDesktopStreamCommand(params: {
     throw new Error(
       probe.kind === "not-rfb"
         ? `desktop stream target 127.0.0.1:${params.port} is not an RFB server; set desktop.host.port to the node's VNC server port`
-        : `desktop stream loopback RFB server is unavailable on port ${params.port}; enable System Settings -> General -> Sharing -> Screen Sharing on macOS, or start an authenticated loopback VNC server on Linux or Windows`,
+        : loopbackRfbUnavailableMessage(),
     );
   }
   try {

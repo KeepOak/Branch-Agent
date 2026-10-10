@@ -9,6 +9,7 @@ import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { rawDataToString } from "../infra/ws.js";
 import {
   invokeNodeDesktopStream,
+  loopbackRfbUnavailableMessage,
   invokeNodeWorkerDesktopStream,
 } from "./desktop-stream-command.js";
 
@@ -92,7 +93,13 @@ describe("node desktop stream command", () => {
         config: { enabled: true, port: address.port },
         signal: new AbortController().signal,
       }),
-    ).rejects.toThrow(/Screen Sharing.*authenticated loopback VNC server/);
+    ).rejects.toThrow(loopbackRfbUnavailableMessage());
+  });
+
+  it("asks nothing of the person: no server, OS or port setup in the message", () => {
+    const message = loopbackRfbUnavailableMessage();
+    expect(message).toBe("Watching another computer's screen is coming in a Branch update. No setup needed.");
+    expect(message).not.toMatch(/VNC|Screen Sharing|TightVNC|System Settings|5900|127\.0\.0\.1/i);
   });
 
   it.each([
