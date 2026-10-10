@@ -107,6 +107,8 @@ describe("update-cli", () => {
     await updateCommand({ yes: true }).catch((error: unknown) => {
       // Preserve the real worker diagnostic when RuntimeEnv.exit becomes an ExitError.
       console.error(getErrorOutput());
+      console.error(getLogOutput());
+      console.error(lastWriteJsonCall());
       throw error;
     });
 

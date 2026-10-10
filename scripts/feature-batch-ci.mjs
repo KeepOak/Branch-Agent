@@ -52,6 +52,8 @@ async function prepareBuildArtifacts() {
     await run(process.execPath, ['--import', './scripts/tsx.mjs',
       'scripts/build-workspace-package.mts', name], engineRoot);
   }
+  await run(process.execPath, ['--import', './scripts/tsx.mjs',
+    'scripts/tsdown-build.mts', '--config', 'tsdown.ai.config.ts'], engineRoot);
   // SQLite worker children use native package resolution, not Vitest/TSX aliases.
   await run(process.execPath, ['--input-type=module', '--eval',
     'import assert from "node:assert/strict";\n' +
@@ -61,6 +63,7 @@ async function prepareBuildArtifacts() {
     'await import("@branch/retry");\n' +
     'await import("@branch/model-catalog-core/model-catalog-refs");\n' +
     'await import("@branch/media-core/constants");\n' +
+    'await import("@branch/ai/diagnostics");\n' +
     'assert.deepEqual(asRecord({ probe: true }), { probe: true });\n' +
     'assert.equal(typeof createRetainedOperation, "function");\n' +
     'console.log("PASS: SQLite worker native package resolution");'], path.join(engineRoot, 'src/infra'));
