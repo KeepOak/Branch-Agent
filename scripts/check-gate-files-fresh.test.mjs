@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import { GATE_SCRIPTS } from './merge-gate-trusted.mjs';
 import {
@@ -148,12 +151,65 @@ test('a deliberate edit that changes a line which existed at the fork point pass
 });
 
 test('listed gate files include the merge-gate workflows and GATE_SCRIPTS', () => {
+  assert.deepEqual(GATE_WORKFLOW_FILES, [
+    '.github/workflows/merge-gate.yml',
+    '.github/workflows/merge-gate-trusted.yml',
+    '.github/workflows/merge-gate-recheck.yml',
+    '.github/workflows/gate-files-fresh.yml',
+    'scripts/merge-gate-trusted.mjs',
+    'scripts/check-gate-files-fresh.mjs',
+  ]);
   const listed = listedGateFiles();
   for (const file of [...GATE_WORKFLOW_FILES, ...GATE_SCRIPTS]) {
     assert.ok(listed.includes(file), file);
   }
+  assert.ok(listed.includes('.github/workflows/merge-gate-recheck.yml'));
   assert.ok(listed.includes('.github/workflows/gate-files-fresh.yml'));
   assert.ok(listed.includes('scripts/check-gate-files-fresh.mjs'));
+});
+
+function mergeGateRecheckYaml() {
+  return readFileSync(new URL('../.github/workflows/merge-gate-recheck.yml', import.meta.url), 'utf8');
+}
+
+function mergeGateRecheckShaJq() {
+  const yaml = mergeGateRecheckYaml();
+  const match = yaml.match(/SHA=\$\(jq -r --arg event "\$EVENT" --arg head "\$HEAD_SHA" '([\s\S]*?)' "\$\{RUNNER_TEMP/);
+  assert.ok(match, 'recheck workflow must resolve SHA with jq');
+  return match[1];
+}
+
+function resolveRecheckSha(event, headSha, pullRequests) {
+  const prsPath = path.join(tmpdir(), `merge-gate-recheck-prs-${process.pid}-${Date.now()}.json`);
+  writeFileSync(prsPath, JSON.stringify(pullRequests));
+  try {
+    return execFileSync('jq', ['-r', '--arg', 'event', event, '--arg', 'head', headSha, mergeGateRecheckShaJq(), prsPath], {
+      encoding: 'utf8',
+    }).trim();
+  } finally {
+    unlinkSync(prsPath);
+  }
+}
+
+test('merge-gate recheck accepts Gate files fresh pull_request_target and verifies the PR head SHA', () => {
+  const yaml = mergeGateRecheckYaml();
+  assert.match(yaml, /^\s+-\s+Gate files fresh\s*$/m);
+  assert.match(yaml, /github\.event\.workflow_run\.event == 'pull_request'/);
+  assert.match(yaml, /github\.event\.workflow_run\.event == 'pull_request_target'/);
+  assert.match(yaml, /github\.event\.workflow_run\.name == 'Gate files fresh'/);
+  assert.match(yaml, /github\.event\.workflow_run\.conclusion == 'success'/);
+  assert.doesNotMatch(yaml, /^\s+SHA:\s*\$\{\{\s*github\.event\.workflow_run\.head_sha\s*\}\}/m);
+  assert.match(yaml, /toJSON\(github\.event\.workflow_run\.pull_requests\)/);
+  assert.match(yaml, /No verified PR head SHA/);
+
+  const pr = { head: { sha: 'prhead' }, base: { sha: 'mainsha' } };
+  assert.equal(resolveRecheckSha('pull_request', 'prhead', [pr]), 'prhead');
+  assert.equal(resolveRecheckSha('pull_request', 'prhead', []), 'prhead');
+  assert.equal(resolveRecheckSha('pull_request_target', 'prhead', [pr]), 'prhead');
+  assert.equal(resolveRecheckSha('pull_request_target', 'mainsha', [pr]), 'prhead');
+  assert.equal(resolveRecheckSha('pull_request_target', 'prhead', []), '');
+  assert.equal(resolveRecheckSha('pull_request_target', 'other', [pr]), '');
+  assert.equal(resolveRecheckSha('push', 'prhead', [pr]), '');
 });
 
 test('gate-files-fresh workflow checks out the default branch read-only', () => {
