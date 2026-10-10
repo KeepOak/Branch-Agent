@@ -123,42 +123,50 @@ export function placementFor(machine: string): {
   return machine === "this" ? {} : { tools: { exec: { host: "node", node: machine } } };
 }
 
-type ApproveOutcome =
+type ApplyOutcome =
   | { ok: true; payload: Record<string, unknown> }
   | { ok: false; error: ReturnType<typeof errorShape> };
 
-/** The approval running for each team, with the proposal it is applying. */
-const teamApprovalsInFlight = new Map<string, { hash: string; outcome: Promise<ApproveOutcome> }>();
+/** The applies running for each team. A second allow for the same team waits for the first, never repeats it. */
+const teamAppliesInFlight = new Map<string, Promise<ApplyOutcome>>();
 
-async function approveOnce(
+/**
+ * Applies an allowed team. The proposal is rebuilt from the configuration at this moment, and only a team that still
+ * has the hash the owner allowed is created, so a model or computer that changed while the card waited is refused.
+ */
+function applyAllowed(
   context: GatewayRequestContext,
   goal: string,
   roles: TeamDraftRole[] | undefined,
-  proposalHash: string,
-): Promise<ApproveOutcome> {
-  const result = proposalFor(context, goal, roles);
-  if (!result.ok) {
-    return { ok: false, error: errorShape(ErrorCodes.INVALID_REQUEST, result.reason) };
+  allowedHash: string,
+): Promise<ApplyOutcome> {
+  const teamId = proposalFor(context, goal, roles);
+  const key = teamId.ok ? teamId.proposal.teamId : goal;
+  const running = teamAppliesInFlight.get(key);
+  if (running) {
+    return running;
   }
-  if (proposalHash !== result.proposal.hash) {
+  const applied = applyOnce(context, goal, roles, allowedHash).finally(() => {
+    teamAppliesInFlight.delete(key);
+  });
+  teamAppliesInFlight.set(key, applied);
+  return applied;
+}
+
+async function applyOnce(
+  context: GatewayRequestContext,
+  goal: string,
+  roles: TeamDraftRole[] | undefined,
+  allowedHash: string,
+): Promise<ApplyOutcome> {
+  const result = proposalFor(context, goal, roles);
+  if (!result.ok || result.proposal.hash !== allowedHash) {
     return {
       ok: false,
       error: errorShape(
         ErrorCodes.INVALID_REQUEST,
-        "The team changed since it was proposed. Propose it again.",
+        "The team changed after it was allowed. Propose it again.",
       ),
-    };
-  }
-  const decision = await requestOwnerChangeApproval({
-    context,
-    title: "Create a team",
-    question: describeTeamProposal(result.proposal),
-    kind: "trunk-team",
-  });
-  if (decision !== "allow") {
-    return {
-      ok: true,
-      payload: { status: decision === "unavailable" ? "unavailable" : "declined" },
     };
   }
   try {
@@ -166,7 +174,7 @@ async function approveOnce(
     wakeEligibleTrunks(context.getRuntimeConfig(), (message) => context.logGateway.warn(message));
     return { ok: true, payload: { status: "applied", ...applied } };
   } catch (error) {
-    // Each step checks before it creates, so approving again finishes what is missing.
+    // Each step checks before it creates, so opening and allowing again finishes what is missing.
     context.logGateway.warn(
       `team ${result.proposal.teamId} was not fully created: ${formatErrorMessage(error)}`,
     );
@@ -174,40 +182,54 @@ async function approveOnce(
       ok: false,
       error: errorShape(
         ErrorCodes.UNAVAILABLE,
-        "The team was only partly created. Approve it again to finish.",
+        "The team was only partly created. Open it again to finish.",
       ),
     };
   }
 }
 
 /**
- * One approval per team at a time. A second approve of the same proposal shares the first one's outcome, so
- * nothing is created twice. A different proposal for the same team waits behind the running one and is refused.
+ * The approval record for each proposal that is waiting for the owner, by team id and hash. Opening the same proposal
+ * again returns the record already waiting, so the card and the Inbox show one approval.
  */
-function singleFlightApprove(
+const openApprovals = new Map<string, Promise<string | undefined>>();
+
+/**
+ * Opens the team's approval: the same record the Inbox shows. The owner's Allow on that record (approval.resolve)
+ * is the only thing that starts the apply; nothing is created here.
+ */
+function openApproval(
   context: GatewayRequestContext,
-  teamId: string,
   goal: string,
   roles: TeamDraftRole[] | undefined,
-  proposalHash: string,
-): Promise<ApproveOutcome> {
-  const running = teamApprovalsInFlight.get(teamId);
-  if (running) {
-    return running.hash === proposalHash
-      ? running.outcome
-      : Promise.resolve({
-          ok: false,
-          error: errorShape(
-            ErrorCodes.UNAVAILABLE,
-            "Another approval for this team is running. Wait for it to finish.",
-          ),
-        });
+  proposal: { teamId: string; hash: string },
+  question: string,
+): Promise<string | undefined> {
+  const key = `${proposal.teamId}:${proposal.hash}`;
+  const waiting = openApprovals.get(key);
+  if (waiting) {
+    return waiting;
   }
-  const outcome = approveOnce(context, goal, roles, proposalHash).finally(() => {
-    teamApprovalsInFlight.delete(teamId);
+  let recorded: (id: string | undefined) => void = () => undefined;
+  const id = new Promise<string | undefined>((resolve) => {
+    recorded = resolve;
   });
-  teamApprovalsInFlight.set(teamId, { hash: proposalHash, outcome });
-  return outcome;
+  openApprovals.set(key, id);
+  const decided = requestOwnerChangeApproval({
+    context,
+    title: "Create a team",
+    question,
+    kind: "trunk-team",
+    onRecord: (approvalId) => recorded(approvalId),
+  });
+  void decided.then(async (decision) => {
+    recorded(undefined);
+    openApprovals.delete(key);
+    if (decision === "allow") {
+      await applyAllowed(context, goal, roles, proposal.hash);
+    }
+  });
+  return id;
 }
 
 export const trunkTeamHandlers: GatewayRequestHandlers = {
@@ -227,26 +249,37 @@ export const trunkTeamHandlers: GatewayRequestHandlers = {
       },
     });
   },
-  "trunks.team.approve": async ({ params, respond, context }) => {
+  "trunks.team.open": async ({ params, respond, context }) => {
     const p = rec(params);
     const goal = text(p.goal);
     const roles = parseRoles(p.roles);
-    const proposal = proposalFor(context, goal, roles);
-    if (!proposal.ok) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, proposal.reason));
+    const result = proposalFor(context, goal, roles);
+    if (!result.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.reason));
       return;
     }
-    const outcome = await singleFlightApprove(
+    if (text(p.proposalHash) !== result.proposal.hash) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "The team changed since it was proposed. Propose it again.",
+        ),
+      );
+      return;
+    }
+    const approvalId = await openApproval(
       context,
-      proposal.proposal.teamId,
       goal,
       roles,
-      text(p.proposalHash),
+      result.proposal,
+      describeTeamProposal(result.proposal),
     );
-    if (outcome.ok) {
-      respond(true, outcome.payload);
-    } else {
-      respond(false, undefined, outcome.error);
+    if (!approvalId) {
+      respond(true, { status: "unavailable" });
+      return;
     }
+    respond(true, { status: "pending", approvalId });
   },
 };

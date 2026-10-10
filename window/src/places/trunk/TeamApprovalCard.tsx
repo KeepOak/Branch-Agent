@@ -11,7 +11,13 @@ export type TeamApprovalMember = {
   machine: string;
   model: string;
 };
-export type TeamApprovalState = "asking" | "waiting" | "applied" | "declined" | "unavailable";
+export type TeamApprovalState =
+  | "opening"
+  | "asking"
+  | "applying"
+  | "applied"
+  | "declined"
+  | "unavailable";
 export type TeamApprovalChoices = { models: readonly string[]; machines: readonly string[] };
 export type TeamApprovalProps = {
   goal: string;
@@ -24,7 +30,8 @@ export type TeamApprovalProps = {
   onSave?: (members: TeamApprovalMember[]) => void | Promise<void>;
 };
 
-const ANSWER: Record<Exclude<TeamApprovalState, "asking" | "waiting">, string> = {
+const ANSWER: Record<Exclude<TeamApprovalState, "opening" | "asking">, string> = {
+  applying: "Allowed. The team is being created now.",
   applied: "Team created. Its first jobs are in the queue.",
   declined: "Not created.",
   unavailable: "Approval is unavailable right now. Nothing was created.",
@@ -158,16 +165,9 @@ function Editing({
 }
 
 function Answer({ state }: { state: TeamApprovalState }) {
-  if (state === "waiting") {
-    return (
-      <p role="status" className="team-approval-answer">
-        Waiting for you in your Inbox. Allow the team there to create it.
-      </p>
-    );
-  }
   return (
     <p role="status" className="team-approval-answer">
-      {ANSWER[state as Exclude<TeamApprovalState, "asking" | "waiting">]}
+      {ANSWER[state as Exclude<TeamApprovalState, "opening" | "asking">]}
     </p>
   );
 }
@@ -183,7 +183,8 @@ export function TeamApprovalCard({
   onSave,
 }: TeamApprovalProps) {
   const [editing, setEditing] = useState(false);
-  const asking = state === "asking";
+  const asking = state === "asking" || state === "opening";
+  const ready = state === "asking";
   return (
     <section
       className="team-approval"
@@ -218,6 +219,7 @@ export function TeamApprovalCard({
               className="btn pri"
               data-testid="team-approve"
               onClick={onApprove}
+              disabled={!ready}
             >
               Approve team
             </button>
@@ -230,12 +232,13 @@ export function TeamApprovalCard({
             >
               Edit
             </button>
-            <button type="button" className="btn ghost" onClick={onDecline}>
+            <button type="button" className="btn ghost" onClick={onDecline} disabled={!ready}>
               Not now
             </button>
           </div>
           <p className="team-approval-hint">
-            Nothing is created until you approve. {costLine(members)}
+            {ready ? "Nothing is created until you approve. " : "Opening the approval… "}
+            {costLine(members)}
           </p>
           {error ? (
             <p role="alert" className="team-approval-error">

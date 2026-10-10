@@ -36,6 +36,8 @@ export async function requestOwnerChangeApproval(params: {
   title: string;
   question: string;
   kind: string;
+  /** Called with the approval's id as soon as the record exists, before the owner decides. */
+  onRecord?: (approvalId: string) => void;
 }): Promise<ModelChoiceDecision | "unavailable"> {
   const manager = params.context.systemAgentApprovalManager;
   if (!manager) {
@@ -62,6 +64,7 @@ export async function requestOwnerChangeApproval(params: {
   if (caller?.approvalSignals?.length) {
     record.approvalSignals = caller.approvalSignals;
   }
+  params.onRecord?.(record.id);
   await manager.register(record, SYSTEM_AGENT_APPROVAL_TIMEOUT_MS);
   const requestEvent = buildRequestedApprovalEvent(record, "system-agent");
   let decided: ExecApprovalDecision | null = null;

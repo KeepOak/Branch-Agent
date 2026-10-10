@@ -22,6 +22,7 @@ import { readRoomLog, getRoom } from "../rooms/store.js";
 
 const mocks = vi.hoisted(() => ({
   approval: vi.fn(),
+  decide: (() => undefined) as (decision: string) => void,
   cfg: {} as BranchConfig,
   created: [] as Array<{ id: string; model?: string; tools?: unknown }>,
 }));
@@ -43,7 +44,7 @@ let dir: string;
 let previousStateDir: string | undefined;
 
 /** The gateway handler, called the way the in-process tool call reaches it. */
-async function gateway(method: "trunks.team.propose" | "trunks.team.approve", params: object) {
+async function gateway(method: "trunks.team.propose" | "trunks.team.open", params: object) {
   const respond = vi.fn();
   await trunkTeamHandlers[method]!({
     params,
@@ -68,7 +69,15 @@ beforeEach(() => {
   mocks.cfg = { agents: { defaults: { model: "anthropic/claude-sonnet" }, entries: { main: {} } } };
   mocks.created.length = 0;
   mocks.approval.mockReset();
-  mocks.approval.mockResolvedValue("allow");
+  // The owner's answer on the record: it is created first, then answered (see step 4).
+  mocks.decide = () => undefined;
+  mocks.approval.mockImplementation(
+    (params: { onRecord?: (id: string) => void }) =>
+      new Promise<string>((resolve) => {
+        params.onRecord?.("appr-flow");
+        mocks.decide = resolve;
+      }),
+  );
 });
 
 afterEach(async () => {
@@ -146,7 +155,7 @@ describe("a team, from the first conversation to the first progress line", () =>
     attachTeamProgress((event, payload) => {
       attached.push([event, payload]);
     });
-    const applied = await gateway("trunks.team.approve", {
+    const opened = await gateway("trunks.team.open", {
       goal: "Ship the Q3 newsletter",
       roles: [
         { name: "Researcher", job: "Find the three topics readers asked about." },
@@ -154,9 +163,15 @@ describe("a team, from the first conversation to the first progress line", () =>
       ],
       proposalHash: proposal.hash,
     });
+    // Opening creates the record the Inbox shows, and nothing else.
+    expect(opened).toEqual({ status: "pending", approvalId: "appr-flow" });
+    expect(mocks.created).toHaveLength(0);
+
+    // The owner's one tap on the card resolves that record as allowed.
+    mocks.decide("allow");
+    await vi.waitFor(() => expect(mocks.created).toHaveLength(proposal.members.length));
 
     // 5. The Trunks, the room, and the queue jobs exist, once each.
-    expect(applied).toMatchObject({ status: "applied" });
     expect(mocks.created.map((entry) => entry.id)).toEqual(
       proposal.members.map((member) => member.agentId),
     );
@@ -181,7 +196,7 @@ describe("the approve path under Lockdown", () => {
   it("is refused at admission, so the team is not created", () => {
     expect(
       decideLockdownAdmission({
-        method: "trunks.team.approve",
+        method: "trunks.team.open",
         params: { goal: "Ship it", proposalHash: "h" },
         scope: "operator.write",
         isOwner: () => true,
@@ -195,6 +210,59 @@ describe("the approve path under Lockdown", () => {
         isOwner: () => true,
       }),
     ).toEqual({ admitted: false, reason: "locked" });
+    expect(mocks.created).toHaveLength(0);
+  });
+});
+
+describe("one tap on the card", () => {
+  /** The gateway's admission for the card's tap: under Lockdown, approval.resolve allow never reaches the record. */
+  function tap(lockdown: boolean): { admitted: boolean } {
+    if (!lockdown) {
+      mocks.decide("allow");
+      return { admitted: true };
+    }
+    return decideLockdownAdmission({
+      method: "approval.resolve",
+      params: { id: "appr-tap", kind: "system-agent", decision: "allow-once" },
+      scope: "operator.write",
+      isOwner: () => true,
+    });
+  }
+
+  async function openedTeam(goal: string) {
+    const proposed = await gateway("trunks.team.propose", { goal });
+    const proposal = (proposed as { proposal: { hash: string } }).proposal;
+    const opened = await gateway("trunks.team.open", { goal, proposalHash: proposal.hash });
+    return { opened: opened as { approvalId: string } };
+  }
+
+  beforeEach(() => {
+    mocks.created.length = 0;
+    mocks.approval.mockReset();
+    mocks.approval.mockImplementation(
+      (params: { onRecord?: (id: string) => void }) =>
+        new Promise<string>((resolve) => {
+          params.onRecord?.("appr-tap");
+          mocks.decide = resolve;
+        }),
+    );
+  });
+
+  it("creates the team on one tap when Lockdown is off", async () => {
+    await openedTeam("Ship a one-tap newsletter");
+    expect(tap(false)).toEqual({ admitted: true });
+    await vi.waitFor(() => expect(mocks.created.length).toBe(3));
+  });
+
+  it("refuses the same tap under Lockdown: the record is not answered, and nothing is created", async () => {
+    await openedTeam("Ship a locked newsletter");
+
+    const refused = tap(true);
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(refused).toEqual({ admitted: false, reason: "locked" });
     expect(mocks.created).toHaveLength(0);
   });
 });

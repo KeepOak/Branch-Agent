@@ -62,13 +62,22 @@ describe("TeamApprovalCard", () => {
     expect(onApprove).toHaveBeenCalledTimes(1);
   });
 
-  it("says approving goes to the Inbox while the answer is pending", () => {
-    const el = render(<TeamApprovalCard goal="Ship it" members={members} state="waiting" />);
+  it("disables both answers while the approval is still opening", () => {
+    const el = render(<TeamApprovalCard goal="Ship it" members={members} state="opening" />);
 
-    expect(el.querySelector('[role="status"]')?.textContent).toContain(
-      "Waiting for you in your Inbox",
+    expect(el.querySelector<HTMLButtonElement>('[data-testid="team-approve"]')?.disabled).toBe(
+      true,
     );
+    expect(el.textContent).toContain("Opening the approval");
+  });
+
+  it("says the team is being created once the owner has allowed it", () => {
+    const el = render(<TeamApprovalCard goal="Ship it" members={members} state="applying" />);
+
     expect(el.querySelector('[data-testid="team-approve"]')).toBeNull();
+    expect(el.querySelector('[role="status"]')?.textContent).toContain(
+      "Allowed. The team is being created now.",
+    );
   });
 
   it.each([
