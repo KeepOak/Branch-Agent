@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { QueueTransition } from "./trunk-queue.js";
 import { teamOfJob, teamProgressPost } from "./trunk-team-progress.js";
 
-const TEAM_BRIEF = "Find the sources.\n\nGoal: Ship it\n\n<!-- team:2d60428e:Scout -->";
+const TEAM_BRIEF = "Find the sources.\n\nGoal: Ship it\n\n<!-- team:2d60428e:scout|Scout -->";
 const item = (brief_text: string, extra: Record<string, unknown> = {}) =>
   ({
     id: "job-1",
@@ -16,7 +16,7 @@ const roomOk = () => true;
 
 describe("teamOfJob", () => {
   it("reads the team and role from a team job's marker", () => {
-    expect(teamOfJob(TEAM_BRIEF)).toEqual({ teamId: "2d60428e", role: "Scout" });
+    expect(teamOfJob(TEAM_BRIEF)).toEqual({ teamId: "2d60428e", slug: "scout", role: "Scout" });
   });
 
   it("returns nothing for an ordinary job", () => {

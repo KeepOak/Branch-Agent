@@ -43,7 +43,8 @@ export const TOOLSETS: readonly ToolsetDefinition[] = [
   {
     id: "shell",
     label: "Shell",
-    description: "Run commands and background processes, use shared terminals, run code in a sandbox.",
+    description:
+      "Run commands and background processes, use shared terminals, run code in a sandbox.",
     tools: ["exec", "process", "terminal", "code_execution"],
   },
   {
@@ -81,6 +82,7 @@ export const TOOLSETS: readonly ToolsetDefinition[] = [
       "room_list",
       "room_read",
       "room_post",
+      "team_propose",
       "trunk_message",
       "sessions_send",
     ],

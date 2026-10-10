@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "../config/paths.js";
+import { teamMembers } from "./trunk-team-registry.js";
 
 export type TrunkQueueItem = {
   id: string;
@@ -28,6 +29,8 @@ export type TrunkQueueItem = {
   failures?: number;
   /** Plain reason a job stopped after MAX_CLAIM_FAILURES. Shown in the queue list; cleared by queue_release. */
   blocked_reason?: string;
+  /** The team this job belongs to. Only that team's registered members may claim it. */
+  team?: string;
 };
 
 export type TrunkQueueStatus = "queued" | "claimed" | "released" | "blocked" | "done";
@@ -100,6 +103,14 @@ function isPastStaleTime(row: TrunkQueueItem, now: number): boolean {
   return now - (row.active_at ?? row.claimed_at ?? now) >= STALE_CLAIM_MS;
 }
 
+/** A team job is claimable only by a member of that team; any other job is open to every eligible Trunk. */
+function mayClaim(row: TrunkQueueItem, agentId: string, env?: NodeJS.ProcessEnv): boolean {
+  if (!row.team) {
+    return true;
+  }
+  return (teamMembers(row.team, env) ?? []).includes(agentId);
+}
+
 function isClaimable(row: TrunkQueueItem): boolean {
   return !row.done_at && !row.claimed_by && (row.failures ?? 0) < MAX_CLAIM_FAILURES;
 }
@@ -135,7 +146,7 @@ function byPriority(a: TrunkQueueItem, b: TrunkQueueItem): number {
 }
 
 export function addQueueItem(
-  input: { title: string; brief_text: string; priority?: number },
+  input: { title: string; brief_text: string; priority?: number; team?: string },
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
 ): TrunkQueueItem {
@@ -146,6 +157,7 @@ export function addQueueItem(
     brief_text: input.brief_text,
     priority: input.priority ?? 0,
     added_at: now,
+    ...(input.team ? { team: input.team } : {}),
   };
   rows.push(item);
   write(rows, now, env);
@@ -320,7 +332,9 @@ export function claimNextQueueItem(
 ): TrunkQueueClaim | undefined {
   const rows = read(env);
   const holds = rows.some((row) => isOpenClaim(row) && row.claimed_by === agentId);
-  const next = holds ? undefined : rows.filter(isClaimable).toSorted(byPriority)[0];
+  const next = holds
+    ? undefined
+    : rows.filter((row) => isClaimable(row) && mayClaim(row, agentId, env)).toSorted(byPriority)[0];
   if (!next) {
     return undefined;
   }

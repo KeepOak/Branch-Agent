@@ -9,6 +9,7 @@ describe("the visual harness routes", () => {
       "stage-preview",
       "team-approval-before",
       "team-approval",
+      "team-thread",
     ]);
     for (const description of Object.values(ROUTES)) expect(description.length).toBeGreaterThan(10);
   });
