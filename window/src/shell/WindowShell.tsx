@@ -1152,14 +1152,14 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const pet = usePetLook(session.engine);
   // Let it roam (Appearance › Pet) walks the pet along the chat instead of the card; one pet on screen at a time.
   const lanePet = pet.roam ? pet : { ...pet, id: "none" };
-  const stopRoaming = () => void lookStore(session.engine).set("roam", false);
-  // While the pet roams the card is hidden, so the header face gives the card back, with Undo, instead of doing nothing.
-  const onCharacterButton = () => {
-    if (!pet.roam) { setCharacterVisible(!characterShown); return; }
-    stopRoaming();
+  // Stopping the roam brings the card back, with Undo; the pet's menu and the header face both use it.
+  const stopRoaming = () => {
+    void lookStore(session.engine).set("roam", false);
     setCharacterVisible(true);
     notify("Back on the card.", { action: { label: "Undo", run: () => void lookStore(session.engine).set("roam", true) } });
   };
+  // While the pet roams the card is hidden, so the header face gives the card back instead of doing nothing.
+  const onCharacterButton = () => (pet.roam ? stopRoaming() : setCharacterVisible(!characterShown));
   const reducedMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
   const pausedTrunks = trunks.list.filter((t) => t.paused);
   const statusExtras = {
