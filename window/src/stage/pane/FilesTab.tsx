@@ -176,7 +176,7 @@ export function FilesTab({ engine }: { engine: WindowEngine }) {
     <>
       <div className="f-search-pn">
         <input className="inp" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search files" aria-label="Search files" />
-        <span className="chips-pn" role="group" aria-label="Show only">
+        <span className="chips-pn" role="group" aria-label="Which files are listed">
           {(["modified", "read"] as const).map((k) => (
             <button key={k} type="button" className="chip-pn" aria-pressed={only === k} onClick={() => setOnly(only === k ? null : k)}>
               {KIND[k]}

@@ -9,7 +9,7 @@ import { ageWords, comingUp, readLimits, readRoom, readRounds, sizeWords, uptime
 import type { GatewayFacts } from "./use-status";
 import "./status.css";
 import { shownWhy } from "./shown-why";
-import { branchVersionDetail, branchVersionLabel } from "../connect/branch-version";
+import { branchVersionDetail, branchVersionLabel, isNewerBranchVersion } from "../connect/branch-version";
 import { installOnComputer } from "../connect/desktop-component-updates";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
@@ -266,10 +266,10 @@ type VersionProps = Base & { update: UpdateInfo | null; version: string; desktop
 
 /** §4.9.8 Version and update menu: what's ready, What's new, Install when idle, Remind me tomorrow. */
 export function VersionPopover({ update, version, desktopPending, autoApply, desktopInstall, computerName = "", onWhatsNew, onInstall, onRemind, ...base }: VersionProps) {
-  const latest = update?.latest && update.latest !== version ? update.latest : null;
+  const latest = version.trim() && update?.latest && isNewerBranchVersion(update.latest, version) ? update.latest : null;
   return (
     <Popover at={{ x: 0, y: 0 }} label="Version and updates" testid="pop-version" className="sp" {...base}>
-      {desktopPending && autoApply ? <><div className="pt">Update ready, applying when your Trunks finish</div><p className="pp">{branchVersionLabel(desktopPending)}</p></> : null}
+      {version.trim() && desktopPending && autoApply && isNewerBranchVersion(desktopPending, version) ? <><div className="pt">Update ready, applying when your Trunks finish</div><p className="pp">{branchVersionLabel(desktopPending)}</p></> : null}
       {latest ? (
         <>
           <div className="pt sp-title"><span>{branchVersionLabel(latest)} is ready</span><small>You have {branchVersionDetail(version)}</small></div>

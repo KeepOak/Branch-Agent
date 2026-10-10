@@ -69,6 +69,7 @@ export async function submitEmbeddedAttemptPrompt(input: {
     | "sessionKey"
     | "skipPreparedUserTurnMessage"
     | "userTurnTranscriptRecorder"
+    | "onHandoffBoundary"
   >;
   activeSession: PromptSubmissionSession;
   appendOnlyRuntimeContext?: boolean;
@@ -176,6 +177,11 @@ export async function submitEmbeddedAttemptPrompt(input: {
       input.assertHostActive?.();
       let requestContext = context;
       const foregroundRequest = captureCurrentPromptForModel && !activeSession.isCompacting;
+      if (foregroundRequest) {
+        // Prior tool results and the user turn are durable; no new reply stream has begun.
+        await attempt.onHandoffBoundary?.();
+        options?.signal?.throwIfAborted();
+      }
       const preparation = foregroundRequest ? input.preparePrimaryModelRequest?.() : undefined;
       if (preparation) {
         const readRestoredContext = await preparation;

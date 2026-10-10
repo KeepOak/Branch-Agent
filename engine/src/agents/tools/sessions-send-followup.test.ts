@@ -152,6 +152,7 @@ describe("followup retained session authorization", () => {
       throw new Error("accepted but transport ACK lost");
     });
     const replyContext = {
+      operationKey: "source-operation",
       callGateway,
       targetSessionKey: input.targetSessionKey,
       targetAgentId: "main",

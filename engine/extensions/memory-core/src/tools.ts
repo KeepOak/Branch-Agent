@@ -39,6 +39,7 @@ import {
   resolveMemorySearchAbortError,
   runMemorySearchWithDeadline,
 } from "./memory/search-deadline.js";
+import { resolveTeamMemberIds, searchTeamMemoryCorpus } from "./team-memory-search.js";
 import {
   buildMemorySearchPresentation,
   resolveMemoryCitationsMode,
@@ -242,7 +243,38 @@ export function createMemorySearchTool(options: MemoryToolOptions) {
           "wiki",
           "all",
           "sessions",
+          "team",
         ]);
+        if (modelRequestedCorpus === "team") {
+          if (options.conversationRecall || options.sandboxed === true) {
+            return jsonResult(
+              buildMemorySearchUnavailableResult(
+                "Team memory search is not available in this run.",
+                {
+                  warning: "Team memory search is unavailable for this run.",
+                  action: "Search this agent's own memory with memory_search without corpus.",
+                },
+              ),
+            );
+          }
+          if (!resolveTeamMemberIds(cfg).includes(agentId)) {
+            return jsonResult(
+              buildMemorySearchUnavailableResult("This Trunk is not in the team memory group.", {
+                warning: "Team memory is shared only between the Trunks the owner lists.",
+                action: "Use memory_search without corpus to search this agent's own memory.",
+              }),
+            );
+          }
+          const team = await searchTeamMemoryCorpus({
+            cfg,
+            query,
+            maxResults: maxResults ?? settings.query.maxResults,
+            minScore,
+            signal: callerSignal,
+            oneShotCliRun: options.oneShotCliRun,
+          });
+          return jsonResult({ scope: "team", ...team });
+        }
         // The trusted runtime chooses the recall corpus; model-authored arguments cannot broaden it.
         const requestedCorpus =
           options.conversationRecall?.corpus === "sessions" ? "sessions" : modelRequestedCorpus;

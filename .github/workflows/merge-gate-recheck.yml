@@ -1,50 +1,72 @@
 name: Merge gate recheck
 
-# The merge gate fails as soon as one check fails, and gives up after 20 minutes of waiting. When a
-# check workflow later passes on the same commit (a rerun after a flake, or a run that sat in the
-# runner queue), rerun the gate so auto-merge proceeds without anyone rerunning it by hand.
+# The gates fail fast when a check is not yet done. When a check workflow later succeeds on the same commit
+# (a rerun after a flake, or a run that sat in the runner queue), this reruns each gate that ended unsuccessfully,
+# so the gates never need to poll for long. scripts/merge-gate-recheck.mjs decides which gates to rerun.
 on:
   workflow_run:
+    # Every workflow that produces pull request checks, so a completed run from any of them rechecks the gates.
+    # GitHub rejects a workflow_run trigger without this list ("workflow file issue"), and its docs do not
+    # document glob patterns, so the names are listed. scripts/merge-gate-recheck.test.mjs fails when a
+    # pull_request workflow is missing here. CodeQL is GitHub's default code-scanning setup (no file here).
     workflows:
-      - Feature batch checks
-      - Harvest checks
+      - Button crawl
       - Capability feature checks
-      - Feature slice checks
-      - Priority capability checks
-      - Writing quality checks
+      - CodeQL
       - Desktop checks
-      - GitHub component release
-      - macOS checks for OS-specific changes
-      - Visual tour
       - Engine build (PR)
+      - Engine handoff checks
+      - Engine lint baselines
+      - Feature batch checks
+      - Feature slice checks
       - Gate files fresh
+      - GitHub component release
+      - Harvest checks
+      - Local worker measurement
+      - macOS checks for OS-specific changes
+      - Merge gate
+      - Merge gate trusted
+      - Non-merge-commit landing
+      - OpenClaw wording
+      - Priority capability checks
+      - Seedbank plugin distribution
+      - Visual tour
+      - Writing quality checks
     types: [completed]
 
 permissions:
   actions: write
 
 concurrency:
+  # One recheck per head at a time; a newer event supersedes an older one, which sees the same or newer runs.
   group: merge-gate-recheck-${{ github.event.workflow_run.head_sha }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   recheck:
-    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    # The recheck's own completion must not start another recheck (it would loop).
+    if: (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'pull_request_target') && github.event.workflow_run.name != 'Merge gate recheck'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Rerun a finished, unsuccessful merge gate for this commit
+      - name: Check out the default branch only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up reviewed Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Rerun each merge gate that ended unsuccessfully for this commit
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          set -euo pipefail
-          gate=$(gh run list -R "$REPO" --workflow merge-gate.yml --commit "$SHA" --limit 1 \
-            --json databaseId,status,conclusion --jq '.[0] // empty')
-          if [ -z "$gate" ]; then echo "No merge gate run for $SHA."; exit 0; fi
-          id=$(jq -r .databaseId <<<"$gate"); status=$(jq -r .status <<<"$gate"); conclusion=$(jq -r .conclusion <<<"$gate")
-          if [ "$status" != "completed" ]; then echo "Merge gate $id is $status; it will see this result."; exit 0; fi
-          if [ "$conclusion" = "success" ]; then echo "Merge gate $id already passed."; exit 0; fi
-          echo "Merge gate $id ended $conclusion; rerunning it."
-          gh run rerun "$id" -R "$REPO"
+          TRIGGER_KIND: ${{ (github.event.workflow_run.name == 'Merge gate' || github.event.workflow_run.name == 'Merge gate trusted') && 'gate' || 'content' }}
+          TRIGGER_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          TRIGGER_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          TRIGGER_NAME: ${{ github.event.workflow_run.name }}
+        run: node scripts/merge-gate-recheck.mjs

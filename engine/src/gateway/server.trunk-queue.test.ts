@@ -1,5 +1,6 @@
 // Real gateway proof for the Trunk job queue: the run-end hook, real sessions.create and chat.send admission,
 // and claim expiry checked against the live run registry. Demo data only.
+import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createServer, type ServerResponse } from "node:http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -8,6 +9,7 @@ import type { AgentWaitResult } from "../agents/run-wait.types.js";
 import {
   addQueueItem,
   claimNextQueueItem,
+  ownerEpochFor,
   STALE_CLAIM_MS,
   type TrunkQueueItem,
 } from "../agents/trunk-queue.js";
@@ -84,6 +86,11 @@ async function startProvider(
 
 type Listed = { items: Array<TrunkQueueItem & { status: string }> };
 type Gateway = Awaited<ReturnType<typeof startGatewayWithClient>>;
+
+/** An epoch whose owning process has exited: its PID is definitely dead now. */
+function deadOwnerEpoch(): string {
+  return ownerEpochFor(randomUUID(), spawnSync(process.execPath, ["-e", ""]).pid!);
+}
 
 describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
   const requests: string[] = [];
@@ -222,7 +229,8 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
         process.env,
         longAgo,
       );
-      claimNextQueueItem("ash", process.env, longAgo);
+      // A claim left by a gateway that has since exited: its run cannot still be live, so it is released.
+      claimNextQueueItem("ash", process.env, longAgo, deadOwnerEpoch());
 
       const listed = await list();
 
@@ -269,7 +277,8 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
       timeout: RUN_WAIT_MS,
     });
     const claim = (await list()).find((item) => item.id === queued.item.id);
-    expect(claim).toMatchObject({ status: "claimed", claimed_by: "builder-birch" });
+    // A fast run may already have completed the job; either way the idle Trunk took it.
+    expect(claim).toMatchObject({ claimed_by: "builder-birch" });
     const threads = await client().request<{ sessions: Array<{ key: string; label?: string }> }>(
       "sessions.list",
       { agentId: "builder-birch", limit: 50 },
@@ -295,39 +304,49 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
     await vi.waitFor(() => expect(requestsWith("demo-added-brief")).toHaveLength(1), {
       timeout: RUN_WAIT_MS,
     });
+    // The run may already have ended, which completes the job; either way the idle Trunk took it.
     const claim = (await list()).find((item) => item.id === added.item.id);
-    expect(claim).toMatchObject({ status: "claimed", claimed_by: "builder-birch" });
+    expect(claim).toMatchObject({ claimed_by: "builder-birch" });
     await waitIdle("builder-birch");
     await client().request("trunks.queue.done", { id: added.item.id });
   });
 
-  it("sends a released job again as a fresh run through real chat admission", async () => {
+  it("completes a job when its run ends cleanly, and does not send it again", async () => {
     await waitIdle("builder-birch");
     const job = await client().request<{ item: TrunkQueueItem }>("trunks.queue.add", {
-      title: "Demo reassigned job",
-      brief_text: "demo-reassigned-brief",
+      title: "Demo finished job",
+      brief_text: "demo-finished-brief",
       priority: 2,
     });
-    await vi.waitFor(() => expect(requestsWith("demo-reassigned-brief")).toHaveLength(1), {
+    await vi.waitFor(() => expect(requestsWith("demo-finished-brief")).toHaveLength(1), {
       timeout: RUN_WAIT_MS,
     });
-    const first = (await list()).find((item) => item.id === job.item.id);
-    expect(first).toMatchObject({ status: "claimed", claimed_by: "builder-birch" });
+    // The key stored on the claim is the session key the gateway reports for its run, so the run's end matches it.
+    const storedThread = (await list()).find((item) => item.id === job.item.id)?.thread_key;
+    const sessionKeys = (
+      await client().request<{ sessions: Array<{ key: string }> }>("sessions.list", {
+        agentId: "builder-birch",
+        limit: 200,
+      })
+    ).sessions.map((session) => session.key);
+    expect(storedThread).toBeDefined();
+    expect(sessionKeys).toContain(storedThread);
+
     await waitIdle("builder-birch");
 
+    // The clean end closes the claim: the job is done, so a release has nothing to put back.
+    await vi.waitFor(
+      async () =>
+        expect((await list()).find((item) => item.id === job.item.id)).toMatchObject({
+          status: "done",
+        }),
+      {
+        timeout: RUN_WAIT_MS,
+      },
+    );
     expect(await client().request("trunks.queue.release", { id: job.item.id })).toMatchObject({
-      released: true,
-      released_from: "builder-birch",
+      released: false,
     });
-
-    // The job is claimable again, and the idle Trunk takes it in a new run.
-    await vi.waitFor(() => expect(requestsWith("demo-reassigned-brief")).toHaveLength(2), {
-      timeout: RUN_WAIT_MS,
-    });
-    const second = (await list()).find((item) => item.id === job.item.id);
-    expect(second).toMatchObject({ status: "claimed", claimed_by: "builder-birch" });
-    expect(second?.thread_key).not.toBe(first?.thread_key);
-    await waitIdle("builder-birch");
-    await client().request("trunks.queue.done", { id: job.item.id });
+    expect(requestsWith("demo-finished-brief")).toHaveLength(1);
   });
 });

@@ -5,6 +5,8 @@ import type { SaplingSession } from "../connect/session";
 import { readLimits, usagePollResult, type Limits, type UpdateInfo } from "./status-data";
 import { componentDesktop, MANUAL_UPDATE_UNSUPPORTED, useDesktopComponentStatus } from "../connect/desktop-component-updates";
 
+import { isNewerBranchVersion } from "../connect/branch-version";
+
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const RELEASE_URL = "https://api.github.com/repos/KeepOak/Branch-Agent/releases/latest";
 const BRANCH_RELEASE = /^v?(\d+\.\d+\.\d+(?:-build-[a-zA-Z0-9]+)?)$/;
@@ -111,15 +113,17 @@ export function useUpdate(session: SaplingSession, ready: boolean, version: stri
   if (!ready) return null;
   if (desktop) {
     const status = native.status;
-    const available = status?.phase === "available" || status?.phase === "staged";
-    return { current: status?.currentVersion ?? version, latest: available ? status.latestVersion : null, notes: [],
-      installing: status?.phase === "staging" || status?.phase === "staged",
-      waiting: status?.phase === "staged" ? "Downloaded. Restart Branch when your work is ready."
+    const current = status?.currentVersion ?? version;
+    const newer = Boolean(current.trim()) && isNewerBranchVersion(status?.latestVersion, current);
+    const available = newer && (status?.phase === "available" || status?.phase === "staged");
+    return { current, latest: available ? status.latestVersion : null, notes: [],
+      installing: status?.phase === "staging" || (available && status?.phase === "staged"),
+      waiting: available && status?.phase === "staged" ? "Downloaded. Restart Branch when your work is ready."
         : status?.phase === "staging" ? "Downloading and checking the update." : null,
       statusMessage: !desktop.componentUpdates ? desktop.unavailableReason ?? MANUAL_UPDATE_UNSUPPORTED : native.error ??
         (status?.phase === "current" ? undefined : "Check for updates in Updates & about.") };
   }
-  return { current: version, latest: version && release.version !== version ? release.version : null,
+  return { current: version, latest: version.trim() && isNewerBranchVersion(release.version, version) ? release.version : null,
     notes: [], installing: false, waiting: null,
     statusMessage: release.error ?? (release.version ? undefined : "Checking Branch releases…") };
 }

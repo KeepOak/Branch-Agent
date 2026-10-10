@@ -69,6 +69,7 @@ describe("P54 one relevant suggestion row", () => {
     await act(async () => root?.render(<Thread name="Research" history={[user("Question"), reply("Should I check the invoice?")]} live={[]} pendingUser={null} running={false} onAnswer={() => {}} onStart={sent} />));
     expect(host.querySelectorAll('[aria-label="Suggested replies"]')).toHaveLength(1);
     expect(host.querySelectorAll('[aria-label="Suggested replies"] button')).toHaveLength(2);
+    expect(host.querySelector('[aria-label="Suggested replies"] button')?.getAttribute("aria-label")).toBe("Reply: Yes, please");
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Suggested replies"] button')?.click());
     expect(sent).toHaveBeenCalledWith("Yes, please");
     expect(host.querySelector('[aria-label="Suggested replies"]')).toBeNull();

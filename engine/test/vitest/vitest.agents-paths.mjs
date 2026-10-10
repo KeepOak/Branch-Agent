@@ -7,6 +7,8 @@ const embeddedRoot = `${agentsRoot}/embedded-agent-runner`;
 const spawnProductionBoundaryFiles = [
   "src/agents/subagents/spawn/subagent-spawn.production-boundary.test.ts",
 ];
+// Runs on the main thread in the gateway database-workers shard, not in the worker-thread core shard.
+const mainThreadStartupFiles = ["src/agents/prepared-model-runtime.startup-replacement.test.ts"];
 
 // These suites mock shared runtime, network, or plugin modules and cannot
 // share the non-isolated core worker without leaking module state.
@@ -71,6 +73,7 @@ export const agentVitestProjectOwners = {
       ...coreIsolatedFiles,
       ...databaseWorkerCoreTestFiles,
       ...cliProcessTestFiles,
+      ...mainThreadStartupFiles,
     ],
   },
   embedded: {

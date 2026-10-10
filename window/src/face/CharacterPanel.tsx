@@ -2,16 +2,23 @@ import { useCallback, useLayoutEffect, useRef, useState, type PointerEvent } fro
 import { Face } from "./Face";
 import { STATE_LABEL, type AgentState } from "./agentState";
 import { Icon } from "../shell/icons";
-import { Menu } from "../shell/Menu";
+import { Menu, type MenuItem } from "../shell/Menu";
 import { notify } from "../shell/notify";
 import { AGENT_SIZE_PX, useLookPrefs } from "./look-prefs";
 import { PRIORITY } from "./cap";
 import { panelLimits, panelNearestCorner, panelPlaceAt, panelPlaceOnResize, panelPoint, readPanelPlace, savePanelPlace, USUAL_PLACE, type PanelBounds, type PanelPlace } from "./panel-position";
 
-export function CharacterPanel({ name, state, onClose, others = [], column }: {
-  name: string; state: AgentState; onClose: () => void; others?: string[]; column: HTMLElement | null;
+const CORNERS: { corner: "bottom-right" | "bottom-left" | "top-right" | "top-left"; label: string }[] = [
+  { corner: "bottom-right", label: "Bottom right" },
+  { corner: "bottom-left", label: "Bottom left" },
+  { corner: "top-right", label: "Top right" },
+  { corner: "top-left", label: "Top left" },
+];
+
+/** The Trunk card is the one pet on screen: its name and state, and a popover for the few things to do with it. */
+export function CharacterPanel({ name, state, onClose, onShow, onOpenTrunk, onChangePet, others = [], column }: {
+  name: string; state: AgentState; onClose: () => void; onShow: () => void; onOpenTrunk: () => void; onChangePet: () => void; others?: string[]; column: HTMLElement | null;
 }) {
-  const [small, setSmall] = useState(false);
   const { agentSize } = useLookPrefs();
   const panel = useRef<HTMLElement>(null);
   const limits = useRef<PanelBounds | null>(null);
@@ -61,6 +68,10 @@ export function CharacterPanel({ name, state, onClose, others = [], column }: {
     if (limits.current) setPoint(panelPoint(next, limits.current));
     if (toast) notify("Back to the usual place.");
   };
+  const hide = () => {
+    onClose();
+    notify("Hidden. Undo, or bring it back from the header.", { action: { label: "Undo", run: onShow } });
+  };
   const onPointerDown = (e: PointerEvent<HTMLElement>) => {
     if (e.button !== 0 || (e.target as Element).closest("button, [role=menu]")) return;
     const rect = panel.current?.getBoundingClientRect();
@@ -82,13 +93,27 @@ export function CharacterPanel({ name, state, onClose, others = [], column }: {
     const current = drag.current;
     if (!current || current.id !== e.pointerId) return;
     if (current.moved && limits.current) moveTo(panelPlaceAt(current.x + e.clientX - current.startX, current.y + e.clientY - current.startY, limits.current));
+    else setMenu({ x: e.clientX, y: e.clientY });
     drag.current = null;
     setDragging(false);
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
   };
+  const items: MenuItem[] = [
+    { kind: "head", label: `${name} · ${STATE_LABEL[state]}` },
+    { label: "Open Trunk", run: onOpenTrunk, testid: "character-open" },
+    { label: "Change pet…", run: onChangePet, testid: "character-change-pet" },
+    { kind: "sep" },
+    { kind: "sub", label: "Position", items: [
+      ...CORNERS.map(({ corner, label }) => ({ label, checked: panelNearestCorner(place.current) === corner, run: () => moveTo({ corner }) })),
+      { kind: "sep" },
+      { label: "Back to the usual place", run: () => moveTo(USUAL_PLACE, true) },
+    ] },
+    { kind: "sep" },
+    { label: "Hide", run: hide, testid: "character-hide" },
+  ];
   return <>
-    <aside ref={panel} className={`character-panel${small ? " small" : ""}${dragging ? " dragging" : ""}`}
-      aria-label={`${name}'s activity`} tabIndex={0} style={point ? { left: point.x, top: point.y, right: "auto", bottom: "auto" } : { visibility: "hidden" }}
+    <aside ref={panel} className={`character-panel${dragging ? " dragging" : ""}`}
+      aria-label={`${name}, ${STATE_LABEL[state]}`} tabIndex={0} style={point ? { left: point.x, top: point.y, right: "auto", bottom: "auto" } : { visibility: "hidden" }}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
       onDoubleClick={(e) => { if (!(e.target as Element).closest("button")) moveTo(USUAL_PLACE, true); }}
       onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }}
@@ -97,24 +122,15 @@ export function CharacterPanel({ name, state, onClose, others = [], column }: {
         {[name, ...others].map((who, i) => {
           const st: AgentState = i === 0 ? state : "idle";
           return <div className="character-panel-body" key={who}>
-            <Face size={small ? 44 : AGENT_SIZE_PX[agentSize]} label={who} state={st} priority={i === 0 ? 300 : PRIORITY.row} />
+            <Face size={AGENT_SIZE_PX[agentSize]} label={who} state={st} priority={i === 0 ? 300 : PRIORITY.row} />
             <div className="character-panel-label"><b>{who}</b><small><i data-state={st} />{STATE_LABEL[st]}</small></div>
           </div>;
         })}
       </div>
       <div className="character-panel-controls">
-        <button className="ib sm" aria-label={small ? "Show the agent" : "Make the agent small"} title={small ? "Show the agent" : "Make the agent small"} onClick={() => setSmall((v) => !v)}><Icon name="chev" small /></button>
-        <button className="ib sm" aria-label="Hide the agent" title="Hide the agent" onClick={() => { onClose(); notify("Hidden. Bring it back in Appearance › Agents."); }}><Icon name="x" small /></button>
+        <button className="ib sm" aria-label="Hide the character" title="Hide the character" onClick={hide}><Icon name="x" small /></button>
       </div>
     </aside>
-    {menu ? <Menu at={menu} label="Move the agent window" onClose={() => setMenu(null)} items={[
-      { kind: "head", label: "Move the agent" },
-      { label: "Bottom right", checked: panelNearestCorner(place.current) === "bottom-right", run: () => moveTo({ corner: "bottom-right" }) },
-      { label: "Bottom left", checked: panelNearestCorner(place.current) === "bottom-left", run: () => moveTo({ corner: "bottom-left" }) },
-      { label: "Top right", checked: panelNearestCorner(place.current) === "top-right", run: () => moveTo({ corner: "top-right" }) },
-      { label: "Top left", checked: panelNearestCorner(place.current) === "top-left", run: () => moveTo({ corner: "top-left" }) },
-      { kind: "sep" },
-      { label: "Back to the usual place", run: () => moveTo(USUAL_PLACE, true) },
-    ]} /> : null}
+    {menu ? <Menu at={menu} label={`${name} options`} onClose={() => setMenu(null)} items={items} testid="character-menu" /> : null}
   </>;
 }

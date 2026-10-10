@@ -4,6 +4,7 @@ import type { PreparedModelRuntimeInput } from "../agents/prepared-model-runtime
 import { resolveConfiguredAgentDatabaseTargets } from "../config/sessions/targets.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
 import type { PluginRegistry } from "../plugins/registry-types.js";
 import { withPluginRuntimeRegistryScope } from "../plugins/runtime/gateway-request-scope.js";
@@ -15,11 +16,16 @@ import {
 import type { getAgentDatabaseStartupAdmission } from "../state/agent-database-startup.js";
 import { isSameBranchAgentDatabasePath } from "../state/branch-agent-db.paths.js";
 
+const log = createSubsystemLogger("gateway/covering-publication");
+
 /**
  * Runs startup model publication under the preparation's currency check. A config or secrets
  * reload that supersedes the publication supersedes the whole preparation, so startup retries
  * it instead of leaving the agent degraded.
  */
+/** Covering publications a startup attempt may repeat after leaving its agent out. */
+const MAX_STARTUP_PUBLICATION_ROUNDS = 5;
+
 export async function runStartupModelPublication(
   assertPreparationCurrent: () => void,
   publish: (isPublicationCurrent: () => boolean) => Promise<unknown>,
@@ -89,25 +95,74 @@ export async function waitForCoveringModelPublication(
   input: PreparedModelRuntimeInput,
   signal: AbortSignal,
 ): Promise<"published" | "left-out" | "unpublished"> {
-  const { getPendingPreparedModelRuntimeReplacement, getPreparedModelRuntimeSnapshot } =
-    await import("../agents/prepared-model-runtime.js");
+  const {
+    describePendingPreparedModelRuntimeReplacement,
+    getPendingPreparedModelRuntimeReplacement,
+    getPreparedModelRuntimeSnapshot,
+  } = await import("../agents/prepared-model-runtime.js");
   let covered = false;
+  let waits = 0;
   for (
     let replacement = getPendingPreparedModelRuntimeReplacement(agentId);
     replacement && !getPreparedModelRuntimeSnapshot(input);
     replacement = getPendingPreparedModelRuntimeReplacement(agentId)
   ) {
     covered = true;
+    waits += 1;
+    if (waits === 1) {
+      log.info(
+        formatCoveringWaitStart(agentId, describePendingPreparedModelRuntimeReplacement(agentId)),
+      );
+    }
     await racePromiseWithAbortSignal(
       replacement.catch(() => undefined),
       signal,
     );
   }
-  return getPreparedModelRuntimeSnapshot(input)
+  const outcome = getPreparedModelRuntimeSnapshot(input)
     ? "published"
     : covered
       ? "left-out"
       : "unpublished";
+  if (covered) {
+    log.info(formatCoveringWaitOutcome({ agentId, outcome, waits }));
+  }
+  return outcome;
+}
+
+/** Awaits every covering replacement still pending for this agent, so the snapshot it hides is restored. */
+async function waitOutPendingReplacements(agentId: string, signal: AbortSignal): Promise<void> {
+  const { getPendingPreparedModelRuntimeReplacement } =
+    await import("../agents/prepared-model-runtime.js");
+  for (
+    let pending = getPendingPreparedModelRuntimeReplacement(agentId);
+    pending;
+    pending = getPendingPreparedModelRuntimeReplacement(agentId)
+  ) {
+    await racePromiseWithAbortSignal(
+      pending.catch(() => undefined),
+      signal,
+    );
+  }
+}
+
+async function isSnapshotPublished(input: PreparedModelRuntimeInput): Promise<boolean> {
+  const { getPreparedModelRuntimeSnapshot } = await import("../agents/prepared-model-runtime.js");
+  return getPreparedModelRuntimeSnapshot(input) !== undefined;
+}
+
+/** Trace text when an agent starts awaiting a covering publication. */
+export function formatCoveringWaitStart(agentId: string, pending: string | undefined): string {
+  return `agent ${agentId} awaits covering model publication; pending ${pending ?? "none"}`;
+}
+
+/** Trace text when a covering wait settles: its outcome and how many publications it waited on. */
+export function formatCoveringWaitOutcome(params: {
+  agentId: string;
+  outcome: "published" | "left-out" | "unpublished";
+  waits: number;
+}): string {
+  return `agent ${params.agentId} covering model publication ${params.outcome} after ${params.waits} wait(s)`;
 }
 
 /** Finish only the deferred agent's preparation before its admission owner recovers it. */
@@ -119,6 +174,11 @@ export function activateGatewayAgentDatabaseStartup(params: {
   getPluginMetadataSnapshot: () => PluginMetadataSnapshot | undefined;
   isCurrent: () => boolean;
   log: { info: (message: string) => void; warn: (message: string) => void };
+  /**
+   * Test seam: runs between the covering wait and the final check of a startup attempt.
+   * Production leaves it unset, so nothing runs there.
+   */
+  afterCoveringWait?: (agentId: string) => void | Promise<void>;
 }): void {
   const broker = getSpawnBroker();
   params.admission?.activate({
@@ -271,7 +331,13 @@ export function activateGatewayAgentDatabaseStartup(params: {
           const pluginMetadataSnapshot = params.getPluginMetadataSnapshot();
           // A covering publication that left this still-pending agent out retired its snapshot;
           // publish it again within this attempt (its watchdog bounds the loop) rather than fail.
-          for (;;) {
+          // Each round is capped, so a publication that keeps leaving the agent out fails plainly.
+          for (let round = 1; ; round += 1) {
+            if (round > MAX_STARTUP_PUBLICATION_ROUNDS) {
+              throw new Error(
+                `Agent ${agentId} model publication was left out of ${MAX_STARTUP_PUBLICATION_ROUNDS} covering publications in a row`,
+              );
+            }
             preparedInput = undefined;
             await runStartupModelPublication(assertPreparationCurrent, (isPublicationCurrent) =>
               withPluginRuntimeRegistryScope(params.getPluginRegistry(), () =>
@@ -290,9 +356,16 @@ export function activateGatewayAgentDatabaseStartup(params: {
             if (!preparedInput) {
               throw new Error(`Agent ${agentId} model preparation is no longer configured`);
             }
-            if (
-              (await waitForCoveringModelPublication(agentId, preparedInput, signal)) !== "left-out"
-            ) {
+            const covering = await waitForCoveringModelPublication(agentId, preparedInput, signal);
+            await params.afterCoveringWait?.(agentId);
+            // A newer covering replacement may start right after this wait settles and hide the
+            // snapshot this attempt just observed. Wait it out, then re-check, instead of failing.
+            await waitOutPendingReplacements(agentId, signal);
+            // A left-out round republishes only while the snapshot is still hidden.
+            if (await isSnapshotPublished(preparedInput)) {
+              break;
+            }
+            if (covering === "unpublished") {
               break;
             }
             params.log.info(

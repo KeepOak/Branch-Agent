@@ -220,12 +220,28 @@ describe("runSessionRegistryMaintenance", () => {
     await withMaintenanceState(async (state) => {
       const retiredStorePath = path.join(state.sessionsDir("retired"), "sessions.json");
       if (defect === "incomplete deletion") {
+        const mainStorePath = path.join(state.sessionsDir("main"), "sessions.json");
+        const mainKey = await writeStaleCronSession(mainStorePath, "main");
         await writeStaleCronSession(retiredStorePath, "retired");
         writeAgentDeletion(state, "retired", false);
         closeBranchAgentDatabasesForTest();
-        await expect(runSessionRegistryMaintenance({ apply: false })).rejects.toThrow(
-          "Branch Agent agent database is unavailable while agent retired is deleted.",
-        );
+        // One pending deletion skips its own store; it must not abort the sweep for other agents.
+        const summary = await runSessionRegistryMaintenance({ apply: true });
+        expect(summary).toMatchObject({
+          pruned: 1,
+          skippedStores: 1,
+          stores: expect.arrayContaining([
+            expect.objectContaining({ agentId: "main", pruned: 1 }),
+            {
+              agentId: "retired",
+              storePath: retiredStorePath,
+              skippedReason: "agent-deletion-pending",
+            },
+          ]),
+        });
+        expect(
+          loadSessionEntry({ sessionKey: mainKey, storePath: mainStorePath }) !== undefined,
+        ).toBe(false);
       } else {
         openBranchStateDatabase();
         const sqlitePath = resolveSqliteTargetFromSessionStorePath(retiredStorePath).path;

@@ -88,6 +88,12 @@ export const ALLOWLIST = [
     file: /^(?:scripts\/check-openclaw-wording(?:\.test)?\.mjs|\.github\/workflows\/openclaw-wording-checks\.yml)$/,
   },
   {
+    id: 'recheck-workflow-name',
+    why: 'merge-gate-recheck lists the OpenClaw wording workflow by its name in its workflow_run trigger. Workflow names are internal and the required-check names depend on them, so this one name line stays',
+    file: /^\.github\/workflows\/merge-gate-recheck\.yml$/,
+    line: /^\s*-\s+OpenClaw wording\s*$/,
+  },
+  {
     id: 'window-clean-check',
     why: 'The window cleanliness check and its baseline name old product words so leftover window copy can be found and shrunk',
     file: /^scripts\/(?:check-window-clean\.mjs|window-clean-baseline\.txt)$/,
@@ -107,6 +113,18 @@ export const ALLOWLIST = [
     id: 'copied-csv',
     why: 'Harvest provenance rows name the upstream project as openclaw/openclaw',
     file: /^docs\/upstream\/COPIED\.csv$/,
+  },
+  {
+    id: 'display-name-map',
+    why: 'single display-name map; engine keys only, never rendered',
+    file: /^window\/src\/display-names\.ts$/,
+    re: /\["openclaw", "Branch"\]/,
+  },
+  {
+    id: 'about-credit',
+    why: 'the one "Based on OpenClaw" credit line in Settings > Updates & about (owner decision: one credit line)',
+    file: /^window\/src\/places\/settings\/set2\/updates\.tsx$/,
+    re: /Based on OpenClaw/,
   },
   {
     id: 'rebrand-tooling',

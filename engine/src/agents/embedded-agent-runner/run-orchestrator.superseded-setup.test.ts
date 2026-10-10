@@ -2,6 +2,8 @@ import { expect, it, vi } from "vitest";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { resetPluginLoaderTestStateForTest } from "../../plugins/loader.test-fixtures.js";
 import { clearPluginMetadataLifecycleCaches } from "../../plugins/plugin-metadata-lifecycle.js";
+import { getBranchAgentDatabaseIfOpen } from "../../state/branch-agent-db.js";
+import { resolveIncognitoBranchAgentSqlitePath } from "../../state/branch-agent-db.paths.js";
 import { createBranchTestState } from "../../test-utils/branch-test-state.js";
 import { prepareSystemAgentRunAdmission } from "../admitted-run-context.js";
 import { PreparedModelRuntimePublicationSupersededError } from "../prepared-model-runtime.errors.js";
@@ -20,9 +22,15 @@ const superseded = () =>
   );
 
 it.each([
-  { when: "during setup", startAttempt: false, calls: 2 },
-  { when: "after the first attempt started", startAttempt: true, calls: 1 },
-])("handles a runtime superseded $when", async ({ startAttempt, calls }) => {
+  { when: "during setup", startAttempt: false, calls: 2, failedResult: false },
+  { when: "after the first attempt started", startAttempt: true, calls: 1, failedResult: false },
+  {
+    when: "during setup before a returned failure",
+    startAttempt: false,
+    calls: 2,
+    failedResult: true,
+  },
+])("handles a runtime superseded $when", async ({ startAttempt, calls, failedResult }) => {
   const state = await createBranchTestState({
     label: "run-superseded-setup",
     env: { BRANCH_DISABLE_BUNDLED_PLUGINS: "1" },
@@ -55,26 +63,31 @@ it.each([
     },
   };
   const admission = prepareSystemAgentRunAdmission(cfg, runId, "main", "superseded-setup-test");
+  const snapshots: string[] = [];
   try {
     loop.mockImplementationOnce(async (_refresh, input) => {
+      snapshots.push(input.preparedModelRuntime.snapshotId);
       if (startAttempt) {
         input.runParams.onAttemptStart?.();
       }
       // Model setup observes that a sibling Trunk's preparation replaced this runtime.
       throw superseded();
     });
-    loop.mockImplementation(async (_refresh, input) => ({
-      payloads: [{ text: "ran on the current runtime" }],
-      meta: {
-        durationMs: 1,
-        stopReason: "completed",
-        agentMeta: {
-          sessionId: input.runParams.sessionId,
-          provider: input.provider,
-          model: input.modelId,
+    loop.mockImplementation(async (_refresh, input) => {
+      snapshots.push(input.preparedModelRuntime.snapshotId);
+      return {
+        payloads: [{ text: "ran on the current runtime" }],
+        meta: {
+          durationMs: 1,
+          stopReason: failedResult ? "error" : "completed",
+          agentMeta: {
+            sessionId: input.runParams.sessionId,
+            provider: input.provider,
+            model: input.modelId,
+          },
         },
-      },
-    }));
+      };
+    });
     const params: RunEmbeddedAgentInternalParams = {
       config: cfg,
       agentId: "main",
@@ -99,6 +112,28 @@ it.each([
     } else {
       expect((await run).payloads?.[0]?.text).toBe("ran on the current runtime");
     }
+    const journalDatabase = getBranchAgentDatabaseIfOpen({
+      agentId: "main",
+      path: resolveIncognitoBranchAgentSqlitePath({ agentId: "main" }),
+    });
+    const journal =
+      journalDatabase?.db
+        .prepare(
+          "SELECT event_type, snapshot_id, payload_json FROM run_journal WHERE run_id = ? ORDER BY sequence",
+        )
+        .all(runId) ?? [];
+    expect(journal.map((row) => row.event_type)).toEqual(
+      Array.from({ length: calls }, () => ["run_started", "run_ended"]).flat(),
+    );
+    expect(
+      journal.filter((row) => row.event_type === "run_started").map((row) => row.snapshot_id),
+    ).toEqual(snapshots);
+    expect(snapshots.every((snapshot) => typeof snapshot === "string" && snapshot.length > 0)).toBe(
+      true,
+    );
+    expect(JSON.parse(String(journal.at(-1)?.payload_json))).toEqual({
+      status: startAttempt || failedResult ? "failed" : "completed",
+    });
     expect(loop).toHaveBeenCalledTimes(calls);
   } finally {
     admission.close();

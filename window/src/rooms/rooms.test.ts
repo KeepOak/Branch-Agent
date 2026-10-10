@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { historyToBlocks } from "../thread/history";
 import { layout } from "../thread/layout";
-import { foldTalks, talkSummary, type TalkItem } from "./fold";
+import { foldTalks, talkAgents, talkSummary, type TalkItem } from "./fold";
 import { describeMembers, isRoom, readParticipants, withSenders } from "./members";
-import { roomMenuItems, ROOM_REASONS } from "./room-menu";
+import { roomMenuItems } from "./room-menu";
 import { roomRulesItems, ruleToast } from "./room-rules";
 import { isMine, readSender } from "./sender";
 import { readPeerHosts, readPeerList } from "./useRoom";
@@ -71,9 +71,35 @@ describe("foldTalks", () => {
     expect(out.every((i) => i.type !== "talk")).toBe(true);
   });
 
-  it("says who talked and how much", () => {
-    expect(talkSummary("Scout", "Ledger", 3)).toBe("Scout and Ledger talked it through · 3 messages");
-    expect(talkSummary("Scout", "Ledger", 1)).toBe("Scout and Ledger talked it through · 1 message");
+  it("counts the messages and the agents in the exchange", () => {
+    const talk = items().find((i): i is TalkItem => i.type === "talk")!;
+    expect(talkAgents(talk)).toEqual(["scout", null]);
+    expect(talkSummary(talk.lines.length, talkAgents(talk).length)).toBe("3 messages with 2 agents");
+    expect(talkSummary(1, 1)).toBe("1 message with 1 agent");
+  });
+
+  // Room-log posts (useRoomNotices): a Trunk's first one after a person writes is its report; more is chatter.
+  const posted = (agentId: string, key: string, text: string) => ({ kind: "text" as const, key, text, streaming: false, meta: { sender: { kind: "trunk" as const, agentId, posted: true } } });
+
+  it("keeps each Trunk's first room post after you write as its report, and folds the back-and-forth after it", () => {
+    const own = (key: string, text: string) => ({ kind: "text" as const, key, text, streaming: false });
+    const blocks = [
+      ...historyToBlocks([mine], [], "agent:ledger:room:r1", null),
+      own("own", "September is closed."),
+      posted("scout", "s1", "Both receipts filed. @Ledger can you check Delta?"),
+      own("l1", "Checked, Delta matches."),
+      posted("scout", "s2", "Thanks."),
+      own("l2", "Logged it."),
+      ...historyToBlocks([dana], [], "agent:ledger:room:r1", null),
+      posted("scout", "s3", "Dana, the October folder is ready."),
+    ];
+    const out = foldTalks(layout(blocks), "ledger");
+    expect(out.map((i) => (i.type === "talk" ? "talk" : i.type === "block" ? i.block.key : i.key))).toEqual([
+      expect.any(String), "own", "s1", "talk", expect.any(String), "s3",
+    ]);
+    const talk = out.find((i): i is TalkItem => i.type === "talk")!;
+    expect(talk.lines.map((l) => l.key)).toEqual(["l1", "s2", "l2"]);
+    expect(talkSummary(talk.lines.length, talkAgents(talk).length)).toBe("3 messages with 2 agents");
   });
 });
 
@@ -113,12 +139,11 @@ describe("members", () => {
 describe("room menu and rules", () => {
   const run = { rename: () => undefined, rules: () => undefined, leave: () => undefined, remove: () => undefined };
 
-  it("draws the preview's room rows; Add a Trunk is greyed with the engine reason", () => {
+  it("draws the room rows: rename, rules, leave and delete, with the rule words on rules", () => {
     const items = roomMenuItems({ ruleWords: "mentions only", canLeave: true, run });
-    expect(items.map((i) => ("label" in i ? i.label : i.kind))).toEqual(["Add a Trunk to this group", "Rename group", "Group rules", "sep", "Leave and archive", "sep", "Delete…"]);
-    expect(items[0]).toMatchObject({ disabled: ROOM_REASONS.addTrunk });
-    expect(items[2]).toMatchObject({ hint: "mentions only" });
-    expect(roomMenuItems({ ruleWords: null, canLeave: false, run }).map((i) => ("label" in i ? i.label : i.kind))).toEqual(["Add a Trunk to this group", "Rename group", "Group rules", "sep"]);
+    expect(items.map((i) => ("label" in i ? i.label : i.kind))).toEqual(["Rename group", "Group rules", "sep", "Leave and archive", "sep", "Delete…"]);
+    expect(items[1]).toMatchObject({ hint: "mentions only" });
+    expect(roomMenuItems({ ruleWords: null, canLeave: false, run }).map((i) => ("label" in i ? i.label : i.kind))).toEqual(["Rename group", "Group rules", "sep"]);
   });
 
   it("sets who answers through the engine only in a chat-app group", () => {
