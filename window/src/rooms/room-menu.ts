@@ -7,12 +7,10 @@ import { menuIcon } from "../shell/menu-icons";
 
 const NO_METHOD = "needs an engine method Branch doesn't have yet.";
 export const ROOM_REASONS = {
-  addTrunk: `Adding a Trunk to a group ${NO_METHOD}`,
   lead: `A lead Trunk choosing who answers ${NO_METHOD}`,
   whoAnswers: `Choosing who answers outside a chat-app group ${NO_METHOD}`,
   everyone: `Starting every Trunk in a Branch group ${NO_METHOD}`,
   mentions: `Starting the mentioned Trunks in a Branch group ${NO_METHOD}`,
-  pattern: `A way of working for one group ${NO_METHOD}`,
 } as const;
 
 export type RoomMenuRun = { rename: () => void; rules: () => void; leave: () => void; remove: () => void };
@@ -20,7 +18,6 @@ export type RoomMenuRun = { rename: () => void; rules: () => void; leave: () => 
 /** The room rows; `canLeave` is false for the default Trunk's main conversation, which can't be archived or deleted. */
 export function roomMenuItems(p: { ruleWords: string | null; canLeave: boolean; run: RoomMenuRun }): MenuItem[] {
   const items: MenuItem[] = [
-    { label: "Add a Trunk to this group", icon: menuIcon("plus"), run: () => undefined, disabled: ROOM_REASONS.addTrunk },
     { label: "Rename group", icon: menuIcon("edit"), run: p.run.rename },
     { label: "Group rules", icon: menuIcon("sliders"), run: p.run.rules, ...(p.ruleWords ? { hint: p.ruleWords } : {}) },
     { kind: "sep" },

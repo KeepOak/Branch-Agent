@@ -15,14 +15,6 @@ const WHO: [Rule | "lead", string, string][] = [
   ["always", "Everyone, every time", "Every Trunk in the group answers."],
   ["mention", "Only those you @mention", "Nobody mentioned means everyone."],
 ];
-const PATTERNS: [string, string][] = [
-  ["One at a time", "A Trunk calls a specialist, waits, carries on."],
-  ["A lead and helpers", "One Trunk plans and hands out the parts."],
-  ["Swarm", "Equals pass the work to whoever fits best."],
-  ["Router", "Sends each request to the one Trunk that matches."],
-  ["In parallel", "The same job split up, then gathered."],
-  ["Teams", "Small groups, each with its own lead."],
-];
 
 /** The words the toast uses after a change: "<rule>, in <room> from now on." */
 export const ruleToast = (rule: Rule | "lead", room: string) => {
@@ -41,9 +33,5 @@ export function roomRulesItems(p: { chatApp: boolean; branchGroup?: boolean; rul
     { kind: "custom", node: <div className="pt">Group rules</div> },
     { kind: "head", label: "Who answers" },
     ...who,
-    { kind: "sep" },
-    { kind: "head", label: "How the Trunks work together here" },
-    { label: "Your default", sub: "Set in Settings › Models › Defaults", checked: false, run: () => undefined, disabled: ROOM_REASONS.pattern },
-    ...PATTERNS.map(([label, sub]): MenuItem => ({ label, sub, checked: false, run: () => undefined, disabled: ROOM_REASONS.pattern })),
   ];
 }

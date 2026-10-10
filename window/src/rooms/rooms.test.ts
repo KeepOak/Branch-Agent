@@ -113,12 +113,11 @@ describe("members", () => {
 describe("room menu and rules", () => {
   const run = { rename: () => undefined, rules: () => undefined, leave: () => undefined, remove: () => undefined };
 
-  it("draws the preview's room rows; Add a Trunk is greyed with the engine reason", () => {
+  it("draws the room rows: rename, rules, leave and delete, with the rule words on rules", () => {
     const items = roomMenuItems({ ruleWords: "mentions only", canLeave: true, run });
-    expect(items.map((i) => ("label" in i ? i.label : i.kind))).toEqual(["Add a Trunk to this group", "Rename group", "Group rules", "sep", "Leave and archive", "sep", "Delete…"]);
-    expect(items[0]).toMatchObject({ disabled: ROOM_REASONS.addTrunk });
-    expect(items[2]).toMatchObject({ hint: "mentions only" });
-    expect(roomMenuItems({ ruleWords: null, canLeave: false, run }).map((i) => ("label" in i ? i.label : i.kind))).toEqual(["Add a Trunk to this group", "Rename group", "Group rules", "sep"]);
+    expect(items.map((i) => ("label" in i ? i.label : i.kind))).toEqual(["Rename group", "Group rules", "sep", "Leave and archive", "sep", "Delete…"]);
+    expect(items[1]).toMatchObject({ hint: "mentions only" });
+    expect(roomMenuItems({ ruleWords: null, canLeave: false, run }).map((i) => ("label" in i ? i.label : i.kind))).toEqual(["Rename group", "Group rules", "sep"]);
   });
 
   it("sets who answers through the engine only in a chat-app group", () => {
