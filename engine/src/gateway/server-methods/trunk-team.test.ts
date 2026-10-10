@@ -3,7 +3,9 @@ import type { BranchConfig } from "../../config/types.branch.js";
 
 const mocks = vi.hoisted(() => ({
   // The owner's answer on the approval record, given after `gate` opens. "unavailable" means no approval surface.
-  answer: "allow" as "allow" | "deny" | "unavailable",
+  answer: "allow" as "allow" | "deny" | "unavailable" | "expired",
+  /** When set, the approval fails to register: the record is never handed out. */
+  registerFails: false,
   gate: Promise.resolve() as Promise<void>,
   records: 0,
   approval: vi.fn(),
@@ -34,6 +36,21 @@ vi.mock("../../agents/trunk-queue.js", () => ({
 }));
 vi.mock("./trunk-queue.js", () => ({ wakeEligibleTrunks: vi.fn() }));
 vi.mock("../../agents/trunk-team-registry.js", () => ({ registerTeam: vi.fn() }));
+vi.mock("../../agents/trunk-team-proposals.js", () => {
+  const records = new Map<string, Record<string, unknown>>();
+  return {
+    readProposal: (hash: string) => records.get(hash),
+    saveProposal: (record: { hash: string }) => {
+      records.set(record.hash, { ...record, updatedAt: Date.now() });
+      return records.get(record.hash);
+    },
+    forgetProposal: (hash: string) => {
+      records.delete(hash);
+    },
+    proposalRecords: records,
+  };
+});
+vi.mock("./trunk-team-progress.js", () => ({ publishTeamChange: vi.fn() }));
 
 const { trunkTeamHandlers } = await import("./trunk-team.js");
 
@@ -52,7 +69,10 @@ function context() {
   } as never;
 }
 
-async function call(method: "trunks.team.propose" | "trunks.team.open", params: object) {
+async function call(
+  method: "trunks.team.propose" | "trunks.team.open" | "trunks.team.retry",
+  params: object,
+) {
   const respond = vi.fn();
   await trunkTeamHandlers[method]!({ params, respond, context: context() } as never);
   return respond;
@@ -79,6 +99,7 @@ beforeEach(() => {
   mocks.createAgent.mockReset();
   mocks.approval.mockReset();
   mocks.answer = "allow";
+  mocks.registerFails = false;
   mocks.gate = Promise.resolve();
   mocks.records = 0;
   mocks.connected = [];
@@ -91,6 +112,9 @@ beforeEach(() => {
   mocks.approval.mockImplementation(async (params: { onRecord?: (id: string) => void }) => {
     if (mocks.answer === "unavailable") {
       return "unavailable";
+    }
+    if (mocks.registerFails) {
+      throw new Error("register failed");
     }
     params.onRecord?.(`appr-${++mocks.records}`);
     await mocks.gate;
@@ -170,7 +194,7 @@ describe("trunks.team.open", () => {
     const respond = await call("trunks.team.open", { goal, proposalHash: hash });
     await flush();
 
-    expect(payloadOf(respond)).toEqual({ status: "unavailable" });
+    expect(payloadOf(respond)).toMatchObject({ status: "unavailable" });
     expect(mocks.createAgent).not.toHaveBeenCalled();
   });
 
@@ -206,18 +230,56 @@ describe("trunks.team.open", () => {
     expect(mocks.queue).toHaveLength(3);
   });
 
-  it("does not repeat anything when the same team is opened and allowed again later", async () => {
+  it("answers an applied team from its record, and asks nothing again", async () => {
     const hash = await proposalHash();
     await call("trunks.team.open", { goal, proposalHash: hash });
     await vi.waitFor(() => expect(mocks.createAgent).toHaveBeenCalledTimes(3));
-
-    await call("trunks.team.open", { goal, proposalHash: hash });
-    await vi.waitFor(() => expect(mocks.approval).toHaveBeenCalledTimes(2));
     await flush();
 
+    const again = payloadOf(await call("trunks.team.open", { goal, proposalHash: hash }));
+
+    expect(again).toMatchObject({ status: "applied", created: expect.any(Array) });
+    expect(mocks.approval).toHaveBeenCalledTimes(1);
     expect(mocks.createAgent).toHaveBeenCalledTimes(3);
-    expect(mocks.rooms.size).toBe(1);
-    expect(mocks.queue).toHaveLength(3);
+  });
+
+  it("never reopens a declined proposal, and asks the owner nothing again", async () => {
+    const hash = await proposalHash();
+    mocks.answer = "deny";
+    await call("trunks.team.open", { goal, proposalHash: hash });
+    await flush();
+
+    const again = payloadOf(await call("trunks.team.open", { goal, proposalHash: hash }));
+
+    expect(again).toEqual({ status: "declined" });
+    expect(mocks.approval).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens a new approval once the old one expired, and never applies the expired one", async () => {
+    const hash = await proposalHash();
+    mocks.answer = "expired";
+    await call("trunks.team.open", { goal, proposalHash: hash });
+    await flush();
+    expect(mocks.createAgent).not.toHaveBeenCalled();
+
+    mocks.answer = "allow";
+    const reopened = payloadOf(await call("trunks.team.open", { goal, proposalHash: hash }));
+
+    expect(reopened).toEqual({ status: "pending", approvalId: "appr-2" });
+    expect(mocks.approval).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps no record id when the approval does not register, and says so", async () => {
+    const hash = await proposalHash();
+    mocks.registerFails = true;
+
+    const respond = await call("trunks.team.open", { goal, proposalHash: hash });
+
+    expect(respond.mock.calls[0]?.[0]).toBe(false);
+    expect(respond.mock.calls[0]?.[2]).toMatchObject({
+      message: expect.stringContaining("could not be opened"),
+    });
+    expect(mocks.createAgent).not.toHaveBeenCalled();
   });
 
   it("refuses to apply a team whose computers or models changed while the card waited", async () => {
@@ -255,7 +317,7 @@ describe("placement on create", () => {
 });
 
 describe("retry after a partial failure", () => {
-  it("finishes the team when the owner opens and allows it again", async () => {
+  it("shows the failure on the record, and finishes the team only when retried", async () => {
     const hash = await proposalHash();
     let failNext = true;
     mocks.createAgent.mockImplementation(async (params: { entry: { id: string } }) => {
@@ -268,15 +330,29 @@ describe("retry after a partial failure", () => {
     });
 
     await call("trunks.team.open", { goal, proposalHash: hash });
+    await vi.waitFor(() => expect(mocks.createAgent).toHaveBeenCalledTimes(1));
     await flush();
+    expect(payloadOf(await call("trunks.team.open", { goal, proposalHash: hash }))).toMatchObject({
+      status: "failed",
+      message: expect.stringContaining("Retry"),
+    });
     expect(mocks.rooms.size).toBe(0);
-    expect(mocks.queue).toHaveLength(0);
 
-    await call("trunks.team.open", { goal, proposalHash: hash });
-    await vi.waitFor(() => expect(mocks.queue).toHaveLength(3));
+    const retried = payloadOf(await call("trunks.team.retry", { goal, proposalHash: hash }));
 
+    expect(retried).toMatchObject({ status: "applied" });
     expect(mocks.createAgent).toHaveBeenCalledTimes(4);
     expect(new Set(Object.keys(mocks.cfg.agents!.entries!)).size).toBe(4);
     expect(mocks.rooms.size).toBe(1);
+    expect(mocks.queue).toHaveLength(3);
+  });
+
+  it("refuses a retry for a team that has not failed", async () => {
+    const hash = await proposalHash();
+
+    const respond = await call("trunks.team.retry", { goal, proposalHash: hash });
+
+    expect(respond.mock.calls[0]?.[0]).toBe(false);
+    expect(mocks.createAgent).not.toHaveBeenCalled();
   });
 });

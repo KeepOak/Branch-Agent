@@ -4,6 +4,12 @@ import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/i
 import { createAgent } from "../../agents/agent-create.js";
 import { addQueueItem, listQueueItems } from "../../agents/trunk-queue.js";
 import { applyTeamProposal, type TeamApplyDeps } from "../../agents/trunk-team-apply.js";
+import {
+  forgetProposal,
+  readProposal,
+  saveProposal,
+  type ProposalRecord,
+} from "../../agents/trunk-team-proposals.js";
 import { registerTeam } from "../../agents/trunk-team-registry.js";
 import {
   buildTeamProposal,
@@ -15,6 +21,7 @@ import { formatErrorMessage } from "../../infra/errors.js";
 import { createRoom, getRoom } from "../rooms/store.js";
 import { requestOwnerChangeApproval } from "./model-choice-approval.js";
 import { wakeEligibleTrunks } from "./trunk-queue.js";
+import { publishTeamChange } from "./trunk-team-progress.js";
 import type { GatewayRequestContext, GatewayRequestHandlers } from "./types.js";
 
 type Rec = Record<string, unknown>;
@@ -124,29 +131,59 @@ export function placementFor(machine: string): {
 }
 
 type ApplyOutcome =
-  | { ok: true; payload: Record<string, unknown> }
-  | { ok: false; error: ReturnType<typeof errorShape> };
+  | { ok: true; created: string[]; skipped: string[] }
+  | { ok: false; message: string };
 
-/** The applies running for each team. A second allow for the same team waits for the first, never repeats it. */
+/** The applies running, keyed by team id and proposal hash. A second allow of the same proposal waits for the first. */
 const teamAppliesInFlight = new Map<string, Promise<ApplyOutcome>>();
 
+/** The approvals waiting for the owner, keyed by proposal hash, so one proposal has one record at a time. */
+const openApprovals = new Map<string, Promise<string | undefined>>();
+
+const UNAVAILABLE_TEXT = "Approval is unavailable right now. Nothing was created.";
+
+/** Changes a proposal's stored state, keeping its other fields, and tells the open cards. */
+function setProposalState(
+  hash: string,
+  base: { teamId: string; goal: string; roles?: TeamDraftRole[] },
+  changes: Partial<Omit<ProposalRecord, "hash" | "teamId" | "goal" | "roles" | "updatedAt">>,
+): void {
+  const current = readProposal(hash);
+  const saved = saveProposal({
+    ...current,
+    ...base,
+    hash,
+    state: current?.state ?? "pending",
+    ...changes,
+  });
+  publishTeamChange({
+    hash: saved.hash,
+    teamId: saved.teamId,
+    state: saved.state,
+    approvalId: saved.approvalId,
+    created: saved.created,
+    message: saved.message,
+  });
+}
+
 /**
- * Applies an allowed team. The proposal is rebuilt from the configuration at this moment, and only a team that still
- * has the hash the owner allowed is created, so a model or computer that changed while the card waited is refused.
+ * Applies an allowed proposal, once at a time per team and hash. The proposal is rebuilt from the configuration at
+ * this moment, and only the hash the owner allowed is created, so a model or computer that changed while the card
+ * waited is refused.
  */
 function applyAllowed(
   context: GatewayRequestContext,
   goal: string,
   roles: TeamDraftRole[] | undefined,
-  allowedHash: string,
+  teamId: string,
+  hash: string,
 ): Promise<ApplyOutcome> {
-  const teamId = proposalFor(context, goal, roles);
-  const key = teamId.ok ? teamId.proposal.teamId : goal;
+  const key = `${teamId}:${hash}`;
   const running = teamAppliesInFlight.get(key);
   if (running) {
     return running;
   }
-  const applied = applyOnce(context, goal, roles, allowedHash).finally(() => {
+  const applied = applyOnce(context, goal, roles, teamId, hash).finally(() => {
     teamAppliesInFlight.delete(key);
   });
   teamAppliesInFlight.set(key, applied);
@@ -157,79 +194,123 @@ async function applyOnce(
   context: GatewayRequestContext,
   goal: string,
   roles: TeamDraftRole[] | undefined,
-  allowedHash: string,
+  teamId: string,
+  hash: string,
 ): Promise<ApplyOutcome> {
-  const result = proposalFor(context, goal, roles);
-  if (!result.ok || result.proposal.hash !== allowedHash) {
-    return {
-      ok: false,
-      error: errorShape(
-        ErrorCodes.INVALID_REQUEST,
-        "The team changed after it was allowed. Propose it again.",
-      ),
-    };
+  const base = { teamId, goal, ...(roles ? { roles } : {}) };
+  const current = proposalFor(context, goal, roles);
+  if (!current.ok || current.proposal.hash !== hash) {
+    const message = "The team changed after it was allowed. Propose it again.";
+    setProposalState(hash, base, { state: "failed", message });
+    return { ok: false, message };
   }
+  setProposalState(hash, base, { state: "applying" });
   try {
-    const applied = await applyTeamProposal(result.proposal, productionDeps(context));
+    const applied = await applyTeamProposal(current.proposal, productionDeps(context));
     wakeEligibleTrunks(context.getRuntimeConfig(), (message) => context.logGateway.warn(message));
-    return { ok: true, payload: { status: "applied", ...applied } };
+    setProposalState(hash, base, {
+      state: "applied",
+      created: applied.created,
+      message: undefined,
+    });
+    return { ok: true, created: applied.created, skipped: applied.skipped };
   } catch (error) {
-    // Each step checks before it creates, so opening and allowing again finishes what is missing.
-    context.logGateway.warn(
-      `team ${result.proposal.teamId} was not fully created: ${formatErrorMessage(error)}`,
-    );
-    return {
-      ok: false,
-      error: errorShape(
-        ErrorCodes.UNAVAILABLE,
-        "The team was only partly created. Open it again to finish.",
-      ),
-    };
+    // Each step checks before it creates, so a retry finishes what is missing.
+    context.logGateway.warn(`team ${teamId} was not fully created: ${formatErrorMessage(error)}`);
+    const message = "The team was only partly created. Retry to finish it.";
+    setProposalState(hash, base, { state: "failed", message });
+    return { ok: false, message };
   }
 }
 
-/**
- * The approval record for each proposal that is waiting for the owner, by team id and hash. Opening the same proposal
- * again returns the record already waiting, so the card and the Inbox show one approval.
- */
-const openApprovals = new Map<string, Promise<string | undefined>>();
+type OpenOutcome = { approvalId: string } | { reason: "unavailable" | "failed" };
 
 /**
- * Opens the team's approval: the same record the Inbox shows. The owner's Allow on that record (approval.resolve)
- * is the only thing that starts the apply; nothing is created here.
+ * Opens the proposal's approval: the record the Inbox shows, one per hash. The owner's answer on that record is the
+ * only thing that starts the apply, and a declined or expired answer is recorded on the proposal.
  */
 function openApproval(
   context: GatewayRequestContext,
   goal: string,
   roles: TeamDraftRole[] | undefined,
-  proposal: { teamId: string; hash: string },
+  proposal: { teamId: string; hash: string; goal: string },
   question: string,
-): Promise<string | undefined> {
-  const key = `${proposal.teamId}:${proposal.hash}`;
-  const waiting = openApprovals.get(key);
+): Promise<OpenOutcome> {
+  const base = { teamId: proposal.teamId, goal, ...(roles ? { roles } : {}) };
+  const waiting = openApprovals.get(proposal.hash);
   if (waiting) {
-    return waiting;
+    return waiting.then((approvalId) => (approvalId ? { approvalId } : { reason: "unavailable" }));
   }
-  let recorded: (id: string | undefined) => void = () => undefined;
-  const id = new Promise<string | undefined>((resolve) => {
+  setProposalState(proposal.hash, base, {
+    state: "pending",
+    approvalId: undefined,
+    message: undefined,
+  });
+  let recorded: (outcome: OpenOutcome) => void = () => undefined;
+  let handedOut = false;
+  const outcome = new Promise<OpenOutcome>((resolve) => {
     recorded = resolve;
   });
-  openApprovals.set(key, id);
+  openApprovals.set(
+    proposal.hash,
+    outcome.then((result) => ("approvalId" in result ? result.approvalId : undefined)),
+  );
   const decided = requestOwnerChangeApproval({
     context,
     title: "Create a team",
     question,
     kind: "trunk-team",
-    onRecord: (approvalId) => recorded(approvalId),
+    onRecord: (approvalId) => {
+      handedOut = true;
+      setProposalState(proposal.hash, base, { approvalId });
+      recorded({ approvalId });
+    },
   });
-  void decided.then(async (decision) => {
-    recorded(undefined);
-    openApprovals.delete(key);
-    if (decision === "allow") {
-      await applyAllowed(context, goal, roles, proposal.hash);
-    }
-  });
-  return id;
+  void decided
+    .then(async (decision) => {
+      if (decision === "unavailable") {
+        recorded({ reason: "unavailable" });
+        setProposalState(proposal.hash, base, { state: "expired", approvalId: undefined });
+        return;
+      }
+      if (decision === "deny") {
+        setProposalState(proposal.hash, base, { state: "declined" });
+      } else if (decision === "expired") {
+        setProposalState(proposal.hash, base, { state: "expired" });
+      } else {
+        await applyAllowed(context, goal, roles, proposal.teamId, proposal.hash);
+      }
+    })
+    .catch((error: unknown) => {
+      context.logGateway.warn(
+        `team ${proposal.teamId} approval failed: ${formatErrorMessage(error)}`,
+      );
+      if (!handedOut) {
+        // The record never registered: no id is kept, and nothing was created.
+        forgetProposal(proposal.hash);
+        recorded({ reason: "failed" });
+      }
+    })
+    .finally(() => {
+      openApprovals.delete(proposal.hash);
+    });
+  return outcome;
+}
+
+/** What an open card should show for a proposal that already has a record, or undefined when a new approval is needed. */
+function answerFor(record: ProposalRecord): Record<string, unknown> | undefined {
+  switch (record.state) {
+    case "declined":
+      return { status: "declined" };
+    case "applying":
+      return { status: "applying" };
+    case "applied":
+      return { status: "applied", created: record.created ?? [] };
+    case "failed":
+      return { status: "failed", message: record.message ?? "The team was not created." };
+    default:
+      return undefined;
+  }
 }
 
 export const trunkTeamHandlers: GatewayRequestHandlers = {
@@ -269,17 +350,51 @@ export const trunkTeamHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const approvalId = await openApproval(
+    const record = readProposal(result.proposal.hash);
+    const answer = record ? answerFor(record) : undefined;
+    if (answer) {
+      respond(true, answer);
+      return;
+    }
+    const opened = await openApproval(
       context,
       goal,
       roles,
-      result.proposal,
+      { ...result.proposal, goal },
       describeTeamProposal(result.proposal),
     );
-    if (!approvalId) {
-      respond(true, { status: "unavailable" });
+    if ("approvalId" in opened) {
+      respond(true, { status: "pending", approvalId: opened.approvalId });
+    } else if (opened.reason === "failed") {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, "The approval could not be opened. Try again."),
+      );
+    } else {
+      respond(true, { status: "unavailable", message: UNAVAILABLE_TEXT });
+    }
+  },
+  "trunks.team.retry": async ({ params, respond, context }) => {
+    const p = rec(params);
+    const goal = text(p.goal);
+    const roles = parseRoles(p.roles);
+    const result = proposalFor(context, goal, roles);
+    const hash = text(p.proposalHash);
+    const record = readProposal(hash);
+    if (!result.ok || !record || record.state !== "failed") {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "Nothing to retry for this team."),
+      );
       return;
     }
-    respond(true, { status: "pending", approvalId });
+    const outcome = await applyAllowed(context, goal, roles, result.proposal.teamId, hash);
+    if (outcome.ok) {
+      respond(true, { status: "applied", created: outcome.created, skipped: outcome.skipped });
+    } else {
+      respond(true, { status: "failed", message: outcome.message });
+    }
   },
 };

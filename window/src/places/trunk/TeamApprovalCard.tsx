@@ -16,6 +16,7 @@ export type TeamApprovalState =
   | "asking"
   | "applying"
   | "applied"
+  | "failed"
   | "declined"
   | "unavailable";
 export type TeamApprovalChoices = { models: readonly string[]; machines: readonly string[] };
@@ -28,9 +29,14 @@ export type TeamApprovalProps = {
   onApprove?: () => void;
   onDecline?: () => void;
   onSave?: (members: TeamApprovalMember[]) => void | Promise<void>;
+  /** The team's members that were created, shown once the team is created. */
+  created?: readonly string[];
+  /** Why the team was not created, shown with Retry when the team is partly created. */
+  message?: string;
+  onRetry?: () => void;
 };
 
-const ANSWER: Record<Exclude<TeamApprovalState, "opening" | "asking">, string> = {
+const ANSWER: Record<Exclude<TeamApprovalState, "opening" | "asking" | "failed">, string> = {
   applying: "Allowed. The team is being created now.",
   applied: "Team created. Its first jobs are in the queue.",
   declined: "Not created.",
@@ -164,10 +170,28 @@ function Editing({
   );
 }
 
-function Answer({ state }: { state: TeamApprovalState }) {
+function Answer({
+  state,
+  message,
+  onRetry,
+}: {
+  state: TeamApprovalState;
+  message?: string;
+  onRetry?: () => void;
+}) {
+  if (state === "failed") {
+    return (
+      <div className="team-approval-answer">
+        <p role="status">{message ?? "The team was not created."}</p>
+        <button type="button" className="btn pri" data-testid="team-retry" onClick={onRetry}>
+          Retry
+        </button>
+      </div>
+    );
+  }
   return (
     <p role="status" className="team-approval-answer">
-      {ANSWER[state as Exclude<TeamApprovalState, "opening" | "asking">]}
+      {ANSWER[state as Exclude<TeamApprovalState, "opening" | "asking" | "failed">]}
     </p>
   );
 }
@@ -181,6 +205,8 @@ export function TeamApprovalCard({
   onApprove,
   onDecline,
   onSave,
+  message,
+  onRetry,
 }: TeamApprovalProps) {
   const [editing, setEditing] = useState(false);
   const asking = state === "asking" || state === "opening";
@@ -247,7 +273,7 @@ export function TeamApprovalCard({
           ) : null}
         </>
       ) : null}
-      {!asking ? <Answer state={state} /> : null}
+      {!asking ? <Answer state={state} message={message} onRetry={onRetry} /> : null}
     </section>
   );
 }

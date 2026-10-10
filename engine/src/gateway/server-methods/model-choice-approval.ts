@@ -19,12 +19,14 @@ export async function requestModelChoiceApproval(params: {
   context: GatewayRequestContext;
   question: string;
 }): Promise<ModelChoiceDecision | "unavailable"> {
-  return requestOwnerChangeApproval({
+  const decision = await requestOwnerChangeApproval({
     context: params.context,
     title: MODEL_CHOICE_APPROVAL_TITLE,
     question: params.question,
     kind: "model-choice",
   });
+  // A model change that expired is not applied, the same as one the owner declined.
+  return decision === "expired" ? "deny" : decision;
 }
 
 /**
@@ -36,9 +38,9 @@ export async function requestOwnerChangeApproval(params: {
   title: string;
   question: string;
   kind: string;
-  /** Called with the approval's id as soon as the record exists, before the owner decides. */
+  /** Called with the approval's id once the record is registered, before the owner decides. */
   onRecord?: (approvalId: string) => void;
-}): Promise<ModelChoiceDecision | "unavailable"> {
+}): Promise<ModelChoiceDecision | "unavailable" | "expired"> {
   const manager = params.context.systemAgentApprovalManager;
   if (!manager) {
     return "unavailable";
@@ -64,8 +66,9 @@ export async function requestOwnerChangeApproval(params: {
   if (caller?.approvalSignals?.length) {
     record.approvalSignals = caller.approvalSignals;
   }
-  params.onRecord?.(record.id);
+  // The id is handed out only once the record is registered. A failed register hands out nothing.
   await manager.register(record, SYSTEM_AGENT_APPROVAL_TIMEOUT_MS);
+  params.onRecord?.(record.id);
   const requestEvent = buildRequestedApprovalEvent(record, "system-agent");
   let decided: ExecApprovalDecision | null = null;
   await handlePendingApprovalRequest({
@@ -94,5 +97,9 @@ export async function requestOwnerChangeApproval(params: {
     },
     afterDecisionErrorLabel: "Model change approval failed",
   });
+  if (decided === null) {
+    // No answer before the record closed: it expired or was closed, which is not the owner's no.
+    return "expired";
+  }
   return decided === "allow-once" ? "allow" : "deny";
 }

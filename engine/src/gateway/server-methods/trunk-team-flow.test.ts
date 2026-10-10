@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { seedFirstRunGreeting, FIRST_RUN_GREETING_TEXT } from "../../agents/first-run-greeting.js";
 import { createTeamProposeTool } from "../../agents/tools/team-tools.js";
 import { claimNextQueueItem, listQueueItems } from "../../agents/trunk-queue.js";
+import { readProposal } from "../../agents/trunk-team-proposals.js";
 import { decideLockdownAdmission } from "../../config/lockdown-policy.js";
 import { resolveAgentMainSessionKey } from "../../config/sessions/main-session.js";
 import {
@@ -215,9 +216,12 @@ describe("the approve path under Lockdown", () => {
 });
 
 describe("one tap on the card", () => {
+  let answers = 0;
+
   /** The gateway's admission for the card's tap: under Lockdown, approval.resolve allow never reaches the record. */
   function tap(lockdown: boolean): { admitted: boolean } {
     if (!lockdown) {
+      answers += 1;
       mocks.decide("allow");
       return { admitted: true };
     }
@@ -233,7 +237,7 @@ describe("one tap on the card", () => {
     const proposed = await gateway("trunks.team.propose", { goal });
     const proposal = (proposed as { proposal: { hash: string } }).proposal;
     const opened = await gateway("trunks.team.open", { goal, proposalHash: proposal.hash });
-    return { opened: opened as { approvalId: string } };
+    return { opened: opened as { approvalId: string }, hash: proposal.hash };
   }
 
   beforeEach(() => {
@@ -254,8 +258,9 @@ describe("one tap on the card", () => {
     await vi.waitFor(() => expect(mocks.created.length).toBe(3));
   });
 
-  it("refuses the same tap under Lockdown: the record is not answered, and nothing is created", async () => {
-    await openedTeam("Ship a locked newsletter");
+  it("refuses the same tap under Lockdown: the record stays pending, unanswered, and nothing is created", async () => {
+    const { hash } = await openedTeam("Ship a locked newsletter");
+    const answersBefore = answers;
 
     const refused = tap(true);
     await new Promise<void>((resolve) => {
@@ -263,6 +268,8 @@ describe("one tap on the card", () => {
     });
 
     expect(refused).toEqual({ admitted: false, reason: "locked" });
+    expect(answers).toBe(answersBefore);
     expect(mocks.created).toHaveLength(0);
+    expect(readProposal(hash)).toMatchObject({ state: "pending", approvalId: "appr-tap" });
   });
 });

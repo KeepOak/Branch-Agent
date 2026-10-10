@@ -121,4 +121,26 @@ describe("TeamApprovalCard", () => {
       job: "Find three sources.",
     });
   });
+
+  it("shows a failed create with the reason and Retry, which runs the same team again", () => {
+    const onRetry = vi.fn();
+    const el = render(
+      <TeamApprovalCard
+        goal="Ship it"
+        members={members}
+        state="failed"
+        choices={choices}
+        created={["Builder Scout"]}
+        message="Machine offline"
+        onRetry={onRetry}
+      />,
+    );
+
+    expect(el.querySelector('[data-state]')?.getAttribute("data-state")).toBe("failed");
+    expect(el.textContent).toContain("Machine offline");
+    expect(el.textContent).toContain("Builder Scout");
+    act(() => el.querySelector<HTMLButtonElement>('[data-testid="team-retry"]')?.click());
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(el.querySelector('[data-testid="team-approve"]')).toBeNull();
+  });
 });
