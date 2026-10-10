@@ -1,0 +1,7 @@
+# One file per PR or feature: engine:<engine-relative test file> or window:<window-relative test file>, one per line.
+window:src/shell/ControlTower.test.tsx
+window:src/shell/control-tower-data.test.ts
+window:src/shell/plain-words.test.ts
+window:src/shell/conversation-menu.test.ts
+window:src/shell/status-data.test.ts
+window:src/places/inbox/inbox.test.tsx

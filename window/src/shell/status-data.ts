@@ -42,7 +42,10 @@ export function resetWords(resetAt: number | undefined, usedPercent: number, now
 export function windowName(label: string): string {
   const hours = /^(\d+)h$/i.exec(label.trim());
   if (hours) {
-    return `This ${hours[1]}-hour window`;
+    const count = Number(hours[1]);
+    if (count >= 168) return "This week";
+    if (count === 24) return "Today";
+    return `This ${count}-hour window`;
   }
   const words: Record<string, string> = { week: "This week", weekly: "This week", day: "Today", daily: "Today", month: "This month", monthly: "This month" };
   return words[label.trim().toLowerCase()] ?? label;

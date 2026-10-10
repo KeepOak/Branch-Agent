@@ -7,10 +7,8 @@ import type { WindowEngine } from "../../connect/engine";
 import type { Level } from "../../places-nav/level";
 import { loadNeeds, markRead, refreshesInbox } from "./data";
 import { openInboxWith } from "./handoff";
-import { REPLAY_GAP, VERIFY_GAP, RECEIPTS_GAP } from "./History";
 import { InboxPlace, useNeedsCount } from "./index";
 import { FULL_ACCESS_GAP } from "./NeedsYou";
-import { MESSAGES_GAP } from "./Tabs";
 import { session } from "../overview/engine";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -263,11 +261,8 @@ describe("Inbox › other tabs", () => {
     const { host, request } = await render();
     await click(btn(host, "History")[0]);
     expect(host.textContent).not.toMatch(/Record intact|Every tool call leaves a signed receipt|nothing can be cut or rewritten quietly/i);
-    expect(host.textContent).toContain("Recorded activity");
-    const verification = host.querySelector<HTMLButtonElement>(".ib-rec");
-    expect(verification).toMatchObject({ disabled: true, title: VERIFY_GAP });
-    expect(verification?.textContent).toContain("Unverified");
-    expect(btn(host, "See the chain")[0]).toMatchObject({ disabled: true, title: RECEIPTS_GAP });
+    expect(host.querySelector(".ib-rec")).toBeNull();
+    expect(btn(host, "See the chain")).toHaveLength(0);
     expect(calls(request, "audit.run.inspect")).toHaveLength(0);
     expect(calls(request, "sessions.activitySummary.ensure")).toHaveLength(0);
   });
@@ -288,20 +283,20 @@ describe("Inbox › other tabs", () => {
     await send("inbox", "history");
     expect(host.querySelector("[role=tab][aria-selected=true]")?.textContent).toBe("History");
   });
-  it("Later shows the preview's empty wording; Messages is greyed with its reason", async () => {
+  it("Later shows its empty wording and no greyed Messages stub", async () => {
     const { host } = await render();
     await click(btn(host, "Later")[0]);
     expect(host.textContent).toContain("Nothing is waiting to finish later.");
-    expect(host.querySelector<HTMLInputElement>("input[placeholder='Search messages']")).toMatchObject({ disabled: true, title: "" });
-    expect(host.textContent).not.toContain(MESSAGES_GAP); expect(visibleDevNotes(host)).toEqual([]);
+    expect(host.querySelector("input[placeholder='Search messages']")).toBeNull();
+    expect(visibleDevNotes(host)).toEqual([]);
   });
   it("History groups by day with run lengths; Every conversation only from Advanced; the run menu only at Technical", async () => {
     const regular = await render();
     await click(btn(regular.host, "History")[0]);
     expect(regular.host.textContent).toContain("1m 12s");
     expect(regular.host.textContent).toContain("Today");
-    expect(btn(regular.host, "Watch again")[0]).toMatchObject({ disabled: true, title: "" });
-    expect(REPLAY_GAP).toMatch(/^Needs the engine/); expect(visibleDevNotes(regular.host)).toEqual([]);
+    expect(btn(regular.host, "Watch again")).toHaveLength(0);
+    expect(visibleDevNotes(regular.host)).toEqual([]);
     expect(regular.host.textContent).not.toContain("Every conversation");
     expect(regular.host.querySelector(".ib-hrow .ib-ib")).toBeNull();
     await act(async () => root?.unmount()); root = undefined;

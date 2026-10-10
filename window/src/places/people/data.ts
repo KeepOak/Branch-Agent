@@ -78,7 +78,7 @@ export function rows(value: unknown): Row[] {
     const owner = rec(rec(r.owner).actor);
     return {
       key: str(r.key), sessionId: str(r.sessionId), agentId: str(r.agentId),
-      title: str(r.label) || str(r.displayName) || str(r.derivedTitle) || "Untitled conversation",
+      title: str(r.label) || str(r.displayName) || str(r.derivedTitle) || "Chat",
       preview: str(rec(r.observerDigest).headline) || str(r.lastMessagePreview),
       working: r.hasActiveRun === true || strs(r.activeRunIds).length > 0 || str(r.status) === "running",
       status: str(r.status), updatedAt: num(r.updatedAt), ownerId: str(owner.id), ownerLabel: str(owner.label), ownerType: str(owner.type),

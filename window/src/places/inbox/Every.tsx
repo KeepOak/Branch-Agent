@@ -6,7 +6,7 @@ import { Face } from "../../face/Face";
 import { Icon } from "../../shell/icons";
 import { Menu, type MenuAnchor } from "../../shell/Menu";
 import { shows, type Level } from "../../places-nav/level";
-import { agentName, type Session } from "../overview/engine";
+import { agentName, conversationTitle, type Session } from "../overview/engine";
 import { clock, dayWord } from "../overview/format";
 import { errorText, rec, rows, str, type Row } from "./data";
 import type { HistoryData } from "./History";
@@ -20,7 +20,7 @@ export function everyRows(list: Session[], f: Filters, level: Level, names: (id:
   const q = f.q.trim().toLowerCase(), max = Math.max(0, parseInt(f.max, 10) || 0), mins = parseInt(f.mins, 10);
   const out = list.filter(s => (f.arch === "archived" ? s.archived : !s.archived)
     && (s.kind !== "global" || (f.glob && shows(level, "technical"))) && (s.kind !== "unknown" || (f.unk && shows(level, "technical")))
-    && (!q || [s.title, kindWord(s), names(s.agentId)].some(t => t.toLowerCase().includes(q)))
+    && (!q || [conversationTitle(s, names(s.agentId)), kindWord(s), names(s.agentId)].some(t => t.toLowerCase().includes(q)))
     && (!f.trunk || s.agentId === f.trunk)
     && (f.arch === "archived" || !(mins > 0) || s.working || now - (s.updatedAt ?? 0) <= mins * 6e4));
   return max ? out.slice(0, max) : out;
@@ -67,9 +67,9 @@ export function Every({ engine, data, level, open }: { engine: WindowEngine; dat
       {busy ? <p className="ib-err" role="alert">{busy}</p> : null}
       <div className="ib-evwrap"><table className="ib-evt"><thead><tr><th>Title</th><th>Trunk</th><th>Kind</th><th>Last activity</th><th>Context left</th><th>Archived</th><th><span className="ib-sr">More</span></th></tr></thead>
         <tbody>{list.length ? list.map(s => <tr key={s.key}>
-          <td><button type="button" className="ib-title-btn" onClick={() => open(s.key)}>{s.title}</button></td><td><Face size={20} label={names(s.agentId)} /></td><td>{kindWord(s)}</td><td>{when(s.updatedAt)}</td>
+          <td><button type="button" className="ib-title-btn" onClick={() => open(s.key)}>{conversationTitle(s, names(s.agentId))}</button></td><td><Face size={20} label={names(s.agentId)} /></td><td>{kindWord(s)}</td><td>{when(s.updatedAt)}</td>
           <td className="ib-mono">{s.room === undefined ? "—" : `${Math.round(s.room * 100)}%`}</td><td>{s.archived ? "Archived" : "—"}</td>
-          <td>{s.kind === "global" || s.kind === "unknown" ? null : <button type="button" className="ib-ib" aria-haspopup="menu" aria-label={`More for ${s.title}`} title={`More for ${s.title}`} onClick={e => setMenu({ at: at(e), kind: "row", row: s })}><Icon name="more" /></button>}</td></tr>)
+          <td>{s.kind === "global" || s.kind === "unknown" ? null : <button type="button" className="ib-ib" aria-haspopup="menu" aria-label={`More for ${conversationTitle(s, names(s.agentId))}`} title={`More for ${conversationTitle(s, names(s.agentId))}`} onClick={e => setMenu({ at: at(e), kind: "row", row: s })}><Icon name="more" /></button>}</td></tr>)
           : <tr><td colSpan={7} className="ib-hint">Nothing matches.</td></tr>}</tbody></table></div>
     </>}
     {menu?.kind === "trunk" ? <Menu at={menu.at} label="Trunk" onClose={() => setMenu(null)} items={[{ label: `${!f.trunk ? "✓ " : ""}All Trunks`, run: () => setF({ ...f, trunk: "" }) }, ...data.agents.list.map(a => ({ label: `${f.trunk === a.id ? "✓ " : ""}${a.name}`, run: () => setF({ ...f, trunk: a.id }) }))]} /> : null}

@@ -1,4 +1,5 @@
 import type { WindowEngine } from "../../connect/engine";
+import { cleanName } from "../../shell/plain-words";
 
 export type Tile = "sessions" | "health" | "computer" | "spend" | "people" | "presence" | "agents" | "backup" | "update" | "runs";
 export type Resource = { value?: unknown; loading: boolean; error?: string; updatedAt?: number };
@@ -99,6 +100,12 @@ export type Session = {
   global: boolean; unread: boolean; archived: boolean; cost?: number; recap: string; recapState: string; lastRunError: string;
   kind: string; room?: number;
 };
+/** What a conversation is called on screen. Threads without a saved name say which Trunk they belong to, never "Untitled". */
+export function conversationTitle(s: Pick<Session, "title" | "automation">, trunk: string): string {
+  if (cleanName(s.title)) return cleanName(s.title);
+  if (s.automation) return trunk ? `${trunk} automation run` : "Automation run";
+  return trunk ? `Chat with ${trunk}` : "Chat";
+}
 function actorOf(row: Record<string, unknown>): Record<string, unknown> {
   const owner = record(record(row.owner).actor);
   return Object.keys(owner).length ? owner : record(row.createdActor);
@@ -112,7 +119,7 @@ export function session(row: Record<string, unknown>): Session {
   const actor = actorOf(row), summary = record(row.activitySummary);
   return {
     key: text(row.key), agentId: text(row.agentId),
-    title: text(row.label) || text(row.displayName) || text(row.derivedTitle) || "Untitled conversation",
+    title: text(row.label) || text(row.displayName) || text(row.derivedTitle),
     preview: text(record(row.observerDigest).headline) || text(row.lastMessagePreview),
     working: row.hasActiveRun === true || runIds.length > 0 || row.status === "running",
     updatedAt: number(row.updatedAt), createdAt: number(row.createdAt), status: text(row.status),

@@ -73,11 +73,11 @@ describe("P54 conversation header menu", () => {
       found.run();
     }
     expect(calls).toEqual(["search", "sidePanel", "list", "ownWindow", "computer", "browser", "theme", "guide"]);
-    const tower = items.find((i) => i.kind !== "sub" && i.kind !== "sep" && i.kind !== "head" && i.kind !== "custom" && i.label === "Show the Control tower") as Extract<MenuItem, { run: () => void }>;
+    const tower = items.find((i) => i.kind !== "sub" && i.kind !== "sep" && i.kind !== "head" && i.kind !== "custom" && i.label === "Show Right now") as Extract<MenuItem, { run: () => void }>;
     expect(tower.disabled).toBeUndefined();
     tower.run();
     expect(calls.at(-1)).toBe("tower");
-    expect(shape(conversationMenuItems(ctx("regular", true, { towerVisible: true })))).toContain("Hide the Control tower");
+    expect(shape(conversationMenuItems(ctx("regular", true, { towerVisible: true })))).toContain("Hide Right now");
   });
 
   it("keeps this contact's thread layout behind a click-only View row above Side panel", () => {
