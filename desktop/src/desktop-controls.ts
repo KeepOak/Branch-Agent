@@ -1,7 +1,7 @@
 // The window's desktop controls: Start with Windows, keep working when the window closes, keep this computer awake,
 // the branch command on PATH, the tray's usage ring and the "Get it" download pages. Every OS call is injected, so the
 // tests use fakes and never change this computer's startup, power or PATH settings.
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { chmodSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { RELEASE_REPOSITORY } from "./component-update-manifest";
 import { isOwnedComponentWindow } from "./component-update-ipc";
@@ -211,6 +211,72 @@ export function branchShShim(o: { dataDir: string; engineDir: string; nodePath: 
     `exec ${q(slash(o.nodePath))} "$engine/branch.mjs" "$@"`,
     "",
   ].join("\n");
+}
+
+/** The first lines of the macOS and Linux branch command, so the app only ever rewrites or removes its own file. */
+export const BRANCH_COMMAND_MARKER = "# Branch Agent's command, written by the Branch Agent app.";
+/** What the earlier installer wrote at the same place. Its command ran Contents/Resources/app/dist/cli.js, which the
+ *  packaged app (app.asar) no longer has, so the app takes that file over and points it at the engine it runs. */
+export const LEGACY_BRANCH_COMMAND_MARKER = "# Branch Agent's command, written by its installer.";
+
+/** The branch command for macOS and Linux: the same engine, node, token and live port as the Windows shims. The
+ *  engine is the unpacked copy the app runs (engine-running.txt, else engine-current.txt), never a path inside
+ *  app.asar, which only Electron can read. */
+export function branchPosixShim(o: { dataDir: string; engineDir: string; nodePath: string; gatewayPort: number }): string {
+  const q = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
+  const firstLine = (file: string, name: string) =>
+    `if [ -f "$data/${file}" ]; then ${name}=$(head -n 1 "$data/${file}" | tr -d '\\r'); fi`;
+  return [
+    "#!/bin/sh",
+    BRANCH_COMMAND_MARKER,
+    "# Turning off \"Type branch in any terminal\" in Branch removes this file.",
+    `data=${q(o.dataDir)}`,
+    `engine=${q(o.engineDir)}`,
+    `current=; ${firstLine("engine-current.txt", "current")}; if [ -n "$current" ]; then engine=$current; fi`,
+    // The engine actually running wins over a staged one that has not been applied yet.
+    `running=; ${firstLine("engine-running.txt", "running")}; if [ -n "$running" ]; then engine=$running; fi`,
+    `if [ -f "$data/gateway-token" ]; then BRANCH_GATEWAY_TOKEN=$(head -n 1 "$data/gateway-token" | tr -d '\\r'); export BRANCH_GATEWAY_TOKEN; fi`,
+    `BRANCH_PROFILE=default; BRANCH_HOME="$data/home"; BRANCH_STATE_DIR="$data/home/.branch"; BRANCH_CONFIG_PATH="$data/home/.branch/branch.json"; BRANCH_GATEWAY_PORT=${o.gatewayPort}`,
+    `live=; ${firstLine("gateway-port", "live")}; if [ -n "$live" ]; then BRANCH_GATEWAY_PORT=$live; fi`,
+    "BRANCH_DATA=$data",
+    "export BRANCH_DATA BRANCH_PROFILE BRANCH_HOME BRANCH_STATE_DIR BRANCH_CONFIG_PATH BRANCH_GATEWAY_PORT",
+    `exec ${q(o.nodePath)} "$engine/branch.mjs" "$@"`,
+    "",
+  ].join("\n");
+}
+
+/** Who wrote the file at the branch command's place: this app, the earlier installer, someone else, or nobody. */
+export function branchCommandOwner(file: string): "app" | "installer" | "other" | "none" {
+  try {
+    if (lstatSync(file).isSymbolicLink()) return "other";
+    const head = readFileSync(file, "utf8").split("\n", 3);
+    if (head.includes(BRANCH_COMMAND_MARKER)) return "app";
+    return head.includes(LEGACY_BRANCH_COMMAND_MARKER) ? "installer" : "other";
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "none";
+    throw error;
+  }
+}
+
+/** The macOS and Linux branch command at `file` (~/.local/bin/branch). Someone else's file there is never touched. */
+export function posixBranchCommand(file: string, shim: () => string): ControlDeps["cli"] {
+  const write = (): void => {
+    mkdirSync(dirname(file), { recursive: true });
+    const next = `${file}.${process.pid}.tmp`;
+    writeFileSync(next, shim(), { mode: 0o755 });
+    chmodSync(next, 0o755);
+    renameSync(next, file);
+  };
+  return {
+    installed: async () => branchCommandOwner(file) === "app",
+    install: async () => {
+      if (branchCommandOwner(file) === "other") throw new Error(`${file} is another program's branch command, so Branch left it as it is`);
+      write();
+    },
+    uninstall: async () => { if (branchCommandOwner(file) !== "other") rmSync(file, { force: true }); },
+    // Also repairs the earlier installer's command, which points into a dist/cli.js the packaged app no longer has.
+    refresh: () => { if (["app", "installer"].includes(branchCommandOwner(file))) write(); },
+  };
 }
 
 const samePath =(a: string, b: string): boolean => a.trim().replace(/[\\/]+$/, "").toLowerCase() === b.replace(/[\\/]+$/, "").toLowerCase();
