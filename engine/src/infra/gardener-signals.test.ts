@@ -138,7 +138,7 @@ describe("staleClaimSignals", () => {
   const claimed = (overrides: Partial<TrunkQueueItem>) =>
     queueItem({
       claimed_by: "builder-1",
-      claim_id: "c1",
+      lease_token: "c1",
       claimed_at: NOW - STALE_CLAIM_MS,
       ...overrides,
     });
@@ -160,7 +160,7 @@ describe("staleClaimSignals", () => {
     const rows = [
       claimed({ done_at: NOW }),
       queueItem({ id: "free" }),
-      claimed({ id: "no-claim-id", claim_id: undefined }),
+      claimed({ id: "no-claim-id", lease_token: undefined }),
     ];
     expect(staleClaimSignals(rows, NOW)).toEqual([]);
   });
@@ -180,7 +180,7 @@ describe("Gardener claims and quoted data", () => {
       id: "g1",
       title: '[gardener:stale-claim:j1:c1] Check stale queue claim: "x"',
       claimed_by: "builder-1",
-      claim_id: "c9",
+      lease_token: "c9",
       claimed_at: NOW - STALE_CLAIM_MS,
     });
     expect(staleClaimSignals([item], NOW)).toEqual([]);
@@ -194,7 +194,7 @@ describe("Gardener claims and quoted data", () => {
           id: "j1",
           title: hostile,
           claimed_by: "builder-1",
-          claim_id: "c1",
+          lease_token: "c1",
           claimed_at: NOW - STALE_CLAIM_MS,
         }),
       ],

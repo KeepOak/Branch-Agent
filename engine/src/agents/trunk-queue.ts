@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "../config/paths.js";
+import type { BranchConfig } from "../config/types.branch.js";
 
 export type TrunkQueueItem = {
   id: string;
@@ -13,60 +14,109 @@ export type TrunkQueueItem = {
   brief_text: string;
   priority: number;
   added_at: number;
+  /** One key for the job's operation, kept across every claim attempt. */
+  operation_key?: string;
   claimed_by?: string;
   claimed_at?: number;
-  /** One claim attempt: dispatch and failure cleanup act only while the job still carries this id. */
-  claim_id?: string;
+  /** Lease token of the current claim. Release, settle and renewal act only while the job still carries it. */
+  lease_token?: string;
+  /** When the lease runs out unless run activity renews it first. */
+  lease_expires_at?: number;
+  /** The gateway process that granted or last renewed the lease. A lease from an earlier process is checked at once. */
+  lease_boot?: string;
+  /** This claim attempt's own id. Every attempt of one operation gets a new one. */
+  attempt_id?: string;
   /** The new thread this claim attempt sends the brief to. */
   thread_key?: string;
-  /** Last run activity seen for the claiming Trunk; with none for STALE_CLAIM_MS and no live run, it is released. */
+  /** Last run activity seen in the claim's thread. */
   active_at?: number;
   done_at?: number;
   released_at?: number;
   released_from?: string;
-  /** Claim attempts that ended in an error or a failed dispatch. At MAX_CLAIM_FAILURES the job is blocked. */
-  failures?: number;
-  /** Plain reason a job stopped after MAX_CLAIM_FAILURES. Shown in the queue list; cleared by queue_release. */
-  blocked_reason?: string;
+  /** Claim attempts that ended without finishing: a failed run, a failed dispatch or a lease that ran out. */
+  attempts?: number;
+  /** Plain reason a job went dead after maxAttempts. Shown in the queue list; cleared by queue_release. */
+  dead_reason?: string;
 };
 
-export type TrunkQueueStatus = "queued" | "claimed" | "released" | "blocked" | "done";
+export type TrunkQueueStatus = "queued" | "claimed" | "released" | "dead" | "done";
 
 /** The gateway calls a pickup needs: the Trunk's threads (is it idle?) and a new thread with the brief. */
 export type TrunkQueueGateway = {
   request<T = Record<string, unknown>>(method: string, params: Record<string, unknown>): Promise<T>;
 };
 
+/** Default lease length (agents.trunkQueue.leaseMs). Run start and end in the claim's thread renew it. */
 export const STALE_CLAIM_MS = 2 * 60 * 60_000;
-/** A claim with no run activity for this long and no live run lost its run without a run-end event. */
-export const ORPHAN_CLAIM_GRACE_MS = 2 * 60_000;
-/** Failed claim attempts after which a job is blocked, so a broken job cannot re-dispatch forever. */
-export const MAX_CLAIM_FAILURES = 3;
+/** Default attempt limit (agents.trunkQueue.maxAttempts): a job goes dead after this many unfinished attempts. */
+export const MAX_CLAIM_ATTEMPTS = 3;
+
+export type TrunkQueueLeaseSettings = { leaseMs: number; maxAttempts: number };
+
+/** Lease length and attempt limit from agents.trunkQueue, with the defaults above. */
+export function queueLeaseSettings(cfg?: BranchConfig): TrunkQueueLeaseSettings {
+  return {
+    leaseMs: cfg?.agents?.trunkQueue?.leaseMs ?? STALE_CLAIM_MS,
+    maxAttempts: cfg?.agents?.trunkQueue?.maxAttempts ?? MAX_CLAIM_ATTEMPTS,
+  };
+}
+
 /** Live sessions requested per query. The query selects running sessions before the limit applies. */
 const LIVE_SESSION_LIMIT = 500;
 const RETAIN_DONE_MS = 7 * 24 * 60 * 60_000;
 const RUN_ERROR_REASON = "the run ended with an error";
+const LEASE_EXPIRED_REASON = "the lease ran out with no live run";
 
-/** Claim ids whose brief is still being sent. A claim is never called orphaned while its dispatch is in flight. */
-const dispatchingClaimIds = new Set<string>();
+/**
+ * This gateway process. Leases granted by an earlier process have no run in this one to renew them. Kept on the
+ * process, so a second loaded copy of this module never mistakes this process's live leases for an earlier one's.
+ */
+const QUEUE_BOOT_KEY = Symbol.for("branch.trunkQueue.bootId");
+const processSlots = globalThis as typeof globalThis & { [QUEUE_BOOT_KEY]?: string };
+const QUEUE_BOOT_ID = (processSlots[QUEUE_BOOT_KEY] ??= randomUUID());
+
+/** Lease tokens whose brief is still being sent. Such a claim is never reclaimed while its dispatch is in flight. */
+const dispatchingLeases = new Set<string>();
 
 function file(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(resolveStateDir(env), "trunks", "queue.json");
+}
+
+/** The field names an earlier queue file used for the lease token, attempt count and dead reason. */
+type LegacyQueueItem = TrunkQueueItem & {
+  claim_id?: string;
+  failures?: number;
+  blocked_reason?: string;
+};
+
+function upgrade(row: LegacyQueueItem): TrunkQueueItem {
+  const { claim_id, failures, blocked_reason, ...item } = row;
+  item.lease_token ??= claim_id;
+  item.attempts ??= failures;
+  item.dead_reason ??= blocked_reason;
+  for (const key of ["lease_token", "attempts", "dead_reason"] as const) {
+    if (item[key] === undefined) {
+      delete item[key];
+    }
+  }
+  return item;
 }
 
 function read(env?: NodeJS.ProcessEnv): TrunkQueueItem[] {
   try {
     const rows = JSON.parse(fs.readFileSync(file(env), "utf8")) as unknown;
     return Array.isArray(rows)
-      ? rows.filter(
-          (row): row is TrunkQueueItem =>
-            Boolean(row) &&
-            typeof row.id === "string" &&
-            typeof row.title === "string" &&
-            typeof row.brief_text === "string" &&
-            typeof row.priority === "number" &&
-            typeof row.added_at === "number",
-        )
+      ? rows
+          .filter(
+            (row): row is LegacyQueueItem =>
+              Boolean(row) &&
+              typeof row.id === "string" &&
+              typeof row.title === "string" &&
+              typeof row.brief_text === "string" &&
+              typeof row.priority === "number" &&
+              typeof row.added_at === "number",
+          )
+          .map(upgrade)
       : [];
   } catch {
     return [];
@@ -86,31 +136,75 @@ function isOpenClaim(row: TrunkQueueItem): boolean {
   return Boolean(row.claimed_by) && !row.done_at;
 }
 
+function operationKey(id: string): string {
+  return `trunk-queue-${id}`;
+}
+
+/**
+ * The conditional update every release, settle and renewal goes through: change the job only while exactly one
+ * open claim on it carries this lease token. Returns the number of rows that matched. Any count other than 1 means
+ * the lease was lost (released, reclaimed, settled or ambiguous), and nothing is changed or written. `change` may
+ * return false to leave a matched row as it is.
+ */
+function updateLeased(
+  id: string,
+  leaseToken: string,
+  env: NodeJS.ProcessEnv | undefined,
+  now: number,
+  change: (row: TrunkQueueItem) => boolean | void,
+): number {
+  const rows = read(env);
+  const held = rows.filter(
+    (row) => row.id === id && isOpenClaim(row) && row.lease_token === leaseToken,
+  );
+  if (held.length !== 1) {
+    return held.length;
+  }
+  if (change(held[0]!) !== false) {
+    write(rows, now, env);
+  }
+  return 1;
+}
+
 function release(row: TrunkQueueItem, now: number): void {
   row.released_from = row.claimed_by;
   row.released_at = now;
   delete row.claimed_by;
   delete row.claimed_at;
-  delete row.claim_id;
+  delete row.lease_token;
+  delete row.lease_expires_at;
+  delete row.lease_boot;
+  delete row.attempt_id;
   delete row.thread_key;
   delete row.active_at;
 }
 
-function isPastStaleTime(row: TrunkQueueItem, now: number): boolean {
-  return now - (row.active_at ?? row.claimed_at ?? now) >= STALE_CLAIM_MS;
+function renew(row: TrunkQueueItem, now: number, settings: TrunkQueueLeaseSettings): void {
+  row.active_at = now;
+  row.lease_expires_at = now + settings.leaseMs;
+  row.lease_boot = QUEUE_BOOT_ID;
+}
+
+function leaseExpiresAt(row: TrunkQueueItem, settings: TrunkQueueLeaseSettings): number {
+  return row.lease_expires_at ?? (row.active_at ?? row.claimed_at ?? 0) + settings.leaseMs;
 }
 
 function isClaimable(row: TrunkQueueItem): boolean {
-  return !row.done_at && !row.claimed_by && (row.failures ?? 0) < MAX_CLAIM_FAILURES;
+  return !row.done_at && !row.claimed_by && !row.dead_reason;
 }
 
-/** Counts a failed attempt and puts the job back. At the cap the job is blocked with a plain reason. */
-function failClaim(row: TrunkQueueItem, now: number, reason: string): void {
-  row.failures = (row.failures ?? 0) + 1;
+/** Counts an unfinished attempt and puts the job back. At maxAttempts the job is dead, with a plain reason. */
+function failClaim(
+  row: TrunkQueueItem,
+  now: number,
+  reason: string,
+  settings: TrunkQueueLeaseSettings,
+): void {
+  row.attempts = (row.attempts ?? 0) + 1;
   release(row, now);
-  if (row.failures >= MAX_CLAIM_FAILURES) {
-    row.blocked_reason =
-      `Stopped after ${MAX_CLAIM_FAILURES} failed attempts (last: ${reason}). ` +
+  if (row.attempts >= settings.maxAttempts) {
+    row.dead_reason =
+      `Stopped after ${row.attempts} attempts (last: ${reason}). ` +
       "Check the Trunk, then queue_release this job to run it again.";
   }
 }
@@ -122,8 +216,8 @@ export function queueItemStatus(row: TrunkQueueItem): TrunkQueueStatus {
   if (row.claimed_by) {
     return "claimed";
   }
-  if (row.blocked_reason) {
-    return "blocked";
+  if (row.dead_reason) {
+    return "dead";
   }
   return row.released_at ? "released" : "queued";
 }
@@ -139,12 +233,14 @@ export function addQueueItem(
   now = Date.now(),
 ): TrunkQueueItem {
   const rows = read(env);
+  const id = randomUUID();
   const item: TrunkQueueItem = {
-    id: randomUUID(),
+    id,
     title: input.title,
     brief_text: input.brief_text,
     priority: input.priority ?? 0,
     added_at: now,
+    operation_key: operationKey(id),
   };
   rows.push(item);
   write(rows, now, env);
@@ -176,15 +272,14 @@ export function markQueueItemDone(
 }
 
 /**
- * Puts a stuck claim back in the queue and returns the job as it was before. With claimId, only that claim
- * attempt is released, so a late failure never releases a newer claim on the same job. A blocked job is
- * unblocked: its failure count resets and it can be claimed again.
+ * The person's queue_release: puts a claim back in the queue and returns the job as it was before. A dead job is
+ * revived: its attempt count resets and it can be claimed again. A holder releasing its own claim uses
+ * releaseQueueClaim with its lease token instead.
  */
 export function releaseQueueItem(
   id: string,
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
-  claimId?: string,
 ): TrunkQueueItem | undefined {
   const rows = read(env);
   const row = rows.find((candidate) => candidate.id === id);
@@ -192,102 +287,127 @@ export function releaseQueueItem(
     return undefined;
   }
   const before = { ...row };
-  if (isOpenClaim(row) && (claimId === undefined || row.claim_id === claimId)) {
+  if (isOpenClaim(row)) {
     release(row, now);
     write(rows, now, env);
-  } else if (!row.claimed_by && row.blocked_reason) {
-    delete row.blocked_reason;
-    row.failures = 0;
+  } else if (!row.claimed_by && row.dead_reason) {
+    delete row.dead_reason;
+    row.attempts = 0;
     row.released_at = now;
     write(rows, now, env);
   }
   return before;
 }
 
-/** Records run activity in the claim's own thread, so a working claim is not released as stale. */
+/** Puts the claim back without counting an attempt, only while this lease still holds it. Returns the row count. */
+export function releaseQueueClaim(
+  id: string,
+  leaseToken: string,
+  env?: NodeJS.ProcessEnv,
+  now = Date.now(),
+): number {
+  return updateLeased(id, leaseToken, env, now, (row) => release(row, now));
+}
+
+/**
+ * Settles one claim attempt, only while this lease still holds the job: a clean end completes the job, a failure
+ * counts an attempt and puts it back (dead at maxAttempts). Returns the row count; anything but 1 means the lease
+ * was lost and nothing changed.
+ */
+export function settleQueueClaim(
+  id: string,
+  leaseToken: string,
+  outcome: "completed" | "failed",
+  params: {
+    reason?: string;
+    env?: NodeJS.ProcessEnv;
+    now?: number;
+    settings?: TrunkQueueLeaseSettings;
+  } = {},
+): number {
+  const now = params.now ?? Date.now();
+  const settings = params.settings ?? queueLeaseSettings();
+  return updateLeased(id, leaseToken, params.env, now, (row) => {
+    if (outcome === "completed") {
+      row.done_at = now;
+    } else {
+      failClaim(row, now, params.reason ?? RUN_ERROR_REASON, settings);
+    }
+  });
+}
+
+/** The open claim whose own thread is this one, if any. */
+function claimForThread(threadKey: string, env?: NodeJS.ProcessEnv): TrunkQueueItem | undefined {
+  return read(env).find(
+    (candidate) => isOpenClaim(candidate) && candidate.thread_key === threadKey,
+  );
+}
+
+/** Run activity in the claim's own thread renews its lease, so a working claim is not reclaimed. */
 export function touchQueueClaim(
   threadKey: string,
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
+  settings: TrunkQueueLeaseSettings = queueLeaseSettings(),
 ): void {
-  const rows = read(env);
-  const row = rows.find(
-    (candidate) => isOpenClaim(candidate) && candidate.thread_key === threadKey,
-  );
-  if (!row) {
-    return;
+  const row = claimForThread(threadKey, env);
+  if (row?.lease_token) {
+    updateLeased(row.id, row.lease_token, env, now, (held) => renew(held, now, settings));
   }
-  row.active_at = now;
-  write(rows, now, env);
 }
 
 /**
- * The run in a claim's own thread ended. A clean end completes the job; an error counts a failed attempt and
- * puts it back. Runs in other threads do not touch the claim. Returns whether a claim was closed.
+ * The run in a claim's own thread ended. A clean end completes the job; an error counts an attempt and puts it
+ * back. Runs in other threads do not touch the claim. Returns whether a claim was closed.
  */
 export function closeQueueClaimForThread(
   threadKey: string,
   outcome: "completed" | "failed",
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
+  settings: TrunkQueueLeaseSettings = queueLeaseSettings(),
 ): boolean {
-  const rows = read(env);
-  const row = rows.find(
-    (candidate) => isOpenClaim(candidate) && candidate.thread_key === threadKey,
+  const row = claimForThread(threadKey, env);
+  return (
+    Boolean(row?.lease_token) &&
+    settleQueueClaim(row!.id, row!.lease_token!, outcome, { env, now, settings }) === 1
   );
-  if (!row) {
-    return false;
-  }
-  if (outcome === "completed") {
-    row.done_at = now;
-  } else {
-    failClaim(row, now, RUN_ERROR_REASON);
-  }
-  write(rows, now, env);
-  return true;
 }
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** A claim attempt that could not be dispatched: counted as a failure, and only if it still holds this claim. */
-function failQueueClaim(
+/** True while the job is still held by this lease (not done, released or reclaimed since). */
+export function isQueueClaimCurrent(
   id: string,
-  env: NodeJS.ProcessEnv | undefined,
-  now: number,
-  claimId: string,
-  reason: string,
-): void {
-  const rows = read(env);
-  const row = rows.find((candidate) => candidate.id === id);
-  if (!row || !isOpenClaim(row) || row.claim_id !== claimId) {
-    return;
-  }
-  failClaim(row, now, reason);
-  write(rows, now, env);
-}
-
-/** True while the job is still held by this claim attempt (not done, released or reclaimed since). */
-export function isQueueClaimCurrent(id: string, claimId: string, env?: NodeJS.ProcessEnv): boolean {
-  return read(env).some((row) => row.id === id && isOpenClaim(row) && row.claim_id === claimId);
+  leaseToken: string,
+  env?: NodeJS.ProcessEnv,
+): boolean {
+  return read(env).some(
+    (row) => row.id === id && isOpenClaim(row) && row.lease_token === leaseToken,
+  );
 }
 
 export type TrunkQueueClaim = TrunkQueueItem & {
   claimed_by: string;
-  claim_id: string;
+  operation_key: string;
+  lease_token: string;
+  lease_expires_at: number;
+  attempt_id: string;
   thread_key: string;
 };
 
 /**
  * Claims the top unclaimed job for a Trunk; nothing when the queue is empty or the Trunk already holds one.
  * Synchronous from read to write, so concurrent pickups in the gateway never claim the same job. Each claim
- * gets its own id and new thread, so a job that was released and claimed again is a fresh dispatch.
+ * gets its own lease token, attempt id and new thread, under the job's one operation key.
  */
 export function claimNextQueueItem(
   agentId: string,
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
+  settings: TrunkQueueLeaseSettings = queueLeaseSettings(),
 ): TrunkQueueClaim | undefined {
   const rows = read(env);
   const holds = rows.some((row) => isOpenClaim(row) && row.claimed_by === agentId);
@@ -295,12 +415,16 @@ export function claimNextQueueItem(
   if (!next) {
     return undefined;
   }
-  const claimId = randomUUID();
+  const attemptId = randomUUID();
   const claim = Object.assign(next, {
+    operation_key: next.operation_key ?? operationKey(next.id),
     claimed_by: agentId,
     claimed_at: now,
-    claim_id: claimId,
-    thread_key: `agent:${agentId}:queue-${next.id}-${claimId.slice(0, 8)}`,
+    lease_token: randomUUID(),
+    lease_expires_at: now + settings.leaseMs,
+    lease_boot: QUEUE_BOOT_ID,
+    attempt_id: attemptId,
+    thread_key: `agent:${agentId}:queue-${next.id}-${attemptId.slice(0, 8)}`,
     active_at: now,
   });
   write(rows, now, env);
@@ -373,40 +497,48 @@ async function waitForTrunkIdle(
 }
 
 /**
- * Puts back claims that have had no run activity for STALE_CLAIM_MS. The recorded start/end time is only a
- * hint: a claim is released only when its Trunk also has no live run now, so a run lasting longer than
- * STALE_CLAIM_MS keeps its job. The gateway is called only when some claim is past that time.
+ * The reaper. A claim is due when its lease ran out, or when an earlier gateway process granted it (that process's
+ * runs are gone, so nothing here would renew it). A due claim whose run is still live gets a fresh lease: for a
+ * lease that ran out, any live run of its Trunk counts; for an earlier process's lease, only its own thread. Otherwise
+ * an expired lease counts an attempt and goes back to pending, or dead at maxAttempts; an earlier process's lease
+ * that has not run out goes back without counting. Every change is the conditional lease update, so a claim that was
+ * renewed, settled or released meanwhile is left alone. A claim whose brief is still being sent is never touched,
+ * and the gateway is called only for due claims.
  */
-export async function releaseStaleQueueClaims(params: {
+export async function reapExpiredQueueClaims(params: {
   gateway: TrunkQueueGateway;
   env?: NodeJS.ProcessEnv;
   now?: () => number;
+  settings?: TrunkQueueLeaseSettings;
 }): Promise<void> {
   const now = params.now ?? Date.now;
-  const candidates = read(params.env).filter(
-    (row) => isOpenClaim(row) && isPastStaleTime(row, now()),
-  );
-  for (const candidate of candidates) {
+  const settings = params.settings ?? queueLeaseSettings();
+  const isDue = (row: TrunkQueueItem, at: number) =>
+    isOpenClaim(row) &&
+    Boolean(row.lease_token) &&
+    !dispatchingLeases.has(row.lease_token!) &&
+    (row.lease_boot !== QUEUE_BOOT_ID || at >= leaseExpiresAt(row, settings));
+  const due = read(params.env).filter((row) => isDue(row, now()));
+  for (const candidate of due) {
     const agentId = candidate.claimed_by!;
-    const working = await isTrunkWorking(params.gateway, agentId);
-    const rows = read(params.env);
-    const row = rows.find(
-      (current) =>
-        current.id === candidate.id &&
-        isOpenClaim(current) &&
-        current.claimed_by === agentId &&
-        current.claim_id === candidate.claim_id,
-    );
+    const expired = now() >= leaseExpiresAt(candidate, settings);
+    const live = expired
+      ? await isTrunkWorking(params.gateway, agentId)
+      : await isClaimThreadLive(params.gateway, agentId, candidate.thread_key ?? "");
     const at = now();
-    if (!row || (!working && !isPastStaleTime(row, at))) {
-      continue;
-    }
-    if (working) {
-      row.active_at = at;
-    } else {
-      release(row, at);
-    }
-    write(rows, at, params.env);
+    updateLeased(candidate.id, candidate.lease_token!, params.env, at, (row) => {
+      if (!isDue(row, at)) {
+        return false;
+      }
+      if (live) {
+        renew(row, at, settings);
+      } else if (at >= leaseExpiresAt(row, settings)) {
+        failClaim(row, at, LEASE_EXPIRED_REASON, settings);
+      } else {
+        release(row, at);
+      }
+      return true;
+    });
   }
 }
 
@@ -415,6 +547,7 @@ type PickupParams = {
   gateway: TrunkQueueGateway;
   env?: NodeJS.ProcessEnv;
   now?: () => number;
+  settings?: TrunkQueueLeaseSettings;
   /**
    * Right after a run ends, sessions.list can still count it as active for a moment. Wait up to this long
    * for the Trunk to show idle; a Trunk still working after that keeps its turn, and its next run end tries again.
@@ -450,8 +583,8 @@ async function claimAndDispatch(
   params: PickupParams,
 ): Promise<{ item: TrunkQueueItem; threadKey: string } | undefined> {
   const now = params.now ?? Date.now;
-  // Abandoned claims go back first, so a queue holding only those still recovers.
-  await releaseStaleQueueClaims(params);
+  // Expired claims go back first, so a queue holding only those still recovers.
+  await reapExpiredQueueClaims(params);
   // Empty queue: no thread, no message.
   if (!read(params.env).some(isClaimable)) {
     return undefined;
@@ -459,7 +592,7 @@ async function claimAndDispatch(
   if (!(await waitForTrunkIdle(params.gateway, params.agentId, params.idleWaitMs ?? 0))) {
     return undefined;
   }
-  const item = claimNextQueueItem(params.agentId, params.env, now());
+  const item = claimNextQueueItem(params.agentId, params.env, now(), params.settings);
   if (!item) {
     return undefined;
   }
@@ -471,10 +604,10 @@ async function dispatchClaim(
   params: PickupParams,
   now: () => number,
 ): Promise<{ item: TrunkQueueItem; threadKey: string } | undefined> {
-  const { id, claim_id: claimId, thread_key: threadKey } = item;
+  const { id, lease_token: leaseToken, attempt_id: attemptId, thread_key: threadKey } = item;
   // A claim released (or released and reclaimed) while a call was in flight sends nothing more.
-  const current = () => isQueueClaimCurrent(id, claimId, params.env);
-  dispatchingClaimIds.add(claimId);
+  const current = () => isQueueClaimCurrent(id, leaseToken, params.env);
+  dispatchingLeases.add(leaseToken);
   try {
     if (!current()) {
       return undefined;
@@ -483,7 +616,7 @@ async function dispatchClaim(
       key: threadKey,
       agentId: params.agentId,
       // Session labels are unique per Trunk, so a job sent again after a release needs its own label.
-      label: `${item.title} (${claimId.slice(0, 8)})`,
+      label: `${item.title} (${attemptId.slice(0, 8)})`,
     });
     if (!current()) {
       return undefined;
@@ -493,19 +626,19 @@ async function dispatchClaim(
       agentId: params.agentId,
       message: item.brief_text,
       deliver: false,
-      idempotencyKey: `trunk-queue-${id}-${claimId}`,
+      // One operation key for the job; each attempt is a fresh run, so the key carries the attempt id too.
+      idempotencyKey: `${item.operation_key}:${attemptId}`,
     });
   } catch (error) {
-    failQueueClaim(
-      id,
-      params.env,
-      now(),
-      claimId,
-      `the brief could not be sent: ${errorText(error)}`,
-    );
+    settleQueueClaim(id, leaseToken, "failed", {
+      reason: `the brief could not be sent: ${errorText(error)}`,
+      env: params.env,
+      now: now(),
+      settings: params.settings,
+    });
     throw error;
   } finally {
-    dispatchingClaimIds.delete(claimId);
+    dispatchingLeases.delete(leaseToken);
   }
   return { item, threadKey };
 }
@@ -520,8 +653,9 @@ export async function wakeIdleTrunks(params: {
   gateway: TrunkQueueGateway;
   env?: NodeJS.ProcessEnv;
   now?: () => number;
+  settings?: TrunkQueueLeaseSettings;
 }): Promise<string[]> {
-  await releaseStaleQueueClaims(params);
+  await reapExpiredQueueClaims(params);
   const woken: string[] = [];
   for (const agentId of params.agentIds) {
     if (!read(params.env).some(isClaimable)) {
@@ -536,49 +670,7 @@ export async function wakeIdleTrunks(params: {
 }
 
 /**
- * A claim whose own thread has no live run, past ORPHAN_CLAIM_GRACE_MS without activity, lost its run without a
- * run-end event (a gateway restart, for one). It goes back in the queue. This is not a failed attempt. A claim whose
- * brief is still being sent is never touched.
- */
-export async function releaseOrphanQueueClaims(params: {
-  gateway: TrunkQueueGateway;
-  env?: NodeJS.ProcessEnv;
-  now?: () => number;
-}): Promise<void> {
-  const now = params.now ?? Date.now;
-  const orphans = read(params.env).filter(
-    (row) =>
-      isOpenClaim(row) &&
-      !dispatchingClaimIds.has(row.claim_id ?? "") &&
-      now() - (row.active_at ?? row.claimed_at ?? now()) >= ORPHAN_CLAIM_GRACE_MS,
-  );
-  for (const candidate of orphans) {
-    const live = await isClaimThreadLive(
-      params.gateway,
-      candidate.claimed_by!,
-      candidate.thread_key ?? "",
-    );
-    if (live) {
-      continue;
-    }
-    const rows = read(params.env);
-    const row = rows.find(
-      (current) =>
-        current.id === candidate.id &&
-        isOpenClaim(current) &&
-        current.claim_id === candidate.claim_id,
-    );
-    if (!row) {
-      continue;
-    }
-    const at = now();
-    release(row, at);
-    write(rows, at, params.env);
-  }
-}
-
-/**
- * Periodic and post-restart pass. Releases orphaned claims, then hands queued jobs to idle eligible Trunks. It makes
+ * Periodic and post-restart pass. Reaps expired claims, then hands queued jobs to idle eligible Trunks. It makes
  * no gateway call while the queue has neither an open claim nor a claimable job, so an empty queue costs nothing.
  */
 export async function reconcileTrunkQueue(params: {
@@ -586,12 +678,13 @@ export async function reconcileTrunkQueue(params: {
   agentIds: () => Promise<string[]>;
   env?: NodeJS.ProcessEnv;
   now?: () => number;
+  settings?: TrunkQueueLeaseSettings;
 }): Promise<void> {
   const rows = read(params.env);
   if (!rows.some((row) => isOpenClaim(row) || isClaimable(row))) {
     return;
   }
-  await releaseOrphanQueueClaims(params);
+  await reapExpiredQueueClaims(params);
   if (!read(params.env).some(isClaimable)) {
     return;
   }

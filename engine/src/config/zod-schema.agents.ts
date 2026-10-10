@@ -46,6 +46,8 @@ export const AgentsSchema = z
       .strictObject({
         enabled: z.boolean().optional(),
         agents: z.array(z.string().min(1).max(64)).optional(),
+        leaseMs: z.number().int().positive().optional(),
+        maxAttempts: z.number().int().positive().optional(),
       })
       .optional(),
     gardener: z

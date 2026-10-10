@@ -9,9 +9,10 @@ import {
   markQueueItemDone,
   pickUpQueuedWork,
   queueItemStatus,
+  queueLeaseSettings,
+  reapExpiredQueueClaims,
   reconcileTrunkQueue,
   releaseQueueItem,
-  releaseStaleQueueClaims,
   touchQueueClaim,
   wakeIdleTrunks,
   type TrunkQueueGateway,
@@ -35,7 +36,7 @@ const localGateway: TrunkQueueGateway = {
 const RUN_END_IDLE_WAIT_MS = 30_000;
 
 /**
- * Run start or end in a Trunk's thread: keep its claim fresh. A clean end completes the job and an error puts it
+ * Run start or end in a Trunk's thread: renew its claim's lease. A clean end completes the job and an error puts it
  * back; then an idle eligible Trunk takes the next job. A run in any other thread leaves the claim alone.
  */
 export async function onTrunkRunLifecycle(params: {
@@ -46,17 +47,19 @@ export async function onTrunkRunLifecycle(params: {
   cfg?: BranchConfig;
   gateway?: TrunkQueueGateway;
 }): Promise<void> {
+  const settings = queueLeaseSettings(params.cfg);
   if (params.threadKey) {
-    touchQueueClaim(params.threadKey);
+    touchQueueClaim(params.threadKey, undefined, Date.now(), settings);
   }
   if (params.terminal && params.threadKey && params.outcome) {
-    closeQueueClaimForThread(params.threadKey, params.outcome);
+    closeQueueClaimForThread(params.threadKey, params.outcome, undefined, Date.now(), settings);
   }
   if (params.terminal && isQueueEligibleTrunk(params.agentId, params.cfg)) {
     await pickUpQueuedWork({
       agentId: params.agentId,
       gateway: params.gateway ?? localGateway,
       idleWaitMs: RUN_END_IDLE_WAIT_MS,
+      settings,
     });
   }
 }
@@ -80,7 +83,7 @@ export function wakeEligibleTrunks(
 ): void {
   void (async () => {
     const agentIds = await readyEligibleAgentIds(localGateway, cfg);
-    await wakeIdleTrunks({ agentIds, gateway: localGateway });
+    await wakeIdleTrunks({ agentIds, gateway: localGateway, settings: queueLeaseSettings(cfg) });
   })().catch((error: unknown) => log(`trunk queue wake failed: ${String(error)}`));
 }
 
@@ -113,9 +116,11 @@ export function startTrunkQueueSweep(params: {
       return;
     }
     passRunning = true;
+    const cfg = params.getConfig();
     void reconcileTrunkQueue({
       gateway,
-      agentIds: () => readyEligibleAgentIds(gateway, params.getConfig()),
+      agentIds: () => readyEligibleAgentIds(gateway, cfg),
+      settings: queueLeaseSettings(cfg),
     })
       .catch((error: unknown) => params.log(`trunk queue sweep failed: ${String(error)}`))
       .finally(() => {
@@ -160,9 +165,12 @@ export const trunkQueueHandlers: GatewayRequestHandlers = {
     wakeEligibleTrunks(context.getRuntimeConfig(), (message) => context.logGateway.warn(message));
   },
   "trunks.queue.list": async ({ respond, context }) => {
-    // A failed run-activity check releases nothing; the list still shows every job.
-    await releaseStaleQueueClaims({ gateway: localGateway }).catch((error: unknown) =>
-      context.logGateway.warn(`trunk queue stale-claim check failed: ${String(error)}`),
+    // A failed run-activity check reclaims nothing; the list still shows every job.
+    await reapExpiredQueueClaims({
+      gateway: localGateway,
+      settings: queueLeaseSettings(context.getRuntimeConfig()),
+    }).catch((error: unknown) =>
+      context.logGateway.warn(`trunk queue expired-claim check failed: ${String(error)}`),
     );
     respond(true, { items: listQueueItems() });
   },
@@ -180,7 +188,11 @@ export const trunkQueueHandlers: GatewayRequestHandlers = {
     // The Trunk that held this job is free now; if it is idle it takes the next one.
     const agentId = item.claimed_by;
     if (agentId && isQueueEligibleTrunk(agentId, context.getRuntimeConfig())) {
-      void pickUpQueuedWork({ agentId, gateway: localGateway }).catch((error: unknown) =>
+      void pickUpQueuedWork({
+        agentId,
+        gateway: localGateway,
+        settings: queueLeaseSettings(context.getRuntimeConfig()),
+      }).catch((error: unknown) =>
         context.logGateway.warn(`trunk queue pickup failed: ${String(error)}`),
       );
     }

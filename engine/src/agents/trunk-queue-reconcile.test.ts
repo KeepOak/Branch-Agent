@@ -14,12 +14,12 @@ import {
   claimNextQueueItem,
   closeQueueClaimForThread,
   listQueueItems,
-  MAX_CLAIM_FAILURES,
-  ORPHAN_CLAIM_GRACE_MS,
+  MAX_CLAIM_ATTEMPTS,
   pickUpQueuedWork,
+  reapExpiredQueueClaims,
   reconcileTrunkQueue,
-  releaseOrphanQueueClaims,
   releaseQueueItem,
+  STALE_CLAIM_MS,
   type TrunkQueueGateway,
 } from "./trunk-queue.js";
 
@@ -59,6 +59,18 @@ function briefedThreads(calls: Call[]): string[] {
 
 function rowById(id: string) {
   return listQueueItems().find((row) => row.id === id);
+}
+
+/** Marks a job's lease as granted by an earlier gateway process, as after a restart. */
+function fromEarlierGateway(id: string) {
+  const file = path.join(dir, "trunks", "queue.json");
+  const rows = JSON.parse(fs.readFileSync(file, "utf8")) as Array<Record<string, unknown>>;
+  for (const row of rows) {
+    if (row.id === id) {
+      row.lease_boot = "earlier";
+    }
+  }
+  fs.writeFileSync(file, JSON.stringify(rows));
 }
 
 let dir = "";
@@ -115,12 +127,12 @@ describe("Trunk queue claim closes at its own run end", () => {
     expect(briefedThreads(calls)).toEqual([]);
   });
 
-  it("puts a job back after failed runs and blocks it at the cap with a plain reason", async () => {
+  it("puts a job back after failed runs and marks it dead at the attempt limit with a plain reason", async () => {
     const job = addQueueItem({ title: "job", brief_text: "b", priority: 1 });
     const { gateway } = fakeGateway();
     let threadKey = claimNextQueueItem("builder-ash")?.thread_key;
 
-    for (let attempt = 1; attempt <= MAX_CLAIM_FAILURES; attempt += 1) {
+    for (let attempt = 1; attempt <= MAX_CLAIM_ATTEMPTS; attempt += 1) {
       expect(threadKey).toBeDefined();
       await onTrunkRunLifecycle({
         agentId: "builder-ash",
@@ -134,19 +146,19 @@ describe("Trunk queue claim closes at its own run end", () => {
 
     const row = rowById(job.id);
     expect(threadKey).toBeUndefined();
-    expect(row?.failures).toBe(MAX_CLAIM_FAILURES);
-    expect(row?.status).toBe("blocked");
-    expect(row?.blocked_reason).toContain(`${MAX_CLAIM_FAILURES} failed attempts`);
+    expect(row?.attempts).toBe(MAX_CLAIM_ATTEMPTS);
+    expect(row?.status).toBe("dead");
+    expect(row?.dead_reason).toContain(`${MAX_CLAIM_ATTEMPTS} attempts`);
     expect(claimNextQueueItem("builder-ash")).toBeUndefined();
   });
 
-  it("makes a blocked job claimable again when it is released", () => {
+  it("makes a dead job claimable again when it is released", () => {
     const job = addQueueItem({ title: "job", brief_text: "b", priority: 1 });
-    for (let attempt = 0; attempt < MAX_CLAIM_FAILURES; attempt += 1) {
+    for (let attempt = 0; attempt < MAX_CLAIM_ATTEMPTS; attempt += 1) {
       const claim = claimNextQueueItem("builder-ash");
       closeQueueClaimForThread(claim!.thread_key, "failed");
     }
-    expect(rowById(job.id)?.status).toBe("blocked");
+    expect(rowById(job.id)?.status).toBe("dead");
 
     releaseQueueItem(job.id);
 
@@ -174,24 +186,7 @@ describe("Trunk queue reconcile", () => {
   it("after a restart, releases an orphaned claim and dispatches the job again as a fresh claim", async () => {
     const job = addQueueItem({ title: "job", brief_text: "b", priority: 1 });
     const orphan = claimNextQueueItem("builder-ash", undefined, 100);
-    const { gateway, calls } = fakeGateway();
-
-    await reconcileTrunkQueue({
-      gateway,
-      agentIds: async () => ["builder-ash"],
-      now: () => 100 + ORPHAN_CLAIM_GRACE_MS + 1,
-    });
-
-    const row = rowById(job.id);
-    expect(row?.status).toBe("claimed");
-    expect(row?.claim_id).not.toBe(orphan?.claim_id);
-    expect(row?.failures ?? 0).toBe(0);
-    expect(briefedThreads(calls)).toEqual([row?.thread_key]);
-  });
-
-  it("leaves a fresh claim alone during the grace period", async () => {
-    const job = addQueueItem({ title: "job", brief_text: "b", priority: 1 });
-    const claim = claimNextQueueItem("builder-ash", undefined, 100);
+    fromEarlierGateway(job.id);
     const { gateway, calls } = fakeGateway();
 
     await reconcileTrunkQueue({
@@ -200,7 +195,25 @@ describe("Trunk queue reconcile", () => {
       now: () => 100 + 1_000,
     });
 
-    expect(rowById(job.id)?.claim_id).toBe(claim?.claim_id);
+    const row = rowById(job.id);
+    expect(row?.status).toBe("claimed");
+    expect(row?.lease_token).not.toBe(orphan?.lease_token);
+    expect(row?.attempts ?? 0).toBe(0);
+    expect(briefedThreads(calls)).toEqual([row?.thread_key]);
+  });
+
+  it("leaves a claim alone while its lease holds, without asking the gateway", async () => {
+    const job = addQueueItem({ title: "job", brief_text: "b", priority: 1 });
+    const claim = claimNextQueueItem("builder-ash", undefined, 100);
+    const { gateway, calls } = fakeGateway();
+
+    await reconcileTrunkQueue({
+      gateway,
+      agentIds: async () => ["builder-ash"],
+      now: () => 100 + STALE_CLAIM_MS - 1,
+    });
+
+    expect(rowById(job.id)?.lease_token).toBe(claim?.lease_token);
     expect(calls.some((call) => call.method === "sessions.list")).toBe(false);
   });
 
@@ -214,17 +227,14 @@ describe("Trunk queue reconcile", () => {
 
   it("finds its own live thread even when sixty other live sessions come before it", async () => {
     const job = addQueueItem({ title: "job", brief_text: "b", priority: 1 });
-    const claim = claimNextQueueItem(
-      "builder-ash",
-      undefined,
-      Date.now() - ORPHAN_CLAIM_GRACE_MS - 1_000,
-    );
+    const claim = claimNextQueueItem("builder-ash");
+    fromEarlierGateway(job.id);
     const others = Array.from({ length: 60 }, (_, index) => `agent:builder-ash:other-${index}`);
     const { gateway } = fakeGateway([...others, claim!.thread_key]);
 
-    await releaseOrphanQueueClaims({ gateway });
+    await reapExpiredQueueClaims({ gateway });
 
-    expect(rowById(job.id)?.claim_id).toBe(claim?.claim_id);
+    expect(rowById(job.id)).toMatchObject({ status: "claimed", lease_token: claim?.lease_token });
   });
 
   it("never releases a claim whose brief is still being sent, however old it looks", async () => {
@@ -247,14 +257,14 @@ describe("Trunk queue reconcile", () => {
     await vi.waitFor(() =>
       expect(calls.some((call) => call.method === "sessions.create")).toBe(true),
     );
-    const claimId = rowById(job.id)?.claim_id;
+    const leaseToken = rowById(job.id)?.lease_token;
 
-    await releaseOrphanQueueClaims({
+    await reapExpiredQueueClaims({
       gateway,
-      now: () => Date.now() + ORPHAN_CLAIM_GRACE_MS + 60_000,
+      now: () => Date.now() + STALE_CLAIM_MS + 60_000,
     });
 
-    expect(rowById(job.id)?.claim_id).toBe(claimId);
+    expect(rowById(job.id)?.lease_token).toBe(leaseToken);
     finishSend();
     await pending;
     expect(rowById(job.id)?.status).toBe("claimed");
