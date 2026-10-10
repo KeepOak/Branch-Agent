@@ -146,6 +146,8 @@ export class LookStore {
   private unwatch: (() => void) | null = null;
   private preview: Pair | null | undefined = undefined;
   private engine: WindowEngine;
+  private disposed = false;
+  private edits = new Map<string, unknown>();
   constructor(engine: WindowEngine) {
     this.engine = engine;
     this.snap = { ...readLocal(), where: "loading" };
@@ -157,13 +159,22 @@ export class LookStore {
     if (this.unwatch) { this.unwatch(); this.unwatch = null; this.watch(); }
   }
   private watch() {
+    if (this.disposed) return;
     this.unwatch ??= this.engine.onEvent((e) => { if (e.event === "users.prefs.changed") void this.load(); });
+  }
+  /** A signed-out store must neither listen nor repaint when its pending read finishes. */
+  dispose(): void {
+    this.disposed = true;
+    this.unwatch?.();
+    this.unwatch = null;
+    this.listeners.clear();
   }
   subscribe(fn: Listener): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
   }
   private emit(next: Partial<LookSnap>) {
+    if (this.disposed) return;
     this.snap = { ...this.snap, ...next };
     writeLocal(this.snap);
     applyLook(this.preview === undefined ? this.snap : { ...this.snap, palette: this.preview });
@@ -172,6 +183,7 @@ export class LookStore {
 
   /** Reads the person's prefs, then the chosen theme's colours. */
   load(): Promise<void> {
+    if (this.disposed) return Promise.resolve();
     this.watch();
     this.loading ??= this.readPrefs().then(() => this.syncTheme()).finally(() => { this.loading = null; });
     return this.loading;
@@ -183,13 +195,19 @@ export class LookStore {
       const entries = record(record(r).entries);
       this.remote = entries[LOOK_PREF] === undefined ? null : record(entries[LOOK_PREF]);
       const prefs = Object.fromEntries(Object.entries(ENGINE_PREFS).flatMap(([k, key]) => (entries[key] === undefined || entries[key] === null ? [] : [[k, entries[key]]])));
-      this.emit({ where: "profile", error: undefined, prefs, look: this.remote ?? this.snap.look });
+      const look = { ...(this.remote ?? this.snap.look) };
+      for (const [key, value] of this.edits) {
+        const target = key in ENGINE_PREFS ? prefs : look;
+        if (value === null) delete target[key]; else target[key] = value;
+      }
+      this.emit({ where: "profile", error: undefined, prefs, look });
     } catch (e) {
       this.emit({ where: "device", error: errorText(e) });
     }
   }
   /** Puts the chosen theme's colours on the window: the engine's choice, or this computer's without a profile. */
   async syncTheme(): Promise<void> {
+    if (this.disposed) return;
     try {
       const engineId = String(record(record(await this.engine.request("themes.list", {})).current).id ?? DEFAULT_THEME);
       const id = this.snap.where === "profile" ? engineId : String(this.snap.look.theme ?? engineId);
@@ -205,6 +223,7 @@ export class LookStore {
 
   /** Writes entries to users.prefs; "conflict" means another window changed it first. */
   private async write(entries: RecordValue, expected?: RecordValue): Promise<"ok" | "conflict" | "device"> {
+    if (this.disposed) throw new Error("This appearance session has ended.");
     const status = statusOf(await this.engine.request("users.prefs.set", { entries, ...(expected ? { expectedEntries: expected } : {}) }));
     if (status === "no_durable_identity") { this.emit({ where: "device" }); return "device"; }
     if (status !== "ok" && status !== "conflict") throw new Error("The engine didn’t save the change.");
@@ -225,21 +244,25 @@ export class LookStore {
 
   /** Saves one row: a device row stays here, an engine key goes to its own pref, the rest to the person's look. */
   set(key: string, value: unknown): Promise<void> {
+    if (this.disposed) return Promise.resolve();
     if ((DEVICE_KEYS as readonly string[]).includes(key)) {
       this.emit({ device: { ...this.snap.device, [key]: value } });
       return Promise.resolve();
     }
     const own = key in ENGINE_PREFS ? (key as EngineKey) : null;
+    this.edits.set(key, value);
     const into = own ? { ...this.snap.prefs } : { ...this.snap.look };
     if (value === null) delete (into as RecordValue)[key]; else (into as RecordValue)[key] = value;
     this.emit(own ? { prefs: into } : { look: into as RecordValue });
     const run = async () => {
+      if (this.disposed) return;
       if (this.snap.where === "loading") await this.load();
+      if (this.disposed) return;
       if (this.snap.where !== "profile") return;
       if (own) { if ((await this.write({ [ENGINE_PREFS[own]]: value })) === "conflict") throw new Error("The engine didn’t save the change."); }
       else await this.saveLook(key, value);
     };
-    const next = this.chain.then(run, run);
+    const next = this.chain.then(run, run).finally(() => { if (this.edits.get(key) === value) this.edits.delete(key); });
     this.chain = next.catch(() => undefined);
     return next;
   }
@@ -260,6 +283,7 @@ export function lookStore(engine: WindowEngine): LookStore {
 }
 /** Starts over with the look kept in this window (after a sign-out, or between tests). */
 export function forgetLookStore(): void {
+  single?.dispose();
   single = null;
 }
 

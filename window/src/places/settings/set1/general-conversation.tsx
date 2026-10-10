@@ -1,7 +1,7 @@
 // Settings › General › The conversation (§4.7.1, Advanced): the person's own choices, kept with their profile through
 // users.prefs.get/set so they follow them to every device; "When you send while it works" is the engine's
 // messages.queue.mode; "Ask before deleting" is this device's own choice, the one the delete dialog reads.
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { record, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
@@ -27,18 +27,21 @@ export function usePrefs(engine: WindowEngine) {
   const res = useResource<RecordValue>(engine, "users.prefs.get", { keys: Object.values(P) });
   const { reload } = res;
   const [mine, setMine] = useState<RecordValue>({});
+  const revisions = useRef<Record<string, number>>({});
   const run = useSaveRunner();
   useEffect(() => engine.onEvent((e) => { if (e.event === "users.prefs.changed") void reload().then(() => setMine({})); }), [engine, reload]);
   const ok = res.data?.status === "ok";
   const stored: RecordValue = { ...(ok ? record(res.data?.entries) : {}), ...mine };
   const get = (key: string): unknown => stored[key] ?? DEFAULTS[key];
   const set = useCallback((key: string, value: unknown) => {
+    const revision = (revisions.current[key] ?? 0) + 1;
+    revisions.current[key] = revision;
     setMine((m) => ({ ...m, [key]: value }));
     void run(async () => {
       const r = record(await engine.request("users.prefs.set", { entries: { [key]: value } }));
       if (r.status === "conflict") throw new Error("It changed on another device. Try again.");
       if (r.status !== "ok") throw new Error(NO_PERSON);
-    }).then((saved) => { if (!saved) setMine((m) => { const next = { ...m }; delete next[key]; return next; }); });
+    }).then((saved) => { if (!saved && revisions.current[key] === revision) setMine((m) => { const next = { ...m }; delete next[key]; return next; }); });
   }, [engine, run]);
   const off = res.loading ? undefined : res.error ? visible(res.error) : ok ? undefined : NO_PERSON;
   return { get, set, off, loading: res.loading, changed: (key: string) => stored[key] != null && stored[key] !== DEFAULTS[key] };
