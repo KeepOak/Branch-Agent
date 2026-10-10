@@ -14,6 +14,51 @@ import { openBranchStateDatabase } from "../../../state/branch-state-db.js";
 describe("doctor contact migration", () => {
   const { createFixture } = setupLegacyMainSessionMigrationTests();
 
+  it("defers malformed destination metadata without reusing its occupied session key", () => {
+    const fixture = createFixture({
+      agents: { entries: { ops: {} }, defaultId: "ops" },
+    });
+    const source = databasePath(fixture.stateDir, "main");
+    const target = databasePath(fixture.stateDir, "ops");
+    seedClaim({
+      databaseAgentId: "main",
+      databasePath: source,
+      key: "agent:main:task",
+      entry: { sessionId: "legacy-task", updatedAt: 10, label: "Legacy task" },
+    });
+    seedClaim({
+      databaseAgentId: "ops",
+      databasePath: target,
+      key: "agent:ops:task",
+      entry: { sessionId: "existing-task", updatedAt: 20, label: "Keep" },
+    });
+    const database = openBranchAgentDatabase({ agentId: "ops", path: target, env: fixture.env });
+    database.db
+      .prepare("UPDATE session_nodes SET entry_json = ? WHERE session_key = ?")
+      .run("{malformed", "agent:ops:task");
+    const before = database.db
+      .prepare("SELECT * FROM session_nodes WHERE session_key = ?")
+      .get("agent:ops:task");
+
+    expect(migrateContacts({ cfg: fixture.cfg, env: fixture.env, apply: false })).toEqual({
+      moved: 1,
+      archivedEmpty: 0,
+    });
+    expect(migrateContacts({ cfg: fixture.cfg, env: fixture.env, apply: true })).toEqual({
+      moved: 1,
+      archivedEmpty: 0,
+    });
+    expect(
+      database.db
+        .prepare("SELECT * FROM session_nodes WHERE session_key = ?")
+        .get("agent:ops:task"),
+    ).toEqual(before);
+    expect(
+      readClaim({ databaseAgentId: "main", databasePath: source, key: "agent:main:task" })?.entry
+        .movedToSessionKey,
+    ).toMatch(/^agent:ops:legacy-/u);
+  });
+
   it("migrates thirteen agent stores without exceeding SQLite's attachment limit", () => {
     const agentIds = Array.from({ length: 13 }, (_, index) => `worker-${index}`);
     const fixture = createFixture({
