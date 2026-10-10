@@ -22,8 +22,8 @@ const facts = { connection: "connected", gateway: "on", machineName: "here", roo
 
 describe("What's shown", () => {
   it("shows each part unless its switch is off; the graphics and memory readout only once switched on", () => {
-    expect(shownFrom({})).toEqual({ usage: true, gateway: true, statusBar: true, projects: true, gfx: false, pet: true });
-    expect(shownFrom({ "show.usage": false, "show.gateway": false, "show.statusbar": false, "show.projects": false, "show.gfx": true, "show.pet": false })).toEqual({ usage: false, gateway: false, statusBar: false, projects: false, gfx: true, pet: false });
+    expect(shownFrom({})).toEqual({ usage: true, gateway: true, statusBar: true, projects: true, gfx: false });
+    expect(shownFrom({ "show.usage": false, "show.gateway": false, "show.statusbar": false, "show.projects": false, "show.gfx": true })).toEqual({ usage: false, gateway: false, statusBar: false, projects: false, gfx: true });
   });
 
   it("follows a switch changed in Settings › Appearance without a reload", async () => {
@@ -64,8 +64,8 @@ describe("What's shown", () => {
     expect(hideTarget(heading)).toBe("projects");
     heading.dataset.hide = "unknown"; // a part the window does not know cannot be hidden
     expect(hideTarget(heading)).toBeNull();
-    heading.dataset.hide = "pet";
-    expect(hideTarget(heading)).toBe("pet");
+    heading.dataset.hide = "pet"; // the pet is not a What's shown part any more: the card is the pet
+    expect(hideTarget(heading)).toBeNull();
     const ran: string[] = [];
     const items = hideMenuItems(() => ran.push("hide"), () => ran.push("choose"));
     expect(items.map((i) => ("label" in i ? i.label : ""))).toEqual(["Hide this", "Choose what’s shown…"]);
