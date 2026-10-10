@@ -15,6 +15,8 @@ export type CommentSummary = {
   body: string;
   /** GitHub's author_association, for example OWNER, MEMBER, COLLABORATOR, CONTRIBUTOR or NONE. */
   authorAssociation?: string;
+  /** ISO time the comment was created. Set only when GitHub sends it. */
+  createdAt?: string;
 };
 
 /** Read-only GitHub access for the signal poller. Conditional GETs that return 304 are served from cache. */
@@ -22,6 +24,14 @@ export type SignalWakeGitHub = {
   listOpenPulls(repo: RepoRef): Promise<PullSummary[]>;
   listCheckRuns(repo: RepoRef, headSha: string): Promise<CheckRunSummary[]>;
   listComments(repo: RepoRef, pullNumber: number): Promise<CommentSummary[]>;
+};
+
+/** The same client plus two reads the Gardener needs. They go through the same ETag cache. */
+export type SignalWakeGitHubReads = SignalWakeGitHub & {
+  /** Tip sha of heads/<branch>, or undefined when the ref body has no sha. */
+  getBranchSha(repo: RepoRef, branch: string): Promise<string | undefined>;
+  /** Committer time of a commit in epoch ms, or undefined when the body has no date. */
+  getCommitTime(repo: RepoRef, sha: string): Promise<number | undefined>;
 };
 
 export type SignalWakeGitHubOptions = {
@@ -64,6 +74,11 @@ const commentSchema = z.object({
   user: z.object({ login: z.string() }).nullish(),
   body: z.string().nullish(),
   author_association: z.string().nullish(),
+  created_at: z.string().nullish(),
+});
+const refSchema = z.object({ object: z.object({ sha: z.string() }) });
+const commitSchema = z.object({
+  commit: z.object({ committer: z.object({ date: z.string() }).nullish() }),
 });
 
 /** Keeps well-formed items and drops the rest, so one odd item cannot blind the whole poll. */
@@ -129,15 +144,21 @@ function toPull(pull: z.infer<typeof pullSchema>): PullSummary {
 }
 
 function toComment(comment: z.infer<typeof commentSchema>): CommentSummary {
-  return {
+  const summary: CommentSummary = {
     id: comment.id,
     authorLogin: comment.user?.login ?? "",
     body: comment.body ?? "",
-    ...(comment.author_association ? { authorAssociation: comment.author_association } : {}),
   };
+  if (comment.author_association) {
+    summary.authorAssociation = comment.author_association;
+  }
+  if (comment.created_at) {
+    summary.createdAt = comment.created_at;
+  }
+  return summary;
 }
 
-export function createSignalWakeGitHub(options: SignalWakeGitHubOptions): SignalWakeGitHub {
+export function createSignalWakeGitHub(options: SignalWakeGitHubOptions): SignalWakeGitHubReads {
   const cache = new Map<string, CacheEntry>();
   const base = options.apiBase ?? GITHUB_REST_BASE;
   const maxPages = options.maxPullPages ?? DEFAULT_MAX_PULL_PAGES;
@@ -178,6 +199,19 @@ export function createSignalWakeGitHub(options: SignalWakeGitHubOptions): Signal
         ),
       );
       return comments.map(toComment);
+    },
+    async getBranchSha(repo, branch) {
+      const parsed = refSchema.safeParse(
+        await getJson(`${repoPath(repo)}/git/ref/heads/${encodeURIComponent(branch)}`),
+      );
+      return parsed.success ? parsed.data.object.sha : undefined;
+    },
+    async getCommitTime(repo, sha) {
+      const parsed = commitSchema.safeParse(
+        await getJson(`${repoPath(repo)}/commits/${encodeURIComponent(sha)}`),
+      );
+      const date = parsed.success ? parsed.data.commit.committer?.date : undefined;
+      return date === undefined ? undefined : Date.parse(date) || undefined;
     },
   };
 }

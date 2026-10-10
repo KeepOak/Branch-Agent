@@ -16,6 +16,8 @@ import {
 } from "../infra/delivery-queue-sqlite.js";
 import { pruneExpiredDevicePairSetupCompletions } from "../infra/device-bootstrap.js";
 import { formatErrorMessage as formatError } from "../infra/errors.js";
+import { createObservationStore } from "../infra/gardener-inputs.js";
+import { createGardenerIssueWriter } from "../infra/gardener-issue-writer.js";
 import {
   createGatewayActiveWorkSnapshot,
   type GatewayActiveWorkInspectors,
@@ -42,6 +44,8 @@ import {
 } from "./chat-abort.js";
 import type { QueuedChatTurnMap } from "./chat-queued-turns.js";
 import { pruneStaleControlPlaneBuckets } from "./control-plane-rate-limit.js";
+import { startGardenerForGateway } from "./gardener-gateway.js";
+import { githubApiToken } from "./github-public-api.js";
 import type { HealthSummary } from "./health/types.js";
 import {
   createHostThawRecovery,
@@ -71,7 +75,10 @@ import { PENDING_CHAT_SEND_DEDUPE_PREFIX, type DedupeEntry } from "./server-shar
 import { setBroadcastHealthUpdate } from "./server/health-state.js";
 import { startSessionColdStorageMaintenance } from "./session-cold-storage-maintenance.js";
 import { tryResolveSessionCompatibilityOwnerAgentId } from "./session-request-agent.js";
-import { startSignalWakePollerForGateway } from "./signal-wake-poller-start.js";
+import {
+  createGatewayGitHubReads,
+  startSignalWakePollerForGateway,
+} from "./signal-wake-poller-start.js";
 import { checkGatewayInstallationReplacement } from "./stale-install.js";
 import { startWorktreeMaintenance } from "./worktree-maintenance.js";
 
@@ -257,9 +264,25 @@ export function startGatewayMaintenanceTimers(params: {
     true,
   );
 
+  // One GitHub reader per gateway: the signal poller and the Gardener share its ETag cache.
+  const githubReads = createGatewayGitHubReads(params.getRuntimeConfig());
+  const gardenerObservations = createObservationStore();
   const signalWakePoller = startSignalWakePollerForGateway({
     getRuntimeConfig: params.getRuntimeConfig,
+    github: githubReads,
+    observe: (observation) => gardenerObservations.record(observation, Date.now()),
     onError: (message) => params.logHealth.error(`signal wake poll failed: ${message}`),
+  });
+  const gardener = startGardenerForGateway({
+    getRuntimeConfig: params.getRuntimeConfig,
+    scheduler: params.scheduler,
+    reads: githubReads,
+    writeIssue: createGardenerIssueWriter({
+      fetchImpl: fetch,
+      token: githubApiToken(process.env, params.getRuntimeConfig()) ?? "",
+    }),
+    observations: gardenerObservations,
+    onError: (message) => params.logHealth.error(`gardener failed: ${message}`),
   });
 
   const worktreeMaintenance = startWorktreeMaintenance({
@@ -573,6 +596,7 @@ export function startGatewayMaintenanceTimers(params: {
         scheduler.stop(),
         worktreeMaintenance.stop(),
         signalWakePoller.stop(),
+        gardener.stop(),
         sessionColdStorageMaintenance.stop(),
         stopMediaCleanup(),
       ]).then((results) => {

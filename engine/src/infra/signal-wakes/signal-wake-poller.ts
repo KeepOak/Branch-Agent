@@ -1,6 +1,11 @@
 import { failingCheckNames, latestBranchVerdict, trunkForHeadRef } from "./signal-wake-classify.js";
 import { diffPrSignals, type PrSignalState, type SignalDecision } from "./signal-wake-decide.js";
-import type { PullSummary, RepoRef, SignalWakeGitHub } from "./signal-wake-github.js";
+import type {
+  CommentSummary,
+  PullSummary,
+  RepoRef,
+  SignalWakeGitHub,
+} from "./signal-wake-github.js";
 import type { SignalStateMap, SignalStateStore } from "./signal-wake-state.js";
 
 export const SIGNAL_POLL_INTERVAL_MS = 5 * 60_000;
@@ -8,12 +13,24 @@ export const SIGNAL_POLL_INTERVAL_MS = 5 * 60_000;
 /** `tick` runs one poll now, or joins the poll already in flight. */
 export type SignalPoller = { tick(): Promise<void>; stop(): Promise<void> };
 
+/** What one poll read for one Trunk-authored PR. Handed to `observe`; nothing is re-read for it. */
+export type PrObservation = {
+  repo: RepoRef;
+  pullNumber: number;
+  authorLogin: string;
+  headSha: string;
+  trunkId: string;
+  comments: readonly CommentSummary[];
+};
+
 export type SignalPollerOptions = {
   github: SignalWakeGitHub;
   repos: readonly RepoRef[];
   /** Configured Trunk ids on this machine, read on every tick. */
   trunkIds: () => readonly string[];
   notify: (signal: SignalDecision) => void;
+  /** Optional read-only tap on each PR the poll reads. Used by the Gardener; no extra GitHub call. */
+  observe?: (observation: PrObservation) => void;
   store: SignalStateStore;
   onError?: (message: string) => void;
   intervalMs?: number;
@@ -35,6 +52,15 @@ function reportError(ctx: PollContext, error: unknown): void {
   ctx.options.onError?.(error instanceof Error ? error.message : String(error));
 }
 
+/** The observe tap is best-effort: a throw is reported and never stops the PR's wake decisions. */
+function observeSafely(ctx: PollContext, observation: PrObservation): void {
+  try {
+    ctx.options.observe?.(observation);
+  } catch (error: unknown) {
+    reportError(ctx, error);
+  }
+}
+
 async function tickPr(
   ctx: PollContext,
   repo: RepoRef,
@@ -46,6 +72,14 @@ async function tickPr(
   const github = ctx.options.github;
   const checks = await github.listCheckRuns(repo, pull.headSha);
   const comments = await github.listComments(repo, pull.number);
+  observeSafely(ctx, {
+    repo,
+    pullNumber: pull.number,
+    authorLogin: pull.authorLogin,
+    headSha: pull.headSha,
+    trunkId,
+    comments,
+  });
   const diff = diffPrSignals(prs.get(pull.number), {
     number: pull.number,
     trunkId,

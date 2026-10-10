@@ -41,6 +41,7 @@ import { tryResolveAmbientHeartbeatAgentId } from "./heartbeat-agent-resolution.
 import { resolveHeartbeatForWake, type HeartbeatConfig } from "./heartbeat-config.js";
 import { isExecCompletionEvent, isRestartContinuationEvent } from "./heartbeat-events-filter.js";
 import { emitHeartbeatEvent } from "./heartbeat-events.js";
+import { isIdleQueueTrunkWake } from "./heartbeat-idle-trunk-gate.js";
 import { heartbeatLog as log } from "./heartbeat-log.js";
 import { shouldUseHeartbeatResponseToolPrompt } from "./heartbeat-runner-config.js";
 import {
@@ -63,6 +64,7 @@ import {
 import {
   areHeartbeatsEnabled,
   HEARTBEAT_SKIP_CRON_IN_PROGRESS,
+  HEARTBEAT_SKIP_NO_SIGNAL,
   HEARTBEAT_SKIP_REQUESTS_IN_FLIGHT,
   type HeartbeatScheduledTask,
   type HeartbeatWakeIntent,
@@ -190,6 +192,18 @@ export async function resolveHeartbeatWakeStage(opts: HeartbeatRunOptions) {
   let preflight = shouldPreflightBeforeBusy ? await resolvePreflight() : undefined;
   if (preflight?.skipReason) {
     return skippedHeartbeatStage(preflight.skipReason, startedAt);
+  }
+  if (
+    preflight &&
+    isIdleQueueTrunkWake({
+      cfg,
+      agentId,
+      source: wakeSource,
+      scheduledTaskCount: scheduledTasks.length,
+      pendingEventCount: preflight.pendingEventEntries.length,
+    })
+  ) {
+    return skippedHeartbeatStage(HEARTBEAT_SKIP_NO_SIGNAL, startedAt);
   }
 
   const skippedBusyStage = (reason: string) => {

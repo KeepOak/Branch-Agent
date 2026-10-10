@@ -12,16 +12,16 @@ import { CallLine, CodeRow, lvOf, rec, str, useCall, useLive, when, type RecordV
 
 const RINGS = "plugins.entries.memory-core.config.rings";
 const LEDE = "How Branch gets better by itself: tidying memory overnight, keeping skills in shape and learning what a Trunk couldn’t do. Every change is shown and can be undone.";
-const NO_GARDENER = "The Gardener’s skill care is retired in this engine.";
+const NO_GARDENER = "Automatic skill maintenance is retired in this engine.";
 const NO_UNDO = "Undoing a change needs the engine’s roll back.";
 const TERMINAL = "Runs from a terminal; Technical shows the command.";
 const NIGHT: Record<string, string> = { "0 1 * * *": "1", "0 3 * * *": "3", "0 5 * * *": "5" };
 const ZONES = ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "Europe/London", "Europe/Berlin", "Africa/Lagos", "Asia/Kolkata", "Asia/Tokyo", "Australia/Sydney"];
 
 export const ROWS: RowEntry[] = [
-  ["Tidy memory overnight", "Rings", 0], ["Night window", "Rings", 0], ["Rings diary", "Rings", 0],
-  ["Look after skills", "Gardener", 0], ["Look at skills now", "Gardener", 0],
-  ["Learn what a Trunk can’t do yet", "Budding", 0], ["Highest step it may take", "Budding", 0],
+  ["Tidy memory at night with Rings", "Rings", 0], ["Night window", "Rings", 0], ["Rings diary", "Rings", 0],
+  ["Look after skills", "Skill maintenance", 0], ["Look at skills now", "Skill maintenance", 0],
+  ["Learn what a Trunk can’t do yet", "Skill learning", 0], ["Highest step it may take", "Skill learning", 0],
   ["Keep a change only if it does better by", "Keeping a change", 0], ["Use paid models at night", "Keeping a change", 0],
   ["Rest a skill after", "Seasons, more", 1], ["Set it aside after", "Seasons, more", 1], ["What each night costs", "Seasons, more", 1],
   ["Clear replayed notes", "Seasons, more", 1], ["What Rings is weighing", "Seasons, more", 1], ["Time zone for the night window", "Seasons, more", 1],
@@ -47,7 +47,7 @@ export function SeasonsPage(props: SettingsPageProps) {
     <Page title={props.title} lede={LEDE}>
       <SeasonStatus rings={ctx.status} proposals={list(rec(proposals.data).proposals)} error={status.error} />
       <RingsSec {...ctx} />
-      <Sec title="Gardener">
+      <Sec title="Skill maintenance">
         <Ctl title="Look after skills" sub="Rests skills unused for 14 days and sets them aside at 30." help="Rests skills unused for 14 days and sets them aside at 30. Nothing is deleted, and built-in skills are never touched." off={NO_GARDENER}><Switch label="Look after skills" checked={false} onChange={() => undefined} /></Ctl>
         <Ctl title="Look at skills now" off={NO_GARDENER}><Btn sm>Look now</Btn></Ctl>
       </Sec>
@@ -83,8 +83,8 @@ function RingsSec({ engine, config, agent }: Ctx) {
   const night = NIGHT[cron] ?? "custom";
   return (
     <Sec title="Rings">
-      <Ctl title="Tidy memory overnight" sub="Merges repeats, keeps what matters and lets go of what’s unused." help="Merges repeats, keeps what matters and lets go of what’s unused. Every change is in the diary.">
-        <Switch label="Tidy memory overnight" checked={enabled} disabled={config.loading} onChange={(on) => void config.set(`${RINGS}.enabled`, on)} />
+      <Ctl title="Tidy memory at night with Rings" sub="Merges repeats, keeps what matters and lets go of what’s unused." help="Merges repeats, keeps what matters and lets go of what’s unused. Every change is in the diary.">
+        <Switch label="Tidy memory at night with Rings" checked={enabled} disabled={config.loading} onChange={(on) => void config.set(`${RINGS}.enabled`, on)} />
       </Ctl>
       <Ctl title="Night window" sub={night === "custom" ? `Custom: ${cron}. Rings starts when the window opens and runs until it is done.` : "Rings starts when the window opens and runs until it is done."}>
         <Seg label="Night window" value={night} disabled={config.loading || !enabled} onChange={(h) => void config.set(`${RINGS}.frequency`, `0 ${h} * * *`)}
@@ -114,11 +114,11 @@ function DiaryDialog({ engine, agent, onClose }: Pick<SettingsPageProps, "engine
 function Budding({ config }: Ctx) {
   const mode = str(config.get("skills.workshop.autonomous.mode")) || "off";
   return (
-    <Sec title="Budding">
+    <Sec title="Skill learning">
       <Ctl title="Learn what a Trunk can’t do yet" sub="Tries simple fixes first and learns from your corrections." help="It tries the simplest way first, and learns from your corrections and finished work as skills. Installing anything, writing its own tool or changing Branch’s code always asks you.">
         <Switch label="Learn what a Trunk can’t do yet" checked={mode !== "off"} disabled={config.loading} onChange={(on) => void config.set("skills.workshop.autonomous.mode", on ? "propose" : "off")} />
       </Ctl>
-      <Ctl title="Highest step it may take" sub="Steps above this aren’t tried." off="Budding learns skills only in this engine.">
+      <Ctl title="Highest step it may take" sub="Steps above this aren’t tried." off="Automatic learning supports skills only in this engine.">
         <Seg label="Highest step it may take" value="skill" onChange={() => undefined} options={[{ id: "skill", label: "A skill" }, { id: "addon", label: "An add-on" }, { id: "tool", label: "Its own tool" }, { id: "code", label: "Branch’s code" }]} />
       </Ctl>
     </Sec>

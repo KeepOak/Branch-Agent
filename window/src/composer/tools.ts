@@ -43,7 +43,7 @@ function skillProblem(s: Rec): SkillRow["problem"] {
   return anyMissing || s.eligible === false ? "Not running" : undefined;
 }
 
-/** Human-facing skill names; the engine key stays unchanged. */
+/** Human-facing skill names; the engine key stays unchanged. Product names come from the one display-name map. */
 function skillLabel(name: string): string {
   const label = /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(name)
     ? name.replace(/[-_]/g, " ").replace(/^./, (letter) => letter.toUpperCase())
