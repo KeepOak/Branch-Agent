@@ -1,0 +1,10 @@
+# Canopy removed from the nav; live run on the Board card sheet; Running view; Procedures at Technical (ux-places, follow-up).
+window:src/places-nav/PlaceView.test.tsx
+window:src/places-nav/routes.test.ts
+window:src/places-nav/scroll-memory.test.ts
+window:src/places/automations/board.test.tsx
+window:src/places/automations/place-tab.test.tsx
+window:src/places/automations/procedures-board.test.tsx
+window:src/places/automations/triggers.test.tsx
+window:src/places/canopy/cards-model.test.ts
+window:src/places/dev-notes-sweep.test.tsx
