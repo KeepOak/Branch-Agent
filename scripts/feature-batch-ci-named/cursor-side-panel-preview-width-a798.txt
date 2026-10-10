@@ -1,1 +1,3 @@
 window:src/stage/SidePane.test.tsx
+window:src/stage/pane/tab-fit.test.ts
+window:scripts/visual-routes.test.mjs
