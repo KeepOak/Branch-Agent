@@ -111,6 +111,11 @@ export type ProfileUsageStats = {
   cooldownModel?: string;
   disabledUntil?: number;
   disabledReason?: AuthProfileFailureReason;
+  /**
+   * The owner paused this signed-in account: it stays signed in but is skipped in the order.
+   * `until` ends the pause (ms since epoch). No `until` means paused until the owner turns it back on.
+   */
+  paused?: { until?: number };
   errorCount?: number;
   failureCounts?: Partial<Record<AuthProfileFailureReason, number>>;
   lastFailureAt?: number;

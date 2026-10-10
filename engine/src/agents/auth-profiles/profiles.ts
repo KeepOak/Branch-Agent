@@ -121,6 +121,34 @@ export async function setAuthProfileOrder(params: {
   });
 }
 
+/** Pauses one signed-in account (`paused` = its end, or `{}` until the owner resumes it) or resumes it (`null`).
+ *  Runs under the same store lock as the order and usage writers, so neither overwrites the other. */
+export async function setAuthProfilePaused(params: {
+  agentDir?: string;
+  profileId: string;
+  paused: { until?: number } | null;
+  sharedStoreWrite?: boolean;
+}): Promise<AuthProfileStore | null> {
+  return await updateAuthProfileStoreWithLock({
+    agentDir: params.agentDir,
+    sharedStoreWrite: params.sharedStoreWrite,
+    updater: (store) => {
+      const current = store.usageStats?.[params.profileId] ?? {};
+      if (!params.paused && !current.paused) {
+        return false;
+      }
+      const next = { ...current };
+      if (params.paused) {
+        next.paused = params.paused;
+      } else {
+        delete next.paused;
+      }
+      store.usageStats = { ...store.usageStats, [params.profileId]: next };
+      return true;
+    },
+  });
+}
+
 /** Promotes across shared-credential/local-order owners; otherwise relogin leaves stale order. */
 export async function promoteAuthProfileInOrder(params: {
   agentDir?: string;

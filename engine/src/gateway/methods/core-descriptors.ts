@@ -694,4 +694,5 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["trunks.queue.done", "trunk-queue", "operator.write", "2026.10"],
   ["trunks.queue.release", "trunk-queue", "operator.write", "2026.10"],
   ["agents.retryStartup", "agents", "operator.write", "2026.10"],
+  ["models.authPauseSet", "models-auth-pause", "operator.admin", "2026.10", CONTROL_PLANE_WRITE],
 ] as const satisfies readonly CoreGatewayMethodSpecRow[];

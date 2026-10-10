@@ -471,6 +471,7 @@ export {
   CommandsListResultSchema,
   ModelsAuthLogoutParamsSchema,
   ModelsAuthOrderSetParamsSchema,
+  ModelsAuthPauseSetParamsSchema,
   ModelsAuthRefreshParamsSchema,
   ModelsAuthStatusParamsSchema,
   ModelsAuthSetApiKeyParamsSchema,

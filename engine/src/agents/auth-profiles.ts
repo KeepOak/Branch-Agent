@@ -19,6 +19,7 @@ export {
 export {
   isConfiguredAwsSdkAuthProfileForProvider,
   resolveAuthProfileEligibility,
+  isProfilePausedByUser,
   resolveExplicitAuthOrderSelection,
   resolveAuthProfileOrder,
 } from "./auth-profiles/order.js";
@@ -34,6 +35,7 @@ export {
   removeProviderAuthProfilesWithLock,
   resolveSubscriptionAuthModeForProfiles,
   setAuthProfileOrder,
+  setAuthProfilePaused,
   upsertAuthProfile,
   upsertAuthProfileWithLock,
 } from "./auth-profiles/profiles.js";

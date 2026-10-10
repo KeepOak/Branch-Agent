@@ -125,6 +125,8 @@ const CORE_GATEWAY_HANDLER_MODULES = {
     import("./mcp-auth-login.js").then((module) => module.mcpAuthLoginHandlers),
   "models-auth-order": () =>
     import("./models-auth-order.js").then((module) => module.modelsAuthOrderHandlers),
+  "models-auth-pause": () =>
+    import("./models-auth-pause.js").then((module) => module.modelsAuthPauseHandlers),
   models: () => import("./models.js").then((module) => module.modelsHandlers),
   "models-probe": () => import("./models-probe.js").then((module) => module.modelsProbeHandlers),
   "web-search": () => import("./web-search.js").then((module) => module.webSearchHandlers),

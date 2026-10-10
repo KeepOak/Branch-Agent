@@ -33,6 +33,8 @@ export type ModelAuthStatusProfile = {
   lastUsedAt?: number;
   /** The account hit a rate or usage limit and isn't used until this time (ms since epoch). */
   limitedUntil?: number;
+  /** The owner paused this account: it stays signed in and is skipped in the order. No `until` means until resumed. */
+  paused?: { until?: number };
 };
 
 export type ModelAuthStatusProvider = {
