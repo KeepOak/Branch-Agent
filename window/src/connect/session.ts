@@ -1,7 +1,7 @@
 // The open conversation on the engine: history, the live run, approvals and sending. It starts on the
 // default Trunk's main conversation and switches with open(key) (DESIGN-SPEC §4.1.1.1 row click).
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import type { EventFrame, HelloOk } from "@branch/gateway-client/browser";
+import type { EventFrame, GatewayProtocolRequestOptions, HelloOk } from "@branch/gateway-client/browser";
 import { BranchGateway, type GatewayStatus } from "./gateway";
 import type { SendExtras, WindowEngine } from "./engine";
 import { RunStreams, readRunEvent } from "./stream-order";
@@ -92,6 +92,12 @@ export function mergeQueued(
 export type GatewayEventListener = (event: string, payload: unknown) => void;
 
 const STARTUP_POLL_MS = 3_000;
+/** The window's reads right after a connection (agents, sessions, approvals, transcript). One that never answers is
+ *  given up after this long and read again, so a hung request cannot leave the window connecting. */
+const BOOTSTRAP_REQUEST: GatewayProtocolRequestOptions = { timeoutMs: 15_000 };
+const BOOTSTRAP_RETRY_MAX_MS = 10_000;
+/** The code the gateway client gives a request it gave up on (GatewayProtocolRequestTimeoutError). */
+const isRequestTimeout = (error: unknown): boolean => (error as { code?: unknown } | null)?.code === "CLIENT_TIMEOUT";
 
 /** The group chat a room's lead conversation belongs to: `agent:<lead>:room:<roomId>` (engine rooms.send). */
 export function roomIdOf(sessionKey: string): string {
@@ -158,6 +164,11 @@ export class SaplingSession {
   private startupWatch: ReturnType<typeof setTimeout> | null = null;
   /** Whether the engine has held the Trunk back during the current watch (so its release is a change worth a re-read). */
   private startupHeld = false;
+  /** The next bootstrap read, scheduled after one of them timed out. */
+  private bootstrapRetry: ReturnType<typeof setTimeout> | null = null;
+  private bootstrapAttempts = 0;
+  /** Bumped on every gateway status change, so a read that timed out on an older connection never schedules a retry. */
+  private connectionId = 0;
   /** Bumped each time a connection finishes reading its conversation, so the open pages re-read from the new engine. */
   private connectionEpoch = 0;
   private readonly preparationBackoff = new PreparationRetry();
@@ -223,6 +234,7 @@ export class SaplingSession {
     this.preparationRetry = null;
     this.preparationBackoff.reset();
     this.stopStartupWatch();
+    this.cancelBootstrapRetry();
     this.gateway.stop();
     this.retiringGateway?.stop();
     this.retiringGateway = null;
@@ -406,10 +418,10 @@ export class SaplingSession {
   }
 
   /** The full transcript read. A click and a sidebar warm share one request while it is in flight. */
-  private chatHistory(sessionKey: string): Promise<unknown> {
+  private chatHistory(sessionKey: string, options?: GatewayProtocolRequestOptions): Promise<unknown> {
     const existing = this.transcriptFlight.get(sessionKey);
     if (existing) return existing;
-    const flight = this.gateway.request("chat.history", { sessionKey }).finally(() => {
+    const flight = this.gateway.request("chat.history", { sessionKey }, options).finally(() => {
       if (this.transcriptFlight.get(sessionKey) === flight) this.transcriptFlight.delete(sessionKey);
     });
     this.transcriptFlight.set(sessionKey, flight);
@@ -440,10 +452,12 @@ export class SaplingSession {
   }
 
   private onStatus(status: GatewayStatus): void {
+    this.connectionId += 1;
     if (status.phase !== "connected") {
       // The engine no longer knows this device: its pairing there is gone, and so are its records for it. (A request
       // for more scopes keeps the pairing.)
       if (status.phase === "pairing" && status.reason === "not-paired") this.unconfirmed.unpaired(this.gatewayUrl);
+      this.cancelBootstrapRetry();
       this.set({ status });
       return;
     }
@@ -472,6 +486,7 @@ export class SaplingSession {
     } else {
       this.set({ sessionKey, mainKey });
     }
+    this.cancelBootstrapRetry();
     void this.bootstrap(status, sessionKey);
   }
 
@@ -480,19 +495,43 @@ export class SaplingSession {
       this.set({ status, error: "The engine did not say which conversation is the default Trunk's." });
       return;
     }
+    const connection = this.connectionId;
     try {
       const [agents] = await Promise.all([
-        this.gateway.request("agents.list", {}),
-        this.gateway.request("sessions.subscribe", { limit: 20 }),
+        this.gateway.request("agents.list", {}, BOOTSTRAP_REQUEST),
+        this.gateway.request("sessions.subscribe", { limit: 20 }, BOOTSTRAP_REQUEST),
       ]);
       this.set({ name: readAgentName(agents) });
-      await Promise.all([this.backfillApprovals().catch(() => undefined), this.loadHistory()]);
+      await Promise.all([this.backfillApprovals(BOOTSTRAP_REQUEST).catch(() => undefined), this.loadHistory(BOOTSTRAP_REQUEST)]);
       this.connectionEpoch += 1;
+      this.bootstrapAttempts = 0;
       this.set({ status, error: null });
       if (this.engineKey) this.unconfirmed.connected(this.engineKey);
     } catch (error) {
+      if (isRequestTimeout(error)) {
+        // The engine has not answered yet: the window stays connecting and reads again, instead of showing an error.
+        if (connection === this.connectionId) this.retryBootstrap(status, sessionKey);
+        return;
+      }
       this.set({ status, error: error instanceof Error ? error.message : String(error) });
     }
+  }
+
+  /** Reads the connection's state again after a read timed out: a short pause that grows, capped. It stops when the
+   *  connection changes or the window stops (onStatus and stop call cancelBootstrapRetry). */
+  private retryBootstrap(status: GatewayStatus, sessionKey: string | null): void {
+    if (this.stopped || !sessionKey || this.bootstrapRetry) return;
+    const delay = Math.min(BOOTSTRAP_RETRY_MAX_MS, 1_000 * 2 ** this.bootstrapAttempts);
+    this.bootstrapAttempts += 1;
+    this.bootstrapRetry = setTimeout(() => {
+      this.bootstrapRetry = null;
+      void this.bootstrap(status, sessionKey);
+    }, delay);
+  }
+
+  private cancelBootstrapRetry(): void {
+    if (this.bootstrapRetry) clearTimeout(this.bootstrapRetry);
+    this.bootstrapRetry = null;
   }
 
   /** While the open Trunk is getting ready, watch it from here so recovery never depends on the page showing. */
@@ -523,7 +562,7 @@ export class SaplingSession {
     const agentId = /^agent:([^:]+):/.exec(sessionKey ?? "")?.[1];
     if (this.stopped || status.phase !== "connected" || !agentId || !(isPreparationPending(error) || isPreparationStalled(error))) return;
     try {
-      const preparing = readStartupPreparation(await this.gateway.request("agents.list", {}), agentId) !== null;
+      const preparing = readStartupPreparation(await this.gateway.request("agents.list", {}, BOOTSTRAP_REQUEST), agentId) !== null;
       if (preparing) this.startupHeld = true;
       else if (this.startupHeld || isPreparationStalled(error)) {
         this.startupHeld = false;
@@ -537,8 +576,8 @@ export class SaplingSession {
   }
 
   /** Pending approvals that were raised before this connection (docs/gateway/clients.md). */
-  private async backfillApprovals(): Promise<void> {
-    const list = await this.gateway.request("exec.approval.list", {});
+  private async backfillApprovals(options?: GatewayProtocolRequestOptions): Promise<void> {
+    const list = await this.gateway.request("exec.approval.list", {}, options);
     const items = Array.isArray(list) ? list : (rec(list).items ?? rec(list).approvals);
     if (Array.isArray(items)) {
       for (const item of items) {
@@ -547,8 +586,8 @@ export class SaplingSession {
     }
   }
 
-  private loadHistory(): Promise<void> {
-    const read = this.readHistory().catch((error: unknown) => {
+  private loadHistory(options?: GatewayProtocolRequestOptions): Promise<void> {
+    const read = this.readHistory(options).catch((error: unknown) => {
       // Remembered so the next read that works can take back exactly this notice, and nothing else.
       this.readError = error instanceof Error ? error.message : String(error);
       throw error;
@@ -557,7 +596,7 @@ export class SaplingSession {
     return read;
   }
 
-  private async readHistory(): Promise<void> {
+  private async readHistory(options?: GatewayProtocolRequestOptions): Promise<void> {
     const sessionKey = this.snapshot.sessionKey;
     if (!sessionKey) {
       return;
@@ -569,8 +608,8 @@ export class SaplingSession {
     // The approval ledger only dresses the steps; when it fails (right after a rewind it answered "approval not
     // found") the history still shows, without a raw notice that never clears.
     const [history, ledger] = await Promise.all([
-      this.chatHistory(sessionKey),
-      this.gateway.request("approval.history", { limit: 100, kind: "exec" }).catch(() => null),
+      this.chatHistory(sessionKey, options),
+      this.gateway.request("approval.history", { limit: 100, kind: "exec" }, options).catch(() => null),
     ]);
     if (epoch !== this.historyEpoch || this.historyReadGen.get(sessionKey) !== gen) {
       return; // a newer read of this conversation, or a different engine, replaced this one

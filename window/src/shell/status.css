@@ -294,6 +294,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Reconnecting: the word gives room to its neighbours, and below 760 px the glyph stands alone (its title and name still say it) */
+.statusbar [data-testid="sb-connection"][data-state="connecting"] { min-width: 0; max-width: 100%; }
+.statusbar [data-testid="sb-connection"][data-state="connecting"] .status-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 6px; }
+@media (max-width: 760px) {
+  .statusbar [data-testid="sb-connection"][data-state="connecting"] .status-label { display: none; }
+}
 /* ≤520 px: the meter keeps its figure and drops its words; the computer's name shortens (preview at 520) */
 @media (max-width: 520px) {
   .statusbar > .sb:first-child {
