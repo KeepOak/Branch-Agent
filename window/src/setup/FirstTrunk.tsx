@@ -3,6 +3,7 @@ import type { WindowEngine } from "../connect/engine";
 import { createTrunk, loadRoster, makeDefault } from "../places/trunk/api";
 import { creationProblem } from "../places/trunk/model";
 import { SetupShell } from "./SetupShell";
+import { STEPS, TRUNKS_STEP } from "./setup-model";
 
 // Match the engine's normalizeAgentIdStrict when locating an existing Trunk by its ID.
 const idForName = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
@@ -59,9 +60,9 @@ export function FirstTrunk({ engine, onCreated, onBack, onSkip }: { engine: Wind
       setProgress("");
     }
   };
-  return <SetupShell step={4} reach={busy ? 0 : 4} done={(i) => i < 4} onStep={(i) => { if (!busy && i < 4) onBack(i); }} onSkip={busy ? null : () => void save(true)}
+  return <SetupShell step={TRUNKS_STEP} reach={busy ? 0 : TRUNKS_STEP} done={(i) => i < TRUNKS_STEP} onStep={(i) => { if (!busy && i < TRUNKS_STEP) onBack(i); }} onSkip={busy ? null : () => void save(true)}
     title="Create your first Trunk" lede="Your Trunk is a contact with one ongoing conversation. New chats go here until you choose another default."
-    footer={<><button type="button" className="btn ghost" disabled={busy} onClick={() => onBack(3)}>Back</button><span className="grow" /><button type="submit" form={formId} className="btn pri" data-testid="first-trunk-create" disabled={busy || (!created && !name.trim())}>{busy ? "Working…" : created ? "Continue" : "Create Trunk"}</button></>}>
+    footer={<><button type="button" className="btn ghost" disabled={busy} onClick={() => onBack(STEPS.indexOf("Models"))}>Back</button><span className="grow" /><button type="submit" form={formId} className="btn pri" data-testid="first-trunk-create" disabled={busy || (!created && !name.trim())}>{busy ? "Working…" : created ? "Continue" : "Create Trunk"}</button></>}>
     <form id={formId} aria-busy={busy} onSubmit={e => { e.preventDefault(); void save(); }}>
     <label className="fld" htmlFor={nameId}><span>Name your Trunk</span><input id={nameId} className="inp" value={name} disabled={busy || !!created} onChange={e => { setName(e.target.value); setExisting(null); setError(""); }} autoComplete="off" /></label>
     {progress ? <p role="status">{progress}</p> : null}

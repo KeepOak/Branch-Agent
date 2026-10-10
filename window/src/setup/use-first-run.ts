@@ -3,7 +3,7 @@
 // usable Trunks also reopens at the first-Trunk step so the window cannot strand a person without a contact.
 import { useEffect, useRef, useState } from "react";
 import type { SaplingSession } from "../connect/session";
-import { needsFirstContact, RUN_SETUP_AGAIN, setupDone } from "./setup-model";
+import { needsFirstContact, RUN_SETUP_AGAIN, setupDone, TRUNKS_STEP } from "./setup-model";
 
 /** The step setup is open at, or null; `open(step)` reopens it by hand (Guide › Set up Branch, Replay the first run). */
 export function useFirstRun(session: SaplingSession, ready: boolean, busy: () => boolean, usableTrunks: number | null = null, inSettings = false) {
@@ -18,7 +18,7 @@ export function useFirstRun(session: SaplingSession, ready: boolean, busy: () =>
     returningFromLocalModel.current = false;
     if (usableTrunks === 0) {
       closed.current = false;
-      setStep(4);
+      setStep(TRUNKS_STEP);
     }
   }, [inSettings, usableTrunks]);
   useEffect(() => {
@@ -32,7 +32,7 @@ export function useFirstRun(session: SaplingSession, ready: boolean, busy: () =>
         if (live) { setRequiresContact(needsFirstContact(config)); setIsFirstRun(!setupDone(config)); }
         if (live && (setupDone(config) ? usableTrunks === 0 : true)) {
           const retryOverlay = setupDone(config);
-          const target = retryOverlay ? 4 : 0;
+          const target = retryOverlay ? TRUNKS_STEP : 0;
           const openWhenClear = () => {
             if (!live || closed.current) return;
             if (busy()) {

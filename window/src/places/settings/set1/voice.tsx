@@ -7,7 +7,7 @@ import { list, text, visible, type RecordValue } from "../adapter";
 import { Ctl, Page, Sec, useLevel, useSaveRunner, type Opt, type RowEntry } from "../kit";
 import { APP, Choice, Greyed, providersOf, useKept, type Kept } from "./voice-kit";
 import { VoiceAdvanced } from "./voice-more";
-import { platformName } from "../../../setup/steps-later";
+import { platformName } from "../../../setup/platform-label";
 import "./voice.css";
 
 /** The first wake word, quoted, for the sub-lines (the engine's own list; never a made-up phrase). */

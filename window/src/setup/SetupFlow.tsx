@@ -1,11 +1,9 @@
-// The 11-step setup once the window is connected (DESIGN-SPEC §4.8.1). Steps 1–2 may already have been answered on
-// the pre-connect screens; then it opens at Models.
-// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+// Setup once the window is connected (DESIGN-SPEC §4.8.1): five steps. Welcome and Where may already have been answered
+// on the pre-connect screens; then it opens at Models. Look, chat apps, tools, updates, people and memory are not asked
+// here; Settings has them with the defaults setup would have picked.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
-import { PairDialog } from "../places/customize/pairing";
 import { AccountLoginDialog } from "../places/settings/AccountLogin";
-import { ConnectDialog } from "../places/settings/set1/chatapps-connect";
 import { AddAccountDialog } from "../places/settings/set1/add-account";
 import { providersOf } from "../places/settings/set1/accounts";
 import { list, type RecordValue } from "../places/settings/adapter";
@@ -13,13 +11,12 @@ import { useResource } from "../places/settings/hooks";
 import type { LoginStart } from "../places/settings/account-login";
 import { Icon } from "../shell/icons";
 import { notify } from "../shell/notify";
-import { readThemeChoice, setThemeChoice } from "../theme/theme";
-import { doneSteps, firstOn, freshChoices, LAST, railTicked, RUN_SETUP_AGAIN, STEPS, type Check, type SetupChoices, type TestResult } from "./setup-model";
+import { readThemeChoice } from "../theme/theme";
+import { doneSteps, firstOn, freshChoices, LAST, railTicked, RUN_SETUP_AGAIN, STEPS, TRUNKS_STEP, type Check, type SetupChoices, type TestResult } from "./setup-model";
 import { SetupShell } from "./SetupShell";
 import { WelcomeHero } from "./SetupBrand";
 import { ModelsBody, WelcomeBody, WhereBody } from "./steps-early";
-import { MoreBody } from "./more-step";
-import { type ChatApp, CheckBody, KeepBody, PeopleBody, ReachBody, reachLede, ToolsBody, TrunksBody, YoursBody } from "./steps-later";
+import { CheckBody, TrunksBody } from "./steps-later";
 import { makeTrunks, recordSetup, runChecks, testModel, useChatApps, useDetected, useKnown } from "./use-setup-engine";
 import { readPreConnect } from "./pre-connect-state";
 import { FirstTrunk } from "./FirstTrunk";
@@ -44,19 +41,12 @@ type Props = {
 };
 
 const TITLES: Record<number, [string, string?]> = {
-  0: ["Hi, I’m Branch.", "An assistant that lives on this computer, with Trunks that each take one job. This takes about three minutes; you can change everything later."],
+  0: ["Hi, I’m Branch.", "An assistant that lives on this computer, with Trunks that each take one job. You can change everything later in Settings."],
   1: ["Where should Branch run?", "The engine and the gateway live here. You can talk to it from anywhere."],
   2: ["Which models should answer?", "Found on this computer:"],
-  3: ["Make it yours", "Two quick choices. Both can change any time in Settings."],
-  4: ["Your first Trunks", "Pick a few, or tell Branch about your life and work and it proposes them."],
-  5: ["Reach Branch anywhere", "Message your Trunks from apps you already use."],
-  6: ["Tools to start with", "Picked for your Trunks. The rest is under the plug."],
-  7: ["Keep it running"],
-  8: ["Anyone else?", "People on this computer, teammates on theirs, or your keepoak.com team. Skip it if it’s just you."],
-  9: ["Two more things", "All optional. Skip them and Branch works the same."],
-  10: ["All set?", "Branch checks everything before you start."],
+  3: ["Your first Trunks", "A Trunk is a contact with one ongoing conversation. New chats go to your default Trunk."],
+  4: ["Ready", "Branch checks everything before you start."],
 };
-const PROPOSE_OFF = "Proposing Trunks from a sentence needs a setup call the engine doesn't have yet.";
 
 /** Start goes past the steps an already set-up Branch has done, to the first one left. */
 function firstUndone(done: Set<number>, from: number): number {
@@ -83,21 +73,15 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
   const [choices, setChoices] = useChoices();
   const [step, setStep] = useState(p.startAt ?? 0);
   const [test, setTest] = useState<TestResult | "testing" | null>(null);
-  // null until the person changes it: setup writes the same Install updates state as Settings.
-  const [autoUpdate, setAutoUpdate] = useState<boolean | null>(null);
   const [talking, setTalking] = useState(false);
-  // Start with Windows: on for a fresh Branch (as the design has it), applied through the Branch app when setup finishes.
-  const [boot, setBoot] = useState<boolean | null>(null);
   const [checks, setChecks] = useState<Check[]>([]);
   const [login, setLogin] = useState<LoginStart | null>(null);
   const [busy, setBusy] = useState(false);
   const models = useDetected(p.engine);
   const chat = useChatApps(p.engine);
   const apps = chat.apps;
-  const [connecting, setConnecting] = useState<ChatApp | null>(null);
-  const [pairing, setPairing] = useState(false);
   const known = useKnown(p.engine, models.detected, p.trunkNames);
-  const done = known ? doneSteps(known, Boolean(apps?.some((a) => a.connected))) : new Set<number>();
+  const done = known ? doneSteps(known) : new Set<number>();
   const [prefilled, setPrefilled] = useState(false);
   useEffect(() => {
     const on = () => setStep(0);
@@ -113,7 +97,7 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
     // An already set-up Branch starts with only the Trunks it has; a fresh one keeps the spec's two picks.
     setChoices((c) => ({ ...c, promise: c.promise || known.promise, jobs: known.model || known.jobs.length ? known.jobs : c.jobs }));
     if (p.startAt === undefined && known.where && step === 0) {
-      setStep(firstUndone(doneSteps(known, false), 0));
+      setStep(firstUndone(doneSteps(known), 0));
     }
   }, [known, prefilled, setChoices, step, p.startAt]);
   const set = (patch: Partial<SetupChoices>) => setChoices((c) => ({ ...c, ...patch }));
@@ -124,21 +108,24 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
     // Leaving the step and coming back starts the checks again (§4.8.1.11).
     setChecks(runChecks(p.engine, apps ?? [], (i, row) => setChecks((rows) => rows.map((r, j) => (j === i ? row : r)))));
   }, [step, p.engine, apps]);
-  const latest = useRef({ choices, autoUpdate, boot });
-  latest.current = { choices, autoUpdate, boot };
+  const latest = useRef({ choices });
+  latest.current = { choices };
   const close = async (finished: boolean, contactReady = false) => {
-    if (p.needsContact && !contactReady) { setStep(4); return; }
+    if (p.needsContact && !contactReady) { setStep(TRUNKS_STEP); return; }
     setBusy(true);
-    const { choices, autoUpdate, boot } = latest.current;
+    const { choices } = latest.current;
     try {
       const preferred = models.detected ? firstOn(models.detected, choices.modelsOff) : null;
       if (finished && preferred && !known?.model && !(test && test !== "testing" && test.ok && test.modelRef === preferred.modelRef)) {
         const selected = await testModel(p.engine, models.detected!, choices.modelsOff, known?.model ?? null);
         setTest(selected);
       }
-      await recordSetup(p.engine, choices, p.version, finished ? autoUpdate : null);
+      // A fresh Branch (no finished setup, no model yet) keeps itself up to date and starts with the computer; an
+      // existing one keeps what it has.
+      const fresh = finished && !known?.where && !known?.model;
+      await recordSetup(p.engine, choices, p.version, fresh ? true : null);
       const desk = desktopControls();
-      if (finished && "bridge" in desk && (boot !== null || !known?.promise)) await desk.bridge.set("startWithWindows", boot ?? true);
+      if (fresh && "bridge" in desk) await desk.bridge.set("startWithWindows", true);
       if (finished) {
         const failed = await makeTrunks(p.engine, choices.jobs, p.trunkNames);
         notify("Branch is ready. Here’s the two-minute walkthrough.", failed.length ? { line: failed.join(" ") } : {});
@@ -150,18 +137,13 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
     }
   };
   const answer = (q: TalkQuestion, o: TalkOption) => {
-    if (STEPS[q.step] === "Make it yours") { const look = o.value as SetupChoices["look"]; set({ look }); setThemeChoice(look); }
-    else if (STEPS[q.step] === "Your first Trunks" && o.value !== "enough") setChoices((c) => ({ ...c, jobs: [...c.jobs, Number(o.value)] }));
-    else if (STEPS[q.step] === "Reach it anywhere" && o.value === "phone") setPairing(true);
-    else if (STEPS[q.step] === "Reach it anywhere" && o.value.startsWith("app:")) { const app = apps?.find((a) => a.id === o.value.slice(4)); if (app) setConnecting(app); }
-    else if (STEPS[q.step] === "Keep it running") setAutoUpdate(o.value === "yes");
-    else if (STEPS[q.step] === "People") set({ people: o.value === "none" ? null : Number(o.value) });
+    if (STEPS[q.step] === "Your first Trunks" && o.value !== "enough") setChoices((c) => ({ ...c, jobs: [...c.jobs, Number(o.value)] }));
   };
   useEffect(() => {
     if (!talking) return;
     p.onTalk?.({
-      start: firstUndone(done, Math.max(3, step)),
-      state: { look: choices.look, jobs: choices.jobs, apps: (apps ?? []).map((a) => ({ id: a.id, label: a.label, connected: Boolean(a.connected) })), autoUpdate: autoUpdate ?? known?.autoUpdate ?? false },
+      start: firstUndone(done, Math.max(TRUNKS_STEP, step)),
+      state: { jobs: choices.jobs },
       done: (i) => done.has(i),
       answer,
       steps: (i) => { setTalking(false); setStep(i); p.onTalk?.(null); },
@@ -174,8 +156,8 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
   const modelNeedsConnection = checks.some((c) => c.name === "The model" && c.state === "bad")
     && !known?.model
     && !(models.detected && firstOn(models.detected, choices.modelsOff));
-  const body = renderStep(step, { p, choices, set, models, inUse: known?.model ?? null, test, setTest, setLogin, apps, setConnecting, setPairing, autoUpdate: autoUpdate ?? known?.autoUpdate ?? false, setAutoUpdate, boot: boot ?? (known?.promise ? null : true), setBoot, checks, setStep });
-  const [title, lede] = STEPS[step] === "Reach it anywhere" ? [TITLES[step][0], reachLede(apps)] : TITLES[step];
+  const body = renderStep(step, { p, choices, set, models, inUse: known?.model ?? null, test, setTest, setLogin, checks, setStep });
+  const [title, lede] = TITLES[step];
   const footer = (
     <>
       {step > 0 ? (
@@ -184,7 +166,7 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
         </button>
       ) : null}
       <span className="grow" />
-      {step >= 3 && step < LAST ? (
+      {step >= STEPS.indexOf("Models") && step < LAST ? (
         <button type="button" className="btn ghost" data-testid="setup-talk" onClick={() => setTalking(true)}>
           Finish by talking
         </button>
@@ -200,15 +182,13 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
       )}
     </>
   );
-  if (p.needsContact && step === 4) {
+  if (p.needsContact && step === TRUNKS_STEP) {
     return <FirstTrunk engine={p.engine} onCreated={p.onFirstTrunkCreated} onBack={setStep} onSkip={() => void close(false, true)} />;
   }
   const dialogs = (
     <>
       {login && login.method !== SECRET ? <AccountLoginDialog engine={p.engine} start={login} onClose={(signedIn) => { setLogin(null); if (signedIn) models.reload(); }} /> : null}
       {login && login.method === SECRET ? <SetupAddAccountDialog engine={p.engine} agentId={login.agentId} onClose={(added) => { setLogin(null); if (added) models.reload(); }} /> : null}
-      {connecting ? <ConnectDialog engine={p.engine} app={{ id: connecting.id, name: connecting.label, detail: "" }} onClose={(changed) => { setConnecting(null); if (changed) chat.reload(); }} /> : null}
-      {pairing ? <PairDialog engine={p.engine} close={() => setPairing(false)} /> : null}
     </>
   );
   if (talking) return dialogs;
@@ -242,14 +222,6 @@ type Ctx = {
   test: TestResult | "testing" | null;
   setTest: (t: TestResult | "testing" | null) => void;
   setLogin: (l: LoginStart) => void;
-  apps: ChatApp[] | null;
-  setConnecting: (app: ChatApp) => void;
-  setPairing: (on: boolean) => void;
-  autoUpdate: boolean;
-  setAutoUpdate: (v: boolean) => void;
-  /** Start with Windows as chosen in setup; null shows what the Branch app has now. */
-  boot: boolean | null;
-  setBoot: (v: boolean) => void;
   checks: Check[];
   setStep: (i: number) => void;
 };
@@ -278,7 +250,7 @@ function renderStep(step: number, c: Ctx): ReactNode {
     case "Welcome":
       return <WelcomeBody promise={choices.promise} onPromise={(promise) => set({ promise })} />;
     case "Where Branch runs":
-      return <WhereBody where={choices.where} onWhere={(where) => set({ where })} remote={<p className="hint">This window already talks to a Branch. To move to another computer, use the machine menu › Connect to a Branch elsewhere….</p>} />;
+      return <WhereBody where={choices.where} onWhere={(where) => set({ where })} remote={<p className="hint">This window already talks to a Branch. To move to another computer, use the machine menu › Connect to a Branch elsewhere.</p>} />;
     case "Models":
       return (
         <ModelsBody
@@ -300,8 +272,6 @@ function renderStep(step: number, c: Ctx): ReactNode {
           onLocal={c.p.onLocalModel}
         />
       );
-    case "Make it yours":
-      return <YoursBody look={choices.look} onLook={(look) => (set({ look }), setThemeChoice(look))} />;
     case "Your first Trunks":
       return (
         <TrunksBody
@@ -310,25 +280,8 @@ function renderStep(step: number, c: Ctx): ReactNode {
           defaultName={c.p.defaultName}
           jobs={choices.jobs}
           onJob={(i) => set({ jobs: choices.jobs.includes(i) ? choices.jobs.filter((j) => j !== i) : [...choices.jobs, i] })}
-          proposeOff={PROPOSE_OFF}
-          propose={
-            <button type="button" className="btn sm ob-propose" disabled title={PROPOSE_OFF}>
-              <Icon name="spark" size={13} />
-              Let Branch propose Trunks
-            </button>
-          }
         />
       );
-    case "Reach it anywhere":
-      return <ReachBody apps={c.apps} onConnect={c.setConnecting} onPhone={() => c.setPairing(true)} />;
-    case "Tools":
-      return <ToolsBody />;
-    case "Keep it running":
-      return <KeepBody autoUpdate={c.autoUpdate} onAutoUpdate={c.setAutoUpdate} boot={c.boot} onBoot={c.setBoot} />;
-    case "People":
-      return <PeopleBody people={choices.people} onPeople={(people) => set({ people })} />;
-    case "Two more things":
-      return <MoreBody engine={c.p.engine} agentId={c.p.defaultAgentId} trunkName={c.p.defaultName} />;
     default:
       return <CheckBody checks={c.checks} onFix={(i) => { c.setStep(i); if (i === 2) c.setLogin({ agentId: c.p.defaultAgentId ?? c.p.engine.agentId ?? "", provider: "", choiceId: "", method: SECRET }); }} />;
   }

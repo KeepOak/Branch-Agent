@@ -27,7 +27,7 @@ it("requires first-contact creation before setup/chat and retries failed default
   const engine = { request, onEvent: () => () => {}, sessionKey: null, scopes: ["operator.admin"] } as unknown as WindowEngine;
   const onClose = vi.fn();
   const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
-  await act(async () => root!.render(<SetupFlow engine={engine} version="1" trunkNames={[]} requireContact defaultAgentId="bootstrap" defaultName="Branch" startAt={4} onClose={onClose} onLocalModel={() => {}} />));
+  await act(async () => root!.render(<SetupFlow engine={engine} version="1" trunkNames={[]} requireContact defaultAgentId="bootstrap" defaultName="Branch" startAt={3} onClose={onClose} onLocalModel={() => {}} />));
   expect(host.textContent).toContain("Create your first Trunk");
   expect(host.querySelector('[data-testid="setup-finish"]')).toBeNull();
   expect(host.querySelector('[data-testid="setup-skip"]')).not.toBeNull();
@@ -46,7 +46,7 @@ it("requires first-contact creation before setup/chat and retries failed default
   expect(host.querySelector('[role="alert"]')?.textContent).toContain("Couldn’t save your default Trunk");
   expect(onClose).not.toHaveBeenCalled();
   // agents.changed may update the shell before config.patch succeeds; the gate must stay pinned.
-  await act(async () => root!.render(<SetupFlow engine={engine} version="1" trunkNames={["Fern"]} requireContact defaultAgentId="bootstrap" defaultName="Branch" startAt={4} onClose={onClose} onLocalModel={() => {}} />));
+  await act(async () => root!.render(<SetupFlow engine={engine} version="1" trunkNames={["Fern"]} requireContact defaultAgentId="bootstrap" defaultName="Branch" startAt={3} onClose={onClose} onLocalModel={() => {}} />));
   expect(host.textContent).toContain("Create your first Trunk");
   defaultFailed = false;
   await click();

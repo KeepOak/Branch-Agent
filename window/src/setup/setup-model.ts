@@ -7,20 +7,11 @@ const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object"
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const list = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.map(rec) : []);
 
-/** The 11 steps, in order, with the preview's names (OB_STEPS plus Make it yours and Two more things). */
-export const STEPS = [
-  "Welcome",
-  "Where Branch runs",
-  "Models",
-  "Make it yours",
-  "Your first Trunks",
-  "Reach it anywhere",
-  "Tools",
-  "Keep it running",
-  "People",
-  "Two more things",
-  "Health check",
-] as const;
+/** The five steps of first run. Everything else (look, chat apps, tools, updates, people, memory) lives in Settings,
+ *  where its defaults are already the first-run choices. */
+export const STEPS = ["Welcome", "Where Branch runs", "Models", "Your first Trunks", "Ready"] as const;
+/** The step that makes the default Trunk (and the jobs), and the one "Finish by talking" asks about. */
+export const TRUNKS_STEP = STEPS.indexOf("Your first Trunks");
 export const LAST = STEPS.length - 1;
 
 /** Settings › Developer › Run setup again, and Guide › Set up Branch, reopen at Welcome. */
@@ -34,7 +25,7 @@ export function railTicked(current: number, i: number): boolean {
   return i < current;
 }
 
-export type Where = "this" | "remote" | "keepoak" | "later";
+export type Where = "this" | "remote";
 export type Look = "system" | "light" | "dark";
 
 /** The six starting jobs (§4.8.1.5, the job list in §4.6.6). Colours live on the shared job tiles. */
@@ -47,12 +38,11 @@ export type SetupChoices = {
   /** Detected connections left out on the Models step, by candidate key. */
   modelsOff: string[];
   jobs: number[];
-  people: number | null;
 };
 
 /** What setup starts with (§4.8.1: "This computer", "Match Windows", jobs 2 and 3, nothing for People). */
 export function freshChoices(look: Look): SetupChoices {
-  return { promise: false, where: "this", look, modelsOff: [], jobs: [1, 2], people: null };
+  return { promise: false, where: "this", look, modelsOff: [], jobs: [1, 2] };
 }
 
 export type Candidate = { key: string; kind: string; modelRef: string; label: string; detail: string; recommended: boolean; signedOut: boolean; confirmed: boolean };
@@ -138,6 +128,9 @@ export function jobId(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
+/** A chat app setup knows about, and whether an account of it is connected (channels.status). */
+export type ChatApp = { id: string; label: string; connected: boolean };
+
 export type Check = { name: string; state: "checking" | "ok" | "bad"; line: string; fix?: number };
 
 export type Known = {
@@ -170,14 +163,13 @@ export function knownSetup(config: unknown, detected: Detected | null, trunkName
 }
 
 /** The steps an already set-up Branch has done: Welcome (promise), Where (this window is connected), Models (a
- *  default model), Your first Trunks (a job Trunk exists), Reach (a chat app is connected). Used to skip ahead,
- *  not to tick the rail (the rail only ticks steps the person has passed). */
-export function doneSteps(known: Known, chatConnected: boolean): Set<number> {
+ *  default model), Your first Trunks (a job Trunk exists). Used to skip ahead, not to tick the rail (the rail only
+ *  ticks steps the person has passed). */
+export function doneSteps(known: Known): Set<number> {
   const done = new Set<number>();
   if (known.promise) done.add(STEPS.indexOf("Welcome"));
   if (known.where) done.add(STEPS.indexOf("Where Branch runs"));
   if (known.model) done.add(STEPS.indexOf("Models"));
   if (known.jobs.length) done.add(STEPS.indexOf("Your first Trunks"));
-  if (chatConnected) done.add(STEPS.indexOf("Reach it anywhere"));
   return done;
 }
