@@ -48,13 +48,6 @@ export const AgentsSchema = z
         agents: z.array(z.string().min(1).max(64)).optional(),
       })
       .optional(),
-    signalWakes: z
-      .strictObject({
-        repos: z
-          .array(z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, "Expected owner/name"))
-          .optional(),
-      })
-      .optional(),
     gardener: z
       .strictObject({
         enabled: z.boolean().optional(),
@@ -62,6 +55,13 @@ export const AgentsSchema = z
           .string()
           .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, "Repo must be owner/name")
           .max(200)
+          .optional(),
+      })
+      .optional(),
+    signalWakes: z
+      .strictObject({
+        repos: z
+          .array(z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, "Expected owner/name"))
           .optional(),
       })
       .optional(),

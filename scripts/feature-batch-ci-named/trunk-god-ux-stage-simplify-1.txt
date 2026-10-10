@@ -1,0 +1,1 @@
+window:src/stage/stage-labels.test.ts

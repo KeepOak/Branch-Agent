@@ -208,3 +208,11 @@
 .cz-brand svg { display: block; }
 .cz-ch .logo, .cz-prov-h .logo { display: inline-grid; place-items: center; flex: none; overflow: hidden; border-radius: 28%; }
 .cz-ch .logo svg, .cz-prov-h .logo svg { display: block; }
+
+/* Get plugins and skills: one row per plugin or skill, tags and actions on the right. */
+.get-rows { display: grid; gap: 8px; }
+.get-row { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--raise); }
+.get-row .grow { display: grid; min-width: 0; flex: 1; }
+.get-row small { color: var(--ink-3); font-size: 12.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.get-row .cz-acts { display: flex; gap: 6px; flex: none; }
+.get-row .get-perm { color: var(--ink-2); }

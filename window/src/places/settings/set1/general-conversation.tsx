@@ -7,7 +7,6 @@ import { record, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { askBeforeDelete } from "../../../shell/ConfirmDelete";
 import { Ctl, LinkBtn, Sec, Seg, Switch, useConfig, useSaveRunner, useSaved } from "../kit";
-import { NO_KEY } from "./general-more";
 
 /** The person's own conversation choices in users.prefs (the composer and thread read these keys). */
 export const GENERAL_PREFS = {
@@ -76,9 +75,6 @@ export function Conversation({ engine }: { engine: WindowEngine }) {
       </Ctl>
       <Ctl title="Task progress starts" sub={<Own text="On a phone it always starts folded." reset={back(P.taskProgressStarts)} />} off={off}>
         <Seg label="Task progress starts" value={String(get(P.taskProgressStarts))} options={FOLD} disabled={loading || !progress} onChange={(v) => set(P.taskProgressStarts, v)} />
-      </Ctl>
-      <Ctl title="Open past sessions in" sub={<Own device text="Past sessions from other apps open in Branch’s reader, or in their own app in a terminal." />} off={NO_KEY}>
-        <Seg label="Open past sessions in" value="branch" options={[{ id: "branch", label: "Branch" }, { id: "terminal", label: "A terminal" }]} onChange={() => undefined} />
       </Ctl>
       <AskBeforeDelete />
     </Sec>

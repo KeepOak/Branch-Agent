@@ -69,7 +69,7 @@ export type AgentsConfig = {
   defaults?: AgentDefaultsConfig;
   entries?: Record<string, AgentEntryConfig>;
   trunkQueue?: TrunkQueueConfig;
-  signalWakes?: SignalWakesConfig;
   gardener?: GardenerConfig;
+  signalWakes?: SignalWakesConfig;
   teamMemory?: TeamMemoryConfig;
 };
