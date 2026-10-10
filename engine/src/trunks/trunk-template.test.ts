@@ -208,6 +208,7 @@ describe("trunk templates", () => {
 
   it.each([
     ["Windows user path", "C:\\Users\\alice\\notes\\plan.md", "alice"],
+    ["Windows user path with forward slashes", "C:/Users/alice/notes/plan.md", "alice"],
     ["macOS user path", "see /Users/alice/notes/plan.md", "alice"],
     ["Linux home path", "see /home/alice/notes/plan.md", "alice"],
   ])("redacts a %s to ~", (_label, text, name) => {
