@@ -76,7 +76,7 @@ export function AddAccountDialog({ engine, start, caps, providers, agent, onClos
     if (!start.provider || selected) return;
     const preferred = services.find((service) => service.brand === start.provider && service.kind === "plan") ?? services.find((service) => service.brand === start.provider);
     // Browser sign-in capabilities are already known; do not wait for the computer scan.
-    if (!preferred || (detect.loading && preferred.kind !== "plan")) return;
+    if (!preferred || (detect.loading && (!start.signIn || preferred.kind !== "plan"))) return;
     setSelected(true);
     const login = [...preferred.logins].filter((option) => option.kind === "oauth" || option.kind === "device-code").sort((a, b) => Number(b.kind === "oauth") - Number(a.kind === "oauth") || Number(b.featured === true) - Number(a.featured === true))[0];
     setStep(start.signIn && login ? { n: 2, svc: preferred, run: { method: "models.authLogin", params: { authChoice: text(login.id), ...agent } } } : { n: 2, svc: preferred });
