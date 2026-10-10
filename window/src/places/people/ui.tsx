@@ -41,8 +41,8 @@ export function Status({ loading, error, reload }: { loading: boolean; error: st
   return <div role="alert" className="pp-error"><p>{error}</p>{reload && <button type="button" className="btn sm" onClick={reload}>Try again</button>}</div>;
 }
 
-/** The place's tabs: Left/Right/Home/End move; a count shows in a quieter span after the name. */
-export function Tabs<T extends string>({ tabs, value, onChange, label }: { tabs: { id: T; name: string; count?: number }[]; value: T; onChange: (v: T) => void; label: string }) {
+/** The place's tabs: Left/Right/Home/End move; a count shows in a quieter span after the name. `sub` draws a tab's own row of views under the top tabs. */
+export function Tabs<T extends string>({ tabs, value, onChange, label, sub }: { tabs: { id: T; name: string; count?: number }[]; value: T; onChange: (v: T) => void; label: string; sub?: boolean }) {
   const move = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
     const n = tabs.length;
     const next = e.key === "ArrowRight" ? (i + 1) % n : e.key === "ArrowLeft" ? (i - 1 + n) % n : e.key === "Home" ? 0 : e.key === "End" ? n - 1 : null;
@@ -51,7 +51,7 @@ export function Tabs<T extends string>({ tabs, value, onChange, label }: { tabs:
     onChange(tabs[next].id);
     e.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
   };
-  return <div className="pp-tabs" role="tablist" aria-label={label}>
+  return <div className={sub ? "pp-tabs sub" : "pp-tabs"} role="tablist" aria-label={label}>
     {tabs.map((t, i) => <button key={t.id} type="button" role="tab" className="pp-tab" aria-selected={t.id === value} tabIndex={t.id === value ? 0 : -1} onKeyDown={e => move(e, i)} onClick={() => onChange(t.id)}>
       {t.name}{t.count ? <span className="n">{t.count}</span> : null}
     </button>)}

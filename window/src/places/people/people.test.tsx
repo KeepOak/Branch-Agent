@@ -66,7 +66,7 @@ describe("People › Live now", () => {
     expect(host.textContent).toContain("Reconcile the card statement"); expect(host.textContent).toContain("shared");
     const ask = button("Ask to join")!; expect(ask.disabled).toBe(true); expect(ask.title).toBe(""); expect(visibleDevNotes(host)).toEqual([]);
     await click("Open"); expect(opened).toHaveBeenCalledWith("agent:main:b");
-    expect(host.querySelector('[role="tab"][aria-selected="true"]')!.textContent).toBe("Live now2");
+    expect(host.querySelector('[role="tablist"][aria-label="Team"] [aria-selected="true"]')!.textContent).toBe("Live now2");
   });
 
   it("watches a run read-only through the engine's preview", async () => {
@@ -165,7 +165,7 @@ describe("People › People", () => {
 describe("People › Groups", () => {
   it("never shows conversation groups as permission groups: empty line and a greyed New group", async () => {
     const { engine, request } = fakeEngine({ ...BASE, "sessions.list": { sessions: [{ key: "agent:main:x", group: "Work", label: "In a folder" }] } });
-    await mount(engine); await click("Access groups");
+    await mount(engine); await click("Access"); await click("Access groups");
     expect(host.textContent).toContain("Being in a group can only take things away.");
     expect(host.textContent).toContain("No groups yet."); expect(host.textContent).not.toContain("Work");
     expect(button("New group")!.disabled).toBe(true); expect(button("New group")!.title).toBe(""); expect(visibleDevNotes(host)).toEqual([]);
@@ -184,7 +184,7 @@ describe("People › Shared", () => {
 
   it("lists what you share, what others share with you, and opens theirs", async () => {
     const { engine } = fakeEngine(table);
-    await mount(engine); await click("Shared");
+    await mount(engine); await click("Access"); await click("Shared");
     expect(host.textContent).toContain("Garden plans"); expect(host.textContent).toContain("Everyone on this Branch may write in it");
     expect(host.textContent).toContain("Mira: Close notes"); expect(host.textContent).toContain("you may read it and write in it");
     await click("Open"); expect(opened).toHaveBeenCalledWith("agent:main:theirs");
@@ -192,7 +192,7 @@ describe("People › Shared", () => {
 
   it("manages who has it and how far it is shared", async () => {
     const { engine, request } = fakeEngine(table);
-    await mount(engine); await click("Shared"); await click("Manage");
+    await mount(engine); await click("Access"); await click("Shared"); await click("Manage");
     expect(request).toHaveBeenCalledWith("session.members.list", { sessionKey: "agent:main:open" });
     await click("May read it"); expect(request).toHaveBeenCalledWith("session.visibility.set", { sessionKey: "agent:main:open", visibility: "read-only" });
     await click("Remove"); expect(request).toHaveBeenCalledWith("session.members.remove", { sessionKey: "agent:main:open", identityId: "p-mira" });
@@ -201,7 +201,7 @@ describe("People › Shared", () => {
 
   it("stops a public link with the conversation's id", async () => {
     const { engine, request } = fakeEngine(table);
-    await mount(engine); await click("Shared");
+    await mount(engine); await click("Access"); await click("Shared");
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
     expect(host.textContent).toContain("Private notes"); expect(host.textContent).toContain("A copy");
     await click("Stop this link");
@@ -211,11 +211,11 @@ describe("People › Shared", () => {
 
   it("says nothing is shared, and shows Snapshots greyed from Advanced", async () => {
     const { engine } = fakeEngine({ ...BASE, "sessions.list": { sessions: [] } });
-    await mount(engine, "advanced"); await click("Shared");
+    await mount(engine, "advanced"); await click("Access"); await click("Shared");
     expect(host.textContent).toContain("Nothing is shared yet.");
     const sw = host.querySelector('[role="switch"][aria-label="Snapshots"]') as HTMLButtonElement; expect(sw.disabled).toBe(true);
     await act(async () => root!.unmount()); root = null; document.body.innerHTML = "";
-    await mount(fakeEngine({ ...BASE, "sessions.list": { sessions: [] } }).engine, "regular"); await click("Shared");
+    await mount(fakeEngine({ ...BASE, "sessions.list": { sessions: [] } }).engine, "regular"); await click("Access"); await click("Shared");
     expect(host.textContent).not.toContain("Snapshots sent to you");
   });
 });
@@ -313,7 +313,7 @@ describe("People › Usage", () => {
 describe("People › Rules", () => {
   it("draws the team rules disabled under the banner with their reason", async () => {
     const { engine, request } = fakeEngine({ ...BASE, "sessions.list": { sessions: [] } });
-    await mount(engine); await click("Rules");
+    await mount(engine); await click("Access"); await click("Rules");
     expect(host.textContent).toContain("Your keepoak.com team is optional");
     expect(host.textContent).toContain("Spending that needs an Admin’s yes"); expect(host.textContent).toContain("Keep team conversations");
     const controls = [...host.querySelectorAll<HTMLButtonElement>(".pp-ctl button")];
@@ -331,7 +331,7 @@ describe("People › Signing in", () => {
 
   it("greys the sign-in rows the engine can't back, and approves or turns down waiting devices", async () => {
     const { engine, request } = fakeEngine(table());
-    await mount(engine); await click("Signing in");
+    await mount(engine); await click("Access"); await click("Signing in");
     expect(button("When needed")!.disabled).toBe(true); expect(button("Passkey")!.disabled).toBe(true); expect(button("Passkey")!.title).toBe("");
     expect(host.querySelectorAll(".pp-ctl[data-off]").length).toBeGreaterThan(0); expect(visibleDevNotes(host)).toEqual([]);
     expect(host.textContent).toContain("Waiting for approval (1)"); expect(host.textContent).toContain("Wants: read, write");
@@ -344,7 +344,7 @@ describe("People › Signing in", () => {
 
   it("removes a paired device after asking, and rotates its key at Technical without inventing a token", async () => {
     const { engine, request } = fakeEngine(table());
-    await mount(engine, "technical"); await click("Signing in");
+    await mount(engine, "technical"); await click("Access"); await click("Signing in");
     await act(async () => { (document.querySelector('[aria-label="More for Work laptop"]') as HTMLButtonElement).click(); });
     await click("Make a new key"); expect(request).toHaveBeenCalledWith("device.token.rotate", { deviceId: "d1", role: "operator" });
     expect(host.textContent).toContain("the engine gives it only to that device");
@@ -354,7 +354,7 @@ describe("People › Signing in", () => {
 
   it("saves the pairing rules from Advanced with config.patch on the read revision", async () => {
     const { engine, request } = fakeEngine(table());
-    await mount(engine, "advanced"); await click("Signing in");
+    await mount(engine, "advanced"); await click("Access"); await click("Signing in");
     await act(async () => { (host.querySelector('[role="switch"][aria-label="Approve a computer I can reach over SSH"]') as HTMLButtonElement).click(); });
     expect(request).toHaveBeenCalledWith("config.patch", { raw: JSON.stringify({ gateway: { nodes: { pairing: { sshVerify: false } } } }), baseHash: "h7" });
     const input = host.querySelector('input[aria-label="Its web address"]') as HTMLInputElement;
@@ -372,11 +372,16 @@ describe("People place", () => {
     const { engine } = fakeEngine({ ...BASE, "sessions.list": { sessions: [] } });
     await mount(engine);
     await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "inbox", tab: "rules" } })); });
-    expect(host.querySelector('[role="tab"][aria-selected="true"]')!.textContent).toContain("Live now");
+    const picked = () => [...host.querySelectorAll('[role="tab"][aria-selected="true"]')].map(t => t.textContent);
+    expect(picked()).toEqual(["Team", "Live now"]);
     await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "people", tab: "Rules" } })); });
-    expect(host.querySelector('[role="tab"][aria-selected="true"]')!.textContent).toBe("Rules");
+    expect(picked()).toEqual(["Access", "Rules"]);
     await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "people", tab: "signin" } })); });
-    expect(host.querySelector('[role="tab"][aria-selected="true"]')!.textContent).toBe("Signing in");
+    expect(picked()).toEqual(["Access", "Signing in"]);
+    await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "people", tab: "people" } })); });
+    expect(picked()).toEqual(["Team", "People2"]);
+    await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "people", tab: "usage" } })); });
+    expect(picked()).toEqual(["Usage"]);
   });
 });
 
@@ -401,5 +406,25 @@ describe("People final round", () => {
     const lims = host.querySelector(".pp-lims")!;
     expect(lims.textContent).toContain("ChatGPT"); expect(lims.textContent).toContain("12% left"); expect(lims.textContent).toContain("60% left");
     expect(lims.querySelector("i.low")).toBeTruthy(); expect(lims.textContent).toContain("This service does not say what it allows.");
+  });
+});
+
+describe("People tabs (DA-50)", () => {
+  const top = () => [...host.querySelectorAll('[role="tablist"][aria-label="People"] [role="tab"]')].map(t => t.textContent);
+  it("shows four top tabs, so none runs past the content column", async () => {
+    const { engine } = fakeEngine({ ...BASE, "sessions.list": { sessions: [] } });
+    await mount(engine);
+    expect(top()).toEqual(["Team", "Activity", "Access", "Usage"]);
+  });
+  it("keeps every old view one click under Team or Access", async () => {
+    const { engine } = fakeEngine({ ...BASE, "sessions.list": { sessions: [] }, "config.get": { hash: "h", config: {} }, "device.pair.list": { pending: [], paired: [] } });
+    await mount(engine);
+    const views = (label: string) => [...host.querySelectorAll(`[role="tablist"][aria-label="${label}"] [role="tab"]`)].map(t => t.textContent);
+    expect(views("Team")).toEqual(["Live now", "People2", "Teams"]);
+    await click("Access");
+    expect(views("Access")).toEqual(["Signing in", "Shared", "Access groups", "Rules"]);
+    expect(views("Team")).toEqual([]);
+    expect(host.textContent).not.toContain("Your keepoak.com team is optional");
+    await click("Rules"); expect(host.textContent).toContain("Your keepoak.com team is optional");
   });
 });
