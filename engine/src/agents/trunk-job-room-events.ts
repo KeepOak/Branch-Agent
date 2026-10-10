@@ -26,7 +26,7 @@ export function jobTransitionText(event: TrunkJobTransition): string {
       return `${event.trunkId} finished: ${event.title}${pr === undefined ? "" : `, PR #${pr}`}`;
     }
     case "released":
-      return `${event.trunkId} is stuck: ${event.title}, released (${event.reason})`;
+      return `${event.trunkId} gave back ${event.title} (${event.reason})`;
   }
 }
 

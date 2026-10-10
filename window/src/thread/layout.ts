@@ -53,6 +53,11 @@ export function layout(blocks: readonly Block[], offset = 0): Item[] {
       held.push({ type: "block", block, index: offset + i, firstReply: false, face: false });
       return;
     }
+    // A Thinking row between two tool-call rounds of one run waits too, so the run's steps stay one fold.
+    if (block.kind === "thinking" && items.at(-1)?.type === "steps" && !sealSteps) {
+      held.push({ type: "block", block, index: offset + i, firstReply: false, face: false });
+      return;
+    }
     if (block.kind !== "step" && held.length) {
       items.push(...held);
       held = [];
@@ -63,6 +68,8 @@ export function layout(blocks: readonly Block[], offset = 0): Item[] {
       if (canMerge) {
         last.steps.push(block);
       } else {
+        items.push(...held);
+        held = [];
         items.push({ type: "steps", key: `steps:${block.key}`, steps: [block], face: !faced, run: runLine(blocks, i) });
         faced = true;
       }

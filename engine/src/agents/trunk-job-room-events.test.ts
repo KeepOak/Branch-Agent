@@ -144,7 +144,7 @@ describe("Trunk job room events", () => {
 
     expect(jobTexts(inRoom)).toEqual([
       `${TRUNK} picked up: Build the thing`,
-      `${TRUNK} is stuck: Build the thing, released (the run hung)`,
+      `${TRUNK} gave back Build the thing (the run hung)`,
     ]);
   });
 
@@ -161,7 +161,7 @@ describe("Trunk job room events", () => {
 
     expect(jobTexts(inRoom)).toEqual([
       `${TRUNK} picked up: Build the thing`,
-      `${TRUNK} is stuck: Build the thing, released (no run activity for two hours)`,
+      `${TRUNK} gave back Build the thing (no run activity for two hours)`,
     ]);
   });
 
@@ -175,7 +175,7 @@ describe("Trunk job room events", () => {
 
     expect(jobTexts(inRoom)).toEqual([
       `${TRUNK} picked up: Build the thing`,
-      `${TRUNK} is stuck: Build the thing, released (its run could not start)`,
+      `${TRUNK} gave back Build the thing (its run could not start)`,
     ]);
   });
 });
