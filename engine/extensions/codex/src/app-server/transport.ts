@@ -2,6 +2,7 @@
  * Shared transport lifecycle helpers for stdio and WebSocket Codex app-server
  * connections.
  */
+import { spawnSync, type SpawnSyncOptions } from "node:child_process";
 import { finished } from "node:stream/promises";
 import { terminateCodexAppServerDescendants } from "./transport-process-containment.js";
 import { waitForCodexAppServerProcessRegistrationCleanup } from "./transport-process-registration.js";
@@ -61,6 +62,27 @@ export function closeCodexAppServerTransport(
   void beginCodexAppServerTransportClose(child, options).closing;
 }
 
+type WindowsTreeRunner = (
+  command: string,
+  args: string[],
+  options: SpawnSyncOptions,
+) => unknown;
+
+/**
+ * Windows has no process group, so killing the launcher leaves its native child running as an
+ * orphan. taskkill /T ends the whole tree of this one transport root.
+ */
+export function terminateWindowsCodexAppServerTree(
+  pid: number,
+  run: WindowsTreeRunner = spawnSync,
+): void {
+  run("taskkill.exe", ["/PID", String(pid), "/T", "/F"], {
+    stdio: "ignore",
+    windowsHide: true,
+    timeout: 5_000,
+  });
+}
+
 function beginCodexAppServerTransportClose(
   child: CodexAppServerTransport,
   options: TransportCloseOptions,
@@ -77,6 +99,9 @@ function beginCodexAppServerTransportClose(
   const closing: TransportClose["closing"] = (async () => {
     if (hasCodexAppServerTransportExited(child)) {
       return "natural";
+    }
+    if (process.platform === "win32" && child.pid) {
+      terminateWindowsCodexAppServerTree(child.pid);
     }
     if (process.platform === "win32" || !child.pid || !child.kill) {
       finishCodexAppServerTransportClose(child, options, forceKill);
