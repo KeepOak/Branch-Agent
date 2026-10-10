@@ -55,8 +55,6 @@ describe("Settings › Instructions & personality", () => {
     expect(row("Its name").querySelector("small")!.textContent).toBe("Empty");
     expect(button(row("Who your assistant is"), "Edit")).toBeTruthy();
     expect(button(row("Its name"), "Write")).toBeTruthy();
-    expect(row("Notes on the tools").classList.contains("off-k")).toBe(true);
-    expect(button(row("Notes on the tools"), "Write").disabled).toBe(true);
     expect(row("Who your assistant is").querySelector<HTMLInputElement>('input[aria-label="Use this file: Personality"]')!.checked).toBe(true);
   });
 
@@ -81,7 +79,8 @@ describe("Settings › Instructions & personality", () => {
   it("shows friendly titles and labeled file switches without paths", async () => {
     await render(engineOf().engine, 2);
     const files = host.querySelector(".if-files")!;
-    for (const title of ["Personality", "Name", "About you", "House rules", "Tools", "Standing steps"]) expect(files.textContent).toContain(title);
+    for (const title of ["Personality", "Name", "About you", "House rules"]) expect(files.textContent).toContain(title);
+    for (const title of ["Tools", "Standing steps", "Scheduled check-ins"]) expect(files.textContent).not.toContain(title);
     expect(files.textContent).not.toContain("SOUL.md");
     expect(files.textContent).not.toContain("/w/");
     expect(files.querySelector('[title="SOUL.md"]')).not.toBeNull();
@@ -175,7 +174,7 @@ describe("Settings › Instructions & personality", () => {
   it("Escape asks before dropping changes", async () => {
     const { engine } = engineOf();
     await render(engine);
-    await act(async () => button(row("Rules this Trunk"), "Edit").click());
+    await act(async () => button(row("House rules for every Trunk. Branch also reads CLAUDE.md and .hermes.md."), "Edit").click());
     const dlg = document.querySelector<HTMLElement>('[data-testid="instruction-file"]')!;
     const advanced = dlg.querySelector<HTMLElement>("summary");
     if (advanced && !dlg.querySelector("details")?.open) await act(async () => advanced.click());

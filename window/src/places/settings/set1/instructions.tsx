@@ -22,11 +22,8 @@ export const FILES: [string, string][] = [
   ["SOUL.md", "Who your assistant is: tone and boundaries"],
   ["IDENTITY.md", "Its name and how it introduces itself"],
   ["USER.md", "Who you are and what you prefer"],
-  ["AGENTS.md", "Rules this Trunk follows while working"],
-  ["TOOLS.md", "Notes on the tools it has"],
-  ["SOP.md", "Your standing steps, read before each task"],
+  ["AGENTS.md", "House rules for every Trunk. Branch also reads CLAUDE.md and .hermes.md."],
   ["MEMORY.md", "Notes you wrote for it"],
-  ["HEARTBEAT.md", "What it checks on when it wakes on a schedule"],
 ];
 const BOOTSTRAP: [string, string] = ["BOOTSTRAP.md", "Steps a new Trunk follows once, on its first run"];
 /** The files agents.files.get / set accept (the engine's workspace bootstrap files). */
@@ -141,10 +138,7 @@ export const INSTRUCTIONS_ROWS: RowEntry[] = [
   ...rows("Whose files", 0, FILES.map(([, what]) => what)).map((r, i) => ({ ...r, words: FILES[i][0] })),
   ...rows("Whose files", 1, ["Add a file…"]).map((r) => ({ ...r, words: "BOOTSTRAP.md" })),
   ...rows("Just about you", 0, ["Just about you"]).map((r) => ({ ...r, words: "USER.md" })),
-  ...rows("Project instructions", 0, ["Project instruction files", "Trunks may write rule files", "Built-in prompts"]),
+  ...rows("Project instructions", 0, ["Project instruction files"]),
   ...rows("Kits", 0, ["Pick a kit by what’s in the folder"]),
   ...rows("How replies are written", 0, ["Reply style"]),
-  ...rows("Prompts behind quick actions", 1, ["Rewrite", "Shorten", "Explain", "Make it formal"]),
-  ...rows("What goes with every message", 1, ["Keep in mind", "Words filled in for you", "Today’s date and time", "This computer’s details", "What your editor has open", "Instructions in folders it opens", "Reply in", "Personality", "Example conversations"]),
-  ...rows("Rules", 1, ["Extra instruction files", "Rules for conversations outside a project", "From your organisation"]),
 ];
