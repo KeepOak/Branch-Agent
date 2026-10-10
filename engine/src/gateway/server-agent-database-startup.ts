@@ -23,6 +23,9 @@ const log = createSubsystemLogger("gateway/covering-publication");
  * reload that supersedes the publication supersedes the whole preparation, so startup retries
  * it instead of leaving the agent degraded.
  */
+/** Covering publications a startup attempt may repeat after leaving its agent out. */
+const MAX_STARTUP_PUBLICATION_ROUNDS = 5;
+
 export async function runStartupModelPublication(
   assertPreparationCurrent: () => void,
   publish: (isPublicationCurrent: () => boolean) => Promise<unknown>,
@@ -328,7 +331,13 @@ export function activateGatewayAgentDatabaseStartup(params: {
           const pluginMetadataSnapshot = params.getPluginMetadataSnapshot();
           // A covering publication that left this still-pending agent out retired its snapshot;
           // publish it again within this attempt (its watchdog bounds the loop) rather than fail.
-          for (;;) {
+          // Each round is capped, so a publication that keeps leaving the agent out fails plainly.
+          for (let round = 1; ; round += 1) {
+            if (round > MAX_STARTUP_PUBLICATION_ROUNDS) {
+              throw new Error(
+                `Agent ${agentId} model publication was left out of ${MAX_STARTUP_PUBLICATION_ROUNDS} covering publications in a row`,
+              );
+            }
             preparedInput = undefined;
             await runStartupModelPublication(assertPreparationCurrent, (isPublicationCurrent) =>
               withPluginRuntimeRegistryScope(params.getPluginRegistry(), () =>
@@ -352,7 +361,8 @@ export function activateGatewayAgentDatabaseStartup(params: {
             // A newer covering replacement may start right after this wait settles and hide the
             // snapshot this attempt just observed. Wait it out, then re-check, instead of failing.
             await waitOutPendingReplacements(agentId, signal);
-            if (covering !== "left-out" && (await isSnapshotPublished(preparedInput))) {
+            // A left-out round republishes only while the snapshot is still hidden.
+            if (await isSnapshotPublished(preparedInput)) {
               break;
             }
             if (covering === "unpublished") {
