@@ -324,6 +324,39 @@ describe("branch mcp serve Trunk tools", () => {
     });
   });
 
+  it("thread_history preserves inter-session attribution without marking ordinary replies", async () => {
+    const { gw } = fakeGateway({
+      "chat.history": () => ({
+        messages: [
+          {
+            role: "assistant",
+            content: "handoff body",
+            senderSession: { agentId: "oak", sessionKey: "agent:oak:main" },
+            provenance: {
+              kind: "inter_session",
+              sourceSessionKey: "agent:oak:main",
+              sourceTool: "sessions_send",
+            },
+          },
+          { role: "assistant", content: "ordinary reply" },
+          { role: "user", content: "ordinary request", provenance: { kind: "external_user" } },
+        ],
+      }),
+    });
+    const out = await call(await connect(gw), "thread_history", { thread_key: "agent:elm:main" });
+    expect(out.messages).toEqual([
+      expect.objectContaining({
+        from: "oak",
+        text: expect.stringMatching(
+          /^\[Inter-session message\] sourceSession=agent:oak:main sourceTool=sessions_send isUser=false\n/,
+        ),
+      }),
+      { role: "assistant", from: "trunk", text: "ordinary reply" },
+      { role: "user", from: "user", text: "ordinary request" },
+    ]);
+    expect(String((out.messages as Array<{ text: string }>)[0]?.text)).toMatch(/\nhandoff body$/);
+  });
+
   it("trunk_threads lists a Trunk's contact topics", async () => {
     const { gw, calls } = fakeGateway({
       "contacts.topics": () => ({
