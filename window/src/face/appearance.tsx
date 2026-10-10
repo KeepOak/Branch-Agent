@@ -37,10 +37,15 @@ export function identityKey(name: string): string {
   return name.trim().toLowerCase().replace(/[\s-]+/g, " ");
 }
 
-/** A deterministic moss, bark, sky or clay pebble from the name (djb2 hash of the identity key). */
-export function natureLook(name: string): PebbleLook {
+/** The key a nature look is drawn from: the name's identity key, plus the computer it is on when known (ux-shell's key). */
+export function lookKey(name: string, where?: string): string {
+  return where?.trim() ? `${identityKey(name)}@${identityKey(where)}` : identityKey(name);
+}
+
+/** A deterministic moss, bark, sky or clay pebble from a look key (djb2 hash). */
+export function natureLook(key: string): PebbleLook {
   let hash = 5381;
-  for (const ch of identityKey(name)) hash = ((hash << 5) + hash + ch.charCodeAt(0)) >>> 0;
+  for (const ch of key) hash = ((hash << 5) + hash + ch.charCodeAt(0)) >>> 0;
   return {
     colour: NATURE_COLOURS[hash % NATURE_COLOURS.length],
     shape: NATURE_SHAPES[Math.floor(hash / NATURE_COLOURS.length) % NATURE_SHAPES.length],
@@ -49,7 +54,7 @@ export function natureLook(name: string): PebbleLook {
 }
 
 /** A look with its gaps filled from the name's nature look, so a face never falls back to the grey placeholder. */
-export function completePebbleLook(look: PebbleLook | undefined, name: string | undefined): PebbleLook {
-  const nature = natureLook(name ?? "");
+export function completePebbleLook(look: PebbleLook | undefined, name: string | undefined, where?: string): PebbleLook {
+  const nature = natureLook(lookKey(name ?? "", where));
   return { colour: look?.colour ?? nature.colour, shape: look?.shape ?? nature.shape, eyes: look?.eyes ?? nature.eyes };
 }
