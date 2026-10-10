@@ -620,7 +620,9 @@ export function startGatewayEventSubscriptions(params: {
                 terminal: queueTerminal,
                 threadKey: evt.sessionKey ?? evt.deliverySessionKey,
                 outcome: lifecyclePhase === "end" ? "completed" : "failed",
+                data: evt.data,
                 cfg: getRuntimeConfig(),
+                log: (message) => params.log.warn(message),
               }),
         )
         .catch((error: unknown) =>

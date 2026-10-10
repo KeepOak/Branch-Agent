@@ -19,6 +19,7 @@ import { acquireGatewayE2ePortBlock } from "./test-helpers.listener.js";
 import { buildMockOpenAiResponsesProvider } from "./test-openai-responses-model.js";
 
 const HOLD = "demo-hold-this-run";
+const FINISHED_BRIEF = "demo-finished-brief";
 // A model turn on a loaded host can take tens of seconds to reach the provider.
 const RUN_WAIT_MS = 120_000;
 
@@ -76,7 +77,13 @@ async function startProvider(
             held.push(() => answer(response, "demo long run finished"));
             return;
           }
-          answer(response, "demo job finished");
+          // A finished job's final message links its PR; any other run ends without one.
+          answer(
+            response,
+            body.includes(FINISHED_BRIEF)
+              ? "Final message: PR https://github.com/example/demo/pull/1 | head 0000000"
+              : "demo job finished",
+          );
         })().catch((error: unknown) => response.writeHead(500).end(String(error)));
       }),
   });
@@ -340,5 +347,25 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
       released: false,
     });
     expect(requestsWith("demo-finished-brief")).toHaveLength(1);
+  });
+
+  it("puts a job back when its run ends without a PR link, instead of marking it done", async () => {
+    await waitIdle("builder-birch");
+    const job = await client().request<{ item: TrunkQueueItem }>("trunks.queue.add", {
+      title: "Demo job without a PR",
+      brief_text: "demo-no-pr-brief",
+      priority: 2,
+    });
+    await vi.waitFor(
+      async () => {
+        const row = (await list()).find((item) => item.id === job.item.id);
+        expect(row?.failures ?? 0).toBeGreaterThanOrEqual(1);
+        expect(row?.done_at).toBeUndefined();
+      },
+      { timeout: RUN_WAIT_MS },
+    );
+    expect(requestsWith("demo-no-pr-brief").length).toBeGreaterThanOrEqual(1);
+    await client().request("trunks.queue.done", { id: job.item.id });
+    await waitIdle("builder-birch");
   });
 });
