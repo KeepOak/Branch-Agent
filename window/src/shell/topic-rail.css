@@ -56,6 +56,10 @@
 .lay-tabs .tpTabsT5{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;min-width:0;flex:1}
 .lay-tabs .tpTabT5{display:flex;gap:6px;white-space:nowrap;padding:10px 10px 9px;border-radius:0;border-bottom:2px solid transparent;color:var(--ink-2)}
 .lay-tabs .tpTabT5:hover{background:none;color:var(--ink)}
+.lay-tabs .tpTabT5{flex:none;max-width:220px}
+.lay-tabs .tpTabLT5{display:flex;min-width:0;white-space:nowrap}
+.lay-tabs .tpTabNameT5{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lay-tabs .tpTabTagT5{flex:none}
 .lay-tabs .tpTabT5.curT5{border-bottom-color:var(--accent);color:var(--ink);font-weight:600}
 .lay-tabs .tpTabT5 .tpEmoT5{font-size:15px}
 .lay-tabs .tpTabT5 .tpStT5,.lay-tabs .tpTabT5 .tpBadgeT5{position:static}

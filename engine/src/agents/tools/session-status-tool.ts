@@ -43,6 +43,7 @@ import {
   describeSessionStatusTool,
   SESSION_STATUS_TOOL_DISPLAY_SUMMARY,
 } from "../tool-description-presets.js";
+import { resolveAgentFullAccess, type AgentFullAccessSource } from "./agent-full-access.js";
 import type { AnyAgentTool } from "./common.js";
 import { readNonNegativeIntegerParam, readToolStringParam, textResult } from "./common.js";
 import {
@@ -223,6 +224,10 @@ export function createSessionStatusTool(opts?: {
   callGateway?: AgentToolGatewayRequestCaller;
   /** Active live-run route, kept separate from the persisted/origin delivery route. */
   activeDeliveryContext?: DeliveryContext;
+  /** Full access posture for agent-made model changes. */
+  execSession?: AgentFullAccessSource["execSession"];
+  execOverrides?: AgentFullAccessSource["execOverrides"];
+  fsPolicy?: AgentFullAccessSource["fsPolicy"];
 }): AnyAgentTool {
   return {
     label: "Session Status",
@@ -586,6 +591,16 @@ export function createSessionStatusTool(opts?: {
               resolved: scopedResolved,
               metadataSnapshot: opts?.metadataSnapshot,
               gatewayCall: gatewayScoped ? gatewayCall : undefined,
+              access: {
+                fullAccess: resolveAgentFullAccess({
+                  config: cfg,
+                  agentId: requesterAgentId,
+                  sessionKey: opts?.runSessionKey ?? opts?.agentSessionKey,
+                  execSession: opts?.execSession,
+                  execOverrides: opts?.execOverrides,
+                  fsPolicy: opts?.fsPolicy,
+                }),
+              },
             });
             scopedResolved = patched.resolved;
             changedModel = patched.changedModel;

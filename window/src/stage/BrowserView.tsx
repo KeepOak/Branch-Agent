@@ -29,10 +29,6 @@ export function browserRemotePoint(
 }
 
 export type BrowserPhase = "loading" | "empty" | "connected" | "error";
-const NO_READS = "Choosing how it reads pages isn't wired in this window yet.";
-const NO_NUMBERS = "The engine can't show its numbers on the live page yet.";
-const NO_COMMENT = "The engine can't take comments pinned to a page yet.";
-const NO_RECORD = "The engine can't record what you do in the browser yet.";
 export const NO_MARKUP = "Marking up a page needs a way to send the drawing to the chat, which the window doesn't have yet.";
 
 type Browser = { key: string; phase: "none" | "loading" | "stopped" | "ready" | "error"; tabs: LiveTab[]; error?: string };
@@ -42,7 +38,7 @@ function useBrowser(engine: WindowEngine, route: BrowserRoute | null, tick: numb
   const key = `${engine.sessionKey}|${routeKey(route)}|${tick}`;
   const [state, setState] = useState<Browser>({ key: "", phase: "loading", tabs: [] });
   useEffect(() => {
-    if (!route) return;
+    if (!route || !engine.sessionKey) return;
     let live = true;
     (async () => {
       const status = await browserCall<{ running?: boolean }>(engine, route, "GET", "/");
@@ -56,7 +52,7 @@ function useBrowser(engine: WindowEngine, route: BrowserRoute | null, tick: numb
       live = false;
     };
   }, [engine, route, key]);
-  if (!route) return { key, phase: "none", tabs: [] };
+  if (!route || !engine.sessionKey) return { key, phase: "none", tabs: [] };
   return state.key === key ? state : { key, phase: "loading", tabs: state.key.startsWith(`${engine.sessionKey}|${routeKey(route)}|`) ? state.tabs : [] };
 }
 
@@ -286,7 +282,8 @@ export function BrowserMini({ engine, gatewayUrl, blocks }: { engine: WindowEngi
 
 export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running = false, control = false, onControl, level = "regular", onState }: Props) {
   const entries = useMemo(() => recordedBrowserTabs(blocks), [blocks]);
-  const route = useMemo(() => routeOf(entries), [routeKey(routeOf(entries))]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Before the first tool call, use only Branch's managed browser, never the user's Chrome.
+  const route = useMemo<BrowserRoute>(() => routeOf(entries) ?? { target: "host", profile: "branch" }, [routeKey(routeOf(entries))]); // eslint-disable-line react-hooks/exhaustive-deps
   const steps = blocks.filter((b) => b.kind === "step").length;
   const [tick, setTick] = useState(0);
   const browser = useBrowser(engine, route, tick + steps);
@@ -296,18 +293,32 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   const [drawer, setDrawer] = useState(false);
   const [menu, setMenu] = useState<{ at: MenuAnchor; items: MenuItem[] } | null>(null);
   const [note, setNote] = useState("");
+  const [opening, setOpening] = useState(false);
+  const [closed, setClosed] = useState<Set<string>>(new Set());
+  const currentEngine = useRef(engine);
+  useEffect(() => {
+    currentEngine.current = engine;
+    setOpening(false);
+    setClosed(new Set());
+    setAddress(null);
+    setPicked("");
+    setMine(new Set());
+    setNote("");
+  }, [engine]);
   const [find, setFind] = useState<string | null>(null);
-  const [view, setView] = useState<{ url?: string; title?: string; phase: BrowserPhase }>({ phase: "empty" });
+  const [view, setView] = useState<{ owner: WindowEngine; tabId?: string; url?: string; title?: string; phase: BrowserPhase }>({ owner: engine, phase: "empty" });
   const recordedNewest = entries.at(-1)?.tab.targetId;
-  const tab = browser.tabs.find((t) => t.targetId === picked) ?? browser.tabs.find((t) => t.targetId === recordedNewest) ?? browser.tabs[0];
+  const tabs = browser.tabs.filter((t) => !closed.has(t.targetId));
+  const tab = tabs.find((t) => t.targetId === picked) ?? tabs.find((t) => t.targetId === recordedNewest) ?? tabs[0];
   const entry: BrowserPresentation | null = route && tab ? { tab: { ...route, targetId: tab.targetId } as BrowserPresentation["tab"], revision: String(tick), url: tab.url, title: tab.title } : null;
   const onView = useCallback(
     (s: { phase: BrowserPhase; url?: string; title?: string }) => {
-      setView(s);
+      setView({ ...s, owner: engine, tabId: tab?.targetId });
       onState(s.phase, s.title);
     },
-    [onState],
+    [engine, tab?.targetId, onState],
   );
+  const currentView = view.owner === engine && view.tabId === tab?.targetId ? view : { phase: "empty" as const };
   useEffect(() => {
     if (browser.phase === "none" || browser.phase === "stopped" || (browser.phase === "ready" && !browser.tabs.length)) onState("empty");
     if (browser.phase === "error") onState("error");
@@ -319,13 +330,37 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     return browserCall(engine, route, method, path, options);
   };
   const refresh = () => setTick((t) => t + 1);
-  const url = view.phase === "connected" && view.url ? view.url : tab?.url ?? "";
-  const shownAddress = address && address.for === tab?.targetId ? address.text : url;
+  const url = currentView.phase === "connected" && currentView.url ? currentView.url : tab?.url ?? "";
+  const shownAddress = address && address.for === (tab?.targetId ?? "") ? address.text : url === "about:blank" ? "" : url;
+  const openTab = async (target: string) => {
+    if (opening || !engine.sessionKey) return;
+    setOpening(true);
+    onControl?.(true);
+    try {
+      const result = await call("POST", "/tabs/open", { body: { url: target } });
+      if (currentEngine.current !== engine) return;
+      const id = String((result as { targetId?: unknown } | null)?.targetId ?? "");
+      if (!id) throw Error("The browser didn't open a tab. Try opening the page again.");
+      setMine((m) => new Set(m).add(id));
+      setPicked(id);
+      setAddress(null);
+      refresh();
+    } catch (e) {
+      if (currentEngine.current === engine) fail(e);
+    } finally {
+      if (currentEngine.current === engine) setOpening(false);
+    }
+  };
   const go = (raw: string) => {
     const target = raw.trim();
-    if (!target || !tab) return;
+    if (!target || opening) return;
+    const destination = /^[a-z][a-z0-9+.-]*:/i.test(target) ? target : `https://${target}`;
+    if (!tab) {
+      void openTab(destination);
+      return;
+    }
     onControl?.(true);
-    void call("POST", "/navigate", { targetId: tab.targetId, body: { url: /^[a-z][a-z0-9+.-]*:/i.test(target) ? target : `https://${target}` } }).then(() => {
+    void call("POST", "/navigate", { targetId: tab.targetId, body: { url: destination } }).then(() => {
       setAddress(null);
       refresh();
     }, fail);
@@ -335,32 +370,26 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     onControl?.(true);
     void call("POST", "/act", { targetId: tab.targetId, body: { kind: "evaluate", fn: `() => history.${step}()` } }).then(refresh, fail);
   };
-  const newTab = () => {
-    onControl?.(true);
-    void call("POST", "/tabs/open", { body: { url: "about:blank" } }).then((r) => {
-      const id = String((r as { targetId?: unknown } | null)?.targetId ?? "");
-      if (id) {
-        setMine((m) => new Set(m).add(id));
-        setPicked(id);
-      }
-      refresh();
-    }, fail);
-  };
+  const newTab = () => void openTab("about:blank");
   const closeTab = (id: string) => {
     onControl?.(true);
-    void call("DELETE", `/tabs/${encodeURIComponent(id)}`).then(refresh, fail);
+    setClosed((old) => new Set(old).add(id));
+    void call("DELETE", `/tabs/${encodeURIComponent(id)}`).then(() => {
+      if (currentEngine.current === engine) refresh();
+    }, (e) => {
+      if (currentEngine.current !== engine) return;
+      setClosed((old) => { const next = new Set(old); next.delete(id); return next; });
+      fail(e);
+    });
   };
   const pageMenu = (at: MenuAnchor) =>
     setMenu({
       at,
       items: [
         { kind: "head", label: "This page" },
-        { label: "Take a screenshot", disabled: tab ? undefined : "Nothing open.", run: () => void call("POST", "/screenshot", { targetId: tab?.targetId }).then((r) => setNote(`Saved the screenshot to ${String((r as { path?: unknown } | null)?.path ?? "the browser's folder")}.`), fail) },
-        { label: "Save as PDF", disabled: tab ? undefined : "Nothing open.", run: () => void call("POST", "/pdf", { targetId: tab?.targetId }).then((r) => setNote(`Saved the page as a PDF to ${String((r as { path?: unknown } | null)?.path ?? "the browser's folder")}.`), fail) },
-        { label: "Find on this page", disabled: tab ? undefined : "Nothing open.", run: () => setFind("") },
-        { label: "Watch this page for changes", run: () => undefined, disabled: "The engine can't watch a page for changes yet." },
-        { kind: "sep" },
-        { label: "Borrow a tab from your Chrome…", run: () => undefined, disabled: "Borrowing one of your own Chrome tabs isn't wired in this window yet." },
+        { label: "Take a screenshot", run: () => void call("POST", "/screenshot", { targetId: tab?.targetId }).then((r) => setNote(`Saved the screenshot to ${String((r as { path?: unknown } | null)?.path ?? "the browser's folder")}.`), fail) },
+        { label: "Save as PDF", run: () => void call("POST", "/pdf", { targetId: tab?.targetId }).then((r) => setNote(`Saved the page as a PDF to ${String((r as { path?: unknown } | null)?.path ?? "the browser's folder")}.`), fail) },
+        { label: "Find on this page", run: () => setFind("") },
         { kind: "info", label: "Screenshots black out password boxes." },
       ],
     });
@@ -373,57 +402,33 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   };
   const working = running && !control;
   let page: ReactNode;
-  if (browser.phase === "none") page = <Blank title="Nothing open" text={`${name} hasn't opened a page in this conversation.`} />;
+  if (opening) page = <Blank title="Opening your page…" text="Starting the browser and connecting this conversation's tab." />;
+  else if (!engine.sessionKey) page = <Blank title="Choose a conversation first" text="Open a conversation to browse pages with its Trunk." />;
   else if (browser.phase === "loading" && !browser.tabs.length) page = <Blank title="Connecting to the browser…" text="Reading this conversation's tabs." />;
   else if (browser.phase === "error") page = <Blank title="Couldn't connect to the browser" text={browser.error ?? ""}><button type="button" className="btn sm" onClick={refresh}>Try again</button></Blank>;
-  else if (browser.phase === "stopped")
-    page = (
-      <Blank title="The browser isn't running." text={`${name} hasn't started its browser in this conversation.`}>
-        <button type="button" className="btn sm pri" onClick={() => void call("POST", "/start").then(refresh, fail)}>
-          Start the browser
-        </button>
-      </Blank>
-    );
-  else if (!tab) page = <Blank title="Nothing open" text={`${name} hasn't opened a page in this conversation.`} />;
+  else if (!tab || tab.url === "about:blank") page = <Blank title="Browse with your Trunk" text="See the pages your Trunk opens, or open a page yourself in this conversation.">
+    <small>Enter a website address above and press Enter. Then ask {name} to read, compare or work on the page, or click and type yourself.</small>
+    <small>Branch's browser is separate from your personal browser.</small>
+  </Blank>;
   else page = <Screencast key={entry ? `${routeKey(route)}:${tab.targetId}` : "none"} engine={engine} gatewayUrl={gatewayUrl} entry={entry} interact={control} onState={onView} />;
-  const showChrome = browser.phase === "ready" || (browser.phase === "loading" && browser.tabs.length > 0);
+  const showChrome = Boolean(engine.sessionKey);
   return (
     <div className="browser-st">
-      {route ? (
+      {tab ? (
         <div className="bar-br" role="toolbar" aria-label="Browser tools">
-          <span className="lbl-br">Reads</span>
-          <span className="seg-br" role="group" aria-label="How it reads the page" title={NO_READS}>
-            {["Page", "Picture", "Both"].map((m) => (
-              <button key={m} type="button" disabled aria-pressed={false}>
-                {m}
-              </button>
-            ))}
-          </span>
-          <button type="button" className="btn ghost sm tb-br" disabled title={NO_NUMBERS}>
-            <SIcon name="hash" small />
-            <span>Numbers</span>
-          </button>
-          <button type="button" className="btn ghost sm tb-br" disabled title={NO_COMMENT}>
-            <SIcon name="comment" small />
-            <span>Comment</span>
-          </button>
-          <button type="button" className="btn ghost sm tb-br" disabled title={NO_RECORD}>
-            <SIcon name="record" small />
-            <span>Record</span>
-          </button>
-          <button type="button" className="btn ghost sm tb-br" aria-haspopup="menu" disabled={!showChrome} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); pageMenu({ x: r.left, y: r.bottom + 6 }); }}>
+          <button type="button" className="btn ghost sm tb-br" aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); pageMenu({ x: r.left, y: r.bottom + 6 }); }}>
             <SIcon name="doc" small />
             <span>Page</span>
             <SIcon name="down" small />
           </button>
           <span className="tb-grow" />
-          <button type="button" className="btn ghost sm tb-br" aria-pressed={drawer} disabled={!tab} onClick={() => setDrawer((v) => !v)}>
+          <button type="button" className="btn ghost sm tb-br" aria-pressed={drawer} onClick={() => setDrawer((v) => !v)}>
             <SIcon name="tools" small />
             <span>Tools</span>
           </button>
         </div>
       ) : null}
-      {working && view.phase === "connected" ? (
+      {working && currentView.phase === "connected" ? (
         <div className="bn-br" role="note">
           <i className="dot-br" />
           <span className="grow">
@@ -451,7 +456,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
               {showChrome ? (
                 <div className="br-chrome-st">
                   <div className="br-tabs-st" role="tablist" aria-label="Tabs">
-                    {browser.tabs.map((t) => (
+                    {tabs.map((t) => (
                       <span key={t.targetId} className={t.targetId === tab?.targetId ? "br-tab-st on" : "br-tab-st"} title={mine.has(t.targetId) ? "Your tab" : `${name}'s tab`}>
                         <button type="button" role="tab" aria-selected={t.targetId === tab?.targetId} onClick={() => setPicked(t.targetId)}>
                           {mine.has(t.targetId) ? null : <i className="br-dot-st" />}
@@ -462,20 +467,20 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
                         </button>
                       </span>
                     ))}
-                    <button type="button" className="br-new-st" aria-label="New tab" title="New tab" onClick={newTab}>
+                    <button type="button" className="br-new-st" aria-label="New tab" title={opening ? "Opening a tab…" : "New tab"} disabled={opening} onClick={newTab}>
                       +
                     </button>
                   </div>
                   <form className="br-url-st" onSubmit={(e) => { e.preventDefault(); go(shownAddress); }}>
-                    <button type="button" className="br-nav-st" aria-label="Back" title="Back" disabled={!tab} onClick={() => history("back")}>
+                    {tab ? <><button type="button" className="br-nav-st" aria-label="Back" title="Back" onClick={() => history("back")}>
                       <SIcon name="back" small />
                     </button>
-                    <button type="button" className="br-nav-st" aria-label="Forward" title="Forward" disabled={!tab} onClick={() => history("forward")}>
+                    <button type="button" className="br-nav-st" aria-label="Forward" title="Forward" onClick={() => history("forward")}>
                       <SIcon name="forward" small />
                     </button>
                     <button type="button" className="br-nav-st" aria-label="Reload" title="Reload" disabled={!tab || !url} onClick={() => go(url)}>
                       <SIcon name="reload" small />
-                    </button>
+                    </button></> : null}
                     <SIcon name="lock" small />
                     <input
                       className="br-addr-st"
@@ -485,17 +490,18 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
                       aria-label="Enter an address and press Enter"
                       spellCheck={false}
                       autoComplete="off"
-                      disabled={!tab}
+                      disabled={opening}
                     />
+                    <button type="submit" className="btn sm" disabled={opening || !shownAddress.trim()} title={opening ? "Opening a page…" : !shownAddress.trim() ? "Enter a website address first" : "Open this address"}>Open</button>
                   </form>
                 </div>
               ) : null}
               {page}
-              {control && view.phase === "connected" ? <span className="drive-st">You're driving</span> : null}
+              {control && currentView.phase === "connected" ? <span className="drive-st">You're driving</span> : null}
             </div>
           </div>
           {drawer && route && tab ? (
-            <BrowserTools engine={engine} route={route} targetId={tab.targetId} name={name} level={level} host={hostOf(url)} tabs={browser.tabs} onPick={setPicked} onCloseTab={closeTab} onClose={() => setDrawer(false)} />
+            <BrowserTools engine={engine} route={route} targetId={tab.targetId} name={name} level={level} host={hostOf(url)} tabs={tabs} onPick={setPicked} onCloseTab={closeTab} onClose={() => setDrawer(false)} />
           ) : null}
         </div>
       </div>

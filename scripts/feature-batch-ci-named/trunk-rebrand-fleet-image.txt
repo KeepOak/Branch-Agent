@@ -1,0 +1,5 @@
+engine:src/fleet/cell-profile.test.ts
+engine:src/cli/fleet-cli/register.test.ts
+engine:src/fleet/service.runtime.test.ts
+engine:src/fleet/service-upgrade.runtime.test.ts
+engine:src/fleet/service-removal.runtime.test.ts

@@ -11,6 +11,8 @@ import {
 import { emitCoreModelRequestStartedDiagnosticEvent } from "../infra/diagnostic-model-request.js";
 import { emitCoreSemanticRunProgressDiagnosticEvent } from "../infra/diagnostic-semantic-run-progress.js";
 import { DEFAULT_UNDICI_STREAM_TIMEOUT_MS } from "../infra/net/undici-global-dispatcher.js";
+import { requireNodeSqlite } from "../infra/node-sqlite.js";
+import { runSqliteImmediateTransactionSync } from "../infra/sqlite-transaction.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { withDiagnosticPhase } from "./diagnostic-phase.js";
 import {
@@ -1064,6 +1066,36 @@ describe("stuck session diagnostics threshold", () => {
     logMessageQueued({ ...session, source: "test" });
     vi.advanceTimersByTime(30_000);
     expectLoggerMessageContaining(warnSpy, "liveness warning:");
+  });
+
+  it("names the main-thread SQLite transaction that ran in a degraded interval", () => {
+    const warnSpy = vi.spyOn(diagnosticLogger, "warn").mockImplementation(() => undefined);
+    const { DatabaseSync } = requireNodeSqlite();
+    const db = new DatabaseSync(":memory:");
+    db.exec("CREATE TABLE loop_holder (value TEXT NOT NULL)");
+
+    startEnabledDiagnosticHeartbeat({
+      emitMemorySample: createEmitMemorySampleMock(),
+      sampleLiveness: () => ({
+        reasons: ["event_loop_delay"],
+        intervalMs: 30_000,
+        degradedSinceMs: 60_000,
+        eventLoopDelayP99Ms: 1_200,
+        eventLoopDelayMaxMs: 1_500,
+      }),
+    });
+    runSqliteImmediateTransactionSync(
+      db,
+      () => {
+        db.prepare("INSERT INTO loop_holder VALUES ('held')").run();
+      },
+      { operationLabel: "test.loop-holder" },
+    );
+    db.close();
+
+    vi.advanceTimersByTime(30_000);
+
+    expectLoggerMessageContaining(warnSpy, "mainThreadWork=[sqlite:test.loop-holder=");
   });
 
   it("warns and records the full duration for persistent idle event-loop degradation", () => {

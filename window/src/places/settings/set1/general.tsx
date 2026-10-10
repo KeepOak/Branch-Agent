@@ -8,7 +8,7 @@ import { list, record, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Icon } from "../../../shell/icons";
 import { ShortcutsDialog } from "../../../shell/ShortcutsDialog";
-import { Btn, Ctl, Empty, Page, Plist, Prow, Sec, Switch, useLevel, usePinsKit, type Lv, type RowEntry } from "../kit";
+import { Btn, Ctl, Empty, Page, Plist, Prow, Sec, Status, Switch, useLevel, usePinsKit, type Lv, type RowEntry } from "../kit";
 import { PinnedSection } from "../pins";
 import { useDesktopControls } from "../../../connect/desktop-controls";
 import { ClipboardHistory, Controllers, CoverScreen, ThisComputer, Writing, OS } from "./general-more";
@@ -58,7 +58,7 @@ function Projects({ engine }: { engine: SettingsPageProps["engine"] }) {
   return (
     <Sec title="Projects">
       {res.loading ? <p className="hint">Reading your projects…</p>
-        : res.error ? <p className="hint">{visible(res.error)}</p>
+        : res.error ? <Status tone="warn" title="Couldn’t read your projects just now." action={<Btn sm onClick={res.reload}>Try again</Btn>} />
         : projects.length ? <Plist>{projects.map((p) => <ProjectRow key={p.id} engine={engine} project={p} />)}</Plist>
         : <Empty>No projects yet.</Empty>}
     </Sec>
