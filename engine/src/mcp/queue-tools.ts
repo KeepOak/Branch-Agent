@@ -43,9 +43,15 @@ export function registerQueueMcpTools(server: McpServer, gw: TrunkGateway): void
   server.tool(
     "queue_done",
     "Mark a queued job done. The Trunk that held it takes the next job if it is idle.",
-    { id: z.string().min(1) },
-    async ({ id }) => {
-      const result = await gw.request<Record<string, unknown>>("trunks.queue.done", { id });
+    {
+      id: z.string().min(1),
+      note: z.string().optional().describe("Done note, e.g. a PR link or 'PR #123'; shown in the group chat"),
+    },
+    async ({ id, note }) => {
+      const result = await gw.request<Record<string, unknown>>("trunks.queue.done", {
+        id,
+        ...(note !== undefined ? { note } : {}),
+      });
       return ok("done", result);
     },
   );
@@ -53,9 +59,15 @@ export function registerQueueMcpTools(server: McpServer, gw: TrunkGateway): void
   server.tool(
     "queue_release",
     "Put a stuck claim back in the queue so another Trunk can take the job.",
-    { id: z.string().min(1) },
-    async ({ id }) => {
-      const result = await gw.request<Record<string, unknown>>("trunks.queue.release", { id });
+    {
+      id: z.string().min(1),
+      reason: z.string().optional().describe("Why the job is stuck; shown in the group chat"),
+    },
+    async ({ id, reason }) => {
+      const result = await gw.request<Record<string, unknown>>("trunks.queue.release", {
+        id,
+        ...(reason !== undefined ? { reason } : {}),
+      });
       return ok("released", result);
     },
   );

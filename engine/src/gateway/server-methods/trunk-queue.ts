@@ -90,7 +90,12 @@ export const trunkQueueHandlers: GatewayRequestHandlers = {
     respond(true, { items: listQueueItems() });
   },
   "trunks.queue.done": async ({ params, respond, context }) => {
-    const item = markQueueItemDone(text(rec(params).id));
+    const item = markQueueItemDone(
+      text(rec(params).id),
+      undefined,
+      undefined,
+      text(rec(params).note),
+    );
     if (!item) {
       respond(
         false,
@@ -109,7 +114,13 @@ export const trunkQueueHandlers: GatewayRequestHandlers = {
     }
   },
   "trunks.queue.release": async ({ params, respond, context }) => {
-    const before = releaseQueueItem(text(rec(params).id));
+    const before = releaseQueueItem(
+      text(rec(params).id),
+      undefined,
+      undefined,
+      undefined,
+      text(rec(params).reason) || undefined,
+    );
     if (!before) {
       respond(
         false,
