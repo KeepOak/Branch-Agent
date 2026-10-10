@@ -2,6 +2,10 @@ import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { EventFrame } from "../../packages/gateway-protocol/src/index.js";
+import {
+  annotateInterSessionPromptText,
+  normalizeInputProvenance,
+} from "../sessions/input-provenance.js";
 import { extractFirstTextBlock } from "../shared/chat-message-content.js";
 import { registerQueueMcpTools } from "./queue-tools.js";
 import { registerSigninMcpTools } from "./signin-tools.js";
@@ -58,7 +62,9 @@ export function readMessage(message: unknown): Rec {
   return {
     role: m.role,
     from,
-    text: text ?? "",
+    // Graft is an agent-facing reader: retain the trusted handoff envelope
+    // that chat.history separates from its display body.
+    text: annotateInterSessionPromptText(text ?? "", normalizeInputProvenance(m.provenance)),
     ...(typeof m.timestamp === "number" ? { at: m.timestamp } : {}),
     ...(str(meta.id) ? { id: meta.id } : {}),
     ...(str(meta.runId) ? { runId: meta.runId } : {}),
