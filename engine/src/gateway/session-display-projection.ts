@@ -42,6 +42,13 @@ function extractUserText(message: Record<string, unknown>): string | undefined {
   return typeof message.text === "string" ? message.text : undefined;
 }
 
+const INTERNAL_WAKE_PREFIX = "[Branch Agent ";
+
+function isInternalWakeMessage(entry: Record<string, unknown>, text: string): boolean {
+  const provenance = readRecord(entry.provenance);
+  return provenance?.kind === "internal_system" || text.trimStart().startsWith(INTERNAL_WAKE_PREFIX);
+}
+
 /** Projects text after model-context selection, or applies ordinary display visibility. */
 export function projectSessionDisplayMessage(
   message: unknown,
@@ -62,6 +69,11 @@ export function projectSessionDisplayMessage(
     return null;
   }
   if (role === "user") {
+    // The engine's own wake turns (exec completion, heartbeat, cron) are not something a person wrote: a preview or a
+    // title never shows them. The model still reads them, so the model-context view keeps them.
+    if (options.view !== "model-context" && isInternalWakeMessage(entry, text)) {
+      return null;
+    }
     text = stripEnvelope(text).trim();
   }
   if (options.flattenMarkdown) {
