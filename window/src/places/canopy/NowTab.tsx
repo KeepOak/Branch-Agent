@@ -8,14 +8,18 @@ import { RunCard } from "./RunCard";
 import { BackgroundTasks, EveryStep } from "./Live";
 import type { Ctx } from "./ui";
 
-export function NowTab({ ctx, all, list }: { ctx: Ctx; all: Run[]; list: Run[] }) {
+/** `filtered` is true while a Trunk, Person or Computer filter is on; `clear` turns them all off. */
+export function NowTab({ ctx, all, list, filtered, clear }: { ctx: Ctx; all: Run[]; list: Run[]; filtered: boolean; clear: () => void }) {
   const [col, setCol] = useState<Col>("working");
   const [steer, setSteer] = useState<string | null>(null);
   const extra = shows(ctx.level, "advanced") ? <><EveryStep ctx={ctx} /><BackgroundTasks ctx={ctx} /></> : null;
-  if (!all.some(r => r.col !== "done")) {
+  if (!list.some(r => r.col !== "done")) {
+    const hidden = filtered && all.some(r => r.col !== "done");
     return <>
-      <EmptyLine icon={<span className="cn-empty-i"><Glyph name="eye" /></span>}>Nothing is running right now.</EmptyLine>
-      <div className="cn-center"><button className="btn ghost sm" type="button" onClick={() => ctx.openPlace("overview")}>Open Overview</button></div>
+      <EmptyLine icon={<span className="cn-empty-i"><Glyph name="eye" /></span>}>{hidden ? "Nothing running matches these filters." : "Nothing is running right now."}</EmptyLine>
+      <div className="cn-center">{hidden
+        ? <button className="btn ghost sm" type="button" onClick={clear}>Clear filters</button>
+        : <button className="btn ghost sm" type="button" onClick={() => ctx.openPlace("overview")}>Open Overview</button>}</div>
       {extra}
     </>;
   }

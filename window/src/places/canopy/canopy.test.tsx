@@ -266,6 +266,28 @@ describe("Canopy states", () => {
     const chip = [...document.querySelectorAll(".cn-chip")].find(c => c.textContent?.includes("Private computer"))!;
     expect(chip.textContent).not.toContain("running");
   });
+  it("draws no '0 running' on idle computers and keeps the empty line (CN2)", async () => {
+    const idle = { "sessions.list": { sessions: [], hasMore: false }, "exec.approval.list": [], "cron.list": { jobs: [], hasMore: false }, "canopy.cards.list": { cards: [], boards: [] } };
+    await mount(fx({ ...idle, "node.list": { nodes: [{ nodeId: "n1", displayName: "Office box", connected: true }, { nodeId: "n2", displayName: "Spare box", connected: false }] } }));
+    const chips = [...document.querySelectorAll(".cn-chip")].map(c => c.textContent ?? "");
+    expect(chips).toHaveLength(3);
+    for (const text of chips) expect(text).not.toContain("0 running");
+    expect(host.textContent).toContain("Nothing is running right now.");
+  });
+  it("counts runs on a computer only when some are running there", async () => {
+    await mount();
+    const chip = (name: string) => [...document.querySelectorAll(".cn-chip")].find(c => c.textContent?.includes(name))!.textContent;
+    expect(chip("Office box")).toContain("1 running");
+    expect(chip("This computer")).toContain("2 running");
+  });
+  it("says nothing matches, with Clear filters, when a computer filter empties Now (CN2)", async () => {
+    await mount(fx({ "node.list": { nodes: [{ nodeId: "n1", displayName: "Office box", connected: true }, { nodeId: "n2", displayName: "Spare box", connected: true }] } }));
+    await click([...document.querySelectorAll<HTMLElement>(".cn-chip")].find(c => c.textContent?.includes("Spare box"))!);
+    expect(host.textContent).toContain("Nothing running matches these filters.");
+    expect(host.querySelector(".cn-board")).toBeNull();
+    await click(button("Clear filters"));
+    expect(runCard("Check the invoice")).toBeTruthy();
+  });
   it("reports a failing source on its own line and keeps the rest", async () => {
     await mount(fx({ "plugin.approval.list": new Error("not connected") }));
     expect(host.textContent).toContain("Add-on approvals: not connected");
