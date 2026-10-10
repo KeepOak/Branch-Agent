@@ -5,7 +5,33 @@ name: Merge gate recheck
 # so the gates never need to poll for long. scripts/merge-gate-recheck.mjs decides which gates to rerun.
 on:
   workflow_run:
-    # No workflow filter: every completed run on a pull request head counts, the same as the ordinary gate.
+    # Every workflow that produces pull request checks, so a completed run from any of them rechecks the gates.
+    # GitHub rejects a workflow_run trigger without this list ("workflow file issue"), and its docs do not
+    # document glob patterns, so the names are listed. scripts/merge-gate-recheck.test.mjs fails when a
+    # pull_request workflow is missing here. CodeQL is GitHub's default code-scanning setup (no file here).
+    workflows:
+      - Button crawl
+      - Capability feature checks
+      - CodeQL
+      - Desktop checks
+      - Engine build (PR)
+      - Engine handoff checks
+      - Engine lint baselines
+      - Feature batch checks
+      - Feature slice checks
+      - Gate files fresh
+      - GitHub component release
+      - Harvest checks
+      - Local worker measurement
+      - macOS checks for OS-specific changes
+      - Merge gate
+      - Merge gate trusted
+      - Non-merge-commit landing
+      - OpenClaw wording
+      - Priority capability checks
+      - Seedbank plugin distribution
+      - Visual tour
+      - Writing quality checks
     types: [completed]
 
 permissions:
