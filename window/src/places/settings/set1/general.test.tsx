@@ -11,6 +11,7 @@ import { GENERAL_PREFS } from "./general-conversation";
 import { ttlMinutes } from "./general-summaries";
 import { IN_BROWSER } from "../../../connect/desktop-controls";
 import { platformName } from "../../../setup/steps-later";
+import { visibleDevNotes } from "../../../shell/shown-why.testing";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
@@ -165,6 +166,27 @@ describe("Settings › General", () => {
     }
     expect(row("Keep working when the window closes")).toBeNull();
     expect(host.querySelector(".status")).toBeNull();
+  });
+
+  it("Start with macOS says why it is greyed when the Branch app is too old to change it (DA-78)", async () => {
+    const platform = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
+    Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
+    // An older Branch app hands the window its gateway but not the startup controls.
+    (window as { branchDesktop?: unknown }).branchDesktop = { gatewayUrl: "ws://127.0.0.1:1", gatewayToken: "t" };
+    try {
+      const { engine } = engineOf();
+      await render(engine, 0);
+      const start = row("Start with macOS");
+      expect(start.getAttribute("aria-disabled")).toBe("true");
+      expect(start.querySelector<HTMLInputElement>("input")!.checked).toBe(false);
+      expect(start.querySelector(".why-k")?.textContent).toBe("Update the Branch app on this computer to change this.");
+      expect(start.textContent).toContain("Opens quietly in the tray.");
+      expect(visibleDevNotes(host)).toEqual([]);
+    } finally {
+      delete (window as { branchDesktop?: unknown }).branchDesktop;
+      delete (navigator as { platform?: string }).platform;
+      if (platform) Object.defineProperty(Navigator.prototype, "platform", platform);
+    }
   });
 
   it("keeps only startup controls in General", async () => {
