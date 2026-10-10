@@ -57,7 +57,7 @@ test('the 15-minute cap stays, and every planned shard fits the 12-minute budget
   const labels = (rows, os) => rows.filter(row => row.os === os).map(row => row.label);
   assert.deepEqual(labels(pullRequest, 'ubuntu-latest'), Array.from({ length: pullRequestLinuxShardCount }, (_, index) => `${index + 1}/10`));
   assert.deepEqual(pullRequest.filter(row => row.os === 'windows-latest').map(row => row.label), ['touched']);
-  assert.deepEqual(labels(main, 'ubuntu-latest'), Array.from({ length: mainPushShardCounts.ubuntu }, (_, index) => `${index + 1}/6`));
+  assert.deepEqual(labels(main, 'ubuntu-latest'), Array.from({ length: mainPushShardCounts.ubuntu }, (_, index) => `${index + 1}/${mainPushShardCounts.ubuntu}`));
   assert.deepEqual(labels(main, 'windows-latest'), Array.from({ length: mainPushShardCounts.windows }, (_, index) => `${index + 1}/${mainPushShardCounts.windows}`));
   assert.deepEqual(labels(main, 'macos-latest'), Array.from({ length: mainPushShardCounts.macos }, (_, index) => `${index + 1}/${mainPushShardCounts.macos}`));
   const plans = [
@@ -78,6 +78,22 @@ test('macOS and Windows main-push shards keep ten percent budget headroom', () =
     const slowest = Math.max(...loads);
     const headroomBudget = shardBudgetSeconds * 0.9;
     assert.ok(slowest <= headroomBudget, `${name} shard is ${slowest}s, over the ${headroomBudget}s headroom budget; add a shard for ${name}`);
+  }
+});
+
+test('a PR adding 60 unweighted engine tests still fits every planned shard budget', () => {
+  // The rebrand docs PRs (#919-#922) name about 60 engine tests with no duration weight, so each
+  // counts at the 5s default. Their named list runs in PR CI against these main-push counts.
+  const extraTests = Array.from({ length: 60 }, (_, index) => `src/pr-batch-${String(index + 1).padStart(2, '0')}.test.ts`);
+  const plans = [
+    ['ubuntu main', expectedShardSeconds(mainPushShardCounts.ubuntu, { typecheck: true, scale: runnerTestScale.ubuntu, extraTests }), shardBudgetSeconds],
+    ['windows main', expectedShardSeconds(mainPushShardCounts.windows, { scale: runnerTestScale.windows, extraTests }), shardBudgetSeconds * 0.9],
+    ['macos main', expectedShardSeconds(mainPushShardCounts.macos, { scale: runnerTestScale.macos, extraTests }), shardBudgetSeconds * 0.9],
+    ['pull-request', expectedShardSeconds(pullRequestLinuxShardCount, { typecheck: true, scale: runnerTestScale.ubuntu, extraTests }), shardBudgetSeconds],
+  ];
+  for (const [name, loads, budget] of plans) {
+    const slowest = Math.max(...loads);
+    assert.ok(slowest <= budget, `${name} shard is ${slowest}s with 60 extra tests, over the ${budget}s budget`);
   }
 });
 
