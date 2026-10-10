@@ -7,8 +7,10 @@ import test from 'node:test';
 import {
   addedLinesFromPatch,
   cloudAgentTrailer,
+  ciSkippedLines,
   formatProblems,
   inputFromApi,
+  unverifiedFileNames,
   namedListPathFor,
   runCli,
   runPreflight,
@@ -249,6 +251,32 @@ test('CI input from API data flags a personal path in a patch and a missing name
   const input = inputFromApi({ headBranch: BRANCH, headSha: SHA, files, commits, listText: null });
   const problems = runPreflight({ ...input, body: BODY, protectedPaths: PROTECTED });
   assert.deepEqual(checksOf(problems).sort(), ['named-tests', 'personal-info']);
+});
+
+test('a file the API returned without a patch fails closed, not as clean', () => {
+  const files = [{ filename: 'assets/big.json', status: 'modified', changes: 4000 }];
+  assert.deepEqual(unverifiedFileNames(files), ['assets/big.json']);
+  const commits = [{ sha: 'abc1234', commit: { message: 'feat: x', author: { email: NOREPLY }, committer: { email: NOREPLY, date: '2026-10-09T12:00:00Z' } } }];
+  const input = inputFromApi({ headBranch: BRANCH, headSha: SHA, files, commits, listText: null });
+  const problems = runPreflight({ ...input, body: BODY, protectedPaths: PROTECTED });
+  assert.deepEqual(checksOf(problems), ['personal-info']);
+  assert.match(problems[0].message, /cannot check assets\/big\.json/);
+});
+
+test('removed files and zero-change renames without a patch are not unverified', () => {
+  const files = [
+    { filename: 'gone.md', status: 'removed', changes: 40 },
+    { filename: 'moved.md', status: 'renamed', changes: 0 },
+  ];
+  assert.deepEqual(unverifiedFileNames(files), []);
+});
+
+test('CI mode names every check it cannot run, instead of passing it silently', () => {
+  assert.deepEqual(ciSkippedLines(), [
+    'skipped: clean-tree (needs local repo)',
+    'skipped: window-clean (needs local repo)',
+    'skipped: shard-budget (needs local repo)',
+  ]);
 });
 
 test('CI input from clean API data passes', () => {

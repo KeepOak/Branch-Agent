@@ -119,6 +119,19 @@ export function personalInfoProblems(addedLines) {
   ));
 }
 
+export function unverifiedPatchProblems(files) {
+  return files.map((file) => problem(
+    'personal-info',
+    `cannot check ${file} for personal paths: the API returned no patch (large or binary diff)`,
+    'split the change into smaller files, or run preflight locally so the file is read from git',
+  ));
+}
+
+// CI mode cannot run these checks without a checkout. Each one is named, never passed silently.
+export function ciSkippedLines() {
+  return ['clean-tree', 'window-clean', 'shard-budget'].map((name) => `skipped: ${name} (needs local repo)`);
+}
+
 export function dirtyTreeProblems(dirtyCount) {
   if (dirtyCount === 0) return [];
   return [problem('clean-tree', `working tree has ${dirtyCount} uncommitted change(s)`, 'commit or stash them; the gates test the pushed commit')];
@@ -139,6 +152,7 @@ export function runPreflight(input) {
     ...shardProblems(input.shardResult),
     ...gateFileProblems(changedFiles, protectedPaths),
     ...personalInfoProblems(input.addedLines ?? []),
+    ...unverifiedPatchProblems(input.unverifiedFiles ?? []),
   ];
 }
 
@@ -247,6 +261,13 @@ function commitFromApi(c) {
 
 // CI mode: the same inputs preflight builds locally, read from the pull request's API data.
 // `api` is injectable so the assembly is testable without the network.
+// GitHub omits `patch` for large or binary diffs. Such a file cannot be checked, so it is reported, not passed.
+export function unverifiedFileNames(files) {
+  return files
+    .filter((f) => f.status !== 'removed' && typeof f.patch !== 'string' && (f.changes ?? 0) > 0)
+    .map((f) => f.filename);
+}
+
 export function inputFromApi({ headBranch, headSha, files, commits, listText }) {
   return {
     branch: headBranch,
@@ -255,6 +276,7 @@ export function inputFromApi({ headBranch, headSha, files, commits, listText }) 
     commits: commits.map(commitFromApi),
     changedFiles: changedFilesFromPrFiles(files),
     addedLines: files.flatMap((f) => addedLinesFromPatch(f.filename, f.patch)),
+    unverifiedFiles: unverifiedFileNames(files),
     listPath: namedListPathFor(headBranch),
     listText: listText ?? null,
     windowResult: null,
@@ -285,7 +307,7 @@ export function runCli(argv, cwd, env = process.env) {
   if (argv.includes('--ci')) {
     const body = readFileSync(argValue('--body', argv), 'utf8');
     const problems = runPreflight({ ...apiInputFromEnv(env, body), cloudAgent: false });
-    return { exitCode: problems.length ? 1 : 0, text: formatProblems(problems) };
+    return { exitCode: problems.length ? 1 : 0, text: [...ciSkippedLines(), formatProblems(problems)].join('\n') };
   }
   const input = gatherInputs({ argv, cwd });
   input.windowResult = windowResultFor(cwd);
