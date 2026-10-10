@@ -21,18 +21,20 @@ export function displayName(text: string): string {
   return PRODUCT_NAMES.get(text.trim().toLowerCase()) ?? text;
 }
 
-// Skill invocations users see and type. The engine receives the raw skill key. /clawhub keeps working as a hidden alias.
-const SKILL_INVOCATIONS: ReadonlyMap<string, string> = new Map([["clawhub", "seedbank"]]);
-
-/** The name a user types after a slash for a skill. */
+/** The word a user types after a slash for a skill: the display name, lower case, when it has one. */
 export function invocationName(rawSkill: string): string {
-  return SKILL_INVOCATIONS.get(rawSkill.toLowerCase()) ?? rawSkill;
+  const shown = displayName(rawSkill);
+  return shown === rawSkill ? rawSkill : shown.toLowerCase();
 }
 
-/** Turns a typed or picked invocation back into the engine's skill key. Other words are left as written. */
-export function engineInvocation(text: string): string {
-  return text.replace(/(^|\s)\/([a-z0-9_-]+)(?=\s|$)/gi, (match, lead: string, word: string) => {
-    const raw = [...SKILL_INVOCATIONS.entries()].find(([, shown]) => shown === word.toLowerCase())?.[0];
-    return raw ? `${lead}/${raw}` : match;
-  });
+/**
+ * Turns a leading slash command into the engine's skill key, only when the leading word is the invocation
+ * of one of the given skills. Nothing else in the message changes.
+ */
+export function engineInvocation(text: string, skillKeys: readonly string[]): string {
+  const lead = /^\/(\S+)/.exec(text);
+  if (!lead) return text;
+  const typed = lead[1];
+  const raw = skillKeys.find((key) => key !== typed && invocationName(key) === typed.toLowerCase());
+  return raw ? `/${raw}${text.slice(lead[0].length)}` : text;
 }

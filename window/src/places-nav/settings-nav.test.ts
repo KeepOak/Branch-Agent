@@ -8,7 +8,7 @@ describe("settings nav", () => {
     expect(settingsGroups("regular").map((g) => g.name)).toEqual(["General", "Your Trunks", "Safety", "Data and safety"]);
   });
   it("uses plain page names in navigation and search", () => {
-    for (const [id, name] of [["agents", "Connected agents"], ["seasons", "Memory cleanup"], ["self", "About Branch"], ["secrets", "Saved passwords"]]) {
+    for (const [id, name] of [["agents", "Connected agents"], ["seasons", "Seasons"], ["self", "About Branch"], ["secrets", "Saved passwords"]]) {
       expect(pageName(id)).toBe(name);
       expect(searchSettings(name, []).flatMap(g => g.hits.map(h => h.page.name))).toContain(name);
     }

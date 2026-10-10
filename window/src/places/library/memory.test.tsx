@@ -153,12 +153,12 @@ describe("Library › Memory", () => {
     expect(host.querySelector('[data-testid="rings-diary"]')!.textContent).toContain("Night one notes");
     expect(button("Write past nights")).toBeUndefined();
   });
-  it("shows plain cleanup names and opens memory cleanup settings when not run", async () => {
+  it("shows the not-run Rings row with the Seasons link when Rings is off", async () => {
     const open = vi.fn();
     const { engine } = engineOf(base((m) => m === "doctor.memory.status" ? { embedding: { ok: false, checked: false } } : undefined));
     await mount(engine, "regular", open);
-    expect(host.textContent).toContain("Overnight cleanup · not run yet");
-    await click("Memory cleanup settings");
+    expect(host.textContent).toContain("Rings · not run yet");
+    await click("Seasons settings");
     expect(open).toHaveBeenCalledWith("seasons");
     expect(host.textContent).toContain("Search index: not checked yet");
   });

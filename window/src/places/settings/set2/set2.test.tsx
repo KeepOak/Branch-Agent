@@ -192,23 +192,11 @@ describe("Settings › Saved sign-ins", () => {
 
 const RINGS_STATUS = { agentId: "main", embedding: { ok: true }, rings: { enabled: true, shortTermCount: 9, promotedToday: 2, promotedTotal: 3, shortTermEntries: [], signalEntries: [], promotedEntries: [], phases: { light: { enabled: true }, deep: { enabled: true, limit: 10 }, rem: { enabled: true } } } };
 
-describe("Settings › Memory cleanup", () => {
-  it("uses plain memory cleanup headings and diary copy at every level", async () => {
-    const { engine } = engineWith({ "doctor.memory.status": RINGS_STATUS, "config.get": { hash: "h", valid: true, config: {} } });
-    for (const level of ["regular", "advanced", "technical"] as const) {
-      await show("seasons", engine, level);
-      expect(document.body.textContent).toContain("Overnight cleanup");
-      expect(document.body.textContent).toContain("Cleanup diary");
-      expect(document.body.textContent).not.toMatch(/\b(?:Rings|Seasons|Gardener|Budding)\b/);
-    }
-    await click("Read it");
-    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Cleanup diary");
-    expect(document.querySelector('[role="dialog"]')?.textContent).not.toMatch(/\bRings\b/);
-  });
+describe("Settings › Seasons", () => {
   it("reads Rings from the memory engine and saves the night window as its cron", async () => {
     const { engine, request } = engineWith({ "doctor.memory.status": RINGS_STATUS, "skills.proposals.list": { proposals: [] }, "config.get": { hash: "h", valid: true, config: {} }, "config.patch": { ok: true, hash: "h2", config: {} } });
     await show("seasons", engine);
-    expect(document.body.textContent).toContain("Changes kept: 3");
+    expect(document.body.textContent).toContain("This season: 3 changes kept");
     await click("1 AM");
     const patch = request.mock.calls.find(([m]) => m === "config.patch");
     expect(JSON.parse(String((patch?.[1] as { raw: string }).raw))).toEqual({ plugins: { entries: { "memory-core": { config: { rings: { frequency: "0 1 * * *" } } } } } });

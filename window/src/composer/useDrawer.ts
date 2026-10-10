@@ -102,7 +102,7 @@ export function useDrawer(engine: WindowEngine | undefined, trunks: Trunk[], lev
       if (skill) {
         const names = cat.skills.filter((n) => matches(invocationName(n), skill.query));
         if (names.length === 0) return null;
-        return { kind: "skills", label: "Skills", rows: names.map((n) => ({ id: n, main: `/${invocationName(n)}` })), picks: names.map((n) => ({ kind: "skill", token: skill, name: invocationName(n) })), groups: [] };
+        return { kind: "skills", label: "Skills", rows: names.map((n) => ({ id: n, main: `/${invocationName(n)}` })), picks: names.map((n) => ({ kind: "skill", token: skill, name: n })), groups: [] };
       }
       const at = tokenAt(text, caret, "@");
       if (!at) return null;

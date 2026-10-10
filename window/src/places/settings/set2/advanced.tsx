@@ -249,14 +249,14 @@ const TOOLS_SKILLS: SecSpec = { title: "Tools and skills", lv: 1, rows: [
 
 /* ---------- the remaining plain sections ---------- */
 const btnOff = (t: string, s: string, btn: string, off = NOSET): Spec => ({ t, s, kind: "btn", btn, off });
-const HELPERS: SecSpec = { title: "Helpers", lv: 1, rows: [{ t: "Trunks’ model", draw: (c) => <HelpersModel c={c} /> }, no("Trunks get the connectors", "Off: Trunks get the Trunk’s tools minus connectors. They never get more than the Trunk.")] };
+const HELPERS: SecSpec = { title: "Trunks", lv: 1, rows: [{ t: "Trunks’ model", draw: (c) => <HelpersModel c={c} /> }, no("Trunks get the connectors", "Off: Trunks get the Trunk’s tools minus connectors. They never get more than the Trunk.")] };
 const TOOLS_TECH: SecSpec = { title: "Tools, technical", group: "Tools", lv: 2, rows: [
   no("Your own tools from files", "Loads tool files from the tools folder. Each one is checked before it’s offered."),
   no("Find tools with a command", "A command that prints more tools for this project.", "text"),
   no("Run connector programs on Branch’s own Node.js", "Off: the Node.js installed on this computer."),
   { t: "Python service", s: "Comes with Branch. Runs Python for tools that need it.", kind: "none", off: "The engine doesn’t report a Python service." },
 ] };
-const HOOKS: SecSpec = { title: "Hooks", lv: 2, rows: ["Before a tool runs", "After a tool runs", "When a conversation starts", "When you send a message", "When a Trunk stops", "When a Trunk stops", "Before tidying up", "When it needs you", "When a task finishes", "When a session ends", "When settings change", "When a file changes"].map((t) => ({ t })), whole: (c) => <HooksSec c={c} /> };
+const HOOKS: SecSpec = { title: "Hooks", lv: 2, rows: ["Before a tool runs", "After a tool runs", "When a conversation starts", "When you send a message", "When a Trunk stops", "Before tidying up", "When it needs you", "When a task finishes", "When a session ends", "When settings change", "When a file changes"].map((t) => ({ t })), whole: (c) => <HooksSec c={c} /> };
 const AUTO_MORE: SecSpec = { title: "Automations, more", group: "Automations", lv: 1, rows: [no("Run on GitHub Actions while this computer is off", "Schedules and their skills run on free GitHub runners; results and memory come back as commits. Off until you choose: your skills run on GitHub’s computers.")] };
 const SHARING_MORE: SecSpec = { title: "Sharing, more", group: "Sharing", lv: 1, rows: [btnOff("Pages Trunks publish", "Pages and their comments.", "See them", "Needs the engine’s list of published pages.")] };
 const TRUNKS_MORE: SecSpec = { title: "Trunks, more", group: "Trunks", lv: 1, rows: [
@@ -356,7 +356,7 @@ const RECALL: SecSpec = { title: "Recall and memory files", lv: 1, rows: [
   btnOff("Notes about this computer", "Short files kept up to date in the background: this computer, its disks, the devices on your network and what you use most. Off until you choose.", "Read them"),
   no("Keep notes about this computer", "Off until you choose: it looks at your network, disks and recent activity."),
   { t: "Learn from other coding agents’ history on this computer", draw: (c) => <LearnRow c={c} /> },
-  btnOff("Memory cleanup instructions for this workspace", "Memory cleanup works the usual way. Make one to tell it what matters here.", "Make one"),
+  btnOff("Rings’ own instructions for this workspace", "Rings works the usual way. Make one to tell it what matters here.", "Make one"),
   { t: "Prefer recent notes", s: "Newer notes win ties; a note’s weight halves every 30 days.", lv: 2, kind: "sw", def: true, off: ALWAYS },
   { t: "Vary the results", s: "Leaves out near-repeats so a search brings back different things.", lv: 2, kind: "sw", def: true, off: ALWAYS },
   no("Pick up edits to memory files", "Your own edits to the Markdown files are read back in; a file it can’t read is set aside, never deleted.", "sw", { lv: 2 }),

@@ -40,7 +40,7 @@ const BASE: SettingsGroup[] = [
       { id: "backups", name: "Backups" },
       { id: "gateway", name: "Gateway" },
       { id: "self", name: "About Branch" },
-      { id: "seasons", name: "Memory cleanup" },
+      { id: "seasons", name: "Seasons" },
       { id: "updates", name: "Updates & about" },
     ],
   },

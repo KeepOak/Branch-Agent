@@ -1,7 +1,7 @@
 // The composer (DESIGN-SPEC §4.3): the message box, +, the plug, the model and mode chips, voice and Send/Stop,
 // the dock row above it and the menus, all wired to the engine through the shared handle (connect/engine.ts).
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
-import { engineInvocation } from "../display-names";
+import { engineInvocation, invocationName } from "../display-names";
 import { PASTED_TEXT_CHIP_CHARS } from "./attachments";
 import { isPreparationPending, preparationLabel } from "../connect/preparation-status";
 import { DockRow, type Goal } from "./DockRow";
@@ -152,20 +152,20 @@ export function Composer(props: Props) {
   const conversationProblem = conv.error ?? (isPreparationPending(conv.modelsError) || conv.modelsError?.includes("is still starting up.") ? conv.modelsError : null);
   const toast = useCallback((text: string) => onToast?.(text), [onToast]);
 
+  const levels = current?.levels ?? [];
+  const drawer = useDrawer(engine, conv.trunks, levels, useMemo(() => ({ think: thinking }), [thinking]));
   const deliver = useCallback(
     (typed: string, files = draft.files, people = draft.people, queue?: string) => {
-      const text = engineInvocation(typed);
+      const text = engineInvocation(typed, drawer.skills);
       return onSend(text, buildExtras(text, files, people, queue, props.replyTo));
     },
-    [onSend, draft.files, draft.people, props.replyTo],
+    [onSend, draft.files, draft.people, props.replyTo, drawer.skills],
   );
   const line = useWaitingLine(engine?.sessionKey ?? null, working, Boolean(props.offline), (item, steer) => {
     onSend(item.text, buildExtras(item.text, item.files, [], steer ? "steer" : undefined), item.id);
     if (steer) toast(`Steered ${trunkName}. It picks this up at its next step.`);
   });
   const bg = useBackground(engine, conv.trunkId, props.mainKey);
-  const levels = current?.levels ?? [];
-  const drawer = useDrawer(engine, conv.trunks, levels, useMemo(() => ({ think: thinking }), [thinking]));
   const view = draft.text === dismissed ? null : drawer.view(draft.text, caret);
   const history = useHistoryKeys(engine, draft.text, draft.setText);
 
@@ -277,7 +277,7 @@ export function Composer(props: Props) {
     let next: { text: string; caret: number };
     if (p.kind === "command") next = { text: `/${p.command.name} `, caret: p.command.name.length + 2 };
     else if (p.kind === "choice") next = { text: `/${p.command.name} ${p.value}`, caret: p.command.name.length + p.value.length + 2 };
-    else next = replaceToken(draft.text, p.token, p.kind === "skill" ? `/${p.name}` : `@${p.name}`);
+    else next = replaceToken(draft.text, p.token, p.kind === "skill" ? `/${p.token.start === 0 ? invocationName(p.name) : p.name}` : `@${p.name}`);
     if (p.kind === "person") draft.addPerson({ profileId: p.profileId, name: p.name });
     draft.setText(next.text);
     setCaret(next.caret);

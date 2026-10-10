@@ -45,20 +45,23 @@ describe("displayName: exact engine identifiers only", () => {
 });
 
 describe("skill invocations", () => {
-  it("shows clawhub as seedbank and sends the raw key", () => {
+  it("shows a skill as the lower-case display name, and leaves other names as they are", () => {
     expect(invocationName("clawhub")).toBe("seedbank");
     expect(invocationName("file-receipts")).toBe("file-receipts");
-    expect(engineInvocation("/seedbank summarize this")).toBe("/clawhub summarize this");
-    expect(engineInvocation("please use /seedbank now")).toBe("please use /clawhub now");
+  });
+
+  it("turns a leading /seedbank into the engine key", () => {
+    expect(engineInvocation("/seedbank summarize this", ["clawhub"])).toBe("/clawhub summarize this");
+    expect(engineInvocation("/seedbank", ["clawhub"])).toBe("/clawhub");
+  });
+
+  it("sends a message that only mentions /seedbank unchanged", () => {
+    expect(engineInvocation("please use /seedbank now", ["clawhub"])).toBe("please use /seedbank now");
+    expect(engineInvocation("ask the seedbank team", ["clawhub"])).toBe("ask the seedbank team");
   });
 
   it("keeps /clawhub working as a hidden alias", () => {
-    expect(engineInvocation("/clawhub summarize this")).toBe("/clawhub summarize this");
-  });
-
-  it("does not rewrite a word that is not a slash invocation", () => {
-    expect(engineInvocation("ask the seedbank team")).toBe("ask the seedbank team");
-    expect(engineInvocation("visit /seedbanks")).toBe("visit /seedbanks");
+    expect(engineInvocation("/clawhub summarize this", ["clawhub"])).toBe("/clawhub summarize this");
   });
 });
 
