@@ -44,7 +44,8 @@ export function createGatewayGitHubReads(cfg: BranchConfig): SignalWakeGitHubRea
  */
 export function startSignalWakePollerForGateway(params: {
   getRuntimeConfig: () => BranchConfig;
-  github: SignalWakeGitHubReads | undefined;
+  /** The gateway's shared client. Omitted callers get a client built from the same token lookup. */
+  github?: SignalWakeGitHubReads | undefined;
   observe?: (observation: PrObservation) => void;
   onError: (message: string) => void;
 }): SignalPoller {
@@ -53,12 +54,13 @@ export function startSignalWakePollerForGateway(params: {
   if (repos.length === 0) {
     return NOOP_POLLER;
   }
-  if (!params.github) {
+  const github = params.github ?? createGatewayGitHubReads(cfg);
+  if (!github) {
     params.onError("signal wakes are configured but no GitHub token is available");
     return NOOP_POLLER;
   }
   return startSignalWakePoller({
-    github: params.github,
+    github,
     repos,
     trunkIds: () => configuredTrunkIds(params.getRuntimeConfig()),
     notify: (signal) => dispatchSignalWake(params.getRuntimeConfig(), signal),
