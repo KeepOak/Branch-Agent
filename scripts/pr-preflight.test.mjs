@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
-import { formatProblems, NOREPLY_EMAIL, runPreflight, TRAILER } from './pr-preflight.mjs';
+import { formatProblems, cloudAgentTrailer, runCli, runPreflight } from './pr-preflight.mjs';
 
 const SHA = 'a'.repeat(40);
 const BRANCH = 'trunk/pr-preflight';
 const LIST = 'scripts/feature-batch-ci-named/trunk-pr-preflight.txt';
+const NOREPLY = '12345+person@users.noreply.github.com';
+const PROTECTED = new Set(['scripts/merge-gate-trusted.test.mjs']);
 const BODY = [
   '## Summary',
   'Adds the preflight script.',
@@ -16,15 +22,15 @@ const BODY = [
   `Branch: ${BRANCH}`,
   'Base: origin/main 095f7916',
   'Files: 2 (all expected: yes; CI test list: none needed)',
-  'Tests: node --test scripts/pr-preflight.test.mjs -> 12 passed, 0 failed',
+  'Tests: node --test scripts/pr-preflight.test.mjs -> 16 passed, 0 failed',
   'Brief/FIX points: 1: done',
   'Trailer and emails: ok',
 ].join('\n');
 const GOOD_COMMIT = {
   sha: 'aaaaaaa',
-  message: `feat: add preflight\n\n${TRAILER}`,
-  authorEmail: NOREPLY_EMAIL,
-  committerEmail: NOREPLY_EMAIL,
+  message: 'feat: add preflight',
+  authorEmail: NOREPLY,
+  committerEmail: NOREPLY,
   date: '2026-10-09T12:00:00Z',
 };
 const VALID = {
@@ -39,9 +45,14 @@ const VALID = {
   listText: null,
   windowResult: { ok: true, text: '' },
   shardResult: { ok: true, detail: '' },
+  protectedPaths: PROTECTED,
 };
 const withInput = (overrides) => ({ ...VALID, ...overrides });
 const checksOf = (problems) => problems.map((p) => p.check);
+
+function httpError(message) {
+  return Object.assign(new Error(message), {});
+}
 
 test('a clean branch and body produce no problems', () => {
   assert.deepEqual(runPreflight(VALID), []);
@@ -54,20 +65,25 @@ test('a dirty working tree is reported with a fix', () => {
   assert.match(formatProblems(problems), /3 uncommitted change\(s\)\. Fix: commit or stash/);
 });
 
-test('a personal author email fails the commit-email rule', () => {
-  const commit = { ...GOOD_COMMIT, authorEmail: 'someone@gmail.com' };
+test('a personal author email fails the commit-email rule, with a fix that names no address', () => {
+  const commit = { ...GOOD_COMMIT, authorEmail: 'someone@example.com' };
   const problems = runPreflight(withInput({ commits: [commit] }));
   assert.deepEqual(checksOf(problems), ['commit-email']);
-  assert.match(problems[0].fix, new RegExp(NOREPLY_EMAIL.replace(/[.+]/g, '\\$&')));
+  assert.match(problems[0].fix, /noreply address \(ending @users\.noreply\.github\.com\)/);
+  assert.doesNotMatch(problems[0].fix, /someone|example\.com/);
 });
 
-test('a commit without the Taofik trailer is reported', () => {
-  const commit = { ...GOOD_COMMIT, message: 'feat: add preflight' };
-  assert.deepEqual(checksOf(runPreflight(withInput({ commits: [commit] }))), ['trailer']);
+test('the trailer is required only for cloud agents, and its text comes from the gate', () => {
+  const plain = { ...GOOD_COMMIT, message: 'feat: add preflight' };
+  assert.deepEqual(runPreflight(withInput({ commits: [plain] })), []);
+  const cloud = runPreflight(withInput({ commits: [plain], cloudAgent: true }));
+  assert.deepEqual(checksOf(cloud), ['trailer']);
+  assert.equal(cloud[0].fix, `end the commit message with: ${cloudAgentTrailer()}`);
+  assert.match(cloudAgentTrailer(), /^Co-authored-by: .+ <.+@users\.noreply\.github\.com>$/);
 });
 
 test('an AI co-author on anthropic.com fails the gate address rule', () => {
-  const commit = { ...GOOD_COMMIT, message: `feat: x\n\n${TRAILER}\nCo-Authored-By: Claude <noreply@anthropic.com>` };
+  const commit = { ...GOOD_COMMIT, message: 'feat: x\n\nCo-Authored-By: Claude <noreply@anthropic.com>' };
   assert.ok(checksOf(runPreflight(withInput({ commits: [commit] }))).includes('commit-email'));
 });
 
@@ -117,28 +133,32 @@ test('a window-clean baseline that differs fails with the first report line', ()
 });
 
 test('a shard that breaks the 12-minute budget fails', () => {
-  const shardResult = { ok: false, detail: 'shard is 760s, over the 720s budget' };
-  const problems = runPreflight(withInput({ shardResult }));
+  const problems = runPreflight(withInput({ shardResult: { ok: false, detail: 'shard is 760s, over the 720s budget' } }));
   assert.deepEqual(checksOf(problems), ['shard-budget']);
   assert.match(problems[0].message, /760s/);
 });
 
-test('changing a gate file is flagged for its own PR and marker', () => {
-  const problems = runPreflight(withInput({ changedFiles: ['scripts/merge-gate-trusted.mjs'] }));
+test('a changed protected gate file is flagged for its own PR and marker', () => {
+  const problems = runPreflight(withInput({ changedFiles: ['scripts/merge-gate-trusted.test.mjs'] }));
   assert.deepEqual(checksOf(problems), ['gate-files']);
   assert.match(problems[0].fix, /its own PR/);
 });
 
-test('a personal path or email in an added line fails', () => {
-  const addedLines = [{ file: 'docs/notes.md', line: 3, text: 'see /Users/taofikbishi/Desktop/x' }];
+test('the gate decides what is protected: workflows, CODEOWNERS and invoked scripts all count', () => {
+  for (const file of ['.github/workflows/new-check.yml', 'docs/CODEOWNERS', 'scripts/merge-gate-trusted.mjs']) {
+    const { protectedPaths, ...rest } = VALID;
+    const problems = runPreflight({ ...rest, changedFiles: [file] });
+    assert.ok(checksOf(problems).includes('gate-files'), `${file} should be a protected gate file`);
+  }
+  assert.deepEqual(runPreflight(withInput({ changedFiles: ['docs/notes.md'], protectedPaths: undefined })), []);
+});
+
+test('a personal path or email in an added non-test line fails, and a test fixture does not', () => {
+  const addedLines = [{ file: 'docs/notes.md', line: 3, text: 'see /Users/example/Desktop/x' }];
   const problems = runPreflight(withInput({ addedLines }));
   assert.deepEqual(checksOf(problems), ['personal-info']);
   assert.match(problems[0].message, /docs\/notes\.md:3/);
-});
-
-test('personal-looking fixtures in a test file are exempt', () => {
-  const addedLines = [{ file: 'scripts/x.test.mjs', line: 9, text: 'const who = "someone@gmail.com";' }];
-  assert.deepEqual(runPreflight(withInput({ addedLines })), []);
+  assert.deepEqual(runPreflight(withInput({ addedLines: [{ file: 'scripts/x.test.mjs', line: 9, text: 'x@gmail.com' }] })), []);
 });
 
 test('formatProblems prints one line per problem plus a count', () => {
@@ -146,4 +166,52 @@ test('formatProblems prints one line per problem plus a count', () => {
   const lines = formatProblems(problems).split('\n');
   assert.equal(lines.length, problems.length + 1);
   assert.equal(lines.at(-1), `preflight: ${problems.length} problem(s)`);
+});
+
+// CLI wiring: drive the real runCli against a temporary git repository.
+function fixtureRepo({ branchMessage, branchEmail, body }) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'preflight-cli-'));
+  const git = (args) => execFileSync('git', ['-c', 'user.name=t', '-c', `user.email=${NOREPLY}`, '-c', 'commit.gpgsign=false', ...args], { cwd: dir, encoding: 'utf8' });
+  git(['init', '-q', '-b', 'main']);
+  writeFileSync(path.join(dir, 'base.txt'), 'base\n');
+  git(['add', 'base.txt']);
+  git(['commit', '-q', '-m', 'chore: base']);
+  git(['checkout', '-q', '-b', BRANCH]);
+  mkdirSync(path.join(dir, 'scripts'));
+  writeFileSync(path.join(dir, 'scripts', 'x.mjs'), 'export const x = 1;\n');
+  git(['add', 'scripts/x.mjs']);
+  git(['-c', `user.email=${branchEmail}`, 'commit', '-q', '-m', branchMessage]);
+  const head = git(['rev-parse', 'HEAD']).trim();
+  const bodyPath = path.join(mkdtempSync(path.join(tmpdir(), 'preflight-body-')), 'body.md');
+  writeFileSync(bodyPath, body(head));
+  return { dir, bodyPath };
+}
+
+test('the CLI fails on a body with no SELF-CHECK and names the check', () => {
+  const { dir, bodyPath } = fixtureRepo({ branchMessage: 'feat: x', branchEmail: NOREPLY, body: () => 'no block here\n' });
+  const result = runCli(['--body', bodyPath, '--base', 'HEAD~1'], dir);
+  assert.equal(result.exitCode, 1);
+  assert.match(result.text, /preflight FAIL \[self-check\]/);
+});
+
+test('the CLI passes a clean branch with a valid SELF-CHECK for its real head', () => {
+  const body = (head) => BODY.replace(SHA, head).replace(`Branch: ${BRANCH}`, `Branch: ${BRANCH}`);
+  const { dir, bodyPath } = fixtureRepo({ branchMessage: 'feat: x', branchEmail: NOREPLY, body });
+  const result = runCli(['--body', bodyPath, '--base', 'HEAD~1'], dir);
+  assert.equal(result.exitCode, 0, result.text);
+  assert.equal(result.text, 'preflight: ok');
+});
+
+test('the CLI reports a personal commit email from the real git log', () => {
+  const body = (head) => BODY.replace(SHA, head);
+  const { dir, bodyPath } = fixtureRepo({ branchMessage: 'feat: x', branchEmail: 'someone@example.com', body });
+  const result = runCli(['--body', bodyPath, '--base', 'HEAD~1'], dir);
+  assert.equal(result.exitCode, 1);
+  assert.match(result.text, /\[commit-email\]/);
+});
+
+test('the CLI refuses to run without a body file', () => {
+  const result = runCli([], process.cwd());
+  assert.equal(result.exitCode, 2);
+  assert.match(result.text, /--body/);
 });

@@ -1,30 +1,38 @@
 #!/usr/bin/env node
 // Local preflight: runs the gate checks that need no CI infrastructure, before a push or a PR body edit.
-// Reuses the gates' own exported checks so the rules cannot drift. Prints one line per problem, with the fix.
-// Usage: node scripts/pr-preflight.mjs --body <draft-body.md> [--base origin/main]
+// Reuses the gates' own exported checks and config so the rules cannot drift. Prints one line per problem, with the fix.
+// Usage: node scripts/pr-preflight.mjs --body <draft-body.md> [--base origin/main] [--cloud-agent]
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkSelfCheck } from './check-self-check.mjs';
 import { checkUIProof } from './check-ui-proof.mjs';
-import { classifyAddress, evaluateCommits } from './check-commit-emails.mjs';
-import { listedGateFiles, touchedGateFiles } from './check-gate-files-fresh.mjs';
+import { ALLOWED_SUFFIX, FIX_LINES, evaluateCommits } from './check-commit-emails.mjs';
+import { loadProtectedGatePaths, touchedProtectedFiles } from './merge-gate-trusted.mjs';
 import { checkWindowClean, scanTree } from './check-window-clean.mjs';
 
-export const TRAILER = 'Co-authored-by: Taofik Bishi <189563683+stabrea@users.noreply.github.com>';
-export const NOREPLY_EMAIL = '189563683+stabrea@users.noreply.github.com';
 const PERSONAL_PATTERNS = [
   /\/Users\/[A-Za-z0-9._-]+\//,
   /[A-Za-z]:\\Users\\[A-Za-z0-9._-]+\\/,
   /\b[A-Za-z0-9._%+-]+@(gmail|outlook|hotmail|yahoo|icloud|proton)\.[a-z.]+\b/i,
 ];
+// Test files carry synthetic fixtures (example addresses, sample paths) on purpose, so they are exempt.
+const FIXTURE_FILE = /\.test\.(mjs|ts|tsx)$/;
 const TEST_FILE = /^(engine|window)\/.+\.test\.(ts|tsx|mjs)$/;
 
 const problem = (check, message, fix) => ({ check, message, fix });
 
-// Commit identity and trailers: the same rules check-commit-emails.mjs applies, plus the trailer every commit needs.
-export function commitProblems(commits) {
+// The Taofik trailer the gate's own fix text asks cloud agents to use. Read from the gate, never copied.
+export function cloudAgentTrailer() {
+  const text = FIX_LINES.join('\n');
+  const match = /`(Co-authored-by:[^`]+)`/.exec(text);
+  if (!match) throw new Error('check-commit-emails.mjs FIX_LINES no longer names a Co-authored-by trailer');
+  return match[1];
+}
+
+// Commit identity: the same rules check-commit-emails.mjs applies. The fix text comes from the gate's own suffix.
+export function commitProblems(commits, { cloudAgent = false } = {}) {
   const apiCommits = commits.map((c) => ({
     sha: c.sha,
     commit: {
@@ -36,11 +44,13 @@ export function commitProblems(commits) {
   const addressProblems = evaluateCommits(apiCommits).map((f) => problem(
     'commit-email',
     `commit ${f.sha} ${f.field} address ${f.hint} is not a GitHub noreply address`,
-    `git config user.email ${NOREPLY_EMAIL}, then make a new commit (no force-push). A Co-authored-by line must be a noreply address too`,
+    `set git user.email to a GitHub noreply address (ending ${ALLOWED_SUFFIX}), then make a new commit. Never force-push`,
   ));
+  if (!cloudAgent) return addressProblems;
+  const trailer = cloudAgentTrailer();
   const trailerProblems = commits
-    .filter((c) => !c.message.toLowerCase().includes(TRAILER.toLowerCase()))
-    .map((c) => problem('trailer', `commit ${c.sha} has no Taofik trailer`, `end the commit message with: ${TRAILER}`));
+    .filter((c) => !c.message.toLowerCase().includes(trailer.toLowerCase()))
+    .map((c) => problem('trailer', `cloud-agent commit ${c.sha} has no required trailer`, `end the commit message with: ${trailer}`));
   return [...addressProblems, ...trailerProblems];
 }
 
@@ -57,7 +67,7 @@ export function selfCheckProblems({ branch, headSha, body }) {
 }
 
 // Named-test list: every changed engine or window test file must appear in the branch's list, sorted.
-export function namedListProblems({ branch, changedFiles, listText, listPath }) {
+export function namedListProblems({ changedFiles, listText, listPath }) {
   const wanted = changedFiles.filter((f) => TEST_FILE.test(f)).map((f) => f.replace(/^(engine|window)\//, '$1:')).sort();
   if (wanted.length === 0) return [];
   if (listText == null) {
@@ -89,14 +99,13 @@ export function shardProblems(shardResult) {
   return [problem('shard-budget', `scripts/feature-batch-ci-shard.test.mjs fails: ${shardResult.detail}`, 'split the new tests or move them to a shard with headroom; rerun node --test scripts/feature-batch-ci-shard.test.mjs')];
 }
 
-export function gateFileProblems(changedFiles) {
-  const touched = touchedGateFiles(changedFiles, listedGateFiles());
+// Protected gate files come from the gate itself: its workflows, CODEOWNERS, and the scripts its workflows invoke.
+export function gateFileProblems(changedFiles, protectedPaths) {
+  const touched = touchedProtectedFiles(changedFiles, protectedPaths);
   if (touched.length === 0) return [];
-  return [problem('gate-files', `gate file(s) changed: ${touched.join(', ')}`, 'open this as its own PR; it needs a gate-change-reviewed marker for the head SHA')];
+  return [problem('gate-files', `protected gate file(s) changed: ${touched.join(', ')}`, 'open this as its own PR; the gate needs a gate-change-reviewed marker for the head SHA')];
 }
 
-// Test files carry synthetic fixtures (example addresses, sample paths) on purpose, so they are exempt.
-const FIXTURE_FILE = /\.test\.(mjs|ts|tsx)$/;
 export function personalInfoProblems(addedLines) {
   const real = addedLines.filter((l) => !FIXTURE_FILE.test(l.file));
   return real.filter((l) => PERSONAL_PATTERNS.some((p) => p.test(l.text))).map((l) => (
@@ -112,15 +121,17 @@ export function dirtyTreeProblems(dirtyCount) {
 // Pure entry point: every check runs from the inputs given, so tests can feed each failure type.
 export function runPreflight(input) {
   const body = input.body ?? '';
+  const changedFiles = input.changedFiles ?? [];
+  const protectedPaths = input.protectedPaths ?? loadProtectedGatePaths();
   return [
     ...dirtyTreeProblems(input.dirtyCount ?? 0),
-    ...commitProblems(input.commits ?? []),
+    ...commitProblems(input.commits ?? [], { cloudAgent: input.cloudAgent === true }),
     ...selfCheckProblems({ branch: input.branch, headSha: input.headSha, body }),
-    ...namedListProblems({ branch: input.branch, changedFiles: input.changedFiles ?? [], listText: input.listText ?? null, listPath: input.listPath }),
-    ...uiProofProblems({ changedFiles: input.changedFiles ?? [], body }),
+    ...namedListProblems({ changedFiles, listText: input.listText ?? null, listPath: input.listPath }),
+    ...uiProofProblems({ changedFiles, body }),
     ...windowCleanProblems(input.windowResult),
     ...shardProblems(input.shardResult),
-    ...gateFileProblems(input.changedFiles ?? []),
+    ...gateFileProblems(changedFiles, protectedPaths),
     ...personalInfoProblems(input.addedLines ?? []),
   ];
 }
@@ -132,7 +143,7 @@ export function formatProblems(problems) {
   return lines.join('\n');
 }
 
-// ---- CLI: gather inputs from git and the body file. Not exercised by the unit tests.
+// ---- CLI: gather inputs from git and the body file.
 function git(args, cwd) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).trim();
 }
@@ -164,8 +175,7 @@ function argValue(name, argv) {
   return i === -1 ? null : argv[i + 1];
 }
 
-function gatherCli(argv) {
-  const cwd = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+function gatherInputs({ argv, cwd }) {
   const base = argValue('--base', argv) ?? 'origin/main';
   const bodyPath = argValue('--body', argv);
   const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'], cwd);
@@ -174,22 +184,21 @@ function gatherCli(argv) {
   return {
     branch,
     headSha: git(['rev-parse', 'HEAD'], cwd),
-    body: bodyPath && existsSync(bodyPath) ? readFileSync(bodyPath, 'utf8') : null,
+    body: bodyPath && existsSync(path.resolve(cwd, bodyPath)) ? readFileSync(path.resolve(cwd, bodyPath), 'utf8') : null,
     dirtyCount: git(['status', '--porcelain'], cwd).split('\n').filter(Boolean).length,
     commits: gitCommits(base, cwd),
     changedFiles: git(['diff', '--name-only', `${base}...HEAD`], cwd).split('\n').filter(Boolean),
     addedLines: gitAddedLines(base, cwd),
+    cloudAgent: argv.includes('--cloud-agent'),
     listPath,
     listText: existsSync(listAbs) ? readFileSync(listAbs, 'utf8') : null,
-    windowResult: null,
-    shardResult: null,
-    cwd,
   };
 }
 
 function windowResultFor(cwd) {
-  const baseline = readFileSync(path.join(cwd, 'scripts/window-clean-baseline.txt'), 'utf8');
-  return checkWindowClean(scanTree(cwd), baseline);
+  const baselinePath = path.join(cwd, 'scripts/window-clean-baseline.txt');
+  if (!existsSync(baselinePath)) return null;
+  return checkWindowClean(scanTree(cwd), readFileSync(baselinePath, 'utf8'));
 }
 
 function shardResultFor(cwd) {
@@ -203,21 +212,22 @@ function shardResultFor(cwd) {
   }
 }
 
-async function main() {
-  if (!process.argv.includes('--body')) {
-    console.error('preflight: pass --body <draft PR body file>. Preflight checks the body you are about to submit.');
-    process.exitCode = 2;
-    return;
+// Exported so tests can drive the real CLI wiring against a temporary repository.
+export function runCli(argv, cwd) {
+  if (!argv.includes('--body')) {
+    return { exitCode: 2, text: 'preflight: pass --body <draft PR body file>. Preflight checks the body you are about to submit.' };
   }
-  const input = gatherCli(process.argv.slice(2));
+  const input = gatherInputs({ argv, cwd });
+  input.windowResult = windowResultFor(cwd);
   const changesTests = input.changedFiles.some((f) => TEST_FILE.test(f));
-  input.windowResult = windowResultFor(input.cwd);
-  input.shardResult = changesTests ? shardResultFor(input.cwd) : null;
+  input.shardResult = changesTests ? shardResultFor(cwd) : null;
   const problems = runPreflight(input);
-  console.log(formatProblems(problems));
-  if (problems.length) process.exitCode = 1;
+  return { exitCode: problems.length ? 1 : 0, text: formatProblems(problems) };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  await main();
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const result = runCli(process.argv.slice(2), repoRoot);
+  console.log(result.text);
+  process.exitCode = result.exitCode;
 }
