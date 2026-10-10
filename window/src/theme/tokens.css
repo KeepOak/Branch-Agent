@@ -28,6 +28,14 @@
   --bad: #c2412d;
   --bad-tint: #f8e3df;
   --scrim: rgba(14, 20, 26, 0.3);
+  /* Trunk faces with no colour of their own (DA-04): the Trunk editor's colours without its grey. */
+  --trunk-1: #2f8c86;
+  --trunk-2: #1785af;
+  --trunk-3: #8a5aa8;
+  --trunk-4: #5e8c4a;
+  --trunk-5: #4f6fa8;
+  --trunk-6: #c9982e;
+  --trunk-7: #b84a6b;
   --term-bg: #171a18;
   --term-ink: #d5ddd6;
   --term-dim: #7f8b82;

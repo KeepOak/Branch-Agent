@@ -109,7 +109,7 @@ import { ControlTower } from "./ControlTower";
 import { StagePip } from "../stage/StagePip";
 import { AddComputer } from "../stage/AddComputer";
 import { computersChanged } from "../stage/computers";
-import { TrunkAppearances, TrunkPebbleLooks, TrunkEmojiFaces, trunkAppearance, type Appearance } from "../face/appearance";
+import { TrunkAppearances, TrunkPebbleLooks, TrunkEmojiFaces, rosterPebbleLooks, themeColour, trunkAppearance, type Appearance } from "../face/appearance";
 import { CharacterPanel } from "../face/CharacterPanel";
 import { useShellRoom } from "../rooms/useShellRoom";
 import { NewGroupChatHost } from "../rooms/NewGroupChat";
@@ -1492,11 +1492,12 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     topicRow: Boolean(topicContact && activeTopics.length),
   });
   const showTower = route.kind === "chat" && ready && towerOn && !pane && !layout.focus && !stage && !draftTopic && firstRun.step === null;
+  const pebbleLooks = useMemo(() => rosterPebbleLooks(trunks.list, themeColour), [trunks.list]);
   const mainClass = route.kind === "chat" ? `main${pane ? " with-pane" : ""}${showThreadColumn || showTower ? " v23-layout" : ""}` : talkShown ? (talk.dock === "bottom" ? "main with-talk talk-bottom" : "main with-talk") : "main";
 
   return (
     <TrunkAppearances.Provider value={appearances}>
-    <TrunkPebbleLooks.Provider value={Object.fromEntries(trunks.list.map((t) => [t.name, { colour: t.colour, shape: t.shape, eyes: t.eyes }]))}>
+    <TrunkPebbleLooks.Provider value={pebbleLooks}>
     <TrunkEmojiFaces.Provider value={Object.fromEntries(trunks.list.map((t) => [t.name, t.emoji ?? ""]))}>
     <div className={frameClass} data-connection={ready ? "ready" : s.status.phase} data-route={route.kind} style={{ ["--side-w" as string]: `${dedicated ? 0 : sideWidth}px` }}>
       <a className="skip" href="#main">
