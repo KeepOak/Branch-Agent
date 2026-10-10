@@ -78,6 +78,7 @@ import { ShortcutsDialog } from "./ShortcutsDialog";
 import { QuickAsk } from "./QuickAsk";
 import { NewProjectDialog, useProjects } from "./Projects";
 import { Sidebar, type TalkEntry } from "./Sidebar";
+import { topBarTalk } from "./talk-entry";
 import { TalkBeside, useTalkLayout } from "./TalkBeside";
 import { StatusBar, type StatusItem } from "./StatusBar";
 import { KeepLastDialog, remindedToday, StatusPopover, statusAnchor, tidy } from "./StatusLayer";
@@ -1514,7 +1515,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         onCharacter={onCharacterButton}
         onGuide={(e) => showMenu(e, "guide", guideItems(), "Guide")}
         conversationTools={conversationTools}
-        ask={route.kind === "settings" ? { name: defaultName, open: false, help: true, onToggle: () => window.dispatchEvent(new Event("branch-settings-help")) } : talkEntry}
+        ask={route.kind === "settings" ? { name: defaultName, open: false, help: true, onToggle: () => window.dispatchEvent(new Event("branch-settings-help")) } : topBarTalk(talkEntry, { dedicated, focus: layout.focus, narrow: isNarrow, slideOpen, hidden: layout.hidden })}
         onSettings={route.kind === "place" ? () => openSettings("general") : undefined}
       />
       <Sidebar
