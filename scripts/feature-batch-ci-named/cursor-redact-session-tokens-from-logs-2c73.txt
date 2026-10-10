@@ -1,0 +1,4 @@
+engine:packages/net-policy/src/redact-sensitive-url.test.ts
+engine:src/logging/log-file-scrub.test.ts
+engine:src/logging/logger-credential-leak-regression.test.ts
+engine:src/logging/redact.test.ts

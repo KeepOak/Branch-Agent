@@ -15,6 +15,12 @@ describe("redactSensitiveUrl", () => {
     );
   });
 
+  it("redacts camelCase sessionToken query params", () => {
+    expect(redactSensitiveUrl("ws://127.0.0.1:19011/api?sessionToken=fixture-session-token")).toBe(
+      "ws://127.0.0.1:19011/api?sessionToken=***",
+    );
+  });
+
   it("redacts signed and x-* auth aliases without matching adjacent metadata", () => {
     expect(
       redactSensitiveUrl(
@@ -217,8 +223,13 @@ describe("isSensitiveUrlQueryParamName", () => {
     expect(isSensitiveUrlQueryParamName("app_secret")).toBe(true);
     expect(isSensitiveUrlQueryParamName("client_se\u3164cret")).toBe(true);
     expect(isSensitiveUrlQueryParamName("credential")).toBe(true);
+    expect(isSensitiveUrlQueryParamName("sessionToken")).toBe(true);
+    expect(isSensitiveUrlQueryParamName("deviceToken")).toBe(true);
+    expect(isSensitiveUrlQueryParamName("pairingToken")).toBe(true);
     expect(isSensitiveUrlQueryParamName("sigmoid")).toBe(false);
     expect(isSensitiveUrlQueryParamName("token_count")).toBe(false);
+    expect(isSensitiveUrlQueryParamName("tokenCount")).toBe(false);
+    expect(isSensitiveUrlQueryParamName("sessionName")).toBe(false);
     expect(isSensitiveUrlQueryParamName("x-request-id")).toBe(false);
   });
 });
