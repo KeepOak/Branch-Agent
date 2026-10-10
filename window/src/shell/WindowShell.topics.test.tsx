@@ -49,7 +49,11 @@ function stubChrome() {
 
 type HistoryLine = { kind: "user"; key: string; text: string } | { kind: "text"; key: string; text: string; streaming: false };
 
-function session(openKey: string, topics: typeof trip[], history: HistoryLine[]) {
+function session(openKey: string, topics: typeof trip[], history: HistoryLine[], controls?: {
+  listeners: Set<(event: string, payload: unknown) => void>;
+  rows: () => typeof sessions;
+  historyGate?: () => Promise<void>;
+}) {
   const snapshot = {
     status: { phase: "connected" }, sessionKey: openKey, mainKey: "agent:oak:main", name: "Oak",
     history, live: [], pendingUser: null, queued: [], liveRunId: null, liveStartedAt: null,
@@ -62,8 +66,9 @@ function session(openKey: string, topics: typeof trip[], history: HistoryLine[])
     if (method === "contacts.list") return { contacts: [oak] };
     if (method === "contacts.topics") return { topics };
     if (method === "sessions.subscribe") return { list: { sessions } };
-    if (method === "sessions.list") return { sessions };
+    if (method === "sessions.list") return { sessions: controls?.rows() ?? sessions };
     if (method === "chat.history") {
+      await controls?.historyGate?.();
       if (key === "agent:oak:main") return { messages: [{ role: "assistant", content: [{ type: "text", text: "General last line" }] }] };
       if (key === "agent:oak:trip") return { messages: [{ role: "user", content: "Child question" }] };
       return { messages: [] };
@@ -80,7 +85,10 @@ function session(openKey: string, topics: typeof trip[], history: HistoryLine[])
     gatewayUrl: "ws://127.0.0.1:19661",
     getSnapshot: () => snapshot,
     subscribe: () => () => {},
-    onGatewayEvent: () => () => {},
+    onGatewayEvent: (listener: (event: string, payload: unknown) => void) => {
+      controls?.listeners.add(listener);
+      return () => controls?.listeners.delete(listener);
+    },
     open: vi.fn(async () => {}),
     reload: vi.fn(),
   } as unknown as SaplingSession;
@@ -127,5 +135,66 @@ describe("preview topic row in the shell", () => {
     await vi.waitFor(() => expect(host.querySelector(".topicsT5")).toBeTruthy());
     await vi.waitFor(() => expect(host.querySelector('[aria-label="General"] .tpWhoT5')?.textContent).toBe("Oak:"));
     expect(host.querySelector('[aria-label="General"] .tpWhoT5')?.textContent).not.toBe("You:");
+  });
+});
+
+
+describe("All topics across sessions.list refreshes", () => {
+  async function setup() {
+    stubChrome();
+    localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "tabs", width: 300, per: {} }));
+    const listeners = new Set<(event: string, payload: unknown) => void>();
+    let rows = sessions.map((row) => ({ ...row }));
+    let gate: Promise<void> | undefined;
+    const client = session("agent:oak:main", [trip], [], { listeners, rows: () => rows, historyGate: () => gate ?? Promise.resolve() });
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root!.render(<WindowShell session={client} url="ws://127.0.0.1:19661" />));
+    const reads = () => vi.mocked(client.request).mock.calls.filter(([method]) => method === "chat.history");
+    const refresh = async (changed = false) => {
+      rows = rows.map((row) => ({ ...row, ...(changed && row.key === trip.key ? { updatedAt: row.updatedAt + 1 } : {}) }));
+      const before = vi.mocked(client.request).mock.calls.filter(([method]) => method === "sessions.list").length;
+      await act(async () => {
+        listeners.forEach((listener) => listener("sessions.changed", {}));
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      });
+      expect(vi.mocked(client.request).mock.calls.filter(([method]) => method === "sessions.list").length).toBeGreaterThan(before);
+    };
+    const click = async (label: string) => {
+      const button = host.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`);
+      expect(button).toBeTruthy();
+      await act(async () => button!.click());
+    };
+    return { host, reads, refresh, click, hold: () => { let release!: () => void; gate = new Promise<void>((resolve) => { release = resolve; }); return release; } };
+  }
+
+  it("reuses unchanged threads after a new rows array and reads only a changed thread", async () => {
+    const view = await setup();
+    const before = view.reads().length;
+    await view.click("All");
+    expect(view.reads()).toHaveLength(before + 2);
+    await view.refresh();
+    expect(view.reads()).toHaveLength(before + 2);
+    await view.refresh(true);
+    expect(view.reads()).toHaveLength(before + 3);
+    expect(view.reads().at(-1)?.[1]).toEqual({ sessionKey: trip.key });
+    await view.click("General");
+    await view.click("All");
+    expect(view.reads()).toHaveLength(before + 5);
+  });
+
+  it("finishes the in-flight load before collapsing refreshed rows into one follow-up", async () => {
+    const view = await setup();
+    const release = view.hold();
+    const before = view.reads().length;
+    await view.click("All");
+    expect(view.reads()).toHaveLength(before + 2);
+    await view.refresh(true);
+    await view.refresh(true);
+    expect(view.reads()).toHaveLength(before + 2);
+    await act(async () => release());
+    expect(view.reads()).toHaveLength(before + 3);
+    expect(view.reads().at(-1)?.[1]).toEqual({ sessionKey: trip.key });
+    expect(view.host.textContent).not.toContain("Reading all threads…");
   });
 });

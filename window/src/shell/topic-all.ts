@@ -25,16 +25,55 @@ export function mergeTopicTranscripts(transcripts: readonly TopicTranscript[], p
   return merged;
 }
 
+/** Blocks read for one thread, valid while its row still shows the same activity (updatedAt and preview). */
+export type TopicTranscriptCache = Map<string, { signature: string; blocks: Block[] }>;
+
+/**
+ * Reads each thread's transcript for the All view. A thread whose row has not changed since its last read
+ * reuses those blocks, so a live update reads only the threads that moved, not every thread again.
+ */
 export async function loadAllTopicTranscripts(
   request: (method: string, params: unknown) => Promise<unknown>,
   main: { key: string; title: string; updatedAt: number; preview: string },
   topics: readonly { key: string; title: string; labelled?: boolean; updatedAt: number; preview: string }[],
   picks: Record<string, string> = {},
+  cache: TopicTranscriptCache = new Map(),
 ): Promise<Block[]> {
   const sources = [main, ...topics];
   const transcripts = await Promise.all(sources.map(async (source) => {
+    const signature = `${source.updatedAt}\u0000${source.preview}`;
+    const cached = cache.get(source.key);
+    if (cached?.signature === signature) return { ...source, blocks: cached.blocks };
     const result = await request("chat.history", { sessionKey: source.key }) as { messages?: unknown[] };
-    return { ...source, blocks: historyToBlocks(Array.isArray(result.messages) ? result.messages : [], [], source.key, null) };
+    const blocks = historyToBlocks(Array.isArray(result.messages) ? result.messages : [], [], source.key, null);
+    cache.set(source.key, { signature, blocks });
+    return { ...source, blocks };
   }));
   return mergeTopicTranscripts(transcripts, picks);
+}
+
+/**
+ * Runs `run` at most once at a time. Triggers that arrive while a run is in flight collapse into one
+ * follow-up run after it settles, so a burst of live events cannot start overlapping loads.
+ */
+export function createSerialReloader(run: () => Promise<void>): { trigger(): void; cancel(): void } {
+  let inFlight = false;
+  let queued = false;
+  let cancelled = false;
+  const pump = (): void => {
+    if (cancelled) return;
+    if (inFlight) {
+      queued = true;
+      return;
+    }
+    inFlight = true;
+    void run().catch(() => undefined).finally(() => {
+      inFlight = false;
+      if (queued && !cancelled) {
+        queued = false;
+        pump();
+      }
+    });
+  };
+  return { trigger: pump, cancel: () => { cancelled = true; } };
 }
