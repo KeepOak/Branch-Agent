@@ -127,8 +127,12 @@ export function createSessionsSendTool(opts?: SessionsSendToolOptions): AnyAgent
         sessionVisibility,
         a2aPolicy,
       } = resolveSessionToolContext(opts);
-      // Worker callers supply a durable backend operation scope; legacy direct
-      // callers have a session scope. Neither may randomize the same call on retry.
+      // Worker callers supply a durable backend operation scope. Callers with no
+      // run identity (gateway tools.invoke over HTTP or RPC, MCP plugin tools)
+      // fall back to the session scope: their tool call id is already unique per
+      // call (`mcp-<uuid>`, `<prefix>-<origin>-<Date.now()>`) or is the client's
+      // own idempotency key, which must dedupe a retry. Neither may randomize the
+      // same call on retry.
       const operationKey = buildSessionsSendOperationKey(
         opts?.requesterTurnRunId ??
           getGatewayToolCallerIdentity()?.operationalRunInstance?.runId ??

@@ -165,4 +165,20 @@ describe("sessions_send operation identity", () => {
     expect(keys[2]).not.toBe(keys[0]);
     expect(keys[3]).not.toBe(keys[0]);
   });
+
+  it("callers with no run identity scope the key by session and tool call id", async () => {
+    const callGateway = vi.fn().mockResolvedValue({ id: "joined-delivery" });
+    const send = (agentSessionKey: string) =>
+      createSessionsSendTool({ config, agentSessionKey, callGateway });
+    const joinedArgs = { sessionKey: "a2a:branch-peer--target", message: "Continue the task" };
+    await send(source).execute("rpc-direct-key-1", joinedArgs);
+    await send(source).execute("rpc-direct-key-1", joinedArgs);
+    await send(source).execute("rpc-direct-key-2", joinedArgs);
+    await send("agent:main:other").execute("rpc-direct-key-1", joinedArgs);
+    const keys = callGateway.mock.calls.map(([request]) => request.params.idempotencyKey);
+    expect(keys).toHaveLength(4);
+    expect(keys[1]).toBe(keys[0]);
+    expect(keys[2]).not.toBe(keys[0]);
+    expect(keys[3]).not.toBe(keys[0]);
+  });
 });
