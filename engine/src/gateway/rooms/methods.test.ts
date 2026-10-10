@@ -214,6 +214,43 @@ describe("rooms methods", () => {
       ]);
     });
 
+    it("C01: one human post gets three distinct replies without overlapping Trunk turns", async () => {
+      const pending = new Map<string, () => void>();
+      mocks.wait.mockImplementation(async (options: GatewayRequestHandlerOptions) => {
+        await new Promise<void>((resolve) => pending.set(options.params.runId as string, resolve));
+        options.respond(true, {
+          status: "ok",
+          terminalReply: { disposition: "visible", text: `Reply ${options.params.runId}` },
+        });
+      });
+      const ids = ["bo", "ada", "cy"];
+      const { room } = await call("rooms.create", {
+        name: "C01",
+        rule: "everyone",
+        members: ids.map((id) => ({ kind: "trunk", id })),
+      });
+      await call("rooms.send", { roomId: room.roomId, message: "Report in, in order." });
+      for (let index = 0; index < ids.length; index += 1) {
+        const runId = `run-${index + 1}`;
+        await vi.waitFor(() => expect(pending.has(runId)).toBe(true));
+        const log = await events(room.roomId);
+        expect(actors(log, "turn.started")).toEqual(ids.slice(0, index + 1));
+        expect(actors(log, "turn.replied")).toEqual(ids.slice(0, index));
+        pending.get(runId)!();
+      }
+      await vi.waitFor(async () =>
+        expect(actors(await events(room.roomId), "turn.replied")).toEqual(ids),
+      );
+      const log = await events(room.roomId);
+      expect(new Set(actors(log, "turn.replied")).size).toBe(3);
+      expect(actors(log, "message")).toEqual(["owner"]);
+      expect(
+        log
+          .filter((value) => value.kind.startsWith("turn."))
+          .map(({ kind, actorId }) => `${kind}:${actorId}`),
+      ).toEqual(ids.flatMap((id) => [`turn.started:${id}`, `turn.replied:${id}`]));
+    });
+
     it("wakes a Trunk that another Trunk's reply @mentions when Trunks talk", async () => {
       replies = { ada: () => "@Bo can you check the numbers?", bo: () => "Checked, they add up." };
       const { room } = await call("rooms.create", {
