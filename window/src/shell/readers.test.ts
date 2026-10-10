@@ -19,10 +19,10 @@ describe("engine readers", () => {
       defaultId: "main", list: [], bootstrapDefault: { id: "main", name: "main", isDefault: true },
     });
   });
-  it("users.self falls back like OpenClaw: name, email, Owner", () => {
+  it("users.self falls back to the display name, the GitHub login, the email's local part, then You (never Owner)", () => {
     expect(readPersonName({ profile: { displayName: "Taylor", emails: [] } })).toBe("Taylor");
-    expect(readPersonName({ profile: { displayName: "", emails: ["t@example.com"] } })).toBe("t@example.com");
-    expect(readPersonName(null)).toBe("Owner");
+    expect(readPersonName({ profile: { displayName: "", emails: ["t@example.com"] } })).toBe("t");
+    expect(readPersonName(null)).toBe("You");
   });
 });
 
