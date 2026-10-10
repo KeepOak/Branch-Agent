@@ -47,14 +47,22 @@ async function fixture(run) {
   };
   const hooks = registerHooks({ resolve(request, context, nextResolve) {
     if (Object.hasOwn(mocks, request)) return {
-      url: `data:text/javascript,${encodeURIComponent(mocks[request])}#${id}`, shortCircuit: true,
+      url: `data:text/javascript,${encodeURIComponent(mocks[request])}#${id}`, format: "module", shortCircuit: true,
     };
     if (request === "./linux-login") return {
       url: pathToFileURL(join(source, `linux-login${extension}`)).href + (dist ? "" : `?fixture=${id}`), shortCircuit: true,
     };
     return nextResolve(request, context);
+  }, load(url, context, nextLoad) {
+    // CommonJS compiled output also needs an explicit loader for the virtual ESM mocks.
+    if (url.startsWith("data:text/javascript,") && url.endsWith(`#${id}`)) return {
+      format: "module", shortCircuit: true,
+      source: decodeURIComponent(url.slice("data:text/javascript,".length, url.lastIndexOf("#"))),
+    };
+    return nextLoad(url, context);
   } });
   try {
+    assert.deepEqual(require("electron").shell, {}, "mocks support compiled CommonJS requires too");
     for (const name of ["desktop-os", "linux-login"]) delete require.cache[join(source, `${name}${extension}`)];
     const { desktopOs } = await import(pathToFileURL(join(source, `desktop-os${extension}`)).href + `?fixture=${id}`);
     const launch = () => desktopOs(app, { dataDir: root }, () => undefined, "").login;
