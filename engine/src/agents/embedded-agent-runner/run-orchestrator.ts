@@ -343,7 +343,10 @@ async function runEmbeddedAgentInternal(
           agentDir: requestedAgentDir,
           // Shared credential inheritance stays anchored to its compatibility owner;
           // the selected session agent already owns this prepared runtime.
-          inheritedAuthDir: resolveLegacyInheritedAuthDir(config),
+          inheritedAuthDir: resolveLegacyInheritedAuthDir(config, undefined, undefined, {
+            agentId: requestedWorkspaceResolution.agentId,
+            agentDir: requestedAgentDir,
+          }),
           workspaceDir: runtimeWorkspaceResolution.workspaceDir,
           preserveWorkspaceDirOnRefresh: !runtimeWorkspaceResolution.isCanonicalWorkspace,
           ...(params.allowGatewaySubagentBinding ? { allowGatewaySubagentBinding: true } : {}),
