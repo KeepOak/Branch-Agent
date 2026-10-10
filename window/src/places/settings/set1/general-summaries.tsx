@@ -6,15 +6,12 @@ import type { WindowEngine } from "../../../connect/engine";
 import { list, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Ctl, Field, Pick, Sec, Seg, Switch, useConfig, useSaved } from "../kit";
-import { NO_KEY } from "./general-more";
 
 const C = "agents.defaults.compaction";
 const PRUNE = "agents.defaults.contextPruning";
 /** The engine's own defaults when a key is unset (settings-manager, agent-settings, queue/state). */
 const KEEP_RECENT = 20_000;
-const RESERVE_FLOOR = 20_000;
 const SUMMARY_TIMEOUT = 180;
-const QUEUE_DEBOUNCE_MS = 500;
 const QUEUE_CAP = 20;
 const fmt = (n: number) => n.toLocaleString("en-US");
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
@@ -49,9 +46,6 @@ export function OlderTurns({ engine, grouped = false }: { engine: WindowEngine; 
       <Ctl title="Summarise older turns by themselves" sub="Keeps long conversations fast. The summary card shows what was kept.">
         <Switch checked={cfg.get(`${C}.enabled`) !== false} label="Summarise older turns by themselves" disabled={cfg.loading} onChange={(v) => void cfg.set(`${C}.enabled`, v)} />
       </Ctl>
-      <Ctl title="Summarise when context left is under" sub="Of the model’s context for this conversation." off={`The engine always keeps at least ${fmt(RESERVE_FLOOR)} tokens free; it has no setting to change that yet.`}>
-        <Num value={RESERVE_FLOOR} unit="tokens" label="Summarise when context left is under" />
-      </Ctl>
       <Ctl title="Always keep the latest" sub="The newest part of the conversation, kept word for word.">
         <Num value={num(cfg.get(`${C}.keepRecentTokens`)) ?? KEEP_RECENT} unit="tokens" label="Always keep the latest" disabled={cfg.loading} onSave={(n) => void cfg.set(`${C}.keepRecentTokens`, n)} />
       </Ctl>
@@ -68,12 +62,6 @@ export function SummariesTechnical({ engine, grouped = false }: { engine: Window
   const mode = cfg.get(`${C}.mode`) === "default" ? "default" : "safeguard";
   return (
     <Sec title={grouped ? "" : "Summaries"}>
-      <Ctl title="Context to plan for" sub="Overrides what the model says it can hold." off="Each model’s context is set with that model; there’s no setting for every model yet.">
-        <Num value={undefined} unit="tokens" label="Context to plan for" placeholder="Model’s own" />
-      </Ctl>
-      <Ctl title="Repair the history before each call" sub="Repairs broken tool calls before the model sees them." help="Fixes a broken tool call or a half-written answer before the model sees it." off="The engine repairs it for the models that need it; there’s no setting for it.">
-        <Switch checked label="Repair the history before each call" onChange={() => undefined} />
-      </Ctl>
       <Ctl title="How it summarises" sub="Careful mode checks each summary before replacing history." help="Careful works in chunks and checks the summary; if the check fails the history is kept as it was.">
         <Seg label="How it summarises" value={mode} options={HOW} disabled={cfg.loading} onChange={(v) => void cfg.set(`${C}.mode`, v)} />
       </Ctl>
@@ -121,9 +109,6 @@ export function WaitingLine({ engine }: { engine: WindowEngine }) {
   const drop = cfg.get("messages.queue.drop");
   return (
     <Sec title="Waiting line">
-      <Ctl title="Wait before sending what’s in line" sub="Quick messages sent together go as one." off="The engine sets this wait for each chat app; there’s no setting for every conversation yet.">
-        <Num value={QUEUE_DEBOUNCE_MS} unit="ms" label="Wait before sending what’s in line" />
-      </Ctl>
       <Ctl title="Most messages in line">
         <Num value={num(cfg.get("messages.queue.cap")) ?? QUEUE_CAP} label="Most messages in line" disabled={cfg.loading} onSave={(n) => void cfg.set("messages.queue.cap", n)} />
       </Ctl>
@@ -134,21 +119,3 @@ export function WaitingLine({ engine }: { engine: WindowEngine }) {
   );
 }
 
-export function SummariesMore({ grouped = false }: { grouped?: boolean }) {
-  return (
-    <Sec title={grouped ? "" : "Summaries"}>
-      <Ctl stack title="How to write the summary" sub="Your own instructions for summaries. Empty uses Branch’s." off={NO_KEY}>
-        <textarea className="inp gen-area-k" rows={2} placeholder="Keep every decision, number and file name. List what’s still open." aria-label="How to write the summary" />
-      </Ctl>
-      <Ctl title="If a summary can’t be made" sub="The oldest messages are hidden behind a marker until there’s room." off={NO_KEY}>
-        <Pick label="If a summary can’t be made" value="hide" options={[{ id: "hide", label: "Hide the oldest messages" }, { id: "ask", label: "Stop and ask me" }]} onChange={() => undefined} />
-      </Ctl>
-      <Ctl title="Keep the originals of what it summarises" sub="The summary replaces them for the model only." help="The summary replaces them for the model only. You can put the originals back from the Tidied up line." off={NO_KEY}>
-        <Switch checked label="Keep the originals of what it summarises" onChange={() => undefined} />
-      </Ctl>
-      <Ctl title="A receipt for each thing left out" sub="Lists what was left out and why, and lets you bring any of it back." off={NO_KEY}>
-        <Switch checked label="A receipt for each thing left out" onChange={() => undefined} />
-      </Ctl>
-    </Sec>
-  );
-}
