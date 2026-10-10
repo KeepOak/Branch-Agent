@@ -55,7 +55,6 @@ export type ConversationMenuProps = {
   onTower?: () => void;
   towerVisible?: boolean;
   onList?: () => void;
-  onTheme?: () => void;
   onComputer?: () => void;
   onBrowser?: () => void;
   onGuide?: () => void;
@@ -224,7 +223,6 @@ function useRun(p: ConversationMenuProps, c: RunCtx): ConversationMenuRun {
     sidePanel: () => p.onSidePanel?.(),
     tower: () => p.onTower?.(),
     list: () => p.onList?.(),
-    theme: () => p.onTheme?.(),
     computer: () => p.onComputer?.(),
     browser: () => p.onBrowser?.(),
     guide: () => p.onGuide?.(),
