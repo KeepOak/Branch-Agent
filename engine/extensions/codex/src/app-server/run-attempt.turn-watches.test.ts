@@ -4,6 +4,7 @@ import { resolveActiveEmbeddedRunSessionId } from "branch/plugin-sdk/agent-harne
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
 import * as mediaStore from "branch/plugin-sdk/media-store";
 import { MAX_TIMER_TIMEOUT_MS } from "branch/plugin-sdk/number-runtime";
+import { withSessionTranscriptWriteLock } from "branch/plugin-sdk/session-transcript-runtime";
 import { describe, expect, it, vi } from "vitest";
 import { readAttemptTerminal } from "./attempt-terminal.test-helper.js";
 import {
@@ -35,6 +36,10 @@ import {
 } from "./run-attempt-test-harness.js";
 import { registerConfirmedStopContinuationTest } from "./run-attempt.confirmed-stop.test-support.js";
 import { readCodexAppServerBinding } from "./session-binding.test-helpers.js";
+import {
+  attachSqliteSessionTarget,
+  readTranscriptMessagesByIdentity,
+} from "./sqlite-session.test-helpers.js";
 
 setupRunAttemptTestHooks();
 
@@ -859,6 +864,82 @@ describe("runCodexAppServerAttempt native lifecycle", () => {
       replayBlockedReason: scenario.replayBlockedReason,
     });
   });
+
+  it.each([
+    {
+      name: "streamed delta",
+      notification: makeAgentMessageDelta({ itemId: "msg-1", delta: "Streamed answer." }),
+      text: "Streamed answer.",
+    },
+    {
+      name: "completed answer item",
+      notification: itemNotification("item/completed", {
+        id: "msg-1",
+        type: "agentMessage",
+        phase: "final_answer",
+        status: "completed",
+        text: "Completed answer.",
+      }),
+      text: "Completed answer.",
+    },
+  ])(
+    "stores a $name received while slow storage held the prompt row when the client closes",
+    async ({ notification, text }) => {
+      const params = createTestParams();
+      await attachSqliteSessionTarget(
+        params,
+        path.join(tempDir, "client-close-storage.sqlite"),
+        "session-client-close-storage",
+      );
+      const target = params.sessionTarget;
+      if (!target?.sessionId || !target.sessionKey) {
+        throw new Error("SQLite transcript target was not attached");
+      }
+      const transcriptTarget = {
+        ...target,
+        sessionId: target.sessionId,
+        sessionKey: target.sessionKey,
+      };
+      // Slow storage: the prompt row cannot commit until this writer releases the lock,
+      // so app-server output waits behind it when the client closes.
+      const held = createDeferred<void>();
+      const writerAcquired = createDeferred<void>();
+      let writer: Promise<void> | undefined;
+      const harness = createStartedThreadHarness(async (method) => {
+        if (method === "turn/start") {
+          writer = withSessionTranscriptWriteLock(transcriptTarget, async () => {
+            writerAcquired.resolve();
+            await held.promise;
+          });
+          await writerAcquired.promise;
+        }
+        return undefined;
+      });
+      const run = runCodexAppServerAttempt(params);
+      try {
+        await run.waitForTurnAccepted();
+        await harness.notify(notification);
+        harness.close();
+        held.resolve();
+        await writer;
+        const result = await run;
+
+        expect(result.assistantTexts).toEqual([text]);
+        expect(result.codexAppServerFailure).toMatchObject({
+          kind: "client_closed_before_turn_completed",
+          replaySafe: false,
+          replayBlockedReason: "assistant_output",
+        });
+        const stored = await readTranscriptMessagesByIdentity(params);
+        expect(stored.map((message) => message.role)).toEqual(["user", "assistant"]);
+        expect(JSON.stringify(stored[1]?.content)).toContain(text);
+      } finally {
+        held.resolve();
+        await writer;
+        await run.catch(() => undefined);
+      }
+    },
+  );
 
   it("does not treat a user prompt containing the interrupted marker as terminal", async () => {
     const harness = createStartedThreadHarness();
