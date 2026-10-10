@@ -35,7 +35,7 @@ import {
 } from "./trunk-queue-store.js";
 export type { TrunkQueueGateway, TrunkQueueItem, TrunkQueueStatus } from "./trunk-queue-store.js";
 export { MAX_CLAIM_FAILURES, STALE_CLAIM_MS } from "./trunk-queue-store.js";
-export { GATEWAY_EPOCH, queueRunId } from "./trunk-queue-run-fence.js";
+export { GATEWAY_EPOCH, ownerEpochFor, queueRunId } from "./trunk-queue-run-fence.js";
 export {
   isTrunkUnavailableError,
   trunkAvailabilityLogger,

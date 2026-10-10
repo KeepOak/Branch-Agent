@@ -1,5 +1,6 @@
 // Real gateway proof for the Trunk job queue: the run-end hook, real sessions.create and chat.send admission,
 // and claim expiry checked against the live run registry. Demo data only.
+import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createServer, type ServerResponse } from "node:http";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -8,6 +9,7 @@ import type { AgentWaitResult } from "../agents/run-wait.types.js";
 import {
   addQueueItem,
   claimNextQueueItem,
+  ownerEpochFor,
   STALE_CLAIM_MS,
   type TrunkQueueItem,
 } from "../agents/trunk-queue.js";
@@ -84,6 +86,11 @@ async function startProvider(
 
 type Listed = { items: Array<TrunkQueueItem & { status: string }> };
 type Gateway = Awaited<ReturnType<typeof startGatewayWithClient>>;
+
+/** An epoch whose owning process has exited: its PID is definitely dead now. */
+function deadOwnerEpoch(): string {
+  return ownerEpochFor(randomUUID(), spawnSync(process.execPath, ["-e", ""]).pid!);
+}
 
 describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
   const requests: string[] = [];
@@ -223,7 +230,7 @@ describe("Trunk job queue on a real gateway", { timeout: 300_000 }, () => {
         longAgo,
       );
       // A claim left by a gateway that has since exited: its run cannot still be live, so it is released.
-      claimNextQueueItem("ash", process.env, longAgo, "exited-gateway-epoch");
+      claimNextQueueItem("ash", process.env, longAgo, deadOwnerEpoch());
 
       const listed = await list();
 

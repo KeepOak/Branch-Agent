@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -8,6 +10,7 @@ import {
   closeQueueClaimForThread,
   listQueueItems,
   ORPHAN_CLAIM_GRACE_MS,
+  ownerEpochFor,
   pickUpQueuedWork,
   queueRunId,
   reconcileTrunkQueue,
@@ -59,6 +62,11 @@ function fenceGateway(
 }
 
 const briefsSent = (calls: Call[]) => calls.filter((call) => call.method === "chat.send");
+
+/** An epoch whose owning process has exited: its PID is definitely dead now. */
+function deadOwnerEpoch(): string {
+  return ownerEpochFor(randomUUID(), spawnSync(process.execPath, ["-e", ""]).pid!);
+}
 
 let dir = "";
 let env: NodeJS.ProcessEnv;
@@ -120,7 +128,7 @@ describe("Trunk queue fenced claims", () => {
 
   it("releases a claim from a previous gateway epoch when its run timed out", async () => {
     addQueueItem({ title: "restart job", brief_text: "restart brief" }, env, 1);
-    claimNextQueueItem("builder-birch", env, 1_000, "previous-epoch");
+    claimNextQueueItem("builder-birch", env, 1_000, deadOwnerEpoch());
     const { gateway } = fenceGateway("timeout");
 
     await releaseOrphanQueueClaims({
@@ -132,6 +140,30 @@ describe("Trunk queue fenced claims", () => {
     expect(listQueueItems(env)[0]).toMatchObject({
       status: "released",
       released_from: "builder-birch",
+    });
+  });
+
+  it("leaves a claim alone while another live gateway owns it, even when its run is reported gone", async () => {
+    const job = addQueueItem({ title: "other owner job", brief_text: "brief" }, env, 1);
+    const claim = claimNextQueueItem(
+      "builder-birch",
+      env,
+      1_000,
+      ownerEpochFor(randomUUID(), process.pid),
+    );
+    const { gateway } = fenceGateway("pending", {
+      missingRunIds: new Set([queueRunId(job.id, claim!.claim_id)]),
+    });
+
+    await releaseOrphanQueueClaims({
+      gateway,
+      env,
+      now: () => 1_000 + ORPHAN_CLAIM_GRACE_MS + 1,
+    });
+
+    expect(listQueueItems(env)[0]).toMatchObject({
+      status: "claimed",
+      claimed_by: "builder-birch",
     });
   });
 

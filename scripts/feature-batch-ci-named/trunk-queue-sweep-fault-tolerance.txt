@@ -1,4 +1,5 @@
 engine:src/agents/trunk-queue-fence.test.ts
+engine:src/agents/trunk-queue-lock.test.ts
 engine:src/agents/trunk-queue-reconcile.test.ts
 engine:src/agents/trunk-queue-unavailable.test.ts
 engine:src/agents/trunk-queue-wake.test.ts

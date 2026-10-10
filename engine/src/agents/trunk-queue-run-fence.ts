@@ -1,11 +1,40 @@
 import { randomUUID } from "node:crypto";
+import { isLockOwnerDefinitelyStale } from "../infra/stale-lock-file.js";
+import { getFileLockProcessStartTime } from "../shared/pid-alive.js";
 import { errorText, isTrunkUnavailableError, rec } from "./trunk-queue-status.js";
 import type { TrunkQueueGateway, TrunkQueueItem } from "./trunk-queue-store.js";
 
 // Fences a claim by its run: the run's status, whether the gateway still has it, and the gateway epoch that made it.
 
-/** Identifies this gateway process. A claim from another epoch was made by a process that has since exited. */
-export const GATEWAY_EPOCH = randomUUID();
+/**
+ * An epoch names the gateway process that made a claim: a unique id, then the owner's PID and start time, so a reaper
+ * in another process can tell whether that owner is still alive.
+ */
+export function ownerEpochFor(uuid: string, pid: number): string {
+  const starttime = getFileLockProcessStartTime(pid);
+  return `${uuid}@${pid}:${starttime ?? ""}`;
+}
+
+/** Identifies this gateway process. */
+export const GATEWAY_EPOCH = ownerEpochFor(randomUUID(), process.pid);
+
+const EPOCH_OWNER = /@(\d+):(\d*)$/;
+
+/**
+ * True only when the epoch names a process that has definitely exited (or whose PID was reused). An epoch whose owner
+ * cannot be read is treated as alive: the owner may still be running a claim we must not free.
+ */
+export function isEpochOwnerDead(epoch: string | undefined): boolean {
+  const match = epoch === undefined ? null : EPOCH_OWNER.exec(epoch);
+  if (!match) {
+    return false;
+  }
+  const pid = Number(match[1]);
+  const starttime = match[2] === "" ? undefined : Number(match[2]);
+  return isLockOwnerDefinitelyStale({
+    payload: starttime === undefined ? { pid } : { pid, starttime },
+  });
+}
 
 /**
  * The run a claim attempt starts. Its id is the chat idempotency key, so it is known from the claim alone and a
@@ -62,7 +91,8 @@ export async function claimMayRelease(
     return false;
   }
   if (row.gateway_epoch !== GATEWAY_EPOCH) {
-    return true;
+    // Another gateway made this claim. Its run is ours to judge only once that gateway has exited.
+    return isEpochOwnerDead(row.gateway_epoch);
   }
   const observed = await observeRun(gw, row);
   if (observed === "gone") {
