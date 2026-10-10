@@ -121,7 +121,7 @@ jobs:
               page=$((page + 1))
             done
             combined=$(jq '{check_runs: [.[].check_runs[]]}' <<<"$pages")
-            runs=$(jq '[.check_runs[] | select(.name != "merge-gate" and .name != "merge-gate-trusted")]' <<<"$combined")
+            runs=$(jq '[.check_runs[] | select(.name != "merge-gate" and .name != "merge-gate-trusted" and .name != "recheck")]' <<<"$combined")
             # Skip Visual tour's continue-on-error `comment` job only when
             # check-suite or workflow-run attribution proves visual-tour.yml.
             # A `comment` check from any other workflow is still waited on.

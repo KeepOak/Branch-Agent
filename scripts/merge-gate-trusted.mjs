@@ -35,6 +35,8 @@ import {
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const TRUSTED_JOB = 'merge-gate-trusted';
+// The recheck workflow's own check run is not content: a running or failed recheck must not hold the gates red.
+export const RECHECK_CHECK = 'recheck';
 export const TRUSTED_WORKFLOW_PATH = '.github/workflows/merge-gate-trusted.yml';
 export const HANDOFF_WORKFLOW_PATH = '.github/workflows/engine-handoff-checks.yml';
 export const TRUSTED_CHECKOUT_REF = '${{ github.event.repository.default_branch }}';
@@ -214,7 +216,7 @@ export function isSkippableVisualTourComment(run, workflow) {
 
 export function evaluateOtherChecks(checkRuns, workflowsByCheckId = {}, ignoreName = TRUSTED_JOB, context = {}) {
   const others = newestChecksByIdentity(checkRuns, workflowsByCheckId, context).filter((run) => {
-    if (run.name === ignoreName) return false;
+    if (run.name === ignoreName || run.name === RECHECK_CHECK) return false;
     return !isSkippableVisualTourComment(run, lookupWorkflow(workflowsByCheckId, run.id));
   });
   const pending = others.filter((run) => run.status !== 'completed');
@@ -868,14 +870,32 @@ export function runSelfCheckFromPr(headRef, body) {
   return result.ok;
 }
 
-export function fetchFileText(repo, sha, token, filePath) {
+// Only a 404 means "no such file at this ref". Any other failure (rate limit, 5xx, network) must
+// propagate: a null here reads as an empty file, which would hide lines main added (fail open).
+// The contents API returns empty content for files over 1 MB; then the blob (same sha) carries the bytes.
+export function fetchFileText(repo, sha, token, filePath, api = ghApi) {
+  let payload;
   try {
-    const payload = ghApi(repo, token, `contents/${filePath}?ref=${sha}`);
-    if (!payload?.content) return null;
-    return Buffer.from(payload.content, payload.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8');
-  } catch {
-    return null;
+    payload = api(repo, token, `contents/${filePath}?ref=${sha}`);
+  } catch (error) {
+    if (isNotFoundError(error)) return null;
+    throw error;
   }
+  if (payload?.content) {
+    return Buffer.from(payload.content, payload.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8');
+  }
+  if (!payload?.sha) {
+    throw new Error(`contents/${filePath}?ref=${sha} returned no content and no blob sha`);
+  }
+  const blob = api(repo, token, `git/blobs/${payload.sha}`);
+  if (!blob?.content) {
+    throw new Error(`git/blobs/${payload.sha} for ${filePath} returned no content`);
+  }
+  return Buffer.from(blob.content, blob.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8');
+}
+
+export function isNotFoundError(error) {
+  return error?.httpStatus === 404 || /HTTP 404\b/.test(String(error?.message ?? ''));
 }
 
 export function workflowFromActionsRun(run) {
