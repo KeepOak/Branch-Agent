@@ -81,7 +81,13 @@ export async function pinContact(contact: Contact, sessions: readonly Conversati
     const topics = await listContactTopics(contact.id, request);
     await actions.patchMany([row, ...topics.filter((topic) => topic.pinnedAt).map((topic) => sessions.find((candidate) => candidate.key === topic.key)).filter((candidate): candidate is Conversation => Boolean(candidate))], { pinned: false }, `Unpinned ${contact.name}.`);
   } else {
-    await actions.pin(row);
+    if (!contact.thread) {
+      const adopted = await request("sessions.create", { key: row.key, agentId: row.agentId }) as { sessionId?: unknown };
+      const sessionId = typeof adopted.sessionId === "string" ? adopted.sessionId : undefined;
+      await actions.pin(sessionId ? { ...row, sessionId } : row);
+    } else {
+      await actions.pin(row);
+    }
   }
   refreshContacts();
 }
