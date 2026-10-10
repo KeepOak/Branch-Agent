@@ -60,7 +60,7 @@ import { CanDoDialog } from "./CanDo";
 import { Face } from "../face/Face";
 import { TalkSetup, type TalkHandle } from "../setup/TalkSetup";
 import { NewTrunkCard, type NewTrunk } from "./NewTrunkFlow";
-import { createReadyTrunk } from "../places/trunk/api";
+import { createTrunk, waitForTrunk } from "../places/trunk/api";
 import { RemoveTrunkDialog, TRUNK_REMOVED_EVENT } from "../places/trunk/RemoveTrunk";
 import { NewTrunkPreview, type TrunkChoice } from "../places/trunk/NewTrunkPreview";
 import type { Roster } from "../places/trunk/model";
@@ -832,6 +832,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const [newTrunkFlow, setNewTrunkFlow] = useState<NewTrunk | null>(null);
   const [newTrunkRoster, setNewTrunkRoster] = useState<Roster | null>(null);
   const [makingTrunk, setMakingTrunk] = useState(false);
+  const makingTrunkRef = useRef(false);
   const newTrunk = useCallback(async () => {
     try {
       setNewTrunkRoster(readRoster(await session.request("agents.list", {})));
@@ -840,17 +841,27 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     }
   }, [session]);
   const confirmNewTrunk = async (choice: TrunkChoice) => {
+    if (makingTrunkRef.current || !newTrunkRoster) return;
+    makingTrunkRef.current = true;
     setMakingTrunk(true);
+    let created = false;
     try {
-      const agentId = await createReadyTrunk(session.engine, choice.name, () => true, choice.avatar);
+      const agentId = await createTrunk(session.engine, choice.name, choice.avatar);
+      created = true;
+      // The persisted receipt completes Make Trunk. Opening its contact is separate
+      // and must never leave a saved choice available for another create.
+      setNewTrunkRoster(null);
+      notify(`${choice.name} is made.`);
+      await waitForTrunk(session.engine, agentId);
       const key = await actions.create(agentId);
       if (!key) return;
       setNewTrunkFlow({ agentId, sessionKey: key, name: choice.name });
-      setNewTrunkRoster(null);
       openConversation(key);
     } catch (e) {
-      notify(creationProblem(e), { tone: "bad" });
+      if (created) notify(`${choice.name} is made. Open it from the Trunks list.`);
+      else notify(creationProblem(e), { tone: "bad" });
     } finally {
+      makingTrunkRef.current = false;
       setMakingTrunk(false);
     }
   };

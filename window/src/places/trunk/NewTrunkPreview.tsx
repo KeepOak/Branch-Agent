@@ -20,7 +20,7 @@ export function nextTrunkChoice(roster: Roster, previous?: TrunkChoice, fixedNam
   return { name, avatar: `branch:${pool[Math.floor(Math.random() * pool.length)].id}` };
 }
 
-export function NewTrunkPreview({ roster, fixedName, busy, onConfirm, onClose }: { roster: Roster; fixedName?: string; busy?: boolean; onConfirm: (choice: TrunkChoice) => void; onClose: () => void }) {
+export function NewTrunkPreview({ roster, fixedName, busy, error, onConfirm, onClose }: { roster: Roster; fixedName?: string; busy?: boolean; error?: string | null; onConfirm: (choice: TrunkChoice) => void; onClose: () => void }) {
   const [choice, setChoice] = useState(() => nextTrunkChoice(roster, undefined, fixedName));
   const appearance = trunkAppearance(choice.avatar, choice.name);
   return <Layer><Dialog title="Add a Trunk" onClose={onClose} testid="new-trunk-preview" footer={<>
@@ -30,5 +30,5 @@ export function NewTrunkPreview({ roster, fixedName, busy, onConfirm, onClose }:
     {appearance && <CharacterFace appearance={appearance} size={84} label={choice.name} />}
     <button type="button" className="btn sm" disabled={busy} onClick={() => setChoice(nextTrunkChoice(roster, choice, fixedName))}>Shuffle</button>
     <label className="tk-field"><span className="tk-label">Name</span><input className="inp" value={choice.name} disabled={Boolean(fixedName) || busy} onChange={(event) => setChoice({ ...choice, name: event.target.value })} /></label>
-  </div></Dialog></Layer>;
+  </div>{error && <p role="alert" className="tk-error">{error}</p>}</Dialog></Layer>;
 }
