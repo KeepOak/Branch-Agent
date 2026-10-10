@@ -92,7 +92,7 @@ export const GENERAL_ROWS: RowEntry[] = [
   ...rows("Starting up", 0, [`Start with ${OS()}`]),
   ...rows("Projects", 0, []),
   ...rows("Keyboard", 0, ["Keyboard shortcuts"]),
-  ...rows("Writing", 0, ["Open Branch on", "Show “Finish setting up”"]),
+  ...rows("Writing", 0, ["Show “Finish setting up”"]),
   ...rows("The conversation", 1, ["Vim keys in the message box", "Message times", "When you send while it works", "Send with", "Task progress above the message box", "Task progress starts", "Ask before deleting a conversation"]),
   ...rows("Summaries", 1, ["Summarise older turns by themselves", "Always keep the latest", "Model for summaries"]),
   ...rows("Summaries", 2, ["How it summarises", "Summary time limit", "Keep names and numbers exact", "Trim old tool results", "Trim after"]),
