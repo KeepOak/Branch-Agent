@@ -505,7 +505,7 @@ const enSettings = {
       recoveryChanged: "The Gateway connection changed. Refresh snapshots and try recovery again.",
       migration: "Needs migration",
       migrationHint:
-        "Run branch doctor --fix and follow its provider-cleanup recovery instructions before provisioning workers.",
+        "Clean up the old provider settings before provisioning workers.",
     },
     intro: "Run agent sessions on ephemeral cloud machines instead of this gateway.",
     sectionTitle: "Profiles",

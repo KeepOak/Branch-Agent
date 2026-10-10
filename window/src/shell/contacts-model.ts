@@ -109,6 +109,23 @@ export async function markContactRead(contact: Contact, request: (method: string
   return true;
 }
 
+/** Threads per shared-state read request; a bulk read is several small writes, never one all-or-nothing batch. */
+const READ_BATCH = 500;
+
+type RequestFn = (method: string, params: unknown) => Promise<unknown>;
+
+/** Marks every thread read in one request. No agent is consulted, so a starting agent cannot fail it. */
+export async function markAllThreadsRead(request: RequestFn): Promise<void> {
+  await request("contacts.markAllRead", { mutationId: crypto.randomUUID() });
+}
+
+/** Marks just these sessions read, in batches of READ_BATCH. */
+export async function markThreadsRead(request: RequestFn, sessionKeys: readonly string[]): Promise<void> {
+  for (let i = 0; i < sessionKeys.length; i += READ_BATCH) {
+    await request("contacts.markAllRead", { mutationId: crypto.randomUUID(), sessionKeys: sessionKeys.slice(i, i + READ_BATCH) });
+  }
+}
+
 export async function listContactTopics(contactId: string, request: (method: string, params: unknown) => Promise<unknown>): Promise<Topic[]> {
   const topics: Topic[] = [];
   let cursor: string | undefined;

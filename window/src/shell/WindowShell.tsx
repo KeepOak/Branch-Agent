@@ -7,7 +7,7 @@ import type { SendExtras } from "../connect/engine";
 import { firstSendEcho } from "../composer/sending";
 import { roomIdOf, type SaplingSession } from "../connect/session";
 import { withOwner } from "../connect/agent-owner";
-import { isPreparationPending, isPreparationStalled, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
+import { isPreparationPending, isPreparationStalled, ownerErrorText, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { Composer, VOICE_OFF } from "../composer/Composer";
 import { hasUnsavedDraftFiles } from "../composer/drafts";
 import { componentDesktop } from "../connect/desktop-component-updates";
@@ -31,7 +31,7 @@ import { useContacts, useConversations, useListPeople, useMachine, usePendingApp
 import { FilterButton, FilterSortPopover, readPrefs, savePrefs } from "./FilterSort";
 import { Icon } from "./icons";
 import { clearFilters, emptyLineFor, filterRows, filterSummary, hasFolders, homeRow, owners, roomUsed, type ListPrefs } from "./list-model";
-import { buildContactSections, contactRow, contactRowsFor, listContactTopics, markContactRead, missingConversation, openContactRow, pinContact, projectContact, type Contact } from "./contacts-model";
+import { buildContactSections, contactRow, contactRowsFor, listContactTopics, markAllThreadsRead, markContactRead, missingConversation, openContactRow, pinContact, projectContact, type Contact } from "./contacts-model";
 import { GroupDropPopover, groupHint, groupPlan, mergeRoomNotices, moveContactToProject, roomContact, useGroupRooms, useRoomNotices, type GroupDrop } from "./group-drop";
 import { AppSections, ReadOnlyThread, useCatalogs, type CatalogThread } from "./AppSections";
 import { batchMenuItems } from "./batch-menu";
@@ -923,7 +923,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     return (ar < 0 ? Number.MAX_SAFE_INTEGER : ar) - (br < 0 ? Number.MAX_SAFE_INTEGER : br);
   });
   const markReadContact = (contact: Contact) => {
-    void markContactRead(contact, request).then(refreshContacts).catch((e: unknown) => notify(`Couldn't mark ${contact.name} read: ${e instanceof Error ? e.message : String(e)}.`, { tone: "bad" }));
+    void markContactRead(contact, request).then(refreshContacts).catch((e: unknown) => notify(`Couldn't mark ${contact.name} read: ${ownerErrorText(e)}.`, { tone: "bad" }));
   };
   const toggleContactPin = (contact: Contact) => {
     void pinContact(contact, lists.rows, actions, request, refreshContacts).catch((e: unknown) => notify(`Couldn't change ${contact.name}: ${e instanceof Error ? e.message : String(e)}.`, { tone: "bad" }));
@@ -1603,7 +1603,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           if (roomId) void session.request("rooms.archive", { roomId }).then(() => groupRooms.reload(), (error: unknown) => notify(`Couldn't archive ${r.title}: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
           else void (r.archived ? actions.restore(r) : actions.archive(r));
         }}
-        onMarkAllRead={() => void Promise.all(contacts.map((contact) => markContactRead(contact, request))).then(refreshContacts).catch((e: unknown) => notify(`Couldn't mark all read: ${e instanceof Error ? e.message : String(e)}.`, { tone: "bad" }))}
+        onMarkAllRead={() => void markAllThreadsRead(request).then(refreshContacts).catch((e: unknown) => notify(`Couldn't mark all read: ${ownerErrorText(e)}.`, { tone: "bad" }))}
         onPerson={(e) => (overlay?.kind === "person" ? setOverlay(null) : setOverlay({ kind: "person", at: above(e), from: statusAnchor(e, "connection") }))}
         onSettings={() => openSettings("general")}
         talk={talkEntry}

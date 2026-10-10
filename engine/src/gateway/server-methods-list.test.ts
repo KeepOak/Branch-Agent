@@ -284,6 +284,8 @@ describe("listGatewayMethods", () => {
       "contacts.list",
       "contacts.topics",
       "contacts.markRead",
+
+      "contacts.markAllRead",
       "a2a.peers.list",
       "a2a.peers.refresh",
       "rooms.create",
@@ -409,6 +411,8 @@ describe("listGatewayMethods", () => {
       "contacts.list",
       "contacts.topics",
       "contacts.markRead",
+
+      "contacts.markAllRead",
       "a2a.peers.list",
       "a2a.peers.refresh",
       "rooms.create",
@@ -668,6 +672,8 @@ describe("listGatewayMethods", () => {
       "contacts.list",
       "contacts.topics",
       "contacts.markRead",
+
+      "contacts.markAllRead",
       "a2a.peers.list",
       "a2a.peers.refresh",
       "rooms.create",

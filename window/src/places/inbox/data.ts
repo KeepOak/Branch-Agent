@@ -3,6 +3,7 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
+import { markThreadsRead } from "../../shell/contacts-model";
 import { agents, sessions, type Agent, type Session } from "../overview/engine";
 
 export type Row = Record<string, unknown>;
@@ -49,13 +50,9 @@ export async function resolveApproval(engine: WindowEngine, item: Row, decision:
   return result;
 }
 
-/** Marks conversations read in batches of the engine's 100-target limit. */
+/** Marks these conversations read through shared read state, so a starting agent never blocks it. */
 export async function markRead(engine: WindowEngine, list: Session[]): Promise<void> {
-  for (let i = 0; i < list.length; i += 100) {
-    const targets = list.slice(i, i + 100).map(row => ({ key: row.key, ...(row.agentId ? { agentId: row.agentId } : {}) }));
-    const failed = rows(rec(await engine.request("sessions.patchMany", { targets, patch: { unread: false } })).outcomes).filter(o => o.ok === false);
-    if (failed.length) throw new Error(`${failed.length} ${failed.length === 1 ? "conversation" : "conversations"} couldn’t be marked read: ${str(rec(failed[0].error).message) || "the engine refused"}.`);
-  }
+  await markThreadsRead((method, params) => engine.request(method, params), list.map(row => row.key));
 }
 
 export type Needs = {

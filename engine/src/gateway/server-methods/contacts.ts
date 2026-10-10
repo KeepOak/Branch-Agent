@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { listA2aPeers, refreshA2aPeerCards } from "../../../extensions/a2a/src/card-cache.js";
 import {
   ErrorCodes,
   errorShape,
   validateContactsListParams,
   validateContactsTopicsParams,
+  validateContactsMarkAllReadParams,
   validateContactsMarkReadParams,
   validateContactsOutsideHelloParams,
   validateContactsOutsideListParams,
@@ -13,9 +15,9 @@ import { listAgentEntries } from "../../agents/agent-scope.js";
 import { resolveExistingAgentSessionStoreTargetsSync } from "../../config/sessions.js";
 import {
   listSessionEntriesReadOnly,
-  patchSessionEntryCore,
   type SessionEntrySummary,
 } from "../../config/sessions/session-accessor.js";
+import { readAgentDatabaseAdmissionRefusal } from "../../state/agent-database-admission.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
 import { listExistingAgentIdsFromDisk, listGatewayAgentsBasic } from "../agent-list.js";
 import {
@@ -35,6 +37,12 @@ import {
   updateOutsideAgentSettings,
 } from "../contacts/outside-agents.js";
 import { projectContacts } from "../contacts/project.js";
+import {
+  ALL_THREADS_SCOPE,
+  applyReadMutation,
+  readReadMarkers,
+  withReadMarkers,
+} from "../contacts/read-state.js";
 import { claimGraftWork, completeGraftWork, enqueueGraftWork, getGraftWork } from "../contacts/graft-work.js";
 import { hasOperatorBoundary, resolveOperatorRolePolicy } from "../operator-role-policy.js";
 import { removeOutsideRoomMembers } from "../rooms/store.js";
@@ -47,6 +55,12 @@ import { emitSessionsChanged } from "./session-change-event.js";
 import type { GatewayRequestHandlers, GatewayRequestHandlerOptions } from "./types.js";
 import { assertValidParams } from "./validation.js";
 
+/** One plain line for the owner; the refusal's repair text stays in logs. */
+function startingUpMessage(agentIds: readonly string[]): string {
+  const names = agentIds.map((id) => id.charAt(0).toUpperCase() + id.slice(1));
+  return `${names.join(" and ")} ${names.length === 1 ? "is" : "are"} still starting up.`;
+}
+
 async function readProjection({
   context,
   client,
@@ -57,6 +71,8 @@ async function readProjection({
   const agentPolicy = resolveOperatorRolePolicy(client, cfg)?.agents;
   const allowedAgents = agentPolicy && agentPolicy !== "*" ? new Set(agentPolicy) : undefined;
   const sessions = new Map<string, SessionEntrySummary>();
+  const markers = readReadMarkers();
+  const unavailableAgentIds: string[] = [];
   // Explicit rosters omit retired agents, but their existing stores remain contacts.
   const agentIds = new Set([
     ...roster.agents.map((agent) => agent.id),
@@ -64,16 +80,24 @@ async function readProjection({
   ]);
   for (const agentId of agentIds) {
     if (allowedAgents && !allowedAgents.has(agentId)) continue;
-    for (const target of resolveExistingAgentSessionStoreTargetsSync(cfg, agentId)) {
-      for (const row of listSessionEntriesReadOnly({
-        agentId: target.agentId,
-        storePath: target.storePath,
-        projection: "list",
-      })) {
-        const owner = parseAgentSessionKey(row.sessionKey)?.agentId;
-        if (owner && owner !== agentId) continue;
-        sessions.set(row.sessionKey, row);
+    try {
+      for (const target of resolveExistingAgentSessionStoreTargetsSync(cfg, agentId)) {
+        for (const row of listSessionEntriesReadOnly({
+          agentId: target.agentId,
+          storePath: target.storePath,
+          projection: "list",
+        })) {
+          const owner = parseAgentSessionKey(row.sessionKey)?.agentId;
+          if (owner && owner !== agentId) continue;
+          sessions.set(row.sessionKey, withReadMarkers(row, markers));
+        }
       }
+    } catch (error) {
+      // An agent still starting up must not hide every other agent's threads. Only its own refusal is skipped.
+      if (!readAgentDatabaseAdmissionRefusal(agentId)) {
+        throw error;
+      }
+      unavailableAgentIds.push(agentId);
     }
   }
   const filter = hasOperatorBoundary(client, cfg)
@@ -133,6 +157,7 @@ async function readProjection({
       outsidePeers: withOutsideAgents(listA2aPeers(cfg)),
     }),
     sessionKeys: new Set(visible.map((row) => row.sessionKey)),
+    unavailableAgentIds,
   };
 }
 
@@ -433,36 +458,53 @@ export const contactHandlers: GatewayRequestHandlers = {
     const projection = await readProjection(options);
     const contact = projection.contacts.find((row) => row.id === params.contactId);
     if (!contact) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Unknown contact"));
+      respond(
+        false,
+        undefined,
+        projection.unavailableAgentIds.length > 0
+          ? errorShape(ErrorCodes.UNAVAILABLE, startingUpMessage(projection.unavailableAgentIds))
+          : errorShape(ErrorCodes.INVALID_REQUEST, "Unknown contact"),
+      );
       return;
     }
-    const stamp = Date.now();
     const keys = [
       contact.threadKey,
       ...projection.topics
         .filter((topic) => topic.contactId === contact.id)
         .map((topic) => topic.key),
     ].filter((key) => projection.sessionKeys.has(key));
-    let updated = 0;
-    for (const sessionKey of keys) {
-      sessionMutationAuthorization?.assertCurrent();
-      let stamped = false;
-      const entry = await patchSessionEntryCore(
-        { sessionKey, agentId: parseAgentSessionKey(sessionKey)?.agentId },
-        (current) => {
-          if (!current || (current.lastActivityAt ?? current.updatedAt) > stamp) return {};
-          stamped = true;
-          return {
-            lastReadAt: Math.max(current.lastReadAt ?? 0, stamp),
-            markedUnreadAt: undefined,
-          };
-        },
-      );
-      if (entry && stamped) {
-        updated++;
+    sessionMutationAuthorization?.assertCurrent();
+    const result = applyReadMutation({
+      mutationId: params.mutationId ?? randomUUID(),
+      scopes: keys,
+      nowMs: Date.now(),
+    });
+    if (result.applied) {
+      for (const sessionKey of keys) {
         emitSessionsChanged(context, { sessionKey, reason: "read" });
       }
     }
-    respond(true, { updated });
+    respond(true, { updated: keys.length });
+  },
+  "contacts.markAllRead": async (options) => {
+    const { params, respond, context, sessionMutationAuthorization } = options;
+    if (!assertValidParams(params, validateContactsMarkAllReadParams, "contacts.markAllRead", respond))
+      return;
+    // One shared-state write, no agent database and no projection: nothing here waits on agent readiness.
+    sessionMutationAuthorization?.assertCurrent();
+    const result = applyReadMutation({
+      mutationId: params.mutationId,
+      scopes: params.sessionKeys ?? [ALL_THREADS_SCOPE],
+      nowMs: Date.now(),
+    });
+    if (result.applied && params.sessionKeys) {
+      for (const sessionKey of params.sessionKeys) {
+        emitSessionsChanged(context, { sessionKey, reason: "read" });
+      }
+    } else if (result.applied) {
+      // Every thread changed, so open windows must reload the contact roster and thread lists.
+      context.broadcast("contacts.changed", { ts: Date.now() }, { dropIfSlow: true });
+    }
+    respond(true, result);
   },
 };

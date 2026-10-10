@@ -19,7 +19,7 @@ export function connectProblem(code: string | undefined, host: string): Problem 
     case "AUTH_TOKEN_NOT_CONFIGURED":
     case "AUTH_PASSWORD_NOT_CONFIGURED":
       return key(`${host} needs its key`, `${host} answers, but needs the matching key before this window can connect.`, [
-        "No key set? Run `branch doctor --generate-gateway-token` on that computer.",
+        "No key set? Create one on that computer.",
         "Then choose Connect again.",
       ]);
     case "AUTH_TOKEN_MISMATCH":

@@ -65,7 +65,7 @@ const enLogin = {
         stepPaste: "Paste the token from branch gateway auth-token --show into Gateway secret.",
         stepPassword: "Type the configured Gateway password into Gateway secret.",
         stepGenerate:
-          "If no token is configured, run branch doctor --generate-gateway-token on the gateway host.",
+          "If no token is configured, create one on the computer that runs Branch.",
         stepConnect: "Click Connect again after updating the Gateway secret.",
       },
       authFailed: {

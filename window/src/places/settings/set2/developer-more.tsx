@@ -283,7 +283,7 @@ const MORE_OFF: OffRow[] = [
   ["Tell me when one repeats", "When the same error keeps coming back, it shows in Inbox.", ne("repeated-error alerts"), "sw"],
   ["How the last start went", "Each start phase and its time, and how Branch is doing at rest.", ne("start-up timeline"), "btn:Show"],
   ["Show frame rate", "A small meter in the corner of this window while you look for slow screens.", APP, "sw"],
-  ["Database shell", "A SQL prompt on the conversation store. Stop the Gateway first for anything that writes.", "The branch command has no database shell yet."],
+  ["Database shell", "A SQL prompt on the conversation store. Anything that writes is refused while Branch is running.", "The branch command has no database shell yet."],
   ["Developer tools", "Network, console and the window’s state.", APP, "btn:Open"],
   ["Repair the branch command", "For when typing branch in a terminal stopped working.", "The Branch app’s installer repairs it.", "btn:Repair"],
 ];

@@ -60,7 +60,7 @@ export async function requestSkillWorkshopRevisionAdmission(params: {
   }
   const target = await resolveSkillWorkshopRevisionTarget(entry, params.context, isCurrent);
   if (!target) {
-    throw new Error("Revision request was interrupted before admission.");
+    throw new Error("Revision request was interrupted before it started.");
   }
   const result = await client
     .request<ChatSendAck>("skills.proposals.requestRevision", {

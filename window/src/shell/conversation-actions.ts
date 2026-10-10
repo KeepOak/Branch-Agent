@@ -2,7 +2,8 @@
 // each through the engine method its row names, followed by a read-back of the list.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { LIST_PARAMS, type Conversation, type ConversationList } from "../connect/conversations";
-import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
+import { isPreparationPending, ownerErrorText, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
+import { markThreadsRead } from "./contacts-model";
 import { notify } from "./notify";
 import { forgetDeletedConversationWindow } from "./own-window";
 
@@ -10,7 +11,7 @@ type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
 
 export type Actions = ReturnType<typeof conversationActions>;
 
-const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));
+const reason = (error: unknown) => ownerErrorText(error);
 const nameOf = (row: Conversation) => row.title || "New conversation";
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -143,12 +144,12 @@ export function conversationActions(request: Request, list: ConversationList, op
       await list.refresh();
     },
     async markAllRead(rows: Conversation[]) {
-      const targets = rows.filter((r) => r.unread && r.key !== openKey()).map(target);
-      if (!targets.length) {
+      const sessionKeys = rows.filter((r) => r.unread && r.key !== openKey()).map((r) => r.key);
+      if (!sessionKeys.length) {
         return;
       }
       try {
-        await request("sessions.patchMany", { targets, patch: { unread: false } });
+        await markThreadsRead(request, sessionKeys);
         notify("All conversations marked read.");
       } catch (e) {
         notify(`Couldn't mark them read: ${reason(e)}.`, { tone: "bad" });
