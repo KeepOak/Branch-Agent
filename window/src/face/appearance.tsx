@@ -54,6 +54,58 @@ export function natureLook(key: string): PebbleLook {
   };
 }
 
+/** The Trunk editor's colours without its grey, so a Trunk with no colour of its own never looks like another (DA-04). */
+export const ROSTER_COLOURS = ["#2F8C86", "#1785AF", "#8A5AA8", "#5E8C4A", "#4F6FA8", "#C9982E", "#B84A6B"];
+const ROSTER_EYES = ["Round", "Wide", "Sleepy"];
+
+/** The looks of a Trunk roster: each Trunk keeps what it chose, and the gaps are filled with the least-used colour,
+ *  shape and eyes, so no two Trunks share a face while the options last (DA-04). The name picks its first choice and
+ *  the roster is walked in name order, so a Trunk keeps its look across reloads. */
+export function rosterPebbleLooks(trunks: { name: string; colour?: string; shape?: string; eyes?: string }[]): Record<string, PebbleLook> {
+  const unique = [...new Map(trunks.map((t) => [t.name, t])).values()];
+  const seen = { colour: new Map<string, number>(), shape: new Map<string, number>(), eyes: new Map<string, number>() };
+  const faces = new Set<string>();
+  const face = (l: Required<PebbleLook>) => `${l.colour.toUpperCase()}|${l.shape}|${l.eyes}`;
+  const bump = (field: keyof typeof seen, value: string) => seen[field].set(value, (seen[field].get(value) ?? 0) + 1);
+  // The least-used option, looking from the name's own pick, so ties keep the name's choice.
+  const pick = (field: keyof typeof seen, options: string[], start: number) => {
+    let best = options[start % options.length];
+    for (let i = 1; i < options.length; i++) {
+      const option = options[(start + i) % options.length];
+      if ((seen[field].get(option) ?? 0) < (seen[field].get(best) ?? 0)) best = option;
+    }
+    return best;
+  };
+  for (const t of unique) {
+    if (t.colour) bump("colour", t.colour.toUpperCase());
+    if (t.shape) bump("shape", t.shape);
+    if (t.eyes) bump("eyes", t.eyes);
+    if (t.colour && t.shape && t.eyes) faces.add(face({ colour: t.colour, shape: t.shape, eyes: t.eyes }));
+  }
+  const looks: Record<string, PebbleLook> = {};
+  for (const t of unique.toSorted((x, y) => identityKey(x.name).localeCompare(identityKey(y.name)))) {
+    let hash = 5381;
+    for (const ch of lookKey(t.name)) hash = ((hash << 5) + hash + ch.charCodeAt(0)) >>> 0;
+    const colour = t.colour ?? pick("colour", ROSTER_COLOURS, hash);
+    const shape = t.shape ?? pick("shape", NATURE_SHAPES, Math.floor(hash / 7));
+    let eyes = t.eyes ?? pick("eyes", ROSTER_EYES, Math.floor(hash / 35));
+    if (!t.eyes && faces.has(face({ colour, shape, eyes }))) eyes = ROSTER_EYES.find((e) => !faces.has(face({ colour, shape, eyes: e }))) ?? eyes;
+    if (!t.colour) bump("colour", colour);
+    if (!t.shape) bump("shape", shape);
+    if (!t.eyes) bump("eyes", eyes);
+    faces.add(face({ colour, shape, eyes }));
+    looks[t.name] = { colour, shape, eyes };
+  }
+  return looks;
+}
+
+/** A face's look: the fields it was handed, then the roster's, so a Trunk screen and the sidebar draw the same face. */
+export function mergePebbleLook(own: PebbleLook | undefined, roster: PebbleLook | undefined): PebbleLook | undefined {
+  if (!own) return roster;
+  if (!roster) return own;
+  return { colour: own.colour || roster.colour, shape: own.shape || roster.shape, eyes: own.eyes || roster.eyes };
+}
+
 /** A look with its gaps filled from the name's nature look, so a face never falls back to the grey placeholder. */
 export function completePebbleLook(look: PebbleLook | undefined, name: string | undefined, where?: string): PebbleLook {
   const nature = natureLook(lookKey(name ?? "", where));
