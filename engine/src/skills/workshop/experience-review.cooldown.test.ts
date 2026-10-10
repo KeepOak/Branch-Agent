@@ -1,3 +1,6 @@
+import { createHmac } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BranchConfig } from "../../config/types.branch.js";
@@ -9,6 +12,8 @@ import { createTrackedTempDirs } from "../../test-utils/tracked-temp-dirs.js";
 import { recordSkillExperienceReviewOutcomeInDatabase } from "./collection-review.kernel.js";
 import { createSkillExperienceReviewScheduler } from "./experience-review-scheduler.js";
 import { claimExperienceSignalCooldown } from "./experience-review-signal-cooldown.js";
+
+const KEY_FILENAME = "experience-signal-claims.key";
 import { createExperienceReviewCandidate } from "./experience-review.test-support.js";
 
 const config: BranchConfig = { skills: { workshop: { autonomous: { mode: "propose" } } } };
@@ -239,6 +244,29 @@ describe("repeated-failure signal cooldown", () => {
     expect(stored.value_json).not.toContain("publish");
     const plainKey = sha256Hex(`main\0${JSON.stringify(["exec", "tilectl publish"])}`);
     expect(Object.keys(JSON.parse(stored.value_json).claims)).not.toContain(plainKey);
+  });
+
+  it("keeps the HMAC key in a 0600 file beside the database, never in the row", async () => {
+    createClock();
+    const timers = createScheduler();
+    await scheduleRun(
+      timers.scheduler,
+      timers,
+      "key-1",
+      recoveryMessages("tilectl publish --manifest a.json"),
+    );
+    timers.scheduler.clear();
+    const keyPath = path.join(path.dirname(openBranchStateDatabase().path), KEY_FILENAME);
+    const key = fs.readFileSync(keyPath);
+    expect(fs.statSync(keyPath).mode & 0o777).toBe(0o600);
+    expect(key.length).toBe(32);
+    const stored = readClaimsRow().value_json;
+    expect(stored).not.toContain(key.toString("hex"));
+    expect(stored).not.toContain(key.toString("base64"));
+    expect(JSON.parse(stored)).not.toHaveProperty("secret");
+    const identity = JSON.stringify(["exec", "tilectl publish"]);
+    const keyed = createHmac("sha256", key).update(`main\0${identity}`).digest("hex");
+    expect(Object.keys(JSON.parse(stored).claims)).toEqual([keyed]);
   });
 
   it("fails closed when the claim lock is held past its budget", () => {

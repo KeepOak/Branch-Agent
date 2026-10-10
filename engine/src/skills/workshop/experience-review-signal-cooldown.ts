@@ -1,4 +1,6 @@
 import { createHmac, randomBytes } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import {
@@ -9,29 +11,71 @@ import { updateConfigMachineStateInDatabase } from "../../state/config-machine-s
 
 const log = createSubsystemLogger("skills/workshop");
 const CLAIMS_STATE_KEY = "skills.experienceSignalClaims";
+const KEY_FILENAME = "experience-signal-claims.key";
+const KEY_BYTES = 32;
 const COOLDOWN_MS = 24 * 60 * 60 * 1000;
 // The claim runs on the gateway thread, so it may wait only briefly for a lock.
 const CLAIM_BUSY_TIMEOUT_MS = 50;
 const CLAIM_OPERATION_LABEL = "skill-workshop.experience-signal.claim";
+const keysByPath = new Map<string, Buffer>();
 
 export type ExperienceSignalClaimInput = {
   agentId: string;
-  /** Tool name plus command head. It is hashed before it is stored. */
+  /** Tool name plus command head. It is keyed and hashed before it is stored. */
   identity: string;
   nowMs: number;
 };
 
 type ExperienceSignalClaimsState = {
-  /** Per-install HMAC key, generated once and kept only in this row. */
-  secret: string;
-  /** HMAC keys mapped to the time each identity was claimed. */
+  /** HMAC digests mapped to the time each identity was claimed. */
   claims: Record<string, number>;
 };
 
-function claimKey(secret: string, input: ExperienceSignalClaimInput): string {
-  return createHmac("sha256", Buffer.from(secret, "hex"))
-    .update(`${input.agentId}\0${input.identity}`)
-    .digest("hex");
+/**
+ * Loads the per-install HMAC key from a file beside the state database. The file follows the
+ * config-journal fingerprint key precedent: 32 random bytes, created with `wx` at mode 0600
+ * in a 0700 directory. The key is never written to the database.
+ */
+function loadExperienceSignalKey(stateDir: string): Buffer {
+  const keyPath = path.join(stateDir, KEY_FILENAME);
+  const cached = keysByPath.get(keyPath);
+  if (cached) {
+    return cached;
+  }
+  let key: Buffer;
+  try {
+    key = fs.readFileSync(keyPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+    fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+    const created = randomBytes(KEY_BYTES);
+    try {
+      const descriptor = fs.openSync(keyPath, "wx", 0o600);
+      try {
+        fs.writeFileSync(descriptor, created);
+      } finally {
+        fs.closeSync(descriptor);
+      }
+      key = created;
+    } catch (createError) {
+      if ((createError as NodeJS.ErrnoException).code !== "EEXIST") {
+        throw createError;
+      }
+      key = fs.readFileSync(keyPath);
+    }
+  }
+  if (key.length !== KEY_BYTES) {
+    throw new Error("experience signal key file has the wrong length");
+  }
+  fs.chmodSync(keyPath, 0o600);
+  keysByPath.set(keyPath, key);
+  return key;
+}
+
+function claimDigest(key: Buffer, input: ExperienceSignalClaimInput): string {
+  return createHmac("sha256", key).update(`${input.agentId}\0${input.identity}`).digest("hex");
 }
 
 function unexpiredClaims(claims: Record<string, number>, nowMs: number): Record<string, number> {
@@ -43,6 +87,7 @@ function unexpiredClaims(claims: Record<string, number>, nowMs: number): Record<
 /** Claims the identity for this agent. False while an unexpired claim exists. */
 export function claimExperienceSignalInDatabase(
   database: BranchStateDatabase,
+  key: Buffer,
   input: ExperienceSignalClaimInput,
 ): boolean {
   let claimed = false;
@@ -50,14 +95,13 @@ export function claimExperienceSignalInDatabase(
     database.db,
     CLAIMS_STATE_KEY,
     (current) => {
-      const secret = current?.secret ?? randomBytes(32).toString("hex");
       const claims = unexpiredClaims(current?.claims ?? {}, input.nowMs);
-      const key = claimKey(secret, input);
-      claimed = claims[key] === undefined;
+      const digest = claimDigest(key, input);
+      claimed = claims[digest] === undefined;
       if (claimed) {
-        claims[key] = input.nowMs;
+        claims[digest] = input.nowMs;
       }
-      return { secret, claims };
+      return { claims };
     },
     input.nowMs,
   );
@@ -66,12 +110,15 @@ export function claimExperienceSignalInDatabase(
 
 /**
  * Production claim for the scheduler. It is a bounded immediate transaction and fails
- * closed: any lock timeout or storage error means no review is scheduled, and it is logged.
+ * closed: any key, lock timeout or storage error means no review is scheduled, and it is logged.
  */
 export function claimExperienceSignalCooldown(input: ExperienceSignalClaimInput): boolean {
   try {
     return runBranchStateWriteTransaction(
-      (database) => claimExperienceSignalInDatabase(database, input),
+      (database) => {
+        const key = loadExperienceSignalKey(path.dirname(database.path));
+        return claimExperienceSignalInDatabase(database, key, input);
+      },
       {},
       { busyTimeoutMs: CLAIM_BUSY_TIMEOUT_MS, operationLabel: CLAIM_OPERATION_LABEL },
     );
