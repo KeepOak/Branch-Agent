@@ -36,6 +36,8 @@ export const BackupRunRecordSchema = closedObject({
 });
 export const BackupStatusParamsSchema = closedObject({});
 export const BackupStatusResultSchema = closedObject({
+  /** The folder Settings › Backups offers first: a Git history of backups, outside the Branch state directory. */
+  suggestedFolder: Type.Optional(Type.String()),
   targets: Type.Array(
     closedObject({
       kind: BackupKindSchema,
