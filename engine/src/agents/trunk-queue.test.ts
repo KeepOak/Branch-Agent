@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { onTrunkRunLifecycle } from "../gateway/server-methods/trunk-queue.js";
+import { isTrunkQueueThreadKey } from "./trunk-queue-thread-key.js";
 import {
   addQueueItem,
   claimNextQueueItem,
@@ -80,6 +81,8 @@ describe("Trunk job queue pickup", () => {
 
     const thread = listQueueItems(env).find((item) => item.id === high.id)?.thread_key;
     expect(thread).toMatch(new RegExp(`^agent:builder-birch:queue-${high.id}-[0-9a-f]{8}$`));
+    // The skill review treats this thread as a finished job's own top-level thread, never a subagent.
+    expect(isTrunkQueueThreadKey(thread)).toBe(true);
     expect(calls.map((call) => call.method)).toEqual([
       "sessions.list",
       "sessions.create",

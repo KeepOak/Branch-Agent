@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "../config/paths.js";
+import { formatTrunkQueueThreadKey } from "./trunk-queue-thread-key.js";
 
 export type TrunkQueueItem = {
   id: string;
@@ -300,7 +301,7 @@ export function claimNextQueueItem(
     claimed_by: agentId,
     claimed_at: now,
     claim_id: claimId,
-    thread_key: `agent:${agentId}:queue-${next.id}-${claimId.slice(0, 8)}`,
+    thread_key: formatTrunkQueueThreadKey(agentId, next.id, claimId),
     active_at: now,
   });
   write(rows, now, env);
