@@ -107,4 +107,15 @@ describe("Settings › Models", () => {
     expect([...host.querySelectorAll(".sec > h2")].filter((h) => h.textContent === "Per account")).toHaveLength(1);
   });
 
+  it("Which model does what replaces Decision models, Picking models and Model jobs, with only the wired choices", async () => {
+    const { engine } = engineOf();
+    await render(engine, 1);
+    const titles = [...host.querySelectorAll(".sec > h2")].map((h) => h.textContent);
+    expect(titles).toContain("Which model does what");
+    expect(titles).not.toContain("Decision models");
+    expect(titles).not.toContain("Picking models");
+    expect(titles).not.toContain("Model jobs");
+    const section = [...host.querySelectorAll<HTMLElement>(".sec")].find((x) => x.querySelector("h2")?.textContent === "Which model does what")!;
+    expect([...section.querySelectorAll("[data-row]")].map((x) => x.getAttribute("data-row"))).toEqual(["Model for decisions", "Looking at pictures", "Summaries", "Trunks may switch their own model"]);
+  });
 });
