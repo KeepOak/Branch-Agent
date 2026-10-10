@@ -1,10 +1,9 @@
 // Settings › Computer & browser: the browser sections (The browser … Cloud browsers). Wired rows read and save
 // browser.* config; launch flags live in browser.extraArgs; the profile list, status and check come from the
-// browser control service through browser.request. Rows the engine can't back are greyed with why.
+// browser control service through browser.request. Rows the engine can't back yet are not drawn; their specs stay here as the engine-lane backlog.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useRef, useState } from "react";
-import { shownWhy } from "../../../shell/shown-why";
-import { Btn, Ctl, Empty, Field, Pill, useConfig } from "../kit";
+import { Btn, Ctl, Field, Pill, useConfig } from "../kit";
 import { list } from "../adapter";
 import { useAction } from "../hooks";
 import { Dialog } from "../../../shell/Dialog";
@@ -20,7 +19,7 @@ const NO_CLOUD = "Needs a cloud browser service in this engine.";
 
 const sw = (t: string, off: string, sub?: string): Spec => ({ t, k: "sw", off, sub });
 
-export const BROWSER_BASIC: SecSpec = { t: "The browser", lv: 0, rows: [
+export const BROWSER_BASIC: SecSpec = { t: "The browser", lv: 0, hint: "Private and local addresses are always refused.", rows: [
   { t: "Which browser", k: "seg", key: "browser.defaultProfile", def: "branch", opts: [{ v: "branch", l: "Branch’s own" }, { v: "user", l: "Your Chrome" }], sub: "Its own profile keeps your tabs and sign-ins separate." },
   sw("Ask before a site it hasn’t visited", "Needs the engine to ask before each new site.", "You say yes once per site. Off until you choose: only a risky address asks."),
   sw("Open the browser full size when a task starts", "The browser’s size on screen is set by the Branch app.", "Otherwise it stays small in the corner."),
@@ -59,8 +58,6 @@ const CLEANERS: SecSpec = { t: "Page cleaners", group: "The browser", showHeadin
   sw("Flag pushy design", NO_CLEAN, "Marks fake countdowns, “only 2 left”, hidden fees, pre-ticked boxes and hard-to-cancel steps so a Trunk isn’t steered by them."),
 ] };
 
-const SITES: SecSpec = { t: "Sites", group: "The browser", showHeading: false, lv: 1, hint: "Any other site follows “Ask before a site it hasn’t visited”. Private and local addresses are always refused.", body: () => <Sites /> };
-
 const HANDS: SecSpec = { t: "What it hands to you", group: "The browser", showHeading: false, lv: 1, hint: "A yes counts only for the exact page, address and button it asked about; if the page changes first, it asks again. While you drive, it neither acts nor reads the page.", rows: [
   { t: "Changing a password", k: "val", val: "Hands it to you", tone: "warn", off: NO_HAND },
   { t: "“Are you a person?” checks and security warnings", k: "val", val: "Hands it to you", tone: "warn", off: NO_HAND },
@@ -71,8 +68,6 @@ const HANDS: SecSpec = { t: "What it hands to you", group: "The browser", showHe
   sw("Block uploads to every site", "Needs the engine to block uploads.", "Otherwise uploads follow each site’s rule."),
 ] };
 
-const FLOWS: SecSpec = { t: "Saved flows", group: "The browser", showHeading: false, lv: 1, hint: "A journey across pages, saved from a finished browser task with a picture of each step, to run again in one go.", body: () => <Empty>Needs the engine to save browser journeys.</Empty> };
-
 const OWN: SecSpec = { t: "Your own browser", group: "The browser", showHeading: false, lv: 1, rows: [
   sw("Work in its own window in your Chrome", EXT, "Your tabs stay yours. It borrows one only after you allow it on that page, and gives it back when the task ends."),
   sw("Follow videos you watch", EXT, "Where you are in a video, its captions and the picture, for questions about it."),
@@ -81,7 +76,7 @@ const OWN: SecSpec = { t: "Your own browser", group: "The browser", showHeading:
   { t: "A helper inside a page you build", sub: "Reads the page as text and clicks and types in place, with a pointer you can see. No extension or pictures needed.", k: "btn", btn: "Show the code", off: "Needs the engine’s in-page helper." },
 ] };
 
-export const BROWSER_MORE: SecSpec[] = [MORE, HOW, CLEANERS, SITES, HANDS, FLOWS, OWN];
+export const BROWSER_MORE: SecSpec[] = [MORE, HOW, CLEANERS, HANDS, OWN];
 
 const TECH: SecSpec = { t: "The browser, technical", group: "The browser", showHeading: false, lv: 2, rows: [
   { t: "Browser program", k: "custom", render: (c) => <Program c={c} /> },
@@ -95,7 +90,6 @@ const TECH: SecSpec = { t: "The browser, technical", group: "The browser", showH
   { t: "Proxy server", k: "arg", arg: "--proxy-server", ph: "http://proxy.example:8080", sub: "Empty: no proxy." },
   { t: "Skip the proxy for", k: "arg", arg: "--proxy-bypass-list", ph: "localhost, *.internal", sub: "Addresses that go direct, separated by commas." },
   { t: "Proxy sign-in", sub: "Kept with your keys, never in the settings file.", k: "btn", btn: "Set…", off: "Needs the engine to keep a proxy sign-in with your keys." },
-  { t: "What every page may use", k: "custom", render: () => <PagePerms /> },
   { t: "Identify as", k: "arg", arg: "--user-agent", ph: "The browser’s own", sub: "What sites see as the browser’s name. Empty: the browser’s own." },
   { t: "Window size", k: "arg", arg: "--window-size", ph: "Fits the screen", sub: "Width × height in pixels. Empty: fits the screen." },
   { t: "Page pop-up questions", sub: "Alerts and confirm boxes go to the Trunk to answer and never block a task; each waits up to 5 minutes.", k: "seg", opts: [{ v: "trunk", l: "The Trunk answers" }, { v: "ok", l: "Always OK" }, { v: "cancel", l: "Always Cancel" }], off: "Needs the engine to answer page pop-ups by a rule." },
@@ -116,29 +110,6 @@ const CLOUD_BROWSERS: SecSpec = { t: "Cloud browsers", group: "The browser", sho
 export const BROWSER_TECH: SecSpec[] = [TECH, CLOUD_BROWSERS];
 
 const STATUS = { method: "GET", path: "/" };
-
-/** Sites: no per-site rules in the engine yet, so the add field is drawn inert with why. */
-function Sites() {
-  const why = "Needs the engine to keep a rule for each site.";
-  return (
-    <>
-      <Empty>{why}</Empty>
-      <div className="s2cm-site" title={shownWhy(why)}>
-        <input className="inp" aria-label="Add a site" placeholder="Add a site, e.g. example.com" disabled />
-        <Btn sm disabled>Add</Btn>
-      </div>
-    </>
-  );
-}
-
-const PERMS = ["Clipboard", "Notifications", "Location", "Camera", "Microphone"];
-function PagePerms() {
-  return (
-    <Ctl title="What every page may use" sub="Given when the browser starts. Anything else a page wants asks you." off="Needs the engine to grant page permissions when the browser starts.">
-      <span className="s2cm-perm">{PERMS.map((p) => <label key={p}><input type="checkbox" disabled />{p}</label>)}</span>
-    </Ctl>
-  );
-}
 
 function Program({ c }: { c: Ctx }) {
   const cfg = useConfig(c.engine);

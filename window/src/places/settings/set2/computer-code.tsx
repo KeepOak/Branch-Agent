@@ -230,7 +230,7 @@ function Credit({ c }: { c: Ctx }) {
   const call = useCall();
   const d = rec(res.data);
   const sub = "Adds your GitHub no-reply address as co-author on commits from shared conversations. Turning it off affects later commits only.";
-  if (d.status === "no_durable_identity") return <Ctl title="Credit you on commits" off="Needs you signed in as a person on this Branch."><Switch label="Credit you on commits" checked={false} onChange={() => undefined} /></Ctl>;
+  if (d.status === "no_durable_identity") return null; // needs a person sign-in; nothing to switch yet, so no greyed row
   const value = rec(d.entries)[COAUTHOR];
   const on = value === undefined || value === true;
   const save = (v: boolean) => void call.run(async () => { await c.engine.request("users.prefs.set", { entries: { [COAUTHOR]: v } }); void res.reload(); });
