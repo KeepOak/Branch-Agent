@@ -36,7 +36,9 @@ it("Add an account opens the add flow in Control tower without navigating", asyn
   try {
     await act(async () => root.render(<ControlTower engine={engine} rows={[]} needsCount={0} trunkName={(id) => id ?? ""} onOpen={() => undefined} onInbox={() => undefined} onClose={() => undefined} />));
     await click("Add an account");
-    expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("Which service is the new account with?");
+    const dialog = document.querySelector('[data-testid="add-account"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog?.textContent).toContain("Which service is the new account with?");
     expect(navigate).not.toHaveBeenCalled();
     expect(request).toHaveBeenCalledWith("models.authStatus", { agentId: "sprout" });
     await click("Cancel");
