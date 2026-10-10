@@ -9,15 +9,33 @@ import {
 } from "./push-web-preferences.js";
 
 describe("Web Push notification preferences", () => {
-  it("keeps new attention categories opt-in while preserving approval notifications", () => {
+  it("turns every attention category on by default", () => {
     const preferences = normalizeWebPushNotificationPreferences(undefined);
     expect(preferences.categories).toEqual({
       approvalRequested: true,
-      agentFinished: false,
-      agentQuestion: false,
-      humanMentioned: false,
-      scheduledTaskFailed: false,
+      agentFinished: true,
+      agentQuestion: true,
+      humanMentioned: true,
+      scheduledTaskFailed: true,
     });
+    const effective = resolveEffectiveWebPushPreferences({ user: undefined, device: undefined });
+    for (const category of [
+      "agent-question",
+      "agent-finished",
+      "scheduled-task-failed",
+      "human-mentioned",
+    ] as const) {
+      expect(webPushCategoryEnabled(effective, category)).toBe(true);
+    }
+  });
+
+  it("keeps an owner's explicit off choices", () => {
+    const preferences = normalizeWebPushNotificationPreferences({
+      categories: { agentFinished: false, humanMentioned: false },
+    });
+    expect(preferences.categories.agentFinished).toBe(false);
+    expect(preferences.categories.humanMentioned).toBe(false);
+    expect(preferences.categories.agentQuestion).toBe(true);
   });
 
   it("applies per-device overrides without changing user defaults", () => {
@@ -45,7 +63,8 @@ describe("Web Push notification preferences", () => {
     expect(webPushCategoryEnabled(effective, "scheduled-task-failed")).toBe(true);
     expect(webPushCategoryEnabled(effective, "human-mentioned")).toBe(true);
     expect(user.categories.agentQuestion).toBe(true);
-    expect(user.categories.humanMentioned).toBe(false);
+    expect(user.categories.scheduledTaskFailed).toBe(true);
+    expect(effective.categories.agentQuestion).toBe(false);
   });
 
   it("handles overnight quiet hours in the configured time zone", () => {

@@ -21,11 +21,13 @@ export function normalizeWebPushDisplayLabel(value: unknown): string | undefined
 
 const DEFAULT_WEB_PUSH_NOTIFICATION_PREFERENCES: WebPushNotificationPreferences = {
   categories: {
+    // Every attention category starts on: a Trunk waiting on its owner must not go unnoticed.
+    // Owners can still turn each one off, per account or per device.
     approvalRequested: true,
-    agentFinished: false,
-    agentQuestion: false,
-    humanMentioned: false,
-    scheduledTaskFailed: false,
+    agentFinished: true,
+    agentQuestion: true,
+    humanMentioned: true,
+    scheduledTaskFailed: true,
   },
   detailLevel: "private",
   quietHours: {
