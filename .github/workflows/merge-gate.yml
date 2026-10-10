@@ -19,6 +19,9 @@ concurrency:
 
 jobs:
   changed-test-coverage:
+    permissions:
+      contents: read
+      pull-requests: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -38,6 +41,8 @@ jobs:
         run: node --test scripts/merge-gate-trusted.test.mjs
       - name: Test the event-driven gate recheck planner
         run: node --test scripts/merge-gate-recheck.test.mjs
+      - name: Test the local PR preflight
+        run: node --test scripts/pr-preflight.test.mjs
       - name: Test the rate-limit wait helper
         run: node --test scripts/merge-gate-rate-limit.test.mjs scripts/check-gate-files-fresh.test.mjs
       - name: Require every changed test to run in CI
@@ -53,10 +58,17 @@ jobs:
       - name: Require screenshots for window UI changes
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: node scripts/check-ui-proof.mjs
       - name: Test the SELF-CHECK block check
         run: node --test scripts/check-self-check.test.mjs
       - name: Require a SELF-CHECK block on trunk/ pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: node scripts/check-self-check.mjs
       - name: Test the window cleanliness check
         run: node --test scripts/check-window-clean.test.mjs
