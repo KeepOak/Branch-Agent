@@ -64,7 +64,11 @@ async function fixture(run) {
   try {
     assert.deepEqual(require("electron").shell, {}, "mocks support compiled CommonJS requires too");
     for (const name of ["desktop-os", "linux-login"]) delete require.cache[join(source, `${name}${extension}`)];
-    const { desktopOs } = await import(pathToFileURL(join(source, `desktop-os${extension}`)).href + `?fixture=${id}`);
+    // Use require for compiled CJS so clearing require.cache really isolates each fixture;
+    // dynamic import keeps a second CJS translation cache even when its URL query changes.
+    const { desktopOs } = dist
+      ? require(join(source, `desktop-os${extension}`))
+      : await import(pathToFileURL(join(source, `desktop-os${extension}`)).href + `?fixture=${id}`);
     const launch = () => desktopOs(app, { dataDir: root }, () => undefined, "").login;
     await run({ root, entry, state, calls, launch });
   } finally {
