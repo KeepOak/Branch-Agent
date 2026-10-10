@@ -7,8 +7,6 @@ import { fileURLToPath } from "node:url";
 import {
   CATCH_UP_MAX_WAIT_MS,
   CATCH_UP_WINDOW_BUFFER_MS,
-  FAILED_CHECK_RERUN_POLL_MS,
-  FAILED_CHECK_RERUN_WAIT_MS,
   PUSH_BACKUP_MIN_AGE_MS,
   catchUpAfterFailedPublish,
   decideCatchUp,
@@ -65,7 +63,7 @@ test("component-release workflow keeps the schedule and uses push as a 25-minute
   assert.match(workflow, /GITHUB_EVENT_NAME" == "push"/);
   assert.match(workflow, /GITHUB_EVENT_NAME" == "schedule"/);
   assert.match(workflow, /decide_scheduled >\/dev\/null \|\| echo "scheduled rehearsal could not finish"/);
-  assert.match(workflow, /node scripts\/merge-gate-rate-limit\.mjs gh -- api/);
+  assert.match(workflow, /gh api repos\/KeepOak\/Branch-Agent\/releases\/latest/);
   const readiness = workflow.slice(workflow.indexOf("decide_scheduled()"), workflow.indexOf("\n  identity:"));
   const windowAt = readiness.indexOf("more than 25 minutes old");
   const checksAt = readiness.indexOf("resolve-failed-checks");
@@ -190,7 +188,7 @@ test("catch-up job waits out the cooldown and dispatches one release", () => {
   assert.match(catchUp, /max_sleep_seconds=\$\(\(26 \* 60\)\)/);
   assert.match(catchUp, /decide-catch-up/);
   assert.match(catchUp, /gh workflow run component-release\.yml --ref main/);
-  assert.match(catchUp, /node scripts\/merge-gate-rate-limit\.mjs gh -- api/);
+  assert.match(catchUp, /gh api repos\/KeepOak\/Branch-Agent\/releases\/latest/);
   assert.doesNotMatch(catchUp, /check-runs/);
   assert.doesNotMatch(catchUp, /contents: write/);
   assert.equal(workflow.match(/actions: write/g).length, 2);
@@ -261,29 +259,6 @@ function resolveFailedChecks(overrides) {
   return { decision, logs };
 }
 
-test("readiness reruns a first-attempt failed check and proceeds when the rerun passes", () => {
-  const reran = [];
-  let checks = [failedCapabilityCheck()];
-  const runs = {
-    506: { id: 506, name: "Capability feature checks", run_attempt: 1, status: "completed", conclusion: "failure" },
-  };
-  const { decision, logs } = resolveFailedChecks({
-    listCheckRuns: () => checks,
-    readWorkflowRun: id => runs[id],
-    rerunFailedJobs: id => {
-      reran.push(id);
-      runs[id] = { ...runs[id], run_attempt: 2, status: "completed", conclusion: "success" };
-      checks = [failedCapabilityCheck({ id: 12, startedAt: "2026-10-08T09:01:00Z", conclusion: "success" })];
-    },
-  });
-  assert.equal(decision.skip, false);
-  assert.equal(decision.failedCount, 0);
-  assert.equal(decision.reason, "cleared-after-rerun");
-  assert.deepEqual(reran, [506]);
-  assert.match(logs.join("\n"), /Rerunning failed jobs for Capability tests on ubuntu-latest \(run 506, attempt 1\)/);
-  assert.match(logs.join("\n"), /cleared after rerun/);
-});
-
 test("readiness skips when a failed check is still failing after one rerun", () => {
   const reran = [];
   let checks = [failedCapabilityCheck()];
@@ -301,9 +276,8 @@ test("readiness skips when a failed check is still failing after one rerun", () 
   });
   assert.equal(decision.skip, true);
   assert.equal(decision.failedCount, 1);
-  assert.equal(decision.reason, "failed-checks");
+  assert.equal(decision.reason, "rerun-requested");
   assert.deepEqual(reran, [506]);
-  assert.match(logs.join("\n"), /still has 1 failed check/);
 });
 
 test("readiness does not rerun an already-retried failed run and skips the release", () => {
@@ -336,52 +310,6 @@ test("pull-request rehearsal counts failed checks and does not rerun them", () =
   assert.equal(decision.failedCount, 1);
   assert.deepEqual(reran, []);
   assert.match(logs.join("\n"), /pull-request rehearsal only counts them/);
-});
-
-test("readiness waits for a rerun to finish before rechecking the SHA", () => {
-  let nowMs = 0;
-  let reads = 0;
-  let checks = [failedCapabilityCheck()];
-  const { decision } = resolveFailedChecks({
-    now: () => nowMs,
-    sleep: ms => { nowMs += ms; },
-    waitMs: 4_000,
-    pollMs: 1_000,
-    listCheckRuns: () => checks,
-    readWorkflowRun: () => {
-      reads += 1;
-      if (reads === 1) return { id: 506, run_attempt: 1, status: "completed", conclusion: "failure" };
-      if (reads < 4) return { id: 506, run_attempt: 2, status: "in_progress", conclusion: null };
-      checks = [failedCapabilityCheck({ id: 12, startedAt: "2026-10-08T09:01:00Z", conclusion: "success" })];
-      return { id: 506, run_attempt: 2, status: "completed", conclusion: "success" };
-    },
-    rerunFailedJobs: () => {},
-  });
-  assert.equal(decision.skip, false);
-  assert.equal(reads, 4);
-  assert.equal(nowMs, 2_000);
-});
-
-test("readiness skips when a rerun is still pending after the wait budget", () => {
-  let nowMs = 0;
-  const reran = [];
-  const { decision, logs } = resolveFailedChecks({
-    now: () => nowMs,
-    sleep: ms => { nowMs += ms; },
-    waitMs: 2_000,
-    pollMs: 1_000,
-    listCheckRuns: () => [failedCapabilityCheck()],
-    readWorkflowRun: () => {
-      if (reran.length === 0) return { id: 506, run_attempt: 1, status: "completed", conclusion: "failure" };
-      return { id: 506, run_attempt: 2, status: "in_progress", conclusion: null };
-    },
-    rerunFailedJobs: id => reran.push(id),
-  });
-  assert.equal(decision.skip, true);
-  assert.ok(decision.failedCount > 0);
-  assert.equal(decision.reason, "rerun-pending");
-  assert.deepEqual(reran, [506]);
-  assert.match(logs.join("\n"), /still running; skipping release/);
 });
 
 test("readiness skips a later call whose newest check is pending after an earlier same-name failure", () => {
@@ -456,29 +384,6 @@ test("readiness proceeds without rerunning when there are no failed checks", () 
   assert.deepEqual(reads, []);
 });
 
-test("failed-check rerun wait fits the readiness job timeout and uses the shared gh helper", () => {
-  const helperSource = readFileSync(helper, "utf8");
-  const calls = [];
-  const gh = args => {
-    calls.push(args);
-    if (String(args[1] ?? "").includes("check-runs")) return JSON.stringify({ total_count: 0, check_runs: [] });
-    return JSON.stringify({ id: 9, run_attempt: 1, status: "completed" });
-  };
-  assert.equal(FAILED_CHECK_RERUN_WAIT_MS, 3 * 60 * 1000);
-  assert.equal(FAILED_CHECK_RERUN_POLL_MS, 15 * 1000);
-  assert.ok(FAILED_CHECK_RERUN_WAIT_MS < 5 * 60 * 1000);
-  assert.match(helperSource, /runGhWithRetry/);
-  assert.match(helperSource, /rerun-failed-jobs/);
-  assert.match(helperSource, /run_attempt/);
-  assert.match(workflow, /MERGE_GATE_WAIT_SECONDS: '240'/);
-  listCommitCheckRuns("KeepOak/Branch-Agent", "abc", { gh });
-  getWorkflowRun("KeepOak/Branch-Agent", 9, { gh });
-  rerunFailedWorkflowJobs("KeepOak/Branch-Agent", 9, { gh });
-  assert.ok(calls.every(args => args[0] === "api"));
-  assert.ok(calls.some(args => String(args[1]).includes("check-runs")));
-  assert.ok(calls.some(args => args.includes("-X") && args.some(part => String(part).includes("rerun-failed-jobs"))));
-});
-
 test("native job caches npm, the pnpm store and Electron downloads without changing release timeouts", () => {
   const native = workflow.slice(workflow.indexOf("\n  native:"), workflow.indexOf("\n  report:"));
   assert.ok(native.length > 0);
@@ -504,4 +409,48 @@ test("desktop-checks runs readiness as its own node --test step after the deskto
     desktopChecks,
     /release-production-layout\.test\.mjs scripts\/component-release-readiness\.test\.mjs/,
   );
+});
+
+test("readiness requests one rerun and skips this release; the next scheduled run decides", () => {
+  const reran = [];
+  let listings = 0;
+  const { decision, logs } = resolveFailedChecks({
+    listCheckRuns: () => {
+      listings += 1;
+      return [failedCapabilityCheck()];
+    },
+    readWorkflowRun: () => ({ id: 506, name: "Capability feature checks", run_attempt: 1, status: "completed", conclusion: "failure" }),
+    rerunFailedJobs: id => reran.push(id),
+    sleep: () => {
+      throw new Error("readiness must not wait");
+    },
+  });
+  assert.equal(decision.skip, true);
+  assert.equal(decision.reason, "rerun-requested");
+  assert.deepEqual(reran, [506]);
+  assert.equal(listings, 1, "one listing, never re-read");
+  assert.match(logs.join("\n"), /the next scheduled run decides/);
+});
+
+test("a failed check listing skips the release instead of retrying it", () => {
+  const reran = [];
+  const { decision, logs } = resolveFailedChecks({
+    listCheckRuns: () => {
+      throw new Error("API rate limit exceeded for installation");
+    },
+    rerunFailedJobs: id => reran.push(id),
+  });
+  assert.equal(decision.skip, true);
+  assert.equal(decision.reason, "checks-unavailable");
+  assert.deepEqual(reran, []);
+  assert.match(logs.join("\n"), /Could not list checks/);
+});
+
+test("the readiness check uses one plain gh call per listing, with no retry wrapper or wait constants", () => {
+  const source = readFileSync(new URL("./component-release-readiness.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /runGhWithRetry/);
+  assert.doesNotMatch(source, /FAILED_CHECK_RERUN_WAIT_MS/);
+  const workflow = readFileSync(new URL("../../.github/workflows/component-release.yml", import.meta.url), "utf8");
+  assert.doesNotMatch(workflow, /merge-gate-rate-limit\.mjs gh -- api/);
+  assert.match(workflow, /gh api repos\/KeepOak\/Branch-Agent\/releases\/latest/);
 });

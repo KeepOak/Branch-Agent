@@ -76,7 +76,7 @@ jobs:
             main_commit="$(git rev-parse origin/main)"
             latest_release=""
             published_at=""
-            latest_meta=$(node scripts/merge-gate-rate-limit.mjs gh -- api repos/KeepOak/Branch-Agent/releases/latest --jq '[.tag_name,.published_at] | @tsv' 2>/dev/null || echo "")
+            latest_meta=$(gh api repos/KeepOak/Branch-Agent/releases/latest --jq '[.tag_name,.published_at] | @tsv' 2>/dev/null || echo "")
             if [[ -n "$latest_meta" ]]; then
               latest_release="${latest_meta%%$'\t'*}"
               published_at="${latest_meta#*$'\t'}"
@@ -87,7 +87,7 @@ jobs:
               return
             fi
             # Resolves lightweight and annotated tags to the commit they point at.
-            latest_commit=$(node scripts/merge-gate-rate-limit.mjs gh -- api repos/KeepOak/Branch-Agent/commits/"$latest_release" --jq .sha)
+            latest_commit=$(gh api repos/KeepOak/Branch-Agent/commits/"$latest_release" --jq .sha)
             if [[ "$main_commit" == "$latest_commit" ]]; then
               note "Main has not changed since $latest_release ($latest_commit); skipping release"
               printf '%s %s %s\n' false "$main_commit" already-released
@@ -461,11 +461,11 @@ jobs:
             latest_release=""
             published_at=""
             latest_commit=""
-            latest_meta=$(node scripts/merge-gate-rate-limit.mjs gh -- api repos/KeepOak/Branch-Agent/releases/latest --jq '[.tag_name,.published_at] | @tsv' 2>/dev/null || echo "")
+            latest_meta=$(gh api repos/KeepOak/Branch-Agent/releases/latest --jq '[.tag_name,.published_at] | @tsv' 2>/dev/null || echo "")
             if [[ -n "$latest_meta" ]]; then
               latest_release="${latest_meta%%$'\t'*}"
               published_at="${latest_meta#*$'\t'}"
-              latest_commit=$(node scripts/merge-gate-rate-limit.mjs gh -- api repos/KeepOak/Branch-Agent/commits/"$latest_release" --jq .sha)
+              latest_commit=$(gh api repos/KeepOak/Branch-Agent/commits/"$latest_release" --jq .sha)
             fi
           }
           read_catch_up() {

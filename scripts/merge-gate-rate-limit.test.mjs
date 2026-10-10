@@ -679,11 +679,12 @@ test('runGhWithRetry retries rate limits then returns stdout', () => {
   assert.deepEqual(calls[0], ['gh', 'api']);
 });
 
-test('release readiness and gate-files-fresh use the shared gh retry helper', () => {
+test('gate-files-fresh uses the shared gh retry helper; release readiness uses one plain call', () => {
   const release = readFileSync(new URL('../.github/workflows/component-release.yml', import.meta.url), 'utf8');
   const readiness = release.slice(release.indexOf('Check if a release is needed'), release.indexOf('identity:'));
-  assert.match(readiness, /node scripts\/merge-gate-rate-limit\.mjs gh -- api/);
-  assert.doesNotMatch(readiness, /^\s+gh api /m);
+  // Readiness makes one plain gh call per listing; the retry wrapper spent the shared quota.
+  assert.doesNotMatch(readiness, /merge-gate-rate-limit\.mjs gh -- api/);
+  assert.match(readiness, /gh api repos\/KeepOak\/Branch-Agent\/releases\/latest/);
   const fresh = readFileSync(new URL('../.github/workflows/gate-files-fresh.yml', import.meta.url), 'utf8');
   assert.match(fresh, /types:\s*\[opened, synchronize, reopened\]/);
   assert.match(fresh, /timeout-minutes:\s*5/);
