@@ -69,7 +69,7 @@ function createBenchmarkRun(overrides: Partial<BenchmarkRun> = {}): BenchmarkRun
         ),
       ),
     ),
-    turnEvidence: { toolTurns: 0, observerModelDigestTurns: 0 },
+    turnEvidence: { toolTurns: 0, observerModelDigestTurns: 0, firstTokenMs: [] },
     providerRequests: testing.summarizeProviderRequests([], 0, 0),
     turnAccounting: { launched: 8, terminalOk: 8, verified: 8 },
     agentWarmup: {
@@ -79,7 +79,7 @@ function createBenchmarkRun(overrides: Partial<BenchmarkRun> = {}): BenchmarkRun
       verified: 0,
       beforeOrdinal: 0,
       afterOrdinal: 0,
-      turnEvidence: { toolTurns: 0, observerModelDigestTurns: 0 },
+      turnEvidence: { toolTurns: 0, observerModelDigestTurns: 0, firstTokenMs: [] },
     },
     probeWarmup: { durationMs: 2, samples: [] },
     pluginMetadataScans: { count: 0, durationMs: null, totalDurationMs: 0 },
@@ -666,7 +666,7 @@ describe("gateway concurrency benchmark script", () => {
       if (delayed) {
         emitToolEvents();
       }
-      expect(evidence.finish()).toEqual({ toolTurns: 1, observerModelDigestTurns: 1 });
+      expect(evidence.finish()).toEqual({ toolTurns: 1, observerModelDigestTurns: 1, firstTokenMs: [] });
       expect(() =>
         evidence.onEvent({
           event: "session.tool",
@@ -738,8 +738,8 @@ describe("gateway concurrency benchmark script", () => {
         warmup,
       });
     }
-    expect(evidence.finish()).toEqual({ toolTurns: 1, observerModelDigestTurns: 1 });
-    expect(evidence.finish("warmup")).toEqual({ toolTurns: 1, observerModelDigestTurns: 1 });
+    expect(evidence.finish()).toEqual({ toolTurns: 1, observerModelDigestTurns: 1, firstTokenMs: [] });
+    expect(evidence.finish("warmup")).toEqual({ toolTurns: 1, observerModelDigestTurns: 1, firstTokenMs: [] });
     evidence.onEvent(toolResult(runs[0]!));
     expect(() => evidence.finish()).toThrow("duplicated");
     expect(() => evidence.finish("warmup")).toThrow("duplicated");
@@ -1005,6 +1005,74 @@ describe("gateway concurrency benchmark script", () => {
       unclassifiedLoadInference: 3,
     });
   });
+  it("records send-to-first-text latency once per turn and only for measured turns", () => {
+    const now = vi.spyOn(performance, "now");
+    try {
+      const evidence = testing.createTurnEvidence(false);
+      now.mockReturnValueOnce(1_000);
+      evidence.register("run-a", "agent:main:a");
+      now.mockReturnValueOnce(1_000);
+      evidence.register("run-w", "agent:main:w", "warmup");
+      now.mockReturnValueOnce(1_000);
+      evidence.register("run-b", "agent:main:b");
+      const text = (runId: string, delta: string) => ({
+        event: "agent",
+        payload: { runId, stream: "assistant", data: { delta } },
+      });
+      // An empty delta is not text and must not start the clock.
+      evidence.onEvent(text("run-a", ""));
+      now.mockReturnValueOnce(1_120);
+      evidence.onEvent(text("run-a", "first"));
+      // Later deltas for the same turn do not reset its first-token latency.
+      evidence.onEvent(text("run-a", "second"));
+      now.mockReturnValueOnce(1_300);
+      evidence.onEvent(text("run-b", "reply"));
+      now.mockReturnValueOnce(1_500);
+      evidence.onEvent(text("run-w", "warm"));
+
+      expect(evidence.finish()).toEqual({
+        toolTurns: 0,
+        observerModelDigestTurns: 0,
+        firstTokenMs: [120, 300],
+      });
+      expect(evidence.finish("warmup")).toEqual({
+        toolTurns: 0,
+        observerModelDigestTurns: 0,
+        firstTokenMs: [500],
+      });
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("summarizes first-token latency and steered lane wait with nearest-rank percentiles", () => {
+    const withText = createBenchmarkRun({
+      turnEvidence: { toolTurns: 0, observerModelDigestTurns: 0, firstTokenMs: [10, 20, 30, 40] },
+      steers: [
+        { error: null, latencyMs: 300, ok: true },
+        { error: null, latencyMs: 100, ok: true },
+        { error: "steer refused", latencyMs: 50, ok: false },
+      ],
+    });
+    const more = createBenchmarkRun({
+      turnEvidence: { toolTurns: 0, observerModelDigestTurns: 0, firstTokenMs: [50] },
+    });
+
+    const single = testing.summarizeRuns([withText]);
+    expect(single.firstTokenMs).toEqual({ count: 4, max: 40, p50: 20, p95: 40, p99: 40 });
+    expect(single.steeredLaneWaitMs).toEqual({ count: 2, max: 300, p50: 100, p95: 300, p99: 300 });
+    expect(single.steerFailedRuns).toBe(1);
+
+    const combined = testing.summarizeRuns([withText, more]);
+    expect(combined.firstTokenMs).toEqual({ count: 5, max: 50, p50: 30, p95: 50, p99: 50 });
+    expect(combined.steeredLaneWaitMs).toEqual({ count: 2, max: 300, p50: 100, p95: 300, p99: 300 });
+    expect(combined.steerFailedRuns).toBe(1);
+
+    const noSteers = testing.summarizeRuns([more]);
+    expect(noSteers.steeredLaneWaitMs).toBeNull();
+    expect(noSteers.steerFailedRuns).toBe(0);
+  });
+
   it("aggregates measured CPU, memory, ingress, and plugin scans without conflating their units", () => {
     const scans = (durations: number[]) => ({
       count: durations.length,

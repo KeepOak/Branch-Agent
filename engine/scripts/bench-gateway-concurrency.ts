@@ -125,6 +125,9 @@ type FreshConnectionProbe = {
   ok: boolean;
 };
 
+/** One sessions.steer issued while its session is running; latency is its lane wait. */
+type SteerProbe = FreshConnectionProbe;
+
 type GatewayChildExit = {
   atMonotonicMicros: number;
   exitCode: number | null;
@@ -169,6 +172,7 @@ type BenchmarkRun = {
   cpuUsage: GatewayCpuUsage;
   durationMs: number;
   freshConnection: FreshConnectionProbe;
+  steers?: SteerProbe[];
   gatewayExit?: Awaited<ReturnType<typeof stopChild>>;
   gatewayProcess?: {
     pid: number | undefined;
@@ -234,6 +238,7 @@ type BenchmarkPartialRun = Partial<
     peakRssMb: number | null;
   };
   freshConnection: FreshConnectionProbe | null;
+  steers?: SteerProbe[];
   cpuUsage: GatewayCpuUsage | null;
   probeWarmup: { durationMs: number | null; samples: GatewaySample[] };
   liveProof?: BenchmarkRun["liveProof"] | ReturnType<LiveGatewayEvidence["snapshot"]>;
@@ -288,6 +293,7 @@ type CliOptions = {
   runs: number;
   sessionCount: number;
   sessionUpdateClients: number;
+  steers: number;
   sessionUpdates: number;
   streamChunkDelayMs: number;
   subscribers: number;
@@ -372,6 +378,7 @@ const VALUE_FLAGS = new Set([
   "--runs",
   "--session-count",
   "--session-update-clients",
+  "--steers",
   "--session-updates",
   "--stream-chunk-delay-ms",
   "--subscribers",
@@ -428,6 +435,7 @@ function parseOptions(argv: string[] = process.argv.slice(2)): CliOptions {
     runs: boundedInt("--runs", DEFAULT_RUNS, MAX_RUNS),
     sessionCount: boundedInt("--session-count", 0, MAX_SESSION_COUNT, true),
     sessionUpdateClients: boundedInt("--session-update-clients", 4, MAX_CONCURRENCY),
+    steers: boundedInt("--steers", 0, MAX_CONCURRENCY, true),
     sessionUpdates: boundedInt("--session-updates", 0, MAX_SESSION_UPDATES, true),
     streamChunkDelayMs: boundedInt("--stream-chunk-delay-ms", MOCK_RESPONSE_CHUNK_DELAY_MS, 30_000),
     subscribers: boundedInt("--subscribers", 0, MAX_CONCURRENCY, true),
@@ -525,6 +533,7 @@ Options:
   --session-count <n> Seed up to ${MAX_SESSION_COUNT} distinct sessions before load
   --session-updates <n> Bounded public sessions.patch mutations during load
   --session-update-clients <n> Concurrent session mutation clients (default: 4)
+  --steers <n>       Send n sessions.steer messages to running sessions during load; reports lane wait (default: 0)
   --history-clients <n> Concurrent dedicated history-prefetch WebSocket clients
   --history-burst <n> Parallel history requests per prefetch client (default: 5)
   --subscribers <n> Dedicated session-message subscription clients
@@ -917,6 +926,8 @@ function createTurnEvidence(toolEvents: boolean) {
     {
       sessionKey: string;
       phase: "warmup" | "load";
+      sentAt: number;
+      firstTokenMs?: number;
       toolCallId?: string;
       toolCompleted: boolean;
       final: boolean;
@@ -929,7 +940,14 @@ function createTurnEvidence(toolEvents: boolean) {
       if (turns.has(runId)) {
         throw new Error("duplicate benchmark run identity");
       }
-      turns.set(runId, { sessionKey, phase, toolCompleted: false, final: false, observer: false });
+      turns.set(runId, {
+        sessionKey,
+        phase,
+        sentAt: performance.now(),
+        toolCompleted: false,
+        final: false,
+        observer: false,
+      });
     },
     onEvent(this: void, event: { event: string; payload?: unknown }) {
       const payload = event.payload;
@@ -938,6 +956,16 @@ function createTurnEvidence(toolEvents: boolean) {
       }
       const turn = turns.get(payload.runId);
       if (!turn) {
+        return;
+      }
+      if (
+        event.event === "agent" &&
+        payload.stream === "assistant" &&
+        isRecord(payload.data) &&
+        typeof payload.data.delta === "string" &&
+        payload.data.delta.length > 0
+      ) {
+        turn.firstTokenMs ??= performance.now() - turn.sentAt;
         return;
       }
       if (event.event === "session.observer") {
@@ -1007,6 +1035,8 @@ function createTurnEvidence(toolEvents: boolean) {
       return {
         toolTurns: toolEvents ? phaseTurns.length : 0,
         observerModelDigestTurns: phaseTurns.filter((turn) => turn.observer).length,
+        // Send-to-first-streamed-text latency per measured turn, in ms.
+        firstTokenMs: phaseTurns.flatMap((turn) => (turn.firstTokenMs === undefined ? [] : [turn.firstTokenMs])),
       };
     },
   };
@@ -2331,6 +2361,39 @@ async function runGatewaySample(
           partialRun.freshConnection = value;
         }),
       );
+      // Steering interrupts a run, so probes use their own sessions and never touch the measured turns.
+      // Each probe starts a run, then steers it while active; latency is the steer RPC round trip.
+      const steerProbes = allTurnsStarted.then(async (): Promise<SteerProbe[]> =>
+        Promise.all(
+          Array.from({ length: options.steers }, (_, index) => {
+            const sessionKey = `agent:main:gateway-steer-${index + 1}`;
+            return (async (): Promise<SteerProbe> => {
+              const startedAt = performance.now();
+              try {
+                await rpc("agent", {
+                  sessionKey,
+                  message: `Steer probe ${index + 1} holds an active run.`,
+                  deliver: false,
+                  idempotencyKey: randomUUID(),
+                }, requireRemainingMs(loadDeadlineAt, "starting a steer probe"));
+                const steerStartedAt = performance.now();
+                await rpc("sessions.steer", {
+                  key: sessionKey,
+                  message: `Steer probe ${index + 1} redirects.`,
+                  idempotencyKey: randomUUID(),
+                }, requireRemainingMs(loadDeadlineAt, "steering a probe session"));
+                return { error: null, latencyMs: performance.now() - steerStartedAt, ok: true };
+              } catch (error) {
+                return {
+                  error: describeProbeError(error, options.activitySummaryDiagnostics),
+                  latencyMs: performance.now() - startedAt,
+                  ok: false,
+                };
+              }
+            })();
+          }),
+        ),
+      );
       const browserClicks = allTurnsStarted.then(async (): Promise<BrowserSessionClick[]> => {
         try {
           if (!browserProbe) {
@@ -2480,14 +2543,16 @@ async function runGatewaySample(
       ).finally(() => {
         updatesDone = true;
       });
-      const [freshConnectionResult, sessionTurnCounts, browserClickResults] = await Promise.all([
-        freshConnection,
-        turns,
-        browserClicks,
-        sampler,
-        historyLoad,
-        sessionUpdateLoad,
-      ]);
+      const [freshConnectionResult, sessionTurnCounts, browserClickResults, steerResults] =
+        await Promise.all([
+          freshConnection,
+          turns,
+          browserClicks,
+          steerProbes,
+          sampler,
+          historyLoad,
+          sessionUpdateLoad,
+        ]);
       partialRun.turnCount = sessionTurnCounts.reduce((sum, count) => sum + count, 0);
       const cpuAfter = await readGatewayCpuUsage(gateway);
       partialRun.cpuUsage = measureGatewayCpuUsage(cpuBefore, cpuAfter);
@@ -2566,6 +2631,7 @@ async function runGatewaySample(
         processPlacement,
         durationMs: performance.now() - runStartedAt,
         freshConnection: freshConnectionResult,
+        steers: steerResults,
         history,
         loadWindow: {
           startMonotonicMicros: loadStartMonotonicMicros,
@@ -2963,6 +3029,18 @@ function summarizeRuns(
     ),
     freshConnectionFailedRuns: runs.filter((run) => !run.freshConnection.ok).length,
     freshConnectionLatencyMs: summarizeNumbers(runs.map((run) => run.freshConnection.latencyMs)),
+    // Send-to-first-streamed-text latency, measured turns only.
+    firstTokenMs: summarizeNumbers(runs.flatMap((run) => run.turnEvidence.firstTokenMs ?? [])),
+    steerFailedRuns: runs.reduce(
+      (total, run) => total + (run.steers ?? []).filter((steer) => !steer.ok).length,
+      0,
+    ),
+    // Lane wait of steered messages: sessions.steer round trip while the session runs.
+    steeredLaneWaitMs: summarizeNumbers(
+      runs.flatMap((run) =>
+        (run.steers ?? []).filter((steer) => steer.ok).map((steer) => steer.latencyMs),
+      ),
+    ),
     gatewayUncleanExits: runs.filter(
       (run) =>
         run.gatewayExit && (run.gatewayExit.exitCode !== 0 || run.gatewayExit.signal !== null),
