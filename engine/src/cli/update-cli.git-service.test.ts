@@ -204,9 +204,7 @@ describe("update-cli", () => {
         detail: "privileged wrapper owner",
       });
       const { resolveExecutablePath } = await import("../infra/executable-path.js");
-      expect(
-        resolveExecutablePath("branch", { env: serviceCommand.environment }),
-      ).toBeUndefined();
+      expect(resolveExecutablePath("branch", { env: serviceCommand.environment })).toBeUndefined();
       const envSnapshot = captureEnv(Object.keys(serviceCommand.environment));
       mockGitUpdateAfterMutation(makeOkUpdateResult({ mode: "git", root }));
       vi.mocked(resolveGatewayInstallEntrypoint).mockResolvedValue(entrypoint);

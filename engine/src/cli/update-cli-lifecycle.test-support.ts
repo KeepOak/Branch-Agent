@@ -13,6 +13,7 @@ import { mockSystemAccountHome } from "../daemon/service.test-helpers.js";
 import * as nodeSqlite from "../infra/node-sqlite.js";
 import { SUPERVISOR_HINT_ENV_VARS } from "../infra/supervisor-markers.js";
 import * as updateTempRoot from "../infra/tmp-branch-dir.js";
+import * as handoffDatabase from "../infra/update-managed-service-handoff-database.js";
 import type { UpdateRunResult } from "../infra/update-runner-types.js";
 import * as windowsPrivateDirectory from "../infra/windows-private-directory.js";
 import { BRANCH_AGENT_SCHEMA_VERSION } from "../state/branch-agent-db-contract.js";
@@ -108,6 +109,26 @@ import { reportUpdateCliHomeCleanupFailure } from "./update-cli/update-cli-failu
 import { getNodeRuntimeFixture } from "./update-cli/update-command-runtime-recovery.test-support.js";
 
 await vi.hoisted(() => import("./update-cli-mocks.test-support.js"));
+
+function withUpdateCliHostPlatform<T>(run: () => T): T {
+  if (process.platform === sqliteHostPlatform) {
+    return run();
+  }
+  const descriptor = expectDefined(
+    Object.getOwnPropertyDescriptor(process, "platform"),
+    "host platform descriptor",
+  );
+  Object.defineProperty(process, "platform", {
+    configurable: true,
+    enumerable: descriptor.enumerable,
+    value: sqliteHostPlatform,
+  });
+  try {
+    return run();
+  } finally {
+    Object.defineProperty(process, "platform", descriptor);
+  }
+}
 
 type UpdateCliLifecycleFixture = {
   baseConfig: ConfigFileSnapshot["config"];
@@ -205,25 +226,40 @@ export function registerUpdateCliLifecycle(fixture: UpdateCliLifecycleFixture): 
     const readHostProcessStartTime = pidAlive.getFileLockProcessStartTime;
     // Service-platform doubles cannot change the OS that owns real fixture PIDs.
     // Keep actual PID/start reads, switching only their synchronous platform dispatch.
-    vi.spyOn(pidAlive, "getFileLockProcessStartTime").mockImplementation((...args) => {
-      if (process.platform === sqliteHostPlatform) {
-        return readHostProcessStartTime(...args);
-      }
-      const descriptor = expectDefined(
-        Object.getOwnPropertyDescriptor(process, "platform"),
-        "host platform descriptor",
-      );
-      Object.defineProperty(process, "platform", {
-        configurable: true,
-        enumerable: descriptor.enumerable,
-        value: sqliteHostPlatform,
+    vi.spyOn(pidAlive, "getFileLockProcessStartTime").mockImplementation((...args) =>
+      withUpdateCliHostPlatform(() => readHostProcessStartTime(...args)),
+    );
+    // Real handoff storage has the host's permission model and directory durability.
+    // Keep its real identity checks and transactions while services simulate another OS.
+    const createHostDatabase = handoffDatabase.createManagedHandoffLeaseDatabase;
+    vi.spyOn(handoffDatabase, "createManagedHandoffLeaseDatabase").mockImplementation((...args) => {
+      const database = withUpdateCliHostPlatform(() => createHostDatabase(...args));
+      return new Proxy(database, {
+        apply(target, receiver, callArgs) {
+          return withUpdateCliHostPlatform(() => Reflect.apply(target, receiver, callArgs));
+        },
+        get(target, property, receiver) {
+          const value = Reflect.get(target, property, receiver);
+          return typeof value === "function"
+            ? new Proxy(value, {
+                apply(method, methodReceiver, callArgs) {
+                  return withUpdateCliHostPlatform(() =>
+                    Reflect.apply(method, methodReceiver, callArgs),
+                  );
+                },
+              })
+            : value;
+        },
       });
-      try {
-        return readHostProcessStartTime(...args);
-      } finally {
-        Object.defineProperty(process, "platform", descriptor);
-      }
     });
+    const captureHostIdentity = handoffDatabase.captureManagedUpdateLeaseDatabaseIdentity;
+    vi.spyOn(handoffDatabase, "captureManagedUpdateLeaseDatabaseIdentity").mockImplementation(
+      (...args) => withUpdateCliHostPlatform(() => captureHostIdentity(...args)),
+    );
+    const assertHostIdentity = handoffDatabase.assertManagedUpdateLeaseDatabaseIdentity;
+    vi.spyOn(handoffDatabase, "assertManagedUpdateLeaseDatabaseIdentity").mockImplementation(
+      (...args) => withUpdateCliHostPlatform(() => assertHostIdentity(...args)),
+    );
     // Cache the real host process identity before cases spoof the native service
     // platform. Lease ownership still uses the production PID/start checks.
     const { getFileLockProcessStartTime } = await import("../shared/pid-alive.js");
