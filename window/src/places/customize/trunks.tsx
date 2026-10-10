@@ -1,8 +1,7 @@
 // Customize › Trunks (preview 40-places trunks tab + 30-trunks/31-trunksp): A new Trunk and New group chat, one row
-// per Trunk (face and name open its profile; Edit; Pause), right-click for Make default / Remove, the job tiles and,
+// per Trunk (face and name open its profile; Edit), right-click for Make default / Remove, the job tiles and,
 // at Technical, the defaults for every Trunk. Customize only mounts it; the dialogs live in places/trunk.
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { shownWhy } from "../../shell/shown-why";
 import { Jobs } from "./jobs";
 import { Icon } from "../../shell/icons";
 import { openNewGroupChat } from "../../rooms/NewGroupChat";
@@ -22,7 +21,7 @@ import { RemoveTrunkDialog } from "../trunk/RemoveTrunk";
 import { TrunkDefaults } from "../trunk/TrunkDefaults";
 import { TrunkEditor } from "../trunk/TrunkEditor";
 import { RowFace } from "../trunk/TrunkFace";
-import { PAUSE_WHY, TrunkProfile } from "../trunk/TrunkProfile";
+import { TrunkProfile } from "../trunk/TrunkProfile";
 import "../trunk/trunk.css";
 
 /** The preview's row face (40-places Trunks rows). */
@@ -43,7 +42,6 @@ function TrunkRowView({ row, roster, write, open, menu, knows }: { row: TrunkRow
       </button>
       <button type="button" className="btn ghost sm" onClick={(e) => knows(e, row)}>Who it knows</button>
       <button type="button" className="btn sm" onClick={() => open({ kind: "edit", id: row.id })}>Edit</button>
-      <button type="button" className="btn ghost sm" disabled title={shownWhy(PAUSE_WHY)}>Pause</button>
       <button type="button" className="btn ghost sm" disabled={row.id === roster.defaultId || !write} title={row.id === roster.defaultId ? "The default Trunk cannot be removed." : write ? undefined : WRITE_WHY} onClick={() => open({ kind: "remove", id: row.id })}>Remove</button>
     </div>
   );
