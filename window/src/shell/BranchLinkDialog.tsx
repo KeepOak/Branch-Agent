@@ -10,7 +10,7 @@ const record = (value: unknown): Record<string, unknown> => value && typeof valu
 const errorText = (value: unknown) => value instanceof Error ? value.message : String(value);
 const isUnreachableGateway = (value: unknown) => /Gateway is only bound to loopback|PAIRING_GATEWAY_LOOPBACK_ERROR/i.test(errorText(value));
 
-/** Pair two Branch installs as teammates: issue an invite here, or join an invite issued there. */
+/** Link two Branch installs: create a code here, or enter one created there. */
 export function BranchLinkDialog({ engine, onClose, onLinked, onOpenGatewaySettings }: { engine: WindowEngine; onClose: () => void; onLinked?: () => void; onOpenGatewaySettings?: () => void }) {
   const [mode, setMode] = useState<"invite" | "join">("invite");
   const [code, setCode] = useState<Code | null>(null);
@@ -85,12 +85,13 @@ export function BranchLinkDialog({ engine, onClose, onLinked, onOpenGatewaySetti
     footer={<><button type="button" className="btn ghost" onClick={onClose}>{join && !join.pending || paired ? "Done" : "Cancel"}</button>
       {mode === "invite" ? <button type="button" className="btn pri" disabled={busy} onClick={() => void invite()}>{code ? "Make a new code" : "Make a code"}</button>
         : join?.pending === false ? null : <button type="button" className="btn pri" disabled={busy || !incoming.trim()} onClick={() => void tryJoin()}>{join?.pending ? "Check again" : "Link this Branch"}</button>}</>}>
+    <p>Connect Branch on your own computer or a teammate’s. This links Branch installs, not user accounts.</p>
     <div className="branch-link-modes" role="group" aria-label="Link direction">
-      <button type="button" className="btn sm" aria-pressed={mode === "invite"} onClick={() => (setMode("invite"), setError(""))}>Invite a teammate</button>
-      <button type="button" className="btn sm" aria-pressed={mode === "join"} onClick={() => (setMode("join"), setError(""))}>Use their code</button>
+      <button type="button" className={`btn sm${mode === "invite" ? " pri" : ""}`} aria-pressed={mode === "invite"} onClick={() => (setMode("invite"), setError(""))}>Create a code</button>
+      <button type="button" className={`btn sm${mode === "join" ? " pri" : ""}`} aria-pressed={mode === "join"} onClick={() => (setMode("join"), setError(""))}>Enter a code</button>
     </div>
     {mode === "invite" ? <div className="cz-pair">
-      <p>Give this one-time invitation to the person at the other Branch. They can paste it in Branch › Link another Branch. The QR carries the same invitation.</p>
+      <p>Make a one-time code here. On the other computer, open Branch › Link another Branch › Enter a code and paste it. Then approve the connection here. The QR carries the same code.</p>
       {code && <><div className="branch-link-code"><code data-testid="branch-invite-code">{code.value}</code>
         <button type="button" className="btn sm" onClick={() => {
           if (!navigator.clipboard?.writeText) { setError("Clipboard unavailable. Select the code to copy it."); return; }
@@ -103,7 +104,7 @@ export function BranchLinkDialog({ engine, onClose, onLinked, onOpenGatewaySetti
         {onOpenGatewaySettings && <button type="button" className="btn sm" onClick={onOpenGatewaySettings}>Open Gateway settings</button>}</div>}
       {paired && <p role="status" className="cz-ok">Paired with {paired}. Its Trunks appear in Connected agents.</p>}
     </div> : <div className="cz-pair">
-      <p>Get a code from the other Branch through a way you trust. This Branch and its Trunks will appear to that teammate after they approve it. Check the device name on both Branches before approval.</p>
+      <p>Create a code on the other computer in Branch › Link another Branch › Create a code, then paste it here. If it belongs to a teammate, ask them to share the code through a way you trust. Approve the connection on the other computer; this Branch’s Trunks will then be available there. Check the device name on both computers before approval.</p>
       <label className="cz-field"><span>Setup code</span><textarea className="inp" aria-label="Setup code" value={incoming} onChange={event => setIncoming(event.target.value)} /></label>
       <label className="cz-field"><span>Name on the other Branch (optional)</span><input className="inp" value={name} onChange={event => setName(event.target.value)} /></label>
       {join?.pending && <p role="status">Waiting for approval on the other Branch. {join.requestId ? <>Compare check code <strong>{pairingCheckCode(join.requestId)}</strong> with the “Allow this device?” request there before approving.</> : null}</p>}

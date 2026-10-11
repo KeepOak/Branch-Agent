@@ -21,7 +21,7 @@ it("makes a real invite code and QR, then joins another Branch through the gatew
   expect(request).toHaveBeenCalledWith("device.pair.setupCode", { includeQr: true, bootstrapProfile: "limited" });
   expect(host.querySelector("[data-testid=branch-invite-code]")?.textContent).toBe("ABCD-EFGH");
   expect(host.querySelector<HTMLImageElement>("img")?.src).toContain("data:image/png;base64,AA==");
-  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Use their code")!.click());
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Enter a code")!.click());
   const field = host.querySelector<HTMLTextAreaElement>("textarea")!;
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, "A-SETUP-CODE");
@@ -96,7 +96,7 @@ it("shows the pending request check code and what the invite grants", async () =
   await act(async () => root.render(<BranchLinkDialog engine={{ request } as unknown as WindowEngine} onClose={() => undefined} />));
   await act(async () => host.querySelector<HTMLButtonElement>(".dlg-f .pri")!.click());
   expect(host.textContent).toContain("What it may do: limited, non-administrator access, including conversations and approval requests");
-  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Use their code")!.click());
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Enter a code")!.click());
   const field = host.querySelector<HTMLTextAreaElement>("textarea")!;
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, "CODE");
@@ -106,4 +106,32 @@ it("shows the pending request check code and what the invite grants", async () =
   expect(host.textContent).toContain("check code 7F2K");
   await act(async () => root.unmount());
   host.remove();
+});
+
+it("separates computer linking from teammate invitations and visibly selects the code direction", async () => {
+  const request = vi.fn(async () => ({ links: [] }));
+  const host = document.body.appendChild(document.createElement("div"));
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<BranchLinkDialog engine={{ request } as unknown as WindowEngine} onClose={() => undefined} />));
+    expect(host.textContent).toContain("your own computer or a teammate’s");
+    expect(host.textContent).toContain("This links Branch installs, not user accounts");
+    const modes = [...host.querySelectorAll<HTMLButtonElement>(".branch-link-modes button")];
+    expect(modes.map(button => button.textContent)).toEqual(["Create a code", "Enter a code"]);
+    expect(modes[0].getAttribute("aria-pressed")).toBe("true");
+    expect(modes[0].classList.contains("pri")).toBe(true);
+    expect(modes[1].classList.contains("pri")).toBe(false);
+    expect(host.textContent).toContain("On the other computer");
+    await act(async () => modes[1].click());
+    expect(modes[0].getAttribute("aria-pressed")).toBe("false");
+    expect(modes[0].classList.contains("pri")).toBe(false);
+    expect(modes[1].getAttribute("aria-pressed")).toBe("true");
+    expect(modes[1].classList.contains("pri")).toBe(true);
+    expect(host.textContent).toContain("Create a code on the other computer");
+    expect(host.querySelector("textarea")).not.toBeNull();
+    expect(request).not.toHaveBeenCalledWith("device.pair.setupCode", expect.anything());
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+  }
 });
