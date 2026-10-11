@@ -82,7 +82,11 @@ export function paletteRows(c: Ctx): PaletteRow[] {
     hint: r.isMain ? "Default Trunk" : c.trunkName(r.agentId),
     run: () => c.openConversation(r.key),
   }));
-  const places = PLACES.map((p) => ({ id: `p:${p.id}`, group: "Places", label: p.name, hint: "Place", run: () => c.openPlace(p.id) }));
+  // Grove is a place (route id "office") but not a sidebar row; Find anything still lists it.
+  const places = [
+    ...PLACES.map((p) => ({ id: `p:${p.id}`, group: "Places", label: p.name, hint: "Place", run: () => c.openPlace(p.id) })),
+    { id: "p:office", group: "Places", label: "Grove", hint: "Place", run: () => c.openPlace("office") },
+  ];
   const settings = settingsGroups("technical").flatMap((g) =>
     g.pages.map((p) => ({ id: `s:${p.id}`, group: "Settings", label: p.name, hint: "Settings", run: () => c.openSettings(p.id) })),
   );
