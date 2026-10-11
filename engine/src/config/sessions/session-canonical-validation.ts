@@ -174,13 +174,9 @@ export function validateCanonicalSessionValidationBatch(
     } catch (error) {
       // One damaged row must not hold every other session hostage at startup. Only the
       // row's own bytes qualify; non-canonical keys still refuse for doctor's key migration.
-      // A cleared "{}" row with its retained window would become a valid placeholder once
-      // neutralized, so it keeps refusing too.
-      if (
-        !(error instanceof SessionRowRepairRequiredError) ||
-        (snapshot.entry_json === "{}" &&
-          snapshot.retained_window_id === snapshot.current_session_id)
-      ) {
+      // A "{}" row never qualifies: -1 with "{}" is the retained-placeholder encoding, so
+      // quarantining it would turn an invalid row into an absent one. It keeps refusing.
+      if (!(error instanceof SessionRowRepairRequiredError) || snapshot.entry_json === "{}") {
         throw error;
       }
       quarantinedRows.push(Object.freeze({ row: snapshot, reason: error.message, error }));

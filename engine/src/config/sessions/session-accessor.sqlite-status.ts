@@ -67,10 +67,13 @@ export const readableSessionEntryJson =
 
 // Canonical writers settle entry_valid; raw writes clear it. Inventory readers need
 // no payload for settled rows, but must retain parser semantics for pending/retained rows.
+// Quarantined rows (-1 with real bytes) read as unparseable, so counts and keys skip them.
 export const sessionEntryInventoryJson =
   /* kysely-allow-raw: reuse the writer-owned validity projection without loading saved prompts. */ sql<
     string | null
-  >`CASE WHEN entry_valid = 1 THEN NULL ELSE entry_json END`.as("entry_json");
+  >`CASE WHEN entry_valid = 1 THEN NULL WHEN entry_valid = -1 AND entry_json <> '{}' THEN '' ELSE entry_json END`.as(
+    "entry_json",
+  );
 
 export function normalizeStatus(value: unknown): SessionEntryStatus | null {
   // Keep canonical interruption distinct without changing the derived status index schema.

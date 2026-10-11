@@ -9,9 +9,17 @@ import { withBranchTestState } from "../../test-utils/branch-test-state.js";
 import {
   listSessionChildEntriesReadOnly,
   listSessionEntriesReadOnly,
+  loadExactSessionEntryCandidatesReadOnlyBatch,
   loadSessionEntryReadOnly,
   replaceSessionEntrySync,
 } from "./session-accessor.js";
+import { readSessionIdentityEvidenceInDatabase } from "./session-accessor.sqlite-entry-availability.js";
+import { readSessionEntryInstanceId } from "./session-accessor.sqlite-entry-identity.js";
+import {
+  iterateSessionEntryKeys,
+  readSessionEntryCount,
+  readSessionEntryStore,
+} from "./session-accessor.sqlite-entry-inventory.js";
 import { MAX_STARTUP_QUARANTINED_SESSION_ROWS } from "./session-canonical-validation-readiness.js";
 import { runSessionStartupMigration } from "./startup-migration.js";
 
@@ -121,6 +129,34 @@ it("quarantines one invalid persisted session row and lets startup continue", as
         .toSorted(),
     ).toEqual([childKey, healthyKey]);
 
+    // The delivery projection refuses the quarantined key like the exact read.
+    const [delivery] = loadExactSessionEntryCandidatesReadOnlyBatch([
+      { agentId: "main", env, sessionKeys: [brokenKey], projection: "delivery" },
+    ]);
+    expect(delivery?.ok).toBe(false);
+    expect(delivery?.ok === false ? String(delivery.error) : "").toContain(REPAIR);
+
+    // Raw readers skip it too: the lifecycle/maintenance store, inventory counts and keys,
+    // identity evidence, and the instance check that gates owner and collaboration writes.
+    const database = openBranchAgentDatabase({ agentId: "main", env });
+    expect(Object.keys(readSessionEntryStore(database)).toSorted()).toEqual([childKey, healthyKey]);
+    expect(readSessionEntryStore(database, { sessionKeys: [brokenKey] })).toEqual({});
+    expect(readSessionEntryCount(database)).toBe(2);
+    expect([...iterateSessionEntryKeys(database)].toSorted()).toEqual([childKey, healthyKey]);
+    expect(
+      readSessionIdentityEvidenceInDatabase(database, [
+        { sessionId: brokenKey + "-id", sessionKey: brokenKey },
+        { sessionId: brokenKey + "-id" },
+        { sessionId: healthyKey + "-id", sessionKey: healthyKey },
+      ]),
+    ).toEqual([
+      { status: "unknown", reason: "row-invalid" },
+      { status: "unknown", reason: "row-invalid" },
+      { status: "current", sessionKey: healthyKey },
+    ]);
+    expect(readSessionEntryInstanceId(database, brokenKey)).toBeUndefined();
+    expect(readSessionEntryInstanceId(database, healthyKey)).toBe(healthyKey + "-id");
+
     // A second start records the same row once and keeps it unreadable.
     await expect(startup(env).run).resolves.toBeUndefined();
     expect(listBranchSessionRowQuarantines(env)).toHaveLength(1);
@@ -141,6 +177,40 @@ it("quarantines one invalid persisted session row and lets startup continue", as
     expect(
       loadSessionEntryReadOnly({ agentId: "main", env, sessionKey: brokenKey })?.sessionId,
     ).toBe(`${brokenKey}-id`);
+  });
+});
+
+it('never quarantines a "{}" row, so it stays row-invalid instead of absent', async () => {
+  await withBranchTestState({ scenario: "empty" }, async ({ env, writeConfig }) => {
+    await writeConfig(cfg);
+    const clearedKey = "agent:main:cleared";
+    const db = seed(env, [clearedKey, "agent:main:healthy"]);
+    // "{}" with -1 is the retained-placeholder encoding; quarantine must not produce it.
+    // A session id with no retained window is the case the old guard still quarantined.
+    db.prepare(
+      "UPDATE session_nodes SET entry_json = '{}', current_session_id = 'orphan-id' WHERE session_key = ?",
+    ).run(clearedKey);
+    expect(entryValid(db, clearedKey)).toEqual({ entry_valid: 0 });
+    expect(isPending(db, clearedKey)).toBe(true);
+
+    const refused = startup(env);
+    await expect(refused.run).rejects.toThrow(REPAIR + " for " + clearedKey);
+    expect(refused.handoffDatabase).not.toHaveBeenCalled();
+    expect(listBranchSessionRowQuarantines(env)).toEqual([]);
+    expect(entryValid(db, clearedKey)).toEqual({ entry_valid: 0 });
+    expect(isPending(db, clearedKey)).toBe(true);
+
+    // Clear the pending marker only to reach the evidence reader: the row reads as invalid.
+    db.prepare("DELETE FROM session_canonical_validation_pending").run();
+    expect(
+      readSessionIdentityEvidenceInDatabase(openBranchAgentDatabase({ agentId: "main", env }), [
+        { sessionId: "orphan-id", sessionKey: clearedKey },
+        { sessionId: "orphan-id" },
+      ]),
+    ).toEqual([
+      { status: "unknown", reason: "row-invalid" },
+      { status: "unknown", reason: "row-invalid" },
+    ]);
   });
 });
 
