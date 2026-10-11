@@ -1242,6 +1242,12 @@ button.mi:focus-visible {
 .keeper .petbox.flip .pet-btn { transform: scaleX(-1); }
 .keeper .pet-say { position: absolute; bottom: 30px; left: 0; background: var(--raise); box-shadow: var(--pop); border-radius: 10px; padding: 6px 9px; font-size: 12px; line-height: 1.35; width: max-content; max-width: 190px; z-index: 3; }
 .keeper .pet-say::after { content: ""; position: absolute; left: 14px; bottom: -5px; width: 10px; height: 10px; background: var(--raise); transform: rotate(45deg); }
+/* The pet's menu floats out of the lane, which ignores the pointer; the menu itself takes clicks. */
+.keeper .pop { pointer-events: auto; }
+/* Resting: a small muted "Zz" over the pet, never loose text in the chat. */
+.keeper .pet-zz { position: absolute; left: 30px; bottom: 34px; font-weight: 600; font-size: 11px; line-height: 1; font-family: var(--sans, system-ui); letter-spacing: 0.04em; color: var(--ink-3); pointer-events: none; animation: pet-zz 2.6s ease-in-out infinite; }
+@keyframes pet-zz { 0%, 100% { opacity: 0.35; transform: translateY(0); } 50% { opacity: 0.9; transform: translateY(-3px); } }
+:root[data-still] .keeper .pet-zz { animation: none; }
 
 /* Inside the Branch app on Windows the top bar is the title bar (connect/title-bar.ts): drag it to move the window,
    double-click it to maximise. The app's minimise, maximise and close buttons sit over its top-right, so the bar keeps

@@ -73,6 +73,8 @@ export type StatusContext = {
   working: { key: string; title: string; line: string; runIds?: string[] }[];
   openSettings: (page: string) => void;
   openAutomations: () => void;
+  /** Trunk names for Coming up's check-ins. */
+  trunkName?: (id?: string) => string;
   openConversation: (key: string) => void;
   onWhatsNew: () => void;
   onReminded: () => void;
@@ -200,9 +202,10 @@ export function StatusPopover({ item, above, onClose, ctx }: Props) {
     return <GatewayPopover {...base} facts={ctx.gateway} level={level} onRestart={close(() => void restart(ctx))} onSettings={close(() => ctx.openSettings("gateway"))} />;
   }
   if (item === "usage") {
-    // "Sign in again" opens Accounts straight on that provider's sign-in (the same flag the Accounts page reads once).
+    // Keep the intent for a fresh page, and notify Accounts when it is already mounted.
     const signIn = (provider: string) => close(() => {
       sessionStorage.setItem("branch.openAddAccount", provider);
+      window.dispatchEvent(new Event("branch:open-add-account"));
       ctx.openSettings("accounts");
     })();
     return <UsagePopover {...base} limits={ctx.limits} request={request} onOpenUsage={close(() => ctx.openSettings("usage"))} onSignIn={signIn} />;
@@ -212,7 +215,7 @@ export function StatusPopover({ item, above, onClose, ctx }: Props) {
     return <RoomPopover {...base} request={request} row={row} level={level} onTidy={(keepLast) => (keepLast ? setConfirm(row) : (onClose(), void tidy(ctx, row, false)))} />;
   }
   if (item === "running") {
-    return <RunningPopover {...base} request={request} working={ctx.working} onOpen={(key) => (onClose(), ctx.openConversation(key))} onAutomations={close(ctx.openAutomations)}
+    return <RunningPopover {...base} request={request} trunkName={ctx.trunkName} working={ctx.working} onOpen={(key) => (onClose(), ctx.openConversation(key))} onAutomations={close(ctx.openAutomations)}
       onBackground={close(() => prepareBackground(ctx))} onPauseAll={close(() => void pauseAll(ctx))} />;
   }
   if (item === "version") {

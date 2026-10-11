@@ -116,6 +116,8 @@ export function StatusBar(p: Props) {
   const connectionLabel = p.connection === "connected" ? "Online · you are here" : connectionWord;
   const connectionColour = p.connection === "connected" ? "var(--ok)" : p.connection === "connecting" ? "var(--warn)" : "var(--bad)";
   const left = p.roomUsed === null ? null : Math.max(0, Math.round((1 - p.roomUsed) * 100));
+  // The tile opens Running in the background together with Coming up, so it says both (DA-25); "Nothing running" led to a schedule.
+  const runningTip = `${p.running} running · what’s coming up`;
   const roomTip = left === null ? "Context" : `Context: ${left}% left. The room this conversation has for new messages. Click for details.`;
   const item = (id: StatusItem) => ({ "aria-expanded": p.open === id, "aria-haspopup": "dialog" as const, onClick: (e: MouseEvent<HTMLElement>) => p.onItem(id, e) });
   // One tracker: the account used next, by email, with its share left and reset time, or "usage unknown" when it has no reading.
@@ -146,7 +148,7 @@ export function StatusBar(p: Props) {
           <span className="status-number">{left}% left</span>
         </button>
       ) : null}
-      <button type="button" className="sb status-symbol" title={p.running ? `${p.running} running` : "Nothing running"} aria-label={p.running ? `${p.running} running` : "Nothing running"} data-testid="sb-running" {...item("running")}>
+      <button type="button" className="sb status-symbol" title={runningTip} aria-label={runningTip} data-testid="sb-running" {...item("running")}>
         <StatusGlyph kind="running" colour={p.running ? "var(--ok)" : "currentColor"} value={p.running} />
         <span className="status-number">{p.running ? `${p.running} running` : "Idle"}</span>
       </button>

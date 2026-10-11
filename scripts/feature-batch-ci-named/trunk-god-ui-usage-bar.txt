@@ -1,4 +1,5 @@
 engine:src/infra/provider-usage.fetch.claude.test.ts
+window:src/places/settings/set1/accounts.test.tsx
 window:src/places/settings/set2/usage.test.tsx
 window:src/shell/Popover.focus.test.tsx
 window:src/shell/StatusExtras.test.ts

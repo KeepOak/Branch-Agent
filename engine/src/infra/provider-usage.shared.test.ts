@@ -1,6 +1,6 @@
 import { MAX_TIMER_TIMEOUT_MS } from "@branch/normalization-core/number-coercion";
 import { afterEach, expect, it, vi } from "vitest";
-import { clampPercent, raceUsageTimeout, resolveUsageProviderId } from "./provider-usage.shared.js";
+import { clampPercent, providerUsageLabel, raceUsageTimeout, resolveUsageProviderId } from "./provider-usage.shared.js";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -46,4 +46,8 @@ it("clamps oversized timeout delays before returning the fallback", async () => 
   expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), MAX_TIMER_TIMEOUT_MS);
   await vi.advanceTimersByTimeAsync(MAX_TIMER_TIMEOUT_MS);
   await expect(result).resolves.toBe("fallback");
+});
+
+it("keeps the actual router product name in usage reporting", () => {
+  expect(providerUsageLabel("clawrouter")).toBe("ClawRouter");
 });

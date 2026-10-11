@@ -1,7 +1,7 @@
 // Settings › Accounts (DESIGN-SPEC §4.7.8): the model accounts in the order Branch uses them, coding apps on this
 // computer, what happens when one runs out, your own accounts and keepoak.com. Saves at once through the engine:
 // order models.authOrderSet, sign-out models.authLogout, test models.probe, fallbacks config.patch.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { SettingsPageProps } from "../index";
 import { list, record, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
@@ -91,13 +91,19 @@ export function AccountsPage(props: SettingsPageProps) {
   const owner = scope || props.engine.agentId;
   const agent = owner ? { agentId: owner } : {};
   const status = useResource<RecordValue>(props.engine, "models.authStatus", agent);
-  const [add, setAdd] = useState<AddStart | null>(() => {
-    const asked = sessionStorage.getItem("branch.openAddAccount");
-    if (!asked) return null;
-    sessionStorage.removeItem("branch.openAddAccount");
-    // "1" opens the picker; a provider id opens that provider's sign-in (for example "Sign in again" for Claude usage).
-    return asked === "1" ? {} : { provider: asked };
-  });
+  const [add, setAdd] = useState<AddStart | null>(null);
+  useEffect(() => {
+    const consume = () => {
+      const asked = sessionStorage.getItem("branch.openAddAccount");
+      if (!asked) return;
+      sessionStorage.removeItem("branch.openAddAccount");
+      // "1" opens the picker; a provider id opens that provider's sign-in.
+      setAdd(asked === "1" ? {} : { provider: asked });
+    };
+    window.addEventListener("branch:open-add-account", consume);
+    consume();
+    return () => window.removeEventListener("branch:open-add-account", consume);
+  }, []);
   const providers = providersOf(status.data?.providers);
   const caps = list(status.data?.providerCapabilities);
   const all = accountsOf(providers);
