@@ -44,6 +44,7 @@ describe("composer chip with no connected model", () => {
     await vi.waitFor(() => expect(host.querySelector('[data-testid="no-model"]')).not.toBeNull());
     const tune = host.querySelector<HTMLButtonElement>('[data-testid="tune-button"]')!;
     expect(tune).toBeTruthy();
+    expect(tune.textContent).toContain("No model");
     expect(tune.getAttribute("aria-label")).toContain("No model");
     expect(tune.getAttribute("aria-label")).not.toMatch(/gpt-6-astra|GPT-6 Astra/i);
     expect(tune.getAttribute("title")).toContain("No model");

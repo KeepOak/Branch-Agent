@@ -14,8 +14,8 @@ afterEach(async () => {
   localStorage.clear();
 });
 
-async function mount(lockdown = false) {
-  let row: Record<string, unknown> = { model: "openai/test", permissionMode: "ask", estimatedCostUsd: 0.5 };
+async function mount(lockdown = false, permissionMode = "ask") {
+  let row: Record<string, unknown> = { model: "openai/test", permissionMode, estimatedCostUsd: 0.5 };
   const request = vi.fn(async (method: string, params?: Record<string, unknown>) => {
     if (method === "agents.list") return { defaultId: "research", agents: [{ id: "research", name: "Research" }] };
     if (method === "sessions.describe") return { session: { ...row } };
@@ -43,6 +43,18 @@ async function mount(lockdown = false) {
 }
 
 describe("P54 one composer symbol", () => {
+  it("shows the model and Full access without a danger badge before opening settings", async () => {
+    const { host } = await mount(false, "full");
+    const tune = host.querySelector<HTMLButtonElement>('[data-testid="tune-button"]')!;
+    expect(tune.textContent).toContain("Test Model");
+    expect(tune.textContent).toContain("Full access");
+    expect(tune.classList.contains("full")).toBe(false);
+    expect(tune.querySelectorAll("svg")).toHaveLength(1);
+    await act(async () => tune.click());
+    expect(tune.getAttribute("aria-expanded")).toBe("true");
+    expect(host.querySelector('[role="dialog"]')).not.toBeNull();
+  });
+
   it("shows one tune symbol and Model, Access, Thread, Status and Usage in its popover", async () => {
     const { host, request } = await mount();
     expect(host.querySelectorAll('[data-testid="tune-button"]')).toHaveLength(1);
@@ -82,6 +94,7 @@ describe("P54 one composer symbol", () => {
     const model = [...host.querySelectorAll<HTMLButtonElement>('[data-testid="model-option"]')].find((button) => button.textContent?.includes("GPT-6.1 Sol"))!;
     await act(async () => model.click());
     expect(tune.getAttribute("aria-label")).toContain("GPT-6.1 Sol");
+    expect(tune.textContent).toContain("GPT-6.1 Sol");
     expect(request).toHaveBeenCalledWith("sessions.patch", { key: "agent:research:main", model: "openai/gpt-6.1-sol", thinkingLevel: null });
     await act(async () => tune.click());
     await act(async () => tune.click());

@@ -93,9 +93,22 @@
 }
 @media (max-width: 760px) { .c-flags { display: none; } }
 @media (max-width: 480px) { .c-talk { display: none; } }
-.c-tune-button { position: relative; }
-.c-tune-button.full { color: var(--bad); }
-.c-tune-button svg + svg { position: absolute; right: 1px; bottom: 1px; }
+.c-tune-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  max-width: 100%;
+  padding: 0 10px;
+  border-radius: 17px;
+  background: var(--wash17);
+  color: var(--ink-2);
+  font-size: 12px;
+}
+.c-tune-button > svg, .c-tune-access { flex: none; }
+.c-tune-model { min-width: 0; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.c-tune-access { border-left: 1px solid var(--line); padding-left: 6px; white-space: nowrap; }
 .c-tune-attention { position: absolute; right: 0; top: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 
 /* The dock row (§4.3.7) */

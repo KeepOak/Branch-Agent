@@ -1,0 +1,2 @@
+window:src/composer/composer-no-model-chip.test.tsx
+window:src/composer/tune-redesign.test.tsx

@@ -512,6 +512,19 @@ export function Composer(props: Props) {
       />
       {props.above}
       {talking && engine ? <VoiceScreen engine={engine} name={trunkName} onClose={() => setTalking(false)} /> : null}
+      {engine ? (
+        <div className="c-dock-row">
+          <button ref={anchors.tune} type="button" className={`c-btn c-tune-button${props.lockdown ? " lockdown" : ""}`} data-testid="tune-button" aria-haspopup="dialog" aria-expanded={menu === "tune"}
+            aria-label={`Model, access and usage: ${chip} · ${props.lockdown ? "Lockdown" : modeName(mode ?? asSet) || "As set"}${cost !== undefined ? ` · $${cost.toFixed(2)} so far` : ""}`}
+            title={`${chipName} · ${props.lockdown ? "Lockdown" : modeName(mode ?? asSet) || "As set"}${accountEmail ? ` · ${accountEmail}` : ""}`}
+            onClick={() => setMenu(menu === "tune" ? null : "tune")}>
+            <Icon name={props.lockdown ? "lock" : "sliders"} />
+            <span className="c-tune-model">{chipName}</span>
+            <span className="c-tune-access">{props.lockdown ? "Lockdown" : modeName(mode ?? asSet) || "As set"}</span>
+            {str(row.activeModel) && str(row.activeModel) !== str(row.model) ? <i className="c-tune-attention" aria-hidden="true" /> : null}
+          </button>
+        </div>
+      ) : null}
       <form
         className={`composer${temporary ? " temp" : ""}`}
         onSubmit={(e) => {
@@ -560,16 +573,7 @@ export function Composer(props: Props) {
           {temporary ? <span className="c-flag">Temporary</span> : null}
           {vimOn ? <span className="c-flag" data-testid="vim-normal">Normal</span> : null}
         </span>
-        {engine ? (
-          <button ref={anchors.tune} type="button" className={`c-btn c-tune-button${props.lockdown ? " lockdown" : (mode ?? asSet) === "full" ? " full" : ""}`} data-testid="tune-button" aria-haspopup="dialog" aria-expanded={menu === "tune"}
-            aria-label={`Model, access and usage: ${chip} · ${props.lockdown ? "Lockdown" : modeName(mode ?? asSet) || "As set"}${cost !== undefined ? ` · $${cost.toFixed(2)} so far` : ""}`}
-            title={`${chipName} · ${props.lockdown ? "Lockdown" : modeName(mode ?? asSet) || "As set"}${accountEmail ? ` · ${accountEmail}` : ""}`}
-            onClick={() => setMenu(menu === "tune" ? null : "tune")}>
-            <Icon name={props.lockdown ? "lock" : "sliders"} />
-            {props.lockdown ? <span>Lockdown</span> : (mode ?? asSet) === "full" ? <Icon name="lock" size={10} /> : null}
-            {str(row.activeModel) && str(row.activeModel) !== str(row.model) ? <i className="c-tune-attention" aria-hidden="true" /> : null}
-          </button>
-        ) : null}
+
         {dict.on ? null : (
           <button type="button" className="c-btn" aria-label="Dictate into the box" title={voice.dictation ? "Dictate into the box" : VOICE_OFF} disabled={!voice.dictation} data-testid="dictate" onClick={() => void dict.start()}>
             <Icon name="mic" />
