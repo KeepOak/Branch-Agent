@@ -4,10 +4,11 @@ import type { IconName } from "../shell/icons";
 
 export type PlaceId = "overview" | "canopy" | "inbox" | "automations" | "library" | "people" | "customize" | "office";
 
-export type Route =
+export type ReturnRoute =
   | { kind: "chat"; key: string | null }
-  | { kind: "place"; place: PlaceId }
-  | { kind: "settings"; page: string };
+  | { kind: "place"; place: PlaceId };
+
+export type Route = ReturnRoute | { kind: "settings"; page: string; returnTo?: ReturnRoute };
 
 /** The seven places, in the sidebar's order (§4.1.1 Place rows). */
 export const PLACES: { id: PlaceId; name: string; icon: IconName }[] = [
@@ -39,7 +40,11 @@ export function parseRoute(raw: string | null): Route | null {
       return { kind: "place", place: r.place };
     }
     if (r.kind === "settings" && typeof r.page === "string") {
-      return { kind: "settings", page: r.page };
+      const target = r.returnTo as Record<string, unknown> | undefined;
+      // Only accept a leaf route: Settings must never return to itself.
+      const returnTo = target?.kind === "chat" || target?.kind === "place"
+        ? parseRoute(JSON.stringify(target)) : null;
+      return { kind: "settings", page: r.page, ...(returnTo && returnTo.kind !== "settings" ? { returnTo } : {}) };
     }
     return null;
   } catch {

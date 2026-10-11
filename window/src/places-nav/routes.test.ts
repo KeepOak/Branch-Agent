@@ -34,3 +34,13 @@ describe("routes", () => {
     }
   });
 });
+
+describe("Settings return route persistence", () => {
+  it.each([{ kind: "place", place: "overview" }, { kind: "chat", key: "agent:scout:topic" }])("round trips the entry route %j", (returnTo) => {
+    const route = { kind: "settings", page: "appearance", returnTo };
+    expect(parseRoute(JSON.stringify(route))).toEqual(route);
+  });
+  it.each([{ kind: "settings", page: "general" }, { kind: "place", place: "missing" }, null])("discards invalid return routes %j", (returnTo) => {
+    expect(parseRoute(JSON.stringify({ kind: "settings", page: "general", returnTo }))).toEqual({ kind: "settings", page: "general" });
+  });
+});

@@ -524,6 +524,12 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       }
     }
     const navigate = () => {
+      if (next.kind === "settings") {
+        const current = routeRef.current;
+        const returnTo = current.kind === "settings" ? current.returnTo
+          : current.kind === "chat" ? { ...current, key: current.key ?? session.getSnapshot().sessionKey } : current;
+        next = { ...next, returnTo: next.returnTo ?? returnTo };
+      }
       if (JSON.stringify(routeRef.current) !== JSON.stringify(next)) {
         const index = Number(history.state?.branchIndex) || 0;
         history.pushState({ branchRoute: next, branchIndex: index + 1 }, "");
@@ -1454,7 +1460,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       </>
     );
   } else {
-    main = <SettingsFrame page={route.page} backName={name} engine={session.engine} onPage={openSettings} onBack={() => go({ kind: "chat", key: openKey })} onAsk={(text) => void askDefault(text)} askName={defaultName} />;
+    main = <SettingsFrame page={route.page} backName={route.returnTo ? "where you were" : "Overview"} engine={session.engine} onPage={openSettings} onBack={() => go(route.returnTo ?? { kind: "place", place: "overview" })} onAsk={(text) => void askDefault(text)} askName={defaultName} />;
   }
   const talkEntry: TalkEntry | null =
     route.kind === "chat" ? null : { name: defaultName, keys: currentKeys(keyActions(defaultName), readCustomKeys()).talkBeside, open: talk.open, onToggle: () => setTalk({ open: !talk.open }) };

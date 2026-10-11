@@ -129,3 +129,49 @@ describe("preview topic row in the shell", () => {
     expect(host.querySelector('[aria-label="General"] .tpWhoT5')?.textContent).not.toBe("You:");
   });
 });
+
+describe("Settings return navigation", () => {
+  it.each(["overview", "library"])("returns to %s after visiting multiple Settings pages", async (place) => {
+    localStorage.setItem("branch.route", JSON.stringify({ kind: "place", place }));
+    const host = await show("agent:oak:main", [trip], []);
+    for (const page of ["general", "appearance"]) {
+      await act(async () => window.dispatchEvent(new CustomEvent("branch:navigate-settings", { detail: { page } })));
+    }
+    const back = host.querySelector<HTMLButtonElement>(".set-back")!;
+    await act(async () => back.click());
+    expect(JSON.parse(localStorage.getItem("branch.route")!)).toEqual({ kind: "place", place });
+    expect(host.querySelector(".settings")).toBeNull();
+  });
+
+  it("keeps the originating topic when Settings is restored after reload", async () => {
+    const returnTo = { kind: "chat", key: "agent:oak:trip" };
+    localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "general", returnTo }));
+    const host = await show("agent:oak:main", [trip], []);
+    const back = host.querySelector<HTMLButtonElement>(".set-back")!;
+    expect(back.textContent).toBe("Back to where you were");
+    await act(async () => back.click());
+    expect(JSON.parse(localStorage.getItem("branch.route")!)).toEqual(returnTo);
+  });
+});
+
+describe("Settings entry and history", () => {
+  it("captures the active topic and retains it through browser history", async () => {
+    localStorage.setItem("branch.route", JSON.stringify({ kind: "chat", key: null }));
+    const host = await show("agent:oak:trip", [trip], []);
+    await act(async () => window.dispatchEvent(new CustomEvent("branch:navigate-settings", { detail: { page: "general" } })));
+    const state = window.history.state;
+    expect(state.branchRoute.returnTo).toEqual({ kind: "chat", key: "agent:oak:trip" });
+    await act(async () => window.dispatchEvent(new PopStateEvent("popstate", { state })));
+    await act(async () => host.querySelector<HTMLButtonElement>(".set-back")!.click());
+    expect(JSON.parse(localStorage.getItem("branch.route")!)).toEqual({ kind: "chat", key: "agent:oak:trip" });
+  });
+
+  it("offers Overview when a saved Settings route has no entry page", async () => {
+    localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "general" }));
+    const host = await show("agent:oak:main", [trip], []);
+    const back = host.querySelector<HTMLButtonElement>(".set-back")!;
+    expect(back.textContent).toBe("Back to Overview");
+    await act(async () => back.click());
+    expect(JSON.parse(localStorage.getItem("branch.route")!)).toEqual({ kind: "place", place: "overview" });
+  });
+});
