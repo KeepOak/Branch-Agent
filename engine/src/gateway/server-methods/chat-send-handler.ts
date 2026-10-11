@@ -1,4 +1,5 @@
 import { performance } from "node:perf_hooks";
+import { traceRunStep } from "../../infra/run-trace.js";
 import {
   createAgentRunRestartAbortError,
   isAgentRunRestartAbortReason,
@@ -567,6 +568,7 @@ async function handleChatSendWithOptions(
       clientRunId,
       ...(chatSendTiming ? { chatSendTiming } : {}),
     });
+    traceRunStep(clientRunId, "accept", { agent: selectedAgent.agentId });
     // Only the recorder can attest transcript placement; custody and a started ACK cannot.
     const receipt = userTurnRecorder.getAdmissionReceipt?.();
     const ackPayload = {

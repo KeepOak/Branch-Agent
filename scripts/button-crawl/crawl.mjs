@@ -14,11 +14,13 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { skipReason } from './denylist.mjs';
 import { chooseRegion, chooseScreenClicks } from './targets.mjs';
+import { isPlusMoreRow } from './plus-more.mjs';
 import { classifyClick, elementKey, isNoise } from './observe.mjs';
 import { inconsistentOpens, internalNameProblems, rowActionProblems } from './list-checks.mjs';
 import { compareBaseline, formatGate, normalizeBaseline } from './baseline.mjs';
 import { MAP_PATH, isInformationalStatus, isThreadLayoutMenu, previewDestinationMatches, readPreviewMap, threadLayoutDiff } from './preview-map.mjs';
 import { markdownReport } from './report.mjs';
+import { REQUEST_WAIT_CAP_MS, waitForPermissionRequests as waitForRequests } from './permission-wait.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const windowDir = resolve(root, 'window');
@@ -89,6 +91,8 @@ function stopVite(child) {
 }
 
 async function show(page, screen) {
+  // A control can reload the harness page (the conversation menu's Reload). Wait until the harness is back.
+  await page.waitForFunction(() => Boolean(window.__crawl), null, { timeout: 60000 });
   await page.evaluate((route) => window.__crawl.mount(route), screen.route);
   await page.locator('[data-connection="ready"]').waitFor({ timeout: 20000 });
   for (const step of screen.path || []) {
@@ -100,6 +104,25 @@ async function show(page, screen) {
   return true;
 }
 
+// A click can start a permission-style request (the microphone, a notification prompt). Its
+// result arrives after the click, so the click is classified once no such request is in flight.
+// A request still pending after the cap is classified as is, and the crawl says so.
+
+
+async function waitForPermissionRequests(page) {
+  return waitForRequests({
+    readPending: () => page.evaluate(() => window.__crawl.pendingPermissionRequests()),
+    frames: (count) => page.evaluate((n) => new Promise((resolve) => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(0); } };
+      setTimeout(finish, 100 * n);
+      const step = (left) => (left === 0 ? finish() : requestAnimationFrame(() => step(left - 1)));
+      step(n);
+    }), count),
+    wait: (ms) => page.waitForTimeout(ms),
+  });
+}
+
 async function clickOne(page, errors, target) {
   const marked = await page.evaluate((el) => window.__crawl.mark(el.name, el.occurrence, el.region), target);
   if (!marked) return null;
@@ -108,8 +131,14 @@ async function clickOne(page, errors, target) {
   const started = Date.now();
   let after = before;
   let leftThePage = false;
+  let requestWait = { timedOut: false, pending: 0 };
+  let requestWaitMs = 0;
   try {
     await page.evaluate(() => window.__crawl.clickTarget());
+    const waitStart = Date.now();
+    requestWait = await waitForPermissionRequests(page);
+    requestWaitMs = Date.now() - waitStart;
+    if (requestWait.timedOut) process.stderr.write(`button-crawl: ${target.name} still had ${requestWait.pending} permission request(s) pending after ${REQUEST_WAIT_CAP_MS / 1000}s; classified as is\n`);
     for (;;) {
       after = await page.evaluate(() => window.__crawl.surface());
       if (signature(after) !== signature(before) || Date.now() - started > 450) break;
@@ -120,11 +149,12 @@ async function clickOne(page, errors, target) {
     leftThePage = true;
     after = { ...before, route: `${before.route || ''}#left` };
   }
-  const elapsedMs = Date.now() - started;
+  // The wait for a permission prompt is not UI latency, so it is left out of the elapsed time.
+  const elapsedMs = Date.now() - started - requestWaitMs;
   if (leftThePage && harnessUrl) await page.goto(harnessUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => undefined);
   const consoleErrors = leftThePage ? [] : errors.slice(errorFrom).filter((line) => !isNoise(line));
   const failedCalls = (after.requests || []).slice(before.requestCount || 0).filter((call) => call && call.ok === false);
-  return { before, after, elapsedMs, consoleErrors, failedCalls, ...classifyClick({ before, after, elapsedMs, consoleErrors, failedCalls }) };
+  return { before, after, elapsedMs, consoleErrors, failedCalls, requestTimedOut: requestWait.timedOut, ...classifyClick({ before, after, elapsedMs, consoleErrors, failedCalls }) };
 }
 
 async function main() {
@@ -274,6 +304,14 @@ async function main() {
         }
         if (!threadMenu && isThreadLayoutMenu(result.after.menu, el.name)) {
           threadMenu = { items: result.after.menuItems || [], ...threadLayoutDiff(result.after.menuItems || []) };
+        }
+        if (isPlusMoreRow(el, screen)) {
+          queue.push({
+            id: `${screen.id} > ${el.name}`,
+            route: screen.route,
+            depth: screen.depth + 1,
+            path: [...(screen.path || []), { name: el.name, occurrence: el.occurrence, region: el.region }],
+          });
         }
         const menuOpened = Boolean(result.after.menu) && result.after.menu !== result.before.menu;
         const dialogOpened = Boolean(result.after.dialog) && result.after.dialog !== result.before.dialog;

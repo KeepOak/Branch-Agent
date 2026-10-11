@@ -37,6 +37,24 @@ describe("layout", () => {
     expect(titleOf("## A [link](x) here:")).toBe("A link here");
   });
 
+  it("keeps one Steps fold for a run whose tool-call rounds have Thinking rows between them", () => {
+    const turn: Block[] = [
+      { kind: "user", key: "u", text: "fix it" },
+      { kind: "thinking", key: "th1", text: "plan", live: false },
+      { kind: "step", key: "s1", outputKey: "r:s1", tool: "exec", title: "", detail: "", status: "ok" },
+      { kind: "step", key: "s2", outputKey: "r:s2", tool: "exec", title: "", detail: "", status: "ok" },
+      { kind: "thinking", key: "th2", text: "more", live: false },
+      { kind: "step", key: "s3", outputKey: "r:s3", tool: "exec", title: "", detail: "", status: "ok" },
+      { kind: "step", key: "s4", outputKey: "r:s4", tool: "exec", title: "", detail: "", status: "ok" },
+      { kind: "text", key: "t", text: "I've fixed all three.", streaming: false },
+      { kind: "done", key: "d", runId: "r", durationMs: 1729000 },
+    ];
+    const items = layout(turn);
+    const shape = items.map((i) => (i.type === "steps" ? `steps:${i.steps.map((s) => s.key).join(",")}` : i.block.key));
+    expect(shape).toEqual(["u", "th1", "steps:s1,s2,s3,s4", "th2", "t", "d"]);
+    expect(items.filter((i) => i.type === "steps")).toHaveLength(1);
+  });
+
   it("finds a block's turn", () => {
     expect(turnOf(blocks, 3).map((b) => b.key)).toEqual(["s1", "s2", "t1", "t2"]);
     expect(turnOf(blocks, 0).map((b) => b.key)).toEqual(["u1", "s1", "s2", "t1", "t2"]);

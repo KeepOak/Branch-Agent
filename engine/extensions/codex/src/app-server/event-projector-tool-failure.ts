@@ -8,7 +8,7 @@ import {
   readStringField as readString,
 } from "branch/plugin-sdk/string-coerce-runtime";
 import { isNonSuccessItemStatus, type itemStatus } from "./event-projector-items.js";
-import { itemToolError } from "./event-projector-tool-items.js";
+import { itemOutputText, itemToolError } from "./event-projector-tool-items.js";
 import type { ToolTranscriptResultInput } from "./event-projector-tool-progress.js";
 import { isJsonObject, type CodexThreadItem } from "./protocol.js";
 
@@ -32,6 +32,11 @@ export function nativeCodexToolFailureText(
   status: ReturnType<typeof itemStatus>,
   outputTextByItem?: ReadonlyMap<string, string>,
 ): string | undefined {
+  // Keep #845's short diagnostic summary separate from the command transcript's
+  // execution phase and exit-code header.
+  if (item.type === "commandExecution" && status === "failed") {
+    return itemOutputText(item, outputTextByItem) ?? itemToolError(item, status, outputTextByItem);
+  }
   return (
     (isNonSuccessItemStatus(status) && isJsonObject(item.error)
       ? normalizeOptionalString(readString(item.error, "message"))

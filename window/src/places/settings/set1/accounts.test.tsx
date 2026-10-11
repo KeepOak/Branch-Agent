@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, StrictMode, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { KitProvider, type SaveReport } from "../kit";
 import { AccountsPage, accountName, accountsOf, movedUp, type Provider } from "./accounts";
 import { servicesOf } from "./add-account";
+import { StatusPopover, type StatusContext } from "../../../shell/StatusLayer";
+import { readLimits } from "../../../shell/status-data";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const PROVIDERS: Provider[] = [
@@ -22,7 +24,7 @@ const CAPS = [
 let root: Root;
 let host: HTMLDivElement;
 beforeEach(() => { host = document.body.appendChild(document.createElement("div")); root = createRoot(host); });
-afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; });
+afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; sessionStorage.clear(); });
 
 function engineOf(extra: Record<string, unknown> = {}) {
   const request = vi.fn(async (method: string) => {
@@ -40,6 +42,33 @@ async function render(engine: WindowEngine, level: 0 | 1 | 2 = 0) {
 }
 
 describe("Settings › Accounts", () => {
+  it.each([false, true])("usage sign-in opens Claude and consumes the intent when Accounts is already mounted: %s", async (alreadyOpen) => {
+    const { engine } = engineOf({
+      "models.authStatus": { providers: PROVIDERS, providerCapabilities: [...CAPS, { provider: "anthropic", loginOptions: [{ id: "anthropic/claude-browser", kind: "oauth", label: "Sign in with Claude" }] }] },
+    });
+    const limits = readLimits({ updatedAt: Date.now(), providers: [{ provider: "anthropic", displayName: "Claude", signInNeeded: true, windows: [] }] });
+    function Navigation() {
+      const [page, setPage] = useState(alreadyOpen ? "accounts" : "other");
+      const [popover, setPopover] = useState(true);
+      const ctx = { session: engine, limits, openSettings: setPage } as unknown as StatusContext;
+      return <KitProvider level={0} report={report} scope={null}>
+        {page === "accounts" ? <AccountsPage key="accounts" page="accounts" title="Accounts" level="regular" engine={engine} /> : null}
+        {popover ? <StatusPopover item="usage" above={{ left: 0, right: 300, top: 500, align: "left" }} onClose={() => setPopover(false)} ctx={ctx} /> : null}
+      </KitProvider>;
+    }
+    await act(async () => root.render(<StrictMode><Navigation /></StrictMode>));
+    expect(host.querySelector('[data-testid="add-account"]')).toBeNull();
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="usage-signin"]')!.click());
+    expect(host.querySelector('[data-testid="usage-signin"]')).toBeNull();
+    expect(host.querySelector('[data-testid="add-account"]')?.textContent).toContain("Sign in with Claude");
+    expect(sessionStorage.getItem("branch.openAddAccount")).toBeNull();
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="add-account"] button[aria-label="Close"]')!.click());
+    expect(host.querySelector('[data-testid="add-account"]')).toBeNull();
+    await act(async () => root.render(null));
+    await render(engine);
+    expect(host.querySelector('[data-testid="add-account"]')).toBeNull();
+  });
+
   it("opens Add directly when the no-model action routes here", async () => {
     sessionStorage.setItem("branch.openAddAccount", "1");
     const { engine } = engineOf({});
@@ -53,7 +82,8 @@ describe("Settings › Accounts", () => {
       "branch.setup.detect": { manualProviders: [{ id: "setup-token", brandId: "anthropic", label: "Anthropic setup-token" }] },
     });
     await render(engine);
-    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add a Claude account")!.click());
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add an account")!.click());
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg .prov")].find((b) => b.textContent?.includes("Claude"))!.click());
     expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("Sign in with Claude");
     const fallback = document.querySelector<HTMLDetailsElement>(".dlg details")!;
     expect(fallback.open).toBe(false);
@@ -156,7 +186,8 @@ describe("Settings › Accounts", () => {
   ])("Claude sign-in sends the right models.authLogin params for name '$name'", async ({ name, profileLabel }) => {
     const { engine, request } = engineOf({ "branch.setup.detect": { manualProviders: [{ id: "setup-token", brandId: "anthropic", label: "Anthropic setup-token" }] } });
     await render(engine);
-    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add a Claude account")!.click());
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add an account")!.click());
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg .prov")].find((b) => b.textContent?.includes("Claude"))!.click());
     const input = document.querySelector<HTMLInputElement>('.dlg input[aria-label="Call it"]')!;
     expect(input.placeholder).toBe("Saved by email if blank");
     if (name) await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, name); input.dispatchEvent(new Event("input", { bubbles: true })); });

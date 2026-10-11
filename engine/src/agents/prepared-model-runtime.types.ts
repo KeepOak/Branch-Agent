@@ -74,6 +74,8 @@ export type PreparedModelRuntimePluginGeneration = Readonly<{
 
 export type PreparedModelRuntimeSnapshot = Omit<PublishedModelCatalogOwnerCandidate, "authStore"> &
   Readonly<{
+    /** Opaque publication identity retained by every run-time projection and lease. */
+    snapshotId: string;
     inheritedAuthDir?: string;
     /** Run-prepared repository root; null means discovery completed without a match. */
     repoRoot?: string | null;
