@@ -53,10 +53,7 @@ import {
   resolveProviderSimpleCompletionHeaders,
   resolveProviderTransportTurnState,
 } from "./provider-transport-turn-state.js";
-import {
-  type RequestParams,
-  sendWithRequestParameterRepair,
-} from "./request-parameter-repair.js";
+import { type RequestParams, sendWithRequestParameterRepair } from "./request-parameter-repair.js";
 import { resolveOpencodeSessionHeaders } from "./session-affinity.js";
 import {
   createWritableTransportEventStream,

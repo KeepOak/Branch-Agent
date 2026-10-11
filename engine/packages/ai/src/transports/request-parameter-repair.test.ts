@@ -84,7 +84,11 @@ describe("TestCallLlmUnsupportedTemperatureRetry", () => {
   ])("test_retries_once_without_temperature: %s", async (errorMessage) => {
     const send = sendSequence(providerError(400, errorMessage), dummyResponse());
     const result = await sendWithRequestParameterRepair(
-      { model: "relay-model-x", messages: [{ role: "user", content: "remember this" }], temperature: 0.3 },
+      {
+        model: "relay-model-x",
+        messages: [{ role: "user", content: "remember this" }],
+        temperature: 0.3,
+      },
       send,
     );
     expect(result).toEqual({ ok: true });
@@ -110,7 +114,9 @@ describe("TestCallLlmUnsupportedTemperatureRetry", () => {
 
   it("test_no_retry_when_temperature_not_in_kwargs", async () => {
     const send = sendSequence(providerError(400, "HTTP 400: Unsupported parameter: temperature"));
-    await expect(sendWithRequestParameterRepair({ model: "relay-model-x" }, send)).rejects.toThrow();
+    await expect(
+      sendWithRequestParameterRepair({ model: "relay-model-x" }, send),
+    ).rejects.toThrow();
     expect(send).toHaveBeenCalledTimes(1);
   });
 

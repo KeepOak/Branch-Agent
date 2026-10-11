@@ -30,7 +30,7 @@ const REASONING_FIELD_TOKEN =
 const REASONING_PARAM_REJECTION =
   /['"]param['"]\s*:\s*['"](?:reasoning(?:[._]effort)?|thinking(?:_config|_budget)?|enable_thinking)['"]|invalid_reasoning_effort/;
 const REASONING_WIRE_KEYS = ["reasoning_effort", "reasoning", "thinking", "enable_thinking"];
-const TEMPLATE_REASONING_KEYS = ["enable_thinking", "thinking"];
+const TEMPLATE_REASONING_KEYS = new Set(["enable_thinking", "thinking"]);
 
 export type RequestParams = Record<string, unknown>;
 
@@ -139,7 +139,7 @@ function withoutTemplateReasoning(next: RequestParams): boolean {
     return false;
   }
   const remaining = Object.fromEntries(
-    Object.entries(template).filter(([key]) => !TEMPLATE_REASONING_KEYS.includes(key)),
+    Object.entries(template).filter(([key]) => !TEMPLATE_REASONING_KEYS.has(key)),
   );
   if (Object.keys(remaining).length === Object.keys(template).length) {
     return false;
