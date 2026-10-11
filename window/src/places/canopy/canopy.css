@@ -216,3 +216,9 @@
 .cn-run-h small { font-size: 12px; color: var(--ink-3); }
 .cn-initial { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--fill-2); color: var(--ink-2); font: 600 11px var(--sans); flex: none; }
 .cn-place .cn-office-btn { display: flex; margin: 0; }
+
+/* Queue jobs share the board without borrowing editable card actions. */
+.cn-queue .cn-rows { padding: 0; list-style: none; }
+.cn-queue .cn-prow { flex-wrap: wrap; }
+.cn-queue .cn-grow { flex-basis: 16rem; min-width: 0; overflow-wrap: anywhere; }
+.cn-queue details p { white-space: pre-wrap; }

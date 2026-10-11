@@ -1,0 +1,2 @@
+window:src/places/automations/procedures-board.test.tsx
+window:src/places/automations/work-board.test.tsx

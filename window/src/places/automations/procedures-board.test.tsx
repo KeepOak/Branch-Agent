@@ -6,7 +6,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { visibleDevNotes } from "../../shell/shown-why.testing";
 import type { Level } from "../../places-nav/level";
 import { ProceduresTab, PROCEDURE_NEEDS } from "./Procedures";
-import { BoardTab, ORCHARD_COLUMNS, ORCHARD_NEEDS } from "./Board";
+import { BoardTab } from "./Board";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | null = null, host: HTMLDivElement;
 afterEach(async () => { if (root) await act(async () => root!.unmount()); root = null; document.body.innerHTML = ""; });
@@ -37,13 +37,12 @@ describe("Procedures and Board", () => {
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
     expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h", raw: JSON.stringify({ commands: { restart: false } }) });
   });
-  it("Board draws Orchard's six columns empty, greyed with the reason, and opens Canopy", async () => {
-    const openPlace = vi.fn();
-    await render(<BoardTab openPlace={openPlace} />);
-    expect([...host.querySelectorAll(".au-col h3")].map(h => h.firstChild?.textContent)).toEqual(ORCHARD_COLUMNS);
-    expect(byText("Bring in issues").disabled).toBe(true); expect(byText("Bring in issues").title).toBe("");
-    expect(host.textContent).not.toContain(ORCHARD_NEEDS); expect(visibleDevNotes(host)).toEqual([]);
-    await act(async () => { byText("Open Canopy").click(); });
-    expect(openPlace).toHaveBeenCalledWith("canopy");
+  it("Board reads the shared Canopy cards and Trunk queue", async () => {
+    const { engine: e, request } = engine();
+    await render(<BoardTab facts={{ running: 0, waiting: 0 }} engine={e} level="regular" openPlace={vi.fn()} openConversation={vi.fn()} />);
+    expect(request).toHaveBeenCalledWith("canopy.cards.list", {});
+    expect(request).toHaveBeenCalledWith("trunks.queue.list", {});
+    expect(host.querySelectorAll(".au-col")).toHaveLength(0);
+    expect(host.textContent).toContain("No queued jobs.");
   });
 });

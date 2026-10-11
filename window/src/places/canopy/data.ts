@@ -25,6 +25,7 @@ export type CanopyData = {
   sessions: Row[]; pending: Row[]; jobs: Row[]; runs: Row[]; cards: Row[]; boards: Row[];
   trunks: Trunk[]; defaultTrunk: string; mainKey: string; nodes: Row[]; computer: Row | null;
   cardsError: string; errors: string[];
+  queue?: Row[]; queueError?: string;
   /** The signed-in viewer's profile id (users.self); empty when the connection has no signed-in person. */
   viewer: string;
 };
@@ -37,17 +38,18 @@ export async function loadCanopy(engine: WindowEngine): Promise<CanopyData> {
   const results = await Promise.allSettled([
     sessions(engine), approvals(engine), paged(engine, "cron.list", "jobs", {}),
     paged(engine, "cron.runs", "entries", { scope: "all", sortDir: "desc" }), engine.request("canopy.cards.list", {}),
-    engine.request("agents.list", {}), engine.request("node.list", {}), engine.request("computer.status", {}), engine.request("users.self", {}),
+    engine.request("agents.list", {}), engine.request("node.list", {}), engine.request("computer.status", {}), engine.request("users.self", {}), engine.request("trunks.queue.list", {}),
   ]);
   const value = (i: number) => { const r = results[i]; return r.status === "fulfilled" ? r.value : null; };
   const failed = (i: number) => { const r = results[i]; return r.status === "rejected" ? errorText(r.reason) : ""; };
-  const errors = results.flatMap((r, i) => r.status === "rejected" && i !== 4 && i !== 8 ? [`${SOURCES[i]}: ${errorText(r.reason)}`] : []);
+  const errors = results.flatMap((r, i) => r.status === "rejected" && i !== 4 && i !== 8 && i !== 9 ? [`${SOURCES[i]}: ${errorText(r.reason)}`] : []);
   const pending = value(1) as Awaited<ReturnType<typeof approvals>> | null;
   const agents = rec(value(5));
   const trunks = rows(agents.agents).map(a => ({ id: str(a.id), name: str(rec(a.identity).name) || str(a.name) || str(a.id) }));
   return {
     sessions: rows(value(0)), pending: pending?.items ?? [], jobs: rows(value(2)),
     runs: rows(value(3)).filter(r => Number(r.ts) >= midnight.getTime()),
+    queue: rows(rec(value(9)).items), queueError: failed(9),
     cards: rows(rec(value(4)).cards), boards: rows(rec(value(4)).boards), cardsError: failed(4),
     trunks, defaultTrunk: str(agents.defaultId), mainKey: str(agents.mainKey) || "main",
     nodes: rows(rec(value(6)).nodes), computer: value(7) === null ? null : rec(value(7)), viewer: str(rec(rec(value(8)).profile).id),

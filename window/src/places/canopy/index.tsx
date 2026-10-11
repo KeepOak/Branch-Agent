@@ -6,6 +6,7 @@ import { canApprove, canWrite, usePlaceData } from "../automations/runtime";
 import { computers, loadCanopy } from "./data";
 import { buildRuns, filterRuns, NO_FILTERS, type Filters } from "./runs";
 import { NowTab } from "./NowTab";
+import { QueueWork } from "./QueueWork";
 import { CardsTab } from "./CardsTab";
 import { CardsOff, isCardsOff } from "./CardsOff";
 import { CardSheet } from "./CardSheet";
@@ -30,9 +31,9 @@ function moveTab(event: KeyboardEvent<HTMLButtonElement>, index: number, select:
   event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
 }
 
-export function CanopyPlace({ engine, openConversation, openPlace, level }: PlaceProps) {
+export function CanopyPlace({ engine, openConversation, openPlace, level, boardOnly = false }: PlaceProps & { boardOnly?: boolean }) {
   const state = usePlaceData(engine, loadCanopy);
-  const [tab, setTab] = useState<Tab>("now"), [f, setF] = useState<Filters>(NO_FILTERS);
+  const [tab, setTab] = useState<Tab>(boardOnly ? "cards" : "now"), [f, setF] = useState<Filters>(NO_FILTERS);
   const [sheet, setSheet] = useState(""), [editing, setEditing] = useState<Row | null>(null);
   // The frame asks for a tab after routing here (window "branch:place-tab" {place, tab}).
   useEffect(() => {
@@ -40,6 +41,10 @@ export function CanopyPlace({ engine, openConversation, openPlace, level }: Plac
     addEventListener("branch:place-tab", onTab);
     return () => removeEventListener("branch:place-tab", onTab);
   }, []);
+  useEffect(() => {
+    const timer = setInterval(() => { void state.refresh(); }, 15000);
+    return () => clearInterval(timer);
+  }, [state.refresh]);
   const act = useCallback(async (op: () => Promise<unknown>, message: string) => {
     const ok = await state.act(op, message);
     if (!ok) void state.refresh();
@@ -53,20 +58,23 @@ export function CanopyPlace({ engine, openConversation, openPlace, level }: Plac
     openCard: id => { setTab("cards"); setSheet(id); },
   } : null;
   const n = all.filter(r => r.col === "working" || r.col === "waiting").length;
-  return (
-    <PlaceScroll>
-      <div className="place wide-tools cn-place">
+  const content = (<>
+      <div className={boardOnly ? "cn-place" : "place wide-tools cn-place"}>
+        {!boardOnly ? <>
         <h1>Canopy</h1>
         <button className="btn sm cn-office-btn" type="button" onClick={() => openPlace("office")}>Office view</button>
         <p className="lede">Everything your Trunks and their helpers are doing, on every computer, seen from above.</p>
         <div className="cn-tabs" role="tablist" aria-label="Canopy">{TABS.map(([id, name], index) => (
           <button key={id} type="button" role="tab" aria-selected={tab === id} tabIndex={tab === id ? 0 : -1} onKeyDown={event => moveTab(event, index, setTab)} onClick={() => setTab(id)}>{name}{id === "now" && n ? <span className="cn-tabn">{n}</span> : null}</button>))}</div>
+        </> : <p className="cn-hint">The same cards and Trunk queue shown in Canopy. Changes here appear there too.</p>}
         {state.loading && !d ? <p role="status" className="cn-hint">Reading live work…</p> : null}
         {state.error ? <p role="alert" className="cn-err">{state.error}</p> : null}
         {d?.errors.map(e => <p role="alert" className="cn-err" key={e}>{e}</p>)}
         {state.notice ? <p role="status" className="cn-notice">{state.notice}</p> : null}
         {ctx ? <>
-          <Strip ctx={ctx} runs={all} f={f} setF={setF} /><FilterRow ctx={ctx} f={f} setF={setF} />
+          {tab === "cards" ? <QueueWork ctx={ctx} refresh={() => void state.refresh()} /> : null}
+          {!boardOnly ? <><Strip ctx={ctx} runs={all} f={f} setF={setF} /><FilterRow ctx={ctx} f={f} setF={setF} /></> : null}
+          {tab === "cards" ? <h2>Cards</h2> : null}
           {tab === "now" ? <NowTab ctx={ctx} all={all} list={filterRuns(all, f)} />
             : d && isCardsOff(d.cardsError) ? <CardsOff ctx={ctx} refresh={() => void state.refresh()} />
             : d?.cardsError ? <p role="alert" className="cn-err">Cards: {d.cardsError}</p>
@@ -76,6 +84,6 @@ export function CanopyPlace({ engine, openConversation, openPlace, level }: Plac
             save={x => act(() => engine.request("canopy.cards.update", { id: editing.id, expectedUpdatedAt: editing.updatedAt, patch: cardPatch(x, editing) }), "Saved.")} /> : null}
         </> : null}
       </div>
-    </PlaceScroll>
-  );
+    </>);
+  return boardOnly ? content : <PlaceScroll>{content}</PlaceScroll>;
 }

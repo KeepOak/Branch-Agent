@@ -42,7 +42,7 @@ export function tabFromEvent(detail: unknown): Tab | null {
   return TABS.find(([id, name]) => id === want || name.toLowerCase() === want)?.[0] ?? null;
 }
 
-export function AutomationsPlace({ engine, openConversation, openPlace, level }: PlaceProps) {
+export function AutomationsPlace({ engine, openConversation, openPlace, level, facts }: PlaceProps) {
   const [tab, setTab] = useState<Tab>("scheduled");
   const moveTab = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     if (event.ctrlKey || event.altKey || event.metaKey) return;
@@ -65,7 +65,7 @@ export function AutomationsPlace({ engine, openConversation, openPlace, level }:
       {tab === "procedures" && <ProceduresTab engine={engine} level={level} />}
       {tab === "triggers" && <TriggersTab engine={engine} level={level} openConversation={openConversation} />}
       {tab === "checkins" && <Checkins engine={engine} level={level} />}
-      {tab === "board" && <BoardTab openPlace={openPlace} />}
+      {tab === "board" && <BoardTab facts={facts} engine={engine} level={level} openConversation={openConversation} openPlace={openPlace} />}
     </div>
   </PlaceFrame>;
 }
