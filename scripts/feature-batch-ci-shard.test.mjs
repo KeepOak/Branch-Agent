@@ -69,6 +69,16 @@ test('the workflow takes its matrix from the planner, and every planned shard fi
   }
 });
 
+test('pull requests start every planned shard in one wave; main pushes keep max-parallel 6', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/feature-batch-checks.yml', import.meta.url), 'utf8');
+  const cap = yaml.match(/max-parallel: \$\{\{ github\.event_name == 'pull_request' && (\d+) \|\| (\d+) \}\}/);
+  assert.ok(cap, 'feature-batch max-parallel must be set per event');
+  const [prCap, pushCap] = [Number(cap[1]), Number(cap[2])];
+  const pr = featureBatchMatrix({ event: 'pull_request' }).include;
+  assert.ok(prCap >= pr.length, `PR max-parallel ${prCap} is below the ${pr.length} planned PR jobs, so they would run in two waves`);
+  assert.equal(pushCap, 6);
+});
+
 test('macOS and Windows main-push shards keep ten percent budget headroom', () => {
   const counts = resolvedShardCounts();
   for (const os of ['macos', 'windows']) {
