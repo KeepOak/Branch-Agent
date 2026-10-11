@@ -85,7 +85,7 @@ export function ThemesDialog(p: DialogProps) {
     <div className="gal-foot ap-k">
       <label className="chk-k"><input type="checkbox" checked={p.contrast} onChange={(e) => p.onContrast(e.target.checked)} /> More contrast</label>
       <span className="grow" />
-      {level >= 1 ? <Btn sm disabled title="The engine can’t fetch a theme from a link yet.">Import from a link</Btn> : null}
+      {level >= 1 ? <Btn sm disabled title="Importing from a link isn’t available yet. Paste a theme code instead.">Import from a link</Btn> : null}
       <Btn sm onClick={() => setSub({ kind: "paste" })}>Paste a theme code</Btn>
       <Btn pri sm onClick={p.onMake}>{PALETTE_ICON}Make your own</Btn>
       <p className="hint">{`The ${all.length} themes come with Branch, its plugins and you, each in Daylight and Moonlight. Picking one keeps your light or dark choice. Picking a theme also puts the accent and fonts back to the theme’s own.`}</p>
@@ -161,8 +161,10 @@ function PasteDialog(p: DialogProps & { back: () => void }) {
   const [why, setWhy] = useState("");
   const go = async () => {
     const t = readThemeCode(txt);
-    if (!t) { setWhy("That isn’t a Branch theme code. It starts with {\"branchTheme\":1."); return; }
+    if (!t) { setWhy("Paste a complete Branch theme code. You can copy one from a theme’s Code button."); return; }
+    setWhy("");
     if (await p.onImport(t.name, t.pair)) p.back();
+    else setWhy("Could not add the theme. Check that you’re signed in to Branch, then try again.");
   };
   return (
     <Dialog title="Paste a theme code" onClose={p.back} footer={<><Btn ghost onClick={p.back}>Cancel</Btn><Btn pri onClick={() => void go()}>Add theme</Btn></>}>

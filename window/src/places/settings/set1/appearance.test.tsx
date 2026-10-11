@@ -26,7 +26,7 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; });
 
-function engineOf(opts: { profile?: boolean; prefs?: Record<string, unknown>; current?: string; conflicts?: number; themes?: typeof THEMES; themesResponse?: Promise<unknown> } = {}) {
+function engineOf(opts: { profile?: boolean; prefs?: Record<string, unknown>; current?: string; conflicts?: number; themes?: typeof THEMES; themesResponse?: Promise<unknown>; importError?: Error } = {}) {
   const prefs: Record<string, unknown> = { ...opts.prefs };
   let conflicts = opts.conflicts ?? 0;
   const request = vi.fn(async (method: string, params?: Record<string, unknown>) => {
@@ -35,6 +35,7 @@ function engineOf(opts: { profile?: boolean; prefs?: Record<string, unknown>; cu
     if (method === "themes.list") return opts.themesResponse ?? { current: { id: opts.current ?? "grove", mode: "system", scope: "profile", overrides: {} }, theme: THEMES[0], themes: opts.themes ?? THEMES };
     if (method === "agents.list") return { defaultId: "main", agents: [{ id: "main", name: "Birch" }] };
     if (method === "config.get") return { hash: "h1", valid: true, config: {} };
+    if (method === "themes.import" && opts.importError) throw opts.importError;
     if (method === "models.list") return { models: [] };
     return { status: "ok" };
   });
@@ -219,6 +220,32 @@ describe("Settings › Appearance", () => {
     await act(async () => button("Daylight", document).click());
     expect(BUILTIN.dracula.light.bg).toBe("#f1eff6");
     expect(BUILTIN.dracula.dark.bg).toBe("#282a36");
+  });
+
+  it.each([false, true])("pastes a theme with a plain failure and retained code when refused (%s)", async (fail) => {
+    const detail = new Error("themes.import: INVALID_REQUEST /private/themes");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { engine, request } = engineOf({ ...(fail ? { importError: detail } : {}) });
+    try {
+      await render(engine);
+      await act(async () => button("Browse all 3 themes").click());
+      await act(async () => button("Paste a theme code", document).click());
+      const textarea = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Theme code"]')!;
+      const code = themeCode("Test theme", SLATE);
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, code);
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => button("Add theme", document).click());
+      expect(request).toHaveBeenCalledWith("themes.import", expect.objectContaining({ definition: expect.objectContaining({ name: "Test theme" }) }));
+      if (fail) {
+        expect(document.querySelector('[role="alert"]')?.textContent).toContain("Could not add the theme");
+        expect(document.body.textContent).not.toMatch(/themes.import|INVALID_REQUEST|private/);
+        expect(textarea.value).toBe(code);
+        expect(report.failed).toHaveBeenLastCalledWith("Could not save the theme change. Try again.");
+        expect(warn).toHaveBeenCalledWith(expect.any(String), detail);
+      } else expect(document.querySelector('textarea[aria-label="Theme code"]')).toBeNull();
+    } finally { warn.mockRestore(); }
   });
 
   it("Make your own imports the colours as the person's theme", async () => {
