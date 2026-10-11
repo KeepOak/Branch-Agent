@@ -1,3 +1,4 @@
+import { useOverlayFocus } from "../overlays/useOverlayFocus";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { MenuAnchor } from "./Menu";
 
@@ -9,9 +10,9 @@ type Props = { at: MenuAnchor; onClose: () => void; label: string; children: Rea
 
 export function Popover({ at, onClose, label, children, testid, width, above, className }: Props) {
   const ref = useRef<HTMLDivElement>(null);
+  const trigger = useOverlayFocus(ref, onClose);
   const [pos, setPos] = useState(at);
-  // The parent passes a new onClose on every render. Read it through a ref so the focus effect below runs once,
-  // not on each re-render, which would scroll a long list back to its first control.
+  // Keep the outside-click listener stable while reading the latest close callback.
   const closeRef = useRef(onClose);
   useLayoutEffect(() => {
     closeRef.current = onClose;
@@ -30,10 +31,6 @@ export function Popover({ at, onClose, label, children, testid, width, above, cl
     }
   }, [at, above]);
   useEffect(() => {
-    const back = document.activeElement as HTMLElement | null;
-    const trigger = back && back !== document.body ? back : null;
-    // preventScroll: opening must show the top of the popover, not scroll the first control into view.
-    ref.current?.querySelector<HTMLElement>("button, input, select")?.focus({ preventScroll: true });
     const away = (e: PointerEvent) => {
       // A flyout opened from inside the popover (Filter and sort's choices) counts as inside.
       const inFly = Boolean((e.target as Element).closest?.(".pop.fly"));
@@ -44,13 +41,8 @@ export function Popover({ at, onClose, label, children, testid, width, above, cl
     document.addEventListener("pointerdown", away, true);
     return () => {
       document.removeEventListener("pointerdown", away, true);
-      // Focus returns to the opener unless what the menu ran already moved it (for example a rename field).
-      const now = document.activeElement;
-      if (!now || now === document.body || ref.current?.contains(now)) {
-        back?.focus?.();
-      }
     };
-  }, []);
+  }, [trigger]);
   return (
     <div
       ref={ref}
@@ -59,13 +51,7 @@ export function Popover({ at, onClose, label, children, testid, width, above, cl
       aria-label={label}
       data-testid={testid}
       style={{ left: pos.x, top: pos.y, ...(width ? { width } : {}) }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          e.stopPropagation();
-          onClose();
-        }
-      }}
+      tabIndex={-1}
     >
       {children}
     </div>

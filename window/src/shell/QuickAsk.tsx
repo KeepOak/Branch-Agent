@@ -1,7 +1,8 @@
+import { useOverlayFocus } from "../overlays/useOverlayFocus";
 // Quick ask (DESIGN-SPEC §4.1.4): a box near the top of the window. It sends the question to a new conversation with
 // the Trunk picked under To. Enter sends, Escape closes; an empty box says so. "Have Branch make a Trunk" is
 // places/trunk's TrunkStudio.
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Trunk } from "./engine-data";
 import { notify } from "./notify";
 import "./quick-ask.css";
@@ -14,6 +15,8 @@ type Props = {
 };
 
 export function QuickAsk({ trunks, defaultId, onSend, onClose }: Props) {
+  const panel = useRef<HTMLDivElement>(null);
+  useOverlayFocus(panel, onClose, { modal: true });
   const [text, setText] = useState("");
   const ordered = [...trunks].sort((a, b) => Number(b.id === defaultId) - Number(a.id === defaultId));
   const [to, setTo] = useState<string | undefined>(ordered[0]?.id);
@@ -27,7 +30,7 @@ export function QuickAsk({ trunks, defaultId, onSend, onClose }: Props) {
   };
   return (
     <div className="qa-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="qa-box" role="dialog" aria-label="Quick ask" data-testid="quick-ask">
+      <div ref={panel} tabIndex={-1} aria-modal="true" className="qa-box" role="dialog" aria-label="Quick ask" data-testid="quick-ask">
         <input
           className="qa-field"
           autoFocus
@@ -39,10 +42,6 @@ export function QuickAsk({ trunks, defaultId, onSend, onClose }: Props) {
             if (e.key === "Enter") {
               e.preventDefault();
               send();
-            } else if (e.key === "Escape") {
-              e.preventDefault();
-              e.stopPropagation();
-              onClose();
             }
           }}
         />
