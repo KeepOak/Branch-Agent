@@ -49,9 +49,9 @@ function workflowMatrices(yaml) {
   return { pullRequest: JSON.parse(match[1]), main: JSON.parse(match[2]) };
 }
 
-test('the 15-minute cap stays, and every planned shard fits the 12-minute budget', () => {
+test('the 15-minute cap stays, the touched Windows shard gets 25 minutes, and every planned shard fits the 12-minute budget', () => {
   const yaml = readFileSync(new URL('../.github/workflows/feature-batch-checks.yml', import.meta.url), 'utf8');
-  assert.match(yaml, /timeout-minutes: 15/);
+  assert.match(yaml, /timeout-minutes: \$\{\{ matrix\.scope == 'touched' && 25 \|\| 15 \}\}/);
   assert.doesNotMatch(yaml, /timeout-minutes: 20/);
   const { pullRequest, main } = workflowMatrices(yaml);
   const labels = (rows, os) => rows.filter(row => row.os === os).map(row => row.label);
