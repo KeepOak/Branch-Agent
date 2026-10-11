@@ -1,10 +1,13 @@
-// The Guide menu's external destinations. Both announce that they leave the app.
+// The Guide menu's external destinations. Every row that leaves the app carries the same hint.
 
-/** No docs site exists yet, so Docs opens the existing Help page. */
+/** Reserved for a real docs site. Docs is left out of the menu until it exists, because today it would open the same Help page as Ask for help. */
 export const docsUrl = "https://keepoak.com/help";
 
 /** KeepOak's Help & contact page. */
 export const helpUrl = "https://keepoak.com/help";
+
+/** Shown on every row that opens the browser; labels stay plain. */
+export const externalHint = "opens in browser";
 
 export type GuideLinkItem = {
   label: string;
@@ -15,7 +18,6 @@ export type GuideLinkItem = {
 /** `open` is the window's existing external-open helper. */
 export function guideLinkItems(open: (url: string) => void): GuideLinkItem[] {
   return [
-    { label: "Docs (opens in browser)", run: () => { open(docsUrl); } },
-    { label: "Ask for help", hint: "opens in browser", run: () => { open(helpUrl); } },
+    { label: "Ask for help", hint: externalHint, run: () => { open(helpUrl); } },
   ];
 }

@@ -16,7 +16,7 @@ afterEach(async () => {
 });
 
 describe("DA-100 Guide menu", () => {
-  it("offers only Walkthrough, Docs and Ask for help and closes before opening each destination", async () => {
+  it("offers only Walkthrough and Ask for help and closes before opening each destination", async () => {
     const tour = vi.fn();
     const open = vi.fn();
     const close = vi.fn();
@@ -25,19 +25,28 @@ describe("DA-100 Guide menu", () => {
     await act(async () => root?.render(<Menu at={{ x: 10, y: 10 }} label="Guide" items={guideMenuItems(tour, open)} onClose={close} />));
     const items = [...host.querySelectorAll<HTMLButtonElement>('[role=menuitem]')];
     expect(items.map(item => item.textContent)).toEqual([
-      "Walkthrough", "Docs (opens in browser)", "Ask for helpopens in browser",
+      "Walkthrough", "Ask for helpopens in browser",
     ]);
     expect(items.every(item => !item.disabled)).toBe(true);
     await act(async () => items[0].click());
     expect(tour).toHaveBeenCalledOnce();
     expect(open).not.toHaveBeenCalled();
     await act(async () => items[1].click());
-    await act(async () => items[2].click());
-    expect(open.mock.calls).toEqual([["https://keepoak.com/help"], ["https://keepoak.com/help"]]);
-    expect(close).toHaveBeenCalledTimes(3);
+    expect(open.mock.calls).toEqual([["https://keepoak.com/help"]]);
+    expect(close).toHaveBeenCalledTimes(2);
     expect(close.mock.invocationCallOrder[0]).toBeLessThan(tour.mock.invocationCallOrder[0]);
     expect(close.mock.invocationCallOrder[1]).toBeLessThan(open.mock.invocationCallOrder[0]);
-    expect(close.mock.invocationCallOrder[2]).toBeLessThan(open.mock.invocationCallOrder[1]);
+  });
+
+  it("has no duplicate destination and marks every external row the same way", () => {
+    const open = vi.fn();
+    const items = guideMenuItems(vi.fn(), open);
+    for (const item of items) item.run();
+    const destinations = open.mock.calls.map(call => call[0]);
+    expect(destinations.length).toBeGreaterThan(0);
+    expect(new Set(destinations).size).toBe(destinations.length);
+    const external = items.slice(1);
+    expect(external.every(item => item.hint === "opens in browser" && !/browser/iu.test(item.label))).toBe(true);
   });
 
   it("wires the shell to the tested menu, walkthrough and safe external opener", () => {
