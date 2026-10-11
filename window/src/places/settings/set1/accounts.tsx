@@ -15,9 +15,13 @@ import { OwnAccounts } from "./own-accounts";
 import { GitHubSettings } from "../GitHubSettings";
 import { AccountsMore } from "./accounts-more";
 import { BulkBar, SelectBox, SelectLink } from "./accounts-select";
+import { LimWindow } from "../set2/lim-window";
+import { readMeasuredPercent } from "../../../shell/limit-window-reading";
+import { resetWords, windowName } from "../../../shell/status-data";
 import "./set1.css";
 
-export type Profile = { profileId: string; type: string; status: string; displayName?: string; email?: string; lastUsedAt?: number; logoutSupported?: boolean; source?: string; reasonCode?: string; externallyManaged?: boolean; expiry?: { label?: string }; limitedUntil?: number };
+export type UsageWindow = { label?: string; usedPercent?: number; resetAt?: number };
+export type Profile = { profileId: string; type: string; status: string; displayName?: string; email?: string; lastUsedAt?: number; logoutSupported?: boolean; source?: string; reasonCode?: string; externallyManaged?: boolean; expiry?: { label?: string }; limitedUntil?: number; usage?: { plan?: string; windows?: UsageWindow[] } };
 export type Provider = { provider: string; authProvider?: string; displayName: string; status: string; profiles: Profile[]; profileOrder?: string[]; lastGoodProfileId?: string; profileOrderLocked?: string; usage?: { plan?: string; accountEmail?: string; windows?: Array<{ label?: string; usedPercent?: number }> } };
 /** models.authStatus providers, each with its accounts as a list even when the engine leaves them out. */
 export function providersOf(value: unknown): Provider[] {
@@ -65,9 +69,21 @@ export function accountName({ p, a, n }: Pick<Account, "p" | "a" | "n">): string
   return `${svc} · ${p.provider === "anthropic" ? a.email ?? a.displayName ?? tokenLabel(a) ?? fallback : a.displayName ?? a.email ?? tokenLabel(a) ?? fallback}`;
 }
 
+/** This account's own allowance (Claude: the 5-hour and weekly windows), in the bars Settings › Data & usage shows. */
+export function AccountUsage({ a, now = Date.now() }: { a: Pick<Profile, "usage">; now?: number }) {
+  const windows = list(a.usage?.windows).flatMap((w) => {
+    const measured = readMeasuredPercent(w.usedPercent);
+    if (!measured) return [];
+    const resetAt = typeof w.resetAt === "number" && Number.isFinite(w.resetAt) ? w.resetAt : undefined;
+    return [{ label: windowName(text(w.label)), left: measured.left, words: resetWords(resetAt, measured.used, now) }];
+  });
+  return windows.length ? <div className="acc-usage">{windows.map((w, i) => <LimWindow key={i} {...w} />)}</div> : null;
+}
+
 export const STATUS_WORDS: Record<string, string> = { ok: "", expiring: "Signing in again soon", expired: "Signed out · sign in again", missing: "Sign-in missing", static: "" };
 function accountSub(acc: Account): string {
-  const plan = acc.p.usage?.plan ? visible(acc.p.usage.plan) : acc.a.type === "api_key" ? "Key" : isToken(acc.a) ? "Subscription" : "";
+  const ownPlan = acc.a.usage?.plan ?? acc.p.usage?.plan;
+  const plan = ownPlan ? visible(ownPlan) : acc.a.type === "api_key" ? "Key" : isToken(acc.a) ? "Subscription" : "";
   const email = acc.a.email && acc.a.displayName && acc.a.email !== acc.a.displayName ? visible(acc.a.email) : "";
   const state = STATUS_WORDS[acc.a.status] ?? visible(acc.a.status);
   return [plan, email, state, acc.ordered && acc.first ? "" : acc.ordered ? "next in line" : ""].filter(Boolean).join(" · ");
@@ -156,6 +172,7 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
               {acc.a.status === "expired" || acc.a.status === "missing" ? <Pill tone="warn">Sign in again</Pill> : null}
               <button type="button" className="icon-btn" aria-label="Move up" title={acc.first ? `First for ${serviceName(acc.p.provider, acc.p.displayName)} already` : acc.p.profileOrderLocked ? "The order is set in the settings file" : "Move up"} disabled={acc.first || Boolean(acc.p.profileOrderLocked)} onClick={() => void setOrder(acc, movedUp(acc, all))}>{UP}</button>
               <button type="button" className="icon-btn" aria-label={`More for ${accountName(acc)}`} aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ at: { x: r.right - 200, y: r.bottom + 4 }, acc }); }}>{MORE}</button>
+              <AccountUsage a={acc.a} />
             </Prow>
           ))}
         </Plist>

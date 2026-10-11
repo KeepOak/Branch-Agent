@@ -30,6 +30,7 @@ import {
   wrapAnthropicStreamWithRecovery,
 } from "../thinking.js";
 import { createHtmlEntityToolCallArgumentDecodingWrapper } from "../tool-call-argument-decoding.js";
+import { wrapStreamFnWithAnthropicRateLimitCapture } from "./anthropic-rate-limit-capture.js";
 import type { EmbeddedAttemptExecutionPhaseInput } from "./attempt-execution-types.js";
 import {
   createYieldAbortedResponse,
@@ -400,6 +401,10 @@ export function installEmbeddedAttemptStreamGuards(
   let diagnosticModelCallSeq = 0;
   let modelResponseTerminal = false;
   session.agent.streamFn = wrapStreamFnWithProviderResponseMetadata(session.agent.streamFn);
+  session.agent.streamFn = wrapStreamFnWithAnthropicRateLimitCapture(
+    session.agent.streamFn,
+    () => attempt.authProfileId,
+  );
   session.agent.streamFn = wrapStreamFnWithDiagnosticModelCallEvents(session.agent.streamFn, {
     config: attempt.config,
     runId: attempt.runId,

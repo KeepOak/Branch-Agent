@@ -34,6 +34,8 @@ type ProviderUsageCacheEntry = ProviderUsageCacheIdentity & {
   refreshedAt: number;
   summary: UsageSummary;
   usageByProvider: Map<string, ProviderUsageStatus>;
+  /** Each account's own reading, keyed by auth profile id. */
+  usageByProfile: Map<string, ProviderUsageStatus>;
 };
 
 type ProviderUsageRefresh = ProviderUsageCacheIdentity & {
@@ -86,6 +88,28 @@ function mapProviderUsage(usage: Awaited<ReturnType<typeof loadProviderUsageSumm
     });
   }
   return usageByProvider;
+}
+
+function mapProfileUsage(usage: UsageSummary) {
+  const usageByProfile = new Map<string, ProviderUsageStatus>();
+  for (const snap of usage.providers) {
+    if (!snap.authProfileId || (snap.windows.length === 0 && !snap.billing?.length)) {
+      continue;
+    }
+    usageByProfile.set(snap.authProfileId, {
+      windows: snap.windows,
+      ...(snap.plan ? { plan: snap.plan } : {}),
+      ...(snap.billing?.length ? { billing: snap.billing } : {}),
+    });
+  }
+  return usageByProfile;
+}
+
+/** The last published per-account readings for an agent; never starts a fetch. */
+export function readCachedProviderUsageByProfile(
+  agentId: string,
+): ReadonlyMap<string, ProviderUsageStatus> {
+  return usageCacheByAgentId.get(agentId)?.usageByProfile ?? new Map();
 }
 
 /**
@@ -174,6 +198,7 @@ function scheduleProviderUsageRefresh(
             refreshedAt: Date.now(),
             summary: usage,
             usageByProvider: mapProviderUsage(usage),
+            usageByProfile: mapProfileUsage(usage),
           });
         }
         return usage;

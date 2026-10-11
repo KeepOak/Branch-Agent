@@ -1,0 +1,6 @@
+engine:src/agents/auth-profiles/usage-rate-limits.test.ts
+engine:src/agents/embedded-agent-runner/run/anthropic-rate-limit-capture.test.ts
+engine:src/gateway/server-methods/models-auth-status.profile-usage.test.ts
+engine:src/infra/provider-usage.fetch.claude-headers.test.ts
+engine:src/infra/provider-usage.fetch.claude.test.ts
+window:src/places/settings/set1/accounts.usage.test.tsx

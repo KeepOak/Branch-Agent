@@ -33,6 +33,12 @@ export type ModelAuthStatusProfile = {
   lastUsedAt?: number;
   /** The account hit a rate or usage limit and isn't used until this time (ms since epoch). */
   limitedUntil?: number;
+  /** This account's own allowance windows (Claude: "5h" and "Week"), when its service reported them. */
+  usage?: {
+    windows: UsageWindow[];
+    plan?: string;
+    billing?: ProviderUsageBilling[];
+  };
 };
 
 export type ModelAuthStatusProvider = {

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createProviderUsageFetch, makeResponse } from "../test-utils/provider-usage-fetch.js";
-import { fetchClaudeUsage } from "./provider-usage.fetch.claude.js";
+import { fetchClaudeUsage, resetClaudeUsageStateForTest } from "./provider-usage.fetch.claude.js";
 
 const scopeMessage = "missing scope requirement user:profile";
 const scopeError = `HTTP 403: ${scopeMessage}`;
@@ -23,7 +23,10 @@ function fallbackFetch(org: Response, usage: Response) {
 }
 
 describe("fetchClaudeUsage", () => {
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    resetClaudeUsageStateForTest();
+  });
 
   it("normalizes quota windows, scoped model limits, and extra-usage billing", async () => {
     const reset = "2026-01-12T00:00:00Z";

@@ -82,3 +82,7 @@
 .set-col .each-k summary small { font-size: 12.5px; color: var(--ink-3); }
 .set-col .each-k .ctl { padding-left: 14px; }
 @media (max-width: 760px) { .set-col .ctl:has(> .right select + .sseg) > .right { flex-direction: column; align-items: flex-end; } }
+/* An account's own allowance bars, on their own line under its name (Settings › Accounts). */
+.set-col .prow > .acc-usage { flex-basis: 100%; display: grid; gap: 2px; padding-left: 44px; margin-top: -6px; }
+.set-col .prow > .acc-usage .s2usage-limw { grid-template-columns: 150px 1fr 190px; }
+@media (max-width: 640px) { .set-col .prow > .acc-usage { padding-left: 0; } .set-col .prow > .acc-usage .s2usage-limw { grid-template-columns: 110px 1fr; } }

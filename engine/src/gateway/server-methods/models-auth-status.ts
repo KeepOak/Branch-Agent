@@ -24,6 +24,10 @@ import {
   resolveExplicitAuthOrderSelection,
 } from "../../agents/auth-profiles.js";
 import type { RuntimeAuthProfileStore } from "../../agents/auth-profiles/types.js";
+import {
+  anthropicUnifiedUsageWindows,
+  readAnthropicUnifiedRateLimits,
+} from "../../agents/auth-profiles/usage-rate-limits.js";
 import { resolveProviderIdForAuth } from "../../agents/provider-auth-aliases.js";
 import type { BranchConfig } from "../../config/config.js";
 import { providerUsageLabel, resolveUsageProviderId } from "../../infra/provider-usage.shared.js";
@@ -37,10 +41,15 @@ import { formatForLog } from "../ws-log.js";
 import { resolveModelAuthAgentScope } from "./model-auth-agent-scope.js";
 import { modelsAuthRefreshHandlers } from "./models-auth-refresh.js";
 import { readModelAuthStatusFacts } from "./models-auth-status-facts.js";
-import { readProviderUsageStaleWhileRevalidate } from "./models-auth-status-usage-cache.js";
+import {
+  type ProviderUsageStatus,
+  readCachedProviderUsageByProfile,
+  readProviderUsageStaleWhileRevalidate,
+} from "./models-auth-status-usage-cache.js";
 import type {
   ModelAuthExpiry,
   ModelAuthLogoutResult,
+  ModelAuthStatusProfile,
   ModelAuthStatusProvider,
   ModelAuthStatusResult,
 } from "./models-auth-status.types.js";
@@ -114,6 +123,26 @@ function buildExpiry(
     return undefined;
   }
   return { at: normalizedExpiresAt, remainingMs, label: formatRemainingShort(remainingMs) };
+}
+
+/**
+ * One account's own allowance: its last usage reading, or else the unified rate-limit
+ * headers its latest Claude response carried (setup-tokens have no other source).
+ */
+function readProfileUsage(
+  profileId: string,
+  cached: ReadonlyMap<string, ProviderUsageStatus>,
+): ModelAuthStatusProfile["usage"] {
+  const usage = cached.get(profileId);
+  if (usage) {
+    return {
+      windows: usage.windows,
+      ...(usage.plan ? { plan: usage.plan } : {}),
+      ...(usage.billing?.length ? { billing: usage.billing } : {}),
+    };
+  }
+  const windows = anthropicUnifiedUsageWindows(readAnthropicUnifiedRateLimits({ profileId }));
+  return windows.length > 0 ? { windows } : undefined;
 }
 
 function providerDisplayName(provider: string): string {
@@ -382,6 +411,7 @@ export const modelsAuthStatusHandlers: GatewayRequestHandlers = {
         providerIds: usageProviderIds,
         now,
       });
+      const usageByProfile = readCachedProviderUsageByProfile(agentId);
 
       const providers: ModelAuthStatusProvider[] = [];
       for (const prov of authHealth.providers) {
@@ -489,6 +519,10 @@ export const modelsAuthStatusHandlers: GatewayRequestHandlers = {
             }
             if (blockedUntil !== undefined && blockedUntil > now) {
               profile.limitedUntil = blockedUntil;
+            }
+            const profileUsage = readProfileUsage(prof.profileId, usageByProfile);
+            if (profileUsage) {
+              profile.usage = profileUsage;
             }
             return profile;
           }),

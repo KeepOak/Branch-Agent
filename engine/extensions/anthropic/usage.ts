@@ -291,7 +291,10 @@ export async function fetchAnthropicUsage(
       fetchFn: ctx.fetchFn,
     });
   }
-  const snapshot = await fetchClaudeUsage(ctx.token, ctx.timeoutMs, ctx.fetchFn);
+  const snapshot = await fetchClaudeUsage(ctx.token, ctx.timeoutMs, ctx.fetchFn, {
+    authProfileId: ctx.authProfileId,
+    agentDir: ctx.agentDir,
+  });
   if (snapshot.error) {
     return snapshot;
   }

@@ -13,6 +13,7 @@ import { Ico } from "./icons";
 import { Logo } from "../set1/service";
 import { accountEmails, readLimits, resetWords as sharedResetWords, withAccountEmails, type LimitRow } from "../../../shell/status-data";
 import { ModelPrices } from "./usage-prices";
+import { LimWindow } from "./lim-window";
 import { ReportProblem } from "./report-problem";
 import { CKPT_PREF, CKPT_SHOW, useCkptOn } from "../../../shell/SaveProgress";
 import { lookStore } from "../set1/appearance-store";
@@ -139,17 +140,6 @@ function ago(ms: unknown, now = Date.now()): string {
   if (min < 60) return `${min} min ago`;
   if (min < 24 * 60) return `${Math.floor(min / 60)} h ago`;
   return min < 48 * 60 ? "Yesterday" : `${Math.floor(min / 1440)} days ago`;
-}
-
-function LimWindow({ label, left, words }: { label: string; left: number; words: string }) {
-  const l = Math.max(0, Math.min(100, left));
-  return (
-    <div className="s2usage-limw">
-      <span>{label}</span>
-      <span className="s2usage-limbar" role="meter" aria-label={`${label} left`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(l)}><i style={{ width: `${l}%` }} /></span>
-      <span>{`${Math.round(l)}% left · ${l >= 100 && !words ? "full" : words}`}</span>
-    </div>
-  );
 }
 
 const measuredNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);

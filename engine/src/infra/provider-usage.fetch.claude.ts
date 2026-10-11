@@ -6,6 +6,10 @@ import { normalizeOptionalString } from "@branch/normalization-core/string-coerc
 import { ANTHROPIC_CLAUDE_CODE_VERSION } from "../../packages/ai/src/providers/anthropic-model-contract.js";
 import { readProviderJsonResponse } from "../agents/provider-http-errors.js";
 import {
+  type ClaudeHeaderUsageOptions,
+  fetchClaudeUsageFromRateLimitHeaders,
+} from "./provider-usage.fetch.claude-headers.js";
+import {
   buildUsageHttpErrorSnapshot,
   fetchJson,
   fetchUsageJson,
@@ -22,6 +26,16 @@ const CLAUDE_USAGE_USER_AGENT = `claude-code/${ANTHROPIC_CLAUDE_CODE_VERSION}`;
 // Its 429s usually say `retry-after: 0`; asking again at once only extends the limit.
 const CLAUDE_USAGE_RATE_LIMIT_BACKOFF_MS = 5 * 60_000;
 const rateLimitedUsage = new Map<string, { until: number; snapshot: ProviderUsageSnapshot }>();
+// Tokens /api/oauth/usage refused for scope. A setup-token never gains user:profile, so
+// they read usage from the rate-limit headers without asking the endpoint every time.
+const CLAUDE_USAGE_SCOPE_RECHECK_MS = 6 * 60 * 60_000;
+const scopelessTokens = new Map<string, { until: number; message: string }>();
+const SCOPE_ERROR = "scope requirement user:profile";
+
+export function resetClaudeUsageStateForTest(): void {
+  rateLimitedUsage.clear();
+  scopelessTokens.clear();
+}
 
 function readClaudeWindow(
   value: unknown,
@@ -177,13 +191,37 @@ async function fetchClaudeWebUsage(
   };
 }
 
+async function readClaudeWebUsage(
+  timeoutMs: number,
+  fetchFn: typeof fetch,
+): Promise<ProviderUsageSnapshot | null> {
+  const sessionKey = resolveClaudeWebSessionKey();
+  return sessionKey ? await fetchClaudeWebUsage(sessionKey, timeoutMs, fetchFn) : null;
+}
+
+/** No usage source answered for a scope-less token: only a full sign-in can read it. */
+function scopelessSnapshot(message: string): ProviderUsageSnapshot {
+  return {
+    ...buildUsageHttpErrorSnapshot({ provider: "anthropic", status: 403, message }),
+    signInNeeded: true,
+  };
+}
+
+/**
+ * Claude usage for one token. /api/oauth/usage is preferred; when it cannot answer
+ * (no user:profile scope, rate limited, failing) the account's unified rate-limit
+ * headers supply the 5h and weekly windows instead.
+ */
 export async function fetchClaudeUsage(
   token: string,
   timeoutMs: number,
   fetchFn: typeof fetch,
+  options: ClaudeHeaderUsageOptions = {},
 ): Promise<ProviderUsageSnapshot> {
   const tokenKey = createHash("sha256").update(token).digest("hex");
   const now = Date.now();
+  const fromHeaders = () =>
+    fetchClaudeUsageFromRateLimitHeaders(token, timeoutMs, fetchFn, options);
   for (const [key, entry] of rateLimitedUsage) {
     if (entry.until <= now) {
       rateLimitedUsage.delete(key);
@@ -191,7 +229,12 @@ export async function fetchClaudeUsage(
   }
   const backoff = rateLimitedUsage.get(tokenKey);
   if (backoff) {
-    return backoff.snapshot;
+    return (await fromHeaders()) ?? backoff.snapshot;
+  }
+  const scopeless = scopelessTokens.get(tokenKey);
+  if (scopeless && scopeless.until > now) {
+    const web = await readClaudeWebUsage(timeoutMs, fetchFn);
+    return web ?? (await fromHeaders()) ?? scopelessSnapshot(scopeless.message);
   }
   const res = await fetchJson(
     "https://api.anthropic.com/api/oauth/usage",
@@ -223,16 +266,12 @@ export async function fetchClaudeUsage(
     }
 
     // Claude Code CLI setup-token yields tokens that can be used for inference, but may not
-    // include user:profile scope required by the OAuth usage endpoint. When a claude.ai
-    // browser sessionKey is available, fall back to the web API.
-    if (res.status === 403 && message?.includes("scope requirement user:profile")) {
-      const sessionKey = resolveClaudeWebSessionKey();
-      if (sessionKey) {
-        const web = await fetchClaudeWebUsage(sessionKey, timeoutMs, fetchFn);
-        if (web) {
-          return web;
-        }
-      }
+    // include user:profile scope required by the OAuth usage endpoint. A claude.ai browser
+    // sessionKey reads the web API; otherwise the unified rate-limit headers answer.
+    if (res.status === 403 && message?.includes(SCOPE_ERROR)) {
+      scopelessTokens.set(tokenKey, { until: now + CLAUDE_USAGE_SCOPE_RECHECK_MS, message });
+      const web = await readClaudeWebUsage(timeoutMs, fetchFn);
+      return web ?? (await fromHeaders()) ?? scopelessSnapshot(message);
     }
 
     const snapshot = buildUsageHttpErrorSnapshot({
@@ -240,10 +279,6 @@ export async function fetchClaudeUsage(
       status: res.status,
       message,
     });
-    if (res.status === 403 && message?.includes("scope requirement user:profile")) {
-      // Retrying cannot add the scope to a setup-token; only a fresh full sign-in can.
-      return { ...snapshot, signInNeeded: true };
-    }
     if (res.status === 429) {
       const retryAfterMs =
         (parseRetryAfterHeaderSeconds(res.headers.get("retry-after")) ?? 0) * 1000;
@@ -252,7 +287,7 @@ export async function fetchClaudeUsage(
         snapshot,
       });
     }
-    return snapshot;
+    return (await fromHeaders()) ?? snapshot;
   }
 
   const parsed = await readUsageJson("anthropic", res);
