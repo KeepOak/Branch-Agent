@@ -2,6 +2,11 @@ import { hasAgentRosterProperty, tryResolveSoleAgentId } from "../../agents/agen
 import { resolveAgentDir, resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
 import { splitTrailingAuthProfile } from "../../agents/model-ref-profile.js";
 import {
+  normalizeTrunkName,
+  trunkNameProblem,
+  trunkNamesInUse,
+} from "../../agents/trunk-name-rule.js";
+import {
   applyAgentConfig,
   findAgentEntryIndex,
   listAgentEntries,
@@ -23,6 +28,30 @@ type AgentDeleteMutationResult = {
 export class AgentConfigPreconditionError extends Error {}
 
 export class AgentModelSelectionError extends Error {}
+
+export class AgentNameRuleError extends Error {}
+
+/**
+ * Why a rename is refused: the new name must follow the Trunk name rule (agents.create uses the
+ * same one). Keeping the agent's current name is always allowed, so Trunks that already carry a
+ * default or shared name still save their other changes.
+ */
+export function findAgentRenameProblem(
+  cfg: BranchConfig,
+  agentId: string,
+  name: string,
+): string | undefined {
+  const entries = listAgentEntries(cfg);
+  const current = entries.find((entry) => entry.id === agentId);
+  const normalized = normalizeTrunkName(name);
+  const keepsCurrentName = [current?.name, current?.identity?.name].some(
+    (existing) => typeof existing === "string" && normalizeTrunkName(existing) === normalized,
+  );
+  if (keepsCurrentName) {
+    return undefined;
+  }
+  return trunkNameProblem(name, trunkNamesInUse(entries, agentId))?.message;
+}
 
 type AgentConfigUpdate = {
   agentId: string;
@@ -111,6 +140,14 @@ export async function updateAgentConfigEntry(
       const configured = isConfiguredAgent(draft, params.agentId);
       if (!configured && !isImplicitAgentModelUpdate(draft, params)) {
         throw new AgentConfigPreconditionError(`agent "${params.agentId}" not found`);
+      }
+      // Recheck under the config lock so two renames cannot both take one name.
+      const nameProblem =
+        configured && params.name
+          ? findAgentRenameProblem(draft, params.agentId, params.name)
+          : undefined;
+      if (nameProblem) {
+        throw new AgentNameRuleError(nameProblem);
       }
       let next = draft;
       if (params.model && selectionModules) {

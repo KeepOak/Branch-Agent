@@ -166,6 +166,31 @@ describe("createAgent", () => {
     expect(mocks.ensureAgentWorkspace).not.toHaveBeenCalled();
   });
 
+  it("keeps existing Trunks with default or shared names listed when a unique Trunk joins", async () => {
+    mocks.config = {
+      agents: {
+        entries: {
+          main: {},
+          "new-trunk": { name: "New Trunk" },
+          "trunk-2": { name: "Trunk 2", identity: { name: "Ash" } },
+          ash: { name: "Ash" },
+        },
+      },
+    };
+    await expect(createAgent({ name: "Maple" })).resolves.toMatchObject({
+      status: "created",
+      agentId: "maple",
+    });
+    const saved = mocks.persisted as BranchConfig;
+    expect(saved.agents?.entries?.["new-trunk"]).toMatchObject({ name: "New Trunk" });
+    expect(saved.agents?.entries?.["trunk-2"]).toMatchObject({ name: "Trunk 2", identity: { name: "Ash" } });
+    expect(saved.agents?.entries?.ash).toMatchObject({ name: "Ash" });
+    const roster = await listGatewayAgentsBasic(saved);
+    expect(roster.agents.map((agent) => agent.id)).toEqual(
+      expect.arrayContaining(["new-trunk", "trunk-2", "ash", "maple"]),
+    );
+  });
+
   it("returns validation errors before mutation", async () => {
     await expect(createAgent({ name: "  " })).resolves.toMatchObject({
       status: "error",

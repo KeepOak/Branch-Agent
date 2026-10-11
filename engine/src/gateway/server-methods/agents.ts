@@ -98,7 +98,9 @@ import { captureGatewayClientUploadCommitGuard } from "../upload-policy.js";
 import {
   AgentConfigPreconditionError,
   AgentModelSelectionError,
+  AgentNameRuleError,
   deleteAgentConfigEntry,
+  findAgentRenameProblem,
   isConfiguredAgent,
   isImplicitAgentModelUpdate,
   updateAgentConfigEntry,
@@ -561,6 +563,13 @@ export const agentsHandlers: GatewayRequestHandlers = {
       respondAgentNotFound(respond, agentId);
       return;
     }
+    // Refuse a default or taken name before IDENTITY.md is written; the config write rechecks it.
+    const nameProblem =
+      configured && safeName ? findAgentRenameProblem(cfg, agentId, safeName) : undefined;
+    if (nameProblem) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, nameProblem));
+      return;
+    }
     const nextConfig = configured ? applyAgentConfig(cfg, agentConfigUpdate) : cfg;
 
     try {
@@ -634,6 +643,10 @@ export const agentsHandlers: GatewayRequestHandlers = {
       }
       if (error instanceof AgentConfigPreconditionError) {
         respondAgentNotFound(respond, agentId);
+        return;
+      }
+      if (error instanceof AgentNameRuleError) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, error.message));
         return;
       }
       if (error instanceof AgentModelSelectionError) {

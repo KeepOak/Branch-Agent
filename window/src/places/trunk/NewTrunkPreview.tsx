@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Dialog } from "../../shell/Dialog";
 import { trunkAppearance } from "../../face/appearance";
 import { CharacterFace } from "../../face/CharacterFace";
-import { LOOKS, lookOf, type Roster } from "./model";
+import { LOOKS, lookOf, rosterNamesInUse, type Roster } from "./model";
+import { normalizeTrunkName, trunkNameProblem } from "../../../../engine/src/agents/trunk-name-rule";
 import { Layer } from "./layer";
 import { Icon } from "../../shell/icons";
 
@@ -10,8 +11,8 @@ const NAMES = ["Ash", "Elm", "Hazel", "Rowan", "Alder", "Willow", "Linden", "Bir
 export type TrunkChoice = { name: string; avatar: string };
 
 export function nextTrunkChoice(roster: Roster, previous?: TrunkChoice, fixedName?: string): TrunkChoice {
-  const used = new Set(roster.agents.map((row) => row.name.trim().toLowerCase()));
-  const names = NAMES.filter((name) => !used.has(name.toLowerCase()) && name !== previous?.name);
+  const used = rosterNamesInUse(roster);
+  const names = NAMES.filter((name) => !used.has(normalizeTrunkName(name)) && name !== previous?.name);
   let fallback = roster.agents.length + 1;
   while (used.has(`cedar ${fallback}`) || previous?.name === `Cedar ${fallback}`) fallback++;
   const name = fixedName ?? (names.length ? names[Math.floor(Math.random() * names.length)] : `Cedar ${fallback}`);
@@ -24,11 +25,8 @@ export function nextTrunkChoice(roster: Roster, previous?: TrunkChoice, fixedNam
 export function NewTrunkPreview({ roster, fixedName, busy, onConfirm, onClose }: { roster: Roster; fixedName?: string; busy?: boolean; onConfirm: (choice: TrunkChoice) => void; onClose: () => void }) {
   const [choice, setChoice] = useState(() => nextTrunkChoice(roster, undefined, fixedName));
   const appearance = trunkAppearance(choice.avatar, choice.name);
-  const name = choice.name.trim();
-  const nameError = !name ? "Enter a name for this Trunk."
-    : /^(?:new\s+trunk(?:\s+\d+)?|trunk\s+\d+|\d+)$/i.test(name) ? "Choose a distinct name, not a default name or number."
-    : roster.agents.some((row) => row.name.trim().toLowerCase() === name.toLowerCase()) ? "A Trunk already uses that name. Choose a unique name."
-    : "";
+  const name = choice.name.replace(/\s+/g, " ").trim();
+  const nameError = trunkNameProblem(name, rosterNamesInUse(roster))?.message ?? "";
   return <Layer><Dialog title="Add a Trunk" onClose={onClose} testid="new-trunk-preview" footer={<>
     <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
     <button type="button" className="btn pri" disabled={busy || Boolean(nameError)} onClick={() => { if (!nameError) onConfirm({ ...choice, name }); }}>{busy ? "Creating…" : "Create Trunk"}</button>

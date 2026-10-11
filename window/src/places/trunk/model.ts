@@ -3,6 +3,7 @@
 // engine/src/config/zod-schema.agents.ts (agents.entries, default, ownership) and zod-schema.agent-runtime.ts (tools).
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { CHARACTERS, EXTRA, trunkAppearance } from "../../face/appearance";
+import { trunkNamesInUse } from "../../../../engine/src/agents/trunk-name-rule";
 
 export type Rec = Record<string, unknown>;
 export const rec = (v: unknown): Rec => (v && typeof v === "object" && !Array.isArray(v) ? (v as Rec) : {});
@@ -12,6 +13,9 @@ export const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): 
 export type TrunkRow = {
   id: string;
   name: string;
+  /** agents.list's own name and identity.name, which the engine's name rule also compares. */
+  entryName: string;
+  identityName: string;
   theme: string;
   emoji: string;
   avatar: string;
@@ -31,6 +35,8 @@ function readRow(a: Rec): TrunkRow {
   return {
     id: str(a.id),
     name: str(identity.name) || str(a.name) || str(a.id),
+    entryName: str(a.name),
+    identityName: str(identity.name),
     theme: str(identity.theme),
     emoji: str(identity.emoji),
     avatar: str(identity.avatar),
@@ -51,6 +57,10 @@ export function readRoster(result: unknown): Roster {
   const agents = (Array.isArray(r.agents) ? r.agents : []).map(rec).filter((a) => str(a.id) && str(a.kind) !== "system").map(readRow);
   return { defaultId: str(r.defaultId), mainKey: str(r.mainKey) || "main", ownership: str(r.ownership), agents };
 }
+
+/** Every name the roster's Trunks answer to, compared the way agents.create and agents.update do. */
+export const rosterNamesInUse = (roster: Roster, exceptId?: string) =>
+  trunkNamesInUse(roster.agents.map((row) => ({ id: row.id, name: row.entryName, identity: { name: row.identityName } })), exceptId);
 
 /** The conversation key of a Trunk's main conversation (agent:<id>:<mainKey>). */
 export const mainKeyOf = (roster: Roster, id: string) => `agent:${id}:${roster.mainKey}`;

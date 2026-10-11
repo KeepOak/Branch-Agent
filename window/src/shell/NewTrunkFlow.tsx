@@ -30,14 +30,6 @@ export const CARE: (Opt & { mode: "guarded" | "workspace" | "full" })[] = [
   { label: "Just do it", line: "I’ll still tell you what I did", mode: "full" },
 ];
 
-/** "Trunk N": the first number past the Trunks there are that no Trunk is called yet (nextTrunkNumC18). */
-export function nextTrunkName(names: string[]): string {
-  const taken = new Set(names.map((n) => n.toLowerCase()));
-  let n = Math.max(1, names.length);
-  while (taken.has(`trunk ${n}`)) n++;
-  return `Trunk ${n}`;
-}
-
 const ok = (r: unknown) => {
   const v = (r ?? {}) as { ok?: boolean; error?: { message?: string } | string };
   if (v.ok === false) throw new Error(typeof v.error === "string" ? v.error : v.error?.message || "The engine refused it.");

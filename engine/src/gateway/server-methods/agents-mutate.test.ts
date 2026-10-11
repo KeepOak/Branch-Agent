@@ -5,6 +5,7 @@ import path from "node:path";
 import { expectDefined } from "@branch/normalization-core";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { AgentDeletionAuthorityRollbackError } from "../../agents/agent-lifecycle-registry.js";
+import { TRUNK_NAME_DEFAULT, TRUNK_NAME_TAKEN } from "../../agents/trunk-name-rule.js";
 import { WORKSPACE_BOOTSTRAP_FILENAMES } from "../../agents/workspace.js";
 import { getRuntimeConfigWriteApplication } from "../../config/runtime-write-application.js";
 import { FsSafeError, root } from "../../infra/fs-safe.js";
@@ -778,6 +779,92 @@ describe("agents.update", () => {
     const entries = expectRecordFields(agents.entries, {});
     const agent = expectRecordFields(entries["test-agent"], {});
     expect(agent).not.toHaveProperty("model");
+  });
+
+  it.each(["New Trunk", "new trunk 3", "Trunk 2", "7"])(
+    "refuses renaming to the default name %s before writing anything",
+    async (name) => {
+      const respond = await call("agents.update", { agentId: "test-agent", name });
+
+      expectRespondErrorContaining(respond, TRUNK_NAME_DEFAULT);
+      expect(mocks.rootWrite).not.toHaveBeenCalled();
+      expect(mocks.writeConfigFile).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([" ash ", "SCOUT", "researcher"])(
+    "refuses renaming to %s, which another Trunk already answers to",
+    async (name) => {
+      mocks.loadConfigReturn = {
+        agents: {
+          entries: {
+            "test-agent": { workspace: "/workspace/test-agent", identity: { name: "Current Agent" } },
+            ash: { identity: { name: "Ash" } },
+            researcher: { name: "Scout" },
+          },
+        },
+      };
+
+      const respond = await call("agents.update", { agentId: "test-agent", name });
+
+      expectRespondErrorContaining(respond, TRUNK_NAME_TAKEN);
+      expect(mocks.rootWrite).not.toHaveBeenCalled();
+      expect(mocks.writeConfigFile).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rechecks the name under the config lock when another rename takes it first", async () => {
+    mocks.rootWrite.mockImplementation(async () => {
+      const entries = (mocks.loadConfigReturn.agents as { entries: Record<string, unknown> })
+        .entries;
+      entries.oak = { name: "Maple" };
+    });
+
+    const respond = await call("agents.update", { agentId: "test-agent", name: "Maple" });
+
+    expectRespondErrorContaining(respond, TRUNK_NAME_TAKEN);
+    expect(mocks.writeConfigFile).not.toHaveBeenCalled();
+  });
+
+  it("renames to a unique name, and its own current name may change case", async () => {
+    mocks.loadConfigReturn = {
+      agents: {
+        entries: {
+          "test-agent": { workspace: "/workspace/test-agent", identity: { name: "Current Agent" } },
+          ash: { identity: { name: "Ash" } },
+        },
+      },
+    };
+
+    expectRespondOk(await call("agents.update", { agentId: "test-agent", name: "Maple" }), {
+      ok: true,
+      agentId: "test-agent",
+    });
+    expectRespondOk(await call("agents.update", { agentId: "ash", name: "ASH" }), {
+      ok: true,
+      agentId: "ash",
+    });
+  });
+
+  it("still saves Trunks that already have a default or shared name", async () => {
+    mocks.loadConfigReturn = {
+      agents: {
+        entries: {
+          "test-agent": { workspace: "/workspace/test-agent", identity: { name: "New Trunk" } },
+          "new-trunk-2": { name: "New Trunk", identity: { name: "New Trunk" } },
+        },
+      },
+    };
+
+    expectRespondOk(
+      await call("agents.update", { agentId: "test-agent", name: "New Trunk", avatar: "branch:tock" }),
+      { ok: true, agentId: "test-agent" },
+    );
+    expectRespondOk(await call("agents.update", { agentId: "new-trunk-2", model: "gpt-5.5" }), {
+      ok: true,
+      agentId: "new-trunk-2",
+    });
+    expect(mocks.writeConfigFile).toHaveBeenCalledTimes(2);
   });
 
   registerAgentIdentityUpdateTests({

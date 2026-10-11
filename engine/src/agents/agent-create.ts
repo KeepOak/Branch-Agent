@@ -54,6 +54,7 @@ import {
   mergeIdentityMarkdownContent,
   sanitizeAgentIdentityLine,
 } from "./identity-file.js";
+import { trunkNameProblem, trunkNamesInUse } from "./trunk-name-rule.js";
 import {
   DEFAULT_IDENTITY_FILENAME,
   ensureAgentWorkspace,
@@ -319,11 +320,13 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
       shape: params.shape,
       eyes: params.eyes,
     }) ?? { name: safeName };
-  const displayNames = [safeName, ...(identity.name ? [sanitizeAgentIdentityLine(identity.name)] : [])];
-  if (displayNames.some((name) => !name || /^(?:new\s+trunk(?:\s+\d+)?|trunk\s+\d+|\d+)$/i.test(name))) {
-    return createError("invalid-name", "Choose a distinct Trunk name, not a default name or number.");
+  const displayNames = [safeName, ...(identity.name ? [identity.name] : [])];
+  for (const name of displayNames) {
+    const problem = trunkNameProblem(name, new Set());
+    if (problem) {
+      return createError(problem.reason, problem.message);
+    }
   }
-  const normalizedNames = new Set(displayNames.map((name) => name.toLowerCase()));
   const requestedWorkspace = params.entry?.workspace ?? params.workspace;
   const explicitWorkspace = requestedWorkspace?.trim()
     ? resolveUserPath(requestedWorkspace.trim())
@@ -457,13 +460,12 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
           const existingEntry = currentEntries[existingIndex];
           // Check the current roster under the creation lock, including renamed agents
           // whose stable id no longer matches their display name.
-          if (currentEntries.some((entry) =>
-            entry.id !== agentId &&
-            [entry.name ?? entry.id, entry.identity?.name].some((name) =>
-              Boolean(name && normalizedNames.has(name.trim().toLowerCase())),
-            ),
-          )) {
-            throw new DuplicateAgentError("A Trunk already uses that name. Choose a unique name.");
+          const namesInUse = trunkNamesInUse(currentEntries, agentId);
+          const taken = displayNames
+            .map((name) => trunkNameProblem(name, namesInUse))
+            .find((problem) => problem !== undefined);
+          if (taken) {
+            throw new DuplicateAgentError(taken.message);
           }
           if (!params.entry && !template && params.avatar === undefined && !params.bootstrapFirstAgent && !params.bootstrapMain && existingIndex < 0 && currentConfig.agents?.defaultId) {
             identity.avatar = `branch:${pickTrunkCharacter(currentEntries.map((entry) => entry.identity?.avatar))}`;

@@ -3,10 +3,11 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
-import { NewTrunkPreview } from "./NewTrunkPreview";
+import { TRUNK_NAME_TAKEN } from "../../../../engine/src/agents/trunk-name-rule";
+import { NewTrunkPreview, nextTrunkChoice } from "./NewTrunkPreview";
 import { TrunkEditor } from "./TrunkEditor";
 import { createTrunk } from "./api";
-import { readRoster } from "./model";
+import { readRoster, rosterNamesInUse } from "./model";
 
 vi.mock("../../face/Face", () => ({ Face: () => <span role="img" /> }));
 vi.mock("../../face/CharacterFace", () => ({ CharacterFace: ({ label, size }: { label: string; size: number }) => <span role="img" aria-label={label} data-size={size} /> }));
@@ -37,6 +38,27 @@ it.each(["", "   ", "New Trunk", "New Trunk 2", "2", "Trunk 3", " ash "])("requi
   await click(button("Create Trunk"));
   expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ name: "Maple" }));
   expect(document.querySelector('[role="alert"]')).toBeNull();
+});
+
+it.each(["Scout", " researcher ", "QUILL"])("refuses %s, a name the engine also compares (its own name, id or shown name)", async (name) => {
+  const confirm = vi.fn();
+  const renamed = readRoster({ defaultId: "tk", agents: [{ id: "tk", identity: { name: "TK" } }, { id: "researcher", name: "Scout", identity: { name: "Quill" } }] });
+  await mount(<NewTrunkPreview roster={renamed} onClose={() => {}} onConfirm={confirm} />);
+  const input = document.querySelector<HTMLInputElement>("input")!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, name);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(button("Create Trunk")!.disabled).toBe(true);
+  expect(document.querySelector('[role="alert"]')?.textContent).toBe(TRUNK_NAME_TAKEN);
+  expect(confirm).not.toHaveBeenCalled();
+});
+
+it("still lists existing Trunks with default or shared names", () => {
+  const legacy = readRoster({ defaultId: "new-trunk", agents: [{ id: "new-trunk", name: "New Trunk" }, { id: "new-trunk-2", identity: { name: "New Trunk" } }, { id: "trunk-2", name: "Trunk 2" }, { id: "7" }] });
+  expect(legacy.agents.map((row) => [row.id, row.name])).toEqual([["new-trunk", "New Trunk"], ["new-trunk-2", "New Trunk"], ["trunk-2", "Trunk 2"], ["7", "7"]]);
+  const choice = nextTrunkChoice(legacy);
+  expect(rosterNamesInUse(legacy).has(choice.name.toLowerCase())).toBe(false);
 });
 
 it("previews an unused character and nature name, then Random name changes both before create", async () => {

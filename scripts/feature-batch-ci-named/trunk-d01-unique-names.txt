@@ -1,2 +1,5 @@
 engine:src/agents/agent-create.test.ts
+engine:src/agents/trunk-name-rule.test.ts
+engine:src/gateway/server-methods/agents-mutate.test.ts
 window:src/places/trunk/trunk-characters.test.tsx
+window:src/shell/new-trunk-flow.test.ts
