@@ -1,3 +1,4 @@
+import { paceLines } from "../canopy/pace";
 import type { WindowEngine } from "../../connect/engine";
 
 export type Tile = "sessions" | "health" | "computer" | "spend" | "people" | "presence" | "agents" | "backup" | "update" | "runs";
@@ -97,7 +98,7 @@ export type Session = {
   key: string; agentId: string; title: string; preview: string; working: boolean; updatedAt?: number; createdAt?: number;
   status: string; runId?: string; lastRunId?: string; ownerId: string; ownerLabel: string; human: boolean; helper: boolean; automation: boolean;
   global: boolean; unread: boolean; archived: boolean; cost?: number; recap: string; recapState: string; lastRunError: string;
-  kind: string; room?: number;
+  kind: string; room?: number; pace?: string[];
 };
 function actorOf(row: Record<string, unknown>): Record<string, unknown> {
   const owner = record(record(row.owner).actor);
@@ -119,6 +120,7 @@ export function session(row: Record<string, unknown>): Session {
     runId: text(runIds[0]) || undefined, lastRunId: text(row.lastRunId) || undefined,
     ownerId: actor.type === "human" ? text(actor.id) : "", ownerLabel: actor.type === "human" ? text(actor.label) || text(record(actor.identity).displayName) : "",
     human: actor.type === "human",
+    pace: paceLines(row.runPaces),
     helper: Boolean(text(row.spawnedBy) || text(row.parentSessionKey)), automation: row.createdVia === "cron",
     global: row.kind === "global" || row.kind === "unknown", unread: row.unread === true, archived: row.archived === true,
     cost: number(row.estimatedCostUsd), recap: text(summary.text), recapState: text(summary.state), lastRunError: text(row.lastRunError),

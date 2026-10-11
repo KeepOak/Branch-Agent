@@ -34,6 +34,7 @@ export function RunCard({ r, ctx, steering, setSteering }: { r: Run; ctx: Ctx; s
         <b>{name || "Nobody yet"}</b>
         <span className="cn-task">{r.task}</span>
         <small>{metaLine(r, ctx)}</small>
+        {r.col === "working" ? r.pace?.map((line, i) => <small key={i}>{line}</small>) : null}
         {r.pct !== undefined ? <span className="cn-meter" role="meter" aria-label="Progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={r.pct}><u style={{ width: `${r.pct}%` }} /></span> : null}
       </span>
     </span>

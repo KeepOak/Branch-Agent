@@ -1,4 +1,6 @@
 import { SESSION_ROW_DETAIL_FIELDS } from "../../packages/gateway-protocol/src/session-row-fields.js";
+import { projectAgentRunPace } from "../infra/agent-run-pace.js";
+import { getAgentRunContext } from "../infra/agent-run-registry.js";
 import { isIncognitoSessionKey } from "../routing/session-key.js";
 import { resolveSendPolicy } from "../sessions/send-policy.js";
 import { resolveActiveSessionAgentStatus } from "../sessions/session-agent-status.js";
@@ -292,6 +294,16 @@ export function prepareProjectedSessionPresentation(
         canEnsure,
       ]);
     const cached = signature === undefined ? undefined : views?.get(signature);
+    // Recompute registration-owned timing outside the immutable row/model cache.
+    const projectPaces = (row: GatewaySessionRow): GatewaySessionRow =>
+      !run?.active
+        ? row
+        : {
+            ...row,
+            runPaces: run.runIds?.map((id) =>
+              projectAgentRunPace(id, getAgentRunContext(id)?.pace, now),
+            ),
+          };
     const projectModels = (row: GatewaySessionRow) => {
       const projected = models?.session(row) ?? row;
       if (projected === row || !views || signature === undefined) {
@@ -315,7 +327,7 @@ export function prepareProjectedSessionPresentation(
       return snapshot;
     };
     if (cached) {
-      return projectModels(cached);
+      return projectPaces(projectModels(cached));
     }
     const row = projection.present(record, {
       ...options,
@@ -366,9 +378,9 @@ export function prepareProjectedSessionPresentation(
     if (signature !== undefined) {
       const snapshot = freezeJsonSnapshot(structuredClone(row));
       views?.set(signature, snapshot);
-      return projectModels(snapshot);
+      return projectPaces(projectModels(snapshot));
     }
-    return projectModels(row);
+    return projectPaces(projectModels(row));
   };
   return {
     rowContext: { ...rowContext, subagentRuns },

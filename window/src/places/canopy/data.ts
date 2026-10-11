@@ -18,6 +18,7 @@ export type Helper = { key: string; name: string; step: string; mark: "run" | "w
 export type Run = {
   key: string; kind: "chat" | "ask" | "sched" | "card" | "paused" | "goal"; col: Col;
   agentId: string; who: string; task: string; step: string; comp: string; model: string;
+  pace?: string[];
   since?: number; pct?: number; when?: string; at?: number; sessionKey?: string;
   ask?: Row; job?: Row; card?: Row; goal?: Row; why?: Why; detail?: string; helpers?: Helper[]; board?: Row;
 };
