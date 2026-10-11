@@ -1,4 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
@@ -474,7 +476,12 @@ export const windowStrictFiles = [
 // A PR adds its named tests in its own file, scripts/feature-batch-ci-named/<topic>.txt, one
 // `engine:<file>` or `window:<file>` per line (# comments allowed), instead of editing the shared
 // lists above, so parallel PRs never conflict on them.
-const NAMED_DIR = new URL('./feature-batch-ci-named/', import.meta.url);
+let NAMED_DIR = new URL('./feature-batch-ci-named/', import.meta.url);
+
+// The plan job loads this planner from the default branch and reads the PR's named lists as data.
+export function setNamedListDir(dirPath) {
+  NAMED_DIR = pathToFileURL(`${path.resolve(dirPath)}${path.sep}`);
+}
 
 export function namedTestFiles(lane, only) {
   let names = [];
@@ -582,9 +589,10 @@ export function capabilityTests() {
   return targets;
 }
 
-/** FEATURE_SHARD="<n>/<total>" (the workflow matrix): this job runs every total-th named test from the n-th.
+/** FEATURE_SHARD="<n>/<total>" (the workflow matrix): this job runs one duration-balanced slice.
  *  The named list grows with each PR; one serial job per OS passed the 15-minute cap (733 s of engine tests on
- *  Windows for #220), so the list is split across jobs instead of raising the cap. */
+ *  Windows for #220), so the list is split across jobs. Index round-robin then piled the slow files
+ *  onto the same slices, so placement is longest-file-first instead. */
 // Pull requests run the full named suite on Linux. Windows runs only the named tests whose test file,
 // or whose own scripts/feature-batch-ci-named/*.txt list, the PR touches, plus this fixed Windows smoke
 // set; the full Windows suite runs after merge and nightly (about 14 minutes on Windows, over the cap).
@@ -616,6 +624,144 @@ export function shardOf(value = process.env.FEATURE_SHARD) {
   return { index: n - 1, total };
 }
 
-export function shardTests(tests, shard) {
-  return tests.filter((_, i) => i % shard.total === shard.index);
+// Test-body seconds measured from ubuntu-latest named-feature logs on 2026-10-08.
+// Round-robin on the sorted list put several of these on one shard (about 7 minutes of
+// tests on pull-request shard 1/10, about 22 minutes on the old main shard 2/3). Unlisted
+// files are a few seconds of vitest startup. The numbers only balance shards.
+const featureTestWeights = {
+  'src/gateway/server.auth.control-ui.test.ts': 287,
+  // Measured 2026-10-09: 255 s on ubuntu-latest, 394 s on macos-latest (PR #878 runs).
+  'src/agents/cli-runner/prepare.test.ts': 255,
+  'src/commands/startup-config-preflight.recovery.test.ts': 176,
+  'src/gateway/server-kernel.phases.test.ts': 175,
+  'src/gateway/server-methods/sessions-reactions.test.ts': 157,
+  'src/infra/device-bootstrap.test.ts': 147,
+  'src/gateway/server-methods/sessions-create-category.test.ts': 138,
+  'src/cli/gateway-cli/pre-bootstrap.process.test.ts': 112,
+  'src/cron/store/receipt-authority-owner.test.ts': 105,
+  'src/infra/heartbeat-runner.exact-session-busy.test.ts': 94,
+  'src/gateway/watch-node-http.test.ts': 81,
+  'src/gateway/server/ws-connection.startup.test.ts': 77,
+  'src/commands/doctor/shared/default-agent-role-materialization.write.test.ts': 69,
+  'src/agents/main-session-recovery/main-session-restart-recovery.parallel-startup.test.ts': 57,
+  'src/commands/config-preflight-snapshot.test.ts': 56,
+  'src/gateway/server.lockdown-owner.test.ts': 46,
+  'src/gateway/server-agent-database-startup.multi-agent.test.ts': 41,
+  'src/gateway/server.sessions.create.contact-anchor.test.ts': 36,
+  'src/agents/trunk-characters.test.ts': 34,
+  'src/gateway/session-handoff-lease-orphan-recovery.test.ts': 32,
+  'src/gateway/server-startup-node-capabilities.test.ts': 31,
+  'test/scripts/tsdown-config.test.ts': 29,
+  'src/agents/tools/message-tool-execution.test.ts': 27,
+  'test/scripts/control-ui-i18n.test.ts': 22,
+  'src/cron/trigger-script.test.ts': 22,
+  'src/gateway/session-startup-handoff-recovery.test.ts': 21,
+  'src/gateway/server-methods/session-change-event.test.ts': 21,
+  'src/gateway/sessions-patch.done.test.ts': 20,
+  'src/gateway/server-methods/backup-settings.test.ts': 20,
+  'src/gateway/server-methods/chat-history.segments.test.ts': 18,
+  'src/cron/isolated-agent/run.session-read.test.ts': 17,
+  'src/infra/device-bootstrap-single-use.test.ts': 15,
+};
+export const unlistedFeatureTestSeconds = 5;
+// Linux shard 1 also runs the strict typecheck and the native protocol check (~1 minute).
+export const firstShardReserveSeconds = 60;
+
+export function featureTestWeight(file, weights = featureTestWeights) {
+  const value = weights instanceof Map ? weights.get(file) : weights?.[file];
+  return value ?? unlistedFeatureTestSeconds;
+}
+
+export function featureTestWeightKeys() {
+  return Object.keys(featureTestWeights);
+}
+
+/** Longest-file-first packing. `loads` include the shard-1 reserve; `files` keep list order. */
+export function planShards(tests, total, weights = featureTestWeights) {
+  if (total <= 1) {
+    return {
+      files: [tests.slice()],
+      loads: [tests.reduce((sum, file) => sum + featureTestWeight(file, weights), 0)],
+    };
+  }
+  const loads = Array.from({ length: total }, (_, index) => index === 0 ? firstShardReserveSeconds : 0);
+  const ranked = tests.map((file, index) => ({ file, index, weight: featureTestWeight(file, weights) }));
+  ranked.sort((a, b) => b.weight - a.weight || a.index - b.index);
+  const buckets = Array.from({ length: total }, () => []);
+  for (const item of ranked) {
+    let best = 0;
+    for (let index = 1; index < total; index++) if (loads[index] < loads[best]) best = index;
+    buckets[best].push(item);
+    loads[best] += item.weight;
+  }
+  return {
+    files: buckets.map(bucket => bucket.sort((a, b) => a.index - b.index).map(item => item.file)),
+    loads,
+  };
+}
+
+export function shardTests(tests, shard, weights) {
+  return planShards(tests, shard.total, weights).files[shard.index];
+}
+
+// Pull requests stay at ten Linux shards. Main and nightly use seven Linux, eleven
+// Windows and ten macOS shards (25 to 28 jobs). Each extra job adds setup cost and queue
+// time, while max-parallel stays six. These counts keep each shard's expected job,
+// including setup and the Linux shard-1 typecheck, at most 12 minutes even after a PR adds
+// 60 unweighted engine tests (see the shard test "a PR adding 60 unweighted engine tests").
+// Windows and macOS scales are the median job-time / linux-test-weight
+// ratio from main-push successes on 2026-10-08 (1.50 and 1.35). Ubuntu weights are
+// already hot measurements, so that scale stays 1.
+export const pullRequestLinuxShardCount = 10;
+export const mainPushShardCounts = { ubuntu: 7, windows: 11, macos: 10 };
+export const shardBudgetSeconds = 12 * 60;
+export const windowShardFileSeconds = 2;
+export const runnerTestScale = { ubuntu: 1, windows: 1.5, macos: 1.35 };
+
+// The slowest planned shard for a total, at the runner's scale. Shard 0 carries the reserve.
+export function plannedSlowestSeconds(os, total, { extraTests = [] } = {}) {
+  const loads = expectedShardSeconds(total, { typecheck: os === 'ubuntu', scale: runnerTestScale[os], extraTests });
+  return Math.max(...loads);
+}
+
+// Headroom: Windows and macOS keep ten percent under the budget (the Linux shard 1 keeps the full budget).
+export function shardBudgetFor(os) {
+  return os === 'ubuntu' ? shardBudgetSeconds : shardBudgetSeconds * 0.9;
+}
+
+const MAX_SHARD_COUNT = 64;
+
+// Derive the shard count from total weight, then verify: start at ceil(total / budget) and add shards
+// until the planned slowest shard fits. Adding named tests adds shards; it never fails a PR.
+export function shardCountFor(os, { extraTests = [] } = {}) {
+  const budget = shardBudgetFor(os);
+  const weight = [...namedTests('engine'), ...extraTests]
+    .reduce((sum, file) => sum + featureTestWeight(file), 0) * runnerTestScale[os];
+  let total = Math.max(1, Math.ceil(weight / budget));
+  while (total < MAX_SHARD_COUNT && plannedSlowestSeconds(os, total, { extraTests }) > budget) total += 1;
+  if (plannedSlowestSeconds(os, total, { extraTests }) > budget) {
+    throw new Error(`${os} cannot fit the named tests into ${MAX_SHARD_COUNT} shards within the ${budget}s budget`);
+  }
+  return total;
+}
+
+// The matrix counts: never fewer than the floors above, and grown by the weight-derived count.
+export function resolvedShardCounts({ extraTests = [] } = {}) {
+  return {
+    ubuntu: Math.max(mainPushShardCounts.ubuntu, shardCountFor('ubuntu', { extraTests })),
+    windows: Math.max(mainPushShardCounts.windows, shardCountFor('windows', { extraTests })),
+    macos: Math.max(mainPushShardCounts.macos, shardCountFor('macos', { extraTests })),
+    pullRequestLinux: Math.max(pullRequestLinuxShardCount, shardCountFor('ubuntu', { extraTests })),
+  };
+}
+
+export function expectedShardSeconds(total, { typecheck = false, scale = 1, extraTests = [] } = {}) {
+  const engine = planShards([...namedTests('engine'), ...extraTests], total);
+  const windowFiles = planShards(namedTests('window'), total).files;
+  return engine.loads.map((load, index) => {
+    const reserve = index === 0 ? firstShardReserveSeconds : 0;
+    const body = (load - reserve) + windowFiles[index].length * windowShardFileSeconds
+      + (typecheck && index === 0 ? reserve : 0);
+    return body * scale;
+  });
 }

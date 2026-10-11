@@ -38,6 +38,25 @@ describe("Settings › People › Keep conversations separate", () => {
     expect(separate(unset)).toBe(false);
   });
 
+  it("Open People is the explicit way out of Settings › People", async () => {
+    const left: unknown[] = [];
+    const onLeave = (event: Event) => left.push((event as CustomEvent).detail);
+    window.addEventListener("branch:navigate-place", onLeave);
+    try {
+      await act(async () => root.render(
+        <KitProvider level={0} report={report} scope={null}>
+          <EachPerson roles={empty} />
+        </KitProvider>,
+      ));
+      expect(host.querySelector('[data-row="Open People"]')).not.toBeNull();
+      expect(left).toEqual([]);
+      await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === "Open People")!.click());
+      expect(left).toEqual([{ place: "people" }]);
+    } finally {
+      window.removeEventListener("branch:navigate-place", onLeave);
+    }
+  });
+
   it("EachPerson renders the switch checked on an empty roles list", async () => {
     await act(async () => root.render(
       <KitProvider level={0} report={report} scope={null}>

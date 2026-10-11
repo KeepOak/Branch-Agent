@@ -8,7 +8,7 @@ import { readLimits } from "./status-data";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-it("shows three ChatGPT accounts and refreshes on open and Check now", async () => {
+it("shows three ChatGPT accounts with no provider call on open, and refreshes on Check every account now", async () => {
   const status = { updatedAt: Date.now(), providers: ["ash", "elm", "oak"].map((name, index) => ({
     provider: "openai", displayName: "ChatGPT", authProfileId: `openai:${name}`,
     accountEmail: `${name}@example.test`, inUse: index === 0,
@@ -25,9 +25,9 @@ it("shows three ChatGPT accounts and refreshes on open and Check now", async () 
   expect(host.textContent).toContain("elm@example.test");
   expect(host.textContent).toContain("oak@example.test");
   expect(host.textContent).toContain("used next");
-  expect(request).toHaveBeenCalledWith("usage.status", { refresh: true });
+  expect(request.mock.calls.filter(([method]) => method === "usage.status")).toHaveLength(0);
   await act(async () => { (Array.from(host.querySelectorAll("button")).find((button) => button.textContent === "Check every account now") as HTMLButtonElement).click(); });
-  expect(request.mock.calls.filter(([method]) => method === "usage.status")).toHaveLength(2);
+  expect(request.mock.calls.filter(([method]) => method === "usage.status")).toEqual([["usage.status", { refresh: true }]]);
   await act(async () => root.unmount());
   host.remove();
 });

@@ -61,17 +61,35 @@ describe("rooms store", () => {
     expect(() => appendRoomEvent(room.roomId, "message", "owner", {})).toThrow("Room not found");
   });
 
-  it("enforces the source's six-Trunk cap and bounded event payload", () => {
-    const members = Array.from({ length: 6 }, (_, index) => ({
+  it("takes any number of Trunks up to the store's 500-member total and bounds event payloads", () => {
+    const trunk = (id: string) => ({
       kind: "trunk" as const,
-      id: `agent-${index}`,
+      id,
       role: "member" as const,
       enabled: true,
-    }));
-    const room = createRoom({ name: "Six", members });
-    expect(() => addRoomMember(room.roomId, { kind: "trunk", id: "seventh" })).toThrow(
+    });
+    const room = createRoom({
+      name: "Twenty",
+      members: Array.from({ length: 20 }, (_, index) => trunk(`agent-${index}`)),
+    });
+    expect(room.members.filter((member) => member.kind === "trunk")).toHaveLength(20);
+    expect(addRoomMember(room.roomId, { kind: "trunk", id: "agent-20" }).members).toHaveLength(21);
+    expect(() =>
+      createRoom({ name: "Twice", members: [trunk("agent-0"), trunk("agent-0")] }),
+    ).toThrow("each listed once");
+    const full = createRoom({
+      name: "Full",
+      members: Array.from({ length: 500 }, (_, index) => trunk(`full-${index}`)),
+    });
+    expect(() => addRoomMember(full.roomId, { kind: "trunk", id: "full-500" })).toThrow(
       "Too many room members",
     );
+    expect(() =>
+      createRoom({
+        name: "Over",
+        members: Array.from({ length: 501 }, (_, index) => trunk(`over-${index}`)),
+      }),
+    ).toThrow("Too many room members");
     expect(() =>
       appendRoomEvent(room.roomId, "message", "owner", { text: "x".repeat(256 * 1024) }),
     ).toThrow("payload limit");

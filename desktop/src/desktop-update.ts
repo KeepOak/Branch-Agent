@@ -6,13 +6,14 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import type * as NodeFs from "node:fs";
-import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import type { DesktopConfig } from "./config";
 import { extractComponentArchive } from "./component-update-archive";
 import { downloadComponent, replaceFile } from "./component-update-files";
 import type { ComponentRelease, DesktopAsset } from "./component-update-manifest";
 import type { HelperPlan } from "./desktop-update-helper";
+import { chooseStagedMacBundle, ensureMacApplicationsInstall } from "./mac-applications";
 
 /** Where the running desktop app lives. Only a packaged app has one; development runs never update themselves. */
 export interface DesktopInstall {
@@ -149,7 +150,7 @@ export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentR
     await extractComponentArchive(archive, payload, choice.asset.expandedBytes, stagedName);
     await rm(archive);
     const staged = choice.kind === "asar" ? join(payload, `app${STAGED_ASAR}`)
-      : sealedMacInstall(install) ? join(payload, basename(install.appDir)) : payload;
+      : sealedMacInstall(install) ? join(payload, chooseStagedMacBundle(install.appDir, await readdir(payload))) : payload;
     const target = choice.kind === "asar" ? join(install.resourcesDir, "app.asar") : install.appDir;
     if (choice.kind === "asar") await assertFile(staged);
     else for (const file of sealedMacInstall(install)
@@ -174,7 +175,11 @@ export async function stagedDesktopVersion(cfg: DesktopConfig): Promise<string |
  */
 export async function handOffDesktopUpdate(cfg: DesktopConfig, install: DesktopInstall, helperSource: string, args: string[] = [], explicit = false): Promise<boolean> {
   const journal = await readDesktopJournal(cfg);
-  if (journal?.phase !== "staged" || !explicit && (journal.heldUntil ?? 0) > Date.now()) return false;
+  const updateWaiting = journal?.phase === "staged";
+  if (!updateWaiting || !explicit && (journal?.heldUntil ?? 0) > Date.now()) {
+    if (!updateWaiting) await ensureMacApplicationsInstall(install.appDir, join(cfg.dataDir, "desktop.log"));
+    return false;
+  }
   const work = dirname(journal.kind === "asar" ? dirname(journal.staged) : journal.staged);
   if (await stagedMatchesInstalled(journal, install)) {
     // Nothing would change: no swap, no restart; the installed copy already is this release's desktop.
@@ -183,6 +188,7 @@ export async function handOffDesktopUpdate(cfg: DesktopConfig, install: DesktopI
 `);
     await rm(journalFile(cfg), { force: true });
     await rm(work, { recursive: true, force: true });
+    await ensureMacApplicationsInstall(install.appDir, join(cfg.dataDir, "desktop.log"));
     return false;
   }
   const helper = join(work, "desktop-update-helper.js");

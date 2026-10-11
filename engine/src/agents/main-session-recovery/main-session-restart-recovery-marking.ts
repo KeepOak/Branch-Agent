@@ -19,7 +19,9 @@ import {
   isAgentEventLifecycleGenerationCurrent,
 } from "../../infra/agent-events.js";
 import { hasLiveAgentRunContext, listAgentRunsForSession } from "../../infra/agent-run-registry.js";
+import { isSessionLaneHeldByPredecessor } from "../../process/session-handoff-lease-gate.js";
 import { captureGatewaySessionWorkAdmissions } from "../../sessions/session-lifecycle-admission.js";
+import { resolveSessionLane } from "../embedded-agent-runner/lanes.js";
 import { createCurrentProcessOwnerLookup } from "./main-session-recovery-live-owners.js";
 import {
   isMainRestartRecoveryAggregateTerminalOnly,
@@ -56,6 +58,7 @@ async function markRecoveryStore(params: {
         replaceRuns?: boolean;
         resetRuntime?: boolean;
         runs?: RestartRecoveryRun[];
+        retryAtMs?: number;
       }
     | { action: "retire_terminal" }
     | { action: "restore_yielded"; isCurrent: () => boolean }
@@ -110,6 +113,9 @@ async function markRecoveryStore(params: {
         if (plan.forceRestartSafeTools) {
           entry.restartRecoveryForceSafeTools = true;
         }
+        if ("retryAtMs" in plan) {
+          entry.restartRecoveryRetryAtMs = plan.retryAtMs;
+        }
         transitionMainSessionRecovery(entry, {
           kind: "mark_interrupted",
           cycleId: randomUUID(),
@@ -132,6 +138,9 @@ export async function markRestartAbortedMainSessions(params: {
   activeRuns: Iterable<RestartRecoveryCandidate>;
   isActiveRun?: (run: RestartRecoveryCandidate) => boolean;
   reason?: string;
+  /** A handoff parks only the listed quiet owners, not unrelated active admissions. */
+  onlyActiveRuns?: boolean;
+  retryAtMs?: number;
 }): Promise<{ marked: number; skipped: number }> {
   const activeRuns = [...params.activeRuns];
   const currentLifecycleGeneration = getAgentEventLifecycleGeneration();
@@ -213,11 +222,13 @@ export async function markRestartAbortedMainSessions(params: {
                     run.lifecycleGeneration !== currentLifecycleGeneration)) &&
                 params.isActiveRun?.(run) !== false,
             );
-            const matchedActiveAdmission = activeAdmissions.isActive({
-              scope: storePath,
-              sessionKey,
-              sessionId: entry.sessionId,
-            });
+            const matchedActiveAdmission =
+              !params.onlyActiveRuns &&
+              activeAdmissions.isActive({
+                scope: storePath,
+                sessionKey,
+                sessionId: entry.sessionId,
+              });
             if (matchingActiveRuns.length === 0 && !matchedActiveAdmission) {
               return undefined;
             }
@@ -259,6 +270,7 @@ export async function markRestartAbortedMainSessions(params: {
               replaceRuns: true,
               resetRuntime: entry.status !== "running",
               runs,
+              retryAtMs: params.retryAtMs,
             };
           },
         });
@@ -334,6 +346,9 @@ async function markOrphanedMainSessionStore(
         ...(entry.restartRecoveryRuns ?? []).map((run) => run.runId),
       ];
       const hasLiveOwner = () =>
+        // Local registries cannot see a run still finishing on the predecessor.
+        // Its lease protects the row both during selection and at commit.
+        isSessionLaneHeldByPredecessor(resolveSessionLane(sessionKey)) ||
         writerRunIds.some((runId) => runId && hasLiveAgentRunContext(runId)) ||
         listAgentRunsForSession({ sessionKey, sessionId: entry.sessionId }).some(({ runId }) =>
           hasLiveAgentRunContext(runId),
