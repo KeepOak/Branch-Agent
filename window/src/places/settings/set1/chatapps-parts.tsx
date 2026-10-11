@@ -7,7 +7,7 @@ import { Btn, Ctl, Hint, Pick, Pill, Plist, Prow, Seg, Switch, Val } from "../ki
 import { ChatLogo as Logo } from "./chatapps-logo";
 import { acctTone, ago, PILL_WORDS, type App, type CatalogueApp } from "./chatapps-data";
 import { KeyRow, NO_KEY, type Cfg, type Row } from "./chatapps-kit";
-import { CMD_OFF, CMD_WHO, QUEUE_MODES } from "./chatapps-tables";
+import { QUEUE_MODES } from "./chatapps-tables";
 
 type Ctx = { apps: App[]; cfg: Cfg; all?: CatalogueApp[]; engine: WindowEngine };
 
@@ -88,17 +88,19 @@ function Delay({ cfg, which }: Ctx & { which: "minMs" | "maxMs" }) {
   return <KeyRow cfg={cfg} row={row} />;
 }
 
-/** Who may use each command, as the preview's list; the engine has one setting for every command, so each is greyed. */
+/** The chat commands a person types in any chat app, in plain words. Who may use them is set under People. */
+const CHAT_COMMANDS: [string, string][] = [
+  ["/new", "Starts a fresh conversation in this chat."],
+  ["/stop", "Stops what the Trunk is doing here."],
+  ["/model", "Shows or changes the model for this chat."],
+  ["/config", "Reads or changes Branch settings. Owners only."],
+  ["/approve", "Answers an approval request."],
+];
 function CmdRows() {
-  const rows: [string, number][] = [["/new and /stop", 0], ["/model", 0], ["/config", 1], ["/approve", 0]];
   return (
     <>
-      <Plist>{rows.map(([t, def]) => (
-        <Prow key={t} title={<code>{t}</code>}>
-          <span title={CMD_OFF}><Pick label={`Who may use ${t}`} value={String(def)} disabled options={CMD_WHO.map((label, i) => ({ id: String(i), label }))} onChange={() => undefined} /></span>
-        </Prow>
-      ))}</Plist>
-      <Hint>{CMD_OFF}</Hint>
+      <Plist>{CHAT_COMMANDS.map(([name, what]) => <Prow key={name} title={<code>{name}</code>} sub={what} />)}</Plist>
+      <Hint>Who may use them is set in “Who may use commands”, under People.</Hint>
     </>
   );
 }
@@ -106,7 +108,6 @@ function CmdRows() {
 /** Rows with a fixed control the engine can't act on yet, drawn greyed. */
 function Greyed({ id }: { id: string }) {
   const off = NO_KEY;
-  if (id === "slackFile") return <Ctl title="Slack app file" sub="Every Branch command becomes a Slack command." off="Branch can’t make a Slack app file yet."><Btn sm disabled>Make it</Btn></Ctl>;
   if (id === "updates") return <Ctl title="Stays connected through updates" sub="Chat apps keep running while Branch updates." off="Branch can’t tell yet whether an update keeps them running."><Pill tone="idle">Not known</Pill></Ctl>;
   if (id === "relay") return <Ctl title="A relay sends only to chats it knows" sub="Messages through a relay go only to chats Branch has heard from." off="Branch can’t tell yet how a relay sends." ><Pill tone="idle">Not known</Pill></Ctl>;
   if (id === "muted") return <Ctl title="Muted chats" sub="A muted chat is read but not answered." off={off}><Pick label="Chat to mute" value="" disabled options={[{ id: "", label: "Choose a chat" }]} onChange={() => undefined} /><Pick label="For how long" value="1" disabled options={[{ id: "1", label: "1 hour" }, { id: "t", label: "Until tomorrow" }, { id: "u", label: "Until I unmute it" }]} onChange={() => undefined} /><Btn sm disabled>Mute</Btn></Ctl>;
