@@ -1,0 +1,7 @@
+window:src/places-nav/SettingsFrame.test.tsx
+window:src/places-nav/settings-nav.test.ts
+window:src/places/settings/set1/accounts.test.tsx
+window:src/places/settings/set1/local.test.tsx
+window:src/places/settings/set1/models-defaults.test.tsx
+window:src/places/settings/set1/models.test.tsx
+window:src/places/settings/settings.test.tsx

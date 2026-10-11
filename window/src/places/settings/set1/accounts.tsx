@@ -99,6 +99,11 @@ export function AccountsPage(props: SettingsPageProps) {
     <Page title={props.title} lede="Manage model accounts and the order Branch uses them." help="Your model accounts, the order Branch uses them in, which Trunks use each, and your keepoak.com account.">
       <AccountsStatus loading={status.loading} error={status.error} count={all.length} unavailable={record(status.data?.unavailable).message} />
       <OrderSection {...props} all={all} reload={status.reload} onAdd={setAdd} agent={agent} />
+      {!status.loading && !status.error ? <div className="acts">
+        {caps.filter((c) => !providers.some((p) => p.provider === c.provider && p.profiles.length) && list(c.loginOptions).some((o) => o.featured)).map((c) => (
+          <Btn key={text(c.provider)} onClick={() => setAdd({ provider: text(c.provider) })}>Sign in to {serviceName(text(c.provider))}</Btn>
+        ))}
+      </div> : null}
       <CodingApps engine={props.engine} />
       <WhenOneRunsOut engine={props.engine} />
       <OwnAccounts engine={props.engine} />
@@ -150,7 +155,6 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
       {all.some((x) => !x.first) ? <Hint>When one account runs low, Branch moves to the next.</Hint> : null}
       <Acts>
         <Btn pri onClick={() => onAdd({})}><Icon name="plus" small />Add an account</Btn>
-        <Btn onClick={() => onAdd({ provider: "anthropic" })}>Add a Claude account</Btn>
         {brands.filter((p) => p.provider !== "anthropic").map((p) => <Btn key={p.provider} onClick={() => onAdd({ provider: p.provider })}>Another {serviceName(p.provider, p.displayName)} account</Btn>)}
       </Acts>
       {menu ? <AccountMenu engine={engine} acc={menu.acc} all={all} at={menu.at} agent={agent} reload={reload} setOrder={setOrder} onClose={() => setMenu(null)} /> : null}
