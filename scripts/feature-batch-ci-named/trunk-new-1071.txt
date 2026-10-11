@@ -1,0 +1,3 @@
+engine:src/agents/trunk-queue-progress.test.ts
+engine:src/agents/trunk-team-progress.test.ts
+engine:src/gateway/server-methods/trunk-team-progress.test.ts

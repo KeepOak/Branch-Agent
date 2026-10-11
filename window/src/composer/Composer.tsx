@@ -1,12 +1,16 @@
 // The composer (DESIGN-SPEC §4.3): the message box, +, the plug, the model and mode chips, voice and Send/Stop,
 // the dock row above it and the menus, all wired to the engine through the shared handle (connect/engine.ts).
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
+import { displayName } from "../display-names";
 import { PASTED_TEXT_CHIP_CHARS } from "./attachments";
 import { isPreparationPending, preparationLabel } from "../connect/preparation-status";
 import { DockRow, type Goal } from "./DockRow";
 import { isAdmin, num, rec, str, type SendExtras, type WindowEngine } from "./engine";
 import { Icon, StopMark } from "./icons";
 import { replaceToken } from "./mention";
+import { newPick, pickText, reconcilePicks, resolveSend, trimMessage, type Message, type SkillPick } from "./skill-picks";
+import type { DraftFile } from "./attachments";
+import type { Person } from "./DockRow";
 import { isEngineMode, modeName, nextMode, type EngineMode } from "./mode";
 import { composerChipLabel, currentModelRef, currentThinking } from "./model";
 import { ModelMenu } from "./ModelMenu";
@@ -96,6 +100,9 @@ function useComposeEvent(open: string | null, setText: (t: string) => void, box:
   }, [open, setText, box]);
 }
 
+/** What goes with a send besides its message: the files, people, queue mode, reply and waiting-line id. */
+type SendParts = { files?: DraftFile[]; people?: Person[]; queue?: string; replyTo?: Reply | null; id?: string };
+
 /** The composer (DESIGN-SPEC §4.3.1): the message box and Send, which becomes Stop while the Trunk works. */
 export function Composer(props: Props) {
   const { name, working, disabled, onSend, onStop, engine, onToast, onOpen } = props;
@@ -151,17 +158,28 @@ export function Composer(props: Props) {
   const conversationProblem = conv.error ?? (isPreparationPending(conv.modelsError) || conv.modelsError?.includes("is still starting up.") ? conv.modelsError : null);
   const toast = useCallback((text: string) => onToast?.(text), [onToast]);
 
-  const deliver = useCallback(
-    (text: string, files = draft.files, people = draft.people, queue?: string) => onSend(text, buildExtras(text, files, people, queue, props.replyTo)),
-    [onSend, draft.files, draft.people, props.replyTo],
-  );
+  const levels = current?.levels ?? [];
+  const drawer = useDrawer(engine, conv.trunks, levels, useMemo(() => ({ think: thinking }), [thinking]));
+  const [picks, setPicks] = useState<SkillPick[]>([]);
+  const seenText = useRef(draft.text);
+  useEffect(() => {
+    const before = seenText.current;
+    seenText.current = draft.text;
+    if (before !== draft.text) setPicks((current) => reconcilePicks(current, before, draft.text));
+  }, [draft.text]);
+  /** The one sender. A draft, a queued message and a steered message all come through here: picks and a typed leading
+   *  command resolve against the skills now, and the engine gets the resolved text. */
+  const sendMessage = (message: Message, parts: SendParts = {}) => {
+    const text = resolveSend(message.text, message.picks, drawer.skills);
+    return onSend(text, buildExtras(text, parts.files ?? [], parts.people ?? [], parts.queue, parts.replyTo), parts.id);
+  };
+  /** The draft as it goes out: trimmed, with its picks kept in step with the text. */
+  const draftMessage = (): Message => trimMessage({ text: draft.text, picks });
   const line = useWaitingLine(engine?.sessionKey ?? null, working, Boolean(props.offline), (item, steer) => {
-    onSend(item.text, buildExtras(item.text, item.files, [], steer ? "steer" : undefined), item.id);
+    sendMessage({ text: item.text, picks: item.picks ?? [] }, { files: item.files, queue: steer ? "steer" : undefined, id: item.id });
     if (steer) toast(`Steered ${trunkName}. It picks this up at its next step.`);
   });
   const bg = useBackground(engine, conv.trunkId, props.mainKey);
-  const levels = current?.levels ?? [];
-  const drawer = useDrawer(engine, conv.trunks, levels, useMemo(() => ({ think: thinking }), [thinking]));
   const view = draft.text === dismissed ? null : drawer.view(draft.text, caret);
   const history = useHistoryKeys(engine, draft.text, draft.setText);
 
@@ -218,15 +236,16 @@ export function Composer(props: Props) {
     }
     if (noModel && plan.kind !== "command") return;
     if (props.draftAgentId) {
-      void Promise.resolve(deliver(draft.text.trim(), draft.files, draft.people)).then((created) => {
+      void Promise.resolve(sendMessage(draftMessage(), { files: draft.files, people: draft.people, replyTo: props.replyTo })).then((created) => {
         if (created) draft.clear();
       });
       return;
     }
     if (plan.kind === "wait") {
-      line.add(draft.text.trim(), draft.files);
+      const message = draftMessage();
+      line.add(message.text, draft.files, message.picks);
     } else {
-      deliver(draft.text.trim(), draft.files, draft.people, plan.kind === "send" ? plan.queueMode : undefined);
+      sendMessage(draftMessage(), { files: draft.files, people: draft.people, queue: plan.kind === "send" ? plan.queueMode : undefined, replyTo: props.replyTo });
       if (plan.kind === "send" && plan.queueMode === "steer") toast(`Steered ${trunkName}. It picks this up at its next step.`);
     }
     history.record(draft.text.trim());
@@ -273,8 +292,12 @@ export function Composer(props: Props) {
     let next: { text: string; caret: number };
     if (p.kind === "command") next = { text: `/${p.command.name} `, caret: p.command.name.length + 2 };
     else if (p.kind === "choice") next = { text: `/${p.command.name} ${p.value}`, caret: p.command.name.length + p.value.length + 2 };
-    else next = replaceToken(draft.text, p.token, p.kind === "skill" ? `/${p.name}` : `@${p.name}`);
+    else next = replaceToken(draft.text, p.token, p.kind === "skill" ? pickText(p.name) : `@${p.name}`);
     if (p.kind === "person") draft.addPerson({ profileId: p.profileId, name: p.name });
+    if (p.kind === "skill") {
+      seenText.current = next.text;
+      setPicks((current) => [...reconcilePicks(current, draft.text, next.text), newPick(p.token.start, p.name)]);
+    }
     draft.setText(next.text);
     setCaret(next.caret);
     if (p.kind === "choice") setDismissed(next.text);
@@ -428,6 +451,13 @@ export function Composer(props: Props) {
       {problem ? <p className="c-note bad" role="alert">{isPreparationPending(problem) ? preparationLabel(trunkName) : shortReason(problem)}</p> : null}
       {line.error ? <p className="c-note bad" role="alert">{isPreparationPending(line.error) ? preparationLabel(trunkName) : shortReason(line.error)}</p> : null}
       {draft.note ? <p className="c-note">{draft.note}</p> : null}
+      {picks.length > 0 ? (
+        <div className="c-dock-row">
+          {picks.map((pick) => (
+            <span key={`${pick.start}:${pick.raw}`} className="c-chip" role="img" aria-label={`Skill ${displayName(pick.raw)}, runs as ${pickText(pick.raw)}`}>{displayName(pick.raw)}</span>
+          ))}
+        </div>
+      ) : null}
       {drawer.peopleError && view?.kind === "mention" ? <p className="c-note bad">{drawer.peopleError}</p> : null}
       {props.replyTo ? (
         <div className="c-dock-row">
@@ -475,7 +505,7 @@ export function Composer(props: Props) {
         people={draft.people}
         onForget={draft.forget}
         onSteer={async (text) => {
-          deliver(text, [], [], "steer");
+          sendMessage({ text, picks: [] }, { queue: "steer", replyTo: props.replyTo });
           toast(`Steered ${trunkName}. It picks this up at its next step.`);
           return true;
         }}
@@ -636,23 +666,13 @@ export function Composer(props: Props) {
           />
             <div className="c-tune-line"><span>Runs on {current?.local ? "this computer" : current ? serviceName(current.provider) : "no model"}{modelAccount ? ` · ${modelAccount.a.displayName || modelAccount.a.profileId}` : ""}{modelAccount?.a.email ? <small>{modelAccount.a.email}</small> : null}</span>
               <button type="button" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => { setMenu(null); onOpen?.("settings/accounts"); }}>Change</button></div>
-            <div className="c-tune-line"><button type="button" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => { setMenu(null); onOpen?.("settings/models"); }}>Manage models…</button>
-              <button type="button" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => { setMenu(null); onOpen?.("settings/accounts"); }}>Accounts and order…</button></div>
+            <div className="c-tune-line"><button type="button" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => { setMenu(null); onOpen?.("settings/models"); }}>Manage models…</button></div>
             </section>
             <section className="c-tune-section"><h3>Access</h3>
               <ModeMenu embedded anchor={anchors.tune} onClose={() => setMenu(null)} mode={mode} asSet={asSet} canSelectFull={admin} lockdown={props.lockdown} onToggleLockdown={props.onToggleLockdown} onPick={(m) => void pickMode(m)} onOpen={onOpen} row={row} onElevated={(level) => void patch({ elevatedLevel: level })} />
             </section>
             <section className="c-tune-section"><h3>Thread</h3>
               <div className="c-tune-line"><span>Start as a job<small>Your next message gets its own card and progress.</small></span><button type="button" aria-pressed={nextAsJob} onClick={() => setNextAsJob((v) => !v)}>{nextAsJob ? "On" : "Off"}</button></div>
-              <div className="c-tune-line"><span>Branch from here<small>A copy of this conversation to try another way.</small></span><button type="button" disabled={!engine?.sessionKey || !props.lastUserEntryId} title={!props.lastUserEntryId ? "Send a message before branching this conversation." : undefined} onClick={async () => {
-                if (!engine?.sessionKey || !props.lastUserEntryId) return;
-                try {
-                  const made = await engine.request<{ sessionKey?: string }>("sessions.fork", { sessionKey: engine.sessionKey, entryId: props.lastUserEntryId });
-                  if (!made.sessionKey) throw new Error("The engine did not create the copy.");
-                  setMenu(null);
-                  props.onOpenConversation?.(made.sessionKey);
-                } catch (error) { setProblem(error instanceof Error ? error.message : String(error)); }
-              }}>Branch</button></div>
             </section>
             <section className="c-tune-section"><h3>Status</h3>
               {bg.jobs.filter((job) => job.running).length ? <div className="c-tune-line"><span>{bg.jobs.filter((job) => job.running).length} in the background</span><button type="button" onClick={() => { setMenu(null); props.onOpenConversation?.(bg.jobs.find((job) => job.running)?.key ?? ""); }}>Open</button></div> : null}
@@ -678,7 +698,7 @@ export function Composer(props: Props) {
           />
         ) : null}
       </form>
-      {picture ? <PictureDialog onClose={() => setPicture(false)} onMake={(words) => deliver(`Make a picture: ${words}`, [], [])} /> : null}
+      {picture ? <PictureDialog onClose={() => setPicture(false)} onMake={(words) => sendMessage({ text: `Make a picture: ${words}`, picks: [] }, { replyTo: props.replyTo })} /> : null}
       {photo ? <PhotoDialog onClose={() => setPhoto(false)} onUse={(f) => void draft.addFiles([f], "file")} onUpload={() => fileInput.current?.click()} /> : null}
     </div>
   );

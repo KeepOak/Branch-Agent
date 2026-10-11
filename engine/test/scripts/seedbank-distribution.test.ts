@@ -77,13 +77,29 @@ describe("Seedbank distribution", () => {
         JSON.stringify({
           name: "@branch-agent/test-plugin",
           version: "2026.9.8",
-          files: ["index.js", "branch.plugin.json"],
+          files: ["index.js", "branch.plugin.json", "branch.pack.json"],
         }),
       );
       writeFileSync(join(directory, "index.js"), "export default {};\n");
       writeFileSync(
         join(directory, "branch.plugin.json"),
         JSON.stringify({ id: "test-plugin", configSchema: { type: "object", properties: {} } }),
+      );
+      writeFileSync(
+        join(directory, "branch.pack.json"),
+        JSON.stringify({
+          schema: "branch.pack/v1",
+          kind: "plugin",
+          tier: "community",
+          id: "test-plugin",
+          permissions: {
+            network: false,
+            files: "none",
+            runCommands: false,
+            secrets: false,
+            computerControl: false,
+          },
+        }),
       );
       const npm = resolveCommandShim("npm", ["pack", "--ignore-scripts", "--json"]);
       const packed = spawnSync(npm.command, npm.args, {
@@ -97,6 +113,15 @@ describe("Seedbank distribution", () => {
       const artifact = {
         filename: result.filename,
         bytes: readFileSync(join(directory, result.filename)),
+        // Community packs need a clean scan record; the fixture plugin is community-tier.
+        scan: {
+          scanner: "branch-skill-scanner/v1",
+          scannedFiles: 2,
+          critical: 0,
+          warn: 0,
+          info: 0,
+          truncated: false,
+        },
       };
       const params = {
         sourceSha: "a".repeat(40),

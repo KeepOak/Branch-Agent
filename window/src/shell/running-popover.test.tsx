@@ -58,6 +58,9 @@ it("Clicking the running button with 0 running opens the popover with the empty 
   const request = vi.fn(async () => ({ jobs: [{ name: "Morning brief", enabled: true, state: { nextRunAtMs: Date.now() + 30 * 60_000 } }] }));
   const host = await show(<Harness running={0} working={[]} request={request} />);
   expect(host.querySelector("[data-testid=pop-running]")).toBeNull();
+  // DA-25: the tile opens a schedule too, so it no longer says only "Nothing running".
+  expect(host.querySelector("[data-testid=sb-running]")?.getAttribute("aria-label")).toBe("0 running · what’s coming up");
+  expect(host.querySelector("[data-testid=sb-running]")?.getAttribute("title")).toBe("0 running · what’s coming up");
   await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=sb-running]")!.click());
   await act(async () => new Promise((r) => setTimeout(r, 0)));
   const pop = host.querySelector("[data-testid=pop-running]");

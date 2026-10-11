@@ -61,16 +61,29 @@
   white-space: nowrap;
 }
 
+/* A suggested reply is a line you send, not a control: a dashed draft chip with a reply arrow, so it never reads as
+   an action that runs by itself. */
 .thread .suggestion-row button {
   flex: none;
-  border: 1px solid var(--line-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px dashed var(--line-2);
   border-radius: 999px;
-  background: var(--raise);
+  background: transparent;
   color: var(--ink-2);
-  padding: 7px 12px;
+  padding: 6px 12px;
   font: inherit;
   font-size: 12px;
   cursor: pointer;
+}
+.thread .suggestion-row button:hover {
+  border-style: solid;
+  color: var(--ink);
+}
+.thread .suggestion-row .sug-arrow {
+  flex: none;
+  opacity: 0.7;
 }
 
 /* Preview .fresh and #main .thread .sugT5: new messages rise, suggestion chips fade up. */

@@ -44,7 +44,6 @@ export type ConversationMenuRun = {
   sidePanel: () => void;
   tower: () => void;
   list: () => void;
-  theme: () => void;
   computer: () => void;
   browser: () => void;
   guide: () => void;
@@ -179,7 +178,6 @@ export function conversationMenuItems(c: ConversationMenuContext): MenuItem[] {
     item(c.ownWindowOpen ? "Show its window" : "Open in its own window", "panel", c.run.ownWindow, c.ownWindowOff ? { disabled: c.ownWindowOff } : {}),
     item("Open its computer", "monitor", c.run.computer),
     item("Open the browser", "eye", c.run.browser),
-    item("Switch light or dark", "spark", c.run.theme),
     SEP,
     { kind: "head", label: "Help" },
     item("Why each thing is here", "info", c.run.guide),

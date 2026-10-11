@@ -81,6 +81,44 @@ describe("Trunk Accounts", () => {
     expect(request).toHaveBeenCalledWith("models.authOrderSet", { provider: "anthropic", agentId: "oak" });
   });
 
+  it("a new Trunk with no account says so loudly, offers Sign in an account, and Use my accounts turns the owner's accounts off and on", async () => {
+    let useOwnerAccounts: boolean | undefined;
+    const patches: unknown[] = [];
+    const request = vi.fn(async (method: string, params: Record<string, unknown>) => {
+      if (method === "config.get") return { hash: `h${patches.length}`, valid: true, config: { agents: { entries: { "mac-builder-1": useOwnerAccounts === undefined ? {} : { useOwnerAccounts } } } } };
+      if (method === "config.patch") {
+        const patch = JSON.parse(params.raw as string);
+        patches.push(patch);
+        const value = patch.agents.entries["mac-builder-1"].useOwnerAccounts;
+        useOwnerAccounts = value === null ? undefined : value;
+        return { ok: true };
+      }
+      if (method === "models.authStatus") return { providers: [] };
+      return {};
+    });
+    const engine = { request, scopes: ["operator.admin"] } as unknown as WindowEngine;
+    await act(async () => root.render(<AccountsTab engine={engine} agentId="mac-builder-1" />));
+    const alert = host.querySelector('[data-testid="no-account"]')!;
+    expect(alert.getAttribute("role")).toBe("alert");
+    expect(alert.textContent).toContain("no model account");
+    let page = "";
+    const listen = (event: Event) => { page = (event as CustomEvent<{ page?: string }>).detail?.page ?? ""; };
+    window.addEventListener("branch:navigate-settings", listen);
+    await act(async () => [...alert.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Sign in an account")!.click());
+    window.removeEventListener("branch:navigate-settings", listen);
+    expect(page).toBe("accounts");
+    const toggle = () => host.querySelector<HTMLInputElement>('[data-testid="use-owner-accounts"]')!;
+    expect(toggle().checked).toBe(true);
+    expect(toggle().disabled).toBe(false);
+    await act(async () => toggle().click());
+    expect(patches[0]).toEqual({ agents: { entries: { "mac-builder-1": { useOwnerAccounts: false } } } });
+    expect(request).toHaveBeenCalledWith("config.patch", expect.objectContaining({ baseHash: "h0" }));
+    expect(toggle().checked).toBe(false);
+    await act(async () => toggle().click());
+    expect(patches[1]).toEqual({ agents: { entries: { "mac-builder-1": { useOwnerAccounts: null } } } });
+    expect(toggle().checked).toBe(true);
+  });
+
   it("disables locked and read-only controls and hides raw static status", async () => {
     const provider = { provider: "anthropic", displayName: "Claude", status: "ok", profileOrderStored: true,
       profileOrder: ["anthropic:id-123456abcdef"], profileOrderLocked: "config",
