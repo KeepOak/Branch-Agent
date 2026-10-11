@@ -11,11 +11,16 @@ export function Popover({ at, onClose, label, children, testid, width, above, cl
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState(at);
   useLayoutEffect(() => {
-    const r = ref.current?.getBoundingClientRect();
-    if (r) {
-      const x = above ? (above.align === "right" ? above.right - r.width : above.left) : at.x;
-      const y = above ? above.top - r.height - 6 : at.y;
-      setPos({ x: Math.max(8, Math.min(x, innerWidth - r.width - 8)), y: Math.max(8, Math.min(y, innerHeight - r.height - 8)) });
+    const el = ref.current;
+    if (el) {
+      // Layout size, not getBoundingClientRect: the opening animation scales the panel to 0.98 and lifts it 4px, so its
+      // painted box is smaller than the panel it settles into. Measuring that box let the usage popover settle over the
+      // status bar and flush against the window edge, floating over the chat instead of opening above its item (DA-99).
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      const x = above ? (above.align === "right" ? above.right - w : above.left) : at.x;
+      const y = above ? above.top - h - 6 : at.y;
+      setPos({ x: Math.max(8, Math.min(x, innerWidth - w - 8)), y: Math.max(8, Math.min(y, innerHeight - h - 8)) });
     }
   }, [at, above]);
   useEffect(() => {
