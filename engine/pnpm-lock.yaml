@@ -828,6 +828,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
 
+  extensions/bitwarden:
+    devDependencies:
+      '@branch/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+
   extensions/bonjour:
     dependencies:
       '@homebridge/ciao':

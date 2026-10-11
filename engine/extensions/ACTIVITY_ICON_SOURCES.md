@@ -83,6 +83,7 @@ For LiteLLM, the small source stroke widths are unified at 1.35 source units bef
 
 | Plugin                   | Source package                                                                 | Icon                 |
 | ------------------------ | ------------------------------------------------------------------------------ | -------------------- |
+| `bitwarden`              | [`simple-icons@16.31.0`](https://www.npmjs.com/package/simple-icons/v/16.31.0) | `bitwarden.svg`      |
 | `brave`                  | [`simple-icons@16.31.0`](https://www.npmjs.com/package/simple-icons/v/16.31.0) | `brave.svg`          |
 | `diagnostics-otel`       | [`simple-icons@16.31.0`](https://www.npmjs.com/package/simple-icons/v/16.31.0) | `opentelemetry.svg`  |
 | `diagnostics-prometheus` | [`simple-icons@16.31.0`](https://www.npmjs.com/package/simple-icons/v/16.31.0) | `prometheus.svg`     |
@@ -127,16 +128,16 @@ QuickJS Code Mode reuses the existing [mxc sandbox glyph](mxc/assets/activity.sv
 
 Other defaults are Branch Agent functional glyphs drawn for the 24-unit activity grid. They indicate the capability rather than reproducing a service’s larger app tile. Related actions deliberately share a visual family:
 
-| Capability              | Plugins                                                                                                          |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Agent or task flow      | `a2a`, `acpx`, `llm-task`, `raft`, `reef`                                                                        |
-| Connections and sharing | `admin-http-rpc`, `beam`, `bonjour`, `device-pair`, `session-share`                                              |
-| Chat and meetings       | `buzz`, `clickclack`, `feishu`, `irc`, `nostr`, `sms`, `synology-chat`, `tlon`, `zoom-meetings`                  |
+| Capability              | Plugins                                                                                                       |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Agent or task flow      | `a2a`, `acpx`, `llm-task`, `raft`, `reef`                                                                     |
+| Connections and sharing | `admin-http-rpc`, `beam`, `bonjour`, `device-pair`, `session-share`                                           |
+| Chat and meetings       | `buzz`, `clickclack`, `feishu`, `irc`, `nostr`, `sms`, `synology-chat`, `tlon`, `zoom-meetings`               |
 | Files and knowledge     | `document-extract`, `file-transfer`, `imap`, `logbook`, `memory-wiki`, `oc-path`, `web-readability`, `canopy` |
-| Compute and location    | `crabbox`, `cua-computer`, `geolocation`, `gmi`, `radius`, `sglang`                                              |
-| Security and migration  | `migrate-claude`, `migrate-hermes`, `mxc`, `openshell`, `policy`, `visitor-access`                               |
-| Audio and media         | `gradium`, `inworld`, `kie`, `senseaudio`, `talk-voice`, `tts-local-cli`, `voice-call`, `vydra`                  |
-| Utilities and reports   | `parallel`, `qa-channel`, `qa-lab`, `team-reports`, `tokenjuice`                                                 |
+| Compute and location    | `crabbox`, `cua-computer`, `geolocation`, `gmi`, `radius`, `sglang`                                           |
+| Security and migration  | `migrate-claude`, `migrate-hermes`, `mxc`, `openshell`, `policy`, `visitor-access`                            |
+| Audio and media         | `gradium`, `inworld`, `kie`, `senseaudio`, `talk-voice`, `tts-local-cli`, `voice-call`, `vydra`               |
+| Utilities and reports   | `parallel`, `qa-channel`, `qa-lab`, `team-reports`, `tokenjuice`                                              |
 
 ## License notices
 
