@@ -95,6 +95,16 @@ export function buildMessagingSection(params: {
     ...(params.availableTools.has("sessions_send")
       ? ["- Cross-session: `sessions_send(sessionKey, message)`."]
       : []),
+    ...(params.availableTools.has("trunk_message")
+      ? [
+          "- Another Trunk: `trunk_message(agentId, text)` joins an active Trunk task. If it is busy in its owner's chat, the message is queued for its mailbox and never injected into that chat or run in parallel.",
+        ]
+      : []),
+    ...(params.availableTools.has("room_post")
+      ? [
+          "- Group chats: `room_list`, then `room_read(roomId)` and `room_post(roomId, text)` to coordinate in the room. A post is recorded only; to wake a Trunk, also `trunk_message` it.",
+        ]
+      : []),
     subagentOrchestrationGuidance,
     completionEventGuidance,
     ...routingGuidance,

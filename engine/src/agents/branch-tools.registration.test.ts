@@ -208,6 +208,27 @@ describe("branch-tools progress_card gating", () => {
     expect(embedded).not.toContain("branch");
   });
 
+  it("gives top-level runs the group chat and trunk message tools, but not embedded runs", () => {
+    const topLevel = createFastToolNames({ agentSessionKey: "agent:main:main" });
+    expect(topLevel).toEqual(
+      expect.arrayContaining([
+        "trunk_message",
+        "room_list",
+        "room_read",
+        "room_post",
+        "sessions_send",
+      ]),
+    );
+    setEmbeddedMode(true);
+    try {
+      const embedded = createFastToolNames({ agentSessionKey: "agent:main:main" });
+      expect(embedded).not.toContain("room_post");
+      expect(embedded).not.toContain("trunk_message");
+    } finally {
+      setEmbeddedMode(false);
+    }
+  });
+
   it("registers transcripts for an active local operator with an explicit global opt-out", () => {
     const capability = createCronCreatorAuthorityCapability("run-local", { kind: "local" })!;
     const { defaultTools, disabledTools } = runWithCronCreatorAuthorityCapability(

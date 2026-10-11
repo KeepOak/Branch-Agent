@@ -195,24 +195,56 @@ describe("scripts/run-vitest", () => {
     }
   });
 
-  it("refuses native Bun admission after its expected parent disconnected", async () => {
-    const connected = Object.getOwnPropertyDescriptor(process, "connected");
-    const command = vi.spyOn(testRuntime, "resolveNativeBunTestCommand");
-    Object.defineProperty(process, "connected", { configurable: true, value: false });
+  it("refuses native Bun admission after its expected parent disconnected", async ({ signal }) => {
+    // A real child with no IPC channel: faking process.connected on this Vitest fork worker makes
+    // Node refuse the worker's own IPC sends (ERR_IPC_CHANNEL_CLOSED), and Vitest exits the worker.
+    const runtimeUrl = new URL("../../scripts/lib/vitest-test-runtime.mts", import.meta.url).href;
+    const replacement = `data:text/javascript,${encodeURIComponent(
+      `export function resolveNativeBunTestCommand() { throw new Error("unexpected native Bun launch"); }
+      export function resolveVitestTestCommand() { throw new Error("unexpected Vitest launch"); }`,
+    )}`;
+    const preload = `data:text/javascript,${encodeURIComponent(
+      `import { registerHooks } from "node:module";
+      registerHooks({ resolve(specifier, context, nextResolve) {
+        const resolved = nextResolve(specifier, context);
+        return resolved.url === ${JSON.stringify(runtimeUrl)}
+          ? { url: ${JSON.stringify(replacement)}, shortCircuit: true }
+          : resolved;
+      } });`,
+    )}`;
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      BRANCH_NATIVE_BUN_PARENT_IPC: "1",
+      BRANCH_HEAVY_STEP_DIRECTORY: tempDirs.make("oc-native-bun-orphan-"),
+      BRANCH_HEAVY_STEP_TEST_MEMORY_MB: "0",
+    };
+    delete env.BRANCH_HOST_HEAVY_STEP_OWNER;
+    delete env.BRANCH_HEAVY_STEP_BINDING;
+    const child = spawn(
+      process.versions.bun ? "node" : process.execPath,
+      [
+        "--import",
+        preload,
+        nodePath.resolve("scripts/run-vitest.mts"),
+        "--native-bun",
+        "./test/scripts/run-vitest.test.ts",
+      ],
+      { stdio: ["ignore", "pipe", "pipe"], env, windowsHide: true },
+    );
+    let output = "";
+    child.stdout!.setEncoding("utf8").on("data", (chunk: string) => (output += chunk));
+    child.stderr!.setEncoding("utf8").on("data", (chunk: string) => (output += chunk));
+    const exited = new Promise<number | null>((resolve, reject) => {
+      child.once("close", (code) => resolve(code));
+      child.once("error", reject);
+    });
     try {
-      await expect(
-        runVitest(vi.fn(), ["--native-bun", "./test/scripts/run-vitest.test.ts"], {
-          BRANCH_NATIVE_BUN_PARENT_IPC: "1",
-        }),
-      ).rejects.toThrow("Native Bun test parent IPC disconnected before admission");
-      expect(command).not.toHaveBeenCalled();
+      const code = await withinTest(exited, signal);
+      expect(code, output).not.toBe(0);
+      expect(output).toContain("Native Bun test parent IPC disconnected before admission");
+      expect(output).not.toContain("unexpected native Bun launch");
     } finally {
-      if (connected) {
-        Object.defineProperty(process, "connected", connected);
-      } else {
-        Reflect.deleteProperty(process, "connected");
-      }
-      command.mockRestore();
+      child.kill();
     }
   });
 
@@ -441,8 +473,10 @@ registerHooks({resolve(specifier, context, nextResolve) {
           platform: "win32",
           requireResolve,
         }),
-      ).toBe("/repo/node_modules/vitest/vitest.mjs");
-      expect(symlinkSync.mock.calls).toEqual([
+      ).toMatch(/^[/\\]repo[/\\]node_modules[/\\]vitest[/\\]vitest\.mjs$/u);
+      expect(
+        symlinkSync.mock.calls.map((args) => args.map((arg) => arg.replaceAll("\\", "/"))),
+      ).toEqual([
         [modulesDir, modulesDir + "/node_modules", "junction"],
         [modulesDir, "/repo/node_modules", "junction"],
       ]);
@@ -1001,7 +1035,9 @@ registerHooks({resolve(specifier, context, nextResolve) {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => vi.useRealTimers());
 
-    function setup(options: { heartbeatMs?: number; forceKillAfterMs?: number } = {}) {
+    function setup(
+      options: { timeoutMs?: number; heartbeatMs?: number; forceKillAfterMs?: number } = {},
+    ) {
       const stdout = new EventEmitter();
       const onTimeout = vi.fn();
       const onForceKill = vi.fn();
@@ -1056,18 +1092,29 @@ registerHooks({resolve(specifier, context, nextResolve) {
     });
 
     it("prints bounded heartbeats until the idle deadline", () => {
-      const { stdout, onTimeout, log } = setup({ heartbeatMs: 400, forceKillAfterMs: 0 });
-      vi.advanceTimersByTime(400);
-      expect(log).toHaveBeenCalledWith("[vitest] still running with no output for 400ms.");
-      vi.advanceTimersByTime(400);
-      expect(log).toHaveBeenCalledWith("[vitest] still running with no output for 800ms.");
+      const { stdout, onTimeout, log } = setup({
+        timeoutMs: 100_000,
+        heartbeatMs: 40_000,
+        forceKillAfterMs: 0,
+      });
+      vi.advanceTimersByTime(40_000);
+      expect(log).toHaveBeenCalledWith(
+        "[vitest] still running (healthy): no new output for 40s; the wrapper stops it automatically after 60s of silence. Do not interrupt.",
+      );
+      expect(log.mock.calls[0]?.[0]).toContain("stops it automatically after 60s of silence");
+      vi.advanceTimersByTime(40_000);
+      expect(log).toHaveBeenCalledWith(
+        "[vitest] still running (healthy): no new output for 80s; the wrapper stops it automatically after 20s of silence. Do not interrupt.",
+      );
       stdout.emit("data", "still alive");
-      vi.advanceTimersByTime(400);
-      expect(log).toHaveBeenCalledWith("[vitest] still running with no output for 400ms.");
-      vi.advanceTimersByTime(600);
+      vi.advanceTimersByTime(40_000);
+      expect(log).toHaveBeenLastCalledWith(
+        "[vitest] still running (healthy): no new output for 40s; the wrapper stops it automatically after 60s of silence. Do not interrupt.",
+      );
+      vi.advanceTimersByTime(60_000);
       expect(onTimeout).toHaveBeenCalledTimes(1);
       expect(log).toHaveBeenCalledWith(
-        "[vitest] no output for 1000ms; terminating stalled Vitest process group.",
+        "[vitest] no output for 100000ms; terminating stalled Vitest process group.",
       );
     });
   });

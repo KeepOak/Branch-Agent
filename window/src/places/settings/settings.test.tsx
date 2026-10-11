@@ -37,8 +37,11 @@ describe("Settings engine contracts", () => {
   });
   it("filters credential values from status rendering", () => { expect(safeEntries({ token: "hidden", apiKey: "hidden", secret: "hidden", password: "hidden", status: "connected" })).toEqual([["status", "connected"]]); });
   it("keeps numeric usage counts while hiding token strings", () => { expect(safeEntries({ totalTokens: 120, accessTokens: "hidden", refreshToken: "hidden", outputTokens: 40 })).toEqual([["totalTokens", 120], ["outputTokens", 40]]); });
-  it("renames engine feature labels while preserving outside service names", () => {
-    expect(visible("OpenClaw Workboard Dreaming Crabbox Peekaboo ClawHub")).toBe("Branch Canopy Rings Cuttings Knothole Seedbank");
+  it("maps each exact engine identifier to its Branch name and leaves free text alone", () => {
+    expect(visible("OpenClaw")).toBe("Branch");
+    expect(visible("Dreaming")).toBe("Rings");
+    expect(visible("ClawRouter")).toBe("Model router");
+    expect(visible("Dreaming on")).toBe("Dreaming on");
     expect(visible("OpenAI Anthropic Google Amazon Bitwarden GitHub Telegram OpenShell")).toBe("OpenAI Anthropic Google Amazon Bitwarden GitHub Telegram OpenShell");
   });
   it("never reports a refused file save or config patch as successful", async () => {

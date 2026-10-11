@@ -5,6 +5,7 @@ import { copyText, type ThreadContextValue } from "./context";
 import { BranchDialog, EditDialog, LookInside } from "./dialogs";
 import type { Act, HoverActions } from "./HoverBar";
 import { turnOf } from "./layout";
+import { isInternalStep } from "./internal-steps";
 import { readAloud, readingKey, stopReading } from "./read-aloud";
 import type { Block } from "./model";
 
@@ -115,7 +116,7 @@ export function useMessageActions(ctx: ThreadContextValue, opts: Options): { act
     );
   } else if (dialog?.kind === "inspect") {
     const done = dialog.turn.find((b): b is Extract<Block, { kind: "done" }> => b.kind === "done");
-    node = <LookInside inspect={{ meta: dialog.block.meta, durationMs: done?.durationMs, steps: dialog.turn.filter((b) => b.kind === "step" || b.kind === "approval").length }} onClose={close} />;
+    node = <LookInside inspect={{ meta: dialog.block.meta, durationMs: done?.durationMs, steps: dialog.turn.filter((b) => (b.kind === "step" && !isInternalStep(b)) || b.kind === "approval").length }} onClose={close} />;
   }
   return { actionsFor, dialog: <>{node}{undoContext ? <div className="context-undo" role="status">Back in context. <button type="button" onClick={() => { setContext(undoContext, true); setUndoContext(null); }}>Undo</button></div> : null}</> };
 }

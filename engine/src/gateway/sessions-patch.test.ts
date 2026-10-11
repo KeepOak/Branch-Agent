@@ -1,6 +1,16 @@
 // Session patch tests cover model/provider edits, subagent patching, provider
 // aliases, model catalog validation, and rejected invalid patch payloads.
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { resolveAgentDir } from "../agents/agent-scope.js";
+import {
+  clearRuntimeAuthProfileStoreSnapshots,
+  replaceRuntimeAuthProfileStoreSnapshots,
+} from "../agents/auth-profiles.js";
+import {
+  createApiKeyCredential,
+  createAuthProfileStoreFixture,
+  oauthCred,
+} from "../agents/auth-profiles/credential-fixtures.test-support.js";
 import type { ModelCatalogEntry } from "../agents/model-catalog.js";
 import type { BranchConfig } from "../config/config.js";
 import type { SessionEntry } from "../config/sessions.js";
@@ -2140,6 +2150,78 @@ describe("gateway sessions patch", () => {
     const entry = expectPatchOk(result);
     expectModelSelection(entry, "synthetic", "hf:moonshotai/Kimi-K2.7-Code");
     expect(entry.modelOverrideSource).toBe("user");
+  });
+
+  describe("agent sign-in changes", () => {
+    const API_KEY_PROFILE = "anthropic:fixture-key";
+    const PLAN_PROFILE = "anthropic:fixture-plan";
+
+    beforeEach(() => {
+      replaceRuntimeAuthProfileStoreSnapshots([
+        {
+          agentDir: resolveAgentDir(createAllowlistedAnthropicModelCfg(), "main"),
+          store: createAuthProfileStoreFixture({
+            [API_KEY_PROFILE]: createApiKeyCredential("anthropic", "fixture-key"),
+            [PLAN_PROFILE]: oauthCred({
+              provider: "anthropic",
+              access: "fixture-access",
+              refresh: "fixture-refresh",
+              expires: 4_102_444_800_000,
+            }),
+          }),
+        },
+      ]);
+    });
+
+    afterEach(() => {
+      clearRuntimeAuthProfileStoreSnapshots();
+    });
+
+    function planPinnedStore() {
+      return mainAuthOverrideStore({
+        modelOverride: ANTHROPIC_SONNET_ID,
+        authProfileOverride: PLAN_PROFILE,
+      });
+    }
+
+    test("refuses an agent patch onto an API-key sign-in and keeps the saved sign-in", async () => {
+      const store = planPinnedStore();
+      const result = await withAgentSessionModelPatchOrigin(
+        async () =>
+          await runPatch({
+            store,
+            cfg: createAllowlistedAnthropicModelCfg(),
+            patch: { key: MAIN_SESSION_KEY, model: `${ANTHROPIC_SONNET_MODEL}@${API_KEY_PROFILE}` },
+            loadGatewayModelCatalog: loadCatalog(ANTHROPIC_SONNET_MODEL),
+            providerAuthMetadataSnapshot: EMPTY_PROVIDER_AUTH_METADATA_SNAPSHOT,
+          }),
+      );
+      expectPatchError(result, "Trunks only use subscription sign-ins");
+      expect(store[MAIN_SESSION_KEY]?.authProfileOverride).toBe(PLAN_PROFILE);
+    });
+
+    test("lets an agent patch onto a subscription sign-in", async () => {
+      const entry = await withAgentSessionModelPatchOrigin(
+        async () =>
+          await applyMainModelPatch({
+            store: mainAuthOverrideStore({ authProfileOverride: API_KEY_PROFILE }),
+            cfg: createAllowlistedAnthropicModelCfg(),
+            model: `${ANTHROPIC_SONNET_MODEL}@${PLAN_PROFILE}`,
+            catalogRefs: [ANTHROPIC_SONNET_MODEL],
+          }),
+      );
+      expectAuthOverride(entry, { profile: PLAN_PROFILE });
+    });
+
+    test("keeps owner patches onto an API-key sign-in", async () => {
+      const entry = await applyMainModelPatch({
+        store: planPinnedStore(),
+        cfg: createAllowlistedAnthropicModelCfg(),
+        model: `${ANTHROPIC_SONNET_MODEL}@${API_KEY_PROFILE}`,
+        catalogRefs: [ANTHROPIC_SONNET_MODEL],
+      });
+      expectAuthOverride(entry, { profile: API_KEY_PROFILE });
+    });
   });
 
   test("persists trailing @profile suffix as authProfileOverride on model patch", async () => {

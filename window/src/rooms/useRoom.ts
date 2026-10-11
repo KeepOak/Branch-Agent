@@ -10,7 +10,7 @@ import { describeMembers, isChatAppGroup, isRoom, NO_MEMBERS, readParticipants, 
 import { A2A_CHANNEL } from "./sender";
 
 export type Rule = "mention" | "always";
-export const RULE_WORDS: Record<Rule, string> = { mention: "mentions only", always: "everyone answers" };
+export const RULE_WORDS: Record<Rule | "lead", string> = { mention: "mentions only", always: "everyone answers", lead: "lead decides" };
 
 export type Room = {
   isRoom: boolean;
