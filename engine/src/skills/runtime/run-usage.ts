@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { pruneMapToMaxSize } from "../../infra/map-size.js";
 import type { SkillTelemetrySource } from "../types.js";
 
@@ -30,6 +31,14 @@ export function recordRunSkillUsage(params: RunSkillUsage & { runId?: string }):
   pruneMapToMaxSize(skillUsageByRun, MAX_TRACKED_SKILL_USAGE_RUNS);
 }
 
+function canonicalSkillFile(skillFile: string): string {
+  try {
+    return realpathSync(skillFile);
+  } catch {
+    return skillFile;
+  }
+}
+
 /** Checks whether this run demonstrably used one writable workspace skill. */
 export function hasRunWorkspaceSkillUsage(params: {
   runId: string | undefined;
@@ -39,10 +48,16 @@ export function hasRunWorkspaceSkillUsage(params: {
   if (!params.runId) {
     return false;
   }
+  // Usage receipts hold the realpath of the skill file, while the Workshop loader
+  // keeps the configured path. Compare canonical files so a state folder reached
+  // through a symlink still matches the skill this run read.
+  const skillFile = canonicalSkillFile(params.skillFile);
   for (const usage of skillUsageByRun.get(params.runId)?.values() ?? []) {
     if (
       usage.source === "workspace" &&
-      (usage.skillFile === params.skillFile || (!usage.skillFile && usage.name === params.name))
+      (usage.skillFile
+        ? usage.skillFile === params.skillFile || canonicalSkillFile(usage.skillFile) === skillFile
+        : usage.name === params.name)
     ) {
       return true;
     }
