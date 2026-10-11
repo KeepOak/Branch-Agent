@@ -253,11 +253,19 @@ function showRecoveryError(message: string): void {
   if (document.body) show(); else window.addEventListener("DOMContentLoaded", show, { once: true });
 }
 
-/** A small bar at the bottom of the window while an update waits or applies. The app and window stay open throughout. */
+const UPDATE_BAR_DISMISSED_KEY = "branch-desktop:update-bar-dismissed";
+
+const UPDATE_BAR_HEIGHT = 20;
+
+/** A slim pill while an update waits or applies. With the window's status bar showing, it sits inside the bar's empty
+ *  middle, so it covers no page content; without one (setup, connecting) it floats just above the bottom edge. A waiting
+ *  update can be dismissed: Settings › Updates and the status bar's version item still say it is ready. The app and
+ *  window stay open throughout. */
 function showUpdateBar(state: UpdateState): void {
   // The Settings page mirrors this bar, so it can clear its own pending state on the same outcomes.
   window.dispatchEvent(new CustomEvent("branch:update-state", { detail: { state } }));
   if (state === "updated") document.getElementById("branch-desktop-recovery-error")?.remove();
+  if (state === "kept" || state === "updated") rememberUpdateBarDismissed(null);
   if (state === "kept") {
     // The new engine did not start; Branch keeps running the version it had.
     window.dispatchEvent(new Event("branch:engine-ready"));
@@ -270,35 +278,73 @@ function showUpdateBar(state: UpdateState): void {
     showToast("Branch updated");
     return;
   }
+  const waiting = state === "ready" || state === "auto-wait";
+  // Dismissed for this waiting state (also across reloads, which re-send it): stay hidden until the state changes.
+  if (waiting && updateBarDismissed() === state) {
+    document.getElementById("branch-desktop-update")?.remove();
+    return;
+  }
   let bar = document.getElementById("branch-desktop-update");
   if (!bar) {
     bar = document.createElement("div");
     bar.id = "branch-desktop-update";
     bar.setAttribute("role", "status");
     bar.dataset.testid = "desktop-update-bar";
-    bar.style.cssText = [
-      "position:fixed", "left:50%", "bottom:16px", "transform:translateX(-50%)", "z-index:2147483647",
-      "display:flex", "align-items:center", "gap:12px", "padding:8px 8px 8px 14px", "border-radius:10px",
-      "background:#1e293b", "color:#f1f5f9", "font:13px/1.3 system-ui,-apple-system,'Segoe UI',sans-serif",
-      "box-shadow:0 6px 24px rgba(15,23,42,.28)",
-    ].join(";");
     document.body.appendChild(bar);
   }
+  const statusBar = document.querySelector<HTMLElement>('[data-testid="statusbar"]');
+  const barHeight = statusBar ? Math.round(statusBar.getBoundingClientRect().height) : 0;
+  const docked = barHeight >= UPDATE_BAR_HEIGHT;
+  bar.style.cssText = [
+    "position:fixed", "left:50%", "transform:translateX(-50%)", "z-index:2147483647",
+    docked ? `bottom:${Math.floor((barHeight - UPDATE_BAR_HEIGHT) / 2)}px` : "bottom:16px",
+    // Docked, it leaves the status bar's left and right items uncovered.
+    docked ? "max-width:min(460px,calc(100vw - 420px))" : "max-width:min(460px,calc(100vw - 32px))",
+    "box-sizing:border-box", `height:${UPDATE_BAR_HEIGHT}px`, "display:flex", "align-items:center", "gap:6px",
+    "padding:0 2px 0 10px", "border-radius:999px",
+    "background:#1e293b", "color:#f1f5f9", "font:12px/16px system-ui,-apple-system,'Segoe UI',sans-serif",
+    docked ? "box-shadow:none" : "box-shadow:0 4px 14px rgba(15,23,42,.24)",
+  ].join(";");
   bar.replaceChildren();
   const text = document.createElement("span");
   text.textContent = state === "ready" ? "An update is ready" : state === "auto-wait"
     ? "Update ready, applying when your Trunks finish" : state === "preparing" ? "Getting the update ready…" : "Updating Branch…";
+  text.style.cssText = "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0";
   bar.appendChild(text);
-  if (state === "ready" || state === "auto-wait") {
+  if (waiting) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = state === "ready" ? "Update" : "Update now";
     button.dataset.testid = "desktop-update-restart";
     button.style.cssText =
-      "border:0;border-radius:7px;padding:5px 12px;background:#f1f5f9;color:#0f172a;font:inherit;font-weight:600;cursor:pointer";
+      "border:0;border-radius:999px;height:16px;padding:0 8px;background:#f1f5f9;color:#0f172a;font:inherit;font-weight:600;cursor:pointer;white-space:nowrap";
     button.addEventListener("click", () => ipcRenderer.send("branch-desktop:restart-engine"));
     bar.appendChild(button);
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "×";
+    close.title = "Dismiss";
+    close.setAttribute("aria-label", "Dismiss");
+    close.dataset.testid = "desktop-update-dismiss";
+    close.style.cssText =
+      "border:0;border-radius:50%;width:16px;height:16px;padding:0;background:transparent;color:inherit;font:14px/16px system-ui,sans-serif;cursor:pointer;opacity:.75";
+    close.addEventListener("click", () => {
+      rememberUpdateBarDismissed(state);
+      bar?.remove();
+    });
+    bar.appendChild(close);
   }
+}
+
+function updateBarDismissed(): string | null {
+  try { return sessionStorage.getItem(UPDATE_BAR_DISMISSED_KEY); } catch { return null; }
+}
+
+function rememberUpdateBarDismissed(state: UpdateState | null): void {
+  try {
+    if (state) sessionStorage.setItem(UPDATE_BAR_DISMISSED_KEY, state);
+    else sessionStorage.removeItem(UPDATE_BAR_DISMISSED_KEY);
+  } catch { /* storage refused: a dismissal lasts until the next reload */ }
 }
 
 function fillTokenForm(info: DesktopInfo): void {
