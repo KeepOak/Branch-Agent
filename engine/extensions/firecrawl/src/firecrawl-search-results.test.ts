@@ -1,3 +1,4 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:extensions/firecrawl/src/firecrawl-search-results.test.ts (atlas RESEARCH-0005). Changed for Branch: retain newer upstream tests for the existing Branch sync; all assertions preserved.
 import { installPinnedHostnameTestHooks } from "branch/plugin-sdk/test-media-understanding";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFirecrawlFreeWebSearchProvider } from "./firecrawl-search-provider.js";

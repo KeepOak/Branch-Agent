@@ -1,3 +1,4 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:extensions/anthropic/session-catalog.test.ts (atlas SESSIONS-0057). Changed for Branch: retain newer upstream tests for the existing Branch sync; all assertions preserved.
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

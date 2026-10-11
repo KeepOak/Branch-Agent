@@ -1,3 +1,4 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:extensions/codex/src/session-catalog-adoption.test.ts (atlas SESSIONS-0057). Changed for Branch: retain newer upstream tests for the existing Branch sync; all assertions preserved.
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
 import { resetPluginStateStoreForTests } from "branch/plugin-sdk/plugin-state-test-runtime";
 import type { SessionCatalogEntrySnapshot } from "branch/plugin-sdk/session-catalog";

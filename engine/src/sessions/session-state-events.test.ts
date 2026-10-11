@@ -1,3 +1,4 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/sessions/session-state-events.test.ts (atlas SESSIONS-0005). Changed for Branch: retain newer upstream tests for the existing Branch sync; all assertions preserved.
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { drainFormattedSystemEvents } from "../auto-reply/reply/session-system-events.js";

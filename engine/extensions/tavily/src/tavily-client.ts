@@ -1,8 +1,6 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:extensions/tavily/src/tavily-client.ts (atlas RESEARCH-0003). Changed for Branch: add Mastra crawl/map transport through the existing guarded HTTP and secret contracts.
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
-import {
-  parseDateStringTimestampMs,
-  resolveIntegerOption,
-} from "branch/plugin-sdk/number-runtime";
+import { parseDateStringTimestampMs, resolveIntegerOption } from "branch/plugin-sdk/number-runtime";
 import { readProviderJsonResponse } from "branch/plugin-sdk/provider-http";
 import {
   DEFAULT_CACHE_TTL_MINUTES,
@@ -126,7 +124,7 @@ function resolveEndpoint(baseUrl: string, pathname: string): string {
 
 async function postTavilyJson(params: {
   baseUrl: string;
-  pathname: "/extract" | "/search";
+  pathname: "/extract" | "/search" | "/crawl" | "/map";
   timeoutSeconds: number;
   apiKey: string;
   body: Record<string, unknown>;
@@ -402,4 +400,87 @@ export async function runTavilyExtract(
     resolveCacheTtlMs(undefined, DEFAULT_CACHE_TTL_MINUTES),
   );
   return result;
+}
+
+// From mastra-ai/mastra@486d3b7f35edfeaeab47b1230b56880e672cc421:integrations/tavily/src/crawl.ts and integrations/tavily/src/map.ts (atlas RESEARCH-0003).
+export type TavilyDiscoveryParams = {
+  cfg?: BranchConfig;
+  url: string;
+  maxDepth?: number;
+  maxBreadth?: number;
+  limit?: number;
+  instructions?: string;
+  selectPaths?: string[];
+  selectDomains?: string[];
+  excludePaths?: string[];
+  excludeDomains?: string[];
+  allowExternal?: boolean;
+  extractDepth?: string;
+  includeImages?: boolean;
+  format?: string;
+  signal?: AbortSignal;
+};
+
+function discoveryBody(params: TavilyDiscoveryParams): Record<string, unknown> {
+  return {
+    url: params.url,
+    max_depth: params.maxDepth,
+    max_breadth: params.maxBreadth,
+    limit: params.limit,
+    instructions: params.instructions,
+    select_paths: params.selectPaths,
+    select_domains: params.selectDomains,
+    exclude_paths: params.excludePaths,
+    exclude_domains: params.excludeDomains,
+    allow_external: params.allowExternal,
+    extract_depth: params.extractDepth,
+    include_images: params.includeImages,
+    format: params.format,
+  };
+}
+
+function discoveryResults(data: Record<string, unknown>, operation: "crawl" | "map") {
+  const results = Array.isArray(data.results) ? data.results : [];
+  if (operation === "map") {
+    return results.filter((url): url is string => typeof url === "string");
+  }
+  return results.filter(isRecord).map((row) => ({
+    url: typeof row.url === "string" ? row.url : "",
+    rawContent: wrapWebContent(
+      typeof row.raw_content === "string" ? row.raw_content : "",
+      "web_fetch",
+    ),
+    images: Array.isArray(row.images)
+      ? row.images.filter((url): url is string => typeof url === "string")
+      : undefined,
+  }));
+}
+
+export async function runTavilyDiscovery(
+  operation: "crawl" | "map",
+  params: TavilyDiscoveryParams,
+): Promise<Record<string, unknown>> {
+  params.signal?.throwIfAborted();
+  assertPluginCapabilitySecretAvailable(TAVILY_API_KEY_CONFIG_PATH);
+  const apiKey = resolveTavilyApiKey(params.cfg);
+  if (!apiKey) {
+    throw new Error(
+      "Tavily API key is required. Set TAVILY_API_KEY or plugins.entries.tavily.config.webSearch.apiKey.",
+    );
+  }
+  const data = await postTavilyJson({
+    baseUrl: resolveTavilyBaseUrl(params.cfg),
+    pathname: operation === "crawl" ? "/crawl" : "/map",
+    timeoutSeconds: resolveTavilyExtractTimeoutSeconds(),
+    apiKey,
+    body: discoveryBody(params),
+    errorLabel: `Tavily ${operation}`,
+    ...(params.signal ? { signal: params.signal } : {}),
+  });
+  params.signal?.throwIfAborted();
+  return {
+    baseUrl: typeof data.base_url === "string" ? data.base_url : params.url,
+    results: discoveryResults(data, operation),
+    responseTime: data.response_time,
+  };
 }

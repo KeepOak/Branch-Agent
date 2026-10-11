@@ -1,3 +1,4 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/agents/tools/sessions-search-tool.matching.test.ts (atlas SESSIONS-0025). Changed for Branch: retain newer upstream tests for the existing Branch sync; all assertions preserved.
 import { Value } from "typebox/value";
 import { describe, expect, it, vi } from "vitest";
 import * as sessionKeys from "../../routing/session-key.js";

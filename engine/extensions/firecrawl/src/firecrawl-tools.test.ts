@@ -1,3 +1,4 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:extensions/firecrawl/src/firecrawl-tools.test.ts (atlas RESEARCH-0005). Changed for Branch: retain newer upstream tests for the existing Branch sync; all assertions preserved.
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import { mockPinnedHostnameResolution } from "branch/plugin-sdk/test-env";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";

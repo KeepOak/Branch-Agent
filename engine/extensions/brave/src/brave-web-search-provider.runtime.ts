@@ -1,3 +1,4 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:extensions/brave/src/brave-web-search-provider.runtime.ts (atlas RESEARCH-0002). Changed for Branch: share the existing credential and endpoint checks with Brave image search.
 /**
  * Brave Search HTTP runtime. It resolves credentials, enforces endpoint safety,
  * applies caching, and maps Brave web/LLM-context API responses.
@@ -68,7 +69,7 @@ function logBraveHttp(
   braveHttpLogger.info(`brave http ${event}`, meta);
 }
 
-function resolveBraveApiKey(searchConfig?: SearchConfigRecord): string | undefined {
+export function resolveBraveApiKey(searchConfig?: SearchConfigRecord): string | undefined {
   return (
     readConfiguredSecretString(
       searchConfig?.apiKey,
@@ -77,7 +78,7 @@ function resolveBraveApiKey(searchConfig?: SearchConfigRecord): string | undefin
   );
 }
 
-function resolveBraveBaseUrl(braveConfig: { baseUrl?: unknown } | undefined): string {
+export function resolveBraveBaseUrl(braveConfig: { baseUrl?: unknown } | undefined): string {
   const configured = readConfiguredSecretString(
     braveConfig?.baseUrl,
     "plugins.entries.brave.config.webSearch.baseUrl",
@@ -107,7 +108,7 @@ async function braveEndpointTargetsPrivateNetwork(
   }
 }
 
-async function validateBraveBaseUrl(
+export async function validateBraveBaseUrl(
   baseUrl: string,
   signal?: AbortSignal,
 ): Promise<BraveEndpointMode> {
