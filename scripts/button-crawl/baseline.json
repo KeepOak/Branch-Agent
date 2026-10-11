@@ -76,9 +76,6 @@
     "place:library :: Check now": [
       "dead"
     ],
-    "place:library :: Export everything": [
-      "error"
-    ],
     "settings:accounts :: Check again": [
       "dead"
     ],
