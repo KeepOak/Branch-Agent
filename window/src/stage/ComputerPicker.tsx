@@ -97,7 +97,7 @@ export function ComputerPicker({ at, engine, name, computers, profiles, placemen
     );
   };
   const usable = (c: Computer) => c.available && (c.id === "gateway" || (c.deviceId && c.sessionHost === true && (!c.busy || c.busy.used < c.busy.total)));
-  // A ready paired computer without session hosting (a NAS, say) can still run this conversation's commands.
+  // A ready paired computer without session hosting (a linux-host, say) can still run this conversation's commands.
   const commandsOnly = (c: Computer) => local && c.available && Boolean(c.deviceId) && c.sessionHost !== true;
   const pickFor = (c: Computer): (() => void) | undefined =>
     busy ? undefined : c.id === current ? onClose : c.id === "gateway" ? () => move({ kind: "gateway" })

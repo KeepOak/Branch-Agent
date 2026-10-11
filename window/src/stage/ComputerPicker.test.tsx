@@ -50,29 +50,29 @@ describe("plain computer picker", () => {
     expect(button("Cloud computer")).toBeUndefined();
   });
   it("lists a ready computer that can't host conversations and runs the commands there", async () => {
-    const nas = device({ id: "node:nas1", label: "NAS-linux", platform: "linux", sessionHost: false, workerSlots: undefined });
-    const { request, onClose, onMoved } = await render([host, nas]);
-    const row = button("NAS-linux");
+    const linuxHost = device({ id: "node:host-1", label: "linux-host", platform: "linux", sessionHost: false, workerSlots: undefined });
+    const { request, onClose, onMoved } = await render([host, linuxHost]);
+    const row = button("linux-host");
     expect(row).toBeDefined();
     expect(row!.disabled).toBe(false);
     expect(row!.textContent).toContain("Linux · Runs its commands; the chat stays here");
     await act(async () => row!.click());
-    expect(request).toHaveBeenCalledWith("sessions.patch", { key: "agent:scout:one", execHost: "node", execNode: "nas1" });
+    expect(request).toHaveBeenCalledWith("sessions.patch", { key: "agent:scout:one", execHost: "node", execNode: "host-1" });
     expect(request).not.toHaveBeenCalledWith("sessions.dispatch", expect.anything());
     expect(onMoved).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
   it("ticks the computer running the commands and brings them back to this computer", async () => {
-    const nas = device({ id: "node:nas1", label: "NAS-linux", sessionHost: false, workerSlots: undefined });
-    const { request } = await render([host, nas], undefined, undefined, "node:nas1", "nas1");
-    expect(button("NAS-linux")!.getAttribute("aria-checked")).toBe("true");
+    const linuxHost = device({ id: "node:host-1", label: "linux-host", sessionHost: false, workerSlots: undefined });
+    const { request } = await render([host, linuxHost], undefined, undefined, "node:host-1", "host-1");
+    expect(button("linux-host")!.getAttribute("aria-checked")).toBe("true");
     await act(async () => document.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="false"]')!.click());
     expect(request).toHaveBeenCalledWith("sessions.patch", { key: "agent:scout:one", execHost: null, execNode: null });
   });
   it("doesn't offer commands-only computers while the conversation runs on another computer", async () => {
-    const nas = device({ id: "node:nas1", label: "NAS-linux", sessionHost: false, workerSlots: undefined });
-    await render([host, device(), nas], undefined, { state: "active", environmentId: "node:other", generation: 1, ownerEpoch: 1 }, "node:other");
-    expect(button("NAS-linux")).toBeUndefined();
+    const linuxHost = device({ id: "node:host-1", label: "linux-host", sessionHost: false, workerSlots: undefined });
+    await render([host, device(), linuxHost], undefined, { state: "active", environmentId: "node:other", generation: 1, ownerEpoch: 1 }, "node:other");
+    expect(button("linux-host")).toBeUndefined();
   });
   it("keeps the current computer selectable even when it is offline", async () => {
     const { request, onClose } = await render([host, device({ status: "unavailable" })], undefined, undefined, "node:other");

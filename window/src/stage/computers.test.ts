@@ -15,13 +15,13 @@ describe("stage computers", () => {
     expect(placementComputer({ state: "provisioning", environmentId: "w1" })).toBeNull();
   });
   it("reads the computer running this conversation's commands and ticks it", async () => {
-    const request = vi.fn(async () => ({ session: { key: "agent:a:one", execNode: "nas1" } })) as unknown as WindowEngine["request"];
-    expect(await describeWhere(engine(request))).toEqual({ execNode: "nas1" });
-    const list = [{ id: "gateway", name: "This computer" }, { id: "node:nas1", name: "NAS-linux", deviceId: "nas1" }];
-    expect(currentComputer(undefined, "nas1", list)).toBe("node:nas1");
-    expect(currentComputer(undefined, "NAS-linux", list)).toBe("node:nas1");
+    const request = vi.fn(async () => ({ session: { key: "agent:a:one", execNode: "host-1" } })) as unknown as WindowEngine["request"];
+    expect(await describeWhere(engine(request))).toEqual({ execNode: "host-1" });
+    const list = [{ id: "gateway", name: "This computer" }, { id: "node:host-1", name: "linux-host", deviceId: "host-1" }];
+    expect(currentComputer(undefined, "host-1", list)).toBe("node:host-1");
+    expect(currentComputer(undefined, "linux-host", list)).toBe("node:host-1");
     expect(currentComputer(undefined, undefined, list)).toBe("gateway");
-    expect(currentComputer({ state: "active", environmentId: "w1" }, "nas1", list)).toBe("w1");
+    expect(currentComputer({ state: "active", environmentId: "w1" }, "host-1", list)).toBe("w1");
   });
   it("shows busy slots only when the engine reports them, and offline computers as offline", () => {
     const c = readComputer({ id: "node:n1", type: "node", label: "Desk PC", status: "unavailable", platform: "linux", workerSlots: { total: 4, available: 3 } } as EnvironmentSummary);
