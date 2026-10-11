@@ -111,18 +111,39 @@ export async function markContactRead(contact: Contact, request: (method: string
 
 /** Threads per shared-state read request; a bulk read is several small writes, never one all-or-nothing batch. */
 const READ_BATCH = 500;
+/** Transient failures retry with the same mutation id, so the engine applies the action once. */
+const READ_ATTEMPTS = 3;
 
 type RequestFn = (method: string, params: unknown) => Promise<unknown>;
 
-/** Marks every thread read in one request. No agent is consulted, so a starting agent cannot fail it. */
-export async function markAllThreadsRead(request: RequestFn): Promise<void> {
-  await request("contacts.markAllRead", { mutationId: crypto.randomUUID() });
+/** One id per user action. Call it at the click, then pass the same id to every retry of that action. */
+export function newReadActionId(): string {
+  return crypto.randomUUID();
 }
 
-/** Marks just these sessions read, in batches of READ_BATCH. */
-export async function markThreadsRead(request: RequestFn, sessionKeys: readonly string[]): Promise<void> {
+async function sendWithRetry(send: () => Promise<unknown>): Promise<void> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await send();
+      return;
+    } catch (error) {
+      if (attempt >= READ_ATTEMPTS) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+    }
+  }
+}
+
+/** Marks every thread read in one request. No agent is consulted, so a starting agent cannot fail it. */
+export async function markAllThreadsRead(request: RequestFn, actionId: string): Promise<void> {
+  await sendWithRetry(() => request("contacts.markAllRead", { mutationId: actionId }));
+}
+
+/** Marks just these sessions read, in batches of READ_BATCH; each batch id derives from the action id. */
+export async function markThreadsRead(request: RequestFn, sessionKeys: readonly string[], actionId: string): Promise<void> {
   for (let i = 0; i < sessionKeys.length; i += READ_BATCH) {
-    await request("contacts.markAllRead", { mutationId: crypto.randomUUID(), sessionKeys: sessionKeys.slice(i, i + READ_BATCH) });
+    const mutationId = `${actionId}:${i / READ_BATCH}`;
+    const batch = sessionKeys.slice(i, i + READ_BATCH);
+    await sendWithRetry(() => request("contacts.markAllRead", { mutationId, sessionKeys: batch }));
   }
 }
 

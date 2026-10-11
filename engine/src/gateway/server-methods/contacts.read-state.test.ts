@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const partial = vi.hoisted(() => ({ rowBeforeRefusal: false }));
 const roster = vi.hoisted(() => ({
   agents: [
     { id: "main", name: "Main", kind: "branch" },
@@ -31,6 +32,16 @@ vi.mock("../../config/sessions/session-accessor.js", async (importOriginal) => {
     ...actual,
     // Mirrors the real gate: a pending agent refuses synchronously, a ready agent lists its threads.
     listSessionEntriesReadOnly: (params: { agentId: string }) => {
+      if (partial.rowBeforeRefusal && params.agentId === "mobile") {
+        // Yields one row, then refuses, like an agent whose startup fails midway through its listing.
+        return (function* () {
+          yield {
+            sessionKey: "agent:mobile:ghost",
+            entry: { sessionId: "mobile-ghost", updatedAt: 4_242, lastActivityAt: 4_242 },
+          };
+          assertAgentDatabaseAdmitted(params.agentId);
+        })();
+      }
       assertAgentDatabaseAdmitted(params.agentId);
       return [
         {
@@ -179,6 +190,20 @@ describe("mark all read is visible in the contact list", () => {
     const mobile = listed.payload.contacts.find((contact: { id: string }) => contact.id.includes("mobile"));
     expect(mobile).toBeDefined();
     expect(mobile.threadUnread).toBe(false);
+  });
+});
+
+describe("an agent that fails midway contributes no rows", () => {
+  it("drops the rows a starting agent yielded before its refusal", async () => {
+    partial.rowBeforeRefusal = true;
+    try {
+      mobileStillStarting();
+      const listed = await call("contacts.list", {});
+      expect(listed.ok).toBe(true);
+      expect(JSON.stringify(listed.payload)).not.toContain("ghost");
+    } finally {
+      partial.rowBeforeRefusal = false;
+    }
   });
 });
 

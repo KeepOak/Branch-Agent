@@ -15,6 +15,7 @@ import { listAgentEntries } from "../../agents/agent-scope.js";
 import { resolveExistingAgentSessionStoreTargetsSync } from "../../config/sessions.js";
 import {
   listSessionEntriesReadOnly,
+  patchSessionEntryCore,
   type SessionEntrySummary,
 } from "../../config/sessions/session-accessor.js";
 import { readAgentDatabaseAdmissionRefusal } from "../../state/agent-database-admission.js";
@@ -41,8 +42,11 @@ import {
   ALL_THREADS_SCOPE,
   applyReadMutation,
   readReadMarkers,
-  withReadMarkers,
+  readThroughEntry,
+  ReadMutationConflictError,
+  type ReadMarkers,
 } from "../contacts/read-state.js";
+import { sessionChanges } from "../../sessions/session-row-changes.js";
 import { claimGraftWork, completeGraftWork, enqueueGraftWork, getGraftWork } from "../contacts/graft-work.js";
 import { hasOperatorBoundary, resolveOperatorRolePolicy } from "../operator-role-policy.js";
 import { removeOutsideRoomMembers } from "../rooms/store.js";
@@ -54,6 +58,72 @@ import { createVisibleActiveSessionRunProjector } from "./session-active-runs.js
 import { emitSessionsChanged } from "./session-change-event.js";
 import type { GatewayRequestHandlers, GatewayRequestHandlerOptions } from "./types.js";
 import { assertValidParams } from "./validation.js";
+
+/**
+ * Stores the read-through in each readable session's own entry, through the normal storage write,
+ * so every row projection re-reads it. Only entries still behind `readThroughMs` are written.
+ * A starting agent's entries are skipped: its markers already cover them.
+ */
+async function storeReadThrough(
+  context: GatewayRequestHandlerOptions["context"],
+  sessionKeys: readonly string[],
+  readThroughMs: number,
+): Promise<void> {
+  for (const sessionKey of sessionKeys) {
+    const agentId = parseAgentSessionKey(sessionKey)?.agentId;
+    let stamped = false;
+    try {
+      await patchSessionEntryCore({ sessionKey, agentId }, (current) => {
+        if (!current || (current.lastActivityAt ?? current.updatedAt) > readThroughMs) return {};
+        if ((current.lastReadAt ?? 0) >= readThroughMs) return {};
+        stamped = true;
+        return { lastReadAt: readThroughMs, markedUnreadAt: undefined };
+      });
+    } catch (error) {
+      if (!agentId || !readAgentDatabaseAdmissionRefusal(agentId)) {
+        throw error;
+      }
+      continue;
+    }
+    if (stamped) {
+      emitSessionsChanged(context, { sessionKey, reason: "read" });
+    }
+  }
+}
+
+/** Every session key a window can read; agents still starting are skipped, as readProjection skips them. */
+async function listReadableSessionKeys({ context }: GatewayRequestHandlerOptions): Promise<string[]> {
+  const cfg = context.getRuntimeConfig();
+  const roster = await listGatewayAgentsBasic(cfg);
+  const agentIds = new Set([
+    ...roster.agents.map((agent) => agent.id),
+    ...(await listExistingAgentIdsFromDisk()),
+  ]);
+  const keys: string[] = [];
+  for (const agentId of agentIds) {
+    try {
+      for (const target of resolveExistingAgentSessionStoreTargetsSync(cfg, agentId)) {
+        for (const row of listSessionEntriesReadOnly({
+          agentId: target.agentId,
+          storePath: target.storePath,
+          projection: "list",
+        })) {
+          keys.push(row.sessionKey);
+        }
+      }
+    } catch (error) {
+      if (!readAgentDatabaseAdmissionRefusal(agentId)) {
+        throw error;
+      }
+    }
+  }
+  return keys;
+}
+
+/** The contact roster reads unread through the same helper as every session row builder. */
+function withReadMarkers(row: SessionEntrySummary, markers: ReadMarkers): SessionEntrySummary {
+  return { ...row, entry: readThroughEntry(row.sessionKey, row.entry, markers) ?? row.entry };
+}
 
 /** One plain line for the owner; the refusal's repair text stays in logs. */
 function startingUpMessage(agentIds: readonly string[]): string {
@@ -80,6 +150,8 @@ async function readProjection({
   ]);
   for (const agentId of agentIds) {
     if (allowedAgents && !allowedAgents.has(agentId)) continue;
+    // Rows are staged per agent, so an agent that throws midway contributes none of its rows.
+    const agentRows = new Map<string, SessionEntrySummary>();
     try {
       for (const target of resolveExistingAgentSessionStoreTargetsSync(cfg, agentId)) {
         for (const row of listSessionEntriesReadOnly({
@@ -89,7 +161,7 @@ async function readProjection({
         })) {
           const owner = parseAgentSessionKey(row.sessionKey)?.agentId;
           if (owner && owner !== agentId) continue;
-          sessions.set(row.sessionKey, withReadMarkers(row, markers));
+          agentRows.set(row.sessionKey, withReadMarkers(row, markers));
         }
       }
     } catch (error) {
@@ -98,6 +170,10 @@ async function readProjection({
         throw error;
       }
       unavailableAgentIds.push(agentId);
+      continue;
+    }
+    for (const [sessionKey, row] of agentRows) {
+      sessions.set(sessionKey, row);
     }
   }
   const filter = hasOperatorBoundary(client, cfg)
@@ -474,11 +550,20 @@ export const contactHandlers: GatewayRequestHandlers = {
         .map((topic) => topic.key),
     ].filter((key) => projection.sessionKeys.has(key));
     sessionMutationAuthorization?.assertCurrent();
-    const result = applyReadMutation({
-      mutationId: params.mutationId ?? randomUUID(),
-      scopes: keys,
-      nowMs: Date.now(),
-    });
+    let result;
+    try {
+      result = applyReadMutation({
+        mutationId: params.mutationId ?? randomUUID(),
+        scopes: keys,
+        nowMs: Date.now(),
+      });
+    } catch (error) {
+      if (!(error instanceof ReadMutationConflictError)) {
+        throw error;
+      }
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, error.message));
+      return;
+    }
     if (result.applied) {
       for (const sessionKey of keys) {
         emitSessionsChanged(context, { sessionKey, reason: "read" });
@@ -492,17 +577,26 @@ export const contactHandlers: GatewayRequestHandlers = {
       return;
     // One shared-state write, no agent database and no projection: nothing here waits on agent readiness.
     sessionMutationAuthorization?.assertCurrent();
-    const result = applyReadMutation({
-      mutationId: params.mutationId,
-      scopes: params.sessionKeys ?? [ALL_THREADS_SCOPE],
-      nowMs: Date.now(),
-    });
-    if (result.applied && params.sessionKeys) {
-      for (const sessionKey of params.sessionKeys) {
-        emitSessionsChanged(context, { sessionKey, reason: "read" });
+    let result;
+    try {
+      result = applyReadMutation({
+        mutationId: params.mutationId,
+        scopes: params.sessionKeys ?? [ALL_THREADS_SCOPE],
+        nowMs: Date.now(),
+      });
+    } catch (error) {
+      if (!(error instanceof ReadMutationConflictError)) {
+        throw error;
       }
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, error.message));
+      return;
+    }
+    if (result.applied && params.sessionKeys) {
+      await storeReadThrough(context, params.sessionKeys, result.readThroughMs);
     } else if (result.applied) {
-      // Every thread changed, so open windows must reload the contact roster and thread lists.
+      // Every thread changed: invalidate the session rows (sessions.list, subscribe, describe)
+      // and tell open windows to reload the contact roster and thread lists.
+      await storeReadThrough(context, await listReadableSessionKeys(options), result.readThroughMs);
       context.broadcast("contacts.changed", { ts: Date.now() }, { dropIfSlow: true });
     }
     respond(true, result);

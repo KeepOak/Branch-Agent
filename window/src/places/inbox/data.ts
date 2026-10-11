@@ -3,7 +3,7 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
-import { markThreadsRead } from "../../shell/contacts-model";
+import { markThreadsRead, newReadActionId } from "../../shell/contacts-model";
 import { agents, sessions, type Agent, type Session } from "../overview/engine";
 
 export type Row = Record<string, unknown>;
@@ -52,7 +52,7 @@ export async function resolveApproval(engine: WindowEngine, item: Row, decision:
 
 /** Marks these conversations read through shared read state, so a starting agent never blocks it. */
 export async function markRead(engine: WindowEngine, list: Session[]): Promise<void> {
-  await markThreadsRead((method, params) => engine.request(method, params), list.map(row => row.key));
+  await markThreadsRead((method, params) => engine.request(method, params), list.map(row => row.key), newReadActionId());
 }
 
 export type Needs = {

@@ -3,7 +3,7 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { LIST_PARAMS, type Conversation, type ConversationList } from "../connect/conversations";
 import { isPreparationPending, ownerErrorText, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
-import { markThreadsRead } from "./contacts-model";
+import { markThreadsRead, newReadActionId } from "./contacts-model";
 import { notify } from "./notify";
 import { forgetDeletedConversationWindow } from "./own-window";
 
@@ -149,7 +149,7 @@ export function conversationActions(request: Request, list: ConversationList, op
         return;
       }
       try {
-        await markThreadsRead(request, sessionKeys);
+        await markThreadsRead(request, sessionKeys, newReadActionId());
         notify("All conversations marked read.");
       } catch (e) {
         notify(`Couldn't mark them read: ${reason(e)}.`, { tone: "bad" });

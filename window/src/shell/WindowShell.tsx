@@ -31,7 +31,7 @@ import { useContacts, useConversations, useListPeople, useMachine, usePendingApp
 import { FilterButton, FilterSortPopover, readPrefs, savePrefs } from "./FilterSort";
 import { Icon } from "./icons";
 import { clearFilters, emptyLineFor, filterRows, filterSummary, hasFolders, homeRow, owners, roomUsed, type ListPrefs } from "./list-model";
-import { buildContactSections, contactRow, contactRowsFor, listContactTopics, markAllThreadsRead, markContactRead, missingConversation, openContactRow, pinContact, projectContact, type Contact } from "./contacts-model";
+import { buildContactSections, contactRow, contactRowsFor, listContactTopics, markAllThreadsRead, markContactRead, missingConversation, newReadActionId, openContactRow, pinContact, projectContact, type Contact } from "./contacts-model";
 import { GroupDropPopover, groupHint, groupPlan, mergeRoomNotices, moveContactToProject, roomContact, useGroupRooms, useRoomNotices, type GroupDrop } from "./group-drop";
 import { AppSections, ReadOnlyThread, useCatalogs, type CatalogThread } from "./AppSections";
 import { batchMenuItems } from "./batch-menu";
@@ -1603,7 +1603,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           if (roomId) void session.request("rooms.archive", { roomId }).then(() => groupRooms.reload(), (error: unknown) => notify(`Couldn't archive ${r.title}: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
           else void (r.archived ? actions.restore(r) : actions.archive(r));
         }}
-        onMarkAllRead={() => void markAllThreadsRead(request).then(refreshContacts).catch((e: unknown) => notify(`Couldn't mark all read: ${ownerErrorText(e)}.`, { tone: "bad" }))}
+        onMarkAllRead={() => void markAllThreadsRead(request, newReadActionId()).then(refreshContacts).catch((e: unknown) => notify(`Couldn't mark all read: ${ownerErrorText(e)}.`, { tone: "bad" }))}
         onPerson={(e) => (overlay?.kind === "person" ? setOverlay(null) : setOverlay({ kind: "person", at: above(e), from: statusAnchor(e, "connection") }))}
         onSettings={() => openSettings("general")}
         talk={talkEntry}

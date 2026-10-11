@@ -1,7 +1,7 @@
 import type { Contact as GatewayContact } from "@branch/gateway-protocol";
 import { describe, expect, it, vi } from "vitest";
 import { projectConversation } from "../connect/conversations";
-import { buildContactSections, contactRow, contactRowsFor, fallbackTrunkContacts, listContactTopics, markAllThreadsRead, markContactRead, markThreadsRead, projectContact } from "./contacts-model";
+import { buildContactSections, contactRow, contactRowsFor, fallbackTrunkContacts, listContactTopics, markAllThreadsRead, markContactRead, markThreadsRead, newReadActionId, projectContact } from "./contacts-model";
 import { DEFAULT_PREFS } from "./list-model";
 import { contactAlert, contactAlertTarget } from "./notify";
 
@@ -92,18 +92,39 @@ describe("Gateway contact projection", () => {
 });
 
 describe("bulk read requests", () => {
-  it("marks every thread with one request that carries a fresh mutation id", async () => {
+  it("marks every thread with one request that carries the action's mutation id", async () => {
     const request = vi.fn(async (_method: string, _params: unknown) => ({ applied: true, readThroughMs: 1 }));
-    await markAllThreadsRead(request);
-    expect(request).toHaveBeenCalledExactlyOnceWith("contacts.markAllRead", { mutationId: expect.any(String) });
+    await markAllThreadsRead(request, "action-all");
+    expect(request).toHaveBeenCalledExactlyOnceWith("contacts.markAllRead", { mutationId: "action-all" });
   });
 
-  it("marks listed sessions in batches of 500, each batch with its own mutation id", async () => {
+  it("marks listed sessions in batches of 500, each batch id derived from the action id", async () => {
     const request = vi.fn(async (_method: string, _params: unknown) => ({ applied: true, readThroughMs: 1 }));
-    await markThreadsRead(request, Array.from({ length: 1001 }, (_, i) => `agent:oak:thread-${i}`));
+    await markThreadsRead(request, Array.from({ length: 1001 }, (_, i) => `agent:oak:thread-${i}`), "action-batch");
     const batches = request.mock.calls.map(([, params]) => (params as { sessionKeys: string[] }).sessionKeys.length);
     expect(batches).toEqual([500, 500, 1]);
-    const ids = new Set(request.mock.calls.map(([, params]) => (params as { mutationId: string }).mutationId));
-    expect(ids.size).toBe(3);
+    const ids = request.mock.calls.map(([, params]) => (params as { mutationId: string }).mutationId);
+    expect(ids).toEqual(["action-batch:0", "action-batch:1", "action-batch:2"]);
+  });
+
+  it("retries a failed send with the same mutation id, so the engine applies the action once", async () => {
+    const request = vi
+      .fn(async (_method: string, _params: unknown) => ({ applied: true, readThroughMs: 1 }))
+      .mockRejectedValueOnce(new Error("socket closed"))
+      .mockRejectedValueOnce(new Error("socket closed"));
+    vi.useFakeTimers();
+    try {
+      const done = markAllThreadsRead(request, "action-retry");
+      await vi.runAllTimersAsync();
+      await done;
+    } finally {
+      vi.useRealTimers();
+    }
+    const ids = request.mock.calls.map(([, params]) => (params as { mutationId: string }).mutationId);
+    expect(ids).toEqual(["action-retry", "action-retry", "action-retry"]);
+  });
+
+  it("gives separate user actions separate mutation ids", () => {
+    expect(newReadActionId()).not.toBe(newReadActionId());
   });
 });
