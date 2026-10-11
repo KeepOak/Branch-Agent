@@ -73,6 +73,8 @@ export type StatusContext = {
   working: { key: string; title: string; line: string; runIds?: string[] }[];
   openSettings: (page: string) => void;
   openAutomations: () => void;
+  /** Trunk names for Coming up's check-ins. */
+  trunkName?: (id?: string) => string;
   openConversation: (key: string) => void;
   onWhatsNew: () => void;
   onReminded: () => void;
@@ -207,7 +209,7 @@ export function StatusPopover({ item, above, onClose, ctx }: Props) {
     return <RoomPopover {...base} request={request} row={row} level={level} onTidy={(keepLast) => (keepLast ? setConfirm(row) : (onClose(), void tidy(ctx, row, false)))} />;
   }
   if (item === "running") {
-    return <RunningPopover {...base} request={request} working={ctx.working} onOpen={(key) => (onClose(), ctx.openConversation(key))} onAutomations={close(ctx.openAutomations)}
+    return <RunningPopover {...base} request={request} trunkName={ctx.trunkName} working={ctx.working} onOpen={(key) => (onClose(), ctx.openConversation(key))} onAutomations={close(ctx.openAutomations)}
       onBackground={close(() => prepareBackground(ctx))} onPauseAll={close(() => void pauseAll(ctx))} />;
   }
   if (item === "version") {

@@ -226,14 +226,34 @@ export function dueWords(at: number, now: number): string {
   return hours < 24 ? `in ${hours} h` : `in ${Math.round(hours / 24)} days`;
 }
 
+/** Names of the engine's own memory-cleanup job, current and before the doctor migrates it (engine/src/memory-host-sdk/rings.ts). */
+const MEMORY_CLEANUP_NAMES = new Set(["Memory Rings Promotion", "Memory Light Rings", "Memory REM Rings"]);
+
+/**
+ * An automation's name in plain words (DA-25). The engine names its heartbeat monitors `Heartbeat (<agent id>)`
+ * (engine/src/cron/heartbeat-monitor.ts), which shows an internal id, and its memory job "Memory Rings Promotion",
+ * which is internal jargon. They read "Check-in" (the Automations word for a heartbeat) and "Overnight memory cleanup".
+ * With `trunkName`, a check-in also says whose it is. Every other job keeps the name it was given.
+ */
+export function plainJobName(job: Record<string, unknown>, trunkName?: (id?: string) => string): string {
+  if (rec(job.payload).kind === "heartbeat") {
+    const id = str(job.agentId);
+    return trunkName && id ? `Check-in · ${trunkName(id)}` : "Check-in";
+  }
+  if (MEMORY_CLEANUP_NAMES.has(str(job.name)) || /\[managed-by=memory-core\./.test(`${str(job.description)} ${str(job.tags)}`)) {
+    return "Overnight memory cleanup";
+  }
+  return str(job.displayName) || str(job.name) || str(job.id);
+}
+
 /** cron.list jobs: enabled ones with a next run, soonest first, at most 8 (§4.9.6 Coming up). */
-export function comingUp(jobs: unknown[], now = Date.now()): { name: string; when: string }[] {
+export function comingUp(jobs: unknown[], now = Date.now(), trunkName?: (id?: string) => string): { name: string; when: string }[] {
   return jobs
     .map(rec)
     .filter((j) => j.enabled !== false && num(rec(j.state).nextRunAtMs) > 0)
     .sort((a, b) => num(rec(a.state).nextRunAtMs) - num(rec(b.state).nextRunAtMs))
     .slice(0, 8)
-    .map((j) => ({ name: str(j.displayName) || str(j.name) || str(j.id), when: dueWords(num(rec(j.state).nextRunAtMs), now) }));
+    .map((j) => ({ name: plainJobName(j, trunkName), when: dueWords(num(rec(j.state).nextRunAtMs), now) }));
 }
 
 export type UpdateInfo = { current: string; latest: string | null; notes: string[]; installing: boolean; waiting: string | null; statusMessage?: string };

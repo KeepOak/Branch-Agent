@@ -226,11 +226,11 @@ export function RoomPopover({ request, row, level, onTidy, ...base }: RoomProps)
   );
 }
 
-type RunningProps = Base & { request: Request; working: { key: string; title: string; line: string; runIds?: string[] }[]; onOpen: (key: string) => void; onAutomations: () => void; onBackground: () => void; onPauseAll: () => void };
+type RunningProps = Base & { request: Request; trunkName?: (id?: string) => string; working: { key: string; title: string; line: string; runIds?: string[] }[]; onOpen: (key: string) => void; onAutomations: () => void; onBackground: () => void; onPauseAll: () => void };
 
 /** Running in the background is exactly the live run rows; scheduled jobs are separate. */
-export function RunningPopover({ request, working, onOpen, onAutomations, onBackground, onPauseAll, ...base }: RunningProps) {
-  const jobs = useRead(request, "cron.list", { limit: 200 }, (r) => comingUp(Array.isArray(rec(r).jobs) ? (rec(r).jobs as unknown[]) : []));
+export function RunningPopover({ request, trunkName, working, onOpen, onAutomations, onBackground, onPauseAll, ...base }: RunningProps) {
+  const jobs = useRead(request, "cron.list", { limit: 200 }, (r) => comingUp(Array.isArray(rec(r).jobs) ? (rec(r).jobs as unknown[]) : [], Date.now(), trunkName));
   const upcoming = jobs.data ?? [];
   return (
     <Popover at={{ x: 0, y: 0 }} label="Running in the background" testid="pop-running" className="sp" {...base}>
