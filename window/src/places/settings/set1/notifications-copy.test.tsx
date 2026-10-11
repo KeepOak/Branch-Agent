@@ -8,8 +8,8 @@ import { ThisBrowser, deviceOff, type WebPush } from "./notifications-browser";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
 let host: HTMLDivElement;
-beforeEach(() => { host = document.body.appendChild(document.createElement("div")); root = createRoot(host); });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
+beforeEach(() => { vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"); host = document.body.appendChild(document.createElement("div")); root = createRoot(host); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); });
 
 function pushState(overrides: Partial<WebPush> = {}): WebPush {
   return {
@@ -44,6 +44,29 @@ describe("desktop notification copy", () => {
       expect(host.textContent).toContain("Open System Settings");
       expect(host.textContent).not.toContain("reload");
     }
+  });
+
+  it.each([
+    { os: "macOS", userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", settings: "System Settings" },
+    { os: "Windows", userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", settings: "Windows Settings" },
+    { os: "Linux", userAgent: "Mozilla/5.0 (X11; Linux x86_64)", settings: "your system settings" },
+  ])("names the $os settings in denied guidance and the disabled button", async ({ userAgent, settings }) => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(userAgent);
+    await act(async () => root.render(<ThisBrowser engine={engine} push={pushState({ permission: "denied" })} />));
+    const why = `Notifications are off for Branch in ${settings}.`;
+    expect(host.textContent).toContain(why);
+    expect(host.textContent).toContain(`Open ${settings} and allow notifications for Branch.`);
+    const turnOn = Array.from(host.querySelectorAll("button")).find((button) => button.textContent === "Turn on notifications")!;
+    expect(turnOn.disabled).toBe(true);
+    expect(turnOn.title).toContain(why);
+    expect(copy()).not.toMatch(websiteWords);
+  });
+
+  it.each(["iPhone", "iPad"])("uses a device-neutral heading and preserves the %s setup hint", async (device) => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(`Mozilla/5.0 (${device}; CPU OS 17_0 like Mac OS X)`);
+    await act(async () => root.render(<ThisBrowser engine={engine} push={pushState()} />));
+    expect(host.querySelector("h2")?.textContent).toBe("This device");
+    expect(host.textContent).toContain("Use Share › Add to Home Screen, then open Branch from there.");
   });
 
   it("uses computer wording when a test has no notification destinations", async () => {

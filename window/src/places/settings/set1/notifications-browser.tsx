@@ -167,12 +167,14 @@ const PERM_WORD: Record<Perm, string> = { granted: "Allowed", denied: "Blocked",
 
 export function ThisBrowser({ engine, push }: { engine: WindowEngine; push: WebPush }) {
   const test = useTestSend(engine);
-  const ios = typeof navigator !== "undefined" && /iPhone|iPad/.test(navigator.userAgent);
-  const why = push.loading ? "Checking this computer…" : !push.supported ? "This computer can’t show notifications." : push.permission === "denied" ? "Notifications are off for Branch in System Settings." : !push.reg ? "This computer isn’t set up for notifications yet." : undefined;
-  const hint = !push.supported ? "This computer can’t show notifications." : ios ? "Use Share › Add to Home Screen, then open Branch from there." : push.permission === "denied" ? "Open System Settings and allow notifications for Branch." : "";
+  const userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent;
+  const ios = /iPhone|iPad/.test(userAgent);
+  const settings = /Windows/.test(userAgent) ? "Windows Settings" : !ios && /Macintosh|Mac OS X/.test(userAgent) ? "System Settings" : "your system settings";
+  const why = push.loading ? "Checking this computer…" : !push.supported ? "This computer can’t show notifications." : push.permission === "denied" ? `Notifications are off for Branch in ${settings}.` : !push.reg ? "This computer isn’t set up for notifications yet." : undefined;
+  const hint = !push.supported ? "This computer can’t show notifications." : ios ? "Use Share › Add to Home Screen, then open Branch from there." : push.permission === "denied" ? `Open ${settings} and allow notifications for Branch.` : "";
   const on = Boolean(push.device);
   return (
-    <Sec title="This computer">
+    <Sec title={ios ? "This device" : "This computer"}>
       <dl className="kv nt-kv">
         <dt>Notification support</dt><dd>{push.supported ? "Available" : "Not supported"}</dd>
         <dt>Permission</dt><dd>{PERM_WORD[push.permission]}</dd>
