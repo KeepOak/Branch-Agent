@@ -21,6 +21,8 @@ const reason = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export const BROWSE_OFF = "Picking a folder on your computer needs the desktop app, which doesn't offer it yet. Paste its path above.";
 export const NOT_GIT = "This folder isn’t a Git project";
+export const COMPUTER_WHY = "The computer that runs its commands and code.";
+export const folderWhy = (trunkName: string) => `Where it reads and saves files. Until you pick one, it uses ${trunkName}’s files.`;
 
 const isPath = (q: string) => /^([a-zA-Z]:[\\/]|\/|~[\\/])/.test(q.trim());
 const isGit = (q: string) => /^(https?:\/\/|git@)\S+$/.test(q.trim());
@@ -64,7 +66,7 @@ export function WhereChips(p: Props) {
   const current = placementComputer(where.placement);
   const computerId = selectedComputer ?? current ?? "gateway";
   const compName = computerId === "free" ? "Any free computer" : where.computers.find((c) => c.id === computerId)?.name ?? "This computer";
-  const folderName = selectedFolder ?? p.projectName ?? (p.row?.folder ? base(p.row.folder) : `${p.trunkName}’s own folder`);
+  const folderName = selectedFolder ?? p.projectName ?? (p.row?.folder ? base(p.row.folder) : `${p.trunkName}’s files`);
   const git = Boolean(p.row?.repoBranch);
   const toggle = (kind: "comp" | "folder" | "copy") => (e: MouseEvent<HTMLElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -84,12 +86,12 @@ export function WhereChips(p: Props) {
     <div className="where-chips" data-testid="where-chips">
       <button type="button" className="chip-c" aria-expanded={open?.kind === "comp"} onClick={toggle("comp")}>
         <Icon name="monitor" small />
-        <span className="lbl">{compName}</span>
+        <span className="lbl">Working on: {compName}</span>
         <Icon name="down" small />
       </button>
       <button type="button" className="chip-c" aria-expanded={open?.kind === "folder"} onClick={toggle("folder")}>
         <Icon name="folder" small />
-        <span className="lbl">{folderName}</span>
+        <span className="lbl">Folder: {folderName}</span>
         <Icon name="down" small />
       </button>
       {p.advanced ? (
@@ -103,6 +105,7 @@ export function WhereChips(p: Props) {
       {open?.kind === "comp" ? (
         <Popover at={open.at} onClose={() => setOpen(null)} label="Where it works" testid="where-comp">
           <div className="ph">Where it works</div>
+          <p className="pp">{COMPUTER_WHY}</p>
           {where.computers.map((c) => (
             <button key={c.id} type="button" className="mi" role="menuitemradio" aria-checked={c.id === computerId} disabled={c.id !== "gateway" && !c.deviceId}
               title={c.id !== "gateway" && !c.deviceId ? "A cloud computer is picked by its kind." : undefined}
@@ -134,18 +137,19 @@ export function WhereChips(p: Props) {
           </button>
         </Popover>
       ) : null}
-      {open?.kind === "folder" ? <FolderPop at={open.at} projects={where.projects} onClose={() => setOpen(null)} start={start} /> : null}
+      {open?.kind === "folder" ? <FolderPop at={open.at} trunkName={p.trunkName} projects={where.projects} onClose={() => setOpen(null)} start={start} /> : null}
       {open?.kind === "copy" ? <CopyPop at={open.at} onClose={() => setOpen(null)} start={(name) => start({ ...(p.row?.folder ? { cwd: p.row.folder } : {}), worktree: true, ...(name ? { worktreeName: name } : {}) })} /> : null}
     </div>
   );
 }
 
-function FolderPop({ at, projects, onClose, start }: { at: MenuAnchor; projects: Project[]; onClose: () => void; start: (params: Record<string, unknown>) => Promise<void> }) {
+function FolderPop({ at, trunkName, projects, onClose, start }: { at: MenuAnchor; trunkName: string; projects: Project[]; onClose: () => void; start: (params: Record<string, unknown>) => Promise<void> }) {
   const [q, setQ] = useState("");
   const list = projects.filter((x) => !q || x.name.toLowerCase().includes(q.toLowerCase()));
   return (
     <Popover at={at} onClose={onClose} label="Folder" testid="where-folder" width={320}>
       <div className="ph">Folder</div>
+      <p className="pp">{folderWhy(trunkName)}</p>
       <label className="row-in">
         <input className="inp" placeholder="Search projects or paste a Git link" aria-label="Search projects or paste a Git link" autoComplete="off" value={q} onChange={(e) => setQ(e.target.value)} />
       </label>

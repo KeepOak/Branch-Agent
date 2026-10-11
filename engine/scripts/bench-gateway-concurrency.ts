@@ -2635,7 +2635,8 @@ async function runGatewaySample(
       });
       await captureFailure("cleanup", async () => {
         if (gateway) {
-          gatewayExit = await stopChild(gateway);
+          // A full-load Gateway drains its agent database on SIGTERM; the default 2 s grace kills it mid-close.
+          gatewayExit = await stopChild(gateway, { teardownGraceMs: 15_000, killGraceMs: 5_000 });
         }
       });
       // Keep the event client through Gateway drain, then join every acquired task.

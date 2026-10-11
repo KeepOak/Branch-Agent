@@ -586,6 +586,13 @@ function faceFor(view: View, live: boolean): ReactNode {
   return <Face size={28} label={view.name} state={state} priority={live ? PRIORITY.open : PRIORITY.row} />;
 }
 
+/** In a group chat, another Trunk's post carries that Trunk's face, not this conversation's. */
+function postedFace(block: Extract<Block, { kind: "text" }>, view: View): ReactNode | null {
+  const sender = block.meta?.sender;
+  if (!view.room?.isRoom || sender?.kind !== "trunk" || !sender.posted) return null;
+  return <Face size={28} label={view.room.trunkName(sender.agentId)} priority={PRIORITY.row} />;
+}
+
 function MessageView({ block, index, firstReply, face, view, live }: { block: Extract<Block, { kind: "user" | "text" }>; index: number; firstReply: boolean; face: boolean; view: View; live: boolean }) {
   const actions = live ? null : view.actionsFor(view.all, index);
   const entryId = block.meta?.entryId;
@@ -612,7 +619,7 @@ function MessageView({ block, index, firstReply, face, view, live }: { block: Ex
   }
   return (
     <>
-      <Reply block={block} face={face ? faceFor(view, live) : undefined} working={face && view.running && (live || index > view.lastUser)} from={fromName(block, firstReply, view.room, view.name)}>{bar}</Reply>
+      <Reply block={block} face={face ? postedFace(block, view) ?? faceFor(view, live) : undefined} working={face && !postedFace(block, view) && view.running && (live || index > view.lastUser)} from={fromName(block, firstReply, view.room, view.name)}>{bar}</Reply>
       {putBack}
       {live ? null : <TimeLine block={block} view={view} />}
       <ReactionChips list={chips} onToggle={toggle} />
