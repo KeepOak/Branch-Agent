@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveCommandShim, resolveSeedbankEntry } from "./lib/seedbank-distribution.mjs";
-import { inspectPackageTarballBytes } from "./plugin-publication-artifact.mjs";
+import {
+  resolveCommandShim,
+  resolveSeedbankEntry,
+  seedbankInstallArgs,
+  stageSeedbankSkill,
+  verifySeedbankPackage,
+} from "./lib/seedbank-distribution.mjs";
 
-// This adapter deliberately delegates to the ordinary Branch Agent archive installer.
+// This adapter deliberately delegates to the ordinary Branch Agent installers (plugins or skills).
 // Capability consent, install-policy checks, and provenance acknowledgement remain enabled.
 const [catalogPath, spec, ...options] = process.argv.slice(2);
 if (!catalogPath || !spec) {
@@ -16,10 +20,19 @@ if (!catalogPath || !spec) {
   );
 }
 const entry = resolveSeedbankEntry(JSON.parse(readFileSync(catalogPath, "utf8")), spec);
-let bytes;
-if (options[0] === "--verify-archive" && options.length === 2) {
-  bytes = readFileSync(options[1]);
+const verifyOnly = options[0] === "--verify-archive";
+if (verifyOnly && options.length !== 2) {
+  throw new Error("--verify-archive takes exactly one archive path; nothing was downloaded.");
+}
+const bytes = verifyOnly ? readFileSync(options[1]) : await downloadEntry(entry);
+verifySeedbankPackage(entry, bytes);
+if (verifyOnly) {
+  console.log(`Verified ${entry.npmSpec} (${entry.sha256})`);
 } else {
+  installWithBranch(entry, bytes, options);
+}
+
+async function downloadEntry(entry) {
   const response = await fetch(entry.tarball, { signal: AbortSignal.timeout(120_000) });
   if (!response.ok) {
     throw new Error(`Seedbank download failed: ${response.status}`);
@@ -33,28 +46,18 @@ if (options[0] === "--verify-archive" && options.length === 2) {
     }
     chunks.push(chunk);
   }
-  bytes = Buffer.concat(chunks);
+  return Buffer.concat(chunks);
 }
-const integrity = `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
-const inspected = inspectPackageTarballBytes(bytes);
-if (
-  bytes.length !== entry.size ||
-  integrity !== entry.integrity ||
-  inspected.tarballSha256 !== entry.sha256 ||
-  inspected.packageManifest.name !== entry.name ||
-  inspected.packageManifest.version !== entry.version ||
-  inspected.pluginManifest.id !== entry.pluginId
-) {
-  throw new Error("Seedbank package integrity or identity mismatch; installation refused.");
-}
-if (options[0] === "--verify-archive") {
-  console.log(`Verified ${entry.npmSpec} (${entry.sha256})`);
-} else {
+
+function installWithBranch(entry, bytes, options) {
   const directory = mkdtempSync(join(tmpdir(), "branch-seedbank-"));
   try {
-    const archive = join(directory, entry.filename);
-    writeFileSync(archive, bytes, { mode: 0o600 });
-    const invocation = resolveCommandShim("branch", ["plugins", "install", archive, ...options]);
+    const location =
+      entry.kind === "skill"
+        ? stageSeedbankSkill({ bytes, entry, parentDir: directory })
+        : writeArchive(join(directory, entry.filename), bytes);
+    const args = seedbankInstallArgs({ entry, location, options });
+    const invocation = resolveCommandShim("branch", args);
     const result = spawnSync(invocation.command, invocation.args, {
       stdio: "inherit",
       shell: false,
@@ -68,4 +71,9 @@ if (options[0] === "--verify-archive") {
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+}
+
+function writeArchive(path, bytes) {
+  writeFileSync(path, bytes, { mode: 0o600 });
+  return path;
 }

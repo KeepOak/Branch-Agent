@@ -145,6 +145,15 @@ describe("Running and version", () => {
     expect(comingUp(jobs, NOW)).toEqual([{ name: "soon", when: "in 12 min" }, { name: "late", when: "in 3 days" }]);
     expect(dueWords(NOW - 5, NOW)).toBe("due");
   });
+  it("Coming up names a check-in by its Trunk and the memory job in plain words (DA-25)", () => {
+    const jobs = [
+      { name: "heartbeat-dev", displayName: "Heartbeat (dev)", agentId: "dev", enabled: true, payload: { kind: "heartbeat" }, state: { nextRunAtMs: NOW + 12 * 60_000 } },
+      { name: "Memory Light Rings", description: "[managed-by=memory-core.rings.light]", enabled: true, state: { nextRunAtMs: NOW + 3 * 86_400_000 } },
+    ];
+    const names = (id?: string) => (id === "dev" ? "Trunk" : "Sapling");
+    expect(comingUp(jobs, NOW, names)).toEqual([{ name: "Check-in · Trunk", when: "in 12 min" }, { name: "Overnight memory cleanup", when: "in 3 days" }]);
+    expect(comingUp(jobs, NOW).map((j) => j.name)).toEqual(["Check-in", "Overnight memory cleanup"]);
+  });
   it("uptime words", () => {
     expect(uptimeWords((3 * 24 + 4) * 3_600_000)).toBe("3 days, 4 hours");
     expect(uptimeWords(90_000)).toBe("1 minute");

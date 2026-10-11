@@ -39,8 +39,11 @@ it("status glyphs open all six popovers from live facts", async () => {
     expect(onItem).toHaveBeenLastCalledWith(item, expect.anything());
   }
   expect(host.querySelector("[data-testid=sb-connection]")?.getAttribute("aria-label")).toBe("Studio Mac · Online");
-  expect(host.querySelector("[data-testid=sb-room]")?.getAttribute("aria-label")).toBe("Context left · 86%");
-  expect(host.querySelector("[data-testid=sb-running]")?.getAttribute("aria-label")).toBe("3 running");
+  expect(host.querySelector("[data-testid=sb-room]")?.getAttribute("aria-label")).toContain("Context: 86% left.");
+  expect(host.querySelector("[data-testid=sb-room] .status-label")?.textContent).toBe("Context");
+  expect(host.querySelector("[data-testid=sb-room] .status-number")?.textContent).toBe("86% left");
+  expect(host.querySelector<HTMLElement>("[data-testid=sb-room] .ctx-meter-fill")?.style.width).toBe("86%");
+  expect(host.querySelector("[data-testid=sb-running]")?.getAttribute("aria-label")).toBe("3 running · what’s coming up");
   expect(host.querySelector("[data-testid=sb-version]")?.textContent).toContain("Branch 0.19.5");
   expect(host.querySelector("[data-testid=sb-version]")?.getAttribute("title")).toBe(BRANCH_VERSION_TIP);
   expect(host.querySelector("[data-testid=sb-usage]")?.getAttribute("aria-label")).toContain("ChatGPT · Account 1 · 77% left");

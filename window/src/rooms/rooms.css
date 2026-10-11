@@ -91,7 +91,7 @@
   font-weight: 500;
 }
 
-/* "<A> and <B> talked it through · <n> messages" */
+/* "<n> messages with <k> agents", closed by default */
 .thread .reply.rm-talk-row {
   align-self: stretch;
 }
@@ -115,6 +115,20 @@
   color: var(--ink-2);
   cursor: pointer;
   list-style: none;
+}
+
+.thread .rm-talk-n {
+  font-weight: 500;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.thread .rm-talk-who {
+  min-width: 0;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .thread .rm-talk summary::-webkit-details-marker {

@@ -13,6 +13,7 @@ import { Ico } from "./icons";
 import { Logo } from "../set1/service";
 import { readLimits, resetWords as sharedResetWords, type LimitRow } from "../../../shell/status-data";
 import { ModelPrices } from "./usage-prices";
+import { ReportProblem } from "./report-problem";
 import { CKPT_PREF, CKPT_SHOW, useCkptOn } from "../../../shell/SaveProgress";
 import { lookStore } from "../set1/appearance-store";
 import "./usage.css";
@@ -95,6 +96,7 @@ export function UsagePage(props: SettingsPageProps) {
       {lv >= 2 ? <EverySetting engine={props.engine} /> : null}
       <Flagged lv={lv} />
       <YourData engine={props.engine} />
+      <ReportProblem />
       {report ? <ReportDialog engine={props.engine} lv={lv} days={days} names={names} onClose={() => setReport(false)} /> : null}
     </Page>
   );
@@ -871,7 +873,7 @@ function ManageDialog({ engine, onClose }: { engine: WindowEngine; onClose: () =
 }
 
 const SUITES: [string, string][] = [
-  ["Right actions", "Picks the right tools, helpers and safety steps · Exact and judge graders · passes at 90%"],
+  ["Right actions", "Picks the right tools, Trunks and safety steps · Exact and judge graders · passes at 90%"],
   ["Memory recall", "Answers from what it remembers, and how fast · Judge model · passes at 90%"],
   ["Recall after tidying up", "What survives when a long conversation is tidied · Judge model · passes at 90%"],
   ["Does it follow the skill", "Steps a skill requires, checked in the tool calls · From each skill · Tool-call grader · passes at 90%"],
