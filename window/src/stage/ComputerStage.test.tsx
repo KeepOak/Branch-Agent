@@ -192,3 +192,17 @@ describe("conversation computer lifecycle", () => {
     expect(container.textContent).toContain("requires authentication");
   });
 });
+
+describe("the stage header (DA-69)", () => {
+  const header = () => container.querySelector<HTMLElement>(".st7-top")!;
+  const unlabeled = () => [...header().querySelectorAll<HTMLButtonElement>("button")].filter((b) => !b.textContent?.trim()).map((b) => b.getAttribute("aria-label") ?? b.outerHTML);
+  it.each(["Computer", "Browser"] as const)("names the agent once and words every %s control", async (mode) => {
+    const request = vi.fn(async () => ({ session: { key: "agent:scout:one" } }));
+    await render(engine(request as WindowEngine["request"]), mode);
+    await flush();
+    expect(header().textContent?.split("Scout").length).toBe(2);
+    expect(header().querySelector(".st7-back")?.textContent).toBe("Back");
+    expect(unlabeled()).toEqual([]);
+    expect([...header().querySelectorAll("button")].filter((b) => b.disabled).map((b) => b.textContent)).toEqual([]);
+  });
+});
