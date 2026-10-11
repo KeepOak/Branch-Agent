@@ -61,6 +61,17 @@ describe("Settings › Permissions", () => {
     expect(heads()).not.toContain("Tools, technical");
   });
 
+  it("says Full access does not include the screen switch and can open it", async () => {
+    const openSettings = vi.fn();
+    const { engine } = engineOf();
+    await act(async () => root.render(<KitProvider level={0} report={report} scope={null}><PermissionsPage page="permissions" title="Permissions" level="regular" engine={engine} openSettings={openSettings} /></KitProvider>));
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(host.textContent).toContain("Full access does not turn on seeing the screen or using the mouse");
+    expect(host.textContent).toContain("Settings › Computer & browser › See the screen and use the mouse");
+    await act(async () => button("Open that switch").click());
+    expect(openSettings).toHaveBeenCalledWith("computer");
+  });
+
   it("Access saves tools.exec.mode without the older security/ask keys", async () => {
     const { engine, request } = engineOf();
     await render(engine);
@@ -82,6 +93,8 @@ describe("Settings › Permissions", () => {
     const turnOnBtn = button("Turn Lockdown on");
     expect(turnOnBtn?.className).toContain("bad"); // Preview spec-v23 index.html:8553 button class when off
     await act(async () => turnOnBtn?.click());
+    expect(request.mock.calls.some(([m]) => m === "config.patch")).toBe(false);
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="confirm-lockdown"] .dlg-f button:last-child')!.click());
     expect(patchOf(request)).toEqual({ security: { lockdown: true } });
     // Verify toast shown on success (Preview spec-v23 index.html:8910)
     expect(vi.mocked(notify)).toHaveBeenCalledWith("Lockdown is on.");

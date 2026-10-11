@@ -11,7 +11,7 @@ export function WelcomeBody({ promise, onPromise }: { promise: boolean; onPromis
     <div className="ob-trust">
       <b>How Branch stays safe</b>
       <ul className="may6">
-        {["You choose how much Branch asks before it acts.", "Your conversations and keys stay on your computers.", "You can take over, stop it, or roll back any change."].map((line) => (
+        {["It asks before it sends, deletes, spends or installs anything.", "Your conversations and keys stay on your computers.", "You can take over, stop it, or roll back any change."].map((line) => (
           <li key={line}>
             <span className="i">
               <Icon name="check" size={13} />

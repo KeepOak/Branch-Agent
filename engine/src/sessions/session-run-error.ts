@@ -10,7 +10,11 @@ import { appendSessionTranscriptReportNative } from "../config/sessions/session-
 import type { SessionEntryCurrentCheck } from "../config/sessions/session-entry-current.types.js";
 import { withSessionTranscriptWriteAssertion } from "../config/sessions/transcript-write-context.js";
 import { redactSensitiveText } from "../logging/redact.js";
-import { STATE_CONTENTION_SUMMARY } from "./session-run-error-presentation.js";
+import {
+  isRuntimeRaceFailure,
+  RUNTIME_RACE_SUMMARY,
+  STATE_CONTENTION_SUMMARY,
+} from "./session-run-error-presentation.js";
 
 const SESSION_RUN_ERROR_MAX_CHARS = 160;
 const RUN_FAILED_BEFORE_REPLY_TRANSCRIPT_TYPE = "run-failed-before-reply";
@@ -34,7 +38,10 @@ export async function recordGatewaySessionRunFailure(
   ),
 ): Promise<void> {
   const { runId } = params;
-  const error = truncateUtf16Safe(sanitizeSessionRunError(params.error), 512) || "unknown error";
+  const runtimeRace = isRuntimeRaceFailure(params.error);
+  const error = runtimeRace
+    ? RUNTIME_RACE_SUMMARY
+    : truncateUtf16Safe(sanitizeSessionRunError(params.error), 512) || "unknown error";
   const append = params.settleStartupSession
     ? appendSessionTranscriptReportNative
     : appendSessionTranscriptReport;
@@ -60,7 +67,9 @@ export async function recordGatewaySessionRunFailure(
               content:
                 params.errorKind === "state_contention"
                   ? STATE_CONTENTION_SUMMARY
-                  : `Your request couldn't be completed: ${error}`,
+                  : runtimeRace
+                    ? RUNTIME_RACE_SUMMARY
+                    : `Your request couldn't be completed: ${error}`,
               display: true,
               details: {
                 runId,
@@ -91,6 +100,9 @@ export function resolveSessionRunError(
   }
   if (outcome.errorKind === "state_contention") {
     return STATE_CONTENTION_SUMMARY;
+  }
+  if (isRuntimeRaceFailure(outcome.error)) {
+    return RUNTIME_RACE_SUMMARY;
   }
   const error = sanitizeSessionRunError(outcome.error);
   if (error.length <= SESSION_RUN_ERROR_MAX_CHARS) {

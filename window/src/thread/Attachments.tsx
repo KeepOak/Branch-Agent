@@ -5,6 +5,8 @@ import { clockLeft } from "./format";
 import { Icon, ICONS } from "./icons";
 import type { Attachment } from "./model";
 import { PictureViewer } from "./PictureViewer";
+import { useThread } from "./context";
+import { isManagedAttachment, useAttachmentSources } from "./attachment-sources";
 
 function sizeText(bytes?: number): string {
   if (!bytes) return "";
@@ -21,7 +23,7 @@ function extension(a: Attachment): string {
 /** Only one sound or video plays at a time (§4.2.6 rule 6). */
 let playing: HTMLMediaElement | null = null;
 
-function Player({ item }: { item: Attachment }) {
+function Player({ item, onError }: { item: Attachment; onError?: () => void }) {
   const media = useRef<HTMLAudioElement & HTMLVideoElement>(null);
   const [on, setOn] = useState(false);
   const [t, setT] = useState({ at: 0, length: 0 });
@@ -61,7 +63,7 @@ function Player({ item }: { item: Attachment }) {
   const Tag = item.kind === "video" ? "video" : "audio";
   return (
     <div className={`player ${item.kind}`} data-testid="media-player">
-      <Tag ref={media} src={item.src} preload="metadata" className={item.kind === "video" ? "poster" : "vh"} />
+      <Tag ref={media} src={item.src} preload="metadata" onError={onError} className={item.kind === "video" ? "poster" : "vh"} />
       <div className="player-row">
         <button type="button" className="play" aria-label={on ? "Pause" : "Play"} onClick={toggle}>
           <Icon d={on ? ICONS.pause : ICONS.play} />
@@ -120,19 +122,39 @@ function FileChip({ item }: { item: Attachment }) {
 /** The pictures, sounds, videos and files of one message. */
 /** `onError`: a picture that didn't load (the caller can say so and offer Try again). `onLoad`: one that did. */
 export function Attachments({ items, mine = false, onError, onLoad }: { items: Attachment[]; mine?: boolean; onError?: () => void; onLoad?: () => void }) {
+  const { engine } = useThread();
+  const resolved = useAttachmentSources(items, engine);
+  const { sources } = resolved;
   const [open, setOpen] = useState<number | null>(null);
-  const pictures = items.filter((a) => a.kind === "image" && a.kept);
+  const ready = items.flatMap((item) => {
+    if (!isManagedAttachment(item)) return [item];
+    const source = sources[item.artifactId!];
+    return source && "src" in source ? [{ ...item, src: source.src, kept: true }] : [];
+  });
+  const pictures = ready.filter((a) => a.kind === "image" && a.kept);
+  const failed = (item: Attachment) => { if (isManagedAttachment(item)) resolved.failed(item.artifactId!); else onError?.(); };
+  const loaded = (item: Attachment) => { if (isManagedAttachment(item)) resolved.loaded(item.artifactId!); else onLoad?.(); };
   return (
     <div className={mine ? "attachments mine" : "attachments"}>
+      {items.filter(isManagedAttachment).map((item, i) => {
+        const source = sources[item.artifactId!];
+        if (source && "src" in source) return null;
+        if (!source) return <span key={`loading${i}`} role="status">Loading {item.name}…</span>;
+        return <span key={`gone${i}`} className="file-chip gone" data-testid="attachment-unavailable">
+          <span className="file-tile">{extension(item)}</span>
+          <span className="file-text"><b>{item.name}</b><small>Attachment unavailable</small></span>
+          <button type="button" className="btn ghost sm" onClick={() => resolved.retry(item.artifactId!)}>Try again</button>
+        </span>;
+      })}
       {pictures.map((p, i) => (
         <button key={`p${i}`} type="button" className="picture" onClick={() => setOpen(i)} aria-label={`Open ${p.name}`}>
-          <img src={p.src} alt={p.name} loading="lazy" referrerPolicy="no-referrer" onError={onError} onLoad={onLoad} />
+          <img src={p.src} alt={p.name} loading="lazy" referrerPolicy="no-referrer" onError={() => failed(p)} onLoad={() => loaded(p)} />
         </button>
       ))}
-      {items
+      {ready
         .filter((a) => !(a.kind === "image" && a.kept))
-        .map((a, i) => (a.kept && (a.kind === "audio" || a.kind === "video") ? <Player key={`m${i}`} item={a} /> : <FileChip key={`f${i}`} item={a} />))}
-      {open !== null ? <PictureViewer items={pictures} start={open} onClose={() => setOpen(null)} /> : null}
+        .map((a, i) => (a.kept && (a.kind === "audio" || a.kind === "video") ? <Player key={`m${i}`} item={a} onError={() => failed(a)} /> : <FileChip key={`f${i}`} item={a} />))}
+      {open !== null && pictures[open] ? <PictureViewer items={pictures} start={open} onClose={() => setOpen(null)} /> : null}
     </div>
   );
 }

@@ -1,4 +1,13 @@
-import { Menu, Tray, type App, type BrowserWindow } from "electron";
+import { Menu, Tray, nativeImage, type App, type BrowserWindow, type NativeImage } from "electron";
+
+/** macOS tints a template image for light and dark menu bars. Other platforms keep the given file. */
+export function menuBarIcon(icon: string, platform: NodeJS.Platform): string | NativeImage {
+  if (platform !== "darwin") return icon;
+  const image = nativeImage?.createFromPath?.(icon);
+  if (!image) return icon;
+  image.setTemplateImage(true);
+  return image;
+}
 
 /** Closing the desktop window keeps its existing authenticated engine and drafts alive. */
 export function keepWindowResident(
@@ -26,7 +35,7 @@ export function keepWindowResident(
   window.on("session-end", () => app.quit());
   // Hidden native fixtures exercise the same close policy without adding a visible tray.
   if (options.hidden) return;
-  const tray = new Tray(icon);
+  const tray = new Tray(menuBarIcon(icon, platform));
   tray.setToolTip("Branch Agent is running");
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Open Branch", click: reveal },

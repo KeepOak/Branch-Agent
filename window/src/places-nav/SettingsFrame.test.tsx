@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
@@ -128,6 +128,33 @@ describe("settings frame level", () => {
     await act(async () => root?.render(<SettingsFrame page="gateway" backName="Sapling" engine={plain} onPage={vi.fn()} onBack={() => {}} />));
     expect(document.querySelector('.set-item[data-page="gateway"]')).toBeNull();
     expect(document.querySelector('.set-item[data-page="general"]')?.getAttribute("aria-current")).toBe("true");
+  });
+
+  it("People in the Settings nav stays inside Settings", async () => {
+    const left: unknown[] = [];
+    const onLeave = (event: Event) => left.push((event as CustomEvent).detail);
+    window.addEventListener("branch:navigate-place", onLeave);
+    const onPage = vi.fn();
+    function Host() {
+      const [page, setPage] = useState("general");
+      return <SettingsFrame page={page} backName="Sapling" engine={engine} onPage={(id) => { onPage(id); setPage(id); }} onBack={() => {}} />;
+    }
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    try {
+      await act(async () => root?.render(<Host />));
+      await act(async () => document.querySelector<HTMLButtonElement>('.set-item[data-page="people"]')!.click());
+      expect(onPage).toHaveBeenCalledWith("people");
+      expect(left).toEqual([]);
+      expect(document.querySelector('[data-testid="settings"]')).not.toBeNull();
+      expect(document.querySelector('.set-item[data-page="people"]')?.getAttribute("aria-current")).toBe("true");
+      expect(document.querySelector('.set-item[data-page="general"]')).not.toBeNull();
+      expect(document.querySelector('[data-page-title="People"]')?.querySelector("h1")?.textContent).toBe("People");
+      expect(document.querySelector('[data-row="Open People"]')).not.toBeNull();
+      expect(document.querySelector(".ppl")).toBeNull();
+      expect(document.body.textContent).not.toContain("Live now");
+    } finally {
+      window.removeEventListener("branch:navigate-place", onLeave);
+    }
   });
 });
 

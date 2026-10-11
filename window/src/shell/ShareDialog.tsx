@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { Dialog } from "./Dialog";
+import { publishedVisibility } from "../connect/safe-visibility";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -60,14 +61,17 @@ export function ShareDialog({ engine, sessionKey, agentId, sessionId, title, pub
   const { state, error, change } = useSharing(engine, sessionKey, agentId);
   const can = state?.canChange ?? false;
   const draft = state?.visibility === "draft";
+  const levels = state ? VISIBILITY_WORDS.filter(([v]) => state.allowed.includes(v)) : [];
+  const at = levels.findIndex(([v]) => v === state?.visibility);
   return (
     <Dialog title={`Share ${title}`} wide onClose={onClose} footer={<button type="button" className="btn primary" onClick={onClose}>Done</button>} testid="share-dialog">
       {state ? (
         <div className="share-b">
           <div className="share-row">
             <b>Everyone else on this Branch</b>
-            <div className="seg" role="radiogroup" aria-label="Everyone else on this Branch">
-              {VISIBILITY_WORDS.filter(([v]) => state.allowed.includes(v)).map(([v, words]) => (
+            {/* The raised pill sits under the chosen level; with none chosen (a draft) it is hidden. */}
+            <div className={at < 0 ? "seg share-none" : "seg"} role="radiogroup" aria-label="Everyone else on this Branch" style={{ ["--i" as string]: Math.max(at, 0), ["--n" as string]: levels.length || 1 }}>
+              {levels.map(([v, words]) => (
                 <button key={v} type="button" role="radio" aria-checked={state.visibility === v} className={state.visibility === v ? "on" : ""} disabled={!can}
                   onClick={() => change("session.visibility.set", { visibility: v })}>{words}</button>
               ))}
@@ -77,7 +81,7 @@ export function ShareDialog({ engine, sessionKey, agentId, sessionId, title, pub
           {state.allowed.includes("draft") ? (
             <div className="share-row share-sw">
               <span><b>Keep it a draft</b><small className="hint">Only you and the owner see it until you publish.</small></span>
-              <Toggle label="Keep it a draft" on={draft} disabled={!can} onChange={(on) => change("session.visibility.set", { visibility: on ? "draft" : "shared" })} />
+              <Toggle label="Keep it a draft" on={draft} disabled={!can} onChange={(on) => change("session.visibility.set", { visibility: on ? "draft" : publishedVisibility(state.allowed) })} />
             </div>
           ) : null}
           {state.owner ? <div className="share-row"><small className="hint">Owner</small><b>{state.owner.name}</b></div> : null}

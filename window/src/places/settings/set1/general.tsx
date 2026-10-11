@@ -8,12 +8,12 @@ import { list, record, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Icon } from "../../../shell/icons";
 import { ShortcutsDialog } from "../../../shell/ShortcutsDialog";
-import { Btn, Ctl, Empty, Page, Plist, Prow, Sec, Switch, useLevel, usePinsKit, type Lv, type RowEntry } from "../kit";
+import { Btn, Ctl, Empty, Page, Plist, Prow, Sec, Status, Switch, useLevel, usePinsKit, type Lv, type RowEntry } from "../kit";
 import { PinnedSection } from "../pins";
-import { useDesktopControls } from "../../../connect/desktop-controls";
-import { ClipboardHistory, Controllers, CoverScreen, ThisComputer, Writing, OS } from "./general-more";
+import { NEEDS_NEWER_APP, useDesktopControls } from "../../../connect/desktop-controls";
+import { OS, Writing } from "./general-more";
 import { Conversation } from "./general-conversation";
-import { OlderTurns, SummariesMore, SummariesTechnical, WaitingLine } from "./general-summaries";
+import { OlderTurns, SummariesTechnical, WaitingLine } from "./general-summaries";
 import "./general.css";
 
 export function GeneralPage(props: SettingsPageProps) {
@@ -25,25 +25,27 @@ export function GeneralPage(props: SettingsPageProps) {
       <Projects engine={props.engine} />
       <Keyboard />
       <Writing engine={props.engine} />
-      {lv >= 1 ? <ClipboardHistory /> : null}
-      <CoverScreen />
-      {lv >= 1 ? <><Controllers /><Conversation engine={props.engine} /><Sec title="Summaries">
+      {lv >= 1 ? <><Conversation engine={props.engine} /><Sec title="Summaries">
         <OlderTurns engine={props.engine} grouped />
-        {lv >= 2 ? <><SummariesTechnical engine={props.engine} grouped /><SummariesMore grouped /></> : null}
+        {lv >= 2 ? <SummariesTechnical engine={props.engine} grouped /> : null}
       </Sec></> : null}
-      {lv >= 1 ? <ThisComputer /> : null}
       {lv >= 2 ? <WaitingLine engine={props.engine} /> : null}
     </Page>
   );
 }
 
+/** Said under Start with … when the Branch app on this computer is too old to change it (DA-78): the app's own note is a
+ *  developer note that is never shown, so a greyed switch would otherwise sit there with no reason. */
+const START_NEEDS_UPDATE = "Update the Branch app on this computer to change this.";
+
 function StartingUp() {
   const desk = useDesktopControls();
-  const why = desk.off;
+  const why = desk.off === NEEDS_NEWER_APP ? START_NEEDS_UPDATE : desk.off;
+  const start = `Start with ${OS()}`;
   return (
     <Sec title="Starting up">
-      <Ctl title={`Start with ${OS}`} sub="Opens quietly in the tray." off={why}>
-        <Switch checked={desk.state?.startWithWindows ?? false} disabled={desk.busy !== null} label={`Start with ${OS}`} onChange={(on) => void desk.set("startWithWindows", on)} />
+      <Ctl title={start} sub="Opens quietly in the tray." off={why}>
+        <Switch checked={desk.state?.startWithWindows ?? false} disabled={desk.busy !== null} label={start} onChange={(on) => void desk.set("startWithWindows", on)} />
       </Ctl>
       {desk.state && desk.error ? <small className="why-k" role="alert">{visible(desk.error)}</small> : null}
     </Sec>
@@ -57,7 +59,7 @@ function Projects({ engine }: { engine: SettingsPageProps["engine"] }) {
   return (
     <Sec title="Projects">
       {res.loading ? <p className="hint">Reading your projects…</p>
-        : res.error ? <p className="hint">{visible(res.error)}</p>
+        : res.error ? <Status tone="warn" title="Couldn’t read your projects just now." action={<Btn sm onClick={res.reload}>Try again</Btn>} />
         : projects.length ? <Plist>{projects.map((p) => <ProjectRow key={p.id} engine={engine} project={p} />)}</Plist>
         : <Empty>No projects yet.</Empty>}
     </Sec>
@@ -91,18 +93,12 @@ function Keyboard() {
 
 const rows = (sec: string, lv: Lv, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "general", title, sec, group: sec, lv }));
 export const GENERAL_ROWS: RowEntry[] = [
-  ...rows("Starting up", 0, [`Start with ${OS}`]),
+  ...rows("Starting up", 0, [`Start with ${OS()}`]),
   ...rows("Projects", 0, []),
   ...rows("Keyboard", 0, ["Keyboard shortcuts"]),
-  ...rows("Writing", 0, ["Message box grows with the text", "Check spelling in the message box", "Suggest the rest as I type", "Add my location to messages", "Replies in", "After a plan", "Open Branch on", "Show “Finish setting up”"]),
-  ...rows("Writing", 1, ["Write long messages in your own editor", "Rounds before it checks in"]),
-  ...rows("Clipboard history", 1, ["Keep after restart"]),
-  ...rows("Cover the screen", 0, ["Cover now"]),
-  ...rows("Controllers", 1, ["Use a gamepad or macro pad"]),
-  ...rows("The conversation", 1, ["Vim keys in the message box", "Message times", "When you send while it works", "Send with", "Task progress above the message box", "Task progress starts", "Open past sessions in", "Ask before deleting a conversation"]),
-  ...rows("Summaries", 1, ["Summarise older turns by themselves", "Summarise when context left is under", "Always keep the latest", "Model for summaries"]),
-  ...rows("Summaries", 2, ["Context to plan for", "Repair the history before each call", "How it summarises", "Summary time limit", "Keep names and numbers exact", "Trim old tool results", "Trim after"]),
-  ...rows("This computer", 1, ["Quick ask from anywhere", "Quick ask shortcut"]),
-  ...rows("Waiting line", 2, ["Wait before sending what’s in line", "Most messages in line", "When the line is full"]),
-  ...rows("Summaries", 2, ["How to write the summary", "If a summary can’t be made", "Keep the originals of what it summarises", "A receipt for each thing left out"]),
+  ...rows("Writing", 0, ["Show “Finish setting up”"]),
+  ...rows("The conversation", 1, ["Vim keys in the message box", "Message times", "When you send while it works", "Send with", "Task progress above the message box", "Task progress starts", "Ask before deleting a conversation"]),
+  ...rows("Summaries", 1, ["Summarise older turns by themselves", "Always keep the latest", "Model for summaries"]),
+  ...rows("Summaries", 2, ["How it summarises", "Summary time limit", "Keep names and numbers exact", "Trim old tool results", "Trim after"]),
+  ...rows("Waiting line", 2, ["Most messages in line", "When the line is full"]),
 ];

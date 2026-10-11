@@ -7,7 +7,7 @@
   "description": "Branch Agent desktop app: starts the Branch engine and opens the Branch window.",
   "main": "dist/main.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node scripts/build.mjs",
     "start": "electron ."
   },
   "devDependencies": {
