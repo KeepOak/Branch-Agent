@@ -35,6 +35,9 @@ import {
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const TRUSTED_JOB = 'merge-gate-trusted';
+// The recheck workflow's own check run is not content: a running or failed recheck must not hold the gates red.
+export const RECHECK_CHECK = 'recheck';
+export const RECHECK_WORKFLOW_PATH = '.github/workflows/merge-gate-recheck.yml';
 export const TRUSTED_WORKFLOW_PATH = '.github/workflows/merge-gate-trusted.yml';
 export const HANDOFF_WORKFLOW_PATH = '.github/workflows/engine-handoff-checks.yml';
 export const TRUSTED_CHECKOUT_REF = '${{ github.event.repository.default_branch }}';
@@ -64,6 +67,7 @@ export const GATE_SCRIPTS = [
   'scripts/priority-capabilities-ci-targets.mjs',
   'scripts/merge-gate-rate-limit.mjs',
   'scripts/merge-gate-rate-limit.test.mjs',
+  'scripts/merge-gate-recheck.mjs',
 ];
 // Workflows whose jobs must actually run on a PR they apply to. A skipped job is missing here, not a pass.
 export const MUST_RUN_WORKFLOWS = new Set(['.github/workflows/feature-batch-checks.yml']);
@@ -214,6 +218,9 @@ export function isSkippableVisualTourComment(run, workflow) {
 export function evaluateOtherChecks(checkRuns, workflowsByCheckId = {}, ignoreName = TRUSTED_JOB, context = {}) {
   const others = newestChecksByIdentity(checkRuns, workflowsByCheckId, context).filter((run) => {
     if (run.name === ignoreName) return false;
+    // Only the recheck workflow's own `recheck` job is skipped, and only when attribution proves its path.
+    if (run.name === RECHECK_CHECK
+      && lookupWorkflow(workflowsByCheckId, run.id)?.path === RECHECK_WORKFLOW_PATH) return false;
     return !isSkippableVisualTourComment(run, lookupWorkflow(workflowsByCheckId, run.id));
   });
   const pending = others.filter((run) => run.status !== 'completed');
@@ -241,6 +248,7 @@ export function findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
   return checkRuns.filter((run) => run.name === jobName).filter((run) => {
     const urlRunId = actionsRunIdFromCheckRun(run);
     const workflow = lookupWorkflow(workflowsByCheckId, run.id);
+    if (isLookupFailure(workflow)) return false;
     if (currentId != null && Number.isFinite(currentId) && urlRunId === currentId) {
       // API outages are pending, never self-attributed or accepted as genuine.
       if (!workflow) return false;
@@ -435,6 +443,8 @@ export function evaluateTrustedGate({
     && actionsRunIdFromCheckRun(run) === Number(currentRunId)
     && !lookupWorkflow(workflowsByCheckId, run.id));
   const missingAnalyze = !others.some((run) => run.name === 'Analyze (actions)');
+  const lookupFailed = checkRuns.filter((run) => run.name === TRUSTED_JOB
+    && isLookupFailure(lookupWorkflow(workflowsByCheckId, run.id)));
   const foreignTrusted = findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
     allowedRunId: currentRunId,
     sha,
@@ -476,9 +486,10 @@ export function evaluateTrustedGate({
     missingCore,
     unregisteredCore,
     unresolvedCurrent,
-    ready: pending.length === 0 && unresolvedCurrent.length === 0 && !missingAnalyze
+    lookupFailed,
+    ready: pending.length === 0 && unresolvedCurrent.length === 0 && lookupFailed.length === 0 && !missingAnalyze
       && unregisteredCore.length === 0,
-    ok: errors.length === 0 && pending.length === 0 && unresolvedCurrent.length === 0 && !missingAnalyze,
+    ok: errors.length === 0 && pending.length === 0 && unresolvedCurrent.length === 0 && lookupFailed.length === 0 && !missingAnalyze,
     errors,
   };
 }
@@ -729,8 +740,19 @@ export function isRateLimitError(error) {
   return /rate limit exceeded/i.test(text);
 }
 
+// Shared rate-limit budget for one process. When budgetSeconds is set (gate-files-fresh), every call draws
+// from one deadline and retries until it runs out, so the job cannot wait longer than its budget. Unset keeps
+// each call's own default budget.
+export const gateApiBudget = { budgetSeconds: undefined, startedAt: undefined };
+
 export function ghApi(repo, token, requestPath, { paginate = false, retries = 6 } = {}) {
-  return ghApiWithRetry(repo, token, requestPath, { paginate, retries });
+  const bounded = gateApiBudget.budgetSeconds != null;
+  return ghApiWithRetry(repo, token, requestPath, {
+    paginate,
+    retries: bounded ? Number.POSITIVE_INFINITY : retries,
+    budgetSeconds: gateApiBudget.budgetSeconds,
+    startedAt: gateApiBudget.startedAt,
+  });
   const args = ['api', `repos/${repo}/${requestPath}`, '-H', 'Accept: application/vnd.github+json'];
   if (paginate) args.splice(1, 0, '--paginate');
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -838,8 +860,15 @@ export function formatTimeoutMessage(pending, { missingAnalyze = false, unregist
   return `Timed out waiting for: ${waitingOn}\n${TIMEOUT_RERUN_LINE}`;
 }
 
-export function fetchPrFiles(repo, prNumber, token) {
-  const payload = ghApi(repo, token, `pulls/${prNumber}/files?per_page=100`, { paginate: true });
+// The file list waits out installation rate limits inside its own 10-minute cap (AGENTS rule 13).
+// The job keeps its 35-minute limit: the poll budget below counts from job start, so this wait is not extra time.
+export const PR_FILES_WAIT_SECONDS = 600;
+
+export function fetchPrFiles(repo, prNumber, token, {
+  request = (requestPath, options) => ghApiWithRetry(repo, token, requestPath, options),
+  budgetSeconds = PR_FILES_WAIT_SECONDS,
+} = {}) {
+  const payload = request(`pulls/${prNumber}/files?per_page=100`, { paginate: true, budgetSeconds });
   return Array.isArray(payload) ? payload : [];
 }
 
@@ -863,14 +892,32 @@ export function runSelfCheckFromPr(headRef, body) {
   return result.ok;
 }
 
-export function fetchFileText(repo, sha, token, filePath) {
+// Only a 404 means "no such file at this ref". Any other failure (rate limit, 5xx, network) must
+// propagate: a null here reads as an empty file, which would hide lines main added (fail open).
+// The contents API returns empty content for files over 1 MB; then the blob (same sha) carries the bytes.
+export function fetchFileText(repo, sha, token, filePath, api = ghApi) {
+  let payload;
   try {
-    const payload = ghApi(repo, token, `contents/${filePath}?ref=${sha}`);
-    if (!payload?.content) return null;
-    return Buffer.from(payload.content, payload.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8');
-  } catch {
-    return null;
+    payload = api(repo, token, `contents/${filePath}?ref=${sha}`);
+  } catch (error) {
+    if (isNotFoundError(error)) return null;
+    throw error;
   }
+  if (payload?.content) {
+    return Buffer.from(payload.content, payload.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8');
+  }
+  if (!payload?.sha) {
+    throw new Error(`contents/${filePath}?ref=${sha} returned no content and no blob sha`);
+  }
+  const blob = api(repo, token, `git/blobs/${payload.sha}`);
+  if (!blob?.content) {
+    throw new Error(`git/blobs/${payload.sha} for ${filePath} returned no content`);
+  }
+  return Buffer.from(blob.content, blob.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8');
+}
+
+export function isNotFoundError(error) {
+  return error?.httpStatus === 404 || /HTTP 404\b/.test(String(error?.message ?? ''));
 }
 
 export function workflowFromActionsRun(run) {
@@ -897,28 +944,74 @@ export function resolveWorkflowForCheckRun(repo, token, checkRun) {
   return workflowFromActionsRun(payload?.workflow_runs?.[0]);
 }
 
+// The Actions run a check run belongs to, from its details URL.
+export function runIdFromCheckRun(checkRun) {
+  return /\/actions\/runs\/(\d+)/.exec(String(checkRun?.details_url ?? checkRun?.html_url ?? ''))?.[1] ?? null;
+}
+
+// Attribution from one listing of the head's runs. A check run is bound to a run only when the run's check suite
+// is the check run's own suite, so the listing can never attribute a check to another workflow's run.
+export function attributeFromRunList(checkRun, runsById) {
+  const run = runsById.get(String(runIdFromCheckRun(checkRun)));
+  const suite = checkRun?.check_suite?.id;
+  if (!run || suite == null || Number(run.check_suite_id) !== Number(suite)) return null;
+  return workflowFromActionsRun(run);
+}
+
+// One call per evaluation, not one per check run. More than 100 runs on a head falls back to per-check lookups.
+export function fetchRunsByIdForHead(repo, token, sha, { api = ghApi } = {}) {
+  if (!sha) return new Map();
+  const payload = api(repo, token, `actions/runs?head_sha=${sha}&per_page=100`);
+  if (!payload || !Array.isArray(payload.workflow_runs) || payload.total_count > payload.workflow_runs.length) {
+    return new Map();
+  }
+  return new Map(payload.workflow_runs.map((run) => [String(run.id), run]));
+}
+
 export function resolveWorkflowsForCheckRuns(repo, token, checkRuns, {
   attributionCache = new Map(),
   resolveWorkflow = resolveWorkflowForCheckRun,
+  runsById,
+  fetchRuns = fetchRunsByIdForHead,
 } = {}) {
   const workflowsByCheckId = {};
+  const unresolved = checkRuns.filter((run) => !attributionCache.has(run.id));
+  // The one listing is guarded like the per-check lookups. An outage falls back to per-check lookups, and a
+  // lookup that still fails stays pending (below), so an outage never crashes the gate or counts as forged.
+  let byId = null;
+  try {
+    byId = runsById ?? (unresolved.length ? fetchRuns(repo, token, checkRuns[0]?.head_sha) : new Map());
+  } catch {
+    byId = null;
+  }
   for (const run of checkRuns) {
     if (attributionCache.has(run.id)) {
       workflowsByCheckId[run.id] = attributionCache.get(run.id);
       continue;
     }
     try {
-      const workflow = resolveWorkflow(repo, token, run);
+      const fromList = byId ? attributeFromRunList(run, byId) : null;
+      const workflow = fromList ?? resolveWorkflow(repo, token, run);
       if (workflow) {
         workflowsByCheckId[run.id] = workflow;
         // Attribution is immutable for a check ID; status/conclusion still come from each poll.
         attributionCache.set(run.id, workflow);
       }
-    } catch {
-      // Fail closed later if a trusted-job name cannot be attributed.
+    } catch (error) {
+      // A failed lookup is not a forged check. It is retried on the next poll (never cached) and the
+      // gate fails closed with an "attribution lookup failed" message if it is still unresolved at the budget.
+      workflowsByCheckId[run.id] = { lookupFailed: true, error: firstLine(error) };
     }
   }
   return workflowsByCheckId;
+}
+
+export function isLookupFailure(workflow) {
+  return Boolean(workflow?.lookupFailed);
+}
+
+function firstLine(error) {
+  return String(error?.message ?? error).split('\n')[0];
 }
 
 function sleepSeconds(seconds) {
@@ -1150,7 +1243,8 @@ export function pollTrustedGateWithBudget({
   const start = startedAt ?? now();
   const remaining = () => waitBudgetSeconds - (now() - start) / 1000;
   for (let attempt = 1; attempt <= maxAttempts; ) {
-    if (remaining() < 1) break;
+    // The first evaluation always runs; a zero budget means one pass with no polling.
+    if (attempt > 1 && remaining() < 1) break;
     let checkRuns;
     try {
       checkRuns = fetchChecks(repo, sha, token);
@@ -1191,6 +1285,10 @@ export function pollTrustedGateWithBudget({
   }
 
   const analyze = (last.others ?? []).find((run) => run.name === 'Analyze (actions)');
+  if (last.lookupFailed?.length) {
+    error(`Attribution lookup failed for ${TRUSTED_JOB} check(s) ${last.lookupFailed.map((run) => run.id).join(', ')}. `
+      + 'Not counted as forged; re-run merge-gate once the GitHub API is available.');
+  }
   error(formatTimeoutMessage(last.pending, {
     missingAnalyze: !analyze,
     unregisteredCore: last.unregisteredCore ?? unregisteredPathFilterMisses(last.missingCore),
@@ -1214,6 +1312,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exit(1);
   }
 
+  const jobStartedAt = Date.now();
   const files = fetchPrFiles(repo, prNumber, token);
   const changedFiles = changedFilesFromPrFiles(files);
   const body = fetchPrBody(repo, prNumber, token);
@@ -1250,6 +1349,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   process.exit(pollTrustedGate({
     repo, sha, token, changedFiles, coreWorkflows,
     currentRunId: process.env.GITHUB_RUN_ID, prNumber, baseRef, maxAttempts, pollSeconds,
-    waitBudgetSeconds,
+    waitBudgetSeconds, startedAt: jobStartedAt,
   }));
 }

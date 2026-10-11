@@ -9,7 +9,8 @@
 export type Sender =
   | { kind: "person"; id: string; name: string; avatarUrl?: string; channel?: string }
   | { kind: "agent"; id: string; name: string; channel: string }
-  | { kind: "trunk"; agentId: string; name?: string };
+  /** `posted`: from the group chat's own log (room_post, or a room Trunk's reply), not forwarded by sessions_send. */
+  | { kind: "trunk"; agentId: string; name?: string; posted?: boolean };
 
 type Rec = Record<string, unknown>;
 const rec = (v: unknown): Rec => (v && typeof v === "object" ? (v as Rec) : {});

@@ -7,6 +7,8 @@
 // Routes (names and descriptions in scripts/visual-routes.mjs):
 //   room-menu      the group room's ⋯ conversation menu
 //   stage-preview  the side panel's Preview tab with the Ledger app portal
+//   team-approval-before  the group room, no team card (the before shot for the team card)
+//   team-approval  the team proposal card, asking state
 // The fixture (visual-harness.tsx) supplies the group "Design group" and the portal "Ledger app".
 // Writes <outDir>/<route>-<label>.png (label defaults to "current"); pass "before" or "after" for a PR.
 // Add a route by adding a name in visual-routes.mjs and a step below.
@@ -28,6 +30,14 @@ async function openGroup(page) {
 }
 
 const steps = {
+  "team-approval-before": async (page) => {
+    await openGroup(page);
+    return page.locator("#root");
+  },
+  "team-approval": async (page) => {
+    await page.goto(`${base}/scripts/visual-harness.html?team=asking`);
+    return page.getByTestId("team-approval-card");
+  },
   "room-menu": async (page) => {
     await openGroup(page);
     await page.getByTestId("conversation-menu-button").click();
@@ -41,6 +51,29 @@ const steps = {
     await page.getByRole("region", { name: "Ledger app preview" }).waitFor();
     return page.getByRole("complementary", { name: "Side panel" });
   },
+  "side-panel-tabs": async (page) => {
+    await openGroup(page);
+    await page.getByTestId("conversation-menu-button").click();
+    await page.getByRole("menuitem", { name: /^Side panel/ }).click();
+    await page.getByRole("tablist", { name: "Side panel views" }).waitFor();
+    return page.getByRole("complementary", { name: "Side panel" });
+  },
+};
+
+// Checks run after the screenshot, so a failing capture still leaves its picture. Each returns a list of problems.
+const checks = {
+  "side-panel-tabs": (page) => page.evaluate(() => {
+    const row = document.querySelector('[role=tablist][aria-label="Side panel views"]');
+    const rowBox = row.getBoundingClientRect();
+    const problems = [];
+    if (row.scrollWidth > row.clientWidth + 1) problems.push(`the tab row overflows: ${row.scrollWidth}px of tabs in ${row.clientWidth}px`);
+    for (const el of row.querySelectorAll("[role=tab], .ptab-more-pn")) {
+      const name = el.textContent.trim();
+      if (el.getBoundingClientRect().right > rowBox.right + 1) problems.push(`"${name}" runs past the row`);
+      if (el.scrollWidth > el.clientWidth + 1) problems.push(`"${name}" is clipped: ${el.scrollWidth}px of label in ${el.clientWidth}px`);
+    }
+    return problems;
+  }),
 };
 
 const browser = await chromium.launch();
@@ -52,6 +85,9 @@ try {
   const file = join(outDir, `${route}-${label}.png`);
   await target.screenshot({ path: file });
   console.log(file);
+  const problems = checks[route] ? await checks[route](page) : [];
+  for (const problem of problems) console.error(`${route}: ${problem}`);
+  if (problems.length) process.exitCode = 1;
 } finally {
   await browser.close();
 }

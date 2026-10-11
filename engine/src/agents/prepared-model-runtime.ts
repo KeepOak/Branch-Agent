@@ -469,6 +469,7 @@ export function markPreparedModelRuntimeSnapshotsStale(
     waitForReplacement?: boolean;
     preserveReplacementWait?: boolean;
     agentIds?: ReadonlySet<string>;
+    keepServedRuntimes?: boolean;
   } = {},
 ): PreparedModelRuntimeReplacementGateId | undefined {
   captureModelRuntimeLifetime();
@@ -476,7 +477,13 @@ export function markPreparedModelRuntimeSnapshotsStale(
   const previousCancellation = refreshCancellation;
   refreshCancellation = new AbortController();
   setPreparedModelRuntimeStartupStatus(undefined);
-  replyDispatchPublication.clear();
+  // A scoped request leaves each agent's last served runtime in place, even when it widens to the
+  // roster because a sibling is stale: readers wait on the pending replacement, and a failed refresh
+  // keeps serving that runtime. An unscoped refresh (a config or plugin change) still fences the
+  // whole generation.
+  if (!options.keepServedRuntimes && !options.agentIds) {
+    replyDispatchPublication.clear();
+  }
   if (options.waitForReplacement) {
     const superseded = pendingModelRuntimeReplacement;
     pendingModelRuntimeReplacement = createPreparedModelRuntimeReplacement();
@@ -569,6 +576,7 @@ export function refreshPreparedModelRuntimeSnapshots(
   markPreparedModelRuntimeSnapshotsStale(undefined, {
     waitForReplacement: true,
     agentIds: initialAgentIds,
+    keepServedRuntimes: requestedScopedRefresh,
   });
   const requestEpoch = refreshRequestEpoch;
   const acquisitionSignal = refreshCancellation.signal;

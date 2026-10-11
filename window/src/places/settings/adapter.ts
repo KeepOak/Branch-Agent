@@ -1,5 +1,6 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../connect/engine";
+import { displayName } from "../../display-names";
 
 export type RecordValue = Record<string, unknown>;
 export function record(value: unknown): RecordValue { return value && typeof value === "object" && !Array.isArray(value) ? value as RecordValue : {}; }
@@ -33,9 +34,9 @@ export async function saveAgentFile(engine: WindowEngine, agentId: string, file:
   return refreshed.file;
 }
 
-/** Keep technical keys compatible; rename only human-facing values. Never render secret material. */
+/** Format engine values for display. Product names go through the one display-name map. */
 export function visible(value: unknown): string {
-  return text(value).replace(/OpenClaw/gi, "Branch").replace(/Crabbox/gi, "Cuttings").replace(/ClawHub/gi, "Seedbank").replace(/Peekaboo/gi, "Knothole").replace(/Lobsterdex/gi, "Trellis index").replace(/Lobster/gi, "Trellis").replace(/ClawRouter/gi, "Rootway").replace(/ClawSweeper/gi, "Rake").replace(/clawpack/gi, "Seedpod").replace(/Molty/gi, "Sprig").replace(/Workboard/gi, "Canopy").replace(/Dreaming/gi, "Rings");
+  return displayName(text(value));
 }
 export function safeEntries(value: unknown): [string, unknown][] {
   return Object.entries(record(value)).filter(([key, item]) => !/secret|password|credential|api.?key|raw|content/i.test(key) && !(/token/i.test(key) && !(typeof item === "number" && /(?:Tokens|TokenCount|TokensUsed|TokensRemaining|TokenLimit)$/i.test(key))));

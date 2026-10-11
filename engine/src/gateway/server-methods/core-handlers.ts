@@ -186,6 +186,7 @@ const CORE_GATEWAY_HANDLER_MODULES = {
       ...trunk.roomTrunkHandlers,
     })),
   "trunk-queue": () => import("./trunk-queue.js").then((module) => module.trunkQueueHandlers),
+  "trunk-team": () => import("./trunk-team.js").then((module) => module.trunkTeamHandlers),
   "sessions-rewind": () =>
     import("./sessions-rewind.js").then((module) => module.sessionRewindHandlers),
   "sessions-sharing": () =>
@@ -216,7 +217,8 @@ const CORE_GATEWAY_HANDLER_MODULES = {
   "task-suggestions": () =>
     import("./task-suggestions.js").then((module) => module.taskSuggestionsHandlers),
   "tools-catalog": () => import("./tools-catalog.js").then((module) => module.toolsCatalogHandlers),
-  "trunk-templates": () => import("./trunk-templates.js").then((module) => module.trunkTemplatesHandlers),
+  "trunk-templates": () =>
+    import("./trunk-templates.js").then((module) => module.trunkTemplatesHandlers),
   "tools-github": () => import("./tools-github.js").then((module) => module.toolsGitHubHandlers),
   "tools-effective": () =>
     import("./tools-effective.js").then((module) => module.toolsEffectiveHandlers),
