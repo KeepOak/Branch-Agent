@@ -1,6 +1,7 @@
 // Voice through the engine's Talk relay (DESIGN-SPEC §4.3.6): dictation into the box and talking live, copied in
 // small from OpenClaw's control UI (ui/src/pages/chat/composer-dictation.ts, talk/gateway-relay.ts, talk/audio.ts,
 // talk/shared.ts). The microphone goes to the engine as audio; words and spoken replies come back as talk.event.
+import { voiceMicrophone } from "../connect/desktop-voice";
 import type { WindowEngine } from "../connect/engine";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
@@ -57,12 +58,14 @@ type Mic = { stop: () => Promise<void> };
 /** The microphone at a fixed rate, frame by frame (talk/audio.ts RealtimeTalkPcmInputPump). If the person
  *  stopped while the browser was still asking for the microphone, the late stream is released and nothing starts. */
 async function openMic(rate: number, onFrame: (samples: Float32Array) => void, cancelled: () => boolean): Promise<Mic | null> {
-  const media = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  const media = await voiceMicrophone();
   if (cancelled()) {
     media.getTracks().forEach((t) => t.stop());
     return null;
   }
-  const context = new AudioContext({ sampleRate: rate });
+  let context: AudioContext | undefined;
+  try {
+  context = new AudioContext({ sampleRate: rate });
   const source = context.createMediaStreamSource(media);
   const pump = context.createScriptProcessor(4096, 1, 1);
   const sink = context.createGain();
@@ -77,9 +80,14 @@ async function openMic(rate: number, onFrame: (samples: Float32Array) => void, c
       source.disconnect();
       pump.disconnect();
       media.getTracks().forEach((t) => t.stop());
-      await context.close();
+      await context?.close();
     },
   };
+  } catch (error) {
+    media.getTracks().forEach(t => t.stop());
+    await context?.close().catch(() => undefined);
+    throw error;
+  }
 }
 
 /** Why the microphone or the engine said no, in the window's words. */
@@ -105,15 +113,17 @@ export class Dictation {
 
   private engine: WindowEngine;
   private on: DictationEvents;
+  private retainTranscript: boolean;
 
-  constructor(engine: WindowEngine, on: DictationEvents) {
+  constructor(engine: WindowEngine, on: DictationEvents, retainTranscript = true) {
     this.engine = engine;
     this.on = on;
+    this.retainTranscript = retainTranscript;
   }
 
   async start(): Promise<void> {
     this.off = this.engine.onEvent((e) => this.event(e.event, rec(e.payload)));
-    const made = rec(await this.engine.request("talk.session.create", { mode: "transcription", transport: "gateway-relay", brain: "none" }));
+    const made = rec(await this.engine.request("talk.session.create", { mode: "transcription", transport: "gateway-relay", brain: "none" }).catch(error => { this.off?.(); this.off = null; throw error; }));
     this.id = str(made.sessionId);
     this.transcription = str(made.transcriptionSessionId) || this.id;
     if (this.cancelled) return void (await this.close());
@@ -122,11 +132,13 @@ export class Dictation {
       await this.close();
       throw new Error("The engine's dictation asks for a sound format this window doesn't send.");
     }
+    try {
     this.mic = await openMic(8000, (frame) => {
       this.on.onLevel(level(frame));
       const audioBase64 = toBase64(ulaw(frame));
       this.chain = this.chain.then(() => this.engine.request("talk.session.appendAudio", { sessionId: this.id, audioBase64 })).catch((e: unknown) => this.on.onError(voiceError(e)));
     }, () => this.cancelled);
+    } catch (error) { await this.close(); throw error; }
   }
 
   text(): string {
@@ -143,9 +155,9 @@ export class Dictation {
   }
 
   private async close() {
+    if (this.id) await this.engine.request("talk.session.close", { sessionId: this.id }).catch(() => undefined);
     this.off?.();
     this.off = null;
-    if (this.id) await this.engine.request("talk.session.close", { sessionId: this.id }).catch(() => undefined);
     this.id = "";
   }
 
@@ -154,10 +166,10 @@ export class Dictation {
     if ((p.type === "transcript" || p.type === "partial") && typeof p.text === "string") {
       if (p.type === "partial" || p.final !== true) this.partial = p.text.trim();
       else if (p.text.trim()) {
-        this.finals.push(p.text.trim());
+        if (this.retainTranscript) this.finals.push(p.text.trim());
         this.partial = "";
       }
-      this.on.onText(this.text());
+      this.on.onText(this.retainTranscript ? this.text() : p.text.trim());
     } else if (p.type === "error") this.on.onError(str(p.message) || "Dictation stopped.");
     else if (p.type === "close" && p.reason === "error") this.on.onError("Dictation lost its connection.");
   }
@@ -204,6 +216,7 @@ export class VoiceCall {
       await this.end();
       throw new Error("Talking live through Branch needs a voice service that speaks PCM16.");
     }
+    try {
     this.out = new AudioContext({ sampleRate: Number(audio.outputSampleRateHz) || 24000 });
     this.mic = await openMic(Number(audio.inputSampleRateHz) || 24000, (frame) => {
       this.on.onLevel(this.muted ? 0 : level(frame));
@@ -211,6 +224,7 @@ export class VoiceCall {
       const audioBase64 = toBase64(pcm16(frame));
       this.chain = this.chain.then(() => this.engine.request("talk.session.appendAudio", { sessionId: this.relay, audioBase64 })).catch((e: unknown) => this.on.onState("error", voiceError(e)));
     }, () => this.ended);
+    } catch (error) { await this.end(); throw error; }
   }
 
   /** End came while the engine was still making the session: close the session that arrived after it. */

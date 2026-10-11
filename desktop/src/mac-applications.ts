@@ -107,6 +107,7 @@ export async function stampMacBundle(appDir: string): Promise<void> {
   if (!original.includes("<key>")) throw new Error("Info.plist is not XML");
   let plist = setPlistString(original, "CFBundleName", MAC_APP_NAME);
   plist = setPlistString(plist, "CFBundleDisplayName", MAC_APP_NAME);
+  plist = setPlistString(plist, "NSMicrophoneUsageDescription", "Branch uses your microphone for dictation, voice conversations and wake-word listening when you turn them on.");
   plist = setPlistString(plist, "CFBundlePackageType", "APPL");
   plist = setPlistString(plist, "CFBundleIdentifier", MAC_BUNDLE_ID);
   if (!/<key>CFBundleIconFile<\/key>/.test(plist)) plist = setPlistString(plist, "CFBundleIconFile", MAC_ICON_FILE);

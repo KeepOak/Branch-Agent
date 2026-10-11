@@ -1,0 +1,3 @@
+window:src/composer/desktop-voice.test.tsx
+window:src/composer/voice-cancel.test.tsx
+window:src/composer/voice.test.ts

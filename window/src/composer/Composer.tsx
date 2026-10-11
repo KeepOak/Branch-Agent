@@ -37,6 +37,7 @@ import { HistorySearch } from "./HistorySearch";
 import { diffContext, folderContext } from "./context";
 import { useWaitingLine } from "./useWaitingLine";
 import { DictationStrip, TALK_EVENT, useDictation, useVoiceCatalog, useVoiceNote, VoiceNoteStrip, VoiceScreen } from "./VoiceParts";
+import { useDesktopListening } from "./desktop-voice";
 import "./composer.css";
 
 type Props = {
@@ -134,6 +135,7 @@ export function Composer(props: Props) {
   const vimOn = prefs.vimKeys && vim.mode === "normal";
   const note = useVoiceNote((file) => void draft.addFiles([file], "file"), setProblem);
   const [talking, setTalking] = useState(false);
+  const desktopListening = useDesktopListening(engine, { dictating: dict.on, busy: talking || note.on, transcription: voice.dictation, live: voice.live, start: dict.start, done: dict.done, talk: () => setTalking(true), problem: setProblem });
   useEffect(() => {
     const start = () => voice.live && setTalking(true);
     window.addEventListener(TALK_EVENT, start);
@@ -534,6 +536,7 @@ export function Composer(props: Props) {
         ) : null}
         <ToolButton refEl={anchors.plus} icon="plus" label="Attach, mention a Trunk, skills, Temporary" open={menu === "plus"} onClick={() => setMenu(menu === "plus" ? null : "plus")} testId="plus" />
         <ToolButton refEl={anchors.plug} icon="plug" label="Tools: connectors, skills, plugins and command-line tools" tip="Tools" open={menu === "plug"} onClick={() => setMenu(menu === "plug" ? null : "plug")} disabled={!engine} testId="plug" />
+        {desktopListening.listening ? <span role="status">Listening for the wake word…</span> : null}
         {note.on ? <VoiceNoteStrip started={note.started} onDone={note.done} /> : dict.on ? <DictationStrip level={dict.level} heard={dict.heard} onDone={() => void dict.done()} /> : (
         <textarea
           ref={box}
@@ -571,7 +574,7 @@ export function Composer(props: Props) {
           </button>
         ) : null}
         {dict.on ? null : (
-          <button type="button" className="c-btn" aria-label="Dictate into the box" title={voice.dictation ? "Dictate into the box" : VOICE_OFF} disabled={!voice.dictation} data-testid="dictate" onClick={() => void dict.start()}>
+          <button type="button" className="c-btn" aria-label="Dictate into the box" title={voice.dictation ? "Dictate into the box" : VOICE_OFF} disabled={!voice.dictation || !desktopListening.dictationEnabled} data-testid="dictate" onClick={() => void dict.start()}>
             <Icon name="mic" />
           </button>
         )}

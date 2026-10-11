@@ -1,5 +1,6 @@
+import { createVoiceController, mayUseMicrophone } from "./voice";
 // Branch Agent desktop app: starts the engine gateway, serves the built window on 127.0.0.1 and shows it.
-import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, session, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, screen, session, shell, systemPreferences } from "electron";
 import type { ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
 import { appendFileSync, existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
@@ -812,8 +813,31 @@ function lockDown(w: BrowserWindow): void {
     if (url.startsWith("https://")) void shell.openExternal(url);
     return { action: "deny" };
   });
-  session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+  session.defaultSession.setPermissionCheckHandler((wc, permission, _origin, details) =>
+    permission === "media" && mayUseMicrophone(Boolean(wc && ownedWebContents(wc)), windowUrl(), details.requestingUrl ?? "",
+      details.isMainFrame, [details.mediaType ?? "unknown"]));
+  session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) => {
+    cb(permission === "media" && mayUseMicrophone(Boolean(ownedWebContents(wc)), windowUrl(), details.requestingUrl,
+      details.isMainFrame, "mediaTypes" in details ? details.mediaTypes ?? [] : []));
+  });
 }
+
+const desktopVoice = createVoiceController({
+  file: join(cfg.dataDir, "desktop-voice.json"),
+  shortcuts: globalShortcut,
+  action: () => {
+    const target = branchWindows().find(w => w.isFocused()) ?? win;
+    if (!target || target.isDestroyed() || !target.webContents.getURL().startsWith(windowUrl())) return;
+    target.show();
+    target.focus();
+    target.webContents.send("branch-desktop:voice:action");
+  },
+  changed: settings => {
+    for (const target of branchWindows()) {
+      if (!target.isDestroyed() && target.webContents.getURL().startsWith(windowUrl())) target.webContents.send("branch-desktop:voice:changed", settings);
+    }
+  },
+});
 
 const windowUrl = (): string => `http://127.0.0.1:${cfg.windowPort}/`;
 
@@ -844,6 +868,17 @@ async function start(): Promise<void> {
     const owner = BrowserWindow.fromWebContents(e.sender);
     return Boolean(owner && branchWindows().includes(owner) && e.senderFrame === e.sender.mainFrame && e.sender.getURL().startsWith(windowUrl()));
   };
+  for (const method of ["get", "set", "microphone"] as const) {
+    ipcMain.handle(`branch-desktop:voice:${method}`, async (event, value: unknown) => {
+      if (!fromServedWindow(event)) throw new Error("Voice requires the owned served window");
+      if (method === "get") return desktopVoice.get();
+      if (method === "set") return desktopVoice.set(value);
+      if (process.platform === "darwin" && !await systemPreferences.askForMediaAccess("microphone")) {
+        throw new Error("Allow Branch microphone access in System Settings, then try again.");
+      }
+    });
+  }
+  try { desktopVoice.apply(); } catch (error) { log(`Voice shortcut: ${String(error)}`); }
   ipcMain.on("branch-desktop:ui-event", (e, raw: unknown) => {
     if (!fromServedWindow(e)) return;
     try {
@@ -1264,6 +1299,7 @@ function shutdown(): void {
   autoApply.stop();
   stopWindowWatch?.();
   controls.dispose();
+  desktopVoice.dispose();
   stopCandidate();
   stopWarmingStandby();
   // A quit mid-handoff stops the stepped-down engine too; a crash leaves its record for the next launch.

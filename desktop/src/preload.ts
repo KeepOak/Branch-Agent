@@ -81,6 +81,21 @@ if (info) {
       ipcRenderer.on("branch-desktop:open-main-route", handler);
       return () => ipcRenderer.removeListener("branch-desktop:open-main-route", handler);
     },
+    voice: {
+      get: () => ipcRenderer.invoke("branch-desktop:voice:get"),
+      set: (settings: unknown) => ipcRenderer.invoke("branch-desktop:voice:set", settings),
+      requestMicrophone: (): Promise<void> => ipcRenderer.invoke("branch-desktop:voice:microphone"),
+      onAction: (listener: () => void) => {
+        const handler = (): void => listener();
+        ipcRenderer.on("branch-desktop:voice:action", handler);
+        return () => { ipcRenderer.removeListener("branch-desktop:voice:action", handler); };
+      },
+      onChanged: (listener: (settings: unknown) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, settings: unknown): void => listener(settings);
+        ipcRenderer.on("branch-desktop:voice:changed", handler);
+        return () => { ipcRenderer.removeListener("branch-desktop:voice:changed", handler); };
+      },
+    },
     clipboard: { writeText: (text: string) => ipcRenderer.invoke("branch-desktop:clipboard:write-text", text) },
     componentUpdates: {
       status: () => ipcRenderer.invoke("branch-desktop:component-update:status"),
