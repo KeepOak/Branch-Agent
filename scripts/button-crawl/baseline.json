@@ -1,10 +1,10 @@
 {
   "version": 1,
   "problems": {
-    "chat:agent:builder:roadmap > Attach, mention a Trunk, skills, Temporary :: Builder": [
+    "chat:agent:builder:roadmap > Attach, mention a Trunk, skills, Temporary > More… :: Builder": [
       "dead"
     ],
-    "chat:agent:builder:roadmap > Attach, mention a Trunk, skills, Temporary :: Run it in the background /bg": [
+    "chat:agent:builder:roadmap > Attach, mention a Trunk, skills, Temporary > More… :: Run it in the background /bg": [
       "error"
     ],
     "chat:agent:builder:roadmap > How threads show: Column :: Column": [
@@ -16,10 +16,10 @@
     "chat:agent:researcher:notes :: Forward": [
       "dead"
     ],
-    "chat:agent:researcher:notes > Attach, mention a Trunk, skills, Temporary :: Researcher": [
+    "chat:agent:researcher:notes > Attach, mention a Trunk, skills, Temporary > More… :: Researcher": [
       "dead"
     ],
-    "chat:agent:researcher:notes > Attach, mention a Trunk, skills, Temporary :: Run it in the background /bg": [
+    "chat:agent:researcher:notes > Attach, mention a Trunk, skills, Temporary > More… :: Run it in the background /bg": [
       "error"
     ],
     "chat:agent:researcher:notes > Conversation menu :: Copy link": [
