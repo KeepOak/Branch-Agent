@@ -38,6 +38,7 @@ import {
   commitCodeModeSessionStore,
   isCodeModeSessionStoreRequest,
 } from "./code-mode-session-store.js";
+import { findSharedCodeModeWait, shareCodeModeWait } from "./code-mode-shared-wait.js";
 import {
   activeRuns,
   cancelPendingBridgeStates,
@@ -574,15 +575,38 @@ async function settleCodeModeResult(params: CodeModeSettlementContext) {
   });
 }
 
-export async function runWait(params: {
+type RunWaitParams = {
   toolCallId: string;
   ctx: ToolSearchToolContext;
   runId: string;
   signal?: AbortSignal;
   onUpdate?: AgentToolUpdateCallback;
   onRuntime?: (runtime: ToolSearchRuntime) => void;
-}) {
+};
+
+function assertCodeModeRunOwner(owner: ToolSearchToolContext, caller: ToolSearchToolContext) {
+  if (owner.runId && owner.runId !== caller.runId) {
+    throw new ToolInputError("code mode run belongs to a different agent run.");
+  }
+  if (
+    (owner.sessionId && owner.sessionId !== caller.sessionId) ||
+    (owner.sessionKey && owner.sessionKey !== caller.sessionKey) ||
+    (owner.agentId && owner.agentId !== caller.agentId)
+  ) {
+    throw new ToolInputError("code mode run belongs to a different session.");
+  }
+}
+
+export async function runWait(params: RunWaitParams) {
   removeExpiredRuns();
+  // Resume is idempotent: a second wait joins the resume already in flight (or
+  // reads its just-recorded terminal result) instead of failing.
+  const shared = findSharedCodeModeWait(params.runId);
+  if (shared) {
+    assertCodeModeRunOwner(shared.ctx, params.ctx);
+    params.onRuntime?.(shared.runtime);
+    return (await shared.result) as Awaited<ReturnType<typeof resumeParkedRun>>;
+  }
   if (resumingRunIds.has(params.runId)) {
     throw new ToolInputError("code mode run is already being resumed.");
   }
@@ -590,16 +614,18 @@ export async function runWait(params: {
   if (!state) {
     throw new ToolInputError("code mode run is unavailable or expired.");
   }
-  if (state.ctx.runId && state.ctx.runId !== params.ctx.runId) {
-    throw new ToolInputError("code mode run belongs to a different agent run.");
-  }
-  if (
-    (state.ctx.sessionId && state.ctx.sessionId !== params.ctx.sessionId) ||
-    (state.ctx.sessionKey && state.ctx.sessionKey !== params.ctx.sessionKey) ||
-    (state.ctx.agentId && state.ctx.agentId !== params.ctx.agentId)
-  ) {
-    throw new ToolInputError("code mode run belongs to a different session.");
-  }
+  assertCodeModeRunOwner(state.ctx, params.ctx);
+  return await shareCodeModeWait(
+    state.runId,
+    { ctx: state.ctx, runtime: state.runtime },
+    resumeParkedRun(state, params),
+  );
+}
+
+async function resumeParkedRun(
+  state: NonNullable<ReturnType<typeof activeRuns.get>>,
+  params: RunWaitParams,
+) {
   params.onRuntime?.(state.runtime);
   resumingRunIds.add(state.runId);
   // One wait call shares a single monotonic deadline across draining the prior

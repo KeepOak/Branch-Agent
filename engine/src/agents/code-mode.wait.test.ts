@@ -541,7 +541,7 @@ describe("Code Mode wait, scope, and suspended runs", () => {
     });
   });
 
-  it("rejects concurrent waits for the same suspended run", async () => {
+  it("lets a concurrent wait on a parked run share its resume", async () => {
     const { exec, wait } = harness(
       [
         pluginToolWithExecute(
@@ -557,9 +557,66 @@ describe("Code Mode wait, scope, and suspended runs", () => {
     );
     expect(first.status).toBe("waiting");
     const pending = wait.execute("wait-a", { runId: first.runId });
-    await expect(wait.execute("wait-b", { runId: first.runId })).rejects.toThrow(
-      "already being resumed",
+    const joined = wait.execute("wait-b", { runId: first.runId });
+    const [a, b] = (await Promise.all([pending, joined])).map(resultDetails);
+    expect(a).toMatchObject({ status: "waiting", runId: first.runId });
+    expect(b).toMatchObject({ status: "waiting", runId: first.runId });
+    expect(testing.activeRuns.has(first.runId as string)).toBe(true);
+  });
+
+  it("returns one terminal result to every wait on a run that finishes", async () => {
+    const release = createDeferred();
+    const target = pluginToolWithExecute("gated", "Gated helper", async () => {
+      await release.promise;
+      return jsonResult({ delivered: true });
+    });
+    const { ctx, exec, wait } = harness([target], { codeMode: { timeoutMs: 500 } });
+    const first = resultDetails(
+      await exec.execute("finishing", { code: "await gated({}); return 'done';" }),
     );
-    expect(resultDetails(await pending)).toMatchObject({ status: "waiting", runId: first.runId });
+    expect(first.status).toBe("waiting");
+    const a = wait.execute("wait-a", { runId: first.runId });
+    const b = wait.execute("wait-b", { runId: first.runId });
+    // A foreign caller still cannot observe the shared resume.
+    const foreign = createCodeModeTools({ ...ctx, sessionKey: undefined })[1]!;
+    await expect(foreign.execute("foreign", { runId: first.runId })).rejects.toThrow(
+      "different session",
+    );
+    release.resolve();
+    const [ra, rb] = (await Promise.all([a, b])).map(resultDetails);
+    expect(ra).toMatchObject({ status: "completed", value: "done" });
+    expect(rb).toMatchObject({ status: "completed", value: "done" });
+    // A late retry of the same wait sees the recorded outcome, not "unavailable".
+    expect(resultDetails(await wait.execute("wait-c", { runId: first.runId }))).toMatchObject({
+      status: "completed",
+      value: "done",
+    });
+    expect(target.execute).toHaveBeenCalledOnce();
+  });
+
+  it("lets a running exec record its aborted result before disposal returns", async () => {
+    const started = createDeferred();
+    const target = pluginToolWithExecute(
+      "interruptible",
+      "Interruptible helper",
+      async (_id, _input, signal) =>
+        await new Promise<never>((_resolve, reject) => {
+          started.resolve();
+          signal?.addEventListener("abort", () => reject(new Error("interrupted")), {
+            once: true,
+          });
+        }),
+    );
+    const { exec } = harness([target], { codeMode: { timeoutMs: 5_000 } });
+    let recorded: Record<string, unknown> | undefined;
+    const execution = exec
+      .execute("drained", { awaitResults: true, code: "return await interruptible({});" })
+      .then((result) => {
+        recorded = resultDetails(result);
+      });
+    await started.promise;
+    await codeModeState.disposeAllCodeModeRuns();
+    expect(recorded).toMatchObject({ status: "failed", code: "aborted" });
+    await execution;
   });
 });

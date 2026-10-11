@@ -31,6 +31,7 @@ import {
   readRunId,
   resolveCodeModeConfig,
 } from "./code-mode-runtime.js";
+import { trackCodeModeToolCall } from "./code-mode-state.js";
 import { recordCodeModeToolOutcome } from "./code-mode-tool-outcome.js";
 import { captureAgentPluginRuntimeRefresh } from "./plugin-runtime-refresh.js";
 import type { AgentToolUpdateCallback } from "./runtime/index.js";
@@ -258,23 +259,25 @@ export function createCodeModeTools(ctx: CodeModeToolContext): AnyAgentTool[] {
       const input = readCode(args);
       const executionContext = getAgentToolExecutionContext();
       let runtime: ToolSearchRuntime | undefined;
-      const result = await runCodeModeExec({
-        toolCallId,
-        ctx,
-        config,
-        resultBudget,
-        code: input.code,
-        assistantTurnId:
-          executionContext?.assistantMessage.responseId?.trim() ||
-          executionContext?.assistantMessage.turnId?.trim(),
-        restartSafe: ctx.forceRestartSafeTools === true || input.restartSafe,
-        awaitResults: input.awaitResults,
-        signal,
-        onUpdate,
-        onRuntime: (value) => {
-          runtime = value;
-        },
-      });
+      const result = await trackCodeModeToolCall(
+        runCodeModeExec({
+          toolCallId,
+          ctx,
+          config,
+          resultBudget,
+          code: input.code,
+          assistantTurnId:
+            executionContext?.assistantMessage.responseId?.trim() ||
+            executionContext?.assistantMessage.turnId?.trim(),
+          restartSafe: ctx.forceRestartSafeTools === true || input.restartSafe,
+          awaitResults: input.awaitResults,
+          signal,
+          onUpdate,
+          onRuntime: (value) => {
+            runtime = value;
+          },
+        }),
+      );
       return formatResult(result, runtime, signal);
     },
   } as AnyAgentTool);
@@ -299,16 +302,18 @@ export function createCodeModeTools(ctx: CodeModeToolContext): AnyAgentTool[] {
       runtimeRefresh.assertActive();
       ctx.abortSignal?.throwIfAborted();
       let runtime: ToolSearchRuntime | undefined;
-      const result = await runWait({
-        toolCallId,
-        ctx,
-        runId: readRunId(args),
-        signal,
-        onUpdate,
-        onRuntime: (value) => {
-          runtime = value;
-        },
-      });
+      const result = await trackCodeModeToolCall(
+        runWait({
+          toolCallId,
+          ctx,
+          runId: readRunId(args),
+          signal,
+          onUpdate,
+          onRuntime: (value) => {
+            runtime = value;
+          },
+        }),
+      );
       return formatResult(result, runtime, signal);
     },
   } as AnyAgentTool);

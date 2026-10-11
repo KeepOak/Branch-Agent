@@ -31,6 +31,7 @@ import {
   createCodeModeSessionStoreAccess,
   type CodeModeSessionStoreAccess,
 } from "./code-mode-session-store.js";
+import { clearCodeModeWaitResults } from "./code-mode-shared-wait.js";
 import { recordCodeModeToolOutcome } from "./code-mode-tool-outcome.js";
 import { captureAgentPluginRuntimeRefresh } from "./plugin-runtime-refresh.js";
 import type { AgentToolUpdateCallback } from "./runtime/index.js";
@@ -81,6 +82,10 @@ const log = createSubsystemLogger("agents/code-mode");
 export const activeRuns = new Map<string, CodeModeRunState>();
 export const resumingRunIds = new Set<string>();
 const liveRunOwners = new Set<CodeModeRunOwner>();
+// Exec and wait calls stay owned until they return, so shutdown can let an
+// aborted call report its terminal state instead of vanishing mid-flight.
+const liveToolCalls = new Set<Promise<unknown>>();
+const CODE_MODE_SHUTDOWN_CALL_GRACE_MS = 5_000;
 let activeRunReservations = 0;
 let nextPendingBridgeSettlementSequence = 0;
 let activeRunExpiryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -340,12 +345,48 @@ function disposeCodeModeRun(runId: string): void {
   scheduleActiveRunExpiry();
 }
 
+/** Keep an exec or wait call owned until it has produced its result. */
+export function trackCodeModeToolCall<T>(call: Promise<T>): Promise<T> {
+  liveToolCalls.add(call);
+  const release = () => liveToolCalls.delete(call);
+  void call.then(release, release);
+  return call;
+}
+
+async function settleWithin(calls: readonly Promise<unknown>[], graceMs: number): Promise<boolean> {
+  if (calls.length === 0) {
+    return true;
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), graceMs);
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([Promise.allSettled(calls).then(() => true), expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Cancel every cell before its Gateway-owned runtimes disappear. */
-export async function disposeAllCodeModeRuns(): Promise<void> {
+export async function disposeAllCodeModeRuns(
+  callGraceMs = CODE_MODE_SHUTDOWN_CALL_GRACE_MS,
+): Promise<void> {
+  const calls = [...liveToolCalls];
   const closing = [...liveRunOwners].map((owner) => owner.close());
   activeRuns.clear();
   resumingRunIds.clear();
+  clearCodeModeWaitResults();
   scheduleActiveRunExpiry();
+  // Closing aborts each running cell. Let its exec/wait call return the aborted
+  // result so the transcript records a terminal state, not an unknown outcome.
+  if (!(await settleWithin(calls, callGraceMs))) {
+    log.warn("Code Mode calls did not finish within the shutdown grace", {
+      calls: calls.length,
+      graceMs: callGraceMs,
+    });
+  }
   const results = await Promise.allSettled(closing);
   const failures = results.flatMap((result) =>
     result.status === "rejected" ? [result.reason] : [],
