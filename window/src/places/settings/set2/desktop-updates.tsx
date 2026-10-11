@@ -37,7 +37,7 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
         ? "Restart Branch when your work is ready. Your conversations and settings stay in place."
         : "Your conversations and settings stay in place." : running ? `You have Branch ${versionParts(running).detail}. Checks for a new verified Branch release.` : "Checks for a new verified Branch release."}
     </Status>
-    <Sec title="Updating">
+    <Sec title="Updates">
       <Ctl title="Apply updates automatically" off={auto.off}>
         <Switch label="Apply updates automatically" checked={auto.state?.autoApplyUpdates ?? true}
           disabled={auto.busy !== null} onChange={on => void auto.set("autoApplyUpdates", on)} />
@@ -49,19 +49,19 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
   </Page>;
 }
 
-/** An older Branch Agent app has no Check now bridge, but it still checks every hour and stages updates by itself.
+/** An older Branch Agent app has no Check now bridge, but it still checks every 10 minutes and stages updates by itself.
  *  The page still uses Branch's version; a window connected elsewhere keeps its own reason. */
 function HourlyUpdates({ title, engine, reason }: Pick<SettingsPageProps, "title" | "engine"> & { reason?: string }) {
   const version = useBranchVersion(engine.gatewayUrl);
   const sys = useLive<RecordValue>(engine, "system.info", {}, []);
   const os = OS[str(rec(sys.data).platform)] ?? str(rec(sys.data).osLabel);
-  const lede = version ? `Branch ${versionParts(version).detail}${os ? ` on ${os}` : ""}.` : "Updates for Branch on this computer.";
+  const lede = version ? `Branch ${versionParts(version).detail}${os ? ` on ${os}` : ""}.` : "Version unavailable.";
   return <Page title={title} lede={lede}>
     <div className="s2-keeper"><KeeperMark size={64} /></div>
     {reason
       ? <Status tone="warn" title="Updates aren’t available here">{reason}</Status>
-      : <Status title={version ? `You have Branch ${versionParts(version).detail}` : "Branch on this computer"}>{DESKTOP_CHECKS_HOURLY}</Status>}
-    <Sec title="Updating">
+      : <Status tone="idle" title={version ? `Branch ${versionParts(version).detail} · automatic checks` : "Automatic update checks"}>{DESKTOP_CHECKS_HOURLY}</Status>}
+    <Sec title="Updates">
       <Ctl title="Check for updates" off={reason ? undefined : MANUAL_UPDATE_UNSUPPORTED}><Btn sm disabled>Check now</Btn></Ctl>
       <Hint>A downloaded update takes effect when Branch restarts.</Hint>
     </Sec>

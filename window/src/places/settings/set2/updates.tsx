@@ -32,8 +32,8 @@ const STATUS_WORD: Record<string, string> = { succeeded: "Installed", failed: "F
 const TRIGGER: Record<string, string> = { chat: "From a chat", "control-ui": "You", cli: "From a terminal", campaign: "By itself", "mac-app": "From the Mac app", api: "From a program" };
 
 export const ROWS: RowEntry[] = [
-  ["Install updates", "Updating", 0], ["Check for updates", "Updating", 0], ["Which updates", "Updating", 0],
-  ["If tasks are still running after", "Updating", 1], ["Undo the last update", "Updating", 0],
+  ["Install updates", "Updates", 0], ["Check for updates", "Updates", 0], ["Which updates", "Updates", 0],
+  ["If tasks are still running after", "Updates", 1], ["Undo the last update", "Updates", 0],
   ["Already have the app?", "Branch on your other devices", 0], ["Add more to Branch", "Branch on your other devices", 0], ["Open-source licences", "About", 0],
   ["Keep my conversations and settings", "Remove Branch", 0], ["Type Branch to confirm", "Remove Branch", 0],
   ["Send crash and update reports to KeepOak", "Reports", 0], ["What was sent", "Reports", 0],
@@ -44,7 +44,7 @@ export const ROWS: RowEntry[] = [
   ["The handbook", "Help and updates, more", 1], ["If an update fails", "Help and updates, more", 1],
   ["Update history", "Help and updates, more", 1], ["The engine", "Help and updates, more", 1],
   ["Update status for scripts", "Help and updates, more", 2],
-].map(([title, sec, lv]) => ({ page: "updates", title: String(title), sec: String(sec), group: ({ "In your editors and notes": "Branch on your other devices", "Help and updates, more": "Updating", Technical: "Updating" } as Record<string, string>)[String(sec)] ?? String(sec), lv: lv as 0 | 1 | 2 }));
+].map(([title, sec, lv]) => ({ page: "updates", title: String(title), sec: String(sec), group: ({ "In your editors and notes": "Branch on your other devices", "Help and updates, more": "Updates", Technical: "Updates" } as Record<string, string>)[String(sec)] ?? String(sec), lv: lv as 0 | 1 | 2 }));
 
 type Data = { status: RecordValue; info: RecordValue; sys: RecordValue; reload: () => void };
 
@@ -213,7 +213,7 @@ function Updating({ engine, level, data }: SettingsPageProps & { data: Data }) {
   const check = () => void call.run(async () => { await engine.request("update.status", { refreshCheckout: true }); setChecked(Date.now()); data.reload(); });
   const lastRun = rec(data.status.lastRun);
   return (
-    <Sec title="Updating">
+    <Sec title="Updates">
       <Ctl title="Install updates" sub="With a safety copy; running work gets until the update deadline.">
         <Seg label="Install updates" value={install} disabled={config.loading} onChange={setInstall} options={[{ id: "automatic", label: "Automatically" }, { id: "ask", label: "Ask me first" }, { id: "never", label: "Never" }]} />
       </Ctl>
@@ -384,7 +384,7 @@ function HelpMore({ engine, level, data, version }: SettingsPageProps & { data: 
   const last = rec(data.status.lastRun);
   const kind = str(rec(rec(data.status.schedule).install).kind);
   return (
-    <Sec title="Help and updates, more" group="Updating">
+    <Sec title="Help and updates, more" group="Updates">
       <Ctl title="The handbook" sub="Answers to “how do I…” questions, found by what you ask." off="Needs the handbook skill in the engine."><Btn sm>Ask it</Btn></Ctl>
       <Ctl title="If an update fails" sub="A Trunk reads what went wrong, tries the fix on a copy and tells you." off="Needs the Trunk that looks after updates, in the engine."><Btn sm>Show an example</Btn></Ctl>
       <h3 className="s2-h3">Last update attempt</h3>
@@ -448,7 +448,7 @@ function Technical({ data, version }: { data: Data; version: string }) {
   const install = rec(rec(data.status.schedule).install);
   const git = rec(install.git);
   return (
-    <Sec title="Technical" group="Updating" showHeading={false}>
+    <Sec title="Technical" group="Updates" showHeading={false}>
       <Kv rows={[
         ["Version", version], ["Engine version", version], ["Commit", str(git.currentSha).slice(0, 9)],
         ["Installed", day(git.installedAtMs)], ["Last commit", day(git.commitAtMs)], ["Install type", INSTALL[str(install.kind)] ?? ""],
