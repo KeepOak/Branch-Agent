@@ -1,6 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
 import { setTimeout as delay } from "node:timers/promises";
 import { isGatewayExternallySupervised } from "../../infra/gateway-supervision.js";
+import {
+  executeSqliteQuerySync,
+  getNodeSqliteKysely,
+  sqliteStringSet,
+} from "../../infra/kysely-sync.js";
 import { runSqliteReadOperationSync } from "../../infra/sqlite-schema-facts.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
@@ -14,11 +19,16 @@ import {
   hasBranchAgentCanonicalValidation,
   markBranchAgentCanonicalValidation,
 } from "../../state/branch-agent-db-validation-cache.js";
+import type { DB } from "../../state/branch-agent-db.generated.js";
 import {
   isIncognitoBranchAgentSqlitePath,
   resolveBranchAgentSqlitePath,
   type BranchAgentDatabaseOptions,
 } from "../../state/branch-agent-db.js";
+import {
+  clearBranchSessionRowQuarantines,
+  listBranchSessionRowQuarantineKeys,
+} from "../../state/branch-session-row-quarantine.js";
 import {
   resolveBranchStateDirForDatabasePath,
   resolveBranchStateSqlitePath,
@@ -62,6 +72,16 @@ export async function certifySessionCanonicalValidationPending(
   let oversizedRows = 0;
   let quarantinedRows = 0;
   try {
+    const env = {
+      BRANCH_STATE_DIR: resolveBranchStateDirForDatabasePath(
+        options.database?.path ?? resolveBranchStateSqlitePath(sourceEnv),
+      ),
+      ...(isGatewayExternallySupervised(sourceEnv) ? { BRANCH_SUPERVISOR_MODE: "external" } : {}),
+    };
+    const databasePath = readBranchAgentDatabaseIdentity(database).filename;
+    if (policy.quarantineInvalidRows) {
+      retireAbsentSessionRowQuarantines(database.db, { env, databasePath });
+    }
     const readiness = runSqliteReadOperationSync(
       database.db,
       () => {
@@ -79,15 +99,10 @@ export async function certifySessionCanonicalValidationPending(
     let initializeCanonicalValidation = readiness.initialize;
     const databaseOptions = {
       agentId: normalizeAgentId(options.agentId),
-      path: readBranchAgentDatabaseIdentity(database).filename,
-      env: {
-        BRANCH_STATE_DIR: resolveBranchStateDirForDatabasePath(
-          options.database?.path ?? resolveBranchStateSqlitePath(sourceEnv),
-        ),
-        ...(isGatewayExternallySupervised(sourceEnv) ? { BRANCH_SUPERVISOR_MODE: "external" } : {}),
-      },
+      path: databasePath,
+      env,
     };
-    return await withSqliteMutationWorkerLifetime(
+    await withSqliteMutationWorkerLifetime(
       databaseOptions,
       async ({ assertCurrent: assertReadinessCurrent }) => {
         const shareRuntimeDrain =
@@ -229,14 +244,15 @@ export async function certifySessionCanonicalValidationPending(
         }
       },
     );
-  } finally {
-    claim.release();
+    // Only a completed drain lets startup continue; a refusal above skips this.
     if (quarantinedRows > 0) {
       log.warn(
         "Quarantined invalid persisted session rows; startup continues and branch doctor --fix can repair them",
         { path: pathname, rows: quarantinedRows },
       );
     }
+  } finally {
+    claim.release();
     if (oversizedRows > 0) {
       log.warn("Canonical session validation processed oversized rows in its Worker", {
         path: pathname,
@@ -244,5 +260,38 @@ export async function certifySessionCanonicalValidationPending(
         batchByteLimit: MAX_BATCH_BYTES,
       });
     }
+  }
+}
+
+/** Records for rows deleted or archived since they were quarantined no longer name a repair. */
+function retireAbsentSessionRowQuarantines(
+  db: DatabaseSync,
+  target: { env: NodeJS.ProcessEnv; databasePath: string },
+): void {
+  try {
+    const recorded = listBranchSessionRowQuarantineKeys(target);
+    if (recorded.length === 0) {
+      return;
+    }
+    const present = new Set(
+      runSqliteReadOperationSync(
+        db,
+        () =>
+          executeSqliteQuerySync(
+            db,
+            getNodeSqliteKysely<Pick<DB, "session_nodes">>(db)
+              .selectFrom("session_nodes")
+              .select("session_key")
+              .where("session_key", "in", sqliteStringSet(recorded)),
+          ).rows.map((row) => row.session_key),
+        "fresh",
+      ),
+    );
+    clearBranchSessionRowQuarantines({
+      ...target,
+      sessionKeys: recorded.filter((key) => !present.has(key)),
+    });
+  } catch {
+    // A stale record only over-reports a repaired row; startup readiness still decides.
   }
 }

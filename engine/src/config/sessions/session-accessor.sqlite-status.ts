@@ -39,7 +39,7 @@ export function selectSessionEntryRows(
   return getNodeSqliteKysely<BranchAgentKyselyDatabase>(database.db)
     .selectFrom("session_nodes")
     .select("session_key")
-    .select("entry_json")
+    .select(readableSessionEntryJson)
     .$if(projection === "full" || fullEntryKeys.length > 0, (query) =>
       query.select(
         projection === "full"
@@ -57,6 +57,13 @@ export function selectSessionEntryRows(
       ]),
     );
 }
+
+// Startup quarantine settles a still-parseable row as invalid (-1). Readers see no entry
+// bytes for it, so exact reads refuse and listings skip it; doctor reads the raw row.
+export const readableSessionEntryJson =
+  /* kysely-allow-raw: hide entry bytes of quarantined rows; "{}" placeholders keep theirs. */ sql<string>`CASE WHEN entry_valid = -1 AND entry_json <> '{}' THEN '' ELSE entry_json END`.as(
+    "entry_json",
+  );
 
 // Canonical writers settle entry_valid; raw writes clear it. Inventory readers need
 // no payload for settled rows, but must retain parser semantics for pending/retained rows.
@@ -143,7 +150,9 @@ export function readSessionEntriesByStatus(
     .selectFrom("session_nodes")
     .selectAll()
     .select(sessionEntrySnapshotColumns)
-    .where("status", "in", projectedStatuses);
+    .where("status", "in", projectedStatuses)
+    // Quarantined rows stay unreadable; "{}" placeholders carry no entry either way.
+    .where("entry_valid", "!=", -1);
   if (sessionKeys) {
     query = query.where("session_key", "in", sqliteStringSet(sessionKeys));
   }

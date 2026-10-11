@@ -26,7 +26,7 @@ const SESSION_ROW_QUARANTINE_TABLE = `
 export type BranchSessionRowQuarantineInput = {
   sessionKey: string;
   reason: string;
-  /** Exact stored columns that failed validation, kept for later inspection. */
+  /** The stored validation columns (key, ids, entry JSON, lineage) that failed. */
   row: Readonly<Record<string, unknown>>;
 };
 
@@ -123,6 +123,17 @@ export function clearBranchSessionRowQuarantines(options: {
       },
     ),
   );
+}
+
+/** Recorded keys for one agent database; a missing store or table has none. */
+export function listBranchSessionRowQuarantineKeys(options: {
+  env?: NodeJS.ProcessEnv;
+  databasePath: string;
+}): string[] {
+  const databasePath = path.resolve(options.databasePath);
+  return listBranchSessionRowQuarantines(options.env)
+    .filter((record) => record.databasePath === databasePath)
+    .map((record) => record.sessionKey);
 }
 
 /** Read-only listing for status and repair surfaces; a missing store has no records. */
