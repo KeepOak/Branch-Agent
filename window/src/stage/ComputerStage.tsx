@@ -24,6 +24,8 @@ const NO_NUMBERS = "The engine can't number what it may click on a computer scre
 const NO_RECORD = "The engine can't record what you do on a computer yet.";
 const NO_WINDOW = "The engine can't show one window of a computer yet.";
 const OWN_WINDOW = "This window can't open the computer in a window of its own yet.";
+/** How long "Connecting…" may show before the stage says it can't reach a computer and offers a next step. */
+export const SLOW_CONNECT_MS = 8000;
 
 type Where = { placement: Placement | undefined; computers: Computer[]; profiles: { id: string; name: string }[]; loaded: boolean; error?: string };
 
@@ -46,6 +48,17 @@ function useWhere(engine: WindowEngine, tick: number): Where {
     };
   }, [engine, tick]);
   return where.owner === engine && where.tick === tick ? where : { placement: undefined, computers: [], profiles: [], loaded: false };
+}
+
+/** True once `waiting` has held for SLOW_CONNECT_MS under the same key; a new key (retry, another computer) starts over. */
+function useSlow(waiting: boolean, key: string): boolean {
+  const [slow, setSlow] = useState<string | null>(null);
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = setTimeout(() => setSlow(key), SLOW_CONNECT_MS);
+    return () => clearTimeout(timer);
+  }, [waiting, key]);
+  return waiting && slow === key;
 }
 
 function StepStrip({ steps, controlling, running, connected, onWatch, watchOpen, tools }: { steps: PlanStep[]; controlling: boolean; running: boolean; connected: boolean; onWatch: (at: MenuAnchor) => void; watchOpen: boolean; tools: boolean }) {
@@ -82,7 +95,41 @@ function StepStrip({ steps, controlling, running, connected, onWatch, watchOpen,
   );
 }
 
-function Screen({ view, target, onRetry, onChoose, controlling, onEnable, enabling, enableError }: { view: DesktopView; target: React.RefObject<HTMLDivElement | null>; onRetry: () => void; onChoose: () => void; controlling: boolean; onEnable?: () => void; enabling?: boolean; enableError?: string }) {
+type ScreenProps = {
+  view: DesktopView;
+  target: React.RefObject<HTMLDivElement | null>;
+  name: string;
+  onRetry: () => void;
+  onChoose: () => void;
+  onConnect: () => void;
+  controlling: boolean;
+  /** Connecting has gone on for SLOW_CONNECT_MS. */
+  slow: boolean;
+  /** Whether this conversation has a computer it is trying to reach. */
+  placed: boolean;
+  /** The engine listed no computer at all for this conversation to use. */
+  noComputer: boolean;
+  onEnable?: () => void;
+  enabling?: boolean;
+  enableError?: string;
+};
+
+/** The headline and the line under it while the screen isn't showing; every state names a next step. */
+function screenWords(view: DesktopView, name: string, slow: boolean, placed: boolean, noComputer: boolean): { head: string; line?: string } {
+  if (view.phase === "loading") {
+    if (!slow) return { head: "Connecting to this conversation's computer…" };
+    return placed
+      ? { head: "Couldn't reach this conversation's computer.", line: "It's taking longer than it should. Try again, or connect another computer." }
+      : { head: `No computer is connected to ${name}.`, line: "Connect a computer so it can see a screen and use a mouse." };
+  }
+  if (view.phase === "error") return { head: "Couldn't connect to the computer" };
+  if (noComputer) return { head: `No computer is connected to ${name}.`, line: "It can't see a screen or use a mouse until you connect a computer." };
+  return { head: "It can't see a screen or use a mouse." };
+}
+
+function Screen({ view, target, name, onRetry, onChoose, onConnect, controlling, slow, placed, noComputer, onEnable, enabling, enableError }: ScreenProps) {
+  const words = screenWords(view, name, slow, placed, noComputer);
+  const loading = view.phase === "loading";
   return (
     <div className="st7-wrap">
       <div className={controlling ? "st7-screen live-st ctl-st" : "st7-screen live-st"}>
@@ -91,21 +138,21 @@ function Screen({ view, target, onRetry, onChoose, controlling, onEnable, enabli
         {view.phase !== "connected" ? (
           <div className="stage-empty">
             <SIcon name="monitor" />
-            <b>
-              {view.phase === "loading"
-                ? "Connecting to this conversation's computer…"
-                : view.phase === "error"
-                  ? "Couldn't connect to the computer"
-                  : "It can't see a screen or use a mouse."}
-            </b>
+            <b>{words.head}</b>
+            {words.line ? <p>{words.line}</p> : null}
             {view.message ? <p role="alert">{view.message}</p> : null}
             {enableError ? <p role="alert">{enableError}</p> : null}
-            {view.phase === "error" ? (
+            {view.phase === "error" || (loading && slow) ? (
               <button type="button" className="btn" onClick={onRetry}>
                 Try again
               </button>
             ) : null}
-            {view.phase !== "loading" ? (
+            {loading || noComputer ? (
+              <button type="button" className="btn" onClick={onConnect}>
+                Connect a computer
+              </button>
+            ) : null}
+            {!loading ? (
               <button type="button" className="btn" disabled={enabling} onClick={onEnable ?? onChoose}>
                 {onEnable ? enabling ? "Turning on screen access…" : "See the screen and use the mouse" : "Computer settings"}
               </button>
@@ -191,6 +238,8 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
   const native = mode === "Computer" && nativeSelected && viewing === "gateway" && where.loaded && !viewed?.desktop;
   const view = useDesktopView(engine, gatewayUrl, mode === "Computer" && !native && picked !== "grid" && where.loaded ? viewing : null, target, control, retry);
   const screenView: DesktopView = !where.loaded ? { phase: "loading" } : where.error && !viewing ? { phase: "error", message: where.error } : view;
+  const slow = useSlow(mode === "Computer" && !native && picked !== "grid" && screenView.phase === "loading", `${tick}|${retry}|${viewing}`);
+  const noComputer = where.loaded && !where.error && !viewing && where.computers.length === 0;
   const steps = planSteps(card);
   const browser = mode === "Browser";
   const controlling = browser ? control : view.phase === "connected" && view.controlling === true;
@@ -344,7 +393,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
         ) : native ? (
           <NativeScreen engine={engine} retry={retry} onLive={setNativeLive} onRetry={() => setRetry((value) => value + 1)} />
         ) : (
-          <Screen view={screenView} target={target} controlling={controlling} onRetry={() => { setRetry((v) => v + 1); if (where.error) setTick((v) => v + 1); }} onChoose={onChooseComputer} onEnable={where.loaded && !where.error && (!viewing || viewing === "gateway") ? enableScreen : undefined} enabling={enabling} enableError={enableError} />
+          <Screen view={screenView} target={target} name={name} controlling={controlling} slow={slow} placed={Boolean(viewing)} noComputer={noComputer} onConnect={() => setAdding(true)} onRetry={() => { setRetry((v) => v + 1); if (where.error || slow) setTick((v) => v + 1); }} onChoose={onChooseComputer} onEnable={where.loaded && !where.error && (!viewing || viewing === "gateway") ? enableScreen : undefined} enabling={enabling} enableError={enableError} />
         )}
       </div>
       )}
