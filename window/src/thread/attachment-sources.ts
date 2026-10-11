@@ -3,7 +3,7 @@ import type { WindowEngine } from "../connect/engine";
 import type { Attachment } from "./model";
 
 export const isManagedAttachment = (item: Attachment): boolean => /^artifact_managed_(?:image|media)_/.test(item.artifactId ?? "");
-export const needsAttachmentSource = (item: Attachment): boolean => isManagedAttachment(item) || (item.kind === "image" && /^(media:\/\/inbound\/|\/(?!\/)|~[\\/]|[A-Za-z]:[\\/]|file:)/.test(item.src ?? ""));
+export const needsAttachmentSource = (item: Attachment): boolean => isManagedAttachment(item) || /^(media:\/\/inbound\/|\/(?!\/)|~[\\/]|[A-Za-z]:[\\/]|file:)/.test(item.src ?? "");
 export const attachmentSourceKey = (item: Attachment): string => item.artifactId ?? item.src ?? "";
 
 /** Same artifacts.download flow as engine/ui/src/api/artifact-download.ts. The RPC authorizes one artifact;

@@ -33,6 +33,19 @@ function backend() {
 }
 
 describe("actual thread compact helper entry", () => {
+  it("keeps completed live output visible without working indicators while history is pending", async () => {
+    const fixture = backend();
+    const container = document.body.appendChild(document.createElement("div"));
+    root = createRoot(container);
+    await act(async () => root!.render(<Thread name="Owner" history={[]}
+      live={[{ kind: "text", key: "completed", text: "Completed reply waiting for history", streaming: false }]}
+      pendingUser={null} running={false} engine={fixture.engine} onAnswer={() => {}} />));
+    expect(container.textContent).toContain("Completed reply waiting for history");
+    expect(container.querySelector('[data-streaming="true"]')).toBeNull();
+    expect(container.querySelector(".live-run-head")).toBeNull();
+    expect(container.querySelector(".working-ring")).toBeNull();
+  });
+
   it("opens full Activity through the task-anchored chip without navigating or stopping the conversation", async () => {
     const fixture = backend();
     const activity = vi.fn(), openSession = vi.fn();

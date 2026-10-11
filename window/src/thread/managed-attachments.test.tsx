@@ -31,6 +31,16 @@ async function event(name: "error" | "load") {
 }
 
 describe("managed attachments", () => {
+  it.each(["audio", "video", "file"] as const)("resolves uploaded %s through the authenticated local media flow", async (kind) => {
+    const engine = makeEngine();
+    engine.mediaPicture = vi.fn(async () => ({ src: "http://127.0.0.1:19700/__branch__/assistant-media?mediaTicket=upload" }));
+    await render(engine, [{ kind, name: `${kind}.bin`, src: `media://inbound/${kind}.bin`, kept: true }]);
+    expect(engine.mediaPicture).toHaveBeenCalledWith(`media://inbound/${kind}.bin`);
+    const element = host.querySelector("audio,video,a")!;
+    expect(element.getAttribute(kind === "file" ? "href" : "src")).toContain("mediaTicket=upload");
+    expect(host.innerHTML).not.toContain("media://");
+  });
+
   it("resolves inbound screenshots with a media ticket and opens the restored picture", async () => {
     const engine = makeEngine();
     engine.mediaPicture = vi.fn(async () => ({ src: "http://127.0.0.1:19700/__branch__/assistant-media?mediaTicket=inbound-ticket" }));

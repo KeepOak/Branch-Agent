@@ -8,7 +8,7 @@ import { RunStreams, readRunEvent } from "./stream-order";
 import { storedOperatorToken } from "./device-token-store";
 import { withOwner } from "./agent-owner";
 import { withSafeVisibility } from "./safe-visibility";
-import { projectRun, type Approval, type Block } from "../thread/model";
+import { projectRun, settleRunBlocks, type Approval, type Block } from "../thread/model";
 import { historyToBlocks, markStopped, readApprovalRecords } from "../thread/history";
 import { sanitizeBlocks } from "../thread/tool-output-display";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "./preparation-status";
@@ -551,6 +551,7 @@ export class SaplingSession {
     this.set({
       history: blocks,
       historyReady: true,
+      ...(!this.snapshot.liveRunId && !inFlightRunId ? { live: [] } : {}),
       // The notice a failed read left goes once a read works; any other notice (a refused steer, an approval) stays.
       ...(staleNotice && this.snapshot.error === staleNotice ? { error: null } : {}),
       queued: mergeQueued(this.snapshot.queued, h.pendingInputs, sessionKey, true, this.shownRuns()),
@@ -755,7 +756,8 @@ export class SaplingSession {
     if (this.liveRefreshTimer) clearTimeout(this.liveRefreshTimer);
     this.liveRefreshTimer = null;
     const runId = this.snapshot.liveRunId;
-    this.set({ live: runId ? withWaitingApprovals(sanitizeBlocks(projectRun(this.runs.events(runId), this.approvals)), this.approvals, runId) : [] });
+    if (!runId) return; // A completed run's output stays until history replaces it.
+    this.set({ live: withWaitingApprovals(sanitizeBlocks(projectRun(this.runs.events(runId), this.approvals)), this.approvals, runId) });
   }
 
   private scheduleLiveRefresh(): void {
@@ -805,7 +807,10 @@ export class SaplingSession {
     // Stop presenting work as soon as the terminal event arrives; history/approval reads can be slow.
     // Keep live blocks until the record lands, but never keep the working controls active behind it.
     const liveBeforeRead = this.snapshot.liveRunId === runId;
-    if (liveBeforeRead) this.set({ liveRunId: null, liveStartedAt: null });
+    if (liveBeforeRead) {
+      this.refreshLive(); // Flush any throttled final delta before retiring the working controls.
+      this.set({ liveRunId: null, liveStartedAt: null, live: settleRunBlocks(this.snapshot.live) });
+    }
     let read = false;
     try {
       await this.loadHistory();
@@ -813,7 +818,7 @@ export class SaplingSession {
       // stand down: wait for the newest so the turn's own history is in before the live view goes.
       read = await this.settledRead();
     } catch {
-      // The live view still goes; whether the message was kept waits for a read that works.
+      // Retain the completed output until a successful read can replace it.
     } finally {
       this.releaseRetiring(runId);
       this.runs.drop(runId);
@@ -837,7 +842,7 @@ export class SaplingSession {
       this.set({
         // Only a run that finished plays "Done" (header, agent window, cheer); a stopped or failed one, or one whose
         // input another turn took in, does not.
-        ...(wasLive ? { liveRunId: null, liveStartedAt: null, live: [], pendingUser: keepEcho && own ? own.text : null, doneAt: outcome === "done" && !keepEcho ? Date.now() : null, ended: { runId, outcome, at: Date.now() } } : {}),
+        ...(wasLive ? { liveRunId: null, liveStartedAt: null, ...(read ? { live: [] } : {}), pendingUser: keepEcho && own ? own.text : null, doneAt: outcome === "done" && !keepEcho ? Date.now() : null, ended: { runId, outcome, at: Date.now() } } : {}),
         // Your send, taken into another turn that is still running: that turn's history has your message, so your
         // own bubble goes now instead of drawing it twice. Only when the bubble is that send's: someone else's run,
         // or a queued send of yours (not drawn) taken in, leaves the bubble alone.

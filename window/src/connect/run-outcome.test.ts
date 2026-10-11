@@ -81,12 +81,35 @@ describe("how a run ends", () => {
     const session = await connected();
     await session.send("Hello");
     const runId = fake.sent[0]!;
+    await agent(runId, 1, "thinking", { delta: "Finished reasoning" });
+    await agent(runId, 2, "assistant", { delta: "Completed reply" });
     let release!: () => void;
     fake.historyGate = new Promise<void>((resolve) => { release = resolve; });
     fake.options?.onEvent({ event: "chat", payload: { runId, sessionKey: KEY, state: "final" } });
     expect(session.getSnapshot().liveRunId).toBeNull();
+    expect(session.getSnapshot().live).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "thinking", live: false }), expect.objectContaining({ kind: "text", streaming: false })]));
+    expect(session.getSnapshot().live).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "text", text: "Completed reply" })]));
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(session.getSnapshot().live).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "text", text: "Completed reply" })]));
     release();
     await settle();
+  });
+
+  it("retains completed output after a failed history read until a successful reload", async () => {
+    const session = await connected();
+    await session.send("Hello");
+    const runId = fake.sent[0]!;
+    await agent(runId, 1, "assistant", { delta: "Completed reply" });
+    fake.historyError = "History temporarily unavailable";
+    await emit("chat", { runId, sessionKey: KEY, state: "final" });
+    expect(session.getSnapshot().liveRunId).toBeNull();
+    expect(session.getSnapshot().live).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "text", text: "Completed reply" })]));
+    fake.historyError = null;
+    fake.transcript = [{ role: "assistant", content: "Completed reply", stopReason: "stop", timestamp: 2 }];
+    await session.reload();
+    expect(session.getSnapshot().live).toEqual([]);
+    expect(session.getSnapshot().history).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "text", text: "Completed reply" })]));
+    session.stop();
   });
 
   it("settles a completed send from authoritative idle history when its terminal event was missed", async () => {
