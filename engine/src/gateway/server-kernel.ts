@@ -25,9 +25,9 @@ import { createLazyRuntimeMethodBinder, createLazyRuntimeModule } from "../share
 import { getAgentDatabaseStartupAdmission } from "../state/agent-database-startup.js";
 import { createGatewayControlUiRootLifecycle } from "./server-control-ui-root.js";
 import { startGatewayCoreRuntime } from "./server-core-runtime.js";
+import { GatewayHandoffFatalError } from "./server-handoff-error.js";
 import { prepareGatewayKernelRequestRuntime } from "./server-kernel-request-runtime.js";
 import { prepareGatewayLifecycle } from "./server-lifecycle.js";
-import { GatewayHandoffFatalError } from "./server-handoff-error.js";
 import { registerGatewayModelCatalogPrivateAccess } from "./server-model-catalog-auth.js";
 import type { GatewayServerOptions } from "./server-public.js";
 import { prepareGatewayKernelState } from "./server-runtime-state-prepare.js";
@@ -190,7 +190,9 @@ export async function prepareGatewayKernel(
             const beforeDeadline = async <T>(work: Promise<T>): Promise<T> => {
               const remaining = deadline - Date.now();
               if (remaining <= 0) {
-                throw new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds");
+                throw new GatewayHandoffFatalError(
+                  "Gateway handoff deactivation exceeded 18 seconds",
+                );
               }
               let timer: ReturnType<typeof setTimeout> | undefined;
               try {
@@ -198,7 +200,12 @@ export async function prepareGatewayKernel(
                   work,
                   new Promise<never>((_, reject) => {
                     timer = setTimeout(
-                      () => reject(new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds")),
+                      () =>
+                        reject(
+                          new GatewayHandoffFatalError(
+                            "Gateway handoff deactivation exceeded 18 seconds",
+                          ),
+                        ),
                       remaining,
                     );
                   }),
@@ -211,16 +218,22 @@ export async function prepareGatewayKernel(
             try {
               await beforeDeadline(Promise.resolve(stateLease?.release?.()));
             } catch (error) {
-              if (error instanceof GatewayHandoffFatalError) throw error;
+              if (error instanceof GatewayHandoffFatalError) {
+                throw error;
+              }
               // The lease release may fail before ownership transfers. In that
               // case this kernel is still the only engine and must take work again.
               try {
                 stateLease?.assertDatabaseAccess(
-                  (await import("../state/branch-state-db.paths.js")).resolveBranchStateSqlitePath(),
+                  (
+                    await import("../state/branch-state-db.paths.js")
+                  ).resolveBranchStateSqlitePath(),
                 );
                 await beforeDeadline(sdkResourceHost.run(() => kernel.restoreFailedStateRelease()));
               } catch (restoreError) {
-                if (restoreError instanceof GatewayHandoffFatalError) throw restoreError;
+                if (restoreError instanceof GatewayHandoffFatalError) {
+                  throw restoreError;
+                }
                 throw new GatewayHandoffFatalError(
                   "Gateway handoff lost state ownership or could not restore serving",
                   { cause: new AggregateError([error, restoreError]) },
@@ -228,6 +241,7 @@ export async function prepareGatewayKernel(
               }
               throw error;
             }
+            kernel.commitStateRelease();
           })().catch((error: unknown) => {
             deactivation = undefined;
             throw error;

@@ -7,6 +7,7 @@ import type { SendExtras, WindowEngine } from "./engine";
 import { RunStreams, readRunEvent } from "./stream-order";
 import { storedOperatorToken } from "./device-token-store";
 import { withOwner } from "./agent-owner";
+import { withSafeVisibility } from "./safe-visibility";
 import { projectRun, type Approval, type Block } from "../thread/model";
 import { historyToBlocks, markStopped, readApprovalRecords } from "../thread/history";
 import { sanitizeBlocks } from "../thread/tool-output-display";
@@ -279,7 +280,8 @@ export class SaplingSession {
 
   /** Any engine method, for the parts of the window that call the engine themselves. */
   request<T = unknown>(method: string, params?: unknown): Promise<T> {
-    return this.gateway.request<T>(method, params);
+    const status = this.snapshot.status;
+    return this.gateway.request<T>(method, withSafeVisibility(method, params, status.phase === "connected" ? status.hello : null));
   }
 
   requestScopeUpgrade(options?: { onPending?: (requestId: string) => void }) {

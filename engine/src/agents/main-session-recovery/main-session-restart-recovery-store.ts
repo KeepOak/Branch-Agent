@@ -185,8 +185,20 @@ export async function recoverStore(params: {
   terminalOnFailure?: boolean;
   shouldContinue?: () => boolean;
   gatewayRuntime: GatewayRecoveryRuntime;
-}): Promise<{ started: number; settled: number; failed: number; skipped: number }> {
-  const result = { started: 0, settled: 0, failed: 0, skipped: 0 };
+}): Promise<{
+  started: number;
+  settled: number;
+  failed: number;
+  skipped: number;
+  retryAtMs?: number;
+}> {
+  const result: {
+    started: number;
+    settled: number;
+    failed: number;
+    skipped: number;
+    retryAtMs?: number;
+  } = { started: 0, settled: 0, failed: 0, skipped: 0 };
   const shouldContinue = () => params.shouldContinue?.() !== false;
   const stopped = () => {
     if (shouldContinue()) {
@@ -255,6 +267,12 @@ export async function recoverStore(params: {
     const dispatchSessionKey =
       params.expectedTarget?.canonicalSessionKey ?? dispatchTarget.sessionKey;
     if (hasCurrentProcessOwner(entry, sessionKey)) {
+      result.skipped++;
+      continue;
+    }
+    const retryAtMs = entry.restartRecoveryRetryAtMs;
+    if (typeof retryAtMs === "number" && Number.isFinite(retryAtMs) && retryAtMs > Date.now()) {
+      result.retryAtMs = Math.min(result.retryAtMs ?? Infinity, retryAtMs);
       result.skipped++;
       continue;
     }
