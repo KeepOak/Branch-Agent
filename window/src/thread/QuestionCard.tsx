@@ -154,7 +154,7 @@ function SecretLines({ q, trunkName }: { q: Question; trunkName: string }) {
   return (
     <div className="q-sec">
       <span>Requested by {trunkName}</span>
-      {store ? <span>{store.kind === "env" ? `Saves it as an environment variable ${store.name}` : `Saves it as ${store.name} in Saved sign-ins`}</span> : null}
+      {store ? <span>{store.kind === "env" ? `Saves it as an environment variable ${store.name}` : `Saves it as ${store.name} in Saved passwords`}</span> : null}
       {store?.allowedHosts.length ? <span>Only sent to {store.allowedHosts.join(", ")}</span> : null}
     </div>
   );

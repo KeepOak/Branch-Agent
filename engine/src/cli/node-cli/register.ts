@@ -49,15 +49,29 @@ export function registerNodeCli(program: Command) {
     addNodeCommandOptions(
       node.command("run").description("Run the headless node host (foreground)"),
     )
-      .option(
-        "--pair <code-or-url>",
-        "Pair with a setup code or oc-pair URL; explicit gateway flags take precedence",
+      .addOption(
+        new Option(
+          "--pair <code-or-url>",
+          "Pair with a setup code or oc-pair URL (deprecated: use --pair-file or stdin); explicit gateway flags take precedence",
+        ).conflicts(["pairIfNeeded", "pairIfNeededFile"]),
       )
       .addOption(
         new Option(
           "--pair-if-needed <code-or-url>",
-          "Use the saved device token when available; otherwise pair with this setup code",
-        ).conflicts("pair"),
+          "Use the saved device token when available; otherwise pair with this setup code (deprecated: use --pair-file or stdin)",
+        ).conflicts(["pair", "pairFile"]),
+      )
+      .addOption(
+        new Option(
+          "--pair-file <path>",
+          "Read pairing setup code from file (mode 0600 on POSIX; Windows warns on Users/Everyone ACLs)",
+        ).conflicts(["pairIfNeeded", "pairIfNeededFile"]),
+      )
+      .addOption(
+        new Option(
+          "--pair-if-needed-file <path>",
+          "Use saved device token when available; otherwise read setup code from file",
+        ).conflicts(["pair", "pairFile"]),
       ),
   )
     .option("--session-host", "Host worker sessions for this foreground process")
@@ -71,11 +85,35 @@ export function registerNodeCli(program: Command) {
     .action(async (opts, command: Command) => {
       let pair;
       let gatewayOptions;
+      let pairingMode: "forced" | "if-needed" | undefined;
       try {
-        const setupCode = opts.pair ?? opts.pairIfNeeded;
+        const { resolveSetupCode, warnIfSetupCodeFromArgv } = await import("../setup-code-input.js");
+
+        const isPairIfNeeded =
+          opts.pairIfNeeded !== undefined || opts.pairIfNeededFile !== undefined;
+        const argvCode = opts.pair ?? opts.pairIfNeeded;
+        const filePath = opts.pairFile ?? opts.pairIfNeededFile;
+        const hasPairingSource = Boolean(argvCode || filePath || process.env.BRANCH_PAIRING_CODE);
+        // Forced: --pair, --pair -, --pair-file, or env-only. If-needed flags
+        // keep that mode even when BRANCH_PAIRING_CODE is also set.
+        pairingMode = !hasPairingSource ? undefined : isPairIfNeeded ? "if-needed" : "forced";
+
+        let setupCode: string | undefined;
+        if (hasPairingSource) {
+          const resolved = await resolveSetupCode({
+            argv: argvCode,
+            filePath,
+            envVar: "BRANCH_PAIRING_CODE",
+            allowStdin: argvCode === "-",
+            onWarn: (msg) => defaultRuntime.log(msg),
+          });
+          setupCode = resolved.code;
+          warnIfSetupCodeFromArgv(resolved.source, defaultRuntime);
+        }
+
         pair = setupCode
           ? resolveNodePairGatewayOptions(setupCode, {
-              allowExpired: opts.pairIfNeeded !== undefined,
+              allowExpired: pairingMode === "if-needed",
             })
           : undefined;
         const existing = await loadNodeHostConfig();
@@ -108,7 +146,7 @@ export function registerNodeCli(program: Command) {
         gatewayCandidates,
         gatewayBootstrapToken: pair?.bootstrapToken,
         gatewayBootstrapExpiresAtMs: pair?.expiresAtMs,
-        preferGatewayBootstrapToken: opts.pair !== undefined,
+        preferGatewayBootstrapToken: pairingMode === "forced",
         ...(opts.ephemeral === true || opts.sessionHost === true ? { forceWorkerRuns: true } : {}),
         ...(opts.ephemeral === true ? { ephemeral: true } : {}),
         nodeId: opts.nodeId,

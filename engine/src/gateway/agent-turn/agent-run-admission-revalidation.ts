@@ -1,5 +1,9 @@
 import { ErrorCodes, type ErrorShape } from "../../../packages/gateway-protocol/src/index.js";
 import type { BranchConfig } from "../../config/types.branch.js";
+import {
+  isRuntimeRaceFailure,
+  RUNTIME_RACE_SUMMARY,
+} from "../../sessions/session-run-error-presentation.js";
 import type { registerChatAbortController } from "../chat-abort.js";
 import { errorShapeFromError } from "../error-shape.js";
 import type { readInProcessSubagentResume } from "../in-process-subagent-resume.js";
@@ -14,13 +18,21 @@ import {
 } from "./agent-run-user-turn.js";
 import type { AgentTurnContext, AgentTurnPrincipal } from "./types.js";
 
-/** Keep owner-provided policy failures intact across every preaccept preparation phase. */
+/**
+ * Keep owner-provided policy failures intact across every preaccept preparation phase.
+ * A runtime race that outlived its rejoin budget is refused with the same plain sentence the
+ * transcript shows. Its internal text names files, so it never becomes the RPC message;
+ * attached diagnostics are kept.
+ */
 export function resolveAgentRunAdmissionError(
   code: Parameters<typeof errorShapeFromError>[0],
   error: unknown,
 ): ErrorShape {
-  return error instanceof SessionMutationAuthorizationChangedError
-    ? error.error
+  if (error instanceof SessionMutationAuthorizationChangedError) {
+    return error.error;
+  }
+  return isRuntimeRaceFailure(error)
+    ? errorShapeFromError(code, error, { message: RUNTIME_RACE_SUMMARY })
     : errorShapeFromError(code, error);
 }
 

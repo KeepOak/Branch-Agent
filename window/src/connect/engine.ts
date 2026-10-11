@@ -17,7 +17,16 @@ export type WindowEngine = {
   rewound?: (entryId: string) => void;
   scopes: string[];
   attachmentPolicy?: { maxBytes?: number; maxImageBytes?: number };
+  /** Ask an owner for this device's full operator scopes; the connection stores the rotated key. */
+  requestScopeUpgrade?: (options?: { onPending?: (requestId: string) => void }) => Promise<ScopeUpgradeOutcome>;
+  /** Withdraw or forget a live full-access wait. */
+  cancelScopeUpgrade?: () => void;
 };
+
+/** What `device.scopes.waitUpgrade` settles as, after this window asked for more access. */
+export type ScopeUpgradeOutcome =
+  | { status: "approved"; requestId: string; scopes: string[] }
+  | { status: "rejected" | "expired"; requestId: string };
 
 /** The extras a composer can send with a message; they are spread into chat.send's params. */
 export type SendExtras = {

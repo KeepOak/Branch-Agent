@@ -9,6 +9,48 @@ interface DesktopInfo {
   gatewayToken: string;
 }
 
+type AppliedUpdateNotice = { version: string; canUndo: boolean; expiresAt: number };
+type UpdateAppliedListener = (notice: AppliedUpdateNotice) => void;
+type UpdateUndoneListener = () => void;
+
+/** Listen at preload time so did-finish-load / hotSwapWindow replay is not dropped before React subscribes. */
+let lastApplied: AppliedUpdateNotice | undefined;
+let lastUndone = false;
+let appliedListener: UpdateAppliedListener | undefined;
+let undoneListener: UpdateUndoneListener | undefined;
+let deliveredVersion: string | undefined;
+
+function rememberApplied(notice: AppliedUpdateNotice): void {
+  lastApplied = notice;
+  lastUndone = false;
+  if (appliedListener && deliveredVersion !== notice.version) {
+    deliveredVersion = notice.version;
+    appliedListener(notice);
+  }
+}
+
+function rememberUndone(): void {
+  lastUndone = true;
+  lastApplied = undefined;
+  deliveredVersion = undefined;
+  undoneListener?.();
+}
+
+function subscribeApplied(listener: UpdateAppliedListener): () => void {
+  appliedListener = listener;
+  if (lastApplied && deliveredVersion !== lastApplied.version) {
+    deliveredVersion = lastApplied.version;
+    listener(lastApplied);
+  }
+  return () => { if (appliedListener === listener) appliedListener = undefined; };
+}
+
+function subscribeUndone(listener: UpdateUndoneListener): () => void {
+  undoneListener = listener;
+  if (lastUndone) listener();
+  return () => { if (undoneListener === listener) undoneListener = undefined; };
+}
+
 // Null on any page other than the served window (for example the "Starting" page).
 const info = ipcRenderer.sendSync("branch-desktop:info") as DesktopInfo | null;
 if (info) {
@@ -16,6 +58,10 @@ if (info) {
   contextBridge.exposeInMainWorld("branchDesktop", {
     gatewayUrl: info.gatewayUrl, getGatewayUrl: () => gatewayUrl, gatewayToken: info.gatewayToken,
     openConversation: (key: string) => ipcRenderer.invoke("branch-desktop:open-conversation", key),
+    diagnostics: {
+      uiEvent: (event: unknown): void => ipcRenderer.send("branch-desktop:ui-event", event),
+      reportProblem: (minutes: number): Promise<{ saved: boolean; bytes?: number }> => ipcRenderer.invoke("branch-desktop:report-problem", minutes),
+    },
     conversationWindows: {
       list: (): Promise<string[]> => ipcRenderer.invoke("branch-desktop:conversation-windows"),
       saved: (): Promise<string[]> => ipcRenderer.invoke("branch-desktop:saved-conversation-windows"),
@@ -40,6 +86,11 @@ if (info) {
       status: () => ipcRenderer.invoke("branch-desktop:component-update:status"),
       check: () => ipcRenderer.invoke("branch-desktop:component-update:check"),
       stage: () => ipcRenderer.invoke("branch-desktop:component-update:stage"),
+    },
+    onUpdateApplied: (listener: (notice: AppliedUpdateNotice) => void) => subscribeApplied(listener),
+    onUpdateUndone: (listener: () => void) => subscribeUndone(listener),
+    reportUpdateNotice: (event: string, notice: AppliedUpdateNotice) => {
+      ipcRenderer.send("branch-desktop:update-notice", event, notice);
     },
     onAutoApplyProbe: (listener: () => Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean }>) => {
       const handler = (_event: Electron.IpcRendererEvent, id: number): void => {
@@ -71,9 +122,9 @@ if (info) {
     restoreAfterSwap();
   });
   ipcRenderer.on("branch-desktop:engine-update", (_e, state: UpdateState) => showUpdateBar(state));
-  ipcRenderer.on("branch-desktop:update-applied", (_e, notice: { version: string; canUndo: boolean; expiresAt: number }) => showUpdateNotice(notice));
   ipcRenderer.on("branch-desktop:update-undo-failed", (_e, message: string) => showToast(`Undo couldn't finish: ${message}`));
-  ipcRenderer.on("branch-desktop:update-undone", () => document.getElementById("branch-desktop-update-notice")?.remove());
+  ipcRenderer.on("branch-desktop:update-applied", (_e, notice: AppliedUpdateNotice) => rememberApplied(notice));
+  ipcRenderer.on("branch-desktop:update-undone", () => rememberUndone());
   ipcRenderer.on("branch-desktop:engine-handoff", (_e, nextUrl: string) => {
     try {
       const target = new URL(nextUrl);
@@ -151,43 +202,6 @@ function showToast(message: string): void {
     document.body.appendChild(toast);
     setTimeout(() => { toast.style.opacity = "0"; }, 2_400);
     setTimeout(() => toast.remove(), 3_100);
-  };
-  if (document.body) show(); else window.addEventListener("DOMContentLoaded", show, { once: true });
-}
-
-/** A confirmed update stays visible across a window reload until dismissed or expired. */
-function showUpdateNotice({ version, canUndo, expiresAt }: { version: string; canUndo: boolean; expiresAt: number }): void {
-  if (!version || expiresAt <= Date.now()) return;
-  const show = () => {
-    const existing = document.getElementById("branch-desktop-update-notice");
-    if (existing?.dataset.testid === "desktop-update-notice" && existing.dataset.version === version) return;
-    existing?.remove();
-    const notice = document.createElement("div");
-    notice.id = "branch-desktop-update-notice";
-    notice.dataset.testid = "desktop-update-notice";
-    notice.dataset.version = version;
-    notice.setAttribute("role", "status");
-    notice.style.cssText = "position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:2147483647;display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;background:#1e293b;color:#f1f5f9;font:13px/1.3 system-ui,-apple-system,'Segoe UI',sans-serif;box-shadow:0 6px 24px rgba(15,23,42,.28)";
-    const label = document.createElement("span");
-    label.textContent = `Branch updated to ${version} while you worked.`;
-    notice.appendChild(label);
-    const actions: [string, () => void][] = [["What's new", () => window.dispatchEvent(new Event("branch:whats-new"))]];
-    if (canUndo) actions.push(["Undo", () => ipcRenderer.send("branch-desktop:undo-update")]);
-    for (const [text, action] of actions) {
-      const button = document.createElement("button");
-      button.type = "button"; button.textContent = text;
-      button.style.cssText = "border:0;border-radius:7px;padding:5px 10px;background:#f1f5f9;color:#0f172a;font:inherit;font-weight:600;cursor:pointer";
-      button.addEventListener("click", action);
-      notice.appendChild(button);
-    }
-    const dismiss = document.createElement("button");
-    dismiss.type = "button"; dismiss.textContent = "Dismiss";
-    dismiss.setAttribute("aria-label", "Dismiss update notice");
-    dismiss.style.cssText = "border:0;background:transparent;color:inherit;font:inherit;cursor:pointer";
-    dismiss.addEventListener("click", () => { notice.remove(); ipcRenderer.send("branch-desktop:dismiss-update-notice"); });
-    notice.appendChild(dismiss);
-    document.body.appendChild(notice);
-    setTimeout(() => notice.remove(), Math.max(0, expiresAt - Date.now()));
   };
   if (document.body) show(); else window.addEventListener("DOMContentLoaded", show, { once: true });
 }
