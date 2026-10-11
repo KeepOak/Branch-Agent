@@ -197,11 +197,13 @@ describe("Trunk queue: gateway restarts and unfinished startup are not job failu
 describe("trunks.queue.release", () => {
   async function release(id: string) {
     const respond = vi.fn();
-    await trunkQueueHandlers["trunks.queue.release"]({
+    const handler = trunkQueueHandlers["trunks.queue.release"];
+    expect(handler).toBeDefined();
+    await handler!({
       params: { id },
       respond,
       context: { getRuntimeConfig: () => undefined, logGateway: { warn: () => {} } },
-    } as unknown as Parameters<(typeof trunkQueueHandlers)["trunks.queue.release"]>[0]);
+    } as unknown as Parameters<NonNullable<typeof handler>>[0]);
     return respond.mock.calls[0];
   }
 
