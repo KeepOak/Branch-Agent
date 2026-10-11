@@ -18,9 +18,9 @@ export const READING_MORE = "Reading ";
 export const ROWS: RowSpec[] = [
   { sec: "Theme", title: "More contrast", key: "contrast", kind: "sw", def: false, sub: "Stronger lines and text, from each theme’s own high-contrast colours.", keep: "everywhere" },
   { sec: "Agents", title: "Size", key: "agentSize", kind: "seg", def: "m", sub: "Small keeps it out of the way.", opts: o([["s", "Small"], ["m", "Medium"], ["l", "Large"]]) },
-  { sec: "Background", title: "Behind the glass", key: "bg", kind: "seg", def: "none", keep: "everywhere", sub: "The grove and the oak wear the theme’s colours. A scrim in the theme’s own colour keeps text readable.",
-    opts: o([["none", "None"], ["painted", "Painted grove"], ["grove", "The grove"], ["oak3d", "The oak in 3D"], ["rings", "Growth rings"], ["own", "Your own"]], { own: "Branch can’t keep a file of your own as a background yet." }) },
-  { sec: "Background", title: "Season", key: "season", kind: "seg", def: "auto", keep: "everywhere", sub: "Fireflies in summer, petals in spring, leaves in autumn, snow in winter.", opts: o([["auto", "By the date"], ["spring", "Spring"], ["summer", "Summer"], ["autumn", "Autumn"], ["winter", "Winter"]]) },
+  { sec: "Background", title: "Background style", key: "bg", kind: "seg", def: "none", keep: "everywhere", sub: "Choose a landscape below, or a seasonal image that can change with the date.",
+    opts: o([["none", "None"], ["painted", "Landscape"], ["grove", "Seasonal"]]) },
+  { sec: "Background", title: "Season", key: "season", kind: "seg", def: "auto", keep: "everywhere", sub: "Choose a season, or let the date choose the image.", opts: o([["auto", "By the date"], ["spring", "Spring"], ["summer", "Summer"], ["autumn", "Autumn"], ["winter", "Winter"]]) },
   { sec: "Reading", title: "Text size", key: "size", kind: "seg", def: "Regular", keep: "device", sub: "Changes every screen.", opts: o([["small", "Small"], ["Regular", "Regular"], ["large", "Large"], ["larger", "Larger"], ["largest", "Largest"]]) },
   { sec: "The pet", title: "Let it roam", key: "roam", kind: "sw", def: false, keep: "everywhere", sub: "The pet walks along the chat, and the Trunk card steps aside. Off keeps the card as the one pet." },
   { sec: "The pet", title: "Pet sounds", key: "petSounds", kind: "sw", def: false, keep: "everywhere", sub: "A tiny sound when you pat it.", help: "Off until you turn it on." },

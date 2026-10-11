@@ -88,7 +88,22 @@ export function BackgroundSec({ look }: { look: Look }) {
   const pick = (id: string) => void save(async () => { await look.store.set("scene", id === "auto" ? null : id); await look.store.set("bg", "painted"); });
   return (
     <Sec title="Background">
-      <SpecRow r={rowOf("bg")} look={look} />
+      <div className="fld ap-k" data-row="Background style">
+        <span>Background style</span>
+        <p>{rowOf("bg").sub}</p>
+        <div className="scenes12" role="group" aria-label="Background style">
+          {rowOf("bg").opts?.map((option) => {
+            const file = sceneFile({ ...look.snap.look, bg: option.id });
+            return (
+              <button key={option.id} type="button" className="scene-c12" aria-pressed={bg === option.id || (option.id === "none" && !["painted", "grove"].includes(bg))}
+                onClick={() => void save(() => look.store.set("bg", option.id === "none" ? null : option.id))}>
+                <span aria-hidden="true" className="sc-img12" style={{ backgroundImage: file ? `url('${file}')` : "none", backgroundColor: "var(--bg)" }} />
+                <b>{option.label}</b>
+              </button>
+            );
+          })}
+        </div>
+      </div>
       {bg === "grove" ? <SpecRow r={rowOf("season")} look={look} /> : null}
       <div className="fld ap-k" data-row="Painted scenes"><span>Painted scenes</span>
         <div className="scenes12">
