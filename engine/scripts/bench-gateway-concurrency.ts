@@ -125,8 +125,22 @@ type FreshConnectionProbe = {
   ok: boolean;
 };
 
-/** One sessions.steer issued while its session is running; latency is its lane wait. */
-type SteerProbe = FreshConnectionProbe;
+/**
+ * One steer probe: chat.send with queueMode steer into its own probe run.
+ * latencyMs is the RPC accept round trip; appliedMs is accept to the steer's terminal event (null if none).
+ * active is false when the probe run had already finished when the steer was accepted.
+ */
+type SteerProbe = {
+  active: boolean;
+  appliedMs: number | null;
+  /** Terminal chat state the steer reached, or null when none arrived before the deadline. */
+  terminal: string | null;
+  /** Error text the steer terminal event carried, when it ended in error. */
+  terminalError?: string | null;
+  error: string | null;
+  latencyMs: number;
+  ok: boolean;
+};
 
 type GatewayChildExit = {
   atMonotonicMicros: number;
@@ -533,7 +547,7 @@ Options:
   --session-count <n> Seed up to ${MAX_SESSION_COUNT} distinct sessions before load
   --session-updates <n> Bounded public sessions.patch mutations during load
   --session-update-clients <n> Concurrent session mutation clients (default: 4)
-  --steers <n>       Send n sessions.steer messages to running sessions during load; reports lane wait (default: 0)
+  --steers <n>       Send n chat.send steer messages into active probe runs during load; reports accept and applied latency (default: 0)
   --history-clients <n> Concurrent dedicated history-prefetch WebSocket clients
   --history-burst <n> Parallel history requests per prefetch client (default: 5)
   --subscribers <n> Dedicated session-message subscription clients
@@ -917,6 +931,76 @@ function summarizeMockRequests(checkpoints: readonly MockRequestSnapshot[]) {
       total: difference(checkpoints.at(-1)!, first),
     },
     selections: { ...checkpoints.at(-1)!.selections },
+  };
+}
+
+const TERMINAL_CHAT_STATES = new Set(["final", "error", "aborted"]);
+
+/** Tracks probe runs and steer terminal events from the same connection, so event order is the accept order. */
+function createSteerProbeEvidence() {
+  const probes = new Map<string, { finished: boolean }>();
+  const steers = new Map<
+    string,
+    { state?: string; terminalAt?: number; errorMessage?: string; wake?: () => void }
+  >();
+  return {
+    registerProbe(runId: string) {
+      probes.set(runId, { finished: false });
+    },
+    registerSteer(runId: string) {
+      steers.set(runId, {});
+    },
+    probeFinished(runId: string): boolean {
+      return probes.get(runId)?.finished === true;
+    },
+    steerTerminal(
+      runId: string,
+    ): { state: string; terminalAt: number; errorMessage?: string } | undefined {
+      const steer = steers.get(runId);
+      return steer?.state !== undefined && steer.terminalAt !== undefined
+        ? { state: steer.state, terminalAt: steer.terminalAt, errorMessage: steer.errorMessage }
+        : undefined;
+    },
+    /** Resolves with the steer's terminal state, or undefined when none arrives before timeoutMs. */
+    waitForSteer(runId: string, timeoutMs: number): Promise<string | undefined> {
+      const steer = steers.get(runId);
+      if (!steer) {
+        return Promise.resolve(undefined);
+      }
+      if (steer.state !== undefined) {
+        return Promise.resolve(steer.state);
+      }
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(undefined), timeoutMs);
+        steer.wake = () => {
+          clearTimeout(timer);
+          resolve(steer.state);
+        };
+      });
+    },
+    onEvent(this: void, event: { event: string; payload?: unknown }) {
+      const payload = event.payload;
+      if (event.event !== "chat" || !isRecord(payload) || typeof payload.runId !== "string") {
+        return;
+      }
+      const state = payload.state;
+      if (typeof state !== "string" || !TERMINAL_CHAT_STATES.has(state)) {
+        return;
+      }
+      const probe = probes.get(payload.runId);
+      if (probe) {
+        probe.finished = true;
+      }
+      const steer = steers.get(payload.runId);
+      if (steer && steer.state === undefined) {
+        steer.state = state;
+        steer.terminalAt = performance.now();
+        if (typeof payload.errorMessage === "string") {
+          steer.errorMessage = payload.errorMessage;
+        }
+        steer.wake?.();
+      }
+    },
   };
 }
 
@@ -1770,6 +1854,7 @@ async function runGatewaySample(
   let completedRun: BenchmarkRun | undefined;
   const mockCheckpoints: MockRequestSnapshot[] = [];
   const turnEvidence = createTurnEvidence(options.toolEvents);
+  const steerEvidence = createSteerProbeEvidence();
   let gatewayExit: Awaited<ReturnType<typeof stopChild>> | undefined;
   let readGatewayProcess: ReturnType<typeof observeBenchmarkChild> | undefined;
   let readMockProviderProcess: ReturnType<typeof observeBenchmarkChild> | undefined;
@@ -1943,6 +2028,7 @@ async function runGatewaySample(
       client = await connectGateway(port, options.deadlineAt, protocolVersion, true, (event) => {
         activityDiagnostics?.onEvent(event);
         turnEvidence.onEvent(event);
+        steerEvidence.onEvent(event);
         live?.onEvent(event);
       });
       const rpc = client.request;
@@ -2361,30 +2447,58 @@ async function runGatewaySample(
           partialRun.freshConnection = value;
         }),
       );
-      // Steering interrupts a run, so probes use their own sessions and never touch the measured turns.
-      // Each probe starts a run, then steers it while active; latency is the steer RPC round trip.
+      // Steer probes use their own sessions, so they never touch the measured turns. Each probe starts a
+      // run, then sends a chat.send with queueMode steer while that run is still active.
       const steerProbes = allTurnsStarted.then(async (): Promise<SteerProbe[]> =>
         Promise.all(
           Array.from({ length: options.steers }, (_, index) => {
             const sessionKey = `agent:main:gateway-steer-${index + 1}`;
             return (async (): Promise<SteerProbe> => {
+              const probeRunId = randomUUID();
+              const steerRunId = randomUUID();
+              steerEvidence.registerProbe(probeRunId);
+              steerEvidence.registerSteer(steerRunId);
               const startedAt = performance.now();
               try {
                 await rpc("agent", {
                   sessionKey,
                   message: `Steer probe ${index + 1} holds an active run.`,
                   deliver: false,
-                  idempotencyKey: randomUUID(),
+                  idempotencyKey: probeRunId,
                 }, requireRemainingMs(loadDeadlineAt, "starting a steer probe"));
-                const steerStartedAt = performance.now();
-                await rpc("sessions.steer", {
-                  key: sessionKey,
+                const steerSentAt = performance.now();
+                await rpc("chat.send", {
+                  sessionKey,
                   message: `Steer probe ${index + 1} redirects.`,
-                  idempotencyKey: randomUUID(),
+                  queueMode: "steer",
+                  idempotencyKey: steerRunId,
                 }, requireRemainingMs(loadDeadlineAt, "steering a probe session"));
-                return { error: null, latencyMs: performance.now() - steerStartedAt, ok: true };
+                const acceptedAt = performance.now();
+                // Read activity at accept: gateway events and responses share one connection, so an
+                // event that arrived before the accept response means the probe had already finished.
+                const active = !steerEvidence.probeFinished(probeRunId);
+                const terminal = await steerEvidence.waitForSteer(
+                  steerRunId,
+                  Math.max(0, remainingMs(loadDeadlineAt)),
+                );
+                const applied = steerEvidence.steerTerminal(steerRunId);
+                return {
+                  active,
+                  appliedMs:
+                    terminal === "final" && applied
+                      ? Math.max(0, applied.terminalAt - acceptedAt)
+                      : null,
+                  terminal: terminal ?? null,
+                  terminalError: applied?.errorMessage ?? null,
+                  error: null,
+                  latencyMs: acceptedAt - steerSentAt,
+                  ok: true,
+                };
               } catch (error) {
                 return {
+                  active: false,
+                  appliedMs: null,
+                  terminal: null,
                   error: describeProbeError(error, options.activitySummaryDiagnostics),
                   latencyMs: performance.now() - startedAt,
                   ok: false,
@@ -2553,6 +2667,8 @@ async function runGatewaySample(
           historyLoad,
           sessionUpdateLoad,
         ]);
+      // Keep steer evidence on partial attempts; the probes run after the turns and can outlive them.
+      partialRun.steers = steerResults;
       partialRun.turnCount = sessionTurnCounts.reduce((sum, count) => sum + count, 0);
       const cpuAfter = await readGatewayCpuUsage(gateway);
       partialRun.cpuUsage = measureGatewayCpuUsage(cpuBefore, cpuAfter);
@@ -3035,11 +3151,22 @@ function summarizeRuns(
       (total, run) => total + (run.steers ?? []).filter((steer) => !steer.ok).length,
       0,
     ),
-    // Lane wait of steered messages: sessions.steer round trip while the session runs.
-    steeredLaneWaitMs: summarizeNumbers(
+    // Steers accepted while their probe run was still active. Inactive probes are not summarized.
+    steerAcceptMs: summarizeNumbers(
       runs.flatMap((run) =>
-        (run.steers ?? []).filter((steer) => steer.ok).map((steer) => steer.latencyMs),
+        (run.steers ?? []).filter((steer) => steer.ok && steer.active).map((steer) => steer.latencyMs),
       ),
+    ),
+    steerAppliedMs: summarizeNumbers(
+      runs.flatMap((run) =>
+        (run.steers ?? []).flatMap((steer) =>
+          steer.ok && steer.active && steer.appliedMs !== null ? [steer.appliedMs] : [],
+        ),
+      ),
+    ),
+    steerInactiveProbes: runs.reduce(
+      (total, run) => total + (run.steers ?? []).filter((steer) => steer.ok && !steer.active).length,
+      0,
     ),
     gatewayUncleanExits: runs.filter(
       (run) =>
@@ -3267,6 +3394,7 @@ export const testing = {
   parseMockRequests,
   summarizeMockRequests,
   createTurnEvidence,
+  createSteerProbeEvidence,
   captureChildOutput,
   buildConfig,
   formatProbeFailure,

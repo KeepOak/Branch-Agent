@@ -1045,31 +1045,70 @@ describe("gateway concurrency benchmark script", () => {
     }
   });
 
-  it("summarizes first-token latency and steered lane wait with nearest-rank percentiles", () => {
-    const withText = createBenchmarkRun({
+  it("tracks steer probe activity at accept and when each steer reaches its terminal state", async () => {
+    const now = vi.spyOn(performance, "now");
+    try {
+      const evidence = testing.createSteerProbeEvidence();
+      evidence.registerProbe("probe-a");
+      evidence.registerProbe("probe-b");
+      evidence.registerSteer("steer-a");
+      evidence.registerSteer("steer-b");
+      evidence.registerSteer("steer-c");
+      // probe-b finishes before its steer is accepted, so that probe is inactive.
+      evidence.onEvent({ event: "chat", payload: { runId: "probe-b", state: "final" } });
+      expect(evidence.probeFinished("probe-a")).toBe(false);
+      expect(evidence.probeFinished("probe-b")).toBe(true);
+      // A streamed delta is not a terminal event.
+      evidence.onEvent({ event: "chat", payload: { runId: "probe-a", state: "delta", text: "x" } });
+      expect(evidence.probeFinished("probe-a")).toBe(false);
+      now.mockReturnValueOnce(2_000);
+      evidence.onEvent({ event: "chat", payload: { runId: "steer-a", state: "final" } });
+      expect(evidence.steerTerminal("steer-a")).toEqual({ state: "final", terminalAt: 2_000 });
+      // An aborted steer records its state but is never applied.
+      now.mockReturnValueOnce(3_000);
+      evidence.onEvent({ event: "chat", payload: { runId: "steer-b", state: "aborted" } });
+      await expect(evidence.waitForSteer("steer-b", 10)).resolves.toBe("aborted");
+      expect(evidence.steerTerminal("steer-b")).toEqual({ state: "aborted", terminalAt: 3_000 });
+      // A steer that never reaches a terminal state resolves undefined at the timeout.
+      await expect(evidence.waitForSteer("steer-c", 5)).resolves.toBeUndefined();
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("summarizes steer accept and applied latency for active probes with nearest-rank percentiles", () => {
+    const withSteers = createBenchmarkRun({
       turnEvidence: { toolTurns: 0, observerModelDigestTurns: 0, firstTokenMs: [10, 20, 30, 40] },
       steers: [
-        { error: null, latencyMs: 300, ok: true },
-        { error: null, latencyMs: 100, ok: true },
-        { error: "steer refused", latencyMs: 50, ok: false },
+        { active: true, appliedMs: 500, terminal: "final", error: null, latencyMs: 300, ok: true },
+        { active: true, appliedMs: 100, terminal: "final", error: null, latencyMs: 100, ok: true },
+        // Inactive probes are kept out of every steer summary.
+        { active: false, appliedMs: null, terminal: null, error: null, latencyMs: 90, ok: true },
+        { active: false, appliedMs: null, terminal: null, error: "steer refused", latencyMs: 50, ok: false },
       ],
     });
     const more = createBenchmarkRun({
       turnEvidence: { toolTurns: 0, observerModelDigestTurns: 0, firstTokenMs: [50] },
     });
 
-    const single = testing.summarizeRuns([withText]);
+    const single = testing.summarizeRuns([withSteers]);
     expect(single.firstTokenMs).toEqual({ count: 4, max: 40, p50: 20, p95: 40, p99: 40 });
-    expect(single.steeredLaneWaitMs).toEqual({ count: 2, max: 300, p50: 100, p95: 300, p99: 300 });
+    expect(single.steerAcceptMs).toEqual({ count: 2, max: 300, p50: 100, p95: 300, p99: 300 });
+    expect(single.steerAppliedMs).toEqual({ count: 2, max: 500, p50: 100, p95: 500, p99: 500 });
+    expect(single.steerInactiveProbes).toBe(1);
     expect(single.steerFailedRuns).toBe(1);
 
-    const combined = testing.summarizeRuns([withText, more]);
+    const combined = testing.summarizeRuns([withSteers, more]);
     expect(combined.firstTokenMs).toEqual({ count: 5, max: 50, p50: 30, p95: 50, p99: 50 });
-    expect(combined.steeredLaneWaitMs).toEqual({ count: 2, max: 300, p50: 100, p95: 300, p99: 300 });
+    expect(combined.steerAcceptMs).toEqual({ count: 2, max: 300, p50: 100, p95: 300, p99: 300 });
+    expect(combined.steerAppliedMs).toEqual({ count: 2, max: 500, p50: 100, p95: 500, p99: 500 });
+    expect(combined.steerInactiveProbes).toBe(1);
     expect(combined.steerFailedRuns).toBe(1);
 
     const noSteers = testing.summarizeRuns([more]);
-    expect(noSteers.steeredLaneWaitMs).toBeNull();
+    expect(noSteers.steerAcceptMs).toBeNull();
+    expect(noSteers.steerAppliedMs).toBeNull();
+    expect(noSteers.steerInactiveProbes).toBe(0);
     expect(noSteers.steerFailedRuns).toBe(0);
   });
 
