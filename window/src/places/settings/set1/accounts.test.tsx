@@ -22,7 +22,7 @@ const CAPS = [
 let root: Root;
 let host: HTMLDivElement;
 beforeEach(() => { host = document.body.appendChild(document.createElement("div")); root = createRoot(host); });
-afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; });
+afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; vi.useRealTimers(); });
 
 function engineOf(extra: Record<string, unknown> = {}) {
   const request = vi.fn(async (method: string) => {
@@ -40,6 +40,73 @@ async function render(engine: WindowEngine, level: 0 | 1 | 2 = 0) {
 }
 
 describe("Settings › Accounts", () => {
+  it("offers one add action without an empty order box", async () => {
+    const { engine } = engineOf({ "models.authStatus": { providers: [], providerCapabilities: CAPS } });
+    await render(engine);
+    expect(host.textContent).toContain("No account signed in");
+    expect(host.textContent).not.toContain("Order Branch uses them in");
+    expect(host.textContent).not.toContain("No account yet.");
+    expect([...host.querySelectorAll('[data-sec="Model accounts"] button')].filter((b) => /Add.*account/.test(b.textContent ?? ""))).toHaveLength(1);
+    await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Add an account")!.click());
+    expect(document.querySelector('[data-testid="add-account"]')).not.toBeNull();
+  });
+
+  it("does not claim accounts are empty while loading or after a read error", async () => {
+    let reject!: (reason: Error) => void;
+    const pending = new Promise((_, fail) => { reject = fail; });
+    const { engine } = engineOf({ "models.authStatus": pending });
+    await render(engine);
+    expect(host.textContent).toContain("Reading your accounts");
+    expect(host.textContent).not.toContain("No account yet.");
+    expect(host.textContent).not.toContain("No account signed in");
+    await act(async () => reject(new Error("Account service unavailable")));
+    expect(host.textContent).toContain("Branch couldn’t read your accounts");
+    expect(host.textContent).not.toContain("No account yet.");
+    expect(host.textContent).not.toContain("No account signed in");
+  });
+
+  it("ends a stuck coding-app scan and retries without accepting the old answer", async () => {
+    vi.useFakeTimers();
+    let resolveOld!: (value: unknown) => void;
+    let resolveNew!: (value: unknown) => void;
+    const old = new Promise((resolve) => { resolveOld = resolve; });
+    const next = new Promise((resolve) => { resolveNew = resolve; });
+    const { engine, request } = engineOf({ "branch.setup.detect": old });
+    const original = request.getMockImplementation()!;
+    let attempts = 0;
+    request.mockImplementation((method) => method === "branch.setup.detect" ? (++attempts === 1 ? old : next) : original(method));
+    await render(engine);
+    const section = () => host.querySelector('[data-sec="Coding apps on this computer"]')!;
+    expect(section().textContent).not.toContain("Not found");
+    await act(async () => vi.advanceTimersByTime(20_000));
+    expect(section().textContent).toContain("The check didn’t finish");
+    expect(section().textContent).not.toContain("Looking");
+    const retry = section().querySelector<HTMLButtonElement>(".acts button")!;
+    expect(retry.disabled).toBe(false);
+    await act(async () => retry.click());
+    expect(attempts).toBe(2);
+    expect(section().textContent).not.toContain("The check didn’t finish");
+    await act(async () => resolveOld({ candidates: [{ kind: "claude-cli" }] }));
+    expect(section().textContent).not.toContain("Models ready");
+    await act(async () => resolveNew({ candidates: [{ kind: "codex-cli" }] }));
+    expect(section().textContent).toContain("Models ready");
+    expect(section().textContent).not.toContain("Looking");
+  });
+
+  it("shows a failed coding-app check instead of claiming the apps are absent", async () => {
+    const { engine, request } = engineOf();
+    const original = request.getMockImplementation()!;
+    request.mockImplementation(async (method) => {
+      if (method === "branch.setup.detect") throw new Error("Check unavailable");
+      return original(method);
+    });
+    await render(engine);
+    const section = host.querySelector('[data-sec="Coding apps on this computer"]')!;
+    expect(section.textContent).toContain("Couldn’t check this computer");
+    expect(section.textContent).not.toContain("Not found");
+    expect(section.querySelector<HTMLButtonElement>(".acts button")!.disabled).toBe(false);
+  });
+
   it("opens Add directly when the no-model action routes here", async () => {
     sessionStorage.setItem("branch.openAddAccount", "1");
     const { engine } = engineOf({});
@@ -53,7 +120,8 @@ describe("Settings › Accounts", () => {
       "branch.setup.detect": { manualProviders: [{ id: "setup-token", brandId: "anthropic", label: "Anthropic setup-token" }] },
     });
     await render(engine);
-    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add a Claude account")!.click());
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add an account")!.click());
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg .prov")].find((b) => b.textContent?.includes("Claude"))!.click());
     expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("Sign in with Claude");
     const fallback = document.querySelector<HTMLDetailsElement>(".dlg details")!;
     expect(fallback.open).toBe(false);
@@ -156,7 +224,8 @@ describe("Settings › Accounts", () => {
   ])("Claude sign-in sends the right models.authLogin params for name '$name'", async ({ name, profileLabel }) => {
     const { engine, request } = engineOf({ "branch.setup.detect": { manualProviders: [{ id: "setup-token", brandId: "anthropic", label: "Anthropic setup-token" }] } });
     await render(engine);
-    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add a Claude account")!.click());
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add an account")!.click());
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg .prov")].find((b) => b.textContent?.includes("Claude"))!.click());
     const input = document.querySelector<HTMLInputElement>('.dlg input[aria-label="Call it"]')!;
     expect(input.placeholder).toBe("Saved by email if blank");
     if (name) await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, name); input.dispatchEvent(new Event("input", { bubbles: true })); });

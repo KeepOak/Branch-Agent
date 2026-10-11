@@ -7,7 +7,7 @@ import { list, record, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Menu, type MenuAnchor, type MenuItem } from "../../../shell/Menu";
 import { Icon } from "../../../shell/icons";
-import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Status, Switch, useConfig, useLevel, useSaveRunner, useScope } from "../kit";
+import { Acts, Btn, Ctl, Hint, Page, Pill, Plist, Prow, Sec, Status, Switch, useConfig, useLevel, useSaveRunner, useScope } from "../kit";
 import { Logo, serviceName } from "./service";
 import { AddAccountDialog, type AddStart } from "./add-account";
 import { CodingApps } from "./coding-apps";
@@ -128,11 +128,10 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
     await engine.request("models.authOrderSet", { provider: acc.p.authProvider ?? acc.p.provider, profileIds: ids, ...agent });
     await reload();
   });
-  const brands = [...new Map(all.map((x) => [x.p.provider, x.p])).values()];
   const selecting = lv >= 1 && picked !== null;
   const right = lv >= 1 && all.length ? <SelectLink on={selecting} onToggle={() => setPicked(selecting ? null : [])} /> : undefined;
   return (
-    <Sec title="Order Branch uses them in" right={right}>
+    <Sec title={all.length ? "Order Branch uses them in" : "Model accounts"} right={right}>
       {selecting ? <BulkBar engine={engine} all={all} picked={picked ?? []} agent={agent} reload={reload} done={() => setPicked(null)} /> : null}
       {all.length ? (
         <Plist>
@@ -146,12 +145,10 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
             </Prow>
           ))}
         </Plist>
-      ) : <Empty>No account yet. Add one, and Branch uses it for every Trunk.</Empty>}
+      ) : null}
       {all.some((x) => !x.first) ? <Hint>When one account runs low, Branch moves to the next.</Hint> : null}
       <Acts>
         <Btn pri onClick={() => onAdd({})}><Icon name="plus" small />Add an account</Btn>
-        <Btn onClick={() => onAdd({ provider: "anthropic" })}>Add a Claude account</Btn>
-        {brands.filter((p) => p.provider !== "anthropic").map((p) => <Btn key={p.provider} onClick={() => onAdd({ provider: p.provider })}>Another {serviceName(p.provider, p.displayName)} account</Btn>)}
       </Acts>
       {menu ? <AccountMenu engine={engine} acc={menu.acc} all={all} at={menu.at} agent={agent} reload={reload} setOrder={setOrder} onClose={() => setMenu(null)} /> : null}
     </Sec>
