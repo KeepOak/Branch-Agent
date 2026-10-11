@@ -23,6 +23,7 @@ import {
 } from "./format";
 import { Icon, ICONS, StepKindIcon } from "./icons";
 import { Markdown } from "./markdown";
+import { computerStepDetail, isComputerToolName, isScreenToolName } from "./computer-action-label";
 import { fullOutput, type Block, type FileChange } from "./model";
 import { readTextToolCall, stepFromTextToolCall } from "./text-tool-call";
 import { withMentions } from "../rooms/RoomMessage";
@@ -280,6 +281,8 @@ function StepRow({ step }: { step: Of<"step"> }) {
   const exit = stepExitCode(step.detail);
   const failed = step.status === "failed" || step.status === "denied";
   const [open, setOpen] = useState(true);
+  const label = stepLabel(step);
+  const detail = isComputerToolName(step.tool) || isScreenToolName(step.tool) ? computerStepDetail(step, label) : step.title || undefined;
   return (
     <li
       className={`step step-pb18${failed ? " errR118" : ""}`}
@@ -292,8 +295,8 @@ function StepRow({ step }: { step: Of<"step"> }) {
       <summary>
       <StepKindIcon kind={kind} className="s" />
       <span>
-        <span className="step-label">{stepLabel(step)}</span>
-        {step.title ? <small className="step-detail">{step.title}</small> : null}
+        <span className="step-label">{label}</span>
+        {detail ? <small className="step-detail">{detail}</small> : null}
       </span>
       <span className="step-state">{STEP_STATE[step.status]}{exit != null ? ` · Exit code ${exit}` : ""}</span>
       </summary>
@@ -372,6 +375,17 @@ export function isScreenControlSetupError(message: string): boolean {
   return message.includes(SCREEN_CONTROL_SWITCH);
 }
 
+/** A run that had no usable model account: the engine's missing-auth errors and a provider's 401 for a request sent without one. */
+const NO_MODEL_ACCOUNT = /No API key (?:found|resolved) for provider|Missing bearer or basic authentication|no usable model account/i;
+
+export function isModelAccountMissingError(message: string): boolean {
+  return NO_MODEL_ACCOUNT.test(message);
+}
+
+function openAccounts(): void {
+  window.dispatchEvent(new CustomEvent("branch:navigate-settings", { detail: { page: "accounts" } }));
+}
+
 function openScreenControlSwitch(): void {
   window.dispatchEvent(new CustomEvent("branch:navigate-settings", { detail: { page: "computer" } }));
 }
@@ -380,12 +394,13 @@ function openScreenControlSwitch(): void {
 export function ErrorBlock({ block, onDismiss }: { block: Of<"error">; onDismiss: () => void }) {
   const { name, toast } = useThread();
   const screenSwitch = isScreenControlSetupError(block.message);
+  const noAccount = isModelAccountMissingError(block.message);
   return (
     <div className="strip indent" data-testid="run-error" role="alert">
       <div className="strip-line">
         <Icon d={ICONS.warn} />
         <span>
-          {name} couldn’t finish: {shortReason(block.message)}
+          {name} couldn’t finish: {noAccount ? "no model account is signed in for this Trunk." : shortReason(block.message)}
         </span>
         <button type="button" className="icon-sm" aria-label="Dismiss" title="Dismiss" onClick={onDismiss}>
           <Icon d={ICONS.x} />
@@ -405,6 +420,11 @@ export function ErrorBlock({ block, onDismiss }: { block: Of<"error">; onDismiss
         {screenSwitch ? (
           <button type="button" className="btn sm" data-testid="open-screen-control" onClick={openScreenControlSwitch}>
             Open that switch
+          </button>
+        ) : null}
+        {noAccount ? (
+          <button type="button" className="btn sm" data-testid="open-accounts" onClick={openAccounts}>
+            Sign in an account
           </button>
         ) : null}
         <button type="button" className="btn sm ghost" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); window.dispatchEvent(new CustomEvent(CHECK_STATUS_EVENT, { detail: { left: r.left, right: r.right, top: r.top } })); }}>

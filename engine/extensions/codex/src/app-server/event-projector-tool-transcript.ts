@@ -24,6 +24,12 @@ import {
   itemStatus,
 } from "./event-projector-items.js";
 import {
+  nativeCodexToolFailureText,
+  summarizeUnmentionedCodexToolFailures,
+  withCodexToolFailureReason,
+  type ToolTranscriptFailureInput,
+} from "./event-projector-tool-failure.js";
+import {
   isNativePostToolUseRelayItem,
   itemMeta,
   itemOutputText,
@@ -40,7 +46,6 @@ import {
 import {
   CodexToolProgressProjection,
   type ToolTranscriptCallInput,
-  type ToolTranscriptResultInput,
 } from "./event-projector-tool-progress.js";
 import { resolveCodexLocalRuntimeAttribution } from "./local-runtime-attribution.js";
 import {
@@ -120,6 +125,10 @@ export class CodexToolTranscriptProjection {
 
   get transcriptMessages(): readonly AgentMessage[] {
     return this.messages;
+  }
+
+  unmentionedFailureSummary(assistantTexts: readonly string[]): string | undefined {
+    return summarizeUnmentionedCodexToolFailures(this.messages, assistantTexts);
   }
 
   recordToolApprovalReview(
@@ -224,6 +233,9 @@ export class CodexToolTranscriptProjection {
         this.rawNativeToolOutputByCallId.get(item.id) ??
         itemTranscriptResultText(item, this.progress.outputTextByItem),
       isError: isNonSuccessItemStatus(status),
+      failureText:
+        approvalTimeoutExplanation ??
+        nativeCodexToolFailureText(item, status, this.progress.outputTextByItem),
       ...(item.type === "commandExecution" &&
       item.aggregatedOutput == null &&
       this.progress.isOutputTruncated(item.id)
@@ -410,8 +422,14 @@ export class CodexToolTranscriptProjection {
       name: result.toolName,
       text,
       isError: result.isError,
+      details: result.details,
+      failureText:
+        isJsonObject(result.details) && typeof result.details.failureReason === "string"
+          ? result.details.failureReason
+          : undefined,
     });
     result.content = replacement.content;
+    result.details = replacement.details;
     const metadata = Reflect.get(result, "__branch");
     Reflect.set(result, "__branch", {
       ...(isJsonObject(metadata) ? metadata : {}),
@@ -632,7 +650,7 @@ export class CodexToolTranscriptProjection {
     this.options.checkpointMessage?.({ read: () => message });
   }
 
-  recordToolResult(params: ToolTranscriptResultInput): void {
+  recordToolResult(params: ToolTranscriptFailureInput): void {
     if (!params.id || !params.name || this.resultIds.has(params.id)) {
       return;
     }
@@ -690,11 +708,13 @@ export class CodexToolTranscriptProjection {
     );
   }
 
-  private createToolResultMessage(params: ToolTranscriptResultInput) {
+  private createToolResultMessage(params: ToolTranscriptFailureInput) {
     const response = this.rawNativeToolOutputByCallId.get(params.id);
-    const message = createAgentHarnessToolResultMessage(
-      { ...params, text: response ?? params.text },
-      this.nextTranscriptTimestamp(),
+    const text = response ?? params.text;
+    const message = withCodexToolFailureReason(
+      createAgentHarnessToolResultMessage({ ...params, text }, this.nextTranscriptTimestamp()),
+      params,
+      response,
     );
     return {
       ...message,

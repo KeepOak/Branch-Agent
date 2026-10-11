@@ -9,6 +9,7 @@ import { GitHubSettings } from "../settings/GitHubSettings";
 import { Menu, type MenuAnchor } from "../../shell/Menu";
 import { Segmented, Switch } from "../../shell/Popover";
 import { Icon } from "../../shell/icons";
+import { useResource } from "../settings/hooks";
 import { shows, type Level } from "../../places-nav/level";
 import type { Draft } from "./api";
 import type { May } from "./may";
@@ -74,15 +75,48 @@ function Advanced({ engine, agentId, name, draft, models, setMay }: { engine: Wi
   );
 }
 
+type ToolsetRow = { id: string; label: string; description: string; offered?: boolean };
+
+const NOT_OFFERED = "Its own tool list leaves these tools out, so this switch has no effect.";
+/** Until tools.catalog answers, or when it doesn't, the browser switch stays available on its own. */
+const BROWSER_ONLY: ToolsetRow[] = [
+  { id: "browser", label: "Browser", description: "Open pages, click, type and read them in the built-in browser." },
+];
+
+/** One switch per toolset the engine offers (tools.catalog). Each switch shows the state the Trunk's own tool list allows. */
+function ToolsSection({ engine, agentId, may, setMay }: { engine: WindowEngine; agentId: string; may: May; setMay: (m: Partial<May>) => void }) {
+  const catalog = useResource<{ toolsets?: ToolsetRow[] }>(engine, "tools.catalog", { agentId });
+  const toolsets = catalog.data?.toolsets?.length ? catalog.data.toolsets : BROWSER_ONLY;
+  const rowFor = (t: ToolsetRow) => {
+    const browser = t.id === "browser";
+    const lock = (browser ? may.browseLock : "") || (t.offered === false ? NOT_OFFERED : "");
+    const label = browser ? "Use the browser" : `Use ${t.label}`;
+    const on = browser ? may.browse : may.toolsets[t.id] !== false;
+    const onChange = (next: boolean) => (browser ? setMay({ browse: next }) : setMay({ toolsets: { ...may.toolsets, [t.id]: next } }));
+    return (
+      <Row key={t.id} title={t.label} hint={t.description} off={lock || undefined}>
+        {lock
+          ? <button type="button" role="switch" aria-checked={false} aria-label={label} className="switch" disabled />
+          : <Switch label={label} on={on} onChange={onChange} />}
+      </Row>
+    );
+  };
+  return (
+    <section className="tk-tools" aria-label="Tools">
+      <h4 className="tk-tools-title">Tools</h4>
+      <p className="tk-hint">Switch off what this Trunk should never reach. The reply tool, its questions and its status stay on.</p>
+      {toolsets.map(rowFor)}
+    </section>
+  );
+}
+
 type Props = { engine: WindowEngine; agentId: string; name: string; draft: Draft; models: ModelChoice[]; level: Level; set: (d: Partial<Draft>) => void; openSettings?: (page: string) => void };
 export function MayTab({ engine, agentId, name, draft, models, level, set, openSettings }: Props) {
   const may = draft.may, setMay = (m: Partial<May>) => set({ may: { ...may, ...m } });
   return (
     <div className="tk-may">
       <Row title="Read files in Documents and Downloads" hint="Reading never changes a file."><Switch label="Read files in Documents and Downloads" on={may.read} onChange={(read) => setMay({ read })} /></Row>
-      <Row title="Use the browser" hint="With your saved sign-ins." off={may.browseLock || undefined}>
-        {may.browseLock ? <button type="button" role="switch" aria-checked={false} aria-label="Use the browser" className="switch" disabled /> : <Switch label="Use the browser" on={may.browse} onChange={(browse) => setMay({ browse })} />}
-      </Row>
+      <ToolsSection engine={engine} agentId={agentId} may={may} setMay={setMay} />
       <Row title="Send email and messages" hint="Overrides the mode for this Trunk only." off={SEND_WHY}>
         <span className="tk-seg">{["Ask first", "Allowed"].map((l) => <button key={l} type="button" disabled>{l}</button>)}</span>
       </Row>

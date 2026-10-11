@@ -50,6 +50,9 @@ export async function runPreparedReply(
     {
       catalogMode: "static",
       pluginGeneration: dispatchRuntime.pluginGeneration,
+      // Nothing has run under the admitted generation yet. When another Trunk's preparation
+      // publishes a successor first, join it instead of failing the reply before it starts.
+      rejoinSupersededPluginGeneration: true,
       abortSignal: params.opts?.abortSignal,
     },
   );

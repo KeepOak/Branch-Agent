@@ -42,7 +42,7 @@ const FIELDS: Record<string, Field[]> = {
   ],
   models: [{ key: "agents.defaults.model.primary", label: "Default model", note: "Used by Trunks without their own model override. Choose a model the engine reports as available." }],
   seasons: [
-    { key: "plugins.entries.memory-core.config.rings.enabled", label: "Tidy memory with Rings", note: "Run the memory engine's consolidation passes. Inherited keeps the source default.", kind: "boolean", options: ["true", "false"] },
+    { key: "plugins.entries.memory-core.config.rings.enabled", label: "Tidy memory at night with Rings", note: "Run the memory engine's consolidation passes. Inherited keeps the source default.", kind: "boolean", options: ["true", "false"] },
     { key: "plugins.entries.memory-core.config.rings.frequency", label: "Rings schedule", note: "Cron cadence for the complete sweep: light, REM, then deep. Leave inherited for the engine's schedule." },
     { key: "plugins.entries.memory-core.config.rings.timezone", label: "Rings time zone", note: "An IANA time zone for the consolidation schedule." },
     { key: "plugins.entries.memory-core.config.rings.model", label: "Model that writes the diary", note: "A provider/model reference. Inherited uses the Trunk's own model." },
@@ -149,7 +149,7 @@ export function BaselineSettingsPage(props: SettingsPageProps) {
     case "usage": content = <UsageSettings {...props} />; break;
     case "gateway": content = <GatewaySettings {...props} />; break;
     case "self": content = <>{section("update.status", "Branch maintenance")}<Gap>Self-editing tasks can be requested in your conversation. This page has no separate self-maintenance preferences adapter.</Gap></>; break;
-    case "seasons": content = <><ConfigForm {...props} />{section("doctor.memory.status", "Rings & memory health", props.engine.agentId ? { agentId: props.engine.agentId } : {})}{section("doctor.memory.dreamDiary", "Rings diary", props.engine.agentId ? { agentId: props.engine.agentId } : {})}<Gap>Gardener's skill curation, Budding's ability ladder and the measured rollback loop need their additional source integrations. Rings uses the memory engine already present; those extra features are not yet connected.</Gap></>; break;
+    case "seasons": content = <><ConfigForm {...props} />{section("doctor.memory.status", "Rings health", props.engine.agentId ? { agentId: props.engine.agentId } : {})}{section("doctor.memory.dreamDiary", "Rings diary", props.engine.agentId ? { agentId: props.engine.agentId } : {})}<Gap>Gardener's skill curation, Budding's ability ladder and the measured rollback loop need their additional source integrations. Rings uses the memory engine already present; those extra features are not yet connected.</Gap></>; break;
     case "updates": content = <>{section("update.status", "Updates & version")}<Gap>The desktop launcher owns app packaging and installation. Installing a window update requires its updater adapter.</Gap></>; break;
     case "achievements": content = <Gap>The engine does not provide an achievements ledger. Milestones will appear here when that source feature is integrated; no example milestones are shown as earned.</Gap>; break;
     case "advanced": content = <ConfigForm {...props} />; break;

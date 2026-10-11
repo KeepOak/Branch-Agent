@@ -38,6 +38,9 @@ import {
 } from "./prepared-model-runtime.retention.js";
 import type { PreparedModelRuntimeLeaseOptions } from "./prepared-model-runtime.types.js";
 
+const PREPARED_RUNTIME_SUPERSEDED_NO_PROGRESS_MS = 120_000;
+export const PREPARED_RUNTIME_SUPERSEDED_TOTAL_CAP_MS = 600_000;
+
 type PreparedModelRuntimeLeaseContext = {
   captureLifetime(): () => void;
   owners: Map<string, PreparedModelRuntimeOwner>;
@@ -117,9 +120,13 @@ export async function acquirePreparedModelRuntimeLeaseFromOwners(
   let lastExternalPublication: Promise<unknown> | undefined;
   let previousAttempt: readonly unknown[] | undefined;
   let supersededPublication: PreparedModelRuntimePublicationSupersededError | undefined;
-  let supersededSince: number | undefined;
+  const admissionStartedAt = Date.now();
+  let supersededNoProgressSince: number | undefined;
   for (;;) {
-    if (supersededPublication && Date.now() - (supersededSince ?? Date.now()) >= 120_000) {
+    if (
+      supersededPublication &&
+      Date.now() - admissionStartedAt >= PREPARED_RUNTIME_SUPERSEDED_TOTAL_CAP_MS
+    ) {
       throw supersededPublication;
     }
     admission.release();
@@ -139,10 +146,20 @@ export async function acquirePreparedModelRuntimeLeaseFromOwners(
       lastExternalPublication,
     ];
     const unchanged = previousAttempt?.every((value, index) => value === attempt[index]);
+    if (!unchanged) {
+      supersededNoProgressSince = supersededPublication ? Date.now() : undefined;
+    }
+    if (
+      supersededPublication &&
+      Date.now() - (supersededNoProgressSince ?? Date.now()) >=
+        PREPARED_RUNTIME_SUPERSEDED_NO_PROGRESS_MS
+    ) {
+      throw supersededPublication;
+    }
     if (unchanged) {
       // A retired build can settle before its replacement is queued. Give the successor
       // publication time to appear rather than failing the turn at that transient gap.
-      if (supersededPublication && Date.now() - (supersededSince ?? Date.now()) < 120_000) {
+      if (supersededPublication) {
         await racePromiseWithAbortSignal(delay(250), options.abortSignal);
         continue;
       }
@@ -162,7 +179,7 @@ export async function acquirePreparedModelRuntimeLeaseFromOwners(
       } catch (error) {
         if (error instanceof PreparedModelRuntimePublicationSupersededError) {
           supersededPublication = error;
-          supersededSince ??= Date.now();
+          supersededNoProgressSince ??= Date.now();
           continue;
         }
         throw error;
@@ -182,7 +199,7 @@ export async function acquirePreparedModelRuntimeLeaseFromOwners(
       } catch (error) {
         if (error instanceof PreparedModelRuntimePublicationSupersededError) {
           supersededPublication = error;
-          supersededSince ??= Date.now();
+          supersededNoProgressSince ??= Date.now();
           continue;
         }
         if (replacement || !isPreparedModelRuntimeMissingOwnerError(error)) {
@@ -210,7 +227,7 @@ export async function acquirePreparedModelRuntimeLeaseFromOwners(
                   throw pendingError;
                 }
                 supersededPublication = pendingError;
-                supersededSince ??= Date.now();
+                supersededNoProgressSince ??= Date.now();
               }
               continue;
             }
@@ -314,7 +331,7 @@ export async function acquirePreparedModelRuntimeLeaseFromOwners(
           supersededPublication ??= new PreparedModelRuntimePublicationSupersededError(
             `prepared model runtime plugin generation was superseded for ${input.agentDir}`,
           );
-          supersededSince ??= Date.now();
+          supersededNoProgressSince ??= Date.now();
           await racePromiseWithAbortSignal(delay(250), options.abortSignal);
           continue;
         }
@@ -434,7 +451,7 @@ export async function acquirePreparedModelRuntimeLeaseFromOwners(
       admission.release();
       if (error instanceof PreparedModelRuntimePublicationSupersededError) {
         supersededPublication = error;
-        supersededSince ??= Date.now();
+        supersededNoProgressSince ??= Date.now();
         continue;
       }
       if (context.getPendingReplacement() && isPreparedModelRuntimePluginLifecycleFailure(error)) {

@@ -10,6 +10,7 @@ import {
   FAILED_CHECK_RERUN_POLL_MS,
   FAILED_CHECK_RERUN_WAIT_MS,
   PUSH_BACKUP_MIN_AGE_MS,
+  catchUpAfterFailedPublish,
   decideCatchUp,
   failedCheckRuns,
   getWorkflowRun,
@@ -70,6 +71,17 @@ test("component-release workflow keeps the schedule and uses push as a 25-minute
   const checksAt = readiness.indexOf("resolve-failed-checks");
   assert.ok(windowAt !== -1 && checksAt !== -1 && windowAt < checksAt);
   assert.match(readiness, /resolve-failed-checks --sha/);
+});
+
+test("failed publish catches up only while that commit is still Latest", () => {
+  const released = "a".repeat(40);
+  const exposed = catchUpAfterFailedPublish({ latestCommit: released, releasedCommit: released });
+  assert.equal(exposed.proceed, true);
+  assert.match(exposed.reason, /still Latest/);
+  const hidden = catchUpAfterFailedPublish({ latestCommit: "b".repeat(40), releasedCommit: released });
+  assert.equal(hidden.proceed, false);
+  assert.match(hidden.reason, /not Latest/);
+  assert.equal(catchUpAfterFailedPublish({ latestCommit: "", releasedCommit: released }).proceed, false);
 });
 
 test("catch-up does not dispatch when main is the released commit", () => {
@@ -166,10 +178,11 @@ test("decide-catch-up CLI reports no dispatch for a released head and dispatch o
 test("catch-up job waits out the cooldown and dispatches one release", () => {
   const catchUp = workflow.slice(workflow.indexOf("\n  catch-up:"));
   assert.ok(catchUp.length > 0);
-  assert.match(catchUp, /needs: \[readiness, publish\]/);
+  assert.match(catchUp, /needs: \[readiness, identity, publish\]/);
   assert.match(catchUp, /always\(\) && !cancelled\(\)/);
-  assert.match(catchUp, /needs\.publish\.result == 'success'/);
+  assert.match(catchUp, /needs\.publish\.result == 'success' \|\| needs\.publish\.result == 'failure'/);
   assert.match(catchUp, /needs\.readiness\.outputs\.skip_reason == 'cooldown'/);
+  assert.match(catchUp, /catch-up-after-failed-publish/);
   assert.match(catchUp, /github\.event_name != 'pull_request'/);
   assert.match(catchUp, /group: github-component-release-catch-up\n\s+cancel-in-progress: true/);
   assert.match(catchUp, /actions: write/);
@@ -208,7 +221,8 @@ test("downstream release jobs require their build dependencies after always()", 
   assert.match(windowJob, /if: always\(\) && !cancelled\(\) && needs\.identity\.result == 'success' && !\(github\.event_name == 'workflow_dispatch' && inputs\.dry_run\)/);
   assert.match(nativeJob, /if: always\(\) && !cancelled\(\) && needs\.identity\.result == 'success' && needs\.window\.result == 'success' && !\(github\.event_name == 'workflow_dispatch' && inputs\.dry_run\)/);
   assert.match(publishJob, /if: always\(\) && !cancelled\(\) && needs\.identity\.result == 'success' && needs\.native\.result == 'success' && !\(github\.event_name == 'workflow_dispatch' && inputs\.dry_run\)/);
-  assert.match(catchUp, /needs\.publish\.result == 'success' \|\| needs\.readiness\.outputs\.skip_reason == 'cooldown'/);
+  assert.match(catchUp, /needs\.publish\.result == 'success' \|\| needs\.publish\.result == 'failure' \|\| needs\.readiness\.outputs\.skip_reason == 'cooldown'/);
+  assert.match(catchUp, /catch-up-after-failed-publish --latest "\$latest_commit"/);
   assert.match(readinessJob, /actions: write/);
   assert.match(readinessJob, /github\.event_name != 'pull_request'/);
   assert.doesNotMatch(rehearsalJob, /actions: write/);
