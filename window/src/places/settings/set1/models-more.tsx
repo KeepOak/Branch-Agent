@@ -11,6 +11,8 @@ import { LocalMore, MediaMore, SecondMore } from "./models-tabs";
 import { Attachments, ConnectionsTechnical, DecisionTechnical, EachModel, HelpersTechnical, HowTurnsRun, PerConnection, PerConnectionMore, Retries } from "./models-tech";
 
 export const NONE = "Branch has no setting for this yet.";
+const MODEL_CHOICE_ENABLED = ["tools", "modelChoice", "enabled"];
+const MODEL_CHOICE_PER_TASK = ["tools", "modelChoice", "perTask"];
 
 /** Every Advanced/Technical section, in the order the preview shows them for this tab. */
 export function ModelsSections({ m, tab, openSettings }: { m: ModelsCtx; tab: string; openSettings?: (page: string) => void }) {
@@ -55,7 +57,7 @@ function Budgets({ m }: { m: ModelsCtx }) {
       <Ctl title="Most steps in one task" sub="Empty means no limit. When set, it stops and asks when it gets there." off={NONE}><Num label="Most steps in one task" value={undefined} unit="steps" placeholder="None" onCommit={() => undefined} /></Ctl>
       <Ctl title="Spend cap per task" sub="Empty means no cap. Only for accounts that bill per use." off={NONE}><Num label="Spend cap per task" value={undefined} unit="USD" placeholder="None" onCommit={() => undefined} /></Ctl>
       <Ctl title="Sub-tasks at once" sub="Parts of a big task that can run side by side."><Num label="Sub-tasks at once" min={1} value={num(sub("maxConcurrent"))} placeholder="8" onCommit={(v) => void m.cfg.set(m.shared("subagents", "maxConcurrent"), v)} /></Ctl>
-      <Ctl title="Helpers may start their own helpers" sub="How deep helpers can nest. 1 means a helper can’t start another."><Num label="Helpers may start their own helpers" min={1} max={5} value={num(sub("maxSpawnDepth"))} placeholder="5" unit="levels" onCommit={(v) => void m.cfg.set(m.shared("subagents", "maxSpawnDepth"), v)} /></Ctl>
+      <Ctl title="Trunks may start their own Trunks" sub="How deep Trunks can nest. 1 means a Trunk can’t start another."><Num label="Trunks may start their own Trunks" min={1} max={5} value={num(sub("maxSpawnDepth"))} placeholder="5" unit="levels" onCommit={(v) => void m.cfg.set(m.shared("subagents", "maxSpawnDepth"), v)} /></Ctl>
       <Ctl title="Trunks may reach each other’s conversations" sub="A Trunk can read and message another Trunk’s conversations." help="A Trunk can read and message another Trunk’s conversations. Who may talk to whom is in each Trunk’s Who it knows.">
         <Switch checked={a2a !== false} label="Trunks may reach each other’s conversations" onChange={(v) => void m.cfg.set(["tools", "agentToAgent", "enabled"], v)} />
       </Ctl>
@@ -72,12 +74,14 @@ function SmallerJobs({ m }: { m: ModelsCtx }) {
       <Ctl title="Sub-tasks and side jobs" sub="Titles, summaries and searches inside a task.">
         <Pick label="Sub-tasks and side jobs" value={side} options={[{ id: "", label: "Automatic" }, ...modelOpts(m.models)]} onChange={(v) => void m.cfg.set(m.own("subagents", "model"), v || null)} />
       </Ctl>
-      <Ctl title="Pick the model per task" sub="Easy tasks go to a quick model, hard ones to the best you have." off={NONE}><Switch checked label="Pick the model per task" onChange={() => undefined} /></Ctl>
+      <Ctl title="Pick the model per task" sub="A Trunk may choose the model when it starts a task.">
+        <Switch checked={m.cfg.get(MODEL_CHOICE_PER_TASK) !== false} label="Pick the model per task" onChange={(v) => void m.cfg.set(MODEL_CHOICE_PER_TASK, v)} />
+      </Ctl>
       <Ctl title="Planning model" sub="Writes the plan in Plan first." off={NONE}><Pick label="Planning model" value="" options={[{ id: "", label: "Same model" }]} onChange={() => undefined} /></Ctl>
       <Ctl title="Mix models on hard questions" sub="Asks two and merges the best of each." help="Asks two and merges the best of each. Off until you choose: it doubles the cost." off={NONE}><Switch checked={false} label="Mix models on hard questions" onChange={() => undefined} /></Ctl>
       <Ctl title="Live summaries of long tasks" sub="Uses the model for smaller jobs." help="Uses the model for smaller jobs. On an account that bills per use, each summary costs a little." off={NONE}><Switch checked label="Live summaries of long tasks" onChange={() => undefined} /></Ctl>
-      <Ctl title="Setup helper" sub={utility ? `${m.models.find((x) => x.ref === utility)?.name ?? visible(utility)} helps set Branch up and does small jobs. Conversations need a main model.` : "It helps set Branch up and does small jobs. Conversations need a main model."}>
-        <Btn sm onClick={() => void save(async () => { const r = (await m.engine.request("branch.setup.verify", { modelTarget: "utility", ...m.agent })) as { ok?: boolean; error?: string }; if (r.ok === false) throw new Error(visible(r.error ?? "The setup helper didn’t answer.")); })}>Check again</Btn>
+      <Ctl title="Setup Trunk" sub={utility ? `${m.models.find((x) => x.ref === utility)?.name ?? visible(utility)} helps set Branch up and does small jobs. Conversations need a main model.` : "It helps set Branch up and does small jobs. Conversations need a main model."}>
+        <Btn sm onClick={() => void save(async () => { const r = (await m.engine.request("branch.setup.verify", { modelTarget: "utility", ...m.agent })) as { ok?: boolean; error?: string }; if (r.ok === false) throw new Error(visible(r.error ?? "The setup Trunk didn’t answer.")); })}>Check again</Btn>
       </Ctl>
     </Sec>
   );
@@ -127,7 +131,7 @@ function PicturesVideoMusic({ m }: { m: ModelsCtx }) {
   };
   return (
     <Sec title="Pictures, video and music">
-      <Ctl title="Pictures with" sub="Making and editing pictures." help="Making and editing pictures. Picks need their service connected in Accounts or Saved sign-ins.">{pick("image", "Pictures with")}</Ctl>
+      <Ctl title="Pictures with" sub="Making and editing pictures." help="Making and editing pictures. Picks need their service connected in Accounts or Saved passwords.">{pick("image", "Pictures with")}</Ctl>
       <Ctl title="Video with" sub="Video from words, a picture or another video.">{pick("video", "Video with")}</Ctl>
       <Ctl title="Music with" sub="Songs and instrumentals from a style and a mood.">{pick("music", "Music with")}</Ctl>
       <Ctl title="Fill out the picture prompt first" sub="A model turns your words and the conversation into a detailed prompt." help="A model turns your words and the conversation into a detailed prompt. You can read it under each picture." off={NONE}><Switch checked label="Fill out the picture prompt first" onChange={() => undefined} /></Ctl>
@@ -166,7 +170,6 @@ const PICKING: [string, string, boolean][] = [
   ["Hide models that learn from what you send", "Some cheap plans train on your messages; they’re left out of every menu.", false],
   ["Offer newer models", "Once, when a newer model replaces the one you use.", true],
   ["Warn about models not made for tasks", "A small note when a picked model is weak at using tools.", true],
-  ["Trunks may switch their own model", "A Trunk can move itself to one of your saved setups for a step.", false],
 ];
 function PickingModels({ m }: { m: ModelsCtx }) {
   const allow = list(m.cfg.get(m.shared("modelPolicy", "allow")) as unknown[]).length;
@@ -177,6 +180,9 @@ function PickingModels({ m }: { m: ModelsCtx }) {
       <Ctl title="Model in Auto" sub="Each mode can keep its own model." off={NONE}><Pick label="Model in Auto" value="" options={[{ id: "", label: "Same model" }]} onChange={() => undefined} /></Ctl>
       <Ctl title="Model in Plan first" off={NONE}><Pick label="Model in Plan first" value="" options={[{ id: "", label: "Same model" }]} onChange={() => undefined} /></Ctl>
       {PICKING.map(([t, s, on]) => <Ctl key={t} title={t} sub={s} off={NONE}><Switch checked={on} label={t} onChange={() => undefined} /></Ctl>)}
+      <Ctl title="Trunks may switch their own model" sub="A Trunk can change its own model. Without Full access it asks you first." help="A Trunk can change its own model or sign-in. With Full access the change happens straight away; without it you get one approve card, and nothing changes until you allow it.">
+        <Switch checked={m.cfg.get(MODEL_CHOICE_ENABLED) === true} label="Trunks may switch their own model" onChange={(v) => void m.cfg.set(MODEL_CHOICE_ENABLED, v)} />
+      </Ctl>
       <Ctl title="Where models run" sub={allow ? `Only the ${allow} allowed models can be picked.` : "This computer first falls back to a service when it can’t answer."} off={NONE}>
         <Seg label="Where models run" value="services" options={[{ id: "services", label: "Services first" }, { id: "local", label: "This computer first" }, { id: "only", label: "Only this computer" }]} onChange={() => undefined} />
       </Ctl>

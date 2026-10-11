@@ -38,6 +38,8 @@ export type Computer = {
   sub: string;
   desktop: boolean;
   available: boolean;
+  /** Whether the engine advertises paired-session hosting on this computer. */
+  sessionHost?: boolean;
   /** Worker slots in use, only when the engine reports slots. */
   busy?: { used: number; total: number };
   /** A run is on it now (worker attachments). */
@@ -59,6 +61,7 @@ export function readComputer(env: EnvironmentSummary): Computer {
     sub: parts.join(" · "),
     desktop: env.desktop === true,
     available: env.status === "available",
+    sessionHost: env.sessionHost === true,
     ...(slots ? { busy: { used: Math.max(0, slots.total - slots.available - (slots.reclaimableIdle ?? 0)), total: slots.total } } : {}),
     working: (env.worker?.attachedSessionIds.length ?? 0) > 0,
     ...(env.id.startsWith("node:") ? { deviceId: env.id.slice(5) } : {}),

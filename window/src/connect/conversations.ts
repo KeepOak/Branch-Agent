@@ -173,6 +173,8 @@ function rowExtras(r: Record<string, unknown>): Partial<Conversation> {
   const summary = rec(r.activitySummary);
   const headline = str(digest.headline) || (str(summary.state) === "current" ? str(summary.text) : "");
   if (headline) out.headline = headline.replace(/\s+/g, " ").trim();
+  // Same waiting flags the Gateway contacts projection uses for desktop "is waiting for you".
+  if (r.needsYou === true || Boolean(r.providerReview) || digest.health === "waiting-on-user") out.needsYou = true;
   const repo = repoWords(r);
   if (repo) out.repoBranch = repo;
   if (str(r.execNode)) out.execNode = str(r.execNode);

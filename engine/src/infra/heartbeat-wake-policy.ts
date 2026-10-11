@@ -2,6 +2,7 @@ import { normalizeOptionalString } from "@branch/normalization-core/string-coerc
 import { listAgentIds } from "../agents/agent-scope.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { normalizeAgentId } from "../routing/session-key.js";
+import { SIGNAL_WAKE_REASONS } from "./heartbeat-wake-contracts.js";
 import type { HeartbeatWakeIntent, HeartbeatWakeSource } from "./heartbeat-wake.js";
 
 export type HeartbeatWakePayloadFlags = {
@@ -47,6 +48,7 @@ export function resolveHeartbeatWakePayloadFlags(params: {
       source === "session-state" ||
       source === "background-task" ||
       source === "background-task-blocked" ||
+      source === "signal" ||
       reason === "wake",
   };
 }
@@ -84,6 +86,12 @@ export function isTargetedUnscheduledWake(params: TargetedUnscheduledWakeParams)
     case "background-task":
     case "background-task-blocked":
       return params.intent === "immediate";
+    case "signal":
+      return (
+        params.intent === "immediate" &&
+        hasSessionTarget &&
+        (SIGNAL_WAKE_REASONS as readonly string[]).includes(reason ?? "")
+      );
     default:
       return false;
   }

@@ -7,6 +7,7 @@ import type { WindowEngine } from "../connect/engine";
 import { addParams, draftFromIdea } from "../places/automations/draft";
 import { emptyForm } from "../places/automations/model";
 import { saveConfig, type ConfigSnapshot } from "../places/settings/adapter";
+import { applyMemoryImport, readFound, type Found } from "../places/library/memory-import";
 import { MoveInDialog } from "../places/settings/set2/usage";
 import { Icon, type IconName } from "../shell/icons";
 import { ToolLogo } from "./tool-logos";
@@ -21,15 +22,8 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const CATALOGS = ["anthropic", "codex", "opencode"];
 const catalogPath = (id: string) => `plugins.entries.${id}.config.sessionCatalog.enabled`;
 
-export type Found = { providerId: string; label: string; fingerprint: string; items: string[] };
-
-/** migrations.memory.plan: each assistant found on this computer with the items it would bring in. */
-export function readFound(result: unknown): Found[] {
-  return list(rec(result).providers)
-    .filter((p) => p.found === true)
-    .map((p) => ({ providerId: str(p.providerId), label: str(p.label) || str(p.providerId), fingerprint: str(p.planFingerprint), items: list(p.items).filter((i) => i.status === "planned").map((i) => str(i.id)) }))
-    .filter((p) => p.items.length > 0);
-}
+export type { Found };
+export { readFound };
 
 const names = (found: Found[]) => (found.length > 1 ? `${found.slice(0, -1).map((f) => f.label).join(", ")} and ${found[found.length - 1].label}` : (found[0]?.label ?? ""));
 
@@ -107,7 +101,7 @@ function BringTile({ engine, agentId, trunkName }: { engine: WindowEngine; agent
     let brought = 0;
     try {
       for (const f of found ?? []) {
-        const r = rec(await engine.request("migrations.memory.apply", { idempotencyKey: crypto.randomUUID(), agentId, providerId: f.providerId, planFingerprint: f.fingerprint, itemIds: f.items }));
+        const r = rec(await applyMemoryImport(engine, agentId, f));
         brought += Number(rec(r.summary).migrated) || 0;
       }
       setDone(brought);
