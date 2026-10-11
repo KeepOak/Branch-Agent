@@ -16,8 +16,10 @@ export function requiresExecApproval(params: {
   analysisOk: boolean;
   allowlistSatisfied: boolean;
   durableApprovalSatisfied?: boolean;
+  /** An ask-first rule matched: it outranks allowlist and allow-always trust. */
+  askFirstMatched?: boolean;
 }): boolean {
-  if (params.ask === "always") {
+  if (params.ask === "always" || params.askFirstMatched === true) {
     return true;
   }
   if (params.durableApprovalSatisfied === true) {
@@ -99,8 +101,14 @@ export function assertExecApprovalsHostPolicyUnchanged(
     ask: file.defaults?.ask,
     agents: Object.fromEntries(
       Object.entries(file.agents ?? {})
-        .filter(([, agent]) => agent.security !== undefined || agent.ask !== undefined)
-        .map(([id, agent]) => [id, { security: agent.security, ask: agent.ask }]),
+        .filter(
+          ([, agent]) =>
+            agent.security !== undefined || agent.ask !== undefined || agent.askFirst !== undefined,
+        )
+        .map(([id, agent]) => [
+          id,
+          { security: agent.security, ask: agent.ask, askFirst: agent.askFirst },
+        ]),
     ),
   });
   if (!isDeepStrictEqual(fields(before), fields(after))) {

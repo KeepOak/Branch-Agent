@@ -1084,6 +1084,7 @@ function isEmptyAgent(agent: ExecApprovalsAgent): boolean {
     !agent.askFallback &&
     agent.autoAllowSkills === undefined &&
     !agent.mcpTools?.length &&
+    !agent.askFirst?.length &&
     allowlist.length === 0
   );
 }

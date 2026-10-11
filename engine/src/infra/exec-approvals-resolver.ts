@@ -105,6 +105,10 @@ export function resolveExecApprovalsFromFileInternal(params: {
     ...(Array.isArray(wildcard.allowlist) ? wildcard.allowlist : []),
     ...(Array.isArray(agent.allowlist) ? agent.allowlist : []),
   ];
+  const askFirst = [
+    ...(Array.isArray(wildcard.askFirst) ? wildcard.askFirst : []),
+    ...(Array.isArray(agent.askFirst) ? agent.askFirst : []),
+  ];
   return {
     path: params.path ?? resolveExecApprovalsDisplayPath(),
     socketPath: expandHomePrefix(
@@ -119,6 +123,7 @@ export function resolveExecApprovalsFromFileInternal(params: {
       askFallback: resolvedAgentAskFallback.source,
     },
     allowlist,
+    ...(askFirst.length > 0 ? { askFirst } : {}),
     file,
   };
 }

@@ -21,6 +21,7 @@ import {
   evaluateShellAllowlistWithAuthorization,
   hasDurableExecApproval,
   hasExactCommandDurableExecApproval,
+  matchExecAskFirstRules,
   minSecurity,
   resolveApprovalAuditTrustPath,
   resolveExecutionTargetTrustPath,
@@ -28,6 +29,7 @@ import {
   resolveDurableExecApprovalRequirement,
   resolveExecApprovalUnavailableDecisions,
   requiresExecApproval,
+  resolveExecAskWithAskFirst,
 } from "../infra/exec-approvals.js";
 import {
   buildAuthorizedShellCommandFromPlan,
@@ -379,14 +381,22 @@ export async function processGatewayAllowlist(
   params: ProcessGatewayAllowlistParams,
 ): Promise<ProcessGatewayAllowlistResult> {
   const cleanupMs = params.cleanupMs;
-  const { approvals, hostSecurity, hostAsk, askFallback } = await resolveExecHostApprovalContext({
+  const {
+    approvals,
+    hostSecurity,
+    hostAsk: policyHostAsk,
+    askFallback,
+  } = await resolveExecHostApprovalContext({
     agentId: params.agentId,
     security: params.security,
     ask: params.ask,
     bypassHostApprovalFloors: params.bypassHostApprovalFloors,
     host: "gateway",
   });
-  const cwdAuthorizationBound = hostSecurity === "allowlist" || hostAsk !== "off";
+  // Full-session floor bypass skips host rules, ask-first rules included.
+  const askFirstRules = params.bypassHostApprovalFloors ? undefined : approvals.askFirst;
+  const cwdAuthorizationBound =
+    hostSecurity === "allowlist" || policyHostAsk !== "off" || (askFirstRules?.length ?? 0) > 0;
   const capturedCwd = cwdAuthorizationBound
     ? captureApprovedCwdSnapshotSync(params.workdir)
     : undefined;
@@ -417,6 +427,18 @@ export async function processGatewayAllowlist(
   });
   const allowlistMatches = allowlistEval.allowlistMatches;
   const analysisOk = allowlistEval.analysisOk;
+  // Ask-first precedence: a matching rule raises ask to "always", which outranks
+  // allowlist and allow-always trust and offers only Allow once or Deny.
+  const hostAsk = resolveExecAskWithAskFirst(
+    policyHostAsk,
+    matchExecAskFirstRules({
+      rules: askFirstRules,
+      analysisOk,
+      segments: allowlistEval.segments,
+      platform: process.platform,
+      cwd: params.workdir,
+    }),
+  );
   const allowlistSatisfied =
     hostSecurity === "allowlist" && analysisOk ? allowlistEval.allowlistSatisfied : false;
   const obsoleteGeneratedApprovalCount = countObsoleteGeneratedExecApprovals(approvals.file);

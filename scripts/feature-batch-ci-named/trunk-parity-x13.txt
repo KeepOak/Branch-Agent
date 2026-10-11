@@ -1,0 +1,2 @@
+engine:src/agents/bash-tools.exec-host-gateway.test.ts
+engine:src/infra/exec-approvals-ask-first.test.ts

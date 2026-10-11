@@ -18,7 +18,16 @@ export * from "./exec-approvals-allowlist.js";
 export * from "./exec-approvals-core.js";
 export * from "./exec-approvals-generated-migration.js";
 export type { ExecApprovalPolicySnapshot } from "./exec-approval-policy-snapshot.js";
-export type { AllowAlwaysPattern, ExecAllowlistEntry } from "./exec-approvals.types.js";
+export type {
+  AllowAlwaysPattern,
+  ExecAllowlistEntry,
+  ExecAskFirstRule,
+} from "./exec-approvals.types.js";
+export {
+  matchExecAskFirstRules,
+  resolveExecAskWithAskFirst,
+  type ExecAskFirstMatch,
+} from "./exec-approvals-ask-first.js";
 export type { ExecApprovalsDefaultOverrides } from "./exec-approvals-contracts.js";
 export {
   DEFAULT_EXEC_APPROVAL_ASK_FALLBACK,
