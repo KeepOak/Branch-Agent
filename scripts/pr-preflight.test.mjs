@@ -144,6 +144,20 @@ test('a window UI change without screenshot proof fails', () => {
   assert.match(problems[0].fix, /No visible change/);
 });
 
+test('a proof image committed to the code branch fails and points to a proof branch', () => {
+  const files = [{ filename: 'docs/ui-proof/x.png', status: 'added' }];
+  const problems = runPreflight(withInput({ changedFiles: ['docs/ui-proof/x.png'], files }));
+  assert.deepEqual(checksOf(problems), ['ui-proof']);
+  assert.match(problems[0].message, /docs\/ui-proof\/x\.png/);
+  assert.match(problems[0].fix, /node scripts\/push-proof\.mjs/);
+});
+
+test('deleting a proof image from the code branch passes', () => {
+  const files = [{ filename: 'docs/ui-proof/x.png', status: 'removed' }];
+  const problems = runPreflight(withInput({ changedFiles: ['docs/ui-proof/x.png'], files }));
+  assert.deepEqual(checksOf(problems), []);
+});
+
 test('a window-clean baseline that differs fails with the first report line', () => {
   const windowResult = { ok: false, text: 'fresh: window/src/x.tsx hardcoded color\nstale: window/src/y.tsx' };
   const problems = runPreflight(withInput({ windowResult }));

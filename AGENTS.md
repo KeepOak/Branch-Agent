@@ -38,7 +38,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 9. **Don't touch a running desktop app.** Test engines use their own free loopback ports and data folders, never `19031`/`19032` or the app's data folder. Stop processes by process id, never by name.
 
-10. **Self-test visible changes** in a scratch engine and window (browser or computer tools, or Playwright) and put screenshots in the PR. The `check-ui-proof` gate enforces this for `window/**` changes.
+10. **Self-test visible changes** in a scratch engine and window (browser or computer tools, or Playwright) and put screenshots in the PR. The `check-ui-proof` gate enforces this for `window/**` changes. Screenshots never go in the code branch: push them with `node scripts/push-proof.mjs <image>...` (it creates `proof/<branch>` and prints raw URLs) and link those URLs in the PR body; `check-ui-proof` fails a PR that adds images outside product-asset folders (`assets/`, `window/public/` and the other real asset folders).
 
 11. **Commits and PRs:** Conventional Commits, files staged by name (never `git add -A`), no tool or AI attribution lines, no force-push to `main`. Cloud-agent commits must end with exactly `Co-authored-by: Taofik Bishi <189563683+stabrea@users.noreply.github.com>` so the platform does not append a personal-email co-author line. Never force-push or rewrite pushed history on any branch, not even to change a commit message. GitHub ruleset 'No force-push on any branch' (all branches, no bypass) refuses it. Fix a bad commit with a new commit, or for a commit with a personal email, redo the work on a fresh branch from main as a new PR that supersedes the old one. PR body: what, why, exact test commands and pass counts.
 

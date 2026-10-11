@@ -151,7 +151,7 @@ Before opening a pull request with a visible effect, an agent (or a person) chec
 
 1. Build the change and start a scratch engine and the built window on free loopback ports, with their own data folders. Never use a running desktop app's ports or data.
 2. Click through the changed flow, using the engine's browser tool or computer control, or Playwright (`playwright-core` is an engine dependency) where those cannot reach a loopback page.
-3. Screenshot the result and put the screenshots in the pull request body.
+3. Screenshot the result and put the screenshots in the pull request body. Push them to a proof branch with `node scripts/push-proof.mjs <image>...` (it creates `proof/<branch>` and prints raw URLs to paste into the body); never commit them to the code branch. `check-ui-proof` fails a pull request that adds images outside product-asset folders (`assets/`, `window/public/` and the other real asset folders), because every clone would keep them in its history.
 
 The bridge also has window tools for this (`ui_open`, `ui_snapshot`, `ui_click`, `ui_type`, `ui_navigate`, `ui_screenshot` and more), merged on `main`. They start a separate test Branch by default and drive the user's own window only after the user turns on Settings › Branch itself › "Let agents use this window". Their documentation is being added to `serve.md`.
 

@@ -22,6 +22,27 @@ const CURSOR_LINKED_HTML = /<a\b[^>]*\bhref\s*=\s*["'][^"']*cursor\.com[^"']*["'
 const MARKDOWN_IMAGE = /!\[([^\]]*)\]\(([^)]+)\)/g;
 const HTML_IMAGE = /<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
 const GITHUB_ATTACHMENT = /https:\/\/(?:user-images\.githubusercontent\.com|github\.com\/user-attachments\/assets\/)[^\s)"']+/gi;
+// A plain link to a file on a proof/* branch counts as proof too (raw.githubusercontent.com or github.com blob/raw).
+const PROOF_BRANCH_LINK = /https:\/\/(?:raw\.githubusercontent\.com\/[^/\s]+\/[^/\s]+\/(?:refs\/heads\/)?|github\.com\/[^/\s]+\/[^/\s]+\/(?:blob|raw)\/)proof\/[^\s)"'<>]+/gi;
+
+// Binary images and videos. Proof screenshots of these kinds never go in the code branch.
+const BINARY_IMAGE = /\.(?:png|jpe?g|gif|webp|avif|bmp|tiff?|mp4|mov|webm)$/i;
+// Real product assets: shipped or bundled art, app icons, upstream docs art and test fixtures.
+export const PRODUCT_ASSET_PREFIXES = [
+  'assets/',
+  'desktop/assets/',
+  'engine/apps/',
+  'engine/assets/',
+  'engine/docs/',
+  'engine/extensions/',
+  'engine/ui/public/',
+  'engine/ui/src/',
+  'mobile/assets/',
+  'window/public/',
+  'window/src/',
+];
+const FIXTURE_DIR = /(?:^|\/)(?:__fixtures__|fixtures)\//;
+export const PROOF_BRANCH_COMMAND = 'node scripts/push-proof.mjs <image>...';
 
 function firstUrlToken(value) {
   return String(value).trim().replace(/^<|>$/g, '').split(/\s+/, 1)[0] ?? '';
@@ -59,6 +80,7 @@ function proofUrlsIn(prBody) {
   for (const match of text.matchAll(MARKDOWN_IMAGE)) urls.push(firstUrlToken(match[2]));
   for (const match of text.matchAll(HTML_IMAGE)) urls.push(firstUrlToken(match[1]));
   for (const match of text.matchAll(GITHUB_ATTACHMENT)) urls.push(firstUrlToken(match[0]));
+  for (const match of text.matchAll(PROOF_BRANCH_LINK)) urls.push(firstUrlToken(match[0]));
   return urls;
 }
 
@@ -68,8 +90,51 @@ export function hasScreenshotProof(prBody) {
   return proofUrlsIn(prBody).some((url) => !isIgnoredProofUrl(url));
 }
 
-export function checkUIProof(changedFiles, prBody) {
-  const uiSourceFiles = changedFiles.filter(isWindowUISource);
+/** True for an image path that is a real product asset (allowed in the code branch). */
+export function isProductAsset(filePath) {
+  return PRODUCT_ASSET_PREFIXES.some((prefix) => filePath.startsWith(prefix)) || FIXTURE_DIR.test(filePath);
+}
+
+/**
+ * A changed file as { filename, status }. Plain strings (name-only lists) count as modified.
+ * Objects may come from the pulls/<n>/files API or from changedFilesFromNameStatus.
+ */
+export function normalizeChangedFile(entry) {
+  if (typeof entry === 'string') return { filename: entry, status: 'modified' };
+  return { filename: String(entry?.filename ?? entry?.path ?? ''), status: String(entry?.status ?? 'modified') };
+}
+
+/** Binary images the PR adds or changes outside product-asset folders. Deleting one is always fine. */
+export function strayProofImages(changedFiles) {
+  return changedFiles
+    .map(normalizeChangedFile)
+    .filter((file) => file.filename && file.status !== 'removed')
+    .map((file) => file.filename)
+    .filter((filePath) => BINARY_IMAGE.test(filePath) && !isProductAsset(filePath));
+}
+
+export function checkProofImages(changedFiles) {
+  const stray = strayProofImages(changedFiles);
+  if (stray.length === 0) return { exitCode: 0, message: 'No images outside product-asset folders.' };
+  return {
+    exitCode: 1,
+    message: [
+      `Images committed outside product-asset folders (${stray.length} file(s)):`,
+      ...stray.map((file) => `  - ${file}`),
+      '',
+      'Proof screenshots never go in the code branch: every clone keeps them in its history.',
+      `Push them to a proof branch instead. From this branch run: ${PROOF_BRANCH_COMMAND}`,
+      'It pushes proof/<branch> and prints raw URLs. Link those in the PR body.',
+      'Then remove the images from this branch (git rm --cached <file>, commit) and push.',
+      `Real product assets belong under: ${PRODUCT_ASSET_PREFIXES.join(', ')} or a fixtures/ folder.`,
+      'See AGENTS.md rule 10.',
+    ].join('\n'),
+  };
+}
+
+/** The window-UI screenshot rule on its own (file names only; deletions count as UI changes). */
+export function checkScreenshotProof(changedFiles, prBody) {
+  const uiSourceFiles = changedFiles.map((file) => normalizeChangedFile(file).filename).filter(isWindowUISource);
   if (uiSourceFiles.length === 0) {
     return { exitCode: 0, message: 'No window UI source changes detected.' };
   }
@@ -87,9 +152,19 @@ export function checkUIProof(changedFiles, prBody) {
       '',
       'Add a markdown or HTML image, or a GitHub user-attachments / artifact image link.',
       'For a refactor with no UI effect, add a line: No visible change: <reason>',
+      `Push screenshots to a proof branch (${PROOF_BRANCH_COMMAND}) and link the printed raw URLs.`,
       'See AGENTS.md: self-test visible changes and put screenshots in the PR.',
     ].join('\n'),
   };
+}
+
+/** Both rules: proof images stay off the code branch, and window UI changes link screenshot proof. */
+export function checkUIProof(changedFiles, prBody) {
+  const images = checkProofImages(changedFiles);
+  const screenshots = checkScreenshotProof(changedFiles, prBody);
+  if (images.exitCode === 0) return screenshots;
+  const message = screenshots.exitCode === 0 ? images.message : `${images.message}\n\n${screenshots.message}`;
+  return { exitCode: 1, message };
 }
 
 export function prBodyFromEvent(event) {
@@ -100,6 +175,19 @@ export function changedFilesFromNameOnly(diff) {
   return diff.split(/\r?\n/).filter(Boolean);
 }
 
+const STATUS_WORDS = { A: 'added', C: 'added', D: 'removed', M: 'modified', R: 'renamed', T: 'modified' };
+
+/** Parses `git diff --name-status` output (or "<status word>\t<path>" lines) into { filename, status }. */
+export function changedFilesFromNameStatus(diff) {
+  return diff.split(/\r?\n/).filter(Boolean).map((line) => {
+    const parts = line.split('\t');
+    const code = parts[0].trim();
+    const filename = parts[parts.length - 1];
+    const status = STATUS_WORDS[code[0]] ?? code;
+    return { filename, status };
+  });
+}
+
 function readEvent() {
   const eventPath = process.env.GITHUB_EVENT_PATH;
   if (!eventPath) return null;
@@ -108,17 +196,17 @@ function readEvent() {
 
 function filesFromGit() {
   const base = process.env.CHANGED_FILES_BASE || 'HEAD^1';
-  return changedFilesFromNameOnly(execFileSync(
+  return changedFilesFromNameStatus(execFileSync(
     'git',
-    ['diff', '--name-only', '--no-renames', base, 'HEAD'],
+    ['diff', '--name-status', '--no-renames', base, 'HEAD'],
     { cwd: root, encoding: 'utf8', windowsHide: true },
   ));
 }
 
 function filesFromGh(repo, number) {
-  return changedFilesFromNameOnly(execFileSync(
+  return changedFilesFromNameStatus(execFileSync(
     'gh',
-    ['api', `repos/${repo}/pulls/${number}/files`, '--paginate', '--jq', '.[].filename'],
+    ['api', `repos/${repo}/pulls/${number}/files`, '--paginate', '--jq', '.[] | .status + "\t" + .filename'],
     { encoding: 'utf8', windowsHide: true },
   ));
 }

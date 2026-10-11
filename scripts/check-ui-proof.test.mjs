@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { checkUIProof, hasScreenshotProof, isWindowUISource } from './check-ui-proof.mjs';
+import {
+  changedFilesFromNameStatus,
+  checkProofImages,
+  checkUIProof,
+  hasScreenshotProof,
+  isProductAsset,
+  isWindowUISource,
+  strayProofImages,
+} from './check-ui-proof.mjs';
 
 test('isWindowUISource identifies window UI source files', () => {
   assert.equal(isWindowUISource('window/src/composer/Composer.tsx'), true);
@@ -165,4 +173,77 @@ test('checkUIProof passes when a window tsx change has a real screenshot', () =>
   assert.equal(hasScreenshotProof(body), true);
   assert.equal(result.exitCode, 0);
   assert.match(result.message, /screenshot proof/);
+});
+
+// A PR diff as the gate reads it: git diff --name-status --no-renames <base> HEAD.
+const PROOF_IN_CODE_DIFF = ['M\twindow/src/composer/Composer.tsx', 'A\tdocs/ui-proof/x.png'].join('\n');
+const LINKS_ONLY_DIFF = ['M\twindow/src/composer/Composer.tsx'].join('\n');
+const PROOF_LINK_BODY = 'After:\n![after](https://raw.githubusercontent.com/KeepOak/Branch-Agent/refs/heads/proof/trunk-470-x/after.png)';
+
+test('checkUIProof fails a PR diff that commits docs/ui-proof/x.png and says where proof goes', () => {
+  const result = checkUIProof(changedFilesFromNameStatus(PROOF_IN_CODE_DIFF), PROOF_LINK_BODY);
+  assert.equal(result.exitCode, 1);
+  assert.match(result.message, /docs\/ui-proof\/x\.png/);
+  assert.match(result.message, /proof\/<branch>/);
+  assert.match(result.message, /node scripts\/push-proof\.mjs <image>\.\.\./);
+  assert.match(result.message, /raw URLs/);
+  assert.doesNotMatch(result.message, /no screenshot proof found/);
+});
+
+test('checkUIProof passes a PR diff whose proof is only linked from the body', () => {
+  const result = checkUIProof(changedFilesFromNameStatus(LINKS_ONLY_DIFF), PROOF_LINK_BODY);
+  assert.equal(result.exitCode, 0);
+  assert.match(result.message, /screenshot proof/);
+});
+
+test('checkUIProof reports both a stray image and missing screenshot proof', () => {
+  const result = checkUIProof(changedFilesFromNameStatus(PROOF_IN_CODE_DIFF), 'Updated the composer.');
+  assert.equal(result.exitCode, 1);
+  assert.match(result.message, /Images committed outside product-asset folders/);
+  assert.match(result.message, /no screenshot proof found/);
+});
+
+test('hasScreenshotProof accepts plain links to a proof branch', () => {
+  assert.equal(hasScreenshotProof('Proof: https://raw.githubusercontent.com/KeepOak/Branch-Agent/refs/heads/proof/x/after.png'), true);
+  assert.equal(hasScreenshotProof('Proof: https://raw.githubusercontent.com/KeepOak/Branch-Agent/proof/x/after.png'), true);
+  assert.equal(hasScreenshotProof('Proof: https://github.com/KeepOak/Branch-Agent/blob/proof/x/after.png?raw=true'), true);
+  assert.equal(hasScreenshotProof('See https://github.com/KeepOak/Branch-Agent/blob/main/README.md'), false);
+});
+
+test('strayProofImages flags images outside product assets, any common image or video type', () => {
+  const files = ['docs/qa/run.jpg', 'docs/proof/a.webp', 'engine/.github/pr-proof/b.gif', 'scripts/shot.jpeg', 'clip.mp4', 'README.md', 'docs/diagram.svg'];
+  assert.deepEqual(strayProofImages(files), ['docs/qa/run.jpg', 'docs/proof/a.webp', 'engine/.github/pr-proof/b.gif', 'scripts/shot.jpeg', 'clip.mp4']);
+});
+
+test('strayProofImages allows real product assets and fixtures', () => {
+  const files = [
+    'assets/pets/pixel/idle.png',
+    'window/public/assets/bg.webp',
+    'window/src/setup/art/branch-wave.webp',
+    'desktop/assets/brand/keepoak-app-icon-32.png',
+    'mobile/assets/icon.png',
+    'engine/ui/public/favicon-32.png',
+    'engine/ui/src/assets/themes/rose-dark.webp',
+    'engine/extensions/slack/icon.png',
+    'engine/docs/assets/branch-hero-dark.png',
+    'engine/test/fixtures/media/roof-camera-sky.jpg',
+  ];
+  assert.equal(files.every(isProductAsset), true);
+  assert.deepEqual(strayProofImages(files), []);
+  assert.equal(checkProofImages(files).exitCode, 0);
+});
+
+test('strayProofImages lets a PR delete a stray proof image', () => {
+  const files = changedFilesFromNameStatus(['D\tdocs/ui-proof/old.png', 'removed\tdocs/qa/old.png'].join('\n'));
+  assert.deepEqual(strayProofImages(files), []);
+  assert.deepEqual(strayProofImages([{ filename: 'docs/ui-proof/new.png', status: 'renamed' }]), ['docs/ui-proof/new.png']);
+});
+
+test('changedFilesFromNameStatus reads git letters and API status words', () => {
+  assert.deepEqual(changedFilesFromNameStatus('A\ta.png\nM\tb.ts\nD\tc.png\nadded\td.png\n'), [
+    { filename: 'a.png', status: 'added' },
+    { filename: 'b.ts', status: 'modified' },
+    { filename: 'c.png', status: 'removed' },
+    { filename: 'd.png', status: 'added' },
+  ]);
 });

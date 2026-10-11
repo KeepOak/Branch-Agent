@@ -7,7 +7,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkSelfCheck } from './check-self-check.mjs';
-import { checkUIProof } from './check-ui-proof.mjs';
+import { PROOF_BRANCH_COMMAND, checkScreenshotProof, strayProofImages } from './check-ui-proof.mjs';
 import { ALLOWED_SUFFIX, FIX_LINES, evaluateCommits, fetchPrCommitsWithApi } from './check-commit-emails.mjs';
 import {
   changedFilesFromPrFiles,
@@ -102,10 +102,22 @@ export function namedListProblems({ changedFiles, listText, listPath }) {
   return problems;
 }
 
-export function uiProofProblems({ changedFiles, body }) {
-  const result = checkUIProof(changedFiles, body ?? '');
-  if (result.exitCode === 0) return [];
-  return [problem('ui-proof', result.message.split('\n')[0], 'add a screenshot image or link to the body, or the line "No visible change: <reason>"')];
+// `files` carries statuses ({ filename, status }), so a deleted proof image is not reported; it defaults to changedFiles.
+export function uiProofProblems({ changedFiles, files = changedFiles, body }) {
+  const problems = [];
+  const stray = strayProofImages(files);
+  if (stray.length) {
+    problems.push(problem(
+      'ui-proof',
+      `${stray.length} image(s) committed outside product-asset folders: ${stray.join(', ')}`,
+      `push them to a proof branch with ${PROOF_BRANCH_COMMAND}, link the printed URLs in the body, then git rm --cached them and commit`,
+    ));
+  }
+  const result = checkScreenshotProof(changedFiles, body ?? '');
+  if (result.exitCode) {
+    problems.push(problem('ui-proof', result.message.split('\n')[0], 'add a screenshot image or link to the body, or the line "No visible change: <reason>"'));
+  }
+  return problems;
 }
 
 export function windowCleanProblems(windowResult) {
@@ -176,7 +188,7 @@ export function runPreflight(input) {
     ...commitProblems(input.commits ?? [], { cloudAgent: input.cloudAgent === true }),
     ...selfCheckProblems({ branch: input.branch, headSha: input.headSha, body }),
     ...namedListProblems({ changedFiles, listText: input.listText ?? null, listPath: input.listPath }),
-    ...uiProofProblems({ changedFiles, body }),
+    ...uiProofProblems({ changedFiles, files: input.files ?? changedFiles, body }),
     ...windowCleanProblems(input.windowResult),
     ...shardProblems(input.shardResult),
     ...gateFileProblems({ changedFiles, body, headSha: input.headSha, protectedPaths }),

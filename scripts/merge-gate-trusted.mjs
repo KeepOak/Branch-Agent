@@ -878,7 +878,8 @@ export function fetchPrBody(repo, prNumber, token) {
 }
 
 export function runUiProofFromPr(files, prBody) {
-  const result = checkUIProof(files.map((file) => file.filename ?? file), prBody ?? '');
+  // Whole file entries: their status lets a PR delete a stray proof image.
+  const result = checkUIProof(files, prBody ?? '');
   if (result.exitCode) console.error(result.message);
   else console.log(result.message);
   return result.exitCode === 0;
