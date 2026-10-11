@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -110,6 +112,46 @@ describe("Settings › Models", () => {
     await render(engineOf({ tools: { modelChoice: { enabled: true, perTask: false } } }).engine, 1);
     expect(sw("Trunks may switch their own model").checked).toBe(true);
     expect(sw("Pick the model per task").checked).toBe(false);
+  });
+
+  it.each([true, false])("model switching follows Settings off/on/off/on with full access %s", async (fullAccess) => {
+    // Load the real policy at test runtime without pulling the engine's source
+    // type graph into the window's separate TypeScript project.
+    const policyModule = pathToFileURL(resolve(process.cwd(), "../engine/src/agents/model-choice.ts")).href;
+    const { authorizeAgentModelChange, MODEL_CHOICE_OFF_MESSAGE } = await import(policyModule);
+    const config = { tools: { modelChoice: { enabled: false, perTask: false } } };
+    const { engine, request } = engineOf(config);
+    // Persist the exact Settings payload, then pass it to the real engine policy.
+    // Only the transport and the person's approval response are fixtures.
+    const originalRequest = request.getMockImplementation()!;
+    request.mockImplementation(async (method: string, ...args: unknown[]) => {
+      if (method === "config.patch") {
+        const patch = JSON.parse((args[0] as { raw: string }).raw);
+        Object.assign(config.tools.modelChoice, patch.tools.modelChoice);
+        return { ok: true, hash: "h2", config };
+      }
+      return originalRequest(method);
+    });
+    const requestApproval = vi.fn(async () => "allow" as const);
+    const authorize = () => authorizeAgentModelChange({
+      cfg: config, fullAccess, request: { model: "openai/gpt-5.5" }, requestApproval,
+    });
+    await render(engine, 1);
+    const sw = () => host.querySelector<HTMLInputElement>('input[aria-label="Trunks may switch their own model"]')!;
+    expect(sw().checked).toBe(false);
+    await expect(authorize()).resolves.toEqual({ ok: false, reason: MODEL_CHOICE_OFF_MESSAGE });
+    expect(requestApproval).not.toHaveBeenCalled();
+    for (const enabled of [true, false, true]) {
+      requestApproval.mockClear();
+      await act(async () => sw().click());
+      expect(sw().checked).toBe(enabled);
+      expect(config.tools.modelChoice).toEqual({ enabled, perTask: false });
+      await expect(authorize()).resolves.toEqual(enabled
+        ? { ok: true }
+        : { ok: false, reason: MODEL_CHOICE_OFF_MESSAGE });
+      expect(requestApproval).toHaveBeenCalledTimes(enabled && !fullAccess ? 1 : 0);
+    }
+    expect(patches(request)).toEqual([true, false, true].map((enabled) => ({ tools: { modelChoice: { enabled } } })));
   });
 
   it("Technical shows one Per account heading with its sections together", async () => {
