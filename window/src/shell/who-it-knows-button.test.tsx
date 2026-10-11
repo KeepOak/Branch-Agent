@@ -89,11 +89,16 @@ describe("the conversation header's Who it knows menu row", () => {
   });
 
   it("switches one target by writing deny without materializing an allow list", async () => {
-    let deny: string[] = [];
+    let deny: string[] = ["birch"];
     const request = vi.fn(async (method: string, params?: unknown) => {
       if (method === "config.get") return { hash: "h1", config: { agents: { entries: { sapling: { agentToAgent: { deny } } } } } };
       if (method === "config.patch") {
-        deny = (JSON.parse((params as { raw: string }).raw) as { agents: { entries: { sapling: { agentToAgent: { deny: string[] } } } } }).agents.entries.sapling.agentToAgent.deny;
+        const patch = params as { raw: string; replacePaths?: string[] };
+        const next = (JSON.parse(patch.raw) as { agents: { entries: { sapling: { agentToAgent: { deny: string[] } } } } }).agents.entries.sapling.agentToAgent.deny;
+        if (deny.some((id) => !next.includes(id)) && !patch.replacePaths?.includes("agents.entries.sapling.agentToAgent.deny")) {
+          throw new Error("config.patch would remove entries from array: pass replacePaths");
+        }
+        deny = next;
         return { ok: true };
       }
       return {};
@@ -103,11 +108,11 @@ describe("the conversation header's Who it knows menu row", () => {
     await act(async () => root?.render(<Harness p={props(request)} />));
     await openKnown(host);
     await act(async () => document.querySelector<HTMLButtonElement>("[data-testid=who-it-knows] button[role=menuitemcheckbox]")?.click());
-    expect(deny).toEqual(["fern"]);
-    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { sapling: { agentToAgent: { deny: ["fern"] } } } } }) });
+    expect(deny).toEqual(["birch", "fern"]);
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { sapling: { agentToAgent: { deny: ["birch", "fern"] } } } } }) });
     await openKnown(host);
     await act(async () => document.querySelector<HTMLButtonElement>("[data-testid=who-it-knows] button[role=menuitemcheckbox]")?.click());
-    expect(deny).toEqual([]);
+    expect(deny).toEqual(["birch"]);
   });
 
   it("switches incoming access independently of outgoing access", async () => {
@@ -115,7 +120,13 @@ describe("the conversation header's Who it knows menu row", () => {
     const request = vi.fn(async (method: string, params?: unknown) => {
       if (method === "config.get") return { hash: "h1", config: { agents: { entries } } };
       if (method === "config.patch") {
-        const patch = JSON.parse((params as { raw: string }).raw) as { agents: { entries: typeof entries } };
+        const request = params as { raw: string; replacePaths?: string[] };
+        const patch = JSON.parse(request.raw) as { agents: { entries: typeof entries } };
+        for (const id of Object.keys(patch.agents.entries) as (keyof typeof entries)[]) {
+          if (entries[id].agentToAgent.deny.some((target) => !patch.agents.entries[id].agentToAgent.deny.includes(target)) && !request.replacePaths?.includes(`agents.entries.${id}.agentToAgent.deny`)) {
+            throw new Error("config.patch would remove entries from array: pass replacePaths");
+          }
+        }
         entries = { ...entries, ...patch.agents.entries };
         return { ok: true };
       }

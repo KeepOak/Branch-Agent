@@ -7,9 +7,6 @@
 .v23-threads-head small { color: var(--ink-3); font-size: 11px; }
 .v23-layout-button { border: 0; background: transparent; color: var(--ink-2); border-radius: 7px; cursor: pointer; width: 28px; height: 28px; }
 .v23-layout-button:hover { background: var(--fill); }
-.v23-threads-menu { position: absolute; top: 36px; left: 5px; z-index: var(--z-pop, 20); display: grid; width: 150px; padding: 5px; background: var(--raise); border: 1px solid var(--line); border-radius: 9px; box-shadow: var(--pop); }
-.v23-threads-menu button { border: 0; border-radius: 6px; background: transparent; color: var(--ink); text-align: left; padding: 7px; cursor: pointer; }
-.v23-threads-menu button[aria-checked="true"], .v23-threads-menu button:hover { background: var(--fill); }
 .v23-thread-row { display: flex; align-items: center; gap: 8px; width: calc(100% - 10px); min-height: 51px; margin: 2px 5px; padding: 6px 7px; border: 0; border-radius: 9px; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
 .v23-thread-row:hover { background: var(--fill); }
 .v23-thread-row.current { background: var(--fill-2); }

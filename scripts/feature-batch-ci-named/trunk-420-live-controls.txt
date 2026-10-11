@@ -1,0 +1,2 @@
+window:src/shell/ThreadColumn.test.tsx
+window:src/shell/who-it-knows-button.test.tsx
