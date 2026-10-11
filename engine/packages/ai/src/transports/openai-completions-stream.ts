@@ -17,6 +17,10 @@ import {
 } from "../providers/openai-completions-tool-calls.js";
 import { mapOpenAIStopReason } from "../providers/openai-stop-reason.js";
 import {
+  detectOpenAICompatibleContentFilter,
+  recordSafetyTermination,
+} from "../providers/safety-termination.js";
+import {
   clearPendingCommentaryText,
   rememberPendingCommentaryTags,
   tagInterruptedTextPhases,
@@ -440,6 +444,10 @@ export async function processCompletionsStream(
       finishReason = finishReasonResult.stopReason;
       if (finishReasonResult.errorMessage) {
         output.errorMessage = finishReasonResult.errorMessage;
+      }
+      const safetyTermination = detectOpenAICompatibleContentFilter(choice.finish_reason);
+      if (safetyTermination) {
+        recordSafetyTermination(output, safetyTermination, model.provider);
       }
     }
     const rawChoiceDelta = choice.delta ?? choice.message;

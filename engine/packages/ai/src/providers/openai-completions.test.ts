@@ -1137,6 +1137,32 @@ describe("OpenAI-compatible completions params", () => {
   });
 });
 
+describe("openai-completions safety termination", () => {
+  it("records a content_filter finish as a provider refusal instead of a plain error", async () => {
+    mockChunksRef.chunks = [makeTextChunk("partial"), makeFinishChunk("content_filter")];
+
+    const result = await streamOpenAICompletions(model, context, { apiKey: "sk-test" }).result();
+
+    expect(result.stopReason).toBe("error");
+    expect(result.errorMessage).toBe("Provider finish_reason: content_filter");
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        type: "provider_refusal",
+        details: expect.objectContaining({ provider: model.provider, category: "content_filter" }),
+      }),
+    ]);
+  });
+
+  it("does not treat ordinary stop finishes as safety terminations", async () => {
+    mockChunksRef.chunks = [makeTextChunk("ok"), makeFinishChunk("stop")];
+
+    const result = await streamOpenAICompletions(model, context, { apiKey: "sk-test" }).result();
+
+    expect(result.stopReason).toBe("stop");
+    expect(result.diagnostics ?? []).toEqual([]);
+  });
+});
+
 describe("openai-completions stop-reason tool-call guard", () => {
   it.each([
     {
