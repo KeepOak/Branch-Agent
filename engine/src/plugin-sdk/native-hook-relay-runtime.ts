@@ -2,6 +2,15 @@
 import type { registerOwnedNativeHookRelay } from "../agents/harness/native-hook-relay.js";
 
 export {
+  acquireHostHeavyStep,
+  bindHostHeavyStep,
+  createHostHeavyStepEnvironment,
+  resolveHeavyStepMemoryNeed,
+  type HostHeavyStepHandle,
+} from "../../scripts/lib/host-heavy-step.mts";
+export { resolveHeavyStepCommand } from "../infra/heavy-step-command.js";
+
+export {
   buildNativeHookRelayCommandPlan,
   type NativeHookRelayCommandPlan,
 } from "../agents/harness/native-hook-relay-plan.js";

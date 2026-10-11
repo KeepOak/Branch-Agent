@@ -1,0 +1,3 @@
+window:src/connect/conversations.test.ts
+window:src/shell/ControlTower.test.tsx
+window:src/shell/control-tower-data.test.ts

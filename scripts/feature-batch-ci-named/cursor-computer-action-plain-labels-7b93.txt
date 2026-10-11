@@ -1,0 +1,5 @@
+window:src/thread/ComputerActivityCard.test.tsx
+window:src/thread/blocks.steps.test.tsx
+window:src/thread/computer-action-label.test.ts
+window:src/thread/format.test.ts
+window:src/thread/model.test.ts

@@ -1,8 +1,24 @@
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { resolveHeavyStepArgv } from "./heavy-step-command.mts";
 import { isDirectRunUrl } from "./direct-run.mjs";
-import { runOwnedDistArtifactEntry } from "./dist-artifact-lock.mts";
-export { withDistArtifactOwnership, resolveDistArtifactLockPath } from "./dist-artifact-lock.mts";
+import {
+  runOwnedDistArtifactEntry,
+  withDistArtifactOwnership as withCheckoutArtifactOwnership,
+} from "./dist-artifact-lock.mts";
+import { withHostHeavyStep } from "./host-heavy-step.mts";
+import type { WithDistArtifactOwnership } from "./runtime-artifact-contract.js";
+export { resolveDistArtifactLockPath } from "./dist-artifact-lock.mts";
+
+export const withDistArtifactOwnership: WithDistArtifactOwnership = async (
+  rootDir,
+  run,
+  signal,
+) => {
+  const kind = resolveHeavyStepArgv([process.execPath, ...process.argv.slice(1)]);
+  const admitted = () => withCheckoutArtifactOwnership(rootDir, run, signal);
+  return kind ? withHostHeavyStep(kind, admitted, signal) : admitted();
+};
 
 /** Source launcher for a joined, separately sized Node child that reuses the lock owner. */
 export function distArtifactEntryArgs(

@@ -402,7 +402,7 @@ describe("createComputerTool v1 execution", () => {
           details: { reason: "command not allowlisted", command: "computer.act" },
         },
       ),
-      /enable Computer Control.*approve the pairing update/i,
+      /See the screen and use the mouse/
     ],
     [
       "surfaces the persistent deny remediation",
@@ -587,7 +587,7 @@ describe("createComputerTool v1 execution", () => {
         name: "GatewayClientRequestError",
         details: { reason: "command not allowlisted", command: "computer.act" },
       }),
-      /enable Computer Control.*approve the pairing update/i,
+      /See the screen and use the mouse/
     ],
     [
       "clears button affinity after a structured pre-dispatch policy rejection",
