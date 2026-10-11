@@ -279,6 +279,19 @@ export function getPendingPreparedModelRuntimeReplacement(agentId?: string): Pro
   return getPassiveReplacement(agentId)?.promise;
 }
 
+/**
+ * A degraded startup publication returns before its builds settle. This is the build a degraded
+ * agent still waits on; undefined once the publication is not degraded or the build has settled.
+ */
+export function getDegradedPreparedModelRuntimeAgentBuild(
+  agentDir: string,
+): Promise<void> | undefined {
+  if (pendingModelRuntimeReplacement?.degraded !== true) {
+    return undefined;
+  }
+  return agentBuildCompletions.get(normalizeOptionalDir(agentDir) ?? "");
+}
+
 /** Trace text for the pending publication barrier an agent awaits: its scope and degraded flag. */
 export function describePendingPreparedModelRuntimeReplacement(agentId?: string): string | undefined {
   const replacement = getPassiveReplacement(agentId);
