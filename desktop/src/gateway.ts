@@ -57,6 +57,27 @@ function testProfile(): Record<string, string> {
   };
 }
 
+/**
+ * The live engine's state selection (profile, home, state dir, config) for engine commands run beside it: the
+ * snapshot rehearsal reads it, Doctor repairs it only while no engine owns the state. Throws before profile migration.
+ */
+export function liveStateEnv(cfg: DesktopConfig): NodeJS.ProcessEnv {
+  const profile = readPreparedNormalProfile(join(cfg.dataDir, "home"));
+  return {
+    ...process.env,
+    BRANCH_PROFILE: profile.legacyDevMode ? "dev" : "default",
+    BRANCH_HOME: join(cfg.dataDir, "home"),
+    ...(profile.legacyDevMode ? { BRANCH_STATE_DIR: undefined, BRANCH_CONFIG_PATH: undefined } : {
+      BRANCH_STATE_DIR: join(cfg.dataDir, "home", ".branch"),
+      BRANCH_CONFIG_PATH: join(cfg.dataDir, "home", ".branch", "branch.json"),
+    }),
+    BRANCH_SKIP_CHANNELS: "1",
+    BRANCH_GATEWAY_PORT: undefined,
+    BRANCH_GATEWAY_TOKEN: undefined,
+    ...testProfile(),
+  };
+}
+
 /** `port` defaults to the configured one; an update's standby passes its own spare port without changing the config. */
 export function startGateway(cfg: DesktopConfig, engineDir: string, token: string, standby = false, port = cfg.gatewayPort, macComputerEndpoint?: string): ChildProcess {
   // The profile check can refuse a standby; it runs before the log is opened so a refusal leaks nothing.

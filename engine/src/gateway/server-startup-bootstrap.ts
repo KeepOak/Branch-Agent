@@ -492,6 +492,13 @@ export async function prepareGatewayServerBootstrap(input: {
   } = { current: undefined };
   const resolvePluginGatewayContext = () => pluginGatewayContext.current;
   if (opts.updateCanary) {
+    // The copied databases still get the canonical session validation a real start runs, so a row
+    // that would refuse the serving Gateway refuses the candidate instead (no orphan handoff).
+    await startupTrace.measure("sessions.canonical-validation", async () => {
+      const { runUpdateCanarySessionValidation } =
+        await import("./server-startup-update-canary-sessions.js");
+      await runUpdateCanarySessionValidation({ cfg: cfgAtStart, env: process.env, log });
+    });
     log.warn("candidate gateway: session catalogs and maintenance deferred until activation");
   } else {
     await startupTrace.measure("startup.maintenance", () =>

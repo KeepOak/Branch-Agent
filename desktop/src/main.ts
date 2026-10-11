@@ -5,7 +5,7 @@ import type { Server } from "node:http";
 import { appendFileSync, existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
+import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, liveStateEnv, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
 import { HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STANDBY_READY_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
 import { readPreparedNormalProfile } from "./profile-migration";
 import { createGatewayCrashSupervisor } from "./gateway-supervisor";
@@ -30,6 +30,7 @@ import { zipStored } from "./diagnostics-zip";
 /** How much of each log the report reads from the end. The time window then keeps only recent lines. */
 const REPORT_TAIL_BYTES = 4 * 1024 * 1024;
 import { checkCandidateBeside, stopCandidate } from "./candidate-check";
+import { engineRehearsal, repairLiveState, runSnapshotPreflight, stopPreflight, type PreflightOutcome } from "./snapshot-preflight";
 import { clearEngineRecords, retireRecordedEngines } from "./engine-records";
 import { createUpdateLock, type UpdateLockHandle } from "./update-lock";
 import { createHash } from "node:crypto";
@@ -55,6 +56,9 @@ function envMs(value: string | undefined, fallback: number): number {
 }
 /** Tests shorten it with BRANCH_DESKTOP_READY_TIMEOUT_MS. */
 const READY_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_READY_TIMEOUT_MS, 600_000);
+/** One rehearsal of the staged engine on a copy of the real state (snapshot, startup, readiness). */
+const SNAPSHOT_PREFLIGHT_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_SNAPSHOT_PREFLIGHT_TIMEOUT_MS, 900_000);
+const LIVE_REPAIR_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_LIVE_REPAIR_TIMEOUT_MS, 600_000);
 /** The handoff deadlines (handoff-timeouts.ts, shared with the engine); tests shorten them through the environment. */
 const STEP_DOWN_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_STEP_DOWN_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS);
 const TAKE_OVER_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_TAKE_OVER_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS);
@@ -290,13 +294,18 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
   const priorExited = () => {
     preparation.abort();
     stopCandidate();
+    stopPreflight();
     stopWarmingStandby();
   };
   priorGateway.once("exit", priorExited);
   try {
     if (!await candidatePassed(label, explicit, preparation.signal)) return;
     if (preparation.signal.aborted || !engineServing()) throw new Error("The serving engine exited during update preparation");
-    await prepareUpdateStandby(label, explicit);
+    // A repair proven on the copy runs while no engine owns the state, so no standby may start on it first.
+    const pendingVersion = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
+    const repairVersion = repairLiveFor && repairLiveFor === pendingVersion ? repairLiveFor : undefined;
+    if (repairVersion) log(`update ${label}: live state needs the repair proven on the copy; using the guarded swap`);
+    else await prepareUpdateStandby(label, explicit);
     if (preparation.signal.aborted || !engineServing()) throw new Error("The serving engine exited during standby warmup");
     if (handoffOnly && (!standby || retiring.size > 0)) {
       throw new Error("A standby is needed to hand off without interrupting running work");
@@ -328,9 +337,10 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
       servedWindowDir = cfg.windowDir;
       await waitForGatewayPort();
       stillOpen();
+      const keptPrior = repairVersion ? !await repairLiveUnderMaintenance(label, repairVersion) : false;
       const selectedStandby = standby;
       standby = undefined;
-      rolledBack = await bootSelectedEngine(selectedStandby);
+      rolledBack = await bootSelectedEngine(selectedStandby) || keptPrior;
     }
     log(`update ${label}: engine ${rolledBack ? "rolled back" : "swapped"} in place${handoff === "drain" ? "" : " by handoff"}; stop ${stopped - started} ms, start ${Date.now() - stopped} ms, app and window kept open`);
     engineUpdateReady = false;
@@ -597,10 +607,16 @@ async function followStagedUpdate(): Promise<void> {
 }
 
 /**
- * A staged engine first starts beside the running one (spare port, scratch state). One that exits is rejected and its
- * publication rolled back with nothing stopped; a slow one still gets the normal swap and its readiness rollback.
+ * A staged engine first boots beside the running one on private snapshots of the real state, with full startup
+ * validation (snapshot-preflight.ts). A copy that refuses gets Doctor's repair on the copy; a repair that works there
+ * is applied to the live state during the swap, and one that does not keeps the running engine with one line to the
+ * owner. A candidate that cannot rehearse falls back to the scratch-state start (spare port): one that exits is
+ * rejected and its publication rolled back with nothing stopped; a slow one still gets the normal swap and its
+ * readiness rollback.
  */
 let candidateCheckedFor: string | undefined;
+/** The staged version whose live state needs the repair proven on its copy, applied once the old engine stopped. */
+let repairLiveFor: string | undefined;
 async function candidatePassed(label: string, explicit: boolean, signal?: AbortSignal): Promise<boolean> {
   const version = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
   if (!version || candidateCheckedFor === version) return true;
@@ -610,10 +626,57 @@ async function candidatePassed(label: string, explicit: boolean, signal?: AbortS
   const candidate = resolveEngineDir(cfg);
   if (explicit) sendToBranchWindows("branch-desktop:engine-update", "preparing");
   const started = Date.now();
+  const preflight = await snapshotPreflight(label, version, candidate);
+  if (signal?.aborted) throw new Error("The serving engine exited during candidate check");
+  if (preflight.kind === "pass" || preflight.kind === "repair") {
+    log(`update ${label}: snapshot preflight ${preflight.kind} after ${Date.now() - started} ms`);
+    repairLiveFor = preflight.kind === "repair" ? version : undefined;
+    candidateCheckedFor = version;
+    return true;
+  }
+  if (preflight.kind === "refuse") {
+    log(`update ${label}: ${preflight.line}`);
+    await keepRunningEngine(label, candidate);
+    sendToBranchWindows("branch-desktop:engine-update-failed", preflight.line);
+    return false;
+  }
+  log(`update ${label}: snapshot preflight unavailable (${preflight.reason}); checking the candidate on scratch state`);
   const result = await checkCandidateBeside(cfg, candidate, token, READY_TIMEOUT_MS);
   if (signal?.aborted) throw new Error("The serving engine exited during candidate check");
   log(`update ${label}: candidate check beside the running engine ${result} after ${Date.now() - started} ms`);
   if (result !== "exited") { candidateCheckedFor = version; return true; }
+  await keepRunningEngine(label, candidate);
+  return false;
+}
+
+async function snapshotPreflight(label: string, version: string, candidate: string): Promise<PreflightOutcome> {
+  let env: NodeJS.ProcessEnv;
+  try { env = liveStateEnv(cfg); } catch { return { kind: "unavailable", reason: "the profile is not migrated yet" }; }
+  return runSnapshotPreflight(version,
+    engineRehearsal({ nodePath: cfg.nodePath, engineDir: candidate, env, timeoutMs: SNAPSHOT_PREFLIGHT_TIMEOUT_MS }),
+    line => log(`update ${label}: ${line}`));
+}
+
+/**
+ * The old engine has stopped and nothing owns the state: apply the repair proven on the copy with the staged
+ * engine's Doctor. If it fails, the staged release is rejected and rolled back, so the boot that follows starts
+ * the engine that was serving, and the owner gets one line.
+ */
+async function repairLiveUnderMaintenance(label: string, version: string): Promise<boolean> {
+  repairLiveFor = undefined;
+  const candidate = resolveEngineDir(cfg);
+  const repaired = await repairLiveState({ nodePath: cfg.nodePath, engineDir: candidate, env: liveStateEnv(cfg), timeoutMs: LIVE_REPAIR_TIMEOUT_MS });
+  if (repaired.ok) { log(`update ${label}: Doctor repaired the live state, as proven on the copy`); return true; }
+  log(`update ${label}: the live repair failed (${repaired.detail}); restoring the engine that was serving`);
+  await rejectFailedComponentUpdate(cfg, candidate);
+  await rollbackComponentUpdate(cfg);
+  candidateCheckedFor = undefined;
+  sendToBranchWindows("branch-desktop:engine-update-failed", `the automatic repair for version ${version} did not finish, so the current version keeps running.`);
+  return false;
+}
+
+/** Rejects the staged release and rolls its publication back; the running engine was never stopped. */
+async function keepRunningEngine(label: string, candidate: string): Promise<void> {
   await rejectFailedComponentUpdate(cfg, candidate);
   await rollbackComponentUpdate(cfg);
   servedWindowDir = cfg.windowDir;
@@ -621,7 +684,6 @@ async function candidatePassed(label: string, explicit: boolean, signal?: AbortS
   watchEngine();
   log(`update ${label}: kept the running engine; nothing was stopped`);
   sendToBranchWindows("branch-desktop:engine-update", "kept");
-  return false;
 }
 
 const autoApply = createAutoApplyUpdate({
@@ -1265,6 +1327,7 @@ function shutdown(): void {
   stopWindowWatch?.();
   controls.dispose();
   stopCandidate();
+  stopPreflight();
   stopWarmingStandby();
   // A quit mid-handoff stops the stepped-down engine too; a crash leaves its record for the next launch.
   for (const child of retiring.keys()) stopGateway(child);

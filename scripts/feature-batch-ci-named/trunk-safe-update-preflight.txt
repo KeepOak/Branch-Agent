@@ -1,0 +1,3 @@
+engine:src/cli/update-cli/update-command-rehearse.test.ts
+engine:src/gateway/server-startup-update-canary-sessions.test.ts
+engine:src/gateway/server-startup-update-canary.test.ts

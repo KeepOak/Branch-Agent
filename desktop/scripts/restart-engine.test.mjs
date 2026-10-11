@@ -52,6 +52,13 @@ async function createFixtureFiles(root) {
   await writeFile(join(engine, "dist/build-info.json"), '{"version":"fixture"}');
   const script = `import fs from "node:fs";import http from "node:http";
 const root=${JSON.stringify(root)}, file=root+"/starts.json";
+// Engine commands run beside the serving engine (update rehearse, doctor) are not gateway starts. Without a
+// "rehearsal" file this engine predates "update rehearse" (no JSON): the desktop falls back to the scratch check.
+const upNow=()=>(fs.existsSync(file)?JSON.parse(fs.readFileSync(file,"utf8")):[]).filter(p=>{try{process.kill(p,0);return true;}catch{return false;}}).length;
+if(process.argv[2]==="update"){if(!fs.existsSync(root+"/rehearsal"))process.exit(1);const mode=fs.readFileSync(root+"/rehearsal","utf8").trim(),repair=process.argv.includes("--repair"),ok=mode==="pass"||(mode==="repairable"&&repair);
+fs.appendFileSync(root+"/rehearsals.txt",JSON.stringify({repair,enginesAlive:upNow(),state:process.env.BRANCH_STATE_DIR})+String.fromCharCode(10));
+console.log(JSON.stringify(ok?{outcome:"passed",policy:repair?"rehearse":"startup-only",phase:"readiness"}:{outcome:"refused",policy:repair?"rehearse":"startup-only",phase:"startup",failedStep:"candidate-gateway-startup",detail:"invalid persisted session row requires repair for agent:main:broken"}));process.exit(ok?0:1);}
+if(process.argv[2]==="doctor"){fs.writeFileSync(root+"/doctor-ran",JSON.stringify({enginesAlive:upNow(),state:process.env.BRANCH_STATE_DIR,args:process.argv.slice(3)}));process.exit(fs.existsSync(root+"/doctor-fails")?1:0);}
 const starts=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,"utf8")):[];
 starts.push(process.pid);fs.writeFileSync(file,JSON.stringify(starts));
 const peers=starts.filter(p=>p!==process.pid&&(()=>{try{process.kill(p,0);return true;}catch{return false;}})());
@@ -625,6 +632,65 @@ test("a handoff-only readiness timeout keeps the release eligible and the next a
   assert.match(await readFile(join(root, "desktop.log"), "utf8"), /the standby failed 2 time\(s\); using the guarded stop\/start swap/);
   assert.equal(existsSync(join(root, "component-update-rejected.json")), false);
 }, false, false, false, true, false, handoffOn({ STANDBY_READY_TIMEOUT_MS: 1000 })));
+/** Safe updates: the staged engine first boots on a copy of the real data (update rehearse), with the old engine serving. */
+async function readRehearsals(root) {
+  return (await readFile(join(root, "rehearsals.txt"), "utf8")).trim().split(/\r?\n/).map(line => JSON.parse(line));
+}
+async function watchServing(port) {
+  let down = 0, watching = true;
+  const loop = (async () => { while (watching) { if (!await servingOn(port)) down++; await pause(20); } })();
+  return async () => { watching = false; await loop; return down; };
+}
+test("safe update: a copy of the real data that refuses even after repair keeps the old engine serving and tells the owner one line", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  const old = (await starts())[0];
+  const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  await stageFixtureUpdate(root);
+  await writeFile(join(root, "rehearsal"), "unrepairable");
+  await writeFile(join(root, "release-ready"), "ready");
+  const stopWatching = await watchServing(gatewayPort);
+  restart();
+  await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"), 30_000);
+  assert.equal(await stopWatching(), 0, "the old engine answered /readyz the whole time");
+  assert.deepEqual(await starts(), [old], "no engine was stopped or started");
+  assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-update-failed").map(([, message]) => message),
+    ["version fixture-next would not start with this computer's saved data, even after an automatic repair on a copy, so the current version keeps running."]);
+  assert.deepEqual((await readRehearsals(root)).map(r => [r.repair, r.enginesAlive]), [[false, 1], [true, 1]]);
+  assert.equal(existsSync(join(root, "doctor-ran")), false, "the live state was never repaired");
+  assert.ok(existsSync(join(root, "component-update-rejected.json")));
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /requires repair for agent:main:broken/);
+}, false, false, false, true));
+test("safe update: a copy that Doctor's repair makes start gets that repair on live while no engine runs, then the new engine starts", () => fixture(async ({ root, starts, restart }) => {
+  const old = (await starts())[0];
+  await stageFixtureUpdate(root);
+  await writeFile(join(root, "rehearsal"), "repairable");
+  await writeFile(join(root, "release-ready"), "ready");
+  restart();
+  await eventually(() => swapped(root), 30_000);
+  assert.deepEqual((await readRehearsals(root)).map(r => [r.repair, r.enginesAlive]), [[false, 1], [true, 1]], "both rehearsals ran beside the serving engine");
+  const doctor = JSON.parse(await readFile(join(root, "doctor-ran"), "utf8"));
+  assert.equal(doctor.enginesAlive, 0, "the live repair ran only while no engine owned the state");
+  assert.deepEqual(doctor.args, ["--fix", "--non-interactive", "--no-workspace-suggestions"]);
+  const launched = await starts();
+  assert.equal(launched.length, 2); assert.equal(alive(old), false); assert.equal(alive(launched[1]), true);
+  assert.equal(JSON.parse(await readFile(join(root, `launch-${launched[1]}.json`), "utf8")).standby, false, "no standby started on the unrepaired state");
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /Doctor repaired the live state, as proven on the copy/);
+  assert.equal(existsSync(join(root, "component-update-rejected.json")), false);
+}, false, false, false, true));
+test("safe update: a live repair that fails rejects the release and the engine that was serving starts again", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  await stageFixtureUpdate(root);
+  await writeFile(join(root, "rehearsal"), "repairable");
+  await writeFile(join(root, "doctor-fails"), "1");
+  await writeFile(join(root, "release-ready"), "ready");
+  restart();
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("engine rolled back in place"), 30_000);
+  const launched = await starts();
+  assert.equal(launched.length, 2); assert.equal(alive(launched[1]), true);
+  assert.ok(existsSync(join(root, "component-update-rejected.json")));
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /the live repair failed/);
+  assert.ok(sent.some(([channel, message]) => channel === "branch-desktop:engine-update-failed" && /automatic repair for version fixture-next did not finish/.test(message)));
+}, false, false, false, true));
 test("an old engine that cannot step down is drained instead and the update still completes", () => fixture(async ({ root, starts, restart }) => {
   const old = (await starts())[0];
   await writeFile(join(root, "release-ready"), "ready"); await writeFile(join(root, "no-handoff"), "1");

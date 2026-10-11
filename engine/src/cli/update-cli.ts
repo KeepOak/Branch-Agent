@@ -366,6 +366,19 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/update", "docs.openclaw.ai/cli/up
   registerUpdateFinalizationCommand(update, "repair", false);
   registerUpdateFinalizationCommand(update, "finalize", true);
 
+  setCommandJsonMode(update.command("rehearse", { hidden: true }), "output", () => true)
+    .description("Boot this engine on private snapshots of the serving state before switching")
+    .option("--repair", "Let Doctor repair the private copy first", false)
+    .option("--budget-ms <ms>", "Validation budget in milliseconds")
+    .action(async (opts: { repair?: boolean; budgetMs?: string }) => {
+      const { updateRehearseCommand } = await import("./update-cli/update-command-rehearse.js");
+      const timeoutMs = opts.budgetMs ? Number.parseInt(opts.budgetMs, 10) : undefined;
+      await updateRehearseCommand({
+        repair: Boolean(opts.repair),
+        timeoutMs: Number.isFinite(timeoutMs) && timeoutMs! > 0 ? timeoutMs : undefined,
+      });
+    });
+
   update
     .command("migration-plan", { hidden: true })
     .description("Plan Doctor-owned state migrations against an isolated snapshot")

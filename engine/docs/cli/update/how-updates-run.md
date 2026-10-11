@@ -273,8 +273,17 @@ The copied databases undergo the same schema checks and migrations without
 reviving the removed Tasks registry.
 The canary also defers session catalog hydration, subagent and worker recovery,
 and startup maintenance until activation, recording a warning. Required configuration,
-database ownership, schema, and migration checks still run before readiness;
-plugin runtime loading remains part of validation. The serving Gateway prepares
+database ownership, schema, and migration checks still run before readiness, and so
+does canonical session validation of the copied agent databases: a persisted session
+row that would make the serving Gateway refuse to start makes the canary refuse instead.
+Plugin runtime loading remains part of validation.
+
+The desktop app runs the same canary before it switches engines, through the staged
+engine's hidden `branch update rehearse` command (`--repair` lets Doctor repair the
+private copy first). If the copy starts as-is, the switch proceeds. If only Doctor's
+repair makes it start, the desktop applies `branch doctor --fix` to the live state
+while no engine owns it, during the switch. If the repaired copy still refuses, the
+desktop keeps the running engine and tells the owner in one line. The serving Gateway prepares
 its session catalogs and maintenance normally after activation.
 
 Before copying state, the updater admits its existing-schema progress writer and

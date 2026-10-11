@@ -9,6 +9,7 @@ let claim: Awaited<ReturnType<typeof acquireTestPortBlock>> | undefined;
 let server: GatewayServer | undefined;
 const loadedPlugins: string[] = [];
 const deferredCalls: string[] = [];
+let canarySessionValidation: { mock: { calls: unknown[] } } | undefined;
 
 function rejectDeferredWork(name: string): never {
   deferredCalls.push(name);
@@ -74,6 +75,7 @@ beforeAll(async () => {
     discovery,
     skills,
     subagents,
+    canarySessions,
   ] = await Promise.all([
     import("../infra/branch-cli-shim.js"),
     import("../agents/github-tool-profile-cleanup.js"),
@@ -84,7 +86,9 @@ beforeAll(async () => {
     import("./server-discovery-runtime.js"),
     import("../skills/runtime/remote.js"),
     import("../agents/subagents/registry/subagent-registry.js"),
+    import("./server-startup-update-canary-sessions.js"),
   ]);
+  canarySessionValidation = vi.spyOn(canarySessions, "runUpdateCanarySessionValidation");
   vi.spyOn(cliShim, "prepareGatewayAgentCliShim").mockImplementation(() =>
     rejectDeferredWork("agent CLI shim"),
   );
@@ -162,4 +166,6 @@ it("serves candidate readiness without starting normal Gateway maintenance", asy
   await expect(readiness.json()).resolves.toMatchObject({ ready: true });
   expect(loadedPlugins).toContain("canary-startup-fixture");
   expect(deferredCalls).toEqual([]);
+  // Canonical session validation still runs on the copied databases before readiness.
+  expect(canarySessionValidation?.mock.calls).toHaveLength(1);
 });
