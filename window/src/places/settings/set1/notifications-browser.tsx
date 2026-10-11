@@ -127,12 +127,17 @@ export function isDesktopApp(): boolean {
   return typeof window !== "undefined" && (window as unknown as { branchDesktop?: unknown }).branchDesktop !== undefined;
 }
 
+function systemSettings(): string {
+  const userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent;
+  return /Windows/.test(userAgent) ? "Windows Settings" : /Macintosh|Mac OS X/.test(userAgent) ? "System Settings" : "your system settings";
+}
+
 /** Desktop app: this computer's own notices, through the window's Notification API (no service worker needed). */
 export function DesktopNotices() {
   const [perm, setPerm] = useState<Perm>(() => facts().permission);
   const [on, setOn] = useState(noticesHereOn);
   const [line, setLine] = useState("");
-  const off = perm === "unsupported" ? "This Branch window can’t show notifications." : perm === "denied" ? "Notifications for Branch are off in your computer’s settings." : undefined;
+  const off = perm === "unsupported" ? "This Branch window can’t show notifications." : perm === "denied" ? `Open ${systemSettings()} and allow notifications for Branch.` : undefined;
   const flip = async (next: boolean) => {
     if (next && perm !== "granted") {
       const answer = await Notification.requestPermission();
@@ -169,9 +174,8 @@ export function ThisBrowser({ engine, push }: { engine: WindowEngine; push: WebP
   const test = useTestSend(engine);
   const userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent;
   const ios = /iPhone|iPad/.test(userAgent);
-  const settings = /Windows/.test(userAgent) ? "Windows Settings" : !ios && /Macintosh|Mac OS X/.test(userAgent) ? "System Settings" : "your system settings";
-  const why = push.loading ? "Checking this computer…" : !push.supported ? "This computer can’t show notifications." : push.permission === "denied" ? `Notifications are off for Branch in ${settings}.` : !push.reg ? "This computer isn’t set up for notifications yet." : undefined;
-  const hint = !push.supported ? "This computer can’t show notifications." : ios ? "Use Share › Add to Home Screen, then open Branch from there." : push.permission === "denied" ? `Open ${settings} and allow notifications for Branch.` : "";
+  const why = push.loading ? "Checking this computer…" : !push.supported ? "This computer can’t show notifications." : push.permission === "denied" ? "Notifications are blocked for this page." : !push.reg ? "This computer isn’t set up for notifications yet." : undefined;
+  const hint = !push.supported ? "This computer can’t show notifications." : ios ? "Use Share › Add to Home Screen, then open Branch from there." : push.permission === "denied" ? "Open your browser’s permissions for this page, allow notifications, then reload Branch." : "";
   const on = Boolean(push.device);
   return (
     <Sec title={ios ? "This device" : "This computer"}>

@@ -3,13 +3,15 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
+import { NotificationsPage } from "./notifications";
+import { KitProvider } from "../kit";
 import { ThisBrowser, deviceOff, type WebPush } from "./notifications-browser";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
 let host: HTMLDivElement;
 beforeEach(() => { vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"); host = document.body.appendChild(document.createElement("div")); root = createRoot(host); });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 function pushState(overrides: Partial<WebPush> = {}): WebPush {
   return {
@@ -30,7 +32,6 @@ describe("desktop notification copy", () => {
   it.each([
     { name: "checking", overrides: { loading: true }, expected: "Checking this computer…" },
     { name: "unsupported", overrides: { supported: false }, expected: "This computer can’t show notifications." },
-    { name: "permission denied", overrides: { permission: "denied" as const }, expected: "Notifications are off for Branch in System Settings." },
     { name: "not ready", overrides: { reg: null }, expected: "This computer isn’t set up for notifications yet." },
     { name: "not registered", overrides: {}, expected: "Turn on notifications on this computer first." },
   ])("uses desktop wording when $name, including disabled-control explanations", async ({ overrides, expected }) => {
@@ -40,26 +41,39 @@ describe("desktop notification copy", () => {
     expect(copy()).toContain("This computer");
     expect(copy()).toContain(expected);
     expect(deviceOff(push)).not.toMatch(websiteWords);
-    if (push.permission === "denied") {
-      expect(host.textContent).toContain("Open System Settings");
-      expect(host.textContent).not.toContain("reload");
-    }
+
   });
 
   it.each([
     { os: "macOS", userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", settings: "System Settings" },
     { os: "Windows", userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", settings: "Windows Settings" },
     { os: "Linux", userAgent: "Mozilla/5.0 (X11; Linux x86_64)", settings: "your system settings" },
-  ])("names the $os settings in denied guidance and the disabled button", async ({ userAgent, settings }) => {
+  ])("routes denied permission recovery to the correct runtime on $os", async ({ userAgent, settings }) => {
     vi.spyOn(navigator, "userAgent", "get").mockReturnValue(userAgent);
-    await act(async () => root.render(<ThisBrowser engine={engine} push={pushState({ permission: "denied" })} />));
-    const why = `Notifications are off for Branch in ${settings}.`;
-    expect(host.textContent).toContain(why);
-    expect(host.textContent).toContain(`Open ${settings} and allow notifications for Branch.`);
-    const turnOn = Array.from(host.querySelectorAll("button")).find((button) => button.textContent === "Turn on notifications")!;
-    expect(turnOn.disabled).toBe(true);
-    expect(turnOn.title).toContain(why);
-    expect(copy()).not.toMatch(websiteWords);
+    vi.stubGlobal("Notification", { permission: "denied", requestPermission: vi.fn() });
+    vi.stubGlobal("PushManager", class {});
+    const original = Object.getOwnPropertyDescriptor(navigator, "serviceWorker");
+    Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: { getRegistration: async () => ({ pushManager: { getSubscription: async () => null } }) } });
+    const pageEngine = { request: vi.fn(async (method: string) => method === "users.prefs.get" ? { status: "ok", entries: {} } : {}), onEvent: () => () => undefined, scopes: [] } as unknown as WindowEngine;
+    const renderPage = () => root.render(<KitProvider level={0} scope={null} report={{ saving: vi.fn(), saved: vi.fn(), failed: vi.fn() }}><NotificationsPage page="notifications" title="Notifications" level="regular" engine={pageEngine} /></KitProvider>);
+    try {
+      await act(async () => renderPage());
+      expect(host.textContent).toContain("Open your browser’s permissions for this page, allow notifications, then reload Branch.");
+      expect(host.textContent).not.toContain(`Open ${settings}`);
+      const turnOn = Array.from(host.querySelectorAll("button")).find((button) => button.textContent === "Turn on notifications")!;
+      expect(turnOn.disabled).toBe(true);
+      expect(turnOn.title).toContain("Notifications are blocked for this page.");
+      await act(async () => root.render(null));
+      vi.stubGlobal("branchDesktop", {});
+      await act(async () => renderPage());
+      expect(host.textContent).toContain(`Open ${settings} and allow notifications for Branch.`);
+      expect(host.textContent).not.toContain("browser’s permissions");
+      expect(Array.from(host.querySelectorAll("button")).some((button) => button.textContent === "Turn on notifications")).toBe(false);
+      expect(host.querySelector<HTMLInputElement>('input[aria-label="Notifications on this computer"]')!.disabled).toBe(true);
+    } finally {
+      if (original) Object.defineProperty(navigator, "serviceWorker", original);
+      else Reflect.deleteProperty(navigator, "serviceWorker");
+    }
   });
 
   it.each(["iPhone", "iPad"])("uses a device-neutral heading and preserves the %s setup hint", async (device) => {
