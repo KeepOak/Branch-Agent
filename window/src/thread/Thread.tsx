@@ -575,7 +575,7 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
     case "notice":
       return block.topicKey ? <div className="tpLblT5"><button type="button" onClick={() => view.onOpenSession?.(block.topicKey!)}>{block.text}</button></div> : <Notice block={block} />;
     case "steer":
-      return <SteeredNote name={view.name} text={block.text} />;
+      return <SteeredNote name={view.name} text={block.text} attachments={block.attachments} />;
     default:
       return null;
   }

@@ -3,10 +3,17 @@ import type { WindowEngine } from "../connect/engine";
 import type { Attachment } from "./model";
 
 export const isManagedAttachment = (item: Attachment): boolean => /^artifact_managed_(?:image|media)_/.test(item.artifactId ?? "");
+export const needsAttachmentSource = (item: Attachment): boolean => isManagedAttachment(item) || (item.kind === "image" && /^(media:\/\/inbound\/|\/(?!\/)|~[\\/]|[A-Za-z]:[\\/]|file:)/.test(item.src ?? ""));
+export const attachmentSourceKey = (item: Attachment): string => item.artifactId ?? item.src ?? "";
 
 /** Same artifacts.download flow as engine/ui/src/api/artifact-download.ts. The RPC authorizes one artifact;
  * its short-lived ticket, never the gateway credential, is what the media element receives. */
 export async function resolveAttachmentSource(engine: WindowEngine, item: Attachment): Promise<string> {
+  if (!isManagedAttachment(item)) {
+    const picture = await engine.mediaPicture?.(item.src ?? "");
+    if (!picture || "error" in picture) throw new Error("Attachment unavailable");
+    return picture.src;
+  }
   if (!engine.sessionKey || !engine.gatewayUrl) throw new Error("Attachment unavailable");
   const result = await engine.request<{
     url?: string; encoding?: string; data?: string; artifact?: { type?: string; mimeType?: string };
@@ -33,23 +40,23 @@ type Control = { retry: () => void; failed: () => void; loaded: () => void };
 /** Resolve managed media before mounting it. Keep the gallery together; a failed/expired ticket refreshes only
  * that attachment, just like MdImage. A connection change invalidates both tickets and outstanding RPCs. */
 export function useAttachmentSources(items: Attachment[], engine?: WindowEngine) {
-  const signature = JSON.stringify(items.filter(isManagedAttachment).map((item) => [item.artifactId, item.src]));
+  const signature = JSON.stringify(items.filter(needsAttachmentSource).map((item) => [attachmentSourceKey(item), item.artifactId, item.src]));
   const [state, setState] = useState<{ engine?: WindowEngine; signature: string; sources: Record<string, Source> }>({ signature: "", sources: {} });
   const controls = useRef(new Map<string, Control>());
   useEffect(() => {
     let live = true;
     const registry = new Map<string, Control>();
     controls.current = registry;
-    const entries = JSON.parse(signature) as [string, string | undefined][];
-    for (const [artifactId, src] of entries) {
+    const entries = JSON.parse(signature) as [string, string | undefined, string | undefined][];
+    for (const [key, artifactId, src] of entries) {
       let refreshed = false;
       let generation = 0;
       const publish = (value?: Source) => {
         if (!live) return;
         setState((current) => {
           const sources = current.engine === engine && current.signature === signature ? { ...current.sources } : {};
-          if (value) sources[artifactId] = value;
-          else delete sources[artifactId];
+          if (value) sources[key] = value;
+          else delete sources[key];
           return { engine, signature, sources };
         });
       };
@@ -60,7 +67,7 @@ export function useAttachmentSources(items: Attachment[], engine?: WindowEngine)
           .then((url) => { if (live && generation === attempt) publish({ src: url }); })
           .catch(() => { if (live && generation === attempt) publish({ error: true }); });
       };
-      registry.set(artifactId, {
+      registry.set(key, {
         retry: () => { refreshed = false; load(); },
         failed: () => { if (refreshed) publish({ error: true }); else { refreshed = true; load(); } },
         loaded: () => { refreshed = false; },

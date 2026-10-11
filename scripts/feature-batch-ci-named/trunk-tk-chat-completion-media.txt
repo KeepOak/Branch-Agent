@@ -1,0 +1,3 @@
+window:src/connect/run-outcome.test.ts
+window:src/thread/history.test.ts
+window:src/thread/managed-attachments.test.tsx

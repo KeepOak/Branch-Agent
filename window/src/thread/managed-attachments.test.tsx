@@ -31,6 +31,23 @@ async function event(name: "error" | "load") {
 }
 
 describe("managed attachments", () => {
+  it("resolves inbound screenshots with a media ticket and opens the restored picture", async () => {
+    const engine = makeEngine();
+    engine.mediaPicture = vi.fn(async () => ({ src: "http://127.0.0.1:19700/__branch__/assistant-media?mediaTicket=inbound-ticket" }));
+    await render(engine, [{ kind: "image", name: "screenshot.png", src: "media://inbound/screenshot.png", kept: true }]);
+    expect(engine.mediaPicture).toHaveBeenCalledWith("media://inbound/screenshot.png");
+    expect(host.querySelector(".picture img")?.getAttribute("src")).toContain("mediaTicket=inbound-ticket");
+    await act(async () => (host.querySelector(".picture") as HTMLButtonElement).click());
+    expect(host.querySelector(".picture-viewer img")?.getAttribute("src") ?? host.querySelector('[role="dialog"] img')?.getAttribute("src")).toContain("mediaTicket=inbound-ticket");
+  });
+
+  it("shows a retryable unavailable state rather than trying to load a media scheme directly", async () => {
+    const engine = makeEngine();
+    engine.mediaPicture = vi.fn(async () => ({ error: "unavailable" as const }));
+    await render(engine, [{ kind: "image", name: "screenshot.png", src: "media://inbound/screenshot.png", kept: true }]);
+    expect(host.querySelector("img")).toBeNull();
+    expect(host.textContent).toContain("Attachment unavailable");
+  });
   it("authorizes a persisted generated image and uses the gateway origin rather than the window origin", async () => {
     const request = vi.fn(async () => ticket());
     await render(makeEngine(request));

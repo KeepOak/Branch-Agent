@@ -68,6 +68,20 @@ describe("historyToBlocks", () => {
 });
 
 describe("historyToBlocks: errors, notes, meta and attachments", () => {
+  it("restores captionless screenshots from canonical transcript media facts", () => {
+    const blocks = historyToBlocks([{ role: "user", content: [], __branch: { media: [
+      { url: "media://inbound/screenshot.png", contentType: "image/png", fileName: "image.png", sizeBytes: 42 },
+    ] } }], [], "k", null);
+    expect(blocks[0]).toMatchObject({ kind: "user", text: "", attachments: [
+      { kind: "image", src: "media://inbound/screenshot.png", name: "image.png", mimeType: "image/png", sizeBytes: 42, kept: true },
+    ] });
+  });
+  it("keeps screenshots attached to steering messages rather than discarding them", () => {
+    const blocks = historyToBlocks([{ role: "user", content: "Look at this", __branch: {
+      steerTargetRunId: "running-turn", media: [{ url: "media://inbound/screenshot.png", kind: "image", fileName: "image.png" }],
+    } }], [], "k", null);
+    expect(blocks[0]).toMatchObject({ kind: "steer", attachments: [{ kind: "image", src: "media://inbound/screenshot.png" }] });
+  });
   it("shows a run that failed before replying as the error block, and the engine's notes", () => {
     const blocks = historyToBlocks(
       [
@@ -157,4 +171,3 @@ describe("historyToBlocks: text-channel tool calls", () => {
     expect(prose[0]).toMatchObject({ kind: "text", text: `Here is the call: ${JSON.stringify(spawn)}` });
   });
 });
-
