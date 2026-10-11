@@ -1,0 +1,78 @@
+{
+ "C6-051": {
+  "result": "removed",
+  "note": "Guide menu no longer lists Docs: it is left out until a docs site exists (window/src/shell/guide-links.ts). The menu offers Walkthrough and Ask for help."
+ },
+ "C6-166": {
+  "result": "removed",
+  "note": "The \"How faces are drawn\" setting no longer exists in Settings > Appearance (no control or label in window/src)."
+ },
+ "C6-100": {
+  "result": "removed",
+  "note": "The computer menu now shows the current computer as a checked, non-clickable status row. The clickable \"This computer / On this computer\" row appears only when the window is connected to another Branch (window/src/shell/MachineMenu.tsx)."
+ },
+ "C6-221": {
+  "result": "removed",
+  "note": "Temperature is no longer a Settings > Models row for every Trunk; it is a per-model Technical row (models-tech.tsx) that appears only for a model that is set up. The scratch profile has no model."
+ },
+ "C6-224": {
+  "result": "removed",
+  "note": "Not drawn when the window runs in the desktop app: Settings > Notifications shows \"Only these Trunks\" and \"On a locked screen\" only when `!desktop` (window/src/places/settings/set1/notifications.tsx, TellMore / ThisDevice). The desktop window uses its own notice instead."
+ },
+ "C6-225": {
+  "result": "removed",
+  "note": "Not drawn when the window runs in the desktop app: Settings > Notifications shows \"Only these Trunks\" and \"On a locked screen\" only when `!desktop` (window/src/places/settings/set1/notifications.tsx, TellMore / ThisDevice). The desktop window uses its own notice instead."
+ },
+ "C6-226": {
+  "result": "removed",
+  "note": "Not drawn when the window runs in the desktop app: Settings > Notifications shows \"Only these Trunks\" and \"On a locked screen\" only when `!desktop` (window/src/places/settings/set1/notifications.tsx, TellMore / ThisDevice). The desktop window uses its own notice instead."
+ },
+ "C6-227": {
+  "result": "removed",
+  "note": "Not drawn when the window runs in the desktop app: Settings > Notifications shows \"Only these Trunks\" and \"On a locked screen\" only when `!desktop` (window/src/places/settings/set1/notifications.tsx, TellMore / ThisDevice). The desktop window uses its own notice instead."
+ },
+ "C6-229": {
+  "result": "removed",
+  "note": "Not drawn when the window runs in the desktop app: Settings > Notifications shows \"Only these Trunks\" and \"On a locked screen\" only when `!desktop` (window/src/places/settings/set1/notifications.tsx, TellMore / ThisDevice). The desktop window uses its own notice instead."
+ },
+ "C6-231": {
+  "result": "removed",
+  "note": "Not drawn when the window runs in the desktop app: Settings > Notifications shows \"Only these Trunks\" and \"On a locked screen\" only when `!desktop` (window/src/places/settings/set1/notifications.tsx, TellMore / ThisDevice). The desktop window uses its own notice instead."
+ },
+ "C6-092": {
+  "result": "still-failing",
+  "note": "Skip link (focused with the keyboard, then Enter) jumps to #main, but <main> is not focusable, so focus falls back to the page body and nothing visible happens. Fixed in the C6 fix PR: the link focuses main (tabIndex -1)."
+ },
+ "C6-108": {
+  "result": "still-failing",
+  "note": "Canopy > Every step, live: Clear is enabled while the list is empty (\"0 of 0\") and does nothing. Start now on 7 automations produced no steps in this profile (no model). Fixed in the C6 fix PR: Open all, Fold all and Clear appear once a step exists."
+ },
+ "C6-111": {
+  "result": "still-failing",
+  "note": "Canopy > Every step, live: Fold all is enabled while the list is empty and does nothing. Fixed in the C6 fix PR with C6-108."
+ },
+ "C6-103": {
+  "result": "still-failing",
+  "note": "Who Researcher knows > Builder (turning it back on): toast \"config.patch would remove entries from array path(s): agents.entries.researcher.agentToAgent.deny...\" and the tick does not come back. Turning it off works and persists. This is the defect open PR #1203 fixes (replacePaths for the deny array); no second fix opened."
+ },
+ "C6-078": {
+  "result": "verified",
+  "note": "Disabled with its reason shown: \"This needs a newer Branch desktop app.\" (conversation menu). No click effect by design; matches #420 Expected \"shows the reason it cannot\"."
+ },
+ "C6-072": {
+  "result": "verified",
+  "note": "Customize > Chat apps > Pair a phone > Make the code shows the reason it cannot: \"Gateway is only bound to loopback. Set gateway.publicOrigin ...\". The scratch gateway listens on loopback only."
+ },
+ "C6-070": {
+  "result": "verified",
+  "note": "The control now reads \"Create Trunk\" (New, places and more > New Trunk). Click shows \"Creating...\" and the new Trunk (Rowan) joins the Trunk rail; it is still there after a fresh load (saved on the engine)."
+ },
+ "C6-074": {
+  "result": "verified",
+  "note": "Search in this conversation with 2 matches for \"audit\": Next moves from 1 of 2 to 2 of 2 and highlights the second match."
+ },
+ "C6-204": {
+  "result": "verified",
+  "note": "Settings > On this computer > Ollama: Look for it runs detection and shows a \"Not found\" pill and \"Look again\"."
+ }
+}

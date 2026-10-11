@@ -1,0 +1,275 @@
+{
+ "Archive this conversation: Ctrl Shift A. Change@chat:agent:researcher:notes": {
+  "key": "shortcutsKey",
+  "steps": "[{\"key\":\"Shift+Slash\"}]"
+ },
+ "Browser, full size: Ctrl Alt Shift U. Change@chat:agent:researcher:notes": {
+  "key": "shortcutsKey",
+  "steps": "[{\"key\":\"Shift+Slash\"}]"
+ },
+ "Computer, full size: Ctrl Alt Shift D. Change@chat:agent:researcher:notes": {
+  "key": "shortcutsKey",
+  "steps": "[{\"key\":\"Shift+Slash\"}]"
+ },
+ "Files: Ctrl Shift B. Change@chat:agent:researcher:notes": {
+  "key": "shortcutsKey",
+  "steps": "[{\"key\":\"Shift+Slash\"}]"
+ },
+ "Find anything: Ctrl K. Change@chat:agent:researcher:notes": {
+  "key": "shortcutsKey",
+  "steps": "[{\"key\":\"Shift+Slash\"}]"
+ },
+ "Focus mode: Ctrl .. Change@chat:agent:researcher:notes": {
+  "key": "shortcutsKey",
+  "steps": "[{\"key\":\"Shift+Slash\"}]"
+ },
+ "Group by Projects@chat:agent:researcher:notes": {
+  "key": "filter",
+  "steps": "[{\"click\":\"re:^Show the list\"},{\"testid\":\"filter-sort\"}]"
+ },
+ "Hide empty groups When filtering@chat:agent:researcher:notes": {
+  "key": "filter",
+  "steps": "[{\"click\":\"re:^Show the list\"},{\"testid\":\"filter-sort\"}]"
+ },
+ "Lockdown: Ctrl Shift L. Change@chat:agent:researcher:notes": {
+  "key": "shortcutsKey",
+  "steps": "[{\"key\":\"Shift+Slash\"}]"
+ },
+ "New conversation: Ctrl N. Change@chat:agent:researcher:notes": {
+  "key": "shortcutsKey",
+  "steps": "[{\"key\":\"Shift+Slash\"}]"
+ },
+ "Next conversation: Ctrl Tab. Change@chat:agent:researcher:notes": {
+  "key": "shortcutsKey",
+  "steps": "[{\"key\":\"Shift+Slash\"}]"
+ },
+ "Open the Inbox: Ctrl I. Change@chat:agent:researcher:notes": {
+  "key": "shortcutsKey",
+  "steps": "[{\"key\":\"Shift+Slash\"}]"
+ },
+ "Settings: Ctrl ,. Change@chat:agent:researcher:notes": {
+  "key": "shortcutsKey",
+  "steps": "[{\"key\":\"Shift+Slash\"}]"
+ },
+ "Show or hide the side panel: Ctrl Shift K. Change@chat:agent:researcher:notes": {
+  "key": "shortcutsKey",
+  "steps": "[{\"key\":\"Shift+Slash\"}]"
+ },
+ "Show system conversations@chat:agent:researcher:notes": {
+  "key": "filter",
+  "steps": "[{\"click\":\"re:^Show the list\"},{\"testid\":\"filter-sort\"}]"
+ },
+ "Side chat: Ctrl Alt Shift S. Change@chat:agent:researcher:notes": {
+  "key": "shortcutsKey",
+  "steps": "[{\"key\":\"Shift+Slash\"}]"
+ },
+ "Sort by Created@chat:agent:researcher:notes": {
+  "key": "filter",
+  "steps": "[{\"click\":\"re:^Show the list\"},{\"testid\":\"filter-sort\"}]"
+ },
+ "Stop the current task: Ctrl Shift S. Change@chat:agent:researcher:notes": {
+  "key": "shortcutsKey",
+  "steps": "[{\"key\":\"Shift+Slash\"}]"
+ },
+ "Talk live: Ctrl Shift V. Change@chat:agent:researcher:notes": {
+  "key": "shortcutsKey",
+  "steps": "[{\"key\":\"Shift+Slash\"}]"
+ },
+ "Talk to Researcher beside a page: Ctrl Shift H. Change@chat:agent:researcher:notes": {
+  "key": "shortcutsKey",
+  "steps": "[{\"key\":\"Shift+Slash\"}]"
+ },
+ "Terminal: Ctrl `. Change@chat:agent:researcher:notes": {
+  "key": "shortcutsKey",
+  "steps": "[{\"key\":\"Shift+Slash\"}]"
+ },
+ "All@settings:appearance": {
+  "key": "gallery",
+  "steps": "[{\"click\":\"re:^Browse (all \\\\d+ )?themes\"}]"
+ },
+ "Branch@settings:appearance": {
+  "key": "gallery",
+  "steps": "[{\"click\":\"re:^Browse (all \\\\d+ )?themes\"}]"
+ },
+ "KeepOak@settings:appearance": {
+  "key": "gallery",
+  "steps": "[{\"click\":\"re:^Browse (all \\\\d+ )?themes\"}]"
+ },
+ "Editors & terminals@settings:appearance": {
+  "key": "gallery",
+  "steps": "[{\"click\":\"re:^Browse (all \\\\d+ )?themes\"}]"
+ },
+ "Yours0@settings:appearance": {
+  "key": "gallery",
+  "steps": "[{\"click\":\"re:^Browse (all \\\\d+ )?themes\"}]"
+ },
+ "Moonlight@settings:appearance": {
+  "key": "gallery",
+  "steps": "[{\"click\":\"re:^Browse (all \\\\d+ )?themes\"}]"
+ },
+ "Paste a theme code@settings:appearance": {
+  "key": "gallery",
+  "steps": "[{\"click\":\"re:^Browse (all \\\\d+ )?themes\"}]"
+ },
+ "Add theme@settings:appearance": {
+  "key": "gallery>paste",
+  "steps": "[{\"click\":\"re:^Browse (all \\\\d+ )?themes\"},{\"click\":\"Paste a theme code\"}]"
+ },
+ "Accent #16212a@settings:appearance": {
+  "key": "editor",
+  "steps": "[{\"click\":\"re:^Make your own\"}]"
+ },
+ "Accent #2f8c86@settings:appearance": {
+  "key": "editor",
+  "steps": "[{\"click\":\"re:^Make your own\"}]"
+ },
+ "Accent #2f8f5b@settings:appearance": {
+  "key": "editor",
+  "steps": "[{\"click\":\"re:^Make your own\"}]"
+ },
+ "Accent #484ce5@settings:appearance": {
+  "key": "editor",
+  "steps": "[{\"click\":\"re:^Make your own\"}]"
+ },
+ "Accent #4f6fa8@settings:appearance": {
+  "key": "editor",
+  "steps": "[{\"click\":\"re:^Make your own\"}]"
+ },
+ "Accent #8a5aa8@settings:appearance": {
+  "key": "editor",
+  "steps": "[{\"click\":\"re:^Make your own\"}]"
+ },
+ "Accent #c0467a@settings:appearance": {
+  "key": "editor",
+  "steps": "[{\"click\":\"re:^Make your own\"}]"
+ },
+ "Accent #e0a526@settings:appearance": {
+  "key": "editor",
+  "steps": "[{\"click\":\"re:^Make your own\"}]"
+ },
+ "Trunks, 3@place:customize": {
+  "key": "direct",
+  "steps": "[]",
+  "as": "Trunks,",
+  "prefix": true
+ },
+ "Make Trunk@chat:agent:researcher:notes": {
+  "key": "newplaces>>New Trunk",
+  "steps": "[{\"click\":\"New, places and more\"}]",
+  "item": "New Trunk",
+  "as": "Create Trunk"
+ },
+ "Its folder Not reported@chat:agent:researcher:notes": {
+  "key": "convmenu>>profile",
+  "steps": "[{\"click\":\"Conversation menu\"}]",
+  "item": "Researcher’s profile",
+  "as": "Its folder",
+  "prefix": true
+ },
+ "Its folder Not reported@chat:agent:builder:roadmap": {
+  "key": "profile",
+  "steps": "[{\"click\":\"Builder’s profile\"}]",
+  "as": "Its folder",
+  "prefix": true
+ },
+ "Its folder Not reported@chat:agent:planner:design": {
+  "key": "profile",
+  "steps": "[{\"click\":\"Planner’s profile\"}]",
+  "as": "Its folder",
+  "prefix": true
+ },
+ "Accounts@chat:agent:researcher:notes": {
+  "key": "convmenu>>Edit",
+  "steps": "[{\"click\":\"Conversation menu\"}]",
+  "item": "Edit Researcher…"
+ },
+ "Column@chat:agent:researcher:notes": {
+  "key": "threads (Emoji rail first)",
+  "steps": "[{\"click\":\"re:^How threads show\"},{\"css\":\"[role=menuitemradio]:has-text(\\\"Emoji rail\\\"), [role=menu] button:has-text(\\\"Emoji rail\\\")\"},{\"click\":\"re:^How threads show\"}]",
+  "as": "Column"
+ },
+ "Get help@chat:agent:researcher:notes": {
+  "key": "owner>>Guide",
+  "steps": "[{\"click\":\"re:^Show the list\"},{\"click\":\"re:^Owner$\"}]",
+  "item": "Guide",
+  "as": "Ask for help",
+  "prefix": true
+ },
+ "Forward@chat:agent:researcher:notes": {
+  "key": "back-first",
+  "steps": "[{\"click\":\"re:^General\\\\d\"},{\"click\":\"Back\"}]"
+ },
+ "Make the code@chat:agent:researcher:notes": {
+  "key": "customize>Chat apps>Pair a phone",
+  "root": "place:customize",
+  "steps": "[{\"css\":\"main button:has-text(\\\"Chat apps\\\"), main [role=tab]:has-text(\\\"Chat apps\\\")\"},{\"click\":\"Pair a phone\"}]"
+ },
+ "Back@chat:agent:researcher:notes": {
+  "key": "after-nav",
+  "steps": "[{\"click\":\"re:^General\\\\d\"}]"
+ },
+ "Copy the record@chat:agent:researcher:notes": {
+  "key": "convmenu>>Look inside",
+  "steps": "[{\"click\":\"Conversation menu\"}]",
+  "item": "Look inside the last reply"
+ },
+ "Builder@chat:agent:researcher:notes": {
+  "key": "newlist>>New group chat",
+  "steps": "[{\"click\":\"re:^Show the list\"},{\"click\":\"re:^New conversation, Trunk\"}]",
+  "item": "New group chat"
+ },
+ "Planner@chat:agent:researcher:notes": {
+  "key": "newlist>>New group chat",
+  "steps": "[{\"click\":\"re:^Show the list\"},{\"click\":\"re:^New conversation, Trunk\"}]",
+  "item": "New group chat"
+ },
+ "Researcher@chat:agent:researcher:notes": {
+  "key": "newlist>>New group chat",
+  "steps": "[{\"click\":\"re:^Show the list\"},{\"click\":\"re:^New conversation, Trunk\"}]",
+  "item": "New group chat"
+ },
+ "Start the group chat@chat:agent:researcher:notes": {
+  "key": "newlist>>New group chat",
+  "steps": "[{\"click\":\"re:^Show the list\"},{\"click\":\"re:^New conversation, Trunk\"}]",
+  "item": "New group chat"
+ },
+ "Reload@settings:instructions": {
+  "key": "editor",
+  "steps": "[{\"click\":\"re:^Write$\"}]"
+ },
+ "Save@settings:instructions": {
+  "key": "editor",
+  "steps": "[{\"click\":\"re:^Write$\"}]"
+ },
+ "Side by side@settings:instructions": {
+  "key": "editor",
+  "steps": "[{\"click\":\"re:^Write$\"}]"
+ },
+ "Pin Helpers may start their own helpers@settings:models": {
+  "key": "Defaults",
+  "steps": "[{\"css\":\"button:has-text(\\\"Defaults\\\"), [role=tab]:has-text(\\\"Defaults\\\")\"}]",
+  "as": "Pin Trunks may start their own Trunks"
+ },
+ "Pin Setup helper@settings:models": {
+  "key": "Defaults",
+  "steps": "[{\"css\":\"button:has-text(\\\"Defaults\\\"), [role=tab]:has-text(\\\"Defaults\\\")\"}]",
+  "as": "Pin Setup Trunk"
+ },
+ "From your keepoak.com team@settings:people": {
+  "key": "Invite someone",
+  "steps": "[{\"click\":\"Invite someone\"}]"
+ },
+ "On their own device@settings:people": {
+  "key": "Invite someone",
+  "steps": "[{\"click\":\"Invite someone\"}]"
+ },
+ "On this computer@settings:people": {
+  "key": "Invite someone",
+  "steps": "[{\"click\":\"Invite someone\"}]"
+ },
+ "Pin Signed household records@settings:people": {
+  "key": "direct",
+  "steps": "[]",
+  "as": "Unpin Signed household records"
+ }
+}
