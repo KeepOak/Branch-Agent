@@ -205,15 +205,66 @@ describe("Node Code Mode executor", () => {
           typeof TextDecoder.prototype.leftBehind,
           typeof process, typeof require, typeof fetch,
           Array.from(new TextEncoder().encode('🌿')),
-          new TextDecoder().decode(new Uint8Array([240, 159, 166, 158])),
+          new TextDecoder().decode(new Uint8Array([240, 159, 140, 191])),
         ];`,
       ),
     ).toMatchObject({
       status: "completed",
       value: {
         kind: "complete",
-        json: '["undefined","undefined","undefined","undefined","undefined","undefined",[240,159,166,158],"🌿"]',
+        json: '["undefined","undefined","undefined","undefined","undefined","undefined",[240,159,140,191],"🌿"]',
       },
+    });
+  });
+
+  it("provides atob, btoa and crypto web globals", async () => {
+    const result = await execute(
+      `const uuid = crypto.randomUUID();
+      const bytes = crypto.getRandomValues(new Uint8Array(32));
+      const words = crypto.getRandomValues(new Uint32Array(4));
+      const errorName = (run) => { try { run(); return "none"; } catch (error) { return error.name; } };
+      return {
+        encoded: btoa("hello, world"),
+        decoded: atob("aGVsbG8sIHdvcmxk"),
+        padding: [btoa(""), btoa("a"), btoa("ab"), btoa("abc"), atob("YQ"), atob(" YW I=\\n")],
+        latin1: atob(btoa("\\u00ff\\u0000\\u0080")) === "\\u00ff\\u0000\\u0080",
+        uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(uuid),
+        unique: uuid !== crypto.randomUUID(),
+        sameArray: crypto.getRandomValues(bytes) === bytes,
+        varied: new Set(bytes).size > 1 && words.some((word) => word !== 0),
+        errors: [
+          errorName(() => btoa("🌿")),
+          errorName(() => atob("a")),
+          errorName(() => atob("ab=")),
+          errorName(() => crypto.getRandomValues([1, 2])),
+          errorName(() => crypto.getRandomValues(new Float64Array(2))),
+          errorName(() => crypto.getRandomValues(new Uint8Array(65_537))),
+        ],
+        hostHidden: typeof __branchHostRandomHex,
+      };`,
+    );
+    expect(result).toMatchObject({ status: "completed" });
+    if (result.status !== "completed" || result.value.kind !== "complete") {
+      throw new Error(JSON.stringify(result));
+    }
+    expect(JSON.parse(result.value.json)).toEqual({
+      encoded: "aGVsbG8sIHdvcmxk",
+      decoded: "hello, world",
+      padding: ["", "YQ==", "YWI=", "YWJj", "a", "ab"],
+      latin1: true,
+      uuid: true,
+      unique: true,
+      sameArray: true,
+      varied: true,
+      errors: [
+        "InvalidCharacterError",
+        "InvalidCharacterError",
+        "InvalidCharacterError",
+        "TypeMismatchError",
+        "TypeMismatchError",
+        "QuotaExceededError",
+      ],
+      hostHidden: "undefined",
     });
   });
 

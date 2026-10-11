@@ -1,6 +1,9 @@
 /** QuickJS worker for Code Mode guest execution and suspended VM snapshots. */
+import { randomBytes } from "node:crypto";
 import {
   CODE_MODE_CONTROLLER_SOURCE,
+  CODE_MODE_HOST_RANDOM_HEX,
+  CODE_MODE_RANDOM_VALUES_MAX_BYTES,
   boundCodeModeError,
   captureCodeModeOutput,
   captureCodeModeValue,
@@ -183,6 +186,24 @@ function createHostRequestHandler(params: {
   };
 }
 
+/** Backs guest `crypto`; only a hex string of host random bytes crosses into the VM. */
+function createHostRandomHexHandler(
+  vm: QuickJS,
+): (this: JSValueHandle, length: JSValueHandle) => JSValueHandle {
+  return (lengthHandle) => {
+    const length: unknown = vm.dump(lengthHandle);
+    if (
+      typeof length !== "number" ||
+      !Number.isInteger(length) ||
+      length < 0 ||
+      length > CODE_MODE_RANDOM_VALUES_MAX_BYTES
+    ) {
+      throw new Error("invalid code mode random byte count");
+    }
+    return vm.newString(randomBytes(length).toString("hex"));
+  };
+}
+
 function createHostCancelRequestHandler(params: {
   vm: QuickJS;
   bridge: BridgeState;
@@ -239,6 +260,7 @@ async function createVm(input: CodeModeWorkerPayload, bridge: BridgeState): Prom
           return vm.undefined;
         },
       ],
+      [CODE_MODE_HOST_RANDOM_HEX, createHostRandomHexHandler(vm)],
     ] as const;
     for (const [name, callback] of callbacks) {
       if (input.kind === "resume") {

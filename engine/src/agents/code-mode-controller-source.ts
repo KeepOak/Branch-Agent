@@ -1,6 +1,7 @@
 /** Guest globals and host bridge shared by Code Mode JavaScript executors. */
 import { CODE_MODE_CONSOLE_SOURCE } from "./code-mode-console-source.js";
 import { CODE_MODE_SWARM_CONTROLLER_SOURCE } from "./code-mode-swarm-controller-source.js";
+import { CODE_MODE_WEB_GLOBALS_SOURCE } from "./code-mode-web-globals-source.js";
 import { MAX_CODE_MODE_PENDING_TOOL_CALLS } from "./code-mode-worker-types.js";
 
 export const CODE_MODE_CONTROLLER_SOURCE = String.raw`
@@ -62,6 +63,7 @@ export const CODE_MODE_CONTROLLER_SOURCE = String.raw`
   }
 
   ${CODE_MODE_CONSOLE_SOURCE}
+  ${CODE_MODE_WEB_GLOBALS_SOURCE}
 
   function safe(value, diagnosePromises = false) {
     if (value === undefined) return null;
@@ -524,6 +526,9 @@ export const CODE_MODE_CONTROLLER_SOURCE = String.raw`
     setTimeout: { value: (callback, delay, ...args) => scheduleTimer(callback, delay, args), enumerable: true },
     clearTimeout: { value: cancelTimer, enumerable: true },
     console: { value: guestConsole, enumerable: true },
+    atob: { value: webEncoding.atob, enumerable: true },
+    btoa: { value: webEncoding.btoa, enumerable: true },
+    ...(webCrypto ? { crypto: { value: webCrypto, enumerable: true } } : {}),
     text: { value: (value) => emitOutput({ type: "text", text: asText(value) }), enumerable: true },
     json: { value: (value) => emitOutput({ type: "json", value: safe(value, true) }), enumerable: true },
     yield_control: { value: (reason) => request("yield", [reason]), enumerable: true },

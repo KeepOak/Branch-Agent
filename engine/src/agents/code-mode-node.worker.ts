@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { setImmediate } from "node:timers/promises";
 import { types } from "node:util";
 import { getHeapStatistics } from "node:v8";
@@ -23,6 +24,10 @@ import {
   type SourceLocation,
 } from "./code-mode-source-location.js";
 import { prepareSource } from "./code-mode-source.js";
+import {
+  CODE_MODE_HOST_RANDOM_HEX,
+  CODE_MODE_RANDOM_VALUES_MAX_BYTES,
+} from "./code-mode-web-globals-source.js";
 import type {
   CodeModeConfig,
   CodeModeWorkerContinuation,
@@ -197,9 +202,7 @@ function guestError(error: unknown, location: SourceLocation): string {
   }
   const frames = sourceFrames(error.stack, location);
   if (frames.length === 0 && error.name === "SyntaxError") {
-    const syntax = /^branch-code-mode:user\.js:(\d+)\n[^\n]*\n([ \t]*)\^/u.exec(
-      error.stack ?? "",
-    );
+    const syntax = /^branch-code-mode:user\.js:(\d+)\n[^\n]*\n([ \t]*)\^/u.exec(error.stack ?? "");
     const line = syntax?.[1];
     const prefix = syntax?.[2];
     if (line !== undefined && prefix !== undefined) {
@@ -284,6 +287,18 @@ function createCell(
     current.progress.observeNetworkContent();
   };
   context["__branchHostOutput"] = (json: string) => current.progress.append(json);
+  context[CODE_MODE_HOST_RANDOM_HEX] = (length: unknown) => {
+    if (
+      typeof length !== "number" ||
+      !Number.isInteger(length) ||
+      length < 0 ||
+      length > CODE_MODE_RANDOM_VALUES_MAX_BYTES
+    ) {
+      throw new Error("invalid code mode random byte count");
+    }
+    // Only a hex string crosses back, never a host Buffer.
+    return randomBytes(length).toString("hex");
+  };
   context["__branchNodeInit"] = JSON.stringify({
     __branchCatalog: input.catalog,
     __branchNamespaces: input.namespaces,
