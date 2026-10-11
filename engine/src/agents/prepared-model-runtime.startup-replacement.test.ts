@@ -446,6 +446,71 @@ describe("startup preparation of a Trunk whose model build never settles", () =>
     }
   });
 
+  it("finishes a Trunk whose model build outlasts the startup budget once its background publication commits, instead of failing it", async () => {
+    mocks.configuredAgentIds = ["tk"];
+    // The Gateway uses one 120 s budget for both the build timeout and the startup publication.
+    getPreparedModelRuntimeTestApi().setModelRuntimeBuildTimeoutMsForTest(150);
+    mocks.prepareStaticCatalog.mockImplementation(async (...args: unknown[]) => {
+      if (workspaceOf(args).includes("tk")) {
+        // The build settles after the startup budget has expired, so the publication degrades.
+        await delay(600);
+      }
+      return { entries: [] };
+    });
+    const env = { ...process.env, BRANCH_AGENT_PREPARATION_RETRY_MS: "60000" };
+    const path = openBranchAgentDatabase({ agentId: "tk", env }).path;
+    await closeDatabases();
+    secrets.authDatabasePaths = [resolveAuthProfileDatabasePath(fixture.state.agentDir("tk"))];
+    secrets.active = true;
+    const clean: BranchDatabaseSchemaPreflight = { incompatible: [], indeterminate: [] };
+    const failedAttempts: string[] = [];
+    let stop: (() => Promise<void>) | undefined;
+    try {
+      await withAgentDatabaseStartupAdmission(async (admission) => {
+        const refusals = admission.defer({
+          env,
+          inspections: [{ target: { agentId: "tk", path }, result: Promise.resolve(clean) }],
+          reason: "Inspection continues after the Gateway listener binds.",
+        });
+        recordAgentDatabaseAdmissions(refusals, { env, source: "startup" });
+        stop = admission.adopt().stop;
+        activateGatewayAgentDatabaseStartup({
+          admission: {
+            activate: (activation: Parameters<typeof admission.activate>[0]) =>
+              admission.activate({
+                ...activation,
+                openAgent: async () => {},
+                prepareAgent: async (input) => {
+                  try {
+                    await activation.prepareAgent(input);
+                  } catch (error) {
+                    failedAttempts.push(String(error));
+                    throw error;
+                  }
+                },
+              }),
+          } as unknown as Parameters<typeof activateGatewayAgentDatabaseStartup>[0]["admission"],
+          preparationReady: Promise.resolve(),
+          getConfig: () => config,
+          getPluginRegistry: () => createEmptyPluginRegistry(),
+          getPluginMetadataSnapshot: () => undefined,
+          isCurrent: () => true,
+          log: { info: () => {}, warn: () => {} },
+        });
+      });
+      await expect
+        .poll(() => readAgentDatabaseAdmissionRefusal("tk", { env }), { timeout: 5000 })
+        .toBeUndefined();
+      expect(getPreparedModelRuntimeSnapshot(inputFor("tk"))).toBeDefined();
+      // The attempt waited for its own background publication; it never failed as "has not
+      // published" into the retry backoff.
+      expect(failedAttempts).toEqual([]);
+    } finally {
+      secrets.active = false;
+      await stop?.();
+    }
+  });
+
   it("keeps three agents' startup publications from retiring each other's owners while they are still preparing", async () => {
     // Each covering wait of an attempt is followed by a peer's reload from outside the attempt, as
     // a peer's publication is. On main the reload widens to the roster and deletes the owner the

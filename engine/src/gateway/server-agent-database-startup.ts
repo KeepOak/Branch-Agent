@@ -151,6 +151,22 @@ async function isSnapshotPublished(input: PreparedModelRuntimeInput): Promise<bo
   return getPreparedModelRuntimeSnapshot(input) !== undefined;
 }
 
+/**
+ * A degraded startup publication returns before this agent's build settles. Wait for that build
+ * here, bounded by the attempt, so the attempt's watchdog and retry doubling still apply.
+ */
+async function waitForDegradedAgentBuild(
+  input: PreparedModelRuntimeInput,
+  signal: AbortSignal,
+): Promise<void> {
+  const { getDegradedPreparedModelRuntimeAgentBuild } =
+    await import("../agents/prepared-model-runtime.js");
+  const build = getDegradedPreparedModelRuntimeAgentBuild(input.agentDir);
+  if (build) {
+    await racePromiseWithAbortSignal(build, signal);
+  }
+}
+
 /** Trace text when an agent starts awaiting a covering publication. */
 export function formatCoveringWaitStart(agentId: string, pending: string | undefined): string {
   return `agent ${agentId} awaits covering model publication; pending ${pending ?? "none"}`;
@@ -352,12 +368,16 @@ export function activateGatewayAgentDatabaseStartup(params: {
                 }),
               ),
             );
-            preparedInput = listConfiguredOwnerInputs(cfg, undefined, true).find(
-              (input) => input.agentId === agentId,
+            const input = listConfiguredOwnerInputs(cfg, undefined, true).find(
+              (candidate) => candidate.agentId === agentId,
             );
-            if (!preparedInput) {
+            if (!input) {
               throw new Error(`Agent ${agentId} model preparation is no longer configured`);
             }
+            // A degraded publication keeps running after its refresh returns, and its currency
+            // check reads preparedInput. Assign it only once this agent's build has settled.
+            await waitForDegradedAgentBuild(input, signal);
+            preparedInput = input;
             const covering = await waitForCoveringModelPublication(agentId, preparedInput, signal);
             await params.afterCoveringWait?.(agentId);
             // A newer covering replacement may start right after this wait settles and hide the
