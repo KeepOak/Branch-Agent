@@ -801,7 +801,7 @@ function AllowanceRows({ engine }: { engine: WindowEngine }) {
     <>
       <Ctl title="Offer to save progress at 95%" sub={<>It asks once per account window, never for an estimate. <button type="button" className="link-k" onClick={() => window.dispatchEvent(new Event(CKPT_SHOW))}>Show me</button></>}><Switch label="Offer to save progress at 95%" checked={ckptOn} onChange={(on) => void lookStore(engine).set(CKPT_PREF, on)} /></Ctl>
       <Ctl title="Asking a service what is left" off={NO_ASK}><Switch label="Asking a service what is left" checked onChange={() => undefined} /></Ctl>
-      <DesktopCtl title="Show usage in the tray" sub="A small ring by the clock opens the same list." name="trayUsage" />
+      <DesktopCtl title="Also show usage in the system tray" sub="The usage ring is in the bottom bar. In the desktop app, you can also show it in the system tray." name="trayUsage" />
     </>
   );
 }
@@ -1291,7 +1291,7 @@ function BackupsGo({ data }: { data: RecordValue }) {
 
 export const ROWS: RowEntry[] = ([
   ["Offer to save progress at 95%", "Account allowances", 0],
-  ["Asking a service what is left", "Account allowances", 0], ["Show usage in the tray", "Account allowances", 0],
+  ["Asking a service what is left", "Account allowances", 0], ["Also show usage in the system tray", "Account allowances", 0],
   ["Keep conversations", "Keeping things", 0], ["Checkpoints", "Keeping things", 0], ["Conversations", "Keeping things", 1],
   ["Test set", "Test the model you use", 0],
   ...SUITES.map(([t]): [string, string, number] => [t, "Evals", 0]),
