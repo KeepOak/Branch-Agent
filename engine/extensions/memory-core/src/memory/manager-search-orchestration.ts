@@ -343,9 +343,16 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
           return [];
         }
         if (embeddingKeywordFallback) {
-          log.warn(
-            "memory search: embedding configuration changed; serving keyword results until the rebuild finishes",
-          );
+          // Report each distinct mismatch once with its fix; repeated searches
+          // keep serving keyword results without repeating the warning.
+          const mismatchReason =
+            repairedIndexIdentity.status === "mismatched" ? repairedIndexIdentity.reason : "";
+          if (!this.reportedIndexIdentityMismatches.has(mismatchReason)) {
+            this.reportedIndexIdentityMismatches.add(mismatchReason);
+            log.warn(
+              `memory search: ${mismatchReason}; serving keyword results from the existing index until it is rebuilt. Fix: run branch memory status --index --agent ${this.agentId} once the embedding provider is available.`,
+            );
+          }
           this.dirty = true;
           this.memoryFullRetryDirty = true;
         } else {
@@ -371,7 +378,7 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
       ) {
         const trackedSearchSync = this.syncPublishedIndexInBackground({ reason: "search" })
           .catch((err: unknown) => {
-            log.warn(`memory sync failed (search): ${String(err)}`);
+            this.reportBackgroundSyncFailure("search", err);
           })
           .finally(() => {
             this.activeBackgroundSearchSyncs.delete(trackedSearchSync);
@@ -416,7 +423,16 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
           activeProjectKeys: opts?.activeProjectKeys,
         });
 
+      // While the provider account rejects embeddings, skip the query request
+      // and answer from the existing keyword index. Explicit providers keep
+      // their fail-closed contract.
+      const embeddingAccountBackoffKeywordOnly =
+        this.embeddingAccountBackoff.isActive() &&
+        this.providerRequirement.mode !== "required" &&
+        this.fts.enabled &&
+        this.fts.available;
       const keywordOnly =
+        embeddingAccountBackoffKeywordOnly ||
         embeddingBootstrapKeywordOnly ||
         chunkingUpgradePendingKeywordOnly(effectiveIdentity) ||
         embeddingIdentityOnlyKeywordFallback(effectiveIdentity) ||
@@ -557,9 +573,11 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
             this.fts.available
           ) {
             this.assertRequiredProviderAvailable("search");
-            log.warn(
-              `memory search: embeddings unavailable; using keyword-only results: ${message}`,
-            );
+            if (this.embeddingAccountBackoff.claimLog(err)) {
+              log.warn(
+                `memory search: embeddings unavailable; using keyword-only results: ${message}`,
+              );
+            }
             return await finalizeKeywords(keywordResults);
           } else {
             throw err;

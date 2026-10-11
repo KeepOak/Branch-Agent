@@ -1,17 +1,18 @@
 import { createSubsystemLogger } from "branch/plugin-sdk/memory-core-host-engine-foundation";
 import { resolveTimerTimeoutMs } from "branch/plugin-sdk/number-runtime";
 import { MemoryFileWatcher } from "./file-watcher.js";
+import { isMemoryEmbeddingAccountFailure } from "./manager-embedding-account-backoff.js";
 import { MemoryManagerSyncBase } from "./manager-sync-base.js";
 
 const log = createSubsystemLogger("memory");
 
-function runDetachedMemorySync(sync: () => Promise<void>, reason: "interval" | "watch") {
-  void sync().catch((err: unknown) => {
-    log.warn(`memory sync failed (${reason}): ${String(err)}`);
-  });
-}
-
 export abstract class MemoryManagerWatchOps extends MemoryManagerSyncBase {
+  private runDetachedMemorySync(reason: "interval" | "watch") {
+    void this.sync({ reason }).catch((err: unknown) => {
+      this.reportBackgroundSyncFailure(reason, err);
+    });
+  }
+
   private fileWatcher: MemoryFileWatcher | undefined;
   protected memoryWatcherReady: Promise<void> = Promise.resolve();
   private remoteWatchRetirement: Promise<void> | undefined;
@@ -41,7 +42,7 @@ export abstract class MemoryManagerWatchOps extends MemoryManagerSyncBase {
         this.markMemoryWatchDirty();
         this.memoryWatchUnavailable ||= event === "unavailable";
         // Remote notifications have already passed native file settling on the host.
-        runDetachedMemorySync(() => this.sync({ reason: "watch" }), "watch");
+        this.runDetachedMemorySync("watch");
       };
       this.remoteWatchRetirement = this.memoryFiles
         .watch(
@@ -79,9 +80,18 @@ export abstract class MemoryManagerWatchOps extends MemoryManagerSyncBase {
       agentId: this.agentId,
       settings: this.settings,
       onDirty: () => this.markMemoryWatchDirty(),
-      onChange: () => {
+      onChange: async () => {
         this.markMemoryWatchDirty();
-        return this.sync({ reason: "watch" });
+        try {
+          await this.sync({ reason: "watch" });
+        } catch (err) {
+          // Account failures are reported once per backoff window here; the
+          // watcher would otherwise log every settled change.
+          if (!isMemoryEmbeddingAccountFailure(err)) {
+            throw err;
+          }
+          this.reportBackgroundSyncFailure("watch", err);
+        }
       },
       onUnavailable: () => {
         this.memoryWatchUnavailable = true;
@@ -149,7 +159,7 @@ export abstract class MemoryManagerWatchOps extends MemoryManagerSyncBase {
       return;
     }
     this.intervalTimer = setInterval(() => {
-      runDetachedMemorySync(() => this.sync({ reason: "interval" }), "interval");
+      this.runDetachedMemorySync("interval");
     }, ms);
   }
 }
