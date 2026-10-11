@@ -407,3 +407,21 @@ describe("Canopy data", () => {
     expect(convState({ status: "todo" }, [], now)[0]).toBe("No conversation");
   });
 });
+
+describe("Every step, live with nothing yet", () => {
+  it("shows Open all, Fold all and Clear only once a step has arrived (C6-108, C6-111)", async () => {
+    await mount(fx(), "technical");
+    const section = () => document.querySelector("section[aria-label='Every step, live']");
+    const buttons = () => [...(section()?.querySelectorAll("button") ?? [])].map(b => b.textContent);
+    await vi.waitFor(() => expect(section()).toBeTruthy());
+    expect(buttons()).not.toContain("Open all");
+    expect(buttons()).not.toContain("Fold all");
+    expect(buttons()).not.toContain("Clear");
+    await act(async () => emit("session.tool", { stream: "tool", sessionKey: "agent:a:main", runId: "r1", seq: 1, data: { phase: "start", name: "read", toolCallId: "t1", args: { path: "notes.md" } } }));
+    expect(buttons()).toEqual(expect.arrayContaining(["Open all", "Fold all", "Clear"]));
+    const clear = [...section()!.querySelectorAll("button")].find(b => b.textContent === "Clear")!;
+    await act(async () => clear.click());
+    expect(section()?.textContent).toContain("Nothing yet.");
+    expect(buttons()).not.toContain("Clear");
+  });
+});
