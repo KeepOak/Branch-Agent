@@ -533,7 +533,7 @@ export function Composer(props: Props) {
           />
         ) : null}
         <ToolButton refEl={anchors.plus} icon="plus" label="Attach, mention a Trunk, skills, Temporary" open={menu === "plus"} onClick={() => setMenu(menu === "plus" ? null : "plus")} testId="plus" />
-        <ToolButton refEl={anchors.plug} icon="plug" label="Tools: connectors, skills, plugins and command-line tools" tip="Tools" open={menu === "plug"} onClick={() => setMenu(menu === "plug" ? null : "plug")} disabled={!engine} testId="plug" />
+        <ToolButton refEl={anchors.plug} icon="plug" label="Tools for this conversation" tip="Tools" open={menu === "plug"} onClick={() => setMenu(menu === "plug" ? null : "plug")} disabled={!engine} testId="plug" />
         {note.on ? <VoiceNoteStrip started={note.started} onDone={note.done} /> : dict.on ? <DictationStrip level={dict.level} heard={dict.heard} onDone={() => void dict.done()} /> : (
         <textarea
           ref={box}
