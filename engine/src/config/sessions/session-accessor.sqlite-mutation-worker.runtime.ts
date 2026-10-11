@@ -54,6 +54,7 @@ import {
   type SqliteMutationWorkerCoordination,
 } from "./session-accessor.sqlite-worker-coordination.js";
 import type { SqliteMutationWorkerMessage } from "./session-accessor.sqlite-worker-request.js";
+import { createCanonicalSessionQuarantineHooks } from "./session-canonical-quarantine.js";
 import type { ValidatedCanonicalSessionValidationBatch } from "./session-canonical-validation.js";
 import type {
   SessionColdWorkerData,
@@ -280,7 +281,17 @@ export async function runReclamationWorkerPort(
                   database,
                   request,
                 );
-                return canonical.validateCanonicalSessionValidationBatch(batch);
+                const validated = canonical.validateCanonicalSessionValidationBatch(batch);
+                const refused = validated.quarantinedRows[0];
+                // Only startup may set isolated rows aside; request paths and widespread
+                // damage refuse before write admission so doctor still owns the repair.
+                if (
+                  refused &&
+                  validated.quarantinedRows.length > (request.quarantineInvalidRows ?? 0)
+                ) {
+                  throw refused.error;
+                }
+                return validated;
               };
               if (retainedDatabase) {
                 prepared = prepare({ agentId: options.agentId, db: retainedDatabase });
@@ -368,7 +379,12 @@ export async function runReclamationWorkerPort(
                             if (!canonical) {
                               throw new Error("Canonical validation lost its prepared batch");
                             }
-                            const counts = { validatedRows: 0, certifiedRows: 0, oversizedRows: 0 };
+                            const counts = {
+                              validatedRows: 0,
+                              certifiedRows: 0,
+                              oversizedRows: 0,
+                              quarantinedRows: 0,
+                            };
                             if (request.initializeCanonicalValidation) {
                               // The parent may have revoked proof this fresh worker still sees on disk.
                               canonical.seedCanonicalSessionValidation(transactionDatabase);
@@ -380,8 +396,14 @@ export async function runReclamationWorkerPort(
                                 canonical.compareAndCertifyCanonicalSessionValidationBatch(
                                   transactionDatabase,
                                   prepared,
+                                  request.quarantineInvalidRows
+                                    ? createCanonicalSessionQuarantineHooks(options, (count) => {
+                                        counts.quarantinedRows += count;
+                                      })
+                                    : undefined,
                                 );
-                              counts.validatedRows = prepared.rows.length;
+                              counts.validatedRows =
+                                prepared.rows.length + prepared.quarantinedRows.length;
                               counts.oversizedRows = prepared.oversizedRows;
                             }
                             const hasMore =
@@ -395,6 +417,7 @@ export async function runReclamationWorkerPort(
                               certifiedRows: counts.certifiedRows,
                               hasMore,
                               oversizedRows: counts.oversizedRows,
+                              quarantinedRows: counts.quarantinedRows,
                             } satisfies CanonicalSessionValidationResult;
                           },
                           options,

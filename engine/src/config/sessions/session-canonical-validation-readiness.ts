@@ -34,6 +34,8 @@ import { hasPendingCanonicalSessionValidation } from "./session-canonical-valida
 
 const MAX_BATCH_ROWS = 128;
 const MAX_BATCH_BYTES = 1024 * 1024;
+// Isolated damage is set aside; more than this per database is systemic and refuses.
+export const MAX_STARTUP_QUARANTINED_SESSION_ROWS = 8;
 const CONTENTION_BACKOFF_MS = [0, 25, 100, 250] as const;
 const log = createSubsystemLogger("sessions/canonical-validation");
 // Share only active runtime drains; native close/reopen creates a different owner.
@@ -44,6 +46,7 @@ export async function certifySessionCanonicalValidationPending(
   options: BranchAgentDatabaseOptions,
   withWorker: ClaimedReclamationWorkerUse = withSqliteReclamationWorker,
   assertCurrentOwner?: () => void,
+  policy: { quarantineInvalidRows?: boolean } = {},
 ): Promise<void> {
   assertCurrentOwner?.();
   const sourceEnv = options.env ?? process.env;
@@ -57,6 +60,7 @@ export async function certifySessionCanonicalValidationPending(
   }
   const { database, claim } = retained;
   let oversizedRows = 0;
+  let quarantinedRows = 0;
   try {
     const readiness = runSqliteReadOperationSync(
       database.db,
@@ -80,9 +84,7 @@ export async function certifySessionCanonicalValidationPending(
         BRANCH_STATE_DIR: resolveBranchStateDirForDatabasePath(
           options.database?.path ?? resolveBranchStateSqlitePath(sourceEnv),
         ),
-        ...(isGatewayExternallySupervised(sourceEnv)
-          ? { BRANCH_SUPERVISOR_MODE: "external" }
-          : {}),
+        ...(isGatewayExternallySupervised(sourceEnv) ? { BRANCH_SUPERVISOR_MODE: "external" } : {}),
       },
     };
     return await withSqliteMutationWorkerLifetime(
@@ -124,6 +126,14 @@ export async function certifySessionCanonicalValidationPending(
                           maxRows: MAX_BATCH_ROWS,
                           maxBytes: MAX_BATCH_BYTES,
                           initializeCanonicalValidation,
+                          ...(policy.quarantineInvalidRows
+                            ? {
+                                quarantineInvalidRows: Math.max(
+                                  0,
+                                  MAX_STARTUP_QUARANTINED_SESSION_ROWS - quarantinedRows,
+                                ),
+                              }
+                            : {}),
                           onCommitRequest: authorize,
                           withWriteAdmission: async (run, reclamationAdmission) =>
                             await runExclusiveSqliteSessionWrite(
@@ -163,6 +173,7 @@ export async function certifySessionCanonicalValidationPending(
             }
             validation ??= currentValidation;
             oversizedRows += result.oversizedRows;
+            quarantinedRows += result.quarantinedRows;
             if (!result.hasMore) {
               if (
                 !isBranchAgentDatabasePathCurrent(database) ||
@@ -220,6 +231,12 @@ export async function certifySessionCanonicalValidationPending(
     );
   } finally {
     claim.release();
+    if (quarantinedRows > 0) {
+      log.warn(
+        "Quarantined invalid persisted session rows; startup continues and branch doctor --fix can repair them",
+        { path: pathname, rows: quarantinedRows },
+      );
+    }
     if (oversizedRows > 0) {
       log.warn("Canonical session validation processed oversized rows in its Worker", {
         path: pathname,

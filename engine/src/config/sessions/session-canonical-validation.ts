@@ -17,6 +17,7 @@ import {
   readCanonicalSessionMainKey,
 } from "./session-canonical-key.js";
 import {
+  SessionCanonicalKeyMigrationRequiredError,
   validateCanonicalSessionRow,
   type CanonicalSessionValidationRow,
 } from "./session-canonical-row.js";
@@ -32,9 +33,24 @@ export type CanonicalSessionValidationBatch = {
   oversizedRows: number;
 };
 
+/** A pending row that failed validation; its exact inputs gate the quarantine decision. */
+export type QuarantinedCanonicalSessionRow = {
+  readonly row: Readonly<CanonicalSessionValidationRow>;
+  readonly reason: string;
+  readonly error: SessionCanonicalKeyMigrationRequiredError;
+};
+
 const validatedBatch = Symbol("validatedCanonicalSessionBatch");
 export type ValidatedCanonicalSessionValidationBatch = Readonly<CanonicalSessionValidationBatch> & {
+  readonly quarantinedRows: readonly QuarantinedCanonicalSessionRow[];
   readonly [validatedBatch]: true;
+};
+
+export type CanonicalSessionCertificationHooks = {
+  /** Persist quarantine records; throwing keeps the rows pending and refuses readiness. */
+  quarantine?: (rows: readonly QuarantinedCanonicalSessionRow[]) => void;
+  /** Rows that validated in this batch, so stale quarantine records can be retired. */
+  onCertified?: (sessionKeys: readonly string[]) => void;
 };
 
 export function hasPendingCanonicalSessionValidation(database: ValidationDatabase): boolean {
@@ -148,14 +164,25 @@ export function readPendingCanonicalSessionValidationBatch(
 export function validateCanonicalSessionValidationBatch(
   batch: CanonicalSessionValidationBatch,
 ): ValidatedCanonicalSessionValidationBatch {
-  const rows = batch.rows.map((row) => {
-    const snapshot = { ...row };
-    validateCanonicalSessionRow(snapshot);
-    return Object.freeze(snapshot);
-  });
+  const rows: CanonicalSessionValidationRow[] = [];
+  const quarantinedRows: QuarantinedCanonicalSessionRow[] = [];
+  for (const row of batch.rows) {
+    const snapshot = Object.freeze({ ...row });
+    try {
+      validateCanonicalSessionRow(snapshot);
+      rows.push(snapshot);
+    } catch (error) {
+      // One damaged row must not hold every other session hostage at startup.
+      if (!(error instanceof SessionCanonicalKeyMigrationRequiredError)) {
+        throw error;
+      }
+      quarantinedRows.push(Object.freeze({ row: snapshot, reason: error.message, error }));
+    }
+  }
   const validated: ValidatedCanonicalSessionValidationBatch = {
     ...batch,
     rows: Object.freeze(rows),
+    quarantinedRows: Object.freeze(quarantinedRows),
     absentKeys: Object.freeze([...batch.absentKeys]),
     [validatedBatch]: true,
   };
@@ -182,6 +209,7 @@ function sameCanonicalRow(
 export function compareAndCertifyCanonicalSessionValidationBatch(
   database: ValidationDatabase,
   batch: ValidatedCanonicalSessionValidationBatch,
+  hooks: CanonicalSessionCertificationHooks = {},
 ): number {
   if (!database.db.isTransaction) {
     throw new Error("Canonical validation certification requires write admission");
@@ -192,7 +220,11 @@ export function compareAndCertifyCanonicalSessionValidationBatch(
   ) {
     return 0;
   }
-  const keys = [...batch.rows.map((row) => row.session_key), ...batch.absentKeys];
+  const keys = [
+    ...batch.rows.map((row) => row.session_key),
+    ...batch.quarantinedRows.map(({ row }) => row.session_key),
+    ...batch.absentKeys,
+  ];
   if (keys.length === 0) {
     return 0;
   }
@@ -211,6 +243,24 @@ export function compareAndCertifyCanonicalSessionValidationBatch(
     return candidate && sameCanonicalRow(row, candidate) ? [row.session_key] : [];
   });
   certifiedKeys.push(...batch.absentKeys.filter((key) => !current.has(key)));
+  // Changed rows stay pending and are revalidated from their new bytes.
+  const quarantined = batch.quarantinedRows.filter(({ row }) => {
+    const candidate = current.get(row.session_key);
+    return candidate !== undefined && sameCanonicalRow(row, candidate);
+  });
+  const [firstQuarantined] = quarantined;
+  if (firstQuarantined) {
+    if (!hooks.quarantine) {
+      throw firstQuarantined.error;
+    }
+    hooks.quarantine(quarantined);
+  }
+  const validKeys = new Set(batch.rows.map((row) => row.session_key));
+  const recovered = certifiedKeys.filter((key) => validKeys.has(key));
+  if (recovered.length > 0) {
+    hooks.onCertified?.(recovered);
+  }
+  certifiedKeys.push(...quarantined.map(({ row }) => row.session_key));
   if (certifiedKeys.length === 0) {
     return 0;
   }

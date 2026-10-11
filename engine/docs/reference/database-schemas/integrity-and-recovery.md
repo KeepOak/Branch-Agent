@@ -395,6 +395,8 @@ can continue reading the same databases.
 
 Quarantine decisions live only in a dedicated `branch-quarantine.sqlite` store, so they survive damage to the databases being quarantined. Verification results are logged.
 
+At Gateway startup, a persisted session row that fails canonical validation (`invalid persisted session row requires repair`) no longer stops every session. Startup records the row in the `quarantined_session_rows` table of `branch-quarantine.sqlite` (database path, agent, session key, reason, and the exact stored columns), logs a warning, and continues. The row itself stays in its agent database, so `branch doctor --fix` can still repair it; the record is removed once the row validates again. More than eight invalid rows in one agent database is treated as systemic damage, and startup refuses as before. Request-time readiness checks keep refusing invalid rows; only startup sets them aside. If the record cannot be written, startup refuses with the original error.
+
 Background verification errors retain the original name and message and append bounded Node `code` and SQLite `errcode` values from up to eight cause-chain nodes. These diagnostics do not change the verdict: I/O failures remain inconclusive, while proven corruption is reconfirmed by the database owner before quarantine. A generic `disk I/O error` (`errcode=10`) does not establish disk exhaustion.
 
 The background verifier retains its child through native exit and IPC disconnect,

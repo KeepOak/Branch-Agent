@@ -59,6 +59,8 @@ export type SqliteCanonicalValidationWorkerRequest = {
   maxRows: number;
   maxBytes: number;
   initializeCanonicalValidation: boolean;
+  /** Startup may record this many invalid rows in branch-quarantine.sqlite; request paths refuse. */
+  quarantineInvalidRows?: number;
   coordination: SqliteMutationWorkerCoordination;
 };
 export type WorkerCleanup = { cleanupWarnings: string[]; settled: boolean };
