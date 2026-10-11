@@ -399,7 +399,10 @@ export function invalidatePreparedModelRuntimeOwnersForAuthMutation(
         !owner.refreshError &&
         owner.input.inheritedAuthDir ===
           normalizeOptionalDir(
-            resolveLegacyInheritedAuthDir(owner.input.config, owner.input.env),
+            resolveLegacyInheritedAuthDir(owner.input.config, owner.input.env, undefined, {
+              agentId: owner.input.agentId,
+              agentDir: owner.input.agentDir,
+            }),
           )) ||
       (!normalizedEvent.affectsInheritedStores &&
         owner.input.agentDir !== normalizedEvent.agentDir &&
@@ -425,7 +428,10 @@ export function invalidatePreparedModelRuntimeOwnersForAuthMutation(
       continue;
     }
     const inheritedAuthDir = normalizeOptionalDir(
-      resolveLegacyInheritedAuthDir(owner.input.config, owner.input.env),
+      resolveLegacyInheritedAuthDir(owner.input.config, owner.input.env, undefined, {
+        agentId: owner.input.agentId,
+        agentDir: owner.input.agentDir,
+      }),
     );
     if (owner.input.inheritedAuthDir === inheritedAuthDir) {
       continue;

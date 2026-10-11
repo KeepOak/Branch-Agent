@@ -20,8 +20,8 @@ import {
 } from "../../config/sessions/session-accessor.js";
 import { clearSessionStoreCacheForTest } from "../../config/sessions/store-writer-state.js";
 import { applyAssistantDeliveryDirectives } from "../../config/sessions/transcript-assistant-delivery.js";
-import type { ModelDefinitionConfig } from "../../config/types.models.js";
 import type { BranchConfig } from "../../config/types.branch.js";
+import type { ModelDefinitionConfig } from "../../config/types.models.js";
 import { resolveMcpLoopbackScopedTools } from "../../gateway/mcp-http.runtime.js";
 import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
@@ -395,6 +395,29 @@ describe("CLI attempt execution", () => {
       lifecycleGeneration: "next-generation",
     });
     expect(onExecutionStarted).toHaveBeenCalledTimes(1);
+  });
+
+  it("forwards logical handoff cancellation and step checkpoints to the embedded runtime", async () => {
+    const controller = new AbortController();
+    const checkpoint = vi.fn();
+    const deferredLifecycle: NonNullable<RunAgentAttemptParams["deferredLifecycle"]> = {
+      signal: controller.signal,
+      checkpoint,
+      beginRetryWait: () => undefined,
+      abort: vi.fn(),
+      adopt: vi.fn(),
+      handoffToCli: vi.fn(),
+      complete: vi.fn(async () => undefined),
+    };
+    const embedded = await runBranchEmbeddedAttemptForTest({
+      runId: "embedded-handoff-boundary",
+      opts: { abortSignal: new AbortController().signal },
+      deferredLifecycle,
+    });
+    expect(embedded.abortSignal).toBe(controller.signal);
+    expect(embedded.onHandoffBoundary).toBe(checkpoint);
+    controller.abort(new Error("handoff"));
+    expect((embedded.abortSignal as AbortSignal).aborted).toBe(true);
   });
 
   async function createCliSession(sessionKey: string, sessionEntry: SessionEntry) {
@@ -1016,10 +1039,7 @@ describe("CLI attempt execution", () => {
     }
   });
 
-  function makeClaudeCliSessionEntry(
-    branchSessionId: string,
-    cliSessionId: string,
-  ): SessionEntry {
+  function makeClaudeCliSessionEntry(branchSessionId: string, cliSessionId: string): SessionEntry {
     return {
       sessionId: branchSessionId,
       updatedAt: Date.now(),
@@ -1397,10 +1417,7 @@ describe("CLI attempt execution", () => {
     const sessionKey = "agent:main:direct:claude-missing-transcript";
     const homeDir = path.join(tmpDir, "home");
     setTestEnvValue("HOME", homeDir);
-    const sessionEntry = makeClaudeCliSessionEntry(
-      "branch-session-123",
-      "phantom-claude-session",
-    );
+    const sessionEntry = makeClaudeCliSessionEntry("branch-session-123", "phantom-claude-session");
     const { sessionStore, runCli } = await createCliSession(sessionKey, sessionEntry);
     runCliAgentMock.mockImplementationOnce(async () => {
       expect(claudeBinding(sessionStore[sessionKey])).toBeUndefined();
@@ -2164,6 +2181,7 @@ describe("CLI attempt execution", () => {
     const handoffToCli = vi.fn();
     const deferredLifecycle: NonNullable<RunAgentAttemptParams["deferredLifecycle"]> = {
       signal: controller.signal,
+      checkpoint: vi.fn(),
       beginRetryWait: () => undefined,
       abort: vi.fn(),
       adopt: vi.fn(),

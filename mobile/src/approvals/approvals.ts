@@ -6,6 +6,7 @@
 // surface answers first wins; the others hear *.approval.resolved and the card moves to Answered.
 import { agentIdOf, readAgents } from '../chats/chatList';
 import type { EngineLink } from '../pairing/pairingSession';
+import { TEST_APPROVAL_PLUGIN } from './testApproval';
 
 export type ApprovalKind = 'exec' | 'plugin';
 export type ApprovalDecision = 'allow-once' | 'allow-always' | 'deny';
@@ -15,6 +16,8 @@ export type Approval = {
   kind: ApprovalKind;
   agentId?: string;
   sessionKey?: string;
+  /** The plugin that asked, for a plugin approval. */
+  pluginId?: string;
   /** The command an exec approval would run; a plugin's title when it has no command. */
   command: string;
   /** A plugin's question ("Send an email to Dana?") and what it will do, in its own words. */
@@ -88,6 +91,7 @@ export function readApproval(payload: unknown, kind: ApprovalKind): Approval | n
     kind,
     ...(agentId ? { agentId } : {}),
     ...(sessionKey ? { sessionKey } : {}),
+    ...(kind === 'plugin' && str(r.pluginId) ? { pluginId: str(r.pluginId) } : {}),
     command: str(r.commandPreview) || str(r.command) || str(r.title),
     ...(str(r.title) ? { title: str(r.title) } : {}),
     ...(kind === 'plugin' && str(r.description) ? { description: str(r.description) } : {}),
@@ -100,8 +104,12 @@ export function readApproval(payload: unknown, kind: ApprovalKind): Approval | n
   };
 }
 
+/** Who a test approval from this phone (testApproval.ts) is from, on its card and notification. */
+export const TEST_APPROVAL_ASKER: Trunk = { name: 'Branch test', avatar: '✓' };
+
 /** The Trunk who asked, by its id, with a stand-in when the engine didn't say. */
 export function trunkOf(approval: Approval, trunks: Record<string, Trunk>): Trunk {
+  if (!approval.agentId && approval.pluginId === TEST_APPROVAL_PLUGIN) return TEST_APPROVAL_ASKER;
   const known = approval.agentId ? trunks[approval.agentId] : undefined;
   if (known) return known;
   const name = approval.agentId ? approval.agentId.charAt(0).toUpperCase() + approval.agentId.slice(1) : 'A Trunk';

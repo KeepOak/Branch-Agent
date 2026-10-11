@@ -6,16 +6,19 @@ import { Menu, type MenuAnchor, type MenuItem } from "./Menu";
 import { menuIcon } from "./menu-icons";
 import { notify } from "./notify";
 import { emojiList, emojiScores, emojisForTopics } from "./topic-emoji-logic";
+import { distinctNames, isRawSessionKey, readableTitle, sessionKeyName, splitKeyTag } from "./topic-name";
 import { readTopicSettings, saveTopicSettings, setContactTopicLayout, setDefaultTopicLayout, topicLayoutDefaults as defaults, topicLayoutNames as names, TOPIC_LAYOUT_KEY as key, type TopicLayout as Layout } from "./topic-layout";
 import "./topic-rail.css";
 
 const emojiKey = "branch-topic-emoji-t5";
 const muteKey = "branch-topic-mute-t5";
 function stored<T>(name: string, fallback: T): T { try { return JSON.parse(localStorage.getItem(name) || "null") ?? fallback; } catch { return fallback; } }
-const displayTitle = (topic: Topic) => topic.labelled ? topic.title : shortTopicTitle(topic.title);
+const displayTitle = (topic: Topic) => topic.labelled ? readableTitle(topic.title) : shortTopicTitle(topic.title);
+const tabLabel = (label: string) => { const { name, tag } = splitKeyTag(label); return <><span className="tpTabNameT5">{name}</span>{tag ? <span className="tpTabTagT5"> · {tag}</span> : null}</>; };
 const clock = (at: number) => at ? new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }) : "";
 export function shortTopicTitle(name: string): string {
   const verb = /^(fix|watch|save|match|tidy|refactor|add|test|find|check|make|book|read|write|plan|send|put|sort|clean|update|review|build|run)\s+(?:the|a|an|my|every|all)?\s*/i;
+  if (isRawSessionKey(name)) return sessionKeyName(name.trim());
   const start = String(name || "").split(" · ")[0]!.trim();
   const action = start.match(verb)?.[1] ?? "";
   let title = start.replace(verb, "").replace(/\s+(through|on|for|to|since|from|with|before|after|in|into)\s+.*$/i, "").trim();
@@ -96,9 +99,10 @@ export function TopicRail(p: TopicRailProps) {
   const active = p.items.filter(({ topic }) => topic.status !== "archived").sort((a, b) => Number(Boolean(b.topic.pinnedAt)) - Number(Boolean(a.topic.pinnedAt)) || b.updatedAt - a.updatedAt);
   const closed = p.items.filter(({ topic }) => topic.status === "archived");
   const topicIcons = emojisForTopics(p.items.map(({ topic, preview }) => ({ key: topic.key, title: displayTitle(topic), body: `${topic.title} ${preview}` })), emoji);
-  const button = (id: string, label: string, icon: string, status?: Topic["status"], unread?: boolean) => { const all = id.startsWith("all-"); const current = all ? Boolean(p.allSelected) : !p.allSelected && p.currentKey === id; const statusWord = status === "waiting" ? "needs you" : status === "working" || status === "done" ? status : ""; return <button key={id} type="button" className={`tpTabT5 ${current ? "curT5" : ""}`} role={displayedLayout === "tabs" ? "tab" : undefined} aria-selected={displayedLayout === "tabs" ? current : undefined} aria-current={current} aria-label={`${label}${statusWord ? `, ${statusWord}` : ""}`} data-tip={all ? "Every thread’s messages, newest last" : label} onClick={() => all ? p.onAll() : p.onOpen(id)}>{id === p.contactKey && displayedLayout !== "tabs" ? <span className="tpAvT5"><Face size={26} label={p.contactName}/></span> : (all && displayedLayout === "tabs") || (id === p.contactKey && displayedLayout === "tabs") ? null : <span className="tpEmoT5" aria-hidden="true">{icon}</span>}<span className="tpTabLT5">{label}</span>{statusWord ? <i className={`tpStT5 ${status === "waiting" ? "needs" : status}`} role="img" aria-label={statusWord} /> : null}{unread && !current ? <b className="tpBadgeT5" aria-label="unread">1</b> : null}</button>; };
+  const button = (id: string, label: string, icon: string, status?: Topic["status"], unread?: boolean) => { const all = id.startsWith("all-"); const current = all ? Boolean(p.allSelected) : !p.allSelected && p.currentKey === id; const statusWord = status === "waiting" ? "needs you" : status === "working" || status === "done" ? status : ""; return <button key={id} type="button" className={`tpTabT5 ${current ? "curT5" : ""}`} role={displayedLayout === "tabs" ? "tab" : undefined} aria-selected={displayedLayout === "tabs" ? current : undefined} aria-current={current} aria-label={`${label}${statusWord ? `, ${statusWord}` : ""}`} data-tip={all ? "Every thread’s messages, newest last" : label} onClick={() => all ? p.onAll() : p.onOpen(id)}>{id === p.contactKey && displayedLayout !== "tabs" ? <span className="tpAvT5"><Face size={26} label={p.contactName}/></span> : (all && displayedLayout === "tabs") || (id === p.contactKey && displayedLayout === "tabs") ? null : <span className="tpEmoT5" aria-hidden="true">{icon}</span>}<span className="tpTabLT5">{tabLabel(label)}</span>{statusWord ? <i className={`tpStT5 ${status === "waiting" ? "needs" : status}`} role="img" aria-label={statusWord} /> : null}{unread && !current ? <b className="tpBadgeT5" aria-label="unread">1</b> : null}</button>; };
+  const rowNames = distinctNames(p.items.map(({ topic }) => ({ key: topic.key, name: displayTitle(topic) })));
   const row = ({ topic, preview, who, updatedAt }: typeof p.items[number]) => {
-    const label = displayTitle(topic);
+    const label = rowNames.get(topic.key) ?? displayTitle(topic);
     return displayedLayout === "column" ? <div className={`tpRowT5 ${p.currentKey === topic.key ? "curT5" : ""} ${muted[topic.key] ? "muteT5" : ""}`} role="listitem" key={topic.key}>
       <button className="tpEmoBtnT5" type="button" data-topic-key={topic.key} aria-label={`Change the emoji for ${label}`} data-tip="Change the emoji" onClick={(event) => changeEmoji(topic, event.currentTarget)}>{topicIcons[topic.key]}</button>
       <button className="tpGoT5" type="button" aria-current={p.currentKey === topic.key} data-tip={`${label} · ${who ? `${who}: ` : ""}${preview}`} onClick={() => p.onOpen(topic.key)}><span className="tpL1T5"><b>{label}</b>{topic.pinnedAt ? <i className="tpPinT5" aria-label="pinned"/> : null}{muted[topic.key] ? <i className="tpMuteT5" aria-label="muted"/> : null}<time>{clock(updatedAt)}</time></span><span className="tpL2T5">{who && preview ? <i className="tpWhoT5">{who}:</i> : null}<span>{preview}</span>{topic.status === "working" || topic.status === "waiting" || topic.status === "done" ? <i className={`tpStT5 ${topic.status === "waiting" ? "needs" : topic.status}`} role="img" aria-label={topic.status === "waiting" ? "needs you" : topic.status}/> : null}{topic.unread && p.currentKey !== topic.key && !muted[topic.key] ? <b className="tpBadgeT5" aria-label="unread">1</b> : null}</span></button>

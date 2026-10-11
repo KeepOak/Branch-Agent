@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DraftFile } from "./attachments";
 import { safeStorage } from "./drafts";
+import type { SkillPick } from "./skill-picks";
 import { enqueue, loadLine, moveUp, nextToSend, onLineChange, remove, reword, saveLine, type QueueItem } from "./queue";
 
 export type Deliver = (item: QueueItem, steer: boolean) => void;
@@ -74,7 +75,10 @@ export function useWaitingLine(sessionKey: string | null, working: boolean, offl
     deliverRef.current(item, false);
   }, [line, working, offline, update, sessionKey]);
 
-  const add = useCallback((text: string, files: DraftFile[]) => update((l) => enqueue(l, { id: crypto.randomUUID(), text, files, createdAt: Date.now() })), [update]);
+  const add = useCallback(
+    (text: string, files: DraftFile[], picks: SkillPick[] = []) => update((l) => enqueue(l, { id: crypto.randomUUID(), text, files, picks, createdAt: Date.now() })),
+    [update],
+  );
   const steerNow = useCallback(
     (id: string) => {
       const item = line.find((i) => i.id === id);
