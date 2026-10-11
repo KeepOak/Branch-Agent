@@ -64,6 +64,31 @@ const BASE: Answers = { "sessions.usage": USAGE, "usage.status": STATUS, "agents
 const CFG = (config: Record<string, unknown> = {}): Answers => ({ "config.get": { hash: "h", valid: true, config }, "config.patch": { ok: true, hash: "h2", config } });
 
 describe("Settings › Data & usage", () => {
+  it("locates the usage ring in the bottom bar and explains the optional desktop tray", async () => {
+    await show(engineWith(BASE).engine);
+    const tray = row("Also show usage in the system tray");
+    expect(tray?.textContent).toContain("The usage ring is in the bottom bar. In the desktop app, you can also show it in the system tray.");
+    expect(tray?.getAttribute("aria-disabled")).toBe("true");
+    expect(host.textContent).not.toContain("by the clock");
+  });
+
+  it("keeps the optional system tray switch connected to the desktop setting", async () => {
+    let state = { keepWorking: true, keepAwake: false, trayUsage: false, autoApplyUpdates: true, startWithWindows: false, branchOnPath: false };
+    const set = vi.fn(async (_name: string, on: boolean) => (state = { ...state, trayUsage: on }));
+    Object.assign(window, { branchDesktop: { controls: { get: async () => state, set } } });
+    await show(engineWith(BASE).engine);
+    const toggle = row("Also show usage in the system tray")?.querySelector("input");
+    expect(toggle?.disabled).toBe(false);
+    await act(async () => toggle!.click());
+    await flush();
+    expect(set).toHaveBeenCalledWith("trayUsage", true);
+    expect(toggle?.checked).toBe(true);
+    await act(async () => toggle!.click());
+    await flush();
+    expect(set).toHaveBeenLastCalledWith("trayUsage", false);
+    expect(toggle?.checked).toBe(false);
+  });
+
   it("Show me previews the save-progress offer without a measured limit", async () => {
     const { engine } = engineWith(BASE);
     await act(async () => root.render(<><UsagePage page="usage" title="Data & usage" level="regular" engine={engine} /><SaveProgressOffer engine={engine} limits={null} on runningKeys={[]} /></>));
