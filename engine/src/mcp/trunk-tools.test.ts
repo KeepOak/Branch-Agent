@@ -143,7 +143,7 @@ describe("branch mcp serve Trunk tools", () => {
   it("trunk_send opens a new labelled thread and sends as the outside agent", async () => {
     const { gw, calls } = fakeGateway({
       "sessions.create": () => ({ ok: true }),
-      "chat.send": () => ({ runId: "run-1", status: "started" }),
+      "chat.send": () => ({ runId: "run-1", status: "started", targetDisposition: "started" }),
     });
     const out = await call(await connect(gw), "trunk_send", {
       agent_id: "builder-oak",
@@ -153,6 +153,7 @@ describe("branch mcp serve Trunk tools", () => {
       thread_key: "agent:builder-oak:claude-code-1700",
       run_id: "run-1",
       status: "started",
+      target_disposition: "started",
     });
     expect(calls[0]).toEqual({
       method: "sessions.create",
@@ -167,12 +168,15 @@ describe("branch mcp serve Trunk tools", () => {
       agentId: "builder-oak",
       message: "Reply with exactly OK",
       deliver: false,
+      queueMode: "steer",
       outsideAgent: claude,
     });
   });
 
   it("trunk_send into a given thread does not create one, and without a known identity sends plainly", async () => {
-    const { gw, calls } = fakeGateway({ "chat.send": () => ({ runId: "run-2" }) });
+    const { gw, calls } = fakeGateway({
+      "chat.send": () => ({ runId: "run-2", status: "started", targetDisposition: "started" }),
+    });
     await call(await connect(gw, null), "trunk_send", {
       agent_id: "main",
       text: "hi",
@@ -182,17 +186,47 @@ describe("branch mcp serve Trunk tools", () => {
     expect(calls[0]?.params).not.toHaveProperty("outsideAgent");
   });
 
-  it("trunk_send into a thread queues behind its active run instead of inheriting the session queue mode", async () => {
-    const { gw, calls } = fakeGateway({ "chat.send": () => ({ runId: "run-3", status: "queued" }) });
-    await call(await connect(gw), "trunk_send", {
+  it("trunk_send reports the run it steered into as the run that carries the reply", async () => {
+    const { gw, calls } = fakeGateway({
+      "chat.send": () => ({
+        runId: "run-3",
+        status: "started",
+        targetDisposition: "steered",
+        steeredRunId: "run-live",
+      }),
+    });
+    const out = await call(await connect(gw), "trunk_send", {
       agent_id: "builder-oak",
       text: "Also check the migration",
       thread_key: "agent:builder-oak:claude-code-1700",
     });
-    expect(calls).toHaveLength(1);
+    expect(out).toEqual({
+      thread_key: "agent:builder-oak:claude-code-1700",
+      run_id: "run-live",
+      status: "started",
+      target_disposition: "steered",
+    });
+    expect(calls.map((c) => c.method)).toEqual(["chat.send"]);
     expect(calls[0]?.params).toMatchObject({
       sessionKey: "agent:builder-oak:claude-code-1700",
-      queueMode: "followup",
+      queueMode: "steer",
+    });
+  });
+
+  it("trunk_send reports queued when the message waited behind a run it did not join", async () => {
+    const { gw } = fakeGateway({
+      "chat.send": () => ({ runId: "run-5", status: "started", targetDisposition: "queued" }),
+    });
+    const out = await call(await connect(gw), "trunk_send", {
+      agent_id: "builder-oak",
+      text: "Queue this behind the run",
+      thread_key: "agent:builder-oak:claude-code-1700",
+    });
+    expect(out).toEqual({
+      thread_key: "agent:builder-oak:claude-code-1700",
+      run_id: "run-5",
+      status: "started",
+      target_disposition: "queued",
     });
   });
 
@@ -213,6 +247,22 @@ describe("branch mcp serve Trunk tools", () => {
       method: "chat.abort",
       params: { sessionKey: "agent:oak:t", runId: "run-1" },
     });
+  });
+
+  it("trunk_steer reports whether the message joined the run", async () => {
+    const { gw } = fakeGateway({
+      "chat.send": () => ({
+        runId: "run-9",
+        status: "started",
+        targetDisposition: "steered",
+        steeredRunId: "run-live",
+      }),
+    });
+    const out = await call(await connect(gw), "trunk_steer", {
+      thread_key: "agent:oak:t",
+      text: "also add tests",
+    });
+    expect(out).toMatchObject({ run_id: "run-live", target_disposition: "steered" });
   });
 
   it("run_wait streams thinking and tool events as progress and returns the reply", async () => {
