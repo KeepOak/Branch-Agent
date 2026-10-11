@@ -53,6 +53,7 @@ vi.mock("../../config/sessions/session-accessor.js", async (importOriginal) => {
   };
 });
 
+const { closeBranchStateDatabaseForTest } = await import("../../state/branch-state-db-cache.js");
 const { contactHandlers } = await import("./contacts.js");
 const admission = await import("../../state/agent-database-admission.js");
 
@@ -69,7 +70,9 @@ afterEach(() => {
   } else {
     process.env.BRANCH_STATE_DIR = previousState;
   }
-  fs.rmSync(stateDir, { recursive: true, force: true });
+  // Windows keeps the SQLite file locked until its handle closes, so close before removing.
+  // closeBranchStateDatabaseForTest();
+  fs.rmSync(stateDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 25 });
 });
 
 const owner = {

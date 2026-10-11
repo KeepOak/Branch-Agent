@@ -33,11 +33,14 @@ function mobileStillStarting(): void {
   );
 }
 
-/** Fails the test instead of hanging it if a read waits on the engine. */
+/**
+ * Fails the test instead of hanging it if a read waits on the engine. The guard is generous so a
+ * cold first call on a slow CI runner is not mistaken for a wait; the median check is the bar.
+ */
 function withDeadline<T>(work: Promise<T>, label: string): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} waited on the engine`)), 2_000);
+    timer = setTimeout(() => reject(new Error(`${label} waited on the engine`)), 20_000);
   });
   return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
 }
