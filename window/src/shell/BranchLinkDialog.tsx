@@ -101,7 +101,7 @@ export function BranchLinkDialog({ engine, onClose, onLinked, onOpenGatewaySetti
         <p>What it may do: {code.access === "limited" ? "limited, non-administrator access, including conversations and approval requests" : code.access}. Review its exact permissions and check code in the approval request before letting it in.</p></>}
       {unreachable && <div role="alert"><p>This computer can’t be reached by another computer yet. In Gateway settings, choose “My network” or “Tailscale” under “Who can reach the Gateway”, then make a new code.</p>
         {onOpenGatewaySettings && <button type="button" className="btn sm" onClick={onOpenGatewaySettings}>Open Gateway settings</button>}</div>}
-      {paired && <p role="status" className="cz-ok">Paired with {paired}. Its Trunks appear in Grafts.</p>}
+      {paired && <p role="status" className="cz-ok">Paired with {paired}. Its Trunks appear in Connected agents.</p>}
     </div> : <div className="cz-pair">
       <p>Get a code from the other Branch through a way you trust. This Branch and its Trunks will appear to that teammate after they approve it. Check the device name on both Branches before approval.</p>
       <label className="cz-field"><span>Setup code</span><textarea className="inp" aria-label="Setup code" value={incoming} onChange={event => setIncoming(event.target.value)} /></label>

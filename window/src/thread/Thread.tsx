@@ -382,7 +382,9 @@ export function Thread(props: Props) {
           {helperNextUserAt < 0 ? helperChip : null}
           {restSupplement}
           {suggestions.length ? <div className="suggestion-row" role="group" aria-label="Suggested replies" data-testid="suggestion-row">
-            {suggestions.map((text) => <button key={text} type="button" title={`Send “${text}” as your reply`} aria-label={`Reply: ${text}`} onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}><Icon d={ICONS.reply} size={12} className="sug-arrow" />{text}</button>)}
+            {/* NC-01: a visible lead and quoted text, so a chip reads as a line you send, never as "open the thing". */}
+            <span className="sug-lead" aria-hidden="true">Reply with</span>
+            {suggestions.map((text) => <button key={text} type="button" title={`Send “${text}” as your reply`} aria-label={`Reply: ${text}`} onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}><Icon d={ICONS.reply} size={12} className="sug-arrow" /><span className="sug-text">{`\u201c${text}\u201d`}</span></button>)}
           </div> : null}
           {props.recoveryFailure === RESTART_NOT_RESUMED ? (
             <div className="pass-line restart-stop" role="status" data-testid="restart-stopped">Stopped by restart{recoveryEntryId ? <button type="button" className="btn pri sm" onClick={() => void continueInterrupted()}>Resume</button> : null}</div>
@@ -585,6 +587,13 @@ function faceFor(view: View, live: boolean): ReactNode {
   return <Face size={28} label={view.name} state={state} priority={live ? PRIORITY.open : PRIORITY.row} />;
 }
 
+/** In a group chat, another Trunk's post carries that Trunk's face, not this conversation's. */
+function postedFace(block: Extract<Block, { kind: "text" }>, view: View): ReactNode | null {
+  const sender = block.meta?.sender;
+  if (!view.room?.isRoom || sender?.kind !== "trunk" || !sender.posted) return null;
+  return <Face size={28} label={view.room.trunkName(sender.agentId)} priority={PRIORITY.row} />;
+}
+
 function MessageView({ block, index, firstReply, face, view, live }: { block: Extract<Block, { kind: "user" | "text" }>; index: number; firstReply: boolean; face: boolean; view: View; live: boolean }) {
   const actions = live ? null : view.actionsFor(view.all, index);
   const entryId = block.meta?.entryId;
@@ -611,7 +620,7 @@ function MessageView({ block, index, firstReply, face, view, live }: { block: Ex
   }
   return (
     <>
-      <Reply block={block} face={face ? faceFor(view, live) : undefined} working={face && view.running && (live || index > view.lastUser)} from={fromName(block, firstReply, view.room, view.name)}>{bar}</Reply>
+      <Reply block={block} face={face ? postedFace(block, view) ?? faceFor(view, live) : undefined} working={face && !postedFace(block, view) && view.running && (live || index > view.lastUser)} from={fromName(block, firstReply, view.room, view.name)}>{bar}</Reply>
       {putBack}
       {live ? null : <TimeLine block={block} view={view} />}
       <ReactionChips list={chips} onToggle={toggle} />

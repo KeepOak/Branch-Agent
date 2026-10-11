@@ -102,7 +102,7 @@ function AskingHere({ app, pairing, onReview }: ManageProps) {
   );
 }
 
-const SOURCE_WORDS: Record<string, string> = { config: "Kept in the settings file", env: "From an environment variable", file: "From a file", none: "Not set", secretRef: "Kept in Saved sign-ins" };
+const SOURCE_WORDS: Record<string, string> = { config: "Kept in the settings file", env: "From an environment variable", file: "From a file", none: "Not set", secretRef: "Kept in Saved passwords" };
 /** channels.start/stop/logout act on one account; an app with several runs it for each. */
 async function eachAccount(engine: ManageProps["engine"], app: App, method: string) {
   const ids = app.accounts.length ? app.accounts.map((a) => a.accountId) : [undefined];

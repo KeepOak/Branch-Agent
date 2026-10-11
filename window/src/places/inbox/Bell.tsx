@@ -1,5 +1,6 @@
 // Inbox's "Recent notices" bell (preview 40-places noticesPopPD18): at the right end of the tab row, before
 // "Mark all read". It lists what the engine reports as a notice today: a Trunk waiting for your answer.
+// The button says "Notifications" next to the bell so it is never an unlabeled icon (UI audit DA-35).
 import { useState } from "react";
 import { Popover } from "../../shell/Popover";
 import type { MenuAnchor } from "../../shell/Menu";
@@ -15,9 +16,10 @@ export function NoticesBell({ data, openConversation, openSettings }: Props) {
   const asks = (data?.questions ?? []).map(q => ({ id: str(q.id), key: str(q.sessionKey), name: agentName(data?.agents.list ?? [], str(q.agentId)) || "A Trunk" }));
   const close = () => setAt(null);
   return <>
-    <button type="button" className="ib-bell" aria-haspopup="dialog" aria-expanded={Boolean(at)} aria-label="Recent notices" title="Recent notices"
+    <button type="button" className="ib-bell" aria-haspopup="dialog" aria-expanded={Boolean(at)}
       onClick={e => { if (at) { close(); return; } const r = e.currentTarget.getBoundingClientRect(); setAt({ x: r.right - 300, y: r.bottom + 6 }); }}>
       <Icon name="bell" small />
+      <span>Notifications</span>
     </button>
     {at ? <Popover at={at} onClose={close} label="Recent notices" testid="inbox-notices">
       <div className="ph">Recent notices</div>
