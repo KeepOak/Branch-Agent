@@ -5,6 +5,7 @@ import path from "node:path";
 import { resolveStateDir } from "../config/paths.js";
 import { acquireFileLockSyncWithRetry } from "../infra/file-lock-sync.js";
 import { writeJsonTarget } from "../infra/json-file.js";
+import { teamMarkerOf } from "./trunk-team-marker.js";
 
 export type TrunkQueueItem = {
   id: string;
@@ -33,6 +34,8 @@ export type TrunkQueueItem = {
   stop_attempts?: number;
   /** Plain-English reason a claimed job needs a person, because its run could not be stopped. Cleared on release. */
   attention_reason?: string;
+  /** The team this job belongs to. Only that team's registered members may claim it. */
+  team?: string;
 };
 
 export type TrunkQueueStatus =
@@ -75,19 +78,34 @@ export function withQueueLock<T>(env: NodeJS.ProcessEnv | undefined, fn: () => T
   }
 }
 
+/**
+ * A job queued before the team field existed carries its team only in its brief's marker. Load infers the team from
+ * the marker, so the team rule and the progress lines apply to it. Idempotent: a job with a team is returned as is,
+ * and the inferred team is saved with the job's next write.
+ */
+function withInferredTeam(row: TrunkQueueItem): TrunkQueueItem {
+  if (row.team) {
+    return row;
+  }
+  const marker = teamMarkerOf(row.brief_text);
+  return marker ? { ...row, team: marker.teamId } : row;
+}
+
 export function read(env?: NodeJS.ProcessEnv): TrunkQueueItem[] {
   try {
     const rows = JSON.parse(fs.readFileSync(file(env), "utf8")) as unknown;
     return Array.isArray(rows)
-      ? rows.filter(
-          (row): row is TrunkQueueItem =>
-            Boolean(row) &&
-            typeof row.id === "string" &&
-            typeof row.title === "string" &&
-            typeof row.brief_text === "string" &&
-            typeof row.priority === "number" &&
-            typeof row.added_at === "number",
-        )
+      ? rows
+          .filter(
+            (row): row is TrunkQueueItem =>
+              Boolean(row) &&
+              typeof row.id === "string" &&
+              typeof row.title === "string" &&
+              typeof row.brief_text === "string" &&
+              typeof row.priority === "number" &&
+              typeof row.added_at === "number",
+          )
+          .map(withInferredTeam)
       : [];
   } catch {
     return [];

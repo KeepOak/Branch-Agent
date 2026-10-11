@@ -1,14 +1,14 @@
 import type { QueueTransition } from "./trunk-queue.js";
 
-/** The marker buildTeamProposal puts in each team job's brief. Jobs without it are not team work. */
-const TEAM_MARKER = /<!-- team:([0-9a-f]{8}):([A-Za-z]+) -->/;
+import { teamMarkerOf } from "./trunk-team-marker.js";
 
 export type RoomProgressPost = { roomId: string; actorId: string; text: string };
 
 /** The team and role a job belongs to, or undefined for any other job. */
-export function teamOfJob(briefText: string): { teamId: string; role: string } | undefined {
-  const match = TEAM_MARKER.exec(briefText);
-  return match ? { teamId: match[1]!, role: match[2]! } : undefined;
+export function teamOfJob(
+  briefText: string,
+): { teamId: string; slug: string; role: string } | undefined {
+  return teamMarkerOf(briefText);
 }
 
 const VERB: Record<QueueTransition["kind"], (name: string, title: string) => string> = {
@@ -40,6 +40,6 @@ export function teamProgressPost(
 }
 
 /** The member a team job was built for. Used when a transition carries no claimant. */
-function memberIdFor(team: { teamId: string; role: string }): string {
-  return `builder-${team.role.toLowerCase()}-${team.teamId}`;
+function memberIdFor(team: { teamId: string; slug: string }): string {
+  return `builder-${team.slug}-${team.teamId}`;
 }

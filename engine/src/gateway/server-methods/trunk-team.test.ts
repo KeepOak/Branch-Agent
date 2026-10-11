@@ -28,6 +28,7 @@ vi.mock("../../agents/trunk-queue.js", () => ({
   listQueueItems: () => mocks.queue,
 }));
 vi.mock("./trunk-queue.js", () => ({ wakeEligibleTrunks: vi.fn() }));
+vi.mock("../../agents/trunk-team-registry.js", () => ({ registerTeam: vi.fn() }));
 
 const { trunkTeamHandlers } = await import("./trunk-team.js");
 

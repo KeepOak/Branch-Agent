@@ -18,6 +18,7 @@ import {
   type StepStatus,
 } from "./model";
 import { readTextToolCall, stepFromTextToolCall } from "./text-tool-call";
+import { teamFromToolText } from "./team-proposal";
 import { displayToolInput, displayToolOutput, sanitizeBlocks } from "./tool-output-display";
 import { readOwner, readSender } from "../rooms/sender";
 
@@ -47,7 +48,8 @@ type Builder = {
   wholeOutput: boolean;
 };
 
-const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
+const rec = (v: unknown): Record<string, unknown> =>
+  v && typeof v === "object" ? (v as Record<string, unknown>) : {};
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const num = (v: unknown): number => (typeof v === "number" ? v : 0);
 
@@ -106,7 +108,14 @@ export function readMeta(m: Message): MessageMeta {
     ...(readOwner(m) ? { owner: true } : {}),
     ...(m.excludeFromContext === true ? { excluded: true } : {}),
     ...(m.usage
-      ? { usage: { input: num(usage.input), output: num(usage.output), total: num(usage.totalTokens), cost: num(cost.total) } }
+      ? {
+          usage: {
+            input: num(usage.input),
+            output: num(usage.output),
+            total: num(usage.totalTokens),
+            cost: num(cost.total),
+          },
+        }
       : {}),
   };
 }
@@ -124,7 +133,12 @@ function messageText(content: unknown): string {
     .join("");
 }
 
-const KIND_BY_TYPE: Record<string, Attachment["kind"]> = { image: "image", audio: "audio", video: "video", file: "file" };
+const KIND_BY_TYPE: Record<string, Attachment["kind"]> = {
+  image: "image",
+  audio: "audio",
+  video: "video",
+  file: "file",
+};
 
 /** A media or file part of a message's content, as an attachment the thread can show. */
 export function readAttachment(part: unknown): Attachment | null {
@@ -136,7 +150,9 @@ export function readAttachment(part: unknown): Attachment | null {
   const mimeType = str(p.mimeType) || str(p.mediaType) || undefined;
   const data = str(p.data);
   const url = str(p.url) || str(rec(p.source).url);
-  const src = data ? `data:${mimeType ?? "application/octet-stream"};base64,${data}` : url || undefined;
+  const src = data
+    ? `data:${mimeType ?? "application/octet-stream"};base64,${data}`
+    : url || undefined;
   return {
     kind,
     name: str(p.name) || str(p.fileName) || str(p.filename) || str(p.alt) || kind,
@@ -149,12 +165,20 @@ export function readAttachment(part: unknown): Attachment | null {
 }
 
 function attachmentsOf(content: unknown): Attachment[] {
-  return Array.isArray(content) ? content.map(readAttachment).filter((a): a is Attachment => a !== null) : [];
+  return Array.isArray(content)
+    ? content.map(readAttachment).filter((a): a is Attachment => a !== null)
+    : [];
 }
 
 function closeRun(b: Builder, inFlightRunId: string | null): void {
   if (b.runId && b.runFinished && b.runId !== inFlightRunId) {
-    b.blocks.push({ kind: "done", key: `${b.runId}:done`, runId: b.runId, durationMs: Math.max(0, b.lastTs - b.runStart), ...(b.runStopped ? { stopped: true } : {}) });
+    b.blocks.push({
+      kind: "done",
+      key: `${b.runId}:done`,
+      runId: b.runId,
+      durationMs: Math.max(0, b.lastTs - b.runStart),
+      ...(b.runStopped ? { stopped: true } : {}),
+    });
   }
   b.runId = null;
   b.runFinished = false;
@@ -170,7 +194,12 @@ function writtenAt(m: Message): number {
 function pushAssistantText(b: Builder, key: string, text: string, m: Message): void {
   const call = readTextToolCall(text);
   if (call) {
-    b.blocks.push(stepFromTextToolCall(call, key, { outputKey: `${b.runId ?? key}:${key}`, at: num(m.timestamp) }));
+    b.blocks.push(
+      stepFromTextToolCall(call, key, {
+        outputKey: `${b.runId ?? key}:${key}`,
+        at: num(m.timestamp),
+      }),
+    );
     return;
   }
   b.blocks.push({ kind: "text", key, text, streaming: false, meta: readMeta(m) });
@@ -185,8 +214,24 @@ function onAssistantPart(b: Builder, part: unknown, key: string, m: Message): vo
   } else if (p.type === "toolCall") {
     const id = str(p.id) || key;
     const title = describeToolCall(str(p.name), p.arguments);
-    b.blocks.push({ kind: "step", key: id, outputKey: `${b.runId ?? key}:${id}`, tool: str(p.name), title, detail: "", status: "ok", input: toolInput(p.arguments), changes: readFileChanges(p.arguments), ...recordedAt(m.timestamp), ...(isCodeModeCall(str(p.name), p.arguments) ? { codeMode: true } : {}) });
-    b.steps.set(id, { at: b.blocks.length - 1, command: str(rec(p.arguments).command), ts: num(m.timestamp) });
+    b.blocks.push({
+      kind: "step",
+      key: id,
+      outputKey: `${b.runId ?? key}:${id}`,
+      tool: str(p.name),
+      title,
+      detail: "",
+      status: "ok",
+      input: toolInput(p.arguments),
+      changes: readFileChanges(p.arguments),
+      ...recordedAt(m.timestamp),
+      ...(isCodeModeCall(str(p.name), p.arguments) ? { codeMode: true } : {}),
+    });
+    b.steps.set(id, {
+      at: b.blocks.length - 1,
+      command: str(rec(p.arguments).command),
+      ts: num(m.timestamp),
+    });
   } else if (typeof part === "string" && part.trim()) {
     pushAssistantText(b, key, part, m);
   }
@@ -199,10 +244,22 @@ function onAssistant(b: Builder, m: Message, index: number): void {
   }
   const media = attachmentsOf(m.content);
   if (media.length) {
-    b.blocks.push({ kind: "text", key: `h:${index}:media`, text: "", streaming: false, meta: readMeta(m), attachments: media });
+    b.blocks.push({
+      kind: "text",
+      key: `h:${index}:media`,
+      text: "",
+      streaming: false,
+      meta: readMeta(m),
+      attachments: media,
+    });
   }
   if (str(m.stopReason) === "error" && str(m.errorMessage)) {
-    b.blocks.push({ kind: "error", key: `h:${index}:error`, runId: b.runId ?? undefined, message: str(m.errorMessage) });
+    b.blocks.push({
+      kind: "error",
+      key: `h:${index}:error`,
+      runId: b.runId ?? undefined,
+      message: str(m.errorMessage),
+    });
   }
   b.runFinished = str(m.stopReason) !== "toolUse";
   b.runStopped ||= rec(m.branchAbort).aborted === true;
@@ -227,7 +284,12 @@ function approvalState(status: string): Approval["state"] {
   return status === "allowed" ? "allowed" : status === "pending" ? "pending" : "denied";
 }
 
-function onToolResult(b: Builder, m: Message, records: readonly ApprovalRecord[], sessionKey: string): void {
+function onToolResult(
+  b: Builder,
+  m: Message,
+  records: readonly ApprovalRecord[],
+  sessionKey: string,
+): void {
   const step = b.steps.get(str(m.toolCallId));
   if (!step) return;
   const block = b.blocks[step.at] as Extract<Block, { kind: "step" }>;
@@ -240,9 +302,25 @@ function onToolResult(b: Builder, m: Message, records: readonly ApprovalRecord[]
     if (!codeFailed) return;
     b.wrappers.delete(str(m.toolCallId));
   }
-  const status: StepStatus = isDeniedResultText(text) ? "denied" : m.isError || codeFailed ? "failed" : "ok";
+  const status: StepStatus = isDeniedResultText(text)
+    ? "denied"
+    : m.isError || codeFailed
+      ? "failed"
+      : "ok";
   const shown = displayToolOutput({ tool: block.tool, text, title: block.title });
-  b.blocks[step.at] = { ...block, status, detail: shown.slice(0, 400), output: b.wholeOutput ? shown : keepOutput(block.outputKey ?? block.key, shown), input: displayToolInput(block.tool, block.input), browser: status === "ok" ? readBrowserPresentation(m, block.tool, block.key) : undefined, ...recordedAt(m.timestamp) };
+  b.blocks[step.at] = {
+    ...block,
+    status,
+    detail: shown.slice(0, 400),
+    output: b.wholeOutput ? shown : keepOutput(block.outputKey ?? block.key, shown),
+    input: displayToolInput(block.tool, block.input),
+    browser: status === "ok" ? readBrowserPresentation(m, block.tool, block.key) : undefined,
+    ...recordedAt(m.timestamp),
+  };
+  if (status === "ok" && block.tool === "team_propose") {
+    const team = teamFromToolText(text);
+    if (team) b.blocks.push({ kind: "team", key: `${str(m.toolCallId)}:team`, result: team });
+  }
   const deniedId = /gateway id=([0-9a-f-]{8,})/i.exec(text)?.[1];
   const found = findApproval(records, sessionKey, step, num(m.timestamp));
   const id = deniedId ?? found?.id;
@@ -265,7 +343,12 @@ function onToolResult(b: Builder, m: Message, records: readonly ApprovalRecord[]
  * (`{title, code}` and a JSON result that always says "completed") is dropped, so a refused command no longer reads
  * "Ran a command · Done", and the live view and the finished turn count the same steps.
  */
-function onNestedTool(b: Builder, m: Message, records: readonly ApprovalRecord[], sessionKey: string): void {
+function onNestedTool(
+  b: Builder,
+  m: Message,
+  records: readonly ApprovalRecord[],
+  sessionKey: string,
+): void {
   const parts = Array.isArray(m.content) ? m.content.map(rec) : [];
   for (const part of parts) {
     if (part.type === "toolCall" && str(part.id)) {
@@ -273,8 +356,23 @@ function onNestedTool(b: Builder, m: Message, records: readonly ApprovalRecord[]
       if (str(part.parentToolCallId)) b.wrappers.add(str(part.parentToolCallId));
       if (b.steps.has(id)) continue;
       const at = num(part.timestamp) || writtenAt(m);
-      b.blocks.push({ kind: "step", key: id, outputKey: `${b.runId ?? id}:${id}`, tool: str(part.name), title: describeToolCall(str(part.name), part.arguments), detail: "", status: "ok", input: toolInput(part.arguments), changes: readFileChanges(part.arguments), ...recordedAt(at) });
-      b.steps.set(id, { at: b.blocks.length - 1, command: str(rec(part.arguments).command), ts: at });
+      b.blocks.push({
+        kind: "step",
+        key: id,
+        outputKey: `${b.runId ?? id}:${id}`,
+        tool: str(part.name),
+        title: describeToolCall(str(part.name), part.arguments),
+        detail: "",
+        status: "ok",
+        input: toolInput(part.arguments),
+        changes: readFileChanges(part.arguments),
+        ...recordedAt(at),
+      });
+      b.steps.set(id, {
+        at: b.blocks.length - 1,
+        command: str(rec(part.arguments).command),
+        ts: at,
+      });
     } else if (part.type === "toolResult" || part.role === "toolResult") {
       onToolResult(b, part, records, sessionKey);
     }
@@ -283,7 +381,9 @@ function onNestedTool(b: Builder, m: Message, records: readonly ApprovalRecord[]
 
 /** Removes the Code Mode wrappers whose nested calls became the steps. */
 function dropWrappers(b: Builder): Block[] {
-  return b.wrappers.size ? b.blocks.filter((block) => block.kind !== "step" || !b.wrappers.has(block.key)) : b.blocks;
+  return b.wrappers.size
+    ? b.blocks.filter((block) => block.kind !== "step" || !b.wrappers.has(block.key))
+    : b.blocks;
 }
 
 /** A `custom` transcript entry the engine marks for display: a failed run, or a note. */
@@ -306,13 +406,21 @@ function onCustom(b: Builder, m: Message, index: number): void {
  * internal_system / main_session_restart_recovery, engine sessions/input-provenance.ts). */
 function isRestartResume(m: Message): boolean {
   const provenance = rec(m.provenance);
-  return str(provenance.kind) === "internal_system" && str(provenance.sourceTool).toLowerCase() === "main_session_restart_recovery";
+  return (
+    str(provenance.kind) === "internal_system" &&
+    str(provenance.sourceTool).toLowerCase() === "main_session_restart_recovery"
+  );
 }
 
 function onUser(b: Builder, m: Message, index: number, inFlightRunId: string | null): void {
   if (str(rec(m.__branch).steerTargetRunId)) {
     // Steered into the turn that was running: it stays that turn's, so its Done line and steps stay whole.
-    b.blocks.push({ kind: "steer", key: `h:${index}`, text: messageText(m.content), meta: readMeta(m) });
+    b.blocks.push({
+      kind: "steer",
+      key: `h:${index}`,
+      text: messageText(m.content),
+      meta: readMeta(m),
+    });
     return;
   }
   closeRun(b, inFlightRunId);
@@ -343,7 +451,17 @@ export function historyToBlocks(
   inFlightRunId: string | null,
   options: { wholeOutput?: boolean } = {},
 ): Block[] {
-  const b: Builder = { blocks: [], steps: new Map(), wrappers: new Set(), runId: null, runStart: 0, runFinished: false, runStopped: false, lastTs: 0, wholeOutput: options.wholeOutput === true };
+  const b: Builder = {
+    blocks: [],
+    steps: new Map(),
+    wrappers: new Set(),
+    runId: null,
+    runStart: 0,
+    runFinished: false,
+    runStopped: false,
+    lastTs: 0,
+    wholeOutput: options.wholeOutput === true,
+  };
   for (const [index, raw] of messages.entries()) {
     const m = rec(raw);
     const runId = str(rec(m.__branch).runId) || null;
@@ -362,7 +480,11 @@ export function historyToBlocks(
     }
     // Only a turn's own messages move its end; notes the engine writes between turns (compaction and reset markers,
     // context) can be stamped "now" and would zero every later "Done in".
-    if ((m.role !== "custom" && m.role !== "system") || ["run-failed-before-reply", "branch.nested-tool.v1"].includes(str(m.customType))) b.lastTs = Math.max(b.lastTs, writtenAt(m));
+    if (
+      (m.role !== "custom" && m.role !== "system") ||
+      ["run-failed-before-reply", "branch.nested-tool.v1"].includes(str(m.customType))
+    )
+      b.lastTs = Math.max(b.lastTs, writtenAt(m));
   }
   closeRun(b, inFlightRunId);
   return sanitizeBlocks(dropWrappers(b), { wholeOutput: b.wholeOutput });
@@ -374,8 +496,16 @@ export function historyToBlocks(
  */
 export function markStopped(blocks: readonly Block[], stopped: ReadonlySet<string>): Block[] {
   if (!stopped.size) return [...blocks];
-  const out = blocks.map((block) => (block.kind === "done" && stopped.has(block.runId) && !block.stopped ? { ...block, stopped: true } : block));
-  const done = new Set(out.filter((block) => block.kind === "done").map((block) => (block as Extract<Block, { kind: "done" }>).runId));
+  const out = blocks.map((block) =>
+    block.kind === "done" && stopped.has(block.runId) && !block.stopped
+      ? { ...block, stopped: true }
+      : block,
+  );
+  const done = new Set(
+    out
+      .filter((block) => block.kind === "done")
+      .map((block) => (block as Extract<Block, { kind: "done" }>).runId),
+  );
   for (let i = out.length - 1; i >= 0; i -= 1) {
     const block = out[i];
     const runId = block.kind === "user" ? block.meta?.runKey : undefined;

@@ -306,6 +306,14 @@ const CORE_TOOL_DEFINITIONS: CoreToolDefinition[] = [
     includeInBranchGroup: true,
   },
   {
+    id: "team_propose",
+    executionLocation: "gateway",
+    description: "Draft a team for the owner's goal, for the owner to approve",
+    sectionId: "sessions",
+    profiles: ["coding", "messaging"],
+    includeInBranchGroup: true,
+  },
+  {
     id: "sessions_spawn",
     executionLocation: "gateway",
     description: SESSIONS_SPAWN_TOOL_DISPLAY_SUMMARY,

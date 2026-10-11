@@ -21,6 +21,7 @@ import { turnDoneLines } from "./computer-card";
 import { isComputerStep, layout, shownApprovalIds, type Item } from "./layout";
 import { isInternalStep } from "./internal-steps";
 import { PlanCard, planAnchor } from "./PlanCard";
+import { TeamProposalBlock } from "./TeamProposalBlock";
 import { useConversationPrefs } from "./prefs";
 import { isPreparationPending, isPreparationStalled, preparationLabel, preparationNeedsAttentionLabel, preparationRetryingLabel } from "../connect/preparation-status";
 import { useStartupPreparation } from "../connect/startup-preparation";
@@ -556,6 +557,8 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
       return <div className="pass-line indent" data-testid="preamble">{block.text}</div>;
     case "plan":
       return <PlanCard card={{ sessionKey: "run", revision: 1, updatedAt: Date.now(), steps: block.steps }} />;
+    case "team":
+      return <TeamProposalBlock block={block} />;
     case "approval":
       return view.grouped.has(block.approval.id) ? null : <ApprovalCard approval={block.approval} details={view.details.get(block.approval.id)} name={view.name} onAnswer={view.answer} disabled={view.lockdown} />;
     case "done": {

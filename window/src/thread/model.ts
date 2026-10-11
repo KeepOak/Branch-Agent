@@ -1,5 +1,6 @@
 import { computerActionLabel, isComputerToolName, isScreenToolName, screenActionLabel } from "./computer-action-label";
 import { readBrowserPresentation, type BrowserPresentation } from "./browser-presentation";
+import { teamFromToolText, type TeamToolResult } from "./team-proposal";
 // The thread's blocks, built from a live run's `agent` events (in seq order) and from `chat.history`.
 import type { RunEvent } from "../connect/stream-order";
 import type { Sender } from "../rooms/sender";
@@ -89,6 +90,8 @@ export type Block =
   /** `codeMode`: an `exec` running code (Code Mode); its result's own status says whether the code failed. */
   | { kind: "step"; key: string; outputKey?: string; tool: string; title: string; detail: string; status: StepStatus; input?: string; output?: string; changes?: FileChange[]; browser?: BrowserPresentation; at?: number; codeMode?: boolean }
   | { kind: "approval"; key: string; approval: Approval }
+  /** A team the Trunk drafted with team_propose: the card with Approve, Edit and Not now. */
+  | { kind: "team"; key: string; result: TeamToolResult }
   /** The end of a turn. `stopped`: you (or the engine) stopped it; the thread says so instead of "Done in". */
   | { kind: "done"; key: string; runId: string; durationMs?: number; stopped?: boolean }
   | { kind: "error"; key: string; runId?: string; message: string }
@@ -261,6 +264,10 @@ function onTool(b: Builder, event: RunEvent): void {
   const exitCode = record(d.result).exitCode;
   const status: StepStatus = isDeniedResultText(text) ? "denied" : d.isError || codeFailed || (typeof exitCode === "number" && exitCode !== 0) ? "failed" : "ok";
   b.blocks[at] = { ...step, status, detail: typeof exitCode === "number" ? `Exit ${exitCode}` : text.slice(0, 400), output: text ? keepOutput(step.outputKey ?? id, text) : step.output, browser: status === "ok" ? readBrowserPresentation(d.result, step.tool, id) : undefined, ...recordedAt(event.ts) };
+  if (status === "ok" && step.tool === "team_propose") {
+    const team = teamFromToolText(text);
+    if (team) b.blocks.push({ kind: "team", key: `${id}:team`, result: team });
+  }
 }
 
 /** Codex's item stream supplies the ordered shell of activity; its tool stream adds inputs/results. */

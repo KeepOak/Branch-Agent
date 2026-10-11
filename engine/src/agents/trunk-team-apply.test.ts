@@ -19,6 +19,7 @@ function world() {
   const agents = new Set<string>();
   const rooms = new Set<string>();
   const jobs = new Set<string>();
+  const teams: Record<string, { roomId: string; members: string[] }> = {};
   const log: string[] = [];
   const deps: TeamApplyDeps = {
     hasAgent: (id) => agents.has(id),
@@ -36,8 +37,11 @@ function world() {
       log.push(`job:${input.title}`);
       jobs.add(input.brief_text);
     },
+    registerTeam: (teamId, record) => {
+      teams[teamId] = record;
+    },
   };
-  return { deps, log, agents, rooms, jobs };
+  return { deps, log, agents, rooms, jobs, teams };
 }
 
 describe("applyTeamProposal", () => {
@@ -57,6 +61,15 @@ describe("applyTeamProposal", () => {
     ]);
     expect(result.created).toHaveLength(7);
     expect(result.skipped).toEqual([]);
+  });
+
+  it("registers the team's members before the first job is queued", async () => {
+    const { deps, teams } = world();
+    const team = proposal();
+    await applyTeamProposal(team, deps);
+
+    expect(teams[team.teamId]?.members).toEqual(team.members.map((member) => member.agentId));
+    expect(teams[team.teamId]?.roomId).toBe(team.roomId);
   });
 
   it("does nothing the second time the same approved team is applied", async () => {

@@ -1,0 +1,16 @@
+engine:src/agents/bootstrap-template.test.ts
+engine:src/agents/first-run-greeting.test.ts
+engine:src/agents/tools/team-tools.test.ts
+engine:src/agents/trunk-team-apply.test.ts
+engine:src/agents/trunk-team-claim.test.ts
+engine:src/agents/trunk-team-progress.test.ts
+engine:src/agents/trunk-team.test.ts
+engine:src/gateway/server-methods/agents-create-greeting.test.ts
+engine:src/gateway/server-methods/trunk-team-flow.test.ts
+engine:src/gateway/server-methods/trunk-team-progress.test.ts
+engine:src/gateway/server-methods/trunk-team.test.ts
+window:scripts/visual-routes.test.mjs
+window:src/places/trunk/TeamApprovalCard.test.tsx
+window:src/thread/TeamProposalBlock.test.tsx
+window:src/thread/history.test.ts
+window:src/thread/team-proposal.test.ts

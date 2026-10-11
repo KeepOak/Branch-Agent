@@ -4,7 +4,12 @@ import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/i
 import { createAgent } from "../../agents/agent-create.js";
 import { addQueueItem, listQueueItems } from "../../agents/trunk-queue.js";
 import { applyTeamProposal, type TeamApplyDeps } from "../../agents/trunk-team-apply.js";
-import { buildTeamProposal, describeTeamProposal } from "../../agents/trunk-team.js";
+import { registerTeam } from "../../agents/trunk-team-registry.js";
+import {
+  buildTeamProposal,
+  describeTeamProposal,
+  type TeamDraftRole,
+} from "../../agents/trunk-team.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { createRoom, getRoom } from "../rooms/store.js";
@@ -47,11 +52,31 @@ function machinesFor(context: GatewayRequestContext): string[] {
   return ["this", ...connected];
 }
 
-function proposalFor(context: GatewayRequestContext, goal: string) {
+function proposalFor(context: GatewayRequestContext, goal: string, roles?: TeamDraftRole[]) {
   return buildTeamProposal({
     goal,
     models: configuredModels(context.getRuntimeConfig()),
     machines: machinesFor(context),
+    ...(roles === undefined ? {} : { roles }),
+  });
+}
+
+/** The Trunk's drafted roles from request params. A non-list is passed on as an empty draft and refused there. */
+export function parseRoles(value: unknown): TeamDraftRole[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((entry) => {
+    const role = rec(entry);
+    return {
+      name: text(role.name),
+      job: text(role.job),
+      ...(typeof role.machine === "string" ? { machine: role.machine.trim() } : {}),
+      ...(typeof role.model === "string" ? { model: role.model.trim() } : {}),
+    };
   });
 }
 
@@ -87,6 +112,7 @@ function productionDeps(context: GatewayRequestContext): TeamApplyDeps {
     addJob: (input) => {
       addQueueItem(input);
     },
+    registerTeam: (teamId, record) => registerTeam(teamId, record),
   };
 }
 
@@ -101,15 +127,16 @@ type ApproveOutcome =
   | { ok: true; payload: Record<string, unknown> }
   | { ok: false; error: ReturnType<typeof errorShape> };
 
-/** Approvals in flight, by team id. A second approve for the same team waits for the first and shares its answer. */
+/** The approvals running, keyed by team and proposal hash. */
 const teamApprovalsInFlight = new Map<string, Promise<ApproveOutcome>>();
 
 async function approveOnce(
   context: GatewayRequestContext,
   goal: string,
+  roles: TeamDraftRole[] | undefined,
   proposalHash: string,
 ): Promise<ApproveOutcome> {
-  const result = proposalFor(context, goal);
+  const result = proposalFor(context, goal, roles);
   if (!result.ok) {
     return { ok: false, error: errorShape(ErrorCodes.INVALID_REQUEST, result.reason) };
   }
@@ -153,11 +180,15 @@ async function approveOnce(
   }
 }
 
-/** One approval per team at a time: concurrent approves share the first one's outcome, so nothing is created twice. */
+/**
+ * One approval per team and proposal at a time. A second approve of the same proposal shares the first one's
+ * outcome, so nothing is created twice. A different proposal for the same team runs on its own.
+ */
 function singleFlightApprove(
   context: GatewayRequestContext,
   teamId: string,
   goal: string,
+  roles: TeamDraftRole[] | undefined,
   proposalHash: string,
 ): Promise<ApproveOutcome> {
   // Keyed by team and proposal: a second approve of the same proposal shares the first outcome, and a different
@@ -167,7 +198,7 @@ function singleFlightApprove(
   if (running) {
     return running;
   }
-  const started = approveOnce(context, goal, proposalHash).finally(() => {
+  const started = approveOnce(context, goal, roles, proposalHash).finally(() => {
     teamApprovalsInFlight.delete(key);
   });
   teamApprovalsInFlight.set(key, started);
@@ -176,17 +207,26 @@ function singleFlightApprove(
 
 export const trunkTeamHandlers: GatewayRequestHandlers = {
   "trunks.team.propose": ({ params, respond, context }) => {
-    const result = proposalFor(context, text(rec(params).goal));
+    const p = rec(params);
+    const result = proposalFor(context, text(p.goal), parseRoles(p.roles));
     if (!result.ok) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.reason));
       return;
     }
-    respond(true, { proposal: result.proposal, summary: describeTeamProposal(result.proposal) });
+    respond(true, {
+      proposal: result.proposal,
+      summary: describeTeamProposal(result.proposal),
+      choices: {
+        models: configuredModels(context.getRuntimeConfig()),
+        machines: machinesFor(context),
+      },
+    });
   },
   "trunks.team.approve": async ({ params, respond, context }) => {
     const p = rec(params);
     const goal = text(p.goal);
-    const proposal = proposalFor(context, goal);
+    const roles = parseRoles(p.roles);
+    const proposal = proposalFor(context, goal, roles);
     if (!proposal.ok) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, proposal.reason));
       return;
@@ -195,6 +235,7 @@ export const trunkTeamHandlers: GatewayRequestHandlers = {
       context,
       proposal.proposal.teamId,
       goal,
+      roles,
       text(p.proposalHash),
     );
     if (outcome.ok) {

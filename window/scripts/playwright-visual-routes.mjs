@@ -9,6 +9,7 @@
 //   stage-preview  the side panel's Preview tab with the Ledger app portal
 //   team-approval-before  the group room, no team card (the before shot for the team card)
 //   team-approval  the team proposal card, asking state
+//   team-thread    the team proposal as a block in a Trunk's thread
 // The fixture (visual-harness.tsx) supplies the group "Design group" and the portal "Ledger app".
 // Writes <outDir>/<route>-<label>.png (label defaults to "current"); pass "before" or "after" for a PR.
 // Add a route by adding a name in visual-routes.mjs and a step below.
@@ -19,20 +20,29 @@ import { ROUTES } from "./visual-routes.mjs";
 
 const [route, outDir, label = "current"] = process.argv.slice(2);
 if (!(route in ROUTES) || !outDir) {
-  console.error(`usage: node scripts/playwright-visual-routes.mjs <${Object.keys(ROUTES).join("|")}> <outDir> [label]`);
+  console.error(
+    `usage: node scripts/playwright-visual-routes.mjs <${Object.keys(ROUTES).join("|")}> <outDir> [label]`,
+  );
   process.exit(2);
 }
 const base = process.env.VISUAL_URL ?? "http://127.0.0.1:5751";
 
 async function openGroup(page) {
   await page.goto(`${base}/scripts/visual-harness.html`);
-  await page.getByRole("button", { name: /^Design group/ }).first().click();
+  await page
+    .getByRole("button", { name: /^Design group/ })
+    .first()
+    .click();
 }
 
 const steps = {
   "team-approval-before": async (page) => {
     await openGroup(page);
     return page.locator("#root");
+  },
+  "team-thread": async (page) => {
+    await page.goto(`${base}/scripts/visual-harness.html?thread=team`);
+    return page.getByTestId("team-approval-card");
   },
   "team-approval": async (page) => {
     await page.goto(`${base}/scripts/visual-harness.html?team=asking`);
@@ -78,7 +88,10 @@ const checks = {
 
 const browser = await chromium.launch();
 try {
-  const page = await browser.newPage({ viewport: { width: 1200, height: 1100 }, deviceScaleFactor: 2 });
+  const page = await browser.newPage({
+    viewport: { width: 1200, height: 1100 },
+    deviceScaleFactor: 2,
+  });
   const target = await steps[route](page);
   await target.waitFor();
   mkdirSync(outDir, { recursive: true });

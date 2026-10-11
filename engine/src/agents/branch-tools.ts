@@ -84,6 +84,7 @@ import { createSessionsYieldTool } from "./tools/sessions-yield-tool.js";
 import { createConfiguredSkillWorkshopTool } from "./tools/skill-workshop-tool-factory.js";
 import { createSubagentsTool } from "./tools/subagents-tool.js";
 import { createTaskSuggestionTools } from "./tools/task-suggestion-tools.js";
+import { createTeamProposeTool } from "./tools/team-tools.js";
 import { createTerminalTool } from "./tools/terminal-tool.js";
 import { createThemeTool } from "./tools/theme-tool.js";
 import { createTrunkMessageTool } from "./tools/trunk-message-tool.js";
@@ -500,6 +501,7 @@ export function createBranchTools(options?: BranchToolsOptions): AnyAgentTool[] 
           createRoomListTool({ config: sessionConfig }),
           createRoomReadTool({ config: sessionConfig }),
           createRoomPostTool({ config: sessionConfig }),
+          createTeamProposeTool({ config: sessionConfig }),
         ]),
     !embedded || options?.allowGatewaySubagentBinding === true
       ? createSessionsSpawnTool({

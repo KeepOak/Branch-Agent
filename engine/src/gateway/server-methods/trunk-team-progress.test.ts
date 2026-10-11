@@ -22,7 +22,7 @@ vi.mock("../rooms/store.js", () => ({
 
 const { attachTeamProgress } = await import("./trunk-team-progress.js");
 
-const TEAM_BRIEF = "Find the sources.\n\n<!-- team:2d60428e:Scout -->";
+const TEAM_BRIEF = "Find the sources.\n\n<!-- team:2d60428e:scout|Scout -->";
 const teamItem = (brief_text: string) =>
   ({
     id: "j",

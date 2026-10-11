@@ -28,6 +28,14 @@ describe("BOOTSTRAP.md first-run beats", () => {
     expect(template).not.toMatch(/invent, or suggest a name/);
   });
 
+  it("tells the Trunk to draft the team with team_propose once it knows the goal", () => {
+    const goal = template.indexOf("## 3. Learn the Goal");
+    const next = template.indexOf("## 4.");
+    const step = template.slice(goal, next);
+    expect(step).toContain("`team_propose`");
+    expect(step).toContain("1 to 5");
+  });
+
   it("saves the owner name, goal, and the Trunk's name in one turn after the goal is known", () => {
     const goal = template.indexOf("## 3. Learn the Goal");
     const save = template.indexOf("### Save Everything");
