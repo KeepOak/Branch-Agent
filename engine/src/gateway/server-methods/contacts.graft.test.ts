@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { closeBranchStateDatabaseForTest } from "../../state/branch-state-db.js";
 import {
   graftDeviceId,
   graftSendRefusal,
@@ -48,6 +49,8 @@ beforeEach(() => {
 afterEach(() => {
   if (previousState === undefined) delete process.env.BRANCH_STATE_DIR;
   else process.env.BRANCH_STATE_DIR = previousState;
+  // Disconnect clears room membership in the shared state database; Windows cannot remove the dir while it is open.
+  closeBranchStateDatabaseForTest();
   fs.rmSync(stateDir, { recursive: true, force: true });
 });
 
