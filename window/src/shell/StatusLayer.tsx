@@ -202,9 +202,10 @@ export function StatusPopover({ item, above, onClose, ctx }: Props) {
     return <GatewayPopover {...base} facts={ctx.gateway} level={level} onRestart={close(() => void restart(ctx))} onSettings={close(() => ctx.openSettings("gateway"))} />;
   }
   if (item === "usage") {
-    // "Sign in again" opens Accounts straight on that provider's sign-in (the same flag the Accounts page reads once).
+    // Keep the intent for a fresh page, and notify Accounts when it is already mounted.
     const signIn = (provider: string) => close(() => {
       sessionStorage.setItem("branch.openAddAccount", provider);
+      window.dispatchEvent(new Event("branch:open-add-account"));
       ctx.openSettings("accounts");
     })();
     return <UsagePopover {...base} limits={ctx.limits} request={request} onOpenUsage={close(() => ctx.openSettings("usage"))} onSignIn={signIn} />;
