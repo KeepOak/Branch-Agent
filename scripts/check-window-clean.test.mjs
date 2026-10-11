@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
+  CREDIT_FILE,
   IMPORT_ALLOWLIST,
   STALE_NAME_EXCEPTIONS,
   baselinePath,
@@ -63,6 +64,12 @@ test('protocol ids and allowlisted import paths are not window copy', () => {
   assert.equal(shown.length, 2);
   assert.match(shown.join('\n'), /openclaw/);
   assert.match(shown.join('\n'), /crabline/);
+});
+
+test('the one credit line is allowed only in Settings > Updates & about', () => {
+  const text = 'export function About() { return <small>Based on OpenClaw</small>; }\n';
+  assert.equal(keys(CREDIT_FILE, text).length, 0);
+  assert.ok(keys('window/src/elsewhere.tsx', text).length > 0);
 });
 
 test('import allowlist is small and each rule says why', () => {

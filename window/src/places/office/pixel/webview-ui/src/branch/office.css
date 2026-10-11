@@ -273,3 +273,37 @@
   .pa-ui { zoom: 0.66; }
   .pa-panel { zoom: 0.7; }
 }
+
+/* App chrome inside the office (DA-64): the toolbar is the app's, not the room's. Unlayered, so it
+   beats Tailwind's layered `* { font-pixel }`; the app's theme tokens inherit into the shadow root.
+   Mirrors the app's §5.1 .btn (window/src/shell/frame.css). */
+.pa-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  padding: var(--sp-4);
+  border-radius: var(--r-pill);
+  background: var(--glass2-17);
+  box-shadow: var(--sh2-17);
+}
+.pa-bar .pa-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line-2);
+  background: var(--raise);
+  color: var(--ink);
+  font: 500 13px/1 var(--sans);
+  letter-spacing: -0.003em;
+  -webkit-font-smoothing: antialiased;
+  cursor: pointer;
+  transition: background var(--t-colour) var(--ease17), border-color var(--t-colour) var(--ease17), color var(--t-colour) var(--ease17);
+}
+.pa-bar .pa-btn:hover { background: var(--fill); }
+.pa-bar .pa-btn[aria-pressed='true'] { background: var(--accent-tint); border-color: var(--accent); color: var(--accent-ink); }
+.pa-bar .pa-btn.pri { background: var(--btn); border-color: var(--btn); color: var(--on-btn); }
+.pa-bar .pa-btn.pri:hover { opacity: 0.88; }
+.pa-bar .pa-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
