@@ -237,7 +237,7 @@ describe("Settings › General", () => {
     const pins: Pins = { page: "general", list: [], has: () => false, toggle: vi.fn(), go: vi.fn(), unpin: vi.fn() };
     await act(async () => root.render(<KitProvider level={1} report={report} scope={null} pins={pins}><GeneralPage page="general" title="General" level="advanced" engine={engine} /></KitProvider>));
     await act(async () => { await configStore(engine).load(); });
-    expect(row("When you send while it works").querySelector('[aria-label="Pin When you send while it works"]')).not.toBeNull();
+    expect(row("When you send while it works").querySelector('[aria-label="Pin When you send while it works to General"]')).not.toBeNull();
   });
 });
 

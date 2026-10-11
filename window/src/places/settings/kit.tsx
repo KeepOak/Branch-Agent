@@ -161,14 +161,14 @@ export function Sec({ title, group, showHeading = true, hint, help, right, child
 export type Keep = "device" | "everywhere";
 const KEEP_LINE: Record<Keep, string> = { device: "This device only.", everywhere: "Follows you on every device." };
 
-/** A row's pin (UI-DESKTOP-0369): shows on hover or focus, and stays lit while the row is pinned. */
+/** A row's pin names its destination without needing a hover; pressed means it is in General. */
 function PinBtn({ title }: { title: string }) {
   const pins = useContext(KitContext).pins;
   if (!pins || title.length > PIN_MAX) return null;
   const on = pins.has(title);
   return (
-    <button type="button" className="pin-k" aria-pressed={on} aria-label={`${on ? "Unpin" : "Pin"} ${title}`} title={on ? "Unpin" : "Pin to the top of General"} onClick={() => pins.toggle(title)}>
-      <Icon name="pin" small />
+    <button type="button" className="pin-k" aria-pressed={on} aria-label={`${on ? "Unpin" : "Pin"} ${title} ${on ? "from" : "to"} General`} title={on ? "Remove from the top of General" : "Pin to the top of General"} onClick={() => pins.toggle(title)}>
+      <Icon name="pin" small /><span>{on ? "Unpin from General" : "Pin to General"}</span>
     </button>
   );
 }

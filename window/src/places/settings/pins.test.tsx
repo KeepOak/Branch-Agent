@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import { Ctl, KitProvider, Switch, type SaveReport } from "./kit";
 import { PinnedSection, pinsOf, usePins, type Pin } from "./pins";
+import { AgentsSec } from "./set1/appearance-sections";
+import { useLook } from "./set1/appearance-store";
 import { forgetLookStore, lookStore } from "./set1/appearance-store";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -33,6 +35,11 @@ function Page({ engine, page, go }: { engine: WindowEngine; page: string; go: (p
     </KitProvider>
   );
 }
+function AppearancePins({ engine }: { engine: WindowEngine }) {
+  const look = useLook(engine);
+  const pins = usePins(engine, "appearance", 0, (run) => void run(), () => undefined);
+  return <KitProvider level={0} report={report} scope={null} pins={pins}><PinnedSection pins={pins} /><AgentsSec look={look} /></KitProvider>;
+}
 const pinBtn = () => host.querySelector<HTMLButtonElement>('.ctl[data-row="Start with Windows"] .pin-k')!;
 const lastSet = (request: ReturnType<typeof engineOf>["request"]) => {
   const calls = request.mock.calls.filter(([m]) => m === "users.prefs.set") as unknown as [string, { entries: Record<string, Record<string, unknown>> }][];
@@ -49,7 +56,7 @@ describe("Settings › every row › pin", () => {
     const { engine, request } = engineOf();
     const go = vi.fn();
     await act(async () => { await lookStore(engine).load(); root.render(<Page engine={engine} page="general" go={go} />); });
-    expect(pinBtn().getAttribute("aria-label")).toBe("Pin Start with Windows");
+    expect(pinBtn().getAttribute("aria-label")).toBe("Pin Start with Windows to General");
     await act(async () => pinBtn().click());
     expect(lastSet(request)).toMatchObject({ pins: [["general", "Start with Windows", 0]] });
     expect(pinBtn().getAttribute("aria-pressed")).toBe("true");
@@ -62,6 +69,28 @@ describe("Settings › every row › pin", () => {
     await act(async () => [...pinned.querySelectorAll("button")].find((b) => b.textContent === "Unpin")!.click());
     expect(lastSet(request)).not.toHaveProperty("pins");
     expect(host.querySelector('[data-sec="Pinned"]')).toBeNull();
+  });
+
+  it("explains the Size pin destination visibly and preserves pin/unpin and size saving", async () => {
+    const { engine, request } = engineOf();
+    await act(async () => { await lookStore(engine).load(); root.render(<AppearancePins engine={engine} />); });
+    const row = host.querySelector('[data-row="Size"]')!;
+    const pin = row.querySelector<HTMLButtonElement>(".pin-k")!;
+    expect(pin.textContent).toBe("Pin to General");
+    expect(pin.getAttribute("aria-label")).toBe("Pin Size to General");
+    await act(async () => pin.click());
+    expect(pin.textContent).toBe("Unpin from General");
+    expect(pin.getAttribute("aria-label")).toBe("Unpin Size from General");
+    expect(pin.getAttribute("aria-pressed")).toBe("true");
+    expect(lastSet(request)).toMatchObject({ pins: [["appearance", "Size", 0]] });
+    expect(host.querySelector('[data-sec="Pinned"]')?.textContent).toContain("Size");
+    await act(async () => [...row.querySelectorAll("button")].find((b) => b.textContent === "Large")!.click());
+    expect(lastSet(request)).toMatchObject({ agentSize: "l", pins: [["appearance", "Size", 0]] });
+    await act(async () => pin.click());
+    expect(pin.textContent).toBe("Pin to General");
+    expect(pin.getAttribute("aria-pressed")).toBe("false");
+    expect(lastSet(request)).not.toHaveProperty("pins");
+    expect(lastSet(request)).toMatchObject({ agentSize: "l" });
   });
 
   it("draws no pin outside the Settings frame", async () => {
