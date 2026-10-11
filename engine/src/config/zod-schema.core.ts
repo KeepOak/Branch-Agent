@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/config/zod-schema.core.ts (atlas VOICE-0068). Changed for Branch: add the upstream AstrBot automatic-speech probability setting without restricting its coercion or clamping.
 import path from "node:path";
 import { normalizeStringEntries } from "@branch/normalization-core/string-normalization";
 import { z } from "zod";
@@ -521,6 +522,14 @@ const TtsPersonaSchema = z.strictObject({
 export const TtsConfigSchema = z
   .strictObject({
     auto: TtsAutoSchema.optional(),
+    triggerProbability: z
+      .unknown()
+      .optional()
+      .meta({
+        title: "Automatic Speech Probability",
+        description:
+          "Chance that an automatic reply is spoken, from 0 to 1. Defaults to 1. Explicit speech requests bypass this setting. Values outside the range are clamped; invalid values use the default.",
+      }),
     enabled: z.boolean().optional(),
     mode: TtsModeSchema.optional(),
     provider: TtsProviderSchema.optional(),

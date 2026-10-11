@@ -1,3 +1,4 @@
+// From openclaw/openclaw@785548984b28147f15cc792174ba7a6e32802ca9:extensions/gradium/speech-provider.test.ts (atlas VOICE-0025). Changed for Branch: use Branch plugin SDK and compiled-subprocess test setup; all upstream assertions retained.
 import "branch/plugin-sdk/compiled-subprocess-testing";
 import type { SpeechSynthesisRequest } from "branch/plugin-sdk/speech";
 import { installPinnedHostnameTestHooks } from "branch/plugin-sdk/test-media-understanding";

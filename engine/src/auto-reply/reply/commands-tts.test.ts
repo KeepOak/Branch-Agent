@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/auto-reply/reply/commands-tts.test.ts (atlas VOICE-0068). Changed for Branch: add coverage for authorized upstream automatic modes; retain every existing assertion.
 // Tests text-to-speech command configuration, preference persistence, and summaries.
 import fs from "node:fs";
 import os from "node:os";
@@ -11,6 +12,7 @@ import {
   replaceSessionEntry,
 } from "../../config/sessions/session-accessor.js";
 import { resolveSessionStorePathForScope } from "../../config/sessions/session-store-path.js";
+import { setTtsAutoMode } from "../../tts/tts-settings-writes.js";
 
 const ttsMocks = vi.hoisted(() => ({
   getResolvedSpeechProviderConfig: vi.fn(),
@@ -44,6 +46,7 @@ vi.mock("../../tts/provider-registry.js", () => ({
 }));
 
 vi.mock("../../tts/tts.js", () => ttsMocks);
+vi.mock("../../tts/tts-settings-writes.js", () => ({ setTtsAutoMode: vi.fn() }));
 
 const { handleTtsCommands } = await import("./commands-tts.js");
 const PRIMARY_TTS_PROVIDER = "acme-speech";
@@ -489,5 +492,45 @@ describe("handleTtsCommands status fallback reporting", () => {
     const clearReply = expectReply(clearResult);
     expect(clearReply.text).toContain("override cleared");
     expect(sessionEntry.ttsAuto).toBeUndefined();
+  });
+
+  it.each(["always", "inbound", "tagged"] as const)(
+    "R-0411/G-0848: sets global %s speech mode through the preference writer",
+    async (mode) => {
+      const result = await handleTtsCommands(buildTtsParams(`/tts ${mode}`), true);
+      expect(expectReply(result).text).toContain(`TTS mode: ${mode}`);
+      expect(setTtsAutoMode).toHaveBeenCalledExactlyOnceWith("/tmp/tts-prefs.json", mode);
+    },
+  );
+
+  it.each(["always", "inbound", "tagged", "off"] as const)(
+    "R-0411/G-0848: keeps %s mode scoped to this chat",
+    async (mode) => {
+      const sessionEntry: SessionEntry = { sessionId: `voice-mode-${mode}`, updatedAt: 1 };
+      const sessionStore = { "session-key": sessionEntry };
+      const result = await handleTtsCommands(
+        buildTtsParams(`/tts chat ${mode}`, {}, undefined, { sessionEntry, sessionStore }),
+        true,
+      );
+      expectReply(result);
+      expect(sessionEntry.ttsAuto).toBe(mode);
+      expect(setTtsAutoMode).not.toHaveBeenCalled();
+      expect(ttsMocks.setTtsEnabled).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not change global or chat speech modes for an unauthorized caller", async () => {
+    const sessionEntry: SessionEntry = { sessionId: "unauthorized-voice-mode", updatedAt: 1 };
+    const params = buildTtsParams("/tts inbound", {}, undefined, {
+      ctx: { CommandAuthorized: false, CommandSource: "text" },
+      sessionEntry,
+      sessionStore: { "session-key": sessionEntry },
+    });
+    params.command.isAuthorizedSender = false;
+    expect(await handleTtsCommands(params, true)).toEqual({ shouldContinue: false });
+    params.command.commandBodyNormalized = "/tts chat inbound";
+    expect(await handleTtsCommands(params, true)).toEqual({ shouldContinue: false });
+    expect(sessionEntry.ttsAuto).toBeUndefined();
+    expect(setTtsAutoMode).not.toHaveBeenCalled();
   });
 });

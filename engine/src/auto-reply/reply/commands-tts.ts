@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/auto-reply/reply/commands-tts.ts (atlas VOICE-0068). Changed for Branch: expose existing upstream automatic modes through authorized global and chat commands; retain existing on/off/default behavior.
 // Implements text-to-speech commands and persisted voice preferences.
 import crypto from "node:crypto";
 import {
@@ -16,6 +17,8 @@ import {
   getSpeechProvider,
   listSpeechProviders,
 } from "../../tts/provider-registry.js";
+import { normalizeTtsAutoMode } from "../../tts/tts-auto-mode.js";
+import { setTtsAutoMode } from "../../tts/tts-settings-writes.js";
 import {
   getResolvedSpeechProviderConfig,
   getLastTtsAttempt,
@@ -97,6 +100,7 @@ function ttsUsage(): CommandHandlerResult {
       `**Commands:**\n` +
       `• /tts on — Enable automatic TTS for replies\n` +
       `• /tts off — Disable TTS\n` +
+      `• /tts always|inbound|tagged — Speak every reply, only replies to voice, or tagged replies\n` +
       `• /tts status — Show current settings\n` +
       `• /tts provider [name] — View/change provider\n` +
       `• /tts persona [id|off] — View/change persona\n` +
@@ -104,7 +108,7 @@ function ttsUsage(): CommandHandlerResult {
       `• /tts summary [on|off] — View/change auto-summary\n` +
       `• /tts audio <text> — Generate audio from text\n` +
       `• /tts latest — Read the latest assistant reply once\n` +
-      `• /tts chat on|off|default — Override auto-TTS for this chat\n\n` +
+      `• /tts chat on|off|always|inbound|tagged|default — Override auto-TTS for this chat\n\n` +
       `**Providers:**\n` +
       `Use /tts provider to list the registered speech providers and their status.\n\n` +
       `**Text Limit (default: 1500, max: 4096):**\n` +
@@ -174,12 +178,15 @@ async function handleTtsChatAction(
   }
 
   let replyText: string;
-  if (requested === "on") {
-    params.sessionEntry.ttsAuto = "always";
-    replyText = "🔊 TTS enabled for this chat.";
-  } else if (requested === "off") {
-    params.sessionEntry.ttsAuto = "off";
-    replyText = "🔇 TTS disabled for this chat.";
+  const auto = requested === "on" ? "always" : normalizeTtsAutoMode(requested);
+  if (auto) {
+    params.sessionEntry.ttsAuto = auto;
+    replyText =
+      auto === "always"
+        ? "🔊 TTS enabled for this chat."
+        : auto === "off"
+          ? "🔇 TTS disabled for this chat."
+          : `🔊 TTS mode for this chat: ${auto}.`;
   } else if (requested === "default" || requested === "inherit" || requested === "clear") {
     delete params.sessionEntry.ttsAuto;
     replyText = "🔊 TTS chat override cleared.";
@@ -326,6 +333,12 @@ export const handleTtsCommands: CommandHandler = defineAuthorizedTextCommand(
       const enabled = action === "on";
       setTtsEnabled(prefsPath, enabled);
       return stopWithText(enabled ? "🔊 TTS enabled." : "🔇 TTS disabled.");
+    }
+
+    const auto = normalizeTtsAutoMode(action);
+    if (auto) {
+      setTtsAutoMode(prefsPath, auto);
+      return stopWithText(`🔊 TTS mode: ${auto}.`);
     }
 
     if (action === "chat") {
