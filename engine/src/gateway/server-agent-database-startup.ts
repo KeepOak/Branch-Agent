@@ -5,6 +5,10 @@ import { resolveConfiguredAgentDatabaseTargets } from "../config/sessions/target
 import type { BranchConfig } from "../config/types.branch.js";
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import {
+  isPluginMetadataSnapshotRetired,
+  PluginCacheRetiredError,
+} from "../plugins/plugin-cache.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
 import type { PluginRegistry } from "../plugins/registry-types.js";
 import { withPluginRuntimeRegistryScope } from "../plugins/runtime/gateway-request-scope.js";
@@ -25,6 +29,38 @@ const log = createSubsystemLogger("gateway/covering-publication");
  */
 /** Covering publications a startup attempt may repeat after leaving its agent out. */
 const MAX_STARTUP_PUBLICATION_ROUNDS = 5;
+/** Publications a startup attempt may repeat after a reload retired their plugin inventory. */
+const MAX_STARTUP_RETIRED_INVENTORY_ROUNDS = 3;
+
+/**
+ * The plugin metadata snapshot a startup publication round may reuse. A reload can retire the
+ * Gateway's inventory and fail before it publishes a replacement snapshot; reusing the retired
+ * one fails every attempt until a restart, so the round resolves a current inventory instead.
+ */
+export function selectStartupPluginMetadataSnapshot(
+  snapshot: PluginMetadataSnapshot | undefined,
+): PluginMetadataSnapshot | undefined {
+  return snapshot && !isPluginMetadataSnapshotRetired(snapshot) ? snapshot : undefined;
+}
+
+/**
+ * Whether a failed startup publication round lost its plugin inventory to a retirement, so the
+ * attempt can publish again with a current one. A superseded preparation is never one.
+ */
+export function isRetiredInventoryPublicationFailure(
+  error: unknown,
+  snapshot: PluginMetadataSnapshot | undefined,
+  isGenerationRetiredError: (error: unknown) => boolean,
+): boolean {
+  if (error instanceof AgentDatabasePreparationSupersededError) {
+    return false;
+  }
+  return (
+    error instanceof PluginCacheRetiredError ||
+    isGenerationRetiredError(error) ||
+    (snapshot !== undefined && isPluginMetadataSnapshotRetired(snapshot))
+  );
+}
 
 export async function runStartupModelPublication(
   assertPreparationCurrent: () => void,
@@ -251,12 +287,18 @@ export function activateGatewayAgentDatabaseStartup(params: {
             getActiveSecretsRuntimeSnapshotRevision,
             refreshActiveSecretsRuntimeSnapshotForConfig,
           },
+          { PreparedModelRuntimePluginGenerationRetiredError },
+          { reportStartupAuthOrderMissingProfiles },
         ] = await Promise.all([
           import("./server-startup-session-migration.js"),
           import("../agents/prepared-model-runtime.js"),
           import("../agents/prepared-model-runtime.configured.js"),
           import("../secrets/runtime.js"),
+          import("../agents/prepared-model-runtime.errors.js"),
+          import("./server-agent-database-startup-auth-order.js"),
         ]);
+        const isGenerationRetiredError = (error: unknown) =>
+          error instanceof PreparedModelRuntimePluginGenerationRetiredError;
         assertCurrent();
         const beforeConfig = params.getConfig();
         const previousSecretsRevision = getActiveSecretsRuntimeSnapshotRevision();
@@ -328,28 +370,63 @@ export function activateGatewayAgentDatabaseStartup(params: {
             log: params.log,
           });
           assertPreparationCurrent();
-          const pluginMetadataSnapshot = params.getPluginMetadataSnapshot();
           // A covering publication that left this still-pending agent out retired its snapshot;
           // publish it again within this attempt (its watchdog bounds the loop) rather than fail.
           // Each round is capped, so a publication that keeps leaving the agent out fails plainly.
-          for (let round = 1; ; round += 1) {
-            if (round > MAX_STARTUP_PUBLICATION_ROUNDS) {
+          // A reload that retires the plugin inventory mid-publication gets the same treatment:
+          // the next round reads the Gateway's snapshot again and skips it while it is retired.
+          let leftOutRounds = 0;
+          let retiredInventoryRounds = 0;
+          for (;;) {
+            if (leftOutRounds >= MAX_STARTUP_PUBLICATION_ROUNDS) {
               throw new Error(
                 `Agent ${agentId} model publication was left out of ${MAX_STARTUP_PUBLICATION_ROUNDS} covering publications in a row`,
               );
             }
             preparedInput = undefined;
-            await runStartupModelPublication(assertPreparationCurrent, (isPublicationCurrent) =>
-              withPluginRuntimeRegistryScope(params.getPluginRegistry(), () =>
-                refreshPreparedModelRuntimeSnapshots(cfg, {
-                  agentIds,
-                  catalogMode: "static",
-                  allowGatewaySubagentBinding: true,
-                  ...(pluginMetadataSnapshot ? { pluginMetadataSnapshot } : {}),
-                  isPublicationCurrent,
-                }),
-              ),
-            );
+            const gatewayMetadataSnapshot = params.getPluginMetadataSnapshot();
+            const pluginMetadataSnapshot =
+              selectStartupPluginMetadataSnapshot(gatewayMetadataSnapshot);
+            if (gatewayMetadataSnapshot && !pluginMetadataSnapshot) {
+              params.log.warn(
+                `agent ${agentId} startup model publication skips the Gateway's retired plugin inventory and resolves a current one`,
+              );
+            }
+            try {
+              await runStartupModelPublication(assertPreparationCurrent, (isPublicationCurrent) =>
+                withPluginRuntimeRegistryScope(params.getPluginRegistry(), () =>
+                  refreshPreparedModelRuntimeSnapshots(cfg, {
+                    agentIds,
+                    catalogMode: "static",
+                    allowGatewaySubagentBinding: true,
+                    ...(pluginMetadataSnapshot ? { pluginMetadataSnapshot } : {}),
+                    isPublicationCurrent,
+                  }),
+                ),
+              );
+            } catch (error) {
+              signal.throwIfAborted();
+              if (
+                !isRetiredInventoryPublicationFailure(
+                  error,
+                  pluginMetadataSnapshot,
+                  isGenerationRetiredError,
+                )
+              ) {
+                throw error;
+              }
+              retiredInventoryRounds += 1;
+              if (retiredInventoryRounds > MAX_STARTUP_RETIRED_INVENTORY_ROUNDS) {
+                throw new Error(
+                  `Agent ${agentId} model publication lost its plugin inventory to ${MAX_STARTUP_RETIRED_INVENTORY_ROUNDS} retirements in a row`,
+                  { cause: error },
+                );
+              }
+              params.log.warn(
+                `agent ${agentId} startup model publication lost its plugin inventory to a retirement; publishing it again`,
+              );
+              continue;
+            }
             preparedInput = listConfiguredOwnerInputs(cfg, undefined, true).find(
               (input) => input.agentId === agentId,
             );
@@ -366,13 +443,29 @@ export function activateGatewayAgentDatabaseStartup(params: {
               break;
             }
             if (covering === "unpublished") {
+              // A publication whose inventory retired under it can settle without a snapshot.
+              if (
+                pluginMetadataSnapshot &&
+                isPluginMetadataSnapshotRetired(pluginMetadataSnapshot) &&
+                retiredInventoryRounds < MAX_STARTUP_RETIRED_INVENTORY_ROUNDS
+              ) {
+                retiredInventoryRounds += 1;
+                params.log.warn(
+                  `agent ${agentId} startup model publication lost its plugin inventory to a retirement; publishing it again`,
+                );
+                continue;
+              }
               break;
             }
+            leftOutRounds += 1;
             params.log.info(
               `agent ${agentId} startup model publication was left out of a covering publication; publishing it again`,
             );
           }
           assertPreparationCurrent();
+          if (preparedInput) {
+            await reportStartupAuthOrderMissingProfiles(agentId, preparedInput, params.log);
+          }
         });
       }),
   });

@@ -130,6 +130,38 @@ describe("models auth order", () => {
     expect(runtime.logs).toContain("Auth profile order override: xai:a");
   });
 
+  it("set refuses a profile the agent's effective store does not hold and writes nothing", async () => {
+    // builder-oak: an openai row naming profiles absent from its effective store must not land.
+    await expect(
+      modelsAuthOrderSetCommand(
+        { provider: "openai", agent: "builder-oak", order: ["openai:absent"] },
+        createRuntime(),
+      ),
+    ).rejects.toThrow('Auth profile "openai:absent" not found');
+    expect(mocks.setAuthProfileOrder).not.toHaveBeenCalled();
+    expect(mocks.refreshRunningGatewayAuthState).not.toHaveBeenCalled();
+  });
+
+  it("set accepts a profile the agent's effective store inherits from its auth owner", async () => {
+    // The effective store holds tk's openai profile although the inheritor's own store does not.
+    mocks.ensureAuthProfileStore.mockReturnValue(storeWith(["anthropic:a", "openai:tk-1"]));
+    mocks.setAuthProfileOrder.mockResolvedValue({
+      version: 1,
+      profiles: {},
+      order: { openai: ["openai:tk-1"] },
+    });
+    const runtime = createRuntime();
+    await modelsAuthOrderSetCommand(
+      { provider: "openai", agent: "new-trunk-3", order: ["openai:tk-1"] },
+      runtime,
+    );
+    expect(mocks.setAuthProfileOrder).toHaveBeenCalledWith({
+      agentDir: "/tmp/agent-new-trunk-3",
+      provider: "openai",
+      order: ["openai:tk-1"],
+    });
+  });
+
   it("clear removes the store order and refreshes a running gateway", async () => {
     const runtime = createRuntime();
     await modelsAuthOrderClearCommand({ provider: "anthropic" }, runtime);

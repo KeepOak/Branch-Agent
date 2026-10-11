@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
+import {
+  bindPluginMetadataSnapshotCache,
+  createPluginCache,
+  PluginCacheRetiredError,
+  retirePluginCache,
+} from "../plugins/plugin-cache.js";
+import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
 import { AgentDatabasePreparationSupersededError } from "../state/agent-database-admission.js";
-import { runStartupModelPublication } from "./server-agent-database-startup.js";
+import {
+  isRetiredInventoryPublicationFailure,
+  runStartupModelPublication,
+  selectStartupPluginMetadataSnapshot,
+} from "./server-agent-database-startup.js";
 
 class PublicationSupersededError extends Error {}
 
@@ -35,5 +46,50 @@ describe("runStartupModelPublication", () => {
         },
       ),
     ).rejects.toBe(failure);
+  });
+});
+
+describe("startup publication after a plugin inventory retirement", () => {
+  const snapshotOf = () => {
+    const cache = createPluginCache();
+    const snapshot = { index: { plugins: [] } } as unknown as PluginMetadataSnapshot;
+    bindPluginMetadataSnapshotCache(snapshot, cache);
+    return { snapshot, retire: () => void retirePluginCache(cache).catch(() => {}) };
+  };
+  const neverGenerationRetired = () => false;
+
+  it("reuses the Gateway's snapshot only while its inventory is current", () => {
+    const gateway = snapshotOf();
+    expect(selectStartupPluginMetadataSnapshot(gateway.snapshot)).toBe(gateway.snapshot);
+    gateway.retire();
+    expect(selectStartupPluginMetadataSnapshot(gateway.snapshot)).toBeUndefined();
+    expect(selectStartupPluginMetadataSnapshot(undefined)).toBeUndefined();
+  });
+
+  it("publishes again after a retirement, never after a superseded preparation or another failure", () => {
+    const gateway = snapshotOf();
+    const plain = new Error("model preparation failed");
+    expect(
+      isRetiredInventoryPublicationFailure(plain, gateway.snapshot, neverGenerationRetired),
+    ).toBe(false);
+    expect(
+      isRetiredInventoryPublicationFailure(
+        new PluginCacheRetiredError("Plugin inventory has retired; begin a new plugin operation."),
+        undefined,
+        neverGenerationRetired,
+      ),
+    ).toBe(true);
+    expect(isRetiredInventoryPublicationFailure(plain, undefined, () => true)).toBe(true);
+    gateway.retire();
+    expect(
+      isRetiredInventoryPublicationFailure(plain, gateway.snapshot, neverGenerationRetired),
+    ).toBe(true);
+    expect(
+      isRetiredInventoryPublicationFailure(
+        new AgentDatabasePreparationSupersededError("Agent tk startup preparation was superseded"),
+        gateway.snapshot,
+        () => true,
+      ),
+    ).toBe(false);
   });
 });

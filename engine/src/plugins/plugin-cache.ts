@@ -137,11 +137,25 @@ export function getPluginCacheRetirementSignal(cache: PluginCache): AbortSignal 
   return getPluginCacheRetainers(cache).controller.signal;
 }
 
+/** Thrown when work tries to borrow an inventory that a reload or refresh already retired. */
+export class PluginCacheRetiredError extends Error {}
+
+/**
+ * A reload can retire the inventory behind a metadata snapshot before it publishes a
+ * replacement, so a holder of that snapshot must resolve a current one instead of reusing it.
+ */
+export function isPluginMetadataSnapshotRetired(snapshot: object): boolean {
+  const cache = getPluginMetadataSnapshotCache(snapshot);
+  return cache.retirement !== undefined || getPluginCacheRetirementSignal(cache).aborted;
+}
+
 /** Admitted generations keep their exact prepared facts through publication replacement. */
 export function retainPluginCache(cache: PluginCache): () => void {
   const retained = getPluginCacheRetainers(cache);
   if (cache.retirement || retained.retirement) {
-    throw new Error("Plugin inventory has retired; begin a new plugin operation.");
+    throw new PluginCacheRetiredError(
+      "Plugin inventory has retired; begin a new plugin operation.",
+    );
   }
   if (retained.references.size === 0) {
     retained.settled = createDeferredCore();
