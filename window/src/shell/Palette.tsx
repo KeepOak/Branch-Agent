@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./icons";
+import { Dialog } from "./Dialog";
 import { filterPalette, GROUPS, moveSelection, paletteEmptyLine, type PaletteRow } from "./palette-model";
 import { readMessageHits, type MessageHit } from "./search-model";
 
@@ -63,6 +64,7 @@ export function messagePaletteRows(hits: MessageHit[], query: string, rowName: (
 
 /** Find anything (DESIGN-SPEC §4.1.7): the field, the grouped list, Up/Down/Enter/Escape, and the footer. */
 export function Palette({ rows, request, rowName, onOpenMessage, onClose }: Props) {
+  const [pending, setPending] = useState<PaletteRow | null>(null);
   const [query, setQuery] = useState("");
   const [sel, setSel] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -77,11 +79,23 @@ export function Palette({ rows, request, rowName, onOpenMessage, onClose }: Prop
     listRef.current?.querySelector(`[data-index="${sel}"]`)?.scrollIntoView({ block: "nearest" });
   }, [sel]);
   const run = (row: PaletteRow | undefined) => {
-    if (row) {
+    if (row?.confirmation) {
+      setPending(row);
+    } else if (row) {
       onClose();
       row.run();
     }
   };
+  if (pending) return (
+    <Dialog title={`${pending.label}?`} onClose={onClose} testid="palette-confirm"
+      footer={<>
+        <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+        <button type="button" className="btn bad" onClick={() => { onClose(); pending.run(); }}>{pending.label}</button>
+      </>}
+    >
+      <p className="dlg-p">{pending.confirmation}</p>
+    </Dialog>
+  );
   let lastGroup = "";
   const empty = paletteEmptyLine(shown.length, messages.searching);
   return (

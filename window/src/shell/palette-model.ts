@@ -1,5 +1,5 @@
 // Find anything (DESIGN-SPEC §4.1.7): the grouped rows and how typing filters them. Pure, so it is tested.
-export type PaletteRow = { id: string; group: string; label: string; hint: string; run: () => void; whenTyping?: boolean };
+export type PaletteRow = { id: string; group: string; label: string; hint: string; run: () => void; whenTyping?: boolean; confirmation?: string };
 
 /** The groups in order; while typing, Messages and Trunks follow Settings. */
 export const GROUPS = ["Actions", "Conversations", "Places", "Settings", "Messages", "Trunks"];

@@ -64,7 +64,7 @@ export function paletteRows(c: Ctx): PaletteRow[] {
     { id: "a:new", group: "Actions", label: "New conversation", hint: "Ctrl N", run: c.newConversation },
     { id: "a:trunk", group: "Actions", label: "New Trunk", hint: "", run: c.newTrunk },
     // Preview spec-v23 index.html:8674: "Turn Lockdown on/off" follows New Trunk in Actions.
-    ...(c.toggleLockdown ? [{ id: "a:lockdown", group: "Actions", label: c.lockdownOn ? "Turn Lockdown off" : "Turn Lockdown on", hint: "", run: c.toggleLockdown }] : []),
+    ...(c.toggleLockdown ? [{ id: "a:lockdown", group: "Actions", label: c.lockdownOn ? "Turn Lockdown off" : "Turn Lockdown on", hint: "", confirmation: c.lockdownOn ? "Trunks will be able to make changes and send information again, within their permissions." : "Trunks will still be able to read, but nothing will leave this computer and nothing will be changed.", run: c.toggleLockdown }] : []),
     { id: "a:theme", group: "Actions", label: "Switch light or dark", hint: "", run: c.toggleTheme },
     { id: "a:focus", group: "Actions", label: "Focus mode", hint: "Ctrl .", run: c.focusMode },
     { id: "a:keys", group: "Actions", label: "Keyboard shortcuts", hint: "?", run: c.shortcuts },
