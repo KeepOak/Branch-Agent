@@ -99,6 +99,31 @@ describe("drag to group", () => {
     expect(mergeRoomNotices(history, notices).map((block) => block.key)).toEqual(["room:r1:1", "first", "reply", "room:r1:2", "second"]);
     expect(notices[1]).toMatchObject({ text: "You added Hermes", at: 300 });
   });
+  it("adds the room's Trunk posts and other Trunks' replies from its log as their reports, nothing already in the conversation", async () => {
+    const piper = contact("piper", "Piper", "trunk");
+    const request = vi.fn(async () => ({ events: [
+      { seq: 1, kind: "message", actorId: "owner", payload: { text: "Status?" }, createdAt: 200 },
+      { seq: 2, kind: "turn.replied", actorId: "scout", payload: { text: "Lead reply, already in the conversation" }, createdAt: 250 },
+      { seq: 3, kind: "turn.replied", actorId: "piper", payload: { text: "Quotes are in." }, createdAt: 300 },
+      { seq: 4, kind: "message", actorId: "scout", payload: { text: "Posted to the room." }, createdAt: 350 },
+      { seq: 5, kind: "message", actorId: "a2a:hermes", payload: { text: "From outside", from: "Hermes" }, createdAt: 400 },
+    ] }));
+    const session = { request, onGatewayEvent: () => () => {} } as unknown as SaplingSession;
+    const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
+    let notices: Block[] = [];
+    function Probe() { notices = useRoomNotices(session, contacts[3]!.threadKey, [...contacts, piper]); return null; }
+    await act(async () => root!.render(<Probe />));
+    expect(notices).toEqual([
+      { kind: "text", key: "room:r1:3", text: "Quotes are in.", streaming: false, meta: { timestamp: 300, sender: { kind: "trunk", agentId: "piper", posted: true } } },
+      { kind: "text", key: "room:r1:4", text: "Posted to the room.", streaming: false, meta: { timestamp: 350 } },
+    ]);
+    const history: Block[] = [
+      { kind: "user", key: "ask", text: "Status?", meta: { timestamp: 200 } },
+      { kind: "text", key: "lead", text: "Lead reply", streaming: false, meta: { timestamp: 250 } },
+      { kind: "user", key: "later", text: "Thanks", meta: { timestamp: 500 } },
+    ];
+    expect(mergeRoomNotices(history, notices).map((block) => block.key)).toEqual(["ask", "lead", "room:r1:3", "room:r1:4", "later"]);
+  });
   it("creates a real room with both contacts and a lead Trunk through rooms.create", async () => {
     const { session, request } = fakeSession();
     const made = await createDroppedGroup(session, contacts, [scout.threadKey, ledger.threadKey], "Hartwell check", "scout");

@@ -87,6 +87,16 @@ describe("People › Live now", () => {
     expect(host.querySelectorAll(".pp-run")).toHaveLength(2);
     expect(host.textContent).not.toContain("Read the receipts");
   });
+  it("shows a Trunk's queue job or background conversation, which only names the chat it was started from (LP-10)", async () => {
+    const queued = (n: number) => ({ key: `agent:t${n}:queue-job-${n}`, agentId: `t${n}`, label: `Queue job ${n}`, parentSessionKey: `agent:t${n}:main`, hasActiveRun: true, status: "running" });
+    const list = (p: Record<string, unknown>) => p.includeOwnerSessionCounts ? { sessions: [] } : { sessions: [1, 2, 3].map(queued) };
+    const { engine } = fakeEngine({ ...BASE, "sessions.list": list });
+    await mount(engine);
+    expect(host.textContent).not.toContain("Nothing is running right now.");
+    expect(host.querySelectorAll(".pp-run")).toHaveLength(3);
+    expect(host.textContent).toContain("Queue job 2");
+    expect(host.querySelector('[role="tab"][aria-selected="true"]')!.textContent).toBe("Live now3");
+  });
   it("says nothing is running when the engine has no active runs, and shows the banner", async () => {
     const { engine } = fakeEngine({ ...BASE, "system-presence": [], "sessions.list": { sessions: [] } });
     await mount(engine);

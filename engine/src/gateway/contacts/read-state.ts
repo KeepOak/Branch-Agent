@@ -147,11 +147,11 @@ export function applyReadMutation(
  * The one helper every session view uses: a thread is read through the latest of its own
  * lastReadAt and the markers that cover it. Returns the stored entry when no marker is later.
  */
-export function readThroughEntry(
+export function readThroughEntry<E extends SessionEntry>(
   sessionKey: string,
-  entry: SessionEntry | undefined,
+  entry: E | undefined,
   markers: ReadMarkers,
-): SessionEntry | undefined {
+): E | undefined {
   const marked = Math.max(markers.allThreadsMs, markers.byScope.get(sessionKey) ?? 0);
   if (!entry || marked <= (entry.lastReadAt ?? 0)) {
     return entry;
