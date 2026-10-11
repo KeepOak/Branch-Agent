@@ -64,25 +64,13 @@
     "place:automations :: Pause all": [
       "toast-only"
     ],
-    "place:automations :: Scheduled": [
-      "dead"
-    ],
     "place:canopy :: Clear": [
       "dead"
     ],
     "place:canopy :: Fold all": [
       "dead"
     ],
-    "place:canopy :: Now": [
-      "dead"
-    ],
     "place:canopy :: Open all": [
-      "dead"
-    ],
-    "place:customize :: Trunks, 3": [
-      "dead"
-    ],
-    "place:inbox :: Needs you": [
       "dead"
     ],
     "place:library :: Check now": [
@@ -90,12 +78,6 @@
     ],
     "place:library :: Export everything": [
       "error"
-    ],
-    "place:library :: Memory": [
-      "dead"
-    ],
-    "place:people :: Live now": [
-      "dead"
     ],
     "settings:accounts :: Check again": [
       "dead"

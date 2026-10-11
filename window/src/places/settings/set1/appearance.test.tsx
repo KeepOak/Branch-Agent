@@ -51,6 +51,45 @@ const sw = (label: string) => host.querySelector<HTMLInputElement>(`input[aria-l
 const rows = () => [...host.querySelectorAll(".ctl > b")].map((b) => b.textContent);
 
 describe("Settings › Appearance", () => {
+  it.each([1, 2] as const)("NA-02 omits unavailable character and pet controls from level %i and search", async (level) => {
+    const { engine } = engineOf();
+    await render(engine, level);
+    const unavailable = [
+      "Faces show feelings", "Mouth follows the voice", "Eyes follow the pointer", "Bobs to music",
+      "Light from the screen", "Float it beside the chat", "Copy my moves from the camera",
+      "Leaves follow the pointer", "A creature that moves with real work", "Drive a VTube Studio avatar",
+      "Bring in a character", "Pose by hand", "Describe a pet", "How faces are drawn",
+    ];
+    for (const title of unavailable) {
+      expect(host.querySelector(`[data-row="${title}"]`), title).toBeNull();
+      expect(APPEARANCE_ROWS.some((row) => row.title === title), `${title} in search`).toBe(false);
+    }
+    expect(host.querySelector('[data-sec="Characters"] [disabled]')).toBeNull();
+    expect(host.querySelector('select[aria-label="Birch: look"]')).toBeNull();
+  });
+
+  it("NA-02 retains working character switches and persists each choice", async () => {
+    const { engine, prefs } = engineOf();
+    await render(engine, 1);
+    for (const [label, key] of [
+      ["Acts out what it is doing", "ch.act"], ["Moves while it speaks", "ch.move"],
+      ["Reacts when you touch it", "ch.touch"], ["Captions under it", "ch.cap"],
+    ]) {
+      expect(sw(label).disabled).toBe(false);
+      expect(sw(label).checked).toBe(true);
+      await act(async () => sw(label).click());
+      expect(prefs["ui.window.look"]).toMatchObject({ [key]: false });
+      expect(sw(label).checked).toBe(false);
+    }
+    await act(async () => root.unmount());
+    forgetLookStore();
+    root = createRoot(host);
+    await render(engine, 1);
+    for (const label of ["Acts out what it is doing", "Moves while it speaks", "Reacts when you touch it", "Captions under it"]) {
+      expect(sw(label).checked).toBe(false);
+    }
+  });
+
   it("keeps pet-sound rationale in help without hiding the row description", async () => {
     const { engine } = engineOf();
     await render(engine);
@@ -202,7 +241,7 @@ describe("Settings › Appearance", () => {
     await act(async () => root.unmount());
     root = createRoot(host);
     await render(engine, 2);
-    expect(rows()).toEqual(expect.arrayContaining(["Interface font", "How faces are drawn", "Window frame", "Headlines for working conversations"]));
+    expect(rows()).toEqual(expect.arrayContaining(["Interface font", "Acts out what it is doing", "Window frame", "Headlines for working conversations"]));
     expect(host.querySelector('[data-row="Window frame"]')?.getAttribute("aria-disabled")).toBe("true");
   });
 

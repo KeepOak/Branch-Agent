@@ -4,10 +4,10 @@
 // Advanced the rows for running models here. The engine has no model catalogue with sizes or graphics-card readout yet.
 import { useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
-import { list, text, visible, type RecordValue } from "../adapter";
+import { list, record, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Icon } from "../../../shell/icons";
-import { Btn, Ctl, Empty, Page, Sec, Status, useScope, type RowEntry } from "../kit";
+import { Btn, Ctl, Empty, Page, Sec, Status, NOSETUP, useConfig, useScope, type RowEntry } from "../kit";
 import { Runtimes, RUNTIMES } from "./local-runtimes";
 import { LocalMore, MORE_TITLES } from "./local-more";
 import { SetupDialog } from "./local-setup";
@@ -58,6 +58,12 @@ export function foundRuntimes(detect: RecordValue | undefined, models: RecordVal
 
 export function LocalPage(props: SettingsPageProps) {
   const scope = useScope();
+  const cfg = useConfig(props.engine);
+  const maySetup = props.engine.scopes.length === 0 || props.engine.scopes.includes("operator.admin");
+  const modelPath = scope ? ["agents", "entries", scope, "model", "primary"] : ["agents", "defaults", "model", "primary"];
+  const current = cfg.get(modelPath.slice(0, -1)) ?? cfg.get(["agents", "defaults", "model"]);
+  const primary = typeof current === "string" ? current : record(current).primary;
+  const useModel = (ref: string) => { void cfg.set(modelPath, ref); };
   const agent = scope ? { agentId: scope } : {};
   const info = useResource<RecordValue>(props.engine, "system.info", {});
   const detect = useResource<RecordValue>(props.engine, "branch.setup.detect", agent);
@@ -70,7 +76,7 @@ export function LocalPage(props: SettingsPageProps) {
   return (
     <Page title={props.title} lede="Models that run here, free and private." help="Models that run here, free and private. Branch looks at this computer first and only offers what fits.">
       <Hardware loading={info.loading} error={info.error} hw={hw} runtimes={detect.loading ? undefined : RUNTIMES.filter((r) => found.has(r.id)).map((r) => r.name)} />
-      <Recommended loading={detect.loading || models.loading} options={list(detect.data?.prepareOptions)} local={local} onSetup={setSetup} />
+      <Recommended loading={detect.loading || models.loading} options={list(detect.data?.prepareOptions)} local={local} onSetup={setSetup} primary={primary} onUse={useModel} maySetup={maySetup} />
       <Runtimes engine={props.engine} hw={hw} detect={detect} models={models} found={found} />
       <LocalMore engine={props.engine} hw={hw} local={local} />
       {setup ? <SetupDialog engine={props.engine} option={setup} agent={agent} onClose={done} /> : null}
@@ -107,13 +113,13 @@ function Hardware({ loading, error, hw, runtimes }: HwProps) {
   );
 }
 
-type RecProps = { loading: boolean; options: RecordValue[]; local: RecordValue[]; onSetup: (o: RecordValue) => void };
-function Recommended({ loading, options, local, onSetup }: RecProps) {
+type RecProps = { loading: boolean; options: RecordValue[]; local: RecordValue[]; onSetup: (o: RecordValue) => void; primary: unknown; onUse: (ref: string) => void; maySetup: boolean };
+function Recommended({ loading, options, local, onSetup, primary, onUse, maySetup }: RecProps) {
   return (
     <Sec title="Recommended for you">
       {options.length || local.length ? (
         <div className="lm-grid-k">
-          {local.map((m) => <Installed key={`${text(m.provider)}/${text(m.id)}`} m={m} />)}
+          {local.map((m) => <Installed key={`${text(m.provider)}/${text(m.id)}`} m={m} primary={primary} onUse={onUse} maySetup={maySetup} />)}
           {options.map((o) => (
             <div key={text(o.id)} className="lm-k" data-row={visible(o.label)}>
               <div className="lm-h-k"><b>{visible(o.label)}</b></div>
@@ -128,7 +134,8 @@ function Recommended({ loading, options, local, onSetup }: RecProps) {
   );
 }
 
-function Installed({ m }: { m: RecordValue }) {
+function Installed({ m, primary, onUse, maySetup }: { m: RecordValue; primary: unknown; onUse: (ref: string) => void; maySetup: boolean }) {
+  const ref = `${text(m.provider)}/${text(m.id)}`;
   const name = visible(m.name ?? m.id);
   const ctx = typeof m.contextWindow === "number" ? Math.round(m.contextWindow / 1000) : 0;
   const runtime = RUNTIMES.find((r) => r.id === m.provider)?.name ?? visible(m.provider);
@@ -143,7 +150,7 @@ function Installed({ m }: { m: RecordValue }) {
       </div>
       <div className="acts">
         <span className="pill done-k"><i />Installed</span>
-        <Btn sm disabled title="Open a conversation and pick this model to talk to it.">Say hello</Btn>
+        <Btn sm disabled={!maySetup || primary === ref || m.available === false} title={!maySetup ? NOSETUP : m.available === false ? "Start this model’s runtime first." : undefined} onClick={() => onUse(ref)}>{primary === ref ? "In use" : "Use this"}</Btn>
         <Btn ghost sm disabled title="Branch can’t remove a model from this computer yet.">Remove</Btn>
       </div>
     </div>
