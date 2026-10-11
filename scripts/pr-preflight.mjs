@@ -148,6 +148,18 @@ export function personalInfoProblems(addedLines) {
   ));
 }
 
+// Bodies are public prose, not test fixtures. Scan every domain and Markdown
+// context, but retain the GitHub noreply identity exemption used by the gates.
+export function bodyEmailProblems(body) {
+  const addresses = body.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g) ?? [];
+  if (addresses.every((address) => address.toLowerCase().endsWith(ALLOWED_SUFFIX))) return [];
+  return [problem(
+    'body-email',
+    'PR body contains an email address',
+    'remove the address or replace it with a GitHub handle; only GitHub noreply identities are exempt',
+  )];
+}
+
 export function unverifiedPatchProblems(files) {
   return files.map((file) => problem(
     'personal-info',
@@ -182,6 +194,7 @@ export function runPreflight(input) {
     ...gateFileProblems({ changedFiles, body, headSha: input.headSha, protectedPaths }),
     ...desktopCoverageProblems({ files: input.files ?? [], desktopWorkflow: input.desktopWorkflow ?? null }),
     ...personalInfoProblems(input.addedLines ?? []),
+    ...bodyEmailProblems(body),
     ...unverifiedPatchProblems(input.unverifiedFiles ?? []),
   ];
 }
