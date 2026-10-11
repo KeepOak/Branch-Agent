@@ -41,12 +41,14 @@ describe("DA-100 Guide menu", () => {
   it("has no duplicate destination and marks every external row the same way", () => {
     const open = vi.fn();
     const items = guideMenuItems(vi.fn(), open);
-    for (const item of items) item.run();
+    const rows = items.flatMap(item => ("run" in item ? [item] : []));
+    expect(rows).toHaveLength(items.length);
+    for (const row of rows) row.run();
     const destinations = open.mock.calls.map(call => call[0]);
     expect(destinations.length).toBeGreaterThan(0);
     expect(new Set(destinations).size).toBe(destinations.length);
-    const external = items.slice(1);
-    expect(external.every(item => item.hint === "opens in browser" && !/browser/iu.test(item.label))).toBe(true);
+    const external = rows.slice(1);
+    expect(external.every(row => row.hint === "opens in browser" && !/browser/iu.test(row.label))).toBe(true);
   });
 
   it("wires the shell to the tested menu, walkthrough and safe external opener", () => {
