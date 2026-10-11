@@ -107,6 +107,7 @@ import { SidePane, type PaneTab } from "../stage/SidePane";
 import { shouldShowThreadColumn, ThreadColumn } from "./ThreadColumn";
 import { ControlTower } from "./ControlTower";
 import { StagePip } from "../stage/StagePip";
+import { stageFit, useWindowWidth } from "../stage/stage-fit";
 import { AddComputer } from "../stage/AddComputer";
 import { computersChanged } from "../stage/computers";
 import { TrunkAppearances, TrunkPebbleLooks, TrunkEmojiFaces, rosterPebbleLooks, themeColour, trunkAppearance, type Appearance } from "../face/appearance";
@@ -356,6 +357,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const pinOrder = usePinOrder(session, ready);
   const [liveW, setLiveW] = useState<number | null>(null);
   const isNarrow = useNarrow();
+  const windowWidth = useWindowWidth();
   const [slideOpen, setSlideOpen] = useState(false);
   const [phoneTopicListFor, setPhoneTopicListFor] = useState<string | null>(null);
   const [searchFind, setSearchFind] = useState<{ key: string; query: string; nonce: number } | null>(null);
@@ -1244,7 +1246,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     onReply: (target: { entryId: string; name: string; text: string }) => setReplyTo(target),
   };
   const sideWidth = layout.hidden && !isNarrow ? 0 : liveW ?? (rail ? 68 : layout.sideW);
-  const frameClass = ["frame", dedicated ? "dedicated" : "", rail ? "rail" : "", layout.hidden && !isNarrow ? "list-hidden" : "", layout.focus ? "focus" : "", slideOpen ? "slide-open" : ""].filter(Boolean).join(" ");
+  // An open stage sits beside the conversation only when both keep a usable width; otherwise it covers the thread (DA-72).
+  const stagePlace = stage && route.kind === "chat" ? stageFit(windowWidth, dedicated ? 0 : sideWidth) : null;
+  const frameClass = ["frame", stagePlace ? `stage-${stagePlace.mode}` : "", dedicated ? "dedicated" : "", rail ? "rail" : "", layout.hidden && !isNarrow ? "list-hidden" : "", layout.focus ? "focus" : "", slideOpen ? "slide-open" : ""].filter(Boolean).join(" ");
   const summary = filterSummary(prefs, trunkName, personName);
   const dark = theme === "system" ? systemDark : effectiveDark(theme);
   const filterOpen = overlay?.kind === "filter";
@@ -1498,7 +1502,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     <TrunkAppearances.Provider value={appearances}>
     <TrunkPebbleLooks.Provider value={pebbleLooks}>
     <TrunkEmojiFaces.Provider value={Object.fromEntries(trunks.list.map((t) => [t.name, t.emoji ?? ""]))}>
-    <div className={frameClass} data-connection={ready ? "ready" : s.status.phase} data-route={route.kind} style={{ ["--side-w" as string]: `${dedicated ? 0 : sideWidth}px` }}>
+    <div className={frameClass} data-connection={ready ? "ready" : s.status.phase} data-route={route.kind} style={{ ["--side-w" as string]: `${dedicated ? 0 : sideWidth}px`, ...(stagePlace?.mode === "beside" ? { ["--stage-w" as string]: `${stagePlace.width}px` } : {}) }}>
       <a className="skip" href="#main">
         {route.kind === "chat" ? "Skip to the conversation" : "Skip to the page"}
       </a>
@@ -1696,6 +1700,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             working: lists.rows.filter((r) => r.working).map((r) => ({ key: r.key, title: trunkName(r.agentId), line: r.isMain ? "Working" : r.title || "New conversation", runIds: r.activeRunIds })),
             openSettings,
             openAutomations: () => openPlace("automations"),
+            trunkName,
             openConversation,
             onWhatsNew: () => setGuide("news-ready"),
             onReminded: () => setReminded((n) => n + 1),
