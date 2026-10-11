@@ -284,7 +284,7 @@ describe("resolveSessionReference", () => {
 
     const result = await resolveSessionReference({
       action: "send",
-      sessionKey: "a2a:branch-nas-linux--tester",
+      sessionKey: "a2a:peer-branch--tester",
       alias: "main",
       mainKey: "main",
       requesterInternalKey: "agent:main:main",
@@ -293,7 +293,7 @@ describe("resolveSessionReference", () => {
 
     expect(result.ok).toBe(false);
     const error = result.ok ? "" : result.error;
-    expect(error).toContain("Session not found: a2a:branch-nas-linux--tester");
+    expect(error).toContain("Session not found: a2a:peer-branch--tester");
     expect(error).toContain("say in plain words that you could not reach that conversation");
     expect(error).toContain("do not quote this error or the session key");
   });
