@@ -13,6 +13,7 @@ import {
 import {
   errorText,
   isTrunkUnavailableError,
+  rec,
   type TrunkAvailability,
 } from "./trunk-queue-status.js";
 import {
@@ -52,6 +53,17 @@ export const MAX_STOP_ATTEMPTS = 3;
 const RUN_ERROR_REASON = "the run ended with an error";
 /** After a Trunk refuses work as not ready, it is not tried again until this much time has passed. */
 export const UNAVAILABLE_RETRY_MS = 60_000;
+
+/**
+ * How many times one brief is sent. The gateway marks a refusal retryable when nothing ran (its worker queue was
+ * full, say); the brief then goes again to the same thread with the same idempotency key, after the wait the
+ * gateway asks for, instead of the job moving on and leaving an empty thread behind.
+ */
+export const BRIEF_SEND_ATTEMPTS = 4;
+
+/** The first wait before a brief is sent again; each later wait doubles, up to the longest wait. */
+const BRIEF_RETRY_MIN_WAIT_MS = 1_000;
+const BRIEF_RETRY_MAX_WAIT_MS = 5_000;
 
 /** Claim ids whose brief is still being sent. A claim is never called orphaned while its dispatch is in flight. */
 const dispatchingClaimIds = new Set<string>();
@@ -563,13 +575,16 @@ async function dispatchClaim(
     if (!current()) {
       return undefined;
     }
-    await params.gateway.request("chat.send", {
+    const sent = await sendBrief(params.gateway, current, {
       sessionKey: threadKey,
       agentId: params.agentId,
       message: item.brief_text,
       deliver: false,
       idempotencyKey: queueRunId(id, claimId),
     });
+    if (!sent) {
+      return undefined;
+    }
   } catch (error) {
     if (isTrunkUnavailableError(error)) {
       releaseUnavailableClaim(id, params.env, now(), claimId);
@@ -587,6 +602,36 @@ async function dispatchClaim(
     dispatchingClaimIds.delete(claimId);
   }
   return { item, threadKey };
+}
+
+/**
+ * Sends the brief, again after a retryable refusal, up to BRIEF_SEND_ATTEMPTS. Returns false when the claim was
+ * released in between, so nothing more is sent. Any other error, or the last refusal, is thrown.
+ */
+async function sendBrief(
+  gateway: TrunkQueueGateway,
+  current: () => boolean,
+  message: Record<string, unknown>,
+): Promise<boolean> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await gateway.request("chat.send", message);
+      return true;
+    } catch (error) {
+      const refusal = rec(error);
+      if (refusal.retryable !== true || attempt >= BRIEF_SEND_ATTEMPTS) {
+        throw error;
+      }
+      const askedMs = typeof refusal.retryAfterMs === "number" ? refusal.retryAfterMs : 0;
+      const waitMs = Math.max(askedMs, BRIEF_RETRY_MIN_WAIT_MS) * 2 ** (attempt - 1);
+      await new Promise((resolve) => {
+        setTimeout(resolve, Math.min(waitMs, BRIEF_RETRY_MAX_WAIT_MS));
+      });
+      if (!current()) {
+        return false;
+      }
+    }
+  }
 }
 
 /**
