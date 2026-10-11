@@ -224,8 +224,8 @@ export function TopBar({ compact, machine, header, dark, listHidden, onToggleLis
           {!compact ? <button
             type="button"
             className="ib"
-            aria-label={listHidden ? "Show the list · Ctrl+B" : "Hide the list · Ctrl+B"}
-            title={listHidden ? "Show the list (Ctrl+B)" : "Hide the list (Ctrl+B)"}
+            aria-label={listHidden ? "Expand left sidebar" : "Collapse left sidebar"}
+            title={listHidden ? "Expand left sidebar (Ctrl+B)" : "Collapse left sidebar (Ctrl+B)"}
             aria-pressed={!listHidden}
             data-testid="list-toggle"
             onClick={(e: MouseEvent) => {
@@ -234,6 +234,7 @@ export function TopBar({ compact, machine, header, dark, listHidden, onToggleLis
             }}
           >
             <Icon name={listHidden ? "sidebarOff" : "sidebar"} small />
+            <span>Left sidebar</span>
           </button> : null}
         </div>
       </div>

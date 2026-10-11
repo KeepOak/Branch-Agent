@@ -33,9 +33,9 @@ const sessions = [
   { key: "agent:oak:trip", agentId: "oak", parentSessionKey: "agent:oak:main", sessionId: "s-trip", updatedAt: 20, lastMessagePreview: "Child last line" },
 ];
 
-function stubChrome() {
+function stubChrome(narrow = true) {
   vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: query.includes("max-width: 760px"),
+    matches: narrow && query.includes("max-width: 760px"),
     media: query,
     addEventListener: () => {},
     removeEventListener: () => {},
@@ -86,8 +86,8 @@ function session(openKey: string, topics: typeof trip[], history: HistoryLine[])
   } as unknown as SaplingSession;
 }
 
-async function show(openKey: string, topics: typeof trip[], history: HistoryLine[]) {
-  stubChrome();
+async function show(openKey: string, topics: typeof trip[], history: HistoryLine[], narrow = true) {
+  stubChrome(narrow);
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
   await act(async () => root!.render(<WindowShell session={session(openKey, topics, history)} url="ws://127.0.0.1:19661" />));
@@ -96,6 +96,29 @@ async function show(openKey: string, topics: typeof trip[], history: HistoryLine
 }
 
 const threadNavs = (host: HTMLElement) => [...host.querySelectorAll("nav")].filter((nav) => /Threads/.test(nav.getAttribute("aria-label") ?? ""));
+
+it("labels the left sidebar and keeps its toggle independent from the side panel", async () => {
+  const host = await show("agent:oak:main", [], [], false);
+  await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "K", ctrlKey: true, shiftKey: true, bubbles: true })));
+  expect(host.querySelector(".conversation-pane")).not.toBeNull();
+  const toggle = host.querySelector<HTMLButtonElement>('[data-testid="list-toggle"]')!;
+  expect(toggle.textContent).toBe("Left sidebar");
+  expect(toggle.getAttribute("aria-label")).toBe("Collapse left sidebar");
+  expect(toggle.title).toBe("Collapse left sidebar (Ctrl+B)");
+  await act(async () => toggle.click());
+  expect(host.querySelector(".frame")?.classList.contains("rail")).toBe(true);
+  expect(host.querySelector(".conversation-pane")).not.toBeNull();
+  expect(toggle.getAttribute("aria-label")).toBe("Expand left sidebar");
+  expect(toggle.title).toBe("Expand left sidebar (Ctrl+B)");
+  expect(toggle.getAttribute("aria-pressed")).toBe("false");
+  await act(async () => toggle.click());
+  expect(host.querySelector(".frame")?.classList.contains("rail")).toBe(false);
+  expect(toggle.getAttribute("aria-pressed")).toBe("true");
+  const close = host.querySelector<HTMLButtonElement>('[aria-label="Close the side panel"]')!;
+  await act(async () => close.click());
+  expect(host.querySelector(".conversation-pane")).toBeNull();
+  expect(host.querySelector(".frame")?.classList.contains("rail")).toBe(false);
+});
 
 describe("preview topic row in the shell", () => {
   it("renders one Threads nav for a contact with topics, not TopicRail and ThreadColumn together", async () => {
