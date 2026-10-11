@@ -86,6 +86,18 @@ describe("trunks.template.create", () => {
     expect(readFileSync(path.join(dir, "AGENTS.md"), "utf8")).toContain("# Researcher");
   });
 
+  it("installs Mention monitor with its skill even when defaults filter skills", async () => {
+    const dir = workspace();
+    createAnswers(dir);
+    draft.current = { agents: { defaults: { skills: ["weather"] }, entries: {} } };
+    const { respond, done } = call("trunks.template.create", { templateId: "mention-monitor" });
+    await done;
+    expect(respond.mock.calls[0]?.[0]).toBe(true);
+    expect(respond.mock.calls[0]?.[1]).toMatchObject({ ok: true, warnings: [] });
+    expect(readFileSync(path.join(dir, "AGENTS.md"), "utf8")).toContain("disabled until the owner");
+    expect(draft.current.agents.entries.newagent.skills).toEqual(["weather", "mention-monitor"]);
+  });
+
   it("uses the workspace from the agents.create answer, not from the config", async () => {
     const dir = workspace();
     createAnswers(dir);

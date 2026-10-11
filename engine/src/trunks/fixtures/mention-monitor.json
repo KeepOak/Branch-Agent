@@ -1,0 +1,22 @@
+{
+  "provenance": "Recorded 2026-10-11 from https://news.ycombinator.com/item?id=8863 and https://hacker-news.firebaseio.com/v0/item/8884.json. Historical replay window, not current mentions. Coverage statuses are test inputs, not live searches. Summaries/evidence are paraphrases; the candidate is a third-party comment, not the owner's submission.",
+  "watch": {
+    "names": [], "brands": ["Dropbox"], "urls": ["https://www.getdropbox.com"],
+    "ownerUrls": ["https://news.ycombinator.com/user?id=dhouston"],
+    "timezone": "America/New_York"
+  },
+  "since": "2007-04-04T00:00:00Z",
+  "startedAt": "2007-04-06T12:30:00Z",
+  "coverage": {"reddit": "checked", "hacker-news": "checked", "news": "checked", "x": "unavailable"},
+  "candidates": [
+    {
+      "source": "hacker-news", "url": "https://news.ycombinator.com/item?id=8884",
+      "publishedAt": "2007-04-04T20:07:23Z",
+      "authorUrl": "https://news.ycombinator.com/user?id=nefele",
+      "evidence": "A commenter praises the Dropbox demonstration and asks about a Linux port.",
+      "summary": "A prospective user praises the demo and asks about Linux support.",
+      "verified": true, "thirdParty": true, "notable": true, "spam": false, "bot": false,
+      "storyKey": "dropbox-launch-linux-feedback"
+    }
+  ]
+}
