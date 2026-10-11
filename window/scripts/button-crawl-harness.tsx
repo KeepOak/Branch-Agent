@@ -262,7 +262,8 @@ function collect(overlay = false) {
       name,
       href: el instanceof HTMLAnchorElement ? el.href : '',
       disabled: control.disabled === true || el.getAttribute('aria-disabled') === 'true',
-      selected: Boolean(el.closest('.sseg') && (el.getAttribute('aria-pressed') === 'true' || el.getAttribute('aria-checked') === 'true')),
+      selected: el.getAttribute('role') === 'tab' && el.getAttribute('aria-selected') === 'true'
+        || Boolean(el.closest('.sseg') && (el.getAttribute('aria-pressed') === 'true' || el.getAttribute('aria-checked') === 'true')),
       occurrence,
       region,
     });

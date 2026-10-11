@@ -1,6 +1,7 @@
 // Desktop controls bridge: every OS call is a fake, so nothing on this computer changes.
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { execFileSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
@@ -8,7 +9,8 @@ import test from "node:test";
 
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 if (!dist) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to current strict-compiled source");
-const { createDesktopControls, readSettings, registerDesktopControlsIpc, ringBitmap, branchShim, branchShShim, editUserPath, pathHas, DOWNLOAD_PAGES } =
+const { createDesktopControls, readSettings, registerDesktopControlsIpc, ringBitmap, branchShim, branchShShim, editUserPath, pathHas, DOWNLOAD_PAGES,
+  branchPosixShim, branchCommandOwner, posixBranchCommand, BRANCH_COMMAND_MARKER, LEGACY_BRANCH_COMMAND_MARKER } =
   await import(pathToFileURL(join(dist, "desktop-controls.js")));
 
 async function fixture(run) {
@@ -157,6 +159,102 @@ test("Git Bash shim reads the same files, drops CR and passes arguments through"
   assert.ok(shim.includes(`exec 'C:/App/node.exe' "$engine/branch.mjs" "$@"`));
   assert.doesNotMatch(shim, /\r/);
 });
+/** A packaged install as it ships now: the app code is sealed in app.asar (no Resources/app/dist/cli.js), node sits
+ *  beside it, and the engine the app runs is the unpacked copy named in the data folder's engine-*.txt files. */
+async function packagedLayout(root) {
+  const app = join(root, "Applications", "Branch Agent.app");
+  const resources = join(app, "Contents", "Resources");
+  const data = join(root, "Library", "Application Support", "BranchAgent");
+  await mkdir(join(resources, "node"), { recursive: true });
+  await writeFile(join(resources, "app.asar"), "sealed archive: only Electron reads inside it");
+  // The bundled node: here a stand-in that hands over to the node running the tests.
+  const nodePath = join(resources, "node", "node");
+  await writeFile(nodePath, `#!/bin/sh\nexec '${process.execPath}' "$@"\n`);
+  await chmod(nodePath, 0o755);
+  const engine = async (name) => {
+    const dir = join(data, "updates", name, "engine");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "branch.mjs"), `const e = process.env;
+console.log(JSON.stringify({ engine: ${JSON.stringify(name)}, args: process.argv.slice(2), home: e.BRANCH_HOME, state: e.BRANCH_STATE_DIR,
+  config: e.BRANCH_CONFIG_PATH, profile: e.BRANCH_PROFILE, port: e.BRANCH_GATEWAY_PORT, token: e.BRANCH_GATEWAY_TOKEN, data: e.BRANCH_DATA }));\n`);
+    return dir;
+  };
+  const published = await engine("release-published"), running = await engine("release-running");
+  await writeFile(join(data, "engine-current.txt"), `${published}\n`);
+  await writeFile(join(data, "gateway-token"), "fixture-token\n");
+  await writeFile(join(data, "gateway-port"), "19045\n");
+  const command = join(root, "home", ".local", "bin", "branch");
+  // The earlier installer's command, exactly as it was written before the app moved into app.asar.
+  await mkdir(join(root, "home", ".local", "bin"), { recursive: true });
+  await writeFile(command, ["#!/bin/sh", LEGACY_BRANCH_COMMAND_MARKER, "# Removing Branch Agent removes this file too.",
+    "ELECTRON_RUN_AS_NODE=1", `exec '${nodePath}' '${join(resources, "app", "dist", "cli.js")}' "$@"`, ""].join("\n"));
+  await chmod(command, 0o755);
+  const cfg = { dataDir: data, engineDir: join(resources, "engine"), nodePath, gatewayPort: 19031 };
+  return { app, resources, data, published, running, command, cfg };
+}
+
+const posixOnly = { skip: process.platform === "win32" && "the macOS and Linux command is a sh script" };
+
+test("the macOS and Linux branch command runs the unpacked engine of a packaged (app.asar) install", posixOnly, async () => {
+  const root = await mkdtemp(join(tmpdir(), "branch command "));
+  try {
+    const { data, published, running, command, cfg } = await packagedLayout(root);
+    const stale = spawnSync(command, ["--version"], { encoding: "utf8" });
+    assert.notEqual(stale.status, 0, "the earlier command finds no dist/cli.js in a packaged app");
+    assert.match(stale.stderr, /dist\/cli\.js/);
+
+    const cli = posixBranchCommand(command, () => branchPosixShim(cfg));
+    assert.equal(branchCommandOwner(command), "installer");
+    assert.equal(await cli.installed(), false, "the broken command does not count as installed");
+    cli.refresh();
+    assert.equal(branchCommandOwner(command), "app", "launch takes the earlier installer's command over");
+    assert.equal(await cli.installed(), true);
+    const text = await readFile(command, "utf8");
+    assert.equal(text.split("\n")[1], BRANCH_COMMAND_MARKER);
+    assert.doesNotMatch(text, /dist\/cli\.js|app\.asar/);
+    assert.equal((await stat(command)).mode & 0o111, 0o111, "the command stays executable");
+
+    const run = (...args) => JSON.parse(execFileSync(command, args, { encoding: "utf8", env: { PATH: process.env.PATH } }));
+    const first = run("status", "--json", "it's a \"quoted\" arg");
+    assert.deepEqual(first, { engine: "release-published", args: ["status", "--json", "it's a \"quoted\" arg"],
+      home: join(data, "home"), state: join(data, "home", ".branch"), config: join(data, "home", ".branch", "branch.json"),
+      profile: "default", port: "19045", token: "fixture-token", data });
+    // The engine actually running wins over a published one that has not been applied yet.
+    await writeFile(join(data, "engine-running.txt"), `${running}\n`);
+    assert.equal(run().engine, "release-running");
+    // With no live port recorded, the configured one is used.
+    await rm(join(data, "gateway-port"));
+    assert.equal(run().port, "19031");
+    assert.ok(published);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("the macOS and Linux branch command installs, refreshes and removes only its own file", posixOnly, async () => {
+  const root = await mkdtemp(join(tmpdir(), "branch command "));
+  try {
+    const { command, cfg } = await packagedLayout(root);
+    const cli = posixBranchCommand(command, () => branchPosixShim(cfg));
+    await cli.uninstall();
+    assert.equal(branchCommandOwner(command), "none", "turning it off removes the earlier installer's command too");
+    cli.refresh();
+    assert.equal(branchCommandOwner(command), "none", "a launch never creates the command");
+    await cli.install();
+    assert.equal(await cli.installed(), true);
+    await cli.uninstall();
+    assert.equal(await cli.installed(), false);
+
+    await writeFile(command, "#!/bin/sh\necho someone else's branch\n");
+    await assert.rejects(cli.install(), /another program's branch command/);
+    cli.refresh();
+    await cli.uninstall();
+    assert.equal(await readFile(command, "utf8"), "#!/bin/sh\necho someone else's branch\n", "another program's file is left as it was");
+    await rm(command);
+    await symlink(join(root, "elsewhere"), command);
+    assert.equal(branchCommandOwner(command), "other", "a link is never followed or replaced");
+    await assert.rejects(cli.install(), /another program's branch command/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("user Path edits add once and remove case-insensitively", () => {
   assert.equal(editUserPath("C:\\A;;C:\\B", "C:\\Bin", true), "C:\\A;C:\\B;C:\\Bin");
   assert.equal(editUserPath("C:\\A;c:\\bin\\;C:\\B", "C:\\Bin", true), "C:\\A;C:\\B;C:\\Bin");

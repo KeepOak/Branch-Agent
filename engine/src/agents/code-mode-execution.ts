@@ -5,6 +5,7 @@ import {
   isCodeModeSwarmAvailable,
   requiresCodeModeCompletion,
 } from "./code-mode-bridge.js";
+import { formatCodeModeTimeoutError } from "./code-mode-call-timeout.js";
 import {
   createCodeModeCatalogProjection,
   type CodeModeCatalogProjection,
@@ -74,12 +75,17 @@ export async function runCodeModeExec(params: {
   assistantTurnId?: string;
   restartSafe: boolean;
   awaitResults?: boolean;
+  /** Per-call budget from timeoutSeconds; replaces config.timeoutMs for this cell. */
+  timeoutMs?: number;
   signal?: AbortSignal;
   onUpdate?: AgentToolUpdateCallback;
   onRuntime?: (runtime: ToolSearchRuntime) => void;
 }) {
   removeExpiredRuns();
-  const { config } = params;
+  const config =
+    params.timeoutMs === undefined
+      ? params.config
+      : { ...params.config, timeoutMs: params.timeoutMs };
   const runtime = new ToolSearchRuntime(params.ctx, toToolSearchConfig(config), {
     prepareInput: true,
     validateInput: true,
@@ -180,7 +186,13 @@ export async function runCodeModeExec(params: {
         replaySafe: params.restartSafe,
         telemetry: telemetry(runtime),
       },
-      { error: signal.aborted ? "code mode execution aborted" : codeModeFailureMessage(error) },
+      {
+        error: signal.aborted
+          ? "code mode execution aborted"
+          : code === "timeout"
+            ? timeoutErrorMessage(owner, config)
+            : codeModeFailureMessage(error),
+      },
       runtime.hasNetworkContent(),
     );
   } finally {
@@ -231,6 +243,7 @@ function dispatchCodeModeRequests(
     ...createPendingBridgeStates(newPendingRequests, {
       config: params.config,
       inbox: params.owner.inbox,
+      progress: params.owner.progress,
       results: params.owner.results,
       sessionStore: params.owner.sessionStore,
       runtime: params.runtime,
@@ -479,6 +492,8 @@ async function settleCodeModeResult(params: CodeModeSettlementContext) {
         cancelPendingBridgeStatesById(pending, result.canceledRequestIds);
       }
     } catch (error) {
+      // Keep the unfinished calls' output for the failure message before canceling them.
+      params.owner.progress.freeze();
       cancelPendingBridgeStates(pending);
       throw error;
     } finally {
@@ -537,6 +552,10 @@ async function settleCodeModeResult(params: CodeModeSettlementContext) {
       releaseReservation?.();
     }
   }
+  const timedOut = result.status === "failed" && result.code === "timeout";
+  if (timedOut) {
+    params.owner.progress.freeze();
+  }
   // Defensive cleanup covers aborts or terminal failures; successful runs have
   // already drained every dispatched call before releasing their snapshot.
   cancelPendingBridgeStates(pending);
@@ -546,7 +565,9 @@ async function settleCodeModeResult(params: CodeModeSettlementContext) {
       : undefined;
   const channels = {
     ...(result.status === "completed" ? { value: result.value } : {}),
-    ...(result.status === "failed" ? { error: result.error } : {}),
+    ...(result.status === "failed"
+      ? { error: timedOut ? timeoutErrorMessage(params.owner, params.config) : result.error }
+      : {}),
   };
   const metadata = {
     ...(result.status === "failed"
@@ -574,10 +595,17 @@ async function settleCodeModeResult(params: CodeModeSettlementContext) {
   });
 }
 
+function timeoutErrorMessage(owner: CodeModeRunOwner, config: CodeModeConfig): string {
+  owner.progress.freeze();
+  return formatCodeModeTimeoutError(config.timeoutMs, owner.progress);
+}
+
 export async function runWait(params: {
   toolCallId: string;
   ctx: ToolSearchToolContext;
   runId: string;
+  /** Per-call budget from timeoutSeconds; later waits on this run inherit it. */
+  timeoutMs?: number;
   signal?: AbortSignal;
   onUpdate?: AgentToolUpdateCallback;
   onRuntime?: (runtime: ToolSearchRuntime) => void;
@@ -601,6 +629,9 @@ export async function runWait(params: {
     throw new ToolInputError("code mode run belongs to a different session.");
   }
   params.onRuntime?.(state.runtime);
+  if (params.timeoutMs !== undefined) {
+    state.config = { ...state.config, timeoutMs: params.timeoutMs };
+  }
   resumingRunIds.add(state.runId);
   // One wait call shares a single monotonic deadline across draining the prior
   // pending calls, the resume worker, and the inline settle phase.
@@ -669,6 +700,8 @@ export async function runWait(params: {
     });
   } catch (error) {
     const aborted = signal.aborted;
+    // Closing cancels unfinished calls; keep their output for a timeout message.
+    state.owner.progress.freeze();
     await state.owner.close();
     cancelPendingBridgeStates(state.pending);
     return state.output.takeResult(
@@ -680,7 +713,13 @@ export async function runWait(params: {
         replaySafe: state.replaySafe,
         telemetry: telemetry(state.runtime),
       },
-      { error: aborted ? "code mode execution aborted" : codeModeFailureMessage(error) },
+      {
+        error: aborted
+          ? "code mode execution aborted"
+          : codeModeFailureCode(error) === "timeout"
+            ? timeoutErrorMessage(state.owner, state.config)
+            : codeModeFailureMessage(error),
+      },
       state.runtime.hasNetworkContent(),
     );
   } finally {

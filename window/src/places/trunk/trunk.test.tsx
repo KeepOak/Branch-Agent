@@ -42,6 +42,7 @@ function fake(extra: Record<string, unknown> = {}) {
     return Promise.resolve(method in extra ? extra[method] : method === "agents.list" ? roster : method === "config.get" ? CONFIG
     : method === "models.list" ? { models: [{ id: "one", provider: "p", name: "One", available: true }, { id: "two", provider: "p", name: "Two", available: true }] }
     : method === "node.list" ? { nodes: [{ nodeId: "n1", displayName: "Box", platform: "linux", paired: true, connected: true }] }
+    : method === "tools.catalog" ? { toolsets: [{ id: "browser", label: "Browser", description: "Open pages in the built-in browser.", tools: ["browser"] }, { id: "files", label: "Files", description: "Read and edit files in the workspace.", tools: ["read"] }] }
     : method === "tools.github.status" ? { agentId: "oak", selectedScope: "agent", selected: { scope: "agent", configured: false, identity: null }, effective: null } : { ok: true });
   });
 }
@@ -56,6 +57,18 @@ describe("Trunk data", () => {
   it("reads switches from the entry and the rules for every Trunk", () => {
     const snap = readConfig({ hash: "h", config: { tools: { deny: ["browser"] }, agents: { entries: { a: { tools: { fs: { workspaceOnly: true } } } } } } });
     expect(readMay(snap, "a")).toMatchObject({ read: false, browse: false, browseLock: expect.stringContaining("every Trunk") });
+  });
+  it("reads toolset switches and writes each one under its own toolsets key", async () => {
+    const { mayChanges } = await import("./may");
+    const snap = readConfig({ hash: "h", config: { tools: {}, agents: { entries: { a: { toolsets: { files: false } } } } } });
+    const was = readMay(snap, "a");
+    expect(was.toolsets).toEqual({ files: false });
+    expect(mayChanges(snap, "a", was, { ...was, browse: false, toolsets: { files: true, shell: false } }, "")).toEqual({
+      "agents.entries.a.toolsets.browser": false,
+      "agents.entries.a.toolsets.files": null,
+      "agents.entries.a.toolsets.shell": false,
+    });
+    expect(readMay(readConfig({ hash: "h", config: { agents: { entries: { a: { toolsets: { browser: false } } } } } }), "a").browse).toBe(false);
   });
   it("writes false, not null, to turn reading on against the rule for every Trunk", async () => {
     const { mayChanges } = await import("./may");
@@ -104,7 +117,7 @@ describe("Trunk editor", () => {
     await click(byText("Save"));
     expect(request).toHaveBeenCalledWith("agents.update", { agentId: "birch", avatar: "branch:tock" });
     const patch = request.mock.calls.find(([m]) => m === "config.patch")!;
-    expect(patch[1]).toEqual({ baseHash: "h1", raw: JSON.stringify({ agents: { entries: { birch: { tools: { deny: ["exec", "browser"], exec: { host: "node", node: "n1" } }, identity: { theme: "Money" } } } } }) });
+    expect(patch[1]).toEqual({ baseHash: "h1", raw: JSON.stringify({ agents: { entries: { birch: { toolsets: { browser: false }, tools: { exec: { host: "node", node: "n1" } }, identity: { theme: "Money" } } } } }) });
   });
   it("enables pebble controls and shows Advanced rows only from Advanced", async () => {
     await mount(<TrunkEditor engine={engine(fake())} agentId="oak" level="regular" onClose={() => {}} />);
@@ -131,7 +144,7 @@ describe("Customize › Trunks", () => {
     await mount(tab(request));
     await click(byText("A new Trunk"));
     await type(document.querySelector<HTMLInputElement>('[data-testid="new-trunk-preview"] input')!, "Branch");
-    await click(byText("Make Trunk"));
+    await click(byText("Create Trunk"));
     expect(request).toHaveBeenCalledWith("agents.create", expect.objectContaining({ name: "Branch" }));
     expect(document.body.textContent).toContain("That name is kept for Branch. Choose another Trunk name.");
     expect(document.body.textContent).not.toContain('"branch" is reserved');
@@ -161,7 +174,7 @@ describe("Customize › Trunks", () => {
     const request = fake({ "agents.create": { ok: true, agentId: "new-trunk" } }), start = vi.fn();
     await mount(tab(request, { startConversation: start }));
     await click(byText("A new Trunk"));
-    await click(byText("Make Trunk"));
+    await click(byText("Create Trunk"));
     expect(request).toHaveBeenCalledWith("agents.create", expect.objectContaining({ avatar: expect.stringMatching(/^branch:/) }));
     expect(start).toHaveBeenCalledWith("new-trunk");
     const asked = vi.fn();
@@ -169,13 +182,34 @@ describe("Customize › Trunks", () => {
     await click(byText("New group chat"));
     window.removeEventListener("branch:new-group-chat", asked);
     expect(asked).toHaveBeenCalledTimes(1);
-    expect(byText("Pause").disabled).toBe(true); expect(byText("Pause").title).toBe(""); expect(visibleDevNotes(document.body)).toEqual([]);
+    expect(byText("Pause")).toBeUndefined(); expect(visibleDevNotes(document.body)).toEqual([]);
+  });
+  it("keeps only Who it knows and Edit on a row and puts a red Remove with its reason in the ⋯ menu (DA-54)", async () => {
+    const request = fake();
+    await mount(tab(request));
+    for (const row of document.querySelectorAll(".tk-row")) {
+      const labels = [...row.querySelectorAll(":scope > button")].map((b) => b.getAttribute("aria-label") ?? b.textContent);
+      expect(labels.slice(1)).toEqual(["Who it knows", "Edit", `More for ${labels[0]!.replace(": profile", "")}`]);
+    }
+    expect([...document.querySelectorAll(".tk-row button")].some((b) => b.textContent === "Pause" || b.textContent === "Remove")).toBe(false);
+    await click(document.querySelector('[aria-label="More for Birch"]'));
+    const remove = document.querySelector<HTMLButtonElement>('[data-testid="trunk-row-remove"]')!;
+    expect(remove.classList.contains("bad")).toBe(true); expect(remove.disabled).toBe(false);
+    await click(remove);
+    expect(document.querySelector('[data-testid="trunk-remove"]')).toBeTruthy();
+    await act(async () => root!.unmount()); root = null; document.body.innerHTML = "";
+    await mount(tab(request));
+    await click(document.querySelector('[aria-label="More for Oak"]'));
+    const blocked = document.querySelector<HTMLButtonElement>('[data-testid="trunk-row-remove"]')!;
+    expect(blocked.classList.contains("bad")).toBe(true); expect(blocked.disabled).toBe(true);
+    expect(blocked.textContent).toContain("The default Trunk cannot be removed.");
+    expect(visibleDevNotes(document.body)).toEqual([]);
   });
   it("opens the new Trunk's profile when the shell hands over no way to start its conversation", async () => {
     const request = fake({ "agents.create": { ok: true, agentId: "new-trunk" } });
     await mount(tab(request));
     await click(byText("A new Trunk"));
-    await click(byText("Make Trunk"));
+    await click(byText("Create Trunk"));
     expect(document.querySelector('[data-testid="trunk-profile"]')).toBeTruthy();
     expect(request.mock.calls.some(([m]) => m === "sessions.create")).toBe(false);
   });
@@ -195,7 +229,8 @@ describe("Customize › Trunks", () => {
     await expect(removeTrunk(engine(request), "oak")).rejects.toThrow("default Trunk");
     expect(request).not.toHaveBeenCalledWith("agents.delete", expect.anything());
     await mount(tab(request));
-    expect(byText("Remove").disabled).toBe(true);
+    await click(document.querySelector('[aria-label="More for Oak"]'));
+    expect(document.querySelector<HTMLButtonElement>('[data-testid="trunk-row-remove"]')!.disabled).toBe(true);
     const row = document.querySelectorAll(".tk-row")[1];
     await act(async () => { row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })); });
     await click(byText("Remove Birch…"));
@@ -234,7 +269,7 @@ describe("job creation across gateway replacement", () => {
     await mount(<Jobs engine={engine(request)} reload={() => {}} />);
     await click(document.querySelector('[aria-label="Use this job: Inbox Manager"]'));
     await type(document.querySelector<HTMLInputElement>('[data-testid="new-trunk-preview"] input')!, "Branch");
-    await click(byText("Make Trunk"));
+    await click(byText("Create Trunk"));
     expect(document.body.textContent).toContain("That name is kept for Branch. Choose another Trunk name.");
     expect(document.body.textContent).not.toContain('"branch" is reserved');
   });
@@ -251,7 +286,7 @@ describe("job creation across gateway replacement", () => {
     await act(async () => { root!.render(<Jobs engine={replacement} reload={() => {}} />); });
     expect(document.querySelector<HTMLButtonElement>('[aria-label="Use this job: Expense Manager"]')!.disabled).toBe(false);
     await click(document.querySelector('[aria-label="Use this job: Expense Manager"]'));
-    await click(byText("Make Trunk"));
+    await click(byText("Create Trunk"));
     await act(async () => { finishOld({ ok: true, agentId: "inbox-manager" }); });
     expect(document.querySelector<HTMLButtonElement>('[aria-label="Use this job: Expense Manager"]')!.disabled).toBe(true);
     expect(document.body.textContent).not.toContain("Inbox Manager is ready.");
@@ -291,5 +326,36 @@ describe("Trunk profile and studio", () => {
     expect(request).toHaveBeenCalledWith("branch.chat", expect.objectContaining({ welcomeVariant: "new-agent", message: "Make me a Trunk: Watch renewals" }));
     expect(document.body.textContent).toContain("Here is my proposal.");
     expect(byText("Make it")).toBeTruthy();
+  });
+});
+
+describe("Trunk tools rows", () => {
+  it("shows a toolset off and its switch disabled when the Trunk's own tool list leaves its tools out", async () => {
+    const catalog = {
+      toolsets: [
+        { id: "files", label: "Files", description: "Read and edit files.", tools: ["read"], offered: true },
+        { id: "shell", label: "Shell", description: "Run commands.", tools: ["exec"], offered: false },
+      ],
+    };
+    await mount(<TrunkEditor engine={engine(fake({ "tools.catalog": catalog }))} agentId="birch" level="regular" tab="may" onClose={() => {}} />);
+    const shell = document.querySelector<HTMLButtonElement>('[aria-label="Use Shell"]');
+    expect(shell?.disabled).toBe(true);
+    expect(shell?.getAttribute("aria-checked")).toBe("false");
+    expect(shell?.closest(".tk-ctl")?.textContent).toContain("Its own tool list leaves these tools out");
+    const files = document.querySelector<HTMLButtonElement>('[aria-label="Use Files"]');
+    expect(files?.disabled).toBe(false);
+    expect(files?.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("shows the browser off when a legacy deny lists it, even with the browser switch on", async () => {
+    const config = { hash: "h1", valid: true, config: { agents: { entries: { birch: { toolsets: { browser: true }, tools: { deny: ["browser"] } } } } } };
+    const catalog = {
+      toolsets: [{ id: "browser", label: "Browser", description: "Open pages.", tools: ["browser"], offered: false }],
+    };
+    await mount(<TrunkEditor engine={engine(fake({ "config.get": config, "tools.catalog": catalog }))} agentId="birch" level="regular" tab="may" onClose={() => {}} />);
+    const browser = document.querySelector<HTMLButtonElement>('[aria-label="Use the browser"]');
+    expect(browser?.disabled).toBe(true);
+    expect(browser?.getAttribute("aria-checked")).toBe("false");
+    expect(browser?.closest(".tk-ctl")?.textContent).toContain("Its own tool list leaves these tools out");
   });
 });

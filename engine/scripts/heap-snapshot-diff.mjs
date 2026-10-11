@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { closeSync, openSync, readSync } from "node:fs";
 import { StringDecoder } from "node:string_decoder";
+import { pathToFileURL } from "node:url";
 
 // Keep JSON text out of the heap: only the graph's numeric columns and used names survive parsing.
 class Reader {
@@ -82,7 +83,7 @@ class Reader {
   }
 }
 
-function readGraph(file) {
+export function readGraph(file) {
   const reader = new Reader(file);
   try {
     const header = reader.find('"nodes"', true).replace(/,\s*$/u, "");
@@ -178,7 +179,7 @@ function readGraph(file) {
   }
 }
 
-function summarize(file, keepGraph = false) {
+export function summarize(file, keepGraph = false) {
   const { count, ids, sizes, starts, targets, names, labels, meta } = readGraph(file);
   const numbers = new Uint32Array(count);
   const vertices = new Uint32Array(count + 1);
@@ -449,7 +450,7 @@ function readPathEdges(file, meta, wanted) {
   }
 }
 
-function retainingPaths(file, snapshot, changes, options) {
+export function retainingPaths(file, snapshot, changes, options) {
   const { count, starts, targets, ids, names, labels, retained, immediateDominators, meta } =
     snapshot;
   const wantedIds = new Set([
@@ -582,67 +583,69 @@ function parseArgs(args) {
   return options;
 }
 
-try {
-  const options = parseArgs(process.argv.slice(2));
-  const { files, json } = options;
-  const before = summarize(files[0]);
-  const after = summarize(files[1], true);
-  const changes = compare(before, after, options.top);
-  const result = {
-    before: { nodes: before.count, reachable: before.visited },
-    after: { nodes: after.count, reachable: after.visited },
-    ...changes,
-    retainers: retainingPaths(files[1], after, changes, options),
-    notes: [
-      "Node IDs require snapshots from the same process and isolate; this cannot be verified from snapshot contents.",
-      "Retained bytes use the snapshot graph excluding weak and shortcut edges; ephemeron relationships follow V8's encoded internal edges.",
-      "Constructor retained totals overlap between classes; nested instances of one class count once.",
-      "A root path is one shortest strong-edge route, not proof of exclusive ownership. Dominator chains show exclusive retention in this graph, not direct references.",
-      "Retainers include positive top dominator changes, the largest after-node of each positive top constructor, and requested node IDs.",
-      "Truncated paths keep the ancestors nearest the target; omittedAncestors records the missing prefix.",
-    ],
-  };
-  if (json) {
-    console.log(JSON.stringify(result, null, 2));
-  } else {
-    console.log(
-      "Bytes; strong-edge dominators (weak/shortcut edges excluded). Node IDs require the same process/isolate.",
-    );
-    console.log(
-      "Constructor retained totals overlap between classes; nested instances of one class count once.",
-    );
-    console.log(
-      `Reachable nodes: ${before.visited}/${before.count} -> ${after.visited}/${after.count}`,
-    );
-    for (const key of ["classes", "dominators"]) {
-      console.log(`\n${key}: retained before -> after (delta), largest absolute changes first`);
-      for (const row of result[key]) {
-        console.log(
-          `${row.before} -> ${row.after} (${row.delta >= 0 ? "+" : ""}${row.delta})  ${row.id === undefined ? "" : `@${row.id} `}${JSON.stringify(row.label)}${row.countDelta === undefined ? "" : ` countΔ=${row.countDelta} shallowΔ=${row.shallowDelta}`}`,
-        );
-      }
-    }
-    console.log("\nRetainer evidence from the after snapshot:");
-    for (const row of result.retainers) {
-      console.log(`\n@${row.id} ${JSON.stringify(row.label)} retained=${row.retained}`);
-      for (const key of ["rootPath", "dominatorPath"]) {
-        const path = row[key];
-        console.log(
-          `  ${key}: ${path ? `depth=${path.depth} omittedAncestors=${path.omittedAncestors}` : "unreachable by strong edges"}`,
-        );
-        for (const node of path?.nodes ?? []) {
-          const edge = node.incomingEdge;
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    const options = parseArgs(process.argv.slice(2));
+    const { files, json } = options;
+    const before = summarize(files[0]);
+    const after = summarize(files[1], true);
+    const changes = compare(before, after, options.top);
+    const result = {
+      before: { nodes: before.count, reachable: before.visited },
+      after: { nodes: after.count, reachable: after.visited },
+      ...changes,
+      retainers: retainingPaths(files[1], after, changes, options),
+      notes: [
+        "Node IDs require snapshots from the same process and isolate; this cannot be verified from snapshot contents.",
+        "Retained bytes use the snapshot graph excluding weak and shortcut edges; ephemeron relationships follow V8's encoded internal edges.",
+        "Constructor retained totals overlap between classes; nested instances of one class count once.",
+        "A root path is one shortest strong-edge route, not proof of exclusive ownership. Dominator chains show exclusive retention in this graph, not direct references.",
+        "Retainers include positive top dominator changes, the largest after-node of each positive top constructor, and requested node IDs.",
+        "Truncated paths keep the ancestors nearest the target; omittedAncestors records the missing prefix.",
+      ],
+    };
+    if (json) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(
+        "Bytes; strong-edge dominators (weak/shortcut edges excluded). Node IDs require the same process/isolate.",
+      );
+      console.log(
+        "Constructor retained totals overlap between classes; nested instances of one class count once.",
+      );
+      console.log(
+        `Reachable nodes: ${before.visited}/${before.count} -> ${after.visited}/${after.count}`,
+      );
+      for (const key of ["classes", "dominators"]) {
+        console.log(`\n${key}: retained before -> after (delta), largest absolute changes first`);
+        for (const row of result[key]) {
           console.log(
-            `    ${edge ? `--${edge.type}:${JSON.stringify(edge.name)}--> ` : ""}@${node.id} ${JSON.stringify(node.label)} retained=${node.retained}`,
+            `${row.before} -> ${row.after} (${row.delta >= 0 ? "+" : ""}${row.delta})  ${row.id === undefined ? "" : `@${row.id} `}${JSON.stringify(row.label)}${row.countDelta === undefined ? "" : ` countΔ=${row.countDelta} shallowΔ=${row.shallowDelta}`}`,
           );
         }
       }
+      console.log("\nRetainer evidence from the after snapshot:");
+      for (const row of result.retainers) {
+        console.log(`\n@${row.id} ${JSON.stringify(row.label)} retained=${row.retained}`);
+        for (const key of ["rootPath", "dominatorPath"]) {
+          const path = row[key];
+          console.log(
+            `  ${key}: ${path ? `depth=${path.depth} omittedAncestors=${path.omittedAncestors}` : "unreachable by strong edges"}`,
+          );
+          for (const node of path?.nodes ?? []) {
+            const edge = node.incomingEdge;
+            console.log(
+              `    ${edge ? `--${edge.type}:${JSON.stringify(edge.name)}--> ` : ""}@${node.id} ${JSON.stringify(node.label)} retained=${node.retained}`,
+            );
+          }
+        }
+      }
+      for (const note of result.notes) {
+        console.log(`\n${note}`);
+      }
     }
-    for (const note of result.notes) {
-      console.log(`\n${note}`);
-    }
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
   }
-} catch (error) {
-  console.error(error.message);
-  process.exitCode = 1;
 }

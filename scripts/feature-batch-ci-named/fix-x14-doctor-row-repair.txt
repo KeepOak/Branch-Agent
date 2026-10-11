@@ -1,0 +1,2 @@
+engine:src/commands/doctor-session-row-repair.test.ts
+engine:src/commands/doctor/shared/contacts-migration.test.ts

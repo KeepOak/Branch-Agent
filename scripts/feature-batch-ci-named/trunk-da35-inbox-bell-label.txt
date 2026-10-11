@@ -1,0 +1,1 @@
+window:src/places/inbox/inbox.test.tsx
