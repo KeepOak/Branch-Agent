@@ -67,7 +67,7 @@ import type { Roster } from "../places/trunk/model";
 import { creationProblem, readRoster } from "../places/trunk/model";
 import { COMPOSE_EVENT } from "../composer/Composer";
 import { PairDialog } from "../places/customize/pairing";
-import { guideLinkItems } from "./guide-links";
+import { guideMenuItems } from "./guide-menu";
 import { Palette } from "./Palette";
 import { paletteRows } from "./palette-rows";
 import { PersonMenu, usePersonName } from "./PersonMenu";
@@ -995,14 +995,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     showMenu(e, id, machineMenuItems({ machineName: machine?.name || readTargetName(url) || "", currentUrl: url, homeUrl, online: ready, level: readLevel(), roundTripMs: gateway.health?.durationMs ?? null, openSettings,
       onLinkBranch: () => setLinkingBranch(true), onSwitch: target => window.dispatchEvent(new CustomEvent("branch:switch-computer", { detail: { url: target } })) }), "Which computer", upward);
   };
-  const guideItems = (): MenuItem[] => [
-    { label: "What’s new", hint: "this version", run: () => setGuide("news"), testid: "guide-news" },
-    { label: "Set up Branch", hint: "3 min", run: () => firstRun.open(0), testid: "guide-setup" },
-    { label: "Take the walkthrough", hint: "2 min", run: () => (setOverlay(null), setGuide("tour")), testid: "guide-tour" },
-    { kind: "sep" },
-    ...guideLinkItems((url) => { window.open(url, "_blank", "noopener"); }),
-    { label: "What Branch can do", run: () => setOverlay({ kind: "cando" }), testid: "guide-cando" },
-  ];
+  const guideItems = (): MenuItem[] => guideMenuItems(
+    () => { setOverlay(null); setGuide("tour"); },
+    (url) => { window.open(url, "_blank", "noopener"); },
+  );
   const [, setReminded] = useState(0); // "Remind me tomorrow" redraws the person menu's update line
   const statusItem = (item: StatusItem, e: MouseEvent<HTMLElement>) => {
     if (item === "connection") {
@@ -1769,6 +1765,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             shortcuts: () => setOverlay({ kind: "shortcuts" }),
             setup: () => firstRun.open(0),
             tour: () => setGuide("tour"),
+            canDo: () => setOverlay({ kind: "cando" }),
             quickAsk: () => setOverlay({ kind: "ask" }),
             openConversation,
             openPlace,
