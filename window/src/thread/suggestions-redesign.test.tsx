@@ -40,4 +40,18 @@ describe("P54 one relevant suggestion row", () => {
     expect(sent).toHaveBeenCalledWith("Yes, please");
     expect(host.querySelector('[aria-label="Suggested replies"]')).toBeNull();
   });
+
+  it("NC-01: shows each chip as a quoted reply after a visible Reply with lead, not as a bare action", async () => {
+    const sent = vi.fn();
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root?.render(<Thread name="Research" history={[user("Write it up"), reply("Saved report.pdf to your Library.")]} live={[]} pendingUser={null} running={false} onAnswer={() => {}} onStart={sent} />));
+    const row = host.querySelector<HTMLElement>('[aria-label="Suggested replies"]');
+    expect(row?.querySelector(".sug-lead")?.textContent).toBe("Reply with");
+    const chip = row?.querySelector<HTMLButtonElement>("button");
+    expect(chip?.textContent).toBe("\u201cOpen it\u201d");
+    expect(chip?.getAttribute("aria-label")).toBe("Reply: Open it");
+    await act(async () => chip?.click());
+    expect(sent).toHaveBeenCalledWith("Open it");
+  });
 });
