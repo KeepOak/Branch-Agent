@@ -1,7 +1,8 @@
+vi.mock("../infra/account-model-check.js", () => ({ agentHasUsableModel: () => true }));
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addQueueItem,
   claimNextQueueItem,
@@ -85,7 +86,12 @@ describe("queue transitions: closing and reaping", () => {
 
   it("announces a claim the orphan release frees, with the Trunk that lost it", async () => {
     addQueueItem({ title: "Job", brief_text: "Do it." }, env, 1);
-    await pickUpQueuedWork({ agentId: "builder-birch", gateway: endedGateway, env, now: () => 1_000 });
+    await pickUpQueuedWork({
+      agentId: "builder-birch",
+      gateway: endedGateway,
+      env,
+      now: () => 1_000,
+    });
 
     await releaseOrphanQueueClaims({
       gateway: endedGateway,
@@ -100,7 +106,12 @@ describe("queue transitions: closing and reaping", () => {
 
   it("announces a stale claim the abandoned-claim reaper frees, with the Trunk that lost it", async () => {
     addQueueItem({ title: "Job", brief_text: "Do it." }, env, 1);
-    await pickUpQueuedWork({ agentId: "builder-birch", gateway: endedGateway, env, now: () => 1_000 });
+    await pickUpQueuedWork({
+      agentId: "builder-birch",
+      gateway: endedGateway,
+      env,
+      now: () => 1_000,
+    });
 
     await releaseStaleQueueClaims({
       gateway: endedGateway,

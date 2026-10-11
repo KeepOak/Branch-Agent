@@ -82,18 +82,30 @@ export async function loadProviderUsageSummary(
     (authStore ??= ensureAuthProfileStore(opts.agentDir, { allowKeychainPrompt: false }));
   const tasks = descriptors.map(async ({ provider }) => {
     let authError: unknown;
-    const auths = opts.auth?.filter((candidate) => candidate.provider === provider) ??
-      await raceUsageTimeout((signal) => trackAsyncWork(() => resolveProviderAuthsAll({
-        providers: [provider],
-        agentDir: opts.agentDir,
-        config,
-        env,
-        signal,
-        getStore: getAuthStore,
-        store: opts.authStore,
-        onError: (_provider, error) => { authError = error; },
-      })), timeoutMs, null);
-    if (auths === null) return [failureSnapshot(provider, "Timeout")];
+    const auths =
+      opts.auth?.filter((candidate) => candidate.provider === provider) ??
+      (await raceUsageTimeout(
+        (signal) =>
+          trackAsyncWork(() =>
+            resolveProviderAuthsAll({
+              providers: [provider],
+              agentDir: opts.agentDir,
+              config,
+              env,
+              signal,
+              getStore: getAuthStore,
+              store: opts.authStore,
+              onError: (_provider, error) => {
+                authError = error;
+              },
+            }),
+          ),
+        timeoutMs,
+        null,
+      ));
+    if (auths === null) {
+      return [failureSnapshot(provider, "Timeout")];
+    }
     if (authError) {
       const message = formatErrorMessage(authError);
       return [failureSnapshot(provider, message.trim() || "Auth failed")];
@@ -101,66 +113,104 @@ export async function loadProviderUsageSummary(
     const seen = new Set<string>();
     const unique = auths.filter((auth) => {
       const key = `${provider}:${auth.email?.toLowerCase() ?? auth.accountId ?? auth.authProfileId ?? auth.token}`;
-      if (seen.has(key)) return false;
+      if (seen.has(key)) {
+        return false;
+      }
       seen.add(key);
       return true;
     });
     const firstProfileId = unique.find((auth) => auth.authProfileId)?.authProfileId;
-    return await Promise.all(unique.map((auth) => auth.authError
-      ? Promise.resolve({ ...failureSnapshot(provider, auth.authError), ...(auth.authProfileId ? { authProfileId: auth.authProfileId } : {}), ...(auth.email ? { accountEmail: auth.email } : {}), ...(auth.authProfileId === firstProfileId ? { inUse: true } : {}) })
-      : raceUsageTimeout(
-      (signal) => trackAsyncWork(async () => {
-          const snapshot = await resolveProviderUsageSnapshotWithPlugin({
-            provider: auth.hookProvider ?? auth.provider,
-            config,
-            workspaceDir: opts.workspaceDir,
-            env,
-            context: {
-              config,
-              agentDir: opts.agentDir,
-              workspaceDir: opts.workspaceDir,
-              env,
-              provider: auth.provider,
-              token: auth.token,
-              accountId: auth.accountId,
-              authProfileId: auth.authProfileId,
-              subscriptionType: auth.subscriptionType,
-              authFlow: auth.authFlow,
-              rateLimitTier: auth.rateLimitTier,
-              email: auth.email,
+    return await Promise.all(
+      unique.map((auth) =>
+        auth.authError
+          ? Promise.resolve({
+              ...failureSnapshot(provider, auth.authError),
+              ...(auth.authProfileId ? { authProfileId: auth.authProfileId } : {}),
+              ...(auth.email ? { accountEmail: auth.email } : {}),
+              ...(auth.authProfileId === firstProfileId ? { inUse: true } : {}),
+            })
+          : raceUsageTimeout(
+              (signal) =>
+                trackAsyncWork(async () => {
+                  let snapshot = await resolveProviderUsageSnapshotWithPlugin({
+                    provider: auth.hookProvider ?? auth.provider,
+                    config,
+                    workspaceDir: opts.workspaceDir,
+                    env,
+                    context: {
+                      config,
+                      agentDir: opts.agentDir,
+                      workspaceDir: opts.workspaceDir,
+                      env,
+                      provider: auth.provider,
+                      token: auth.token,
+                      accountId: auth.accountId,
+                      authProfileId: auth.authProfileId,
+                      subscriptionType: auth.subscriptionType,
+                      authFlow: auth.authFlow,
+                      rateLimitTier: auth.rateLimitTier,
+                      email: auth.email,
+                      timeoutMs,
+                      signal,
+                      fetchFn: (input, init) => {
+                        signal.throwIfAborted();
+                        const callerSignal =
+                          init?.signal === undefined && input instanceof Request
+                            ? input.signal
+                            : init?.signal;
+                        return fetchFn(input, {
+                          ...init,
+                          signal: callerSignal ? AbortSignal.any([signal, callerSignal]) : signal,
+                        });
+                      },
+                    },
+                  });
+                  if (
+                    auth.provider === "anthropic" &&
+                    auth.authProfileId &&
+                    (!snapshot || snapshot.error || !snapshot.windows.length)
+                  ) {
+                    const saved =
+                      getAuthStore().usageStats?.[auth.authProfileId]?.subscriptionUsage;
+                    if (saved?.windows.length) {
+                      snapshot = {
+                        provider: auth.provider,
+                        displayName: "Claude",
+                        windows: saved.windows,
+                        plan: saved.plan,
+                      };
+                    }
+                  }
+                  return {
+                    ...(snapshot ?? {
+                      provider: auth.provider,
+                      displayName: providerUsageLabel(auth.provider) ?? auth.provider,
+                      windows: [],
+                      error: "Unsupported provider",
+                    }),
+                    ...(auth.authProfileId ? { authProfileId: auth.authProfileId } : {}),
+                    ...(auth.email && !snapshot?.accountEmail ? { accountEmail: auth.email } : {}),
+                    ...(auth.authProfileId && auth.authProfileId === firstProfileId
+                      ? { inUse: true }
+                      : {}),
+                  };
+                }),
               timeoutMs,
-              signal,
-              fetchFn: (input, init) => {
-                signal.throwIfAborted();
-                const callerSignal =
-                  init?.signal === undefined && input instanceof Request
-                    ? input.signal
-                    : init?.signal;
-                return fetchFn(input, {
-                  ...init,
-                  signal: callerSignal ? AbortSignal.any([signal, callerSignal]) : signal,
-                });
+              {
+                ...failureSnapshot(provider, "Timeout"),
+                ...(auth.authProfileId ? { authProfileId: auth.authProfileId } : {}),
+                ...(auth.email ? { accountEmail: auth.email } : {}),
               },
-            },
-          });
-          return {
-            ...(snapshot ?? {
-              provider: auth.provider,
-              displayName: providerUsageLabel(auth.provider) ?? auth.provider,
-              windows: [],
-              error: "Unsupported provider",
+            ).catch((error: unknown) => {
+              const message = error instanceof Error ? error.message : String(error);
+              return {
+                ...failureSnapshot(provider, message.trim() || "Fetch failed"),
+                ...(auth.authProfileId ? { authProfileId: auth.authProfileId } : {}),
+                ...(auth.email ? { accountEmail: auth.email } : {}),
+              };
             }),
-            ...(auth.authProfileId ? { authProfileId: auth.authProfileId } : {}),
-            ...(auth.email && !snapshot?.accountEmail ? { accountEmail: auth.email } : {}),
-            ...(auth.authProfileId && auth.authProfileId === firstProfileId ? { inUse: true } : {}),
-          };
-        }),
-      timeoutMs,
-      { ...failureSnapshot(provider, "Timeout"), ...(auth.authProfileId ? { authProfileId: auth.authProfileId } : {}), ...(auth.email ? { accountEmail: auth.email } : {}) },
-    ).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      return { ...failureSnapshot(provider, message.trim() || "Fetch failed"), ...(auth.authProfileId ? { authProfileId: auth.authProfileId } : {}), ...(auth.email ? { accountEmail: auth.email } : {}) };
-    })));
+      ),
+    );
   });
 
   const snapshots = (await Promise.all(tasks))
@@ -172,13 +222,20 @@ export async function loadProviderUsageSummary(
     );
   const claudeCode = opts.includeClaudeCode
     ? await raceUsageTimeout(
-        () => import("../../extensions/anthropic/usage-claude-code.js")
-          .then(({ readClaudeCodeUsage }) => readClaudeCodeUsage(env, now)).catch(() => null),
+        () =>
+          import("../../extensions/anthropic/usage-claude-code.js")
+            .then(({ readClaudeCodeUsage }) => readClaudeCodeUsage(env, now))
+            .catch(() => null),
         timeoutMs,
         null,
       )
     : null;
-  if (claudeCode && !snapshots.some((entry) => entry.provider === "claude-code" && entry.accountEmail === claudeCode.accountEmail)) {
+  if (
+    claudeCode &&
+    !snapshots.some(
+      (entry) => entry.provider === "claude-code" && entry.accountEmail === claudeCode.accountEmail,
+    )
+  ) {
     snapshots.push(claudeCode);
   }
   const providers = snapshots.filter(

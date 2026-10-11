@@ -17,6 +17,7 @@ import { ReportProblem } from "./report-problem";
 import { CKPT_PREF, CKPT_SHOW, useCkptOn } from "../../../shell/SaveProgress";
 import { lookStore } from "../set1/appearance-store";
 import "./usage.css";
+import { LimWindow } from "../usage-window";
 import { DesktopCtl } from "../desktop-ctl";
 import { formatMoney } from "../../../format/money";
 import { forgetDeletedConversationWindow } from "../../../shell/own-window";
@@ -141,16 +142,7 @@ function ago(ms: unknown, now = Date.now()): string {
   return min < 48 * 60 ? "Yesterday" : `${Math.floor(min / 1440)} days ago`;
 }
 
-function LimWindow({ label, left, words }: { label: string; left: number; words: string }) {
-  const l = Math.max(0, Math.min(100, left));
-  return (
-    <div className="s2usage-limw">
-      <span>{label}</span>
-      <span className="s2usage-limbar" role="meter" aria-label={`${label} left`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(l)}><i style={{ width: `${l}%` }} /></span>
-      <span>{`${Math.round(l)}% left · ${l >= 100 && !words ? "full" : words}`}</span>
-    </div>
-  );
-}
+
 
 const measuredNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 function billingMeasured(b: RecordValue): boolean {

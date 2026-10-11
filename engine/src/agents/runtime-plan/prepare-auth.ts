@@ -10,6 +10,7 @@ import type {
   ProviderRouteOverridePresence,
 } from "../../plugin-sdk/provider-model-types.js";
 import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
+import { isModelAccessDenied } from "../auth-profiles/model-access.js";
 import { isPendingOAuthRefreshFence } from "../auth-profiles/oauth-refresh-marker.js";
 import {
   prependAuthProfilePin,
@@ -332,6 +333,18 @@ export function prepareAgentRuntimeAuth(
     configuredAuthMode ?? (providerHasDirectMaterial ? "api-key" : undefined);
   const selectedProfileId =
     boundProfileId ?? (params.allowAuthProfileFallback === false ? userPinnedProfileId : undefined);
+  const pinnedProfileId = selectedProfileId ?? userPinnedProfileId;
+  if (
+    store &&
+    pinnedProfileId &&
+    isModelAccessDenied(store, pinnedProfileId, authProfileSelectionProvider, params.modelId)
+  ) {
+    throw createSelectedAuthProfileUnavailableError({
+      profileId: pinnedProfileId,
+      provider: authProfileSelectionProvider,
+      modelId: params.modelId,
+    });
+  }
   const resolvedAutomaticOrder =
     !harnessAllowsAuthProfileForwarding ||
     selectedProfileId ||
@@ -356,6 +369,16 @@ export function prepareAgentRuntimeAuth(
     resolvedAutomaticOrder,
     userPinnedProfileId,
   );
+  if (store) {
+    const admitted = automaticOrderResolution.profileIds.filter(
+      (profileId) =>
+        !isModelAccessDenied(store, profileId, authProfileSelectionProvider, params.modelId),
+    );
+    if (admitted.length !== automaticOrderResolution.profileIds.length) {
+      automaticOrderResolution.profileIds = admitted;
+      automaticOrderResolution.hasExplicitOrder = true;
+    }
+  }
   const providerPreferredProfileId =
     harnessAllowsAuthProfileForwarding &&
     !selectedProfileId &&

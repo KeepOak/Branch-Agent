@@ -1,7 +1,7 @@
 // Settings › Accounts (DESIGN-SPEC §4.7.8): the model accounts in the order Branch uses them, coding apps on this
 // computer, what happens when one runs out, your own accounts and keepoak.com. Saves at once through the engine:
 // order models.authOrderSet, sign-out models.authLogout, test models.probe, fallbacks config.patch.
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { SettingsPageProps } from "../index";
 import { list, record, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
@@ -16,8 +16,11 @@ import { GitHubSettings } from "../GitHubSettings";
 import { AccountsMore } from "./accounts-more";
 import { BulkBar, SelectBox, SelectLink } from "./accounts-select";
 import "./set1.css";
+import "../set2/usage.css";
+import { LimWindow } from "../usage-window";
+import { resetWords } from "../../../shell/status-data";
 
-export type Profile = { profileId: string; type: string; status: string; displayName?: string; email?: string; lastUsedAt?: number; logoutSupported?: boolean; source?: string; reasonCode?: string; externallyManaged?: boolean; expiry?: { label?: string }; limitedUntil?: number };
+export type Profile = { plan?: string; modelAccess?: Record<string, { usable: boolean; checkedAt: number; reason: string }>; usageWindows?: Array<{ label: string; usedPercent: number; resetAt?: number }>; profileId: string; type: string; status: string; displayName?: string; email?: string; lastUsedAt?: number; logoutSupported?: boolean; source?: string; reasonCode?: string; externallyManaged?: boolean; expiry?: { label?: string }; limitedUntil?: number };
 export type Provider = { provider: string; authProvider?: string; displayName: string; status: string; profiles: Profile[]; profileOrder?: string[]; lastGoodProfileId?: string; profileOrderLocked?: string; usage?: { plan?: string; accountEmail?: string; windows?: Array<{ label?: string; usedPercent?: number }> } };
 /** models.authStatus providers, each with its accounts as a list even when the engine leaves them out. */
 export function providersOf(value: unknown): Provider[] {
@@ -43,7 +46,7 @@ export function accountsOf(providers: Provider[]): Account[] {
     const rank = (a: Profile) => { const i = order.indexOf(a.profileId); return i < 0 ? order.length : i; };
     const sorted = [...p.profiles].sort((x, y) => rank(x) - rank(y));
     // The engine skips a limited account until its reset, so "used next" is the first one that isn't limited.
-    const next = sorted.find((a) => !isLimited(a));
+    const next = sorted.find((a) => !isLimited(a) && (!a.modelAccess || Object.values(a.modelAccess).some((check) => check.usable && Date.now() - check.checkedAt < 3 * 60 * 60_000)));
     return sorted.map((a, i) => ({ p, a, n: i + 1, first: i === 0, last: i === sorted.length - 1, ordered: order.length > 0, next: a === next }));
   });
 }
@@ -66,11 +69,24 @@ export function accountName({ p, a, n }: Pick<Account, "p" | "a" | "n">): string
 }
 
 export const STATUS_WORDS: Record<string, string> = { ok: "", expiring: "Signing in again soon", expired: "Signed out · sign in again", missing: "Sign-in missing", static: "" };
-function accountSub(acc: Account): string {
-  const plan = acc.p.usage?.plan ? visible(acc.p.usage.plan) : acc.a.type === "api_key" ? "Key" : isToken(acc.a) ? "Subscription" : "";
+export function accountModelStatus(acc: Account, all: Account[], now = Date.now()): string {
+  const checks = Object.entries(acc.a.modelAccess ?? {});
+  if (!checks.length) return acc.a.type === "api_key" ? "" : "Model access not checked yet";
+  return checks.map(([model, check]) => {
+    const name = model.slice(model.indexOf("/") + 1);
+    if (now - check.checkedAt >= 3 * 60 * 60_000) return `${name}: waiting for recheck`;
+    if (check.usable) return `Can run ${name}`;
+    const next = all.find((candidate) => candidate.p.provider === acc.p.provider && candidate.a.modelAccess?.[model]?.usable && now - candidate.a.modelAccess[model].checkedAt < 3 * 60 * 60_000);
+    const replacement = next ? next.a.displayName ?? next.a.email ?? "another login" : "no usable login for this model";
+    return `Can't run ${name}; ${next ? "using " : ""}${replacement}`;
+  }).join(" · ");
+}
+function accountSub(acc: Account, all: Account[]): string {
+  const reportedPlan = acc.a.plan ?? (acc.p.profiles.length === 1 ? acc.p.usage?.plan : undefined);
+  const plan = reportedPlan ? visible(reportedPlan) : acc.a.type === "api_key" ? "Key" : isToken(acc.a) ? "Subscription" : "";
   const email = acc.a.email && acc.a.displayName && acc.a.email !== acc.a.displayName ? visible(acc.a.email) : "";
   const state = STATUS_WORDS[acc.a.status] ?? visible(acc.a.status);
-  return [plan, email, state, acc.ordered && acc.first ? "" : acc.ordered ? "next in line" : ""].filter(Boolean).join(" · ");
+  return [plan, email, state, accountModelStatus(acc, all), acc.ordered && (acc.first || acc.next) ? "" : acc.ordered ? "next in line" : ""].filter(Boolean).join(" · ");
 }
 
 /** The order with this account moved up one place within its provider. */
@@ -106,6 +122,7 @@ export function AccountsPage(props: SettingsPageProps) {
   return (
     <Page title={props.title} lede="Manage model accounts and the order Branch uses them." help="Your model accounts, the order Branch uses them in, which Trunks use each, and your keepoak.com account.">
       <AccountsStatus loading={status.loading} error={status.error} count={all.length} unavailable={record(status.data?.unavailable).message} />
+      {status.data?.modelsUsable === false ? <Hint>Queue paused: no configured model has a usable login. Use “Test it” to check again.</Hint> : null}
       <OrderSection {...props} all={all} reload={status.reload} onAdd={setAdd} agent={agent} />
       <CodingApps engine={props.engine} />
       <WhenOneRunsOut engine={props.engine} />
@@ -145,13 +162,15 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
       {all.length ? (
         <Plist>
           {all.map((acc) => (
-            <Prow key={`${acc.p.provider}/${acc.a.profileId}`} icon={<>{selecting ? <SelectBox acc={acc} name={accountName(acc)} picked={picked ?? []} onPick={setPicked} /> : null}<Logo id={acc.p.provider} size={32} /></>} title={accountName(acc)} sub={accountSub(acc)}>
+            <Fragment key={`${acc.p.provider}/${acc.a.profileId}`}><Prow icon={<>{selecting ? <SelectBox acc={acc} name={accountName(acc)} picked={picked ?? []} onPick={setPicked} /> : null}<Logo id={acc.p.provider} size={32} /></>} title={accountName(acc)} sub={accountSub(acc, all)}>
               {acc.ordered && acc.next ? <Pill tone="ok">used next</Pill> : null}
               {isLimited(acc.a) ? <Pill tone="warn">{limitedLabel(acc.a.limitedUntil ?? 0)}</Pill> : null}
               {acc.a.status === "expired" || acc.a.status === "missing" ? <Pill tone="warn">Sign in again</Pill> : null}
               <button type="button" className="icon-btn" aria-label="Move up" title={acc.first ? `First for ${serviceName(acc.p.provider, acc.p.displayName)} already` : acc.p.profileOrderLocked ? "The order is set in the settings file" : "Move up"} disabled={acc.first || Boolean(acc.p.profileOrderLocked)} onClick={() => void setOrder(acc, movedUp(acc, all))}>{UP}</button>
               <button type="button" className="icon-btn" aria-label={`More for ${accountName(acc)}`} aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ at: { x: r.right - 200, y: r.bottom + 4 }, acc }); }}>{MORE}</button>
             </Prow>
+            {acc.a.usageWindows?.map((w) => <LimWindow key={w.label} label={w.label} left={100 - w.usedPercent} words={w.resetAt ? resetWords(w.resetAt, w.usedPercent, Date.now()) : ""} />)}
+            </Fragment>
           ))}
         </Plist>
       ) : <Empty>No account yet. Add one, and Branch uses it for every Trunk.</Empty>}
@@ -173,7 +192,7 @@ export function AccountMenu({ engine, acc, all, at, agent, reload, setOrder, onC
   const ids = all.filter((x) => x.p === acc.p).map((x) => x.a.profileId);
   const outWhy = acc.a.logoutSupported ? undefined : acc.a.source === "config" ? "This sign-in is set in the settings file." : acc.a.source === "external" || acc.a.externallyManaged ? "Its own app keeps this sign-in; sign out there." : "This sign-in can’t be removed from here.";
   const items: MenuItem[] = [
-    { label: "Test it", run: () => void save(async () => { const r = record(await engine.request("models.probe", { provider, profileId: acc.a.profileId, ...agent })); if (r.ok === false || (r.status && r.status !== "ok")) throw new Error(visible(r.error ?? r.status ?? "The test didn’t pass.")); }) },
+    { label: "Test it", run: () => void save(async () => { const r = record(await engine.request("models.probe", { provider, profileId: acc.a.profileId, ...agent })); await reload(); if (r.ok === false || (r.status && r.status !== "ok")) throw new Error(visible(r.error ?? r.status ?? "The test didn’t pass.")); }) },
     { label: "Answer first", disabled: acc.first && acc.ordered ? "It answers first already." : acc.p.profileOrderLocked ? "The order is set in the settings file." : undefined, run: () => void setOrder(acc, [acc.a.profileId, ...ids.filter((id) => id !== acc.a.profileId)]) },
     { label: "Rename", disabled: "Branch can’t rename an account yet.", run: () => undefined },
     { label: "Which Trunks use it", disabled: "Every Trunk uses this account, in this order.", run: () => undefined },

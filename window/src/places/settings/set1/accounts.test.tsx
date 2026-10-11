@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { KitProvider, type SaveReport } from "../kit";
-import { AccountsPage, accountName, accountsOf, movedUp, type Provider } from "./accounts";
+import { AccountsPage, accountModelStatus, accountName, accountsOf, movedUp, type Provider } from "./accounts";
 import { servicesOf } from "./add-account";
 import { StatusPopover, type StatusContext } from "../../../shell/StatusLayer";
 import { readLimits } from "../../../shell/status-data";
@@ -211,3 +211,24 @@ describe("Settings › Accounts on a partial engine reply", () => {
     }
   });
 });
+
+ it("explains a free-model refusal and names the paid login after recovery", () => {
+  const now = Date.now();
+  const providers: Provider[] = [{ provider: "openai", displayName: "ChatGPT", status: "ok", profiles: [
+    { profileId: "free", type: "oauth", status: "ok", plan: "free", modelAccess: { "openai/gpt-6.1-sol": { usable: false, checkedAt: now, reason: "format" } } },
+  ] }];
+  let accounts = accountsOf(providers);
+  expect(accountModelStatus(accounts[0]!, accounts, now)).toContain("no usable login for this model");
+  providers[0]!.profiles.push({ profileId: "paid", type: "oauth", status: "ok", plan: "pro", displayName: "Paid login", modelAccess: { "openai/gpt-6.1-sol": { usable: true, checkedAt: now, reason: "ok" } } });
+  accounts = accountsOf(providers);
+  expect(accountModelStatus(accounts[0]!, accounts, now)).toContain("using Paid login");
+ });
+ it("renders Claude setup-token usage windows with reset times", async () => {
+  const { engine } = engineOf({ "models.authStatus": { providers: [{ provider: "anthropic", displayName: "Claude", status: "static", profiles: [{ profileId: "claude", type: "token", status: "static", usageWindows: [
+    { label: "5h", usedPercent: 25, resetAt: Date.now() + 60_000 },
+    { label: "Week", usedPercent: 60, resetAt: Date.now() + 86400_000 },
+  ] }] }] } });
+  await render(engine);
+  expect(host.querySelectorAll('[role="meter"]')).toHaveLength(2);
+  expect(host.textContent).toContain("resets");
+ });

@@ -17,6 +17,9 @@ export type ModelAuthExpiry = {
 };
 
 export type ModelAuthStatusProfile = {
+  modelAccess?: Record<string, { checkedAt: number; usable: boolean; reason: string }>;
+  plan?: string;
+  usageWindows?: UsageWindow[];
   profileId: string;
   type: "oauth" | "token" | "api_key";
   status: AuthProfileHealthStatus;
@@ -74,6 +77,7 @@ export type ModelProviderCapability = {
 };
 
 export type ModelAuthStatusResult = {
+  modelsUsable?: boolean;
   /** Snapshot build time, ms since epoch. 0 = never loaded (UI fallback sentinel). */
   ts: number;
   providers: ModelAuthStatusProvider[];

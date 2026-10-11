@@ -74,7 +74,7 @@ import { createAuthProbeWork } from "./list.probe.cleanup.js";
 import { buildProbeCandidateMap, selectProbeModel } from "./list.probe.models.js";
 import { formatMs } from "./shared.js";
 
-const PROBE_PROMPT = "Reply with OK. Do not use tools.";
+const PROBE_PROMPT = "Reply with exactly one token: OK. Do not use tools.";
 
 /** Scrubs credential-shaped text before probe failures cross a UI or CLI boundary. */
 export function redactAuthProbeError(error: string): string {
@@ -164,6 +164,8 @@ export type AuthProbeSummary = {
 };
 
 export type AuthProbeOptions = {
+  /** Scheduled subscription checks include logins outside today's selection order. */
+  subscriptionSelfCheck?: boolean;
   provider?: string;
   profileIds?: string[];
   includeDirectKeys?: boolean;
@@ -566,7 +568,7 @@ export async function buildProbeTargets(params: {
       cfg,
       store,
       provider: providerKey,
-      forModel: model?.model,
+      forModel: options.subscriptionSelfCheck ? undefined : model?.model,
     });
     const allowedProfiles = orderResolution.hasExplicitOrder
       ? new Set(orderResolution.profileIds)
@@ -580,6 +582,13 @@ export async function buildProbeTargets(params: {
     if (filteredProfiles.length > 0) {
       for (const profileId of filteredProfiles) {
         const profile = store.profiles[profileId];
+        if (
+          options.subscriptionSelfCheck &&
+          profile?.type !== "oauth" &&
+          profile?.type !== "token"
+        ) {
+          continue;
+        }
         const mode = profile?.type;
         const label = resolveAuthProfileDisplayLabel({ cfg, store, profileId });
         const target: AuthProbeTarget = {
@@ -598,7 +607,12 @@ export async function buildProbeTargets(params: {
           includeConfigKey &&
           configuredReference.kind === "profile" &&
           profileId === configuredReference.profileId;
-        if (!isConfigBoundProfile && explicitOrder && !explicitOrder.includes(profileId)) {
+        if (
+          !options.subscriptionSelfCheck &&
+          !isConfigBoundProfile &&
+          explicitOrder &&
+          !explicitOrder.includes(profileId)
+        ) {
           results.push(
             buildProbeResult(target, {
               status: "unknown",
@@ -608,7 +622,12 @@ export async function buildProbeTargets(params: {
           );
           continue;
         }
-        if (!isConfigBoundProfile && allowedProfiles && !allowedProfiles.has(profileId)) {
+        if (
+          !options.subscriptionSelfCheck &&
+          !isConfigBoundProfile &&
+          allowedProfiles &&
+          !allowedProfiles.has(profileId)
+        ) {
           const eligibility = resolveAuthProfileEligibility({
             cfg,
             store,

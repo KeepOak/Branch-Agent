@@ -23,7 +23,7 @@ const DEFAULT_TIMEOUT_MS = 20_000;
 const MIN_TIMEOUT_MS = 5_000;
 const MAX_TIMEOUT_MS = 60_000;
 const PROBE_CONCURRENCY = 2;
-const PROBE_MAX_TOKENS = 8;
+const PROBE_MAX_TOKENS = 1;
 
 const FAILURE_PRIORITY: readonly AuthProbeStatus[] = [
   "auth",
@@ -158,6 +158,34 @@ export const modelsProbeHandlers: GatewayRequestHandlers = {
         return;
       }
       const workspaceDir = resolveAgentWorkspaceDir(cfg, scope.agentId);
+      const { checkAccountModels, configuredAgentModels } =
+        await import("../../infra/account-model-check.js");
+      if (configuredAgentModels(cfg, scope.agentId).some((ref) => ref.startsWith(`${provider}/`))) {
+        await checkAccountModels(cfg, { force: true, agentId: scope.agentId, provider, profileId });
+        const { ensureAuthProfileStore } = await import("../../agents/auth-profiles.js");
+        const store = ensureAuthProfileStore(scope.agentDir, { allowKeychainPrompt: false });
+        const results: AuthProbeResult[] = [];
+        for (const [id, stats] of Object.entries(store.usageStats ?? {})) {
+          if (profileId && id !== profileId) {
+            continue;
+          }
+          for (const [model, check] of Object.entries(stats.modelAccess ?? {})) {
+            if (!model.startsWith(`${provider}/`)) {
+              continue;
+            }
+            results.push({
+              provider,
+              model,
+              profileId: id,
+              label: id,
+              source: "profile",
+              status: check.usable ? "ok" : "format",
+            });
+          }
+        }
+        respond(true, mapProbeResult(provider, results), undefined);
+        return;
+      }
       // Probe under the requested provider so model selection, catalog rows, and
       // a models.providers.<id> override resolve against the surface the client
       // asked about. The probe planner resolves credentials separately through

@@ -16,6 +16,7 @@ export function createCodexAuthProfileSelection({
   resolveAuthProfileOrder,
 }: ProfileAuth) {
   function resolveCodexAppServerAuthProfileId(params: {
+    modelId?: string;
     authProfileId?: string;
     store: ReturnType<typeof ensureAuthProfileStore>;
     config?: AuthProfileOrderConfig;
@@ -28,10 +29,12 @@ export function createCodexAuthProfileSelection({
       cfg: params.config,
       store: params.store,
       provider: CODEX_APP_SERVER_AUTH_PROVIDER,
+      forModel: params.modelId,
     })[0]?.trim();
   }
 
   function resolveCodexAppServerAuthProfileIdForAgent(params: {
+    modelId?: string;
     authProfileId?: string;
     authProfileStore?: AuthProfileStore;
     agentDir?: string;
@@ -44,6 +47,7 @@ export function createCodexAuthProfileSelection({
 
   function resolveCodexAppServerAuthProfileStore(params: {
     agentDir?: string;
+    modelId?: string;
     authProfileId?: string;
     authProfileStore?: AuthProfileStore;
     config?: AuthProfileOrderConfig;

@@ -449,11 +449,17 @@ export const modelsAuthStatusHandlers: GatewayRequestHandlers = {
           profiles: prov.profiles.map((prof) => {
             const metadata = resolveAuthProfileMetadata({ cfg, store, profileId: prof.profileId });
             const lastUsedAt = store.usageStats?.[prof.profileId]?.lastUsed;
+            const modelAccess = store.usageStats?.[prof.profileId]?.modelAccess;
+            const plan = store.usageStats?.[prof.profileId]?.subscriptionUsage?.plan;
+            const usageWindows = store.usageStats?.[prof.profileId]?.subscriptionUsage?.windows;
             const blockedUntil = asDateTimestampMs(
               store.usageStats?.[prof.profileId]?.blockedUntil,
             );
             const profile: ModelAuthStatusProvider["profiles"][number] = {
               profileId: prof.profileId,
+              ...(modelAccess ? { modelAccess } : {}),
+              ...(plan ? { plan } : {}),
+              ...(usageWindows ? { usageWindows } : {}),
               type: prof.type,
               status: prof.status,
               reasonCode: prof.reasonCode,
@@ -519,7 +525,13 @@ export const modelsAuthStatusHandlers: GatewayRequestHandlers = {
               : undefined,
         });
       }
-      const result: ModelAuthStatusResult = { ts: now, providers, providerCapabilities };
+      const { agentHasUsableModel } = await import("../../infra/account-model-check.js");
+      const result: ModelAuthStatusResult = {
+        ts: now,
+        providers,
+        providerCapabilities,
+        modelsUsable: agentHasUsableModel(cfg, agentId),
+      };
       respond(true, result, undefined);
     });
   },

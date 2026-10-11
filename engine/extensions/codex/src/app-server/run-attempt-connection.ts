@@ -310,11 +310,13 @@ export async function prepareCodexAttemptConnection({ params, options }: CodexRu
       ? startupAuthProfileCandidate
       : params.authProfileStore
         ? resolveCodexAppServerAuthProfileId({
+            modelId: params.modelId,
             authProfileId: startupAuthProfileCandidate,
             store: params.authProfileStore,
             config: params.config,
           })
         : resolveCodexAppServerAuthProfileIdForAgent({
+            modelId: params.modelId,
             authProfileId: startupAuthProfileCandidate,
             agentDir,
             config: params.config,

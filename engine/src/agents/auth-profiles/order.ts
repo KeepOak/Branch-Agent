@@ -18,6 +18,7 @@ import {
   type AuthCredentialReasonCode,
 } from "./credential-state.js";
 import { resolveExplicitAuthOrderSelection } from "./explicit-order.js";
+import { isModelAccessDenied } from "./model-access.js";
 import { isPendingOAuthRefreshFence } from "./oauth-refresh-marker.js";
 import { dedupeProfileIds } from "./profile-list.js";
 import { isSetupCredentialAccessible } from "./setup-access.js";
@@ -272,6 +273,9 @@ export function resolveAuthProfileOrderWithMetadata(
   }
 
   const isValidProfile = (profileId: string): boolean => {
+    if (forModel && isModelAccessDenied(store, profileId, providerKey, forModel)) {
+      return false;
+    }
     const eligibility = resolveAuthProfileEligibility({
       cfg,
       authAliasLookupParams: params.authAliasLookupParams,
