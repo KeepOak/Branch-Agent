@@ -1,6 +1,7 @@
 import { truncateUtf16Safe } from "@branch/normalization-core/utf16-slice";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { sha256Hex } from "../../infra/crypto-digest.js";
+import { hasWorkshopToolFiles } from "../../skills/workshop/capability-policy.js";
 import { AUTONOMOUS_SKILL_MAX_CHARS } from "../../skills/workshop/collection-contracts.js";
 import { resolveSkillWorkshopConfig } from "../../skills/workshop/config.js";
 import { stripProposalFrontmatterForSkill } from "../../skills/workshop/frontmatter.js";
@@ -19,6 +20,10 @@ import {
   SkillProposalStaleTargetError,
 } from "../../skills/workshop/service.js";
 import { PROPOSAL_DRAFT_FILE } from "../../skills/workshop/store-record.js";
+import {
+  consumeWorkshopToolApproval,
+  WORKSHOP_TOOL_APPROVAL_PARAM,
+} from "../../skills/workshop/tool-approval.js";
 import type {
   SkillProposalOrigin,
   SkillProposalReadResult,
@@ -161,6 +166,7 @@ export function createSkillWorkshopTool(options: SkillWorkshopToolOptions): AnyA
     displaySummary: "Propose or improve a reusable skill",
     description: buildSkillWorkshopToolDescription({
       autonomousMode: workshopConfig.autonomous.mode,
+      highestStep: workshopConfig.highestStep,
       proposalRevision: options.proposalRevision !== undefined,
     }),
     parameters: buildSkillWorkshopToolSchema(options.proposalRevision !== undefined),
@@ -321,6 +327,7 @@ export function createSkillWorkshopTool(options: SkillWorkshopToolOptions): AnyA
         const applied = await applySkillProposal({
           ...lifecycleParams(),
           reason: readToolStringParam(params, "reason"),
+          toolApproval: consumeWorkshopToolApproval(params[WORKSHOP_TOOL_APPROVAL_PARAM]),
         });
         return actionResult(applied.record, {
           contentText: `Applied skill proposal ${applied.record.id}.`,
@@ -536,9 +543,18 @@ export function createSkillWorkshopTool(options: SkillWorkshopToolOptions): AnyA
             options.proposalMutationBudget.mutatedProposalIds ?? new Set<string>();
           mutatedProposalIds.add(proposal.record.id);
           options.proposalMutationBudget.mutatedProposalIds = mutatedProposalIds;
+          const revisionHashes =
+            options.proposalMutationBudget.mutatedProposalRevisionHashes ??
+            new Map<string, string>();
+          revisionHashes.set(proposal.record.id, proposal.revisionHash);
+          options.proposalMutationBudget.mutatedProposalRevisionHashes = revisionHashes;
         }
 
-        if (foregroundRepair && workshopConfig.autonomous.mode === "auto") {
+        if (
+          foregroundRepair &&
+          workshopConfig.autonomous.mode === "auto" &&
+          !hasWorkshopToolFiles(proposal.record.supportFiles)
+        ) {
           const applied = await applySkillProposal({
             ...proposalContext,
             proposalId: proposal.record.id,

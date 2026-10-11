@@ -573,6 +573,8 @@ export const BranchSchemaShape = {
             .optional(),
           /** Whether proposal lifecycle actions need explicit approval. */
           approvalPolicy: z.union([z.literal("pending"), z.literal("auto")]).optional(),
+          /** Highest Workshop artifact: instructions or approval-gated script-backed tools. */
+          highestStep: z.union([z.literal("skill"), z.literal("tool")]).optional(),
           /** Maximum pending/quarantined proposals retained per workspace. */
           maxPending: z.number().int().min(1).optional(),
           /** Maximum generated skill proposal size in bytes. */

@@ -1,0 +1,8 @@
+engine:src/cron/skill-collection-review-monitor.test.ts
+engine:src/skills/workshop/capability-policy.test.ts
+engine:src/skills/workshop/config.test.ts
+engine:src/skills/workshop/experience-review.apply.test.ts
+engine:src/skills/workshop/experience-review.capabilities.test.ts
+engine:src/skills/workshop/experience-review.test.ts
+engine:src/skills/workshop/policy.test.ts
+window:src/places/settings/set2/seasons.test.tsx

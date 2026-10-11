@@ -8,6 +8,7 @@ type SkillWorkshopConfig = {
     mode: SkillsWorkshopAutonomousMode;
   };
   approvalPolicy: "pending" | "auto";
+  highestStep: "skill" | "tool";
   maxPending: number;
   maxSkillBytes: number;
 };
@@ -26,6 +27,8 @@ export function resolveSkillWorkshopConfig(config?: BranchConfig): SkillWorkshop
       mode: autonomous.mode === "off" || autonomous.mode === "propose" ? autonomous.mode : "auto",
     },
     approvalPolicy: raw.approvalPolicy === "pending" ? "pending" : "auto",
+    // Bundled scripts were already supported before this setting existed.
+    highestStep: raw.highestStep === "skill" ? "skill" : "tool",
     maxPending: readInteger(raw.maxPending, 50, 1, 200),
     maxSkillBytes: readInteger(raw.maxSkillBytes, 40_000, 1024, 200_000),
   };

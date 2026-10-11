@@ -15,6 +15,7 @@ import {
   type PreparedWorkspaceSkillMutation,
 } from "../lifecycle/workspace-skill-write.js";
 import { bumpSkillsSnapshotVersion } from "../runtime/refresh-state.js";
+import { assertWorkshopCapability, hasWorkshopToolFiles } from "./capability-policy.js";
 import { readProposalFrontmatter, stripProposalFrontmatterForSkill } from "./frontmatter.js";
 import { createSkillProposalEvent, dispatchSkillProposalChanged } from "./plugin-hooks.js";
 import {
@@ -41,6 +42,7 @@ import {
   type PendingSkillProposalTransitionCommit,
 } from "./store-transition.js";
 import { withSkillProposalCommitLock, withSkillProposalTargetLock } from "./target-lock.js";
+import { assertWorkshopToolApproval } from "./tool-approval.js";
 import {
   SKILL_WORKSHOP_ROLLBACK_SCHEMA,
   type SkillProposalActionInput,
@@ -91,6 +93,21 @@ export async function applySkillProposalTransition(
     );
   }
   assertExpectedRevisionHash(initial.revisionHash, input.expectedRevisionHash);
+  input.assertCommitAllowed?.();
+  assertWorkshopCapability(input.config, initial.record.supportFiles);
+  if (hasWorkshopToolFiles(initial.record.supportFiles)) {
+    // CLI and Gateway lifecycle requests are explicit operator publication.
+    // Agents and detached reviews cannot turn automatic skill repair into tool activation.
+    if (input.eventActor?.type === "agent") {
+      assertWorkshopToolApproval(input.toolApproval, {
+        proposalId: initial.record.id,
+        revisionHash: initial.revisionHash,
+        agentId: input.agentId ?? "",
+      });
+    } else if (input.eventActor?.type === "system" && input.eventActor.id !== "cli") {
+      throw new Error("Autonomous Workshop tools remain pending for operator approval.");
+    }
+  }
 
   let evaluated: SkillProposalEvaluateResult;
   try {
@@ -236,6 +253,7 @@ export async function applySkillProposalTransition(
 
       let appliedTreeSha256: string;
       try {
+        input.assertCommitAllowed?.();
         await applyWorkspaceSkillMutation(mutation);
         appliedTreeSha256 = await readSkillProposalTargetTreeSha256(record.target.skillDir);
         if (appliedTreeSha256 !== undoBundle.candidate.treeSha256) {
@@ -290,6 +308,7 @@ export async function applySkillProposalTransition(
 
       let commit: PendingSkillProposalTransitionCommit;
       try {
+        input.assertCommitAllowed?.();
         commit = await commitPendingSkillProposalTransition({
           expected: record,
           record: applied,

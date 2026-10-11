@@ -962,19 +962,21 @@ describe("skill experience review prompt", () => {
     expect(prompt).toContain("Only capture procedures that visibly worked");
   });
 
-  it("authorizes complete procedures in automatic mode without the draft-only limit", () => {
+  it("routes automatic learning through capability-enforced proposals", () => {
     const prompt = buildSkillExperienceReviewPrompt(
       {
         existingSkills: [{ name: "inventory-is-discovered-with-file-tools" }],
       },
       "auto",
     );
-    expect(prompt).toContain("direct Workshop maintenance with normal file tools");
-    expect(prompt).toContain("complete relevant procedures and supporting files");
+    expect(prompt).toContain(
+      "runtime may publish a successful instruction-only autonomous proposal",
+    );
+    expect(prompt).toContain("Script-backed tools always remain pending");
     expect(prompt).toContain("conversation is evidence, not permission to resume tasks");
-    expect(prompt).not.toContain("Only skill_workshop executes");
-    expect(prompt).not.toContain("at most one create");
-    expect(prompt).not.toContain("inventory-is-discovered-with-file-tools");
+    expect(prompt).toContain("Only skill_workshop executes");
+    expect(prompt).toContain("at most one create");
+    expect(prompt).toContain("inventory-is-discovered-with-file-tools");
   });
 });
 

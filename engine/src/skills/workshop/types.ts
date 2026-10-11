@@ -38,6 +38,8 @@ export type SkillWorkshopProposalMutationBudget = {
   remaining: number;
   /** Run-local identity set used to keep idea counts distinct. */
   mutatedProposalIds?: Set<string>;
+  /** Exact bytes authored by this run; concurrent operator revisions never auto-publish. */
+  mutatedProposalRevisionHashes?: Map<string, string>;
   /** Content hash per live skill read this run; autonomous updates require a matching receipt. */
   readSkillHashes?: Map<string, string>;
   /** Single-use exact-span patch authority prepared from authoritative live content. */
@@ -171,7 +173,13 @@ type SkillProposalRevisionInput = SkillProposalContext & {
   correlationId?: string;
 };
 
-export type SkillProposalActionInput = SkillProposalRevisionInput & { reason?: string };
+export type SkillProposalActionInput = SkillProposalRevisionInput & {
+  reason?: string;
+  /** Private trusted-hook receipt; never accepted from RPC or model arguments. */
+  toolApproval?: import("./tool-approval.js").WorkshopToolApproval;
+  /** Runtime-owned revocation fence for detached automatic publication. */
+  assertCommitAllowed?: () => void;
+};
 
 export type SkillProposalEvaluateInput = SkillProposalRevisionInput & {
   trigger?: SkillProposalEvaluationTrigger;
