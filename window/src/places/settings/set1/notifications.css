@@ -1,9 +1,3 @@
-/* Settings › Notifications: the preview's chips (.chip6), quiet-hour selects (.tsel18e), the browser facts (.kv)
-   and the rule row (51-set1p, 93-g3p, the base mock). Theme tokens only. */
-.set-col .nt-chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-.set-col .chip6 { height: 28px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--raise); font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
-.set-col .chip6[aria-pressed="true"] { background: var(--btn); border-color: var(--btn); color: var(--on-btn); }
-.set-col .chip6:disabled { opacity: 0.5; cursor: default; }
 .set-col .nt-quiet { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; }
 .set-col .nt-tsel { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-3); }
 .set-col .nt-tsel select.inp { width: auto; }
@@ -18,11 +12,10 @@
 .set-col .nt-rule input.inp { width: 160px; }
 .set-col .nt-chk { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
 @media (max-width: 640px) {
-  .set-col .ctl:has(> .right .nt-chips), .set-col .ctl:has(> .right .nt-quiet), .set-col .ctl:has(> .right .nt-rule), .set-col .ctl:has(> .right .nt-hook) { grid-template-columns: minmax(0, 1fr); }
-  .set-col .ctl:has(> .right .nt-chips) > .right, .set-col .ctl:has(> .right .nt-quiet) > .right, .set-col .ctl:has(> .right .nt-rule) > .right, .set-col .ctl:has(> .right .nt-hook) > .right { grid-row: auto; grid-column: 1; margin-top: 6px; }
-  .set-col .nt-chips, .set-col .nt-quiet, .set-col .nt-rule { justify-content: flex-start; }
+  .set-col .ctl:has(> .right .nt-trunk-picker), .set-col .ctl:has(> .right .nt-quiet), .set-col .ctl:has(> .right .nt-rule), .set-col .ctl:has(> .right .nt-hook) { grid-template-columns: minmax(0, 1fr); }
+  .set-col .ctl:has(> .right .nt-trunk-picker) > .right, .set-col .ctl:has(> .right .nt-quiet) > .right, .set-col .ctl:has(> .right .nt-rule) > .right, .set-col .ctl:has(> .right .nt-hook) > .right { grid-row: auto; grid-column: 1; margin-top: 6px; }
+  .set-col .nt-quiet, .set-col .nt-rule { justify-content: flex-start; }
 }
-.set-col .stack-k .nt-chips { justify-content: flex-start; }
 @media (max-width: 640px) { .set-col .nt-hook { flex: 1; width: 100%; } }
 /* a stacked row, as the preview draws it: the pin beside its title, then the sub-line, then the control */
 .set-col [data-page-title="Notifications"] .ctl.stack-k { grid-template-columns: auto minmax(0, 1fr); }
@@ -31,9 +24,19 @@
 .set-col [data-page-title="Notifications"] .ctl.stack-k > small:not(.why-k) { order: 1; }
 .set-col [data-page-title="Notifications"] .ctl.stack-k > .right { order: 2; }
 .set-col [data-page-title="Notifications"] .ctl.stack-k > .why-k { order: 3; }
-.set-col [data-page-title="Notifications"] .ctl.stack-k > .right:has(> .nt-chips) { margin-top: 2px; }
+.set-col [data-page-title="Notifications"] .ctl.stack-k > .right:has(> .nt-trunk-picker) { margin-top: 2px; }
 /* at phone width a row with a list or a text box puts it under its words, so the sub-line keeps the full width */
 @media (max-width: 640px) {
   .set-col [data-page-title="Notifications"] .ctl:has(> .right > select.inp, > .right > input.inp) { grid-template-columns: minmax(0, 1fr); }
   .set-col [data-page-title="Notifications"] .ctl:has(> .right > select.inp, > .right > input.inp) > .right { grid-row: auto; grid-column: 1; justify-content: flex-start; margin-top: 6px; }
 }
+
+/* Keep the closed row constant-size and the open choices scrollable for large teams. */
+.set-col .nt-trunk-picker { width: 240px; max-width: 100%; min-width: 0; }
+.set-col .nt-trunk-picker > .btn { width: 100%; }
+.set-col .nt-trunk-panel { display: grid; gap: 8px; margin-top: 8px; padding: 10px; border: 1px solid var(--line-2); border-radius: var(--r2-17); background: var(--raise); }
+.set-col .nt-trunk-panel > .inp { width: 100%; min-width: 0; }
+.set-col .nt-trunk-options { max-height: 220px; overflow-y: auto; overscroll-behavior: contain; }
+.set-col .nt-trunk-options label { display: flex; align-items: flex-start; gap: 8px; padding: 7px 2px; overflow-wrap: anywhere; font-size: 13px; color: var(--ink-2); }
+.set-col .nt-trunk-options input { flex-shrink: 0; accent-color: var(--btn); }
+.set-col .nt-trunk-options p { font-size: 13px; color: var(--ink-3); }

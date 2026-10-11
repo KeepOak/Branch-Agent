@@ -7,6 +7,7 @@ import { useResource } from "../hooks";
 import { Btn, Ctl, Page, Pick, Sec, Seg, Status, Switch, useLevel, type Opt, type RowEntry } from "../kit";
 import { DETAIL_OPTS, DesktopNotices, ThisBrowser, ThisDevice, isDesktopApp, useTestSend, useWebPush, deviceOff, type TellRow, type Trunk, type WebPush } from "./notifications-browser";
 import { prefsOff, quietNow, useNotifyPrefs, type CategoryKey, type NotifyPrefs, type Quiet } from "./notifications-prefs";
+import { NotificationTrunks } from "./notifications-trunks";
 import "./notifications.css";
 
 type Prefs = ReturnType<typeof useNotifyPrefs>;
@@ -107,11 +108,7 @@ function TellMore({ prefs, trunks }: { prefs: Prefs; trunks: Trunk[] }) {
   return (
     <>
       <Ctl title="Only these Trunks" sub="Notifications from other Trunks still reach the Inbox." off={off}>
-        <span className="nt-chips">
-          {[{ id: "*", name: "Every Trunk" }, ...trunks].map((t) => (
-            <button key={t.id} type="button" className="chip6" disabled={Boolean(off)} aria-pressed={t.id === "*" ? ids.length === 0 : ids.includes(t.id)} onClick={() => pick(t.id)}>{t.name}</button>
-          ))}
-        </span>
+        <NotificationTrunks trunks={trunks} ids={ids} disabled={Boolean(off)} onPick={pick} />
       </Ctl>
       <Ctl title="On a locked screen" sub="Message text, commands and output never go in a notification." keep="everywhere" off={off}>
         <Seg label="On a locked screen" value={prefs.prefs.detailLevel} options={DETAIL_OPTS} disabled={Boolean(off)} onChange={(v) => void prefs.change((cur) => ({ ...cur, detailLevel: v as NotifyPrefs["detailLevel"] }))} />

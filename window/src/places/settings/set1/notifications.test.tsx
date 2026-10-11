@@ -156,13 +156,46 @@ describe("Settings › Notifications", () => {
     expect(NOTIFICATIONS_ROWS.find((r) => r.title === "Only these Trunks")?.lv).toBe(1);
   });
 
-  it("Only these Trunks: picking a Trunk saves its id; Every Trunk clears the list", async () => {
-    const { engine, request } = engineOf();
+  it("Only these Trunks: a compact picker handles 16 Trunks, saves multiple ids and resets to Every Trunk", async () => {
+    const agents = Array.from({ length: 16 }, (_, i) => ({ id: `trunk-${i}`, name: `Trunk ${i + 1}` }));
+    const { engine, request } = engineOf({ "agents.list": { agents } });
     await render(engine, 1);
-    const chip = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".chip6")].find((b) => b.textContent === name)!;
-    expect(chip("Every Trunk").getAttribute("aria-pressed")).toBe("true");
-    await act(async () => chip("Second").click());
-    expect((lastSet(request).entries[PREFS_KEY] as typeof STORED).agentIds).toEqual(["two"]);
+    const trigger = () => host.querySelector<HTMLButtonElement>('button[aria-label="Choose notification Trunks"]')!;
+    expect(trigger()).not.toBeNull();
+    expect(trigger().textContent).toBe("Every Trunk");
+    expect(host.querySelector('input[aria-label="Search Trunks"]')).toBeNull();
+    await act(async () => trigger().click());
+    const checkbox = (name: string) => [...host.querySelectorAll<HTMLInputElement>('.nt-trunk-options input')].find((input) => input.parentElement?.textContent === name)!;
+    expect(host.querySelectorAll('.nt-trunk-options input')).toHaveLength(17);
+    await act(async () => checkbox("Trunk 16").click());
+    await act(async () => checkbox("Trunk 2").click());
+    expect((lastSet(request).entries[PREFS_KEY] as typeof STORED).agentIds).toEqual(["trunk-15", "trunk-1"]);
+    expect(trigger().textContent).toBe("2 Trunks selected");
+    const search = host.querySelector<HTMLInputElement>('input[aria-label="Search Trunks"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(search, "Trunk 16");
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(host.querySelectorAll('.nt-trunk-options input')).toHaveLength(2);
+    expect(checkbox("Trunk 16").checked).toBe(true);
+    await act(async () => checkbox("Every Trunk").click());
+    expect((lastSet(request).entries[PREFS_KEY] as typeof STORED).agentIds).toEqual([]);
+    expect(trigger().textContent).toBe("Every Trunk");
+    await act(async () => search.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(trigger().getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(trigger());
+  });
+
+  it("Only these Trunks: saved selections reopen and unavailable profiles cannot edit", async () => {
+    const { engine } = engineOf({ "users.prefs.get": { status: "ok", entries: { [PREFS_KEY]: { ...STORED, agentIds: ["two"] } } } });
+    await render(engine, 1);
+    const trigger = () => host.querySelector<HTMLButtonElement>('button[aria-label="Choose notification Trunks"]')!;
+    expect(trigger().textContent).toBe("1 Trunk selected");
+    await act(async () => trigger().click());
+    expect([...host.querySelectorAll<HTMLInputElement>('.nt-trunk-options input')].find((input) => input.parentElement?.textContent === "Second")!.checked).toBe(true);
+    await render(engineOf({ "users.prefs.get": { status: "no_durable_identity" } }).engine, 1);
+    expect(trigger().disabled).toBe(true);
+    expect([...host.querySelectorAll<HTMLInputElement>('.nt-trunk-options input')].every((input) => input.disabled)).toBe(true);
   });
 
   it("this browser: no service worker means Turn on is greyed; Send test goes to push.web.test", async () => {
