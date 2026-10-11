@@ -1,5 +1,5 @@
 // Settings › People (DESIGN-SPEC §4.7.2): your profile head, everyone who uses Branch grouped by where they use it,
-// the chosen person's card, Each person, and at Advanced the records and how people sign in. Reads users.list,
+// the chosen person's card, Each person, and at Advanced the records. Reads users.list,
 // users.self, system-presence and gateway.roles; the card's actions and your own name and picture save through
 // users.setRole, device.pair.setupCode, device.token.revoke, users.setDisplayName and users.setAvatar.
 import { useRef, useState } from "react";

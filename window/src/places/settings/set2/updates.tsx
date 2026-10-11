@@ -281,6 +281,7 @@ export function About() {
     <Sec title="About">
       <KeeperMark />
       <Ctl title="Open-source licences" sub="The software Branch is built on, with each licence." off="The list comes with the Branch app on your computer."><Btn sm disabled>Show</Btn></Ctl>
+      <small className="about-credit">Based on OpenClaw</small>
     </Sec>
   );
 }

@@ -14,9 +14,9 @@
     "screen": "titlebar",
     "label": "Switch light or dark",
     "previewAction": "Toggles document theme between light and dark.",
-    "appFile": "window/src/shell/TopBar.tsx",
-    "appComponent": "TopBar",
-    "appAction": "Toggles light/dark. Shown on place/settings headers; chat uses the conversation \u22ef or person menu Look instead.",
+    "appFile": "window/src/shell/PersonMenu.tsx",
+    "appComponent": "PersonMenu",
+    "appAction": "No titlebar theme button and no header menu row (DA-09). Light or dark lives in the person menu Look row and the Appearance page in Settings; the command palette keeps Switch light or dark.",
     "status": "different"
   },
   {

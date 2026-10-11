@@ -3,6 +3,7 @@ import { formatErrorMessage } from "../infra/errors.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
 import { withAgentRosterFactsBatch } from "./agent-scope-config.js";
+import { readAgentDatabaseAdmissionRefusal } from "../state/agent-database-admission.js";
 import { listConfiguredOwnerInputs } from "./prepared-model-runtime.configured.js";
 import { PreparedModelRuntimePublicationSupersededError } from "./prepared-model-runtime.errors.js";
 import { retirePreparedModelRuntimeGeneration } from "./prepared-model-runtime.lifecycle.js";
@@ -91,11 +92,27 @@ export function collectPreparedModelRuntimeInventories(
   return inventories;
 }
 
+/**
+ * An agent whose own startup preparation is still pending is refused to everyone but that
+ * preparation. Its owner belongs to that attempt: another refresh must neither retire it nor widen
+ * its scope to the roster, or the peers' publications and retries keep retiring each other's owners.
+ */
+function isAwaitingOwnPreparation(owner: PreparedModelRuntimeOwner): boolean {
+  const agentId = owner.input.agentId;
+  return (
+    agentId !== undefined &&
+    readAgentDatabaseAdmissionRefusal(agentId)?.code === "agent-database-inspection-pending"
+  );
+}
+
 /** Whether a refresh scope must replace this owner rather than retain it. */
 export function isPreparedModelRuntimeOwnerInRefreshScope(
   owner: PreparedModelRuntimeOwner,
   agentIds: ReadonlySet<string> | undefined,
 ): boolean {
+  if (isAwaitingOwnPreparation(owner)) {
+    return false;
+  }
   if (!agentIds) {
     return true;
   }
@@ -206,7 +223,8 @@ export function resolveSafeRefreshAgentIds(
     if (
       owner.provenance !== "configured" ||
       !owner.input.agentId ||
-      requested.has(owner.input.agentId)
+      requested.has(owner.input.agentId) ||
+      isAwaitingOwnPreparation(owner)
     ) {
       continue;
     }
