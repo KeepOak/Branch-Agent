@@ -1,6 +1,7 @@
 // Gateway side of the Trunk job queue (agents/trunk-queue.ts): the MCP queue_* tools call these methods, and the
 // agent-event subscription calls onTrunkRunLifecycle so an idle Trunk picks up the next job when its run ends.
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
+import { listAgentIds } from "../../agents/agent-scope.js";
 import { isQueueEligibleTrunk, isTrunkStartupPending } from "../../agents/trunk-queue-policy.js";
 import {
   addQueueItem,
@@ -19,6 +20,7 @@ import {
   type TrunkQueueGateway,
 } from "../../agents/trunk-queue.js";
 import type { BranchConfig } from "../../config/types.branch.js";
+import { readAgentDatabaseAdmissionRefusal } from "../../state/agent-database-admission.js";
 import type { GatewayRequestHandlers } from "./types.js";
 
 type Rec = Record<string, unknown>;
@@ -63,16 +65,18 @@ export async function onTrunkRunLifecycle(params: {
   }
 }
 
-/** Trunks eligible for queued work that are past startup: a Trunk still preparing cannot answer a session query. */
-async function readyEligibleAgentIds(
-  gateway: TrunkQueueGateway,
-  cfg: BranchConfig | undefined,
-): Promise<string[]> {
-  const rows = rec(await gateway.request("agents.list", {})).agents;
-  return (Array.isArray(rows) ? rows.map(rec) : [])
-    .filter((row) => !isTrunkStartupPending(row))
-    .map((row) => text(row.id))
-    .filter((id) => id !== "" && isQueueEligibleTrunk(id, cfg));
+/**
+ * Trunks eligible for queued work that are past startup: a Trunk still preparing cannot answer a session query. Read
+ * in process from the roster and the startup state that agents.list reports, not through agents.list itself: that call
+ * also builds every Trunk's model catalog, and on a busy gateway it outlasts the 30 s call timeout, which failed every
+ * sweep pass and left idle Trunks without work.
+ */
+function readyEligibleAgentIds(cfg: BranchConfig | undefined): string[] {
+  return (cfg ? listAgentIds(cfg) : [])
+    .filter((id) => isQueueEligibleTrunk(id, cfg))
+    .filter(
+      (id) => !isTrunkStartupPending({ admissionRefusal: readAgentDatabaseAdmissionRefusal(id) }),
+    );
 }
 
 /** Gives the top queued job to each idle eligible Trunk, after a card is added or put back. */
@@ -81,7 +85,7 @@ export function wakeEligibleTrunks(
   log: (message: string) => void,
 ): void {
   void (async () => {
-    const agentIds = await readyEligibleAgentIds(localGateway, cfg);
+    const agentIds = readyEligibleAgentIds(cfg);
     await wakeIdleTrunks({ agentIds, gateway: localGateway });
   })().catch((error: unknown) => log(`trunk queue wake failed: ${String(error)}`));
 }
@@ -122,7 +126,7 @@ export function startTrunkQueueSweep(params: {
     passRunning = true;
     void reconcileTrunkQueue({
       gateway,
-      agentIds: () => readyEligibleAgentIds(gateway, params.getConfig()),
+      agentIds: async () => readyEligibleAgentIds(params.getConfig()),
       availability,
       log: params.log,
     })
