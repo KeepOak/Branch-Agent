@@ -112,7 +112,8 @@ export function registerTrunkStatusTools(server: McpServer, gw: StatusGateway): 
       const projected = projectSkillsStatus(
         rec(await gw.request("skills.status", agentParams(agentId))),
       );
-      return ok(`${projected.total} skills, ${projected.eligible} eligible`, projected);
+      // Text-only MCP clients must receive the same listing as structured clients.
+      return ok(JSON.stringify(projected), projected);
     },
   );
 

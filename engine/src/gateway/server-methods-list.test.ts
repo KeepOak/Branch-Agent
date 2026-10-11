@@ -318,6 +318,8 @@ describe("listGatewayMethods", () => {
       "agents.retryStartup",
       "trunks.template.export",
       "trunks.template.create",
+      "trunks.team.propose",
+      "trunks.team.approve",
     ];
     expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
     const methods = listGatewayMethods();
@@ -441,6 +443,8 @@ describe("listGatewayMethods", () => {
       "agents.retryStartup",
       "trunks.template.export",
       "trunks.template.create",
+      "trunks.team.propose",
+      "trunks.team.approve",
     ]);
   });
 
@@ -698,6 +702,8 @@ describe("listGatewayMethods", () => {
       "agents.retryStartup",
       "trunks.template.export",
       "trunks.template.create",
+      "trunks.team.propose",
+      "trunks.team.approve",
     ];
     expect(coreMethods.slice(-expectedCoreSuffix.length)).toEqual(expectedCoreSuffix);
     expect(methods.indexOf("approval.get")).toBeGreaterThan(methods.indexOf("tts.speak"));

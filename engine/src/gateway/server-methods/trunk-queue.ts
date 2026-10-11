@@ -13,7 +13,9 @@ import {
   releaseQueueItem,
   releaseStaleQueueClaims,
   touchQueueClaim,
+  trunkAvailabilityLogger,
   wakeIdleTrunks,
+  type TrunkAvailability,
   type TrunkQueueGateway,
 } from "../../agents/trunk-queue.js";
 import type { BranchConfig } from "../../config/types.branch.js";
@@ -74,7 +76,10 @@ async function readyEligibleAgentIds(
 }
 
 /** Gives the top queued job to each idle eligible Trunk, after a card is added or put back. */
-function wakeEligibleTrunks(cfg: BranchConfig | undefined, log: (message: string) => void): void {
+export function wakeEligibleTrunks(
+  cfg: BranchConfig | undefined,
+  log: (message: string) => void,
+): void {
   void (async () => {
     const agentIds = await readyEligibleAgentIds(localGateway, cfg);
     await wakeIdleTrunks({ agentIds, gateway: localGateway });
@@ -104,6 +109,11 @@ export function startTrunkQueueSweep(params: {
     return false;
   }
   const gateway = params.gateway ?? localGateway;
+  // Kept across passes: a Trunk that is not ready is named once in the log, and left alone until its retry time.
+  const availability: TrunkAvailability = {
+    unavailable: new Map(),
+    report: trunkAvailabilityLogger(params.log),
+  };
   let passRunning = false;
   const timer = setInterval(() => {
     if (passRunning) {
@@ -113,6 +123,8 @@ export function startTrunkQueueSweep(params: {
     void reconcileTrunkQueue({
       gateway,
       agentIds: () => readyEligibleAgentIds(gateway, params.getConfig()),
+      availability,
+      log: params.log,
     })
       .catch((error: unknown) => params.log(`trunk queue sweep failed: ${String(error)}`))
       .finally(() => {
