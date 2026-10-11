@@ -58,6 +58,10 @@ if (info) {
   contextBridge.exposeInMainWorld("branchDesktop", {
     gatewayUrl: info.gatewayUrl, getGatewayUrl: () => gatewayUrl, gatewayToken: info.gatewayToken,
     openConversation: (key: string) => ipcRenderer.invoke("branch-desktop:open-conversation", key),
+    diagnostics: {
+      uiEvent: (event: unknown): void => ipcRenderer.send("branch-desktop:ui-event", event),
+      reportProblem: (minutes: number): Promise<{ saved: boolean; bytes?: number }> => ipcRenderer.invoke("branch-desktop:report-problem", minutes),
+    },
     conversationWindows: {
       list: (): Promise<string[]> => ipcRenderer.invoke("branch-desktop:conversation-windows"),
       saved: (): Promise<string[]> => ipcRenderer.invoke("branch-desktop:saved-conversation-windows"),

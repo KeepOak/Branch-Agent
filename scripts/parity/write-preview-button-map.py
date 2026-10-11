@@ -43,8 +43,8 @@ add("titlebar-guide", "titlebar", "Guide",
     "different")
 add("titlebar-theme", "titlebar", "Switch light or dark",
     "Toggles document theme between light and dark.",
-    "window/src/shell/TopBar.tsx", "TopBar",
-    "Toggles light/dark. Shown on place/settings headers; chat uses the conversation ⋯ or person menu Look instead.",
+    "window/src/shell/PersonMenu.tsx", "PersonMenu",
+    "No titlebar theme button and no header menu row (DA-09). Light or dark lives in the person menu Look row and the Appearance page in Settings; the command palette keeps Switch light or dark.",
     "different")
 add("titlebar-focus", "titlebar", "Clear the view (Ctrl .)",
     "Toggles focus mode (hides sidebar and status bar).",
