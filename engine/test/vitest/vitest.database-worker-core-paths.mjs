@@ -230,6 +230,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/bash-tools.exec-background-followup.test.ts",
   "src/agents/bash-tools.exec-foreground-failures.test.ts",
   "src/agents/bash-tools.exec-group-cleanup.real.test.ts",
+  "src/agents/bash-tools.exec-timeout-alias.test.ts",
   "src/agents/bash-tools.exec-host-gateway.integration.test.ts",
   "src/agents/bash-tools.exec-host-node.integration.test.ts",
   "src/agents/bash-tools.exec.approval-id.test.ts",

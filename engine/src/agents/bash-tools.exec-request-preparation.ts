@@ -3,6 +3,7 @@ import { normalizeOptionalString } from "@branch/normalization-core/string-coerc
 import type { SystemRunExecutionContext } from "../../packages/gateway-protocol/src/system-run-execution-context.js";
 import { normalizeChatChannelId } from "../channels/ids.js";
 import { resolveSessionStorePathCore } from "../config/sessions/paths.js";
+import { BRANCH_CLI_ENV_VAR, buildExecRoutingEnv } from "../infra/branch-exec-env.js";
 import type { ExecHost } from "../infra/exec-approvals.js";
 import {
   isDangerousHostEnvOverrideVarName,
@@ -15,7 +16,6 @@ import {
   installationTargetEnv,
   LOCAL_INSTALLATION_TARGET_UNSUPPORTED,
 } from "../infra/installation-target-context.js";
-import { BRANCH_CLI_ENV_VAR, buildExecRoutingEnv } from "../infra/branch-exec-env.js";
 import {
   getShellPathFromLoginShell,
   resolveShellEnvFallbackTimeoutMs,
@@ -31,6 +31,7 @@ import type { ExecToolDefaults } from "./bash-tools.exec-types.js";
 import { type ExecWorkdirResolution, resolveExecWorkdir } from "./bash-tools.exec-workdir.js";
 import { buildSandboxEnv, coerceEnv } from "./bash-tools.shared.js";
 import type { BashSandboxConfig } from "./bash-tools.shared.js";
+import { foldExecTimeoutAlias, readExecTimeoutAliasSeconds } from "./exec-tool-timeout.js";
 import { prepareGitHubToolEnvironment } from "./github-tool-identity.js";
 import { sanitizeEnvVars } from "./sandbox/sanitize-env-vars.js";
 import { isSubagentEnvelopeSession } from "./subagents/spawn/subagent-capabilities.js";
@@ -79,9 +80,15 @@ export function assertSupportedExecParams(args: unknown): void {
   if (args.awaitResults === true && args.background === true) {
     throw new ToolInputError("exec with awaitResults=true cannot be detached with background=true");
   }
-  if (Object.hasOwn(args, "timeout")) {
+  // timeout is accepted as an alias of timeoutSeconds (see foldExecTimeoutAlias); only a value
+  // that names no seconds is refused.
+  if (
+    Object.hasOwn(args, "timeout") &&
+    args.timeoutSeconds === undefined &&
+    readExecTimeoutAliasSeconds(args.timeout) === undefined
+  ) {
     throw new ToolInputError(
-      'exec parameter "timeout" is unsupported; use "timeoutSeconds" instead',
+      'exec parameter "timeout" must be a number of seconds; use "timeoutSeconds"',
     );
   }
   // `cwd` is a tool-level default, never a model-facing parameter: a dropped cwd runs the
@@ -196,7 +203,12 @@ export function createExecRequestPreparation(params: {
   resolveHostForParams: (params: ExecToolArgs) => ExecHost;
 }) {
   const normalizeParams = (rawArgs: unknown): ExecToolArgs =>
-    stripMalformedXmlArgValueSuffixFromKeys(rawArgs as ExecToolArgs, XML_ARG_VALUE_EXEC_PARAM_KEYS);
+    foldExecTimeoutAlias(
+      stripMalformedXmlArgValueSuffixFromKeys(
+        rawArgs as ExecToolArgs,
+        XML_ARG_VALUE_EXEC_PARAM_KEYS,
+      ),
+    );
 
   const prepareParamsWithResolvedExecWorkdir = async (rawArgs: unknown): Promise<ExecToolArgs> => {
     if (typeof rawArgs !== "object" || rawArgs === null || Array.isArray(rawArgs)) {
@@ -323,7 +335,7 @@ export function createExecRequestPreparation(params: {
     if (!isExecToolArgsObject(rawParams)) {
       return rawParams;
     }
-    const execParams = rawParams;
+    const execParams = foldExecTimeoutAlias(rawParams);
     // Host/workdir rewrites invalidate cached facts, not the bound execution identity.
     const invalidatePreparedParams = () => {
       const invalidated = { ...execParams };
