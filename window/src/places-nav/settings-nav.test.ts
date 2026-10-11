@@ -4,7 +4,7 @@ import { levelFor, pageAtLevel, pageLevel, pageName, searchSettings, settingsGro
 describe("settings nav", () => {
   it("has plain group names and omits achievements at every level", () => {
     const count = (l: "regular" | "advanced" | "technical") => settingsGroups(l).reduce((n, g) => n + g.pages.length, 0);
-    expect([count("regular"), count("advanced"), count("technical")]).toEqual([20, 21, 22]);
+    expect([count("regular"), count("advanced"), count("technical")]).toEqual([22, 23, 24]);
     expect(settingsGroups("regular").map((g) => g.name)).toEqual(["General", "Your Trunks", "Safety", "Data and safety"]);
   });
   it("uses plain page names in navigation and search", () => {
@@ -38,6 +38,10 @@ describe("settings nav", () => {
   it("search matches page names and keywords", () => {
     expect(searchSettings("telegram", []).flatMap((g) => g.hits.map((h) => h.page.id))).toEqual(["chatapps"]);
     expect(searchSettings("dark", []).flatMap((g) => g.hits.map((h) => h.page.id))).toEqual(["appearance"]);
+    // DA-55: Customize's old Everywhere and Specialists tabs are Settings pages now, found by their old names too.
+    expect(searchSettings("everywhere", []).flatMap((g) => g.hits.map((h) => h.page.id))).toEqual(["devices"]);
+    expect(searchSettings("specialists", []).flatMap((g) => g.hits.map((h) => h.page.id))).toEqual(["helpers"]);
+    expect([pageName("devices"), pageName("helpers")]).toEqual(["Devices & apps", "Helpers"]);
     expect(searchSettings("zzz", [])).toEqual([]);
     expect(pageName("local")).toBe("On this computer");
   });
