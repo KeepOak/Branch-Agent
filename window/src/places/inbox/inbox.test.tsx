@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import type { Level } from "../../places-nav/level";
-import { loadNeeds, markRead, refreshesInbox } from "./data";
+import { loadNeeds, markRead, refreshesInbox, usePlaceData } from "./data";
 import { openInboxWith } from "./handoff";
 import { REPLAY_GAP, VERIFY_GAP, RECEIPTS_GAP } from "./History";
 import { InboxPlace, useNeedsCount } from "./index";
@@ -44,7 +44,26 @@ const FX: Record<string, unknown> = {
 };
 
 let root: Root | undefined;
-afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; localStorage.clear(); });
+afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; localStorage.clear(); vi.useRealTimers(); vi.restoreAllMocks(); });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void, reject!: (reason: Error) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+function eventEngine(request: WindowEngine["request"]) {
+  let listener: Parameters<WindowEngine["onEvent"]>[0] | undefined;
+  const engine = engineWith(request);
+  engine.onEvent = cb => { listener = cb; return () => { listener = undefined; }; };
+  const burst = async () => {
+    for (const event of ["sessions.changed", "chat", "cron"]) {
+      listener?.({ event });
+      await act(async () => { vi.advanceTimersByTime(150); });
+    }
+  };
+  return { engine, burst };
+}
 
 const engineWith = (request: WindowEngine["request"], scopes = ["operator.admin"]): WindowEngine => ({ request, onEvent: () => () => {}, sessionKey: null, scopes });
 function withoutUnrequestedRecaps(value: unknown): unknown {
@@ -221,7 +240,40 @@ describe("Inbox › Needs you", () => {
 });
 
 describe("useNeedsCount", () => {
-  function Probe({ engine }: { engine: WindowEngine }) { return <span data-testid="n">{useNeedsCount(engine)}</span>; }
+  function Probe({ engine, ready = true }: { engine: WindowEngine; ready?: boolean }) { return <span data-testid="n">{useNeedsCount(engine, ready)}</span>; }
+  it("coalesces event bursts into one active badge read and one follow-up", async () => {
+    vi.useFakeTimers();
+    const first = deferred<unknown>(), second = deferred<unknown>();
+    let reads = 0;
+    const request = vi.fn(async (method: string) => method === "skills.proposals.list" ? (++reads === 1 ? first.promise : second.promise) : {});
+    const { engine, burst } = eventEngine(request as WindowEngine["request"]);
+    const host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+    await act(async () => root!.render(<Probe engine={engine} />));
+    await burst();
+    expect(reads).toBe(1);
+    await act(async () => first.resolve({ proposals: [] }));
+    expect(reads).toBe(2);
+    await act(async () => second.resolve({ proposals: [{ status: "pending" }] }));
+    expect(host.textContent).toBe("1");
+    expect(reads).toBe(2);
+  });
+  it("discards a pending badge read and its follow-up after disconnecting, then loads on reconnect", async () => {
+    vi.useFakeTimers();
+    const first = deferred<unknown>();
+    let reads = 0;
+    const request = vi.fn(async (method: string) => method === "skills.proposals.list" ? (++reads === 1 ? first.promise : { proposals: [{ status: "pending" }] }) : {});
+    const { engine, burst } = eventEngine(request as WindowEngine["request"]);
+    const host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+    await act(async () => root!.render(<Probe engine={engine} />));
+    await burst();
+    await act(async () => root!.render(<Probe engine={engine} ready={false} />));
+    await act(async () => first.resolve({ proposals: [{ status: "pending" }, { status: "pending" }] }));
+    expect(host.textContent).toBe("0");
+    expect(reads).toBe(1);
+    await act(async () => root!.render(<Probe engine={engine} />));
+    expect(host.textContent).toBe("1");
+    expect(reads).toBe(2);
+  });
   it("counts exactly what the chip counts, reads only those sources, and refreshes on Inbox events after 150 ms", async () => {
     let listener: ((e: { event: string }) => void) | undefined;
     const fx: Record<string, unknown> = { ...FX, "skills.proposals.list": { proposals: [{ id: "s", status: "pending" }] } };
@@ -248,6 +300,99 @@ describe("useNeedsCount", () => {
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
     expect(host.textContent).toBe("0");
     expect(request.mock.calls.map(([m]) => m)).not.toContain("device.pair.list");
+  });
+});
+
+describe("usePlaceData refreshes", () => {
+  function Probe({ engine, load }: { engine: WindowEngine; load: ((engine: WindowEngine) => Promise<string>) | null }) {
+    const state = usePlaceData(engine, load);
+    return <span>{state.loading ? "loading" : state.error || state.data}</span>;
+  }
+  it("coalesces event bursts and refreshes again after an active read fails", async () => {
+    vi.useFakeTimers();
+    const first = deferred<string>(), second = deferred<string>();
+    const load = vi.fn().mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise);
+    const { engine, burst } = eventEngine(vi.fn() as WindowEngine["request"]);
+    const host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+    await act(async () => root!.render(<Probe engine={engine} load={load} />));
+    await burst();
+    expect(load).toHaveBeenCalledTimes(1);
+    await act(async () => first.reject(new Error("offline")));
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(host.textContent).toBe("loading");
+    await act(async () => second.resolve("fresh Inbox"));
+    expect(host.textContent).toBe("fresh Inbox");
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+  it("ignores stale reads and pending follow-ups when the loader changes", async () => {
+    vi.useFakeTimers();
+    const first = deferred<string>();
+    const load = vi.fn(() => first.promise), nextLoad = vi.fn(async () => "new loader");
+    const { engine, burst } = eventEngine(vi.fn() as WindowEngine["request"]);
+    const host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+    await act(async () => root!.render(<Probe engine={engine} load={load} />));
+    await burst();
+    await act(async () => root!.render(<Probe engine={engine} load={nextLoad} />));
+    await act(async () => first.resolve("stale Inbox"));
+    expect(host.textContent).toBe("new loader");
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(nextLoad).toHaveBeenCalledTimes(1);
+  });
+  it("keeps read errors visible and recovers on the next event", async () => {
+    vi.useFakeTimers();
+    const load = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue("recovered Inbox");
+    const { engine, burst } = eventEngine(vi.fn() as WindowEngine["request"]);
+    const host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+    await act(async () => root!.render(<Probe engine={engine} load={load} />));
+    expect(host.textContent).toBe("offline");
+    await burst();
+    expect(host.textContent).toBe("recovered Inbox");
+  });
+  it("waits for the fresh follow-up after a mutation during an active read", async () => {
+    const first = deferred<string>(), second = deferred<string>();
+    const load = vi.fn().mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise);
+    const engine = engineWith(vi.fn() as WindowEngine["request"]);
+    let state!: ReturnType<typeof usePlaceData<string>>;
+    function MutatingProbe() { state = usePlaceData(engine, load); return <span>{state.data}</span>; }
+    const host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+    await act(async () => root!.render(<MutatingProbe />));
+    let completed = false, result!: Promise<boolean>;
+    await act(async () => { result = state.act(async () => ({ ok: true }), "Answered").then(accepted => { completed = true; return accepted; }); });
+    expect(load).toHaveBeenCalledTimes(1);
+    await act(async () => first.resolve("before answering"));
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(completed).toBe(false);
+    await act(async () => second.resolve("after answering"));
+    expect(await result).toBe(true);
+    expect(host.textContent).toBe("after answering");
+    expect(state.notice).toBe("Answered");
+  });
+  it("does not publish or restart queued reads from an unmounted Inbox", async () => {
+    vi.useFakeTimers();
+    const first = deferred<string>();
+    const load = vi.fn().mockImplementationOnce(() => first.promise).mockResolvedValue("remounted Inbox");
+    const { engine, burst } = eventEngine(vi.fn() as WindowEngine["request"]);
+    const host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+    await act(async () => root!.render(<Probe engine={engine} load={load} />));
+    await burst();
+    await act(async () => { root!.unmount(); root = createRoot(host); root.render(<Probe engine={engine} load={load} />); });
+    await act(async () => first.resolve("unmounted Inbox"));
+    expect(host.textContent).toBe("remounted Inbox");
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+  it("ignores the previous engine's result and cancels its queued follow-up", async () => {
+    vi.useFakeTimers();
+    const first = deferred<string>();
+    const old = eventEngine(vi.fn() as WindowEngine["request"]);
+    const nextEngine = engineWith(vi.fn() as WindowEngine["request"]);
+    const load = vi.fn((engine: WindowEngine) => engine === old.engine ? first.promise : Promise.resolve("new engine"));
+    const host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+    await act(async () => root!.render(<Probe engine={old.engine} load={load} />));
+    await old.burst();
+    await act(async () => root!.render(<Probe engine={nextEngine} load={load} />));
+    await act(async () => first.resolve("stale engine"));
+    expect(host.textContent).toBe("new engine");
+    expect(load).toHaveBeenCalledTimes(2);
   });
 });
 

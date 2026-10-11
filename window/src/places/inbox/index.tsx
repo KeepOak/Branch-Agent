@@ -4,7 +4,7 @@ import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import { NoticesBell } from "./Bell";
 import { PlaceFrame, type PlaceProps } from "../../places-nav/PlaceFrame";
 import type { WindowEngine } from "../../connect/engine";
-import { has, loadNeeds, loadNeedsCount, markRead, refreshesInbox, usePlaceData } from "./data";
+import { coalesceInboxReads, has, loadNeeds, loadNeedsCount, markRead, refreshesInbox, usePlaceData } from "./data";
 import { takeInboxHandoff, type InboxTab } from "./handoff";
 import { History, loadHistory, type HistoryData } from "./History";
 import { NeedsYou, needsCount } from "./NeedsYou";
@@ -34,14 +34,15 @@ export function useNeedsCount(engine: WindowEngine, ready = true): number {
   const [count, setCount] = useState(0);
   useEffect(() => {
     if (!ready) { setCount(0); return; }
-    let live = true, generation = 0;
+    let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const load = () => {
-      const id = ++generation;
-      loadNeedsCount(engine).then(n => { if (live && id === generation) setCount(n); }, e => { console.warn("Inbox count", e); if (live && id === generation) setCount(0); });
-    };
-    load();
-    const dispose = engine.onEvent(({ event }) => { if (refreshesInbox(event)) { clearTimeout(timer); timer = setTimeout(load, 150); } });
+    const load = coalesceInboxReads(async () => {
+      if (!live) return;
+      try { const n = await loadNeedsCount(engine); if (live) setCount(n); }
+      catch (e) { console.warn("Inbox count", e); if (live) setCount(0); }
+    });
+    void load();
+    const dispose = engine.onEvent(({ event }) => { if (refreshesInbox(event)) { clearTimeout(timer); timer = setTimeout(() => { void load(); }, 150); } });
     return () => { live = false; clearTimeout(timer); dispose(); };
   }, [engine, ready]);
   return count;
