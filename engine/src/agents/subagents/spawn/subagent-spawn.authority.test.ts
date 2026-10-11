@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/agents/subagents/spawn/subagent-spawn.authority.test.ts (atlas MULTI-AGENT-0001). Changed for Branch: canonical rename map; retain current upstream managed-worktree spawning and generation-aware descendant cancellation assertions.
 import "./subagent-spawn-model.mocks.shared.js";
 // Preserve module setup before modules that consume it.
 // oxfmt-ignore

@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/cli/capability-cli.test.ts (atlas MODELS-ACCOUNTS-0190). Changed for Branch: canonical rename map; retain current upstream CLI tests plus Branch system-agent and input failure regressions.
 // Capability CLI tests cover capability command registration and output formatting.
 import fs from "node:fs/promises";
 import os from "node:os";

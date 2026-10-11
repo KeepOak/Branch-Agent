@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/agents/embedded-agent-runner/google-prompt-cache.test.ts (atlas MODELS-ACCOUNTS-0129). Changed for Branch: canonical rename map; retain current upstream keyed agent configuration and cache transport fixtures.
 // Coverage for Google prompt-cache creation, reuse, and request rewriting.
 import crypto from "node:crypto";
 import {

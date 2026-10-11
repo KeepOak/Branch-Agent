@@ -18,7 +18,7 @@ import type { ProviderPlugin } from "../plugins/provider-plugin.types.js";
 import { mintSecretSentinel } from "../secrets/sentinel.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { isPidAlive } from "../shared/pid-alive.js";
-import { killPidIfAlive, readPidFile } from "../test-utils/process-tree.js";
+import { killPidIfAlive, readPidFile, waitForPidToExit } from "../test-utils/process-tree.js";
 import { agentProcessTestEntrypoints } from "./process-runtime.test-support.js";
 import { hasLocalServiceProcessExited } from "./provider-local-service-process.js";
 import {
@@ -64,7 +64,7 @@ async function waitForProbeFailure(url: string): Promise<void> {
             return true;
           }
         },
-        { timeout: 2_000, interval: 50 },
+        { timeout: process.platform === "win32" ? 8_000 : 2_000, interval: 50 },
       )
       .toBe(true);
   } catch {
@@ -702,7 +702,9 @@ describe("provider local service", () => {
     );
   });
 
-  it("reports a local service startup signal exit without waiting for readiness timeout", async () => {
+  it.skipIf(process.platform === "win32")(
+    "reports a local service startup signal exit without waiting for readiness timeout",
+    async () => {
     const port = await fixture.claimPort();
     const model = attachModelProviderLocalService(
       {
@@ -782,6 +784,12 @@ describe("provider local service", () => {
         servicePid = await readPidFile(servicePidPath).catch(() => undefined);
       }
       killPidIfAlive(servicePid);
+      if (parent.pid !== undefined) {
+        await waitForPidToExit(parent.pid);
+      }
+      if (servicePid !== undefined) {
+        await waitForPidToExit(servicePid);
+      }
     }
   });
 

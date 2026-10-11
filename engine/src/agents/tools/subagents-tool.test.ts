@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/agents/tools/subagents-tool.test.ts (atlas MULTI-AGENT-0001). Changed for Branch: canonical rename map; retain current upstream managed-worktree spawning and generation-aware descendant cancellation assertions.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSubagentRunRecord } from "../subagent-test-fixtures.test-helpers.js";
 import type { SubagentRunRecord } from "../subagents/registry/subagent-registry.types.js";

@@ -1,0 +1,5 @@
+# Tests for feat/harvest-pack1-oc-models-accounts-0051 run from scripts/feature-batch-ci-named/feat-harvest-pack1-oc-models-accounts-0051.txt.
+# Left out of Harvest so harvestTests() and namedTests() stay disjoint.
+# merge-gate-trusted coverage reads only named lists from the PR head.
+# order.test.ts and usage-state.test.ts stay on the named engine list after main merge.
+# paired-node.e2e.test.ts stays out of Harvest: Harvest vitest excludes **/*.e2e.test.ts.

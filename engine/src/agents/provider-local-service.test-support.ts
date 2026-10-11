@@ -94,7 +94,16 @@ export function createProviderLocalServiceTestFixture() {
       await stopManagedProviderLocalServices();
       for (const ports of claims.values()) {
         for (const port of ports) {
-          const probe = await probeTestPort(port);
+          // Windows holds killed listeners in TIME_WAIT; give the bind probe
+          // the same extra window the idle-stop fetch poll already uses.
+          const deadline = Date.now() + (process.platform === "win32" ? 8_000 : 0);
+          let probe = await probeTestPort(port);
+          while (!probe.free && Date.now() < deadline) {
+            await new Promise<void>((resolve) => {
+              setTimeout(resolve, 50);
+            });
+            probe = await probeTestPort(port);
+          }
           if (!probe.free) {
             throw new Error(`Local provider test port ${port} is still bound after cleanup`, {
               cause: probe.error,

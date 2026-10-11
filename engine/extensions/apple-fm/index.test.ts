@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:extensions/apple-fm/index.test.ts (atlas MODELS-ACCOUNTS-0153). Changed for Branch: canonical rename map; retain current upstream native discovery and schema validation contracts.
 import type {
   BranchConfig,
   ProviderAuthContext,

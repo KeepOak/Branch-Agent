@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/agents/decision-assistance.test.ts (atlas MODELS-ACCOUNTS-0112). Changed for Branch: canonical rename map; retain current upstream keyed agent configuration and extracted decision test helpers.
 import { describe, expect, it } from "vitest";
 import type { BranchConfig } from "../config/types.branch.js";
 import { AgentDefaultsBaseSchema } from "../config/zod-schema.agent-defaults-base.js";
