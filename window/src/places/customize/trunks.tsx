@@ -1,5 +1,6 @@
 // Customize › Trunks (preview 40-places trunks tab + 30-trunks/31-trunksp): A new Trunk and New group chat, one row
-// per Trunk (face and name open its profile; Edit; Pause), right-click for Make default / Remove, the job tiles and,
+// per Trunk (face and name open its profile; Who it knows; Edit; a ⋯ menu, also on right-click, for Make default and a red
+// Remove), the job tiles and,
 // at Technical, the defaults for every Trunk. Customize only mounts it; the dialogs live in places/trunk.
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { shownWhy } from "../../shell/shown-why";
@@ -22,7 +23,7 @@ import { RemoveTrunkDialog } from "../trunk/RemoveTrunk";
 import { TrunkDefaults } from "../trunk/TrunkDefaults";
 import { TrunkEditor } from "../trunk/TrunkEditor";
 import { RowFace } from "../trunk/TrunkFace";
-import { PAUSE_WHY, TrunkProfile } from "../trunk/TrunkProfile";
+import { TrunkProfile } from "../trunk/TrunkProfile";
 import "../trunk/trunk.css";
 
 /** The preview's row face (40-places Trunks rows). */
@@ -34,7 +35,9 @@ type Props = Pick<PlaceProps, "engine" | "level" | "openConversation" | "openSet
 };
 
 
-function TrunkRowView({ row, roster, write, open, menu, knows }: { row: TrunkRow; roster: Roster; write: boolean; open: (o: Open) => void; menu: (e: ReactMouseEvent, row: TrunkRow) => void; knows: (e: ReactMouseEvent, row: TrunkRow) => void }) {
+// DA-54: only Who it knows and Edit sit on the row. Remove is destructive, so it lives in the ⋯ menu, drawn red there,
+// with the reason beside it when it can't run. Pause has no engine method yet, so the row draws no greyed Pause at all.
+function TrunkRowView({ row, roster, open, menu, knows }: { row: TrunkRow; roster: Roster; open: (o: Open) => void; menu: (e: ReactMouseEvent, row: TrunkRow) => void; knows: (e: ReactMouseEvent, row: TrunkRow) => void }) {
   return (
     <div className="tk-row" onContextMenu={(e) => menu(e, row)} onKeyDown={(e) => { if ((e.key === "F10" && e.shiftKey) || e.key === "ContextMenu") menu(e as unknown as ReactMouseEvent, row); }}>
       <button type="button" className="tk-row-who" aria-label={`${row.name}: profile`} onClick={() => open({ kind: "profile", id: row.id })}>
@@ -43,8 +46,7 @@ function TrunkRowView({ row, roster, write, open, menu, knows }: { row: TrunkRow
       </button>
       <button type="button" className="btn ghost sm" onClick={(e) => knows(e, row)}>Who it knows</button>
       <button type="button" className="btn sm" onClick={() => open({ kind: "edit", id: row.id })}>Edit</button>
-      <button type="button" className="btn ghost sm" disabled title={shownWhy(PAUSE_WHY)}>Pause</button>
-      <button type="button" className="btn ghost sm" disabled={row.id === roster.defaultId || !write} title={row.id === roster.defaultId ? "The default Trunk cannot be removed." : write ? undefined : WRITE_WHY} onClick={() => open({ kind: "remove", id: row.id })}>Remove</button>
+      <button type="button" className="ib sm tk-row-more" aria-label={`More for ${row.name}`} title="More" aria-haspopup="menu" onClick={(e) => menu(e, row)}><Icon name="more" small /></button>
     </div>
   );
 }
@@ -107,7 +109,7 @@ export function TrunksTab(props: Props) {
     </div>
     <Status {...trunks} />
     {error && <p role="alert" className="tk-error">{error}</p>}
-    {roster && <div className="tk-list">{roster.agents.map((row) => <TrunkRowView key={row.id} row={row} roster={roster} write={write} open={setOpen} menu={showMenu} knows={(e, trunk) => void showKnown(e, trunk)} />)}</div>}
+    {roster && <div className="tk-list">{roster.agents.map((row) => <TrunkRowView key={row.id} row={row} roster={roster} open={setOpen} menu={showMenu} knows={(e, trunk) => void showKnown(e, trunk)} />)}</div>}
     {adding && roster && <NewTrunkPreview roster={roster} busy={busy} onClose={() => setAdding(false)} onConfirm={(choice) => void add(choice)} />}
     <Jobs engine={engine} reload={trunks.reload} />
     {shows(level, "technical") && <TrunkDefaults engine={engine} />}
@@ -122,9 +124,11 @@ export function TrunksTab(props: Props) {
 function rowMenu(p: Props, roster: Roster, row: TrunkRow, setOpen: (o: Open) => void, setError: (e: string | null) => void): MenuItem[] {
   const block = defaultBlock(roster, row.id), last = roster.agents.length <= 1, write = canWrite(p.engine);
   const toDefault = () => makeDefault(p.engine, roster, row.id).then(() => { notify(`${row.name} is now your default Trunk. Unrouted chats go to it.`); p.trunks.reload(); }, (e: unknown) => setError(errorText(e)));
+  const cannotRemove = row.id === roster.defaultId ? "The default Trunk cannot be removed." : last ? "Branch needs at least one Trunk." : write ? undefined : WRITE_WHY;
   return [
     row.id === roster.defaultId ? { kind: "info", label: `${row.name} is your default Trunk.` } : { label: "Make default", run: () => void toDefault(), disabled: block || (write ? undefined : WRITE_WHY) },
     { kind: "sep" },
-    { label: `Remove ${row.name}…`, danger: true, run: () => setOpen({ kind: "remove", id: row.id }), disabled: row.id === roster.defaultId ? "The default Trunk cannot be removed." : last ? "Branch needs at least one Trunk." : write ? undefined : WRITE_WHY },
+    // Red (danger) always; when it can't run, the reason is written under it rather than only in a tooltip.
+    { label: `Remove ${row.name}…`, danger: true, testid: "trunk-row-remove", run: () => setOpen({ kind: "remove", id: row.id }), disabled: cannotRemove, sub: shownWhy(cannotRemove) },
   ];
 }
