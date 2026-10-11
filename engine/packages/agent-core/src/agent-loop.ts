@@ -984,7 +984,7 @@ async function validateToolCallForBatchAdmission(
   }
   const tool = resolution.tool;
   if (!tool) {
-    return immediateToolCallError(`Tool ${toolCall.name} not found`);
+    return immediateToolCallError(formatMissingToolMessage(batch, toolCall));
   }
 
   let preparedToolCall: AgentToolCall;
@@ -1399,6 +1399,37 @@ function createToolExecutionErrorResult(error: unknown): AgentToolResult<unknown
   return typeof error === "object" && error !== null
     ? copyInternalToolResultState(error, result)
     : result;
+}
+
+const MISSING_TOOL_LIST_LIMIT = 40;
+
+/**
+ * Names the tools the model can call right now so a call to a tool the prompt
+ * mentions but the turn does not expose can be retried with a real one.
+ */
+function formatMissingToolMessage(batch: ToolBatchContext, toolCall: AgentToolCall): string {
+  const names = [
+    ...new Set((batch.currentContext.tools ?? []).map((candidate) => candidate.name)),
+  ].filter((name) => name.length > 0);
+  const shown = names.slice(0, MISSING_TOOL_LIST_LIMIT);
+  const more = names.length - shown.length;
+  const available =
+    names.length === 0
+      ? "No tools are available in this turn."
+      : `Available tools: ${shown.join(", ")}${more > 0 ? ` (and ${more} more)` : ""}.`;
+  let guidance: string | undefined;
+  try {
+    guidance = batch.config
+      .describeMissingTool?.({
+        assistantMessage: batch.assistantMessage,
+        toolCall,
+        context: batch.currentContext,
+      })
+      ?.trim();
+  } catch {
+    guidance = undefined;
+  }
+  return [`Tool ${toolCall.name} not found.`, available, guidance].filter(Boolean).join(" ");
 }
 
 function immediateToolCallError(message: string): ImmediateToolCallOutcome {

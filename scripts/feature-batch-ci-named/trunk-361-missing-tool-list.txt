@@ -1,0 +1,4 @@
+engine:packages/agent-core/src/agent-loop.harvest.test.ts
+engine:packages/agent-core/src/agent-loop.missing-tool.test.ts
+engine:packages/agent-core/src/agent-loop.test.ts
+engine:src/agents/code-mode-missing-tool.test.ts

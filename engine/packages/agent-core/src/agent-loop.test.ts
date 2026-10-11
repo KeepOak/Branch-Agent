@@ -334,7 +334,7 @@ describe("deferred tool hydration", () => {
               type: "text",
               text:
                 failure === "missing"
-                  ? "Tool requested_deferred not found"
+                  ? "Tool requested_deferred not found. No tools are available in this turn."
                   : 'Deferred tool resolver returned "other_deferred" for requested "requested_deferred"',
             },
           ],
