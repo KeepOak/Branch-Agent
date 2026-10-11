@@ -25,11 +25,11 @@ merged: --agent records the merging Trunk, --person records a person. Defaults t
 
 export function parseArgs(argv, env = process.env) {
   const args = {
-    agentId: undefined,
+    agentId: /** @type {string | undefined} */ (undefined),
     apply: false,
-    head: undefined,
+    head: /** @type {string | undefined} */ (undefined),
     person: false,
-    pr: undefined,
+    pr: /** @type {number | undefined} */ (undefined),
     repo: env.GITHUB_REPOSITORY || "KeepOak/Branch-Agent",
   };
   let help = false;
