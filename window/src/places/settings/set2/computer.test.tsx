@@ -55,14 +55,14 @@ describe("Settings › Computer & browser › computers they may use", () => {
 });
 
 describe("Settings › Computer & browser › a computer's row (CB3)", () => {
-  const NAS = {
-    nodeId: "nas", displayName: "NAS-linux", platform: "linux", connected: true,
+  const BOX = {
+    nodeId: "box-1", displayName: "Linux box", platform: "linux", connected: true,
     hostStats: { cpuCount: 4, loadAverage: [0.05, 0.06, 0.03], memoryTotalBytes: 16_770_080_768, memoryFreeBytes: 14_996_484_096, diskTotalBytes: 102_888_095_744, diskAvailableBytes: 59_930_312_704, updatedAtMs: 1 },
   };
   it("words memory as used of total and names the disk, with no slash that reads as 17 GB of 15.6 GB", async () => {
-    const { engine } = engineWith({ "node.list": { nodes: [NAS] }, "computer.status": new Error("no"), "config.get": { hash: "h", valid: true, config: {} } });
+    const { engine } = engineWith({ "node.list": { nodes: [BOX] }, "computer.status": new Error("no"), "config.get": { hash: "h", valid: true, config: {} } });
     await show(engine, "advanced");
-    const text = row("NAS-linux")?.textContent ?? "";
+    const text = row("Linux box")?.textContent ?? "";
     expect(text).toContain("1.7 GB of 15.6 GB memory used");
     expect(text).toContain("55.8 GB disk free");
     expect(text).not.toMatch(/GB\/[\d.]+ GB/);
